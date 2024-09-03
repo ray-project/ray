@@ -97,9 +97,14 @@ class CompiledDAGRef:
         return_vals = self._dag._execute_until(
             self._execution_index, self.channel_index, timeout
         )
+        # If self._dag.multiple_return_refs is True, each CompiledDAGRef corresponds
+        # to an output from a single channel, and therefore return_vals represents a
+        # single output. If self._dag.multiple_return_refs is False, this
+        # CompiledDAGRef wraps the outputs from all channels, and thus return_vals is
+        # a list of results and no longer represents a single output.
         return _process_return_vals(
             return_vals,
-            self._dag.has_single_output or not self._dag.multiple_return_refs,
+            self._dag.has_single_output or self._dag.multiple_return_refs,
         )
 
 
@@ -165,5 +170,5 @@ class CompiledDAGFuture:
 
         return _process_return_vals(
             return_vals,
-            self._dag.has_single_output or not self._dag.multiple_return_refs,
+            self._dag.has_single_output or self._dag.multiple_return_refs,
         )
