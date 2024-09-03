@@ -1686,6 +1686,7 @@ def _start_ray_worker_nodes(
                     ),
                     json={
                         "node_id": node_id,
+                        "spark_job_group_id": spark_job_group_id,
                     },
                 )
                 if not response.json()["available"]:
