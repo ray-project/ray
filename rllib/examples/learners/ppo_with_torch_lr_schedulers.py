@@ -1,5 +1,5 @@
 """Example of how to use PyTorch's learning rate schedulers to design a complex
-learning rate schedules for training.
+learning rate schedule for training.
 
 Two learning rate schedules are applied in sequence to the learning rate of the
 optimizer. In this way even more complex learning rate schedules can be assembled.
@@ -12,13 +12,13 @@ This example shows:
 How to run this script
 ----------------------
 `python [script file name].py --enable-new-api-stack --lr-const-factor=0.1
---lr-constant-iters=10 --lr-exp-decay=0.3`
+--lr-const-iters=10 --lr-exp-decay=0.3`
 
 Use the `--lr-const-factor` to define the facotr by which to multiply the
 learning rate in the first `--lr-const-iters` iterations. Use the
 `--lr-const-iters` to set the number of iterations in which the learning rate
 should be adapted by the `--lr-const-factor`. Use `--lr-exp-decay` to define
-the learning rate decay to be applied after the constant factor.
+the learning rate decay to be applied after the constant factor multiplication.
 
 For debugging, use the following additional command line options
 `--no-tune --num-env-runners=0`
@@ -29,6 +29,11 @@ For logging to your WandB account, use:
 `--wandb-key=[your WandB API key] --wandb-project=[some project name]
 --wandb-run-name=[optional: WandB run name (within the defined project)]`
 
+Results to expect
+-----------------
+You should expect to observe decent learning behavior from your console output:
+
+With `--lr-const-factor=0.1`, `--lr-const-iters=10, and `--lr-exp_decay=0.3`.
 +-----------------------------+------------+----------------------+--------+
 | Trial name                  | status     | loc                  |   iter |
 |                             |            |                      |        |
