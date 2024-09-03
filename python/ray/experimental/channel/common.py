@@ -235,7 +235,10 @@ class ChannelInterface:
 # Interfaces for channel I/O.
 @DeveloperAPI
 class ReaderInterface:
-    def __init__(self, input_channels: List[ChannelInterface]):
+    def __init__(
+        self,
+        input_channels: List[ChannelInterface],
+    ):
         assert isinstance(input_channels, list)
         for chan in input_channels:
             assert isinstance(chan, ChannelInterface)
@@ -288,7 +291,10 @@ class ReaderInterface:
 
 @DeveloperAPI
 class SynchronousReader(ReaderInterface):
-    def __init__(self, input_channels: List[ChannelInterface]):
+    def __init__(
+        self,
+        input_channels: List[ChannelInterface],
+    ):
         super().__init__(input_channels)
 
     def start(self):
@@ -316,7 +322,9 @@ class AwaitableBackgroundReader(ReaderInterface):
     """
 
     def __init__(
-        self, input_channels: List[ChannelInterface], fut_queue: asyncio.Queue
+        self,
+        input_channels: List[ChannelInterface],
+        fut_queue: asyncio.Queue,
     ):
         super().__init__(input_channels)
         self._fut_queue = fut_queue
@@ -355,8 +363,23 @@ class AwaitableBackgroundReader(ReaderInterface):
 
 @DeveloperAPI
 class WriterInterface:
-    def __init__(self, output_channel: ChannelInterface):
-        self._output_channel = output_channel
+    def __init__(
+        self, output_channels: List[ChannelInterface], output_idxs: List[Optional[int]]
+    ):
+        """
+        Initialize the writer.
+
+        Args:
+            output_channels: The output channels to write to.
+            output_idxs: The indices of the values to write to each channel.
+                It is the same length as output_channels. If an index is None,
+                the entire value is written. Otherwise, the value at the index
+                of the tuple is written.
+        """
+
+        assert len(output_channels) == len(output_idxs)
+        self._output_channels = output_channels
+        self._output_idxs = output_idxs
         self._closed = False
         self._num_writes = 0
 
@@ -380,26 +403,48 @@ class WriterInterface:
 
     def close(self) -> None:
         self._closed = True
-        self._output_channel.close()
+        for channel in self._output_channels:
+            channel.close()
 
 
 @DeveloperAPI
 class SynchronousWriter(WriterInterface):
     def start(self):
-        self._output_channel.ensure_registered_as_writer()
-        pass
+        for channel in self._output_channels:
+            channel.ensure_registered_as_writer()
 
     def write(self, val: Any, timeout: Optional[float] = None) -> None:
-        self._output_channel.write(val, timeout)
+        if len(self._output_channels) > 1:
+            if not isinstance(val, tuple):
+                raise ValueError(
+                    f"Expected a tuple of {len(self._output_channels)} outputs,"
+                    "but got {type(val)}"
+                )
+            if len(val) != len(self._output_channels):
+                raise ValueError(
+                    f"Expected {len(self._output_channels)} outputs, but got"
+                    "{len(val)} outputs"
+                )
+
+        for i, channel in enumerate(self._output_channels):
+            idx = self._output_idxs[i]
+            if idx is not None:
+                val_i = val[idx]
+            else:
+                val_i = val
+            channel.write(val_i, timeout)
         self._num_writes += 1
 
 
 @DeveloperAPI
 class AwaitableBackgroundWriter(WriterInterface):
     def __init__(
-        self, output_channel: ChannelInterface, max_queue_size: Optional[int] = None
+        self,
+        output_channels: List[ChannelInterface],
+        output_idxs: List[Optional[int]],
+        max_queue_size: Optional[int] = None,
     ):
-        super().__init__(output_channel)
+        super().__init__(output_channels, output_idxs)
         if max_queue_size is None:
             from ray.dag import DAGContext
 
@@ -412,11 +457,30 @@ class AwaitableBackgroundWriter(WriterInterface):
         )
 
     def start(self):
-        self._output_channel.ensure_registered_as_writer()
+        for channel in self._output_channels:
+            channel.ensure_registered_as_writer()
         self._background_task = asyncio.ensure_future(self.run())
 
     def _run(self, res):
-        self._output_channel.write(res)
+        if len(self._output_channels) > 1:
+            if not isinstance(res, tuple):
+                raise ValueError(
+                    f"Expected a tuple of {len(self._output_channels)} outputs,"
+                    "but got {type(val)}"
+                )
+            if len(res) != len(self._output_channels):
+                raise ValueError(
+                    f"Expected {len(self._output_channels)} outputs, but got"
+                    "{len(val)} outputs"
+                )
+
+        for i, channel in enumerate(self._output_channels):
+            idx = self._output_idxs[i]
+            if idx is not None:
+                res_i = res[idx]
+            else:
+                res_i = res
+            channel.write(res_i)
 
     async def run(self):
         loop = asyncio.get_event_loop()
