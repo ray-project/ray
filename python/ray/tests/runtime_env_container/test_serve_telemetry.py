@@ -11,6 +11,7 @@ from ray.serve.schema import ServeDeploySchema
 from ray.serve._private.test_utils import (
     TelemetryStorage,
     check_ray_started,
+    check_ray_stopped,
 )
 
 parser = argparse.ArgumentParser(
@@ -131,3 +132,7 @@ client.deploy_apps(ServeDeploySchema.parse_obj(config))
 wait_for_condition(check_app, app_name="app2", expected="helloworldalice", timeout=300)
 wait_for_condition(check_telemetry_deployment)
 print("Telemetry checks passed!")
+
+# Stop ray
+subprocess.check_output(["ray", "stop", "--force"])
+wait_for_condition(check_ray_stopped, timeout=15)
