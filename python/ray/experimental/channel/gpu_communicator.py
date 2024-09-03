@@ -22,18 +22,18 @@ class GPUCommunicator(ABC):
     between actors in the group.
     """
 
-    def register(self, group_id: str):
+    @abstractmethod
+    def initialize(self, rank: int) -> None:
         """
-        Register the group in the Ray channel context.
+        Initialize the communicator from the actor.
 
-        This should be called once remotely on each actor
-        in the group before any other methods can be called,
-        with the same `group_id`.
+        This is called once by aDAG on each actor to initialize the communicator,
+        before any other methods.
+
+        Args:
+            rank: The rank of this actor in the group.
         """
-        from ray.experimental.channel.common import ChannelContext
-
-        ctx = ChannelContext.get_current()
-        ctx.nccl_groups[group_id] = self
+        raise NotImplementedError
 
     @abstractmethod
     def get_rank(self, actor: ray.actor.ActorHandle) -> int:
@@ -49,6 +49,12 @@ class GPUCommunicator(ABC):
     def get_self_rank(self) -> Optional[int]:
         """
         Return this actor's rank.
+        """
+        raise NotImplementedError
+
+    def get_world_size(self) -> int:
+        """
+        Return the number of ranks in the group.
         """
         raise NotImplementedError
 

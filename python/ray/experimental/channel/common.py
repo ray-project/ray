@@ -100,6 +100,14 @@ class ChannelOutputType:
         # By default, channels do not require NCCL.
         return False
 
+    def get_custom_nccl_group(self) -> Optional[GPUCommunicator]:
+        """
+        Return the custom NCCL group if one is specified.
+        """
+        if self._contains_type is not None:
+            return self._contains_type.get_custom_nccl_group()
+        return None
+
     def set_nccl_group_id(self, group_id: str) -> None:
         raise NotImplementedError
 

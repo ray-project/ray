@@ -67,6 +67,7 @@ class _NcclGroup(GPUCommunicator):
             cuda_stream: A raw CUDA stream to dispatch NCCL ops to. If rank is
                 specified, then this must be specified too.
         """
+        self._world_size = world_size
         self._rank: Optional[int] = rank
         self.nccl_util: Optional[ModuleType] = None
         self._actor_handles = actor_handles
@@ -105,6 +106,10 @@ class _NcclGroup(GPUCommunicator):
 
         self._closed = False
 
+    def initialize(self, rank: int) -> None:
+        # No additional initialization is needed.
+        pass
+
     def _get_actor_handles(self) -> List["ray.actor.ActorHandle"]:
         return self._actor_handles
 
@@ -127,6 +132,12 @@ class _NcclGroup(GPUCommunicator):
         Return this actor's rank.
         """
         return self._rank
+
+    def get_world_size(self) -> int:
+        """
+        Return the number of ranks in the NCCL communicator.
+        """
+        return self._world_size
 
     def send(self, value: "torch.Tensor", peer_rank: int) -> None:
         """

@@ -425,7 +425,15 @@ class TorchTensorNcclChannel(ChannelInterface):
         )
 
 
-def _do_init_nccl_group(self, group_id, world_size, comm_id, rank, actor_handles):
+def _do_init_nccl_group(
+    self,
+    group_id,
+    world_size,
+    comm_id,
+    rank,
+    actor_handles,
+    custom_nccl_group: Optional[GPUCommunicator] = None,
+):
     import torch
 
     assert (
@@ -433,13 +441,18 @@ def _do_init_nccl_group(self, group_id, world_size, comm_id, rank, actor_handles
     ), "Actors participating in NCCL group must have at least one GPU assigned"
 
     ctx = ChannelContext.get_current()
-    ctx.nccl_groups[group_id] = _NcclGroup(
-        world_size,
-        comm_id,
-        rank,
-        actor_handles,
-        torch.cuda.current_stream().cuda_stream,
-    )
+    if custom_nccl_group is not None:
+        custom_nccl_group.initialize(rank)
+        _validate_custom_nccl_group(actor_handles, custom_nccl_group)
+        ctx.nccl_groups[group_id] = custom_nccl_group
+    else:
+        ctx.nccl_groups[group_id] = _NcclGroup(
+            world_size,
+            comm_id,
+            rank,
+            actor_handles,
+            torch.cuda.current_stream().cuda_stream,
+        )
 
 
 def _do_destroy_nccl_group(self, group_id):
@@ -461,33 +474,47 @@ def _do_get_unique_nccl_id(self) -> bool:
     return nccl.get_unique_id()
 
 
-def _set_nccl_group(
-    custom_nccl_group: GPUCommunicator,
-    actors: List[ray.actor.ActorHandle],
-) -> str:
+def _validate_custom_nccl_group(
+    actors: List[ray.actor.ActorHandle], custom_nccl_group: Optional[GPUCommunicator]
+) -> None:
     """
-    Validate the custom NCCL group and set it in the ChannelContext.
+    Validate the custom NCCL group.
+
+    Args:
+        actors: A list of actors that participate in the NCCL group.
+        custom_nccl_group: A custom NCCL group to validate.
     """
-    assert custom_nccl_group is not None, "Provided custom NCCL group must not be None"
-    ctx = ChannelContext.get_current()
+    if custom_nccl_group is None:
+        return
 
-    if custom_nccl_group.get_world_size() != len(actors):
-        raise ValueError(
-            "The world size of the custom NCCL group does not match the number "
-            "of actors."
-        )
-    # TODO: Add more validation checks for the custom NCCL group.
-
-    group_id = str(uuid.uuid4())
-    ctx.nccl_groups[group_id] = custom_nccl_group
-    return group_id
+    assert len(actors) == custom_nccl_group.get_world_size(), (
+        "The world size of the custom NCCL group does not match the number "
+        "of actors."
+    )
+    ranks = set()
+    for actor in actors:
+        rank = custom_nccl_group.get_rank(actor)
+        assert rank not in ranks, "Duplicate rank in custom NCCL group"
+        ranks.add(rank)
+    assert custom_nccl_group.get_world_size() == len(actors), (
+        "The world size of the custom NCCL group "
+        f"({custom_nccl_group.get_world_size()}) "
+        "does not match the number of actors "
+        f"({len(actors)})."
+    )
 
 
 def _init_nccl_group(
     actors: List[ray.actor.ActorHandle],
+    custom_nccl_group: Optional[GPUCommunicator] = None,
 ) -> str:
     """
-    Initialize a NCCL group with the given actors.
+    Initialize a NCCL group with the given actors. If a custom NCCL group is
+    provided, then it will be used, otherwise a new NCCL group will be created.
+
+    Args:
+        actors: A list of actors that participate in the NCCL group.
+        custom_nccl_group: A custom NCCL group to initialize.
     """
     ctx = ChannelContext.get_current()
 
@@ -498,8 +525,9 @@ def _init_nccl_group(
         if not has_gpu:
             raise ValueError(
                 f"Actor {actor} returns a tensor with type hint "
-                'TorchTensor(transport="nccl") but actor does not have a '
-                "GPU assigned by Ray."
+                'TorchTensor(transport="nccl") or '
+                "TorchTensor(transport=nccl_group_handle)"
+                "but actor does not have a GPU assigned by Ray."
             )
 
     actor_ids = {actor._ray_actor_id for actor in actors}
@@ -512,9 +540,14 @@ def _init_nccl_group(
     # Used to uniquely identify this NCCL group.
     group_id = str(uuid.uuid4())
 
-    logger.info(f"Creating NCCL group {group_id} on actors: {actors}")
+    if custom_nccl_group is not None:
+        logger.info(f"Initializing custom NCCL group {group_id} on actors: {actors}")
+    else:
+        logger.info(f"Creating NCCL group {group_id} on actors: {actors}")
 
     world_size = len(actors)
+    if custom_nccl_group is not None:
+        actors.sort(key=lambda actor: custom_nccl_group.get_rank(actor))
     init_tasks = [
         actor.__ray_call__.remote(
             _do_init_nccl_group,
@@ -523,6 +556,7 @@ def _init_nccl_group(
             nccl_comm_id,
             rank,
             actors,
+            custom_nccl_group,
         )
         for rank, actor in enumerate(actors)
     ]
@@ -534,15 +568,18 @@ def _init_nccl_group(
         )
         ray.get(init_tasks)
 
-    logger.info("NCCL group created.")
+    logger.info("NCCL group initialized.")
 
-    ctx.nccl_groups[group_id] = _NcclGroup(
-        world_size,
-        nccl_comm_id,
-        rank=None,
-        actor_handles=actors,
-        cuda_stream=None,
-    )
+    if custom_nccl_group is not None:
+        ctx.nccl_groups[group_id] = custom_nccl_group
+    else:
+        ctx.nccl_groups[group_id] = _NcclGroup(
+            world_size,
+            nccl_comm_id,
+            rank=None,
+            actor_handles=actors,
+            cuda_stream=None,
+        )
     return group_id
 
 
@@ -558,8 +595,9 @@ def _destroy_nccl_group(group_id: str) -> None:
         return
 
     group = ctx.nccl_groups[group_id]
-    if not isinstance(group, _NcclGroup):
-        return
+    assert isinstance(
+        group, _NcclGroup
+    ), "Only NCCL groups created internally by aDAG can be destroyed"
     actors = group._get_actor_handles()
     destroy_tasks = [
         actor.__ray_call__.remote(
