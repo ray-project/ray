@@ -98,7 +98,10 @@ class APPOConfig(IMPALAConfig):
         self.use_kl_loss = False
         self.kl_coeff = 1.0
         self.kl_target = 0.01
-        #self.shuffle_batch_per_epoch = True
+        # TODO (sven): Activate once v-trace sequences in non-RNN batch are solved.
+        #  If we switch this on right now, the shuffling would destroy the rollout
+        #  sequences (non-zero-padded!) needed in the batch for v-trace.
+        # self.shuffle_batch_per_epoch = True
 
         # Override some of IMPALAConfig's default values with APPO-specific values.
         self.num_env_runners = 2

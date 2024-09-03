@@ -1,9 +1,4 @@
 from ray.rllib.algorithms.appo import APPOConfig
-from ray.rllib.utils.metrics import (
-    ENV_RUNNER_RESULTS,
-    EPISODE_RETURN_MEAN,
-    NUM_ENV_STEPS_SAMPLED_LIFETIME,
-)
 from ray.rllib.utils.test_utils import add_rllib_example_script_args
 
 parser = add_rllib_example_script_args(
@@ -25,17 +20,12 @@ config = (
     )
     .environment("CartPole-v1")
     .training(
-        train_batch_size_per_learner=1000,
         vf_loss_coeff=0.05,
-        entropy_coeff=0.01,
-        num_epochs=2,
-        lr=0.00075,
-        minibatch_size=250,
+        entropy_coeff=0.0,
     )
     .rl_module(
         model_config_dict={
-            "fcnet_hiddens": [32],
-            # "vf_share_layers": True,
+            "vf_share_layers": True,
             "uses_new_env_runners": True,
         },
     )

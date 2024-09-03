@@ -130,17 +130,17 @@ class PPOConfig(AlgorithmConfig):
         self.lr = 5e-5
         self.rollout_fragment_length = "auto"
         self.train_batch_size = 4000
-        self.shuffle_batch_per_epoch = True
 
         # PPO specific settings:
         self.use_critic = True
         self.use_gae = True
+        self.num_epochs = 30
+        self.minibatch_size = 128
+        self.shuffle_batch_per_epoch = True
         self.lambda_ = 1.0
         self.use_kl_loss = True
         self.kl_coeff = 0.2
         self.kl_target = 0.01
-        self.minibatch_size = 128
-        self.num_epochs = 30
         self.vf_loss_coeff = 1.0
         self.entropy_coeff = 0.0
         self.entropy_coeff_schedule = None
@@ -467,8 +467,9 @@ class PPO(Algorithm):
                         self.metrics.peek(NUM_ENV_STEPS_SAMPLED_LIFETIME)
                     ),
                 },
-                minibatch_size=self.config.minibatch_size,
                 num_epochs=self.config.num_epochs,
+                minibatch_size=self.config.minibatch_size,
+                shuffle_batch_per_epoch=self.config.shuffle_batch_per_epoch,
             )
             self.metrics.merge_and_log_n_dicts(learner_results, key=LEARNER_RESULTS)
             self.metrics.log_dict(

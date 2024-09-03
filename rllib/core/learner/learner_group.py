@@ -222,7 +222,7 @@ class LearnerGroup(Checkpointable):
         async_update: bool = False,
         return_state: bool = False,
         num_epochs: int = 1,
-        shuffle_batch_per_epoch: bool = True,
+        shuffle_batch_per_epoch: bool = False,
         minibatch_size: Optional[int] = None,
         # User kwargs.
         **kwargs,
@@ -286,7 +286,7 @@ class LearnerGroup(Checkpointable):
         return_state: bool = False,
         num_epochs: int = 1,
         minibatch_size: Optional[int] = None,
-        shuffle_batch_per_epoch: bool = True,
+        shuffle_batch_per_epoch: bool = False,
         # User kwargs.
         **kwargs,
     ) -> Union[Dict[str, Any], List[Dict[str, Any]], List[List[Dict[str, Any]]]]:
@@ -353,7 +353,7 @@ class LearnerGroup(Checkpointable):
         return_state: bool = False,
         num_epochs: int = 1,
         minibatch_size: Optional[int] = None,
-        shuffle_batch_per_epoch: bool = True,
+        shuffle_batch_per_epoch: bool = False,
         # Deprecated args.
         num_iters=DEPRECATED_VALUE,
         **kwargs,

@@ -927,7 +927,7 @@ class Learner(Checkpointable):
         timesteps: Optional[Dict[str, Any]] = None,
         num_epochs: int = 1,
         minibatch_size: Optional[int] = None,
-        shuffle_batch_per_epoch: bool = True,
+        shuffle_batch_per_epoch: bool = False,
         # Deprecated args.
         num_iters=DEPRECATED_VALUE,
     ) -> ResultDict:
@@ -986,7 +986,7 @@ class Learner(Checkpointable):
         num_epochs: int = 1,
         minibatch_size: Optional[int] = None,
         num_total_minibatches: int = 0,
-        shuffle_batch_per_epoch: bool = True,
+        shuffle_batch_per_epoch: bool = False,
         # Deprecated args.
         num_iters=DEPRECATED_VALUE,
     ) -> ResultDict:
@@ -1245,7 +1245,7 @@ class Learner(Checkpointable):
         #  algos that actually need (and know how) to do minibatching.
         minibatch_size: Optional[int] = None,
         num_epochs: int = 1,
-        shuffle_batch_per_epoch: bool = True,
+        shuffle_batch_per_epoch: bool = False,
         num_total_minibatches: int = 0,
     ) -> Union[Dict[str, Any], List[Dict[str, Any]]]:
 
