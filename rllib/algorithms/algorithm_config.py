@@ -546,6 +546,7 @@ class AlgorithmConfig(_Config):
 
         # `self.experimental()`
         self._torch_grad_scaler_class = None
+        self._torch_lr_scheduler_classes = None
         self._tf_policy_handles_more_than_one_loss = False
         self._disable_preprocessor_api = False
         self._disable_action_flattening = False
@@ -3231,6 +3232,9 @@ class AlgorithmConfig(_Config):
         self,
         *,
         _torch_grad_scaler_class: Optional[Type] = NotProvided,
+        _torch_lr_scheduler_classes: Optional[
+            Union[List[Type], Dict[ModuleID, Type]]
+        ] = NotProvided,
         _tf_policy_handles_more_than_one_loss: Optional[bool] = NotProvided,
         _disable_preprocessor_api: Optional[bool] = NotProvided,
         _disable_action_flattening: Optional[bool] = NotProvided,
@@ -3252,6 +3256,14 @@ class AlgorithmConfig(_Config):
                 and step the given optimizer.
                 `update()` to update the scaler after an optimizer step (for example to
                 adjust the scale factor).
+            _torch_lr_scheduler_classes: A list of `torch.lr_scheduler.LRScheduler`
+                (see here for more details
+                https://pytorch.org/docs/stable/optim.html#how-to-adjust-learning-rate)
+                classes or a dictionary mapping module IDs to such a list of respective
+                scheduler classes. Multiple scheduler classes can be applied in sequence
+                and will be stepped in the same sequence as defined here. Note, most
+                learning rate schedulers need arguments to be configured, i.e. you need
+                to partially initialize the schedulers in the list(s).
             _tf_policy_handles_more_than_one_loss: Experimental flag.
                 If True, TFPolicy will handle more than one loss/optimizer.
                 Set this to True, if you would like to return more than
@@ -3295,6 +3307,8 @@ class AlgorithmConfig(_Config):
             )
         if _torch_grad_scaler_class is not NotProvided:
             self._torch_grad_scaler_class = _torch_grad_scaler_class
+        if _torch_lr_scheduler_classes is not NotProvided:
+            self._torch_lr_scheduler_classes = _torch_lr_scheduler_classes
 
         return self
 
