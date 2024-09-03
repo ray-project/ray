@@ -24,11 +24,6 @@ from ray.util.debug import log_once
 
 TASK_SIZE_WARN_THRESHOLD_BYTES = 1024 * 1024  # 1 MiB
 
-# Transient errors that can occur during longer reads. Trigger retry when these occur.
-READ_FILE_RETRY_ON_ERRORS = ["AWS Error NETWORK_CONNECTION", "AWS Error ACCESS_DENIED"]
-READ_FILE_MAX_ATTEMPTS = 10
-READ_FILE_RETRY_MAX_BACKOFF_SECONDS = 32
-
 logger = logging.getLogger(__name__)
 
 
@@ -96,17 +91,8 @@ def plan_read_op(
     )
 
     def do_read(blocks: Iterable[ReadTask], _: TaskContext) -> Iterable[Block]:
-        """Yield from read tasks, with retry logic upon transient read errors."""
         for read_task in blocks:
-            read_fn_name = read_task._read_fn.__name__
-
-            yield from call_with_retry(
-                f=read_task,
-                description=f"read file {read_fn_name}",
-                match=READ_FILE_RETRY_ON_ERRORS,
-                max_attempts=READ_FILE_MAX_ATTEMPTS,
-                max_backoff_s=READ_FILE_RETRY_MAX_BACKOFF_SECONDS,
-            )
+            yield from read_task()
 
     # Create a MapTransformer for a read operator
     transform_fns: List[MapTransformFn] = [
