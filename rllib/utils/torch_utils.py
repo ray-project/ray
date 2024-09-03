@@ -106,7 +106,6 @@ def clip_gradients(
     *,
     grad_clip: Optional[float] = None,
     grad_clip_by: str = "value",
-    only_global_norm,
 ) -> TensorType:
     """Performs gradient clipping on a grad-dict based on a clip value and clip mode.
 
