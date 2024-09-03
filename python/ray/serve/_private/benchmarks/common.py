@@ -70,17 +70,20 @@ async def do_single_http_batch(
     *,
     batch_size: int = 100,
     url: str = "http://localhost:8000",
-    tokens_per_request: Optional[int] = None,
     stream: bool = False,
 ):
-    async with aiohttp.ClientSession(raise_for_status=True) as session:
+    # By default, aiohttp limits the number of client connections to 100.
+    # We need to use TCPConnector to configure the limit if batch size
+    # is greater than 100.
+    connector = aiohttp.TCPConnector(limit=batch_size)
+    async with aiohttp.ClientSession(
+        connector=connector, raise_for_status=True
+    ) as session:
 
         async def do_query():
             try:
                 if stream:
-                    async with session.get(
-                        url, json={"tokens_per_request": tokens_per_request}
-                    ) as r:
+                    async with session.get(url) as r:
                         async for chunk, _ in r.content.iter_chunks():
                             pass
                 else:
@@ -138,16 +141,32 @@ class Noop:
 
 @serve.deployment
 class Streamer:
-    def __init__(self):
+    def __init__(self, tokens_per_request: int, inter_token_delay_ms: int = 10):
         logging.getLogger("ray.serve").setLevel(logging.WARNING)
+        self._tokens_per_request = tokens_per_request
+        self._inter_token_delay_ms = inter_token_delay_ms
 
-    async def stream(self, tokens_per_request):
-        for _ in range(tokens_per_request):
+    async def stream(self):
+        for _ in range(self._tokens_per_request):
+            await asyncio.sleep(self._inter_token_delay_ms / 1000)
             yield b"hi"
 
-    async def __call__(self, request):
-        tokens_per_request = (await request.json())["tokens_per_request"]
-        return StreamingResponse(self.stream(tokens_per_request))
+    async def __call__(self):
+        return StreamingResponse(self.stream())
+
+
+@serve.deployment
+class IntermediateRouter:
+    def __init__(self, handle: DeploymentHandle):
+        logging.getLogger("ray.serve").setLevel(logging.WARNING)
+        self._handle = handle.options(stream=True)
+
+    async def stream(self):
+        async for token in self._handle.stream.remote():
+            yield token
+
+    def __call__(self):
+        return StreamingResponse(self.stream())
 
 
 @serve.deployment
@@ -167,17 +186,13 @@ class Benchmarker:
         else:
             return await self._handle.remote(payload)
 
-    async def _do_single_stream(self, tokens_per_request: int):
-        async for r in self._handle.stream.remote(tokens_per_request):
+    async def _do_single_stream(self):
+        async for r in self._handle.stream.remote():
             pass
 
-    async def _do_single_batch(
-        self, batch_size: int, tokens_per_request: Optional[int] = None
-    ):
+    async def _do_single_batch(self, batch_size: int):
         if self._stream:
-            await asyncio.gather(
-                *[self._do_single_stream(tokens_per_request) for _ in range(batch_size)]
-            )
+            await asyncio.gather(*[self._do_single_stream() for _ in range(batch_size)])
         else:
             await asyncio.gather(*[self._handle.remote() for _ in range(batch_size)])
 
@@ -207,7 +222,6 @@ class Benchmarker:
             fn=partial(
                 self._do_single_batch,
                 batch_size=batch_size,
-                tokens_per_request=tokens_per_request,
             ),
             multiplier=multiplier,
             num_trials=num_trials,

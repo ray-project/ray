@@ -26,6 +26,7 @@ from ray.serve._private.benchmarks.common import (
     do_single_http_batch,
     generate_payload,
     Noop,
+    IntermediateRouter,
     run_latency_benchmark,
     run_throughput_benchmark,
     Streamer,
@@ -48,6 +49,11 @@ NUM_REQUESTS = 500
 BATCH_SIZE = 100
 NUM_TRIALS = 50
 TRIAL_RUNTIME_S = 5
+
+# For streaming benchmarks
+STREAMING_BATCH_SIZE = 150
+STREAMING_TOKENS_PER_REQUEST = 1000
+STREAMING_NUM_TRIALS = 10
 
 
 @serve.deployment
@@ -161,21 +167,52 @@ async def _main(
             serve.shutdown()
 
         if run_streaming:
-            serve.run(Streamer.options(max_ongoing_requests=100).bind())
+            # Direct streaming between replica
+            serve.run(
+                Streamer.options(max_ongoing_requests=1000).bind(
+                    tokens_per_request=STREAMING_TOKENS_PER_REQUEST,
+                    inter_token_delay_ms=10,
+                )
+            )
             mean, std = await run_throughput_benchmark(
                 fn=partial(
                     do_single_http_batch,
-                    batch_size=BATCH_SIZE,
-                    tokens_per_request=1000,
+                    batch_size=STREAMING_BATCH_SIZE,
                     stream=True,
                 ),
-                multiplier=BATCH_SIZE,
-                num_trials=NUM_TRIALS,
-                trial_runtime=TRIAL_RUNTIME_S,
+                multiplier=STREAMING_BATCH_SIZE * STREAMING_TOKENS_PER_REQUEST,
+                num_trials=STREAMING_NUM_TRIALS,
+                # Complete only one batch of requests
+                trial_runtime=10,
+            )
+            perf_metrics.extend(
+                convert_throughput_to_perf_metrics("http_streaming", mean, std)
+            )
+            serve.shutdown()
+
+            # Streaming with intermediate router
+            serve.run(
+                IntermediateRouter.options(max_ongoing_requests=1000).bind(
+                    Streamer.options(max_ongoing_requests=1000).bind(
+                        tokens_per_request=STREAMING_TOKENS_PER_REQUEST,
+                        inter_token_delay_ms=10,
+                    )
+                )
+            )
+            mean, std = await run_throughput_benchmark(
+                fn=partial(
+                    do_single_http_batch,
+                    batch_size=STREAMING_BATCH_SIZE,
+                    stream=True,
+                ),
+                multiplier=STREAMING_BATCH_SIZE * STREAMING_TOKENS_PER_REQUEST,
+                num_trials=STREAMING_NUM_TRIALS,
+                # Complete only one batch of requests
+                trial_runtime=10,
             )
             perf_metrics.extend(
                 convert_throughput_to_perf_metrics(
-                    "http_100_max_ongoing_requests", mean, std
+                    "http_intermediate_streaming", mean, std
                 )
             )
             serve.shutdown()
