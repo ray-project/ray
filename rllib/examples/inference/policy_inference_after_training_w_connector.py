@@ -118,13 +118,13 @@ register_env("stateless-cart", _env_creator)
 
 parser = add_rllib_example_script_args(default_reward=200.0)
 parser.set_defaults(
+    # Script only runs on new API stack.
+    enable_new_api_stack=True,
     # Make sure that - by default - we produce checkpoints during training.
     checkpoint_freq=1,
     checkpoint_at_end=True,
     # Use StatelessCartPole by default.
     env="stateless-cart",
-    # Script only runs on new API stack.
-    enable_new_api_stack=True,
 )
 parser.add_argument(
     "--explore-during-inference",

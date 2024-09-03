@@ -549,6 +549,13 @@ class Dataset:
             specified ``batch_size`` if ``batch_size`` doesn't evenly divide the
             block(s) sent to a given map task.
 
+            If ``batch_size`` is set and each input block is smaller than the
+            ``batch_size``, Ray Data will bundle up many blocks as the input for one
+            task, until their total size is equal to or greater than the given
+            ``batch_size``.
+            If ``batch_size`` is not set, the bundling will not be performed. Each task
+            will receive only one input block.
+
         .. seealso::
 
             :meth:`~Dataset.iter_batches`

@@ -789,6 +789,102 @@ def test_intra_process_channel_multi_readers(ray_start_cluster):
     sys.platform != "linux" and sys.platform != "darwin",
     reason="Requires Linux or Mac.",
 )
+def test_cached_channel_single_reader():
+    ray.init()
+
+    @ray.remote
+    class Actor:
+        def __init__(self):
+            pass
+
+        def pass_channel(self, channel):
+            self._chan = channel
+
+        def read(self):
+            return self._chan.read()
+
+        def get_ctx_buffer_size(self):
+            ctx = ray_channel.ChannelContext.get_current().serialization_context
+            return len(ctx.intra_process_channel_buffers)
+
+    actor = Actor.remote()
+    inner_channel = ray_channel.Channel(
+        None,
+        [
+            (actor, get_actor_node_id(actor)),
+        ],
+        1000,
+    )
+    channel = ray_channel.CachedChannel(num_reads=1, inner_channel=inner_channel)
+    ray.get(actor.pass_channel.remote(channel))
+
+    channel.write("hello")
+    assert ray.get(actor.read.remote()) == "hello"
+
+    # The _SerializationContext should clean up the data after a read.
+    assert ray.get(actor.get_ctx_buffer_size.remote()) == 0
+
+    # Write again after reading num_readers times.
+    channel.write("world")
+    assert ray.get(actor.read.remote()) == "world"
+
+    # The _SerializationContext should clean up the data after a read.
+    assert ray.get(actor.get_ctx_buffer_size.remote()) == 0
+
+
+@pytest.mark.skipif(
+    sys.platform != "linux" and sys.platform != "darwin",
+    reason="Requires Linux or Mac.",
+)
+def test_cached_channel_multi_readers(ray_start_cluster):
+    @ray.remote
+    class Actor:
+        def __init__(self):
+            pass
+
+        def pass_channel(self, channel):
+            self._chan = channel
+
+        def read(self):
+            return self._chan.read()
+
+        def get_ctx_buffer_size(self):
+            ctx = ray_channel.ChannelContext.get_current().serialization_context
+            return len(ctx.intra_process_channel_buffers)
+
+    actor = Actor.remote()
+    inner_channel = ray_channel.Channel(
+        None,
+        [
+            (actor, get_actor_node_id(actor)),
+        ],
+        1000,
+    )
+    channel = ray_channel.CachedChannel(num_reads=2, inner_channel=inner_channel)
+    ray.get(actor.pass_channel.remote(channel))
+
+    channel.write("hello")
+    # first read
+    assert ray.get(actor.read.remote()) == "hello"
+    assert ray.get(actor.get_ctx_buffer_size.remote()) == 1
+    # second read
+    assert ray.get(actor.read.remote()) == "hello"
+    assert ray.get(actor.get_ctx_buffer_size.remote()) == 0
+
+    # Write again after reading num_readers times.
+    channel.write("world")
+    # first read
+    assert ray.get(actor.read.remote()) == "world"
+    assert ray.get(actor.get_ctx_buffer_size.remote()) == 1
+    # second read
+    assert ray.get(actor.read.remote()) == "world"
+    assert ray.get(actor.get_ctx_buffer_size.remote()) == 0
+
+
+@pytest.mark.skipif(
+    sys.platform != "linux" and sys.platform != "darwin",
+    reason="Requires Linux or Mac.",
+)
 def test_composite_channel_single_reader(ray_start_cluster):
     """
     (1) The driver can write data to CompositeChannel and an actor can read it.
@@ -865,7 +961,7 @@ def test_composite_channel_multiple_readers(ray_start_cluster):
     (1) The driver can write data to CompositeChannel and two actors can read it.
     (2) An actor can write data to CompositeChannel and another actor, as well as
         itself, can read it.
-    (3) An actor writes data to CompositeChannel and two Ray tasks on the same
+    (3) An actor writes data to CompositeChannel and two actor methods on the same
         actor read it. This is not supported and should raise an exception.
     """
     # This node is for both the driver and the Reader actors.
@@ -922,11 +1018,11 @@ def test_composite_channel_multiple_readers(ray_start_cluster):
     )
     ray.get(actor1.write.remote("hello world"))
     assert ray.get(actor1.read.remote()) == "hello world"
-    assert ray.get(actor1.read.remote()) == "hello world"
 
     with pytest.raises(ray.exceptions.RayTaskError):
-        # actor1_output_channel has two readers, so it can only be read twice.
-        # The third read should raise an exception.
+        # actor1_output_channel can be read only once if the readers
+        # are the same actor. Note that reading the channel multiple
+        # times is supported via channel cache mechanism.
         ray.get(actor1.read.remote())
     """
     TODO (kevin85421): Add tests for the following cases:

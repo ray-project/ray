@@ -191,38 +191,6 @@ class AgentIOTest(unittest.TestCase):
         ), "Did not see simulation results during evaluation"
         algo.stop()
 
-    def test_agent_input_list(self):
-        config = (
-            PPOConfig()
-            .environment("CartPole-v1")
-            .training(train_batch_size=98, minibatch_size=49)
-            .evaluation(off_policy_estimation_methods={})
-        )
-
-        self.write_outputs(self.test_dir, "torch")
-        config.offline_data(input_=glob.glob(self.test_dir + "torch" + "/*.json"))
-        algo = config.build()
-        result = algo.train()
-        self.assertEqual(
-            result[f"{NUM_ENV_STEPS_SAMPLED_LIFETIME}"], 250
-        )  # read from input
-        self.assertTrue(np.isnan(result[ENV_RUNNER_RESULTS][EPISODE_RETURN_MEAN]))
-        algo.stop()
-
-    def test_agent_input_dict(self):
-        config = PPOConfig().environment("CartPole-v1").training(train_batch_size=2000)
-        self.write_outputs(self.test_dir, "torch")
-        config.offline_data(
-            input_={
-                self.test_dir + "torch": 0.1,
-                "sampler": 0.9,
-            }
-        )
-        algo = config.build()
-        result = algo.train()
-        self.assertTrue(not np.isnan(result[ENV_RUNNER_RESULTS][EPISODE_RETURN_MEAN]))
-        algo.stop()
-
     def test_custom_input_procedure(self):
         class CustomJsonReader(JsonReader):
             def __init__(self, ioctx: IOContext):

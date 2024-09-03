@@ -11,12 +11,12 @@ args = parser.parse_args()
 
 config = (
     PPOConfig()
-    # Enable new API stack and use EnvRunner.
-    .api_stack(
-        enable_rl_module_and_learner=True,
-        enable_env_runner_and_connector_v2=True,
-    )
     .environment("CartPole-v1")
+    .training(
+        lr=0.0003,
+        num_sgd_iter=6,
+        vf_loss_coeff=0.01,
+    )
     .rl_module(
         model_config_dict={
             "fcnet_hiddens": [32],
