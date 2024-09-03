@@ -21,13 +21,42 @@ kubectl logs $KUBERAY_OPERATOR_POD -n $YOUR_NAMESPACE | tee operator-log
 
 Use this command to redirect the operator's logs to a file called `operator-log`. Then search for errors in the file.
 
-### Method 2: Check custom resource status
+### Method 2: Check the status, and events of custom resources
 
 ```bash
 kubectl describe [raycluster|rayjob|rayservice] $CUSTOM_RESOURCE_NAME -n $YOUR_NAMESPACE
 ```
 
-After running this command, check the status and events of the custom resource for any errors.
+After running this command, check events and the `state`, and `conditions` in the status of the custom resource for any errors and progresses.
+
+
+#### RayCluster Status State List
+
+| State     | Description                                                                                                                            |
+|-----------|----------------------------------------------------------------------------------------------------------------------------------------|
+| Ready     | The state will be set to Ready once all the Pods in the cluster are ready. The State will remain Ready until the cluster is suspended. |
+| Suspended | The state will be set to Suspended when `Spec.Suspend = true` and all the Pods in the cluster are deleted.                             |
+
+#### RayCluster Status Condition List
+
+Although `Status.State` can represent the cluster situation, it is still only a single field. By enabling the feature gate `RayClusterStatusConditions` on the KubeRay v1.2.1, you can access to new `Status.Conditions` for more detailed cluster history and states.
+
+| Type                     | Status | Reason                         | Description                                                                                                          |
+|--------------------------|--------|--------------------------------|----------------------------------------------------------------------------------------------------------------------|
+| RayClusterProvisioned    | True   | AllPodRunningAndReadyFirstTime | Once all the Pods in the cluster are ready, this condition will be True and remain True even if some Pods die later. |
+|                          | False  | RayClusterPodsProvisioning     |                                                                                                                      |
+| RayClusterReplicaFailure | True   | FailedDeleteAllPods            | This condition will be set when there is a reconciliation error, otherwise the condition will be cleared.            |
+|                          | True   | FailedDeleteHeadPod            | Please refer to the Reason and the Message of the condition for more detailed debugging information.                 |
+|                          | True   | FailedCreateHeadPod            |                                                                                                                      |
+|                          | True   | FailedDeleteWorkerPod          |                                                                                                                      |
+|                          | True   | FailedCreateWorkerPod          |                                                                                                                      |
+| HeadPodReady             | True   | HeadPodRunningAndReady         | This condition will be True only the HeadPod is currently ready, otherwise it will be False.                         |
+|                          | False  | HeadPodNotFound                |                                                                                                                      |
+|                          | False  | Unschedulable                  | Please refer to https://kubernetes.io/docs/concepts/scheduling-eviction/ for more details.                           |
+|                          | False  | SchedulingGated                |                                                                                                                      |
+|                          | False  | SchedulerError                 |                                                                                                                      |
+|                          | False  | TerminationByKubelet           |                                                                                                                      |
+|                          | False  | PreemptionByScheduler          |                                                                                                                      |
 
 ### Method 3: Check logs of Ray Pods
 
