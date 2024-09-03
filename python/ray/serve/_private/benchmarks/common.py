@@ -92,8 +92,6 @@ async def do_single_http_batch(
         connector=connector, raise_for_status=True
     ) as session:
 
-        latencies = []
-
         async def do_query():
             start = time.perf_counter()
             try:
@@ -107,10 +105,9 @@ async def do_single_http_batch(
                 pass
 
             end = time.perf_counter()
-            if record_latencies:
-                latencies.append(end - start)
+            return end - start
 
-        await asyncio.gather(*[do_query() for _ in range(batch_size)])
+        latencies = await asyncio.gather(*[do_query() for _ in range(batch_size)])
         if record_latencies:
             return latencies
 
@@ -208,12 +205,20 @@ class Benchmarker:
             return await self._handle.remote(payload)
 
     async def _do_single_stream(self):
+        """Consumes a single streaming request. Returns e2e latency."""
+        start = time.perf_counter()
         async for r in self._handle.stream.remote():
             pass
+        end = time.perf_counter()
+        return end - start
 
-    async def _do_single_batch(self, batch_size: int):
+    async def _do_single_batch(self, batch_size: int, record_latencies: bool):
         if self._stream:
-            await asyncio.gather(*[self._do_single_stream() for _ in range(batch_size)])
+            latencies = await asyncio.gather(
+                *[self._do_single_stream() for _ in range(batch_size)]
+            )
+            if record_latencies:
+                return latencies
         else:
             await asyncio.gather(*[self._handle.remote() for _ in range(batch_size)])
 
@@ -232,6 +237,7 @@ class Benchmarker:
         num_trials: int,
         trial_runtime: float,
         tokens_per_request: Optional[float] = None,
+        record_latencies: bool = False,
     ) -> Tuple[float, float]:
         if self._stream:
             assert tokens_per_request
@@ -243,8 +249,10 @@ class Benchmarker:
             fn=partial(
                 self._do_single_batch,
                 batch_size=batch_size,
+                record_latencies=record_latencies,
             ),
             multiplier=multiplier,
             num_trials=num_trials,
             trial_runtime=trial_runtime,
+            record_latencies=record_latencies,
         )

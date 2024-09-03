@@ -342,15 +342,19 @@ async def _main(
                     stream=True,
                 )
             )
-            mean, std = await h.run_throughput_benchmark.remote(
+            mean, std, latencies = await h.run_throughput_benchmark.remote(
                 batch_size=STREAMING_BATCH_SIZE,
                 num_trials=STREAMING_NUM_TRIALS,
                 # Complete only one batch of requests
                 trial_runtime=10,
                 tokens_per_request=STREAMING_TOKENS_PER_REQUEST,
+                record_latencies=True,
             )
             perf_metrics.extend(
                 convert_throughput_to_perf_metrics("handle_streaming", mean, std)
+            )
+            perf_metrics.extend(
+                convert_latencies_to_perf_metrics("handle_streaming", latencies)
             )
             serve.shutdown()
 
