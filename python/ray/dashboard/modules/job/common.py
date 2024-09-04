@@ -1,20 +1,14 @@
 import asyncio
 import json
-import logging
 import time
 from dataclasses import asdict, dataclass, replace
 from enum import Enum
 from pathlib import Path
 from typing import Any, Dict, Optional, Tuple, Union
 
-from ray._private import ray_constants, worker
-from ray._private.event.export_event_logger import get_export_event_logger
+from ray._private import ray_constants
 from ray._private.gcs_utils import GcsAioClient
 from ray._private.runtime_env.packaging import parse_uri
-from ray.core.generated.export_api.export_event_pb2 import ExportEvent
-from ray.core.generated.export_api.export_submission_job_event_pb2 import (
-    ExportSubmissionJobEventData,
-)
 from ray.util.annotations import PublicAPI
 
 # NOTE(edoakes): these constants should be considered a public API because
@@ -28,8 +22,6 @@ JOB_ACTOR_NAME_TEMPLATE = (
 # they must be set to the same namespace.
 SUPERVISOR_ACTOR_RAY_NAMESPACE = "SUPERVISOR_ACTOR_RAY_NAMESPACE"
 JOB_LOGS_PATH_TEMPLATE = "job-driver-{submission_id}.log"
-
-logger = logging.getLogger(__name__)
 
 
 @PublicAPI(stability="stable")
@@ -199,18 +191,6 @@ class JobInfoStorageClient:
 
     def __init__(self, gcs_aio_client: GcsAioClient):
         self._gcs_aio_client = gcs_aio_client
-        self._export_submission_job_event_logger = None
-        try:
-            if ray_constants.RAY_ENABLE_EXPORT_API_WRITE:
-                log_dir = worker._global_node.get_logs_dir_path()
-                self._export_submission_job_event_logger = get_export_event_logger(
-                    ExportEvent.SourceType.EXPORT_SUBMISSION_JOB, log_dir
-                )
-        except Exception:
-            logger.exception(
-                "Unable to initialize export event logger so no export "
-                "events will be written."
-            )
 
     async def put_info(
         self, job_id: str, job_info: JobInfo, overwrite: bool = True
@@ -231,44 +211,7 @@ class JobInfoStorageClient:
             overwrite,
             namespace=ray_constants.KV_NAMESPACE_JOB,
         )
-        if added_num == 1 or overwrite:
-            # Write export event if data was updated in the KV store
-            self._write_submission_job_export_event(job_id, job_info)
         return added_num == 1
-
-    def _write_submission_job_export_event(
-        self, job_id: str, job_info: JobInfo
-    ) -> None:
-        status_value_descriptor = (
-            ExportSubmissionJobEventData.JobStatus.DESCRIPTOR.values_by_name.get(
-                job_info.status.name
-            )
-        )
-        if status_value_descriptor is None:
-            logger.error(
-                f"{job_info.status.name} is not a valid "
-                "ExportSubmissionJobEventData.JobStatus enum value. This event "
-                "will not be written."
-            )
-            return
-        job_status = status_value_descriptor.number
-        submission_event_data = ExportSubmissionJobEventData(
-            submission_job_id=job_id,
-            status=job_status,
-            entrypoint=job_info.entrypoint,
-            message=job_info.message,
-            metadata=job_info.metadata,
-            error_type=job_info.error_type,
-            start_time=job_info.start_time,
-            end_time=job_info.end_time,
-            runtime_env_json=json.dumps(job_info.runtime_env),
-            driver_agent_http_address=job_info.driver_agent_http_address,
-            driver_node_id=job_info.driver_node_id,
-            driver_exit_code=job_info.driver_exit_code,
-        )
-
-        if self._export_submission_job_event_logger:
-            self._export_submission_job_event_logger.send_event(submission_event_data)
 
     async def get_info(self, job_id: str, timeout: int = 30) -> Optional[JobInfo]:
         serialized_info = await self._gcs_aio_client.internal_kv_get(
