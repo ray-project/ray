@@ -2083,6 +2083,8 @@ class AlgorithmConfig(_Config):
         ] = NotProvided,
         add_default_connectors_to_learner_pipeline: Optional[bool] = NotProvided,
         learner_config_dict: Optional[Dict[str, Any]] = NotProvided,
+        # Deprecated args.
+        num_sgd_iter=DEPRECATED_VALUE,
     ) -> "AlgorithmConfig":
         """Sets the training related configuration.
 
@@ -2187,6 +2189,14 @@ class AlgorithmConfig(_Config):
         Returns:
             This updated AlgorithmConfig object.
         """
+        if num_sgd_iter is not NotProvided:
+            deprecation_warning(
+                old="config.training(num_sgd_iter=..)",
+                new="config.training(num_epochs=..)",
+                error=False,
+            )
+            num_epochs = num_sgd_iter
+
         if gamma is not NotProvided:
             self.gamma = gamma
         if lr is not NotProvided:
