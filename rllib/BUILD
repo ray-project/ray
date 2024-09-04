@@ -3112,6 +3112,13 @@ py_test(
 )
 
 py_test(
+    name = "examples/rl_modules/migrate_modelv2_to_new_api_stack_by_config",
+    main = "examples/rl_modules/migrate_modelv2_to_new_api_stack_by_config.py",
+    tags = ["team:rllib", "examples"],
+    size = "large",
+    srcs = ["examples/rl_modules/migrate_modelv2_to_new_api_stack_by_config.py"],
+)
+py_test(
     name = "examples/rl_modules/migrate_modelv2_to_new_api_stack_by_policy_checkpoint",
     main = "examples/rl_modules/migrate_modelv2_to_new_api_stack_by_policy_checkpoint.py",
     tags = ["team:rllib", "examples"],
