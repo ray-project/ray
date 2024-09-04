@@ -504,3 +504,6 @@ RAY_NODE_IP_FILENAME = "node_ip_address.json"
 PLACEMENT_GROUP_BUNDLE_RESOURCE_NAME = "bundle"
 
 RAY_LOGGING_CONFIG_ENCODING = os.environ.get("RAY_LOGGING_CONFIG_ENCODING")
+
+
+RAY_ENABLE_EXPORT_API_WRITE = env_bool("RAY_enable_export_api_write", False)
