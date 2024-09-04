@@ -72,7 +72,8 @@ class TestMinibatchUtils(unittest.TestCase):
                                 ]
                             ),
                             "seq_lens": seq_lens,
-                        }
+                        },
+                        _zero_padded=padding,
                     )
                     for i in range(len(agent_steps))
                 }
@@ -86,7 +87,10 @@ class TestMinibatchUtils(unittest.TestCase):
 
                 mb = MultiAgentBatch(sample_batches, num_env_steps)
                 batch_iter = MiniBatchCyclicIterator(
-                    mb, minibatch_size=minibatch_size, num_epochs=num_epochs
+                    mb,
+                    minibatch_size=minibatch_size,
+                    num_epochs=num_epochs,
+                    shuffle_batch_per_epoch=False,
                 )
                 print(config)
                 iteration_counter = 0
