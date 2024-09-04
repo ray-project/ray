@@ -139,6 +139,18 @@ class OfflinePreLearner:
         self.iter_since_last_module_update = 0
         # self._future = None
 
+        # Set up an episode buffer, if the module is stateful or we sample from
+        # `SampleBatch` types.
+        if self.input_read_sample_batches or self._module.is_stateful():
+            from ray.rllib.utils.replay_buffers.episode_replay_buffer import (
+                EpisodeReplayBuffer,
+            )
+
+            capacity = self.config.train_batch_size_per_learner * 10
+            self.episode_buffer = EpisodeReplayBuffer(
+                capacity=capacity, batch_size_B=self.config.train_batch_size_per_learner
+            )
+
     @OverrideToImplementCustomLogic
     def __call__(self, batch: Dict[str, np.ndarray]) -> Dict[str, List[EpisodeType]]:
 
@@ -154,6 +166,10 @@ class OfflinePreLearner:
                 schema=SCHEMA | self.config.input_read_schema,
                 input_compress_columns=self.config.input_compress_columns,
             )["episodes"]
+            self.episode_buffer.add(episodes)
+            episodes = self.episode_buffer.sample(
+                num_items=self.config.train_batch_size_per_learner
+            )
         # Otherwise we map the batch to episodes.
         else:
             episodes = self._map_to_episodes(

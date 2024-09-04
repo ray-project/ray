@@ -16,8 +16,8 @@ from ray.rllib.offline.offline_prelearner import SCHEMA
 class TestOfflineData(unittest.TestCase):
     def setUp(self) -> None:
         data_path = "tests/data/cartpole/cartpole-v1_large"
-        base_path = Path(__file__).parents[2]
-        self.data_path = "local://" + base_path.joinpath(data_path).as_posix()
+        self.base_path = Path(__file__).parents[2]
+        self.data_path = "local://" + self.base_path.joinpath(data_path).as_posix()
         ray.init()
 
     def tearDown(self) -> None:
@@ -48,8 +48,7 @@ class TestOfflineData(unittest.TestCase):
 
     def test_offline_convert_from_old_sample_batch_to_episodes(self):
 
-        base_path = Path(__file__).parents[2]
-        sample_batch_data_path = base_path / "tests/data/cartpole/large.json"
+        sample_batch_data_path = self.base_path / "tests/data/cartpole/large.json"
         config = AlgorithmConfig().offline_data(
             input_=["local://" + sample_batch_data_path.as_posix()],
             input_read_method="read_json",
