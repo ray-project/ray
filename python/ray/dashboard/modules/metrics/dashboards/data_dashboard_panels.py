@@ -157,7 +157,7 @@ DATA_GRAFANA_PANELS = [
     ),
     Panel(
         id=18,
-        title="Input Blocks Received by Operator / Second",
+        title="Input Bytes Received by Operator / Second",
         description="Byte size of input blocks received by operator per second.",
         unit="bytes/sec",
         targets=[
