@@ -944,8 +944,7 @@ class Learner(Checkpointable):
                 # TODO (sven): Make this a more formal structure with its own type.
             num_epochs: The number of complete passes over the entire train batch. Each
                 pass might be further split into n minibatches (if `minibatch_size`
-                provided). The train batch is generated from the given `episodes`
-                through the Learner connector pipeline.
+                provided).
             minibatch_size: The size of minibatches to use to further split the train
                 `batch` into sub-batches. The `batch` is then iterated over n times
                 where n is `len(batch) // minibatch_size`.
@@ -1055,6 +1054,12 @@ class Learner(Checkpointable):
         num_iters: int = None,
         **kwargs,
     ):
+        if "num_epochs" in kwargs:
+            raise ValueError(
+                "`num_epochs` arg NOT supported by Learner.update_from_iterator! Use "
+                "`num_iters` instead."
+            )
+
         self._check_is_built()
         # minibatch_size = minibatch_size or 32
 

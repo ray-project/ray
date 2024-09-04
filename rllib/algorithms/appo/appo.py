@@ -188,13 +188,10 @@ class APPOConfig(IMPALAConfig):
             target_network_update_freq: The frequency to update the target policy and
                 tune the kl loss coefficients that are used during training. After
                 setting this parameter, the algorithm waits for at least
-                `target_network_update_freq * minibatch_size * num_epochs` number of
-                samples to be trained on by the learner group before updating the target
-                networks and tuned the kl loss coefficients that are used during
-                training.
-                NOTE: This parameter is only applicable when using the Learner API
-                (enable_rl_module_and_learner=True).
-
+                `target_network_update_freq` number of environment samples to be trained
+                on before updating the target networks and tune the kl loss
+                coefficients. NOTE: This parameter is only applicable when using the
+                Learner API (enable_rl_module_and_learner=True).
 
         Returns:
             This updated AlgorithmConfig object.

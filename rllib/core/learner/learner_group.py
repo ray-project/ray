@@ -35,11 +35,7 @@ from ray.rllib.utils.actor_manager import (
 )
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.checkpoints import Checkpointable
-from ray.rllib.utils.deprecation import (
-    Deprecated,
-    DEPRECATED_VALUE,
-    deprecation_warning,
-)
+from ray.rllib.utils.deprecation import Deprecated
 from ray.rllib.utils.metrics.metrics_logger import MetricsLogger
 from ray.rllib.utils.minibatch_utils import (
     ShardBatchIterator,
@@ -352,15 +348,11 @@ class LearnerGroup(Checkpointable):
         async_update: bool = False,
         return_state: bool = False,
         num_epochs: int = 1,
+        num_iters: int = 1,
         minibatch_size: Optional[int] = None,
         shuffle_batch_per_epoch: bool = False,
-        # Deprecated args.
-        num_iters=DEPRECATED_VALUE,
         **kwargs,
     ) -> Union[Dict[str, Any], List[Dict[str, Any]], List[List[Dict[str, Any]]]]:
-
-        if num_iters != DEPRECATED_VALUE:
-            deprecation_warning(old="num_iters", new="num_epochs", error=True)
 
         # Define function to be called on all Learner actors (or the local learner).
         def _learner_update(
@@ -381,7 +373,7 @@ class LearnerGroup(Checkpointable):
                     iterator=_batch_shard,
                     timesteps=_timesteps,
                     minibatch_size=minibatch_size,
-                    num_epochs=num_epochs,
+                    num_iters=num_iters,
                     **_kwargs,
                 )
             elif _batch_shard is not None:
