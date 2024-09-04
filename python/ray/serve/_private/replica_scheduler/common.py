@@ -8,6 +8,7 @@ from typing import Any, Callable, Dict, List, Optional, Set, Tuple, Union
 
 import ray
 from ray import ObjectRef, ObjectRefGenerator
+from ray.actor import ActorHandle
 from ray.serve._private.common import (
     ReplicaID,
     ReplicaQueueLengthInfo,
@@ -56,6 +57,10 @@ class ReplicaWrapper(ABC):
     @property
     def max_ongoing_requests(self) -> int:
         """Max concurrent requests that can be sent to this replica."""
+        pass
+
+    def push_proxy_handle(self, handle: ActorHandle):
+        """When on proxy, push proxy's self handle to replica"""
         pass
 
     async def get_queue_len(self, *, deadline_s: float) -> int:
@@ -119,6 +124,9 @@ class ActorReplicaWrapper:
     @property
     def is_cross_language(self) -> bool:
         return self._replica_info.is_cross_language
+
+    def push_proxy_handle(self, handle: ActorHandle):
+        self._actor_handle.push_proxy_handle.remote(handle)
 
     async def get_queue_len(self, *, deadline_s: float) -> int:
         # NOTE(edoakes): the `get_num_ongoing_requests` method name is shared by
@@ -198,6 +206,7 @@ class ActorReplicaWrapper:
             else:
                 return obj_ref_gen, queue_len_info
         except asyncio.CancelledError as e:
+            # HTTP client disconnected or request was explicitly canceled.
             ray.cancel(obj_ref_gen)
             raise e from None
 
@@ -241,6 +250,9 @@ class ReplicaQueueLengthCache:
             queue_len, self._get_curr_time_s()
         )
 
+    def invalidate_key(self, replica_id: ReplicaID):
+        self._cache.pop(replica_id, None)
+
     def remove_inactive_replicas(self, *, active_replica_ids: Set[ReplicaID]):
         """Removes entries for all replica IDs not in the provided active set."""
         # NOTE: the size of the cache dictionary changes during this loop.
@@ -266,6 +278,14 @@ class ReplicaScheduler(ABC):
         """Compatibility shim for RunningReplicaInfo datatype."""
         return self.update_replicas([ActorReplicaWrapper(r) for r in running_replicas])
 
+    @abstractmethod
+    def on_replica_actor_died(self, replica_id: ReplicaID):
+        pass
+
+    @abstractmethod
+    def on_replica_actor_unavailable(self, replica_id: ReplicaID):
+        pass
+
     @property
     @abstractmethod
     def replica_queue_len_cache(self) -> ReplicaQueueLengthCache:
@@ -273,5 +293,5 @@ class ReplicaScheduler(ABC):
 
     @property
     @abstractmethod
-    def curr_replicas(self) -> Dict[str, ReplicaWrapper]:
+    def curr_replicas(self) -> Dict[ReplicaID, ReplicaWrapper]:
         pass

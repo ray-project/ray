@@ -4,7 +4,7 @@ import ray._private.test_utils as test_utils
 import time
 import tqdm
 
-from dashboard_test import DashboardTestAtScale
+from many_nodes_tests.dashboard_test import DashboardTestAtScale
 from ray._private.state_api_test_utils import summarize_worker_startup_time
 
 is_smoke_test = True

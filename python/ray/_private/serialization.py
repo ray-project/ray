@@ -101,12 +101,14 @@ def _object_ref_deserializer(binary, call_site, owner_address, object_status):
     return obj_ref
 
 
-def _actor_handle_deserializer(serialized_obj):
+def _actor_handle_deserializer(serialized_obj, weak_ref):
     # If this actor handle was stored in another object, then tell the
     # core worker.
     context = ray._private.worker.global_worker.get_serialization_context()
     outer_id = context.get_outer_object_ref()
-    return ray.actor.ActorHandle._deserialization_helper(serialized_obj, outer_id)
+    return ray.actor.ActorHandle._deserialization_helper(
+        serialized_obj, weak_ref, outer_id
+    )
 
 
 class SerializationContext:
@@ -122,10 +124,11 @@ class SerializationContext:
 
         def actor_handle_reducer(obj):
             ray._private.worker.global_worker.check_connected()
-            serialized, actor_handle_id = obj._serialization_helper()
+            serialized, actor_handle_id, weak_ref = obj._serialization_helper()
             # Update ref counting for the actor handle
-            self.add_contained_object_ref(actor_handle_id)
-            return _actor_handle_deserializer, (serialized,)
+            if not weak_ref:
+                self.add_contained_object_ref(actor_handle_id)
+            return _actor_handle_deserializer, (serialized, weak_ref)
 
         self._register_cloudpickle_reducer(ray.actor.ActorHandle, actor_handle_reducer)
 
@@ -282,7 +285,9 @@ class SerializationContext:
                 return data.to_pybytes()
             elif metadata_fields[0] == ray_constants.OBJECT_METADATA_TYPE_ACTOR_HANDLE:
                 obj = self._deserialize_msgpack_data(data, metadata_fields)
-                return _actor_handle_deserializer(obj)
+                # The last character is a 1 if weak_ref=True and 0 else.
+                serialized, weak_ref = obj[:-1], obj[-1:] == b"1"
+                return _actor_handle_deserializer(serialized, weak_ref)
             # Otherwise, return an exception object based on
             # the error type.
             try:
@@ -464,11 +469,17 @@ class SerializationContext:
         elif isinstance(value, ray.actor.ActorHandle):
             # TODO(fyresone): ActorHandle should be serialized via the
             # custom type feature of cross-language.
-            serialized, actor_handle_id = value._serialization_helper()
-            contained_object_refs.append(actor_handle_id)
+            serialized, actor_handle_id, weak_ref = value._serialization_helper()
+            if not weak_ref:
+                contained_object_refs.append(actor_handle_id)
             # Update ref counting for the actor handle
             metadata = ray_constants.OBJECT_METADATA_TYPE_ACTOR_HANDLE
-            value = serialized
+            # Append a 1 to mean weak ref or 0 for strong ref.
+            # We do this here instead of in the main serialization helper
+            # because msgpack expects a bytes object. We cannot serialize
+            # `weak_ref` in the C++ code because the weak_ref property is only
+            # available in the Python ActorHandle instance.
+            value = serialized + (b"1" if weak_ref else b"0")
         else:
             metadata = ray_constants.OBJECT_METADATA_TYPE_CROSS_LANGUAGE
 

@@ -36,6 +36,7 @@ DEFINE_string(node_ip_address, "", "The ip address of the node.");
 DEFINE_string(session_name,
               "",
               "session_name: The session name (ClusterID) of the cluster.");
+DEFINE_string(ray_commit, "", "The commit hash of Ray.");
 
 int main(int argc, char *argv[]) {
   InitShutdownRAII ray_log_shutdown_raii(ray::RayLog::StartRayLog,
@@ -47,6 +48,12 @@ int main(int argc, char *argv[]) {
   ray::RayLog::InstallTerminateHandler();
 
   gflags::ParseCommandLineFlags(&argc, &argv, true);
+
+  RAY_LOG(INFO)
+          .WithField("ray_version", kRayVersion)
+          .WithField("ray_commit", FLAGS_ray_commit)
+      << "Ray cluster metadata";
+
   const std::string redis_address = FLAGS_redis_address;
   const int redis_port = static_cast<int>(FLAGS_redis_port);
   const std::string log_dir = FLAGS_log_dir;
@@ -62,6 +69,7 @@ int main(int argc, char *argv[]) {
   gflags::ShutDownCommandLineFlags();
 
   RayConfig::instance().initialize(config_list);
+  ray::asio::testing::init();
 
   // IO Service for main loop.
   instrumented_io_context main_service;
@@ -80,7 +88,13 @@ int main(int argc, char *argv[]) {
 
   // Initialize event framework.
   if (RayConfig::instance().event_log_reporter_enabled() && !log_dir.empty()) {
-    ray::RayEventInit(ray::rpc::Event_SourceType::Event_SourceType_GCS,
+    // This GCS server process emits GCS standard events, and Node export events
+    // so the various source types are passed to RayEventInit. The type of an
+    // event is determined by the schema of its event data.
+    const std::vector<ray::SourceTypeVariant> source_types = {
+        ray::rpc::Event_SourceType::Event_SourceType_GCS,
+        ray::rpc::ExportEvent_SourceType::ExportEvent_SourceType_EXPORT_NODE};
+    ray::RayEventInit(source_types,
                       absl::flat_hash_map<std::string, std::string>(),
                       log_dir,
                       RayConfig::instance().event_level(),

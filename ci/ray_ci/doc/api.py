@@ -1,13 +1,17 @@
 import re
 import importlib
+import inspect
 
 from enum import Enum
 from dataclasses import dataclass
-from typing import Optional, List
+from typing import Optional, List, Tuple, Set, Dict
 
 
 _SPHINX_AUTOSUMMARY_HEADER = ".. autosummary::"
 _SPHINX_AUTOCLASS_HEADER = ".. autoclass::"
+# This is a special character used in autosummary to render only the api shortname, for
+# example ~module.api_name will render only api_name
+_SPHINX_AUTODOC_SHORTNAME = "~"
 
 
 class AnnotationType(Enum):
@@ -54,6 +58,9 @@ class API:
             if line.strip().startswith(":"):
                 # option lines
                 continue
+            if line.strip().startswith(".."):
+                # comment lines
+                continue
             if not line.strip():
                 # empty lines
                 continue
@@ -61,9 +68,8 @@ class API:
                 # end of autosummary, \s means empty space, this line is checking if
                 # the line is not empty and not starting with empty space
                 break
-            api_name = (
-                f"{current_module}.{line.strip()}" if current_module else line.strip()
-            )
+            attribute = line.strip().removeprefix(_SPHINX_AUTODOC_SHORTNAME)
+            api_name = f"{current_module}.{attribute}" if current_module else attribute
             apis.append(
                 API(
                     name=api_name,
@@ -86,7 +92,11 @@ class API:
         doc = doc.strip()
         if not doc.startswith(_SPHINX_AUTOCLASS_HEADER):
             return None
-        cls = doc[len(_SPHINX_AUTOCLASS_HEADER) :].strip()
+        cls = (
+            doc[len(_SPHINX_AUTOCLASS_HEADER) :]
+            .strip()
+            .removeprefix(_SPHINX_AUTODOC_SHORTNAME)
+        )
         api_name = f"{current_module}.{cls}" if current_module else cls
 
         return API(
@@ -111,4 +121,59 @@ class API:
                 return self.name
             attribute = getattr(attribute, token)
 
-        return f"{attribute.__module__}.{attribute.__qualname__}"
+        if inspect.isclass(attribute) or inspect.isfunction(attribute):
+            return f"{attribute.__module__}.{attribute.__qualname__}"
+        return self.name
+
+    def _is_private_name(self) -> bool:
+        """
+        Check if this API has a private name. Private names are those that start with
+        underscores.
+        """
+        name_has_underscore = self.name.split(".")[-1].startswith("_")
+        is_internal = "._internal." in self.name
+
+        return name_has_underscore or is_internal
+
+    def is_public(self) -> bool:
+        """
+        Check if this API is public. Public APIs are those that are annotated as public
+        and not have private names.
+        """
+        return (
+            self.annotation_type == AnnotationType.PUBLIC_API
+            and not self._is_private_name()
+        )
+
+    def is_deprecated(self) -> bool:
+        """
+        Check if this API is deprecated. Deprecated APIs are those that are annotated as
+        deprecated.
+        """
+        return self.annotation_type == AnnotationType.DEPRECATED
+
+    @staticmethod
+    def split_good_and_bad_apis(
+        api_in_codes: Dict[str, "API"], api_in_docs: Set[str], white_list_apis: Set[str]
+    ) -> Tuple[List[str]]:
+        """
+        Given the APIs in the codebase and the documentation, split the APIs into good
+        and bad APIs. Good APIs are those that are public and documented, bad APIs are
+        those that are public but NOT documented.
+        """
+        good_apis = []
+        bad_apis = []
+
+        for name, api in api_in_codes.items():
+            if not api.is_public():
+                continue
+
+            if name in white_list_apis:
+                continue
+
+            if name in api_in_docs:
+                good_apis.append(name)
+            else:
+                bad_apis.append(name)
+
+        return good_apis, bad_apis

@@ -3,7 +3,7 @@ import ray
 import ray._private.test_utils as test_utils
 from ray.util.placement_group import placement_group, remove_placement_group
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
-from dashboard_test import DashboardTestAtScale
+from many_nodes_tests.dashboard_test import DashboardTestAtScale
 import time
 import tqdm
 

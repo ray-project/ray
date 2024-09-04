@@ -6,6 +6,7 @@
 :hidden:
 
 getting-started
+ray-distributed-debugger
 key-concepts
 User Guides <user-guides/index>
 Reference <reference/index>

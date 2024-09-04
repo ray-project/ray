@@ -15,19 +15,6 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-def _get_default_torch_device() -> "torch.device":
-    from ray.air._internal import torch_utils
-
-    if not ray.get_gpu_ids():
-        import torch
-
-        # torch_utils defaults to returning GPU 0 if no GPU IDs were assigned
-        # by Ray. We instead want the default to be CPU.
-        return torch.device("cpu")
-
-    return torch_utils.get_devices()[0]
-
-
 @PublicAPI(stability="alpha")
 class TorchTensorType(ChannelOutputType):
     AUTO = "auto"
@@ -36,8 +23,8 @@ class TorchTensorType(ChannelOutputType):
     def __init__(
         self,
         transport: Optional[str] = AUTO,
-        static_shape: bool = False,
-        static_non_tensor_data: bool = False,
+        _static_shape: bool = False,
+        _static_non_tensor_data: bool = False,
     ):
         """
         A type hint that can be used to annotate DAG nodes that return a
@@ -54,10 +41,10 @@ class TorchTensorType(ChannelOutputType):
                 host memory, using numpy as the serialization format. Pass
                 TorchTensorType.NCCL or "nccl" to use NCCL instead, avoiding
                 the host memory copy.
-            static_shape: A hint indicating whether the shape(s) and dtype(s)
+            _static_shape: A hint indicating whether the shape(s) and dtype(s)
                 of tensor(s) contained in this value always remain the same
                 across different executions of the DAG.
-            static_non_tensor_data: A hint indicating whether the non-tensor
+            _static_non_tensor_data: A hint indicating whether the non-tensor
                 data contained in this value always remains the same across
                 different executions of the DAG. For example, if the value
                 always has the form `{"my_tensor": torch.Tensor(...)}`, then
@@ -97,6 +84,17 @@ class TorchTensorType(ChannelOutputType):
 
         self._nccl_group_id: Optional[str] = None
 
+        if self._static_shape and self.transport == self.AUTO:
+            logger.info(
+                "TorchTensorType(_static_shape=True) has no effect when "
+                "`transport` is TorchTensorType.AUTO (default)."
+            )
+        if self._static_non_tensor_data and self.transport == self.AUTO:
+            logger.info(
+                "TorchTensorType(_static_non_tensor_data=True) has no effect when "
+                "`transport` is TorchTensorType.AUTO (default)."
+            )
+
     @property
     def static_shape(self):
         return self._static_shape
@@ -130,9 +128,10 @@ class TorchTensorType(ChannelOutputType):
     def create_channel(
         self,
         writer: Optional["ray.actor.ActorHandle"],
-        readers: List[Optional["ray.actor.ActorHandle"]],
+        reader_and_node_list: List[Tuple["ray.actor.ActorHandle", str]],
         _non_tensor_data_channel: Optional["Channel"] = None,
         _tensor_metadata_channel: Optional["Channel"] = None,
+        _torch_tensor_allocator: Optional["TorchTensorAllocator"] = None,
     ) -> type:
         if self.requires_nccl():
             from ray.experimental.channel.torch_tensor_nccl_channel import (
@@ -142,9 +141,8 @@ class TorchTensorType(ChannelOutputType):
 
             tensor_data_channel = _TorchTensorNcclChannel(
                 writer,
-                readers,
-                self._nccl_group_id,
-                self._static_shape,
+                reader_and_node_list,
+                self,
                 _meta_channel=_tensor_metadata_channel,
             )
 
@@ -155,7 +153,7 @@ class TorchTensorType(ChannelOutputType):
 
             return TorchTensorNcclChannel(
                 writer,
-                readers,
+                reader_and_node_list,
                 tensor_data_channel,
                 _non_tensor_data_channel,
                 self.static_non_tensor_data,

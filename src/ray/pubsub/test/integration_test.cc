@@ -109,7 +109,7 @@ class CallbackSubscriberClient final : public pubsub::SubscriberClientInterface 
     auto *reply = new rpc::PubsubLongPollingReply;
     stub_->async()->PubsubLongPolling(
         context, &request, reply, [callback, context, reply](grpc::Status s) {
-          callback(GrpcStatusToRayStatus(s), *reply);
+          callback(GrpcStatusToRayStatus(s), std::move(*reply));
           delete reply;
           delete context;
         });
@@ -122,7 +122,7 @@ class CallbackSubscriberClient final : public pubsub::SubscriberClientInterface 
     auto *reply = new rpc::PubsubCommandBatchReply;
     stub_->async()->PubsubCommandBatch(
         context, &request, reply, [callback, context, reply](grpc::Status s) {
-          callback(GrpcStatusToRayStatus(s), *reply);
+          callback(GrpcStatusToRayStatus(s), std::move(*reply));
           delete reply;
           delete context;
         });

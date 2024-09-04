@@ -67,7 +67,7 @@ class SelfPlayCallbackOldAPIStack(DefaultCallbacks):
             new_policy.set_state(main_state)
             # We need to sync the just copied local weights (from main policy)
             # to all the remote workers as well.
-            algorithm.workers.sync_weights()
+            algorithm.env_runner_group.sync_weights()
         else:
             print("not good enough; will keep learning ...")
 

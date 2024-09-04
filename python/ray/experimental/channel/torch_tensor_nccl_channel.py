@@ -24,12 +24,6 @@ if TYPE_CHECKING:
 # entry/init points.
 logger = logging.getLogger(__name__)
 
-# 100KB to store metadata and/or exceptions.
-# NOTE(swang): This will consume memory but it should not affect performance
-# because we only copy the actual data stored, not the maximum size of the
-# shared meomry buffer.
-TENSOR_METADATA_SIZE_BYTES = 100_000
-
 
 @dataclass
 class _TorchTensorMetadata:
@@ -47,7 +41,7 @@ class TorchTensorNcclChannel(ChannelInterface):
     def __init__(
         self,
         writer: ray.actor.ActorHandle,
-        readers: List[ray.actor.ActorHandle],
+        reader_and_node_list: List[Tuple["ray.actor.ActorHandle", str]],
         tensor_data_channel: "_TorchTensorNcclChannel",
         non_tensor_data_channel: "Channel",
         static_non_tensor_data: bool = False,
@@ -65,8 +59,8 @@ class TorchTensorNcclChannel(ChannelInterface):
         Args:
             writer: The actor that may write to the channel. None signifies the
                 driver.
-            readers: The actors that may read from the channel. None signifies
-                the driver.
+            reader_and_node_list: A list of tuples, where each tuple contains a reader
+                actor handle and the node ID where the actor is located.
             tensor_data_channel: A GPU-GPU channel for sending tensor data. Its
                 writer and readers should match the given writer and readers.
             non_tensor_data_channel: A shared-memory channel for sending
@@ -85,7 +79,7 @@ class TorchTensorNcclChannel(ChannelInterface):
         different values from those written.
         """
         self._writer = writer
-        self._readers = readers
+        self._reader_and_node_list = reader_and_node_list
 
         self._tensor_data_channel: _TorchTensorNcclChannel = tensor_data_channel
         self._non_tensor_data_channel: "Channel" = non_tensor_data_channel
@@ -113,12 +107,25 @@ class TorchTensorNcclChannel(ChannelInterface):
         self.serialization_ctx = ctx.serialization_context
         assert self.serialization_ctx is not None
 
+    @classmethod
+    def from_channels(
+        cls,
+        tensor_data_channel: "_TorchTensorNcclChannel",
+        non_tensor_data_channel: "Channel",
+        static_non_tensor_data: bool = False,
+    ):
+        return cls(
+            writer=None,
+            reader_and_node_list=None,
+            tensor_data_channel=tensor_data_channel,
+            non_tensor_data_channel=non_tensor_data_channel,
+            static_non_tensor_data=static_non_tensor_data,
+        )
+
     def __reduce__(self):
         return (
             TorchTensorNcclChannel,
             (
-                self._writer,
-                self._readers,
                 self._tensor_data_channel,
                 self._non_tensor_data_channel,
                 self._static_non_tensor_data,
@@ -133,7 +140,7 @@ class TorchTensorNcclChannel(ChannelInterface):
         self._tensor_data_channel.ensure_registered_as_reader()
         self._non_tensor_data_channel.ensure_registered_as_reader()
 
-    def write(self, value: Any):
+    def write(self, value: Any, timeout: Optional[float] = None) -> None:
         """
         Send a value that may contain torch.Tensors that should be sent via
         external transport.
@@ -218,7 +225,7 @@ class TorchTensorNcclChannel(ChannelInterface):
                 # of tensors found in future values.
                 self._num_serialized_tensors = len(tensors_to_send)
 
-    def begin_read(self) -> Any:
+    def read(self, timeout: Optional[float] = None) -> Any:
         """
         Read a value that may contain torch.Tensors sent via external
         transport.
@@ -234,13 +241,14 @@ class TorchTensorNcclChannel(ChannelInterface):
         first received non-tensor data.
         """
         # First, read the tensor data.
-        tensors = self._tensor_data_channel.begin_read()
+        tensors = self._tensor_data_channel.read()
         self.serialization_ctx.reset_out_of_band_tensors(tensors)
 
         # Next, get the serialized non-tensor data.
         serialized_non_tensor_data = self._serialized_non_tensor_data
         if serialized_non_tensor_data is None:
-            serialized_non_tensor_data = self._non_tensor_data_channel.begin_read(
+            serialized_non_tensor_data = self._non_tensor_data_channel.read(
+                timeout=timeout,
                 deserialize=False
             )
             if self._static_non_tensor_data:
@@ -262,16 +270,6 @@ class TorchTensorNcclChannel(ChannelInterface):
 
         return data
 
-    def end_read(self) -> None:
-        self._tensor_data_channel.end_read()
-
-        if not self._static_non_tensor_data:
-            # If the non-tensor data is static, then we reuse the serialized
-            # data in the shared memory buffer for all future channel messages.
-            # Therefore, we should only release the buffer if the non-tensor
-            # data is dynamic.
-            self._non_tensor_data_channel.end_read()
-
     def close(self) -> None:
         self._tensor_data_channel.close()
         self._non_tensor_data_channel.close()
@@ -291,10 +289,8 @@ class _TorchTensorNcclChannel(ChannelInterface):
     def __init__(
         self,
         writer: ray.actor.ActorHandle,
-        readers: List[ray.actor.ActorHandle],
-        # TODO(swang): Make a NCCLGroupID class.
-        nccl_group_id: str,
-        static_shape: bool = False,
+        reader_and_node_list: List[Tuple["ray.actor.ActorHandle", str]],
+        typ: "TorchTensorType",
         _meta_channel: Optional["Channel"] = None,
     ):
         """
@@ -305,8 +301,8 @@ class _TorchTensorNcclChannel(ChannelInterface):
 
         Args:
             writer: The actor that may write to the channel. None signifies the driver.
-            readers: The actors that may read from the channel. None signifies
-                the driver.
+            reader_and_node_list: A list of tuples, where each tuple contains a reader
+                actor handle and the node ID where the actor is located.
             typ: Type information about the values passed through the channel.
             _meta_channel: A channel used to send metadata for the tensors,
                 i.e. shape and dtype. If not provided, and if the typ does not
@@ -319,7 +315,7 @@ class _TorchTensorNcclChannel(ChannelInterface):
 
         self._writer = writer
         self._writer_rank: Optional[int] = None
-        self._readers = readers
+        self._reader_and_node_list = reader_and_node_list
         self._reader_ranks: Optional[List[int]] = None
         self._writer_registered: bool = False
         self._reader_registered: bool = False
@@ -334,11 +330,12 @@ class _TorchTensorNcclChannel(ChannelInterface):
             self._nccl_group is not None
         ), "ChannelContext.nccl_group is not initialized."
 
-        self._static_shape = static_shape
+        self._static_shape = typ.static_shape
 
         self._writer_rank = self._nccl_group.get_rank(self._writer)
         self._reader_ranks = [
-            self._nccl_group.get_rank(reader) for reader in self._readers
+            self._nccl_group.get_rank(reader)
+            for reader, _ in self._reader_and_node_list
         ]
 
         if (
@@ -369,7 +366,7 @@ class _TorchTensorNcclChannel(ChannelInterface):
             )
             self._meta_channel = metadata_type.create_channel(
                 self._writer,
-                self._readers,
+                self._reader_and_node_list,
             )
 
     def ensure_registered_as_writer(self):
@@ -389,9 +386,8 @@ class _TorchTensorNcclChannel(ChannelInterface):
             self.__class__,
             (
                 self._writer,
-                self._readers,
-                self._nccl_group_id,
-                self._static_shape,
+                self._reader_and_node_list,
+                self._typ,
                 self._meta_channel,
             ),
         )
@@ -454,6 +450,7 @@ class _TorchTensorNcclChannel(ChannelInterface):
     def write(
         self,
         tensors: List["torch.Tensor"],
+        timeout: Optional[float] = None,
     ):
         """
         Write a list of tensors via NCCL:
@@ -510,7 +507,7 @@ class _TorchTensorNcclChannel(ChannelInterface):
 
         return meta
 
-    def begin_read(self) -> Union["torch.Tensor", List["torch.Tensor"]]:
+    def read(self, timeout: Optional[float] = None) -> Union["torch.Tensor", List["torch.Tensor"]]:
         """
         Receive a list of tensors.
 
@@ -532,9 +529,6 @@ class _TorchTensorNcclChannel(ChannelInterface):
         # TODO: Sync CUDA stream after receiving all tensors, instead of after
         # each tensor.
         return bufs
-
-    def end_read(self) -> None:
-        return
 
     def close(self) -> None:
         self._meta_channel.close()

@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING, List, Set, Tuple, Union
+from typing import TYPE_CHECKING, Any, Dict, List, Set, Tuple, Union
 
 if TYPE_CHECKING:
     import numpy as np
@@ -15,6 +15,50 @@ class _SerializationContext:
         # During serialization, tensors sent out-of-band are replaced with
         # integer placeholders. This tracks the set of placeholders seen.
         self._deserialized_tensor_placeholders: Set[int] = set()
+
+        # Buffer for transferring data between tasks in the same worker process.
+        # The key is the channel ID, and the value is the data. We don't use a
+        # lock when reading/writing the buffer because a DAG node actor will only
+        # execute one task at a time in `do_exec_tasks`. It will not execute multiple
+        # Ray tasks on a single actor simultaneously.
+        self.intra_process_channel_buffers: Dict[str, Any] = {}
+        # The number of readers for each channel. When the number of readers
+        # reaches 0, remove the data from the buffer.
+        self.channel_id_to_num_readers: Dict[str, int] = {}
+
+    def set_data(self, channel_id: str, value: Any, num_readers: int) -> None:
+        assert num_readers > 0, "num_readers must be greater than 0."
+        assert (
+            channel_id not in self.intra_process_channel_buffers
+        ), f"Channel {channel_id} already exists in the buffer."
+        assert (
+            channel_id not in self.channel_id_to_num_readers
+        ), f"Channel {channel_id} already exists in the channel_id_to_num_readers."
+
+        self.intra_process_channel_buffers[channel_id] = value
+        self.channel_id_to_num_readers[channel_id] = num_readers
+
+    def has_data(self, channel_id: str) -> bool:
+        return channel_id in self.intra_process_channel_buffers
+
+    def get_data(self, channel_id: str) -> Any:
+        assert (
+            channel_id in self.intra_process_channel_buffers
+        ), f"Channel {channel_id} does not exist in the buffer."
+        assert (
+            channel_id in self.channel_id_to_num_readers
+        ), f"Channel {channel_id} does not exist in the channel_id_to_num_readers."
+
+        self.channel_id_to_num_readers[channel_id] -= 1
+        if self.channel_id_to_num_readers[channel_id] == 0:
+            # All readers have read the data, so we can remove it.
+            self.channel_id_to_num_readers.pop(channel_id)
+            return self.intra_process_channel_buffers.pop(channel_id)
+        return self.intra_process_channel_buffers[channel_id]
+
+    def reset_data(self, channel_id: str) -> None:
+        self.intra_process_channel_buffers.pop(channel_id, None)
+        self.channel_id_to_num_readers.pop(channel_id, None)
 
     def set_use_external_transport(self, use_external_transport: bool) -> None:
         self.use_external_transport = use_external_transport

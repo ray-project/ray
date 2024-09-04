@@ -139,7 +139,7 @@ By default, Ray tasks use 1 logical CPU resource and Ray actors use 1 logical CP
 (This means, by default, actors cannot get scheduled on a zero-cpu node, but an infinite number of them can run on any non-zero cpu node.
 The default resource requirements for actors was chosen for historical reasons.
 It's recommended to always explicitly set ``num_cpus`` for actors to avoid any surprises.
-If resources are specified explicitly, they are required for both scheduling and running.)
+If resources are specified explicitly, they are required both at schedule time and at execution time.)
 
 You can also explicitly specify a task's or actor's logical resource requirements (for example, one task may require a GPU) instead of using default ones via :func:`ray.remote() <ray.remote>`
 and :meth:`task.options() <ray.remote_function.RemoteFunction.options>`/:meth:`actor.options() <ray.actor.ActorClass.options>`.

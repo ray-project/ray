@@ -112,7 +112,7 @@ def collect_episodes(
     # out to be a problem.
     metric_lists = workers.foreach_worker(
         lambda w: w.get_metrics(),
-        local_worker=True,
+        local_env_runner=True,
         remote_worker_ids=remote_worker_ids,
         timeout_seconds=timeout_seconds,
     )
@@ -173,8 +173,12 @@ def summarize_episodes(
         episode_rewards.append(episode.episode_reward)
         for k, v in episode.custom_metrics.items():
             custom_metrics[k].append(v)
-        for (_, policy_id), reward in episode.agent_rewards.items():
-            if policy_id != DEFAULT_POLICY_ID:
+        is_multi_agent = (
+            len(episode.agent_rewards) > 1
+            or DEFAULT_POLICY_ID not in episode.agent_rewards
+        )
+        if is_multi_agent:
+            for (_, policy_id), reward in episode.agent_rewards.items():
                 policy_rewards[policy_id].append(reward)
         for k, v in episode.hist_data.items():
             hist_stats[k] += v

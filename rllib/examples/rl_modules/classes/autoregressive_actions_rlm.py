@@ -20,7 +20,7 @@ torch, nn = try_import_torch()
 
 
 # TODO (simon): Improvements: `inference-only` mode.
-class AutoregressiveActionRLM(RLModule):
+class AutoregressiveActionsRLM(RLModule):
     """An RLModule that implements an autoregressive action distribution.
 
     This RLModule implements an autoregressive action distribution, where the
@@ -37,7 +37,7 @@ class AutoregressiveActionRLM(RLModule):
         - A prior head that outputs the logits for the prior action distribution.
         - A posterior head that outputs the logits for the posterior action
             distribution.
-    - A value function head that outputs the value function.
+    - VF: A value function head that outputs the value function.
 
     Note, this RLModule is implemented for the `PPO` algorithm only. It is not
     guaranteed to work with other algorithms.
@@ -158,8 +158,8 @@ class AutoregressiveActionRLM(RLModule):
         """
 
 
-class AutoregressiveActionTorchRLM(TorchRLModule, AutoregressiveActionRLM):
-    @override(AutoregressiveActionRLM)
+class AutoregressiveActionsTorchRLM(TorchRLModule, AutoregressiveActionsRLM):
+    @override(AutoregressiveActionsRLM)
     def pi(
         self, batch: Dict[str, TensorType], inference: bool = False
     ) -> Dict[str, TensorType]:
@@ -278,7 +278,7 @@ class AutoregressiveActionTorchRLM(TorchRLModule, AutoregressiveActionRLM):
 
         return outs
 
-    @override(AutoregressiveActionRLM)
+    @override(AutoregressiveActionsRLM)
     def _compute_values(self, batch, device=None):
         infos = batch.pop(Columns.INFOS, None)
         batch = convert_to_torch_tensor(batch, device=device)

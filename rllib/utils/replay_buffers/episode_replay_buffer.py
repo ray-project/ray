@@ -336,6 +336,10 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
         """Returns number of episodes (completed or truncated) stored in the buffer."""
         return len(self.episodes)
 
+    def get_num_episodes_evicted(self) -> int:
+        """Returns number of episodes that have been evicted from the buffer."""
+        return self._num_episodes_evicted
+
     def get_num_timesteps(self) -> int:
         """Returns number of individual timesteps stored in the buffer."""
         return len(self._indices)
@@ -350,6 +354,15 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
 
     @override(ReplayBufferInterface)
     def get_state(self) -> Dict[str, Any]:
+        """Gets a pickable state of the buffer.
+
+        This is used for checkpointing the buffer's state. It is specifically helpful,
+        for example, when a trial is paused and resumed later on. The buffer's state
+        can be saved to disk and reloaded when the trial is resumed.
+
+        Returns:
+            A dict containing all necessary information to restore the buffer's state.
+        """
         return {
             "episodes": [eps.get_state() for eps in self.episodes],
             "episode_id_to_index": list(self.episode_id_to_index.items()),
@@ -362,12 +375,37 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
 
     @override(ReplayBufferInterface)
     def set_state(self, state) -> None:
-        self.episodes = deque(
-            [SingleAgentEpisode.from_state(eps_data) for eps_data in state["episodes"]]
-        )
+        """Sets the state of a buffer from a previously stored state.
+
+        See `get_state()` for more information on what is stored in the state. This
+        method is used to restore the buffer's state from a previously stored state.
+        It is specifically helpful, for example, when a trial is paused and resumed
+        later on. The buffer's state can be saved to disk and reloaded when the trial
+        is resumed.
+
+        Args:
+            state: The state to restore the buffer from.
+        """
+        self._set_episodes(state)
         self.episode_id_to_index = dict(state["episode_id_to_index"])
         self._num_episodes_evicted = state["_num_episodes_evicted"]
         self._indices = state["_indices"]
         self._num_timesteps = state["_num_timesteps"]
         self._num_timesteps_added = state["_num_timesteps_added"]
         self.sampled_timesteps = state["sampled_timesteps"]
+
+    def _set_episodes(self, state) -> None:
+        """Sets the episodes from the state.
+
+        Note, this method is used for class inheritance purposes. It is specifically
+        helpful when a subclass of this class wants to override the behavior of how
+        episodes are set from the state. By default, it sets `SingleAgentEpuisode`s,
+        but subclasses can override this method to set episodes of a different type.
+        """
+        if not self.episodes:
+            self.episodes = deque(
+                [
+                    SingleAgentEpisode.from_state(eps_data)
+                    for eps_data in state["episodes"]
+                ]
+            )

@@ -1,9 +1,8 @@
 import asyncio
 from collections import defaultdict
+from unittest import mock
 
 import torch
-
-import mock
 
 import ray
 import ray.experimental.channel as ray_channel

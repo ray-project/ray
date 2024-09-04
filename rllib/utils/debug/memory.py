@@ -36,7 +36,7 @@ def check_memory_leaks(
         A defaultdict(list) with keys being the `to_check` strings and values being
         lists of Suspect instances that were found.
     """
-    local_worker = algorithm.workers.local_worker()
+    local_worker = algorithm.env_runner
 
     # Which components should we test?
     to_check = to_check or {"env", "model", "policy", "rollout_worker"}

@@ -1,11 +1,13 @@
 # coding: utf-8
 import logging
 import os
+import re
 import sys
 import torch
 
 import pytest
 
+from ray.exceptions import RayChannelError
 import ray
 from ray.air._internal import torch_utils
 import ray.cluster_utils
@@ -30,7 +32,14 @@ class TorchTensorWorker:
     def __init__(self):
         self.device = torch_utils.get_devices()[0]
 
-    def send(self, shape, dtype, value: int):
+    def send(self, shape, dtype, value: int, send_tensor=True):
+        if not send_tensor:
+            return 1
+        return torch.ones(shape, dtype=dtype, device=self.device) * value
+
+    def send_or_raise(self, shape, dtype, value: int, raise_exception=False):
+        if raise_exception:
+            raise RuntimeError()
         return torch.ones(shape, dtype=dtype, device=self.device) * value
 
     def send_dict(self, shape, dtype, value):
@@ -52,6 +61,22 @@ class TorchTensorWorker:
 
     def ping(self):
         return
+
+
+@ray.remote(num_cpus=1)
+class TrainWorker:
+    """
+    This class simulates a training worker.
+    """
+
+    def __init__(self):
+        pass
+
+    def entrypoint(self, inp):
+        pass
+
+    def forward(self, inp):
+        return torch.randn(10, 10)
 
 
 @pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
@@ -194,7 +219,6 @@ def test_torch_tensor_nccl_disallows_driver(ray_start_regular):
     sender = actor_cls.remote()
     receiver = actor_cls.remote()
 
-    shape = (10,)
     dtype = torch.float16
 
     # Test that InputNode cannot cannot participate in the NCCL group.
@@ -321,6 +345,79 @@ def test_torch_tensor_nccl_static_shape_and_non_tensor_data(ray_start_regular):
     for i in range(3):
         ref = compiled_dag.execute(value=i, shape=shape, dtype=dtype)
         assert ray.get(ref) == (i, shape, dtype)
+
+    # For direct_return=True tensors, the DAG will be torn down after any task
+    # throws an application-level exception, such as when the task returns
+    # something other than a torch.Tensor. Check that we can no longer submit
+    # to the DAG.
+    with pytest.raises(RayChannelError):
+        ref = compiled_dag.execute(shape=shape, dtype=dtype, value=1, send_tensor=True)
+
+    compiled_dag.teardown()
+
+
+@pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
+def test_torch_tensor_exceptions(ray_start_regular):
+    """
+    Test nested torch.Tensor passed via NCCL. Its shape and dtype is
+    dynamically declared, and there may be multiple tensors.
+    """
+    if not USE_GPU:
+        pytest.skip("NCCL tests require GPUs")
+
+    assert (
+        sum(node["Resources"].get("GPU", 0) for node in ray.nodes()) > 1
+    ), "This test requires at least 2 GPUs"
+
+    actor_cls = TorchTensorWorker.options(num_gpus=1)
+
+    sender = actor_cls.remote()
+    receiver = actor_cls.remote()
+
+    with InputNode() as inp:
+        dag = sender.send_or_raise.bind(
+            inp.shape, inp.dtype, inp.value, inp.raise_exception
+        )
+        dag = dag.with_type_hint(TorchTensorType(transport="nccl"))
+        dag = receiver.recv.bind(dag)
+
+    compiled_dag = dag.experimental_compile()
+
+    for i in range(3):
+        i += 1
+
+        shape = (10 * i,)
+        dtype = torch.float16
+
+        ref = compiled_dag.execute(
+            shape=shape,
+            dtype=dtype,
+            value=i,
+            raise_exception=False,
+        )
+        result = ray.get(ref)
+        assert result == (i, shape, dtype)
+
+    # Application level exceptions are thrown to the end ray.get
+    ref = compiled_dag.execute(
+        shape=shape,
+        dtype=dtype,
+        value=i,
+        raise_exception=True,
+    )
+    with pytest.raises(RuntimeError):
+        ray.get(ref)
+
+    # If using dynamic shape or dtype is used and direct_return=False, then the
+    # DAG should still be usable after application-level exceptions.
+    ref = compiled_dag.execute(
+        shape=shape,
+        dtype=dtype,
+        value=i,
+        raise_exception=False,
+    )
+    result = ray.get(ref)
+    assert result == (i, shape, dtype)
 
     compiled_dag.teardown()
 
