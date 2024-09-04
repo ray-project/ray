@@ -418,6 +418,76 @@ def test_actor_method_bind_same_input_attr(ray_start_regular):
     compiled_dag.teardown()
 
 
+def test_actor_method_bind_diff_input_attr_1(ray_start_regular):
+    actor = Actor.remote(0)
+    with InputNode() as inp:
+        # Two class methods are bound to two different input
+        # attribute nodes.
+        output1 = actor.inc.bind(inp[0])
+        output2 = actor.inc.bind(inp[1])
+        dag = MultiOutputNode([output1, output2])
+    compiled_dag = dag.experimental_compile()
+    ref = compiled_dag.execute(0, 1)
+    assert ray.get(ref) == [0, 1]
+
+    ref = compiled_dag.execute(1, 2)
+    assert ray.get(ref) == [2, 4]
+
+    compiled_dag.teardown()
+
+
+def test_actor_method_bind_diff_input_attr_2(ray_start_regular):
+    actor = Actor.remote(0)
+    with InputNode() as inp:
+        # Three class methods are bound to two different input
+        # attribute nodes. Two methods are bound to the same input
+        # attribute node.
+        output1 = actor.inc.bind(inp[0])
+        output2 = actor.inc.bind(inp[0])
+        output3 = actor.inc.bind(inp[1])
+        dag = MultiOutputNode([output1, output2, output3])
+    compiled_dag = dag.experimental_compile()
+    ref = compiled_dag.execute(0, 1)
+    assert ray.get(ref) == [0, 0, 1]
+
+    ref = compiled_dag.execute(1, 2)
+    assert ray.get(ref) == [2, 3, 5]
+
+    compiled_dag.teardown()
+
+
+def test_actor_method_bind_diff_input_attr_3(ray_start_regular):
+    actor = Actor.remote(0)
+    with InputNode() as inp:
+        # A single class method is bound to two different input
+        # attribute nodes.
+        dag = actor.inc_two.bind(inp[0], inp[1])
+    compiled_dag = dag.experimental_compile()
+    ref = compiled_dag.execute(0, 1)
+    assert ray.get(ref) == 1
+
+    ref = compiled_dag.execute(1, 2)
+    assert ray.get(ref) == 4
+
+    compiled_dag.teardown()
+
+
+def test_actor_method_bind_diff_input_attr_4(ray_start_regular):
+    actor = Actor.remote(0)
+    with InputNode() as inp:
+        output1 = actor.inc_two.bind(inp[0], inp[1])
+        output2 = actor.inc.bind(inp[2])
+        dag = MultiOutputNode([output1, output2])
+    compiled_dag = dag.experimental_compile()
+    ref = compiled_dag.execute(0, 1, 2)
+    assert ray.get(ref) == [1, 3]
+
+    ref = compiled_dag.execute(1, 2, 3)
+    assert ray.get(ref) == [6, 9]
+
+    compiled_dag.teardown()
+
+
 def test_actor_method_bind_same_arg(ray_start_regular):
     a1 = Actor.remote(0)
     a2 = Actor.remote(0)
