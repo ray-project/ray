@@ -117,7 +117,9 @@ def multi_gpu_train_one_step(algorithm, train_batch) -> Dict:
     workers = algorithm.env_runner_group
     local_worker = workers.local_env_runner
     num_sgd_iter = config.get("num_epochs", config.get("num_sgd_iter", 1))
-    minibatch_size = config.get("minibatch_size", config["train_batch_size"])
+    minibatch_size = config.get("minibatch_size")
+    if minibatch_size is None:
+        minibatch_size = config["train_batch_size"]
 
     # Determine the number of devices (GPUs or 1 CPU) we use.
     num_devices = int(math.ceil(config["num_gpus"] or 1))
