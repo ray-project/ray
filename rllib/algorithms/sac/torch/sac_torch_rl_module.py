@@ -141,12 +141,12 @@ class SACTorchRLModule(TorchRLModule, SACRLModule):
         # here). This is different from doing `.detach()` or `with torch.no_grads()`,
         # as these two methds would fully block all gradient recordings, including
         # the needed policy ones.
-        all_params = (
-            list(self.qf.parameters())
-            + list(self.qf_encoder.parameters())
-            + list(self.qf_twin.parameters())
-            + list(self.qf_twin_encoder.parameters())
-        )
+        all_params = list(self.qf.parameters()) + list(self.qf_encoder.parameters())
+        if self.twin_q:
+            all_params += list(self.qf_twin.parameters()) + list(
+                self.qf_twin_encoder.parameters()
+            )
+
         for param in all_params:
             param.requires_grad = False
         output["q_curr"] = self.compute_q_values(q_batch_curr)
