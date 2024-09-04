@@ -562,7 +562,8 @@ class Learner(Checkpointable):
                     if config.log_gradients and config.grad_clip_by != "global_norm":
                         # Compute the global norm of gradients.
                         global_norm = self._get_global_norm_function()(
-                            grad_dict_to_clip,
+                            # Note, `tf.linalg.global_norm` needs a list of tensors.
+                            list(grad_dict_to_clip.values()),
                         )
                     self.metrics.log_value(
                         key=(module_id, f"gradients_{optimizer_name}_global_norm"),

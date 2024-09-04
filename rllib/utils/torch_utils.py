@@ -22,7 +22,7 @@ from ray.rllib.utils.typing import (
 )
 
 if TYPE_CHECKING:
-    from ray.rllib.core.learner.learner import ParamDict
+    from ray.rllib.core.learner.learner import ParamDict, ParamList
     from ray.rllib.policy.torch_policy import TorchPolicy
     from ray.rllib.policy.torch_policy_v2 import TorchPolicyV2
 
@@ -147,12 +147,12 @@ def clip_gradients(
         assert (
             grad_clip_by == "global_norm"
         ), f"`grad_clip_by` ({grad_clip_by}) must be one of [value|norm|global_norm]!"
-
-        total_norm = compute_global_norm(gradients_dict)
+        gradients_list = list(gradients_dict.values())
+        total_norm = compute_global_norm(gradients_list)
         # We do want the coefficient to be in between 0.0 and 1.0, therefore
         # if the global_norm is smaller than the clip value, we use the clip value
         # as normalization constant.
-        device = list(gradients_dict.values())[0].device
+        device = gradients_list[0].device
         clip_coef = grad_clip / torch.maximum(
             torch.tensor(grad_clip).to(device), total_norm + 1e-6
         )
@@ -160,28 +160,28 @@ def clip_gradients(
         # 1, but doing so avoids a `if clip_coef < 1:` conditional which can require a
         # CPU <=> device synchronization when the gradients do not reside in CPU memory.
         clip_coef_clamped = torch.clamp(clip_coef, max=1.0)
-        for g in gradients_dict.values():
+        for g in gradients_list:
             if g is not None:
                 g.detach().mul_(clip_coef_clamped.to(g.device))
         return total_norm
 
 
 @PublicAPI
-def compute_global_norm(gradients_dict: "ParamDict") -> TensorType:
+def compute_global_norm(gradients_list: "ParamList") -> TensorType:
     """Computes the global norm for a gradients dict.
 
     Args:
-        gradients_dict: The gradients dict, mapping str to gradient tensors.
+        gradients_list: The gradients list containing parameters.
 
     Returns:
-        Returns the global norm of all tensors in `gradients_dict`.
+        Returns the global norm of all tensors in `gradients_list`.
     """
     # Define the norm type to be L2.
     norm_type = 2.0
     # If we have no grads, return zero.
-    if len(gradients_dict) == 0:
+    if len(gradients_list) == 0:
         return torch.tensor(0.0)
-    device = list(gradients_dict.values())[0].device
+    device = gradients_list[0].device
 
     # Compute the global norm.
     total_norm = torch.norm(
@@ -192,7 +192,7 @@ def compute_global_norm(gradients_dict: "ParamDict") -> TensorType:
                 # not affect the gradients themselves as we clamp by multiplying and
                 # not by overriding tensor values.
                 .nan_to_num(neginf=-10e8, posinf=10e8).to(device)
-                for g in gradients_dict.values()
+                for g in gradients_list
                 if g is not None
             ]
         ),
