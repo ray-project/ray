@@ -2189,7 +2189,7 @@ class AlgorithmConfig(_Config):
         Returns:
             This updated AlgorithmConfig object.
         """
-        if num_sgd_iter is not NotProvided:
+        if num_sgd_iter != DEPRECATED_VALUE:
             deprecation_warning(
                 old="config.training(num_sgd_iter=..)",
                 new="config.training(num_epochs=..)",
