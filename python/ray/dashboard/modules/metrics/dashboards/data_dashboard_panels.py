@@ -204,7 +204,7 @@ DATA_GRAFANA_PANELS = [
     Panel(
         id=21,
         title="Input Bytes Submitted to Tasks / Second",
-        description="Bytes of input blocks passed to submitted tasks per second.",
+        description="Byte size of input blocks passed to submitted tasks per second.",
         unit="bytes/sec",
         targets=[
             Target(
