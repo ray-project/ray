@@ -275,7 +275,7 @@ DATA_GRAFANA_PANELS = [
         id=26,
         title="Output Bytes Taken by Downstream Operators / Second",
         description=(
-            "Bytes of output blocks taken by downstream operators per second."
+            "Byte size of output blocks taken by downstream operators per second."
         ),
         unit="bytes/sec",
         targets=[
