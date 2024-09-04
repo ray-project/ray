@@ -204,10 +204,13 @@ class JobInfoStorageClient:
     ):
         self._gcs_aio_client = gcs_aio_client
         try:
-            # TODO: Add FF
             log_dir = ray._private.worker._global_node.get_logs_dir_path()
-            self._export_submission_job_event_logger = get_export_event_logger(
-                ExportEvent.SourceType.EXPORT_SUBMISSION_JOB, log_dir
+            self._export_submission_job_event_logger = (
+                get_export_event_logger(
+                    ExportEvent.SourceType.EXPORT_SUBMISSION_JOB, log_dir
+                )
+                if ray_constants.RAY_ENABLE_EXPORT_API_WRITE
+                else None
             )
         except Exception:
             logger.exception(
@@ -235,13 +238,14 @@ class JobInfoStorageClient:
             overwrite,
             namespace=ray_constants.KV_NAMESPACE_JOB,
         )
-        self._write_submission_job_export_event(job_id, job_info)
+        if added_num == 1 or overwrite:
+            # Write export event if data was updated in the KV store
+            self._write_submission_job_export_event(job_id, job_info)
         return added_num == 1
 
     def _write_submission_job_export_event(
         self, job_id: str, job_info: JobInfo
     ) -> None:
-        job_status = None
         status_value_descriptor = (
             ExportSubmissionJobEventData.JobStatus.DESCRIPTOR.values_by_name.get(
                 job_info.status.name
