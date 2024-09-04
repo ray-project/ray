@@ -47,14 +47,14 @@ Although `Status.State` can represent the cluster situation, it is still only a 
 
 | Type                     | Status | Reason                         | Description                                                                                                          |
 |--------------------------|--------|--------------------------------|----------------------------------------------------------------------------------------------------------------------|
-| RayClusterProvisioned    | True   | Once all the Pods in the cluster are ready, this condition will be set to True and will remain True even if some Pods fail later. |
+| RayClusterProvisioned    | True   | AllPodRunningAndReadyFirstTime | Once all the Pods in the cluster are ready, this condition will be set to `True` and will remain `True` even if some Pods fail later. |
 |                          | False  | RayClusterPodsProvisioning     |                                                                                                                      |
-| RayClusterReplicaFailure | True   | FailedDeleteAllPods            | This condition will be set when there is a reconciliation error, otherwise the condition will be cleared.            |
-|                          | True   | FailedDeleteHeadPod            | Please refer to the Reason and the Message of the condition for more detailed debugging information.                 |
+| RayClusterReplicaFailure | True   | FailedDeleteAllPods            | This condition will be set to `True` when there is a reconciliation error, otherwise the condition will be cleared.            |
+|                          | True   | FailedDeleteHeadPod            | Please refer to the `Reason` and the `Message` of the condition for more detailed debugging information.                 |
 |                          | True   | FailedCreateHeadPod            |                                                                                                                      |
 |                          | True   | FailedDeleteWorkerPod          |                                                                                                                      |
 |                          | True   | FailedCreateWorkerPod          |                                                                                                                      |
-| HeadPodReady             | True   | HeadPodRunningAndReady         | This condition will be True only if the HeadPod is currently ready; otherwise, it will be False.                         |
+| HeadPodReady             | True   | HeadPodRunningAndReady         | This condition will be `True` only if the HeadPod is currently ready; otherwise, it will be `False`.                         |
 |                          | False  | HeadPodNotFound                |                                                                                                                      |
 
 
