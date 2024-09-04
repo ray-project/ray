@@ -8,8 +8,8 @@ import threading
 from typing import Union
 from datetime import datetime
 
-from ray.core.generated.export_api.export_event_pb2 import ExportEvent
-from ray.core.generated.export_api.export_submission_job_event_pb2 import (
+from ray.core.generated.export_event_pb2 import ExportEvent
+from ray.core.generated.export_submission_job_event_pb2 import (
     ExportSubmissionJobEventData,
 )
 from ray._private.protobuf_compat import message_to_dict

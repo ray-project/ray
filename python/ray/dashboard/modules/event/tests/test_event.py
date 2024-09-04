@@ -26,8 +26,8 @@ from ray._private.test_utils import (
 )
 from ray._private.utils import binary_to_hex
 from ray.cluster_utils import AutoscalingCluster
-from ray.core.generated import event_pb2
-from ray.core.generated.export_api import (
+from ray.core.generated import (
+    event_pb2,
     export_event_pb2,
     export_submission_job_event_pb2,
 )

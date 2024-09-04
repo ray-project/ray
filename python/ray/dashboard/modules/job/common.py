@@ -11,8 +11,8 @@ from ray._private import ray_constants
 from ray._private.event.export_event_logger import get_export_event_logger
 from ray._private.gcs_utils import GcsAioClient
 from ray._private.runtime_env.packaging import parse_uri
-from ray.core.generated.export_api.export_event_pb2 import ExportEvent
-from ray.core.generated.export_api.export_submission_job_event_pb2 import (
+from ray.core.generated.export_event_pb2 import ExportEvent
+from ray.core.generated.export_submission_job_event_pb2 import (
     ExportSubmissionJobEventData,
 )
 from ray.util.annotations import PublicAPI

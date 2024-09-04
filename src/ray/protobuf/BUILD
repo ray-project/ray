@@ -245,9 +245,6 @@ python_grpc_compile(
     deps = [":event_proto"],
 )
 
-# Note: Any dependencies added to this rule should also be included
-# in the :export_api_py_proto filegroup so the python files are
-# correctly generated.
 proto_library(
     name = "export_event_proto",
     srcs = ["export_api/export_event.proto"],
