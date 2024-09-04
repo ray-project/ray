@@ -54,7 +54,7 @@ Number of trials: 1/1 (1 RUNNING)
 """
 import gymnasium as gym
 
-from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
+from ray.rllib.core.rl_module.rl_module import RLModuleSpec
 from ray.rllib.env.wrappers.atari_wrappers import wrap_atari_for_new_api_stack
 from ray.rllib.examples.rl_modules.classes.tiny_atari_cnn_rlm import TinyAtariCNN
 from ray.rllib.utils.test_utils import (
@@ -64,7 +64,10 @@ from ray.rllib.utils.test_utils import (
 from ray.tune.registry import get_trainable_cls, register_env
 
 parser = add_rllib_example_script_args(default_iters=100, default_timesteps=600000)
-parser.set_defaults(env="ALE/Pong-v5")
+parser.set_defaults(
+    enable_new_api_stack=True,
+    env="ALE/Pong-v5",
+)
 
 
 if __name__ == "__main__":
@@ -96,7 +99,7 @@ if __name__ == "__main__":
         )
         .rl_module(
             # Plug-in our custom RLModule class.
-            rl_module_spec=SingleAgentRLModuleSpec(
+            rl_module_spec=RLModuleSpec(
                 module_class=TinyAtariCNN,
                 # Feel free to specify your own `model_config_dict` settings below.
                 # The `model_config_dict` defined here will be available inside your

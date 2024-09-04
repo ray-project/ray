@@ -6,7 +6,6 @@ from ray import air, tune
 from ray.air.constants import TRAINING_ITERATION
 from ray.rllib.algorithms import ppo
 from ray.rllib.examples.envs.classes.random_env import RandomEnv
-from ray.rllib.utils.test_utils import framework_iterator
 
 
 class TestLSTMs(unittest.TestCase):
@@ -63,12 +62,11 @@ class TestLSTMs(unittest.TestCase):
             )
         )
 
-        for _ in framework_iterator(config):
-            tune.Tuner(
-                "PPO",
-                param_space=config.to_dict(),
-                run_config=air.RunConfig(stop={TRAINING_ITERATION: 1}, verbose=1),
-            ).fit()
+        tune.Tuner(
+            "PPO",
+            param_space=config.to_dict(),
+            run_config=air.RunConfig(stop={TRAINING_ITERATION: 1}, verbose=1),
+        ).fit()
 
 
 if __name__ == "__main__":

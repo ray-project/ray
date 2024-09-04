@@ -121,18 +121,17 @@ class PPOTorchRLModule(TorchRLModule, PPORLModule):
 
         return output
 
-    # TODO (sven): Try to move entire GAE computation into PPO's loss function (similar
-    #  to IMPALA's v-trace architecture). This would also get rid of the second
-    #  Connector pass currently necessary.
     @override(ValueFunctionAPI)
     def compute_values(self, batch: Dict[str, Any]) -> TensorType:
         # Separate vf-encoder.
         if hasattr(self.encoder, "critic_encoder"):
+            batch_ = batch
             if self.is_stateful():
                 # The recurrent encoders expect a `(state_in, h)`  key in the
                 # input dict while the key returned is `(state_in, critic, h)`.
-                batch[Columns.STATE_IN] = batch[Columns.STATE_IN][CRITIC]
-            encoder_outs = self.encoder.critic_encoder(batch)[ENCODER_OUT]
+                batch_ = batch.copy()
+                batch_[Columns.STATE_IN] = batch[Columns.STATE_IN][CRITIC]
+            encoder_outs = self.encoder.critic_encoder(batch_)[ENCODER_OUT]
         # Shared encoder.
         else:
             encoder_outs = self.encoder(batch)[ENCODER_OUT][CRITIC]

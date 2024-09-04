@@ -15,7 +15,7 @@ import logging
 
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
 from ray.rllib.algorithms.impala.impala import IMPALA, IMPALAConfig
-from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
+from ray.rllib.core.rl_module.rl_module import RLModuleSpec
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.deprecation import DEPRECATED_VALUE, deprecation_warning
@@ -249,7 +249,7 @@ class APPOConfig(IMPALAConfig):
             )
 
     @override(IMPALAConfig)
-    def get_default_rl_module_spec(self) -> SingleAgentRLModuleSpec:
+    def get_default_rl_module_spec(self) -> RLModuleSpec:
         if self.framework_str == "torch":
             from ray.rllib.algorithms.appo.torch.appo_torch_rl_module import (
                 APPOTorchRLModule as RLModule,
@@ -266,7 +266,7 @@ class APPOConfig(IMPALAConfig):
 
         from ray.rllib.algorithms.appo.appo_catalog import APPOCatalog
 
-        return SingleAgentRLModuleSpec(module_class=RLModule, catalog_class=APPOCatalog)
+        return RLModuleSpec(module_class=RLModule, catalog_class=APPOCatalog)
 
     @property
     @override(AlgorithmConfig)

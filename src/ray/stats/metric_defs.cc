@@ -357,6 +357,15 @@ DEFINE_stats(
     ("Type", "Name"),
     (),
     ray::stats::COUNT);
+
+/// Core Worker Task Manager
+DEFINE_stats(
+    total_lineage_bytes,
+    "Total amount of memory used to store task specs for lineage reconstruction.",
+    (),
+    (),
+    ray::stats::GAUGE);
+
 }  // namespace stats
 
 }  // namespace ray

@@ -33,8 +33,8 @@ class IMPALATorchLearner(IMPALALearner, TorchLearner):
         #  this a more flexible, configurable parameter for users, e.g.
         #  `v_trace_seq_len` (independent of `rollout_fragment_length`). Separation
         #  of concerns (sampling vs learning).
-        recurrent_seq_len = None
         rollout_frag_or_episode_len = config.get_rollout_fragment_length()
+        recurrent_seq_len = batch.get("seq_lens")
 
         loss_mask = batch[Columns.LOSS_MASK].float()
         loss_mask_time_major = make_time_major(

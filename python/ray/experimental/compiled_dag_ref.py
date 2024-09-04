@@ -95,7 +95,7 @@ class CompiledDAGRef:
 
 
 @PublicAPI(stability="alpha")
-class CompiledDAGFuture(CompiledDAGRef):
+class CompiledDAGFuture:
     """
     A reference to a compiled DAG execution result, when executed with asyncio.
     This differs from CompiledDAGRef in that `await` must be called on the

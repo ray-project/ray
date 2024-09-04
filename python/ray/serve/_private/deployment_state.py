@@ -2138,11 +2138,14 @@ class DeploymentState:
                 message = (
                     f"Deployment '{self.deployment_name}' in application "
                     f"'{self.app_name}' has {len(pending_allocation)} replicas that "
-                    f"have taken more than {SLOW_STARTUP_WARNING_S}s to be scheduled. "
+                    f"have taken more than {SLOW_STARTUP_WARNING_S}s to be scheduled.\n"
                     "This may be due to waiting for the cluster to auto-scale or for a "
-                    "runtime environment to be installed. Resources required for each "
-                    f"replica: {required}, total resources available: {available}. Use "
-                    "`ray status` for more details."
+                    "runtime environment to be installed.\n"
+                    "Resources required for each replica:\n"
+                    f"{required}\n"
+                    "Total resources available:\n"
+                    f"{available}\n"
+                    "Use `ray status` for more details."
                 )
                 logger.warning(message)
                 if _SCALING_LOG_ENABLED:
@@ -2160,8 +2163,8 @@ class DeploymentState:
                     f"Deployment '{self.deployment_name}' in application "
                     f"'{self.app_name}' has {len(pending_initialization)} replicas "
                     f"that have taken more than {SLOW_STARTUP_WARNING_S}s to "
-                    "initialize. This may be caused by a slow __init__ or reconfigure "
-                    "method."
+                    "initialize.\n"
+                    "This may be caused by a slow __init__ or reconfigure method."
                 )
                 logger.warning(message)
                 # If status is UNHEALTHY, leave the status and message as is.

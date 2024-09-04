@@ -2,7 +2,6 @@ import asyncio
 import logging
 import os
 import time
-from concurrent.futures import ThreadPoolExecutor
 from typing import Union
 
 import ray._private.ray_constants as ray_constants
@@ -26,9 +25,6 @@ class EventAgent(dashboard_utils.DashboardAgentModule):
         self._stub: Union[event_pb2_grpc.ReportEventServiceStub, None] = None
         self._cached_events = asyncio.Queue(event_consts.EVENT_AGENT_CACHE_SIZE)
         self._gcs_aio_client = dashboard_agent.gcs_aio_client
-        self.monitor_thread_pool_executor = ThreadPoolExecutor(
-            max_workers=1, thread_name_prefix="event_monitor"
-        )
         # Total number of event created from this agent.
         self.total_event_reported = 0
         # Total number of event report request sent.
@@ -111,7 +107,7 @@ class EventAgent(dashboard_utils.DashboardAgentModule):
         self._monitor = monitor_events(
             self._event_dir,
             lambda data: create_task(self._cached_events.put(data)),
-            self.monitor_thread_pool_executor,
+            self._dashboard_agent.thread_pool_executor,
         )
 
         await asyncio.gather(
