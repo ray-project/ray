@@ -142,7 +142,7 @@ class ModelV2ToRLModule(TorchRLModule, ValueFunctionAPI):
     def _forward_pass(self, batch, inference=True):
         # Translate states and seq_lens into old API stack formats.
         batch = batch.copy()
-        state_in = batch.pop(Columns.STATE_IN, [])
+        state_in = batch.pop(Columns.STATE_IN, {})
         state_in = [s for i, s in sorted(state_in.items())]
         seq_lens = batch.pop(Columns.SEQ_LENS, None)
 
