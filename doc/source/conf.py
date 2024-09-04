@@ -70,13 +70,7 @@ extensions = [
     "sphinx_remove_toctrees",
     "sphinx_design",
     "sphinx.ext.intersphinx",
-    "sphinx_docsearch",
 ]
-
-# Configuration for algolia
-docsearch_app_id = "LBHF0PABBL"
-docsearch_api_key = "6c42f30d9669d8e42f6fc92f44028596"
-docsearch_index_name = "docs-ray"
 
 remove_from_toctrees = [
     "cluster/running-applications/job-submission/doc/*",
