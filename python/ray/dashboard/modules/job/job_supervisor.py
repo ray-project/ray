@@ -70,7 +70,10 @@ class JobSupervisor:
         gcs_address: str,
     ):
         self._job_id = job_id
-        gcs_aio_client = GcsAioClient(address=gcs_address)
+        gcs_aio_client = GcsAioClient(
+            address=gcs_address,
+            nums_reconnect_retry=ray._config.gcs_rpc_server_reconnect_timeout_s(),
+        )
         self._job_info_client = JobInfoStorageClient(gcs_aio_client)
         self._log_client = JobLogStorageClient()
         self._entrypoint = entrypoint

@@ -44,6 +44,15 @@ class GcsAioClient:
             return NewGcsAioClient(*args, **kwargs)
 
 
+def timeout_ms_from_reconnect_retry(nums_reconnect_retry: int) -> int:
+    # If retry <= 0 or is None, returns None as infinite timeout.
+    # Else, return 1s per initial try + 1s per retry.
+    # See https://github.com/ray-project/ray/blob/d0b46eff9ddcf9ec7256dd3a6dda33e7fb7ced95/python/ray/_raylet.pyx#L2693 # noqa: E501
+    if nums_reconnect_retry is None or nums_reconnect_retry <= 0:
+        return None
+    return 1000 * (nums_reconnect_retry + 1)
+
+
 class NewGcsAioClient:
     def __init__(
         self,
@@ -52,8 +61,7 @@ class NewGcsAioClient:
         executor=None,
         nums_reconnect_retry: int = 5,
     ):
-        # See https://github.com/ray-project/ray/blob/d0b46eff9ddcf9ec7256dd3a6dda33e7fb7ced95/python/ray/_raylet.pyx#L2693 # noqa: E501
-        timeout_ms = 1000 * (nums_reconnect_retry + 1)
+        timeout_ms = timeout_ms_from_reconnect_retry(nums_reconnect_retry)
         self.inner = NewGcsClient.standalone(
             str(address), cluster_id=None, timeout_ms=timeout_ms
         )
