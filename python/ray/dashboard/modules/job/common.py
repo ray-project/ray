@@ -201,7 +201,7 @@ class JobInfoStorageClient:
         self._gcs_aio_client = gcs_aio_client
         self._export_submission_job_event_logger = None
         try:
-            if ray_constants.RAY_ENABLE_EXPORT_API_WRITE and log_dir:
+            if ray_constants.RAY_ENABLE_EXPORT_API_WRITE and log_dir is not None:
                 self._export_submission_job_event_logger = get_export_event_logger(
                     ExportEvent.SourceType.EXPORT_SUBMISSION_JOB, log_dir
                 )
@@ -238,6 +238,9 @@ class JobInfoStorageClient:
     def _write_submission_job_export_event(
         self, job_id: str, job_info: JobInfo
     ) -> None:
+        if not self._export_submission_job_event_logger:
+            return
+
         status_value_descriptor = (
             ExportSubmissionJobEventData.JobStatus.DESCRIPTOR.values_by_name.get(
                 job_info.status.name
@@ -265,9 +268,7 @@ class JobInfoStorageClient:
             driver_node_id=job_info.driver_node_id,
             driver_exit_code=job_info.driver_exit_code,
         )
-
-        if self._export_submission_job_event_logger:
-            self._export_submission_job_event_logger.send_event(submission_event_data)
+        self._export_submission_job_event_logger.send_event(submission_event_data)
 
     async def get_info(self, job_id: str, timeout: int = 30) -> Optional[JobInfo]:
         serialized_info = await self._gcs_aio_client.internal_kv_get(
