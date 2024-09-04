@@ -1638,6 +1638,25 @@ ray_cc_test(
 )
 
 ray_cc_test(
+    name = "gcs_node_manager_export_event_test",
+    size = "small",
+    srcs = [
+        "src/ray/gcs/gcs_server/test/gcs_node_manager_export_event_test.cc",
+    ],
+    tags = [
+        "no_windows",
+        "team:core"
+    ],
+    deps = [
+        ":gcs_server_lib",
+        ":gcs_server_test_util",
+        ":gcs_test_util_lib",
+        ":ray_mock",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+ray_cc_test(
     name = "gcs_job_manager_test",
     size = "small",
     srcs = [
