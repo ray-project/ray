@@ -44,7 +44,7 @@ async def run_latency_benchmark(
 
 
 async def run_throughput_benchmark(
-    fn: Callable,
+    fn: Callable[[], List[float]],
     multiplier: int = 1,
     num_trials: int = 10,
     trial_runtime: float = 1,
@@ -128,9 +128,14 @@ async def do_single_grpc_batch(
     payload = serve_pb2.StringData(data="")
 
     async def do_query():
-        return await stub.grpc_call(payload)
+        start = time.perf_counter()
 
-    await asyncio.gather(*[do_query() for _ in range(batch_size)])
+        await stub.grpc_call(payload)
+
+        end = time.perf_counter()
+        return 1000 * (end - start)
+
+    return await asyncio.gather(*[do_query() for _ in range(batch_size)])
 
 
 async def collect_profile_events(coro: Coroutine):
@@ -200,7 +205,7 @@ class Benchmarker:
     def __init__(
         self,
         handle: DeploymentHandle,
-        stream: bool,
+        stream: bool = False,
     ):
         logging.getLogger("ray.serve").setLevel(logging.WARNING)
         self._handle = handle.options(stream=stream)
