@@ -189,7 +189,7 @@ DATA_GRAFANA_PANELS = [
         id=20,
         title="Input Bytes Processed by Tasks / Second",
         description=(
-            "Bytes of input blocks that operator's tasks have finished processing per second."
+            "Byte size of input blocks that operator's tasks have finished processing per second."
         ),
         unit="bytes/sec",
         targets=[
