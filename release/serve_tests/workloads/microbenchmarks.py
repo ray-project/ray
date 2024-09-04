@@ -70,11 +70,14 @@ class GrpcDeployment:
 
 
 def convert_throughput_to_perf_metrics(
-    name: str, mean: float, std: float
+    name: str,
+    mean: float,
+    std: float,
+    stream: bool = False,
 ) -> List[Dict]:
     return [
         {
-            "perf_metric_name": f"{name}_avg_rps",
+            "perf_metric_name": f"{name}_avg_tps" if stream else f"{name}_avg_rps",
             "perf_metric_value": mean,
             "perf_metric_type": "THROUGHPUT",
         },
@@ -143,7 +146,7 @@ async def _main(
         if run_throughput:
             # Microbenchmark: HTTP throughput
             serve.run(Noop.bind())
-            mean, std = await run_throughput_benchmark(
+            mean, std, _ = await run_throughput_benchmark(
                 fn=partial(do_single_http_batch, batch_size=BATCH_SIZE),
                 multiplier=BATCH_SIZE,
                 num_trials=NUM_TRIALS,
@@ -154,7 +157,7 @@ async def _main(
 
             # Microbenchmark: HTTP throughput at max_ongoing_requests=100
             serve.run(Noop.options(max_ongoing_requests=100).bind())
-            mean, std = await run_throughput_benchmark(
+            mean, std, _ = await run_throughput_benchmark(
                 fn=partial(do_single_http_batch, batch_size=BATCH_SIZE),
                 multiplier=BATCH_SIZE,
                 num_trials=NUM_TRIALS,
@@ -180,16 +183,16 @@ async def _main(
                     do_single_http_batch,
                     batch_size=STREAMING_HTTP_BATCH_SIZE,
                     stream=True,
-                    record_latencies=True,
                 ),
                 multiplier=STREAMING_HTTP_BATCH_SIZE * STREAMING_TOKENS_PER_REQUEST,
                 num_trials=STREAMING_NUM_TRIALS,
                 # Complete only one batch of requests
                 trial_runtime=10,
-                record_latencies=True,
             )
             perf_metrics.extend(
-                convert_throughput_to_perf_metrics("http_streaming", mean, std)
+                convert_throughput_to_perf_metrics(
+                    "http_streaming", mean, std, stream=True
+                )
             )
             perf_metrics.extend(
                 convert_latencies_to_perf_metrics("http_streaming", latencies)
@@ -210,17 +213,15 @@ async def _main(
                     do_single_http_batch,
                     batch_size=STREAMING_BATCH_SIZE,
                     stream=True,
-                    record_latencies=True,
                 ),
                 multiplier=STREAMING_BATCH_SIZE * STREAMING_TOKENS_PER_REQUEST,
                 num_trials=STREAMING_NUM_TRIALS,
                 # Complete only one batch of requests
                 trial_runtime=10,
-                record_latencies=True,
             )
             perf_metrics.extend(
                 convert_throughput_to_perf_metrics(
-                    "http_intermediate_streaming", mean, std
+                    "http_intermediate_streaming", mean, std, stream=True
                 )
             )
             perf_metrics.extend(
@@ -263,7 +264,7 @@ async def _main(
             # Microbenchmark: GRPC throughput
             serve.start(grpc_options=serve_grpc_options)
             serve.run(GrpcDeployment.bind())
-            mean, std = await run_throughput_benchmark(
+            mean, std, _ = await run_throughput_benchmark(
                 fn=partial(do_single_grpc_batch, batch_size=BATCH_SIZE),
                 multiplier=BATCH_SIZE,
                 num_trials=NUM_TRIALS,
@@ -275,7 +276,7 @@ async def _main(
             # Microbenchmark: GRPC throughput at max_ongoing_requests = 100
             serve.start(grpc_options=serve_grpc_options)
             serve.run(GrpcDeployment.options(max_ongoing_requests=100).bind())
-            mean, std = await run_throughput_benchmark(
+            mean, std, _ = await run_throughput_benchmark(
                 fn=partial(do_single_grpc_batch, batch_size=BATCH_SIZE),
                 multiplier=BATCH_SIZE,
                 num_trials=NUM_TRIALS,
@@ -306,7 +307,7 @@ async def _main(
         if run_throughput:
             # Microbenchmark: Handle throughput
             h: DeploymentHandle = serve.run(Benchmarker.bind(Noop.bind()))
-            mean, std = await h.run_throughput_benchmark.remote(
+            mean, std, _ = await h.run_throughput_benchmark.remote(
                 batch_size=BATCH_SIZE,
                 num_trials=NUM_TRIALS,
                 trial_runtime=TRIAL_RUNTIME_S,
@@ -320,7 +321,7 @@ async def _main(
                     Noop.options(max_ongoing_requests=100).bind()
                 )
             )
-            mean, std = await h.run_throughput_benchmark.remote(
+            mean, std, _ = await h.run_throughput_benchmark.remote(
                 batch_size=BATCH_SIZE,
                 num_trials=NUM_TRIALS,
                 trial_runtime=TRIAL_RUNTIME_S,
@@ -348,10 +349,11 @@ async def _main(
                 # Complete only one batch of requests
                 trial_runtime=10,
                 tokens_per_request=STREAMING_TOKENS_PER_REQUEST,
-                record_latencies=True,
             )
             perf_metrics.extend(
-                convert_throughput_to_perf_metrics("handle_streaming", mean, std)
+                convert_throughput_to_perf_metrics(
+                    "handle_streaming", mean, std, stream=True
+                )
             )
             perf_metrics.extend(
                 convert_latencies_to_perf_metrics("handle_streaming", latencies)

@@ -5,7 +5,7 @@ import random
 import string
 import time
 from functools import partial
-from typing import Any, Callable, Coroutine, Optional, Tuple
+from typing import Any, Callable, Coroutine, List, Optional, Tuple
 
 import aiohttp
 import aiohttp.client_exceptions
@@ -48,9 +48,21 @@ async def run_throughput_benchmark(
     multiplier: int = 1,
     num_trials: int = 10,
     trial_runtime: float = 1,
-    record_latencies: bool = False,
-) -> Tuple[float, float]:
-    """Returns (mean, stddev)."""
+) -> Tuple[float, float, pd.Series]:
+    """Benchmarks throughput of a function.
+
+    Args:
+        fn: The function to benchmark. If this returns anything, it must
+            return a list of latencies.
+        multiplier: The number of requests or tokens (or whatever unit
+            is appropriate for this throughput benchmark) that is
+            completed in one call to `fn`.
+        num_trials: The number of trials to run.
+        trial_runtime: How long each trial should run for. During the
+            duration of one trial, `fn` will be repeatedly called.
+
+    Returns (mean, stddev, latencies).
+    """
     # Warmup
     start = time.time()
     while time.time() - start < 0.1:
@@ -64,17 +76,14 @@ async def run_throughput_benchmark(
         count = 0
         while time.perf_counter() - start < trial_runtime:
             res = await fn()
-            if record_latencies:
+            if res:
                 latencies.extend(res)
 
             count += 1
         end = time.perf_counter()
         stats.append(multiplier * count / (end - start))
 
-    if record_latencies:
-        return round(np.mean(stats), 2), round(np.std(stats), 2), pd.Series(latencies)
-    else:
-        return round(np.mean(stats), 2), round(np.std(stats), 2)
+    return round(np.mean(stats), 2), round(np.std(stats), 2), pd.Series(latencies)
 
 
 async def do_single_http_batch(
@@ -82,8 +91,9 @@ async def do_single_http_batch(
     batch_size: int = 100,
     url: str = "http://localhost:8000",
     stream: bool = False,
-    record_latencies: bool = False,
-):
+) -> List[float]:
+    """Sends a batch of http requests and returns e2e latencies."""
+
     # By default, aiohttp limits the number of client connections to 100.
     # We need to use TCPConnector to configure the limit if batch size
     # is greater than 100.
@@ -107,9 +117,7 @@ async def do_single_http_batch(
             end = time.perf_counter()
             return 1000 * (end - start)
 
-        latencies = await asyncio.gather(*[do_query() for _ in range(batch_size)])
-        if record_latencies:
-            return latencies
+        return await asyncio.gather(*[do_query() for _ in range(batch_size)])
 
 
 async def do_single_grpc_batch(
@@ -162,11 +170,11 @@ class Streamer:
     def __init__(self, tokens_per_request: int, inter_token_delay_ms: int = 10):
         logging.getLogger("ray.serve").setLevel(logging.WARNING)
         self._tokens_per_request = tokens_per_request
-        self._inter_token_delay_ms = inter_token_delay_ms
+        self._inter_token_delay_s = inter_token_delay_ms / 1000
 
     async def stream(self):
         for _ in range(self._tokens_per_request):
-            await asyncio.sleep(self._inter_token_delay_ms / 1000)
+            await asyncio.sleep(self._inter_token_delay_s)
             yield b"hi"
 
     async def __call__(self):
@@ -198,29 +206,37 @@ class Benchmarker:
         self._handle = handle.options(stream=stream)
         self._stream = stream
 
-    async def do_single_request(self, payload: Any = None):
-        if payload is None:
-            return await self._handle.remote()
-        else:
-            return await self._handle.remote(payload)
-
-    async def _do_single_stream(self):
-        """Consumes a single streaming request. Returns e2e latency in ms."""
+    async def do_single_request(self, payload: Any = None) -> float:
+        """Completes a single unary request. Returns e2e latency in ms."""
         start = time.perf_counter()
-        async for r in self._handle.stream.remote():
-            pass
+
+        if payload is None:
+            await self._handle.remote()
+        else:
+            await self._handle.remote(payload)
+
         end = time.perf_counter()
         return 1000 * (end - start)
 
-    async def _do_single_batch(self, batch_size: int, record_latencies: bool):
+    async def _do_single_stream(self) -> float:
+        """Consumes a single streaming request. Returns e2e latency in ms."""
+        start = time.perf_counter()
+
+        async for r in self._handle.stream.remote():
+            pass
+
+        end = time.perf_counter()
+        return 1000 * (end - start)
+
+    async def _do_single_batch(self, batch_size: int) -> List[float]:
         if self._stream:
-            latencies = await asyncio.gather(
+            return await asyncio.gather(
                 *[self._do_single_stream() for _ in range(batch_size)]
             )
-            if record_latencies:
-                return latencies
         else:
-            await asyncio.gather(*[self._handle.remote() for _ in range(batch_size)])
+            return await asyncio.gather(
+                *[self.do_single_request() for _ in range(batch_size)]
+            )
 
     async def run_latency_benchmark(
         self, *, num_requests: int, payload: Any = None
@@ -237,7 +253,6 @@ class Benchmarker:
         num_trials: int,
         trial_runtime: float,
         tokens_per_request: Optional[float] = None,
-        record_latencies: bool = False,
     ) -> Tuple[float, float]:
         if self._stream:
             assert tokens_per_request
@@ -249,10 +264,8 @@ class Benchmarker:
             fn=partial(
                 self._do_single_batch,
                 batch_size=batch_size,
-                record_latencies=record_latencies,
             ),
             multiplier=multiplier,
             num_trials=num_trials,
             trial_runtime=trial_runtime,
-            record_latencies=record_latencies,
         )
