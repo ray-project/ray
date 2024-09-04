@@ -205,11 +205,12 @@ class Channel(ChannelInterface):
 
         self._writer_registered = _writer_registered
         self._reader_registered = _reader_registered
-        self._reader_node_ids = _reader_node_ids
+        self._reader_node_ids = _reader_node_ids or set()
         # node_id -> reader ref. There's only 1 reader ref per node because
         # it is shared by all actors on that node.
-        self._reader_refs: Dict[str, "ray.ObjectRef"] = _reader_refs or {}
+        self._reader_refs: Dict[str, Tuple["ray.ObjectRef", ray.ActorID]] = _reader_refs or {}
         self._node_id_to_readers: Dict[str, "ray.actor.ActorHandle"] = defaultdict(list)
+        self._num_readers = 0
 
         if _writer_ref is None:
             # We are the writer. Check that the passed handle matches the
@@ -250,15 +251,19 @@ class Channel(ChannelInterface):
         for reader, node_id in self._reader_and_node_list:
             node_id_to_readers[node_id].append(reader)
 
-        assert self._num_readers == 0
         # Find num_readers. We have local readers and 1 reader per remote node
         # which listens to mutable object being changed and push the object to
         # remote nodes.
+        assert self._num_readers == 0
         for node_id, readers in node_id_to_readers.items():
             if self.is_local_node(node_id):
                 self._num_readers += len(readers)
             else:
                 self._num_readers += 1
+
+        self._local_reader_ref = None
+        for node_id, reader_ref_and_reader_id in self._reader_refs.items():
+            
 
     def _create_reader_refs(
         self,
@@ -322,7 +327,6 @@ class Channel(ChannelInterface):
         self._writer_registered = True
 
     def ensure_registered_as_reader(self) -> None:
-        assert not self._writer_registered
         if self._reader_registered:
             return
 
@@ -457,6 +461,7 @@ class Channel(ChannelInterface):
             [self._reader_ref], timeout=timeout, return_exceptions=True
         )[0][0]
 
+        # SANG-TODO
         if isinstance(ret, _ResizeChannel):
             self._reader_ref = ret._reader_ref
             # We need to register the new reader_ref.
