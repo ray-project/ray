@@ -273,11 +273,7 @@ class AnyscaleJobManager:
         """
         Obtain the last few logs
         """
-        if self.cluster_manager.log_streaming_limit == -1:
-            return anyscale.job.get_logs(id=self.job_id)
-        return anyscale.job.get_logs(
-            id=self.job_id, max_lines=self.cluster_manager.log_streaming_limit
-        )
+        return anyscale.job.get_logs(id=self.job_id, max_lines=LAST_LOGS_LENGTH)
 
     def get_last_logs(self):
         if not self.job_id:
