@@ -8,6 +8,7 @@ from ray.core.generated import (
 )
 import ray._private.utils
 from ray._private.ray_constants import env_integer
+import ray
 
 # Number of executor threads. No more than this number of concurrent GcsAioClient calls
 # can happen. Extra requests will need to wait for the existing requests to finish.
@@ -53,8 +54,7 @@ class NewGcsAioClient:
         nums_reconnect_retry: int = 5,
     ):
         # This must be consistent with GcsClient.__cinit__ in _raylet.pyx
-        # The default number must be consistent with RayConfig.
-        timeout_ms = os.environ.get("RAY_py_gcs_connect_timeout_s", 30) * 1000
+        timeout_ms = ray._config.py_gcs_connect_timeout_s() * 1000
         self.inner = NewGcsClient.standalone(
             str(address), cluster_id=None, timeout_ms=timeout_ms
         )

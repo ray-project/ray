@@ -10,7 +10,6 @@ from ray._private.ray_constants import (
     DEFAULT_RUNTIME_ENV_TIMEOUT_SECONDS,
 )
 
-import ray
 import ray._private.runtime_env.agent.runtime_env_consts as runtime_env_consts
 from ray._private.ray_logging import setup_component_logger
 from ray._private.runtime_env.conda import CondaPlugin
@@ -202,10 +201,7 @@ class RuntimeEnvAgent:
         # Maps a serialized runtime env to a lock that is used
         # to prevent multiple concurrent installs of the same env.
         self._env_locks: Dict[str, asyncio.Lock] = dict()
-        self._gcs_aio_client = GcsAioClient(
-            address=self._gcs_address,
-            nums_reconnect_retry=ray._config.gcs_rpc_server_reconnect_timeout_s(),
-        )
+        self._gcs_aio_client = GcsAioClient(address=self._gcs_address)
 
         self._pip_plugin = PipPlugin(self._runtime_env_dir)
         self._conda_plugin = CondaPlugin(self._runtime_env_dir)
