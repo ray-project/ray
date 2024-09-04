@@ -53,7 +53,8 @@ class NewGcsAioClient:
         nums_reconnect_retry: int = 5,
     ):
         # This must be consistent with GcsClient.__cinit__ in _raylet.pyx
-        timeout_ms = os.environ["RAY_py_gcs_connect_timeout_s"] * 1000
+        # The default number must be consistent with RayConfig.
+        timeout_ms = os.environ.get("RAY_py_gcs_connect_timeout_s", 30) * 1000
         self.inner = NewGcsClient.standalone(
             str(address), cluster_id=None, timeout_ms=timeout_ms
         )
