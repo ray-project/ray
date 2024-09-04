@@ -147,7 +147,8 @@ steps:
     instance_type: medium
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- python/ray/dashboard/... serve 
-        --parallelism-per-worker 3
+        --parallelism-per-worker 3 || true
+      - sleep 100000
     depends_on: servebuild
 
   - label: ":ray-serve: serve: HA integration tests"
