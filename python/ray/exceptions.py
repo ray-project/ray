@@ -365,7 +365,10 @@ class ActorDiedError(RayActorError):
             )
         else:
             # Inidicating system-level actor failures.
-            assert isinstance(cause, ActorDiedErrorContext)
+            assert isinstance(cause, ActorDiedErrorContext), (
+                f"Type of cause is {type(cause)} but expected {ActorDiedErrorContext} "
+                f"with type {type(ActorDiedErrorContext)}"
+            )
             error_msg_lines = [ActorDiedError.BASE_ERROR_MSG]
             error_msg_lines.append(f"\tclass_name: {cause.class_name}")
             error_msg_lines.append(f"\tactor_id: {ActorID(cause.actor_id).hex()}")
