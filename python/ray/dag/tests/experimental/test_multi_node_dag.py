@@ -209,7 +209,7 @@ def test_pp(ray_start_cluster):
 
 def test_multi_reader_on_multi_node(ray_start_cluster):
     cluster = ray_start_cluster
-    head = cluster.add_node(num_cpus=1)
+    head = cluster.add_node(num_cpus=0)
     ray.init(address=cluster.address)
     worker_1 = cluster.add_node(num_cpus=1)
     worker_2 = cluster.add_node(num_cpus=1)
@@ -220,13 +220,14 @@ def test_multi_reader_on_multi_node(ray_start_cluster):
             return ray.get_runtime_context().get_node_id()
 
         def f(self, i):
+            print(self.get_node_id())
             return i
-    
+
     # 3 actors spread to nodes.
-    actors = [Actor.remote() for _ in range(3)]
+    actors = [Actor.remote() for _ in range(2)]
     node_ids = set(ray.get([actor.get_node_id.remote() for actor in actors]))
     # Make sure actors are spread to 3 nodes.
-    assert len(node_ids) == 3
+    assert len(node_ids) == 2
 
     with InputNode() as inp:
         outputs = []
@@ -236,6 +237,7 @@ def test_multi_reader_on_multi_node(ray_start_cluster):
 
     adag.experimental_compile()
     print(ray.get(adag.execute(1)))
+    time.sleep(30)
 
 
 if __name__ == "__main__":

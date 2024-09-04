@@ -49,6 +49,7 @@ void MutableObjectProvider::RegisterWriterChannel(const ObjectID &object_id,
     // `object` is now a nullptr.
   }
 
+  // SANG-TODO Share a thread instead of having it per node.
   if (node_id) {
     // Start a thread that repeatedly listens for values on this object and then sends
     // them via RPC to the remote reader.

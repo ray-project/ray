@@ -1501,6 +1501,7 @@ Status CoreWorker::ExperimentalRegisterMutableObjectReaderRemote(
   rpc::Address addr;
   {
     std::promise<void> promise;
+    // SANG-TODO Should introduce the timeout or pass it.
     RAY_CHECK(gcs_client_->Actors()
                   .AsyncGet(reader_actor,
                             [&addr, &promise](
@@ -1518,7 +1519,6 @@ Status CoreWorker::ExperimentalRegisterMutableObjectReaderRemote(
     promise.get_future().wait();
   }
 
-  // SANG-TODO
   {
     std::shared_ptr<rpc::CoreWorkerClientInterface> conn =
         core_worker_client_pool_->GetOrConnect(addr);
