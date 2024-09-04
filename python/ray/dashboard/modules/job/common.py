@@ -9,7 +9,7 @@ from typing import Any, Dict, Optional, Tuple, Union
 from ray._private import ray_constants
 from ray._private.gcs_utils import GcsAioClient
 from ray._private.runtime_env.packaging import parse_uri
-from ray.core.generated.export_api.export_event_pb2 import ExportEvent
+from ray.core.generated.export_event_pb2 import ExportEvent
 from ray.util.annotations import PublicAPI
 
 # NOTE(edoakes): these constants should be considered a public API because
