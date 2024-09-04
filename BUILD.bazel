@@ -2513,6 +2513,17 @@ filegroup(
 )
 
 filegroup(
+    name = "export_api_py_proto",
+    srcs = [
+        "//src/ray/protobuf:export_event_py_proto",
+        "//src/ray/protobuf:export_task_event_py_proto",
+        "//src/ray/protobuf:export_node_event_py_proto",
+        "//src/ray/protobuf:export_actor_event_py_proto",
+        "//src/ray/protobuf:export_submission_job_event_py_proto",
+    ],
+)
+
+filegroup(
     name = "serve_py_proto",
     srcs = [
         "//src/ray/protobuf:serve_py_proto",
@@ -2540,6 +2551,12 @@ copy_to_workspace(
     name = "cp_all_py_proto",
     srcs = [":all_py_proto"],
     dstdir = "python/ray/core/generated",
+)
+
+copy_to_workspace(
+    name = "cp_export_api_py_proto",
+    srcs = [":export_api_py_proto"],
+    dstdir = "python/ray/core/generated/export_api",
 )
 
 copy_to_workspace(
@@ -2579,6 +2596,7 @@ genrule(
     name = "install_py_proto",
     srcs = [
         ":cp_all_py_proto",
+        ":cp_export_api_py_proto",
         ":cp_serve_py_proto",
     ],
     outs = ["install_py_proto.out"],
@@ -2588,6 +2606,7 @@ genrule(
         # shellcheck disable=SC2006
         files=(
             `ls python/ray/core/generated/*_pb2*.py` \
+            `ls python/ray/core/generated/export_api/*_pb2*.py` \
             `ls python/ray/serve/generated/*_pb2*.py` \
             )
         sed -i -E 's/from src.ray.protobuf/from ./' "$${files[@]}"
