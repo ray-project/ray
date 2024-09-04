@@ -2824,6 +2824,17 @@ py_test(
     args = ["--enable-new-api-stack", "--as-test"]
 )
 
+
+#@OldAPIStack @HybridAPIStack
+py_test(
+    name = "examples/learners/ppo_with_torch_lr_schedulers",
+    main = "examples/learners/ppo_with_torch_lr_schedulers.py",
+    tags = ["team:rllib", "examples"],
+    size = "medium",
+    srcs = ["examples/learners/ppo_with_torch_lr_schedulers.py"],
+    args = ["--enable-new-api-stack", "--as-test"]
+)
+
 # subdirectory: multi_agent/
 # ....................................
 py_test(
