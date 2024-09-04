@@ -213,11 +213,9 @@ def test_two_concurrent_jobs_with_same_working_dir(call_ray_start, tmp_working_d
     https://github.com/ray-project/ray/issues/47471
     """
 
-    # Windows path has backslash so we need to escape it
-    tmp_working_dir = tmp_working_dir.encode("unicode_escape").decode()
     script = f"""
 import ray
-ray.init(runtime_env={{"working_dir": "{tmp_working_dir}"}})
+ray.init(runtime_env={{"working_dir": "{str(tmp_working_dir)}"}})
 """
     job1 = run_string_as_driver_nonblocking(script)
     job2 = run_string_as_driver_nonblocking(script)
