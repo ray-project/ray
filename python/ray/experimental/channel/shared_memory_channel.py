@@ -518,7 +518,7 @@ class CompositeChannel(ChannelInterface):
 
         remote_reader_and_node_list: List[Tuple["ray.actor.ActorHandle", str]] = []
         for reader, node in self._reader_and_node_list:
-            if self._writer != reader:
+            if reader != self._writer:
                 remote_reader_and_node_list.append((reader, node))
         # There are some local readers which are the same worker process as the writer.
         # Create a local channel for the writer and the local readers.
@@ -526,7 +526,10 @@ class CompositeChannel(ChannelInterface):
             remote_reader_and_node_list
         )
         if num_local_readers > 0:
-            local_channel = IntraProcessChannel(num_local_readers)
+            # Use num_readers = 1 when creating the local channel,
+            # because we have channel cache to support reading
+            # from the same channel multiple times.
+            local_channel = IntraProcessChannel(num_readers=1)
             self._channels.add(local_channel)
             actor_id = self._get_actor_id(self._writer)
             self._channel_dict[actor_id] = local_channel
