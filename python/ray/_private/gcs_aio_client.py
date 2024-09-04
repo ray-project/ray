@@ -51,11 +51,12 @@ class NewGcsAioClient:
         loop=None,
         executor=None,
         nums_reconnect_retry: int = 5,
+        cluster_id: Optional[str] = None,
     ):
         # See https://github.com/ray-project/ray/blob/d0b46eff9ddcf9ec7256dd3a6dda33e7fb7ced95/python/ray/_raylet.pyx#L2693 # noqa: E501
         timeout_ms = 1000 * (nums_reconnect_retry + 1)
         self.inner = NewGcsClient.standalone(
-            str(address), cluster_id=None, timeout_ms=timeout_ms
+            str(address), cluster_id=cluster_id, timeout_ms=timeout_ms
         )
         # Forwarded Methods. Not using __getattr__ because we want one fewer layer of
         # indirection.
@@ -106,6 +107,7 @@ class OldGcsAioClient:
         executor=None,
         address: Optional[str] = None,
         nums_reconnect_retry: int = 5,
+        cluster_id: Optional[str] = None,
     ):
         if loop is None:
             loop = ray._private.utils.get_or_create_event_loop()
@@ -115,16 +117,17 @@ class OldGcsAioClient:
                 thread_name_prefix="gcs_aio_client",
             )
 
-        self._gcs_client = GcsClient(
-            address,
-            nums_reconnect_retry,
-        )
+        self._gcs_client = GcsClient(address, nums_reconnect_retry, cluster_id)
         self._async_proxy = AsyncProxy(self._gcs_client, loop, executor)
         self._nums_reconnect_retry = nums_reconnect_retry
 
     @property
     def address(self):
         return self._gcs_client.address
+
+    @property
+    def cluster_id(self):
+        return self._gcs_client.cluster_id
 
     async def check_alive(
         self, node_ips: List[bytes], timeout: Optional[float] = None
