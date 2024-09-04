@@ -46,7 +46,9 @@ def train_one_step(algorithm, train_batch, policies_to_train=None) -> Dict:
     workers = algorithm.env_runner_group
     local_worker = workers.local_env_runner
     num_sgd_iter = config.get("num_epochs", config.get("num_sgd_iter", 1))
-    minibatch_size = config.get("minibatch_size", config.get("sgd_minibatch_size", 0))
+    minibatch_size = config.get("minibatch_size")
+    if minibatch_size is None:
+        minibatch_size = config.get("sgd_minibatch_size", 0)
 
     learn_timer = algorithm._timers[LEARN_ON_BATCH_TIMER]
     with learn_timer:
