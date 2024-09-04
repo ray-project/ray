@@ -736,6 +736,63 @@ if __name__ == "__main__":
         assert b"OK" in output, f"Output has no 'OK': {output.decode()}"
 
 
+def test_load_remote_function(ray_start_regular_shared):
+    code_test = """
+import ray
+import os
+
+@ray.remote
+def wrapped_func():
+    return "OK"
+
+if __name__ == "__main__":
+    current_path = os.path.dirname(__file__)
+    job_config = ray.job_config.JobConfig(code_search_path=[current_path])
+    ray.init({}, job_config=job_config)
+    res = wrapped_func.remote()
+    print(ray.get(res))
+"""
+
+    # Test code search path contains space.
+    with tempfile.TemporaryDirectory(suffix="a b") as tmpdir:
+        test_driver = os.path.join(tmpdir, "test_load_code_from_local.py")
+        with open(test_driver, "w") as f:
+            f.write(code_test.format(repr(ray_start_regular_shared["address"])))
+        env = os.environ.copy()
+        if env.get("PYTHONSAFEPATH", "") != "":
+            env["PYTHONSAFEPATH"] = ""  # Set to empty string to disable.
+        output = subprocess.check_output([sys.executable, test_driver], env=env)
+        assert b"OK" in output, f"Output has no 'True': {output.decode()}"
+
+
+def test_load_dynamic_wrap_function(ray_start_regular_shared):
+    code_test = """
+import ray
+import os
+
+def normal_func():
+    return "OK"
+
+if __name__ == "__main__":
+    current_path = os.path.dirname(__file__)
+    job_config = ray.job_config.JobConfig(code_search_path=[current_path])
+    ray.init({}, job_config=job_config)
+    wrapped_func = ray.remote(normal_func)
+    res = wrapped_func.remote()
+    print(ray.get(res))
+"""
+    # Test code search path contains space.
+    with tempfile.TemporaryDirectory(suffix="a b") as tmpdir:
+        test_driver = os.path.join(tmpdir, "test_load_code_from_local.py")
+        with open(test_driver, "w") as f:
+            f.write(code_test.format(repr(ray_start_regular_shared["address"])))
+        env = os.environ.copy()
+        if env.get("PYTHONSAFEPATH", "") != "":
+            env["PYTHONSAFEPATH"] = ""  # Set to empty string to disable.
+        output = subprocess.check_output([sys.executable, test_driver], env=env)
+        assert b"OK" in output, f"Output has no 'True': {output.decode()}"
+
+
 @pytest.mark.skipif(
     client_test_enabled(), reason="JobConfig doesn't work in client mode"
 )
