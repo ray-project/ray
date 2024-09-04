@@ -356,7 +356,6 @@ WorkerPool::BuildProcessCommandArgs(const Language &language,
     worker_command_args.push_back("--worker-launch-time-ms=" +
                                   std::to_string(current_sys_time_ms()));
     worker_command_args.push_back("--node-id=" + node_id_.Hex());
-    // TODO(jjyao) This should be renamed to worker cache key hash
     worker_command_args.push_back("--runtime-env-hash=" +
                                   std::to_string(runtime_env_hash));
   } else if (language == Language::CPP) {
@@ -1363,7 +1362,7 @@ void WorkerPool::PrestartWorkers(const TaskSpecification &task_spec,
 }
 
 void WorkerPool::PrestartDefaultCpuWorkers(ray::Language language, int64_t num_needed) {
-  // default workers uses 1 cpu and doesn't support actor.
+  // default workers uses 1 cpu and doesn't use runtime env.
   RAY_LOG(DEBUG) << "PrestartDefaultCpuWorkers " << num_needed;
   for (int i = 0; i < num_needed; i++) {
     PopWorkerStatus status;

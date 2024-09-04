@@ -200,7 +200,7 @@ void Worker::SetIsGpu(bool is_gpu) {
   if (!is_gpu_.has_value()) {
     is_gpu_ = is_gpu;
   }
-  RAY_CHECK(is_gpu_.value() == is_gpu)
+  RAY_CHECK_EQ(is_gpu_.value(), is_gpu)
       << "is_gpu mismatch, assigned: " << is_gpu_.value() << ", actual: " << is_gpu;
 }
 
@@ -208,7 +208,7 @@ void Worker::SetIsActorWorker(bool is_actor_worker) {
   if (!is_actor_worker_.has_value()) {
     is_actor_worker_ = is_actor_worker;
   }
-  RAY_CHECK(is_actor_worker_.value() == is_actor_worker)
+  RAY_CHECK_EQ(is_actor_worker_.value(), is_actor_worker)
       << "is_actor_worker mismatch, assigned: " << is_actor_worker_.value()
       << ", actual: " << is_actor_worker;
 }

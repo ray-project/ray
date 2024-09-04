@@ -600,10 +600,7 @@ int CalculateRuntimeEnvHash(const std::string &serialized_runtime_env) {
   if (IsRuntimeEnvEmpty(serialized_runtime_env)) {
     return 0;
   }
-  size_t hash = 0;
-  // Add some yummy salt.
-  boost::hash_combine(hash, "RAY_RUNTIME_ENV");
-  boost::hash_combine(hash, serialized_runtime_env);
+  size_t hash = std::hash<std::string>()(serialized_runtime_env);
   return static_cast<int>(hash);
 }
 
