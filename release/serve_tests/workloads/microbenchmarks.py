@@ -178,6 +178,12 @@ async def _main(
                     inter_token_delay_ms=10,
                 )
             )
+            # In each trial, complete only one batch of requests. Each
+            # batch should take 10+ seconds to complete (because we are
+            # streaming 1000 tokens per request with a 10ms inter token
+            # delay). Then run STREAMING_NUM_TRIALS, which executes
+            # exactly that number of batches, and calculate the average
+            # throughput across them.
             mean, std, latencies = await run_throughput_benchmark(
                 fn=partial(
                     do_single_http_batch,
@@ -186,7 +192,7 @@ async def _main(
                 ),
                 multiplier=STREAMING_HTTP_BATCH_SIZE * STREAMING_TOKENS_PER_REQUEST,
                 num_trials=STREAMING_NUM_TRIALS,
-                # Complete only one batch of requests
+                # 10 seconds is only enough time to complete a single batch
                 trial_runtime=10,
             )
             perf_metrics.extend(
@@ -216,7 +222,7 @@ async def _main(
                 ),
                 multiplier=STREAMING_BATCH_SIZE * STREAMING_TOKENS_PER_REQUEST,
                 num_trials=STREAMING_NUM_TRIALS,
-                # Complete only one batch of requests
+                # 10 seconds is only enough time to complete a single batch
                 trial_runtime=10,
             )
             perf_metrics.extend(
@@ -346,7 +352,7 @@ async def _main(
             mean, std, latencies = await h.run_throughput_benchmark.remote(
                 batch_size=STREAMING_BATCH_SIZE,
                 num_trials=STREAMING_NUM_TRIALS,
-                # Complete only one batch of requests
+                # 10 seconds is only enough time to complete a single batch
                 trial_runtime=10,
                 tokens_per_request=STREAMING_TOKENS_PER_REQUEST,
             )
