@@ -232,7 +232,10 @@ class JobInfoStorageClient:
         )
         if added_num == 1 or overwrite:
             # Write export event if data was updated in the KV store
-            self._write_submission_job_export_event(job_id, job_info)
+            try:
+                self._write_submission_job_export_event(job_id, job_info)
+            except Exception:
+                logger.exception("Error while writing job submission export event.")
         return added_num == 1
 
     def _write_submission_job_export_event(
