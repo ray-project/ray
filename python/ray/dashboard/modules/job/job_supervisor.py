@@ -68,10 +68,11 @@ class JobSupervisor:
         entrypoint: str,
         user_metadata: Dict[str, str],
         gcs_address: str,
+        logs_dir: Optional[str] = None,
     ):
         self._job_id = job_id
         gcs_aio_client = GcsAioClient(address=gcs_address)
-        self._job_info_client = JobInfoStorageClient(gcs_aio_client)
+        self._job_info_client = JobInfoStorageClient(gcs_aio_client, logs_dir)
         self._log_client = JobLogStorageClient()
         self._entrypoint = entrypoint
 

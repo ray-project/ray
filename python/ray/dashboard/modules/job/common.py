@@ -7,7 +7,6 @@ from enum import Enum
 from pathlib import Path
 from typing import Any, Dict, Optional, Tuple, Union
 
-import ray
 from ray._private import ray_constants
 from ray._private.event.export_event_logger import get_export_event_logger
 from ray._private.gcs_utils import GcsAioClient
@@ -198,15 +197,11 @@ class JobInfoStorageClient:
     JOB_DATA_KEY_PREFIX = f"{ray_constants.RAY_INTERNAL_NAMESPACE_PREFIX}job_info_"
     JOB_DATA_KEY = f"{JOB_DATA_KEY_PREFIX}{{job_id}}"
 
-    def __init__(
-        self,
-        gcs_aio_client: GcsAioClient,
-    ):
+    def __init__(self, gcs_aio_client: GcsAioClient, log_dir: Optional[str] = None):
         self._gcs_aio_client = gcs_aio_client
         self._export_submission_job_event_logger = None
         try:
-            if ray_constants.RAY_ENABLE_EXPORT_API_WRITE:
-                log_dir = ray._private.worker._global_node.get_logs_dir_path()
+            if ray_constants.RAY_ENABLE_EXPORT_API_WRITE and log_dir:
                 self._export_submission_job_event_logger = get_export_event_logger(
                     ExportEvent.SourceType.EXPORT_SUBMISSION_JOB, log_dir
                 )

@@ -61,15 +61,14 @@ import psutil
     ],
     indirect=True,
 )
-async def test_submission_job_export_events(call_ray_start):  # noqa: F811
+async def test_submission_job_export_events(call_ray_start, tmp_path):  # noqa: F811
     """Submission job export events are correctly written"""
     ray_constants.RAY_ENABLE_EXPORT_API_WRITE = True
     address_info = ray.init(address=call_ray_start)
     gcs_aio_client = GcsAioClient(
         address=address_info["gcs_address"], nums_reconnect_retry=0
     )
-    log_dir = ray._private.worker._global_node.get_logs_dir_path()
-    job_manager = JobManager(gcs_aio_client, log_dir)
+    job_manager = JobManager(gcs_aio_client, tmp_path)
 
     # Submit a job.
     submission_id = await job_manager.submit_job(
@@ -82,7 +81,7 @@ async def test_submission_job_export_events(call_ray_start):  # noqa: F811
     )
 
     # Verify export events are written
-    event_dir = f"{log_dir}/events"
+    event_dir = f"{tmp_path}/events"
     assert os.path.isdir(event_dir)
     event_file = f"{event_dir}/event_EXPORT_SUBMISSION_JOB.log"
     assert os.path.isfile(event_file)
