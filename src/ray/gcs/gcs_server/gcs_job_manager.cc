@@ -14,7 +14,6 @@
 
 #include "ray/gcs/gcs_server/gcs_job_manager.h"
 
-#include "ray/gcs/gcs_client/accessor.h"
 #include "ray/gcs/pb_util.h"
 
 namespace ray {
@@ -108,7 +107,7 @@ void GcsJobManager::HandleMarkJobFinished(rpc::MarkJobFinishedRequest request,
   Status status = gcs_table_storage_->JobTable().Get(
       job_id,
       [this, job_id, send_reply](Status status,
-                                 const boost::optional<rpc::JobTableData> &result) {
+                                 const std::optional<rpc::JobTableData> &result) {
         if (status.ok() && result) {
           MarkJobAsFinished(*result, send_reply);
         } else {

@@ -28,12 +28,12 @@ for _ in range(2):
 
 # __constructing-rlmodules-sa-begin__
 import gymnasium as gym
-from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
+from ray.rllib.core.rl_module.rl_module import RLModuleSpec
 from ray.rllib.core.testing.torch.bc_module import DiscreteBCTorchModule
 
 env = gym.make("CartPole-v1")
 
-spec = SingleAgentRLModuleSpec(
+spec = RLModuleSpec(
     module_class=DiscreteBCTorchModule,
     observation_space=env.observation_space,
     action_space=env.action_space,
@@ -46,19 +46,19 @@ module = spec.build()
 
 # __constructing-rlmodules-ma-begin__
 import gymnasium as gym
-from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
-from ray.rllib.core.rl_module.marl_module import MultiAgentRLModuleSpec
+from ray.rllib.core.rl_module.rl_module import RLModuleSpec
+from ray.rllib.core.rl_module.multi_rl_module import MultiRLModuleSpec
 from ray.rllib.core.testing.torch.bc_module import DiscreteBCTorchModule
 
-spec = MultiAgentRLModuleSpec(
+spec = MultiRLModuleSpec(
     module_specs={
-        "module_1": SingleAgentRLModuleSpec(
+        "module_1": RLModuleSpec(
             module_class=DiscreteBCTorchModule,
             observation_space=gym.spaces.Box(low=-1, high=1, shape=(10,)),
             action_space=gym.spaces.Discrete(2),
             model_config_dict={"fcnet_hiddens": [32]},
         ),
-        "module_2": SingleAgentRLModuleSpec(
+        "module_2": RLModuleSpec(
             module_class=DiscreteBCTorchModule,
             observation_space=gym.spaces.Box(low=-1, high=1, shape=(5,)),
             action_space=gym.spaces.Discrete(2),
@@ -67,13 +67,13 @@ spec = MultiAgentRLModuleSpec(
     },
 )
 
-marl_module = spec.build()
+multi_rl_module = spec.build()
 # __constructing-rlmodules-ma-end__
 
 
 # __pass-specs-to-configs-sa-begin__
 import gymnasium as gym
-from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
+from ray.rllib.core.rl_module.rl_module import RLModuleSpec
 from ray.rllib.core.testing.torch.bc_module import DiscreteBCTorchModule
 from ray.rllib.core.testing.bc_algorithm import BCConfigTest
 
@@ -84,7 +84,7 @@ config = (
     .environment("CartPole-v1")
     .rl_module(
         model_config_dict={"fcnet_hiddens": [32, 32]},
-        rl_module_spec=SingleAgentRLModuleSpec(module_class=DiscreteBCTorchModule),
+        rl_module_spec=RLModuleSpec(module_class=DiscreteBCTorchModule),
     )
 )
 
@@ -94,8 +94,8 @@ algo = config.build()
 
 # __pass-specs-to-configs-ma-begin__
 import gymnasium as gym
-from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
-from ray.rllib.core.rl_module.marl_module import MultiAgentRLModuleSpec
+from ray.rllib.core.rl_module.rl_module import RLModuleSpec
+from ray.rllib.core.rl_module.multi_rl_module import MultiRLModuleSpec
 from ray.rllib.core.testing.torch.bc_module import DiscreteBCTorchModule
 from ray.rllib.core.testing.bc_algorithm import BCConfigTest
 from ray.rllib.examples.envs.classes.multi_agent import MultiAgentCartPole
@@ -107,8 +107,8 @@ config = (
     .environment(MultiAgentCartPole, env_config={"num_agents": 2})
     .rl_module(
         model_config_dict={"fcnet_hiddens": [32, 32]},
-        rl_module_spec=MultiAgentRLModuleSpec(
-            module_specs=SingleAgentRLModuleSpec(module_class=DiscreteBCTorchModule)
+        rl_module_spec=MultiRLModuleSpec(
+            module_specs=RLModuleSpec(module_class=DiscreteBCTorchModule)
         ),
     )
 )
@@ -117,11 +117,11 @@ config = (
 
 # __convert-sa-to-ma-begin__
 import gymnasium as gym
-from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
+from ray.rllib.core.rl_module.rl_module import RLModuleSpec
 from ray.rllib.core.testing.torch.bc_module import DiscreteBCTorchModule
 
 env = gym.make("CartPole-v1")
-spec = SingleAgentRLModuleSpec(
+spec = RLModuleSpec(
     module_class=DiscreteBCTorchModule,
     observation_space=env.observation_space,
     action_space=env.action_space,
@@ -129,7 +129,7 @@ spec = SingleAgentRLModuleSpec(
 )
 
 module = spec.build()
-marl_module = module.as_multi_agent()
+multi_rl_module = module.as_multi_rl_module()
 # __convert-sa-to-ma-end__
 
 
@@ -279,12 +279,9 @@ class DiscreteBCTorchModule(TorchRLModule):
 # __extend-spec-checking-type-specs-end__
 
 
-# __write-custom-marlmodule-shared-enc-begin__
+# __write-custom-multirlmodule-shared-enc-begin__
 from ray.rllib.core.rl_module.torch.torch_rl_module import TorchRLModule
-from ray.rllib.core.rl_module.marl_module import (
-    MultiAgentRLModuleConfig,
-    MultiAgentRLModule,
-)
+from ray.rllib.core.rl_module.multi_rl_module import MultiRLModuleConfig, MultiRLModule
 
 import torch
 import torch.nn as nn
@@ -325,8 +322,8 @@ class BCTorchRLModuleWithSharedGlobalEncoder(TorchRLModule):
         return {"action_dist": torch.distributions.Categorical(logits=action_logits)}
 
 
-class BCTorchMultiAgentModuleWithSharedEncoder(MultiAgentRLModule):
-    def __init__(self, config: MultiAgentRLModuleConfig) -> None:
+class BCTorchMultiAgentModuleWithSharedEncoder(MultiRLModule):
+    def __init__(self, config: MultiRLModuleConfig) -> None:
         super().__init__(config)
 
     def setup(self):
@@ -353,18 +350,18 @@ class BCTorchMultiAgentModuleWithSharedEncoder(MultiAgentRLModule):
         self._rl_modules = rl_modules
 
 
-# __write-custom-marlmodule-shared-enc-end__
+# __write-custom-multirlmodule-shared-enc-end__
 
 
-# __pass-custom-marlmodule-shared-enc-begin__
+# __pass-custom-multirlmodule-shared-enc-begin__
 import gymnasium as gym
-from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
-from ray.rllib.core.rl_module.marl_module import MultiAgentRLModuleSpec
+from ray.rllib.core.rl_module.rl_module import RLModuleSpec
+from ray.rllib.core.rl_module.multi_rl_module import MultiRLModuleSpec
 
-spec = MultiAgentRLModuleSpec(
-    marl_module_class=BCTorchMultiAgentModuleWithSharedEncoder,
+spec = MultiRLModuleSpec(
+    multi_rl_module_class=BCTorchMultiAgentModuleWithSharedEncoder,
     module_specs={
-        "local_2d": SingleAgentRLModuleSpec(
+        "local_2d": RLModuleSpec(
             observation_space=gym.spaces.Dict(
                 {
                     "global": gym.spaces.Box(low=-1, high=1, shape=(2,)),
@@ -374,7 +371,7 @@ spec = MultiAgentRLModuleSpec(
             action_space=gym.spaces.Discrete(2),
             model_config_dict={"fcnet_hiddens": [64]},
         ),
-        "local_5d": SingleAgentRLModuleSpec(
+        "local_5d": RLModuleSpec(
             observation_space=gym.spaces.Dict(
                 {
                     "global": gym.spaces.Box(low=-1, high=1, shape=(2,)),
@@ -388,7 +385,7 @@ spec = MultiAgentRLModuleSpec(
 )
 
 module = spec.build()
-# __pass-custom-marlmodule-shared-enc-end__
+# __pass-custom-multirlmodule-shared-enc-end__
 
 
 # __checkpointing-begin__
@@ -398,7 +395,7 @@ import tempfile
 from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.algorithms.ppo.ppo_catalog import PPOCatalog
 from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import PPOTorchRLModule
-from ray.rllib.core.rl_module.rl_module import RLModule, SingleAgentRLModuleSpec
+from ray.rllib.core.rl_module.rl_module import RLModule, RLModuleSpec
 
 config = (
     PPOConfig()
@@ -407,7 +404,7 @@ config = (
 )
 env = gym.make("CartPole-v1")
 # Create an RL Module that we would like to checkpoint
-module_spec = SingleAgentRLModuleSpec(
+module_spec = RLModuleSpec(
     module_class=PPOTorchRLModule,
     observation_space=env.observation_space,
     action_space=env.action_space,

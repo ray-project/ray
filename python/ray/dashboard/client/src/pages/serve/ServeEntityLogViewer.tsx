@@ -18,6 +18,7 @@ type ServeEntityLogsProps = {
   controller?: ServeSystemActor;
   proxies?: ServeSystemActor[];
   deployments: ServeDeployment[];
+  showDeploymentName?: boolean;
 };
 
 /**
@@ -28,6 +29,7 @@ export const ServeEntityLogViewer = ({
   controller,
   proxies,
   deployments,
+  showDeploymentName = false,
 }: ServeEntityLogsProps) => {
   const [params, setParams] = useSearchParams();
 
@@ -48,23 +50,37 @@ export const ServeEntityLogViewer = ({
     ({ actor_id }) => actor_id === selectedProxyId,
   );
 
-  const allReplicas = deployments.flatMap(({ replicas }) => replicas);
+  const allReplicas = deployments.flatMap(
+    ({ name: deploymentName, replicas }) =>
+      replicas.map((replica) => ({
+        ...replica,
+        name: showDeploymentName
+          ? `${deploymentName}#${replica.replica_id}`
+          : replica.replica_id,
+      })),
+  );
 
   const selectedReplicaId =
     params.get("replicaId") || allReplicas[0]?.replica_id || undefined;
 
   // Effect to update URL params to initial values if they are not set
   useEffect(() => {
+    let paramsModified = false;
     if (!params.get("entityGroup") && showEntityGroups) {
       params.set("entityGroup", defaultEntityGroupName);
+      paramsModified = true;
     }
     if (!params.get("proxyId") && selectedProxyId) {
       params.set("proxyId", selectedProxyId);
+      paramsModified = true;
     }
     if (!params.get("replicaId") && selectedReplicaId) {
       params.set("replicaId", selectedReplicaId);
+      paramsModified = true;
     }
-    setParams(params, { replace: true });
+    if (paramsModified) {
+      setParams(params, { replace: true });
+    }
   }, [
     params,
     setParams,
@@ -80,13 +96,18 @@ export const ServeEntityLogViewer = ({
 
   // Detect if replicaId or http proxy does not exist. If not, reset the selected log.
   useEffect(() => {
+    let paramsModified = false;
     if (selectedProxyId && !selectedProxy) {
       params.delete("proxyId");
+      paramsModified = true;
     }
     if (selectedReplicaId && !selectedReplica) {
       params.delete("replicaId");
+      paramsModified = true;
     }
-    setParams(params, { replace: true });
+    if (paramsModified) {
+      setParams(params, { replace: true });
+    }
   }, [
     params,
     setParams,
@@ -272,9 +293,9 @@ export const ServeEntityLogViewer = ({
                 );
               }}
             >
-              {allReplicas.map(({ replica_id }) => (
+              {allReplicas.map(({ replica_id, name }) => (
                 <MenuItem key={replica_id} value={replica_id}>
-                  {replica_id}
+                  {name}
                 </MenuItem>
               ))}
             </TextField>

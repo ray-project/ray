@@ -149,7 +149,7 @@ if __name__ == "__main__":
         .rl_module(
             model_config_dict={
                 "use_lstm": True,
-                "max_seq_len": 50,
+                "max_seq_len": 20,
                 "fcnet_hiddens": [32],
                 "fcnet_activation": "linear",
                 "vf_share_layers": True,

@@ -99,9 +99,6 @@ if __name__ == "__main__":
             observation_space=dummy_env.observation_space,
             action_space=dummy_env.action_space,
         )
-        .api_stack(
-            enable_rl_module_and_learner=True,
-        )
         .offline_data(
             input_=offline_file,
         )

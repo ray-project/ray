@@ -6,8 +6,8 @@ from ray.rllib.algorithms.impala.impala_learner import IMPALALearner
 from ray.rllib.core.learner.learner import Learner
 from ray.rllib.core.learner.utils import update_target_network
 from ray.rllib.core.rl_module.apis.target_network_api import TargetNetworkAPI
-from ray.rllib.core.rl_module.marl_module import MultiAgentRLModuleSpec
-from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
+from ray.rllib.core.rl_module.multi_rl_module import MultiRLModuleSpec
+from ray.rllib.core.rl_module.rl_module import RLModuleSpec
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.lambda_defaultdict import LambdaDefaultDict
 from ray.rllib.utils.metrics import (
@@ -54,18 +54,23 @@ class APPOLearner(IMPALALearner):
         self,
         *,
         module_id: ModuleID,
-        module_spec: SingleAgentRLModuleSpec,
+        module_spec: RLModuleSpec,
         config_overrides: Optional[Dict] = None,
         new_should_module_be_updated: Optional[ShouldModuleBeUpdatedFn] = None,
-    ) -> MultiAgentRLModuleSpec:
-        marl_spec = super().add_module(module_id=module_id)
+    ) -> MultiRLModuleSpec:
+        marl_spec = super().add_module(
+            module_id=module_id,
+            module_spec=module_spec,
+            config_overrides=config_overrides,
+            new_should_module_be_updated=new_should_module_be_updated,
+        )
         # Create target networks for added Module, if applicable.
         if isinstance(self.module[module_id].unwrapped(), TargetNetworkAPI):
             self.module[module_id].unwrapped().make_target_networks()
         return marl_spec
 
     @override(IMPALALearner)
-    def remove_module(self, module_id: str) -> MultiAgentRLModuleSpec:
+    def remove_module(self, module_id: str) -> MultiRLModuleSpec:
         marl_spec = super().remove_module(module_id)
         self.curr_kl_coeffs_per_module.pop(module_id)
         return marl_spec
@@ -95,11 +100,10 @@ class APPOLearner(IMPALALearner):
             #  of the train_batch_size * some target update frequency * num_sgd_iter.
 
             last_update_ts_key = (module_id, LAST_TARGET_UPDATE_TS)
-            # TODO (Sven): DQN uses `config.target_network_update_freq`. Can we
-            #  choose a standard here?
-            if (
-                timestep - self.metrics.peek(last_update_ts_key, default=0)
-                >= config.target_update_frequency
+            if timestep - self.metrics.peek(
+                last_update_ts_key, default=0
+            ) >= config.target_network_update_freq and isinstance(
+                module.unwrapped(), TargetNetworkAPI
             ):
                 for (
                     main_net,

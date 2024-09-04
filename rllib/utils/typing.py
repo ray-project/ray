@@ -19,8 +19,8 @@ import gymnasium as gym
 from ray.rllib.utils.annotations import OldAPIStack
 
 if TYPE_CHECKING:
-    from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
-    from ray.rllib.core.rl_module.marl_module import MultiAgentRLModuleSpec
+    from ray.rllib.core.rl_module.rl_module import RLModuleSpec
+    from ray.rllib.core.rl_module.multi_rl_module import MultiRLModuleSpec
     from ray.rllib.env.env_context import EnvContext
     from ray.rllib.env.multi_agent_episode import MultiAgentEpisode
     from ray.rllib.env.single_agent_episode import SingleAgentEpisode
@@ -52,7 +52,7 @@ TensorShape = Union[Tuple[int], List[int]]
 NetworkType = Union["torch.nn.Module", "tf.keras.Model"]
 
 # An RLModule spec (single-agent or multi-agent).
-RLModuleSpec = Union["SingleAgentRLModuleSpec", "MultiAgentRLModuleSpec"]
+RLModuleSpecType = Union["RLModuleSpec", "MultiRLModuleSpec"]
 
 # A state dict of an RLlib component (e.g. EnvRunner, Learner, RLModule).
 StateDict = Dict[str, Any]

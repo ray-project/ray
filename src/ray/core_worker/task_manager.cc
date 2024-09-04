@@ -17,6 +17,7 @@
 #include "ray/common/buffer.h"
 #include "ray/common/common_protocol.h"
 #include "ray/common/constants.h"
+#include "ray/core_worker/common.h"
 #include "ray/gcs/pb_util.h"
 #include "ray/util/exponential_backoff.h"
 #include "ray/util/util.h"
@@ -1477,6 +1478,37 @@ void TaskManager::SetTaskStatus(
       worker::TaskStatusEvent::TaskStateUpdate(error_info)));
 }
 
+std::unordered_map<rpc::LineageReconstructionTask, uint64_t>
+TaskManager::GetOngoingLineageReconstructionTasks() const {
+  absl::MutexLock lock(&mu_);
+  std::unordered_map<rpc::LineageReconstructionTask, uint64_t> result;
+  for (const auto &task_it : submissible_tasks_) {
+    const auto &task_entry = task_it.second;
+    if (!task_entry.IsPending()) {
+      continue;
+    }
+
+    if (task_entry.num_successful_executions == 0) {
+      // Not lineage reconstruction task
+      continue;
+    }
+
+    rpc::LineageReconstructionTask task;
+    task.set_name(task_entry.spec.GetName());
+    auto resources = task_entry.spec.GetRequiredResources().GetResourceUnorderedMap();
+    task.mutable_resources()->insert(resources.begin(), resources.end());
+    task.set_status(task_entry.GetStatus());
+
+    if (result.find(task) != result.end()) {
+      result[task] += 1;
+    } else {
+      result[task] = 1;
+    }
+  }
+
+  return result;
+}
+
 void TaskManager::FillTaskInfo(rpc::GetCoreWorkerStatsReply *reply,
                                const int64_t limit) const {
   absl::MutexLock lock(&mu_);
@@ -1525,6 +1557,7 @@ void TaskManager::FillTaskInfo(rpc::GetCoreWorkerStatsReply *reply,
 
 void TaskManager::RecordMetrics() {
   absl::MutexLock lock(&mu_);
+  ray::stats::STATS_total_lineage_bytes.Record(total_lineage_footprint_bytes_);
   task_counter_.FlushOnChangeCallbacks();
 }
 

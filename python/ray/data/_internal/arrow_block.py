@@ -242,7 +242,7 @@ class ArrowBlockAccessor(TableBlockAccessor):
                 except ArrowConversionError as e:
                     if object_extension_type_allowed() and is_object_fixable_error(e):
                         if log_once(f"arrow_object_pickle_{col_name}"):
-                            logger.warning(
+                            logger.debug(
                                 f"Failed to interpret {col_name} as "
                                 "multi-dimensional arrays. It will be pickled."
                             )

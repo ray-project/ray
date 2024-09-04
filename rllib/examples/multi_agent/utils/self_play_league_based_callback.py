@@ -5,7 +5,7 @@ import re
 import numpy as np
 
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
-from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
+from ray.rllib.core.rl_module.rl_module import RLModuleSpec
 from ray.rllib.utils.metrics import ENV_RUNNER_RESULTS
 
 
@@ -162,26 +162,26 @@ class SelfPlayLeagueBasedCallback(DefaultCallbacks):
                         else:
                             return main
 
-                marl_module = local_worker.module
-                main_module = marl_module["main"]
+                multi_rl_module = local_worker.module
+                main_module = multi_rl_module["main"]
 
                 # Set the weights of the new polic(y/ies).
                 if initializing_exploiters:
                     main_state = main_module.get_state()
-                    marl_module["main_0"].set_state(main_state)
-                    marl_module["league_exploiter_1"].set_state(main_state)
-                    marl_module["main_exploiter_1"].set_state(main_state)
+                    multi_rl_module["main_0"].set_state(main_state)
+                    multi_rl_module["league_exploiter_1"].set_state(main_state)
+                    multi_rl_module["main_exploiter_1"].set_state(main_state)
                     # We need to sync the just copied local weights to all the
                     # remote workers and remote Learner workers as well.
                     algorithm.env_runner_group.sync_weights(
                         policies=["main_0", "league_exploiter_1", "main_exploiter_1"]
                     )
-                    algorithm.learner_group.set_weights(marl_module.get_state())
+                    algorithm.learner_group.set_weights(multi_rl_module.get_state())
                 else:
                     algorithm.add_module(
                         module_id=new_mod_id,
-                        module_spec=SingleAgentRLModuleSpec.from_module(main_module),
-                        module_state=marl_module[module_id].get_state(),
+                        module_spec=RLModuleSpec.from_module(main_module),
+                        module_state=multi_rl_module[module_id].get_state(),
                     )
 
                 algorithm.env_runner_group.foreach_worker(

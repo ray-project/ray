@@ -1266,6 +1266,9 @@ def test_union(ray_start_regular_shared):
     assert ds2.count() == 210
 
 
+@pytest.mark.skipif(
+    sys.version_info >= (3, 12), reason="No tensorflow for Python 3.12+"
+)
 def test_iter_tf_batches(ray_start_regular_shared):
     df1 = pd.DataFrame(
         {"one": [1, 2, 3], "two": [1.0, 2.0, 3.0], "label": [1.0, 2.0, 3.0]}
@@ -1288,6 +1291,9 @@ def test_iter_tf_batches(ray_start_regular_shared):
         np.testing.assert_array_equal(np.sort(df.values), np.sort(combined_iterations))
 
 
+@pytest.mark.skipif(
+    sys.version_info >= (3, 12), reason="No tensorflow for Python 3.12+"
+)
 def test_iter_tf_batches_tensor_ds(ray_start_regular_shared):
     arr1 = np.arange(12).reshape((3, 2, 2))
     arr2 = np.arange(12, 24).reshape((3, 2, 2))
@@ -1545,6 +1551,9 @@ def test_pandas_block_select():
 # tests should only be carefully reordered to retain this invariant!
 
 
+@pytest.mark.skipif(
+    sys.version_info >= (3, 12), reason="TODO(scottjlee): Not working yet for py312"
+)
 def test_unsupported_pyarrow_versions_check(shutdown_only, unsupported_pyarrow_version):
     ray.shutdown()
 
@@ -1560,6 +1569,9 @@ def test_unsupported_pyarrow_versions_check(shutdown_only, unsupported_pyarrow_v
         ray.get(should_error.remote())
 
 
+@pytest.mark.skipif(
+    sys.version_info >= (3, 12), reason="TODO(scottjlee): Not working yet for py312"
+)
 def test_unsupported_pyarrow_versions_check_disabled(
     shutdown_only,
     unsupported_pyarrow_version,
@@ -1609,6 +1621,9 @@ def test_read_write_local_node_ray_client(ray_start_cluster_enabled):
         ds.write_parquet("local://" + data_path).materialize()
 
 
+@pytest.mark.skipif(
+    sys.version_info >= (3, 12), reason="No tensorflow for Python 3.12+"
+)
 def test_read_warning_large_parallelism(ray_start_regular, propagate_logs, caplog):
     with caplog.at_level(logging.WARNING, logger="ray.data.read_api"):
         ray.data.range(5000, override_num_blocks=5000).materialize()

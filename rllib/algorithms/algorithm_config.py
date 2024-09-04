@@ -23,18 +23,24 @@ from packaging import version
 import ray
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
 from ray.rllib.core import DEFAULT_MODULE_ID
-from ray.rllib.core.rl_module.marl_module import MultiAgentRLModuleSpec
-from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
+from ray.rllib.core.columns import Columns
+from ray.rllib.core.rl_module import validate_module_id
+from ray.rllib.core.rl_module.multi_rl_module import MultiRLModuleSpec
+from ray.rllib.core.rl_module.rl_module import RLModuleSpec
+from ray.rllib.env import INPUT_ENV_SPACES
 from ray.rllib.env.env_context import EnvContext
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
 from ray.rllib.env.wrappers.atari_wrappers import is_atari
 from ray.rllib.evaluation.collectors.sample_collector import SampleCollector
 from ray.rllib.evaluation.collectors.simple_list_collector import SimpleListCollector
 from ray.rllib.models import MODEL_DEFAULTS
+from ray.rllib.offline.input_reader import InputReader
+from ray.rllib.offline.io_context import IOContext
 from ray.rllib.policy.policy import Policy, PolicySpec
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils import deep_update, merge_dicts
 from ray.rllib.utils.annotations import (
+    OldAPIStack,
     OverrideToImplementCustomLogic_CallToSuperRecommended,
 )
 from ray.rllib.utils.deprecation import (
@@ -44,7 +50,6 @@ from ray.rllib.utils.deprecation import (
 )
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.from_config import NotProvided, from_config
-from ray.rllib.utils.policy import validate_policy_id
 from ray.rllib.utils.schedules.scheduler import Scheduler
 from ray.rllib.utils.serialization import (
     NOT_SERIALIZABLE,
@@ -63,7 +68,7 @@ from ray.rllib.utils.typing import (
     PartialAlgorithmConfigDict,
     PolicyID,
     ResultDict,
-    RLModuleSpec,
+    RLModuleSpecType,
     SampleBatchType,
 )
 from ray.tune.logger import Logger
@@ -104,11 +109,11 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-def _check_rl_module_spec(module_spec: RLModuleSpec) -> None:
-    if not isinstance(module_spec, (SingleAgentRLModuleSpec, MultiAgentRLModuleSpec)):
+def _check_rl_module_spec(module_spec: RLModuleSpecType) -> None:
+    if not isinstance(module_spec, (RLModuleSpec, MultiRLModuleSpec)):
         raise ValueError(
             "rl_module_spec must be an instance of "
-            "SingleAgentRLModuleSpec or MultiAgentRLModuleSpec."
+            "RLModuleSpec or MultiRLModuleSpec."
             f"Got {type(module_spec)} instead."
         )
 
@@ -307,6 +312,10 @@ class AlgorithmConfig(_Config):
             "aot_eager" if sys.platform == "darwin" else "onnxrt"
         )
         self.torch_compile_worker_dynamo_mode = None
+        # Default kwargs for `torch.nn.parallel.DistributedDataParallel`.
+        self.torch_ddp_kwargs = {}
+        # Default setting for skipping `nan` gradient updates.
+        self.torch_skip_nan_gradients = False
 
         # `self.api_stack()`
         self.enable_rl_module_and_learner = False
@@ -321,6 +330,7 @@ class AlgorithmConfig(_Config):
         self.normalize_actions = True
         self.clip_actions = False
         self._is_atari = None
+        self.disable_env_checking = False
         # Deprecated settings:
         self.env_task_fn = None
         self.render_env = False
@@ -371,9 +381,9 @@ class AlgorithmConfig(_Config):
         self.lr = 0.001
         self.grad_clip = None
         self.grad_clip_by = "global_norm"
-        self.train_batch_size = 32
         # Simple logic for now: If None, use `train_batch_size`.
         self.train_batch_size_per_learner = None
+        self.train_batch_size = 32  # @OldAPIStack
         # TODO (sven): Unsolved problem with RLModules sometimes requiring settings from
         #  the main AlgorithmConfig. We should not require the user to provide those
         #  settings in both, the AlgorithmConfig (as property) AND the model config
@@ -408,11 +418,6 @@ class AlgorithmConfig(_Config):
         self.exploration_config = {}
 
         # `self.multi_agent()`
-        # Module ID specific config overrides.
-        self.algorithm_config_overrides_per_module = {}
-        # Cached, actual AlgorithmConfig objects derived from
-        # `self.algorithm_config_overrides_per_module`.
-        self._per_module_overrides: Dict[ModuleID, "AlgorithmConfig"] = {}
         # TODO (sven): Prepare multi-agent setup for logging each agent's and each
         #  RLModule's steps taken thus far (and passing this information into the
         #  EnvRunner metrics and the RLModule's forward pass). Thereby, deprecate the
@@ -432,6 +437,16 @@ class AlgorithmConfig(_Config):
         self.input_ = "sampler"
         self.input_read_method = "read_parquet"
         self.input_read_method_kwargs = {}
+        self.input_read_schema = {}
+        self.input_read_episodes = False
+        self.input_read_sample_batches = False
+        self.input_filesystem = None
+        self.input_filesystem_kwargs = {}
+        self.input_compress_columns = [Columns.OBS, Columns.NEXT_OBS]
+        self.input_spaces_jsonable = True
+        self.map_batches_kwargs = {}
+        self.iter_batches_kwargs = {}
+        self.prelearner_class = None
         self.prelearner_module_synch_period = 10
         self.dataset_num_iters_per_learner = None
         self.input_config = {}
@@ -440,8 +455,14 @@ class AlgorithmConfig(_Config):
         self.shuffle_buffer_size = 0
         self.output = None
         self.output_config = {}
-        self.output_compress_columns = ["obs", "new_obs"]
+        self.output_compress_columns = [Columns.OBS, Columns.NEXT_OBS]
         self.output_max_file_size = 64 * 1024 * 1024
+        self.output_max_rows_per_file = None
+        self.output_write_method = "write_parquet"
+        self.output_write_method_kwargs = {}
+        self.output_filesystem = None
+        self.output_filesystem_kwargs = {}
+        self.output_write_episodes = True
         self.offline_sampling = False
 
         # `self.evaluation()`
@@ -517,8 +538,15 @@ class AlgorithmConfig(_Config):
         # Helper to keep track of the original exploration config when dis-/enabling
         # rl modules.
         self.__prior_exploration_config = None
+        # Module ID specific config overrides.
+        self.algorithm_config_overrides_per_module = {}
+        # Cached, actual AlgorithmConfig objects derived from
+        # `self.algorithm_config_overrides_per_module`.
+        self._per_module_overrides: Dict[ModuleID, "AlgorithmConfig"] = {}
 
         # `self.experimental()`
+        self._torch_grad_scaler_class = None
+        self._torch_lr_scheduler_classes = None
         self._tf_policy_handles_more_than_one_loss = False
         self._disable_preprocessor_api = False
         self._disable_action_flattening = False
@@ -549,7 +577,6 @@ class AlgorithmConfig(_Config):
         self.custom_async_evaluation_function = DEPRECATED_VALUE
         self._enable_rl_module_api = DEPRECATED_VALUE
         self.auto_wrap_old_gym_envs = DEPRECATED_VALUE
-        self.disable_env_checking = DEPRECATED_VALUE
         self.always_attach_evaluation_results = DEPRECATED_VALUE
 
         # The following values have moved because of the new ReplayBuffer API
@@ -611,17 +638,6 @@ class AlgorithmConfig(_Config):
         config["create_env_on_driver"] = config.pop("create_env_on_local_worker", 1)
         config["custom_eval_function"] = config.pop("custom_evaluation_function", None)
         config["framework"] = config.pop("framework_str", None)
-        config["num_cpus_for_driver"] = config.pop(
-            "num_cpus_for_local_worker", config.pop("num_cpus_for_main_process", 1)
-        )
-        config["num_workers"] = config.pop(
-            "num_env_runners", config.pop("num_rollout_workers", 0)
-        )
-        config["num_cpus_per_worker"] = config.pop("num_cpus_per_env_runner", 1)
-        config["num_gpus_per_worker"] = config.pop("num_gpus_per_env_runner", 0)
-        config["num_learner_workers"] = config.pop("num_learners", 0)
-        config["num_cpus_per_learner_worker"] = config.pop("num_cpus_per_learner", 1)
-        config["num_gpus_per_learner_worker"] = config.pop("num_gpus_per_learner", 0)
 
         # Simplify: Remove all deprecated keys that have as value `DEPRECATED_VALUE`.
         # These would be useless in the returned dict anyways.
@@ -926,7 +942,7 @@ class AlgorithmConfig(_Config):
                     AgentToModuleMapping(
                         module_specs=(
                             self.rl_module_spec.module_specs
-                            if isinstance(self.rl_module_spec, MultiAgentRLModuleSpec)
+                            if isinstance(self.rl_module_spec, MultiRLModuleSpec)
                             else set(self.policies)
                         ),
                         agent_to_module_mapping_fn=self.policy_mapping_fn,
@@ -1071,18 +1087,14 @@ class AlgorithmConfig(_Config):
             # Append all other columns handling.
             pipeline.append(AddColumnsFromEpisodesToTrainBatch())
             # Append STATE_IN/STATE_OUT (and time-rank) handler.
-            pipeline.append(
-                AddStatesFromEpisodesToBatch(
-                    as_learner_connector=True, max_seq_len=self.model.get("max_seq_len")
-                )
-            )
+            pipeline.append(AddStatesFromEpisodesToBatch(as_learner_connector=True))
             # If multi-agent -> Map from AgentID-based data to ModuleID based data.
             if self.is_multi_agent():
                 pipeline.append(
                     AgentToModuleMapping(
                         module_specs=(
                             self.rl_module_spec.module_specs
-                            if isinstance(self.rl_module_spec, MultiAgentRLModuleSpec)
+                            if isinstance(self.rl_module_spec, MultiRLModuleSpec)
                             else set(self.policies)
                         ),
                         agent_to_module_mapping_fn=self.policy_mapping_fn,
@@ -1099,7 +1111,7 @@ class AlgorithmConfig(_Config):
         *,
         env: Optional[EnvType] = None,
         spaces: Optional[Dict[ModuleID, Tuple[gym.Space, gym.Space]]] = None,
-        rl_module_spec: Optional[RLModuleSpec] = None,
+        rl_module_spec: Optional[RLModuleSpecType] = None,
     ) -> "LearnerGroup":
         """Builds and returns a new LearnerGroup object based on settings in `self`.
 
@@ -1125,10 +1137,10 @@ class AlgorithmConfig(_Config):
         """
         from ray.rllib.core.learner.learner_group import LearnerGroup
 
-        # If `spaces` or `env` provided -> Create a MARL Module Spec first to be
+        # If `spaces` or `env` provided -> Create a MultiRLModuleSpec first to be
         # passed into the LearnerGroup constructor.
-        if rl_module_spec is None and (env is not None or spaces is not None):
-            rl_module_spec = self.get_marl_module_spec(env=env, spaces=spaces)
+        if rl_module_spec is None:
+            rl_module_spec = self.get_multi_rl_module_spec(env=env, spaces=spaces)
 
         # Construct the actual LearnerGroup.
         learner_group = LearnerGroup(config=self.copy(), module_spec=rl_module_spec)
@@ -1161,11 +1173,11 @@ class AlgorithmConfig(_Config):
         Returns:
             The newly created (and already built) Learner object.
         """
-        # If `spaces` or `env` provided -> Create a MARL Module Spec first to be
+        # If `spaces` or `env` provided -> Create a MultiRLModuleSpec first to be
         # passed into the LearnerGroup constructor.
         rl_module_spec = None
         if env is not None or spaces is not None:
-            rl_module_spec = self.get_marl_module_spec(env=env, spaces=spaces)
+            rl_module_spec = self.get_multi_rl_module_spec(env=env, spaces=spaces)
         # Construct the actual Learner object.
         learner = self.learner_class(config=self, module_spec=rl_module_spec)
         # `build()` the Learner (internal structures such as RLModule, etc..).
@@ -1371,6 +1383,8 @@ class AlgorithmConfig(_Config):
         torch_compile_worker: Optional[bool] = NotProvided,
         torch_compile_worker_dynamo_backend: Optional[str] = NotProvided,
         torch_compile_worker_dynamo_mode: Optional[str] = NotProvided,
+        torch_ddp_kwargs: Optional[Dict[str, Any]] = NotProvided,
+        torch_skip_nan_gradients: Optional[bool] = NotProvided,
     ) -> "AlgorithmConfig":
         """Sets the config's DL framework settings.
 
@@ -1410,6 +1424,25 @@ class AlgorithmConfig(_Config):
                 the workers.
             torch_compile_worker_dynamo_mode: The torch dynamo mode to use on the
                 workers.
+            torch_ddp_kwargs: The kwargs to pass into
+                `torch.nn.parallel.DistributedDataParallel` when using `num_learners
+                > 1`. This is specifically helpful when searching for unused parameters
+                that are not used in the backward pass. This can give hints for errors
+                in custom models where some parameters do not get touched in the
+                backward pass although they should.
+            torch_skip_nan_gradients: If updates with `nan` gradients should be entirely
+                skipped. This skips updates in the optimizer entirely if they contain
+                any `nan` gradient. This can help to avoid biasing moving-average based
+                optimizers - like Adam. This can help in training phases where policy
+                updates can be highly unstable such as during the early stages of
+                training or with highly exploratory policies. In such phases many
+                gradients might turn `nan` and setting them to zero could corrupt the
+                optimizer's internal state. The default is `False` and turns `nan`
+                gradients to zero. If many `nan` gradients are encountered consider (a)
+                monitoring gradients by setting `log_gradients` in `AlgorithmConfig` to
+                `True`, (b) use proper weight initialization (e.g. Xavier, Kaiming) via
+                the `model_config_dict` in `AlgorithmConfig.rl_module` and/or (c)
+                gradient clipping via `grad_clip` in `AlgorithmConfig.training`.
 
         Returns:
             This updated AlgorithmConfig object.
@@ -1451,6 +1484,10 @@ class AlgorithmConfig(_Config):
             )
         if torch_compile_worker_dynamo_mode is not NotProvided:
             self.torch_compile_worker_dynamo_mode = torch_compile_worker_dynamo_mode
+        if torch_ddp_kwargs is not NotProvided:
+            self.torch_ddp_kwargs = torch_ddp_kwargs
+        if torch_skip_nan_gradients is not NotProvided:
+            self.torch_skip_nan_gradients = torch_skip_nan_gradients
 
         return self
 
@@ -1511,11 +1548,11 @@ class AlgorithmConfig(_Config):
         clip_rewards: Optional[Union[bool, float]] = NotProvided,
         normalize_actions: Optional[bool] = NotProvided,
         clip_actions: Optional[bool] = NotProvided,
+        disable_env_checking: Optional[bool] = NotProvided,
         is_atari: Optional[bool] = NotProvided,
         action_mask_key: Optional[str] = NotProvided,
         # Deprecated args.
         auto_wrap_old_gym_envs=DEPRECATED_VALUE,
-        disable_env_checking=DEPRECATED_VALUE,
     ) -> "AlgorithmConfig":
         """Sets the config's RL-environment settings.
 
@@ -1555,6 +1592,11 @@ class AlgorithmConfig(_Config):
             clip_actions: If True, the RLlib default ModuleToEnv connector will clip
                 actions according to the env's bounds (before sending them into the
                 `env.step()` call).
+            disable_env_checking: Disable RLlib's env checks after a gymnasium.Env
+                instance has been constructed in an EnvRunner. Note that the checks
+                include an `env.reset()` and `env.step()` (with a random action), which
+                might tinker with your env's logic and behavior and thus negatively
+                influence sample collection- and/or learning behavior.
             is_atari: This config can be used to explicitly specify whether the env is
                 an Atari env or not. If not specified, RLlib will try to auto-detect
                 this.
@@ -1570,12 +1612,6 @@ class AlgorithmConfig(_Config):
                 old="AlgorithmConfig.environment(auto_wrap_old_gym_envs=..)",
                 error=True,
             )
-        if disable_env_checking != DEPRECATED_VALUE:
-            deprecation_warning(
-                old="AlgorithmConfig.environment(disable_env_checking=..)",
-                error=True,
-            )
-
         if env is not NotProvided:
             self.env = env
         if env_config is not NotProvided:
@@ -1594,6 +1630,8 @@ class AlgorithmConfig(_Config):
             self.normalize_actions = normalize_actions
         if clip_actions is not NotProvided:
             self.clip_actions = clip_actions
+        if disable_env_checking is not NotProvided:
+            self.disable_env_checking = disable_env_checking
         if is_atari is not NotProvided:
             self._is_atari = is_atari
         if action_mask_key is not NotProvided:
@@ -2379,21 +2417,35 @@ class AlgorithmConfig(_Config):
     def offline_data(
         self,
         *,
-        input_=NotProvided,
-        input_read_method=NotProvided,
-        input_read_method_kwargs=NotProvided,
-        prelearner_module_synch_period=NotProvided,
-        dataset_num_iters_per_learner=NotProvided,
-        input_config=NotProvided,
-        actions_in_input_normalized=NotProvided,
-        input_evaluation=NotProvided,
-        postprocess_inputs=NotProvided,
-        shuffle_buffer_size=NotProvided,
-        output=NotProvided,
-        output_config=NotProvided,
-        output_compress_columns=NotProvided,
-        output_max_file_size=NotProvided,
-        offline_sampling=NotProvided,
+        input_: Optional[Union[str, Callable[[IOContext], InputReader]]] = NotProvided,
+        input_read_method: Optional[Union[str, Callable]] = NotProvided,
+        input_read_method_kwargs: Optional[Dict] = NotProvided,
+        input_read_schema: Optional[Dict[str, str]] = NotProvided,
+        input_read_episodes: Optional[bool] = NotProvided,
+        input_read_sample_batches: Optional[bool] = NotProvided,
+        input_filesystem: Optional[str] = NotProvided,
+        input_filesystem_kwargs: Optional[Dict] = NotProvided,
+        input_compress_columns: Optional[List[str]] = NotProvided,
+        map_batches_kwargs: Optional[Dict] = NotProvided,
+        iter_batches_kwargs: Optional[Dict] = NotProvided,
+        prelearner_class: Optional[Type] = NotProvided,
+        prelearner_module_synch_period: Optional[int] = NotProvided,
+        dataset_num_iters_per_learner: Optional[int] = NotProvided,
+        input_config: Optional[Dict] = NotProvided,
+        actions_in_input_normalized: Optional[bool] = NotProvided,
+        postprocess_inputs: Optional[bool] = NotProvided,
+        shuffle_buffer_size: Optional[int] = NotProvided,
+        output: Optional[str] = NotProvided,
+        output_config: Optional[Dict] = NotProvided,
+        output_compress_columns: Optional[List[str]] = NotProvided,
+        output_max_file_size: Optional[float] = NotProvided,
+        output_max_rows_per_file: Optional[int] = NotProvided,
+        output_write_method: Optional[str] = NotProvided,
+        output_write_method_kwargs: Optional[Dict] = NotProvided,
+        output_filesystem: Optional[str] = NotProvided,
+        output_filesystem_kwargs: Optional[Dict] = NotProvided,
+        output_write_episodes: Optional[bool] = NotProvided,
+        offline_sampling: Optional[str] = NotProvided,
     ) -> "AlgorithmConfig":
         """Sets the config's offline data settings.
 
@@ -2409,17 +2461,83 @@ class AlgorithmConfig(_Config):
                 ray.rllib.offline.InputReader.
                 - A string key that indexes a callable with tune.registry.register_input
             input_read_method: Read method for the `ray.data.Dataset` to read in the
-                offline data from `input_`. The default is `read_json` for JSON files.
-                See https://docs.ray.io/en/latest/data/api/input_output.html for more
-                info about available read methods in `ray.data`.
-            input_read_method_kwargs: kwargs for the `input_read_method`. These will be
-                passed into the read method without checking.
+                offline data from `input_`. The default is `read_parquet` for Parquet
+                files. See https://docs.ray.io/en/latest/data/api/input_output.html for
+                more info about available read methods in `ray.data`.
+            input_read_method_kwargs: `kwargs` for the `input_read_method`. These will
+                be passed into the read method without checking. If no arguments are
+                passed in the default argument `{'override_num_blocks':
+                max(num_learners * 2, 2)}` is used. Use these `kwargs`` together with
+                the `map_batches_kwargs` and `iter_batches_kwargs` to tune the
+                performance of the data pipeline.
+            input_read_schema: Table schema for converting offline data to episodes.
+                This schema maps the offline data columns to `ray.rllib.core.columns.
+                Columns`: {Columns.OBS: 'o_t', Columns.ACTIONS: 'a_t', ...}. Columns in
+                the data set that are not mapped via this schema are sorted into
+                episodes' `extra_model_outputs`. If no schema is passed in the default
+                schema used is `ray.rllib.offline.offline_data.SCHEMA`. If your data set
+                contains already the names in this schema, no `input_read_schema` is
+                needed.
+            input_read_episodes: Whether offline data is already stored in RLlib's
+                `EpisodeType` format, i.e. `ray.rllib.env.SingleAgentEpisode` (multi
+                -agent is planned but not supported, yet). Reading episodes directly
+                avoids additional transform steps and is usually faster and
+                therefore the recommended format when your application remains fully
+                inside of RLlib's schema. The other format is a columnar format and is
+                agnostic to the RL framework used. Use the latter format, if you are
+                unsure when to use the data or in which RL framework. The default is
+                to read column data, i.e. `False`. `input_read_episodes` and
+                `inpuit_read_sample_batches` cannot be `True` at the same time. See
+                also `output_write_episodes` to define the output data format when
+                recording.
+            input_read_sample_batches: Whether offline data is stored in RLlib's old
+                stack `SampleBatch` type. This is usually the case for older data
+                recorded with RLlib in JSON line format. Reading in `SampleBatch`
+                data needs extra transforms and might not concatenate episode chunks
+                contained in different `SampleBatch`es in the data. If possible avoid
+                to read `SampleBatch`es and convert them in a controlled form into
+                RLlib`s `EpisodeType`s (i.e. `SingleAgentEpisode` or
+                `MultiAgentEpisode`). The default is `False`. `input_read_episodes`
+                and `inpuit_read_sample_batches` cannot be `True` at the same time.
+            input_filesystem: A cloud filesystem to handle access to cloud storage when
+                reading experiences. Should be either `gcs` for Google Cloud Storage,
+                `s3` for AWS S3 buckets, or `abs` for Azure Blob Storage.
+            input_filesystem_kwargs: A dictionary holding the kwargs for the filesystem
+                given by `input_filesystem`. See `gcsfs.GCSFilesystem` for GCS,
+                `pyarrow.fs.S3FileSystem`, for S3, and `ablfs.AzureBlobFilesystem` for
+                ABS filesystem arguments.
+            input_compress_columns: What input columns are compressed with LZ4 in the
+                input data. If data is stored in `RLlib`'s `SingleAgentEpisode` (
+                `MultiAgentEpisode` not supported, yet). Note,
+                `rllib.core.columns.Columns.OBS` will also try to decompress
+                `rllib.core.columns.Columns.NEXT_OBS`.
+            map_batches_kwargs: `kwargs` for the `map_batches` method. These will be
+                passed into the `ray.data.Dataset.map_batches` method when sampling
+                without checking. If no arguments passed in the default arguments `{
+                'concurrency': max(2, num_learners), 'zero_copy_batch': True}` is
+                used. Use these `kwargs`` together with the `input_read_method_kwargs`
+                and `iter_batches_kwargs` to tune the performance of the data pipeline.
+            iter_batches_kwargs: `kwargs` for the `iter_batches` method. These will be
+                passed into the `ray.data.Dataset.iter_batches` method when sampling
+                without checking. If no arguments are passed in, the default argument `{
+                'prefetch_batches': 2, 'local_buffer_shuffle_size':
+                train_batch_size_per_learner * 4}` is used. Use these `kwargs``
+                together with the `input_read_method_kwargs` and `map_batches_kwargs`
+                to tune the performance of the data pipeline.
+            prelearner_class: An optional `OfflinePreLearner` class that is used to
+                transform data batches in `ray.data.map_batches` used in the
+                `OfflineData` class to transform data from columns to batches that can
+                be used in the `Learner`'s `update` methods. Override the
+                `OfflinePreLearner` class and pass your dervied class in here, if you
+                need to make some further transformations specific for your data or
+                loss. The default is `None` which uses the base `OfflinePreLearner`
+                defined in `ray.rllib.offline.offline_prelearner`.
             prelearner_module_synch_period: The period (number of batches converted)
                 after which the `RLModule` held by the `PreLearner` should sync weights.
                 The `PreLearner` is used to preprocess batches for the learners. The
                 higher this value the more off-policy the `PreLearner`'s module will be.
-                Values too small will force the `PreLearner` to sync a ,lot with the
-                `Learner` and will slow down the data pipeline. The default value chosen
+                Values too small will force the `PreLearner` to sync more frequently
+                and thus might slow down the data pipeline. The default value chosen
                 by the `OfflinePreLearner` is 10.
             dataset_num_iters_per_learner: Number of iterations to run in each learner
                 during a single training iteration. If `None`, each learner runs a
@@ -2449,9 +2567,25 @@ class AlgorithmConfig(_Config):
             output_config: Arguments accessible from the IOContext for configuring
                 custom output.
             output_compress_columns: What sample batch columns to LZ4 compress in the
-                output data.
+                output data. Note, `rllib.core.columns.Columns.OBS` will also compress
+                `rllib.core.columns.Columns.NEXT_OBS`.
             output_max_file_size: Max output file size (in bytes) before rolling over
                 to a new file.
+            output_max_rows_per_file: Max output row numbers before rolling over to a
+                new file.
+            output_write_method: Write method for the `ray.data.Dataset` to write the
+                offline data to `output`. The default is `read_parquet` for Parquet
+                files. See https://docs.ray.io/en/latest/data/api/input_output.html for
+                more info about available read methods in `ray.data`.
+            output_write_method_kwargs: `kwargs` for the `output_write_method`. These
+                will be passed into the write method without checking.
+            output_filesystem: A cloud filesystem to handle access to cloud storage when
+                writing experiences. Should be either `gcs` for Google Cloud Storage,
+                `s3` for AWS S3 buckets, or `abs` for Azure Blob Storage.
+            output_filesystem_kwargs: A dictionary holding the kwargs for the filesystem
+                given by `output_filesystem`. See `gcsfs.GCSFilesystem` for GCS,
+                `pyarrow.fs.S3FileSystem`, for S3, and `ablfs.AzureBlobFilesystem` for
+                ABS filesystem arguments.
             offline_sampling: Whether sampling for the Algorithm happens via
                 reading from offline data. If True, EnvRunners will NOT limit the
                 number of collected batches within the same `sample()` call based on
@@ -2467,6 +2601,24 @@ class AlgorithmConfig(_Config):
             self.input_read_method = input_read_method
         if input_read_method_kwargs is not NotProvided:
             self.input_read_method_kwargs = input_read_method_kwargs
+        if input_read_schema is not NotProvided:
+            self.input_read_schema = input_read_schema
+        if input_read_episodes is not NotProvided:
+            self.input_read_episodes = input_read_episodes
+        if input_read_sample_batches is not NotProvided:
+            self.input_read_sample_batches = input_read_sample_batches
+        if input_filesystem is not NotProvided:
+            self.input_filesystem = input_filesystem
+        if input_filesystem_kwargs is not NotProvided:
+            self.input_filesystem_kwargs = input_filesystem_kwargs
+        if input_compress_columns is not NotProvided:
+            self.input_compress_columns = input_compress_columns
+        if map_batches_kwargs is not NotProvided:
+            self.map_batches_kwargs = map_batches_kwargs
+        if iter_batches_kwargs is not NotProvided:
+            self.iter_batches_kwargs = iter_batches_kwargs
+        if prelearner_class is not NotProvided:
+            self.prelearner_class = prelearner_class
         if prelearner_module_synch_period is not NotProvided:
             self.prelearner_module_synch_period = prelearner_module_synch_period
         if dataset_num_iters_per_learner is not NotProvided:
@@ -2504,15 +2656,6 @@ class AlgorithmConfig(_Config):
             self.input_config = input_config
         if actions_in_input_normalized is not NotProvided:
             self.actions_in_input_normalized = actions_in_input_normalized
-        if input_evaluation is not NotProvided:
-            deprecation_warning(
-                old="offline_data(input_evaluation={})".format(input_evaluation),
-                new="evaluation(off_policy_estimation_methods={})".format(
-                    input_evaluation
-                ),
-                error=True,
-                help="Running OPE during training is not recommended.",
-            )
         if postprocess_inputs is not NotProvided:
             self.postprocess_inputs = postprocess_inputs
         if shuffle_buffer_size is not NotProvided:
@@ -2525,6 +2668,18 @@ class AlgorithmConfig(_Config):
             self.output_compress_columns = output_compress_columns
         if output_max_file_size is not NotProvided:
             self.output_max_file_size = output_max_file_size
+        if output_max_rows_per_file is not NotProvided:
+            self.output_max_rows_per_file = output_max_rows_per_file
+        if output_write_method is not NotProvided:
+            self.output_write_method = output_write_method
+        if output_write_method_kwargs is not NotProvided:
+            self.output_write_method_kwargs = output_write_method_kwargs
+        if output_filesystem is not NotProvided:
+            self.output_filesystem = output_filesystem
+        if output_filesystem_kwargs is not NotProvided:
+            self.output_filesystem_kwargs = output_filesystem_kwargs
+        if output_write_episodes is not NotProvided:
+            self.output_write_episodes = output_write_episodes
         if offline_sampling is not NotProvided:
             self.offline_sampling = offline_sampling
 
@@ -2535,9 +2690,6 @@ class AlgorithmConfig(_Config):
         *,
         policies: Optional[
             Union[MultiAgentPolicyConfigDict, Collection[PolicyID]]
-        ] = NotProvided,
-        algorithm_config_overrides_per_module: Optional[
-            Dict[ModuleID, PartialAlgorithmConfigDict]
         ] = NotProvided,
         policy_map_capacity: Optional[int] = NotProvided,
         policy_mapping_fn: Optional[
@@ -2550,6 +2702,7 @@ class AlgorithmConfig(_Config):
         observation_fn: Optional[Callable] = NotProvided,
         count_steps_by: Optional[str] = NotProvided,
         # Deprecated args:
+        algorithm_config_overrides_per_module=DEPRECATED_VALUE,
         replay_mode=DEPRECATED_VALUE,
         # Now done via Ray object store, which has its own cloud-supported
         # spillover mechanism.
@@ -2566,18 +2719,6 @@ class AlgorithmConfig(_Config):
                 4-tuples of (policy_cls, obs_space, act_space, config) or PolicySpecs.
                 These tuples or PolicySpecs define the class of the policy, the
                 observation- and action spaces of the policies, and any extra config.
-            algorithm_config_overrides_per_module: Only used if
-                `enable_rl_module_and_learner=True`.
-                A mapping from ModuleIDs to per-module AlgorithmConfig override dicts,
-                which apply certain settings,
-                e.g. the learning rate, from the main AlgorithmConfig only to this
-                particular module (within a MultiAgentRLModule).
-                You can create override dicts by using the `AlgorithmConfig.overrides`
-                utility. For example, to override your learning rate and (PPO) lambda
-                setting just for a single RLModule with your MultiAgentRLModule, do:
-                config.multi_agent(algorithm_config_overrides_per_module={
-                "module_1": PPOConfig.overrides(lr=0.0002, lambda_=0.75),
-                })
             policy_map_capacity: Keep this many policies in the "policy_map" (before
                 writing least-recently used ones to disk/S3).
             policy_mapping_fn: Function mapping agent ids to policy ids. The signature
@@ -2621,7 +2762,7 @@ class AlgorithmConfig(_Config):
             # Make sure our Policy IDs are ok (this should work whether `policies`
             # is a dict or just any Sequence).
             for pid in policies:
-                validate_policy_id(pid, error=True)
+                validate_module_id(pid, error=True)
 
             # Collection: Convert to dict.
             if isinstance(policies, (set, tuple, list)):
@@ -2654,15 +2795,12 @@ class AlgorithmConfig(_Config):
                     "set/tuple/list of PolicyIDs!"
                 )
 
-        if algorithm_config_overrides_per_module is not NotProvided:
-            if not isinstance(algorithm_config_overrides_per_module, dict):
-                raise ValueError(
-                    "`algorithm_config_overrides_per_module` must be a dict mapping "
-                    "module IDs to config override dicts! You provided "
-                    f"{algorithm_config_overrides_per_module}."
+        if algorithm_config_overrides_per_module != DEPRECATED_VALUE:
+            deprecation_warning(old="", error=False)
+            self.rl_module(
+                algorithm_config_overrides_per_module=(
+                    algorithm_config_overrides_per_module
                 )
-            self.algorithm_config_overrides_per_module.update(
-                algorithm_config_overrides_per_module
             )
 
         if policy_map_capacity is not NotProvided:
@@ -2857,9 +2995,7 @@ class AlgorithmConfig(_Config):
             log_level: Set the ray.rllib.* log level for the agent process and its
                 workers. Should be one of DEBUG, INFO, WARN, or ERROR. The DEBUG level
                 will also periodically print out summaries of relevant internal dataflow
-                (this is also printed out once at startup at the INFO level). When using
-                the `rllib train` command, you can also use the `-v` and `-vv` flags as
-                shorthand for INFO and DEBUG.
+                (this is also printed out once at startup at the INFO level).
             log_sys_usage: Log system resource metrics to results. This requires
                 `psutil` to be installed for sys stats, and `gputil` for GPU metrics.
             fake_sampler: Use fake (infinite speed) sampler. For testing only.
@@ -3034,7 +3170,10 @@ class AlgorithmConfig(_Config):
         self,
         *,
         model_config_dict: Optional[Dict[str, Any]] = NotProvided,
-        rl_module_spec: Optional[RLModuleSpec] = NotProvided,
+        rl_module_spec: Optional[RLModuleSpecType] = NotProvided,
+        algorithm_config_overrides_per_module: Optional[
+            Dict[ModuleID, PartialAlgorithmConfigDict]
+        ] = NotProvided,
         # Deprecated arg.
         _enable_rl_module_api=DEPRECATED_VALUE,
     ) -> "AlgorithmConfig":
@@ -3045,30 +3184,57 @@ class AlgorithmConfig(_Config):
                 will be used for any `RLModule` if not otherwise specified in the
                 `rl_module_spec`.
             rl_module_spec: The RLModule spec to use for this config. It can be either
-                a SingleAgentRLModuleSpec or a MultiAgentRLModuleSpec. If the
+                a RLModuleSpec or a MultiRLModuleSpec. If the
                 observation_space, action_space, catalog_class, or the model config is
                 not specified it will be inferred from the env and other parts of the
                 algorithm config object.
+            algorithm_config_overrides_per_module: Only used if
+                `enable_rl_module_and_learner=True`.
+                A mapping from ModuleIDs to per-module AlgorithmConfig override dicts,
+                which apply certain settings,
+                e.g. the learning rate, from the main AlgorithmConfig only to this
+                particular module (within a MultiRLModule).
+                You can create override dicts by using the `AlgorithmConfig.overrides`
+                utility. For example, to override your learning rate and (PPO) lambda
+                setting just for a single RLModule with your MultiRLModule, do:
+                config.multi_agent(algorithm_config_overrides_per_module={
+                "module_1": PPOConfig.overrides(lr=0.0002, lambda_=0.75),
+                })
 
         Returns:
             This updated AlgorithmConfig object.
         """
-        if model_config_dict is not NotProvided:
-            self._model_config_dict = model_config_dict
-        if rl_module_spec is not NotProvided:
-            self._rl_module_spec = rl_module_spec
-
         if _enable_rl_module_api != DEPRECATED_VALUE:
             deprecation_warning(
                 old="AlgorithmConfig.rl_module(_enable_rl_module_api=..)",
                 new="AlgorithmConfig.api_stack(enable_rl_module_and_learner=..)",
-                error=False,
+                error=True,
             )
+
+        if model_config_dict is not NotProvided:
+            self._model_config_dict = model_config_dict
+        if rl_module_spec is not NotProvided:
+            self._rl_module_spec = rl_module_spec
+        if algorithm_config_overrides_per_module is not NotProvided:
+            if not isinstance(algorithm_config_overrides_per_module, dict):
+                raise ValueError(
+                    "`algorithm_config_overrides_per_module` must be a dict mapping "
+                    "module IDs to config override dicts! You provided "
+                    f"{algorithm_config_overrides_per_module}."
+                )
+            self.algorithm_config_overrides_per_module.update(
+                algorithm_config_overrides_per_module
+            )
+
         return self
 
     def experimental(
         self,
         *,
+        _torch_grad_scaler_class: Optional[Type] = NotProvided,
+        _torch_lr_scheduler_classes: Optional[
+            Union[List[Type], Dict[ModuleID, Type]]
+        ] = NotProvided,
         _tf_policy_handles_more_than_one_loss: Optional[bool] = NotProvided,
         _disable_preprocessor_api: Optional[bool] = NotProvided,
         _disable_action_flattening: Optional[bool] = NotProvided,
@@ -3079,6 +3245,25 @@ class AlgorithmConfig(_Config):
         """Sets the config's experimental settings.
 
         Args:
+            _torch_grad_scaler_class: Class to use for torch loss scaling (and gradient
+                unscaling). The class must implement the following methods to be
+                compatible with a `TorchLearner`. These methods/APIs match exactly those
+                of torch's own `torch.amp.GradScaler` (see here for more details
+                https://pytorch.org/docs/stable/amp.html#gradient-scaling):
+                `scale([loss])` to scale the loss by some factor.
+                `get_scale()` to get the current scale factor value.
+                `step([optimizer])` to unscale the grads (divide by the scale factor)
+                and step the given optimizer.
+                `update()` to update the scaler after an optimizer step (for example to
+                adjust the scale factor).
+            _torch_lr_scheduler_classes: A list of `torch.lr_scheduler.LRScheduler`
+                (see here for more details
+                https://pytorch.org/docs/stable/optim.html#how-to-adjust-learning-rate)
+                classes or a dictionary mapping module IDs to such a list of respective
+                scheduler classes. Multiple scheduler classes can be applied in sequence
+                and will be stepped in the same sequence as defined here. Note, most
+                learning rate schedulers need arguments to be configured, i.e. you need
+                to partially initialize the schedulers in the list(s).
             _tf_policy_handles_more_than_one_loss: Experimental flag.
                 If True, TFPolicy will handle more than one loss/optimizer.
                 Set this to True, if you would like to return more than
@@ -3120,6 +3305,10 @@ class AlgorithmConfig(_Config):
             self._disable_initialize_loss_from_dummy_batch = (
                 _disable_initialize_loss_from_dummy_batch
             )
+        if _torch_grad_scaler_class is not NotProvided:
+            self._torch_grad_scaler_class = _torch_grad_scaler_class
+        if _torch_lr_scheduler_classes is not NotProvided:
+            self._torch_lr_scheduler_classes = _torch_lr_scheduler_classes
 
         return self
 
@@ -3134,19 +3323,18 @@ class AlgorithmConfig(_Config):
             _check_rl_module_spec(self._rl_module_spec)
             # Merge given spec with default one (in case items are missing, such as
             # spaces, module class, etc.)
-            if isinstance(self._rl_module_spec, SingleAgentRLModuleSpec):
-                if isinstance(default_rl_module_spec, SingleAgentRLModuleSpec):
+            if isinstance(self._rl_module_spec, RLModuleSpec):
+                if isinstance(default_rl_module_spec, RLModuleSpec):
                     default_rl_module_spec.update(self._rl_module_spec)
                     return default_rl_module_spec
-                elif isinstance(default_rl_module_spec, MultiAgentRLModuleSpec):
+                elif isinstance(default_rl_module_spec, MultiRLModuleSpec):
                     raise ValueError(
-                        "Cannot merge MultiAgentRLModuleSpec with "
-                        "SingleAgentRLModuleSpec!"
+                        "Cannot merge MultiRLModuleSpec with RLModuleSpec!"
                     )
             else:
-                marl_module_spec = copy.deepcopy(self._rl_module_spec)
-                marl_module_spec.update(default_rl_module_spec)
-                return marl_module_spec
+                multi_rl_module_spec = copy.deepcopy(self._rl_module_spec)
+                multi_rl_module_spec.update(default_rl_module_spec)
+                return multi_rl_module_spec
 
         # `self._rl_module_spec` has not been user defined -> return default one.
         else:
@@ -3312,257 +3500,6 @@ class AlgorithmConfig(_Config):
 
         return eval_config_obj
 
-    def get_multi_agent_setup(
-        self,
-        *,
-        policies: Optional[MultiAgentPolicyConfigDict] = None,
-        env: Optional[EnvType] = None,
-        spaces: Optional[Dict[PolicyID, Tuple[Space, Space]]] = None,
-        default_policy_class: Optional[Type[Policy]] = None,
-    ) -> Tuple[MultiAgentPolicyConfigDict, Callable[[PolicyID, SampleBatchType], bool]]:
-        r"""Compiles complete multi-agent config (dict) from the information in `self`.
-
-        Infers the observation- and action spaces, the policy classes, and the policy's
-        configs. The returned `MultiAgentPolicyConfigDict` is fully unified and strictly
-        maps PolicyIDs to complete PolicySpec objects (with all their fields not-None).
-
-        Examples:
-        .. testcode::
-
-            import gymnasium as gym
-            from ray.rllib.algorithms.ppo import PPOConfig
-            config = (
-              PPOConfig()
-              .environment("CartPole-v1")
-              .framework("torch")
-              .multi_agent(policies={"pol1", "pol2"}, policies_to_train=["pol1"])
-            )
-            policy_dict, is_policy_to_train = config.get_multi_agent_setup(
-                env=gym.make("CartPole-v1"))
-            is_policy_to_train("pol1")
-            is_policy_to_train("pol2")
-
-        Args:
-            policies: An optional multi-agent `policies` dict, mapping policy IDs
-                to PolicySpec objects. If not provided, will use `self.policies`
-                instead. Note that the `policy_class`, `observation_space`, and
-                `action_space` properties in these PolicySpecs may be None and must
-                therefore be inferred here.
-            env: An optional env instance, from which to infer the different spaces for
-                the different policies. If not provided, will try to infer from
-                `spaces`. Otherwise from `self.observation_space` and
-                `self.action_space`. If no information on spaces can be infered, will
-                raise an error.
-            spaces: Optional dict mapping policy IDs to tuples of 1) observation space
-                and 2) action space that should be used for the respective policy.
-                These spaces were usually provided by an already instantiated remote
-                EnvRunner. Note that if the `env` argument is provided, will try to
-                infer spaces from `env` first.
-            default_policy_class: The Policy class to use should a PolicySpec have its
-                policy_class property set to None.
-
-        Returns:
-            A tuple consisting of 1) a MultiAgentPolicyConfigDict and 2) a
-            `is_policy_to_train(PolicyID, SampleBatchType) -> bool` callable.
-
-        Raises:
-            ValueError: In case, no spaces can be infered for the policy/ies.
-            ValueError: In case, two agents in the env map to the same PolicyID
-                (according to `self.policy_mapping_fn`), but have different action- or
-                observation spaces according to the infered space information.
-        """
-        policies = copy.deepcopy(policies or self.policies)
-
-        # Policies given as set/list/tuple (of PolicyIDs) -> Setup each policy
-        # automatically via empty PolicySpec (will make RLlib infer observation- and
-        # action spaces as well as the Policy's class).
-        if isinstance(policies, (set, list, tuple)):
-            policies = {pid: PolicySpec() for pid in policies}
-
-        # Try extracting spaces from env or from given spaces dict.
-        env_obs_space = None
-        env_act_space = None
-
-        # Env is a ray.remote: Get spaces via its (automatically added)
-        # `_get_spaces()` method.
-        if isinstance(env, ray.actor.ActorHandle):
-            env_obs_space, env_act_space = ray.get(env._get_spaces.remote())
-        # Normal env (gym.Env or MultiAgentEnv): These should have the
-        # `observation_space` and `action_space` properties.
-        elif env is not None:
-            # `env` is a gymnasium.vector.Env.
-            if hasattr(env, "single_observation_space") and isinstance(
-                env.single_observation_space, gym.Space
-            ):
-                env_obs_space = env.single_observation_space
-            # `env` is a gymnasium.Env.
-            elif hasattr(env, "observation_space") and isinstance(
-                env.observation_space, gym.Space
-            ):
-                env_obs_space = env.observation_space
-
-            # `env` is a gymnasium.vector.Env.
-            if hasattr(env, "single_action_space") and isinstance(
-                env.single_action_space, gym.Space
-            ):
-                env_act_space = env.single_action_space
-            # `env` is a gymnasium.Env.
-            elif hasattr(env, "action_space") and isinstance(
-                env.action_space, gym.Space
-            ):
-                env_act_space = env.action_space
-
-        # Last resort: Try getting the env's spaces from the spaces
-        # dict's special __env__ key.
-        if spaces is not None:
-            if env_obs_space is None:
-                env_obs_space = spaces.get("__env__", [None])[0]
-            if env_act_space is None:
-                env_act_space = spaces.get("__env__", [None, None])[1]
-
-        # Check each defined policy ID and unify its spec.
-        for pid, policy_spec in policies.copy().items():
-            # Convert to PolicySpec if plain list/tuple.
-            if not isinstance(policy_spec, PolicySpec):
-                policies[pid] = policy_spec = PolicySpec(*policy_spec)
-
-            # Infer policy classes for policies dict, if not provided (None).
-            if policy_spec.policy_class is None and default_policy_class is not None:
-                policies[pid].policy_class = default_policy_class
-
-            # Infer observation space.
-            if policy_spec.observation_space is None:
-                if spaces is not None and pid in spaces:
-                    obs_space = spaces[pid][0]
-                elif env_obs_space is not None:
-                    env_unwrapped = env.unwrapped if hasattr(env, "unwrapped") else env
-                    # Multi-agent case AND different agents have different spaces:
-                    # Need to reverse map spaces (for the different agents) to certain
-                    # policy IDs.
-                    if (
-                        isinstance(env_unwrapped, MultiAgentEnv)
-                        and hasattr(env_unwrapped, "_obs_space_in_preferred_format")
-                        and env_unwrapped._obs_space_in_preferred_format
-                    ):
-                        obs_space = None
-                        mapping_fn = self.policy_mapping_fn
-                        one_obs_space = next(iter(env_obs_space.values()))
-                        # If all obs spaces are the same anyways, just use the first
-                        # single-agent space.
-                        if all(s == one_obs_space for s in env_obs_space.values()):
-                            obs_space = one_obs_space
-                        # Otherwise, we have to compare the ModuleID with all possible
-                        # AgentIDs and find the agent ID that matches.
-                        elif mapping_fn:
-                            for aid in env_unwrapped.get_agent_ids():
-                                # Match: Assign spaces for this agentID to the PolicyID.
-                                if mapping_fn(aid, None, worker=None) == pid:
-                                    # Make sure, different agents that map to the same
-                                    # policy don't have different spaces.
-                                    if (
-                                        obs_space is not None
-                                        and env_obs_space[aid] != obs_space
-                                    ):
-                                        raise ValueError(
-                                            "Two agents in your environment map to the "
-                                            "same policyID (as per your `policy_mapping"
-                                            "_fn`), however, these agents also have "
-                                            "different observation spaces!"
-                                        )
-                                    obs_space = env_obs_space[aid]
-                    # Otherwise, just use env's obs space as-is.
-                    else:
-                        obs_space = env_obs_space
-                # Space given directly in config.
-                elif self.observation_space:
-                    obs_space = self.observation_space
-                else:
-                    raise ValueError(
-                        "`observation_space` not provided in PolicySpec for "
-                        f"{pid} and env does not have an observation space OR "
-                        "no spaces received from other workers' env(s) OR no "
-                        "`observation_space` specified in config!"
-                    )
-
-                policies[pid].observation_space = obs_space
-
-            # Infer action space.
-            if policy_spec.action_space is None:
-                if spaces is not None and pid in spaces:
-                    act_space = spaces[pid][1]
-                elif env_act_space is not None:
-                    env_unwrapped = env.unwrapped if hasattr(env, "unwrapped") else env
-                    # Multi-agent case AND different agents have different spaces:
-                    # Need to reverse map spaces (for the different agents) to certain
-                    # policy IDs.
-                    if (
-                        isinstance(env_unwrapped, MultiAgentEnv)
-                        and hasattr(env_unwrapped, "_action_space_in_preferred_format")
-                        and env_unwrapped._action_space_in_preferred_format
-                    ):
-                        act_space = None
-                        mapping_fn = self.policy_mapping_fn
-                        one_act_space = next(iter(env_act_space.values()))
-                        # If all action spaces are the same anyways, just use the first
-                        # single-agent space.
-                        if all(s == one_act_space for s in env_act_space.values()):
-                            act_space = one_act_space
-                        # Otherwise, we have to compare the ModuleID with all possible
-                        # AgentIDs and find the agent ID that matches.
-                        elif mapping_fn:
-                            for aid in env_unwrapped.get_agent_ids():
-                                # Match: Assign spaces for this AgentID to the PolicyID.
-                                if mapping_fn(aid, None, worker=None) == pid:
-                                    # Make sure, different agents that map to the same
-                                    # policy don't have different spaces.
-                                    if (
-                                        act_space is not None
-                                        and env_act_space[aid] != act_space
-                                    ):
-                                        raise ValueError(
-                                            "Two agents in your environment map to the "
-                                            "same policyID (as per your `policy_mapping"
-                                            "_fn`), however, these agents also have "
-                                            "different action spaces!"
-                                        )
-                                    act_space = env_act_space[aid]
-                    # Otherwise, just use env's action space as-is.
-                    else:
-                        act_space = env_act_space
-                elif self.action_space:
-                    act_space = self.action_space
-                else:
-                    raise ValueError(
-                        "`action_space` not provided in PolicySpec for "
-                        f"{pid} and env does not have an action space OR "
-                        "no spaces received from other workers' env(s) OR no "
-                        "`action_space` specified in config!"
-                    )
-                policies[pid].action_space = act_space
-
-            # Create entire AlgorithmConfig object from the provided override.
-            # If None, use {} as override.
-            if not isinstance(policies[pid].config, AlgorithmConfig):
-                assert policies[pid].config is None or isinstance(
-                    policies[pid].config, dict
-                )
-                policies[pid].config = self.copy(copy_frozen=False).update_from_dict(
-                    policies[pid].config or {}
-                )
-
-        # If collection given, construct a simple default callable returning True
-        # if the PolicyID is found in the list/set of IDs.
-        if self.policies_to_train is not None and not callable(self.policies_to_train):
-            pols = set(self.policies_to_train)
-
-            def is_policy_to_train(pid, batch=None):
-                return pid in pols
-
-        else:
-            is_policy_to_train = self.policies_to_train
-
-        return policies, is_policy_to_train
-
     # TODO: Move this to those algorithms that really need this, which is currently
     #  only A2C and PG.
     def validate_train_batch_size_vs_rollout_fragment_length(self) -> None:
@@ -3629,15 +3566,15 @@ class AlgorithmConfig(_Config):
             torch_dynamo_mode=self.torch_compile_worker_dynamo_mode,
         )
 
-    def get_default_rl_module_spec(self) -> RLModuleSpec:
+    def get_default_rl_module_spec(self) -> RLModuleSpecType:
         """Returns the RLModule spec to use for this algorithm.
 
-        Override this method in the sub-class to return the RLModule spec given
+        Override this method in the subclass to return the RLModule spec, given
         the input framework.
 
         Returns:
-            The RLModuleSpec (SingleAgentRLModuleSpec or MultiAgentRLModuleSpec) to use
-            for this algorithm's RLModule.
+            The RLModuleSpec (or MultiRLModuleSpec) to
+            use for this algorithm's RLModule.
         """
         raise NotImplementedError
 
@@ -3653,49 +3590,117 @@ class AlgorithmConfig(_Config):
         """
         raise NotImplementedError
 
-    def get_marl_module_spec(
+    def get_rl_module_spec(
+        self,
+        env: Optional[EnvType] = None,
+        spaces: Optional[Dict[str, gym.Space]] = None,
+        inference_only: Optional[bool] = None,
+    ) -> RLModuleSpec:
+        """Returns the RLModuleSpec based on the given env/spaces.
+
+        Args:
+            env: An optional environment instance, from which to infer the observation-
+                and action spaces for the RLModule. If not provided, will try to infer
+                from `spaces`, otherwise from `self.observation_space` and
+                `self.action_space`. If no information on spaces can be inferred, will
+                raise an error.
+            spaces: Optional dict mapping ModuleIDs to 2-tuples of observation- and
+                action space that should be used for the respective RLModule.
+                These spaces are usually provided by an already instantiated remote
+                EnvRunner (call `EnvRunner.get_spaces()`). If not provided, will try
+                to infer from `env`, otherwise from `self.observation_space` and
+                `self.action_space`. If no information on spaces can be inferred,
+                will raise an error.
+            inference_only: If `True`, the returned module spec will be used in an
+                inference-only setting (sampling) and the RLModule can thus be built in
+                its light version (if available). For example, the `inference_only`
+                version of an RLModule might only contain the networks required for
+                computing actions, but misses additional target- or critic networks.
+
+        Returns:
+            A new RLModuleSpec instance that can be used to build an RLModule.
+        """
+        rl_module_spec = copy.deepcopy(self.rl_module_spec)
+
+        # If a MultiRLModuleSpec -> Reduce to single-agent (and assert that
+        # all non DEFAULT_MODULE_IDs are `learner_only` (so will not be built
+        # here on EnvRunner).
+        if isinstance(rl_module_spec, MultiRLModuleSpec):
+            error = False
+            if DEFAULT_MODULE_ID not in rl_module_spec:
+                error = True
+            if inference_only:
+                for mid, spec in rl_module_spec.module_specs.items():
+                    if mid != DEFAULT_MODULE_ID:
+                        if not spec.learner_only:
+                            error = True
+            elif len(rl_module_spec) > 1:
+                error = True
+            if error:
+                raise ValueError(
+                    "When calling `AlgorithmConfig.get_rl_module_spec()`, the "
+                    "configuration must contain the `DEFAULT_MODULE_ID` key and all "
+                    "other keys' specs must have the setting `learner_only=True`! If "
+                    "you are using a more complex setup, call "
+                    "`AlgorithmConfig.get_multi_rl_module_spec(...)` instead."
+                )
+            rl_module_spec = rl_module_spec[DEFAULT_MODULE_ID]
+
+        if spaces is not None:
+            rl_module_spec.observation_space = spaces[DEFAULT_MODULE_ID][0]
+            rl_module_spec.action_space = spaces[DEFAULT_MODULE_ID][1]
+        elif env is not None:
+            if isinstance(env, gym.vector.VectorEnv):
+                rl_module_spec.observation_space = env.single_observation_space
+            rl_module_spec.action_space = env.single_action_space
+
+        # If module_config_dict is not defined, set to our generic one.
+        if rl_module_spec.model_config_dict is None:
+            rl_module_spec.model_config_dict = self.model_config
+
+        if inference_only is not None:
+            rl_module_spec.inference_only = inference_only
+
+        return rl_module_spec
+
+    def get_multi_rl_module_spec(
         self,
         *,
-        policy_dict: Optional[Dict[str, PolicySpec]] = None,
-        single_agent_rl_module_spec: Optional[SingleAgentRLModuleSpec] = None,
         env: Optional[EnvType] = None,
         spaces: Optional[Dict[PolicyID, Tuple[Space, Space]]] = None,
         inference_only: bool = False,
-    ) -> MultiAgentRLModuleSpec:
-        """Returns the MultiAgentRLModule spec based on the given policy spec dict.
-
-        policy_dict could be a partial dict of the policies that we need to turn into
-        an equivalent multi-agent RLModule spec.
+        # @HybridAPIStack
+        policy_dict: Optional[Dict[str, PolicySpec]] = None,
+        single_agent_rl_module_spec: Optional[RLModuleSpec] = None,
+    ) -> MultiRLModuleSpec:
+        """Returns the MultiRLModuleSpec based on the given env/spaces.
 
         Args:
-            policy_dict: The policy spec dict. Using this dict, we can determine the
-                inferred values for observation_space, action_space, and config for
-                each policy. If the module spec does not have these values specified,
-                they will get auto-filled with these values obtrained from the policy
-                spec dict. Here we are relying on the policy's logic for infering these
-                values from other sources of information (e.g. environement)
-            single_agent_rl_module_spec: The SingleAgentRLModuleSpec to use for
-                constructing a MultiAgentRLModuleSpec. If None, the already
-                configured spec (`self._rl_module_spec`) or the default RLModuleSpec for
-                this algorithm (`self.get_default_rl_module_spec()`) will be used.
-            env: An optional env instance, from which to infer the different spaces for
-                the different SingleAgentRLModules. If not provided, will try to infer
-                from `spaces`. Otherwise from `self.observation_space` and
-                `self.action_space`. If no information on spaces can be infered, will
+            env: An optional environment instance, from which to infer the different
+                spaces for the individual RLModules. If not provided, will try to infer
+                from `spaces`, otherwise from `self.observation_space` and
+                `self.action_space`. If no information on spaces can be inferred, will
                 raise an error.
-            spaces: Optional dict mapping policy IDs to tuples of 1) observation space
-                and 2) action space that should be used for the respective policy.
-                These spaces were usually provided by an already instantiated remote
-                EnvRunner. If not provided, will try to infer from `env`. Otherwise
-                from `self.observation_space` and `self.action_space`. If no
-                information on spaces can be inferred, will raise an error.
-            inference_only: If `True`, the module spec will be used in either
-                sampling or inference and can be built in its light version (if
-                available), i.e. it contains only the networks needed for acting in the
-                environment (no target or critic networks).
+            spaces: Optional dict mapping ModuleIDs to 2-tuples of observation- and
+                action space that should be used for the respective RLModule.
+                These spaces are usually provided by an already instantiated remote
+                EnvRunner (call `EnvRunner.get_spaces()`). If not provided, will try
+                to infer from `env`, otherwise from `self.observation_space` and
+                `self.action_space`. If no information on spaces can be inferred,
+                will raise an error.
+            inference_only: If `True`, the returned module spec will be used in an
+                inference-only setting (sampling) and the RLModule can thus be built in
+                its light version (if available). For example, the `inference_only`
+                version of an RLModule might only contain the networks required for
+                computing actions, but misses additional target- or critic networks.
+                Also, if `True`, the returned spec will NOT contain those (sub)
+                RLModuleSpecs that have their `learner_only` flag set to True.
+
+        Returns:
+            A new MultiRLModuleSpec instance that can be used to build a MultiRLModule.
         """
         # TODO (Kourosh,sven): When we replace policy entirely there will be no need for
-        #  this function to map policy_dict to marl_module_specs anymore. The module
+        #  this function to map policy_dict to multi_rl_module_specs anymore. The module
         #  spec will be directly given by the user or inferred from env and spaces.
         if policy_dict is None:
             policy_dict, _ = self.get_multi_agent_setup(env=env, spaces=spaces)
@@ -3710,16 +3715,16 @@ class AlgorithmConfig(_Config):
         current_rl_module_spec = self._rl_module_spec or default_rl_module_spec
 
         # Algorithm is currently setup as a single-agent one.
-        if isinstance(current_rl_module_spec, SingleAgentRLModuleSpec):
+        if isinstance(current_rl_module_spec, RLModuleSpec):
             # Use either the provided `single_agent_rl_module_spec` (a
-            # SingleAgentRLModuleSpec), the currently configured one of this
+            # RLModuleSpec), the currently configured one of this
             # AlgorithmConfig object, or the default one.
             single_agent_rl_module_spec = (
                 single_agent_rl_module_spec or current_rl_module_spec
             )
             single_agent_rl_module_spec.inference_only = inference_only
-            # Now construct the proper MultiAgentRLModuleSpec.
-            marl_module_spec = MultiAgentRLModuleSpec(
+            # Now construct the proper MultiRLModuleSpec.
+            multi_rl_module_spec = MultiRLModuleSpec(
                 module_specs={
                     k: copy.deepcopy(single_agent_rl_module_spec)
                     for k in policy_dict.keys()
@@ -3730,17 +3735,15 @@ class AlgorithmConfig(_Config):
         else:
             # The user currently has a MultiAgentSpec setup (either via
             # self._rl_module_spec or the default spec of this AlgorithmConfig).
-            assert isinstance(current_rl_module_spec, MultiAgentRLModuleSpec)
+            assert isinstance(current_rl_module_spec, MultiRLModuleSpec)
 
             # Default is single-agent but the user has provided a multi-agent spec
             # so the use-case is multi-agent.
-            if isinstance(default_rl_module_spec, SingleAgentRLModuleSpec):
+            if isinstance(default_rl_module_spec, RLModuleSpec):
                 # The individual (single-agent) module specs are defined by the user
-                # in the currently setup MultiAgentRLModuleSpec -> Use that
-                # SingleAgentRLModuleSpec.
-                if isinstance(
-                    current_rl_module_spec.module_specs, SingleAgentRLModuleSpec
-                ):
+                # in the currently setup MultiRLModuleSpec -> Use that
+                # RLModuleSpec.
+                if isinstance(current_rl_module_spec.module_specs, RLModuleSpec):
                     single_agent_spec = single_agent_rl_module_spec or (
                         current_rl_module_spec.module_specs
                     )
@@ -3751,7 +3754,7 @@ class AlgorithmConfig(_Config):
 
                 # The individual (single-agent) module specs have not been configured
                 # via this AlgorithmConfig object -> Use provided single-agent spec or
-                # the the default spec (which is also a SingleAgentRLModuleSpec in this
+                # the the default spec (which is also a RLModuleSpec in this
                 # case).
                 else:
                     single_agent_spec = (
@@ -3764,14 +3767,16 @@ class AlgorithmConfig(_Config):
                                 k, single_agent_spec
                             )
                         )
-                        for k in policy_dict.keys()
+                        for k in (
+                            policy_dict | current_rl_module_spec.module_specs
+                        ).keys()
                     }
 
-                # Now construct the proper MultiAgentRLModuleSpec.
+                # Now construct the proper MultiRLModuleSpec.
                 # We need to infer the multi-agent class from `current_rl_module_spec`
                 # and fill in the module_specs dict.
-                marl_module_spec = current_rl_module_spec.__class__(
-                    marl_module_class=current_rl_module_spec.marl_module_class,
+                multi_rl_module_spec = current_rl_module_spec.__class__(
+                    multi_rl_module_class=current_rl_module_spec.multi_rl_module_class,
                     module_specs=module_specs,
                     modules_to_load=current_rl_module_spec.modules_to_load,
                     load_state_path=current_rl_module_spec.load_state_path,
@@ -3780,41 +3785,39 @@ class AlgorithmConfig(_Config):
             # Default is multi-agent and user wants to override it -> Don't use the
             # default.
             else:
-                # Use has given an override SingleAgentRLModuleSpec -> Use this to
-                # construct the individual RLModules within the MultiAgentRLModuleSpec.
+                # Use has given an override RLModuleSpec -> Use this to
+                # construct the individual RLModules within the MultiRLModuleSpec.
                 if single_agent_rl_module_spec is not None:
                     pass
-                # User has NOT provided an override SingleAgentRLModuleSpec.
+                # User has NOT provided an override RLModuleSpec.
                 else:
                     # But the currently setup multi-agent spec has a SingleAgentRLModule
                     # spec defined -> Use that to construct the individual RLModules
-                    # within the MultiAgentRLModuleSpec.
-                    if isinstance(
-                        current_rl_module_spec.module_specs, SingleAgentRLModuleSpec
-                    ):
+                    # within the MultiRLModuleSpec.
+                    if isinstance(current_rl_module_spec.module_specs, RLModuleSpec):
                         # The individual module specs are not given, it is given as one
-                        # SingleAgentRLModuleSpec to be re-used for all
+                        # RLModuleSpec to be re-used for all
                         single_agent_rl_module_spec = (
                             current_rl_module_spec.module_specs
                         )
                     # The currently setup multi-agent spec has NO
-                    # SingleAgentRLModuleSpec in it -> Error (there is no way we can
+                    # RLModuleSpec in it -> Error (there is no way we can
                     # infer this information from anywhere at this point).
                     else:
                         raise ValueError(
-                            "We have a MultiAgentRLModuleSpec "
+                            "We have a MultiRLModuleSpec "
                             f"({current_rl_module_spec}), but no "
-                            "`SingleAgentRLModuleSpec`s to compile the individual "
+                            "`RLModuleSpec`s to compile the individual "
                             "RLModules' specs! Use "
-                            "`AlgorithmConfig.get_marl_module_spec("
+                            "`AlgorithmConfig.get_multi_rl_module_spec("
                             "policy_dict=.., single_agent_rl_module_spec=..)`."
                         )
 
                 single_agent_rl_module_spec.inference_only = inference_only
 
-                # Now construct the proper MultiAgentRLModuleSpec.
-                marl_module_spec = current_rl_module_spec.__class__(
-                    marl_module_class=current_rl_module_spec.marl_module_class,
+                # Now construct the proper MultiRLModuleSpec.
+                multi_rl_module_spec = current_rl_module_spec.__class__(
+                    multi_rl_module_class=current_rl_module_spec.multi_rl_module_class,
                     module_specs={
                         k: copy.deepcopy(single_agent_rl_module_spec)
                         for k in policy_dict.keys()
@@ -3823,33 +3826,31 @@ class AlgorithmConfig(_Config):
                     load_state_path=current_rl_module_spec.load_state_path,
                 )
 
-        # Make sure that policy_dict and marl_module_spec have similar keys
-        if set(policy_dict.keys()) != set(marl_module_spec.module_specs.keys()):
-            raise ValueError(
-                "Policy dict and module spec have different keys! \n"
-                f"policy_dict keys: {list(policy_dict.keys())} \n"
-                f"module_spec keys: {list(marl_module_spec.module_specs.keys())}"
-            )
-
         # Fill in the missing values from the specs that we already have. By combining
         # PolicySpecs and the default RLModuleSpec.
+        for module_id in policy_dict | multi_rl_module_spec.module_specs:
 
-        for module_id in policy_dict:
-            policy_spec = policy_dict[module_id]
-            module_spec = marl_module_spec.module_specs[module_id]
+            # Remove/skip `learner_only=True` RLModules if `inference_only` is True.
+            module_spec = multi_rl_module_spec.module_specs[module_id]
+            if inference_only and module_spec.learner_only:
+                multi_rl_module_spec.remove_modules(module_id)
+                continue
+
+            policy_spec = policy_dict.get(module_id)
+            if policy_spec is None:
+                policy_spec = policy_dict[DEFAULT_MODULE_ID]
+
             if module_spec.module_class is None:
-                if isinstance(default_rl_module_spec, SingleAgentRLModuleSpec):
+                if isinstance(default_rl_module_spec, RLModuleSpec):
                     module_spec.module_class = default_rl_module_spec.module_class
-                elif isinstance(
-                    default_rl_module_spec.module_specs, SingleAgentRLModuleSpec
-                ):
+                elif isinstance(default_rl_module_spec.module_specs, RLModuleSpec):
                     module_class = default_rl_module_spec.module_specs.module_class
                     # This should be already checked in validate() but we check it
                     # again here just in case
                     if module_class is None:
                         raise ValueError(
                             "The default rl_module spec cannot have an empty "
-                            "module_class under its SingleAgentRLModuleSpec."
+                            "module_class under its RLModuleSpec."
                         )
                     module_spec.module_class = module_class
                 elif module_id in default_rl_module_spec.module_specs:
@@ -3864,11 +3865,9 @@ class AlgorithmConfig(_Config):
                         "the algorithm."
                     )
             if module_spec.catalog_class is None:
-                if isinstance(default_rl_module_spec, SingleAgentRLModuleSpec):
+                if isinstance(default_rl_module_spec, RLModuleSpec):
                     module_spec.catalog_class = default_rl_module_spec.catalog_class
-                elif isinstance(
-                    default_rl_module_spec.module_specs, SingleAgentRLModuleSpec
-                ):
+                elif isinstance(default_rl_module_spec.module_specs, RLModuleSpec):
                     catalog_class = default_rl_module_spec.module_specs.catalog_class
                     module_spec.catalog_class = catalog_class
                 elif module_id in default_rl_module_spec.module_specs:
@@ -3900,7 +3899,7 @@ class AlgorithmConfig(_Config):
                     self.model_config | module_spec.model_config_dict
                 )
 
-        return marl_module_spec
+        return multi_rl_module_spec
 
     def __setattr__(self, key, value):
         """Gatekeeper in case we are in frozen state and need to error."""
@@ -4614,6 +4613,262 @@ class AlgorithmConfig(_Config):
                 "eager_tracing=True in order to reach similar execution "
                 "speed as with static-graph mode."
             )
+
+    @OldAPIStack
+    def get_multi_agent_setup(
+        self,
+        *,
+        policies: Optional[MultiAgentPolicyConfigDict] = None,
+        env: Optional[EnvType] = None,
+        spaces: Optional[Dict[PolicyID, Tuple[Space, Space]]] = None,
+        default_policy_class: Optional[Type[Policy]] = None,
+    ) -> Tuple[MultiAgentPolicyConfigDict, Callable[[PolicyID, SampleBatchType], bool]]:
+        r"""Compiles complete multi-agent config (dict) from the information in `self`.
+
+        Infers the observation- and action spaces, the policy classes, and the policy's
+        configs. The returned `MultiAgentPolicyConfigDict` is fully unified and strictly
+        maps PolicyIDs to complete PolicySpec objects (with all their fields not-None).
+
+        Examples:
+        .. testcode::
+
+            import gymnasium as gym
+            from ray.rllib.algorithms.ppo import PPOConfig
+            config = (
+              PPOConfig()
+              .environment("CartPole-v1")
+              .framework("torch")
+              .multi_agent(policies={"pol1", "pol2"}, policies_to_train=["pol1"])
+            )
+            policy_dict, is_policy_to_train = config.get_multi_agent_setup(
+                env=gym.make("CartPole-v1"))
+            is_policy_to_train("pol1")
+            is_policy_to_train("pol2")
+
+        Args:
+            policies: An optional multi-agent `policies` dict, mapping policy IDs
+                to PolicySpec objects. If not provided, will use `self.policies`
+                instead. Note that the `policy_class`, `observation_space`, and
+                `action_space` properties in these PolicySpecs may be None and must
+                therefore be inferred here.
+            env: An optional env instance, from which to infer the different spaces for
+                the different policies. If not provided, will try to infer from
+                `spaces`. Otherwise from `self.observation_space` and
+                `self.action_space`. If no information on spaces can be infered, will
+                raise an error.
+            spaces: Optional dict mapping policy IDs to tuples of 1) observation space
+                and 2) action space that should be used for the respective policy.
+                These spaces were usually provided by an already instantiated remote
+                EnvRunner. Note that if the `env` argument is provided, will try to
+                infer spaces from `env` first.
+            default_policy_class: The Policy class to use should a PolicySpec have its
+                policy_class property set to None.
+
+        Returns:
+            A tuple consisting of 1) a MultiAgentPolicyConfigDict and 2) a
+            `is_policy_to_train(PolicyID, SampleBatchType) -> bool` callable.
+
+        Raises:
+            ValueError: In case, no spaces can be infered for the policy/ies.
+            ValueError: In case, two agents in the env map to the same PolicyID
+                (according to `self.policy_mapping_fn`), but have different action- or
+                observation spaces according to the infered space information.
+        """
+        policies = copy.deepcopy(policies or self.policies)
+
+        # Policies given as set/list/tuple (of PolicyIDs) -> Setup each policy
+        # automatically via empty PolicySpec (will make RLlib infer observation- and
+        # action spaces as well as the Policy's class).
+        if isinstance(policies, (set, list, tuple)):
+            policies = {pid: PolicySpec() for pid in policies}
+
+        # Try extracting spaces from env or from given spaces dict.
+        env_obs_space = None
+        env_act_space = None
+
+        # Env is a ray.remote: Get spaces via its (automatically added)
+        # `_get_spaces()` method.
+        if isinstance(env, ray.actor.ActorHandle):
+            env_obs_space, env_act_space = ray.get(env._get_spaces.remote())
+        # Normal env (gym.Env or MultiAgentEnv): These should have the
+        # `observation_space` and `action_space` properties.
+        elif env is not None:
+            # `env` is a gymnasium.vector.Env.
+            if hasattr(env, "single_observation_space") and isinstance(
+                env.single_observation_space, gym.Space
+            ):
+                env_obs_space = env.single_observation_space
+            # `env` is a gymnasium.Env.
+            elif hasattr(env, "observation_space") and isinstance(
+                env.observation_space, gym.Space
+            ):
+                env_obs_space = env.observation_space
+
+            # `env` is a gymnasium.vector.Env.
+            if hasattr(env, "single_action_space") and isinstance(
+                env.single_action_space, gym.Space
+            ):
+                env_act_space = env.single_action_space
+            # `env` is a gymnasium.Env.
+            elif hasattr(env, "action_space") and isinstance(
+                env.action_space, gym.Space
+            ):
+                env_act_space = env.action_space
+
+        # Last resort: Try getting the env's spaces from the spaces
+        # dict's special __env__ key.
+        if spaces is not None:
+            if env_obs_space is None:
+                env_obs_space = spaces.get(INPUT_ENV_SPACES, [None])[0]
+            if env_act_space is None:
+                env_act_space = spaces.get(INPUT_ENV_SPACES, [None, None])[1]
+
+        # Check each defined policy ID and unify its spec.
+        for pid, policy_spec in policies.copy().items():
+            # Convert to PolicySpec if plain list/tuple.
+            if not isinstance(policy_spec, PolicySpec):
+                policies[pid] = policy_spec = PolicySpec(*policy_spec)
+
+            # Infer policy classes for policies dict, if not provided (None).
+            if policy_spec.policy_class is None and default_policy_class is not None:
+                policies[pid].policy_class = default_policy_class
+
+            # Infer observation space.
+            if policy_spec.observation_space is None:
+                if spaces is not None and pid in spaces:
+                    obs_space = spaces[pid][0]
+                elif env_obs_space is not None:
+                    env_unwrapped = env.unwrapped if hasattr(env, "unwrapped") else env
+                    # Multi-agent case AND different agents have different spaces:
+                    # Need to reverse map spaces (for the different agents) to certain
+                    # policy IDs.
+                    if (
+                        isinstance(env_unwrapped, MultiAgentEnv)
+                        and hasattr(env_unwrapped, "_obs_space_in_preferred_format")
+                        and env_unwrapped._obs_space_in_preferred_format
+                    ):
+                        obs_space = None
+                        mapping_fn = self.policy_mapping_fn
+                        one_obs_space = next(iter(env_obs_space.values()))
+                        # If all obs spaces are the same anyways, just use the first
+                        # single-agent space.
+                        if all(s == one_obs_space for s in env_obs_space.values()):
+                            obs_space = one_obs_space
+                        # Otherwise, we have to compare the ModuleID with all possible
+                        # AgentIDs and find the agent ID that matches.
+                        elif mapping_fn:
+                            for aid in env_unwrapped.get_agent_ids():
+                                # Match: Assign spaces for this agentID to the PolicyID.
+                                if mapping_fn(aid, None, worker=None) == pid:
+                                    # Make sure, different agents that map to the same
+                                    # policy don't have different spaces.
+                                    if (
+                                        obs_space is not None
+                                        and env_obs_space[aid] != obs_space
+                                    ):
+                                        raise ValueError(
+                                            "Two agents in your environment map to the "
+                                            "same policyID (as per your `policy_mapping"
+                                            "_fn`), however, these agents also have "
+                                            "different observation spaces!"
+                                        )
+                                    obs_space = env_obs_space[aid]
+                    # Otherwise, just use env's obs space as-is.
+                    else:
+                        obs_space = env_obs_space
+                # Space given directly in config.
+                elif self.observation_space:
+                    obs_space = self.observation_space
+                else:
+                    raise ValueError(
+                        "`observation_space` not provided in PolicySpec for "
+                        f"{pid} and env does not have an observation space OR "
+                        "no spaces received from other workers' env(s) OR no "
+                        "`observation_space` specified in config!"
+                    )
+
+                policies[pid].observation_space = obs_space
+
+            # Infer action space.
+            if policy_spec.action_space is None:
+                if spaces is not None and pid in spaces:
+                    act_space = spaces[pid][1]
+                elif env_act_space is not None:
+                    env_unwrapped = env.unwrapped if hasattr(env, "unwrapped") else env
+                    # Multi-agent case AND different agents have different spaces:
+                    # Need to reverse map spaces (for the different agents) to certain
+                    # policy IDs.
+                    if (
+                        isinstance(env_unwrapped, MultiAgentEnv)
+                        and hasattr(env_unwrapped, "_action_space_in_preferred_format")
+                        and env_unwrapped._action_space_in_preferred_format
+                    ):
+                        act_space = None
+                        mapping_fn = self.policy_mapping_fn
+                        one_act_space = next(iter(env_act_space.values()))
+                        # If all action spaces are the same anyways, just use the first
+                        # single-agent space.
+                        if all(s == one_act_space for s in env_act_space.values()):
+                            act_space = one_act_space
+                        # Otherwise, we have to compare the ModuleID with all possible
+                        # AgentIDs and find the agent ID that matches.
+                        elif mapping_fn:
+                            for aid in env_unwrapped.get_agent_ids():
+                                # Match: Assign spaces for this AgentID to the PolicyID.
+                                if mapping_fn(aid, None, worker=None) == pid:
+                                    # Make sure, different agents that map to the same
+                                    # policy don't have different spaces.
+                                    if (
+                                        act_space is not None
+                                        and env_act_space[aid] != act_space
+                                    ):
+                                        raise ValueError(
+                                            "Two agents in your environment map to the "
+                                            "same policyID (as per your `policy_mapping"
+                                            "_fn`), however, these agents also have "
+                                            "different action spaces!"
+                                        )
+                                    act_space = env_act_space[aid]
+                    # Otherwise, just use env's action space as-is.
+                    else:
+                        act_space = env_act_space
+                elif self.action_space:
+                    act_space = self.action_space
+                else:
+                    raise ValueError(
+                        "`action_space` not provided in PolicySpec for "
+                        f"{pid} and env does not have an action space OR "
+                        "no spaces received from other workers' env(s) OR no "
+                        "`action_space` specified in config!"
+                    )
+                policies[pid].action_space = act_space
+
+            # Create entire AlgorithmConfig object from the provided override.
+            # If None, use {} as override.
+            if not isinstance(policies[pid].config, AlgorithmConfig):
+                assert policies[pid].config is None or isinstance(
+                    policies[pid].config, dict
+                )
+                policies[pid].config = self.copy(copy_frozen=False).update_from_dict(
+                    policies[pid].config or {}
+                )
+
+        # If collection given, construct a simple default callable returning True
+        # if the PolicyID is found in the list/set of IDs.
+        if self.policies_to_train is not None and not callable(self.policies_to_train):
+            pols = set(self.policies_to_train)
+
+            def is_policy_to_train(pid, batch=None):
+                return pid in pols
+
+        else:
+            is_policy_to_train = self.policies_to_train
+
+        return policies, is_policy_to_train
+
+    @Deprecated(new="AlgorithmConfig.get_multi_rl_module_spec()", error=False)
+    def get_marl_module_spec(self, *args, **kwargs):
+        return self.get_multi_rl_module_spec(*args, **kwargs)
 
     @Deprecated(new="AlgorithmConfig.env_runners(..)", error=False)
     def rollouts(self, *args, **kwargs):

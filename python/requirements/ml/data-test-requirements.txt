@@ -1,7 +1,7 @@
 # Used by CI for datasets tests.
 # https://github.com/ray-project/ray/pull/29448#discussion_r1006256498
 
-python-snappy; python_version <= '3.10'
+python-snappy
 tensorflow-datasets==4.9.3
 datasets
 pytest-repeat
@@ -18,3 +18,4 @@ delta-sharing
 pytest-mock
 decord
 snowflake-connector-python
+pyiceberg[sql-sqlite]==0.7.0
