@@ -200,16 +200,16 @@ class JobInfoStorageClient:
     def __init__(self, gcs_aio_client: GcsAioClient, log_dir: Optional[str] = None):
         self._gcs_aio_client = gcs_aio_client
         self._export_submission_job_event_logger = None
-        try:
-            if ray_constants.RAY_ENABLE_EXPORT_API_WRITE and log_dir is not None:
-                self._export_submission_job_event_logger = get_export_event_logger(
-                    ExportEvent.SourceType.EXPORT_SUBMISSION_JOB, log_dir
-                )
-        except Exception:
-            logger.exception(
-                "Unable to initialize export event logger so no export "
-                "events will be written."
-            )
+        # try:
+        #     if ray_constants.RAY_ENABLE_EXPORT_API_WRITE and log_dir is not None:
+        #         self._export_submission_job_event_logger = get_export_event_logger(
+        #             ExportEvent.SourceType.EXPORT_SUBMISSION_JOB, log_dir
+        #         )
+        # except Exception:
+        #     logger.exception(
+        #         "Unable to initialize export event logger so no export "
+        #         "events will be written."
+        #     )
 
     async def put_info(
         self, job_id: str, job_info: JobInfo, overwrite: bool = True
