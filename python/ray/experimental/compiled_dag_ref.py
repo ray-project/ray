@@ -152,20 +152,26 @@ class CompiledDAGFuture:
         raise ValueError("CompiledDAGFuture cannot be pickled.")
 
     def __await__(self):
-        return_vals = None
-        if self._fut is not None:
-            fut = self._fut
-            self._fut = None
-
-            result = yield from fut.__await__()
-            return_vals = self._dag._cache_execution_results(
-                self._execution_index, result, self._channel_index
-            )
-
-        if return_vals is None:
+        if self._fut is None:
             raise ValueError(
                 "CompiledDAGFuture can only be awaited upon once, and it has "
                 "already been awaited upon."
+            )
+
+        # NOTE(swang): If the object is zero-copy deserialized, then it will
+        # stay in scope as long as this future is in scope. Therefore, we
+        # delete self._fut here before we return the result to the user.
+        fut = self._fut
+        self._fut = None
+
+        if self._dag._has_execution_results(self._execution_index):
+            return_vals = self._dag._cache_execution_results(
+                self._execution_index, self._channel_index
+            )
+        else:
+            result = yield from fut.__await__()
+            return_vals = self._dag._cache_execution_results(
+                self._execution_index, self._channel_index, result
             )
 
         return _process_return_vals(

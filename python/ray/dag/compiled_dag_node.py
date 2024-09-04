@@ -639,8 +639,8 @@ class CompiledDAG:
         # The maximum index of finished executions.
         # All results with higher indexes have not been generated yet.
         self._max_execution_index: int = -1
-        # execution_index -> [channel_index -> result]
-        self._result_buffer: List[List[Any]] = []
+        # execution_index -> {channel_index -> result}
+        self._result_buffer: Dict[int, Dict[int, Any]] = defaultdict(dict)
         # For backward compatibility, execute and execute_async return a list of
         # CompiledDAGRef and CompiledDAGFuture respectively only when the output
         # node has multiple_return_refs set to True.
@@ -1706,7 +1706,8 @@ class CompiledDAG:
 
             # Fetch results from each output channel up to execution_index and store
             # them separately to enable individual retrieval
-            self._result_buffer.append(self._dag_output_fetcher.read(timeout))
+            for chan_idx, res in enumerate(self._dag_output_fetcher.read(timeout)):
+                self._result_buffer[self._max_execution_index][chan_idx] = res
             if timeout != -1:
                 timeout -= time.monotonic() - start_time
                 timeout = max(timeout, 0)
@@ -1714,11 +1715,23 @@ class CompiledDAG:
         # CompiledDAGRef guarantees that the same execution index and
         # channel index combination will not be requested multiple times
         if channel_index is None:
-            result = self._result_buffer[execution_index]
-            self._result_buffer[execution_index] = None
+            # Convert results stored in self._result_buffer back to original
+            # list representation
+            result = [
+                x[1]
+                for x in sorted(
+                    self._result_buffer.pop(execution_index).items(), key=lambda x: x[0]
+                )
+            ]
         else:
-            result = [self._result_buffer[execution_index][channel_index]]
-            self._result_buffer[execution_index][channel_index] = None
+            # self._result_buffer[execution_index] is guaranteed to be accessed at
+            # most len(self.dag_output_channels) times as _execute_until is guarded
+            # by CompiledDAGRef's get() call. Therefore, self._result_buffer will
+            # always have the key execution_index.
+            result = [self._result_buffer[execution_index].pop(channel_index)]
+            if len(self._result_buffer[execution_index]) == 0:
+                del self._result_buffer[execution_index]
+
         return result
 
     def execute(
@@ -1792,44 +1805,56 @@ class CompiledDAG:
                     f"must be called with kwarg `{kwarg}`"
                 )
 
-    def _cache_execution_results(
+    def _has_execution_results(
         self,
         execution_index: int,
-        result: Any,
-        channel_index: Optional[int] = None,
-    ) -> List[Any]:
-        """Cache intermediate execution results in self._result_buffer. Mark the result
-        corresponding to the given execution index and channel index as None upon return
-        to avoid caller from fetching the result more than once.
+    ) -> bool:
+        """Check whether there are results corresponding to the given execution
+        index stored in self._result_buffer. This helps avoid fetching and
+        storing results again.
 
         Args:
             execution_index: The execution index corresponding to the result.
-            result: The result to be cached. This is obtained from awaiting a future
-                from CompiledDAGFuture.
+
+        Returns:
+            Whether the result for the given index has been fetched and cached.
+        """
+        return execution_index in self._result_buffer
+
+    def _cache_execution_results(
+        self,
+        execution_index: int,
+        channel_index: Optional[int],
+        result: Optional[Any] = None,
+    ) -> List[Any]:
+        """Cache execution results in self._result_buffer and return the result. Results
+        are converted to dictionary format to allow efficient element removal and
+        calculation of buffer size.
+
+        Args:
+            execution_index: The execution index corresponding to the result.
             channel_index: The index of the output channel corresponding to the result.
                 Channel indexing is consistent with the order of
                 self.dag_output_channels. None means that the result wraps outputs from
                 all output channels.
+            result: The result to be cached. None means the result has been cached.
 
         Returns:
             The execution result corresponding to the given execution index and channel
             index.
         """
-        # Allocate placeholders for execution steps in between
-        # the last and current execution
-        for _ in range(len(self._result_buffer), execution_index + 1):
-            self._result_buffer.append(None)
-        # Only cache the result if it has not been cached
-        if self._result_buffer[execution_index] is None:
-            self._result_buffer[execution_index] = result
+        if execution_index not in self._result_buffer:
+            for chan_idx, res in enumerate(result):
+
+                self._result_buffer[execution_index][chan_idx] = res
 
         if channel_index is None:
-            return_val = self._result_buffer[execution_index]
-            self._result_buffer[execution_index] = None
+            del self._result_buffer[execution_index]
         else:
-            return_val = [self._result_buffer[execution_index][channel_index]]
-            self._result_buffer[execution_index][channel_index] = None
-        return return_val
+            result = [self._result_buffer[execution_index].pop(channel_index)]
+            if len(self._result_buffer[execution_index]) == 0:
+                del self._result_buffer[execution_index]
+        return result
 
     async def execute_async(
         self,

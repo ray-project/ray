@@ -953,13 +953,13 @@ def test_exceed_max_buffered_results(ray_start_regular):
     compiled_dag = dag.experimental_compile(_max_buffered_results=1)
 
     refs = []
-    for i in range(3):
+    for i in range(2):
         ref = compiled_dag.execute(1)
         # Hold the refs to avoid get() being called on the ref
         # when it goes out of scope
         refs.append(ref)
 
-    # ray.get() on the 3rd ref fails because the DAG cannot buffer 2 results.
+    # ray.get() on the 2nd ref fails because the DAG cannot buffer 2 results.
     with pytest.raises(
         ValueError,
         match=(
@@ -969,6 +969,53 @@ def test_exceed_max_buffered_results(ray_start_regular):
         ),
     ):
         ray.get(ref)
+
+    del refs
+    compiled_dag.teardown()
+
+
+@pytest.mark.parametrize("multiple_return_refs", [True, False])
+def test_exceed_max_buffered_results_multi_output(
+    ray_start_regular, multiple_return_refs
+):
+    a = Actor.remote(0)
+    b = Actor.remote(0)
+    with InputNode() as inp:
+        if multiple_return_refs:
+            dag = MultiOutputNode(
+                [a.inc.bind(inp), b.inc.bind(inp)],
+                multiple_return_refs=multiple_return_refs,
+            )
+        else:
+            dag = MultiOutputNode([a.inc.bind(inp), b.inc.bind(inp)])
+
+    compiled_dag = dag.experimental_compile(_max_buffered_results=1)
+
+    refs = []
+    for i in range(2):
+        ref = compiled_dag.execute(1)
+        # Hold the refs to avoid get() being called on the ref
+        # when it goes out of scope
+        refs.append(ref)
+
+    if multiple_return_refs:
+        # If there are results not fetched from an execution, that execution
+        # still counts towards the number of buffered results.
+        ray.get(refs[0][0])
+
+    # ray.get() on the 2nd ref fails because the DAG cannot buffer 2 results.
+    with pytest.raises(
+        ValueError,
+        match=(
+            "Too many buffered results: the allowed max count for buffered "
+            "results is 1; call ray.get\(\) on previous CompiledDAGRefs to "
+            "free them up from buffer"
+        ),
+    ):
+        if multiple_return_refs:
+            ray.get(ref[0])
+        else:
+            ray.get(ref)
 
     del refs
     compiled_dag.teardown()
