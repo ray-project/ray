@@ -141,7 +141,10 @@ def test_basic(ray_start_regular):
         # the first iteration will succeed.
         val = np.ones(100) * i
         ref = compiled_dag.execute(val)
-        assert str(ref) == f"CompiledDAGRef({dag_id}, execution_index={i})"
+        assert (
+            str(ref)
+            == f"CompiledDAGRef({dag_id}, execution_index={i}, channel_index={None})"
+        )
         result = ray.get(ref)
         assert (result == val).all()
         # Delete the buffer so that the next DAG output can be written.

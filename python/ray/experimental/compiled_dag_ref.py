@@ -62,7 +62,7 @@ class CompiledDAGRef:
         """
         self._dag = dag
         self._execution_index = execution_index
-        self.channel_index = channel_index
+        self._channel_index = channel_index
         # Whether ray.get() was called on this CompiledDAGRef.
         self._ray_get_called = False
         self._dag_output_channels = dag.dag_output_channels
@@ -70,7 +70,8 @@ class CompiledDAGRef:
     def __str__(self):
         return (
             f"CompiledDAGRef({self._dag.get_id()}, "
-            f"execution_index={self._execution_index})"
+            f"execution_index={self._execution_index}, "
+            f"channel_index={self._channel_index})"
         )
 
     def __copy__(self):
@@ -95,7 +96,7 @@ class CompiledDAGRef:
             )
         self._ray_get_called = True
         return_vals = self._dag._execute_until(
-            self._execution_index, self.channel_index, timeout
+            self._execution_index, self._channel_index, timeout
         )
         # If self._dag.multiple_return_refs is True, each CompiledDAGRef corresponds
         # to an output from a single channel, and therefore return_vals represents a
@@ -139,7 +140,8 @@ class CompiledDAGFuture:
     def __str__(self):
         return (
             f"CompiledDAGFuture({self._dag.get_id()}, "
-            f"execution_index={self._execution_index})"
+            f"execution_index={self._execution_index}, "
+            f"channel_index={self._channel_index})"
         )
 
     def __copy__(self):

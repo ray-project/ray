@@ -183,7 +183,7 @@ class CompiledTask:
         return f"""
             Node: {self.dag_node}
             Arguments: {self.args}
-            Output: {self.output_channel}
+            Output: {self.output_channels}
             """
 
 
