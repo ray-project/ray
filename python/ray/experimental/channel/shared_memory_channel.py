@@ -77,7 +77,7 @@ def _get_self_actor() -> Optional["ray.actor.ActorHandle"]:
 
 
 class SharedMemoryType(ChannelOutputType):
-    def __init__(self, buffer_size_bytes: int = None):
+    def __init__(self, buffer_size_bytes: Optional[int] = None):
         """
         Args:
             buffer_size_bytes: The number of bytes to allocate for the object data and
