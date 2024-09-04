@@ -363,7 +363,7 @@ class RuntimeEnv(dict):
             )
 
         if self.get("container"):
-            invalid_keys = set(runtime_env.keys()) - {"container", "config"}
+            invalid_keys = set(runtime_env.keys()) - {"container", "config", "env_vars"}
             if len(invalid_keys):
                 raise ValueError(
                     "The 'container' field currently cannot be used "
