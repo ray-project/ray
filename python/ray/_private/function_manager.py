@@ -382,7 +382,7 @@ class FunctionActorManager:
 
         object = self.load_function_or_class_from_local(module_name, function_name)
         if object is not None:
-            # Directly importing from local may not incorporate the dynamic ray.remote wrapper,
+            # Directly importing from local may break function with dynamic ray.remote,
             # such as the _start_controller function utilized for the Ray service.
             if isinstance(object, RemoteFunction):
                 function = object._function
