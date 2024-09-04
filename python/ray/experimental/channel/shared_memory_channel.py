@@ -2,12 +2,15 @@ import io
 import logging
 import time
 from typing import Any, Dict, List, Optional, Set, Tuple, Union
-from typing import Any, Dict, List, Optional, Set, Tuple, Union
 
 import ray
 import ray.exceptions
 from ray._raylet import SerializedObject
-from ray.experimental.channel.common import ChannelInterface, ChannelOutputType
+from ray.experimental.channel.common import (
+    ChannelInterface,
+    ChannelOutputType,
+    _ResizeChannel,
+)
 from ray.experimental.channel.intra_process_channel import IntraProcessChannel
 from ray.util.annotations import PublicAPI
 
@@ -71,18 +74,6 @@ def _get_self_actor() -> Optional["ray.actor.ActorHandle"]:
         return ray.get_runtime_context().current_actor
     except RuntimeError:
         return None
-
-
-class _ResizeChannel:
-    """
-    When a channel must be resized, the channel backing store must be resized on both
-    the writer and the reader nodes. The writer first resizes its own backing store. The
-    writer then uses an instance of this class as a sentinel value to tell the reader to
-    resize its own backing store. The class instance is sent through the channel.
-    """
-
-    def __init__(self, reader_ref: "ray.ObjectRef"):
-        self._reader_ref = reader_ref
 
 
 class SharedMemoryType(ChannelOutputType):

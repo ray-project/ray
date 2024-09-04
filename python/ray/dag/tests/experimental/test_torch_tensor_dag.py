@@ -1,7 +1,6 @@
 # coding: utf-8
 import logging
 import os
-import re
 import sys
 import torch
 
@@ -219,6 +218,7 @@ def test_torch_tensor_nccl_disallows_driver(ray_start_regular):
     sender = actor_cls.remote()
     receiver = actor_cls.remote()
 
+    shape = (10,)
     dtype = torch.float16
 
     # Test that InputNode cannot cannot participate in the NCCL group.

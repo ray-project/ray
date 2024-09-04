@@ -18,6 +18,18 @@ if TYPE_CHECKING:
     import torch
 
 
+class _ResizeChannel:
+    """
+    When a channel must be resized, the channel backing store must be resized on both
+    the writer and the reader nodes. The writer first resizes its own backing store. The
+    writer then uses an instance of this class as a sentinel value to tell the reader to
+    resize its own backing store. The class instance is sent through the channel.
+    """
+
+    def __init__(self, reader_ref: "ray.ObjectRef"):
+        self._reader_ref = reader_ref
+
+
 @PublicAPI(stability="alpha")
 class ChannelOutputType:
     def register_custom_serializer(self) -> None:

@@ -1,5 +1,5 @@
 import logging
-from typing import TYPE_CHECKING, List, Optional
+from typing import TYPE_CHECKING, List, Optional, Tuple
 
 import ray
 from ray.experimental.channel import ChannelContext, ChannelOutputType
@@ -7,8 +7,6 @@ from ray.experimental.channel.shared_memory_channel import SharedMemoryType
 from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
-    import torch
-
     from ray.experimental.channel.shared_memory_channel import Channel
 
 
@@ -71,8 +69,8 @@ class TorchTensorType(ChannelOutputType):
         """
         super().__init__()
 
-        self._static_shape = static_shape
-        self._static_non_tensor_data = static_non_tensor_data
+        self._static_shape = _static_shape
+        self._static_non_tensor_data = _static_non_tensor_data
 
         if transport is None:
             transport = self.AUTO
@@ -131,7 +129,6 @@ class TorchTensorType(ChannelOutputType):
         reader_and_node_list: List[Tuple["ray.actor.ActorHandle", str]],
         _non_tensor_data_channel: Optional["Channel"] = None,
         _tensor_metadata_channel: Optional["Channel"] = None,
-        _torch_tensor_allocator: Optional["TorchTensorAllocator"] = None,
     ) -> type:
         if self.requires_nccl():
             from ray.experimental.channel.torch_tensor_nccl_channel import (
@@ -148,7 +145,7 @@ class TorchTensorType(ChannelOutputType):
 
             if _non_tensor_data_channel is None:
                 _non_tensor_data_channel = SharedMemoryType().create_channel(
-                    writer, readers
+                    writer, reader_and_node_list
                 )
 
             return TorchTensorNcclChannel(
@@ -161,9 +158,9 @@ class TorchTensorType(ChannelOutputType):
 
         # Data does not require NCCL. Transfer via host memory using a
         # shared-memory channel.
-        # TODO(swang): Allow the initial max buffer size to be overridden.
+        # TODO(swang): Allow the initial max buffer size to bereaders overridden.
         typ = SharedMemoryType()
-        return typ.create_channel(writer, readers)
+        return typ.create_channel(writer, reader_and_node_list)
 
     def requires_nccl(self) -> bool:
         return self.transport == self.NCCL

@@ -8,9 +8,10 @@ from typing import TYPE_CHECKING, Any, List, Optional, Tuple, Union
 import ray
 import ray.util.serialization
 from ray.experimental.channel import ChannelContext
-from ray.experimental.channel.common import ChannelInterface
+from ray.experimental.channel.common import ChannelInterface, _ResizeChannel
 from ray.experimental.channel.nccl_group import _NcclGroup
 from ray.experimental.channel.shared_memory_channel import SharedMemoryType
+from ray.experimental.channel.torch_tensor_type import TorchTensorType
 from ray.util.annotations import DeveloperAPI
 
 if TYPE_CHECKING:
@@ -249,7 +250,7 @@ class TorchTensorNcclChannel(ChannelInterface):
         if serialized_non_tensor_data is None:
             serialized_non_tensor_data = self._non_tensor_data_channel.read(
                 timeout=timeout,
-                deserialize=False
+                deserialize=False,
             )
             if self._static_non_tensor_data:
                 # Cache the serialized non-tensor data for future messages.
@@ -260,6 +261,10 @@ class TorchTensorNcclChannel(ChannelInterface):
         # `tensors`. We get index 0 because deserialize_objects expects a list
         # of objects to deserialize, but we only have one.
         data = self._worker.deserialize_objects(*serialized_non_tensor_data)[0]
+        if isinstance(data, _ResizeChannel):
+            raise RuntimeError(
+                "Channels with NCCL transport currently cannot be resized."
+            )
 
         # Check that all placeholders had a corresponding tensor.
         (
@@ -322,10 +327,10 @@ class _TorchTensorNcclChannel(ChannelInterface):
 
         ctx = ChannelContext.get_current()
         assert isinstance(
-            nccl_group_id, str
+            typ.nccl_group_id, str
         ), "NCCL group ID ({nccl_group_id}) must be a str."
-        self._nccl_group_id: str = nccl_group_id
-        self._nccl_group: "_NcclGroup" = ctx.nccl_groups[nccl_group_id]
+        self._nccl_group_id: str = typ.nccl_group_id
+        self._nccl_group: "_NcclGroup" = ctx.nccl_groups[self._nccl_group_id]
         assert (
             self._nccl_group is not None
         ), "ChannelContext.nccl_group is not initialized."
@@ -361,9 +366,7 @@ class _TorchTensorNcclChannel(ChannelInterface):
             # We are the writer. Therefore, we also need to allocate a metadata
             # channel that will be used to send the shape and dtype of the
             # tensor to the receiver(s).
-            metadata_type = SharedMemoryType(
-                buffer_size_bytes=TENSOR_METADATA_SIZE_BYTES
-            )
+            metadata_type = SharedMemoryType()
             self._meta_channel = metadata_type.create_channel(
                 self._writer,
                 self._reader_and_node_list,
@@ -507,7 +510,9 @@ class _TorchTensorNcclChannel(ChannelInterface):
 
         return meta
 
-    def read(self, timeout: Optional[float] = None) -> Union["torch.Tensor", List["torch.Tensor"]]:
+    def read(
+        self, timeout: Optional[float] = None
+    ) -> Union["torch.Tensor", List["torch.Tensor"]]:
         """
         Receive a list of tensors.
 

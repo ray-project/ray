@@ -321,9 +321,12 @@ def exec_ray_dag_gpu_cpu_gpu(sender_hint, receiver_hint):
     return exec_ray_dag("exec_ray_dag_gpu_cpu_gpu", sender, receiver)
 
 
-def exec_ray_dag_gpu_nccl(sender_hint, receiver_hint,
-    static_shape: bool = False, static_non_tensor_data: bool = False,
-        ):
+def exec_ray_dag_gpu_nccl(
+    sender_hint,
+    receiver_hint,
+    static_shape: bool = False,
+    static_non_tensor_data: bool = False,
+):
     time.sleep(1)
     sender = TorchTensorWorker.options(
         num_gpus=1, scheduling_strategy=sender_hint
@@ -406,10 +409,18 @@ def main(distributed):
     results += exec_ray_dag_cpu(sender_hint, receiver_hint)
     results += exec_ray_core_gpu(sender_hint, receiver_hint)
     results += exec_ray_dag_gpu_cpu_gpu(sender_hint, receiver_hint)
-    results += exec_ray_dag_gpu_nccl(sender_hint, receiver_hint, static_shape=True, static_non_tensor_data=True)
-    results += exec_ray_dag_gpu_nccl(sender_hint, receiver_hint, static_shape=False, static_non_tensor_data=True)
-    results += exec_ray_dag_gpu_nccl(sender_hint, receiver_hint, static_shape=True, static_non_tensor_data=False)
-    results += exec_ray_dag_gpu_nccl(sender_hint, receiver_hint, static_shape=False, static_non_tensor_data=False)
+    results += exec_ray_dag_gpu_nccl(
+        sender_hint, receiver_hint, static_shape=True, static_non_tensor_data=True
+    )
+    results += exec_ray_dag_gpu_nccl(
+        sender_hint, receiver_hint, static_shape=False, static_non_tensor_data=True
+    )
+    results += exec_ray_dag_gpu_nccl(
+        sender_hint, receiver_hint, static_shape=True, static_non_tensor_data=False
+    )
+    results += exec_ray_dag_gpu_nccl(
+        sender_hint, receiver_hint, static_shape=False, static_non_tensor_data=False
+    )
 
     return results
 

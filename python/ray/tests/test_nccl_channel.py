@@ -3,7 +3,7 @@ import logging
 import os
 import sys
 import torch
-from typing import List, Dict
+from typing import List, Dict, Tuple
 
 import pytest
 
@@ -205,7 +205,7 @@ def test_multiple_receivers(ray_start_cluster):
     all_refs = []
     for i in range(3):
         sender.send.remote(i, shapes[i], dtypes[i])
-        all_refs.append([receiver.receive.remote() for receiver in receivers])
+        all_refs.append([receiver.receive.remote() for receiver, _ in receiver_to_node])
     # Check that all receivers received the correct value.
     for i, refs in enumerate(all_refs):
         for val in ray.get(refs):

@@ -1,5 +1,4 @@
 # coding: utf-8
-import logging
 import os
 import sys
 import torch
@@ -16,8 +15,6 @@ from ray.experimental.channel.conftest import (
 from ray.tests.conftest import *  # noqa
 from ray.dag import InputNode
 
-logger = logging.getLogger(__name__)
-
 
 @ray.remote(num_cpus=0, num_gpus=1)
 class MockedWorker:
@@ -32,7 +29,7 @@ class MockedWorker:
 
     def send(self, shape, dtype, value: int, send_as_dict=False):
         if send_as_dict:
-            return self.send_dict([(value, shape, dtype, value)])
+            return self.send_dict([(value, value, shape, dtype)])
 
         return torch.ones(shape, dtype=dtype) * value
 
@@ -97,23 +94,17 @@ def test_p2p(ray_start_cluster):
 
     compiled_dag = dag.experimental_compile()
     for i in range(3):
-        ref = compiled_dag.execute(
-            i, shape=shape, dtype=dtype, send_as_dict=False
-        )
+        ref = compiled_dag.execute(i, shape=shape, dtype=dtype, send_as_dict=False)
         assert ray.get(ref) == (i, shape, dtype)
 
     # Sending tensors of different shape also works.
     for i in range(3):
-        ref = compiled_dag.execute(
-            i, shape=(20,), dtype=dtype, send_as_dict=False
-        )
+        ref = compiled_dag.execute(i, shape=(20,), dtype=dtype, send_as_dict=False)
         assert ray.get(ref) == (i, (20,), dtype)
 
     # Sending tensors inside a dictionary also works.
     for i in range(3):
-        ref = compiled_dag.execute(
-            i, shape=shape, dtype=dtype, send_as_dict=True
-        )
+        ref = compiled_dag.execute(i, shape=shape, dtype=dtype, send_as_dict=True)
         assert ray.get(ref) == (i, shape, dtype)
 
     ray.kill(barrier1)
@@ -339,7 +330,7 @@ def test_p2p_static_non_tensor_data_error(ray_start_cluster):
     ]
     ref = compiled_dag.execute(spec)
     with pytest.raises(OSError, match="Channel closed"):
-        result = ray.get(ref)
+        ray.get(ref)
 
     # Sending correct shape still errors because the DAG has already been torn
     # down after the previous error.
