@@ -82,7 +82,7 @@ class ModelV2ToRLModule(TorchRLModule, ValueFunctionAPI):
             policy = TorchPolicyV2.from_checkpoint(policy_checkpoint_dir)
         # Create the ModelV2 from scratch using the config.
         else:
-            config = self.config.model_config_dict.get("algo_config")
+            config = self.config.model_config_dict.get("old_api_stack_algo_config")
             if not config:
                 raise ValueError(
                     "The `model_config_dict` of your RLModule must contain a "
