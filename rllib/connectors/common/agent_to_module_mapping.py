@@ -105,9 +105,9 @@ class AgentToModuleMapping(ConnectorV2):
 
         # Call the connector (and thereby flip from AgentID based to ModuleID based
         # structure..
-        output_data = connector(
+        output_batch = connector(
             rl_module=None,  # This particular connector works without an RLModule.
-            data=batch,
+            batch=batch,
             episodes=[],  # This particular connector works without a list of episodes.
             explore=True,
             shared_data={},
@@ -115,7 +115,7 @@ class AgentToModuleMapping(ConnectorV2):
 
         # `data` should now be mapped from ModuleIDs to module data.
         check(
-            output_data,
+            output_batch,
             {
                 "module0": {
                     "obs": [0, 1, 2],
@@ -130,12 +130,20 @@ class AgentToModuleMapping(ConnectorV2):
     """
 
     @override(ConnectorV2)
-    def recompute_observation_space_from_input_spaces(self):
-        return self._map_space_if_necessary(self.input_observation_space, "obs")
+    def recompute_output_observation_space(
+        self,
+        input_observation_space: gym.Space,
+        input_action_space: gym.Space,
+    ) -> gym.Space:
+        return self._map_space_if_necessary(input_observation_space, "obs")
 
     @override(ConnectorV2)
-    def recompute_action_space_from_input_spaces(self):
-        return self._map_space_if_necessary(self.input_action_space, "act")
+    def recompute_output_action_space(
+        self,
+        input_observation_space: gym.Space,
+        input_action_space: gym.Space,
+    ) -> gym.Space:
+        return self._map_space_if_necessary(input_action_space, "act")
 
     def __init__(
         self,
@@ -155,7 +163,7 @@ class AgentToModuleMapping(ConnectorV2):
         self,
         *,
         rl_module: RLModule,
-        data: Optional[Any],
+        batch: Dict[str, Any],
         episodes: List[EpisodeType],
         explore: Optional[bool] = None,
         shared_data: Optional[dict] = None,
@@ -166,7 +174,7 @@ class AgentToModuleMapping(ConnectorV2):
         # Store in shared data, which module IDs map to which episode/agent, such
         # that the module-to-env pipeline can map the data back to agents.
         memorized_map_structure = defaultdict(list)
-        for column, agent_data in data.items():
+        for column, agent_data in batch.items():
             if rl_module is not None and column in rl_module:
                 continue
             for eps_id, agent_id, module_id in agent_data.keys():
@@ -180,7 +188,7 @@ class AgentToModuleMapping(ConnectorV2):
         data_by_module = {}
 
         # Iterating over each column in the original data:
-        for column, agent_data in data.items():
+        for column, agent_data in batch.items():
             if rl_module is not None and column in rl_module:
                 if column in data_by_module:
                     data_by_module[column].update(agent_data)
@@ -204,7 +212,7 @@ class AgentToModuleMapping(ConnectorV2):
 
         return data_by_module
 
-    def _map_space_if_necessary(self, space, which: str = "obs"):
+    def _map_space_if_necessary(self, space: gym.Space, which: str = "obs"):
         # Analyze input observation space to check, whether the user has already taken
         # care of the agent to module mapping.
         if set(self._module_specs) == set(space.spaces.keys()):

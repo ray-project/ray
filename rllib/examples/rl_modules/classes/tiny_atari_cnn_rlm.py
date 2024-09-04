@@ -17,7 +17,7 @@ from ray.rllib.utils.typing import TensorType
 torch, nn = try_import_torch()
 
 
-class TinyAtariCNN(TorchRLModule):
+class TinyAtariCNN(TorchRLModule, ValueFunctionAPI):
     """A tiny CNN stack for fast-learning of Atari envs.
 
     The architecture here is the exact same as the one used by the old API stack as

@@ -312,6 +312,10 @@ class AlgorithmConfig(_Config):
             "aot_eager" if sys.platform == "darwin" else "onnxrt"
         )
         self.torch_compile_worker_dynamo_mode = None
+        # Default kwargs for `torch.nn.parallel.DistributedDataParallel`.
+        self.torch_ddp_kwargs = {}
+        # Default setting for skipping `nan` gradient updates.
+        self.torch_skip_nan_gradients = False
 
         # `self.api_stack()`
         self.enable_rl_module_and_learner = False
@@ -326,6 +330,7 @@ class AlgorithmConfig(_Config):
         self.normalize_actions = True
         self.clip_actions = False
         self._is_atari = None
+        self.disable_env_checking = False
         # Deprecated settings:
         self.env_task_fn = None
         self.render_env = False
@@ -434,6 +439,9 @@ class AlgorithmConfig(_Config):
         self.input_read_method_kwargs = {}
         self.input_read_schema = {}
         self.input_read_episodes = False
+        self.input_read_sample_batches = False
+        self.input_filesystem = None
+        self.input_filesystem_kwargs = {}
         self.input_compress_columns = [Columns.OBS, Columns.NEXT_OBS]
         self.input_spaces_jsonable = True
         self.map_batches_kwargs = {}
@@ -537,6 +545,8 @@ class AlgorithmConfig(_Config):
         self._per_module_overrides: Dict[ModuleID, "AlgorithmConfig"] = {}
 
         # `self.experimental()`
+        self._torch_grad_scaler_class = None
+        self._torch_lr_scheduler_classes = None
         self._tf_policy_handles_more_than_one_loss = False
         self._disable_preprocessor_api = False
         self._disable_action_flattening = False
@@ -567,7 +577,6 @@ class AlgorithmConfig(_Config):
         self.custom_async_evaluation_function = DEPRECATED_VALUE
         self._enable_rl_module_api = DEPRECATED_VALUE
         self.auto_wrap_old_gym_envs = DEPRECATED_VALUE
-        self.disable_env_checking = DEPRECATED_VALUE
         self.always_attach_evaluation_results = DEPRECATED_VALUE
 
         # The following values have moved because of the new ReplayBuffer API
@@ -1078,11 +1087,7 @@ class AlgorithmConfig(_Config):
             # Append all other columns handling.
             pipeline.append(AddColumnsFromEpisodesToTrainBatch())
             # Append STATE_IN/STATE_OUT (and time-rank) handler.
-            pipeline.append(
-                AddStatesFromEpisodesToBatch(
-                    as_learner_connector=True, max_seq_len=self.model.get("max_seq_len")
-                )
-            )
+            pipeline.append(AddStatesFromEpisodesToBatch(as_learner_connector=True))
             # If multi-agent -> Map from AgentID-based data to ModuleID based data.
             if self.is_multi_agent():
                 pipeline.append(
@@ -1378,6 +1383,8 @@ class AlgorithmConfig(_Config):
         torch_compile_worker: Optional[bool] = NotProvided,
         torch_compile_worker_dynamo_backend: Optional[str] = NotProvided,
         torch_compile_worker_dynamo_mode: Optional[str] = NotProvided,
+        torch_ddp_kwargs: Optional[Dict[str, Any]] = NotProvided,
+        torch_skip_nan_gradients: Optional[bool] = NotProvided,
     ) -> "AlgorithmConfig":
         """Sets the config's DL framework settings.
 
@@ -1417,6 +1424,25 @@ class AlgorithmConfig(_Config):
                 the workers.
             torch_compile_worker_dynamo_mode: The torch dynamo mode to use on the
                 workers.
+            torch_ddp_kwargs: The kwargs to pass into
+                `torch.nn.parallel.DistributedDataParallel` when using `num_learners
+                > 1`. This is specifically helpful when searching for unused parameters
+                that are not used in the backward pass. This can give hints for errors
+                in custom models where some parameters do not get touched in the
+                backward pass although they should.
+            torch_skip_nan_gradients: If updates with `nan` gradients should be entirely
+                skipped. This skips updates in the optimizer entirely if they contain
+                any `nan` gradient. This can help to avoid biasing moving-average based
+                optimizers - like Adam. This can help in training phases where policy
+                updates can be highly unstable such as during the early stages of
+                training or with highly exploratory policies. In such phases many
+                gradients might turn `nan` and setting them to zero could corrupt the
+                optimizer's internal state. The default is `False` and turns `nan`
+                gradients to zero. If many `nan` gradients are encountered consider (a)
+                monitoring gradients by setting `log_gradients` in `AlgorithmConfig` to
+                `True`, (b) use proper weight initialization (e.g. Xavier, Kaiming) via
+                the `model_config_dict` in `AlgorithmConfig.rl_module` and/or (c)
+                gradient clipping via `grad_clip` in `AlgorithmConfig.training`.
 
         Returns:
             This updated AlgorithmConfig object.
@@ -1458,6 +1484,10 @@ class AlgorithmConfig(_Config):
             )
         if torch_compile_worker_dynamo_mode is not NotProvided:
             self.torch_compile_worker_dynamo_mode = torch_compile_worker_dynamo_mode
+        if torch_ddp_kwargs is not NotProvided:
+            self.torch_ddp_kwargs = torch_ddp_kwargs
+        if torch_skip_nan_gradients is not NotProvided:
+            self.torch_skip_nan_gradients = torch_skip_nan_gradients
 
         return self
 
@@ -1518,11 +1548,11 @@ class AlgorithmConfig(_Config):
         clip_rewards: Optional[Union[bool, float]] = NotProvided,
         normalize_actions: Optional[bool] = NotProvided,
         clip_actions: Optional[bool] = NotProvided,
+        disable_env_checking: Optional[bool] = NotProvided,
         is_atari: Optional[bool] = NotProvided,
         action_mask_key: Optional[str] = NotProvided,
         # Deprecated args.
         auto_wrap_old_gym_envs=DEPRECATED_VALUE,
-        disable_env_checking=DEPRECATED_VALUE,
     ) -> "AlgorithmConfig":
         """Sets the config's RL-environment settings.
 
@@ -1562,6 +1592,11 @@ class AlgorithmConfig(_Config):
             clip_actions: If True, the RLlib default ModuleToEnv connector will clip
                 actions according to the env's bounds (before sending them into the
                 `env.step()` call).
+            disable_env_checking: Disable RLlib's env checks after a gymnasium.Env
+                instance has been constructed in an EnvRunner. Note that the checks
+                include an `env.reset()` and `env.step()` (with a random action), which
+                might tinker with your env's logic and behavior and thus negatively
+                influence sample collection- and/or learning behavior.
             is_atari: This config can be used to explicitly specify whether the env is
                 an Atari env or not. If not specified, RLlib will try to auto-detect
                 this.
@@ -1577,12 +1612,6 @@ class AlgorithmConfig(_Config):
                 old="AlgorithmConfig.environment(auto_wrap_old_gym_envs=..)",
                 error=True,
             )
-        if disable_env_checking != DEPRECATED_VALUE:
-            deprecation_warning(
-                old="AlgorithmConfig.environment(disable_env_checking=..)",
-                error=True,
-            )
-
         if env is not NotProvided:
             self.env = env
         if env_config is not NotProvided:
@@ -1601,6 +1630,8 @@ class AlgorithmConfig(_Config):
             self.normalize_actions = normalize_actions
         if clip_actions is not NotProvided:
             self.clip_actions = clip_actions
+        if disable_env_checking is not NotProvided:
+            self.disable_env_checking = disable_env_checking
         if is_atari is not NotProvided:
             self._is_atari = is_atari
         if action_mask_key is not NotProvided:
@@ -2391,6 +2422,9 @@ class AlgorithmConfig(_Config):
         input_read_method_kwargs: Optional[Dict] = NotProvided,
         input_read_schema: Optional[Dict[str, str]] = NotProvided,
         input_read_episodes: Optional[bool] = NotProvided,
+        input_read_sample_batches: Optional[bool] = NotProvided,
+        input_filesystem: Optional[str] = NotProvided,
+        input_filesystem_kwargs: Optional[Dict] = NotProvided,
         input_compress_columns: Optional[List[str]] = NotProvided,
         map_batches_kwargs: Optional[Dict] = NotProvided,
         iter_batches_kwargs: Optional[Dict] = NotProvided,
@@ -2452,8 +2486,26 @@ class AlgorithmConfig(_Config):
                 inside of RLlib's schema. The other format is a columnar format and is
                 agnostic to the RL framework used. Use the latter format, if you are
                 unsure when to use the data or in which RL framework. The default is
-                to read column data, i.e. `False`. See also `output_write_episodes`
-                to define the output data format when recording.
+                to read column data, i.e. `False`. `input_read_episodes` and
+                `inpuit_read_sample_batches` cannot be `True` at the same time. See
+                also `output_write_episodes` to define the output data format when
+                recording.
+            input_read_sample_batches: Whether offline data is stored in RLlib's old
+                stack `SampleBatch` type. This is usually the case for older data
+                recorded with RLlib in JSON line format. Reading in `SampleBatch`
+                data needs extra transforms and might not concatenate episode chunks
+                contained in different `SampleBatch`es in the data. If possible avoid
+                to read `SampleBatch`es and convert them in a controlled form into
+                RLlib`s `EpisodeType`s (i.e. `SingleAgentEpisode` or
+                `MultiAgentEpisode`). The default is `False`. `input_read_episodes`
+                and `inpuit_read_sample_batches` cannot be `True` at the same time.
+            input_filesystem: A cloud filesystem to handle access to cloud storage when
+                reading experiences. Should be either `gcs` for Google Cloud Storage,
+                `s3` for AWS S3 buckets, or `abs` for Azure Blob Storage.
+            input_filesystem_kwargs: A dictionary holding the kwargs for the filesystem
+                given by `input_filesystem`. See `gcsfs.GCSFilesystem` for GCS,
+                `pyarrow.fs.S3FileSystem`, for S3, and `ablfs.AzureBlobFilesystem` for
+                ABS filesystem arguments.
             input_compress_columns: What input columns are compressed with LZ4 in the
                 input data. If data is stored in `RLlib`'s `SingleAgentEpisode` (
                 `MultiAgentEpisode` not supported, yet). Note,
@@ -2553,6 +2605,12 @@ class AlgorithmConfig(_Config):
             self.input_read_schema = input_read_schema
         if input_read_episodes is not NotProvided:
             self.input_read_episodes = input_read_episodes
+        if input_read_sample_batches is not NotProvided:
+            self.input_read_sample_batches = input_read_sample_batches
+        if input_filesystem is not NotProvided:
+            self.input_filesystem = input_filesystem
+        if input_filesystem_kwargs is not NotProvided:
+            self.input_filesystem_kwargs = input_filesystem_kwargs
         if input_compress_columns is not NotProvided:
             self.input_compress_columns = input_compress_columns
         if map_batches_kwargs is not NotProvided:
@@ -3146,6 +3204,13 @@ class AlgorithmConfig(_Config):
         Returns:
             This updated AlgorithmConfig object.
         """
+        if _enable_rl_module_api != DEPRECATED_VALUE:
+            deprecation_warning(
+                old="AlgorithmConfig.rl_module(_enable_rl_module_api=..)",
+                new="AlgorithmConfig.api_stack(enable_rl_module_and_learner=..)",
+                error=True,
+            )
+
         if model_config_dict is not NotProvided:
             self._model_config_dict = model_config_dict
         if rl_module_spec is not NotProvided:
@@ -3161,17 +3226,15 @@ class AlgorithmConfig(_Config):
                 algorithm_config_overrides_per_module
             )
 
-        if _enable_rl_module_api != DEPRECATED_VALUE:
-            deprecation_warning(
-                old="AlgorithmConfig.rl_module(_enable_rl_module_api=..)",
-                new="AlgorithmConfig.api_stack(enable_rl_module_and_learner=..)",
-                error=False,
-            )
         return self
 
     def experimental(
         self,
         *,
+        _torch_grad_scaler_class: Optional[Type] = NotProvided,
+        _torch_lr_scheduler_classes: Optional[
+            Union[List[Type], Dict[ModuleID, Type]]
+        ] = NotProvided,
         _tf_policy_handles_more_than_one_loss: Optional[bool] = NotProvided,
         _disable_preprocessor_api: Optional[bool] = NotProvided,
         _disable_action_flattening: Optional[bool] = NotProvided,
@@ -3182,6 +3245,25 @@ class AlgorithmConfig(_Config):
         """Sets the config's experimental settings.
 
         Args:
+            _torch_grad_scaler_class: Class to use for torch loss scaling (and gradient
+                unscaling). The class must implement the following methods to be
+                compatible with a `TorchLearner`. These methods/APIs match exactly those
+                of torch's own `torch.amp.GradScaler` (see here for more details
+                https://pytorch.org/docs/stable/amp.html#gradient-scaling):
+                `scale([loss])` to scale the loss by some factor.
+                `get_scale()` to get the current scale factor value.
+                `step([optimizer])` to unscale the grads (divide by the scale factor)
+                and step the given optimizer.
+                `update()` to update the scaler after an optimizer step (for example to
+                adjust the scale factor).
+            _torch_lr_scheduler_classes: A list of `torch.lr_scheduler.LRScheduler`
+                (see here for more details
+                https://pytorch.org/docs/stable/optim.html#how-to-adjust-learning-rate)
+                classes or a dictionary mapping module IDs to such a list of respective
+                scheduler classes. Multiple scheduler classes can be applied in sequence
+                and will be stepped in the same sequence as defined here. Note, most
+                learning rate schedulers need arguments to be configured, i.e. you need
+                to partially initialize the schedulers in the list(s).
             _tf_policy_handles_more_than_one_loss: Experimental flag.
                 If True, TFPolicy will handle more than one loss/optimizer.
                 Set this to True, if you would like to return more than
@@ -3223,6 +3305,10 @@ class AlgorithmConfig(_Config):
             self._disable_initialize_loss_from_dummy_batch = (
                 _disable_initialize_loss_from_dummy_batch
             )
+        if _torch_grad_scaler_class is not NotProvided:
+            self._torch_grad_scaler_class = _torch_grad_scaler_class
+        if _torch_lr_scheduler_classes is not NotProvided:
+            self._torch_lr_scheduler_classes = _torch_lr_scheduler_classes
 
         return self
 

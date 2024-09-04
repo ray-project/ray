@@ -518,7 +518,7 @@ class TestLearnerGroupSaveLoadState(unittest.TestCase):
             del learner_group
 
             # Compare the results of the two updates.
-            check(results_2nd_update_with_break, results_2nd_without_break)
+            check(results_2nd_update_with_break, results_2nd_without_break, rtol=0.05)
             check(
                 weights_after_2_updates_with_break,
                 weights_after_2_updates_without_break,

@@ -17,10 +17,7 @@ parser.set_defaults(
 # and (if needed) use their values toset up `config` below.
 args = parser.parse_args()
 
-register_env(
-    "multi_agent_cartpole",
-    lambda _: MultiAgentCartPole({"num_agents": args.num_agents}),
-)
+register_env("multi_agent_cartpole", lambda cfg: MultiAgentCartPole(config=cfg))
 
 config = (
     PPOConfig()
@@ -28,7 +25,7 @@ config = (
         enable_rl_module_and_learner=True,
         enable_env_runner_and_connector_v2=True,
     )
-    .environment("multi_agent_cartpole")
+    .environment("multi_agent_cartpole", env_config={"num_agents": args.num_agents})
     .rl_module(
         model_config_dict={
             "fcnet_hiddens": [32],
@@ -37,11 +34,9 @@ config = (
         }
     )
     .training(
-        gamma=0.99,
         lr=0.0003,
         num_sgd_iter=6,
         vf_loss_coeff=0.01,
-        use_kl_loss=True,
     )
     .multi_agent(
         policy_mapping_fn=lambda aid, *arg, **kw: f"p{aid}",

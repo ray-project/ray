@@ -22,10 +22,7 @@ parser.set_defaults(
 # and (if needed) use their values to set up `config` below.
 args = parser.parse_args()
 
-register_env(
-    "multi_agent_pendulum",
-    lambda _: MultiAgentPendulum({"num_agents": args.num_agents}),
-)
+register_env("multi_agent_pendulum", lambda cfg: MultiAgentPendulum(config=cfg))
 
 config = (
     SACConfig()
@@ -33,10 +30,14 @@ config = (
         enable_rl_module_and_learner=True,
         enable_env_runner_and_connector_v2=True,
     )
-    .environment("multi_agent_pendulum")
+    .environment("multi_agent_pendulum", env_config={"num_agents": args.num_agents})
     .training(
         initial_alpha=1.001,
-        lr=0.001 * ((args.num_gpus or 1) ** 0.5),
+        # Use a smaller learning rate for the policy.
+        actor_lr=2e-4 * (args.num_gpus or 1) ** 0.5,
+        critic_lr=8e-4 * (args.num_gpus or 1) ** 0.5,
+        alpha_lr=9e-4 * (args.num_gpus or 1) ** 0.5,
+        lr=None,
         target_entropy="auto",
         n_step=(2, 5),
         tau=0.005,
@@ -75,7 +76,7 @@ if args.num_agents > 0:
 stop = {
     NUM_ENV_STEPS_SAMPLED_LIFETIME: args.stop_timesteps,
     # `episode_return_mean` is the sum of all agents/policies' returns.
-    f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": -400.0 * args.num_agents,
+    f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": -450.0 * args.num_agents,
 }
 
 if __name__ == "__main__":

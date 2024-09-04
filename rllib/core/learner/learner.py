@@ -53,6 +53,7 @@ from ray.rllib.utils.metrics import (
     NUM_ENV_STEPS_TRAINED,
     NUM_MODULE_STEPS_TRAINED,
     LEARNER_CONNECTOR_TIMER,
+    MODULE_TRAIN_BATCH_SIZE_MEAN,
 )
 from ray.rllib.utils.metrics.metrics_logger import MetricsLogger
 from ray.rllib.utils.minibatch_utils import (
@@ -151,7 +152,7 @@ class Learner(Checkpointable):
             from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import (
                 PPOTorchRLModule
             )
-            from ray.rllib.core import COMPONENT_RL_MODULE
+            from ray.rllib.core import COMPONENT_RL_MODULE, DEFAULT_MODULE_ID
             from ray.rllib.core.rl_module.rl_module import RLModuleSpec
 
             env = gym.make("CartPole-v1")
@@ -213,10 +214,12 @@ class Learner(Checkpointable):
 
             class MyLearner(TorchLearner):
 
-               def compute_loss(self, fwd_out, batch):
-                   # compute the loss based on batch and output of the forward pass
-                   # to access the learner hyper-parameters use `self._hps`
-                   return {ALL_MODULES: loss}
+               def compute_losses(self, fwd_out, batch):
+                   # Compute the losses per module based on `batch` and output of the
+                   # forward pass (`fwd_out`). To access the (algorithm) config for a
+                   # specific RLModule, do:
+                   # `self.config.get_config_for_module([moduleID])`.
+                   return {DEFAULT_MODULE_ID: module_loss}
     """
 
     framework: str = None
@@ -596,9 +599,22 @@ class Learner(Checkpointable):
             The optimizer object, configured under the given `module_id` and
             `optimizer_name`.
         """
+        # `optimizer_name` could possibly be the full optimizer name (including the
+        # module_id under which it is registered).
+        if optimizer_name in self._named_optimizers:
+            return self._named_optimizers[optimizer_name]
+
+        # Normally, `optimizer_name` is just the optimizer's name, not including the
+        # `module_id`.
         full_registration_name = module_id + "_" + optimizer_name
-        assert full_registration_name in self._named_optimizers
-        return self._named_optimizers[full_registration_name]
+        if full_registration_name in self._named_optimizers:
+            return self._named_optimizers[full_registration_name]
+
+        # No optimizer found.
+        raise KeyError(
+            f"Optimizer not found! module_id={module_id} "
+            f"optimizer_name={optimizer_name}"
+        )
 
     def get_optimizers_for_module(
         self, module_id: ModuleID = ALL_MODULES
@@ -829,33 +845,32 @@ class Learner(Checkpointable):
         return should_module_be_updated_fn(module_id, multi_agent_batch)
 
     @OverrideToImplementCustomLogic
-    def compute_loss(
+    def compute_losses(
         self, *, fwd_out: Dict[str, Any], batch: Dict[str, Any]
     ) -> Dict[str, Any]:
-        """Computes the loss for the module being optimized.
+        """Computes the loss(es) for the module being optimized.
 
-        This method must be overridden by multiagent-specific algorithm learners to
-        specify the specific loss computation logic. If the algorithm is single agent
-        `compute_loss_for_module()` should be overridden instead.
-        `fwd_out` is the output of the `forward_train()` method of the underlying
-        MultiRLModule. `batch` is the data that was used to compute `fwd_out`.
-        The returned dictionary must contain a key called
-        ALL_MODULES, which will be used to compute gradients. It is recommended
-        to not compute any forward passes within this method, and to use the
-        `forward_train()` outputs of the RLModule(s) to compute the required tensors for
-        loss calculations.
+        This method must be overridden by MultiRLModule-specific Learners in order to
+        define the specific loss computation logic. If the algorithm is single-agent,
+        only `compute_loss_for_module()` should be overridden instead. If the algorithm
+        uses independent multi-agent learning (default behavior for RLlib's multi-agent
+        setups), also only `compute_loss_for_module()` should be overridden, but it will
+        be called for each individual RLModule inside the MultiRLModule.
+        It is recommended to not compute any forward passes within this method, and to
+        use the `forward_train()` outputs of the RLModule(s) to compute the required
+        loss tensors.
+        See here for a custom loss function example script:
+        https://github.com/ray-project/ray/blob/master/rllib/examples/learners/custom_loss_fn_simple.py  # noqa
 
         Args:
-            fwd_out: Output from a call to the `forward_train()` method of self.module
-                during training (`self.update()`).
+            fwd_out: Output from a call to the `forward_train()` method of the
+                underlying MultiRLModule (`self.module`) during training
+                (`self.update()`).
             batch: The training batch that was used to compute `fwd_out`.
 
         Returns:
-            A dictionary mapping module IDs to individual loss terms. The dictionary
-            must contain one protected key ALL_MODULES which will be used for computing
-            gradients through.
+            A dictionary mapping module IDs to individual loss terms.
         """
-        loss_total = None
         loss_per_module = {}
         for module_id in fwd_out:
             module_batch = batch[module_id]
@@ -868,13 +883,6 @@ class Learner(Checkpointable):
                 fwd_out=module_fwd_out,
             )
             loss_per_module[module_id] = loss
-
-            if loss_total is None:
-                loss_total = loss
-            else:
-                loss_total += loss
-
-        loss_per_module[ALL_MODULES] = loss_total
 
         return loss_per_module
 
@@ -892,7 +900,7 @@ class Learner(Checkpointable):
 
         Think of this as computing loss for a single agent. For multi-agent use-cases
         that require more complicated computation for loss, consider overriding the
-        `compute_loss` method instead.
+        `compute_losses` method instead.
 
         Args:
             module_id: The id of the module.
@@ -1025,6 +1033,87 @@ class Learner(Checkpointable):
             num_total_mini_batches=num_total_mini_batches,
         )
 
+    def update_from_iterator(
+        self,
+        iterator,
+        *,
+        timesteps: Optional[Dict[str, Any]] = None,
+        minibatch_size: Optional[int] = None,
+        num_iters: int = None,
+        **kwargs,
+    ):
+        self._check_is_built()
+        minibatch_size = minibatch_size or 32
+
+        # Call `before_gradient_based_update` to allow for non-gradient based
+        # preparations-, logging-, and update logic to happen.
+        self.before_gradient_based_update(timesteps=timesteps or {})
+
+        def _finalize_fn(batch: Dict[str, numpy.ndarray]) -> Dict[str, Any]:
+            # Note, the incoming batch is a dictionary with a numpy array
+            # holding the `MultiAgentBatch`.
+            batch = self._convert_batch_type(batch["batch"][0])
+            return {"batch": self._set_slicing_by_batch_id(batch, value=True)}
+
+        i = 0
+        for batch in iterator.iter_batches(
+            batch_size=minibatch_size,
+            _finalize_fn=_finalize_fn,
+            **kwargs,
+        ):
+            # Update the iteration counter.
+            i += 1
+
+            # Note, `_finalize_fn`  must return a dictionary.
+            batch = batch["batch"]
+            # Check the MultiAgentBatch, whether our RLModule contains all ModuleIDs
+            # found in this batch. If not, throw an error.
+            unknown_module_ids = set(batch.policy_batches.keys()) - set(
+                self.module.keys()
+            )
+            if len(unknown_module_ids) > 0:
+                raise ValueError(
+                    "Batch contains one or more ModuleIDs that are not in this "
+                    f"Learner! Found IDs: {unknown_module_ids}"
+                )
+
+            # Log metrics.
+            self._log_steps_trained_metrics(batch)
+
+            # Make the actual in-graph/traced `_update` call. This should return
+            # all tensor values (no numpy).
+            fwd_out, loss_per_module, tensor_metrics = self._update(
+                batch.policy_batches
+            )
+
+            self._set_slicing_by_batch_id(batch, value=False)
+            # If `num_iters` is reached break and return.
+            if num_iters and i == num_iters:
+                break
+
+        logger.info(f"[Learner] Iterations run in epoch: {i}")
+        # Convert logged tensor metrics (logged during tensor-mode of MetricsLogger)
+        # to actual (numpy) values.
+        self.metrics.tensors_to_numpy(tensor_metrics)
+
+        # Log all individual RLModules' loss terms and its registered optimizers'
+        # current learning rates.
+        for mid, loss in convert_to_numpy(loss_per_module).items():
+            self.metrics.log_value(
+                key=(mid, self.TOTAL_LOSS_KEY),
+                value=loss,
+                window=1,
+            )
+        # Call `after_gradient_based_update` to allow for non-gradient based
+        # cleanups-, logging-, and update logic to happen.
+        # TODO (simon): Check, if this should stay here, when running multiple
+        # gradient steps inside the iterator loop above (could be a complete epoch)
+        # the target networks might need to be updated earlier.
+        self.after_gradient_based_update(timesteps=timesteps or {})
+
+        # Reduce results across all minibatch update steps.
+        return self.metrics.reduce()
+
     @OverrideToImplementCustomLogic
     @abc.abstractmethod
     def _update(
@@ -1130,95 +1219,6 @@ class Learner(Checkpointable):
         """
         raise NotImplementedError
 
-    def update_from_iterator(
-        self,
-        iterator,
-        *,
-        timesteps: Optional[Dict[str, Any]] = None,
-        minibatch_size: Optional[int] = None,
-        num_iters: int = None,
-        **kwargs,
-    ):
-        self._check_is_built()
-        minibatch_size = minibatch_size or 32
-
-        # Call `before_gradient_based_update` to allow for non-gradient based
-        # preparations-, logging-, and update logic to happen.
-        self.before_gradient_based_update(timesteps=timesteps or {})
-
-        def _finalize_fn(batch: Dict[str, numpy.ndarray]) -> Dict[str, Any]:
-            # Note, the incoming batch is a dictionary with a numpy array
-            # holding the `MultiAgentBatch`.
-            batch = self._convert_batch_type(batch["batch"][0])
-            return {"batch": self._set_slicing_by_batch_id(batch, value=True)}
-
-        i = 0
-        for batch in iterator.iter_batches(
-            batch_size=minibatch_size,
-            _finalize_fn=_finalize_fn,
-            **kwargs,
-        ):
-            # Update the iteration counter.
-            i += 1
-
-            # Note, `_finalize_fn`  must return a dictionary.
-            batch = batch["batch"]
-            # Check the MultiAgentBatch, whether our RLModule contains all ModuleIDs
-            # found in this batch. If not, throw an error.
-            unknown_module_ids = set(batch.policy_batches.keys()) - set(
-                self.module.keys()
-            )
-            if len(unknown_module_ids) > 0:
-                raise ValueError(
-                    "Batch contains one or more ModuleIDs that are not in this "
-                    f"Learner! Found IDs: {unknown_module_ids}"
-                )
-
-            # Log metrics.
-            self.metrics.log_dict(
-                {
-                    (ALL_MODULES, NUM_ENV_STEPS_TRAINED): batch.env_steps(),
-                    (ALL_MODULES, NUM_MODULE_STEPS_TRAINED): batch.agent_steps(),
-                    **{
-                        (mid, NUM_MODULE_STEPS_TRAINED): len(b)
-                        for mid, b in batch.policy_batches.items()
-                    },
-                },
-                reduce="sum",
-                clear_on_reduce=True,
-            )
-
-            # Make the actual in-graph/traced `_update` call. This should return
-            # all tensor values (no numpy).
-            fwd_out, loss_per_module, tensor_metrics = self._update(
-                batch.policy_batches
-            )
-
-            self._set_slicing_by_batch_id(batch, value=False)
-            # If `num_iters` is reached break and return.
-            if num_iters and i == num_iters:
-                break
-
-        logger.info(f"[Learner] Iterations run in epoch: {i}")
-        # Convert logged tensor metrics (logged during tensor-mode of MetricsLogger)
-        # to actual (numpy) values.
-        self.metrics.tensors_to_numpy(tensor_metrics)
-
-        # Log all individual RLModules' loss terms and its registered optimizers'
-        # current learning rates.
-        for mid, loss in convert_to_numpy(loss_per_module).items():
-            self.metrics.log_value(
-                key=(mid, self.TOTAL_LOSS_KEY),
-                value=loss,
-                window=1,
-            )
-        # Call `after_gradient_based_update` to allow for non-gradient based
-        # cleanups-, logging-, and update logic to happen.
-        self.after_gradient_based_update(timesteps=timesteps or {})
-
-        # Reduce results across all minibatch update steps.
-        return self.metrics.reduce()
-
     def _update_from_batch_or_episodes(
         self,
         *,
@@ -1258,7 +1258,7 @@ class Learner(Checkpointable):
                 shared_data = {}
                 batch = self._learner_connector(
                     rl_module=self.module,
-                    data=batch if batch is not None else {},
+                    batch=batch if batch is not None else {},
                     episodes=episodes,
                     shared_data=shared_data,
                 )
@@ -1271,7 +1271,7 @@ class Learner(Checkpointable):
                     },
                     env_steps=sum(len(e) for e in episodes),
                 )
-        # Have to convert to MultiAgentBatch.
+        # Single-agent SampleBatch: Have to convert to MultiAgentBatch.
         elif isinstance(batch, SampleBatch):
             assert len(self.module) == 1
             batch = MultiAgentBatch(
@@ -1294,24 +1294,8 @@ class Learner(Checkpointable):
             if not self.should_module_be_updated(module_id, batch):
                 del batch.policy_batches[module_id]
 
-        # Log all timesteps (env, agent, modules) based on given episodes.
-        if self._learner_connector is not None and episodes is not None:
-            self._log_steps_trained_metrics(episodes, batch, shared_data)
-        # TODO (sven): Possibly remove this if-else block entirely. We might be in a
-        #  world soon where we always learn from episodes, never from an incoming batch.
-        else:
-            self.metrics.log_dict(
-                {
-                    (ALL_MODULES, NUM_ENV_STEPS_TRAINED): batch.env_steps(),
-                    (ALL_MODULES, NUM_MODULE_STEPS_TRAINED): batch.agent_steps(),
-                    **{
-                        (mid, NUM_MODULE_STEPS_TRAINED): len(b)
-                        for mid, b in batch.policy_batches.items()
-                    },
-                },
-                reduce="sum",
-                clear_on_reduce=True,
-            )
+        # Log all timesteps (env, agent, modules) based on given episodes/batch.
+        self._log_steps_trained_metrics(batch)
 
         if minibatch_size:
             if self._learner_connector is not None:
@@ -1581,54 +1565,33 @@ class Learner(Checkpointable):
     def _get_clip_function() -> Callable:
         """Returns the gradient clipping function to use, given the framework."""
 
-    def _log_steps_trained_metrics(self, episodes, batch, shared_data):
-        # Logs this iteration's steps trained, based on given `episodes`.
-        env_steps = sum(len(e) for e in episodes)
-        log_dict = defaultdict(dict)
-        orig_lengths = shared_data.get("_sa_episodes_lengths", {})
-        for sa_episode in self._learner_connector.single_agent_episode_iterator(
-            episodes, agents_that_stepped_only=False
-        ):
-            mid = (
-                sa_episode.module_id
-                if sa_episode.module_id is not None
-                else DEFAULT_MODULE_ID
-            )
-            # Do not log steps trained for those ModuleIDs that should not be updated.
-            if mid != ALL_MODULES and mid not in batch.policy_batches:
-                continue
+    def _log_steps_trained_metrics(self, batch: MultiAgentBatch):
+        """Logs this iteration's steps trained, based on given `batch`."""
 
-            _len = (
-                orig_lengths[sa_episode.id_]
-                if sa_episode.id_ in orig_lengths
-                else len(sa_episode)
+        log_dict = defaultdict(dict)
+        for mid, module_batch in batch.policy_batches.items():
+            module_batch_size = len(module_batch)
+            # Log average batch size (for each module).
+            self.metrics.log_value(
+                key=(mid, MODULE_TRAIN_BATCH_SIZE_MEAN),
+                value=module_batch_size,
             )
-            # TODO (sven): Decide, whether agent_ids should be part of LEARNER_RESULTS.
-            #  Currently and historically, only ModuleID keys and ALL_MODULES were used
-            #  and expected. Does it make sense to include e.g. agent steps trained?
-            #  I'm not sure atm.
-            # aid = (
-            #    sa_episode.agent_id if sa_episode.agent_id is not None
-            #    else DEFAULT_AGENT_ID
-            # )
+            # Log module steps (for each module).
             if NUM_MODULE_STEPS_TRAINED not in log_dict[mid]:
-                log_dict[mid][NUM_MODULE_STEPS_TRAINED] = _len
+                log_dict[mid][NUM_MODULE_STEPS_TRAINED] = module_batch_size
             else:
-                log_dict[mid][NUM_MODULE_STEPS_TRAINED] += _len
-            # TODO (sven): See above.
-            # if NUM_AGENT_STEPS_TRAINED not in log_dict[aid]:
-            #    log_dict[aid][NUM_AGENT_STEPS_TRAINED] = _len
-            # else:
-            #    log_dict[aid][NUM_AGENT_STEPS_TRAINED] += _len
+                log_dict[mid][NUM_MODULE_STEPS_TRAINED] += module_batch_size
+
+            # Log module steps (sum of all modules).
             if NUM_MODULE_STEPS_TRAINED not in log_dict[ALL_MODULES]:
-                log_dict[ALL_MODULES][NUM_MODULE_STEPS_TRAINED] = _len
+                log_dict[ALL_MODULES][NUM_MODULE_STEPS_TRAINED] = module_batch_size
             else:
-                log_dict[ALL_MODULES][NUM_MODULE_STEPS_TRAINED] += _len
+                log_dict[ALL_MODULES][NUM_MODULE_STEPS_TRAINED] += module_batch_size
 
         # Log env steps (all modules).
         self.metrics.log_value(
             (ALL_MODULES, NUM_ENV_STEPS_TRAINED),
-            env_steps,
+            batch.env_steps(),
             reduce="sum",
             clear_on_reduce=True,
         )
@@ -1668,3 +1631,13 @@ class Learner(Checkpointable):
     @Deprecated(new="Learner._set_optimizer_state()", error=True)
     def set_optimizer_state(self, *args, **kwargs):
         pass
+
+    @Deprecated(new="Learner.compute_losses(...)", error=False)
+    def compute_loss(self, *args, **kwargs):
+        losses_per_module = self.compute_losses(*args, **kwargs)
+        # To continue supporting the old `compute_loss` behavior (instead of
+        # the new `compute_losses`, add the ALL_MODULES key here holding the sum
+        # of all individual loss terms.
+        if ALL_MODULES not in losses_per_module:
+            losses_per_module[ALL_MODULES] = sum(losses_per_module.values())
+        return losses_per_module
