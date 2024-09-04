@@ -118,30 +118,60 @@ class ModelV2ToRLModule(TorchRLModule, ValueFunctionAPI):
         # Erase the torch policy from memory, so it can be garbage collected.
         del policy
 
+    @override(TorchRLModule)
     def _forward_inference(self, batch: Dict[str, Any], **kwargs) -> Dict[str, Any]:
+        return self._forward_pass(batch, inference=True)
+
+    @override(TorchRLModule)
+    def _forward_exploration(self, batch: Dict[str, Any], **kwargs) -> Dict[str, Any]:
+        return self._forward_inference(batch, **kwargs)
+
+    @override(TorchRLModule)
+    def _forward_train(self, batch: Dict[str, Any], **kwargs) -> Dict[str, Any]:
+        out = self._forward_pass(batch, inference=False)
+        out[Columns.ACTION_LOGP] = self._action_dist_class(
+            out[Columns.ACTION_DIST_INPUTS]
+        ).logp(batch[Columns.ACTIONS])
+        out[Columns.VF_PREDS] = self._model_v2.value_function()
+        if Columns.STATE_IN in batch and Columns.SEQ_LENS in batch:
+            out[Columns.VF_PREDS] = torch.reshape(
+                out[Columns.VF_PREDS], [len(batch[Columns.SEQ_LENS]), -1]
+            )
+        return out
+
+    def _forward_pass(self, batch, inference=True):
         # Translate states and seq_lens into old API stack formats.
         batch = batch.copy()
         state_in = batch.pop(Columns.STATE_IN, [])
         state_in = [s for i, s in sorted(state_in.items())]
         seq_lens = batch.pop(Columns.SEQ_LENS, None)
-        if state_in and seq_lens is None:
-            seq_lens = torch.tensor(
-                [1.0] * state_in[0].shape[0], device=state_in[0].device
-            )
-        # Perform the actual ModelV2 forward pass.
-        # A recurrent ModelV2 adds and removes the time-rank itself (whereas in the new
-        # API stack, the connector pipelines are responsible for doing this) -> We have
-        # to remove, then re-add the time rank here to make ModelV2 work with the new
-        # model-to-env pipelines.
+
         if state_in:
+            if inference and seq_lens is None:
+                seq_lens = torch.tensor(
+                    [1.0] * state_in[0].shape[0], device=state_in[0].device
+                )
+            elif not inference:
+                assert seq_lens is not None
+            # Perform the actual ModelV2 forward pass.
+            # A recurrent ModelV2 adds and removes the time-rank itself (whereas in the
+            # new API stack, the connector pipelines are responsible for doing this) ->
+            # We have to remove, then re-add the time rank here to make ModelV2 work.
             batch = tree.map_structure(
                 lambda s: torch.reshape(s, [-1] + list(s.shape[2:])), batch
             )
         nn_output, state_out = self._model_v2(batch, state_in, seq_lens)
+        # Put back 1ts time rank into nn-output (inference).
         if state_in:
-            nn_output = tree.map_structure(
-                lambda s: torch.unsqueeze(s, axis=1), nn_output
-            )
+            if inference:
+                nn_output = tree.map_structure(
+                    lambda s: torch.unsqueeze(s, axis=1), nn_output
+                )
+            else:
+                nn_output = tree.map_structure(
+                    lambda s: torch.reshape(s, [len(seq_lens), -1] + list(s.shape[1:])),
+                    nn_output,
+                )
         # Interpret the NN output as action logits.
         output = {Columns.ACTION_DIST_INPUTS: nn_output}
         # Add the `state_out` to the `output`, new API stack style.
@@ -152,30 +182,27 @@ class ModelV2ToRLModule(TorchRLModule, ValueFunctionAPI):
 
         return output
 
-    def _forward_exploration(self, batch: Dict[str, Any], **kwargs) -> Dict[str, Any]:
-        return self._forward_inference(batch, **kwargs)
-
-    def _forward_train(self, batch: Dict[str, Any], **kwargs) -> Dict[str, Any]:
-        out = self._forward_inference(batch, **kwargs)
-        out[Columns.ACTION_LOGP] = self._action_dist_class(
-            out[Columns.ACTION_DIST_INPUTS]
-        ).logp(batch[Columns.ACTIONS])
-        out[Columns.VF_PREDS] = self._model_v2.value_function()
-        return out
-
+    @override(ValueFunctionAPI)
     def compute_values(self, batch: Dict[str, Any]):
-        self._forward_inference(batch)
-        return self._model_v2.value_function()
+        self._forward_pass(batch, inference=False)
+        v_preds = self._model_v2.value_function()
+        if Columns.STATE_IN in batch and Columns.SEQ_LENS in batch:
+            v_preds = torch.reshape(v_preds, [len(batch[Columns.SEQ_LENS]), -1])
+        return v_preds
 
+    @override(TorchRLModule)
     def get_inference_action_dist_cls(self):
         return self._action_dist_class
 
+    @override(TorchRLModule)
     def get_exploration_action_dist_cls(self):
         return self._action_dist_class
 
+    @override(TorchRLModule)
     def get_train_action_dist_cls(self):
         return self._action_dist_class
 
+    @override(TorchRLModule)
     def get_initial_state(self):
         """Converts the initial state list of ModelV2 into a dict (new API stack)."""
         init_state_list = self._model_v2.get_initial_state()

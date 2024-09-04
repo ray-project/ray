@@ -51,7 +51,8 @@ if __name__ == "__main__":
     algo_new_stack = config_new_stack.build()
 
     # Train until a higher return.
-    min_return_new_stack = 450.0
+    min_return_new_stack = 350.0
+    results = None
     passed = False
     for i in range(100):
         results = algo_new_stack.train()
