@@ -141,7 +141,11 @@ class OfflinePreLearner:
 
         # Set up an episode buffer, if the module is stateful or we sample from
         # `SampleBatch` types.
-        if self.input_read_sample_batches or self._module.is_stateful():
+        if (
+            self.input_read_sample_batches
+            or self._module.is_stateful()
+            or self.input_read_episodes
+        ):
             # Either the user defined a buffer class or we fall back to the default.
             prelearner_buffer_class = (
                 self.config.prelearner_buffer_class
@@ -162,6 +166,13 @@ class OfflinePreLearner:
         # If we directly read in episodes we just convert to list.
         if self.input_read_episodes:
             episodes = batch["item"].tolist()
+            self.episode_buffer.add(episodes)
+            episodes = self.episode_buffer.sample(
+                num_items=self.config.train_batch_size_per_learner,
+                # TODO (simon): This can be removed as soon as DreamerV3 has been
+                # cleaned up, i.e. can use episode samples for training.
+                sample_episodes=True,
+            )
         # Else, if we have old stack `SampleBatch`es.
         elif self.input_read_sample_batches:
             episodes = OfflinePreLearner._map_sample_batch_to_episode(
