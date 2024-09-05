@@ -7,7 +7,7 @@ from packaging.version import Version
 
 import ray.train
 from ray.train import Checkpoint
-from ray.train.constants import _DEPRECATED_VALUE, TRAIN_DATASET_KEY
+from ray.train.constants import TRAIN_DATASET_KEY
 from ray.train.trainer import GenDataset
 from ray.train.xgboost import RayTrainReportCallback
 from ray.train.xgboost.v2 import XGBoostTrainer as SimpleXGBoostTrainer
@@ -19,6 +19,7 @@ logger = logging.getLogger(__name__)
 def _xgboost_train_fn_per_worker(
     config: dict,
     label_column: str,
+    dmatrix_params: Dict[str, Dict[str, Any]],
     num_boost_round: int,
     dataset_keys: set,
     xgboost_train_kwargs: dict,
@@ -48,7 +49,9 @@ def _xgboost_train_fn_per_worker(
     eval_dfs = {k: d.materialize().to_pandas() for k, d in eval_ds_iters.items()}
 
     train_X, train_y = train_df.drop(label_column, axis=1), train_df[label_column]
-    dtrain = xgboost.DMatrix(train_X, label=train_y)
+    dtrain = xgboost.DMatrix(
+        train_X, label=train_y, **dmatrix_params.get(TRAIN_DATASET_KEY, {})
+    )
 
     # NOTE: Include the training dataset in the evaluation datasets.
     # This allows `train-*` metrics to be calculated and reported.
@@ -56,7 +59,14 @@ def _xgboost_train_fn_per_worker(
 
     for eval_name, eval_df in eval_dfs.items():
         eval_X, eval_y = eval_df.drop(label_column, axis=1), eval_df[label_column]
-        evals.append((xgboost.DMatrix(eval_X, label=eval_y), eval_name))
+        evals.append(
+            (
+                xgboost.DMatrix(
+                    eval_X, label=eval_y, **dmatrix_params.get(eval_name, {})
+                ),
+                eval_name,
+            )
+        )
 
     evals_result = {}
     xgboost.train(
@@ -116,6 +126,9 @@ class XGBoostTrainer(SimpleXGBoostTrainer):
         params: XGBoost training parameters.
             Refer to `XGBoost documentation <https://xgboost.readthedocs.io/>`_
             for a list of possible parameters.
+        dmatrix_params: Dict of ``dataset name:dict of kwargs`` passed to respective
+            ``xgboost.DMatrix`` objects created on each worker. For example, this can
+            be used to add sample weights with the ``weight`` parameter.
         num_boost_round: Target number of boosting iterations (trees in the model).
             Note that unlike in ``xgboost.train``, this is the target number
             of trees, meaning that if you set ``num_boost_round=10`` and pass a model
@@ -141,7 +154,7 @@ class XGBoostTrainer(SimpleXGBoostTrainer):
         datasets: Dict[str, GenDataset],
         label_column: str,
         params: Dict[str, Any],
-        dmatrix_params: Optional[Dict[str, Dict[str, Any]]] = _DEPRECATED_VALUE,
+        dmatrix_params: Optional[Dict[str, Dict[str, Any]]] = None,
         num_boost_round: int = 10,
         scaling_config: Optional[ray.train.ScalingConfig] = None,
         run_config: Optional[ray.train.RunConfig] = None,
@@ -156,14 +169,7 @@ class XGBoostTrainer(SimpleXGBoostTrainer):
                 'Upgrade with: `pip install -U "xgboost>=1.7"`'
             )
 
-        # TODO(justinvyu): [Deprecated] Remove in 2.11
-        if dmatrix_params != _DEPRECATED_VALUE:
-            raise DeprecationWarning(
-                "`dmatrix_params` is deprecated, since XGBoostTrainer no longer "
-                "depends on the `xgboost_ray.RayDMatrix` utility. "
-                "You can remove this argument and use `dataset_config` instead "
-                "to customize Ray Dataset ingestion."
-            )
+        self.dmatrix_params = dmatrix_params or {}
 
         # Initialize a default Ray Train metrics/checkpoint reporting callback if needed
         callbacks = train_kwargs.get("callbacks", [])
@@ -188,6 +194,7 @@ class XGBoostTrainer(SimpleXGBoostTrainer):
         train_fn_per_worker = partial(
             _xgboost_train_fn_per_worker,
             label_column=label_column,
+            dmatrix_params=dmatrix_params,
             num_boost_round=num_boost_round,
             dataset_keys=set(datasets),
             xgboost_train_kwargs=train_kwargs,
@@ -220,3 +227,11 @@ class XGBoostTrainer(SimpleXGBoostTrainer):
                 f"'{TRAIN_DATASET_KEY}' key must be preset in `datasets`. "
                 f"Got {list(self.datasets.keys())}"
             )
+
+        if self.dmatrix_params:
+            for key in self.dmatrix_params:
+                if key not in self.datasets:
+                    raise KeyError(
+                        f"`dmatrix_params` dict contains key '{key}' "
+                        f"which is not present in `datasets`."
+                    )
