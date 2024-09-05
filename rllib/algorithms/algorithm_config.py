@@ -447,6 +447,8 @@ class AlgorithmConfig(_Config):
         self.map_batches_kwargs = {}
         self.iter_batches_kwargs = {}
         self.prelearner_class = None
+        self.prelearner_buffer_class = None
+        self.prelearner_buffer_kwargs = {}
         self.prelearner_module_synch_period = 10
         self.dataset_num_iters_per_learner = None
         self.input_config = {}
@@ -844,6 +846,8 @@ class AlgorithmConfig(_Config):
         self._validate_input_settings()
         # Check evaluation specific settings.
         self._validate_evaluation_settings()
+        # Check offline specific settings (new API stack).
+        self._validate_offline_settings()
 
         # Check new API stack specific settings.
         self._validate_new_api_stack_settings()
@@ -2429,6 +2433,8 @@ class AlgorithmConfig(_Config):
         map_batches_kwargs: Optional[Dict] = NotProvided,
         iter_batches_kwargs: Optional[Dict] = NotProvided,
         prelearner_class: Optional[Type] = NotProvided,
+        prelearner_buffer_class: Optional[Type] = NotProvided,
+        prelearner_buffer_kwargs: Optional[Dict] = NotProvided,
         prelearner_module_synch_period: Optional[int] = NotProvided,
         dataset_num_iters_per_learner: Optional[int] = NotProvided,
         input_config: Optional[Dict] = NotProvided,
@@ -2532,6 +2538,32 @@ class AlgorithmConfig(_Config):
                 need to make some further transformations specific for your data or
                 loss. The default is `None` which uses the base `OfflinePreLearner`
                 defined in `ray.rllib.offline.offline_prelearner`.
+            prelearner_buffer_class: The episode buffer class to use in the PreLearner
+                when sampling from the dataset. This is needed and defaults to the
+                `ray.rllib.utils.replay_buffers.EpisodeReplayBuffer` in case of a
+                dataset storing RLlib's old API stack's `SampleBatch`es, i.e.
+                `input_read_sample_batches=True`. As each `SampleBatch` could
+                potentially hold more than a single timestep, the episode buffer is
+                used to buffer episodes and sample exactly the defined
+                `train_batch_size_per_learner` from it. Any buffer that inherits from
+                `ray.rllib.utils.replay_buffers.EpisodeReplayBuffer` can be used, e.g.
+                you could use RLlib's prrioritized episode buffer
+                `ray.rllib.utils.replay_buffers.PrioritizedEpsiodeReplayBuffer`. See
+                `prelearner_buffer_kwargs` for passing in further arguments into the
+                buffer's constructor. Note, the buffer acts (a) as a buffer to dissect
+                `SampleBatch` data into smaller chunks, (b) to concatenate epiosde
+                chunks from different `SampleBatch`es, and (c) to act a shuffler that
+                shuffles experiences from different episodes.
+            prelearner_buffer_kwargs: `kwargs` for the `prelearner_buffer_class`. If no
+                arguments are passed in the buffer's `capacity` will be set to `10 x
+                train_batch_size_per_learner` and the `batch_size_B` to the
+                `train_batch_size_per_learner`. The capacity will act (a) as a shuffle
+                for experiences randomizing experiences while sampling and (b) as a
+                buffer for the episodes, i.e. will keep episodes longer available for
+                sampling depending on the capacity. If you want to traverse the dataset
+                as is and avoid sampling the same experiences multiple times choose a
+                small enough capacity to store episodes from your `SampleBatch` data,
+                but to evict old experiences as soon as possible.
             prelearner_module_synch_period: The period (number of batches converted)
                 after which the `RLModule` held by the `PreLearner` should sync weights.
                 The `PreLearner` is used to preprocess batches for the learners. The
@@ -2539,10 +2571,10 @@ class AlgorithmConfig(_Config):
                 Values too small will force the `PreLearner` to sync more frequently
                 and thus might slow down the data pipeline. The default value chosen
                 by the `OfflinePreLearner` is 10.
-            dataset_num_iters_per_learner: Number of iterations to run in each learner
+            dataset_num_iters_per_learner: Number of updates to run in each learner
                 during a single training iteration. If `None`, each learner runs a
                 complete epoch over its data block (the dataset is partitioned into
-                as many blocks as there are learners). The default is `None`.
+                at least as many blocks as there are learners). The default is `None`.
             input_config: Arguments that describe the settings for reading the inpu t.
                 If input is `sample`, this will be environment configuation, e.g.
                 `env_name` and `env_config`, etc. See `EnvContext` for more info.
@@ -2619,6 +2651,10 @@ class AlgorithmConfig(_Config):
             self.iter_batches_kwargs = iter_batches_kwargs
         if prelearner_class is not NotProvided:
             self.prelearner_class = prelearner_class
+        if prelearner_buffer_class is not NotProvided:
+            self.prelearner_buffer_class = prelearner_buffer_class
+        if prelearner_buffer_kwargs is not NotProvided:
+            self.prelearner_buffer_kwargs = prelearner_buffer_kwargs
         if prelearner_module_synch_period is not NotProvided:
             self.prelearner_module_synch_period = prelearner_module_synch_period
         if dataset_num_iters_per_learner is not NotProvided:
@@ -4441,6 +4477,31 @@ class AlgorithmConfig(_Config):
                     "`simple_optimizer=False` not supported for "
                     f"config.framework({self.framework_str})!"
                 )
+
+    def _validate_offline_settings(self):
+        from ray.rllib.offline.offline_prelearner import OfflinePreLearner
+
+        if self.prelearner_class and not issubclass(
+            self.prelearner_class, OfflinePreLearner
+        ):
+            raise ValueError(
+                "Unknown `prelearner_class`. Prelearner class needs to inherit "
+                "from `OfflinePreLearner` class."
+            )
+
+        from ray.rllib.utils.replay_buffers.episode_replay_buffer import (
+            EpisodeReplayBuffer,
+        )
+
+        if self.prelearner_buffer_class and not issubclass(
+            self.prelearner_buffer_class, EpisodeReplayBuffer
+        ):
+            raise ValueError(
+                "Unknown `prelearner_buffer_class`. The buffer class for the "
+                "prelearner needs to inherit from `EpisodeReplayBuffer`. "
+                "Specifically it needs to store and sample lists of "
+                "`Single-/MultiAgentEpisode`s."
+            )
 
     @staticmethod
     def _serialize_dict(config):

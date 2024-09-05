@@ -142,13 +142,18 @@ class OfflinePreLearner:
         # Set up an episode buffer, if the module is stateful or we sample from
         # `SampleBatch` types.
         if self.input_read_sample_batches or self._module.is_stateful():
-            from ray.rllib.utils.replay_buffers.episode_replay_buffer import (
-                EpisodeReplayBuffer,
+            # Either the user defined a buffer class or we fall back to the default.
+            prelearner_buffer_class = (
+                self.config.prelearner_buffer_class
+                or self.default_prelearner_buffer_class
             )
-
-            capacity = self.config.train_batch_size_per_learner * 10
-            self.episode_buffer = EpisodeReplayBuffer(
-                capacity=capacity, batch_size_B=self.config.train_batch_size_per_learner
+            prelearner_buffer_kwargs = (
+                self.default_prelearner_buffer_kwargs
+                | self.config.prelearner_buffer_kwargs
+            )
+            # Initialize the buffer.
+            self.episode_buffer = prelearner_buffer_class(
+                **prelearner_buffer_kwargs,
             )
 
     @OverrideToImplementCustomLogic
@@ -168,7 +173,10 @@ class OfflinePreLearner:
             )["episodes"]
             self.episode_buffer.add(episodes)
             episodes = self.episode_buffer.sample(
-                num_items=self.config.train_batch_size_per_learner
+                num_items=self.config.train_batch_size_per_learner,
+                # TODO (simon): This can be removed as soon as DreamerV3 has been
+                # cleaned up, i.e. can use episode samples for training.
+                sample_episodes=True,
             )
         # Otherwise we map the batch to episodes.
         else:
@@ -238,6 +246,22 @@ class OfflinePreLearner:
 
         # TODO (simon): episodes are only needed for logging here.
         return {"batch": [batch]}
+
+    @property
+    def default_prelearner_buffer_class(self):
+        from ray.rllib.utils.replay_buffers.episode_replay_buffer import (
+            EpisodeReplayBuffer,
+        )
+
+        # Return the buffer.
+        return EpisodeReplayBuffer
+
+    @property
+    def default_prelearner_buffer_kwargs(self):
+        return {
+            "capacity": self.config.train_batch_size_per_learner * 10,
+            "batch_size_B": self.config.train_batch_size_per_learner,
+        }
 
     def _should_module_be_updated(self, module_id, multi_agent_batch=None):
         """Checks which modules in a MultiRLModule should be updated."""

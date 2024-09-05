@@ -41,7 +41,6 @@ class OfflineData:
         # be `gcsfs` for GCS, `pyarrow` for S3 or `adlfs` for Azure Blob Storage.
         # this filesystem is specifically needed, if a session has to be created
         # with the cloud provider.
-
         if self.filesystem == "gcs":
             import gcsfs
 
@@ -97,11 +96,8 @@ class OfflineData:
         return_iterator: bool = False,
         num_shards: int = 1,
     ):
-        if (
-            not return_iterator
-            or return_iterator
-            and num_shards <= 1
-            and not self.batch_iterator
+        if not return_iterator or (
+            (return_iterator and num_shards <= 1) and not self.batch_iterator
         ):
             # If no iterator should be returned, or if we want to return a single
             # batch iterator, we instantiate the batch iterator once, here.
