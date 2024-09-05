@@ -198,6 +198,12 @@ class JobInfoStorageClient:
     JOB_DATA_KEY = f"{JOB_DATA_KEY_PREFIX}{{job_id}}"
 
     def __init__(self, gcs_aio_client: GcsAioClient, log_dir: Optional[str] = None):
+        """
+        Initialize the JobInfoStorageClient which manages data in the internal KV store.
+        Export Submission Job events are written when the KV store is updated if
+        the feature flag is on and a log_dir is passed. log_dir doesn't need to be
+        passed if the caller is not modifying data in the KV store.
+        """
         self._gcs_aio_client = gcs_aio_client
         self._export_submission_job_event_logger = None
         try:
@@ -241,6 +247,11 @@ class JobInfoStorageClient:
     def _write_submission_job_export_event(
         self, job_id: str, job_info: JobInfo
     ) -> None:
+        """
+        Write Submission Job export event if _export_submission_job_event_logger
+        exists. The logger will exist if the export API feature flag is enabled
+        and a log directory was passed to JobInfoStorageClient.
+        """
         if not self._export_submission_job_event_logger:
             return
 

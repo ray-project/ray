@@ -552,6 +552,10 @@ def test_cluster_events_retention(monkeypatch, shutdown_only):
 
 
 def test_export_event_logger(tmp_path):
+    """
+    Unit test a mock export event of type ExportSubmissionJobEventData
+    is correctly written to file. This doesn't events are correctly generated.
+    """
     logger = get_export_event_logger(
         export_event_pb2.ExportEvent.SourceType.EXPORT_SUBMISSION_JOB, str(tmp_path)
     )

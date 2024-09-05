@@ -62,7 +62,10 @@ import psutil
     indirect=True,
 )
 async def test_submission_job_export_events(call_ray_start, tmp_path):  # noqa: F811
-    """Submission job export events are correctly written"""
+    """
+    Test submission job events are correctly generated and written to file
+    as the job goes through various state changes in its lifecycle.
+    """
     ray_constants.RAY_ENABLE_EXPORT_API_WRITE = True
     address_info = ray.init(address=call_ray_start)
     gcs_aio_client = GcsAioClient(
