@@ -354,13 +354,14 @@ class StreamingExecutor(Executor, threading.Thread):
         return len(self._output_node.outqueue) == 0
 
     def _report_current_usage(self) -> None:
+        # running_usage is the amount of resources that have been requested but not necessarily available
         running_usage = self._resource_manager.get_global_running_usage()
         pending_usage = self._resource_manager.get_global_pending_usage()
         limits = self._resource_manager.get_global_limits()
         resources_status = (
-            "Running. Resources: "
-            f"{running_usage.cpu:.4g}/{limits.cpu:.4g} CPU, "
-            f"{running_usage.gpu:.4g}/{limits.gpu:.4g} GPU, "
+            "Active & requested resources: "
+            f"{running_usage.cpu:.4g} of {limits.cpu:.4g} available CPU, "
+            f"{running_usage.gpu:.4g} of {limits.gpu:.4g} available GPU, "
             f"{running_usage.object_store_memory_str()}/"
             f"{limits.object_store_memory_str()} object_store_memory "
             "(pending: "
