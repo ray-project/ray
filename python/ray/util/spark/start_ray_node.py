@@ -156,10 +156,8 @@ if __name__ == "__main__":
         while True:
             time.sleep(0.5)
             if os.getppid() != orig_parent_pid:
-                process.terminate()
-                try_clean_temp_dir_at_exit()
-                # Keep the same exit code 143 with sigterm signal.
-                os._exit(143)
+                signal.raise_signal(signal.SIGTERM)
+                break
 
     threading.Thread(target=check_parent_alive, daemon=True).start()
 
