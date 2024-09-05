@@ -304,7 +304,7 @@ def test_torch_tensor_nccl_dynamic(ray_start_regular):
 
 
 @pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
-def test_torch_tensor_custom_nccl(ray_start_regular):
+def test_torch_tensor_custom_comm(ray_start_regular):
     if not USE_GPU:
         pytest.skip("NCCL tests require GPUs")
 
@@ -395,7 +395,7 @@ def test_torch_tensor_custom_nccl(ray_start_regular):
 
 
 @pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
-def test_torch_tensor_custom_torch_nccl(ray_start_regular):
+def test_torch_tensor_custom_comm_inited(ray_start_regular):
     if not USE_GPU:
         pytest.skip("NCCL tests require GPUs")
 
@@ -423,7 +423,7 @@ def test_torch_tensor_custom_torch_nccl(ray_start_regular):
     ]
     ray.wait(refs)
 
-    class TorchNcclGroup(GPUCommunicator):
+    class InitedNcclGroup(GPUCommunicator):
         """
         A custom NCCL group based on existing torch.distributed setup.
         """
@@ -472,7 +472,7 @@ def test_torch_tensor_custom_torch_nccl(ray_start_regular):
         def destroy(self) -> None:
             pass
 
-    nccl_group = TorchNcclGroup(2, [sender, receiver])
+    nccl_group = InitedNcclGroup(2, [sender, receiver])
     with InputNode() as inp:
         dag = sender.send_with_tuple_args.bind(inp)
         dag = dag.with_type_hint(TorchTensorType(transport=nccl_group))
