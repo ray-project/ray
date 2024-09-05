@@ -175,17 +175,15 @@ void GcsJobManager::HandleGetAllJobInfo(rpc::GetAllJobInfoRequest request,
     job_or_submission_id = request.job_or_submission_id();
   }
 
-  auto filter_ok = [job_or_submission_id](
-                       const std::pair<const ray::JobID, ray::rpc::JobTableData> &pair) {
+  auto filter_ok = [job_or_submission_id](const ray::JobID &job_id,
+                                          std::string_view job_submission_id) {
     if (!job_or_submission_id.has_value()) {
       return true;
     }
-    if (pair.first.Hex() == *job_or_submission_id) {
+    if (job_id.Hex() == *job_or_submission_id) {
       return true;
     }
-    const auto &metadata = pair.second.config().metadata();
-    auto iter = metadata.find("job_submission_id");
-    if (iter != metadata.end() && iter->second == *job_or_submission_id) {
+    if (job_submission_id == *job_or_submission_id) {
       return true;
     }
     return false;
@@ -223,12 +221,13 @@ void GcsJobManager::HandleGetAllJobInfo(rpc::GetAllJobInfoRequest request,
       if (i >= limit) {
         break;
       }
-      if (!filter_ok(data)) {
+
+      auto &metadata = data.second.config().metadata();
+      auto iter = metadata.find("job_submission_id");
+      if (!filter_ok(data.first, iter == metadata.end() ? "" : iter->second)) {
         continue;
       }
       reply->add_job_info_list()->CopyFrom(data.second);
-      auto &metadata = data.second.config().metadata();
-      auto iter = metadata.find("job_submission_id");
       if (iter != metadata.end()) {
         // This job was submitted via the Ray Job API, so it has JobInfo in the kv.
         std::string job_submission_id = iter->second;
