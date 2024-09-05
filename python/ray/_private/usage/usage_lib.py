@@ -806,11 +806,8 @@ def get_cluster_metadata(gcs_client) -> dict:
     )
 
 
-def is_ray_init_cluster(gcs_address: str) -> bool:
+def is_ray_init_cluster(gcs_client: ray._raylet.GcsClient) -> bool:
     """Return whether the cluster is started by ray.init()"""
-
-    gcs_client = ray._raylet.GcsClient(address=gcs_address, nums_reconnect_retry=20)
-
     cluster_metadata = get_cluster_metadata(gcs_client)
     return cluster_metadata["ray_init_cluster"]
 
