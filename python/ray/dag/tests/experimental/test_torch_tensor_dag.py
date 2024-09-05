@@ -9,6 +9,7 @@ from ray.experimental.channel.gpu_communicator import (
     TorchTensorAllocator,
 )
 from ray.experimental.channel.nccl_group import _NcclGroup
+import socket
 import torch
 import time
 
@@ -401,21 +402,30 @@ def test_torch_tensor_custom_torch_nccl(ray_start_regular):
     assert (
         sum(node["Resources"].get("GPU", 0) for node in ray.nodes()) > 1
     ), "This test requires at least 2 GPUs"
-
-    actor_cls = TorchTensorWorker.options(num_cpus=0, num_gpus=1)
+    runtime_env = {
+        "env_vars": {
+            "MASTER_ADDR": socket.gethostbyname(socket.gethostname()),
+            "MASTER_PORT": "8888",
+        }
+    }
+    actor_cls = TorchTensorWorker.options(
+        num_cpus=0, num_gpus=1, runtime_env=runtime_env
+    )
 
     sender = actor_cls.remote()
     receiver = actor_cls.remote()
 
+    # Simulates that the distributed environment (e.g., torch.distributed)
+    # have already been set up
     refs = [
         sender.init_distributed.remote(2, 0),
         receiver.init_distributed.remote(2, 1),
     ]
-    ray.get(refs)
+    ray.wait(refs)
 
     class TorchNcclGroup(GPUCommunicator):
         """
-        A custom NCCL group based on PyTorch and is already initialized.
+        A custom NCCL group based on existing torch.distributed setup.
         """
 
         def __init__(self, world_size, actor_handles):
@@ -455,7 +465,7 @@ def test_torch_tensor_custom_torch_nccl(ray_start_regular):
             peer_rank: int,
             allocator: Optional[TorchTensorAllocator] = None,
         ) -> "torch.Tensor":
-            tensor = torch.empty(torch.size(shape), dtype=dtype, device=self._device)
+            tensor = torch.empty(torch.Size(shape), dtype=dtype, device=self._device)
             torch.distributed.recv(tensor, peer_rank)
             return tensor
 
