@@ -262,6 +262,11 @@ class TorchLearner(Learner):
                         for scheduler in self._lr_schedulers[module_id][optimizer_name]:
                             scheduler.step()
 
+                    # If the module uses learning rate schedulers, step them here.
+                    if module_id in self._lr_schedulers:
+                        for scheduler in self._lr_schedulers[module_id][optimizer_name]:
+                            scheduler.step()
+
     @override(Learner)
     def _get_optimizer_state(self) -> StateDict:
         return {
