@@ -249,10 +249,11 @@ proto_library(
     name = "export_event_proto",
     srcs = ["export_api/export_event.proto"],
     deps = [
-        ":export_task_event_proto",
+        ":export_task_event_proto", 
         ":export_node_event_proto",
         ":export_actor_event_proto",
         ":export_driver_job_event_proto",
+        ":export_submission_job_event_proto"
     ],
 )
 
@@ -344,6 +345,24 @@ python_grpc_compile(
     deps = [":export_driver_job_event_proto"],
 )
 
+<<<<<<< HEAD
+=======
+proto_library(
+    name = "export_submission_job_event_proto",
+    srcs = ["export_api/export_submission_job_event.proto"],
+)
+
+cc_proto_library(
+    name = "export_submission_job_event_cc_proto",
+    deps = [":export_submission_job_event_proto"],
+)
+
+python_grpc_compile(
+    name = "export_submission_job_event_py_proto",
+    deps = [":export_submission_job_event_proto"],
+)
+
+>>>>>>> 99af8199b8705ea5a0606d7e7424a9424b0f2797
 # Job agent.
 proto_library(
     name = "job_agent_proto",

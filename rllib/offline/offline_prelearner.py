@@ -69,7 +69,7 @@ class OfflinePreLearner:
     the `__call__` method and `_map_to_episodes` can be overridden to induce
     custom logic for the complete transformation pipeline (`__call__`) or
     for converting to episodes only ('_map_to_episodes`). For an example
-    how this class can be sued to also compute values and advantages see
+    how this class can be used to also compute values and advantages see
     `rllib.algorithm.marwil.marwil_prelearner.MAWRILOfflinePreLearner`.
 
     Custom `OfflinePreLearner` classes can be passed into
