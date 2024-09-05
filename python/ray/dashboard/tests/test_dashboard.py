@@ -1151,6 +1151,7 @@ def test_dashboard_module_load(tmpdir):
         http_port_retries=1,
         node_ip_address="127.0.0.1",
         gcs_address="127.0.0.1:6379",
+        cluster_id_hex=ray.ClusterID.from_random().hex(),
         grpc_port=0,
         log_dir=str(tmpdir),
         temp_dir=str(tmpdir),
