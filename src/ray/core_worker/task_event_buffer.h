@@ -423,6 +423,12 @@ class TaskEventBufferImpl : public TaskEventBuffer {
   /// Status events that will be written for the export API. This could
   /// contain events that were dropped from being sent to GCS. A circular
   /// buffer is used to limit memory.
+  boost::circular_buffer<std::shared_ptr<TaskEvent>> status_events_for_export_
+      ABSL_GUARDED_BY(mutex_);
+
+  /// Status events that will be written for the export API. This could
+  /// contain events that were dropped from being sent to GCS. A circular
+  /// buffer is used to limit memory.
   boost::circular_buffer<std::shared_ptr<TaskEvent>> status_events_for_export_;
 
   /// Buffered task attempts that were dropped due to status events being dropped.
