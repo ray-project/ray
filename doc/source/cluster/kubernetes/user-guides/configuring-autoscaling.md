@@ -16,7 +16,7 @@ Autoscaling can reduce workload costs, but adds node launch overheads and can be
 We recommend starting with non-autoscaling clusters if you're new to Ray.
 ```
 
-```{admonition} Ray Autoscaling V2 alpha with KubeRay (@ray 2.10.0) 
+```{admonition} Ray Autoscaling V2 alpha with KubeRay (@ray 2.10.0)
 With Ray 2.10, Ray Autoscaler V2 alpha is available with KubeRay. It has improvements on observability and stability. Please see the [section](kuberay-autoscaler-v2) for more details.
 ```
 
@@ -263,7 +263,7 @@ The [ray-cluster.autoscaler.yaml](https://github.com/ray-project/kuberay/blob/v1
 ### 1. Enabling autoscaling
 
 * **`enableInTreeAutoscaling`**: By setting `enableInTreeAutoscaling: true`, the KubeRay operator automatically configures an autoscaling sidecar container for the Ray head Pod.
-* **`minReplicas` / `maxReplicas` / `replicas`**: 
+* **`minReplicas` / `maxReplicas` / `replicas`**:
 Set the `minReplicas` and `maxReplicas` fields to define the range for `replicas` in an autoscaling `workerGroup`.
 Typically, you would initialize both `replicas` and `minReplicas` with the same value during the deployment of an autoscaling cluster.
 Subsequently, the Ray Autoscaler adjusts the `replicas` field as it adds or removes Pods from the cluster.
@@ -305,7 +305,7 @@ The default values are indicated below:
 
 * **`image`**:
 This field overrides the Autoscaler container image.
-The container uses the same **image** as the Ray container by default. 
+The container uses the same **image** as the Ray container by default.
 
 * **`imagePullPolicy`**:
 This field overrides the Autoscaler container's image pull policy.
@@ -377,7 +377,7 @@ See [(Advanced) Understanding the Ray Autoscaler in the Context of Kubernetes](r
 The release of Ray 2.10.0 introduces the alpha version of Ray Autoscaler V2 integrated with KubeRay, bringing enhancements in terms of observability and stability:
 
 
-1. **Observability**: The Autoscaler V2 provides instance level tracing on each Ray worker's lifecycle, making it easier to debug and understand the Autoscaler behavior. It also reports 
+1. **Observability**: The Autoscaler V2 provides instance level tracing on each Ray worker's lifecycle, making it easier to debug and understand the Autoscaler behavior. It also reports
 the idle information (why it's idle, why it's not idle) of each node:
 
 ```bash
@@ -463,6 +463,6 @@ spec:
   - replicas: 1
     template:
       spec:
-        restartPolicy: Never 
+        restartPolicy: Never
         ...
 ```

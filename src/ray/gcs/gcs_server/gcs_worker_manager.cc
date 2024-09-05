@@ -19,6 +19,11 @@
 namespace ray {
 namespace gcs {
 
+bool IsIntentionalWorkerFailure(rpc::WorkerExitType exit_type) {
+  return exit_type == rpc::WorkerExitType::INTENDED_USER_EXIT ||
+         exit_type == rpc::WorkerExitType::INTENDED_SYSTEM_EXIT;
+}
+
 void GcsWorkerManager::HandleReportWorkerFailure(
     rpc::ReportWorkerFailureRequest request,
     rpc::ReportWorkerFailureReply *reply,
@@ -46,10 +51,7 @@ void GcsWorkerManager::HandleReportWorkerFailure(
                          rpc::WorkerExitType_Name(request.worker_failure().exit_type()),
                          ", exit_detail = ",
                          request.worker_failure().exit_detail());
-        if (request.worker_failure().exit_type() ==
-                rpc::WorkerExitType::INTENDED_USER_EXIT ||
-            request.worker_failure().exit_type() ==
-                rpc::WorkerExitType::INTENDED_SYSTEM_EXIT) {
+        if (IsIntentionalWorkerFailure(request.worker_failure().exit_type())) {
           RAY_LOG(DEBUG) << message;
         } else {
           RAY_LOG(WARNING)
@@ -81,7 +83,9 @@ void GcsWorkerManager::HandleReportWorkerFailure(
                            << ", node id = " << node_id
                            << ", address = " << worker_address.ip_address();
           } else {
-            stats::UnintentionalWorkerFailures.Record(1);
+            if (!IsIntentionalWorkerFailure(worker_failure_data->exit_type())) {
+              stats::UnintentionalWorkerFailures.Record(1);
+            }
             // Only publish worker_id and raylet_id in address as they are the only fields
             // used by sub clients.
             rpc::WorkerDeltaData worker_failure;

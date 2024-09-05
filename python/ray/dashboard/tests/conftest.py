@@ -3,6 +3,7 @@ import pathlib
 
 import pytest
 
+import ray.dashboard.modules  # noqa
 from ray.tests.conftest import *  # noqa
 
 

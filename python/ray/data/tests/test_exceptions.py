@@ -98,6 +98,32 @@ def test_full_traceback_logged_with_ray_debugger(
     ), caplog.records
 
 
+def test_raise_original_map_exception_env_var(
+    caplog, propagate_logs, restore_data_context, ray_start_regular_shared, monkeypatch
+):
+    monkeypatch.setenv("RAY_DATA_RAISE_ORIGINAL_MAP_EXCEPTION", "1")
+    ctx = ray.data.DataContext.get_current()
+    ctx.raise_original_map_exception = (
+        True  # Ensure that the context picks up the environment variable
+    )
+
+    def f(row):
+        raise ValueError("This is a test error.")
+
+    with pytest.raises(ValueError) as exc_info:
+        ray.data.range(1).map(f).take_all()
+
+    assert issubclass(exc_info.type, ValueError)
+    assert "This is a test error." in str(exc_info.value)
+
+    # Ensure that the stack trace is not cleared or replaced by UserCodeException
+    assert not any(
+        record.levelno == logging.ERROR
+        and "Exception occurred in user code" in record.message
+        for record in caplog.records
+    ), caplog.records
+
+
 if __name__ == "__main__":
     import sys
 
