@@ -778,6 +778,7 @@ def _setup_ray_cluster_internal(
     global _active_ray_cluster
 
     _check_system_environment()
+    _install_sigterm_signal()
 
     head_node_options = head_node_options or {}
     worker_node_options = worker_node_options or {}
@@ -1823,19 +1824,28 @@ class AutoscalingCluster:
         )
 
 
-_origin_sigterm_handler = signal.getsignal(signal.SIGTERM)
+_sigterm_signal_installed = False
 
 
-def _sigterm_handler(signum, frame):
-    global _active_ray_cluster
+def _install_sigterm_signal():
+    global _sigterm_signal_installed
 
-    with _active_ray_cluster_rwlock:
-        if _active_ray_cluster:
-            _active_ray_cluster.shutdown()
-            _active_ray_cluster = None
+    if _sigterm_signal_installed:
+        return
 
-    signal.signal(signal.SIGTERM, _origin_sigterm_handler)  # Reset to original signal
-    os.kill(os.getpid(), signal.SIGTERM)  # Re-raise the signal to trigger original behavior
+    _sigterm_signal_installed = True
 
+    _origin_sigterm_handler = signal.getsignal(signal.SIGTERM)
 
-signal.signal(signal.SIGTERM, _sigterm_handler)
+    def _sigterm_handler(signum, frame):
+        global _active_ray_cluster
+
+        with _active_ray_cluster_rwlock:
+            if _active_ray_cluster:
+                _active_ray_cluster.shutdown()
+                _active_ray_cluster = None
+
+        signal.signal(signal.SIGTERM, _origin_sigterm_handler)  # Reset to original signal
+        os.kill(os.getpid(), signal.SIGTERM)  # Re-raise the signal to trigger original behavior
+
+    signal.signal(signal.SIGTERM, _sigterm_handler)
