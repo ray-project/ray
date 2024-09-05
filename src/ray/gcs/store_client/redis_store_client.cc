@@ -220,7 +220,7 @@ size_t RedisStoreClient::PushToSendingQueue(const std::vector<RedisConcurrencyKe
       // this queue.
       op_iter->second.push(nullptr);
     } else {
-      op_iter->second.push(std::move(send_request));
+      op_iter->second.push(send_request);
     }
   }
   return queue_added;
