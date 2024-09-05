@@ -814,7 +814,9 @@ class CompiledDAG:
                             assert self._custom_nccl_group == custom_nccl_group, (
                                 "Accelerated DAGs currently only support "
                                 "a single custom NCCL group, but multiple "
-                                "have been specified."
+                                "have been specified. Check all the "
+                                "TorchTensor(transport=nccl_group) type hints "
+                                "to make sure only one NCCL group is used."
                             )
                         self._custom_nccl_group = custom_nccl_group
             elif isinstance(dag_node, InputNode):

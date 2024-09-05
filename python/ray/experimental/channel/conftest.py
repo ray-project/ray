@@ -87,6 +87,9 @@ class MockNcclGroup(ray_channel.nccl_group._NcclGroup):
         barrier_key = f"barrier-{peer_rank}-{self.get_self_rank()}"
         barrier = ray.get_actor(name=barrier_key)
         received_tensor = ray.get(barrier.wait.remote(self.num_ops[barrier_key]))
+        assert (
+            allocator is not None
+        ), "torch tensor allocator is required for MockNcclGroup"
         buf = allocator(shape, dtype)
         buf[:] = received_tensor[:]
         self.num_ops[barrier_key] += 1

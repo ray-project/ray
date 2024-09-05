@@ -66,9 +66,6 @@ class GPUCommunicator(ABC):
         This returns when the send kernel has been queued, but the kernel may
         not have completed. Therefore, the caller should ensure that there are
         no concurrent writes to the sent `value` until the send has finished.
-        That is, either all writes should be submitted on the current stream
-        (self._cuda_stream) or, if on a different stream, that stream should
-        synchronize with the current stream.
 
         Args:
             value: The torch.Tensor to send. It should already be on this

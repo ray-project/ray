@@ -443,7 +443,6 @@ def _do_init_nccl_group(
     ctx = ChannelContext.get_current()
     if custom_nccl_group is not None:
         custom_nccl_group.initialize(rank)
-        _validate_custom_nccl_group(actor_handles, custom_nccl_group)
         ctx.nccl_groups[group_id] = custom_nccl_group
     else:
         ctx.nccl_groups[group_id] = _NcclGroup(
@@ -474,18 +473,19 @@ def _do_get_unique_nccl_id(self) -> bool:
     return nccl.get_unique_id()
 
 
-def _validate_custom_nccl_group(
+def _get_ranks(
     actors: List[ray.actor.ActorHandle], custom_nccl_group: Optional[GPUCommunicator]
-) -> None:
+) -> List[int]:
     """
-    Validate the custom NCCL group.
+    Get ranks for the NCCL group to use. If custom_nccl_group is specified,
+    return all ranks from it, otherwise, return list(range(len(actors))).
 
     Args:
         actors: A list of actors that participate in the NCCL group.
-        custom_nccl_group: A custom NCCL group to validate.
+        custom_nccl_group: The custom NCCL group to use.
     """
     if custom_nccl_group is None:
-        return
+        return list(range(len(actors)))
 
     assert len(actors) == custom_nccl_group.get_world_size(), (
         "The world size of the custom NCCL group does not match the number "
@@ -502,6 +502,7 @@ def _validate_custom_nccl_group(
         "does not match the number of actors "
         f"({len(actors)})."
     )
+    return list(ranks)
 
 
 def _init_nccl_group(
@@ -546,8 +547,7 @@ def _init_nccl_group(
         logger.info(f"Creating NCCL group {group_id} on actors: {actors}")
 
     world_size = len(actors)
-    if custom_nccl_group is not None:
-        actors.sort(key=lambda actor: custom_nccl_group.get_rank(actor))
+    ranks = _get_ranks(actors, custom_nccl_group)
     init_tasks = [
         actor.__ray_call__.remote(
             _do_init_nccl_group,
@@ -558,7 +558,7 @@ def _init_nccl_group(
             actors,
             custom_nccl_group,
         )
-        for rank, actor in enumerate(actors)
+        for rank, actor in zip(ranks, actors)
     ]
     try:
         ray.get(init_tasks, timeout=30)
