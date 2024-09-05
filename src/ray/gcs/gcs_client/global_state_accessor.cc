@@ -67,6 +67,7 @@ std::vector<std::string> GlobalStateAccessor::GetAllJobInfo() {
   {
     absl::ReaderMutexLock lock(&mutex_);
     RAY_CHECK_OK(gcs_client_->Jobs().AsyncGetAll(
+        /*job_or_submission_id=*/"",
         TransformForMultiItemCallback<rpc::JobTableData>(job_table_data, promise),
         /*timeout_ms=*/-1));
   }

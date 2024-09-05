@@ -31,7 +31,7 @@ const std::string kRayInternalNamespacePrefix = "_ray_internal_";
 
 // Please keep these in sync with the definition in dashboard/modules/job/common.py.
 const std::string kJobDataKeyPrefix = kRayInternalNamespacePrefix + "job_info_";
-inline std::string JobDataKey(const std::string submission_id) {
+inline std::string JobDataKey(const std::string &submission_id) {
   return kJobDataKeyPrefix + submission_id;
 }
 

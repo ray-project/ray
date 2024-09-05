@@ -145,6 +145,16 @@ void GcsJobManager::AddJobFinishedListener(JobFinishListenerCallback listener) {
 void GcsJobManager::HandleGetAllJobInfo(rpc::GetAllJobInfoRequest request,
                                         rpc::GetAllJobInfoReply *reply,
                                         rpc::SendReplyCallback send_reply_callback) {
+  // Get all job info. This is a complex operation:
+  // 1. One GetAll from the job table.
+  // 2. For each job, Send RPC to core work for is_running_tasks value.
+  // 3. One MultiKVGet for jobs submitted via the Ray Job API.
+  // Step 2 and 3 are asynchronous and concurrent among jobs. After all jobs are
+  // processed, send the reply.
+  //
+  // We support filtering by job_id or job_submission_id. job_id is easy to handle: just
+  // only get job info by the id. job_submission_id however is not indexed. So we have
+  // to get all job info and filter by job_submission_id.
   RAY_LOG(DEBUG) << "Getting all job info.";
 
   int limit = std::numeric_limits<int>::max();
@@ -160,8 +170,29 @@ void GcsJobManager::HandleGetAllJobInfo(rpc::GetAllJobInfoRequest request,
     RAY_LOG(DEBUG) << "Getting job info with limit " << limit << ".";
   }
 
-  auto on_done = [this, reply, send_reply_callback, limit](
-                     const absl::flat_hash_map<JobID, JobTableData> &result) {
+  std::optional<std::string> job_or_submission_id;
+  if (request.has_job_or_submission_id()) {
+    job_or_submission_id = request.job_or_submission_id();
+  }
+
+  auto filter_ok = [job_or_submission_id](
+                       const std::pair<const ray::JobID, ray::rpc::JobTableData> &pair) {
+    if (!job_or_submission_id.has_value()) {
+      return true;
+    }
+    if (pair.first.Hex() == *job_or_submission_id) {
+      return true;
+    }
+    const auto &metadata = pair.second.config().metadata();
+    auto iter = metadata.find("job_submission_id");
+    if (iter != metadata.end() && iter->second == *job_or_submission_id) {
+      return true;
+    }
+    return false;
+  };
+
+  auto on_done = [this, filter_ok, reply, send_reply_callback, limit](
+                     absl::flat_hash_map<JobID, JobTableData> &&result) {
     // Internal KV keys for jobs that were submitted via the Ray Job API.
     std::vector<std::string> job_api_data_keys;
 
@@ -192,6 +223,9 @@ void GcsJobManager::HandleGetAllJobInfo(rpc::GetAllJobInfoRequest request,
       if (i >= limit) {
         break;
       }
+      if (!filter_ok(data)) {
+        continue;
+      }
       reply->add_job_info_list()->CopyFrom(data.second);
       auto &metadata = data.second.config().metadata();
       auto iter = metadata.find("job_submission_id");
@@ -211,7 +245,6 @@ void GcsJobManager::HandleGetAllJobInfo(rpc::GetAllJobInfoRequest request,
         reply->mutable_job_info_list(i)->set_is_running_tasks(false);
         core_worker_clients_.Disconnect(worker_id);
         (*num_processed_jobs)++;
-        ;
         try_send_reply();
       } else {
         // Get is_running_tasks from the core worker for the driver.
@@ -250,11 +283,11 @@ void GcsJobManager::HandleGetAllJobInfo(rpc::GetAllJobInfoRequest request,
          send_reply_callback,
          job_data_key_to_indices,
          kv_callback_done,
-         try_send_reply](std::unordered_map<std::string, std::string> result) {
-          for (auto &data : result) {
-            std::string job_data_key = data.first;
+         try_send_reply](std::unordered_map<std::string, std::string> &&result) {
+          for (const auto &data : result) {
+            const std::string &job_data_key = data.first;
             // The JobInfo stored by the Ray Job API.
-            std::string job_info_json = data.second;
+            const std::string &job_info_json = data.second;
             if (!job_info_json.empty()) {
               // Parse the JSON into a JobsAPIInfo proto.
               rpc::JobsAPIInfo jobs_api_info;
@@ -268,7 +301,7 @@ void GcsJobManager::HandleGetAllJobInfo(rpc::GetAllJobInfoRequest request,
               // Add the JobInfo to the correct indices in the reply.
               for (int i : job_data_key_to_indices.at(job_data_key)) {
                 reply->mutable_job_info_list(i)->mutable_job_info()->CopyFrom(
-                    std::move(jobs_api_info));
+                    jobs_api_info);
               }
             }
           }
