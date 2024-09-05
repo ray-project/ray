@@ -1,5 +1,4 @@
 .. image:: https://github.com/ray-project/ray/raw/master/doc/source/images/ray_header_logo.png
-    :target: https://console.anyscale.com/register/ha?utm_source=github&utm_medium=ray_readme&utm_campaign=ray_logo
 
 .. image:: https://readthedocs.org/projects/ray/badge/?version=master
     :target: http://docs.ray.io/en/master/?badge=master
