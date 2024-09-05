@@ -918,6 +918,7 @@ def test_dashboard_port_conflict(ray_start_with_dashboard):
         f"--temp-dir={temp_dir}",
         f"--log-dir={log_dir}",
         f"--gcs-address={address_info['gcs_address']}",
+        f"--cluster-id-hex={gcs_client.cluster_id.hex()}",
         f"--session-dir={session_dir}",
         "--node-ip-address=127.0.0.1",
     ]
