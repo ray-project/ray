@@ -435,21 +435,26 @@ cdef class NewGcsClient:
     def get_all_job_info(
         self, job_or_submission_id: str = None, timeout: Optional[float] = None
     ) -> Dict[JobID, gcs_pb2.JobTableData]:
-        cdef c_string c_job_or_submission_id = job_or_submission_id.encode() if job_or_submission_id else b""
+        cdef c_string c_job_or_submission_id
         cdef int64_t timeout_ms = round(1000 * timeout) if timeout else -1
         cdef CRayStatus status
         cdef c_vector[CJobTableData] reply
+        if job_or_submission_id:
+            c_job_or_submission_id = job_or_submission_id.encode()
         with nogil:
-            status = self.inner.get().Jobs().GetAll(c_job_or_submission_id, reply, timeout_ms)
+            status = self.inner.get().Jobs().GetAll(
+                c_job_or_submission_id, reply, timeout_ms)
         return raise_or_return((convert_get_all_job_info(status, move(reply))))
 
     def async_get_all_job_info(
         self, job_or_submission_id: str = None, timeout: Optional[float] = None
     ) -> Future[Dict[JobID, gcs_pb2.JobTableData]]:
         cdef:
-            c_string c_job_or_submission_id = job_or_submission_id.encode() if job_or_submission_id else b""
+            c_string c_job_or_submission_id
             int64_t timeout_ms = round(1000 * timeout) if timeout else -1
             fut = incremented_fut()
+        if job_or_submission_id:
+            c_job_or_submission_id = job_or_submission_id.encode()
         with nogil:
             check_status_timeout_as_rpc_error(
                 self.inner.get().Jobs().AsyncGetAll(
