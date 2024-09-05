@@ -503,6 +503,26 @@ def test_actor_method_bind_diff_input_attr_4(ray_start_regular):
     compiled_dag.teardown()
 
 
+def test_actor_method_bind_diff_input_attr_5(ray_start_regular):
+    actor = Actor.remote(0)
+    c = Collector.remote()
+    with InputNode() as inp:
+        branch1 = actor.inc_two.bind(inp[0], inp[1])
+        branch2 = actor.inc_two.bind(inp[2], inp[0])
+        dag = c.collect_two.bind(branch1, branch2)
+    compiled_dag = dag.experimental_compile()
+    ref = compiled_dag.execute(0, 1, 2)
+    assert ray.get(ref) == [1, 3]
+
+    ref = compiled_dag.execute(1, 2, 3)
+    assert ray.get(ref) == [1, 3, 6, 10]
+
+    ref = compiled_dag.execute(2, 3, 4)
+    assert ray.get(ref) == [1, 3, 6, 10, 15, 21]
+
+    compiled_dag.teardown()
+
+
 def test_actor_method_bind_diff_kwargs_input_attr(ray_start_regular):
     actor = Actor.remote(0)
     c = Collector.remote()
