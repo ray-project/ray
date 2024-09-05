@@ -293,6 +293,22 @@ void TaskEventBufferImpl::GetTaskStatusEventsToSend(
     absl::flat_hash_set<TaskAttempt> *dropped_task_attempts_to_send) {
   absl::MutexLock lock(&mutex_);
 
+  // Get the export events data to write.
+  if (export_event_write_enabled_) {
+    size_t num_to_write = std::min(
+        static_cast<size_t>(RayConfig::instance().export_task_events_write_batch_size()),
+        static_cast<size_t>(status_events_for_export_.size()));
+    status_events_to_write_for_export->insert(
+        status_events_to_write_for_export->end(),
+        std::make_move_iterator(status_events_for_export_.begin()),
+        std::make_move_iterator(status_events_for_export_.begin() + num_to_write));
+    status_events_for_export_.erase(status_events_for_export_.begin(),
+                                    status_events_for_export_.begin() + num_to_write);
+    stats_counter_.Decrement(
+        TaskEventBufferCounter::kNumTaskStatusEventsForExportAPIStored,
+        status_events_to_write_for_export->size());
+  }
+
   // No data to send.
   if (status_events_.empty() && dropped_task_attempts_unreported_.empty()) {
     return;
@@ -323,22 +339,6 @@ void TaskEventBufferImpl::GetTaskStatusEventsToSend(
       std::make_move_iterator(status_events_.begin()),
       std::make_move_iterator(status_events_.begin() + num_to_send));
   status_events_.erase(status_events_.begin(), status_events_.begin() + num_to_send);
-
-  // Get the export events data to write.
-  if (export_event_write_enabled_) {
-    size_t num_to_write = std::min(
-        static_cast<size_t>(RayConfig::instance().export_task_events_write_batch_size()),
-        static_cast<size_t>(status_events_for_export_.size()));
-    status_events_to_write_for_export->insert(
-        status_events_to_write_for_export->end(),
-        std::make_move_iterator(status_events_for_export_.begin()),
-        std::make_move_iterator(status_events_for_export_.begin() + num_to_write));
-    status_events_for_export_.erase(status_events_for_export_.begin(),
-                                    status_events_for_export_.begin() + num_to_write);
-    stats_counter_.Decrement(
-        TaskEventBufferCounter::kNumTaskStatusEventsForExportAPIStored,
-        status_events_to_write_for_export->size());
-  }
 
   stats_counter_.Decrement(TaskEventBufferCounter::kNumTaskStatusEventsStored,
                            status_events_to_send->size());
@@ -437,15 +437,19 @@ void TaskEventBufferImpl::WriteExportData(
   auto to_rpc_event_fn = [&agg_task_events, &agg_task_event_insertion_order](
                              std::shared_ptr<TaskEvent> &event) {
     // Aggregate events by task attempt before converting to proto
-    if (!agg_task_events.count(event->GetTaskAttempt())) {
-      auto inserted = agg_task_events.insert(
-          {event->GetTaskAttempt(), std::make_shared<rpc::ExportTaskEventData>()});
+    auto itr = agg_task_events.find(event->GetTaskAttempt());
+    if (itr == agg_task_events.end()) {
+      // Insert event into agg_task_events if the task attempt of that
+      // event wasn't already added.
+      auto event_for_attempt = std::make_shared<rpc::ExportTaskEventData>();
+      auto inserted =
+          agg_task_events.insert({event->GetTaskAttempt(), event_for_attempt});
       RAY_CHECK(inserted.second);
       agg_task_event_insertion_order.push_back(event->GetTaskAttempt());
+      event->ToRpcTaskExportEvents(event_for_attempt);
+    } else {
+      event->ToRpcTaskExportEvents(itr->second);
     }
-    auto itr = agg_task_events.find(event->GetTaskAttempt());
-
-    event->ToRpcTaskExportEvents(itr->second);
   };
 
   std::for_each(status_events_to_write_for_export.begin(),
@@ -454,8 +458,10 @@ void TaskEventBufferImpl::WriteExportData(
   std::for_each(
       profile_events_to_send.begin(), profile_events_to_send.end(), to_rpc_event_fn);
 
-  for (auto &task_attempt : agg_task_event_insertion_order) {
-    RayExportEvent(agg_task_events[task_attempt]).SendEvent();
+  for (const auto &task_attempt : agg_task_event_insertion_order) {
+    auto it = agg_task_events.find(task_attempt);
+    RAY_CHECK(it != agg_task_events.end());
+    RayExportEvent(it->second).SendEvent();
   }
 }
 
@@ -575,20 +581,20 @@ void TaskEventBufferImpl::AddTaskStatusEvent(std::unique_ptr<TaskEvent> status_e
   }
   std::shared_ptr<TaskEvent> status_event_shared_ptr = std::move(status_event);
 
+  if (export_event_write_enabled_) {
+    // If status_events_for_export_ is full, the oldest event will be
+    // dropped in the circular buffer and replaced with the current event.
+    if (!status_events_for_export_.full()) {
+      stats_counter_.Increment(
+          TaskEventBufferCounter::kNumTaskStatusEventsForExportAPIStored);
+    }
+    status_events_for_export_.push_back(status_event_shared_ptr);
+  }
   if (dropped_task_attempts_unreported_.count(
           status_event_shared_ptr->GetTaskAttempt())) {
     // This task attempt has been dropped before, so we drop this event.
     stats_counter_.Increment(
         TaskEventBufferCounter::kNumTaskStatusEventDroppedSinceLastFlush);
-    if (export_event_write_enabled_) {
-      // If status_events_for_export_ is full, the oldest event will be
-      // dropped in the circular buffer and replaced with the current event.
-      if (!status_events_for_export_.full()) {
-        stats_counter_.Increment(
-            TaskEventBufferCounter::kNumTaskStatusEventsForExportAPIStored);
-      }
-      status_events_for_export_.push_back(status_event_shared_ptr);
-    }
     return;
   }
 
@@ -613,15 +619,6 @@ void TaskEventBufferImpl::AddTaskStatusEvent(std::unique_ptr<TaskEvent> status_e
     stats_counter_.Increment(TaskEventBufferCounter::kNumTaskStatusEventsStored);
   }
   status_events_.push_back(status_event_shared_ptr);
-  if (export_event_write_enabled_) {
-    // If status_events_for_export_ is full, the oldest event will be
-    // dropped in the circular buffer and replaced with the current event.
-    if (!status_events_for_export_.full()) {
-      stats_counter_.Increment(
-          TaskEventBufferCounter::kNumTaskStatusEventsForExportAPIStored);
-    }
-    status_events_for_export_.push_back(status_event_shared_ptr);
-  }
 }
 
 void TaskEventBufferImpl::AddTaskProfileEvent(std::unique_ptr<TaskEvent> profile_event) {

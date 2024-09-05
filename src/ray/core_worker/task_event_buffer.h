@@ -60,8 +60,6 @@ class TaskEvent {
 
   /// Convert itself a rpc::ExportTaskEventData
   ///
-  /// NOTE: this method will modify internal states by moving fields to the
-  /// rpc::ExportTaskEventData.
   /// \param[out] rpc_task_export_event_data The rpc export task event data to be filled.
   virtual void ToRpcTaskExportEvents(
       std::shared_ptr<rpc::ExportTaskEventData> rpc_task_export_event_data) = 0;
@@ -422,7 +420,7 @@ class TaskEventBufferImpl : public TaskEventBuffer {
   boost::circular_buffer<std::shared_ptr<TaskEvent>> status_events_
       ABSL_GUARDED_BY(mutex_);
 
-  /// Status events that will be written in the export API. This could
+  /// Status events that will be written for the export API. This could
   /// contain events that were dropped from being sent to GCS. A circular
   /// buffer is used to limit memory.
   boost::circular_buffer<std::shared_ptr<TaskEvent>> status_events_for_export_
@@ -445,7 +443,7 @@ class TaskEventBufferImpl : public TaskEventBuffer {
   /// process them quick enough.
   std::atomic<bool> grpc_in_progress_ = false;
 
-  /// Contains value of RayConfig::instance().enable_export_api_write()
+  /// If true, task events are exported for Export API
   bool export_event_write_enabled_ = false;
 
   FRIEND_TEST(TaskEventBufferTestManualStart, TestGcsClientFail);

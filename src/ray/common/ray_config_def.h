@@ -502,7 +502,7 @@ RAY_CONFIG(int64_t, task_events_dropped_task_attempts_gc_threshold_s, 15 * 60)
 /// workers. Events will be evicted based on a FIFO order.
 RAY_CONFIG(uint64_t, task_events_max_num_status_events_buffer_on_worker, 100 * 1000)
 
-/// Max number of task status events that will be stored to write to file
+/// Max number of task status events that will be stored to export
 /// for the export API. Events will be evicted based on a FIFO order.
 RAY_CONFIG(uint64_t,
            task_events_max_num_export_status_events_buffer_on_worker,
