@@ -186,7 +186,12 @@ def _estimate_encoding_ratio(
     path: str, file_size: int, logical_op: ExpandPaths
 ) -> float:
     batches = logical_op.reader.read_paths([path], filesystem=logical_op.filesystem)
-    first_batch = next(batches)
+
+    try:
+        first_batch = next(batches)
+    except StopIteration:
+        # if there is no data use an encoding ratio of 1
+        return 1
 
     try:
         # Try to read a second batch. If it succeeds, it means the file contains

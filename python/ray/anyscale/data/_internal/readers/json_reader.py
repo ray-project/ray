@@ -36,6 +36,10 @@ class JSONReader(FileReader):
 
         buffer: pa.lib.Buffer = f.read_buffer()
 
+        # Check if the buffer is empty
+        if buffer.size == 0:
+            return
+
         try:
             yield from self._read_with_pyarrow_read_json(buffer)
         except pa.ArrowInvalid as e:
