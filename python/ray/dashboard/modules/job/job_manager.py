@@ -72,6 +72,7 @@ class JobManager:
         self._gcs_aio_client = gcs_aio_client
         self._job_info_client = JobInfoStorageClient(gcs_aio_client)
         self._gcs_address = gcs_aio_client.address
+        self._cluster_id_hex = gcs_aio_client.cluster_id.hex()
         self._log_client = JobLogStorageClient()
         self._supervisor_actor_cls = ray.remote(JobSupervisor)
         self.monitored_jobs = set()
@@ -537,7 +538,13 @@ class JobManager:
                     runtime_env, submission_id, resources_specified
                 ),
                 namespace=SUPERVISOR_ACTOR_RAY_NAMESPACE,
-            ).remote(submission_id, entrypoint, metadata or {}, self._gcs_address)
+            ).remote(
+                submission_id,
+                entrypoint,
+                metadata or {},
+                self._gcs_address,
+                self._cluster_id_hex,
+            )
             supervisor.run.remote(
                 _start_signal_actor=_start_signal_actor,
                 resources_specified=resources_specified,

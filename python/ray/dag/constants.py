@@ -13,3 +13,6 @@ DAGNODE_TYPE_KEY = "__dag_node_type__"
 RAY_ADAG_ENABLE_DETECT_DEADLOCK = (
     os.environ.get("RAY_ADAG_ENABLE_DETECT_DEADLOCK", "1") == "1"
 )
+
+# Feature flag to turn on profiling.
+RAY_ADAG_ENABLE_PROFILING = os.environ.get("RAY_ADAG_ENABLE_PROFILING", "0") == "1"
