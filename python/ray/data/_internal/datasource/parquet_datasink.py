@@ -6,6 +6,7 @@ from ray.data._internal.execution.interfaces import TaskContext
 from ray.data._internal.util import call_with_retry
 from ray.data.block import Block, BlockAccessor
 from ray.data.context import DataContext
+from ray.data.datasource.file_based_datasource import _resolve_kwargs
 from ray.data.datasource.file_datasink import _FileDatasink
 from ray.data.datasource.filename_provider import FilenameProvider
 
@@ -68,11 +69,14 @@ class ParquetDatasink(_FileDatasink):
             blocks[0], ctx.task_idx, 0
         )
         write_path = posixpath.join(self.path, filename)
+        write_kwargs = _resolve_kwargs(
+            self.arrow_parquet_args_fn, **self.arrow_parquet_args
+        )
 
         def write_blocks_to_path():
             with self.open_output_stream(write_path) as file:
                 schema = BlockAccessor.for_block(blocks[0]).to_arrow().schema
-                with pq.ParquetWriter(file, schema) as writer:
+                with pq.ParquetWriter(file, schema, **write_kwargs) as writer:
                     for block in blocks:
                         table = BlockAccessor.for_block(block).to_arrow()
                         writer.write_table(table)

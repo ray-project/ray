@@ -4,6 +4,7 @@ import os
 PARENT_CLASS_NODE_KEY = "parent_class_node"
 PREV_CLASS_METHOD_CALL_KEY = "prev_class_method_call"
 BIND_INDEX_KEY = "bind_index"
+IS_CLASS_METHOD_OUTPUT_KEY = "is_class_method_output"
 
 # Reserved key to distinguish DAGNode type and avoid collision with user dict.
 DAGNODE_TYPE_KEY = "__dag_node_type__"
