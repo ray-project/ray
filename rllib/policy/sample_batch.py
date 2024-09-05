@@ -733,7 +733,12 @@ class SampleBatch(dict):
         infos = self.pop(SampleBatch.INFOS, None)
         data = tree.map_structure(lambda value: value[start:stop], self)
         if infos is not None:
-            data[SampleBatch.INFOS] = infos[start:stop]
+            # Slice infos according to SEQ_LENS.
+            info_slice_start = int(sum(self[SampleBatch.SEQ_LENS][:start]))
+            info_slice_stop = int(sum(self[SampleBatch.SEQ_LENS][start:stop]))
+            data[SampleBatch.INFOS] = infos[info_slice_start:info_slice_stop]
+            # Put infos back into `self`.
+            self[Columns.INFOS] = infos
 
         return SampleBatch(
             data,
