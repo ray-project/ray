@@ -1,5 +1,6 @@
 import asyncio
 import logging
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Optional, Set
 
@@ -95,6 +96,13 @@ class DashboardHead:
         self.http_port_retries = http_port_retries
         self._modules_to_load = modules_to_load
         self._modules_loaded = False
+
+        # A TPE holding background, compute-heavy, latency-tolerant jobs, typically
+        # state updates.
+        self._thread_pool_executor = ThreadPoolExecutor(
+            max_workers=dashboard_consts.RAY_DASHBOARD_THREAD_POOL_MAX_WORKERS,
+            thread_name_prefix="dashboard_head_tpe",
+        )
 
         self.gcs_address = None
         assert gcs_address is not None
@@ -312,7 +320,7 @@ class DashboardHead:
             self._gcs_check_alive(),
             _async_notify(),
             DataOrganizer.purge(),
-            DataOrganizer.organize(),
+            DataOrganizer.organize(self._thread_pool_executor),
         ]
         for m in modules:
             concurrent_tasks.append(m.run(self.server))

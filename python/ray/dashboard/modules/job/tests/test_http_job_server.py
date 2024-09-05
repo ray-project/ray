@@ -743,7 +743,7 @@ async def test_job_head_pick_random_job_agent(monkeypatch):
                 self._agents = dict()
 
         DataSource.agents = {}
-        DataSource.node_id_to_ip = {}
+        DataSource.nodes = {}
         job_head = MockJobHead()
 
         def add_agent(agent):
@@ -751,12 +751,12 @@ async def test_job_head_pick_random_job_agent(monkeypatch):
             node_ip = agent[1]["ipAddress"]
             http_port = agent[1]["httpPort"]
             grpc_port = agent[1]["grpcPort"]
-            DataSource.node_id_to_ip[node_id] = node_ip
+            DataSource.nodes[node_id] = {"nodeManagerAddress": node_ip}
             DataSource.agents[node_id] = (http_port, grpc_port)
 
         def del_agent(agent):
             node_id = agent[0]
-            DataSource.node_id_to_ip.pop(node_id)
+            DataSource.nodes.pop(node_id)
             DataSource.agents.pop(node_id)
 
         head_node_id = "node1"
