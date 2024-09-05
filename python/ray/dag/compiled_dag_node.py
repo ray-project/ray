@@ -1214,7 +1214,8 @@ class CompiledDAG:
             # or use InputAttributeNode, but not both.
             num_input_consumers = 0
 
-            # Step 1: populate num_input_consumers and perform some validation.
+            # Step 1: populate `arg_to_consumers` and `num_input_consumers` and
+            # perform some validation.
             for task in tasks:
                 has_at_least_one_channel_input = False
                 is_input_consumer = False
