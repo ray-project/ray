@@ -14,7 +14,7 @@ parser.set_defaults(
     num_agents=2,
 )
 # Use `parser` to add your own custom command line options to this script
-# and (if needed) use their values toset up `config` below.
+# and (if needed) use their values to set up `config` below.
 args = parser.parse_args()
 
 register_env("multi_agent_pendulum", lambda cfg: MultiAgentPendulum(config=cfg))
@@ -26,7 +26,6 @@ config = (
         enable_env_runner_and_connector_v2=True,
     )
     .environment("multi_agent_pendulum", env_config={"num_agents": args.num_agents})
-    .env_runners(num_env_runners=4)
     .training(
         lr=0.0003,
         lambda_=0.1,
