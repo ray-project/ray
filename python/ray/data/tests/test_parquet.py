@@ -32,6 +32,19 @@ from ray.data.tests.test_util import ConcurrencyCounter  # noqa
 from ray.tests.conftest import *  # noqa
 
 
+def test_write_parquet_supports_gzip(ray_start_regular_shared, tmp_path):
+    ray.data.range(1).write_parquet(tmp_path, compression="gzip")
+
+    # Test that all written files are gzip compressed.
+    for filename in os.listdir(tmp_path):
+        file_metadata = pq.ParquetFile(tmp_path / filename).metadata
+        compression = file_metadata.row_group(0).column(0).compression
+        assert compression == "GZIP", compression
+
+    # Test that you can read the written files.
+    assert pq.read_table(tmp_path).to_pydict() == {"id": [0]}
+
+
 def test_include_paths(ray_start_regular_shared, tmp_path):
     path = os.path.join(tmp_path, "test.txt")
     table = pa.Table.from_pydict({"animals": ["cat", "dog"]})

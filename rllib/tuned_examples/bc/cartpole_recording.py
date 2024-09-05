@@ -31,11 +31,9 @@ config = (
         }
     )
     .training(
-        gamma=0.99,
         lr=0.0003,
         num_sgd_iter=6,
         vf_loss_coeff=0.01,
-        use_kl_loss=True,
     )
     .evaluation(
         evaluation_num_env_runners=1,

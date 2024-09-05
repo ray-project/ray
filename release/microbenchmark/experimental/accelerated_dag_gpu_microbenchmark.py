@@ -135,7 +135,6 @@ def exec_ray_dag(
         def _run():
             i = np.random.randint(100)
             ref = dag.execute(i)
-            # TODO(swang): Replace with fake ObjectRef.
             result = ray.get(ref)
             assert result == (i, SHAPE, DTYPE)
 
@@ -178,9 +177,8 @@ def exec_ray_dag_ipc(label, sender, receiver, use_nccl=False):
 
     def _run():
         i = np.random.randint(100)
-        output_channel = compiled_dag.execute(i)
-        # TODO(swang): Replace with fake ObjectRef.
-        result = output_channel.read()
+        ref = compiled_dag.execute(i)
+        result = ray.get(ref)
         if result != (i, SHAPE, DTYPE):
             ok[0] = False
 

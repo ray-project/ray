@@ -448,7 +448,9 @@ class ApplicationState:
             self._clear_target_state_and_store_config(config)
 
             # Record telemetry for container runtime env feature
-            if self._target_state.config.runtime_env.get("container"):
+            if self._target_state.config.runtime_env.get(
+                "container"
+            ) or self._target_state.config.runtime_env.get("image_uri"):
                 ServeUsageTag.APP_CONTAINER_RUNTIME_ENV_USED.record("1")
 
             # Kick off new build app task
@@ -1166,9 +1168,10 @@ def override_deployment_info(
         )
 
         # Record telemetry for container runtime env feature at deployment level
-        if override_actor_options.get("runtime_env") and override_actor_options[
-            "runtime_env"
-        ].get("container"):
+        if override_actor_options.get("runtime_env") and (
+            override_actor_options["runtime_env"].get("container")
+            or override_actor_options["runtime_env"].get("image_uri")
+        ):
             ServeUsageTag.DEPLOYMENT_CONTAINER_RUNTIME_ENV_USED.record("1")
 
         merged_env = override_runtime_envs_except_env_vars(
