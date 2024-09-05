@@ -488,6 +488,24 @@ def test_actor_method_bind_diff_input_attr_4(ray_start_regular):
     compiled_dag.teardown()
 
 
+def test_actor_method_bind_diff_kwargs_input_attr(ray_start_regular):
+    actor = Actor.remote(0)
+    with InputNode() as inp:
+        # Two class methods are bound to two different kwargs input
+        # attribute nodes.
+        output1 = actor.inc.bind(inp.x)
+        output2 = actor.inc.bind(inp.y)
+        dag = MultiOutputNode([output1, output2])
+    compiled_dag = dag.experimental_compile()
+    ref = compiled_dag.execute(x=0, y=1)
+    assert ray.get(ref) == [0, 1]
+
+    ref = compiled_dag.execute(x=1, y=2)
+    assert ray.get(ref) == [2, 4]
+
+    compiled_dag.teardown()
+
+
 def test_actor_method_bind_same_arg(ray_start_regular):
     a1 = Actor.remote(0)
     a2 = Actor.remote(0)
