@@ -19,6 +19,7 @@
 #include <thread>
 #include <utility>
 
+#include "absl/cleanup/cleanup.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "ray/gcs/redis_context.h"
@@ -479,15 +480,6 @@ Status RedisStoreClient::AsyncExists(const std::string &table_name,
   return Status::OK();
 }
 
-class Cleanup {
- public:
-  explicit Cleanup(std::function<void()> f) : f_(std::move(f)) {}
-  ~Cleanup() { f_(); }
-
- private:
-  std::function<void()> f_;
-};
-
 // Returns True if at least 1 key is deleted, False otherwise.
 bool RedisDelExternalStorageNamespaceSync(const std::string &host,
                                           int32_t port,
@@ -504,7 +496,7 @@ bool RedisDelExternalStorageNamespaceSync(const std::string &host,
     io_service.run();
   });
 
-  Cleanup _([&]() {
+  auto cleanup_guard = absl::MakeCleanup([&]() {
     io_service.stop();
     thread->join();
   });
