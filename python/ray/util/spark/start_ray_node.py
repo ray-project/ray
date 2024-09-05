@@ -83,7 +83,16 @@ if __name__ == "__main__":
         preexec_fn=preexec_function,
     )
 
-    def try_clean_temp_dir_at_exit():
+    exit_handler_executed = False
+
+    def on_exit_handler():
+        global exit_handler_executed
+
+        if exit_handler_executed:
+            return
+
+        exit_handler_executed = True
+
         try:
             # Wait for a while to ensure the children processes of the ray node all
             # exited.
@@ -178,7 +187,7 @@ if __name__ == "__main__":
 
         def sigterm_handler(*args):
             process.terminate()
-            try_clean_temp_dir_at_exit()
+            on_exit_handler()
             # Sigterm exit code is 143.
             os._exit(143)
 
@@ -192,8 +201,8 @@ if __name__ == "__main__":
                 # `start_ray_node` (subprocess) will receive SIGINT signal and it
                 # causes KeyboardInterrupt exception being raised.
                 pass
-        try_clean_temp_dir_at_exit()
+        on_exit_handler()
         sys.exit(ret_code)
     except Exception:
-        try_clean_temp_dir_at_exit()
+        on_exit_handler()
         raise
