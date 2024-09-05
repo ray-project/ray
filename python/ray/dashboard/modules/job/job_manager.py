@@ -73,6 +73,7 @@ class JobManager:
         self._logs_dir = logs_dir
         self._job_info_client = JobInfoStorageClient(gcs_aio_client, logs_dir)
         self._gcs_address = gcs_aio_client.address
+        self._cluster_id_hex = gcs_aio_client.cluster_id.hex()
         self._log_client = JobLogStorageClient()
         self._supervisor_actor_cls = ray.remote(JobSupervisor)
         self.monitored_jobs = set()
@@ -543,6 +544,7 @@ class JobManager:
                 entrypoint,
                 metadata or {},
                 self._gcs_address,
+                self._cluster_id_hex,
                 self._logs_dir,
             )
             supervisor.run.remote(

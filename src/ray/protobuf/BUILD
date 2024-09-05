@@ -252,6 +252,7 @@ proto_library(
         ":export_task_event_proto", 
         ":export_node_event_proto",
         ":export_actor_event_proto",
+        ":export_driver_job_event_proto",
         ":export_submission_job_event_proto"
     ],
 )
@@ -326,6 +327,22 @@ cc_proto_library(
 python_grpc_compile(
     name = "export_actor_event_py_proto",
     deps = [":export_actor_event_proto"],
+)
+
+proto_library(
+    name = "export_driver_job_event_proto",
+    srcs = ["export_api/export_driver_job_event.proto"],
+    deps = [":common_proto", ":export_runtime_env_proto"],
+)
+
+cc_proto_library(
+    name = "export_driver_job_event_cc_proto",
+    deps = [":export_driver_job_event_proto"],
+)
+
+python_grpc_compile(
+    name = "export_driver_job_event_py_proto",
+    deps = [":export_driver_job_event_proto"],
 )
 
 proto_library(
