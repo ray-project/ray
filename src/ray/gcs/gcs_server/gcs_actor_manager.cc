@@ -1107,21 +1107,10 @@ void GcsActorManager::DestroyActor(const ActorID &actor_id,
   RAY_CHECK_OK(gcs_table_storage_->ActorTable().Put(
       actor->GetActorID(),
       *actor_table_data,
-      [this,
-       actor,
-       actor_id,
-       actor_table_data,
-       is_restartable,
-       done_callback = std::move(done_callback)](Status status) {
-        if (done_callback) {
-          done_callback();
-        }
+      [this, actor, actor_id, actor_table_data](Status status) {
         RAY_CHECK_OK(gcs_publisher_->PublishActor(
             actor_id, *GenActorDataOnlyWithStates(*actor_table_data), nullptr));
-        if (!is_restartable) {
-          RAY_CHECK_OK(
-              gcs_table_storage_->ActorTaskSpecTable().Delete(actor_id, nullptr));
-        }
+        RAY_CHECK_OK(gcs_table_storage_->ActorTaskSpecTable().Delete(actor_id, nullptr));
         actor->WriteActorExportEvent();
         // Destroy placement group owned by this actor.
         destroy_owned_placement_group_if_needed_(actor_id);
@@ -1410,10 +1399,7 @@ void GcsActorManager::RestartActor(const ActorID &actor_id,
     RAY_CHECK_OK(gcs_table_storage_->ActorTable().Put(
         actor_id,
         *mutable_actor_table_data,
-        [this, actor, actor_id, mutable_actor_table_data, done_callback](Status status) {
-          if (done_callback) {
-            done_callback();
-          }
+        [this, actor, actor_id, mutable_actor_table_data](Status status) {
           RAY_CHECK_OK(gcs_publisher_->PublishActor(
               actor_id, *GenActorDataOnlyWithStates(*mutable_actor_table_data), nullptr));
           actor->WriteActorExportEvent();
