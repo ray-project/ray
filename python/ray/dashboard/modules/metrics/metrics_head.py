@@ -338,6 +338,7 @@ class MetricsHead(dashboard_utils.DashboardHeadModule):
         def on_new_lag(lag_s):
             # Record the lag. It's exported in `record_dashboard_metrics`
             self._event_loop_lag_s_max = max(self._event_loop_lag_s_max or 0, lag_s)
+            return False
 
         enable_monitor_loop_lag(on_new_lag)
 

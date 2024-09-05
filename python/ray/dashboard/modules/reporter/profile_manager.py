@@ -120,7 +120,7 @@ class CpuProfilingManager:
 
     async def cpu_profile(
         self, pid: int, format="flamegraph", duration: float = 5, native: bool = False
-    ) -> (bool, str):
+    ) -> (bool, Union[Path, str]):
         """
         Perform CPU profiling on a specified process.
 
@@ -134,9 +134,9 @@ class CpuProfilingManager:
                 Default is False.
 
         Returns:
-            Tuple[bool, str]: A tuple containing a boolean indicating the success
-                of the profiling operation and a string with the
-                profile data or an error message.
+            Tuple[bool, Path]: A tuple containing a boolean indicating the success
+                of the profiling operation and a string with a path to the profile data
+                or an error message.
         """
         pyspy = shutil.which(self.profiler_name)
         if pyspy is None:
@@ -149,12 +149,16 @@ class CpuProfilingManager:
                 + "must be [flamegraph, raw, speedscope]",
             )
 
+        # YYYYMMDD_HHMMSS
+        current_time = datetime.now().strftime("%Y%m%d_%H%M%S")
+
         if format == "flamegraph":
             extension = "svg"
         else:
             extension = "txt"
         profile_file_path = (
-            self.profile_dir_path / f"{format}_{pid}_cpu_profiling.{extension}"
+            self.profile_dir_path
+            / f"{format}_{pid}_{current_time}_cpu_profiling.{extension}"
         )
         cmd = [
             pyspy,
@@ -183,7 +187,7 @@ class CpuProfilingManager:
                 cmd, self.profiler_name, stdout, stderr
             )
         else:
-            return True, open(profile_file_path, "rb").read()
+            return True, profile_file_path
 
 
 class MemoryProfilingManager:

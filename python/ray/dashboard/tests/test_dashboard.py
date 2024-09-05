@@ -1332,5 +1332,66 @@ async def test_dashboard_exports_metric_on_event_loop_lag(
     wait_for_condition(check_lag_metrics)
 
 
+@pytest.fixture
+def enable_flamegraph_profiling(monkeypatch):
+    # If lag is > 1s, make a flamegraph for 2s, then sleep 3s and repeat.
+    monkeypatch.setenv("RAY_DASHBOARD_RECORD_FLAMEGRAPH_ON_LAG_S", "1")
+    monkeypatch.setenv("RAY_DASHBOARD_RECORD_FLAMEGRAPH_DURATION_S", "2")
+    monkeypatch.setenv("RAY_DASHBOARD_RECORD_FLAMEGRAPH_COOLDOWN_S", "3")
+
+
+@pytest.mark.skipif(
+    os.environ.get("RAY_MINIMAL") == "1",
+    reason="This test is not supposed to work for minimal installation.",
+)
+@pytest.mark.asyncio
+async def test_dashboard_profiles_flamegraph_on_event_loop_lag(
+    enable_flamegraph_profiling, enable_test_module, ray_start_with_dashboard
+):
+    """
+    When the event loop is blocked, the dashboard should make a flamegraph.
+    """
+    import aiohttp
+
+    ray_context = ray_start_with_dashboard
+    assert wait_until_server_available(ray_context["webui_url"]) is True
+    webui_url = format_web_url(ray_context["webui_url"])
+    blocking_api = "/test/block_event_loop?seconds=1"
+
+    async def call_api(api):
+        async with aiohttp.ClientSession() as session:
+            async with session.get(webui_url + api) as resp:
+                resp.raise_for_status()
+                return await resp.text()
+
+    # Blocks the event loop for 1 second for 10 times.
+    tasks = [call_api(blocking_api) for _ in range(10)]
+    await asyncio.gather(*tasks)
+
+    # Fetch the logs from the dashboard. We first get the node ID, then logs.
+    node_id = ray.nodes()[0]["NodeID"]
+
+    async def all_svg_file():
+        """
+        The svg file is labelled "internal" because the API has no idea it's from
+        dashboard, but it's ok.
+        """
+        all_logs = json.loads(await call_api(f"/api/v0/logs?node_id={node_id}"))
+        return [
+            log
+            for log in all_logs["data"]["result"]["internal"]
+            if log.endswith(".svg")
+        ]
+
+    # Can't use wait_for_condition because it's not async.
+    for i in range(10):
+        svg_files = await all_svg_file()
+        if svg_files:
+            print(f"Found {len(svg_files)} flamegraphs: {svg_files}.")
+            return
+        await asyncio.sleep(1)
+    assert False, "Flamegraph was not generated in 10s."
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-sv", __file__]))

@@ -89,3 +89,17 @@ PROMETHEUS_CONFIG_INPUT_PATH = os.path.join(
 PARENT_HEALTH_CHECK_BY_PIPE = env_bool(
     "RAY_enable_pipe_based_agent_to_parent_health_check", False
 )
+
+# If ON_LAG is > 0, the dashboard will record a flamegraph when the event loop lag is
+# > ON_LAG seconds. On that trigger, it records for DURATION seconds. A next record will
+# not be made until COOLDOWN seconds have passed after the last record finished.
+# By default this feature is disabled by setting to 0.
+RAY_DASHBOARD_RECORD_FLAMEGRAPH_ON_LAG_S = env_integer(
+    "RAY_DASHBOARD_RECORD_FLAMEGRAPH_ON_LAG_S", 0
+)
+RAY_DASHBOARD_RECORD_FLAMEGRAPH_DURATION_S = env_integer(
+    "RAY_DASHBOARD_RECORD_FLAMEGRAPH_DURATION_S", 60
+)
+RAY_DASHBOARD_RECORD_FLAMEGRAPH_COOLDOWN_S = env_integer(
+    "RAY_DASHBOARD_RECORD_FLAMEGRAPH_COOLDOWN_S", 3600
+)

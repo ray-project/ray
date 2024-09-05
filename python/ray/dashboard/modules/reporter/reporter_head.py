@@ -1,12 +1,14 @@
 import asyncio
 import json
 import logging
+import os
 from typing import List, Optional, Tuple
 
 import aiohttp.web
 
 import ray.dashboard.optional_utils as dashboard_optional_utils
 import ray.dashboard.utils as dashboard_utils
+from ray._private.async_utils import enable_monitor_loop_lag
 from ray._private.gcs_pubsub import GcsAioResourceUsageSubscriber
 from ray._private.metrics_agent import PrometheusServiceDiscoveryWriter
 from ray._private.ray_constants import (
@@ -20,8 +22,14 @@ from ray._private.usage.usage_constants import CLUSTER_METADATA_KEY
 from ray._private.utils import get_or_create_event_loop, init_grpc_channel
 from ray.autoscaler._private.commands import debug_status
 from ray.core.generated import reporter_pb2, reporter_pb2_grpc
-from ray.dashboard.consts import GCS_RPC_TIMEOUT_SECONDS
+from ray.dashboard.consts import (
+    GCS_RPC_TIMEOUT_SECONDS,
+    RAY_DASHBOARD_RECORD_FLAMEGRAPH_COOLDOWN_S,
+    RAY_DASHBOARD_RECORD_FLAMEGRAPH_DURATION_S,
+    RAY_DASHBOARD_RECORD_FLAMEGRAPH_ON_LAG_S,
+)
 from ray.dashboard.datacenter import DataSource
+from ray.dashboard.modules.reporter.profile_manager import CpuProfilingManager
 from ray.dashboard.state_aggregator import StateAPIManager
 from ray.util.state.common import ListApiOptions
 from ray.util.state.state_manager import StateDataSourceClient
@@ -603,6 +611,53 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
             headers={"Content-Type": "text/html"},
         )
 
+    def make_flamegraph_for_self_on_lag(self, loop):
+        """
+        Monitors Dashboard lag. If it > ON_LAG, profiles a flamegraph for DURATION.
+        Then sleeps for COOLDOWN and re-enables monitoring.
+        """
+        if RAY_DASHBOARD_RECORD_FLAMEGRAPH_ON_LAG_S <= 0:
+            return
+        logger.info(
+            "Starting flamegraph profiling on "
+            f"lag > {RAY_DASHBOARD_RECORD_FLAMEGRAPH_ON_LAG_S}s, "
+            f"duration {RAY_DASHBOARD_RECORD_FLAMEGRAPH_DURATION_S}s, "
+            f"cooldown {RAY_DASHBOARD_RECORD_FLAMEGRAPH_COOLDOWN_S}s"
+        )
+
+        async def make_flamegraph_and_wait():
+            p = CpuProfilingManager(self._dashboard_head.log_dir)
+            success, output = await p.cpu_profile(
+                pid=os.getpid(),
+                format="flamegraph",
+                duration=RAY_DASHBOARD_RECORD_FLAMEGRAPH_DURATION_S,
+                native=True,
+            )
+            if not success:
+                logger.warning(f"Failed to generate flamegraph: {output}")
+            else:
+                logger.info(
+                    f"Finished flamegraph profiling for pid {os.getpid()}, duration "
+                    f"{RAY_DASHBOARD_RECORD_FLAMEGRAPH_DURATION_S}s. Profile data"
+                    f" path: {output}"
+                )
+            await asyncio.sleep(RAY_DASHBOARD_RECORD_FLAMEGRAPH_COOLDOWN_S)
+            enable_monitor_loop_lag(on_lag)
+
+        def on_lag(lag_s):
+            if lag_s > RAY_DASHBOARD_RECORD_FLAMEGRAPH_ON_LAG_S:
+                logger.info(
+                    f"Detected lag {lag_s}s, starting flamegraph profiling for "
+                    f"{RAY_DASHBOARD_RECORD_FLAMEGRAPH_DURATION_S}s"
+                )
+                loop.create_task(make_flamegraph_and_wait())
+                # Stop monitoring during the cooldown period. Will re-start after.
+                return True
+            return False
+
+        # Initial start
+        enable_monitor_loop_lag(on_lag)
+
     async def run(self, server):
         gcs_channel = self._dashboard_head.aiogrpc_gcs_channel
         self._state_api_data_source_client = StateDataSourceClient(
@@ -628,6 +683,8 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
         self.cluster_metadata = json.loads(cluster_metadata.decode("utf-8"))
 
         loop = get_or_create_event_loop()
+
+        self.make_flamegraph_for_self_on_lag(loop)
 
         while True:
             try:
