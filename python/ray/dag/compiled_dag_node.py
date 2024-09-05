@@ -1744,10 +1744,7 @@ class CompiledDAG:
                         logger.exception("Error cancelling worker task")
                         pass
 
-                if (
-                    outer._nccl_group_id is not None
-                    and outer._custom_nccl_group is None
-                ):
+                if outer._nccl_group_id is not None:
                     _destroy_nccl_group(outer._nccl_group_id)
 
                 if wait:

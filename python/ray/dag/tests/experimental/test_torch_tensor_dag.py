@@ -3,7 +3,7 @@ import logging
 import os
 import re
 import sys
-from typing import Optional, Tuple
+from typing import List, Optional, Tuple
 from ray.experimental.channel.gpu_communicator import (
     GPUCommunicator,
     TorchTensorAllocator,
@@ -357,6 +357,9 @@ def test_torch_tensor_custom_comm(ray_start_regular):
                 return None
             return self._inner.get_self_rank()
 
+        def get_actor_handles(self) -> List["ray.actor.ActorHandle"]:
+            return self._actor_handles
+
         def send(self, value: "torch.Tensor", peer_rank: int) -> None:
             return self._inner.send(value, peer_rank)
 
@@ -454,6 +457,9 @@ def test_torch_tensor_custom_comm_inited(ray_start_regular):
 
         def get_self_rank(self) -> Optional[int]:
             return self._rank
+
+        def get_actor_handles(self) -> List["ray.actor.ActorHandle"]:
+            return self._actor_handles
 
         def send(self, value: "torch.Tensor", peer_rank: int) -> None:
             torch.distributed.send(value, peer_rank)

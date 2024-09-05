@@ -477,7 +477,7 @@ def _get_ranks(
     actors: List[ray.actor.ActorHandle], custom_nccl_group: Optional[GPUCommunicator]
 ) -> List[int]:
     """
-    Get ranks for the NCCL group to use. If custom_nccl_group is specified,
+    Get sorted ranks for the NCCL group to use. If custom_nccl_group is specified,
     return all ranks from it, otherwise, return list(range(len(actors))).
 
     Args:
@@ -502,7 +502,7 @@ def _get_ranks(
         "does not match the number of actors "
         f"({len(actors)})."
     )
-    return list(ranks)
+    return sorted(ranks)
 
 
 def _init_nccl_group(
@@ -586,19 +586,13 @@ def _init_nccl_group(
 def _destroy_nccl_group(group_id: str) -> None:
     """
     Destroy the NCCL group with the given ID.
-
-    If this NCCL group is supplied by the user (not created internally
-    by the DAG), then this is a no-op.
     """
     ctx = ChannelContext.get_current()
     if group_id not in ctx.nccl_groups:
         return
 
     group = ctx.nccl_groups[group_id]
-    assert isinstance(
-        group, _NcclGroup
-    ), "Only NCCL groups created internally by aDAG can be destroyed"
-    actors = group._get_actor_handles()
+    actors = group.get_actor_handles()
     destroy_tasks = [
         actor.__ray_call__.remote(
             _do_destroy_nccl_group,

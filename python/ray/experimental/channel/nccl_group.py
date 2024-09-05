@@ -110,7 +110,7 @@ class _NcclGroup(GPUCommunicator):
         # No additional initialization is needed.
         pass
 
-    def _get_actor_handles(self) -> List["ray.actor.ActorHandle"]:
+    def get_actor_handles(self) -> List["ray.actor.ActorHandle"]:
         return self._actor_handles
 
     def get_rank(self, actor: ray.actor.ActorHandle) -> int:

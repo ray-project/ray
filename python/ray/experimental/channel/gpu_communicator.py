@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING, Callable, Optional, Tuple
+from typing import TYPE_CHECKING, Callable, List, Optional, Tuple
 
 import ray
 from ray.util.annotations import DeveloperAPI
@@ -32,6 +32,13 @@ class GPUCommunicator(ABC):
 
         Args:
             rank: The rank of this actor in the group.
+        """
+        raise NotImplementedError
+
+    @abstractmethod
+    def get_actor_handles(self) -> List["ray.actor.ActorHandle"]:
+        """
+        Get handles of all actors for this communicator group.
         """
         raise NotImplementedError
 
@@ -94,5 +101,15 @@ class GPUCommunicator(ABC):
             dtype: The dtype of the tensor to receive.
             peer_rank: The rank of the actor to receive from.
             allocator: A function to allocate the tensor to receive into.
+        """
+        raise NotImplementedError
+
+    @abstractmethod
+    def destroy() -> None:
+        """
+        Destroy the GPU communicator.
+
+        Any destruction and cleanup for the GPU communicator should be
+        done here. Implement as a noop is nothing is needed.
         """
         raise NotImplementedError
