@@ -200,7 +200,7 @@ class OldGcsAioClient:
         return await self._async_proxy.internal_kv_keys(prefix, namespace, timeout)
 
     async def get_all_job_info(
-        self, job_or_submission_id: str = None, timeout: Optional[float] = None
+        self, job_or_submission_id: Optional[str] = None, timeout: Optional[float] = None
     ) -> Dict[JobID, gcs_pb2.JobTableData]:
         """
         Return dict key: bytes of job_id; value: JobTableData pb message.
