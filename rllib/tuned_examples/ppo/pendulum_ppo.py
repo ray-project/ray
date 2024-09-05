@@ -1,7 +1,7 @@
 from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.utils.test_utils import add_rllib_example_script_args
 
-parser = add_rllib_example_script_args(default_timesteps=400000, default_reward=-300)
+parser = add_rllib_example_script_args(default_timesteps=600000, default_reward=-300)
 parser.set_defaults(enable_new_api_stack=True)
 # Use `parser` to add your own custom command line options to this script
 # and (if needed) use their values toset up `config` below.
