@@ -109,7 +109,6 @@ class Actor:
         return getattr(self, "__ray_adag_events", [])
 
 
-
 @ray.remote
 class Collector:
     def __init__(self):
@@ -1694,7 +1693,6 @@ def test_payload_large(ray_start_cluster):
     # Note: must teardown before starting a new Ray session, otherwise you'll get
     # a segfault from the dangling monitor thread upon the new Ray init.
     compiled_dag.teardown()
-
 
 
 def test_event_profiling(ray_start_regular, monkeypatch):
