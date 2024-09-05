@@ -254,6 +254,10 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   /// \return void
   void OnWorkerStarted(const std::shared_ptr<WorkerInterface> &worker);
 
+  /// To be invoked when a detached actor died. Kills all workers whose root detached
+  /// actor == this actor_id.
+  void OnDetachedActorDied(const ActorID &actor_id);
+
   /// Register a new driver.
   ///
   /// \param[in] worker The driver to be registered.
@@ -449,6 +453,11 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   const std::vector<std::string> &LookupWorkerDynamicOptions(StartupToken token) const;
 
   void KillIdleWorker(std::shared_ptr<WorkerInterface> worker, int64_t last_time_used_ms);
+
+  // If `root_detached_actor_id` is not nil, return if it's finished.
+  // Else, return if the job is finished.
+  bool IsJobOrRootDetachedActorFinished(JobID job_id,
+                                        ActorID root_detached_actor_id) const;
 
   /// Gloabl startup token variable. Incremented once assigned
   /// to a worker process and is added to
@@ -740,6 +749,9 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
 
   /// Set of jobs whose drivers have exited.
   absl::flat_hash_set<JobID> finished_jobs_;
+
+  /// Set of detached actors who have exited.
+  absl::flat_hash_set<ActorID> finished_detached_actors_;
 
   /// A map of idle workers that are pending exit.
   absl::flat_hash_map<WorkerID, std::shared_ptr<WorkerInterface>>
