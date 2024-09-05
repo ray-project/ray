@@ -39,6 +39,11 @@ class TorchTensorWorker:
     def __init__(self):
         self.device = torch_utils.get_devices()[0]
 
+    def init_distributed(self, world_size, rank):
+        torch.distributed.init_process_group(
+            backend="nccl", world_size=world_size, rank=rank
+        )
+
     def send(self, shape, dtype, value: int, send_tensor=True):
         if not send_tensor:
             return 1
@@ -370,6 +375,94 @@ def test_torch_tensor_custom_nccl(ray_start_regular):
 
     comm_id = nccl.get_unique_id()
     nccl_group = TestNcclGroup(2, comm_id, [sender, receiver])
+    with InputNode() as inp:
+        dag = sender.send_with_tuple_args.bind(inp)
+        dag = dag.with_type_hint(TorchTensorType(transport=nccl_group))
+        dag = receiver.recv.bind(dag)
+
+    compiled_dag = dag.experimental_compile()
+    for i in range(3):
+        i += 1
+        shape = (i * 10,)
+        dtype = torch.float16
+        args = (shape, dtype, i)
+        ref = compiled_dag.execute(args)
+        result = ray.get(ref)
+        assert result == (i, shape, dtype)
+
+    compiled_dag.teardown()
+
+
+@pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
+def test_torch_tensor_custom_torch_nccl(ray_start_regular):
+    if not USE_GPU:
+        pytest.skip("NCCL tests require GPUs")
+
+    assert (
+        sum(node["Resources"].get("GPU", 0) for node in ray.nodes()) > 1
+    ), "This test requires at least 2 GPUs"
+
+    actor_cls = TorchTensorWorker.options(num_cpus=0, num_gpus=1)
+
+    sender = actor_cls.remote()
+    receiver = actor_cls.remote()
+
+    refs = [
+        sender.init_distributed.remote(2, 0),
+        receiver.init_distributed.remote(2, 1),
+    ]
+    ray.get(refs)
+
+    class TorchNcclGroup(GPUCommunicator):
+        """
+        A custom NCCL group based on PyTorch and is already initialized.
+        """
+
+        def __init__(self, world_size, actor_handles):
+            self._world_size = world_size
+            self._actor_handles = actor_handles
+            self._rank = None
+
+        def initialize(self, rank: int) -> None:
+            expected_rank = self.get_rank(ray.get_runtime_context().current_actor)
+            assert (
+                rank == expected_rank
+            ), f"NCCL actor's rank {rank} does not match expected rank {expected_rank}"
+            self._rank = rank
+            self._device = torch_utils.get_devices()[0]
+
+        def get_rank(self, actor: ray.actor.ActorHandle) -> int:
+            actor_ids = [a._ray_actor_id for a in self._actor_handles]
+            try:
+                rank = actor_ids.index(actor._ray_actor_id)
+            except ValueError:
+                raise ValueError("Actor is not in the NCCL group.")
+            return rank
+
+        def get_world_size(self) -> int:
+            return self._world_size
+
+        def get_self_rank(self) -> Optional[int]:
+            return self._rank
+
+        def send(self, value: "torch.Tensor", peer_rank: int) -> None:
+            torch.distributed.send(value, peer_rank)
+
+        def recv(
+            self,
+            shape: Tuple[int],
+            dtype: "torch.dtype",
+            peer_rank: int,
+            allocator: Optional[TorchTensorAllocator] = None,
+        ) -> "torch.Tensor":
+            tensor = torch.empty(torch.size(shape), dtype=dtype, device=self._device)
+            torch.distributed.recv(tensor, peer_rank)
+            return tensor
+
+        def destroy(self) -> None:
+            pass
+
+    nccl_group = TorchNcclGroup(2, [sender, receiver])
     with InputNode() as inp:
         dag = sender.send_with_tuple_args.bind(inp)
         dag = dag.with_type_hint(TorchTensorType(transport=nccl_group))
