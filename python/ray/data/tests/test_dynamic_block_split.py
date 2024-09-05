@@ -203,7 +203,6 @@ def test_dataset(
     last_snapshot = assert_core_execution_metrics_equals(
         CoreExecutionMetrics(
             task_count={
-                "_get_datasource_or_legacy_reader": 1,
                 "ReadRandomBytes": lambda count: count < num_tasks,
             },
             object_store_stats={
