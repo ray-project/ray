@@ -1291,11 +1291,21 @@ class CompiledDAG:
             # Dict from arg to the set of tasks that consume it.
             arg_to_consumers: Dict[DAGNode, Set[CompiledTask]] = defaultdict(set)
 
-            # Step 1: populate `arg_to_consumers` and perform some validation.
+            # Step 1: populate `arg_to_consumers` and `num_input_consumers` and
+            # perform some validation.
             for task in tasks:
                 has_at_least_one_channel_input = False
+                is_input_consumer = False
                 for arg in task.args:
-                    if isinstance(arg, DAGNode):
+                    if isinstance(arg, InputNode):
+                        has_at_least_one_channel_input = True
+                        arg_to_consumers[arg].add(task)
+                        is_input_consumer = True
+                    elif isinstance(arg, InputAttributeNode):
+                        has_at_least_one_channel_input = True
+                        arg_to_consumers[arg].add(task)
+                        is_input_consumer = True
+                    elif isinstance(arg, DAGNode):  # Other DAGNodes
                         has_at_least_one_channel_input = True
                         arg_to_consumers[arg].add(task)
                         arg_idx = self.dag_node_to_idx[arg]
@@ -1303,6 +1313,8 @@ class CompiledDAG:
                         assert len(upstream_task.output_channels) == 1
                         arg_channel = upstream_task.output_channels[0]
                         assert arg_channel is not None
+                if is_input_consumer:
+                    num_input_consumers += 1
                 # TODO: Support no-input DAGs (use an empty object to signal).
                 if not has_at_least_one_channel_input:
                     raise ValueError(
