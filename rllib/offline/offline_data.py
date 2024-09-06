@@ -62,11 +62,8 @@ class OfflineData:
         num_shards: int = 1,
     ):
         if (
-            not return_iterator
-            or return_iterator
-            and num_shards <= 1
-            and not self.batch_iterator
-        ):
+            not return_iterator or (return_iterator and num_shards <= 1)
+        ) and not self.batch_iterator:
             # If no iterator should be returned, or if we want to return a single
             # batch iterator, we instantiate the batch iterator once, here.
             # TODO (simon, sven): The iterator depends on the `num_samples`, i.e.abs

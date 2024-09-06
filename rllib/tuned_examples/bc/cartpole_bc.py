@@ -48,7 +48,7 @@ config = (
     # configured. The read method needs at least as many blocks
     # as remote learners.
     .offline_data(
-        input_=[data_path.as_posix()],
+        input_=[f.as_posix() for f in data_path.iterdir()] * 2,
         # Define the number of reading blocks, these should be larger than 1
         # and aligned with the data size.
         input_read_method_kwargs={"override_num_blocks": max(args.num_gpus, 2)},
