@@ -106,10 +106,14 @@ void JobInfoAccessor::AsyncResubscribe() {
 }
 
 Status JobInfoAccessor::AsyncGetAll(const MultiItemCallback<rpc::JobTableData> &callback,
-                                    int64_t timeout_ms) {
+                                    int64_t timeout_ms,
+                                    bool query_job_info_field,
+                                    bool query_is_running_tasks_field) {
   RAY_LOG(DEBUG) << "Getting all job info.";
   RAY_CHECK(callback);
   rpc::GetAllJobInfoRequest request;
+  request.set_query_job_info_field(query_job_info_field);
+  request.set_query_is_running_tasks_field(query_is_running_tasks_field);
   client_impl_->GetGcsRpcClient().GetAllJobInfo(
       request,
       [callback](const Status &status, rpc::GetAllJobInfoReply &&reply) {
@@ -121,8 +125,12 @@ Status JobInfoAccessor::AsyncGetAll(const MultiItemCallback<rpc::JobTableData> &
 }
 
 Status JobInfoAccessor::GetAll(std::vector<rpc::JobTableData> &job_data_list,
-                               int64_t timeout_ms) {
+                               int64_t timeout_ms,
+                               bool query_job_info_field,
+                               bool query_is_running_tasks_field) {
   rpc::GetAllJobInfoRequest request;
+  request.set_query_job_info_field(query_job_info_field);
+  request.set_query_is_running_tasks_field(query_is_running_tasks_field);
   rpc::GetAllJobInfoReply reply;
   RAY_RETURN_NOT_OK(
       client_impl_->GetGcsRpcClient().SyncGetAllJobInfo(request, &reply, timeout_ms));

@@ -407,11 +407,15 @@ cdef extern from "ray/gcs/gcs_client/accessor.h" nogil:
     cdef cppclass CJobInfoAccessor "ray::gcs::JobInfoAccessor":
         CRayStatus GetAll(
             c_vector[CJobTableData] &result,
-            int64_t timeout_ms)
+            int64_t timeout_ms,
+            c_bool query_job_info_field,
+            c_bool query_is_running_tasks_field)
 
         CRayStatus AsyncGetAll(
             const MultiItemPyCallback[CJobTableData] &callback,
-            int64_t timeout_ms)
+            int64_t timeout_ms,
+            c_bool query_job_info_field,
+            c_bool query_is_running_tasks_field)
 
     cdef cppclass CNodeInfoAccessor "ray::gcs::NodeInfoAccessor":
         CRayStatus CheckAlive(
@@ -623,7 +627,8 @@ cdef extern from "ray/gcs/gcs_client/gcs_client.h" nogil:
         CRayStatus GetAllNodeInfo(
             int64_t timeout_ms, c_vector[CGcsNodeInfo]& result)
         CRayStatus GetAllJobInfo(
-            int64_t timeout_ms, c_vector[CJobTableData]& result)
+            int64_t timeout_ms, c_vector[CJobTableData]& result,
+            c_bool query_job_info_field, c_bool query_is_running_tasks_field)
         CRayStatus GetAllResourceUsage(
             int64_t timeout_ms, c_string& serialized_reply)
         CRayStatus RequestClusterResourceConstraint(

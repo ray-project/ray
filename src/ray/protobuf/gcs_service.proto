@@ -39,6 +39,8 @@ message MarkJobFinishedReply {
 message GetAllJobInfoRequest {
   // The number of jobs to return. If not specified, return all jobs.
   optional int32 limit = 1;
+  optional bool query_job_info_field = 2;
+  optional bool query_is_running_tasks_field = 3;
 }
 
 message GetAllJobInfoReply {
