@@ -14,10 +14,11 @@ import traceback
 from collections import namedtuple
 from typing import Any, Callable
 
-from aiohttp.web import Response
+from aiohttp.web import Request, Response
 
 import ray
 import ray.dashboard.consts as dashboard_consts
+import ray.util.browser_detection as browser_detection
 from ray._private.ray_constants import RAY_INTERNAL_DASHBOARD_NAMESPACE, env_bool
 
 # All third-party dependencies that are not included in the minimal Ray
@@ -258,6 +259,24 @@ def aiohttp_cache(
         return _wrapper(target_func)
     else:
         return _wrapper
+
+
+def deny_non_browser_requests() -> Callable:
+    """Reject any requests that appear to be made by a browser"""
+
+    def decorator_factory(f: Callable) -> Callable:
+        @functools.wraps(f)
+        async def decorator(self, req: Request):
+            if browser_detection.is_browser_request(req):
+                return Response(
+                    text="Browser requests not allowed",
+                    status=aiohttp.web.HTTPNotAllowed.status_code,
+                )
+            return await f(self, req)
+
+        return decorator
+
+    return decorator_factory
 
 
 def init_ray_and_catch_exceptions() -> Callable:

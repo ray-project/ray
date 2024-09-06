@@ -14,6 +14,7 @@ import ray
 import ray.dashboard.optional_utils as dashboard_optional_utils
 import ray.dashboard.timezone_utils as timezone_utils
 import ray.dashboard.utils as dashboard_utils
+import ray.dashboard.utils.browser_detection as browser_detection
 from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
 from ray._private.utils import get_or_create_event_loop
 from ray.dashboard.dashboard_metrics import DashboardPrometheusMetrics
@@ -180,7 +181,7 @@ class HttpServerDashboardHead:
         if (
             # A best effort test for browser traffic. All common browsers
             # start with Mozilla at the time of writing.
-            request.headers["User-Agent"].startswith("Mozilla")
+            browser_detection.is_browser_request(request)
             and request.method in [hdrs.METH_POST, hdrs.METH_PUT]
         ):
             return aiohttp.web.Response(
