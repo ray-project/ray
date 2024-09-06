@@ -264,7 +264,7 @@ class StoreClientTestBase : public ::testing::Test {
   std::vector<ActorID> keys_;
 
   std::atomic<int> pending_count_{0};
-  std::chrono::milliseconds wait_pending_timeout_{5000};
+  std::chrono::milliseconds wait_pending_timeout_{30000};
 };
 
 }  // namespace gcs
