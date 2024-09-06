@@ -3,6 +3,8 @@ import logging
 import threading
 import traceback
 from typing import Any
+import os
+
 
 import google.protobuf.message
 
@@ -48,11 +50,19 @@ from ray.exceptions import (
     OutOfMemoryError,
     ObjectRefStreamEndOfStreamError,
 )
+import ray.exceptions
 from ray.experimental.compiled_dag_ref import CompiledDAGRef
 from ray.util import serialization_addons
 from ray.util import inspect_serializability
 
 logger = logging.getLogger(__name__)
+ALLOW_OUT_OF_BAND_OBJECT_REF_SERIALIZATION = bool(
+    int(os.getenv("RAY_allow_out_of_band_object_ref_serialization", "0"))
+)
+
+
+class OufOfBandRefSerializationException(ray.exceptions.RayError):
+    pass
 
 
 class DeserializationError(Exception):
@@ -208,13 +218,24 @@ class SerializationContext:
                 self._thread_local.object_refs = set()
             self._thread_local.object_refs.add(object_ref)
         else:
-            # If this serialization is out-of-band (e.g., from a call to
-            # cloudpickle directly or captured in a remote function/actor),
-            # then pin the object for the lifetime of this worker by adding
-            # a local reference that won't ever be removed.
-            ray._private.worker.global_worker.core_worker.add_object_ref_reference(
-                object_ref
-            )
+            if not ALLOW_OUT_OF_BAND_OBJECT_REF_SERIALIZATION:
+                raise OufOfBandRefSerializationException(
+                    f"It is not allowed to serialize ray.ObjectRef {object_ref.hex()}."
+                    "If you want to allow serialization, "
+                    "set `RAY_allow_out_of_band_object_ref_serialization=1.` "
+                    "If you set the env var, the object is pinned forever in the "
+                    "lifetime of the worker process and can cause Ray object leaks."
+                    "See the trace to find where the serialization occurs: "
+                    f"{''.join(traceback.format_stack())}"
+                )
+            else:
+                # If this serialization is out-of-band (e.g., from a call to
+                # cloudpickle directly or captured in a remote function/actor),
+                # then pin the object for the lifetime of this worker by adding
+                # a local reference that won't ever be removed.
+                ray._private.worker.global_worker.core_worker.add_object_ref_reference(
+                    object_ref
+                )
 
     def _deserialize_pickle5_data(self, data):
         try:
