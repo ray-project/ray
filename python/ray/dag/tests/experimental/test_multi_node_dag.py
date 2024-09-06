@@ -164,8 +164,8 @@ def test_bunch_readers_on_different_nodes(ray_start_cluster):
         dag.experimental_compile()
 
 
-@pytest.mark.parametrize("multiple_return_refs", [True, False])
-def test_pp(ray_start_cluster, multiple_return_refs):
+@pytest.mark.parametrize("returns_multiple_refs", [True, False])
+def test_pp(ray_start_cluster, returns_multiple_refs):
     cluster = ray_start_cluster
     # This node is for the driver.
     cluster.add_node(num_cpus=0)
@@ -195,14 +195,14 @@ def test_pp(ray_start_cluster, multiple_return_refs):
         outputs = [inp for _ in range(TP)]
         outputs = [pp1_workers[i].execute_model.bind(outputs[i]) for i in range(TP)]
         outputs = [pp2_workers[i].execute_model.bind(outputs[i]) for i in range(TP)]
-        if multiple_return_refs:
-            dag = MultiOutputNode(outputs, multiple_return_refs=multiple_return_refs)
+        if returns_multiple_refs:
+            dag = MultiOutputNode(outputs, returns_multiple_refs=returns_multiple_refs)
         else:
             dag = MultiOutputNode(outputs)
 
     compiled_dag = dag.experimental_compile()
     refs = compiled_dag.execute(1)
-    if multiple_return_refs:
+    if returns_multiple_refs:
         for i in range(TP):
             assert ray.get(refs[i]) == 1
     else:

@@ -336,8 +336,8 @@ def test_actor_multi_methods(ray_start_regular):
     compiled_dag.teardown()
 
 
-@pytest.mark.parametrize("multiple_return_refs", [True, False])
-def test_actor_methods_execution_order(ray_start_regular, multiple_return_refs):
+@pytest.mark.parametrize("returns_multiple_refs", [True, False])
+def test_actor_methods_execution_order(ray_start_regular, returns_multiple_refs):
     actor1 = Actor.remote(0)
     actor2 = Actor.remote(0)
     with InputNode() as inp:
@@ -345,9 +345,9 @@ def test_actor_methods_execution_order(ray_start_regular, multiple_return_refs):
         branch1 = actor2.double_and_inc.bind(branch1)
         branch2 = actor2.inc.bind(inp)
         branch2 = actor1.double_and_inc.bind(branch2)
-        if multiple_return_refs:
+        if returns_multiple_refs:
             dag = MultiOutputNode(
-                [branch2, branch1], multiple_return_refs=multiple_return_refs
+                [branch2, branch1], returns_multiple_refs=returns_multiple_refs
             )
         else:
             dag = MultiOutputNode([branch2, branch1])
@@ -355,7 +355,7 @@ def test_actor_methods_execution_order(ray_start_regular, multiple_return_refs):
     compiled_dag = dag.experimental_compile()
     refs = compiled_dag.execute(1)
     # test that double_and_inc() is called after inc() on actor1
-    if multiple_return_refs:
+    if returns_multiple_refs:
         assert ray.get(refs[0]) == 4
         assert ray.get(refs[1]) == 1
     else:
@@ -643,13 +643,13 @@ def test_multi_args_and_kwargs(ray_start_regular):
 
 
 @pytest.mark.parametrize("num_actors", [1, 4])
-@pytest.mark.parametrize("multiple_return_refs", [True, False])
-def test_scatter_gather_dag(ray_start_regular, num_actors, multiple_return_refs):
+@pytest.mark.parametrize("returns_multiple_refs", [True, False])
+def test_scatter_gather_dag(ray_start_regular, num_actors, returns_multiple_refs):
     actors = [Actor.remote(0) for _ in range(num_actors)]
     with InputNode() as i:
         out = [a.inc.bind(i) for a in actors]
-        if multiple_return_refs:
-            dag = MultiOutputNode(out, multiple_return_refs=multiple_return_refs)
+        if returns_multiple_refs:
+            dag = MultiOutputNode(out, returns_multiple_refs=returns_multiple_refs)
         else:
             dag = MultiOutputNode(out)
 
@@ -657,7 +657,7 @@ def test_scatter_gather_dag(ray_start_regular, num_actors, multiple_return_refs)
 
     for i in range(3):
         refs = compiled_dag.execute(1)
-        if multiple_return_refs:
+        if returns_multiple_refs:
             assert isinstance(refs, list)
             for j in range(num_actors):
                 result = ray.get(refs[j])
@@ -837,16 +837,16 @@ def test_dag_exception_chained(ray_start_regular, capsys):
     compiled_dag.teardown()
 
 
-@pytest.mark.parametrize("multiple_return_refs", [True, False])
-def test_dag_exception_multi_output(ray_start_regular, multiple_return_refs, capsys):
+@pytest.mark.parametrize("returns_multiple_refs", [True, False])
+def test_dag_exception_multi_output(ray_start_regular, returns_multiple_refs, capsys):
     # Test application throwing exceptions with a DAG with multiple outputs.
     a = Actor.remote(0)
     b = Actor.remote(0)
     with InputNode() as inp:
-        if multiple_return_refs:
+        if returns_multiple_refs:
             dag = MultiOutputNode(
                 [a.inc.bind(inp), b.inc.bind(inp)],
-                multiple_return_refs=multiple_return_refs,
+                returns_multiple_refs=returns_multiple_refs,
             )
         else:
             dag = MultiOutputNode([a.inc.bind(inp), b.inc.bind(inp)])
@@ -855,7 +855,7 @@ def test_dag_exception_multi_output(ray_start_regular, multiple_return_refs, cap
 
     # Can throw an error.
     refs = compiled_dag.execute("hello")
-    if multiple_return_refs:
+    if returns_multiple_refs:
         for ref in refs:
             with pytest.raises(TypeError) as exc_info:
                 ray.get(ref)
@@ -869,7 +869,7 @@ def test_dag_exception_multi_output(ray_start_regular, multiple_return_refs, cap
 
     # Can throw an error multiple times.
     refs = compiled_dag.execute("hello")
-    if multiple_return_refs:
+    if returns_multiple_refs:
         for ref in refs:
             with pytest.raises(TypeError) as exc_info:
                 ray.get(ref)
@@ -883,7 +883,7 @@ def test_dag_exception_multi_output(ray_start_regular, multiple_return_refs, cap
 
     # Can use the DAG after exceptions are thrown.
     refs = compiled_dag.execute(1)
-    if multiple_return_refs:
+    if returns_multiple_refs:
         assert ray.get(refs[0]) == 1
         assert ray.get(refs[1]) == 1
     else:
@@ -1092,17 +1092,17 @@ def test_exceed_max_buffered_results(ray_start_regular):
     compiled_dag.teardown()
 
 
-@pytest.mark.parametrize("multiple_return_refs", [True, False])
+@pytest.mark.parametrize("returns_multiple_refs", [True, False])
 def test_exceed_max_buffered_results_multi_output(
-    ray_start_regular, multiple_return_refs
+    ray_start_regular, returns_multiple_refs
 ):
     a = Actor.remote(0)
     b = Actor.remote(0)
     with InputNode() as inp:
-        if multiple_return_refs:
+        if returns_multiple_refs:
             dag = MultiOutputNode(
                 [a.inc.bind(inp), b.inc.bind(inp)],
-                multiple_return_refs=multiple_return_refs,
+                returns_multiple_refs=returns_multiple_refs,
             )
         else:
             dag = MultiOutputNode([a.inc.bind(inp), b.inc.bind(inp)])
@@ -1116,7 +1116,7 @@ def test_exceed_max_buffered_results_multi_output(
         # when it goes out of scope
         refs.append(ref)
 
-    if multiple_return_refs:
+    if returns_multiple_refs:
         # If there are results not fetched from an execution, that execution
         # still counts towards the number of buffered results.
         ray.get(refs[0][0])
@@ -1130,7 +1130,7 @@ def test_exceed_max_buffered_results_multi_output(
             "free them up from buffer"
         ),
     ):
-        if multiple_return_refs:
+        if returns_multiple_refs:
             ray.get(ref[0])
         else:
             ray.get(ref)
@@ -1198,16 +1198,16 @@ def test_dag_fault_tolerance_chain(ray_start_regular):
     compiled_dag.teardown()
 
 
-@pytest.mark.parametrize("multiple_return_refs", [True, False])
-def test_dag_fault_tolerance(ray_start_regular, multiple_return_refs):
+@pytest.mark.parametrize("returns_multiple_refs", [True, False])
+def test_dag_fault_tolerance(ray_start_regular, returns_multiple_refs):
     actors = [
         Actor.remote(0, fail_after=100 if i == 0 else None, sys_exit=False)
         for i in range(4)
     ]
     with InputNode() as i:
         out = [a.inc.bind(i) for a in actors]
-        if multiple_return_refs:
-            dag = MultiOutputNode(out, multiple_return_refs=multiple_return_refs)
+        if returns_multiple_refs:
+            dag = MultiOutputNode(out, returns_multiple_refs=returns_multiple_refs)
         else:
             dag = MultiOutputNode(out)
 
@@ -1215,7 +1215,7 @@ def test_dag_fault_tolerance(ray_start_regular, multiple_return_refs):
 
     for i in range(99):
         refs = compiled_dag.execute(1)
-        if multiple_return_refs:
+        if returns_multiple_refs:
             for j in range(len(actors)):
                 assert ray.get(refs[j]) == i + 1
         else:
@@ -1224,7 +1224,7 @@ def test_dag_fault_tolerance(ray_start_regular, multiple_return_refs):
     with pytest.raises(RuntimeError):
         for i in range(99, 200):
             refs = compiled_dag.execute(1)
-            if multiple_return_refs:
+            if returns_multiple_refs:
                 for j in range(len(actors)):
                     assert ray.get(refs[j]) == i + 1
             else:
@@ -1239,15 +1239,15 @@ def test_dag_fault_tolerance(ray_start_regular, multiple_return_refs):
     actors.pop(0)
     with InputNode() as i:
         out = [a.inc.bind(i) for a in actors]
-        if multiple_return_refs:
-            dag = MultiOutputNode(out, multiple_return_refs=multiple_return_refs)
+        if returns_multiple_refs:
+            dag = MultiOutputNode(out, returns_multiple_refs=returns_multiple_refs)
         else:
             dag = MultiOutputNode(out)
 
     compiled_dag = dag.experimental_compile()
     for i in range(100):
         refs = compiled_dag.execute(1)
-        if multiple_return_refs:
+        if returns_multiple_refs:
             for j in range(len(actors)):
                 ray.get(refs[j])
         else:
@@ -1256,16 +1256,16 @@ def test_dag_fault_tolerance(ray_start_regular, multiple_return_refs):
     compiled_dag.teardown()
 
 
-@pytest.mark.parametrize("multiple_return_refs", [True, False])
-def test_dag_fault_tolerance_sys_exit(ray_start_regular, multiple_return_refs):
+@pytest.mark.parametrize("returns_multiple_refs", [True, False])
+def test_dag_fault_tolerance_sys_exit(ray_start_regular, returns_multiple_refs):
     actors = [
         Actor.remote(0, fail_after=100 if i == 0 else None, sys_exit=True)
         for i in range(4)
     ]
     with InputNode() as i:
         out = [a.inc.bind(i) for a in actors]
-        if multiple_return_refs:
-            dag = MultiOutputNode(out, multiple_return_refs=multiple_return_refs)
+        if returns_multiple_refs:
+            dag = MultiOutputNode(out, returns_multiple_refs=returns_multiple_refs)
         else:
             dag = MultiOutputNode(out)
 
@@ -1273,7 +1273,7 @@ def test_dag_fault_tolerance_sys_exit(ray_start_regular, multiple_return_refs):
 
     for i in range(99):
         refs = compiled_dag.execute(1)
-        if multiple_return_refs:
+        if returns_multiple_refs:
             for j in range(len(actors)):
                 assert ray.get(refs[j]) == i + 1
         else:
@@ -1282,7 +1282,7 @@ def test_dag_fault_tolerance_sys_exit(ray_start_regular, multiple_return_refs):
     with pytest.raises(RayChannelError, match="Channel closed."):
         for i in range(99):
             refs = compiled_dag.execute(1)
-            if multiple_return_refs:
+            if returns_multiple_refs:
                 for j in range(len(actors)):
                     ray.get(refs[j])
             else:
@@ -1297,15 +1297,15 @@ def test_dag_fault_tolerance_sys_exit(ray_start_regular, multiple_return_refs):
     # Remaining actors can be reused.
     with InputNode() as i:
         out = [a.inc.bind(i) for a in actors]
-        if multiple_return_refs:
-            dag = MultiOutputNode(out, multiple_return_refs=multiple_return_refs)
+        if returns_multiple_refs:
+            dag = MultiOutputNode(out, returns_multiple_refs=returns_multiple_refs)
         else:
             dag = MultiOutputNode(out)
 
     compiled_dag = dag.experimental_compile()
     for i in range(100):
         refs = compiled_dag.execute(1)
-        if multiple_return_refs:
+        if returns_multiple_refs:
             for j in range(len(actors)):
                 ray.get(refs[j])
         else:
@@ -1367,15 +1367,39 @@ def test_asyncio(ray_start_regular, max_queue_size):
 
 
 @pytest.mark.parametrize("max_queue_size", [None, 2])
-@pytest.mark.parametrize("multiple_return_refs", [True, False])
-def test_asyncio_multi_output(ray_start_regular, max_queue_size, multiple_return_refs):
+def test_asyncio_out_of_order_get(ray_start_regular, max_queue_size):
+    c = Collector.remote()
+    with InputNode() as i:
+        dag = c.collect.bind(i)
+
+    loop = get_or_create_event_loop()
+    compiled_dag = dag.experimental_compile(
+        enable_asyncio=True, _asyncio_max_queue_size=max_queue_size
+    )
+
+    async def main():
+        fut_a = await compiled_dag.execute_async("a")
+        fut_b = await compiled_dag.execute_async("b")
+
+        result_b = await fut_b
+        assert result_b == ["a", "b"]
+        result_a = await fut_a
+        assert result_a == ["a"]
+
+    loop.run_until_complete(main())
+    compiled_dag.teardown()
+
+
+@pytest.mark.parametrize("max_queue_size", [None, 2])
+@pytest.mark.parametrize("returns_multiple_refs", [True, False])
+def test_asyncio_multi_output(ray_start_regular, max_queue_size, returns_multiple_refs):
     a = Actor.remote(0)
     b = Actor.remote(0)
     with InputNode() as i:
-        if multiple_return_refs:
+        if returns_multiple_refs:
             dag = MultiOutputNode(
                 [a.echo.bind(i), b.echo.bind(i)],
-                multiple_return_refs=multiple_return_refs,
+                returns_multiple_refs=returns_multiple_refs,
             )
         else:
             dag = MultiOutputNode([a.echo.bind(i), b.echo.bind(i)])
@@ -1392,7 +1416,7 @@ def test_asyncio_multi_output(ray_start_regular, max_queue_size, multiple_return
         val = np.ones(100) * i
         futs = await compiled_dag.execute_async(val)
 
-        if multiple_return_refs:
+        if returns_multiple_refs:
             assert len(futs) == 2
             for fut in futs:
                 result = await fut
@@ -1518,9 +1542,9 @@ class TestCompositeChannel:
 
         compiled_dag.teardown()
 
-    @pytest.mark.parametrize("multiple_return_refs", [True, False])
+    @pytest.mark.parametrize("returns_multiple_refs", [True, False])
     def test_composite_channel_multi_output(
-        self, ray_start_regular, multiple_return_refs
+        self, ray_start_regular, returns_multiple_refs
     ):
         """
         Driver -> a.inc -> a.inc ---> Driver
@@ -1537,24 +1561,24 @@ class TestCompositeChannel:
         b = Actor.remote(100)
         with InputNode() as inp:
             dag = a.inc.bind(inp)
-            if multiple_return_refs:
+            if returns_multiple_refs:
                 dag = MultiOutputNode(
                     [a.inc.bind(dag), b.inc.bind(dag)],
-                    multiple_return_refs=multiple_return_refs,
+                    returns_multiple_refs=returns_multiple_refs,
                 )
             else:
                 dag = MultiOutputNode([a.inc.bind(dag), b.inc.bind(dag)])
 
         compiled_dag = dag.experimental_compile()
         refs = compiled_dag.execute(1)
-        if multiple_return_refs:
+        if returns_multiple_refs:
             assert ray.get(refs[0]) == 2
             assert ray.get(refs[1]) == 101
         else:
             assert ray.get(refs) == [2, 101]
 
         refs = compiled_dag.execute(3)
-        if multiple_return_refs:
+        if returns_multiple_refs:
             assert ray.get(refs[0]) == 10
             assert ray.get(refs[1]) == 106
         else:
@@ -1562,9 +1586,9 @@ class TestCompositeChannel:
 
         compiled_dag.teardown()
 
-    @pytest.mark.parametrize("multiple_return_refs", [True, False])
+    @pytest.mark.parametrize("returns_multiple_refs", [True, False])
     def test_intra_process_channel_with_multi_readers(
-        self, ray_start_regular, multiple_return_refs
+        self, ray_start_regular, returns_multiple_refs
     ):
         """
         In this test, there are three 'echo' tasks on the same Ray actor.
@@ -1584,28 +1608,30 @@ class TestCompositeChannel:
             dag = a.echo.bind(inp)
             x = a.echo.bind(dag)
             y = a.echo.bind(dag)
-            if multiple_return_refs:
-                dag = MultiOutputNode([x, y], multiple_return_refs=multiple_return_refs)
+            if returns_multiple_refs:
+                dag = MultiOutputNode(
+                    [x, y], returns_multiple_refs=returns_multiple_refs
+                )
             else:
                 dag = MultiOutputNode([x, y])
 
         compiled_dag = dag.experimental_compile()
         refs = compiled_dag.execute(1)
-        if multiple_return_refs:
+        if returns_multiple_refs:
             assert ray.get(refs[0]) == 1
             assert ray.get(refs[1]) == 1
         else:
             assert ray.get(refs) == [1, 1]
 
         refs = compiled_dag.execute(2)
-        if multiple_return_refs:
+        if returns_multiple_refs:
             assert ray.get(refs[0]) == 2
             assert ray.get(refs[1]) == 2
         else:
             assert ray.get(refs) == [2, 2]
 
         refs = compiled_dag.execute(3)
-        if multiple_return_refs:
+        if returns_multiple_refs:
             assert ray.get(refs[0]) == 3
             assert ray.get(refs[1]) == 3
         else:
@@ -1716,8 +1742,8 @@ def test_output_node(ray_start_regular):
     compiled_dag.teardown()
 
 
-@pytest.mark.parametrize("multiple_return_refs", [True, False])
-def test_simulate_pipeline_parallelism(ray_start_regular, multiple_return_refs):
+@pytest.mark.parametrize("returns_multiple_refs", [True, False])
+def test_simulate_pipeline_parallelism(ray_start_regular, returns_multiple_refs):
     """
     This pattern simulates the case of pipeline parallelism training, where `w0_input`
     reads data from the driver, and the fan-out tasks, `d00`, `d01`, and `d02`, use
@@ -1768,9 +1794,9 @@ def test_simulate_pipeline_parallelism(ray_start_regular, multiple_return_refs):
         d04 = worker_0.backward.bind(d11)  # worker_0 BWD
         d05 = worker_0.backward.bind(d12)  # worker_0 BWD
 
-        if multiple_return_refs:
+        if returns_multiple_refs:
             output_dag = MultiOutputNode(
-                [d03, d04, d05], multiple_return_refs=multiple_return_refs
+                [d03, d04, d05], returns_multiple_refs=returns_multiple_refs
             )
         else:
             output_dag = MultiOutputNode([d03, d04, d05])
@@ -1778,7 +1804,7 @@ def test_simulate_pipeline_parallelism(ray_start_regular, multiple_return_refs):
     output_dag = output_dag.experimental_compile()
     res = output_dag.execute([0, 1, 2])
 
-    if multiple_return_refs:
+    if returns_multiple_refs:
         assert ray.get(res[0]) == 0
         assert ray.get(res[1]) == 1
         assert ray.get(res[2]) == 2
@@ -1989,8 +2015,10 @@ class TestActorInputOutput:
         ref = replica.call.remote(1)
         assert ray.get(ref) == 3
 
-    @pytest.mark.parametrize("multiple_return_refs", [True, False])
-    def test_multiple_readers_multiple_writers(ray_start_cluster, multiple_return_refs):
+    @pytest.mark.parametrize("returns_multiple_refs", [True, False])
+    def test_multiple_readers_multiple_writers(
+        ray_start_cluster, returns_multiple_refs
+    ):
         """
         Replica -> Worker1 -> Replica
                 |          |
@@ -2005,10 +2033,10 @@ class TestActorInputOutput:
                 w1 = TestWorker.remote()
                 w2 = TestWorker.remote()
                 with InputNode() as inp:
-                    if multiple_return_refs:
+                    if returns_multiple_refs:
                         dag = MultiOutputNode(
                             [w1.add_one.bind(inp), w2.add_one.bind(inp)],
-                            multiple_return_refs=multiple_return_refs,
+                            returns_multiple_refs=returns_multiple_refs,
                         )
                     else:
                         dag = MultiOutputNode(
@@ -2018,7 +2046,7 @@ class TestActorInputOutput:
                 self.compiled_dag = dag.experimental_compile()
 
             def call(self, value):
-                if multiple_return_refs:
+                if returns_multiple_refs:
                     return [ray.get(ref) for ref in self.compiled_dag.execute(value)]
                 else:
                     return ray.get(self.compiled_dag.execute(value))
@@ -2055,8 +2083,8 @@ class TestActorInputOutput:
         ref = replica.call.remote(1)
         assert ray.get(ref) == 4
 
-    @pytest.mark.parametrize("multiple_return_refs", [True, False])
-    def test_single_reader_multiple_writers(ray_start_cluster, multiple_return_refs):
+    @pytest.mark.parametrize("returns_multiple_refs", [True, False])
+    def test_single_reader_multiple_writers(ray_start_cluster, returns_multiple_refs):
         """
         Replica -> Worker1 -> Worker1 -> Replica
                             |          |
@@ -2073,10 +2101,10 @@ class TestActorInputOutput:
                 w2 = TestWorker.remote()
                 with InputNode() as inp:
                     dag = w1.add_one.bind(inp)
-                    if multiple_return_refs:
+                    if returns_multiple_refs:
                         dag = MultiOutputNode(
                             [w1.add_one.bind(dag), w2.add_one.bind(dag)],
-                            multiple_return_refs=multiple_return_refs,
+                            returns_multiple_refs=returns_multiple_refs,
                         )
                     else:
                         dag = MultiOutputNode(
@@ -2086,7 +2114,7 @@ class TestActorInputOutput:
                 self.compiled_dag = dag.experimental_compile()
 
             def call(self, value):
-                if multiple_return_refs:
+                if returns_multiple_refs:
                     return [ray.get(ref) for ref in self.compiled_dag.execute(value)]
                 else:
                     return ray.get(self.compiled_dag.execute(value))

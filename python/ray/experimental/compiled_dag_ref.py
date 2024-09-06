@@ -98,15 +98,7 @@ class CompiledDAGRef:
         return_vals = self._dag._execute_until(
             self._execution_index, self._channel_index, timeout
         )
-        # If self._dag.multiple_return_refs is True, each CompiledDAGRef corresponds
-        # to an output from a single channel, and therefore return_vals represents a
-        # single output. If self._dag.multiple_return_refs is False, this
-        # CompiledDAGRef wraps the outputs from all channels, and thus return_vals is
-        # a list of results and no longer represents a single output.
-        return _process_return_vals(
-            return_vals,
-            self._dag.has_single_output or self._dag.multiple_return_refs,
-        )
+        return _process_return_vals(return_vals, self._dag.has_single_output)
 
 
 @PublicAPI(stability="alpha")
@@ -166,17 +158,11 @@ class CompiledDAGFuture:
         fut = self._fut
         self._fut = None
 
-        if self._dag._has_execution_results(self._execution_index):
-            return_vals = self._dag._cache_execution_results(
-                self._execution_index, self._channel_index
-            )
-        else:
+        if not self._dag._has_execution_results(self._execution_index):
             result = yield from fut.__await__()
-            return_vals = self._dag._cache_execution_results(
-                self._execution_index, self._channel_index, result
-            )
+            self._dag._cache_execution_results(self._execution_index, result)
 
-        return _process_return_vals(
-            return_vals,
-            self._dag.has_single_output or self._dag.multiple_return_refs,
+        return_vals = self._dag._get_execution_results(
+            self._execution_index, self._channel_index
         )
+        return _process_return_vals(return_vals, self._dag.has_single_output)

@@ -15,7 +15,7 @@ class MultiOutputNode(DAGNode):
         args: Union[List[DAGNode], Tuple[DAGNode]],
         other_args_to_resolve: Dict[str, Any] = None,
         *,
-        multiple_return_refs: bool = False,
+        returns_multiple_refs: bool = False,
     ):
         if isinstance(args, tuple):
             args = list(args)
@@ -24,7 +24,7 @@ class MultiOutputNode(DAGNode):
         if not isinstance(args, list):
             args = (args,)
 
-        self._multiple_return_refs = multiple_return_refs
+        self._returns_multiple_refs = returns_multiple_refs
         super().__init__(
             args,
             {},
@@ -51,5 +51,5 @@ class MultiOutputNode(DAGNode):
         return get_dag_node_str(self, "__MultiOutputNode__")
 
     @property
-    def multiple_return_refs(self) -> bool:
-        return self._multiple_return_refs
+    def returns_multiple_refs(self) -> bool:
+        return self._returns_multiple_refs
