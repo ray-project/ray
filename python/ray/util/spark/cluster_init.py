@@ -168,6 +168,10 @@ class RayClusterOnSpark:
                 )  # Minus 1 means excluding the head node.
 
                 if cur_alive_worker_count >= self.min_worker_nodes:
+                    _logger.info(
+                        f"Started {self.cur_alive_worker_count} Ray worker nodes, "
+                        f"meet the minimum number of Ray worker nodes required."
+                    )
                     return
 
                 if cur_alive_worker_count > last_alive_worker_count:
