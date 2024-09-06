@@ -40,9 +40,7 @@ MutableObjectProvider::~MutableObjectProvider() {
 }
 
 void MutableObjectProvider::RegisterWriterChannel(
-    const ObjectID &writer_object_id,
-    const NodeID &writer_node_id,
-    const std::vector<NodeID> &remote_reader_node_ids) {
+    const ObjectID &writer_object_id, const std::vector<NodeID> &remote_reader_node_ids) {
   {
     std::unique_ptr<plasma::MutableObject> writer_object;
     RAY_CHECK_OK(plasma_->GetExperimentalMutableObject(writer_object_id, &writer_object));

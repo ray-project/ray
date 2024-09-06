@@ -17,7 +17,6 @@ from ray.util.annotations import PublicAPI
 # entry/init points.
 logger = logging.getLogger(__name__)
 
-# SANG-TODO this is a bug.
 DEFAULT_MAX_BUFFER_SIZE = int(1e6)  # 100 mB
 # The min buffer size must be large enough to at least fit an instance of the
 # _ResizeChannel class along with any metadata.
@@ -350,7 +349,6 @@ class Channel(ChannelInterface):
 
         self._worker.core_worker.experimental_channel_register_writer(
             self._writer_ref,
-            self._writer_node_id,
             remote_reader_refs,
             remote_reader_node_ids,
             remote_reader_ids,
@@ -444,7 +442,9 @@ class Channel(ChannelInterface):
                 self._num_local_readers,
                 timeout_ms,
             )
-            # # Clean the previous ref since it won't be used.
+            # TODO(sang): Clean the previous ref that won't be used.
+            # Right now, if we just close it here, it will not work because
+            # of race conditions.
             # self._worker.core_worker.experimental_channel_set_error(
             #     prev_writer_ref
             # )

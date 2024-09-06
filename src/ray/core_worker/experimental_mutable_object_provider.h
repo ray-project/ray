@@ -44,11 +44,10 @@ class MutableObjectProvider {
 
   /// Registers a writer channel for `object_id` on this node. On each write to this
   /// channel, the write will be sent via RPC to node `node_id`.
-  /// SANG-TODO change it.
+  ///
   /// \param[in] object_id The ID of the object.
-  /// \param[in] node_id The ID of the node to write to.
+  /// \param[in] remote_reader_node_ids The list of remote reader's node ids.
   void RegisterWriterChannel(const ObjectID &writer_object_id,
-                             const NodeID &writer_node_id,
                              const std::vector<NodeID> &remote_reader_node_ids);
 
   /// Handles an RPC request from another note to register a mutable object on this node.
@@ -150,9 +149,12 @@ class MutableObjectProvider {
     ObjectID local_object_id;
   };
 
-  // Listens for local changes to `object_id` and sends the changes to remote nodes via
-  // the network.
-  // SANG-TODO update the docstring.
+  /// Listens for local changes to `object_id` and sends the changes to remote nodes via
+  /// the network.
+  ///
+  /// \param[in] io_context The IO context.
+  /// \param[in] writer_object_id The object ID of the writer.
+  /// \param[in] remote_readers A list of remote reader clients.
   void PollWriterClosure(
       instrumented_io_context &io_context,
       const ObjectID &writer_object_id,

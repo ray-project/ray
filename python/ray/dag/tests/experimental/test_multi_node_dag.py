@@ -7,7 +7,8 @@ import pytest
 from ray.dag import InputNode, MultiOutputNode
 import ray.remote_function
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
-from ray.tests.conftest import wait_for_condition  # noqa
+from ray.tests.conftest import *  # noqa
+from ray.tests.conftest import wait_for_condition
 
 if sys.platform != "linux" and sys.platform != "darwin":
     pytest.skip("Skipping, requires Linux or Mac.", allow_module_level=True)
@@ -44,7 +45,6 @@ class Actor:
         return self.i
 
     def echo(self, x):
-        print("Echo run!")
         self.count += 1
         self._fail_if_needed()
         return x

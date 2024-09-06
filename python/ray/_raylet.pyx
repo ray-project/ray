@@ -3687,14 +3687,12 @@ cdef class CoreWorker:
 
     def experimental_channel_register_writer(self,
                                              ObjectRef writer_ref,
-                                             writer_node,
                                              remote_reader_refs,
                                              remote_reader_nodes,
                                              remote_readers,
                                              remote_num_readers_per_node):
         cdef:
             CObjectID c_writer_ref = writer_ref.native()
-            CNodeID c_writer_node = CNodeID.FromHex(writer_node)
             c_vector[CObjectID] c_remote_reader_refs
             c_vector[CNodeID] c_remote_reader_nodes
             c_vector[CActorID] c_remote_readers
@@ -3715,7 +3713,6 @@ cdef class CoreWorker:
             check_status(CCoreWorkerProcess.GetCoreWorker()
                          .ExperimentalRegisterMutableObjectWriter(
                             c_writer_ref,
-                            c_writer_node,
                             c_remote_reader_nodes,
                         ))
             check_status(

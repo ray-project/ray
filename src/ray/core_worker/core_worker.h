@@ -738,12 +738,10 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   ///
   /// The API is not idempotent.
   ///
-  /// SANG-TODO update.
-  /// \param[in] object_id The ID of the object.
-  /// \param[in] node_id If non-NULL, sends each write to the readers on node `node_id`.
+  /// \param[in] writer_object_id The ID of the object.
+  /// \param[in] remote_reader_node_ids The list of remote reader's node ids.
   Status ExperimentalRegisterMutableObjectWriter(
       const ObjectID &writer_object_id,
-      const NodeID &writer_node_id,
       const std::vector<NodeID> &remote_reader_node_ids);
 
   /// Experimental method for mutable objects. Registers a reader channel.
@@ -755,14 +753,16 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
 
   /// Experimental method for mutable objects. Registers a mapping from a mutable object
   /// that is written to on this node to the corresponding mutable object that is read on
-  /// the node that `reader_actor` is on.
+  /// the node that `remote_reader_actors` is on.
   ///
-  /// SANG-TODO update docstring.
+  /// The API assumes `remote_reader_actors`, `remote_num_readers`, and
+  /// `remote_reader_object_ids` has the same order and length.
+  ///
   /// \param[in] writer_object_id The ID of the object that is written on this node.
-  /// \param[in] reader_actor The actor that reads the object.
-  /// \param[in] num_readers The total number of readers.
-  /// \param[in] reader_object_id The ID of the corresponding object that is read on the
-  /// remote node.
+  /// \param[in] remote_reader_actors The list of actors that read the object in remote
+  /// nodes. \param[in] remote_num_readers A list of the total number of readers per each
+  /// remote node. \param[in] remote_reader_object_ids A list of IDs of the corresponding
+  /// object that is read on the remote node.
   Status ExperimentalRegisterMutableObjectReaderRemote(
       const ObjectID &writer_object_id,
       const std::vector<ActorID> &remote_reader_actors,
