@@ -310,7 +310,6 @@ class PrioritizedEpisodeReplayBuffer(EpisodeReplayBuffer):
         gamma: float = 0.99,
         include_infos: bool = False,
         include_extra_model_outputs: bool = False,
-        finalize: bool = False,
         **kwargs,
     ) -> SampleBatchType:
         """Samples from a buffer in a prioritized way.
