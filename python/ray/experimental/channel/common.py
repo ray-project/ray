@@ -174,7 +174,8 @@ class ChannelInterface:
         """
         raise NotImplementedError
 
-    def read(self, timeout: Optional[float] = None) -> Any:
+    def read(self, timeout: Optional[float] = None,
+            deserialize: bool = True) -> Any:
         """
         Read the latest value from the channel. This call will block until a
         value is available to read.

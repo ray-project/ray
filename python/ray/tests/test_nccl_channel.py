@@ -246,7 +246,7 @@ def test_static_shape(ray_start_cluster):
 
     chan_typ = TorchTensorType(
         transport="nccl",
-        static_shape=True,
+        _static_shape=True,
     )
     chan_typ.set_nccl_group_id(nccl_id)
     sender.create_traced_channel.remote("tensor_metadata", [receiver])
@@ -338,7 +338,7 @@ def test_static_non_tensor_data(ray_start_cluster):
 
     chan_typ = TorchTensorType(
         transport="nccl",
-        static_non_tensor_data=True,
+        _static_non_tensor_data=True,
     )
     chan_typ.set_nccl_group_id(nccl_id)
     sender.create_traced_channel.remote("tensor_metadata", [receiver])
@@ -446,8 +446,8 @@ def test_static_shape_and_non_tensor_data(ray_start_cluster):
 
     chan_typ = TorchTensorType(
         transport="nccl",
-        static_shape=True,
-        static_non_tensor_data=True,
+        _static_shape=True,
+        _static_non_tensor_data=True,
     )
     chan_typ.set_nccl_group_id(nccl_id)
     sender.create_traced_channel.remote("tensor_metadata", [receiver])

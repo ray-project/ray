@@ -145,7 +145,7 @@ def test_p2p_static_shape(ray_start_cluster):
     # Test torch.Tensor sent between actors.
     with InputNode() as inp:
         dag = sender.send.bind(inp.shape, inp.dtype, inp[0])
-        dag = dag.with_type_hint(TorchTensorType(transport="nccl", static_shape=True))
+        dag = dag.with_type_hint(TorchTensorType(transport="nccl", _static_shape=True))
         dag = receiver.recv.bind(dag)
 
     compiled_dag = dag.experimental_compile()
@@ -191,7 +191,7 @@ def test_p2p_static_shape_error(ray_start_cluster):
     # Test torch.Tensor sent between actors.
     with InputNode() as inp:
         dag = sender.send.bind(inp.shape, inp.dtype, inp[0])
-        dag = dag.with_type_hint(TorchTensorType(transport="nccl", static_shape=True))
+        dag = dag.with_type_hint(TorchTensorType(transport="nccl", _static_shape=True))
         dag = receiver.recv.bind(dag)
 
     compiled_dag = dag.experimental_compile()
@@ -245,7 +245,7 @@ def test_p2p_static_non_tensor_data(ray_start_cluster):
     with InputNode() as inp:
         dag = sender.send_dict.bind(inp)
         dag = dag.with_type_hint(
-            TorchTensorType(transport="nccl", static_non_tensor_data=True)
+            TorchTensorType(transport="nccl", _static_non_tensor_data=True)
         )
         dag = receiver.recv_dict.bind(dag)
 
@@ -302,7 +302,7 @@ def test_p2p_static_non_tensor_data_error(ray_start_cluster):
     with InputNode() as inp:
         dag = sender.send_dict.bind(inp)
         dag = dag.with_type_hint(
-            TorchTensorType(transport="nccl", static_non_tensor_data=True)
+            TorchTensorType(transport="nccl", _static_non_tensor_data=True)
         )
         dag = receiver.recv_dict.bind(dag)
 

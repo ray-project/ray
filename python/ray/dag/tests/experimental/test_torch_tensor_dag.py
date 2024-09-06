@@ -265,7 +265,7 @@ def test_torch_tensor_nccl_static_shape(ray_start_regular):
 
     with InputNode() as inp:
         dag = sender.send.bind(inp.shape, inp.dtype, inp[0])
-        dag = dag.with_type_hint(TorchTensorType(transport="nccl", static_shape=True))
+        dag = dag.with_type_hint(TorchTensorType(transport="nccl", _static_shape=True))
         dag = receiver.recv.bind(dag)
 
     compiled_dag = dag.experimental_compile()
@@ -297,7 +297,7 @@ def test_torch_tensor_nccl_static_non_tensor_data(ray_start_regular):
     with InputNode() as inp:
         dag = sender.send_dict.bind(inp.shape, inp.dtype, inp.value)
         dag = dag.with_type_hint(
-            TorchTensorType(transport="nccl", static_non_tensor_data=True)
+            TorchTensorType(transport="nccl", _static_non_tensor_data=True)
         )
         dag = receiver.recv_dict.bind(dag)
 
@@ -327,12 +327,12 @@ def test_torch_tensor_nccl_static_shape_and_non_tensor_data(ray_start_regular):
     receiver = actor_cls.remote()
 
     with InputNode() as inp:
-        dag = sender.send.bind(inp.shape, inp.dtype, inp.value)
+        dag = sender.send.bind(inp.shape, inp.dtype, inp.value, inp.send_tensor)
         dag = dag.with_type_hint(
             TorchTensorType(
                 transport="nccl",
-                static_shape=True,
-                static_non_tensor_data=True,
+                _static_shape=True,
+                _static_non_tensor_data=True,
             )
         )
         dag = receiver.recv.bind(dag)
@@ -350,8 +350,9 @@ def test_torch_tensor_nccl_static_shape_and_non_tensor_data(ray_start_regular):
     # throws an application-level exception, such as when the task returns
     # something other than a torch.Tensor. Check that we can no longer submit
     # to the DAG.
+    ref = compiled_dag.execute(shape, dtype=dtype, value=1, send_tensor=False)
     with pytest.raises(RayChannelError):
-        ref = compiled_dag.execute(shape=shape, dtype=dtype, value=1, send_tensor=True)
+        ray.get(ref)
 
     compiled_dag.teardown()
 

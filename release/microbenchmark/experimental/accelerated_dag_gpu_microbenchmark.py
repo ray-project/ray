@@ -127,8 +127,8 @@ def exec_ray_dag(
         if use_adag:
             dag = dag.with_type_hint(
                 TorchTensorType(
-                    static_shape=static_shape,
-                    static_non_tensor_data=static_non_tensor_data,
+                    _static_shape=static_shape,
+                    _static_non_tensor_data=static_non_tensor_data,
                     transport="nccl" if use_nccl else "auto",
                 )
             )

@@ -108,25 +108,12 @@ class TorchTensorNcclChannel(ChannelInterface):
         self.serialization_ctx = ctx.serialization_context
         assert self.serialization_ctx is not None
 
-    @classmethod
-    def from_channels(
-        cls,
-        tensor_data_channel: "_TorchTensorNcclChannel",
-        non_tensor_data_channel: "Channel",
-        static_non_tensor_data: bool = False,
-    ):
-        return cls(
-            writer=None,
-            reader_and_node_list=None,
-            tensor_data_channel=tensor_data_channel,
-            non_tensor_data_channel=non_tensor_data_channel,
-            static_non_tensor_data=static_non_tensor_data,
-        )
-
     def __reduce__(self):
         return (
             TorchTensorNcclChannel,
             (
+                None,
+                None,
                 self._tensor_data_channel,
                 self._non_tensor_data_channel,
                 self._static_non_tensor_data,
@@ -226,7 +213,8 @@ class TorchTensorNcclChannel(ChannelInterface):
                 # of tensors found in future values.
                 self._num_serialized_tensors = len(tensors_to_send)
 
-    def read(self, timeout: Optional[float] = None) -> Any:
+    def read(self, timeout: Optional[float] = None,
+            deserialize: bool = True) -> Any:
         """
         Read a value that may contain torch.Tensors sent via external
         transport.
@@ -241,6 +229,8 @@ class TorchTensorNcclChannel(ChannelInterface):
         (2) on the first `read` call. Subsequent messages will reuse the
         first received non-tensor data.
         """
+        assert deserialize, "TorchTensorNcclChannel does not support deserialize=False"
+
         # First, read the tensor data.
         tensors = self._tensor_data_channel.read()
         self.serialization_ctx.reset_out_of_band_tensors(tensors)
@@ -329,6 +319,7 @@ class _TorchTensorNcclChannel(ChannelInterface):
         assert isinstance(
             typ.nccl_group_id, str
         ), "NCCL group ID ({nccl_group_id}) must be a str."
+        self._typ = typ
         self._nccl_group_id: str = typ.nccl_group_id
         self._nccl_group: "_NcclGroup" = ctx.nccl_groups[self._nccl_group_id]
         assert (
@@ -491,7 +482,7 @@ class _TorchTensorNcclChannel(ChannelInterface):
             for rank in self._reader_ranks:
                 self._nccl_group.send(tensor, rank)
 
-    def _get_recv_tensors_metadata(self) -> List[_TorchTensorMetadata]:
+    def _get_recv_tensors_metadata(self, timeout: Optional[float] = None) -> List[_TorchTensorMetadata]:
         """
         Get the shape(s) and dtype(s) of the tensors to receive from the
         metadata channel. If static_shape=True was set, then we reuse the first
@@ -500,10 +491,7 @@ class _TorchTensorNcclChannel(ChannelInterface):
         if self._static_tensor_metadata is not None:
             return self._static_tensor_metadata
 
-        meta = self._meta_channel.begin_read()
-        # It's safe to release the channel because the metadata should get
-        # copied during deserialization.
-        self._meta_channel.end_read()
+        meta = self._meta_channel.read(timeout)
 
         if self._static_shape:
             self._static_tensor_metadata = meta
@@ -511,7 +499,8 @@ class _TorchTensorNcclChannel(ChannelInterface):
         return meta
 
     def read(
-        self, timeout: Optional[float] = None
+        self, timeout: Optional[float] = None,
+        deserialize: bool = True,
     ) -> Union["torch.Tensor", List["torch.Tensor"]]:
         """
         Receive a list of tensors.
@@ -524,7 +513,9 @@ class _TorchTensorNcclChannel(ChannelInterface):
         If static_data=True was set, then we only perform step (1) on the first
         message. Subsequent messages reuse the same metadata.
         """
-        meta_list: List[_TorchTensorMetadata] = self._get_recv_tensors_metadata()
+        assert deserialize, "_TorchTensorNcclChannel does not support deserialize=False"
+
+        meta_list: List[_TorchTensorMetadata] = self._get_recv_tensors_metadata(timeout)
 
         bufs: List["torch.Tensor"] = []
         for meta in meta_list:

@@ -410,7 +410,7 @@ class Channel(ChannelInterface):
             timeout_ms,
         )
 
-    def read(self, timeout: Optional[float] = None, deserialize=True) -> Any:
+    def read(self, timeout: Optional[float] = None, deserialize: bool = True) -> Any:
         assert (
             timeout is None or timeout >= 0 or timeout == -1
         ), "Timeout must be non-negative or -1."
@@ -419,7 +419,10 @@ class Channel(ChannelInterface):
         if not deserialize:
             # Return raw data that can be deserialized using
             # ray._private.worker.global_worker.
-            timeout_ms = timeout * 1000
+            if timeout is None:
+                timeout_ms = -1
+            else:
+                timeout_ms = timeout * 1000
             data_metadata_pairs: List[
                 Tuple[ray._raylet.Buffer, bytes]
             ] = self._worker.core_worker.get_objects(
@@ -572,10 +575,10 @@ class CompositeChannel(ChannelInterface):
         for channel in self._channels:
             channel.write(value, timeout)
 
-    def read(self, timeout: Optional[float] = None) -> Any:
+    def read(self, timeout: Optional[float] = None, deserialize: bool = True) -> Any:
         self.ensure_registered_as_reader()
         actor_id = self._get_self_actor_id()
-        return self._channel_dict[actor_id].read(timeout)
+        return self._channel_dict[actor_id].read(timeout, deserialize)
 
     def close(self) -> None:
         for channel in self._channels:
