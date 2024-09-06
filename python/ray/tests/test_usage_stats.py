@@ -1145,7 +1145,7 @@ provider:
         node = cluster.add_node(num_cpus=3)
         if os.environ.get("RAY_MINIMAL") != "1":
             from ray import train  # noqa: F401
-            from ray.rllib.algorithms.ppo import PPO  # noqa: F401
+            from ray.rllib.algorithms.ppo.ppo import PPO  # noqa: F401
 
         ray_usage_lib.record_extra_usage_tag(ray_usage_lib.TagKey._TEST1, "extra_v2")
 
@@ -1491,7 +1491,7 @@ def test_lib_used_from_workers(monkeypatch, ray_start_cluster, reset_usage_stats
         class ActorWithLibImport:
             def __init__(self):
                 from ray import train  # noqa: F401
-                from ray.rllib.algorithms.ppo import PPO  # noqa: F401
+                from ray.rllib.algorithms.ppo.ppo import PPO  # noqa: F401
 
             def ready(self):
                 from ray import tune  # noqa: F401

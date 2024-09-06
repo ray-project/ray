@@ -305,8 +305,6 @@ if setup_spec.type == SetupType.RAY:
         "scipy",
         "typer",
         "rich",
-        "msgpack",
-        "msgpack-numpy",
     ]
 
     setup_spec.extras["train"] = setup_spec.extras["tune"]
