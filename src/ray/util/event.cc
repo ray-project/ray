@@ -206,8 +206,14 @@ void EventManager::Publish(const rpc::Event &event, const json &custom_fields) {
 
 void EventManager::PublishExportEvent(const rpc::ExportEvent &export_event) {
   auto element = export_log_reporter_map_.find(export_event.source_type());
-  RAY_CHECK(element != export_log_reporter_map_.end());
-  (element->second)->ReportExportEvent(export_event);
+  if (element != export_log_reporter_map_.end()) {
+    (element->second)->ReportExportEvent(export_event);
+  } else {
+    RAY_LOG(FATAL)
+        << "RayEventInit wasn't called with the necessary source type "
+        << ExportEvent_SourceType_Name(export_event.source_type())
+        << ". This indicates a bug in the code, and the event will be dropped.";
+  }
 }
 
 void EventManager::AddReporter(std::shared_ptr<BaseEventReporter> reporter) {
@@ -424,6 +430,7 @@ void RayExportEvent::SendEvent() {
   rpc::ExportEvent export_event;
   export_event.set_event_id(event_id);
   export_event.set_timestamp(current_sys_time_s());
+
   if (auto ptr_to_task_event_data_ptr =
           std::get_if<std::shared_ptr<rpc::ExportTaskEventData>>(&event_data_ptr_)) {
     export_event.mutable_task_event_data()->CopyFrom(*(*ptr_to_task_event_data_ptr));
@@ -451,6 +458,7 @@ void RayExportEvent::SendEvent() {
     RAY_LOG(FATAL) << "Invalid event_data type.";
     return;
   }
+
   EventManager::Instance().PublishExportEvent(export_event);
 }
 
