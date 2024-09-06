@@ -21,7 +21,7 @@ global_logger = logging.getLogger(__name__)
 ExportEventDataType = Union[ExportSubmissionJobEventData]
 
 
-def get_event_id():
+def generate_event_id():
     return "".join([random.choice(string.hexdigits) for _ in range(18)])
 
 
@@ -51,7 +51,7 @@ class ExportEventLoggerAdapter:
 
     def _create_export_event(self, event_data: ExportEventDataType) -> ExportEvent:
         event = ExportEvent()
-        event.event_id = get_event_id()
+        event.event_id = generate_event_id()
         event.timestamp = int(datetime.now().timestamp())
         if type(event_data) is ExportSubmissionJobEventData:
             event.submission_job_event_data.CopyFrom(event_data)
