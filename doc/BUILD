@@ -467,7 +467,7 @@ doctest(
             "source/rllib/rllib-sample-collection.rst",
         ],
     ),
-    data = ["rllib/tests/data/cartpole/cartpole-v1_large"],
+    data = ["//rllib/tests/data/cartpole/cartpole-v1_large"],
     tags = ["team:rllib"],
 )
 
