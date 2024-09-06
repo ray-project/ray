@@ -701,6 +701,23 @@ bool ActorTaskSubmitter::IsActorAlive(const ActorID &actor_id) const {
   return (iter != client_queues_.end() && iter->second.rpc_client);
 }
 
+std::optional<rpc::Address> ActorTaskSubmitter::GetActorAddress(
+    const ActorID &actor_id) const {
+  absl::MutexLock lock(&mu_);
+
+  auto iter = client_queues_.find(actor_id);
+  if (iter == client_queues_.end()) {
+    return std::nullopt;
+  }
+
+  const auto &rpc_client = iter->second.rpc_client;
+  if (rpc_client == nullptr) {
+    return std::nullopt;
+  }
+
+  return iter->second.rpc_client->Addr();
+}
+
 bool ActorTaskSubmitter::PendingTasksFull(const ActorID &actor_id) const {
   absl::MutexLock lock(&mu_);
   auto it = client_queues_.find(actor_id);

@@ -1604,7 +1604,6 @@ class CompiledDAG:
                     return
 
                 logger.info("Tearing down compiled DAG")
-
                 outer._dag_submitter.close()
                 outer._dag_output_fetcher.close()
 

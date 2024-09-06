@@ -265,11 +265,15 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         CRayStatus ExperimentalChannelSetError(
                                   const CObjectID &object_id)
         CRayStatus ExperimentalRegisterMutableObjectWriter(
-                const CObjectID &object_id, const CNodeID *node_id)
+                const CObjectID &writer_object_id,
+                const CNodeID &writer_node_id,
+                const c_vector[CNodeID] &remote_reader_node_ids)
         CRayStatus ExperimentalRegisterMutableObjectReader(const CObjectID &object_id)
         CRayStatus ExperimentalRegisterMutableObjectReaderRemote(
-                const CObjectID &object_id, const CActorID &reader_actor,
-                int64_t num_readers, const CObjectID &reader_ref)
+                const CObjectID &object_id,
+                const c_vector[CActorID] &remote_reader_actors,
+                c_vector[int64_t] remote_num_readers,
+                const c_vector[CObjectID] &remote_reader_refs)
         CRayStatus SealOwned(const CObjectID &object_id, c_bool pin_object,
                              const unique_ptr[CAddress] &owner_address)
         CRayStatus SealExisting(const CObjectID &object_id, c_bool pin_object,

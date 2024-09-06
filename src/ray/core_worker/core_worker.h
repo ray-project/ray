@@ -736,12 +736,19 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
 
   /// Experimental method for mutable objects. Registers a writer channel.
   ///
+  /// The API is not idempotent.
+  ///
+  /// SANG-TODO update.
   /// \param[in] object_id The ID of the object.
   /// \param[in] node_id If non-NULL, sends each write to the readers on node `node_id`.
-  Status ExperimentalRegisterMutableObjectWriter(const ObjectID &object_id,
-                                                 const NodeID *node_id);
+  Status ExperimentalRegisterMutableObjectWriter(
+      const ObjectID &writer_object_id,
+      const NodeID &writer_node_id,
+      const std::vector<NodeID> &remote_reader_node_ids);
 
   /// Experimental method for mutable objects. Registers a reader channel.
+  ///
+  /// The API is not idempotent.
   ///
   /// \param[in] object_id The ID of the object.
   Status ExperimentalRegisterMutableObjectReader(const ObjectID &object_id);
@@ -750,15 +757,17 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// that is written to on this node to the corresponding mutable object that is read on
   /// the node that `reader_actor` is on.
   ///
+  /// SANG-TODO update docstring.
   /// \param[in] writer_object_id The ID of the object that is written on this node.
   /// \param[in] reader_actor The actor that reads the object.
   /// \param[in] num_readers The total number of readers.
   /// \param[in] reader_object_id The ID of the corresponding object that is read on the
   /// remote node.
-  Status ExperimentalRegisterMutableObjectReaderRemote(const ObjectID &writer_object_id,
-                                                       const ActorID &reader_actor,
-                                                       int64_t num_readers,
-                                                       const ObjectID &reader_object_id);
+  Status ExperimentalRegisterMutableObjectReaderRemote(
+      const ObjectID &writer_object_id,
+      const std::vector<ActorID> &remote_reader_actors,
+      std::vector<int64_t> remote_num_readers,
+      const std::vector<ObjectID> &remote_reader_object_ids);
 
   /// Get a list of objects from the object store. Objects that failed to be retrieved
   /// will be returned as nullptrs.
