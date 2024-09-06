@@ -2553,19 +2553,21 @@ class AlgorithmConfig(_Config):
                 `ray.rllib.utils.replay_buffers.PrioritizedEpsiodeReplayBuffer`. See
                 `prelearner_buffer_kwargs` for passing in further arguments into the
                 buffer's constructor. Note, the buffer acts (a) as a buffer to dissect
-                `SampleBatch` data into smaller chunks, (b) to concatenate episode
-                chunks from different `SampleBatch`es, and (c) to act as a shuffler that
-                shuffles experiences from different episodes.
+                `SampleBatch` (or `SingleAgentEpisode`) data into smaller chunks, (b)
+                to concatenate episode chunks from different `SampleBatch`es (or
+                `SingleAgentEpisode`s), and (c) to act as a shuffler that shuffles
+                experiences from different episodes.
             prelearner_buffer_kwargs: `kwargs` for the `prelearner_buffer_class`. If no
-                arguments are passed in the buffer's `capacity` will be set to `10 x
-                train_batch_size_per_learner` and the `batch_size_B` to the
-                `train_batch_size_per_learner`. The capacity will act (a) as a shuffle
+                arguments are passed in the buffer's `capacity` will be set to
+                `10 x train_batch_size_per_learner` and the `batch_size_B` to the
+                `train_batch_size_per_learner`. The capacity will act (a) as a shuffler
                 for experiences randomizing experiences while sampling and (b) as a
                 buffer for the episodes, i.e. will keep episodes longer available for
                 sampling depending on the capacity. If you want to traverse the dataset
-                as is and avoid sampling the same experiences multiple times choose a
-                small enough capacity to store episodes from your `SampleBatch` data,
-                but to evict old experiences as soon as possible.
+                as is and to avoid sampling the same experiences multiple times choose a
+                small enough capacity to buffer episodes from your `SampleBatch` (or
+                `SingleAgentEpisode`) data, but to evict old experiences as soon as
+                possible.
             prelearner_module_synch_period: The period (number of batches converted)
                 after which the `RLModule` held by the `PreLearner` should sync weights.
                 The `PreLearner` is used to preprocess batches for the learners. The
