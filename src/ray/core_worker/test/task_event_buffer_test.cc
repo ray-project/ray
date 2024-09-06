@@ -305,6 +305,7 @@ TEST_F(TaskEventTestWriteExport, TestWriteTaskExportEvents) {
     call will write 1 new event because the batch size is 1.
   */
 
+  std::cout << "Starting export api test\n";
   // {"task_events_max_num_status_events_buffer_on_worker": 10} and
   // {"task_events_max_num_export_status_events_buffer_on_worker": 15}
   // in TaskEventTestWriteExport so set num_events > 15.
