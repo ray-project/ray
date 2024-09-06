@@ -9,6 +9,7 @@ import uuid
 import traceback
 
 from ray.experimental.channel.cached_channel import CachedChannel
+from ray.experimental.channel.gpu_communicator import GPUCommunicator
 import ray
 from ray.exceptions import RayTaskError, RayChannelError
 from ray.experimental.compiled_dag_ref import (
@@ -710,6 +711,9 @@ class CompiledDAG:
         ] = defaultdict(list)
         # Mapping from the actor handle to the node ID that the actor is on.
         self.actor_to_node_id: Dict["ray.actor.ActorHandle", str] = {}
+
+        # Type hints specified by the user for DAG (intermediate) outputs.
+        self._type_hints = []
 
         # This is set to true when type hint of `transport="nccl"`` is used
         self._use_default_nccl_group = False
