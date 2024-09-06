@@ -1,5 +1,6 @@
 import asyncio
 from collections import defaultdict, deque
+from dataclasses import dataclass, asdict
 from typing import Any, Dict, List, Tuple, Union, Optional, Set
 import logging
 import threading
@@ -116,6 +117,57 @@ def do_exec_tasks(
                 done = tasks[operation.exec_task_idx].exec_operation(
                     self, operation.type
                 )
+                if done:
+                    break
+    except Exception:
+        logging.exception("Compiled DAG task exited with exception")
+        raise
+
+
+@DeveloperAPI
+def do_profile_tasks(
+    self,
+    tasks: List["ExecutableTask"],
+    schedule: List[_DAGNodeOperation],
+) -> None:
+    """A generic actor method similar to `do_exec_tasks`, but with profiling enabled.
+
+    Args:
+        tasks: the executable tasks corresponding to the actor methods.
+        schedule: A list of _DAGNodeOperation that should be executed in order.
+    """
+    try:
+        for task in tasks:
+            task.prepare()
+
+        if not hasattr(self, "__ray_adag_events"):
+            self.__ray_adag_events = []
+
+        done = False
+        while True:
+            if done:
+                break
+            for operation in schedule:
+                start_t = time.perf_counter()
+                task = tasks[operation.exec_task_idx]
+                done = tasks[operation.exec_task_idx].exec_operation(
+                    self, operation.type
+                )
+                end_t = time.perf_counter()
+
+                self.__ray_adag_events.append(
+                    _ExecutableTaskRecord(
+                        actor_classname=self.__class__.__name__,
+                        actor_name=ray.get_runtime_context().get_actor_name(),
+                        actor_id=ray.get_runtime_context().get_actor_id(),
+                        method_name=task.method_name,
+                        bind_index=task.bind_index,
+                        operation=operation.type.value,
+                        start_t=start_t,
+                        end_t=end_t,
+                    )
+                )
+
                 if done:
                     break
     except Exception:
@@ -492,6 +544,21 @@ class ExecutableTask:
             return self._compute(class_handle)
         elif op_type == _DAGNodeOperationType.WRITE:
             return self._write()
+
+
+@dataclass
+class _ExecutableTaskRecord:
+    actor_classname: str
+    actor_name: str
+    actor_id: str
+    method_name: str
+    bind_index: int
+    operation: str
+    start_t: float
+    end_t: float
+
+    def to_dict(self):
+        return asdict(self)
 
 
 @DeveloperAPI
@@ -1314,12 +1381,19 @@ class CompiledDAG:
             self.actor_to_executable_tasks[actor_handle] = executable_tasks
 
         # Build an execution schedule for each actor
+        from ray.dag.constants import RAY_ADAG_ENABLE_PROFILING
+
+        if RAY_ADAG_ENABLE_PROFILING:
+            exec_task_func = do_profile_tasks
+        else:
+            exec_task_func = do_exec_tasks
+
         self.actor_to_execution_schedule = self._build_execution_schedule()
         for actor_handle, executable_tasks in self.actor_to_executable_tasks.items():
             self.worker_task_refs[actor_handle] = actor_handle.__ray_call__.options(
                 concurrency_group="_ray_system"
             ).remote(
-                do_exec_tasks,
+                exec_task_func,
                 executable_tasks,
                 self.actor_to_execution_schedule[actor_handle],
             )
