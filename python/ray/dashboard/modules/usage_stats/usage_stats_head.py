@@ -171,9 +171,7 @@ class UsageStatsHead(dashboard_utils.DashboardHeadModule):
         assert not self.usage_stats_enabled
 
         try:
-            if ray_usage_lib.is_ray_init_cluster(
-                self._dashboard_head.gcs_client.address
-            ):
+            if ray_usage_lib.is_ray_init_cluster(self._dashboard_head.gcs_client):
                 return
 
             data = ray_usage_lib.generate_disabled_report_data()

@@ -105,6 +105,9 @@ class Actor:
     def return_two_from_three(self, x):
         return x, x + 1, x + 2
 
+    def get_events(self):
+        return getattr(self, "__ray_adag_events", [])
+
 
 @ray.remote
 class Collector:
@@ -415,6 +418,133 @@ def test_actor_method_bind_same_input_attr(ray_start_regular):
         ref = compiled_dag.execute(i)
         result = ray.get(ref)
         assert result == expected[i]
+    compiled_dag.teardown()
+
+
+def test_actor_method_bind_diff_input_attr_1(ray_start_regular):
+    actor = Actor.remote(0)
+    c = Collector.remote()
+    with InputNode() as inp:
+        # Two class methods are bound to two different input
+        # attribute nodes.
+        branch1 = actor.inc.bind(inp[0])
+        branch2 = actor.inc.bind(inp[1])
+        dag = c.collect_two.bind(branch1, branch2)
+    compiled_dag = dag.experimental_compile()
+    ref = compiled_dag.execute(0, 1)
+    assert ray.get(ref) == [0, 1]
+
+    ref = compiled_dag.execute(1, 2)
+    assert ray.get(ref) == [0, 1, 2, 4]
+
+    ref = compiled_dag.execute(2, 3)
+    assert ray.get(ref) == [0, 1, 2, 4, 6, 9]
+
+    compiled_dag.teardown()
+
+
+def test_actor_method_bind_diff_input_attr_2(ray_start_regular):
+    actor = Actor.remote(0)
+    c = Collector.remote()
+    with InputNode() as inp:
+        # Three class methods are bound to two different input
+        # attribute nodes. Two methods are bound to the same input
+        # attribute node.
+        branch1 = actor.inc.bind(inp[0])
+        branch2 = actor.inc.bind(inp[0])
+        branch3 = actor.inc.bind(inp[1])
+        dag = c.collect_three.bind(branch1, branch2, branch3)
+    compiled_dag = dag.experimental_compile()
+    ref = compiled_dag.execute(0, 1)
+    assert ray.get(ref) == [0, 0, 1]
+
+    ref = compiled_dag.execute(1, 2)
+    assert ray.get(ref) == [0, 0, 1, 2, 3, 5]
+
+    ref = compiled_dag.execute(2, 3)
+    assert ray.get(ref) == [0, 0, 1, 2, 3, 5, 7, 9, 12]
+
+    compiled_dag.teardown()
+
+
+def test_actor_method_bind_diff_input_attr_3(ray_start_regular):
+    actor = Actor.remote(0)
+    with InputNode() as inp:
+        # A single class method is bound to two different input
+        # attribute nodes.
+        dag = actor.inc_two.bind(inp[0], inp[1])
+    compiled_dag = dag.experimental_compile()
+    ref = compiled_dag.execute(0, 1)
+    assert ray.get(ref) == 1
+
+    ref = compiled_dag.execute(1, 2)
+    assert ray.get(ref) == 4
+
+    ref = compiled_dag.execute(2, 3)
+    assert ray.get(ref) == 9
+
+    compiled_dag.teardown()
+
+
+def test_actor_method_bind_diff_input_attr_4(ray_start_regular):
+    actor = Actor.remote(0)
+    c = Collector.remote()
+    with InputNode() as inp:
+        branch1 = actor.inc_two.bind(inp[0], inp[1])
+        branch2 = actor.inc.bind(inp[2])
+        dag = c.collect_two.bind(branch1, branch2)
+    compiled_dag = dag.experimental_compile()
+    ref = compiled_dag.execute(0, 1, 2)
+    assert ray.get(ref) == [1, 3]
+
+    ref = compiled_dag.execute(1, 2, 3)
+    assert ray.get(ref) == [1, 3, 6, 9]
+
+    ref = compiled_dag.execute(2, 3, 4)
+    assert ray.get(ref) == [1, 3, 6, 9, 14, 18]
+
+    compiled_dag.teardown()
+
+
+def test_actor_method_bind_diff_input_attr_5(ray_start_regular):
+    actor = Actor.remote(0)
+    c = Collector.remote()
+    with InputNode() as inp:
+        branch1 = actor.inc_two.bind(inp[0], inp[1])
+        branch2 = actor.inc_two.bind(inp[2], inp[0])
+        dag = c.collect_two.bind(branch1, branch2)
+    compiled_dag = dag.experimental_compile()
+    ref = compiled_dag.execute(0, 1, 2)
+    assert ray.get(ref) == [1, 3]
+
+    ref = compiled_dag.execute(1, 2, 3)
+    assert ray.get(ref) == [1, 3, 6, 10]
+
+    ref = compiled_dag.execute(2, 3, 4)
+    assert ray.get(ref) == [1, 3, 6, 10, 15, 21]
+
+    compiled_dag.teardown()
+
+
+def test_actor_method_bind_diff_kwargs_input_attr(ray_start_regular):
+    actor = Actor.remote(0)
+    c = Collector.remote()
+    with InputNode() as inp:
+        # Two class methods are bound to two different kwargs input
+        # attribute nodes.
+        branch1 = actor.inc.bind(inp.x)
+        branch2 = actor.inc.bind(inp.y)
+        dag = c.collect_two.bind(branch1, branch2)
+    compiled_dag = dag.experimental_compile()
+    ref = compiled_dag.execute(x=0, y=1)
+    assert ray.get(ref) == [0, 1]
+
+    ref = compiled_dag.execute(x=1, y=2)
+    assert ray.get(ref) == [0, 1, 2, 4]
+
+    ref = compiled_dag.execute(x=2, y=3)
+    assert ray.get(ref) == [0, 1, 2, 4, 6, 9]
+
     compiled_dag.teardown()
 
 
@@ -1690,6 +1820,34 @@ def test_payload_large(ray_start_cluster):
     # Note: must teardown before starting a new Ray session, otherwise you'll get
     # a segfault from the dangling monitor thread upon the new Ray init.
     compiled_dag.teardown()
+
+
+def test_event_profiling(ray_start_regular, monkeypatch):
+    monkeypatch.setattr(ray.dag.constants, "RAY_ADAG_ENABLE_PROFILING", True)
+
+    a = Actor.options(name="a").remote(0)
+    b = Actor.options(name="b").remote(0)
+    with InputNode() as inp:
+        x = a.inc.bind(inp)
+        y = b.inc.bind(inp)
+        z = b.inc.bind(y)
+        dag = MultiOutputNode([x, z])
+    adag = dag.experimental_compile()
+    ray.get(adag.execute(1))
+
+    a_events = ray.get(a.get_events.remote())
+    b_events = ray.get(b.get_events.remote())
+
+    # a: 1 x READ, 1 x COMPUTE, 1 x WRITE
+    assert len(a_events) == 3
+    # a: 2 x READ, 2 x COMPUTE, 2 x WRITE
+    assert len(b_events) == 6
+
+    for event in a_events + b_events:
+        assert event.actor_classname == "Actor"
+        assert event.actor_name in ["a", "b"]
+        assert event.method_name == "inc"
+        assert event.operation in ["READ", "COMPUTE", "WRITE"]
 
 
 @ray.remote
