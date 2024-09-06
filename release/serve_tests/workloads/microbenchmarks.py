@@ -26,8 +26,10 @@ from ray.serve._private.benchmarks.common import (
     do_single_http_batch,
     generate_payload,
     Noop,
+    IntermediateRouter,
     run_latency_benchmark,
     run_throughput_benchmark,
+    Streamer,
 )
 from ray.serve.generated import serve_pb2, serve_pb2_grpc
 from ray.serve.config import gRPCOptions
@@ -48,6 +50,12 @@ BATCH_SIZE = 100
 NUM_TRIALS = 50
 TRIAL_RUNTIME_S = 5
 
+# For streaming benchmarks
+STREAMING_BATCH_SIZE = 150
+STREAMING_HTTP_BATCH_SIZE = 500
+STREAMING_TOKENS_PER_REQUEST = 1000
+STREAMING_NUM_TRIALS = 10
+
 
 @serve.deployment
 class GrpcDeployment:
@@ -62,11 +70,14 @@ class GrpcDeployment:
 
 
 def convert_throughput_to_perf_metrics(
-    name: str, mean: float, std: float
+    name: str,
+    mean: float,
+    std: float,
+    stream: bool = False,
 ) -> List[Dict]:
     return [
         {
-            "perf_metric_name": f"{name}_avg_rps",
+            "perf_metric_name": f"{name}_avg_tps" if stream else f"{name}_avg_rps",
             "perf_metric_value": mean,
             "perf_metric_type": "THROUGHPUT",
         },
@@ -110,6 +121,7 @@ async def _main(
     run_handle: bool,
     run_latency: bool,
     run_throughput: bool,
+    run_streaming: bool,
 ):
     perf_metrics = []
     payload_1mb = generate_payload(1000000)
@@ -134,7 +146,7 @@ async def _main(
         if run_throughput:
             # Microbenchmark: HTTP throughput
             serve.run(Noop.bind())
-            mean, std = await run_throughput_benchmark(
+            mean, std, _ = await run_throughput_benchmark(
                 fn=partial(do_single_http_batch, batch_size=BATCH_SIZE),
                 multiplier=BATCH_SIZE,
                 num_trials=NUM_TRIALS,
@@ -145,7 +157,7 @@ async def _main(
 
             # Microbenchmark: HTTP throughput at max_ongoing_requests=100
             serve.run(Noop.options(max_ongoing_requests=100).bind())
-            mean, std = await run_throughput_benchmark(
+            mean, std, _ = await run_throughput_benchmark(
                 fn=partial(do_single_http_batch, batch_size=BATCH_SIZE),
                 multiplier=BATCH_SIZE,
                 num_trials=NUM_TRIALS,
@@ -154,6 +166,73 @@ async def _main(
             perf_metrics.extend(
                 convert_throughput_to_perf_metrics(
                     "http_100_max_ongoing_requests", mean, std
+                )
+            )
+            serve.shutdown()
+
+        if run_streaming:
+            # Direct streaming between replica
+            serve.run(
+                Streamer.options(max_ongoing_requests=1000).bind(
+                    tokens_per_request=STREAMING_TOKENS_PER_REQUEST,
+                    inter_token_delay_ms=10,
+                )
+            )
+            # In each trial, complete only one batch of requests. Each
+            # batch should take 10+ seconds to complete (because we are
+            # streaming 1000 tokens per request with a 10ms inter token
+            # delay). Then run STREAMING_NUM_TRIALS, which executes
+            # exactly that number of batches, and calculate the average
+            # throughput across them.
+            mean, std, latencies = await run_throughput_benchmark(
+                fn=partial(
+                    do_single_http_batch,
+                    batch_size=STREAMING_HTTP_BATCH_SIZE,
+                    stream=True,
+                ),
+                multiplier=STREAMING_HTTP_BATCH_SIZE * STREAMING_TOKENS_PER_REQUEST,
+                num_trials=STREAMING_NUM_TRIALS,
+                # 10 seconds is only enough time to complete a single batch
+                trial_runtime=10,
+            )
+            perf_metrics.extend(
+                convert_throughput_to_perf_metrics(
+                    "http_streaming", mean, std, stream=True
+                )
+            )
+            perf_metrics.extend(
+                convert_latencies_to_perf_metrics("http_streaming", latencies)
+            )
+            serve.shutdown()
+
+            # Streaming with intermediate router
+            serve.run(
+                IntermediateRouter.options(max_ongoing_requests=1000).bind(
+                    Streamer.options(max_ongoing_requests=1000).bind(
+                        tokens_per_request=STREAMING_TOKENS_PER_REQUEST,
+                        inter_token_delay_ms=10,
+                    )
+                )
+            )
+            mean, std, latencies = await run_throughput_benchmark(
+                fn=partial(
+                    do_single_http_batch,
+                    batch_size=STREAMING_BATCH_SIZE,
+                    stream=True,
+                ),
+                multiplier=STREAMING_BATCH_SIZE * STREAMING_TOKENS_PER_REQUEST,
+                num_trials=STREAMING_NUM_TRIALS,
+                # 10 seconds is only enough time to complete a single batch
+                trial_runtime=10,
+            )
+            perf_metrics.extend(
+                convert_throughput_to_perf_metrics(
+                    "http_intermediate_streaming", mean, std, stream=True
+                )
+            )
+            perf_metrics.extend(
+                convert_latencies_to_perf_metrics(
+                    "http_intermediate_streaming", latencies
                 )
             )
             serve.shutdown()
@@ -191,7 +270,7 @@ async def _main(
             # Microbenchmark: GRPC throughput
             serve.start(grpc_options=serve_grpc_options)
             serve.run(GrpcDeployment.bind())
-            mean, std = await run_throughput_benchmark(
+            mean, std, _ = await run_throughput_benchmark(
                 fn=partial(do_single_grpc_batch, batch_size=BATCH_SIZE),
                 multiplier=BATCH_SIZE,
                 num_trials=NUM_TRIALS,
@@ -203,7 +282,7 @@ async def _main(
             # Microbenchmark: GRPC throughput at max_ongoing_requests = 100
             serve.start(grpc_options=serve_grpc_options)
             serve.run(GrpcDeployment.options(max_ongoing_requests=100).bind())
-            mean, std = await run_throughput_benchmark(
+            mean, std, _ = await run_throughput_benchmark(
                 fn=partial(do_single_grpc_batch, batch_size=BATCH_SIZE),
                 multiplier=BATCH_SIZE,
                 num_trials=NUM_TRIALS,
@@ -234,7 +313,7 @@ async def _main(
         if run_throughput:
             # Microbenchmark: Handle throughput
             h: DeploymentHandle = serve.run(Benchmarker.bind(Noop.bind()))
-            mean, std = await h.run_throughput_benchmark.remote(
+            mean, std, _ = await h.run_throughput_benchmark.remote(
                 batch_size=BATCH_SIZE,
                 num_trials=NUM_TRIALS,
                 trial_runtime=TRIAL_RUNTIME_S,
@@ -248,7 +327,7 @@ async def _main(
                     Noop.options(max_ongoing_requests=100).bind()
                 )
             )
-            mean, std = await h.run_throughput_benchmark.remote(
+            mean, std, _ = await h.run_throughput_benchmark.remote(
                 batch_size=BATCH_SIZE,
                 num_trials=NUM_TRIALS,
                 trial_runtime=TRIAL_RUNTIME_S,
@@ -257,6 +336,33 @@ async def _main(
                 convert_throughput_to_perf_metrics(
                     "handle_100_max_ongoing_requests", mean, std
                 )
+            )
+            serve.shutdown()
+
+        if run_streaming:
+            h: DeploymentHandle = serve.run(
+                Benchmarker.bind(
+                    Streamer.options(max_ongoing_requests=1000).bind(
+                        tokens_per_request=STREAMING_TOKENS_PER_REQUEST,
+                        inter_token_delay_ms=10,
+                    ),
+                    stream=True,
+                )
+            )
+            mean, std, latencies = await h.run_throughput_benchmark.remote(
+                batch_size=STREAMING_BATCH_SIZE,
+                num_trials=STREAMING_NUM_TRIALS,
+                # 10 seconds is only enough time to complete a single batch
+                trial_runtime=10,
+                tokens_per_request=STREAMING_TOKENS_PER_REQUEST,
+            )
+            perf_metrics.extend(
+                convert_throughput_to_perf_metrics(
+                    "handle_streaming", mean, std, stream=True
+                )
+            )
+            perf_metrics.extend(
+                convert_latencies_to_perf_metrics("handle_streaming", latencies)
             )
             serve.shutdown()
 
@@ -273,6 +379,7 @@ async def _main(
 @click.option("--run-handle", is_flag=True)
 @click.option("--run-latency", is_flag=True)
 @click.option("--run-throughput", is_flag=True)
+@click.option("--run-streaming", is_flag=True)
 def main(
     output_path: Optional[str],
     run_all: bool,
@@ -281,9 +388,17 @@ def main(
     run_handle: bool,
     run_latency: bool,
     run_throughput: bool,
+    run_streaming: bool,
 ):
     # If none of the flags are set, default to run all
-    if not (run_http or run_grpc or run_handle or run_latency or run_throughput):
+    if not (
+        run_http
+        or run_grpc
+        or run_handle
+        or run_latency
+        or run_throughput
+        or run_streaming
+    ):
         run_all = True
 
     if run_all:
@@ -292,9 +407,18 @@ def main(
         run_handle = True
         run_latency = True
         run_throughput = True
+        run_streaming = True
 
     asyncio.run(
-        _main(output_path, run_http, run_grpc, run_handle, run_latency, run_throughput)
+        _main(
+            output_path,
+            run_http,
+            run_grpc,
+            run_handle,
+            run_latency,
+            run_throughput,
+            run_streaming,
+        )
     )
 
 

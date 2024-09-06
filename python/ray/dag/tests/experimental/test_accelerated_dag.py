@@ -92,6 +92,22 @@ class Actor:
     def read_input(self, x):
         return x
 
+    @ray.method(num_returns=2)
+    def inc_and_return_two(self, x):
+        self.i += x
+        return self.i, self.i + 1
+
+    @ray.method(num_returns=1)
+    def return_two_as_one(self, x):
+        return x, x + 1
+
+    @ray.method(num_returns=2)
+    def return_two_from_three(self, x):
+        return x, x + 1, x + 2
+
+    def get_events(self):
+        return getattr(self, "__ray_adag_events", [])
+
 
 @ray.remote
 class Collector:
@@ -139,18 +155,120 @@ def test_basic(ray_start_regular):
     compiled_dag.teardown()
 
 
-def test_multiple_returns_not_supported(ray_start_regular):
+def test_two_returns_first(ray_start_regular):
+    a = Actor.remote(0)
+    with InputNode() as i:
+        o1, o2 = a.return_two.bind(i)
+        dag = o1
+
+    compiled_dag = dag.experimental_compile()
+    for _ in range(3):
+        res = ray.get(compiled_dag.execute(1))
+        assert res == 1
+
+    compiled_dag.teardown()
+
+
+def test_two_returns_second(ray_start_regular):
+    a = Actor.remote(0)
+    with InputNode() as i:
+        o1, o2 = a.return_two.bind(i)
+        dag = o2
+
+    compiled_dag = dag.experimental_compile()
+    for _ in range(3):
+        res = ray.get(compiled_dag.execute(1))
+        assert res == 2
+
+    compiled_dag.teardown()
+
+
+def test_two_returns_one_reader(ray_start_regular):
     a = Actor.remote(0)
     b = Actor.remote(0)
     with InputNode() as i:
-        dag = a.return_two.bind(i)
-        dag = b.echo.bind(dag)
+        o1, o2 = a.return_two.bind(i)
+        o3 = b.echo.bind(o1)
+        o4 = b.echo.bind(o2)
+        dag = MultiOutputNode([o3, o4])
 
-    with pytest.raises(
-        ValueError,
-        match="Compiled DAGs only supports actor methods with " "num_returns=1",
-    ):
-        dag.experimental_compile()
+    compiled_dag = dag.experimental_compile()
+    for _ in range(3):
+        res = ray.get(compiled_dag.execute(1))
+        assert res == [1, 2]
+
+    compiled_dag.teardown()
+
+
+def test_two_returns_two_readers(ray_start_regular):
+    a = Actor.remote(0)
+    b = Actor.remote(0)
+    c = Actor.remote(0)
+    with InputNode() as i:
+        o1, o2 = a.return_two.bind(i)
+        o3 = b.echo.bind(o1)
+        o4 = c.echo.bind(o2)
+        dag = MultiOutputNode([o3, o4])
+
+    compiled_dag = dag.experimental_compile()
+    for _ in range(3):
+        res = ray.get(compiled_dag.execute(1))
+        assert res == [1, 2]
+
+    compiled_dag.teardown()
+
+
+def test_inc_two_returns(ray_start_regular):
+    a = Actor.remote(0)
+    with InputNode() as i:
+        o1, o2 = a.inc_and_return_two.bind(i)
+        dag = MultiOutputNode([o1, o2])
+
+    compiled_dag = dag.experimental_compile()
+    for i in range(3):
+        res = ray.get(compiled_dag.execute(1))
+        assert res == [i + 1, i + 2]
+
+    compiled_dag.teardown()
+
+
+def test_two_as_one_return(ray_start_regular):
+    a = Actor.remote(0)
+    with InputNode() as i:
+        o1 = a.return_two_as_one.bind(i)
+        dag = o1
+
+    compiled_dag = dag.experimental_compile()
+    for _ in range(3):
+        res = ray.get(compiled_dag.execute(1))
+        assert res == (1, 2)
+
+    compiled_dag.teardown()
+
+
+# TODO(wxdeng): Fix segfault. If this test is run, the following tests
+# will segfault.
+# def test_two_from_three_returns(ray_start_regular):
+#     a = Actor.remote(0)
+#     with InputNode() as i:
+#         o1, o2 = a.return_two_from_three.bind(i)
+#         dag = MultiOutputNode([o1, o2])
+
+#     compiled_dag = dag.experimental_compile()
+
+#     # A value error is raised because the number of returns is not equal to
+#     # the number of outputs. Since the value error is raised in the writer,
+#     # the reader fails to read the outputs and raises a channel error.
+
+#     # TODO(wxdeng): Fix exception type. The value error should be catched.
+#     # However, two exceptions are raised in the writer and reader respectively.
+
+#     # with pytest.raises(RayChannelError, match="Channel closed."):
+#     # with pytest.raises(ValueError, match="Expected 2 outputs, but got 3 outputs"):
+#     with pytest.raises(Exception):
+#         ray.get(compiled_dag.execute(1))
+
+#     compiled_dag.teardown()
 
 
 def test_kwargs_not_supported(ray_start_regular):
@@ -300,6 +418,133 @@ def test_actor_method_bind_same_input_attr(ray_start_regular):
         ref = compiled_dag.execute(i)
         result = ray.get(ref)
         assert result == expected[i]
+    compiled_dag.teardown()
+
+
+def test_actor_method_bind_diff_input_attr_1(ray_start_regular):
+    actor = Actor.remote(0)
+    c = Collector.remote()
+    with InputNode() as inp:
+        # Two class methods are bound to two different input
+        # attribute nodes.
+        branch1 = actor.inc.bind(inp[0])
+        branch2 = actor.inc.bind(inp[1])
+        dag = c.collect_two.bind(branch1, branch2)
+    compiled_dag = dag.experimental_compile()
+    ref = compiled_dag.execute(0, 1)
+    assert ray.get(ref) == [0, 1]
+
+    ref = compiled_dag.execute(1, 2)
+    assert ray.get(ref) == [0, 1, 2, 4]
+
+    ref = compiled_dag.execute(2, 3)
+    assert ray.get(ref) == [0, 1, 2, 4, 6, 9]
+
+    compiled_dag.teardown()
+
+
+def test_actor_method_bind_diff_input_attr_2(ray_start_regular):
+    actor = Actor.remote(0)
+    c = Collector.remote()
+    with InputNode() as inp:
+        # Three class methods are bound to two different input
+        # attribute nodes. Two methods are bound to the same input
+        # attribute node.
+        branch1 = actor.inc.bind(inp[0])
+        branch2 = actor.inc.bind(inp[0])
+        branch3 = actor.inc.bind(inp[1])
+        dag = c.collect_three.bind(branch1, branch2, branch3)
+    compiled_dag = dag.experimental_compile()
+    ref = compiled_dag.execute(0, 1)
+    assert ray.get(ref) == [0, 0, 1]
+
+    ref = compiled_dag.execute(1, 2)
+    assert ray.get(ref) == [0, 0, 1, 2, 3, 5]
+
+    ref = compiled_dag.execute(2, 3)
+    assert ray.get(ref) == [0, 0, 1, 2, 3, 5, 7, 9, 12]
+
+    compiled_dag.teardown()
+
+
+def test_actor_method_bind_diff_input_attr_3(ray_start_regular):
+    actor = Actor.remote(0)
+    with InputNode() as inp:
+        # A single class method is bound to two different input
+        # attribute nodes.
+        dag = actor.inc_two.bind(inp[0], inp[1])
+    compiled_dag = dag.experimental_compile()
+    ref = compiled_dag.execute(0, 1)
+    assert ray.get(ref) == 1
+
+    ref = compiled_dag.execute(1, 2)
+    assert ray.get(ref) == 4
+
+    ref = compiled_dag.execute(2, 3)
+    assert ray.get(ref) == 9
+
+    compiled_dag.teardown()
+
+
+def test_actor_method_bind_diff_input_attr_4(ray_start_regular):
+    actor = Actor.remote(0)
+    c = Collector.remote()
+    with InputNode() as inp:
+        branch1 = actor.inc_two.bind(inp[0], inp[1])
+        branch2 = actor.inc.bind(inp[2])
+        dag = c.collect_two.bind(branch1, branch2)
+    compiled_dag = dag.experimental_compile()
+    ref = compiled_dag.execute(0, 1, 2)
+    assert ray.get(ref) == [1, 3]
+
+    ref = compiled_dag.execute(1, 2, 3)
+    assert ray.get(ref) == [1, 3, 6, 9]
+
+    ref = compiled_dag.execute(2, 3, 4)
+    assert ray.get(ref) == [1, 3, 6, 9, 14, 18]
+
+    compiled_dag.teardown()
+
+
+def test_actor_method_bind_diff_input_attr_5(ray_start_regular):
+    actor = Actor.remote(0)
+    c = Collector.remote()
+    with InputNode() as inp:
+        branch1 = actor.inc_two.bind(inp[0], inp[1])
+        branch2 = actor.inc_two.bind(inp[2], inp[0])
+        dag = c.collect_two.bind(branch1, branch2)
+    compiled_dag = dag.experimental_compile()
+    ref = compiled_dag.execute(0, 1, 2)
+    assert ray.get(ref) == [1, 3]
+
+    ref = compiled_dag.execute(1, 2, 3)
+    assert ray.get(ref) == [1, 3, 6, 10]
+
+    ref = compiled_dag.execute(2, 3, 4)
+    assert ray.get(ref) == [1, 3, 6, 10, 15, 21]
+
+    compiled_dag.teardown()
+
+
+def test_actor_method_bind_diff_kwargs_input_attr(ray_start_regular):
+    actor = Actor.remote(0)
+    c = Collector.remote()
+    with InputNode() as inp:
+        # Two class methods are bound to two different kwargs input
+        # attribute nodes.
+        branch1 = actor.inc.bind(inp.x)
+        branch2 = actor.inc.bind(inp.y)
+        dag = c.collect_two.bind(branch1, branch2)
+    compiled_dag = dag.experimental_compile()
+    ref = compiled_dag.execute(x=0, y=1)
+    assert ray.get(ref) == [0, 1]
+
+    ref = compiled_dag.execute(x=1, y=2)
+    assert ray.get(ref) == [0, 1, 2, 4]
+
+    ref = compiled_dag.execute(x=2, y=3)
+    assert ray.get(ref) == [0, 1, 2, 4, 6, 9]
+
     compiled_dag.teardown()
 
 
@@ -1575,6 +1820,34 @@ def test_payload_large(ray_start_cluster):
     # Note: must teardown before starting a new Ray session, otherwise you'll get
     # a segfault from the dangling monitor thread upon the new Ray init.
     compiled_dag.teardown()
+
+
+def test_event_profiling(ray_start_regular, monkeypatch):
+    monkeypatch.setattr(ray.dag.constants, "RAY_ADAG_ENABLE_PROFILING", True)
+
+    a = Actor.options(name="a").remote(0)
+    b = Actor.options(name="b").remote(0)
+    with InputNode() as inp:
+        x = a.inc.bind(inp)
+        y = b.inc.bind(inp)
+        z = b.inc.bind(y)
+        dag = MultiOutputNode([x, z])
+    adag = dag.experimental_compile()
+    ray.get(adag.execute(1))
+
+    a_events = ray.get(a.get_events.remote())
+    b_events = ray.get(b.get_events.remote())
+
+    # a: 1 x READ, 1 x COMPUTE, 1 x WRITE
+    assert len(a_events) == 3
+    # a: 2 x READ, 2 x COMPUTE, 2 x WRITE
+    assert len(b_events) == 6
+
+    for event in a_events + b_events:
+        assert event.actor_classname == "Actor"
+        assert event.actor_name in ["a", "b"]
+        assert event.method_name == "inc"
+        assert event.operation in ["READ", "COMPUTE", "WRITE"]
 
 
 @ray.remote
