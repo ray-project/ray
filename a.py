@@ -1,6 +1,6 @@
+import time
 import ray
 import pickle
-from ray import cloudpickle
 from ray._private.internal_api import memory_summary
 import ray.exceptions
 
@@ -18,7 +18,6 @@ def out_of_band_serialization_pickle():
 def out_of_band_serialization_ray_cloudpickle():
     from ray import cloudpickle
     obj_ref = ray.put(1)
-    print(f"object reference to be leaked! {obj_ref}")
     return cloudpickle.dumps(obj_ref)
 
 
@@ -30,13 +29,16 @@ except ray.exceptions.GetTimeoutError:
 
 # By default, it is not allowed to serialize ray.ObjectRef using
 # ray.cloudpickle.
-ray.get(out_of_band_serialization_ray_cloudpickle.remote())
+try:
+    ray.get(out_of_band_serialization_ray_cloudpickle.remote())
+except Exception as e:
+    print(f"Exception raised from out_of_band_serialization_ray_cloudpickle {e}")
 
-result = ray.get(out_of_band_serialization_pickle.options(runtime_env={"env_vars": {
+# It is allowed to use ray.cloudpickle to serialize object ref using an env var.
+ray.get(out_of_band_serialization_pickle.options(runtime_env={"env_vars": {
     "RAY_allow_out_of_band_object_ref_serialization": "1"
 }}).remote())
-ref = pickle.loads(result)
 # Wait long enough to make sure the task is finished.
-# time.sleep(5)
+time.sleep(5)
 # you can see objects are stil pinned although it is GC'ed and not used anymore.
-# print(memory_summary())
+print(memory_summary())
