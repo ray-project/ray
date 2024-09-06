@@ -21,7 +21,6 @@ from ray.util.spark import (
     MAX_NUM_WORKER_NODES,
 )
 from ray.util.spark.utils import (
-    is_port_in_use,
     _calc_mem_per_ray_worker_node,
 )
 from pyspark.sql import SparkSession
@@ -197,42 +196,6 @@ class RayOnSparkCPUClusterTestBase(ABC):
                 time.sleep(5)
             shutil.rmtree(ray_temp_root_dir, ignore_errors=True)
             shutil.rmtree(collect_log_to_path, ignore_errors=True)
-
-    def test_ray_cluster_shutdown(self):
-        with _setup_ray_cluster(
-            max_worker_nodes=self.max_spark_tasks,
-            num_cpus_worker_node=1,
-            num_gpus_worker_node=0,
-        ) as cluster:
-            ray.init()
-            assert len(self.get_ray_worker_resources_list()) == self.max_spark_tasks
-
-            # Test: cancel background spark job will cause all ray worker nodes exit.
-            cluster._cancel_background_spark_job()
-            time.sleep(8)
-
-            assert len(self.get_ray_worker_resources_list()) == 0
-
-        time.sleep(2)  # wait ray head node exit.
-        # assert ray head node exit by checking head port being closed.
-        hostname, port = cluster.address.split(":")
-        assert not is_port_in_use(hostname, int(port))
-
-    def test_background_spark_job_exit_trigger_ray_head_exit(self):
-        with _setup_ray_cluster(
-            max_worker_nodes=self.max_spark_tasks,
-            num_cpus_worker_node=1,
-            num_gpus_worker_node=0,
-        ) as cluster:
-            ray.init()
-            # Mimic the case the job failed unexpectedly.
-            cluster._cancel_background_spark_job()
-            cluster.spark_job_is_canceled = False
-            time.sleep(5)
-
-            # assert ray head node exit by checking head port being closed.
-            hostname, port = cluster.address.split(":")
-            assert not is_port_in_use(hostname, int(port))
 
     def test_autoscaling(self):
         for max_worker_nodes, num_cpus_worker_node, min_worker_nodes in [

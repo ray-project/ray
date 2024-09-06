@@ -477,7 +477,6 @@ def _setup_ray_cluster(
     Note: This function interface is stable and can be used for
     instrumentation logging patching.
     """
-    from pyspark.util import inheritable_thread_target
     import fcntl
 
     start_hook = _create_hook_entry(is_global)
@@ -1183,7 +1182,7 @@ def _setup_ray_cluster_internal(
         except Exception as e:
             try:
                 shutdown_ray_cluster()
-            except Exception as e:
+            except Exception:
                 pass
             raise RuntimeError(
                 f"Launch Ray-on-Saprk cluster failed, root cause: {repr(e)}."
@@ -1857,7 +1856,11 @@ def _install_sigterm_signal():
         except Exception:
             # swallow exception to continue executing the following code in the handler
             pass
-        signal.signal(signal.SIGTERM, _origin_sigterm_handler)  # Reset to original signal
-        os.kill(os.getpid(), signal.SIGTERM)  # Re-raise the signal to trigger original behavior
+        signal.signal(
+            signal.SIGTERM, _origin_sigterm_handler
+        )  # Reset to original signal
+        os.kill(
+            os.getpid(), signal.SIGTERM
+        )  # Re-raise the signal to trigger original behavior
 
     signal.signal(signal.SIGTERM, _sigterm_handler)
