@@ -48,6 +48,8 @@ config = (
     # as remote learners.
     .offline_data(
         input_=[data_path.as_posix()],
+        # Note, we want to have at leat 2 data blocks to read from such that
+        # concurrency in `map_batches` works.
         input_read_method_kwargs={"override_num_blocks": max(args.num_gpus, 2)},
         prelearner_module_synch_period=20,
         dataset_num_iters_per_learner=1 if args.num_gpus == 0 else None,
