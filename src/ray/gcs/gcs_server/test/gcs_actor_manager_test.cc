@@ -362,8 +362,13 @@ TEST_F(GcsActorManagerTest, TestBasic) {
     }
   }
   Mocker::ReadContentFromFile(vc, log_dir_ + "/events/event_EXPORT_ACTOR.log");
-  ASSERT_TRUE(false) << "Export API only wrote " << (int)vc.size()
-                     << " lines, but expecting 4.\n";
+  std::ostringstream lines;
+  for (auto line : vc) {
+    lines << line << "\n";
+  }
+  ASSERT_TRUE(false) << "Export API wrote " << (int)vc.size() << " lines, but expecting "
+                     << num_export_events << ".\nLines:\n"
+                     << lines.str();
 }
 
 TEST_F(GcsActorManagerTest, TestDeadCount) {
