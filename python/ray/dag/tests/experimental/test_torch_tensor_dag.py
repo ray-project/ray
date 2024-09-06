@@ -343,14 +343,14 @@ def test_torch_tensor_nccl_static_shape_and_non_tensor_data(ray_start_regular):
     dtype = torch.float16
 
     for i in range(3):
-        ref = compiled_dag.execute(value=i, shape=shape, dtype=dtype)
+        ref = compiled_dag.execute(value=i, shape=shape, dtype=dtype, send_tensor=True)
         assert ray.get(ref) == (i, shape, dtype)
 
     # For direct_return=True tensors, the DAG will be torn down after any task
     # throws an application-level exception, such as when the task returns
     # something other than a torch.Tensor. Check that we can no longer submit
     # to the DAG.
-    ref = compiled_dag.execute(shape, dtype=dtype, value=1, send_tensor=False)
+    ref = compiled_dag.execute(value=1, shape=shape, dtype=dtype, send_tensor=False)
     with pytest.raises(RayChannelError):
         ray.get(ref)
 
