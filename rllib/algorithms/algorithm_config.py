@@ -2538,7 +2538,7 @@ class AlgorithmConfig(_Config):
                 need to make some further transformations specific for your data or
                 loss. The default is `None` which uses the base `OfflinePreLearner`
                 defined in `ray.rllib.offline.offline_prelearner`.
-            prelearner_buffer_class: The episode buffer class to use in the PreLearner`
+            prelearner_buffer_class: The episode buffer class to use in the `PreLearner`
                 when sampling from the dataset. This is needed and defaults to the
                 `ray.rllib.utils.replay_buffers.EpisodeReplayBuffer` in case of a
                 dataset storing RLlib's old API stack's `SampleBatch`es, i.e.
