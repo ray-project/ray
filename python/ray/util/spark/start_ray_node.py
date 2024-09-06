@@ -185,9 +185,14 @@ if __name__ == "__main__":
         # have no time to exeucte cleanup routine.
         signal.signal(signal.SIGHUP, sighup_handler)
 
+        sigterm_handler_executed = False
+
         def sigterm_handler(*args):
-            process.terminate()
-            on_exit_handler()
+            nonlocal sigterm_handler_executed
+            if not sigterm_handler_executed:
+                sigterm_handler_executed = True
+                process.terminate()
+                on_exit_handler()
             # Sigterm exit code is 143.
             os._exit(143)
 

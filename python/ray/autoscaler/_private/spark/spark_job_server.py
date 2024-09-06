@@ -1,6 +1,7 @@
 import json
 import logging
 import threading
+import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
@@ -200,6 +201,7 @@ class SparkJobServer(ThreadingHTTPServer):
         super().shutdown()
         for spark_job_group_id in self.task_status_dict:
             self.spark.sparkContext.cancelJobGroup(spark_job_group_id)
+        time.sleep(1)  # wait for all spark job cancellation
 
 
 def _start_spark_job_server(host, port, spark):

@@ -1840,11 +1840,11 @@ def _install_sigterm_signal():
     def _sigterm_handler(signum, frame):
         global _active_ray_cluster
 
-        with _active_ray_cluster_rwlock:
-            if _active_ray_cluster:
-                _active_ray_cluster.shutdown()
-                _active_ray_cluster = None
-
+        try:
+            shutdown_ray_cluster()
+        except Exception:
+            # swallow exception to continue executing the following code in the handler
+            pass
         signal.signal(signal.SIGTERM, _origin_sigterm_handler)  # Reset to original signal
         os.kill(os.getpid(), signal.SIGTERM)  # Re-raise the signal to trigger original behavior
 
