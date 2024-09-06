@@ -641,6 +641,10 @@ class CompiledDAG:
         # Type hints specified by the user for DAG (intermediate) outputs.
         self._type_hints = []
 
+        # This is set to true when type hint of `transport="nccl"`` is used
+        self._use_default_nccl_group = False
+        # This is set to the specified custom nccl group
+        # if there exists a type hint of `transport=nccl_group`
         self._custom_nccl_group: Optional[GPUCommunicator] = None
         # Uniquely identifies the NCCL communicator that will be used within
         # this DAG, if any.
@@ -809,15 +813,31 @@ class CompiledDAG:
                     # Add all writers to the NCCL group.
                     nccl_actors.add(actor_handle)
                     custom_nccl_group = dag_node.type_hint.get_custom_nccl_group()
-                    if custom_nccl_group is not None:
+                    mixed_nccl_group_error_message = (
+                        "Accelerated DAGs do not support mixed usage of "
+                        "type hints of default NCCL group "
+                        '(i.e., TorchTensor(transport="nccl"))'
+                        "and custom NCCL group "
+                        "(i.e., TorchTensor(transport=nccl_group)). "
+                        "Please check all the TorchTensor type hints and "
+                        "make sure only one type of NCCL transport is specified."
+                    )
+                    if custom_nccl_group is None:
                         if self._custom_nccl_group is not None:
-                            assert self._custom_nccl_group == custom_nccl_group, (
-                                "Accelerated DAGs currently only support "
-                                "a single custom NCCL group, but multiple "
-                                "have been specified. Check all the "
-                                "TorchTensor(transport=nccl_group) type hints "
-                                "to make sure only one NCCL group is used."
-                            )
+                            raise ValueError(mixed_nccl_group_error_message)
+                        self._use_default_nccl_group = True
+                    else:
+                        if self._use_default_nccl_group:
+                            raise ValueError(mixed_nccl_group_error_message)
+                        if self._custom_nccl_group is not None:
+                            if self._custom_nccl_group != custom_nccl_group:
+                                raise ValueError(
+                                    "Accelerated DAGs currently only support "
+                                    "a single custom NCCL group, but multiple "
+                                    "have been specified. Check all the "
+                                    "TorchTensor(transport=nccl_group) type hints "
+                                    "to make sure only one NCCL group is used."
+                                )
                         self._custom_nccl_group = custom_nccl_group
             elif isinstance(dag_node, InputNode):
                 if dag_node.type_hint.requires_nccl():
