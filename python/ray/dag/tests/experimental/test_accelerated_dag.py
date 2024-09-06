@@ -2217,6 +2217,8 @@ def test_event_profiling(ray_start_regular, monkeypatch):
         assert event.method_name == "inc"
         assert event.operation in ["READ", "COMPUTE", "WRITE"]
 
+    adag.teardown()
+
 
 @ray.remote
 class TestWorker:
