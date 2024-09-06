@@ -199,6 +199,14 @@ class RayClusterOnSpark:
                             "to launch requested minimal number of Ray worker nodes."
                         )
                         return
+        except Exception as e:
+            try:
+                shutdown_ray_cluster()
+            except Exception as e:
+                pass
+            raise RuntimeError(
+                f"Launch Ray-on-Saprk cluster failed, root cause: {repr(e)}."
+            )
         finally:
             ray.shutdown()
 
