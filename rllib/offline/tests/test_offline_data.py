@@ -66,7 +66,7 @@ class TestOfflineData(unittest.TestCase):
         # Now sample a batch from the data and ensure it is a `MultiAgentBatch`.
         batch = algo.offline_data.sample(10)
         self.assertIsInstance(batch, MultiAgentBatch)
-        self.assertEquals(batch.env_steps(), 10)
+        self.assertEqual(batch.env_steps(), 10)
 
         # Now return an iterator.
         iter = algo.offline_data.sample(num_samples=10, return_Iterator=True)
@@ -105,9 +105,9 @@ class TestOfflineData(unittest.TestCase):
         #   (b) locality hints for the learners.
         from ray.actor import ActorHandle
 
-        self.assertEquals(len(algo.offline_data.learner_handles), 2)
+        self.assertEqual(len(algo.offline_data.learner_handles), 2)
         self.assertIsNotNone(algo.offline_data.locality_hints)
-        self.assertEquals(len(algo.offline_data.locality_hints), 2)
+        self.assertEqual(len(algo.offline_data.locality_hints), 2)
         for a in algo.offline_data.learner_handles:
             self.assertIsInstance(a, ActorHandle)
         for hint in algo.offline_data.locality_hints:
@@ -120,7 +120,7 @@ class TestOfflineData(unittest.TestCase):
         )
         self.assertIsInstance(batch, list)
         # Ensure we have indeed two such `SStreamSplitDataIterator` instances.
-        self.assertEquals(len(batch), 2)
+        self.assertEqual(len(batch), 2)
         from ray.data._internal.iterator.stream_split_iterator import (
             StreamSplitDataIterator,
         )

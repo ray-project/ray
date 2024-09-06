@@ -75,7 +75,7 @@ class TestOfflinePreLearner(unittest.TestCase):
         # Ensure all transformations worked and we have a `MultiAgentBatch`.
         self.assertIsInstance(batch["batch"][0], MultiAgentBatch)
         # Ensure that we have as many environment steps as the train batch size.
-        self.assertEquals(
+        self.assertEqual(
             batch["batch"][0][DEFAULT_POLICY_ID].count,
             config.train_batch_size_per_learner,
         )
@@ -201,7 +201,7 @@ class TestOfflinePreLearner(unittest.TestCase):
         # Ensure all transformations worked and we have a `MultiAgentBatch`.
         self.assertIsInstance(batch["batch"][0], MultiAgentBatch)
         # Ensure that we have as many environment steps as the train batch size.
-        self.assertEquals(
+        self.assertEqual(
             batch["batch"][0][DEFAULT_POLICY_ID].count,
             config.train_batch_size_per_learner,
         )
