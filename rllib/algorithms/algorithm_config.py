@@ -2538,14 +2538,16 @@ class AlgorithmConfig(_Config):
                 need to make some further transformations specific for your data or
                 loss. The default is `None` which uses the base `OfflinePreLearner`
                 defined in `ray.rllib.offline.offline_prelearner`.
-            prelearner_buffer_class: The episode buffer class to use in the PreLearner
+            prelearner_buffer_class: The episode buffer class to use in the PreLearner`
                 when sampling from the dataset. This is needed and defaults to the
                 `ray.rllib.utils.replay_buffers.EpisodeReplayBuffer` in case of a
                 dataset storing RLlib's old API stack's `SampleBatch`es, i.e.
-                `input_read_sample_batches=True`. As each `SampleBatch` could
-                potentially hold more than a single timestep, the episode buffer is
-                used to buffer episodes and sample exactly the defined
-                `train_batch_size_per_learner` from it. Any buffer that inherits from
+                `input_read_sample_batches=True` or a dataset storing new API stack
+                `SingleAgentEpisode`s, i.e. `input_read_episodes=True`. As each
+                `SampleBatch` or `SingleAGentEpisode` could potentially hold more than a
+                single timestep, the episode buffer is used to buffer episodes and
+                sample exactly the defined `train_batch_size_per_learner` from it. Any
+                buffer that inherits from
                 `ray.rllib.utils.replay_buffers.EpisodeReplayBuffer` can be used, e.g.
                 you could use RLlib's prrioritized episode buffer
                 `ray.rllib.utils.replay_buffers.PrioritizedEpsiodeReplayBuffer`. See
