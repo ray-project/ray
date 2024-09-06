@@ -27,6 +27,10 @@ def mock_actor_handle_init(self, actor_id: str):
     self._ray_actor_id = actor_id
 
 
+def mock_class_method_call_init(self):
+    self._is_class_method_output = False
+
+
 def mock_init(self):
     pass
 
@@ -317,7 +321,7 @@ class TestBuildDAGNodeOperationGraph:
         This test case aims to verify whether the function correctly adds edges
         between READ/COMPUTE and COMPUTE/WRITE operations on the same actor.
         """
-        monkeypatch.setattr(ClassMethodNode, "__init__", mock_init)
+        monkeypatch.setattr(ClassMethodNode, "__init__", mock_class_method_call_init)
         monkeypatch.setattr(MultiOutputNode, "__init__", mock_init)
 
         idx_to_task = {
@@ -347,7 +351,7 @@ class TestBuildDAGNodeOperationGraph:
         This test case aims to verify whether the function correctly adds an edge
         from the writer's WRITE operation to the reader's READ operation.
         """
-        monkeypatch.setattr(ClassMethodNode, "__init__", mock_init)
+        monkeypatch.setattr(ClassMethodNode, "__init__", mock_class_method_call_init)
         monkeypatch.setattr(MultiOutputNode, "__init__", mock_init)
 
         fake_actor_1, dag_idx_1 = "fake_actor_1", 1
@@ -358,7 +362,7 @@ class TestBuildDAGNodeOperationGraph:
             2: CompiledTask(2, ClassMethodNode()),
             3: CompiledTask(3, MultiOutputNode()),
         }
-        idx_to_task[1].downstream_node_idxs = {2: fake_actor_2}
+        idx_to_task[1].downstream_task_idxs = {2: fake_actor_2}
 
         actor_to_operation_nodes = {
             fake_actor_1: [
@@ -391,7 +395,7 @@ class TestBuildDAGNodeOperationGraph:
         from the COMPUTE operation with `bind_index` i to the COMPUTE operation with
         `bind_index` i+1 if they belong to the same actor.
         """
-        monkeypatch.setattr(ClassMethodNode, "__init__", mock_init)
+        monkeypatch.setattr(ClassMethodNode, "__init__", mock_class_method_call_init)
         monkeypatch.setattr(MultiOutputNode, "__init__", mock_init)
 
         fake_actor = "fake_actor"
@@ -402,7 +406,7 @@ class TestBuildDAGNodeOperationGraph:
             dag_idx_2: CompiledTask(dag_idx_2, ClassMethodNode()),
             3: CompiledTask(3, MultiOutputNode()),
         }
-        idx_to_task[dag_idx_1].downstream_node_idxs = {dag_idx_2: fake_actor}
+        idx_to_task[dag_idx_1].downstream_task_idxs = {dag_idx_2: fake_actor}
 
         actor_to_operation_nodes = {
             fake_actor: [
@@ -436,7 +440,7 @@ class TestBuildDAGNodeOperationGraph:
         test case covers all three rules for adding edges between
         operation nodes in the operation graph.
         """
-        monkeypatch.setattr(ClassMethodNode, "__init__", mock_init)
+        monkeypatch.setattr(ClassMethodNode, "__init__", mock_class_method_call_init)
         monkeypatch.setattr(MultiOutputNode, "__init__", mock_init)
 
         fake_actor_1, dag_idx_1, dag_idx_3 = "fake_actor_1", 1, 3
@@ -450,8 +454,8 @@ class TestBuildDAGNodeOperationGraph:
             dag_idx_4: CompiledTask(dag_idx_4, ClassMethodNode()),
             5: CompiledTask(5, MultiOutputNode()),
         }
-        idx_to_task[dag_idx_1].downstream_node_idxs = {dag_idx_4: fake_actor_2}
-        idx_to_task[dag_idx_2].downstream_node_idxs = {dag_idx_3: fake_actor_1}
+        idx_to_task[dag_idx_1].downstream_task_idxs = {dag_idx_4: fake_actor_2}
+        idx_to_task[dag_idx_2].downstream_task_idxs = {dag_idx_3: fake_actor_1}
 
         actor_to_operation_nodes = {
             fake_actor_1: [

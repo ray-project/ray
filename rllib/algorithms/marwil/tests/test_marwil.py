@@ -71,8 +71,6 @@ class TestMARWIL(unittest.TestCase):
         num_iterations = 350
         min_reward = 100.0
 
-        # Test for all frameworks.
-
         algo = config.build()
         learnt = False
         for i in range(num_iterations):

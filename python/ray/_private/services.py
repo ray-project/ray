@@ -1164,6 +1164,7 @@ def start_api_server(
     raise_on_failure: bool,
     host: str,
     gcs_address: str,
+    cluster_id_hex: str,
     node_ip_address: str,
     temp_dir: str,
     logdir: str,
@@ -1190,6 +1191,7 @@ def start_api_server(
             a warning if we fail to start the API server.
         host: The host to bind the dashboard web server to.
         gcs_address: The gcs address the dashboard should connect to
+        cluster_id_hex: Cluster ID in hex.
         node_ip_address: The IP address where this is running.
         temp_dir: The temporary directory used for log files and
             information for this Ray session.
@@ -1279,6 +1281,7 @@ def start_api_server(
             f"--logging-rotate-bytes={max_bytes}",
             f"--logging-rotate-backup-count={backup_count}",
             f"--gcs-address={gcs_address}",
+            f"--cluster-id-hex={cluster_id_hex}",
             f"--node-ip-address={node_ip_address}",
         ]
 
@@ -1318,7 +1321,7 @@ def start_api_server(
         )
 
         # Retrieve the dashboard url
-        gcs_client = GcsClient(address=gcs_address)
+        gcs_client = GcsClient(address=gcs_address, cluster_id=cluster_id_hex)
         ray.experimental.internal_kv._initialize_internal_kv(gcs_client)
         dashboard_url = None
         dashboard_returncode = None
@@ -1737,6 +1740,7 @@ def start_raylet(
         f"--logging-rotate-backup-count={backup_count}",
         f"--session-name={session_name}",
         f"--gcs-address={gcs_address}",
+        f"--cluster-id-hex={cluster_id}",
     ]
     if stdout_file is None and stderr_file is None:
         # If not redirecting logging to files, unset log filename.
@@ -1762,6 +1766,7 @@ def start_raylet(
         f"--node-ip-address={node_ip_address}",
         f"--runtime-env-agent-port={runtime_env_agent_port}",
         f"--gcs-address={gcs_address}",
+        f"--cluster-id-hex={cluster_id}",
         f"--runtime-env-dir={resource_dir}",
         f"--logging-rotate-bytes={max_bytes}",
         f"--logging-rotate-backup-count={backup_count}",

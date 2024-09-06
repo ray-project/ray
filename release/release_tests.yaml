@@ -304,6 +304,13 @@
 
   alert: default
 
+  variations:
+    - __suffix__: aws
+    - __suffix__: eks
+      env: eks
+      frequency: manual
+      cluster:
+        cluster_compute: compute_hetero_10x10_eks.yaml
 
 #########################
 # AIR release tests
@@ -361,12 +368,11 @@
       frequency: manual
       cluster:
         cluster_compute: horovod/compute_tpl_gce.yaml
-    # TODO (shomilj): Uncomment when NFS is supported.
-    # - __suffix__: eks
-    #   env: eks
-    #   frequency: manual
-    #   cluster:
-    #     cluster_compute: horovod/compute_tpl_eks.yaml
+    - __suffix__: eks
+      env: eks
+      frequency: manual
+      cluster:
+        cluster_compute: horovod/compute_tpl_eks.yaml
 
   run:
     timeout: 36000
@@ -770,11 +776,11 @@
       cluster:
         cluster_compute: compute_gpu_1_gce.yaml
     # TODO (shomilj): Uncomment when NFS is supported.
-    # - __suffix__: eks
-    #   env: eks
-    #   frequency: manual
-    #   cluster:
-    #     cluster_compute: compute_gpu_1_eks.yaml
+    - __suffix__: eks
+      env: eks
+      frequency: manual
+      cluster:
+        cluster_compute: compute_gpu_1_eks.yaml
 
 
 - name: air_benchmark_pytorch_training_e2e_gpu_4x4_100gb
@@ -808,11 +814,11 @@
       cluster:
         cluster_compute: compute_gpu_4x4_gce.yaml
     # TODO (shomilj): Uncomment when NFS is supported.
-    # - __suffix__: eks
-    #   env: eks
-    #   frequency: manual
-    #   cluster:
-    #     cluster_compute: compute_gpu_4x4_eks.yaml
+    - __suffix__: eks
+      env: eks
+      frequency: manual
+      cluster:
+        cluster_compute: compute_gpu_4x4_eks.yaml
 
 # Test tiny, and medium input files to check that performance stays about
 # constant.
@@ -904,7 +910,14 @@
     script: pip install -Ur dreambooth/requirements.txt && bash dreambooth_run.sh
     artifact_path: /tmp/artifacts/example_out.jpg
 
-  # variations: A10G not available on GCE, yet.
+  # add eks variation
+  variations:
+    - __suffix__: aws
+    - __suffix__: eks
+      env: eks
+      frequency: manual
+      cluster:
+        cluster_compute: dreambooth_compute_eks.yaml
 
 - name: air_example_dreambooth_finetuning_lora
   group: AIR examples
@@ -925,6 +938,15 @@
     script: pip install -Ur dreambooth/requirements.txt && bash dreambooth_run.sh --lora
     artifact_path: /tmp/artifacts/example_out.jpg
 
+  # add eks variation
+  variations:
+    - __suffix__: aws
+    - __suffix__: eks
+      env: eks
+      frequency: manual
+      cluster:
+        cluster_compute: dreambooth_compute_eks.yaml
+
 - name: air_example_gptj_deepspeed_fine_tuning
   group: AIR examples
   working_dir: air_examples/gptj_deepspeed_finetuning
@@ -939,6 +961,15 @@
   run:
     timeout: 4500
     script: python test_myst_doc.py --path gptj_deepspeed_fine_tuning.ipynb
+
+  # add eks variation
+  variations:
+    - __suffix__: aws
+    - __suffix__: eks
+      env: eks
+      frequency: manual
+      cluster:
+        cluster_compute: gptj_deepspeed_compute_eks.yaml
 
 - name: air_example_dolly_v2_lightning_fsdp_finetuning
   group: AIR examples
@@ -957,6 +988,15 @@
 
   # variations: TODO(jungong): add GCP variation.
 
+  # add eks variation
+  variations:
+    - __suffix__: aws
+    - __suffix__: eks
+      env: eks
+      frequency: manual
+      cluster:
+        cluster_compute: dolly_v2_fsdp_compute_eks.yaml
+
 - name: air_example_vicuna_13b_lightning_deepspeed_finetuning
   group: AIR examples
   working_dir: air_examples/vicuna_13b_lightning_deepspeed_finetuning
@@ -971,6 +1011,15 @@
   run:
     timeout: 4700
     script: python test_myst_doc.py --path vicuna_13b_lightning_deepspeed_finetune.ipynb
+
+  # add eks variation
+  variations:
+    - __suffix__: aws
+    - __suffix__: eks
+      env: eks
+      frequency: manual
+      cluster:
+        cluster_compute: vicuna_13b_deepspeed_compute_eks.yaml
 
 #####################################
 # Workspace templates release tests #
@@ -997,6 +1046,11 @@
         frequency: manual
         cluster:
           cluster_compute: ../testing/compute_configs/gpu/gce.yaml
+      - __suffix__: eks
+        env: eks
+        frequency: manual
+        cluster:
+          cluster_compute: ../testing/compute_configs/gpu/eks.yaml
 
 
 - name: workspace_template_many_model_training
@@ -1021,6 +1075,11 @@
         frequency: manual
         cluster:
           cluster_compute: ../testing/compute_configs/cpu/gce.yaml
+      - __suffix__: eks
+        env: eks
+        frequency: manual
+        cluster:
+          cluster_compute: ../testing/compute_configs/cpu/eks.yaml
 
 
 - name: workspace_template_serving_stable_diffusion
@@ -1045,6 +1104,11 @@
         frequency: manual
         cluster:
           cluster_compute: ../testing/compute_configs/gpu/gce.yaml
+      - __suffix__: eks
+        env: eks
+        frequency: manual
+        cluster:
+          cluster_compute: ../testing/compute_configs/gpu/eks.yaml
 
 - name: workspace_template_finetuning_llms_with_deepspeed_llama_2_7b
   group: Workspace templates
@@ -1069,6 +1133,11 @@
         frequency: manual
         cluster:
           cluster_compute: ../testing/compute_configs/04_finetuning_llms_with_deepspeed/gce_7b.yaml
+      - __suffix__: eks
+        env: eks
+        frequency: manual
+        cluster:
+          cluster_compute: ../testing/compute_configs/04_finetuning_llms_with_deepspeed/eks_7b.yaml
 
 - name: workspace_template_finetuning_llms_with_deepspeed_llama_2_7b_lora
   group: Workspace templates
@@ -1093,6 +1162,12 @@
         frequency: manual
         cluster:
           cluster_compute: ../testing/compute_configs/04_finetuning_llms_with_deepspeed/gce_7b.yaml
+      - __suffix__: eks
+        env: eks
+        frequency: manual
+        cluster:
+          cluster_compute: ../testing/compute_configs/04_finetuning_llms_with_deepspeed/eks_7b.yaml
+      
 
 #######################
 # ML user tests
@@ -2549,36 +2624,6 @@
       env: eks
       frequency: manual
 
-- name: serve_serve_micro_benchmark
-  group: Serve tests
-  working_dir: serve_tests
-
-  frequency: nightly
-  team: serve
-
-  cluster:
-    byod: {}
-    cluster_compute: compute_tpl_single_node.yaml
-    cloud_id: cld_wy5a6nhazplvu32526ams61d98
-
-  run:
-    timeout: 7200
-    long_running: false
-    script: python workloads/serve_micro_benchmark.py
-
-  alert: default
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_compute: compute_tpl_single_node_gce.yaml
-    - __suffix__: eks
-      env: eks
-      frequency: manual
-
 - name: serve_microbenchmarks
   group: Serve tests
   working_dir: serve_tests
@@ -3206,6 +3251,9 @@
     - __suffix__: aws.py312
       frequency: weekly
       python: "3.12"
+    - __suffix__: eks
+      env: eks
+      frequency: manual
 
 - name: microbenchmark_unstable
   group: core-daily-test
@@ -5350,7 +5398,7 @@
 
   run:
     timeout: 3000
-    script: python launch_and_verify_cluster.py aws/example-full.yaml --num-expected-nodes 2 --retries 20
+    script: python launch_and_verify_cluster.py aws/example-full.yaml --num-expected-nodes 2 --retries 20 --docker-override latest
 
 - name: gcp_cluster_launcher_minimal
   group: cluster-launcher-test

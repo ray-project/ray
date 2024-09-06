@@ -64,7 +64,10 @@ from ray.rllib.utils.test_utils import (
 from ray.tune.registry import get_trainable_cls, register_env
 
 parser = add_rllib_example_script_args(default_iters=100, default_timesteps=600000)
-parser.set_defaults(env="ALE/Pong-v5")
+parser.set_defaults(
+    enable_new_api_stack=True,
+    env="ALE/Pong-v5",
+)
 
 
 if __name__ == "__main__":

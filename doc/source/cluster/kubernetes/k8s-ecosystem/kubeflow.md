@@ -71,9 +71,9 @@ kubectl get pod -l ray.io/cluster=raycluster-kuberay
 * As mentioned in Step 4, Ray is very sensitive to the Python versions and Ray versions between the server (RayCluster) and client (JupyterLab) sides. Open a terminal in the JupyterLab:
     ```sh
     # Check Python version. The version's MAJOR and MINOR should match with RayCluster (i.e. Python 3.8)
-    python --version 
+    python --version
     # Python 3.8.10
-    
+
     # Install Ray 2.2.0
     pip install -U ray[default]==2.2.0
     ```

@@ -1,6 +1,7 @@
 # coding: utf-8
 import logging
 import os
+import re
 import sys
 import torch
 import time
@@ -67,6 +68,22 @@ class TorchTensorWorker:
 
     def ping(self):
         return
+
+
+@ray.remote(num_cpus=1)
+class TrainWorker:
+    """
+    This class simulates a training worker.
+    """
+
+    def __init__(self):
+        pass
+
+    def entrypoint(self, inp):
+        pass
+
+    def forward(self, inp):
+        return torch.randn(10, 10)
 
 
 @pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
@@ -405,6 +422,28 @@ def test_torch_tensor_nccl_nested_dynamic(ray_start_regular):
         assert result == expected_result
 
     compiled_dag.teardown()
+
+
+@pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
+def test_torch_tensor_nccl_within_same_actor(ray_start_regular, monkeypatch):
+    monkeypatch.setattr(ray.dag.constants, "RAY_ADAG_ENABLE_DETECT_DEADLOCK", False)
+
+    worker = TrainWorker.remote()
+    with InputNode() as inp:
+        entrypoint = worker.entrypoint.bind(inp)
+        entrypoint = entrypoint.with_type_hint(TorchTensorType(transport="nccl"))
+        dag = worker.forward.bind(entrypoint)
+
+    pattern = re.compile(
+        r"Compiled DAG does not support NCCL communication between methods "
+        r"on the same actor\. .*Please remove the NCCL type hint between "
+        r"these methods\."
+    )
+    with pytest.raises(
+        ValueError,
+        match=pattern,
+    ):
+        dag.experimental_compile()
 
 
 @pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)

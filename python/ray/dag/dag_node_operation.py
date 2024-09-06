@@ -22,18 +22,18 @@ class _DAGNodeOperationType(Enum):
 class _DAGNodeOperation:
     def __init__(
         self,
-        local_idx: int,
+        exec_task_idx: int,
         operation_type: _DAGNodeOperationType,
     ):
         """
         Args:
-            local_idx: The index of the task that this operation belongs to
+            exec_task_idx: The index of the task that this operation belongs to
                 in the actor's ExecutableTask list. The index is not the same
                 as bind_index because there may be more tasks bound to an actor
                 than tasks that appear in the current compiled DAG.
             operation_type: The type of operation to perform.
         """
-        self.local_idx = local_idx
+        self.exec_task_idx = exec_task_idx
         self.type = operation_type
 
 
@@ -42,7 +42,7 @@ class _DAGOperationGraphNode:
     def __init__(
         self,
         operation: _DAGNodeOperation,
-        dag_idx: int,
+        task_idx: int,
         actor_handle: "ray.actor.ActorHandle",
         requires_nccl: bool,
     ):
@@ -54,17 +54,17 @@ class _DAGOperationGraphNode:
         Args:
             operation: The operation that this node performs. The operation
                 can be a READ, COMPUTE, or WRITE operation.
-            dag_idx: A unique index which can be used to index into
+            task_idx: A unique index which can be used to index into
                 `CompiledDAG.idx_to_task` to get the corresponding task.
             actor_handle: The actor handle to which this operation belongs.
             requires_nccl: Whether this operation requires NCCL.
         """
         self.operation = operation
-        self.dag_idx = dag_idx
+        self.task_idx = task_idx
         self.actor_handle = actor_handle
         self.requires_nccl = requires_nccl
         # The in_edges and out_edges are sets of tuples. Each tuple contains
-        # an integer `dag_idx`, which can be used to index into `idx_to_task`
+        # an integer `task_idx`, which can be used to index into `idx_to_task`
         # to get the corresponding task, and a `_DAGNodeOperationType`, which can
         # be READ, COMPUTE, or WRITE.
         self.in_edges: Set[Tuple[int, _DAGNodeOperationType]] = set()
@@ -81,9 +81,9 @@ class _DAGOperationGraphNode:
         higher priority is considered "less than" the other node.
         """
         # If two nodes belong to the same actor, select the one with
-        # the smaller `local_idx`.
+        # the smaller `exec_task_idx`.
         if self.actor_handle == other.actor_handle:
-            return self.operation.local_idx < other.operation.local_idx
+            return self.operation.exec_task_idx < other.operation.exec_task_idx
         # If two nodes belong to different actors and one of them is an NCCL
         # write node, select the one that is not an NCCL write node.
         is_nccl_write = (
@@ -96,37 +96,37 @@ class _DAGOperationGraphNode:
             return not is_nccl_write
         # If two nodes belong to different actors and both are either NCCL write
         # nodes or neither are NCCL write nodes, select the one with the smaller
-        # `local_idx`. If they have the same `local_idx`, select the one with the
-        # smaller `dag_idx`.
-        if self.operation.local_idx != other.operation.local_idx:
-            return self.operation.local_idx < other.operation.local_idx
-        return self.dag_idx < other.dag_idx
+        # `exec_task_idx`. If they have the same `exec_task_idx`, select the one
+        # with the smaller `task_idx`.
+        if self.operation.exec_task_idx != other.operation.exec_task_idx:
+            return self.operation.exec_task_idx < other.operation.exec_task_idx
+        return self.task_idx < other.task_idx
 
     def __eq__(self, other: "_DAGOperationGraphNode"):
         """
-        Two operations are equal only when they have the same `local_idx` and `type`
+        Two operations are equal only when they have the same `exec_task_idx` and `type`
         and belong to the same actor.
         """
         return (
             self.actor_handle == other.actor_handle
-            and self.operation.local_idx == other.operation.local_idx
+            and self.operation.exec_task_idx == other.operation.exec_task_idx
             and self.operation.type == other.operation.type
         )
 
     def __hash__(self):
         """
-        An operation is uniquely identified by its `dag_idx` and type.
+        An operation is uniquely identified by its `task_idx` and type.
         """
-        return hash((self.operation, self.dag_idx))
+        return hash((self.operation, self.task_idx))
 
 
 def _add_edge(from_node: _DAGOperationGraphNode, to_node: _DAGOperationGraphNode):
     """
     Add an edge from `from_node` to `to_node`. An edge is a tuple of
-    the operation's `dag_idx` and type.
+    the operation's `task_idx` and type.
     """
-    from_node.out_edges.add((to_node.dag_idx, to_node.operation.type))
-    to_node.in_edges.add((from_node.dag_idx, from_node.operation.type))
+    from_node.out_edges.add((to_node.task_idx, to_node.operation.type))
+    to_node.in_edges.add((from_node.task_idx, from_node.operation.type))
 
 
 def _select_next_nodes(
@@ -139,18 +139,18 @@ def _select_next_nodes(
     with the top priority based on the following rules:
 
     #1  If two candidate nodes belong to the same actor, select the one with
-        the smaller `local_idx`.
+        the smaller `exec_task_idx`.
 
     #2  If two candidate nodes belong to different actors and both are either NCCL
         write nodes or neither are NCCL write nodes, select the one with the smaller
-        `local_idx`. If they have the same `local_idx`, select the one with the
-        smaller `dag_idx`.
+        `exec_task_idx`. If they have the same `exec_task_idx`, select the one with the
+        smaller `task_idx`.
 
     #3  If two candidate nodes belong to different actors and one of them is an NCCL
         write node, select the one that is not an NCCL write node.
 
     For the implementation details, we maintain a priority queue for each actor,
-    where the head of the priority queue is the node with the smallest `local_idx`.
+    where the head of the priority queue is the node with the smallest `exec_task_idx`.
 
     If the selected node is an NCCL write node, select all its immediately downstream
     nodes, which are NCCL read nodes, regardless of whether the downstream nodes are
@@ -193,8 +193,8 @@ def _select_next_nodes(
     # An NCCL write node is picked. NCCL is a blocking operation, so we need to pick all
     # the corresponding NCCL read nodes to avoid a deadlock.
     for downstream_node_metadata in top_priority_node.out_edges:
-        dag_idx, op_type = downstream_node_metadata[0], downstream_node_metadata[1]
-        downstream_node = graph[dag_idx][op_type]
+        task_idx, op_type = downstream_node_metadata[0], downstream_node_metadata[1]
+        downstream_node = graph[task_idx][op_type]
         assert downstream_node.operation.type == _DAGNodeOperationType.READ
         next_nodes.append(downstream_node)
     assert len(next_nodes) == 1 + len(top_priority_node.out_edges)
@@ -220,7 +220,7 @@ def _build_dag_node_operation_graph(
     This is the step one of building an execution schedule for each actor.
 
     Args:
-        idx_to_task: A dictionary that maps the `dag_idx` to the `CompiledTask`.
+        idx_to_task: A dictionary that maps the `task_idx` to the `CompiledTask`.
             `CompiledTask` contains information about a DAGNode and its downstream
             nodes.
 
@@ -231,7 +231,7 @@ def _build_dag_node_operation_graph(
             the inner list, the order of operations is READ, COMPUTE, and WRITE.
 
     Returns:
-        A graph where each node is a _DAGOperationGraphNode. The key is `dag_idx`,
+        A graph where each node is a _DAGOperationGraphNode. The key is `task_idx`,
         the index to retrieve its task from `idx_to_task`, and the value is a
         dictionary that maps the _DAGNodeOperationType (READ, COMPUTE, or WRITE)
         to the corresponding _DAGOperationGraphNode
@@ -242,7 +242,7 @@ def _build_dag_node_operation_graph(
     for _, operation_nodes_list in actor_to_operation_nodes.items():
         prev_compute_node = None
         for operation_nodes in operation_nodes_list:
-            dag_idx = operation_nodes[0].dag_idx
+            task_idx = operation_nodes[0].task_idx
             read_node, compute_node, write_node = (
                 operation_nodes[0],
                 operation_nodes[1],
@@ -257,8 +257,8 @@ def _build_dag_node_operation_graph(
             if prev_compute_node is not None:
                 _add_edge(prev_compute_node, compute_node)
             prev_compute_node = compute_node
-            assert dag_idx not in graph
-            graph[dag_idx] = {
+            assert task_idx not in graph
+            graph[task_idx] = {
                 _DAGNodeOperationType.READ: read_node,
                 _DAGNodeOperationType.COMPUTE: compute_node,
                 _DAGNodeOperationType.WRITE: write_node,
@@ -268,19 +268,32 @@ def _build_dag_node_operation_graph(
     from ray.dag import ClassMethodNode, MultiOutputNode
 
     # Add an edge from WRITE of the writer task to READ of the reader task.
-    for dag_idx, task in idx_to_task.items():
+    for task_idx, task in idx_to_task.items():
+        if (
+            isinstance(task.dag_node, ClassMethodNode)
+            and task.dag_node.is_class_method_output
+        ):
+            # TODO(wxdeng): Handle the case where the task is a class method output.
+            continue
         if not isinstance(task.dag_node, ClassMethodNode):
             # The graph is used to generate an execution schedule for each actor.
             # The edge from the InputNode has no impact on the final execution
             # schedule.
             continue
-        for downstream_dag_idx in task.downstream_node_idxs:
-            downstream_dag_node = idx_to_task[downstream_dag_idx].dag_node
+        for downstream_task_idx in task.downstream_task_idxs:
+            downstream_dag_node = idx_to_task[downstream_task_idx].dag_node
+            if (
+                isinstance(downstream_dag_node, ClassMethodNode)
+                and downstream_dag_node.is_class_method_output
+            ):
+                # TODO(wxdeng): Handle the case where the downstream task is
+                # a class method output.
+                continue
             if isinstance(downstream_dag_node, MultiOutputNode):
                 continue
             _add_edge(
-                graph[dag_idx][_DAGNodeOperationType.WRITE],
-                graph[downstream_dag_idx][_DAGNodeOperationType.READ],
+                graph[task_idx][_DAGNodeOperationType.WRITE],
+                graph[downstream_task_idx][_DAGNodeOperationType.READ],
             )
     return graph
 
@@ -295,7 +308,7 @@ def _generate_actor_to_execution_schedule(
 
     Args:
         graph: A graph where each node is a _DAGOperationGraphNode. The key is
-            `dag_idx`, the index to retrieve its task from `idx_to_task`, and
+            `task_idx`, the index to retrieve its task from `idx_to_task`, and
             the value is a dictionary that maps the _DAGNodeOperationType (READ,
             COMPUTE, or WRITE) to the corresponding _DAGOperationGraphNode. It is
             generated by `_build_dag_node_operation_graph`.
@@ -341,9 +354,9 @@ def _generate_actor_to_execution_schedule(
                 continue
             actor_to_execution_schedule[node.actor_handle].append(node.operation)
             visited_nodes.add(node)
-            for out_node_dag_idx, out_node_type in node.out_edges:
-                out_node = graph[out_node_dag_idx][out_node_type]
-                out_node.in_edges.remove((node.dag_idx, node.operation.type))
+            for out_node_task_idx, out_node_type in node.out_edges:
+                out_node = graph[out_node_task_idx][out_node_type]
+                out_node.in_edges.remove((node.task_idx, node.operation.type))
                 if out_node.in_degree == 0:
                     heapq.heappush(
                         actor_to_candidates[out_node.actor_handle._actor_id],
