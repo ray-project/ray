@@ -69,7 +69,7 @@ class TestOfflineData(unittest.TestCase):
         self.assertEqual(batch.env_steps(), 10)
 
         # Now return an iterator.
-        iter = algo.offline_data.sample(num_samples=10, return_Iterator=True)
+        iter = algo.offline_data.sample(num_samples=10, return_iterator=True)
         from ray.data import DataIterator
 
         self.assertIsInstance(iter, DataIterator)

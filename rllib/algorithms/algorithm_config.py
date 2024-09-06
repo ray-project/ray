@@ -2544,7 +2544,7 @@ class AlgorithmConfig(_Config):
                 dataset storing RLlib's old API stack's `SampleBatch`es, i.e.
                 `input_read_sample_batches=True` or a dataset storing new API stack
                 `SingleAgentEpisode`s, i.e. `input_read_episodes=True`. As each
-                `SampleBatch` or `SingleAGentEpisode` could potentially hold more than a
+                `SampleBatch` or `SingleAgentEpisode` could potentially hold more than a
                 single timestep, the episode buffer is used to buffer episodes and
                 sample exactly the defined `train_batch_size_per_learner` from it. Any
                 buffer that inherits from
@@ -2553,8 +2553,8 @@ class AlgorithmConfig(_Config):
                 `ray.rllib.utils.replay_buffers.PrioritizedEpsiodeReplayBuffer`. See
                 `prelearner_buffer_kwargs` for passing in further arguments into the
                 buffer's constructor. Note, the buffer acts (a) as a buffer to dissect
-                `SampleBatch` data into smaller chunks, (b) to concatenate epiosde
-                chunks from different `SampleBatch`es, and (c) to act a shuffler that
+                `SampleBatch` data into smaller chunks, (b) to concatenate episode
+                chunks from different `SampleBatch`es, and (c) to act as a shuffler that
                 shuffles experiences from different episodes.
             prelearner_buffer_kwargs: `kwargs` for the `prelearner_buffer_class`. If no
                 arguments are passed in the buffer's `capacity` will be set to `10 x
