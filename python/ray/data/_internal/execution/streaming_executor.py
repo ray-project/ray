@@ -355,6 +355,8 @@ class StreamingExecutor(Executor, threading.Thread):
 
     def _report_current_usage(self) -> None:
         # running_usage is the amount of resources that have been requested but not necessarily available
+        # TODO(sofian) https://github.com/ray-project/ray/issues/47520
+        # We need to split the reported resources into running, pending-scheduling, pending-node-assignment.
         running_usage = self._resource_manager.get_global_running_usage()
         pending_usage = self._resource_manager.get_global_pending_usage()
         limits = self._resource_manager.get_global_limits()
