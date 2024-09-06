@@ -84,6 +84,7 @@ if __name__ == "__main__":
     )
 
     exit_handler_executed = False
+    sigterm_handler_executed = False
 
     def on_exit_handler():
         global exit_handler_executed
@@ -185,10 +186,8 @@ if __name__ == "__main__":
         # have no time to exeucte cleanup routine.
         signal.signal(signal.SIGHUP, sighup_handler)
 
-        sigterm_handler_executed = False
-
         def sigterm_handler(*args):
-            nonlocal sigterm_handler_executed
+            global sigterm_handler_executed
             if not sigterm_handler_executed:
                 sigterm_handler_executed = True
                 process.terminate()
