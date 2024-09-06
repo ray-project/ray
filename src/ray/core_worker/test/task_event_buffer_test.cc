@@ -316,6 +316,7 @@ TEST_F(TaskEventTestWriteExport, TestWriteTaskExportEvents) {
   auto task_ids = GenTaskIDs(num_events);
   google::protobuf::util::JsonPrintOptions options;
   options.preserve_proto_field_names = true;
+  options.always_print_primitive_fields = true;
 
   std::vector<SourceTypeVariant> source_types = {
       rpc::ExportEvent_SourceType::ExportEvent_SourceType_EXPORT_TASK};
