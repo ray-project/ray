@@ -4933,7 +4933,7 @@
 
   run:
     timeout: 3000
-    script: python launch_and_verify_cluster.py aws/example-full.yaml --num-expected-nodes 2 --retries 20
+    script: python launch_and_verify_cluster.py aws/example-full.yaml --num-expected-nodes 2 --retries 20 --docker-override latest
 
 - name: gcp_cluster_launcher_minimal
   group: cluster-launcher-test
