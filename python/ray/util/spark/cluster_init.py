@@ -199,14 +199,6 @@ class RayClusterOnSpark:
                             "to launch requested minimal number of Ray worker nodes."
                         )
                         return
-        except Exception as e:
-            try:
-                shutdown_ray_cluster()
-            except Exception as e:
-                pass
-            raise RuntimeError(
-                f"Launch Ray-on-Saprk cluster failed, root cause: {repr(e)}."
-            )
         finally:
             ray.shutdown()
 
@@ -1182,12 +1174,20 @@ def _setup_ray_cluster_internal(
             autoscale_idle_timeout_minutes=autoscale_idle_timeout_minutes,
             is_global=is_global,
         )
-
-        cluster.wait_until_ready()  # NB: this line might raise error.
-
-        # If connect cluster successfully, set global _active_ray_cluster to be the
+        # set global _active_ray_cluster to be the
         # started cluster.
         _active_ray_cluster = cluster
+
+        try:
+            cluster.wait_until_ready()  # NB: this line might raise error.
+        except Exception as e:
+            try:
+                shutdown_ray_cluster()
+            except Exception as e:
+                pass
+            raise RuntimeError(
+                f"Launch Ray-on-Saprk cluster failed, root cause: {repr(e)}."
+            )
 
     head_ip = cluster.address.split(":")[0]
     remote_connection_address = f"ray://{head_ip}:{cluster.ray_client_server_port}"
