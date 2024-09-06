@@ -129,8 +129,6 @@ std::string LogEventReporter::ExportEventToString(const rpc::ExportEvent &export
   j["source_type"] = ExportEvent_SourceType_Name(export_event.source_type());
   std::string event_data_as_string;
   google::protobuf::util::JsonPrintOptions options;
-  // Required so enum with value 0 is not omitted
-  options.always_print_primitive_fields = true;
   options.preserve_proto_field_names = true;
   // Required so enum with value 0 is not omitted
   options.always_print_primitive_fields = true;
@@ -141,10 +139,6 @@ std::string LogEventReporter::ExportEventToString(const rpc::ExportEvent &export
   } else if (export_event.has_node_event_data()) {
     RAY_CHECK(google::protobuf::util::MessageToJsonString(
                   export_event.node_event_data(), &event_data_as_string, options)
-                  .ok());
-  } else if (export_event.has_actor_event_data()) {
-    RAY_CHECK(google::protobuf::util::MessageToJsonString(
-                  export_event.actor_event_data(), &event_data_as_string, options)
                   .ok());
   } else {
     RAY_LOG(FATAL)
