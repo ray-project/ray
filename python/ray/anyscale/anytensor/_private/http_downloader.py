@@ -964,7 +964,7 @@ class HTTPSafetensorDownloader:
         if not path.suffix == ".safetensors":
             raise ValueError(f"File {path} is not a safetensors file.")
 
-        logger.info("Restoring %s from disk", path)
+        logger.info("Restoring from disk")
         metadata = _load_safetensor_metadata_from_path(path)
         file_descriptor = os.open(path, os.O_RDWR)
         mmap_file = mmap.mmap(file_descriptor, 0)

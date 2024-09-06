@@ -4,6 +4,7 @@ from typing import Dict, Optional, Tuple
 import pycurl
 
 from ray.anyscale.anytensor._private.http_downloader import HTTPSafetensorDownloader
+from ray.anyscale.anytensor._private.lazy_torch import torch
 from ray.anyscale.anytensor._private.logging_utils import logger
 from ray.anyscale.anytensor._private.uri import parse_uri_info
 
@@ -25,7 +26,7 @@ class AnytensorClient:
         """
         self._strict = _strict
         self._local_cache_dir = local_cache_dir or os.getenv("ANYTENSOR_CACHE_DIR")
-        if self._local_cache_dir is not None:
+        if self._local_cache_dir:
             logger.info("Caching files in local directory: %s", self._local_cache_dir)
 
     def _get_http_downloader_for_uri(
@@ -34,7 +35,7 @@ class AnytensorClient:
         uri_info = parse_uri_info(uri)
 
         local_cache_dir = None
-        if self._local_cache_dir is not None:
+        if self._local_cache_dir:
             # HTTPSafetensorDownloader only considers the basename when caching files,
             # so we generate a fully qualified directory name here.
             local_cache_dir = os.path.join(self._local_cache_dir, uri_info.cache_prefix)
@@ -56,7 +57,7 @@ class AnytensorClient:
         self,
         uri: str,
         *,
-        device: str = "cpu",
+        device: Optional[str] = None,
         region: Optional[str] = None,
     ) -> Dict:
         """Load and return a state_dict from the given URI.
@@ -66,12 +67,13 @@ class AnytensorClient:
                 can be used when running in an Anyscale cluster to access files in
                 Anyscale-managed artifact storage.
             device: device to load the tensors to. Currently "cpu" and "cuda" are
-                supported. Defaults to "cpu".
+                supported. Defaults to None (resolved to `torch.get_default_device()`).
             region: required for 's3://' URIs only.
 
         Returns:
             A PyTorch state_dict.
         """
+        device = device or torch.get_default_device()
         http_downloader, url = self._get_http_downloader_for_uri(uri)
         state_dict, _ = http_downloader.restore_state_dict_from_http(
             url, None, device=device

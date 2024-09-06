@@ -216,7 +216,7 @@ class DiskWriter(BaseSink):
         """
         Start the writer thread.
         """
-        logger.info("Starting disk writer thread, base_path=%s", self.base_path)
+        logger.debug("Starting disk writer thread, base_path=%s", self.base_path)
         self.thread = threading.Thread(
             target=writer_thread,
             kwargs=dict(
