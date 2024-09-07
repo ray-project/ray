@@ -97,7 +97,7 @@ class PathPartitionEncoder:
         Returns:
             The new partition path encoder.
         """
-        scheme = Partitioning(style, base_dir, field_names, filesystem)
+        scheme = Partitioning(style, base_dir, field_names, None, filesystem)
         return PathPartitionEncoder(scheme)
 
     def __init__(self, partitioning: Partitioning):
@@ -180,7 +180,7 @@ class TestReadHivePartitionedFiles:
         df = ds.to_pandas()
         assert list(df.columns) == ["number", "year", "country"]
         assert list(df["number"]) == [1, 2, 3]
-        assert list(df["year"]) == ["1970", "1970", "1970"]
+        assert list(df["year"]) == [1970, 1970, 1970]
         assert list(df["country"]) == ["fr", "fr", "fr"]
 
     def test_read_multiple_files(self, tmp_path, block_type, ray_start_regular_shared):
@@ -195,10 +195,10 @@ class TestReadHivePartitionedFiles:
 
         df = ds.to_pandas()
         assert list(df.columns) == ["number", "year", "country"]
-        assert list(df[df["year"] == "1970"]["number"]) == [1, 2, 3]
-        assert list(df[df["year"] == "1970"]["country"]) == ["fr", "fr", "fr"]
-        assert list(df[df["year"] == "1971"]["number"]) == [4, 5, 6]
-        assert list(df[df["year"] == "1971"]["country"]) == ["ir", "ir", "ir"]
+        assert list(df[df["year"] == 1970]["number"]) == [1, 2, 3]
+        assert list(df[df["year"] == 1970]["country"]) == ["fr", "fr", "fr"]
+        assert list(df[df["year"] == 1971]["number"]) == [4, 5, 6]
+        assert list(df[df["year"] == 1971]["country"]) == ["ir", "ir", "ir"]
 
     @pytest.mark.parametrize(
         "relative_paths",
@@ -306,7 +306,7 @@ class TestReadDirPartitionedFiles:
         df = ds.to_pandas()
         assert list(df.columns) == ["number", "year", "country"]
         assert list(df["number"]) == [1, 2, 3]
-        assert list(df["year"]) == ["1970", "1970", "1970"]
+        assert list(df["year"]) == [1970, 1970, 1970]
         assert list(df["country"]) == ["fr", "fr", "fr"]
 
     def test_read_single_file_with_null_field(
@@ -326,7 +326,7 @@ class TestReadDirPartitionedFiles:
         df = ds.to_pandas()
         assert list(df.columns) == ["number", "year"]
         assert list(df["number"]) == [1, 2, 3]
-        assert list(df["year"]) == ["1970", "1970", "1970"]
+        assert list(df["year"]) == [1970, 1970, 1970]
 
     def test_read_single_file_with_missing_field(
         self, tmp_path, block_type, ray_start_regular_shared
@@ -410,13 +410,12 @@ class TestReadDirPartitionedFiles:
             ),
             block_type=block_type,
         )
-
         df = ds.to_pandas()
         assert list(df.columns) == ["number", "year", "country"]
-        assert list(df[df["year"] == "1970"]["number"]) == [1, 2, 3]
-        assert list(df[df["year"] == "1970"]["country"]) == ["fr", "fr", "fr"]
-        assert list(df[df["year"] == "1971"]["number"]) == [4, 5, 6]
-        assert list(df[df["year"] == "1971"]["country"]) == ["ir", "ir", "ir"]
+        assert list(df[df["year"] == 1970]["number"]) == [1, 2, 3]
+        assert list(df[df["year"] == 1970]["country"]) == ["fr", "fr", "fr"]
+        assert list(df[df["year"] == 1971]["number"]) == [4, 5, 6]
+        assert list(df[df["year"] == 1971]["country"]) == ["ir", "ir", "ir"]
 
 
 def _verify_resolved_paths_and_filesystem(scheme: Partitioning):
@@ -645,15 +644,15 @@ def test_path_partition_parser_hive(fs, base_dir):
         assert partition_parser(path) == {}
 
     partitioned_path = posixpath.join(base_dir, "foo=1/test.txt")
-    assert partition_parser(partitioned_path) == {"foo": "1"}
+    assert partition_parser(partitioned_path) == {"foo": 1}
     partitioned_path = posixpath.join(base_dir, " foo = 1  /test.txt")
     assert partition_parser(partitioned_path) == {" foo ": " 1  "}
     partitioned_path = posixpath.join(base_dir, "foo/bar=2/test.txt")
-    assert partition_parser(partitioned_path) == {"bar": "2"}
+    assert partition_parser(partitioned_path) == {"bar": 2}
     partitioned_path = posixpath.join(base_dir, "bar=2/foo=1/test")
-    assert partition_parser(partitioned_path) == {"foo": "1", "bar": "2"}
+    assert partition_parser(partitioned_path) == {"foo": 1, "bar": 2}
     partitioned_path = posixpath.join(base_dir, "foo/bar/qux=3/")
-    assert partition_parser(partitioned_path) == {"qux": "3"}
+    assert partition_parser(partitioned_path) == {"qux": 3}
 
     partition_parser = PathPartitionParser.of(
         base_dir=base_dir,
@@ -661,9 +660,9 @@ def test_path_partition_parser_hive(fs, base_dir):
         filesystem=fs,
     )
     partitioned_path = posixpath.join(base_dir, "foo=1/bar=2/test")
-    assert partition_parser(partitioned_path) == {"foo": "1", "bar": "2"}
+    assert partition_parser(partitioned_path) == {"foo": 1, "bar": 2}
     partitioned_path = posixpath.join(base_dir, "prefix/foo=1/padding/bar=2/test")
-    assert partition_parser(partitioned_path) == {"foo": "1", "bar": "2"}
+    assert partition_parser(partitioned_path) == {"foo": 1, "bar": 2}
 
 
 @pytest.mark.parametrize(
@@ -703,15 +702,15 @@ def test_path_partition_parser_dir(fs, base_dir):
             assert partition_parser(path) == {}
 
     partitioned_path = posixpath.join(base_dir, "1/2/test.txt")
-    assert partition_parser(partitioned_path) == {"foo": "1", "bar": "2"}
+    assert partition_parser(partitioned_path) == {"foo": 1, "bar": 2}
     partitioned_path = posixpath.join(base_dir, " 1  / t w o /test.txt")
     assert partition_parser(partitioned_path) == {"foo": " 1  ", "bar": " t w o "}
     partitioned_path = posixpath.join(base_dir, "2/1/test.txt")
-    assert partition_parser(partitioned_path) == {"foo": "2", "bar": "1"}
+    assert partition_parser(partitioned_path) == {"foo": 2, "bar": 1}
     partitioned_path = posixpath.join(base_dir, "1/2/")
-    assert partition_parser(partitioned_path) == {"foo": "1", "bar": "2"}
+    assert partition_parser(partitioned_path) == {"foo": 1, "bar": 2}
     partitioned_path = posixpath.join(base_dir, "1/2/3")
-    assert partition_parser(partitioned_path) == {"foo": "1", "bar": "2"}
+    assert partition_parser(partitioned_path) == {"foo": 1, "bar": 2}
 
     partition_parser = PathPartitionParser.of(
         PartitionStyle.DIRECTORY,
@@ -720,9 +719,9 @@ def test_path_partition_parser_dir(fs, base_dir):
         filesystem=fs,
     )
     partitioned_path = posixpath.join(base_dir, "1/2/test")
-    assert partition_parser(partitioned_path) == {"bar": "1", "foo": "2"}
+    assert partition_parser(partitioned_path) == {"bar": 1, "foo": 2}
     partitioned_path = posixpath.join(base_dir, "2/1/test")
-    assert partition_parser(partitioned_path) == {"bar": "2", "foo": "1"}
+    assert partition_parser(partitioned_path) == {"bar": 2, "foo": 1}
 
     partition_parser = PathPartitionParser.of(
         PartitionStyle.DIRECTORY,
@@ -732,7 +731,7 @@ def test_path_partition_parser_dir(fs, base_dir):
     )
 
     partitioned_path = posixpath.join(base_dir, "1970/countries/fr/products.csv")
-    assert partition_parser(partitioned_path) == {"year": "1970", "country": "fr"}
+    assert partition_parser(partitioned_path) == {"year": 1970, "country": "fr"}
 
 
 @pytest.mark.parametrize(
@@ -786,7 +785,7 @@ def test_path_partition_filter_hive(fs, base_dir):
         base_dir=base_dir,
         filesystem=fs,
         filter_fn=lambda d: d
-        and (d.get("qux") == "3" or (d.get("foo") == "1" and d.get("bar") == "2")),
+        and (d.get("qux") == 3 or (d.get("foo") == 1 and d.get("bar") == 2)),
     )
     _verify_resolved_paths_and_filesystem(filter_values.parser.scheme)
     paths = filter_values(test_paths)
@@ -799,7 +798,7 @@ def test_path_partition_filter_hive(fs, base_dir):
         base_dir=base_dir,
         field_names=["foo", "bar"],
         filesystem=fs,
-        filter_fn=lambda d: d and d.get("foo") == "1" and d.get("bar") == "2",
+        filter_fn=lambda d: d and d.get("foo") == 1 and d.get("bar") == 2,
     )
     test_paths = [
         posixpath.join(base_dir, "foo=1/bar=2/test"),
@@ -866,7 +865,7 @@ def test_path_partition_filter_directory(fs, base_dir):
         base_dir=base_dir,
         field_names=["foo", "bar"],
         filesystem=fs,
-        filter_fn=lambda d: d and d["foo"] == "1" and d["bar"] == "2",
+        filter_fn=lambda d: d and d["foo"] == 1 and d["bar"] == 2,
     )
     _verify_resolved_paths_and_filesystem(filter_values.parser.scheme)
     paths = filter_values(test_paths)
@@ -875,6 +874,43 @@ def test_path_partition_filter_directory(fs, base_dir):
         posixpath.join(base_dir, "1/2/"),
         posixpath.join(base_dir, "1/2/3"),
     ]
+
+
+@pytest.mark.parametrize(
+    "partition_value,expected_type",
+    [
+        ("1", float),
+        ("1", str),
+        ("true", str),
+    ],
+)
+def test_explicit_field_types(partition_value, expected_type):
+    partitioning = Partitioning(style="hive", field_types={"key": expected_type})
+    parse = PathPartitionParser(partitioning)
+
+    partitions = parse(f"key={partition_value}/data.parquet")
+
+    assert set(partitions.keys()) == {"key"}
+    assert isinstance(partitions["key"], expected_type)
+
+
+@pytest.mark.parametrize(
+    "partition_value,expected_type",
+    [
+        ("1", int),
+        ("1.0", float),
+        ("false", bool),
+        ("foo", str),
+    ],
+)
+def test_inferred_field_types(partition_value, expected_type):
+    partitioning = Partitioning(style="hive")
+    parse = PathPartitionParser(partitioning)
+
+    partitions = parse(f"key={partition_value}/data.parquet")
+
+    assert set(partitions.keys()) == {"key"}
+    assert isinstance(partitions["key"], expected_type)
 
 
 if __name__ == "__main__":

@@ -1,12 +1,16 @@
 import posixpath
+import re
 from dataclasses import dataclass
 from enum import Enum
-from typing import TYPE_CHECKING, Callable, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Union, Type
 
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
 if TYPE_CHECKING:
     import pyarrow
+
+
+PartitionDataType = Type[Union[int, float, str, bool]]
 
 
 @DeveloperAPI
@@ -82,12 +86,18 @@ class Partitioning:
     #: Required when parsing DIRECTORY partitioned paths or generating
     #: HIVE partitioned paths.
     field_names: Optional[List[str]] = None
+    #: A dictionary that maps partition key names to their desired data type. If not
+    #: provided, the data types are inferred from the partition values.
+    field_types: Optional[Dict[str, PartitionDataType]] = None
     #: Filesystem that will be used for partition path file I/O.
     filesystem: Optional["pyarrow.fs.FileSystem"] = None
 
     def __post_init__(self):
         if self.base_dir is None:
             self.base_dir = ""
+
+        if self.field_types is None:
+            self.field_types = {}
 
         self._normalized_base_dir = None
         self._resolved_filesystem = None
@@ -165,6 +175,7 @@ class PathPartitionParser:
         style: PartitionStyle = PartitionStyle.HIVE,
         base_dir: Optional[str] = None,
         field_names: Optional[List[str]] = None,
+        field_types: Optional[Dict[str, Union[int, float, bool, str]]] = None,
         filesystem: Optional["pyarrow.fs.FileSystem"] = None,
     ) -> "PathPartitionParser":
         """Creates a path-based partition parser using a flattened argument list.
@@ -180,12 +191,15 @@ class PathPartitionParser:
                 partition key field names must match the order and length of partition
                 directories discovered. Partition key field names are not required to
                 exist in the dataset schema.
+            field_types: A dictionary that maps partition key names to their desired
+                data type. If not provided, the data types are inferred from the
+                partition values.
             filesystem: Filesystem that will be used for partition path file I/O.
 
         Returns:
             The new path-based partition parser.
         """
-        scheme = Partitioning(style, base_dir, field_names, filesystem)
+        scheme = Partitioning(style, base_dir, field_names, field_types, filesystem)
         return PathPartitionParser(scheme)
 
     def __init__(self, partitioning: Partitioning):
@@ -226,6 +240,7 @@ class PathPartitionParser:
 
         Args:
             path: Input file path to parse.
+
         Returns:
             Dictionary mapping directory partition keys to values from the input file
             path. Returns an empty dictionary for unpartitioned files.
@@ -233,7 +248,16 @@ class PathPartitionParser:
         dir_path = self._dir_path_trim_base(path)
         if dir_path is None:
             return {}
-        return self._parser_fn(dir_path)
+        partitions: Dict[str, str] = self._parser_fn(dir_path)
+
+        field_types = dict(self._scheme.field_types)
+        for key, value in partitions.items():
+            field_types.setdefault(key, _infer_data_type(value))
+
+        return {
+            key: _cast_value(value, field_types[key])
+            for key, value in partitions.items()
+        }
 
     @property
     def scheme(self) -> Partitioning:
@@ -317,6 +341,7 @@ class PathPartitionFilter:
         style: PartitionStyle = PartitionStyle.HIVE,
         base_dir: Optional[str] = None,
         field_names: Optional[List[str]] = None,
+        field_types: Optional[Dict[str, PartitionDataType]] = None,
         filesystem: Optional["pyarrow.fs.FileSystem"] = None,
     ) -> "PathPartitionFilter":
         """Creates a path-based partition filter using a flattened argument list.
@@ -358,12 +383,15 @@ class PathPartitionFilter:
                 partition key field names must match the order and length of partition
                 directories discovered. Partition key field names are not required to
                 exist in the dataset schema.
+            field_types: A dictionary that maps partition key names to their desired
+                data type. If not provided, the data types are inferred from the
+                partition values.
             filesystem: Filesystem that will be used for partition path file I/O.
 
         Returns:
             The new path-based partition filter.
         """
-        scheme = Partitioning(style, base_dir, field_names, filesystem)
+        scheme = Partitioning(style, base_dir, field_names, field_types, filesystem)
         path_partition_parser = PathPartitionParser(scheme)
         return PathPartitionFilter(path_partition_parser, filter_fn)
 
@@ -422,3 +450,25 @@ class PathPartitionFilter:
     def parser(self) -> PathPartitionParser:
         """Returns the path partition parser for this filter."""
         return self._parser
+
+
+def _infer_data_type(value: str) -> PartitionDataType:
+    if re.match(r"^\d+$", value):  # Integer
+        return int
+    elif re.match(r"^\d+\.\d+$", value):  # Decimal
+        return float
+    elif value.lower() in ["true", "false"]:  # Boolean
+        return bool
+    else:  # Default to string
+        return str
+
+
+def _cast_value(value: str, data_type: PartitionDataType) -> Any:
+    if data_type is int:
+        return int(value)
+    elif data_type is float:
+        return float(value)
+    elif data_type is bool:
+        return value.lower() == "true"
+    else:
+        return value
