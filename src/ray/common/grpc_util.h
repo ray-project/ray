@@ -168,8 +168,14 @@ inline absl::flat_hash_map<K, V> MapFromProtobuf(
   return absl::flat_hash_map<K, V>(pb_map.begin(), pb_map.end());
 }
 
-inline grpc::ChannelArguments CreateDefaultChannelArguments() {
+inline grpc::ChannelArguments CreateDefaultChannelArguments(
+    const std::string &service_config_json) {
   grpc::ChannelArguments arguments;
+
+  RAY_CHECK(service_config_json.size() > 0);
+
+  arguments.SetServiceConfigJSON(service_config_json);
+
   if (::RayConfig::instance().grpc_client_keepalive_time_ms() > 0) {
     arguments.SetInt(GRPC_ARG_KEEPALIVE_TIME_MS,
                      ::RayConfig::instance().grpc_client_keepalive_time_ms());
@@ -177,8 +183,15 @@ inline grpc::ChannelArguments CreateDefaultChannelArguments() {
                      ::RayConfig::instance().grpc_client_keepalive_timeout_ms());
     arguments.SetInt(GRPC_ARG_HTTP2_MAX_PINGS_WITHOUT_DATA, 0);
   }
+
+  arguments.SetInt(GRPC_ARG_HTTP2_MAX_PINGS_WITHOUT_DATA,
+                   ::RayConfig::instance().grpc_http2_max_pings_without_data());
+  arguments.SetInt(GRPC_ARG_KEEPALIVE_PERMIT_WITHOUT_CALLS,
+                   ::RayConfig::instance().grpc_keepalive_permit_without_calls());
+
   arguments.SetInt(GRPC_ARG_CLIENT_IDLE_TIMEOUT_MS,
                    ::RayConfig::instance().grpc_client_idle_timeout_ms());
+
   return arguments;
 }
 
