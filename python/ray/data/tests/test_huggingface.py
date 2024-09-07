@@ -17,8 +17,9 @@ def hfds_assert_equals(hfds: datasets.Dataset, ds: Dataset):
     hfds_table = hfds.data.table
     ds_table = pyarrow.concat_tables([ray.get(tbl) for tbl in ds.to_arrow_refs()])
 
-    hfds_table = hfds_table.sort_by([hfds_table.schema.names[0]])
-    ds_table = ds_table.sort_by([ds_table.schema.names[0]])
+    sorting = [(name, "descending") for name in hfds_table.column_names]
+    hfds_table = hfds_table.sort_by(sorting)
+    ds_table = ds_table.sort_by(sorting)
 
     assert hfds_table.equals(ds_table)
 
