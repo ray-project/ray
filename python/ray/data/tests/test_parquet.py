@@ -1045,6 +1045,7 @@ def test_parquet_roundtrip(ray_start_regular_shared, fs, data_path):
     else:
         fs.delete_dir(_unwrap_protocol(path))
 
+
 def test_parquet_read_empty_file(ray_start_regular_shared, tmp_path):
     path = os.path.join(tmp_path, "data.parquet")
     table = pa.table({})
