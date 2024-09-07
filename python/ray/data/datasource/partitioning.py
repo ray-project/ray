@@ -2,7 +2,7 @@ import posixpath
 import re
 from dataclasses import dataclass
 from enum import Enum
-from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Union, Type
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Type, Union
 
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
