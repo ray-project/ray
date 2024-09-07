@@ -2569,6 +2569,13 @@ def get(object_refs: "ObjectRef[R]", *, timeout: Optional[float] = None) -> R:
 
 
 @overload
+def get(
+    object_refs: Sequence[CompiledDAGRef], *, timeout: Optional[float] = None
+) -> List[Any]:
+    ...
+
+
+@overload
 def get(object_refs: CompiledDAGRef, *, timeout: Optional[float] = None) -> Any:
     ...
 
@@ -2576,7 +2583,12 @@ def get(object_refs: CompiledDAGRef, *, timeout: Optional[float] = None) -> Any:
 @PublicAPI
 @client_mode_hook
 def get(
-    object_refs: Union["ObjectRef[Any]", Sequence["ObjectRef[Any]"], CompiledDAGRef],
+    object_refs: Union[
+        "ObjectRef[Any]",
+        Sequence["ObjectRef[Any]"],
+        CompiledDAGRef,
+        Sequence[CompiledDAGRef],
+    ],
     *,
     timeout: Optional[float] = None,
 ) -> Union[Any, List[Any]]:
@@ -2646,6 +2658,15 @@ def get(
 
         if isinstance(object_refs, CompiledDAGRef):
             return object_refs.get(timeout=timeout)
+
+        if isinstance(object_refs, list):
+            allCompiledDAGRefs = True
+            for object_ref in object_refs:
+                allCompiledDAGRefs = allCompiledDAGRefs and isinstance(
+                    object_ref, CompiledDAGRef
+                )
+            if allCompiledDAGRefs:
+                return [object_ref.get(timeout=timeout) for object_ref in object_refs]
 
         is_individual_id = isinstance(object_refs, ray.ObjectRef)
         if is_individual_id:

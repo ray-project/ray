@@ -246,6 +246,23 @@ def test_two_as_one_return(ray_start_regular):
     compiled_dag.teardown()
 
 
+def test_multi_output_multi_refs_get(ray_start_regular):
+    a = Actor.remote(0)
+    b = Actor.remote(0)
+    with InputNode() as i:
+        o1, o2 = a.return_two.bind(i)
+        o3 = b.echo.bind(o1)
+        o4 = b.echo.bind(o2)
+        dag = MultiOutputNode([o3, o4], returns_multiple_refs=True)
+
+    compiled_dag = dag.experimental_compile()
+    for _ in range(3):
+        res = ray.get(compiled_dag.execute(1))
+        assert res == [1, 2]
+
+    compiled_dag.teardown()
+
+
 # TODO(wxdeng): Fix segfault. If this test is run, the following tests
 # will segfault.
 # def test_two_from_three_returns(ray_start_regular):
