@@ -277,7 +277,13 @@ if setup_spec.type == SetupType.RAY:
             "fastapi",
             "watchfiles",
         ],
-        "tune": ["pandas", "tensorboardX>=1.9", "requests", *pyarrow_deps, "fsspec"],
+        "tune": [
+            "pandas",
+            "tensorboardX>=1.9",
+            "requests",
+            *pyarrow_deps,
+            "fsspec",
+        ],
     }
 
     # Ray Serve depends on the Ray dashboard components.
