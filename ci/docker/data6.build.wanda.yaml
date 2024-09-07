@@ -1,4 +1,4 @@
-name: "data6build"
+name: "data9build"
 froms: ["cr.ray.io/rayproject/oss-ci-base_ml"]
 dockerfile: ci/docker/data.build.Dockerfile
 srcs:
@@ -12,4 +12,4 @@ srcs:
 build_args:
   - ARROW_VERSION=6.*
 tags:
-  - cr.ray.io/rayproject/data6build
+  - cr.ray.io/rayproject/data9build
