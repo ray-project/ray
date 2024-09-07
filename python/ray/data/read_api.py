@@ -747,7 +747,7 @@ def read_parquet(
         schema=schema,
         meta_provider=meta_provider,
         partition_filter=partition_filter,
-        partitioning: Optional[Partitioning] = Partitioning("hive"),
+        partitioning=partitioning,
         shuffle=shuffle,
         include_paths=include_paths,
         file_extensions=file_extensions,
