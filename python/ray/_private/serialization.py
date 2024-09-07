@@ -224,8 +224,9 @@ class SerializationContext:
                     "set `RAY_allow_out_of_band_object_ref_serialization=1.` "
                     "If you set the env var, the object is pinned forever in the "
                     "lifetime of the worker process and can cause Ray object leaks. "
-                    "See the callsite and trace to find where the serialization occurs.\n"
-                    f"Callsite: {call_site or 'Disabled. Set RAY_record_ref_creation_sites=1'}"
+                    "See the callsite and trace to find where the serialization "
+                    "occurs.\nCallsite: "
+                    f"{call_site or 'Disabled. Set RAY_record_ref_creation_sites=1'}"
                 )
             else:
                 # If this serialization is out-of-band (e.g., from a call to
