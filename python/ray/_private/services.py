@@ -226,7 +226,10 @@ def propagate_jemalloc_env_var(
     if not jemalloc_path:
         return {}
 
-    env_vars = {"LD_PRELOAD": jemalloc_path, "RAY_LD_PRELOAD": "1"}
+    env_vars = {
+        "LD_PRELOAD": jemalloc_path,
+        "RAY_LD_PRELOAD": os.environ.get("RAY_LD_PRELOAD", "1"),
+    }
     if process_type in jemalloc_comps and jemalloc_conf:
         env_vars.update({"MALLOC_CONF": jemalloc_conf})
     return env_vars
