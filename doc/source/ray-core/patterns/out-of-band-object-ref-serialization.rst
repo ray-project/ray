@@ -19,14 +19,7 @@ Code example
 
 **Anti-pattern:**
 
-.. literalinclude:: ../doc_code/anti_pattern_pass_large_arg_by_value.py
+.. literalinclude:: ../doc_code/anti_pattern_out_of_band_object_ref_serialization.py
     :language: python
     :start-after: __anti_pattern_start__
     :end-before: __anti_pattern_end__
-
-**Better approach:**
-
-.. literalinclude:: ../doc_code/anti_pattern_pass_large_arg_by_value.py
-    :language: python
-    :start-after: __better_approach_start__
-    :end-before: __better_approach_end__
