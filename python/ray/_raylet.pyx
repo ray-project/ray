@@ -2907,16 +2907,18 @@ cdef class OldGcsClient:
         return result
 
     @_auto_reconnect
-    def get_all_job_info(self, timeout=None, **kwargs) -> Dict[JobID, JobTableData]:
+    def get_all_job_info(
+        self, timeout=None, query_job_info_field=False,
+        query_is_running_tasks_field=False
+    ) -> Dict[JobID, JobTableData]:
         # Ideally we should use json_format.MessageToDict(job_info),
         # but `job_info` is a cpp pb message not a python one.
         # Manually converting each and every protobuf field is out of question,
         # so we serialize the pb to string to cross the FFI interface.
         cdef:
             int64_t timeout_ms = round(1000 * timeout) if timeout else -1
-            c_bool c_query_job_info_field = kwargs.get("query_job_info_field", False)
-            c_bool c_query_is_running_tasks_field = kwargs.get(
-                "query_is_running_tasks_field", False)
+            c_bool c_query_job_info_field = query_job_info_field
+            c_bool c_query_is_running_tasks_field = query_is_running_tasks_field
             CJobTableData c_job_info
             c_vector[CJobTableData] c_job_infos
             c_vector[c_string] serialized_job_infos

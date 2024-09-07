@@ -433,12 +433,12 @@ cdef class NewGcsClient:
     #############################################################
 
     def get_all_job_info(
-        self, timeout: Optional[float] = None, **kwargs
+        self, timeout: Optional[float] = None, query_job_info_field=False,
+        query_is_running_tasks_field=False
     ) -> Dict[JobID, gcs_pb2.JobTableData]:
         cdef int64_t timeout_ms = round(1000 * timeout) if timeout else -1
-        cdef c_bool c_query_job_info_field = kwargs.get("query_job_info_field", False)
-        cdef c_bool c_query_is_running_tasks_field = kwargs.get(
-            "query_is_running_tasks_field", False)
+        cdef c_bool c_query_job_info_field = query_job_info_field
+        cdef c_bool c_query_is_running_tasks_field = query_is_running_tasks_field
         cdef CRayStatus status
         cdef c_vector[CJobTableData] reply
         with nogil:
@@ -448,13 +448,13 @@ cdef class NewGcsClient:
         return raise_or_return((convert_get_all_job_info(status, move(reply))))
 
     def async_get_all_job_info(
-        self, timeout: Optional[float] = None, **kwargs
+        self, timeout: Optional[float] = None, query_job_info_field=False,
+        query_is_running_tasks_field=False
     ) -> Future[Dict[JobID, gcs_pb2.JobTableData]]:
         cdef:
             int64_t timeout_ms = round(1000 * timeout) if timeout else -1
-            c_bool c_query_job_info_field = kwargs.get("query_job_info_field", False)
-            c_bool c_query_is_running_tasks_field = kwargs.get(
-                "query_is_running_tasks_field", False)
+            c_bool c_query_job_info_field = query_job_info_field
+            c_bool c_query_is_running_tasks_field = query_is_running_tasks_field
             fut = incremented_fut()
         with nogil:
             check_status_timeout_as_rpc_error(

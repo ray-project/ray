@@ -1,6 +1,5 @@
 import os
 import logging
-from functools import partial
 from typing import Dict, List, Optional
 from concurrent.futures import ThreadPoolExecutor
 from ray._raylet import GcsClient, NewGcsClient, JobID
@@ -87,8 +86,7 @@ class AsyncProxy:
 
     def _function_to_async(self, func):
         async def wrapper(*args, **kwargs):
-            partial_func = partial(func, *args, **kwargs)
-            return await self.loop.run_in_executor(self.executor, partial_func)
+            return await self.loop.run_in_executor(self.executor, func, *args, **kwargs)
 
         return wrapper
 
@@ -205,9 +203,14 @@ class OldGcsAioClient:
         return await self._async_proxy.internal_kv_keys(prefix, namespace, timeout)
 
     async def get_all_job_info(
-        self, timeout: Optional[float] = None, **kwargs
+        self,
+        timeout: Optional[float] = None,
+        query_job_info_field: bool = False,
+        query_is_running_tasks_field: bool = False,
     ) -> Dict[JobID, gcs_pb2.JobTableData]:
         """
         Return dict key: bytes of job_id; value: JobTableData pb message.
         """
-        return await self._async_proxy.get_all_job_info(timeout, **kwargs)
+        return await self._async_proxy.get_all_job_info(
+            timeout, query_job_info_field, query_is_running_tasks_field
+        )
