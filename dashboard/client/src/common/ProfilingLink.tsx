@@ -312,7 +312,7 @@ export const MemoryProfilingButton = ({
   if (!pid || !ip) {
     return <div></div>;
   }
-  const profilerUrl = `memory_profile?pid=${pid}&ip=${ip}`;
+  const profilerUrl = `/memory_profile?pid=${pid}&ip=${ip}`;
 
   return <ProfilerButton profilerUrl={profilerUrl} type={type} />;
 };
@@ -325,7 +325,7 @@ export const TaskMemoryProfilingButton = ({
   if (!taskId) {
     return null;
   }
-  const profilerUrl = `memory_profile?task_id=${taskId}&attempt_number=${attemptNumber}&node_id=${nodeId}`;
+  const profilerUrl = `/memory_profile?task_id=${taskId}&attempt_number=${attemptNumber}&node_id=${nodeId}`;
 
   return <ProfilerButton profilerUrl={profilerUrl} />;
 };
