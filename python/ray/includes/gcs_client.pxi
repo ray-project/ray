@@ -433,8 +433,8 @@ cdef class NewGcsClient:
     #############################################################
 
     def get_all_job_info(
-        self, timeout: Optional[float] = None, query_job_info_field=False,
-        query_is_running_tasks_field=False
+        self, query_job_info_field=False, query_is_running_tasks_field=False,
+        timeout: Optional[float] = None
     ) -> Dict[JobID, gcs_pb2.JobTableData]:
         cdef int64_t timeout_ms = round(1000 * timeout) if timeout else -1
         cdef c_bool c_query_job_info_field = query_job_info_field
@@ -443,13 +443,13 @@ cdef class NewGcsClient:
         cdef c_vector[CJobTableData] reply
         with nogil:
             status = self.inner.get().Jobs().GetAll(
-                reply, timeout_ms, c_query_job_info_field,
-                c_query_is_running_tasks_field)
+                reply, c_query_job_info_field,
+                c_query_is_running_tasks_field, timeout_ms)
         return raise_or_return((convert_get_all_job_info(status, move(reply))))
 
     def async_get_all_job_info(
-        self, timeout: Optional[float] = None, query_job_info_field=False,
-        query_is_running_tasks_field=False
+        self, query_job_info_field=False, query_is_running_tasks_field=False,
+        timeout: Optional[float] = None
     ) -> Future[Dict[JobID, gcs_pb2.JobTableData]]:
         cdef:
             int64_t timeout_ms = round(1000 * timeout) if timeout else -1
@@ -463,7 +463,7 @@ cdef class NewGcsClient:
                         &convert_get_all_job_info,
                         assign_and_decrement_fut,
                         fut),
-                    timeout_ms, c_query_job_info_field, c_query_is_running_tasks_field))
+                    c_query_job_info_field, c_query_is_running_tasks_field, timeout_ms))
         return asyncio.wrap_future(fut)
 
     #############################################################

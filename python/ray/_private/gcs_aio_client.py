@@ -204,13 +204,13 @@ class OldGcsAioClient:
 
     async def get_all_job_info(
         self,
-        timeout: Optional[float] = None,
         query_job_info_field: bool = False,
         query_is_running_tasks_field: bool = False,
+        timeout: Optional[float] = None,
     ) -> Dict[JobID, gcs_pb2.JobTableData]:
         """
         Return dict key: bytes of job_id; value: JobTableData pb message.
         """
         return await self._async_proxy.get_all_job_info(
-            timeout, query_job_info_field, query_is_running_tasks_field
+            query_job_info_field, query_is_running_tasks_field, timeout
         )

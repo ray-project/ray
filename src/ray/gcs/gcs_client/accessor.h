@@ -250,9 +250,9 @@ class JobInfoAccessor {
   /// \param callback Callback that will be called after lookup finished.
   /// \return Status
   virtual Status AsyncGetAll(const MultiItemCallback<rpc::JobTableData> &callback,
-                             int64_t timeout_ms,
-                             bool query_job_info_field = false,
-                             bool query_is_running_tasks_field = false);
+                             bool query_job_info_field,
+                             bool query_is_running_tasks_field,
+                             int64_t timeout_ms);
 
   /// Get all job info from GCS synchronously.
   ///
@@ -260,9 +260,9 @@ class JobInfoAccessor {
   /// \param[out] job_data_list The list of job data retrieved from GCS.
   /// \return Status
   virtual Status GetAll(std::vector<rpc::JobTableData> &job_data_list,
-                        int64_t timeout_ms,
-                        bool query_job_info_field = false,
-                        bool query_is_running_tasks_field = false);
+                        bool query_job_info_field,
+                        bool query_is_running_tasks_field,
+                        int64_t timeout_ms);
 
   /// Reestablish subscription.
   /// This should be called when GCS server restarts from a failure.

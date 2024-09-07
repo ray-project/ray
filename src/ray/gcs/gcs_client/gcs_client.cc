@@ -501,10 +501,10 @@ Status PythonGcsClient::GetAllNodeInfo(int64_t timeout_ms,
   return Status::RpcError(status.error_message(), status.error_code());
 }
 
-Status PythonGcsClient::GetAllJobInfo(int64_t timeout_ms,
-                                      std::vector<rpc::JobTableData> &result,
-                                      bool query_job_info_field,
-                                      bool query_is_running_tasks_field) {
+Status PythonGcsClient::GetAllJobInfo(bool query_job_info_field,
+                                      bool query_is_running_tasks_field,
+                                      int64_t timeout_ms,
+                                      std::vector<rpc::JobTableData> &result) {
   grpc::ClientContext context;
   PrepareContext(context, timeout_ms);
 

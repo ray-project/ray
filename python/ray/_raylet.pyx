@@ -2908,8 +2908,8 @@ cdef class OldGcsClient:
 
     @_auto_reconnect
     def get_all_job_info(
-        self, timeout=None, query_job_info_field=False,
-        query_is_running_tasks_field=False
+        self, query_job_info_field=False, query_is_running_tasks_field=False,
+        timeout=None
     ) -> Dict[JobID, JobTableData]:
         # Ideally we should use json_format.MessageToDict(job_info),
         # but `job_info` is a cpp pb message not a python one.
@@ -2924,8 +2924,8 @@ cdef class OldGcsClient:
             c_vector[c_string] serialized_job_infos
         with nogil:
             check_status(self.inner.get().GetAllJobInfo(
-                timeout_ms, c_job_infos, c_query_job_info_field,
-                c_query_is_running_tasks_field))
+                c_query_job_info_field, c_query_is_running_tasks_field,
+                timeout_ms, c_job_infos))
             for c_job_info in c_job_infos:
                 serialized_job_infos.push_back(c_job_info.SerializeAsString())
         result = {}
