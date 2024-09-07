@@ -829,6 +829,15 @@ class ObjectRefStreamEndOfStreamError(RayError):
     pass
 
 
+@DeveloperAPI
+class OufOfBandRefSerializationException(RayError):
+    """Raised when an `ray.ObjectRef` is out of band serialized by
+    `ray.cloudpickle`. It is an anti pattern.
+    """
+
+    pass
+
+
 @PublicAPI(stability="alpha")
 class RayChannelError(RaySystemError):
     """Indicates that Ray encountered a system error related

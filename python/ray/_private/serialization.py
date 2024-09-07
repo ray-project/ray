@@ -2,7 +2,7 @@ import io
 import logging
 import threading
 import traceback
-from typing import Any
+from typing import Any, Optional
 import os
 
 
@@ -61,10 +61,6 @@ ALLOW_OUT_OF_BAND_OBJECT_REF_SERIALIZATION = bool(
 )
 
 
-class OufOfBandRefSerializationException(ray.exceptions.RayError):
-    pass
-
-
 class DeserializationError(Exception):
     pass
 
@@ -75,11 +71,14 @@ def pickle_dumps(obj: Any, error_msg: str):
     """
     try:
         return pickle.dumps(obj)
-    except TypeError as e:
+    except (TypeError, ray.exceptions.OufOfBandRefSerializationException) as e:
         sio = io.StringIO()
         inspect_serializability(obj, print_file=sio)
         msg = f"{error_msg}:\n{sio.getvalue()}"
-        raise TypeError(msg) from e
+        if isinstance(e, TypeError):
+            raise TypeError(msg) from e
+        else:
+            raise ray.exceptions.OufOfBandRefSerializationException(msg)
 
 
 def _object_ref_deserializer(binary, call_site, owner_address, object_status):
@@ -150,7 +149,7 @@ class SerializationContext:
         def object_ref_reducer(obj):
             worker = ray._private.worker.global_worker
             worker.check_connected()
-            self.add_contained_object_ref(obj)
+            self.add_contained_object_ref(obj, obj.call_site())
             obj, owner_address, object_status = worker.core_worker.serialize_object_ref(
                 obj
             )
@@ -209,7 +208,7 @@ class SerializationContext:
         self._thread_local.object_refs = set()
         return object_refs
 
-    def add_contained_object_ref(self, object_ref):
+    def add_contained_object_ref(self, object_ref, call_site: Optional[str]):
         if self.is_in_band_serialization():
             # This object ref is being stored in an object. Add the ID to the
             # list of IDs contained in the object so that we keep the inner
@@ -219,14 +218,14 @@ class SerializationContext:
             self._thread_local.object_refs.add(object_ref)
         else:
             if not ALLOW_OUT_OF_BAND_OBJECT_REF_SERIALIZATION:
-                raise OufOfBandRefSerializationException(
-                    f"It is not allowed to serialize ray.ObjectRef {object_ref.hex()}."
+                raise ray.exceptions.OufOfBandRefSerializationException(
+                    f"It is not allowed to serialize ray.ObjectRef {object_ref.hex()}. "
                     "If you want to allow serialization, "
                     "set `RAY_allow_out_of_band_object_ref_serialization=1.` "
                     "If you set the env var, the object is pinned forever in the "
-                    "lifetime of the worker process and can cause Ray object leaks."
-                    "See the trace to find where the serialization occurs: "
-                    f"{''.join(traceback.format_stack())}"
+                    "lifetime of the worker process and can cause Ray object leaks. "
+                    "See the callsite and trace to find where the serialization occurs.\n"
+                    f"Callsite: {call_site or 'Disabled. Set RAY_record_ref_creation_sites=1'}"
                 )
             else:
                 # If this serialization is out-of-band (e.g., from a call to
