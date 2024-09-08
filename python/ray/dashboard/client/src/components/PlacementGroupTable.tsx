@@ -1,4 +1,3 @@
-import ArrowDropDownIcon from "@mui/icons-material/ArrowDropDown";
 import {
   Box,
   InputAdornment,
@@ -13,9 +12,6 @@ import {
   Theme,
   Tooltip,
 } from "@mui/material";
-import Accordion from "@mui/material/Accordion";
-import AccordionDetails from "@mui/material/AccordionDetails";
-import AccordionSummary from "@mui/material/AccordionSummary";
 import Autocomplete from "@mui/material/Autocomplete";
 import Pagination from "@mui/material/Pagination";
 import React, { useState } from "react";
@@ -23,6 +19,7 @@ import rowStyles from "../common/RowStyles";
 import { sliceToPage } from "../common/util";
 import { Bundle, PlacementGroup } from "../type/placementGroup";
 import { useFilter } from "../util/hook";
+import OverflowCollapsibleCell from "./OverflowCollapsibleCell";
 import StateCounter from "./StatesCounter";
 import { StatusChip } from "./StatusChip";
 
@@ -33,26 +30,12 @@ const BundleResourceRequirements = ({
   sx?: SxProps<Theme>;
 }) => {
   const resources = bundles.map(({ unit_resources }) => unit_resources);
-  if (resources.length === 0) {
-    return <React.Fragment>-</React.Fragment>;
-  }
-  if (resources.length === 1) {
-    return <React.Fragment>{JSON.stringify(resources[0])}</React.Fragment>;
-  }
-  return (
-    <Accordion>
-      <AccordionSummary expandIcon={<ArrowDropDownIcon />}>
-        Expand to see all
-      </AccordionSummary>
-      <AccordionDetails>
-        <ul>
-          {resources.map((resource, index) => {
-            return <li key={index}>{JSON.stringify(resource)}</li>;
-          })}
-        </ul>
-      </AccordionDetails>
-    </Accordion>
-  );
+  const resourceString =
+    resources.length === 0
+      ? "-"
+      : resources.map((resource) => JSON.stringify(resource)).join(", ");
+
+  return <OverflowCollapsibleCell text={resourceString} maxWidth={300} />;
 };
 
 const PlacementGroupTable = ({
