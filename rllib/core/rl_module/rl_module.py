@@ -783,3 +783,6 @@ class RLModule(Checkpointable, abc.ABC):
     @Deprecated(new="RLModule.save_to_path(...)", error=True)
     def save_to_checkpoint(self, *args, **kwargs):
         pass
+
+
+SingleAgentRLModuleSpec = RLModuleSpec
