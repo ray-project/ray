@@ -298,6 +298,8 @@ class MARWILConfig(AlgorithmConfig):
             GeneralAdvantageEstimation(gamma=self.gamma, lambda_=self.lambda_)
         )
 
+        pipeline.append()
+
         return pipeline
 
     @override(AlgorithmConfig)
