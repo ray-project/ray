@@ -147,7 +147,7 @@ void GcsJobManager::HandleGetAllJobInfo(rpc::GetAllJobInfoRequest request,
                                         rpc::SendReplyCallback send_reply_callback) {
   // Get all job info. This is a complex operation:
   // 1. One GetAll from the job table.
-  // 2. For each job, Send RPC to core work for is_running_tasks value.
+  // 2. For each job, Send RPC to core worker for is_running_tasks value.
   // 3. One MultiKVGet for jobs submitted via the Ray Job API.
   // Step 2 and 3 are asynchronous and concurrent among jobs. After all jobs are
   // processed, send the reply.
