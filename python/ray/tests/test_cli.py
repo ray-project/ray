@@ -1129,7 +1129,7 @@ def test_ray_drain_node(monkeypatch):
     with patch("ray._raylet.GcsClient") as MockGcsClient:
         mock_gcs_client = MockGcsClient.return_value
         mock_gcs_client.internal_kv_get.return_value = (
-            '{{"ray_version": "ray_version_mismatch"}}'.encode()
+            '{"ray_version": "ray_version_mismatch"}'.encode()
         )
         result = runner.invoke(
             scripts.drain_node,

@@ -2005,6 +2005,7 @@ def status(address: str, redis_password: str, verbose: bool):
     address = services.canonicalize_bootstrap_address_or_die(address)
     gcs_client = ray._raylet.GcsClient(address=address)
     _check_ray_version(gcs_client)
+    ray.experimental.internal_kv._initialize_internal_kv(gcs_client)
     status = gcs_client.internal_kv_get(ray_constants.DEBUG_AUTOSCALING_STATUS.encode())
     error = gcs_client.internal_kv_get(ray_constants.DEBUG_AUTOSCALING_ERROR.encode())
     print(debug_status(status, error, verbose=verbose, address=address))
