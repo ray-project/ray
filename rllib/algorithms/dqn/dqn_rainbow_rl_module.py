@@ -7,7 +7,7 @@ from ray.rllib.core.columns import Columns
 from ray.rllib.core.learner.utils import make_target_network
 from ray.rllib.core.models.base import Encoder, Model
 from ray.rllib.core.models.specs.typing import SpecType
-from ray.rllib.core.rl_module.apis.target_network_api import TargetNetworkAPI
+from ray.rllib.core.rl_module.apis import InferenceOnlyAPI, TargetNetworkAPI
 from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.models.distributions import Distribution
 from ray.rllib.utils.annotations import (
@@ -27,7 +27,7 @@ QF_TARGET_NEXT_PROBS = "qf_target_next_probs"
 
 
 @ExperimentalAPI
-class DQNRainbowRLModule(RLModule, TargetNetworkAPI):
+class DQNRainbowRLModule(RLModule, InferenceOnlyAPI, TargetNetworkAPI):
     @override(RLModule)
     def setup(self):
         # Get the DQN Rainbow catalog.
@@ -61,12 +61,6 @@ class DQNRainbowRLModule(RLModule, TargetNetworkAPI):
         # Note further, by using the base encoder the correct encoder
         # is chosen for the observation space used.
         self.encoder = catalog.build_encoder(framework=self.framework)
-        # If not an inference-only module (e.g., for evaluation), set up the
-        # target networks and state dict keys to be taken care of when syncing.
-        if not self.config.inference_only or self.framework != "torch":
-            # Holds the parameter names to be removed or renamed when synching
-            # from the learner to the inference module.
-            self._inference_only_state_dict_keys = {}
 
         # Build heads.
         self.af = catalog.build_af_head(framework=self.framework)
@@ -84,6 +78,13 @@ class DQNRainbowRLModule(RLModule, TargetNetworkAPI):
         self._target_af = make_target_network(self.af)
         if self.uses_dueling:
             self._target_vf = make_target_network(self.vf)
+
+    @override(InferenceOnlyAPI)
+    def get_non_inference_attributes(self) -> List[str]:
+        # TODO (simon): Check, if we can also remove the value network.
+        return ["_target_encoder", "_target_af"] + (
+            ["_target_vf"] if self.uses_dueling else []
+        )
 
     @override(TargetNetworkAPI)
     def get_target_network_pairs(self) -> List[Tuple[NetworkType, NetworkType]]:
