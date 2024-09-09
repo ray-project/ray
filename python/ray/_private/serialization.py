@@ -136,7 +136,7 @@ class SerializationContext:
             serialized, actor_handle_id, weak_ref = obj._serialization_helper()
             # Update ref counting for the actor handle
             if not weak_ref:
-                self.add_contained_object_ref(actor_handle_id)
+                self.add_contained_object_ref(actor_handle_id, True)
             return _actor_handle_deserializer, (serialized, weak_ref)
 
         self._register_cloudpickle_reducer(ray.actor.ActorHandle, actor_handle_reducer)
@@ -149,7 +149,11 @@ class SerializationContext:
         def object_ref_reducer(obj):
             worker = ray._private.worker.global_worker
             worker.check_connected()
-            self.add_contained_object_ref(obj, obj.call_site())
+            self.add_contained_object_ref(
+                obj,
+                ALLOW_OUT_OF_BAND_OBJECT_REF_SERIALIZATION,
+                call_site=obj.call_site(),
+            )
             obj, owner_address, object_status = worker.core_worker.serialize_object_ref(
                 obj
             )
@@ -208,7 +212,12 @@ class SerializationContext:
         self._thread_local.object_refs = set()
         return object_refs
 
-    def add_contained_object_ref(self, object_ref, call_site: Optional[str]):
+    def add_contained_object_ref(
+        self,
+        object_ref: "ray.ObjectRef",
+        allow_out_of_band_serialization: bool,
+        call_site: Optional[str] = None,
+    ):
         if self.is_in_band_serialization():
             # This object ref is being stored in an object. Add the ID to the
             # list of IDs contained in the object so that we keep the inner
@@ -217,7 +226,7 @@ class SerializationContext:
                 self._thread_local.object_refs = set()
             self._thread_local.object_refs.add(object_ref)
         else:
-            if not ALLOW_OUT_OF_BAND_OBJECT_REF_SERIALIZATION:
+            if not allow_out_of_band_serialization:
                 raise ray.exceptions.OufOfBandRefSerializationException(
                     f"It is not allowed to serialize ray.ObjectRef {object_ref.hex()}. "
                     "If you want to allow serialization, "
