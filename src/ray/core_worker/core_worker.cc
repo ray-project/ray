@@ -1496,33 +1496,25 @@ Status CoreWorker::ExperimentalRegisterMutableObjectWriter(
 
 Status CoreWorker::ExperimentalRegisterMutableObjectReaderRemote(
     const ObjectID &writer_object_id,
-    const std::vector<ActorID> &remote_reader_actors,
-    std::vector<int64_t> remote_num_readers,
-    const std::vector<ObjectID> &remote_reader_object_ids) {
-  if (remote_reader_actors.size() == 0) {
+    const std::vector<ray::experimental::ReaderRefInfo> &remote_reader_ref_info) {
+  if (remote_reader_ref_info.size() == 0) {
     return Status::OK();
   }
 
-  std::vector<rpc::Address> addrs;
-  for (const auto &actor_id : remote_reader_actors) {
-    const auto &addr = actor_task_submitter_->GetActorAddress(actor_id);
+  std::shared_ptr<size_t> num_replied = std::make_shared<size_t>(0);
+  size_t num_requests = remote_reader_ref_info.size();
+  std::promise<void> promise;
+  for (const auto &reader_ref_info : remote_reader_ref_info) {
+    const auto &owner_reader_actor_id = reader_ref_info.owner_reader_actor_id;
+    const auto &reader_object_id = reader_ref_info.reader_ref_id;
+    const auto &num_reader = reader_ref_info.num_reader_actors;
+    const auto &addr = actor_task_submitter_->GetActorAddress(owner_reader_actor_id);
     // It can happen if an actor is not created yet. We assume the API is called only when
     // an actor is alive, which is true now.
     RAY_CHECK(addr.has_value());
-    addrs.push_back(*addr);
-  }
-
-  std::shared_ptr<size_t> num_replied = std::make_shared<size_t>(0);
-  size_t num_requests = addrs.size();
-  RAY_CHECK_EQ(addrs.size(), remote_reader_object_ids.size());
-  std::promise<void> promise;
-  for (size_t i = 0; i < addrs.size(); i++) {
-    const auto &addr = addrs[i];
-    const auto &reader_object_id = remote_reader_object_ids[i];
-    const auto &num_reader = remote_num_readers[i];
 
     std::shared_ptr<rpc::CoreWorkerClientInterface> conn =
-        core_worker_client_pool_->GetOrConnect(addr);
+        core_worker_client_pool_->GetOrConnect(*addr);
 
     rpc::RegisterMutableObjectReaderRequest req;
     req.set_writer_object_id(writer_object_id.Binary());

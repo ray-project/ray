@@ -81,6 +81,14 @@ cdef extern from "ray/core_worker/fiber.h" nogil:
         void Wait()
         void Notify()
 
+cdef extern from "ray/core_worker/experimental_mutable_object_manager.h" nogil:
+    cdef cppclass CReaderRefInfo "ray::experimental::ReaderRefInfo":
+        CReaderRefInfo()
+        CObjectID reader_ref_id;
+        CActorID owner_reader_actor_id;
+        int64_t num_reader_actors;
+
+
 cdef extern from "ray/core_worker/context.h" nogil:
     cdef cppclass CWorkerContext "ray::core::WorkerContext":
         c_bool CurrentActorIsAsync()
@@ -270,9 +278,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         CRayStatus ExperimentalRegisterMutableObjectReader(const CObjectID &object_id)
         CRayStatus ExperimentalRegisterMutableObjectReaderRemote(
                 const CObjectID &object_id,
-                const c_vector[CActorID] &remote_reader_actors,
-                c_vector[int64_t] remote_num_readers,
-                const c_vector[CObjectID] &remote_reader_refs)
+                const c_vector[CReaderRefInfo] &remote_reader_ref_info)
         CRayStatus SealOwned(const CObjectID &object_id, c_bool pin_object,
                              const unique_ptr[CAddress] &owner_address)
         CRayStatus SealExisting(const CObjectID &object_id, c_bool pin_object,

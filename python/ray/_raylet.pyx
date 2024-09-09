@@ -157,6 +157,7 @@ from ray.includes.libcoreworker cimport (
     CFiberEvent,
     CActorHandle,
     CGeneratorBackpressureWaiter,
+    CReaderRefInfo,
 )
 
 from ray.includes.ray_config cimport RayConfig
@@ -3687,27 +3688,22 @@ cdef class CoreWorker:
 
     def experimental_channel_register_writer(self,
                                              ObjectRef writer_ref,
-                                             remote_reader_refs,
-                                             remote_reader_nodes,
-                                             remote_readers,
-                                             remote_num_readers_per_node):
+                                             remote_reader_ref_info):
         cdef:
             CObjectID c_writer_ref = writer_ref.native()
-            c_vector[CObjectID] c_remote_reader_refs
             c_vector[CNodeID] c_remote_reader_nodes
-            c_vector[CActorID] c_remote_readers
-            c_vector[int64_t] c_remote_num_readers
+            c_vector[CReaderRefInfo] c_remote_reader_ref_info
+            CReaderRefInfo c_reader_ref_info
 
-        for ref, node, reader, num_readers in zip(
-                remote_reader_refs,
-                remote_reader_nodes,
-                remote_readers,
-                remote_num_readers_per_node):
-            c_remote_reader_refs.push_back((<ObjectRef>ref).native())
-            c_remote_reader_nodes.push_back(CNodeID.FromHex(node))
-            c_remote_readers.push_back((<ActorID>reader).native())
-            assert num_readers != 0
-            c_remote_num_readers.push_back(num_readers)
+        for node_id, reader_ref_info in remote_reader_ref_info.items():
+            c_reader_ref_info = CReaderRefInfo()
+            c_reader_ref_info.reader_ref_id = (<ObjectRef>reader_ref_info.reader_ref).native()
+            c_reader_ref_info.owner_reader_actor_id = (<ActorID>reader_ref_info.ref_owner_actor_id).native()
+            num_reader_actors = reader_ref_info.num_reader_actors
+            assert num_reader_actors != 0
+            c_reader_ref_info.num_reader_actors = num_reader_actors
+            c_remote_reader_ref_info.push_back(c_reader_ref_info)
+            c_remote_reader_nodes.push_back(CNodeID.FromHex(node_id))
 
         with nogil:
             check_status(CCoreWorkerProcess.GetCoreWorker()
@@ -3719,9 +3715,7 @@ cdef class CoreWorker:
                     CCoreWorkerProcess.GetCoreWorker()
                     .ExperimentalRegisterMutableObjectReaderRemote(
                         c_writer_ref,
-                        c_remote_readers,
-                        c_remote_num_readers,
-                        c_remote_reader_refs
+                        c_remote_reader_ref_info,
                     ))
 
     def experimental_channel_register_reader(self, ObjectRef object_ref):
