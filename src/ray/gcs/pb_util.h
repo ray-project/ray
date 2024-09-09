@@ -21,7 +21,6 @@
 #include "ray/common/ray_config.h"
 #include "ray/common/task/task_spec.h"
 #include "src/ray/protobuf/autoscaler.pb.h"
-#include "src/ray/protobuf/export_api/export_task_event.pb.h"
 #include "src/ray/protobuf/gcs.pb.h"
 
 namespace ray {
@@ -248,59 +247,6 @@ inline void FillTaskInfo(rpc::TaskInfoEntry *task_info,
   }
 }
 
-// Fill task_info for the export API with task specification from task_spec
-inline void FillExportTaskInfo(rpc::ExportTaskEventData::TaskInfoEntry *task_info,
-                               const TaskSpecification &task_spec) {
-  rpc::TaskType type;
-  if (task_spec.IsNormalTask()) {
-    type = rpc::TaskType::NORMAL_TASK;
-  } else if (task_spec.IsDriverTask()) {
-    type = rpc::TaskType::DRIVER_TASK;
-  } else if (task_spec.IsActorCreationTask()) {
-    type = rpc::TaskType::ACTOR_CREATION_TASK;
-    task_info->set_actor_id(task_spec.ActorCreationId().Binary());
-  } else {
-    RAY_CHECK(task_spec.IsActorTask());
-    type = rpc::TaskType::ACTOR_TASK;
-    task_info->set_actor_id(task_spec.ActorId().Binary());
-  }
-  task_info->set_type(type);
-  task_info->set_language(task_spec.GetLanguage());
-  task_info->set_func_or_class_name(task_spec.FunctionDescriptor()->CallString());
-
-  task_info->set_task_id(task_spec.TaskId().Binary());
-  // NOTE: we set the parent task id of a task to be submitter's task id, where
-  // the submitter depends on the owner coreworker's:
-  // - if the owner coreworker runs a normal task, the submitter's task id is the task id.
-  // - if the owner coreworker runs an actor, the submitter's task id will be the actor's
-  // creation task id.
-  task_info->set_parent_task_id(task_spec.SubmitterTaskId().Binary());
-  const auto &resources_map = task_spec.GetRequiredResources().GetResourceMap();
-  task_info->mutable_required_resources()->insert(resources_map.begin(),
-                                                  resources_map.end());
-
-  auto export_runtime_env_info = task_info->mutable_runtime_env_info();
-  export_runtime_env_info->set_serialized_runtime_env(
-      task_spec.RuntimeEnvInfo().serialized_runtime_env());
-  auto export_runtime_env_uris = export_runtime_env_info->mutable_uris();
-  export_runtime_env_uris->set_working_dir_uri(
-      task_spec.RuntimeEnvInfo().uris().working_dir_uri());
-  export_runtime_env_uris->mutable_py_modules_uris()->CopyFrom(
-      task_spec.RuntimeEnvInfo().uris().py_modules_uris());
-  auto export_runtime_env_config = export_runtime_env_info->mutable_runtime_env_config();
-  export_runtime_env_config->set_setup_timeout_seconds(
-      task_spec.RuntimeEnvInfo().runtime_env_config().setup_timeout_seconds());
-  export_runtime_env_config->set_eager_install(
-      task_spec.RuntimeEnvInfo().runtime_env_config().eager_install());
-  export_runtime_env_config->mutable_log_files()->CopyFrom(
-      task_spec.RuntimeEnvInfo().runtime_env_config().log_files());
-
-  const auto &pg_id = task_spec.PlacementGroupBundleId().first;
-  if (!pg_id.IsNil()) {
-    task_info->set_placement_group_id(pg_id.Binary());
-  }
-}
-
 /// Generate a RayErrorInfo from ErrorType
 inline rpc::RayErrorInfo GetRayErrorInfo(const rpc::ErrorType &error_type,
                                          const std::string &error_msg = "") {
@@ -379,34 +325,6 @@ inline void FillTaskStatusUpdateTime(const ray::rpc::TaskStatus &task_status,
     return;
   }
   (*state_updates->mutable_state_ts_ns())[task_status] = timestamp;
-}
-
-/// Fill the rpc::ExportTaskEventData::TaskStateUpdate with the timestamps
-/// according to the status change.
-///
-/// \param task_status The task status.
-/// \param timestamp The timestamp.
-/// \param[out] state_updates The state updates with timestamp to be updated.
-inline void FillExportTaskStatusUpdateTime(
-    const ray::rpc::TaskStatus &task_status,
-    int64_t timestamp,
-    rpc::ExportTaskEventData::TaskStateUpdate *state_updates) {
-  if (task_status == rpc::TaskStatus::NIL) {
-    // Not status change.
-    return;
-  }
-  (*state_updates->mutable_state_ts_ns())[task_status] = timestamp;
-}
-
-/// Convert rpc::TaskLogInfo to rpc::ExportTaskEventData::TaskLogInfo
-inline void TaskLogInfoToExport(const rpc::TaskLogInfo &src,
-                                rpc::ExportTaskEventData::TaskLogInfo *dest) {
-  dest->set_stdout_file(src.stdout_file());
-  dest->set_stderr_file(src.stderr_file());
-  dest->set_stdout_start(src.stdout_start());
-  dest->set_stdout_end(src.stdout_end());
-  dest->set_stderr_start(src.stderr_start());
-  dest->set_stderr_end(src.stderr_end());
 }
 
 inline std::string FormatPlacementGroupLabelName(const std::string &pg_id) {
