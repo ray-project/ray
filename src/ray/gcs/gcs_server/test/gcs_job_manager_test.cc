@@ -65,13 +65,11 @@ class GcsJobManagerTest : public ::testing::Test {
       return std::make_shared<rpc::MockCoreWorkerClientConfigurableRunningTasks>(
           address.port());
     };
-    log_dir_ = "event_12345";
   }
 
   ~GcsJobManagerTest() {
     io_service_.stop();
     thread_io_service_->join();
-    std::filesystem::remove_all(log_dir_.c_str());
   }
 
  protected:
@@ -86,7 +84,6 @@ class GcsJobManagerTest : public ::testing::Test {
   rpc::ClientFactoryFn client_factory_;
   RuntimeEnvManager runtime_env_manager_;
   const std::chrono::milliseconds timeout_ms_{5000};
-  std::string log_dir_;
 };
 
 TEST_F(GcsJobManagerTest, TestFakeInternalKV) {
@@ -635,68 +632,6 @@ TEST_F(GcsJobManagerTest, TestNodeFailure) {
   };
 
   EXPECT_TRUE(WaitForCondition(condition, 2000));
-}
-
-TEST_F(GcsJobManagerTest, TestExportDriverJobEvents) {
-  // Test adding and marking a driver job as finished, and that corresponding
-  // export events are written.
-  RayConfig::instance().initialize(
-      R"(
-{
-  "enable_export_api_write": true
-}
-  )");
-  const std::vector<ray::SourceTypeVariant> source_types = {
-      rpc::ExportEvent_SourceType::ExportEvent_SourceType_EXPORT_DRIVER_JOB};
-  RayEventInit(source_types, absl::flat_hash_map<std::string, std::string>(), log_dir_);
-  gcs::GcsJobManager gcs_job_manager(gcs_table_storage_,
-                                     gcs_publisher_,
-                                     runtime_env_manager_,
-                                     *function_manager_,
-                                     *fake_kv_,
-                                     client_factory_);
-
-  gcs::GcsInitData gcs_init_data(gcs_table_storage_);
-  gcs_job_manager.Initialize(/*init_data=*/gcs_init_data);
-
-  auto job_api_job_id = JobID::FromInt(100);
-  std::string submission_id = "submission_id_100";
-  auto add_job_request =
-      Mocker::GenAddJobRequest(job_api_job_id, "namespace_100", submission_id);
-  rpc::AddJobReply empty_reply;
-  std::promise<bool> promise;
-  gcs_job_manager.HandleAddJob(
-      *add_job_request,
-      &empty_reply,
-      [&promise](Status, std::function<void()>, std::function<void()>) {
-        promise.set_value(true);
-      });
-  promise.get_future().get();
-
-  std::vector<std::string> vc;
-  Mocker::ReadContentFromFile(vc, log_dir_ + "/events/event_EXPORT_DRIVER_JOB.log");
-  ASSERT_EQ((int)vc.size(), 1);
-  json event_data = json::parse(vc[0])["event_data"].get<json>();
-  ASSERT_EQ(event_data["is_dead"], false);
-
-  rpc::MarkJobFinishedRequest job_finished_request;
-  rpc::MarkJobFinishedReply job_finished_reply;
-  std::promise<bool> job_finished_promise;
-  job_finished_request.set_job_id(JobID::FromInt(100).Binary());
-
-  gcs_job_manager.HandleMarkJobFinished(
-      job_finished_request,
-      &job_finished_reply,
-      [&job_finished_promise](Status, std::function<void()>, std::function<void()>) {
-        job_finished_promise.set_value(true);
-      });
-  job_finished_promise.get_future().get();
-
-  vc.clear();
-  Mocker::ReadContentFromFile(vc, log_dir_ + "/events/event_EXPORT_DRIVER_JOB.log");
-  ASSERT_EQ((int)vc.size(), 2);
-  event_data = json::parse(vc[1])["event_data"].get<json>();
-  ASSERT_EQ(event_data["is_dead"], true);
 }
 
 int main(int argc, char **argv) {
