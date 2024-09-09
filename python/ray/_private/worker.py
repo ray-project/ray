@@ -134,27 +134,7 @@ RF = TypeVar("RF", bound="HasOptions")
 
 
 class HasOptions(Protocol):
-    def options(
-        self: RF,
-        num_returns: Union[int, Literal["streaming"]] = Undefined,
-        num_cpus: Union[int, float] = Undefined,
-        num_gpus: Union[int, float] = Undefined,
-        resources: Dict[str, float] = Undefined,
-        accelerator_type: str = Undefined,
-        memory: Union[int, float] = Undefined,
-        max_calls: int = Undefined,
-        max_restarts: int = Undefined,
-        max_task_retries: int = Undefined,
-        max_retries: int = Undefined,
-        runtime_env: Dict[str, Any] = Undefined,
-        retry_exceptions: bool = Undefined,
-        scheduling_strategy: Union[
-            None,
-            Literal["DEFAULT"],
-            Literal["SPREAD"],
-            PlacementGroupSchedulingStrategy,
-        ] = Undefined,
-    ) -> RF:
+    def options(self: RF, **task_options) -> RF:
         ...
 
 
