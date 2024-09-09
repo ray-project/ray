@@ -33,7 +33,6 @@ class Actor:
                     raise RuntimeError("injected fault")
 
     def inc(self, x):
-        print(self.i)
         self.i += x
         self.count += 1
         self._fail_if_needed()
@@ -73,7 +72,7 @@ def test_readers_on_different_nodes(ray_start_cluster):
     # one of the readers.
     cluster.add_node(num_cpus=1)
     ray.init(address=cluster.address)
-    # This node is for the other reader.
+    # 2 more nodes for other readers.
     cluster.add_node(num_cpus=1)
     cluster.add_node(num_cpus=1)
     cluster.wait_for_nodes()
@@ -88,8 +87,8 @@ def test_readers_on_different_nodes(ray_start_cluster):
     def _get_node_id(self) -> "ray.NodeID":
         return ray.get_runtime_context().get_node_id()
 
-    nodes_check = ray.get([act.__ray_call__.remote(_get_node_id) for act in actors])
-    assert len(set(nodes_check)) == 3
+    node_ids = ray.get([act.__ray_call__.remote(_get_node_id) for act in actors])
+    assert len(set(node_ids)) == 3
 
     with InputNode() as inp:
         x = a.inc.bind(inp)
@@ -109,9 +108,10 @@ def test_bunch_readers_on_different_nodes(ray_start_cluster):
     cluster = ray_start_cluster
     ACTORS_PER_NODE = 2
     NUM_REMOTE_NODES = 2
+    # driver node
     cluster.add_node(num_cpus=ACTORS_PER_NODE)
     ray.init(address=cluster.address)
-    # This node is for the other two readers.
+    # additional nodes for multi readers in multi nodes
     for _ in range(NUM_REMOTE_NODES):
         cluster.add_node(num_cpus=ACTORS_PER_NODE)
     cluster.wait_for_nodes()
@@ -126,8 +126,8 @@ def test_bunch_readers_on_different_nodes(ray_start_cluster):
     def _get_node_id(self) -> "ray.NodeID":
         return ray.get_runtime_context().get_node_id()
 
-    nodes_check = ray.get([act.__ray_call__.remote(_get_node_id) for act in actors])
-    assert len(set(nodes_check)) == NUM_REMOTE_NODES + 1
+    node_ids = ray.get([act.__ray_call__.remote(_get_node_id) for act in actors])
+    assert len(set(node_ids)) == NUM_REMOTE_NODES + 1
 
     with InputNode() as inp:
         outputs = []
@@ -268,8 +268,8 @@ def test_multi_node_multi_reader_large_payload(
     def _get_node_id(self) -> "ray.NodeID":
         return ray.get_runtime_context().get_node_id()
 
-    nodes_check = ray.get([act.__ray_call__.remote(_get_node_id) for act in actors])
-    assert len(set(nodes_check)) == NUM_REMOTE_NODES + 1
+    node_ids = ray.get([act.__ray_call__.remote(_get_node_id) for act in actors])
+    assert len(set(node_ids)) == NUM_REMOTE_NODES + 1
 
     with InputNode() as inp:
         outputs = []
