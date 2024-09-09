@@ -4,11 +4,13 @@ from typing import TYPE_CHECKING, List, Optional, Tuple
 import ray
 from ray.experimental.channel import ChannelContext, ChannelOutputType
 from ray.experimental.channel.shared_memory_channel import SharedMemoryType
+from ray.experimental.channel.gpu_communicator import (
+    GPUCommunicator,
+)
 from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
     from ray.experimental.channel.shared_memory_channel import Channel
-
 
 logger = logging.getLogger(__name__)
 
@@ -20,7 +22,7 @@ class TorchTensorType(ChannelOutputType):
 
     def __init__(
         self,
-        transport: Optional[str] = AUTO,
+        transport: Optional[Union[str, GPUCommunicator]] = AUTO,
         _static_shape: bool = False,
         _static_tensor_schema: bool = False,
     ):
@@ -72,8 +74,11 @@ class TorchTensorType(ChannelOutputType):
         self._static_shape = _static_shape
         self._static_tensor_schema = _static_tensor_schema
 
-        if transport is None:
-            transport = self.AUTO
+        self._custom_nccl_group: Optional[GPUCommunicator] = None
+        if isinstance(transport, GPUCommunicator):
+            self._custom_nccl_group = transport
+            transport = self.NCCL
+
         if transport not in [self.AUTO, self.NCCL]:
             raise ValueError(
                 "`transport` must be TorchTensorType.AUTO or TorchTensorType.NCCL"
@@ -164,6 +169,12 @@ class TorchTensorType(ChannelOutputType):
 
     def requires_nccl(self) -> bool:
         return self.transport == self.NCCL
+
+    def get_custom_nccl_group(self) -> Optional[GPUCommunicator]:
+        """
+        Return the custom NCCL group if one is specified.
+        """
+        return self._custom_nccl_group
 
     def set_nccl_group_id(self, group_id: str) -> None:
         self._nccl_group_id = group_id

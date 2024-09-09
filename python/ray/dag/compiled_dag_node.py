@@ -1,5 +1,6 @@
 import asyncio
 from collections import defaultdict, deque
+from dataclasses import dataclass, asdict
 from typing import Any, Dict, List, Tuple, Union, Optional, Set
 import logging
 import threading
@@ -9,6 +10,7 @@ import traceback
 from typing import NamedTuple
 
 from ray.experimental.channel.cached_channel import CachedChannel
+from ray.experimental.channel.gpu_communicator import GPUCommunicator
 import ray
 from ray.exceptions import RayTaskError, RayChannelError
 from ray.util.annotations import PublicAPI
@@ -116,6 +118,57 @@ def do_exec_tasks(
                 done = tasks[operation.exec_task_idx].exec_operation(
                     self, operation.type
                 )
+                if done:
+                    break
+    except Exception:
+        logging.exception("Compiled DAG task exited with exception")
+        raise
+
+
+@DeveloperAPI
+def do_profile_tasks(
+    self,
+    tasks: List["ExecutableTask"],
+    schedule: List[_DAGNodeOperation],
+) -> None:
+    """A generic actor method similar to `do_exec_tasks`, but with profiling enabled.
+
+    Args:
+        tasks: the executable tasks corresponding to the actor methods.
+        schedule: A list of _DAGNodeOperation that should be executed in order.
+    """
+    try:
+        for task in tasks:
+            task.prepare()
+
+        if not hasattr(self, "__ray_adag_events"):
+            self.__ray_adag_events = []
+
+        done = False
+        while True:
+            if done:
+                break
+            for operation in schedule:
+                start_t = time.perf_counter()
+                task = tasks[operation.exec_task_idx]
+                done = tasks[operation.exec_task_idx].exec_operation(
+                    self, operation.type
+                )
+                end_t = time.perf_counter()
+
+                self.__ray_adag_events.append(
+                    _ExecutableTaskRecord(
+                        actor_classname=self.__class__.__name__,
+                        actor_name=ray.get_runtime_context().get_actor_name(),
+                        actor_id=ray.get_runtime_context().get_actor_id(),
+                        method_name=task.method_name,
+                        bind_index=task.bind_index,
+                        operation=operation.type.value,
+                        start_t=start_t,
+                        end_t=end_t,
+                    )
+                )
+
                 if done:
                     break
     except Exception:
@@ -494,6 +547,21 @@ class ExecutableTask:
             return self._write()
 
 
+@dataclass
+class _ExecutableTaskRecord:
+    actor_classname: str
+    actor_name: str
+    actor_id: str
+    method_name: str
+    bind_index: int
+    operation: str
+    start_t: float
+    end_t: float
+
+    def to_dict(self):
+        return asdict(self)
+
+
 @DeveloperAPI
 class CompiledDAG:
     """Experimental class for accelerated execution.
@@ -640,6 +708,11 @@ class CompiledDAG:
         # Type hints specified by the user for DAG (intermediate) outputs.
         self._type_hints = []
 
+        # This is set to true when type hint of `transport="nccl"`` is used
+        self._use_default_nccl_group = False
+        # This is set to the specified custom nccl group
+        # if there exists a type hint of `transport=nccl_group`
+        self._custom_nccl_group: Optional[GPUCommunicator] = None
         # Uniquely identifies the NCCL communicator that will be used within
         # this DAG, if any.
         self._nccl_group_id: Optional[str] = None
@@ -806,6 +879,33 @@ class CompiledDAG:
                 if dag_node.type_hint.requires_nccl():
                     # Add all writers to the NCCL group.
                     nccl_actors.add(actor_handle)
+                    custom_nccl_group = dag_node.type_hint.get_custom_nccl_group()
+                    mixed_nccl_group_error_message = (
+                        "Accelerated DAGs do not support mixed usage of "
+                        "type hints of default NCCL group "
+                        '(i.e., TorchTensor(transport="nccl"))'
+                        "and custom NCCL group "
+                        "(i.e., TorchTensor(transport=nccl_group)). "
+                        "Please check all the TorchTensor type hints and "
+                        "make sure only one type of NCCL transport is specified."
+                    )
+                    if custom_nccl_group is None:
+                        if self._custom_nccl_group is not None:
+                            raise ValueError(mixed_nccl_group_error_message)
+                        self._use_default_nccl_group = True
+                    else:
+                        if self._use_default_nccl_group:
+                            raise ValueError(mixed_nccl_group_error_message)
+                        if self._custom_nccl_group is not None:
+                            if self._custom_nccl_group != custom_nccl_group:
+                                raise ValueError(
+                                    "Accelerated DAGs currently only support "
+                                    "a single custom NCCL group, but multiple "
+                                    "have been specified. Check all the "
+                                    "TorchTensor(transport=nccl_group) type hints "
+                                    "to make sure only one NCCL group is used."
+                                )
+                        self._custom_nccl_group = custom_nccl_group
             elif isinstance(dag_node, InputNode):
                 if dag_node.type_hint.requires_nccl():
                     raise ValueError(
@@ -919,7 +1019,7 @@ class CompiledDAG:
                 "cannot participate in the NCCL group"
             )
         if nccl_actors and self._nccl_group_id is None:
-            self._nccl_group_id = _init_nccl_group(nccl_actors)
+            self._nccl_group_id = _init_nccl_group(nccl_actors, self._custom_nccl_group)
 
         if direct_input:
             self._input_num_positional_args = 1
@@ -1217,22 +1317,20 @@ class CompiledDAG:
             # or use InputAttributeNode, but not both.
             num_input_consumers = 0
 
-            # Step 1: populate num_channel_reads and perform some validation.
+            # Step 1: populate `arg_to_consumers` and `num_input_consumers` and
+            # perform some validation.
             for task in tasks:
                 has_at_least_one_channel_input = False
+                is_input_consumer = False
                 for arg in task.args:
                     if isinstance(arg, InputNode):
                         has_at_least_one_channel_input = True
                         arg_to_consumers[arg].add(task)
-                        num_input_consumers = max(
-                            num_input_consumers, len(arg_to_consumers[arg])
-                        )
+                        is_input_consumer = True
                     elif isinstance(arg, InputAttributeNode):
                         has_at_least_one_channel_input = True
                         arg_to_consumers[arg].add(task)
-                        num_input_consumers = max(
-                            num_input_consumers, len(arg_to_consumers[arg])
-                        )
+                        is_input_consumer = True
                     elif isinstance(arg, DAGNode):  # Other DAGNodes
                         has_at_least_one_channel_input = True
                         arg_to_consumers[arg].add(task)
@@ -1241,6 +1339,8 @@ class CompiledDAG:
                         assert len(upstream_task.output_channels) == 1
                         arg_channel = upstream_task.output_channels[0]
                         assert arg_channel is not None
+                if is_input_consumer:
+                    num_input_consumers += 1
                 # TODO: Support no-input DAGs (use an empty object to signal).
                 if not has_at_least_one_channel_input:
                     raise ValueError(
@@ -1317,12 +1417,19 @@ class CompiledDAG:
             self.actor_to_executable_tasks[actor_handle] = executable_tasks
 
         # Build an execution schedule for each actor
+        from ray.dag.constants import RAY_ADAG_ENABLE_PROFILING
+
+        if RAY_ADAG_ENABLE_PROFILING:
+            exec_task_func = do_profile_tasks
+        else:
+            exec_task_func = do_exec_tasks
+
         self.actor_to_execution_schedule = self._build_execution_schedule()
         for actor_handle, executable_tasks in self.actor_to_executable_tasks.items():
             self.worker_task_refs[actor_handle] = actor_handle.__ray_call__.options(
                 concurrency_group="_ray_system"
             ).remote(
-                do_exec_tasks,
+                exec_task_func,
                 executable_tasks,
                 self.actor_to_execution_schedule[actor_handle],
             )

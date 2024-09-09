@@ -171,7 +171,8 @@ class RuntimeEnvAgent:
         self,
         runtime_env_dir,
         logging_params,
-        gcs_address,
+        gcs_address: str,
+        cluster_id_hex: str,
         temp_dir,
         address,
         runtime_env_agent_port,
@@ -193,7 +194,6 @@ class RuntimeEnvAgent:
         self._logger.info(f"Parent raylet pid is {os.environ.get('RAY_RAYLET_PID')}")
 
         self._runtime_env_dir = runtime_env_dir
-        self._gcs_address = gcs_address
         self._per_job_logger_cache = dict()
         # Cache the results of creating envs to avoid repeatedly calling into
         # conda and other slow calls.
@@ -201,7 +201,9 @@ class RuntimeEnvAgent:
         # Maps a serialized runtime env to a lock that is used
         # to prevent multiple concurrent installs of the same env.
         self._env_locks: Dict[str, asyncio.Lock] = dict()
-        self._gcs_aio_client = GcsAioClient(address=self._gcs_address)
+        self._gcs_aio_client = GcsAioClient(
+            address=gcs_address, cluster_id=cluster_id_hex
+        )
 
         self._pip_plugin = PipPlugin(self._runtime_env_dir)
         self._conda_plugin = CondaPlugin(self._runtime_env_dir)

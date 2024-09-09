@@ -9,6 +9,9 @@ import ray
 import ray.util.serialization
 from ray.experimental.channel import ChannelContext
 from ray.experimental.channel.common import ChannelInterface, _ResizeChannel
+from ray.experimental.channel.gpu_communicator import (
+    GPUCommunicator,
+)
 from ray.experimental.channel.nccl_group import _NcclGroup
 from ray.experimental.channel.shared_memory_channel import SharedMemoryType
 from ray.experimental.channel.torch_tensor_type import TorchTensorType
@@ -270,14 +273,17 @@ class TorchTensorNcclChannel(ChannelInterface):
         self._tensor_schema_channel.close()
 
 
-def _torch_zeros_allocator(meta: _TorchTensorMetadata):
+def _torch_zeros_allocator(
+    shape: Union[int, Tuple[int]],
+    dtype: "torch.dtype",
+    ):
     """
     Allocate a zeros tensor buffer matching the given metadata.
     """
     import torch
 
     ctx = ChannelContext.get_current()
-    return torch.zeros(meta.shape, dtype=meta.dtype, device=ctx.torch_device)
+    return torch.zeros(shape, dtype=dtype, device=ctx.torch_device)
 
 
 class _TorchTensorNcclChannel(ChannelInterface):
@@ -320,8 +326,10 @@ class _TorchTensorNcclChannel(ChannelInterface):
             typ.nccl_group_id, str
         ), "NCCL group ID ({nccl_group_id}) must be a str."
         self._typ = typ
-        self._nccl_group_id: str = typ.nccl_group_id
-        self._nccl_group: "_NcclGroup" = ctx.nccl_groups[self._nccl_group_id]
+
+        assert self._typ.nccl_group_id is not None, "No NCCL group specified."
+        self._nccl_group_id: str = self._typ.nccl_group_id
+        self._nccl_group: "GPUCommunicator" = ctx.nccl_groups[self._typ.nccl_group_id]
         assert (
             self._nccl_group is not None
         ), "ChannelContext.nccl_group is not initialized."
@@ -519,8 +527,11 @@ class _TorchTensorNcclChannel(ChannelInterface):
 
         bufs: List["torch.Tensor"] = []
         for meta in meta_list:
-            buf = _torch_zeros_allocator(meta)
-            self._nccl_group.recv(buf, self._writer_rank)
+            buf = self._nccl_group.recv(
+                    meta._shape,
+                    meta._dtype,
+                    self._writer_rank,
+                    _torch_zeros_allocator)
             bufs.append(buf)
         # TODO: Sync CUDA stream after receiving all tensors, instead of after
         # each tensor.
@@ -535,7 +546,15 @@ class _TorchTensorNcclChannel(ChannelInterface):
             del ctx.nccl_groups[self._nccl_group_id]
 
 
-def _do_init_nccl_group(self, group_id, world_size, comm_id, rank, actor_handles):
+def _do_init_nccl_group(
+    self,
+    group_id,
+    world_size,
+    comm_id,
+    rank,
+    actor_handles,
+    custom_nccl_group: Optional[GPUCommunicator] = None,
+):
     import torch
 
     assert (
@@ -543,13 +562,17 @@ def _do_init_nccl_group(self, group_id, world_size, comm_id, rank, actor_handles
     ), "Actors participating in NCCL group must have at least one GPU assigned"
 
     ctx = ChannelContext.get_current()
-    ctx.nccl_groups[group_id] = _NcclGroup(
-        world_size,
-        comm_id,
-        rank,
-        actor_handles,
-        torch.cuda.current_stream().cuda_stream,
-    )
+    if custom_nccl_group is not None:
+        custom_nccl_group.initialize(rank)
+        ctx.nccl_groups[group_id] = custom_nccl_group
+    else:
+        ctx.nccl_groups[group_id] = _NcclGroup(
+            world_size,
+            comm_id,
+            rank,
+            actor_handles,
+            torch.cuda.current_stream().cuda_stream,
+        )
 
 
 def _do_destroy_nccl_group(self, group_id):
@@ -571,9 +594,50 @@ def _do_get_unique_nccl_id(self) -> bool:
     return nccl.get_unique_id()
 
 
+def _get_ranks(
+    actors: List[ray.actor.ActorHandle], custom_nccl_group: Optional[GPUCommunicator]
+) -> List[int]:
+    """
+    Get sorted ranks for the NCCL group to use. If custom_nccl_group is specified,
+    return all ranks from it, otherwise, return list(range(len(actors))).
+
+    Args:
+        actors: A list of actors that participate in the NCCL group.
+        custom_nccl_group: The custom NCCL group to use.
+    """
+    if custom_nccl_group is None:
+        return list(range(len(actors)))
+
+    assert len(actors) == custom_nccl_group.get_world_size(), (
+        "The world size of the custom NCCL group does not match the number "
+        "of actors."
+    )
+    ranks = set()
+    for actor in actors:
+        rank = custom_nccl_group.get_rank(actor)
+        assert rank not in ranks, "Duplicate rank in custom NCCL group"
+        ranks.add(rank)
+    assert custom_nccl_group.get_world_size() == len(actors), (
+        "The world size of the custom NCCL group "
+        f"({custom_nccl_group.get_world_size()}) "
+        "does not match the number of actors "
+        f"({len(actors)})."
+    )
+    return sorted(ranks)
+
+
 def _init_nccl_group(
     actors: List[ray.actor.ActorHandle],
+    custom_nccl_group: Optional[GPUCommunicator] = None,
 ) -> str:
+    """
+    Initialize a NCCL group with the given actors. If a custom NCCL group is
+    provided, then it will be used, otherwise a new NCCL group will be created.
+
+    Args:
+        actors: A list of actors that participate in the NCCL group.
+        custom_nccl_group: A custom NCCL group to initialize.
+    """
     ctx = ChannelContext.get_current()
 
     has_gpus = ray.get(
@@ -583,8 +647,9 @@ def _init_nccl_group(
         if not has_gpu:
             raise ValueError(
                 f"Actor {actor} returns a tensor with type hint "
-                'TorchTensor(transport="nccl") but actor does not have a '
-                "GPU assigned by Ray."
+                'TorchTensor(transport="nccl") or '
+                "TorchTensor(transport=nccl_group_handle)"
+                "but actor does not have a GPU assigned by Ray."
             )
 
     actor_ids = {actor._ray_actor_id for actor in actors}
@@ -597,9 +662,13 @@ def _init_nccl_group(
     # Used to uniquely identify this NCCL group.
     group_id = str(uuid.uuid4())
 
-    logger.info(f"Creating NCCL group {group_id} on actors: {actors}")
+    if custom_nccl_group is not None:
+        logger.info(f"Initializing custom NCCL group {group_id} on actors: {actors}")
+    else:
+        logger.info(f"Creating NCCL group {group_id} on actors: {actors}")
 
     world_size = len(actors)
+    ranks = _get_ranks(actors, custom_nccl_group)
     init_tasks = [
         actor.__ray_call__.remote(
             _do_init_nccl_group,
@@ -608,8 +677,9 @@ def _init_nccl_group(
             nccl_comm_id,
             rank,
             actors,
+            custom_nccl_group,
         )
-        for rank, actor in enumerate(actors)
+        for rank, actor in zip(ranks, actors)
     ]
     try:
         ray.get(init_tasks, timeout=30)
@@ -619,25 +689,31 @@ def _init_nccl_group(
         )
         ray.get(init_tasks)
 
-    logger.info("NCCL group created.")
+    logger.info("NCCL group initialized.")
 
-    ctx.nccl_groups[group_id] = _NcclGroup(
-        world_size,
-        nccl_comm_id,
-        rank=None,
-        actor_handles=actors,
-        cuda_stream=None,
-    )
+    if custom_nccl_group is not None:
+        ctx.nccl_groups[group_id] = custom_nccl_group
+    else:
+        ctx.nccl_groups[group_id] = _NcclGroup(
+            world_size,
+            nccl_comm_id,
+            rank=None,
+            actor_handles=actors,
+            cuda_stream=None,
+        )
     return group_id
 
 
 def _destroy_nccl_group(group_id: str) -> None:
+    """
+    Destroy the NCCL group with the given ID.
+    """
     ctx = ChannelContext.get_current()
     if group_id not in ctx.nccl_groups:
         return
 
     group = ctx.nccl_groups[group_id]
-    actors = group._get_actor_handles()
+    actors = group.get_actor_handles()
     destroy_tasks = [
         actor.__ray_call__.remote(
             _do_destroy_nccl_group,

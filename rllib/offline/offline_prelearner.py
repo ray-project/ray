@@ -150,7 +150,7 @@ class OfflinePreLearner:
             episodes = OfflinePreLearner._map_sample_batch_to_episode(
                 self._is_multi_agent,
                 batch,
-                finalize=False,
+                finalize=True,
                 schema=SCHEMA | self.config.input_read_schema,
                 input_compress_columns=self.config.input_compress_columns,
             )["episodes"]
@@ -160,7 +160,7 @@ class OfflinePreLearner:
                 self._is_multi_agent,
                 batch,
                 schema=SCHEMA | self.config.input_read_schema,
-                finalize=False,
+                finalize=True,
                 input_compress_columns=self.config.input_compress_columns,
                 observation_space=self.observation_space,
                 action_space=self.action_space,
@@ -285,7 +285,7 @@ class OfflinePreLearner:
             else:
                 # Build a single-agent episode with a single row of the batch.
                 episode = SingleAgentEpisode(
-                    id_=batch[schema[Columns.EPS_ID]][i],
+                    id_=str(batch[schema[Columns.EPS_ID]][i]),
                     agent_id=agent_id,
                     # Observations might be (a) serialized and/or (b) converted
                     # to a JSONable (when a composite space was used). We unserialize
@@ -412,7 +412,7 @@ class OfflinePreLearner:
                 )
                 # Create a `SingleAgentEpisode`.
                 episode = SingleAgentEpisode(
-                    id_=batch[schema[Columns.EPS_ID]][i][0],
+                    id_=str(batch[schema[Columns.EPS_ID]][i][0]),
                     agent_id=agent_id,
                     observations=obs,
                     infos=(

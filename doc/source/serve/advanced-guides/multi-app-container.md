@@ -169,7 +169,10 @@ Currently, use of the `container` field is not supported with any other field in
 
 ### Environment variables
 
-All environment variables that start with the prefix `RAY_` (including the two special variables `RAY_RAYLET_PID` and `RAY_JOB_ID`) are propagated into the container's environment at runtime.
+The following environment variables will be set for the process in your container, in order of highest to lowest priority:
+1. Environment variables specified in `runtime_env["env_vars"]`.
+2. All environment variables that start with the prefix `RAY_` (including the two special variables `RAY_RAYLET_PID` and `RAY_JOB_ID`) are inherited by the container at runtime.
+3. Any environment variables set in the docker image.
 
 ### Running the Ray cluster in a Docker container
 

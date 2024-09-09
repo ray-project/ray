@@ -7,7 +7,6 @@ import signal
 import subprocess
 import sys
 import time
-import traceback
 import urllib
 import urllib.parse
 import warnings
@@ -55,6 +54,18 @@ from ray.core.generated import autoscaler_pb2
 
 
 logger = logging.getLogger(__name__)
+
+
+def _check_ray_version(gcs_client):
+    import ray._private.usage.usage_lib as ray_usage_lib
+
+    cluster_metadata = ray_usage_lib.get_cluster_metadata(gcs_client)
+    if cluster_metadata and cluster_metadata["ray_version"] != ray.__version__:
+        raise RuntimeError(
+            "Ray version mismatch: cluster has Ray version "
+            f'{cluster_metadata["ray_version"]} '
+            f"but local Ray version is {ray.__version__}"
+        )
 
 
 @click.group()
@@ -1953,13 +1964,12 @@ def memory(
 ):
     """Print object references held in a Ray cluster."""
     address = services.canonicalize_bootstrap_address_or_die(address)
-    if not ray._raylet.check_health(address):
-        raise click.BadParameter(f"Ray cluster is not found at {address}")
+    gcs_client = ray._raylet.GcsClient(address=address)
+    _check_ray_version(gcs_client)
     time = datetime.now()
     header = "=" * 8 + f" Object references status: {time} " + "=" * 8
     mem_stats = memory_summary(
         address,
-        redis_password,
         group_by,
         sort_by,
         units,
@@ -1993,16 +2003,11 @@ def memory(
 def status(address: str, redis_password: str, verbose: bool):
     """Print cluster status, including autoscaling info."""
     address = services.canonicalize_bootstrap_address_or_die(address)
-    if not ray._raylet.check_health(address):
-        raise click.BadParameter(f"Ray cluster is not found at {address}")
     gcs_client = ray._raylet.GcsClient(address=address)
+    _check_ray_version(gcs_client)
     ray.experimental.internal_kv._initialize_internal_kv(gcs_client)
-    status = ray.experimental.internal_kv._internal_kv_get(
-        ray_constants.DEBUG_AUTOSCALING_STATUS
-    )
-    error = ray.experimental.internal_kv._internal_kv_get(
-        ray_constants.DEBUG_AUTOSCALING_ERROR
-    )
+    status = gcs_client.internal_kv_get(ray_constants.DEBUG_AUTOSCALING_STATUS.encode())
+    error = gcs_client.internal_kv_get(ray_constants.DEBUG_AUTOSCALING_ERROR.encode())
     print(debug_status(status, error, verbose=verbose, address=address))
 
 
@@ -2292,10 +2297,9 @@ def drain_node(
         raise click.BadParameter(f"Invalid hex ID of a Ray node, got {node_id}")
 
     address = services.canonicalize_bootstrap_address_or_die(address)
-    if not ray._raylet.check_health(address):
-        raise click.BadParameter(f"Ray cluster is not found at {address}")
 
     gcs_client = ray._raylet.GcsClient(address=address)
+    _check_ray_version(gcs_client)
     is_accepted, rejection_error_message = gcs_client.drain_node(
         node_id,
         autoscaler_pb2.DrainNodeReason.Value(reason),
@@ -2370,20 +2374,15 @@ def healthcheck(address, redis_password, component, skip_version_check):
     """
 
     address = services.canonicalize_bootstrap_address_or_die(address)
+    gcs_client = ray._raylet.GcsClient(address=address)
+    if not skip_version_check:
+        _check_ray_version(gcs_client)
 
     if not component:
-        try:
-            if ray._raylet.check_health(address, skip_version_check=skip_version_check):
-                sys.exit(0)
-        except Exception:
-            traceback.print_exc()
-            pass
-        sys.exit(1)
+        sys.exit(0)
 
-    gcs_client = ray._raylet.GcsClient(address=address)
-    ray.experimental.internal_kv._initialize_internal_kv(gcs_client)
-    report_str = ray.experimental.internal_kv._internal_kv_get(
-        component, namespace=ray_constants.KV_NAMESPACE_HEALTHCHECK
+    report_str = gcs_client.internal_kv_get(
+        component.encode(), namespace=ray_constants.KV_NAMESPACE_HEALTHCHECK
     )
     if not report_str:
         # Status was never updated
