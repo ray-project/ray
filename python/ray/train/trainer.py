@@ -1,4 +1,5 @@
 import logging
+import traceback
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, TypeVar, Union
 
@@ -136,11 +137,17 @@ class TrainingIterator:
         except StartTraceback as e:
             # If this is a StartTraceback, then this is a user error.
             # We raise it directly
-            stack_trace = skip_exceptions(e)
             if isinstance(e, StartTracebackWithWorkerRank):
                 failed_rank = e.worker_rank
             else:
                 failed_rank = None
+
+            # Extract the stack trace from the exception
+            e = skip_exceptions(e)
+            stack_trace = "".join(
+                traceback.format_exception(type(e), e, e.__traceback__)
+            )
+
             self._backend_executor.report_final_run_status(
                 errored=True, stack_trace=stack_trace, failed_rank=failed_rank
             )
