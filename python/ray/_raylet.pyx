@@ -2908,7 +2908,7 @@ cdef class OldGcsClient:
 
     @_auto_reconnect
     def get_all_job_info(
-        self, query_job_info_field=False, query_is_running_tasks_field=False,
+        self, skip_job_info_field=False, skip_is_running_tasks_field=False,
         timeout=None
     ) -> Dict[JobID, JobTableData]:
         # Ideally we should use json_format.MessageToDict(job_info),
@@ -2917,14 +2917,14 @@ cdef class OldGcsClient:
         # so we serialize the pb to string to cross the FFI interface.
         cdef:
             int64_t timeout_ms = round(1000 * timeout) if timeout else -1
-            c_bool c_query_job_info_field = query_job_info_field
-            c_bool c_query_is_running_tasks_field = query_is_running_tasks_field
+            c_bool c_skip_job_info_field = skip_job_info_field
+            c_bool c_skip_is_running_tasks_field = skip_is_running_tasks_field
             CJobTableData c_job_info
             c_vector[CJobTableData] c_job_infos
             c_vector[c_string] serialized_job_infos
         with nogil:
             check_status(self.inner.get().GetAllJobInfo(
-                c_query_job_info_field, c_query_is_running_tasks_field,
+                c_skip_job_info_field, c_skip_is_running_tasks_field,
                 timeout_ms, c_job_infos))
             for c_job_info in c_job_infos:
                 serialized_job_infos.push_back(c_job_info.SerializeAsString())

@@ -3611,7 +3611,7 @@ def test_job_info_is_running_task(shutdown_only):
 
     client = ray.worker.global_worker.gcs_client
     job_id = ray.worker.global_worker.current_job_id
-    all_job_info = client.get_all_job_info(query_is_running_tasks_field=True)
+    all_job_info = client.get_all_job_info()
     assert len(all_job_info) == 1
     assert job_id in all_job_info
     assert all_job_info[job_id].is_running_tasks is True
@@ -3636,7 +3636,7 @@ def test_hang_driver_has_no_is_running_task(monkeypatch, ray_start_cluster):
 
     client = ray.worker.global_worker.gcs_client
     my_job_id = ray.worker.global_worker.current_job_id
-    all_job_info = client.get_all_job_info(query_is_running_tasks_field=True)
+    all_job_info = client.get_all_job_info()
     assert list(all_job_info.keys()) == [my_job_id]
     assert not all_job_info[my_job_id].HasField("is_running_tasks")
 

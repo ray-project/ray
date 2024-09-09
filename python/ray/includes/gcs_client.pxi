@@ -433,28 +433,28 @@ cdef class NewGcsClient:
     #############################################################
 
     def get_all_job_info(
-        self, query_job_info_field=False, query_is_running_tasks_field=False,
+        self, skip_job_info_field=False, skip_is_running_tasks_field=False,
         timeout: Optional[float] = None
     ) -> Dict[JobID, gcs_pb2.JobTableData]:
         cdef int64_t timeout_ms = round(1000 * timeout) if timeout else -1
-        cdef c_bool c_query_job_info_field = query_job_info_field
-        cdef c_bool c_query_is_running_tasks_field = query_is_running_tasks_field
+        cdef c_bool c_skip_job_info_field = skip_job_info_field
+        cdef c_bool c_skip_is_running_tasks_field = skip_is_running_tasks_field
         cdef CRayStatus status
         cdef c_vector[CJobTableData] reply
         with nogil:
             status = self.inner.get().Jobs().GetAll(
-                reply, c_query_job_info_field,
-                c_query_is_running_tasks_field, timeout_ms)
+                reply, c_skip_job_info_field,
+                c_skip_is_running_tasks_field, timeout_ms)
         return raise_or_return((convert_get_all_job_info(status, move(reply))))
 
     def async_get_all_job_info(
-        self, query_job_info_field=False, query_is_running_tasks_field=False,
+        self, skip_job_info_field=False, skip_is_running_tasks_field=False,
         timeout: Optional[float] = None
     ) -> Future[Dict[JobID, gcs_pb2.JobTableData]]:
         cdef:
             int64_t timeout_ms = round(1000 * timeout) if timeout else -1
-            c_bool c_query_job_info_field = query_job_info_field
-            c_bool c_query_is_running_tasks_field = query_is_running_tasks_field
+            c_bool c_skip_job_info_field = skip_job_info_field
+            c_bool c_skip_is_running_tasks_field = skip_is_running_tasks_field
             fut = incremented_fut()
         with nogil:
             check_status_timeout_as_rpc_error(
@@ -463,7 +463,7 @@ cdef class NewGcsClient:
                         &convert_get_all_job_info,
                         assign_and_decrement_fut,
                         fut),
-                    c_query_job_info_field, c_query_is_running_tasks_field, timeout_ms))
+                    c_skip_job_info_field, c_skip_is_running_tasks_field, timeout_ms))
         return asyncio.wrap_future(fut)
 
     #############################################################

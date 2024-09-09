@@ -203,7 +203,7 @@ void GcsJobManager::HandleGetAllJobInfo(rpc::GetAllJobInfoRequest request,
         job_data_key_to_indices[job_data_key].push_back(i);
       }
 
-      if (request.query_is_running_tasks_field()) {
+      if (!request.skip_is_running_tasks_field()) {
         JobID job_id = data.first;
         WorkerID worker_id =
             WorkerID::FromBinary(data.second.driver_address().worker_id());
@@ -250,7 +250,7 @@ void GcsJobManager::HandleGetAllJobInfo(rpc::GetAllJobInfoRequest request,
       i++;
     }
 
-    if (request.query_job_info_field()) {
+    if (!request.skip_job_info_field()) {
       // Load the JobInfo for jobs submitted via the Ray Job API.
       auto kv_multi_get_callback =
           [reply,

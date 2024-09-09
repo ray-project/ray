@@ -157,7 +157,9 @@ async def get_driver_jobs(
     It's keyed by the submission job's submission id.
     Only the last driver of a submission job is returned.
     """
-    job_infos = await gcs_aio_client.get_all_job_info(timeout=timeout)
+    job_infos = await gcs_aio_client.get_all_job_info(
+        skip_job_info_field=True, skip_is_running_tasks_field=True, timeout=timeout
+    )
     # Sort jobs from GCS to follow convention of returning only last driver
     # of submission job.
     sorted_job_infos = sorted(
