@@ -87,7 +87,6 @@ class RayClusterOnSpark:
 
     def __init__(
         self,
-        autoscale,
         address,
         head_proc,
         spark_job_group_id,
@@ -101,7 +100,6 @@ class RayClusterOnSpark:
         global_cluster_lock_fd,
         ray_client_server_port,
     ):
-        self.autoscale = autoscale
         self.address = address
         self.head_proc = head_proc
         self.spark_job_group_id = spark_job_group_id
@@ -672,7 +670,6 @@ def _setup_ray_cluster(
     os.environ["RAY_ADDRESS"] = cluster_address
 
     ray_cluster_handler = RayClusterOnSpark(
-        autoscale=(min_worker_nodes < max_worker_nodes),
         address=cluster_address,
         head_proc=ray_head_proc,
         spark_job_group_id=None,
@@ -1184,9 +1181,7 @@ def _setup_ray_cluster_internal(
                 shutdown_ray_cluster()
             except Exception:
                 pass
-            raise RuntimeError(
-                f"Launch Ray-on-Saprk cluster failed, root cause: {repr(e)}."
-            )
+            raise RuntimeError("Launch Ray-on-Saprk cluster failed") from e
 
     head_ip = cluster.address.split(":")[0]
     remote_connection_address = f"ray://{head_ip}:{cluster.ray_client_server_port}"
@@ -1463,7 +1458,6 @@ def _start_ray_worker_nodes(
     object_store_memory_per_node,
     worker_node_options,
     collect_log_to_path,
-    autoscale_mode,
     spark_job_server_port,
     node_id,
 ):
@@ -1555,43 +1549,42 @@ def _start_ray_worker_nodes(
         )
 
         try:
-            if autoscale_mode:
-                # Check node id availability
-                response = requests.post(
-                    url=(
-                        f"http://{ray_head_ip}:{spark_job_server_port}"
-                        "/check_node_id_availability"
-                    ),
-                    json={
-                        "node_id": node_id,
-                        "spark_job_group_id": spark_job_group_id,
-                    },
+            # Check node id availability
+            response = requests.post(
+                url=(
+                    f"http://{ray_head_ip}:{spark_job_server_port}"
+                    "/check_node_id_availability"
+                ),
+                json={
+                    "node_id": node_id,
+                    "spark_job_group_id": spark_job_group_id,
+                },
+            )
+            if not response.json()["available"]:
+                # The case happens when a Ray node is down unexpected
+                # caused by spark worker node down and spark tries to
+                # reschedule the spark task, so it triggers node
+                # creation with duplicated node id.
+                # in this case, finish the spark task immediately
+                # so spark won't try to reschedule this task
+                # and Ray autoscaler will trigger a new node creation
+                # with new node id, and a new spark job will be created
+                # for holding it.
+                raise RuntimeError(
+                    "Starting Ray worker node twice with the same node id "
+                    "is not allowed."
                 )
-                if not response.json()["available"]:
-                    # The case happens when a Ray node is down unexpected
-                    # caused by spark worker node down and spark tries to
-                    # reschedule the spark task, so it triggers node
-                    # creation with duplicated node id.
-                    # in this case, finish the spark task immediately
-                    # so spark won't try to reschedule this task
-                    # and Ray autoscaler will trigger a new node creation
-                    # with new node id, and a new spark job will be created
-                    # for holding it.
-                    raise RuntimeError(
-                        "Starting Ray worker node twice with the same node id "
-                        "is not allowed."
-                    )
 
-                # Notify job server the task has been launched.
-                requests.post(
-                    url=(
-                        f"http://{ray_head_ip}:{spark_job_server_port}"
-                        "/notify_task_launched"
-                    ),
-                    json={
-                        "spark_job_group_id": spark_job_group_id,
-                    },
-                )
+            # Notify job server the task has been launched.
+            requests.post(
+                url=(
+                    f"http://{ray_head_ip}:{spark_job_server_port}"
+                    "/notify_task_launched"
+                ),
+                json={
+                    "spark_job_group_id": spark_job_group_id,
+                },
+            )
 
             # Note:
             # When a pyspark job cancelled, the UDF python worker process are killed by
@@ -1604,15 +1597,12 @@ def _start_ray_worker_nodes(
                 extra_env=ray_worker_node_extra_envs,
             )
         except Exception as e:
-            if autoscale_mode:
-                # In autoscaling mode, when Ray worker node is down, autoscaler will
-                # try to start new Ray worker node if necessary,
-                # but we use spark job to launch Ray worker node process,
-                # to avoid trigger spark task retries, we swallow exception here
-                # to make spark task exit normally.
-                _logger.warning(f"Ray worker node process exit, reason: {repr(e)}.")
-            else:
-                raise
+            # In autoscaling mode, when Ray worker node is down, autoscaler will
+            # try to start new Ray worker node if necessary,
+            # but we use spark job to launch Ray worker node process,
+            # to avoid trigger spark task retries, we swallow exception here
+            # to make spark task exit normally.
+            _logger.warning(f"Ray worker node process exit, reason: {repr(e)}.")
 
         # NB: Not reachable.
         yield 0

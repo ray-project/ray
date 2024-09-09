@@ -62,7 +62,6 @@ class SparkJobServerRequestHandler(BaseHTTPRequestHandler):
                         object_store_memory_per_node=object_store_memory_per_node,
                         worker_node_options=worker_node_options,
                         collect_log_to_path=collect_log_to_path,
-                        autoscale_mode=True,
                         spark_job_server_port=self.server.server_address[1],
                         node_id=node_id,
                     )
