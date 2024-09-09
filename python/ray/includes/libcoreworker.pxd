@@ -84,9 +84,9 @@ cdef extern from "ray/core_worker/fiber.h" nogil:
 cdef extern from "ray/core_worker/experimental_mutable_object_manager.h" nogil:
     cdef cppclass CReaderRefInfo "ray::experimental::ReaderRefInfo":
         CReaderRefInfo()
-        CObjectID reader_ref_id;
-        CActorID owner_reader_actor_id;
-        int64_t num_reader_actors;
+        CObjectID reader_ref_id
+        CActorID owner_reader_actor_id
+        int64_t num_reader_actors
 
 
 cdef extern from "ray/core_worker/context.h" nogil:

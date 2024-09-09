@@ -3697,8 +3697,10 @@ cdef class CoreWorker:
 
         for node_id, reader_ref_info in remote_reader_ref_info.items():
             c_reader_ref_info = CReaderRefInfo()
-            c_reader_ref_info.reader_ref_id = (<ObjectRef>reader_ref_info.reader_ref).native()
-            c_reader_ref_info.owner_reader_actor_id = (<ActorID>reader_ref_info.ref_owner_actor_id).native()
+            c_reader_ref_info.reader_ref_id = (
+                <ObjectRef>reader_ref_info.reader_ref).native()
+            c_reader_ref_info.owner_reader_actor_id = (
+                <ActorID>reader_ref_info.ref_owner_actor_id).native()
             num_reader_actors = reader_ref_info.num_reader_actors
             assert num_reader_actors != 0
             c_reader_ref_info.num_reader_actors = num_reader_actors
