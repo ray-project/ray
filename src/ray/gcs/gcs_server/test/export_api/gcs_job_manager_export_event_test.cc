@@ -12,9 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "ray/gcs/gcs_server/gcs_job_manager.h"
-
 #include <memory>
+
+#include "ray/gcs/gcs_server/gcs_job_manager.h"
 
 // clang-format off
 #include "gtest/gtest.h"
