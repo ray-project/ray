@@ -57,7 +57,7 @@ from ray.util import inspect_serializability
 
 logger = logging.getLogger(__name__)
 ALLOW_OUT_OF_BAND_OBJECT_REF_SERIALIZATION = bool(
-    int(os.getenv("RAY_allow_out_of_band_object_ref_serialization", "0"))
+    int(os.getenv("RAY_allow_out_of_band_object_ref_serialization", "1"))
 )
 
 
