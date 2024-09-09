@@ -75,7 +75,7 @@ def _get_self_actor() -> Optional["ray.actor.ActorHandle"]:
 
 
 # A tuple of object reference and its corresponding actor that holds it.
-ReaderInfo = namedtuple("ReaderInfo", ["reader_ref", "reader_id"])
+ReaderInfo = namedtuple("ReaderInfo", ["reader_ref", "reader_actor_id"])
 
 
 class _ResizeChannel:
@@ -88,13 +88,13 @@ class _ResizeChannel:
 
     def __init__(
         self,
-        _node_id_to_reader_info: Dict[str, ReaderInfo] = None,
+        _node_id_to_reader_info: Dict[str, ReaderInfo],
     ):
         """
         Args:
             _node_id_to_reader_info: node_id -> reader info.
-                Each node should have only 1 reader actor and corresponding reference.
-        # that's shared by all readers.
+                Each node should have only 1 reader actor and corresponding reference
+                that's shared by all readers.
         """
         self._node_id_to_reader_info = _node_id_to_reader_info
 
@@ -170,7 +170,6 @@ class Channel(ChannelInterface):
         reader_and_node_list: List[Tuple["ray.actor.ActorHandle", str]],
         typ: Optional[Union[int, SharedMemoryType]] = None,
         _writer_node_id: Optional["ray.NodeID"] = None,
-        _reader_node_ids: Optional[Set["ray.NodeID"]] = None,
         _writer_ref: Optional["ray.ObjectRef"] = None,
         _node_id_to_reader_info: Optional[Dict[str, ReaderInfo]] = None,
         _writer_registered: bool = False,
@@ -217,7 +216,6 @@ class Channel(ChannelInterface):
 
         self._writer_registered = _writer_registered
         self._reader_registered = _reader_registered
-        self._reader_node_ids = _reader_node_ids or set()
         # node_id -> reader references. Each node should have only 1 reader reference
         # that's shared by all readers.
         self._node_id_to_reader_info: Dict[str, ReaderInfo] = (
@@ -242,9 +240,6 @@ class Channel(ChannelInterface):
             self_actor = _get_self_actor()
             assert writer == self_actor
 
-            for reader, node_id in reader_and_node_list:
-                self._reader_node_ids.add(node_id)
-
             self._writer_node_id = (
                 ray.runtime_context.get_runtime_context().get_node_id()
             )
@@ -263,7 +258,6 @@ class Channel(ChannelInterface):
 
             self._writer_ref = _writer_ref
             self._writer_node_id = _writer_node_id
-            self._reader_node_ids = _reader_node_ids
             self._node_id_to_reader_info = _node_id_to_reader_info
 
         assert self._num_local_readers == 0
@@ -309,14 +303,14 @@ class Channel(ChannelInterface):
                     reader_ref=ray.get(
                         fn.remote(_create_channel_ref, buffer_size_bytes)
                     ),
-                    reader_id=reader._actor_id,
+                    reader_actor_id=reader._actor_id,
                 )
             else:
                 writer_id = ray.ActorID.nil()
                 if self._writer is not None:
                     writer_id = self._writer._actor_id
                 self._node_id_to_reader_info[node_id] = ReaderInfo(
-                    reader_ref=self._writer_ref, reader_id=writer_id
+                    reader_ref=self._writer_ref, reader_actor_id=writer_id
                 )
         assert len(self._node_id_to_reader_info) == len(self._node_id_to_readers)
 
@@ -386,7 +380,6 @@ class Channel(ChannelInterface):
         reader_and_node_list: List[Tuple["ray.actor.ActorHandle", str]],
         typ: int,
         writer_node_id,
-        reader_node_ids,
         writer_ref: "ray.ObjectRef",
         node_id_to_reader_info: "ray.ObjectRef",
         writer_registered: bool,
@@ -397,7 +390,6 @@ class Channel(ChannelInterface):
             reader_and_node_list,
             typ,
             _writer_node_id=writer_node_id,
-            _reader_node_ids=reader_node_ids,
             _writer_ref=writer_ref,
             _node_id_to_reader_info=node_id_to_reader_info,
             _writer_registered=writer_registered,
@@ -412,7 +404,6 @@ class Channel(ChannelInterface):
             self._reader_and_node_list,
             self._typ,
             self._writer_node_id,
-            self._reader_node_ids,
             self._writer_ref,
             self._node_id_to_reader_info,
             self._writer_registered,
@@ -536,7 +527,7 @@ class Channel(ChannelInterface):
         self._worker.core_worker.experimental_channel_set_error(self._writer_ref)
         is_local_node_reader = False
 
-        for node_id in self._reader_node_ids:
+        for node_id in self._node_id_to_readers.keys():
             if self.is_local_node(node_id):
                 is_local_node_reader = True
         if is_local_node_reader:
