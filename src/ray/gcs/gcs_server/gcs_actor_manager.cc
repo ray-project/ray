@@ -241,6 +241,36 @@ const rpc::ActorTableData &GcsActor::GetActorTableData() const {
 
 rpc::ActorTableData *GcsActor::GetMutableActorTableData() { return &actor_table_data_; }
 
+void GcsActor::WriteActorExportEvent() const {
+  /// Write actor_table_data_ as a export actor event if
+  /// enable_export_api_write() is enabled.
+  if (!RayConfig::instance().enable_export_api_write()) {
+    return;
+  }
+  std::shared_ptr<rpc::ExportActorData> export_actor_data_ptr =
+      std::make_shared<rpc::ExportActorData>();
+
+  export_actor_data_ptr->set_actor_id(actor_table_data_.actor_id());
+  export_actor_data_ptr->set_job_id(actor_table_data_.job_id());
+  export_actor_data_ptr->set_state(ConvertActorStateToExport(actor_table_data_.state()));
+  export_actor_data_ptr->set_is_detached(actor_table_data_.is_detached());
+  export_actor_data_ptr->set_name(actor_table_data_.name());
+  export_actor_data_ptr->set_pid(actor_table_data_.pid());
+  export_actor_data_ptr->set_ray_namespace(actor_table_data_.ray_namespace());
+  export_actor_data_ptr->set_serialized_runtime_env(
+      actor_table_data_.serialized_runtime_env());
+  export_actor_data_ptr->set_class_name(actor_table_data_.class_name());
+  export_actor_data_ptr->mutable_death_cause()->CopyFrom(actor_table_data_.death_cause());
+  export_actor_data_ptr->mutable_required_resources()->insert(
+      actor_table_data_.required_resources().begin(),
+      actor_table_data_.required_resources().end());
+  export_actor_data_ptr->set_node_id(actor_table_data_.node_id());
+  export_actor_data_ptr->set_placement_group_id(actor_table_data_.placement_group_id());
+  export_actor_data_ptr->set_repr_name(actor_table_data_.repr_name());
+
+  RayExportEvent(export_actor_data_ptr).SendEvent();
+}
+
 rpc::TaskSpec *GcsActor::GetMutableTaskSpec() { return task_spec_.get(); }
 
 const ResourceRequest &GcsActor::GetAcquiredResources() const {
@@ -770,6 +800,7 @@ Status GcsActorManager::RegisterActor(const ray::rpc::RegisterActorRequest &requ
             [this, actor](const Status &status) {
               // The backend storage is supposed to be reliable, so the status must be ok.
               RAY_CHECK_OK(status);
+              actor->WriteActorExportEvent();
               // If a creator dies before this callback is called, the actor could have
               // been already destroyed. It is okay not to invoke a callback because we
               // don't need to reply to the creator as it is already dead.
@@ -866,6 +897,7 @@ Status GcsActorManager::CreateActor(const ray::rpc::CreateActorRequest &request,
 
   // Pub this state for dashboard showing.
   RAY_CHECK_OK(gcs_publisher_->PublishActor(actor_id, actor_table_data, nullptr));
+  actor->WriteActorExportEvent();
   RemoveUnresolvedActor(actor);
 
   // Update the registered actor as its creation task specification may have changed due
@@ -1076,6 +1108,7 @@ void GcsActorManager::DestroyActor(const ActorID &actor_id,
       actor->GetActorID(),
       *actor_table_data,
       [this,
+       actor,
        actor_id,
        actor_table_data,
        is_restartable,
@@ -1089,6 +1122,7 @@ void GcsActorManager::DestroyActor(const ActorID &actor_id,
           RAY_CHECK_OK(
               gcs_table_storage_->ActorTaskSpecTable().Delete(actor_id, nullptr));
         }
+        actor->WriteActorExportEvent();
         // Destroy placement group owned by this actor.
         destroy_owned_placement_group_if_needed_(actor_id);
       }));
@@ -1376,12 +1410,13 @@ void GcsActorManager::RestartActor(const ActorID &actor_id,
     RAY_CHECK_OK(gcs_table_storage_->ActorTable().Put(
         actor_id,
         *mutable_actor_table_data,
-        [this, actor_id, mutable_actor_table_data, done_callback](Status status) {
+        [this, actor, actor_id, mutable_actor_table_data, done_callback](Status status) {
           if (done_callback) {
             done_callback();
           }
           RAY_CHECK_OK(gcs_publisher_->PublishActor(
               actor_id, *GenActorDataOnlyWithStates(*mutable_actor_table_data), nullptr));
+          actor->WriteActorExportEvent();
         }));
     gcs_actor_scheduler_->Schedule(actor);
   } else {
@@ -1411,6 +1446,7 @@ void GcsActorManager::RestartActor(const ActorID &actor_id,
               actor_id, *GenActorDataOnlyWithStates(*mutable_actor_table_data), nullptr));
           RAY_CHECK_OK(
               gcs_table_storage_->ActorTaskSpecTable().Delete(actor_id, nullptr));
+          actor->WriteActorExportEvent();
         }));
     // The actor is dead, but we should not remove the entry from the
     // registered actors yet. If the actor is owned, we will destroy the actor
@@ -1518,6 +1554,7 @@ void GcsActorManager::OnActorCreationSuccess(const std::shared_ptr<GcsActor> &ac
       [this, actor_id, actor_table_data, actor, reply](Status status) {
         RAY_CHECK_OK(gcs_publisher_->PublishActor(
             actor_id, *GenActorDataOnlyWithStates(actor_table_data), nullptr));
+        actor->WriteActorExportEvent();
         // Invoke all callbacks for all registration requests of this actor (duplicated
         // requests are included) and remove all of them from
         // actor_to_create_callbacks_.
