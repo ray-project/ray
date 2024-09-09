@@ -20,13 +20,21 @@ class ConnectorPipelineV2(ConnectorV2):
     """Utility class for quick manipulation of a connector pipeline."""
 
     @override(ConnectorV2)
-    def recompute_observation_space_from_input_spaces(self):
-        self._fix_spaces()
+    def recompute_output_observation_space(
+        self,
+        input_observation_space: gym.Space,
+        input_action_space: gym.Space,
+    ) -> gym.Space:
+        self._fix_spaces(input_observation_space, input_action_space)
         return self.observation_space
 
     @override(ConnectorV2)
-    def recompute_action_space_from_input_spaces(self):
-        self._fix_spaces()
+    def recompute_output_action_space(
+        self,
+        input_observation_space: gym.Space,
+        input_action_space: gym.Space,
+    ) -> gym.Space:
+        self._fix_spaces(input_observation_space, input_action_space)
         return self.action_space
 
     def __init__(
@@ -65,7 +73,7 @@ class ConnectorPipelineV2(ConnectorV2):
         self,
         *,
         rl_module: RLModule,
-        data: Any,
+        batch: Dict[str, Any],
         episodes: List[EpisodeType],
         explore: Optional[bool] = None,
         shared_data: Optional[dict] = None,
@@ -82,22 +90,24 @@ class ConnectorPipelineV2(ConnectorV2):
         for connector in self.connectors:
             timer = self.timers[str(connector)]
             with timer:
-                data = connector(
+                batch = connector(
                     rl_module=rl_module,
-                    data=data,
+                    batch=batch,
                     episodes=episodes,
                     explore=explore,
                     shared_data=shared_data,
+                    # Deprecated arg.
+                    data=batch,
                     **kwargs,
                 )
-                if not isinstance(data, dict):
+                if not isinstance(batch, dict):
                     raise ValueError(
                         f"`data` returned by ConnectorV2 {connector} must be a dict! "
-                        f"You returned {data}. Check your (custom) connectors' "
+                        f"You returned {batch}. Check your (custom) connectors' "
                         f"`__call__()` method's return value and make sure you return "
                         f"the `data` arg passed in (either altered or unchanged)."
                     )
-        return data
+        return batch
 
     def remove(self, name_or_class: Union[str, Type]):
         """Remove a single connector piece in this pipeline by its name or class.
@@ -112,7 +122,7 @@ class ConnectorPipelineV2(ConnectorV2):
                 break
         if idx >= 0:
             del self.connectors[idx]
-            self._fix_spaces()
+            self._fix_spaces(self.input_observation_space, self.input_action_space)
             logger.info(
                 f"Removed connector {name_or_class} from {self.__class__.__name__}."
             )
@@ -149,7 +159,7 @@ class ConnectorPipelineV2(ConnectorV2):
         next_connector = self.connectors[idx]
 
         self.connectors.insert(idx, connector)
-        self._fix_spaces()
+        self._fix_spaces(self.input_observation_space, self.input_action_space)
 
         logger.info(
             f"Inserted {connector.__class__.__name__} before {name_or_class} "
@@ -185,7 +195,7 @@ class ConnectorPipelineV2(ConnectorV2):
         prev_connector = self.connectors[idx]
 
         self.connectors.insert(idx + 1, connector)
-        self._fix_spaces()
+        self._fix_spaces(self.input_observation_space, self.input_action_space)
 
         logger.info(
             f"Inserted {connector.__class__.__name__} after {name_or_class} "
@@ -201,7 +211,7 @@ class ConnectorPipelineV2(ConnectorV2):
             connector: The new connector piece to be prepended to this pipeline.
         """
         self.connectors.insert(0, connector)
-        self._fix_spaces()
+        self._fix_spaces(self.input_observation_space, self.input_action_space)
 
         logger.info(
             f"Added {connector.__class__.__name__} to the beginning of "
@@ -215,7 +225,7 @@ class ConnectorPipelineV2(ConnectorV2):
             connector: The new connector piece to be appended to this pipeline.
         """
         self.connectors.append(connector)
-        self._fix_spaces()
+        self._fix_spaces(self.input_observation_space, self.input_action_space)
 
         logger.info(
             f"Added {connector.__class__.__name__} to the end of "
@@ -336,12 +346,12 @@ class ConnectorPipelineV2(ConnectorV2):
             return self.connectors[-1].action_space
         return self._action_space
 
-    def _fix_spaces(self):
+    def _fix_spaces(self, input_observation_space, input_action_space):
         if len(self) > 0:
             # Fix each connector's input_observation- and input_action space in
             # the pipeline.
-            obs_space = self.input_observation_space
-            act_space = self.input_action_space
+            obs_space = input_observation_space
+            act_space = input_action_space
             for con in self.connectors:
                 con.input_action_space = act_space
                 con.input_observation_space = obs_space

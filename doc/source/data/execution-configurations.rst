@@ -60,5 +60,6 @@ and most users shouldn't need to modify them. However, some of the most importan
 * `write_file_retry_on_errors`: A list of sub-strings of error messages that should trigger a retry when writing files. This is useful for handling transient errors when writing to remote storage systems. By default, retries on common transient AWS S3 errors.
 * `verbose_stats_logs`: Whether stats logs should be verbose. This includes fields such as ``extra_metrics`` in the stats output, which are excluded by default. Off by default.
 * `log_internal_stack_trace_to_stdout`: Whether to include internal Ray Data/Ray Core code stack frames when logging to ``stdout``. The full stack trace is always written to the Ray Data log file. Off by default.
+* `raise_original_map_exception`: Whether to raise the original exception encountered in map UDF instead of wrapping it in a `UserCodeException`.
 
 For more details on each of the preceding options, see :class:`~ray.data.DataContext`.

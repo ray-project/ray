@@ -26,6 +26,15 @@ class MARWILOfflinePreLearner(OfflinePreLearner):
         # If we directly read in episodes we just convert to list.
         if self.input_read_episodes:
             episodes = batch["item"].tolist()
+        # Else, if we have old stack `SampleBatch`es.
+        elif self.input_read_sample_batches:
+            episodes = OfflinePreLearner._map_sample_batch_to_episode(
+                self._is_multi_agent,
+                batch,
+                finalize=False,
+                schema=SCHEMA | self.config.input_read_schema,
+                input_compress_columns=self.config.input_compress_columns,
+            )["episodes"]
         # Otherwise we ap the batch to episodes.
         else:
             # Map the batch to episodes.
@@ -45,7 +54,7 @@ class MARWILOfflinePreLearner(OfflinePreLearner):
         # Run the `Learner`'s connector pipeline.
         batch = self._learner_connector(
             rl_module=self._module,
-            data=batch,
+            batch=batch,
             episodes=episodes,
             shared_data={},
         )
@@ -116,7 +125,7 @@ class MARWILOfflinePreLearner(OfflinePreLearner):
         # bootstrapped vf) computations.
         batch_for_vf = self._learner_connector(
             rl_module=self._module,
-            data={},
+            batch={},
             episodes=episodes,
             shared_data={},
         )

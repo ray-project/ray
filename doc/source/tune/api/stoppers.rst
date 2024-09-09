@@ -46,3 +46,5 @@ Tune Built-in Stoppers
     TrialPlateauStopper
     TimeoutStopper
     CombinedStopper
+    ~function_stopper.FunctionStopper
+    ~noop.NoopStopper

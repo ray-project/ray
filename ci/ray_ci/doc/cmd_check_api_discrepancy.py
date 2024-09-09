@@ -47,6 +47,16 @@ TEAM_API_CONFIGS = {
         "head_doc_file": "doc/source/train/api/api.rst",
         "white_list_apis": {},
     },
+    "tune": {
+        "head_modules": {"ray.tune"},
+        "head_doc_file": "doc/source/tune/api/api.rst",
+        "white_list_apis": {
+            # Already documented as ray.tune.search.ConcurrencyLimiter
+            "ray.tune.search.searcher.ConcurrencyLimiter",
+            # TODO(ml-team): deprecate these APIs
+            "ray.tune.utils.log.Verbosity",
+        },
+    },
     "rllib": {
         "head_modules": {"ray.rllib"},
         "head_doc_file": "doc/source/rllib/package_ref/index.rst",
