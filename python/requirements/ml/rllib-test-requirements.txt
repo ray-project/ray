@@ -44,7 +44,3 @@ h5py==3.10.0
 
 # Requirements for rendering.
 moviepy
-
-# Requirements for offline data recording and reading
-msgpack
-msgpack-numpy
