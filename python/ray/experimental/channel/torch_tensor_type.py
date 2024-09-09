@@ -22,7 +22,7 @@ class TorchTensorType(ChannelOutputType):
         self,
         transport: Optional[str] = AUTO,
         _static_shape: bool = False,
-        _static_non_tensor_data: bool = False,
+        _static_tensor_schema: bool = False,
     ):
         """
         A type hint that can be used to annotate DAG nodes that return a
@@ -42,14 +42,14 @@ class TorchTensorType(ChannelOutputType):
             _static_shape: A hint indicating whether the shape(s) and dtype(s)
                 of tensor(s) contained in this value always remain the same
                 across different executions of the DAG.
-            _static_non_tensor_data: A hint indicating whether the non-tensor
+            _static_tensor_schema: A hint indicating whether the non-tensor
                 data contained in this value always remains the same across
                 different executions of the DAG. For example, if the value
                 always has the form `{"my_tensor": torch.Tensor(...)}`, then
                 this can be set to True, even if the size of the contained
                 tensor changes.
 
-        NOTE: Setting static_shape=True and/or static_non_tensor_data=True can
+        NOTE: Setting static_shape=True and/or static_tensor_schema=True can
         improve performance if a non-default transport is used. However, if
         either flag is set, then the user must ensure that the condition is
         met. Also, for values containing multiple tensors, the
@@ -64,13 +64,13 @@ class TorchTensorType(ChannelOutputType):
         continue execution, a new DAG must be created:
         1. If static_shape=True, and the found tensors don't match the
            previous shape or dtype(s).
-        2. If static_non_tensor_data=True, and a different number of tensors is
+        2. If static_tensor_schema=True, and a different number of tensors is
            found.
         """
         super().__init__()
 
         self._static_shape = _static_shape
-        self._static_non_tensor_data = _static_non_tensor_data
+        self._static_tensor_schema = _static_tensor_schema
 
         if transport is None:
             transport = self.AUTO
@@ -87,9 +87,9 @@ class TorchTensorType(ChannelOutputType):
                 "TorchTensorType(_static_shape=True) has no effect when "
                 "`transport` is TorchTensorType.AUTO (default)."
             )
-        if self._static_non_tensor_data and self.transport == self.AUTO:
+        if self._static_tensor_schema and self.transport == self.AUTO:
             logger.info(
-                "TorchTensorType(_static_non_tensor_data=True) has no effect when "
+                "TorchTensorType(_static_tensor_schema=True) has no effect when "
                 "`transport` is TorchTensorType.AUTO (default)."
             )
 
@@ -98,8 +98,8 @@ class TorchTensorType(ChannelOutputType):
         return self._static_shape
 
     @property
-    def static_non_tensor_data(self):
-        return self._static_non_tensor_data
+    def static_tensor_schema(self):
+        return self._static_tensor_schema
 
     def register_custom_serializer(self) -> None:
         super().register_custom_serializer()
@@ -127,7 +127,7 @@ class TorchTensorType(ChannelOutputType):
         self,
         writer: Optional["ray.actor.ActorHandle"],
         reader_and_node_list: List[Tuple["ray.actor.ActorHandle", str]],
-        _non_tensor_data_channel: Optional["Channel"] = None,
+        _tensor_schema_channel: Optional["Channel"] = None,
         _tensor_metadata_channel: Optional["Channel"] = None,
     ) -> type:
         if self.requires_nccl():
@@ -143,8 +143,8 @@ class TorchTensorType(ChannelOutputType):
                 _meta_channel=_tensor_metadata_channel,
             )
 
-            if _non_tensor_data_channel is None:
-                _non_tensor_data_channel = SharedMemoryType().create_channel(
+            if _tensor_schema_channel is None:
+                _tensor_schema_channel = SharedMemoryType().create_channel(
                     writer, reader_and_node_list
                 )
 
@@ -152,8 +152,8 @@ class TorchTensorType(ChannelOutputType):
                 writer,
                 reader_and_node_list,
                 tensor_data_channel,
-                _non_tensor_data_channel,
-                self.static_non_tensor_data,
+                _tensor_schema_channel,
+                self.static_tensor_schema,
             )
 
         # Data does not require NCCL. Transfer via host memory using a

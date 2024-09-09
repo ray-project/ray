@@ -225,9 +225,9 @@ def test_p2p_static_shape_error(ray_start_cluster):
     ],
     indirect=True,
 )
-def test_p2p_static_non_tensor_data(ray_start_cluster):
+def test_p2p_static_tensor_schema(ray_start_cluster):
     """
-    Test simple sender -> receiver pattern with static_non_tensor_data=True
+    Test simple sender -> receiver pattern with static_tensor_schema=True
     (non-tensor data remains fixed across DAG executions).
     """
     # Barrier name should be barrier-{sender rank}-{receiver rank}.
@@ -245,7 +245,7 @@ def test_p2p_static_non_tensor_data(ray_start_cluster):
     with InputNode() as inp:
         dag = sender.send_dict.bind(inp)
         dag = dag.with_type_hint(
-            TorchTensorType(transport="nccl", _static_non_tensor_data=True)
+            TorchTensorType(transport="nccl", _static_tensor_schema=True)
         )
         dag = receiver.recv_dict.bind(dag)
 
@@ -282,9 +282,9 @@ def test_p2p_static_non_tensor_data(ray_start_cluster):
     ],
     indirect=True,
 )
-def test_p2p_static_non_tensor_data_error(ray_start_cluster):
+def test_p2p_static_tensor_schema_error(ray_start_cluster):
     """
-    Test that when static_non_tensor_data=True, an error is thrown when a
+    Test that when static_tensor_schema=True, an error is thrown when a
     different number of tensors is found.
     """
     # Barrier name should be barrier-{sender rank}-{receiver rank}.
@@ -302,7 +302,7 @@ def test_p2p_static_non_tensor_data_error(ray_start_cluster):
     with InputNode() as inp:
         dag = sender.send_dict.bind(inp)
         dag = dag.with_type_hint(
-            TorchTensorType(transport="nccl", _static_non_tensor_data=True)
+            TorchTensorType(transport="nccl", _static_tensor_schema=True)
         )
         dag = receiver.recv_dict.bind(dag)
 

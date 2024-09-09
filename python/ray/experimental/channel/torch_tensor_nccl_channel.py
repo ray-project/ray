@@ -44,8 +44,8 @@ class TorchTensorNcclChannel(ChannelInterface):
         writer: ray.actor.ActorHandle,
         reader_and_node_list: List[Tuple["ray.actor.ActorHandle", str]],
         tensor_data_channel: "_TorchTensorNcclChannel",
-        non_tensor_data_channel: "Channel",
-        static_non_tensor_data: bool = False,
+        tensor_schema_channel: "Channel",
+        static_tensor_schema: bool = False,
     ):
         """
         Can be used to send GPU tensors nested inside other data. The data is
@@ -64,16 +64,16 @@ class TorchTensorNcclChannel(ChannelInterface):
                 actor handle and the node ID where the actor is located.
             tensor_data_channel: A GPU-GPU channel for sending tensor data. Its
                 writer and readers should match the given writer and readers.
-            non_tensor_data_channel: A shared-memory channel for sending
+            tensor_schema_channel: A shared-memory channel for sending
                 non-tensor data. Its writer and readers should match the given
                 writer and readers.
-            static_non_tensor_data: Whether the non-tensor data sent through
+            static_tensor_schema: Whether the non-tensor data sent through
                 this channel is static. For example, if all written values have
                 the form `{"my_tensor": torch.Tensor(...)}`, then this can be
                 set to True, even if the size of the contained tensor changes.
                 Set to True to improve performance.
 
-        NOTE: If static_non_tensor_data=True, the user must ensure that the
+        NOTE: If static_tensor_schema=True, the user must ensure that the
         non-tensor data stays constant. For values containing multiple tensors,
         the user must also ensure that the (ray.cloudpickle) serialization
         order of the value is deterministic. Otherwise, reads may return
@@ -83,9 +83,9 @@ class TorchTensorNcclChannel(ChannelInterface):
         self._reader_and_node_list = reader_and_node_list
 
         self._tensor_data_channel: _TorchTensorNcclChannel = tensor_data_channel
-        self._non_tensor_data_channel: "Channel" = non_tensor_data_channel
-        self._static_non_tensor_data: bool = static_non_tensor_data
-        # For channels that have static_non_tensor_data=True, we only send the
+        self._tensor_schema_channel: "Channel" = tensor_schema_channel
+        self._static_tensor_schema: bool = static_tensor_schema
+        # For channels that have static_tensor_schema=True, we only send the
         # first non-tensor data. All values sent afterwards are assumed to be
         # equal to this value. As a safety check, we store the number of
         # tensors found in the value to send, and make sure that subsequent
@@ -93,10 +93,10 @@ class TorchTensorNcclChannel(ChannelInterface):
         self._num_serialized_tensors: Optional[int] = None
         # Args that can be passed to ray's deserializer:
         # ([(object_data, object_metadata)], [ObjectRef])
-        # For channels that have static_non_tensor_data=True, this is used as a
+        # For channels that have static_tensor_schema=True, this is used as a
         # cache on the reader to avoid having to send non-tensor data over the
         # channel.
-        self._serialized_non_tensor_data: Optional[
+        self._serialized_tensor_schema: Optional[
             Tuple[List[Tuple[ray._raylet.Buffer, bytes]], List[ray.ObjectRef]]
         ] = None
 
@@ -115,18 +115,18 @@ class TorchTensorNcclChannel(ChannelInterface):
                 None,
                 None,
                 self._tensor_data_channel,
-                self._non_tensor_data_channel,
-                self._static_non_tensor_data,
+                self._tensor_schema_channel,
+                self._static_tensor_schema,
             ),
         )
 
     def ensure_registered_as_writer(self):
         self._tensor_data_channel.ensure_registered_as_writer()
-        self._non_tensor_data_channel.ensure_registered_as_writer()
+        self._tensor_schema_channel.ensure_registered_as_writer()
 
     def ensure_registered_as_reader(self):
         self._tensor_data_channel.ensure_registered_as_reader()
-        self._non_tensor_data_channel.ensure_registered_as_reader()
+        self._tensor_schema_channel.ensure_registered_as_reader()
 
     def write(self, value: Any, timeout: Optional[float] = None) -> None:
         """
@@ -142,7 +142,7 @@ class TorchTensorNcclChannel(ChannelInterface):
         NCCL).
         3) Sends the non-tensor data via the non-tensor data channel.
 
-        If static_non_tensor_data=True was specified, then we only perform step
+        If static_tensor_schema=True was specified, then we only perform step
         (3) on the first `write` call. The reader is expected to reuse the sent
         data for subsequent messages.
         """
@@ -159,7 +159,7 @@ class TorchTensorNcclChannel(ChannelInterface):
             # Serialize the data. All tensors that match our current device
             # will be extracted into the serialization context and replaced
             # with a placeholder.
-            serialized_non_tensor_data = (
+            serialized_tensor_schema = (
                 self._worker.get_serialization_context().serialize(value)
             )
         except TypeError as e:
@@ -181,7 +181,7 @@ class TorchTensorNcclChannel(ChannelInterface):
         if self._num_serialized_tensors is not None:
             # We should only know the number of tensors to expect if the user
             # specified that the non-tensor data will not change.
-            assert self._static_non_tensor_data
+            assert self._static_tensor_schema
 
             if self._num_serialized_tensors != len(tensors_to_send):
                 # The serialized value contains a different number of tenors
@@ -193,7 +193,7 @@ class TorchTensorNcclChannel(ChannelInterface):
                 # deterministic, so directly checking equality of the
                 # serialized values would lead to too many false positives.
                 raise ValueError(
-                    "static_non_tensor_data=True specified, but "
+                    "static_tensor_schema=True specified, but "
                     f"the value to write ({value}) contains a different "
                     "number of tensors"
                 )
@@ -205,9 +205,9 @@ class TorchTensorNcclChannel(ChannelInterface):
         # placeholders for the extracted tensors, through a CPU-specific
         # channel.
         if self._num_serialized_tensors is None:
-            self._non_tensor_data_channel.write(serialized_non_tensor_data)
+            self._tensor_schema_channel.write(serialized_tensor_schema)
 
-            if self._static_non_tensor_data:
+            if self._static_tensor_schema:
                 # This is the first value that we have written. Save the number
                 # of tensors found so that we can check it against the number
                 # of tensors found in future values.
@@ -225,7 +225,7 @@ class TorchTensorNcclChannel(ChannelInterface):
         3) Deserializes the non-tensor data. During deserialization, replaces
         all found placeholders with the received torch.Tensors.
 
-        If static_non_tensor_data=True was specified, then we only perform step
+        If static_tensor_schema=True was specified, then we only perform step
         (2) on the first `read` call. Subsequent messages will reuse the
         first received non-tensor data.
         """
@@ -236,21 +236,21 @@ class TorchTensorNcclChannel(ChannelInterface):
         self.serialization_ctx.reset_out_of_band_tensors(tensors)
 
         # Next, get the serialized non-tensor data.
-        serialized_non_tensor_data = self._serialized_non_tensor_data
-        if serialized_non_tensor_data is None:
-            serialized_non_tensor_data = self._non_tensor_data_channel.read(
+        serialized_tensor_schema = self._serialized_tensor_schema
+        if serialized_tensor_schema is None:
+            serialized_tensor_schema = self._tensor_schema_channel.read(
                 timeout=timeout,
                 deserialize=False,
             )
-            if self._static_non_tensor_data:
+            if self._static_tensor_schema:
                 # Cache the serialized non-tensor data for future messages.
-                self._serialized_non_tensor_data = serialized_non_tensor_data
+                self._serialized_tensor_schema = serialized_tensor_schema
 
         # Finally, deserialize the non-tensor data. The registered custom
         # deserializer will replace the found tensor placeholders with
         # `tensors`. We get index 0 because deserialize_objects expects a list
         # of objects to deserialize, but we only have one.
-        data = self._worker.deserialize_objects(*serialized_non_tensor_data)[0]
+        data = self._worker.deserialize_objects(*serialized_tensor_schema)[0]
         if isinstance(data, _ResizeChannel):
             raise RuntimeError(
                 "Channels with NCCL transport currently cannot be resized."
@@ -267,7 +267,7 @@ class TorchTensorNcclChannel(ChannelInterface):
 
     def close(self) -> None:
         self._tensor_data_channel.close()
-        self._non_tensor_data_channel.close()
+        self._tensor_schema_channel.close()
 
 
 def _torch_zeros_allocator(meta: _TorchTensorMetadata):

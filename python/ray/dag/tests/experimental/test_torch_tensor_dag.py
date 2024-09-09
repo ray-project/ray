@@ -281,7 +281,7 @@ def test_torch_tensor_nccl_static_shape(ray_start_regular):
 
 
 @pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
-def test_torch_tensor_nccl_static_non_tensor_data(ray_start_regular):
+def test_torch_tensor_nccl_static_tensor_schema(ray_start_regular):
     if not USE_GPU:
         pytest.skip("NCCL tests require GPUs")
 
@@ -297,7 +297,7 @@ def test_torch_tensor_nccl_static_non_tensor_data(ray_start_regular):
     with InputNode() as inp:
         dag = sender.send_dict.bind(inp.shape, inp.dtype, inp.value)
         dag = dag.with_type_hint(
-            TorchTensorType(transport="nccl", _static_non_tensor_data=True)
+            TorchTensorType(transport="nccl", _static_tensor_schema=True)
         )
         dag = receiver.recv_dict.bind(dag)
 
@@ -313,7 +313,7 @@ def test_torch_tensor_nccl_static_non_tensor_data(ray_start_regular):
 
 
 @pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
-def test_torch_tensor_nccl_static_shape_and_non_tensor_data(ray_start_regular):
+def test_torch_tensor_nccl_static_shape_and_tensor_schema(ray_start_regular):
     if not USE_GPU:
         pytest.skip("NCCL tests require GPUs")
 
@@ -332,7 +332,7 @@ def test_torch_tensor_nccl_static_shape_and_non_tensor_data(ray_start_regular):
             TorchTensorType(
                 transport="nccl",
                 _static_shape=True,
-                _static_non_tensor_data=True,
+                _static_tensor_schema=True,
             )
         )
         dag = receiver.recv.bind(dag)
