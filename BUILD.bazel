@@ -2344,6 +2344,25 @@ ray_cc_test(
     ],
 )
 
+ray_cc_test(
+    name = "gcs_export_event_test",
+    size = "small",
+    srcs = glob([
+        "src/ray/gcs/gcs_server/test/export_api/*.cc",
+    ]),
+    tags = [
+        "no_windows",
+        "team:core"
+    ],
+    deps = [
+        ":gcs_server_lib",
+        ":gcs_server_test_util",
+        ":gcs_test_util_lib",
+        ":ray_mock",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 flatbuffer_cc_library(
     name = "node_manager_fbs",
     srcs = ["src/ray/raylet/format/node_manager.fbs"],
