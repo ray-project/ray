@@ -308,25 +308,6 @@ GcsActorManager::GcsActorManager(
       });
 }
 
-void GcsActorManager::HandleReportActorOutOfScope(
-    rpc::ReportActorOutOfScopeRequest request,
-    rpc::ReportActorOutOfScopeReply *reply,
-    rpc::SendReplyCallback send_reply_callback) {
-  auto actor_id = ActorID::FromBinary(request.actor_id());
-  auto it = registered_actors_.find(actor_id);
-  if (it != registered_actors_.end()) {
-    DestroyActor(actor_id,
-                 GenActorOutOfScopeCause(GetActor(actor_id)),
-                 /*force_kill=*/true,
-                 [reply, send_reply_callback]() {
-                   GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
-                 });
-  } else {
-    RAY_LOG(INFO).WithField(actor_id) << "The out of scope actor is already dead";
-    GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
-  }
-}
-
 void GcsActorManager::HandleRegisterActor(rpc::RegisterActorRequest request,
                                           rpc::RegisterActorReply *reply,
                                           rpc::SendReplyCallback send_reply_callback) {
@@ -661,7 +642,9 @@ Status GcsActorManager::RegisterActor(const ray::rpc::RegisterActorRequest &requ
   RAY_CHECK(unresolved_actors_[node_id][worker_id].emplace(actor->GetActorID()).second);
 
   if (!actor->IsDetached()) {
-    RegisterActorOwner(actor);
+    // This actor is owned. Send a long polling request to the actor's
+    // owner to determine when the actor should be removed.
+    PollOwnerForActorOutOfScope(actor);
   } else {
     // If it's a detached actor, we need to register the runtime env it used to GC.
     runtime_env_manager_.AddURIReference(actor->GetActorID().Hex(),
@@ -836,7 +819,8 @@ std::vector<std::pair<std::string, std::string>> GcsActorManager::ListNamedActor
   return actors;
 }
 
-void GcsActorManager::RegisterActorOwner(const std::shared_ptr<GcsActor> &actor) {
+void GcsActorManager::PollOwnerForActorOutOfScope(
+    const std::shared_ptr<GcsActor> &actor) {
   const auto &actor_id = actor->GetActorID();
   const auto &owner_node_id = actor->GetOwnerNodeID();
   const auto &owner_id = actor->GetOwnerID();
@@ -850,20 +834,42 @@ void GcsActorManager::RegisterActorOwner(const std::shared_ptr<GcsActor> &actor)
     it = workers.emplace(owner_id, Owner(std::move(client))).first;
   }
   it->second.children_actor_ids.insert(actor_id);
+
+  rpc::WaitForActorOutOfScopeRequest wait_request;
+  wait_request.set_intended_worker_id(owner_id.Binary());
+  wait_request.set_actor_id(actor_id.Binary());
+  it->second.client->WaitForActorOutOfScope(
+      wait_request,
+      [this, owner_node_id, owner_id, actor_id](
+          Status status, const rpc::WaitForActorOutOfScopeReply &reply) {
+        if (!status.ok()) {
+          RAY_LOG(INFO) << "Worker " << owner_id
+                        << " failed, destroying actor child, job id = "
+                        << actor_id.JobId();
+        } else {
+          RAY_LOG(INFO) << "Actor " << actor_id
+                        << " is out of scope, destroying actor, job id = "
+                        << actor_id.JobId();
+        }
+
+        auto node_it = owners_.find(owner_node_id);
+        if (node_it != owners_.end() && node_it->second.count(owner_id)) {
+          // Only destroy the actor if its owner is still alive. The actor may
+          // have already been destroyed if the owner died.
+          DestroyActor(
+              actor_id, GenActorOutOfScopeCause(GetActor(actor_id)), /*force_kill=*/true);
+        }
+      });
 }
 
 void GcsActorManager::DestroyActor(const ActorID &actor_id,
                                    const rpc::ActorDeathCause &death_cause,
-                                   bool force_kill,
-                                   std::function<void()> done_callback) {
+                                   bool force_kill) {
   RAY_LOG(INFO).WithField(actor_id.JobId()).WithField(actor_id) << "Destroying actor";
   actor_to_register_callbacks_.erase(actor_id);
   auto it = registered_actors_.find(actor_id);
   if (it == registered_actors_.end()) {
     RAY_LOG(INFO).WithField(actor_id) << "Tried to destroy actor that does not exist";
-    if (done_callback) {
-      done_callback();
-    }
     return;
   }
 
@@ -894,9 +900,6 @@ void GcsActorManager::DestroyActor(const ActorID &actor_id,
         actor,
         rpc::PushTaskReply(),
         Status::SchedulingCancelled("Actor creation cancelled."));
-    if (done_callback) {
-      done_callback();
-    }
     return;
   }
   if (actor->GetState() == rpc::ActorTableData::DEPENDENCIES_UNREADY) {
@@ -944,10 +947,7 @@ void GcsActorManager::DestroyActor(const ActorID &actor_id,
   RAY_CHECK_OK(gcs_table_storage_->ActorTable().Put(
       actor->GetActorID(),
       *actor_table_data,
-      [this, actor_id, actor_table_data, done_callback](Status status) {
-        if (done_callback) {
-          done_callback();
-        }
+      [this, actor_id, actor_table_data](Status status) {
         RAY_CHECK_OK(gcs_publisher_->PublishActor(
             actor_id, *GenActorDataOnlyWithStates(*actor_table_data), nullptr));
         RAY_CHECK_OK(gcs_table_storage_->ActorTaskSpecTable().Delete(actor_id, nullptr));
@@ -1322,7 +1322,7 @@ void GcsActorManager::OnActorCreationSuccess(const std::shared_ptr<GcsActor> &ac
   auto actor_id = actor->GetActorID();
   liftime_num_created_actors_++;
   // NOTE: If an actor is deleted immediately after the user creates the actor, reference
-  // counter may ReportActorOutOfScope to GCS server,
+  // counter may return a reply to the request of WaitForActorOutOfScope to GCS server,
   // and GCS server will destroy the actor. The actor creation is asynchronous, it may be
   // destroyed before the actor creation is completed.
   if (registered_actors_.count(actor_id) == 0) {
@@ -1420,7 +1420,9 @@ void GcsActorManager::Initialize(const GcsInitData &gcs_init_data) {
       }
 
       if (!actor->IsDetached()) {
-        RegisterActorOwner(actor);
+        // This actor is owned. Send a long polling request to the actor's
+        // owner to determine when the actor should be removed.
+        PollOwnerForActorOutOfScope(actor);
       }
 
       if (!actor->GetWorkerID().IsNil()) {

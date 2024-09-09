@@ -796,6 +796,12 @@ bool ReferenceCounter::SetObjectPrimaryCopyDeleteCallback(
     return false;
   }
 
+  // NOTE: In two cases, `GcsActorManager` will send `WaitForActorOutOfScope` request more
+  // than once, causing the delete callback to be set repeatedly.
+  // 1.If actors have not been registered successfully before GCS restarts, gcs client
+  // will resend the registration request after GCS restarts.
+  // 2.After GCS restarts, GCS will send `WaitForActorOutOfScope` request to owned actors
+  // again.
   it->second.on_object_primary_copy_delete = callback;
   return true;
 }

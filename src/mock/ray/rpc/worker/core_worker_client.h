@@ -46,6 +46,11 @@ class MockCoreWorkerClientInterface : public ray::pubsub::MockSubscriberClientIn
                const ClientCallback<GetObjectStatusReply> &callback),
               (override));
   MOCK_METHOD(void,
+              WaitForActorOutOfScope,
+              (const WaitForActorOutOfScopeRequest &request,
+               const ClientCallback<WaitForActorOutOfScopeReply> &callback),
+              (override));
+  MOCK_METHOD(void,
               PubsubLongPolling,
               (const PubsubLongPollingRequest &request,
                const ClientCallback<PubsubLongPollingReply> &callback),

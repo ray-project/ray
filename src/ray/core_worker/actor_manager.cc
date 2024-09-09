@@ -173,36 +173,32 @@ void ActorManager::OnActorKilled(const ActorID &actor_id) {
   MarkActorKilledOrOutOfScope(GetActorHandle(actor_id));
 }
 
-void ActorManager::WaitAndReportActorOutOfScope(const ActorID &actor_id) {
+void ActorManager::WaitForActorOutOfScope(
+    const ActorID &actor_id,
+    std::function<void(const ActorID &)> actor_out_of_scope_callback) {
   absl::MutexLock lock(&mutex_);
   auto it = actor_handles_.find(actor_id);
   if (it == actor_handles_.end()) {
-    RAY_CHECK_OK(gcs_client_->Actors().AsyncReportActorOutOfScope(
-        actor_id, [actor_id](Status status) {
-          if (!status.ok()) {
-            RAY_LOG(ERROR).WithField(actor_id)
-                << "Failed to report actor out of scope: " << status;
-          }
-        }));
+    actor_out_of_scope_callback(actor_id);
   } else {
     auto actor_handle = it->second;
-    auto actor_out_of_scope_callback =
-        [this, actor_id, actor_handle](const ObjectID &object_id) {
-          MarkActorKilledOrOutOfScope(actor_handle);
-          RAY_CHECK_OK(gcs_client_->Actors().AsyncReportActorOutOfScope(
-              actor_id, [actor_id](Status status) {
-                if (!status.ok()) {
-                  RAY_LOG(ERROR).WithField(actor_id)
-                      << "Failed to report actor out of scope: " << status;
-                }
-              }));
-        };
+    // GCS actor manager will wait until the actor has been created before polling the
+    // owner. This should avoid any asynchronous problems.
+    auto callback = [this, actor_id, actor_handle, actor_out_of_scope_callback](
+                        const ObjectID &object_id) {
+      MarkActorKilledOrOutOfScope(actor_handle);
+      actor_out_of_scope_callback(actor_id);
+    };
 
-    const ObjectID actor_creation_return_id = ObjectID::ForActorHandle(actor_id);
-    if (!reference_counter_->SetObjectPrimaryCopyDeleteCallback(
-            actor_creation_return_id, actor_out_of_scope_callback)) {
-      RAY_LOG(DEBUG).WithField(actor_id) << "ActorID reference already gone";
-      actor_out_of_scope_callback(actor_creation_return_id);
+    // Returns true if the object was present and the callback was added. It might have
+    // already been evicted by the time we get this request, in which case we should
+    // respond immediately so the gcs server can destroy the actor.
+    const auto actor_creation_return_id = ObjectID::ForActorHandle(actor_id);
+    if (!reference_counter_->SetObjectPrimaryCopyDeleteCallback(actor_creation_return_id,
+                                                                callback)) {
+      RAY_LOG(DEBUG) << "ActorID reference already gone for " << actor_id;
+      MarkActorKilledOrOutOfScope(actor_handle);
+      actor_out_of_scope_callback(actor_id);
     }
   }
 }

@@ -288,6 +288,8 @@ def test_del_actor_after_gcs_server_restart(ray_start_regular_with_external_redi
     # Wait for the actor dead.
     wait_for_condition(condition, timeout=10)
 
+    # If `PollOwnerForActorOutOfScope` was successfully called,
+    # name should be properly deleted.
     with pytest.raises(ValueError):
         ray.get_actor("abc")
 

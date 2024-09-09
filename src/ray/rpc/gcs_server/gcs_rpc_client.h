@@ -322,11 +322,6 @@ class GcsRpcClient {
                              actor_info_grpc_client_,
                              /*method_timeout_ms*/ -1, )
 
-  VOID_GCS_RPC_CLIENT_METHOD(ActorInfoGcsService,
-                             ReportActorOutOfScope,
-                             actor_info_grpc_client_,
-                             /*method_timeout_ms*/ -1, )
-
   /// Create actor via GCS Service.
   VOID_GCS_RPC_CLIENT_METHOD(ActorInfoGcsService,
                              CreateActor,

@@ -180,6 +180,15 @@ message GetObjectStatusReply {
   uint64 object_size = 4;
 }
 
+message WaitForActorOutOfScopeRequest {
+  // The ID of the worker this message is intended for.
+  bytes intended_worker_id = 1;
+  // ActorID of the actor in scope.
+  bytes actor_id = 2;
+}
+
+message WaitForActorOutOfScopeReply {}
+
 message UpdateObjectLocationBatchRequest {
   bytes intended_worker_id = 1;
   bytes node_id = 2;
@@ -438,6 +447,11 @@ service CoreWorkerService {
       returns (DirectActorCallArgWaitCompleteReply);
   // Ask the object's owner about the object's current status.
   rpc GetObjectStatus(GetObjectStatusRequest) returns (GetObjectStatusReply);
+  // Wait for the actor's owner to decide that the actor has gone out of scope.
+  // Replying to this message indicates that the client should force-kill the
+  // actor process, if still alive.
+  rpc WaitForActorOutOfScope(WaitForActorOutOfScopeRequest)
+      returns (WaitForActorOutOfScopeReply);
   /// The long polling request sent to the core worker for pubsub operations.
   /// It is replied once there are batch of objects that need to be published to
   /// the caller (subscriber).

@@ -244,10 +244,6 @@ class ActorInfoGcsServiceHandler {
   virtual void HandleKillActorViaGcs(KillActorViaGcsRequest request,
                                      KillActorViaGcsReply *reply,
                                      SendReplyCallback send_reply_callback) = 0;
-
-  virtual void HandleReportActorOutOfScope(ReportActorOutOfScopeRequest request,
-                                           ReportActorOutOfScopeReply *reply,
-                                           SendReplyCallback send_reply_callback) = 0;
 };
 
 /// The `GrpcService` for `ActorInfoGcsService`.
@@ -283,8 +279,6 @@ class ActorInfoGrpcService : public GrpcService {
         GetAllActorInfo, RayConfig::instance().gcs_max_active_rpcs_per_handler());
     ACTOR_INFO_SERVICE_RPC_HANDLER(
         KillActorViaGcs, RayConfig::instance().gcs_max_active_rpcs_per_handler());
-    ACTOR_INFO_SERVICE_RPC_HANDLER(
-        ReportActorOutOfScope, RayConfig::instance().gcs_max_active_rpcs_per_handler());
   }
 
  private:
