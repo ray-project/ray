@@ -2470,15 +2470,16 @@ class AlgorithmConfig(_Config):
                 offline data from `input_`. The default is `read_parquet` for Parquet
                 files. See https://docs.ray.io/en/latest/data/api/input_output.html for
                 more info about available read methods in `ray.data`.
-            input_read_method_kwargs: `kwargs` for the `input_read_method`. These will
-                be passed into the read method without checking. If no arguments are
-                passed in the default argument `{'override_num_blocks':
-                max(num_learners * 2, 2)}` is used. Use these `kwargs`` together with
-                the `map_batches_kwargs` and `iter_batches_kwargs` to tune the
-                performance of the data pipeline.
+            input_read_method_kwargs: Keyword args for `input_read_method`. These
+                will be passed into the read method without checking. If no arguments
+                are passed in the default argument
+                `{'override_num_blocks': max(num_learners * 2, 2)}` is used. Use these
+                keyword args together with `map_batches_kwargs` and
+                `iter_batches_kwargs` to tune the performance of the data pipeline.
             input_read_schema: Table schema for converting offline data to episodes.
-                This schema maps the offline data columns to `ray.rllib.core.columns.
-                Columns`: {Columns.OBS: 'o_t', Columns.ACTIONS: 'a_t', ...}. Columns in
+                This schema maps the offline data columns to
+                ray.rllib.core.columns.Columns:
+                `{Columns.OBS: 'o_t', Columns.ACTIONS: 'a_t', ...}`. Columns in
                 the data set that are not mapped via this schema are sorted into
                 episodes' `extra_model_outputs`. If no schema is passed in the default
                 schema used is `ray.rllib.offline.offline_data.SCHEMA`. If your data set
@@ -2492,8 +2493,8 @@ class AlgorithmConfig(_Config):
                 inside of RLlib's schema. The other format is a columnar format and is
                 agnostic to the RL framework used. Use the latter format, if you are
                 unsure when to use the data or in which RL framework. The default is
-                to read column data, i.e. `False`. `input_read_episodes` and
-                `inpuit_read_sample_batches` cannot be `True` at the same time. See
+                to read column data, i.e. False. `input_read_episodes` and
+                `input_read_sample_batches` cannot be True at the same time. See
                 also `output_write_episodes` to define the output data format when
                 recording.
             input_read_sample_batches: Whether offline data is stored in RLlib's old
@@ -2502,41 +2503,41 @@ class AlgorithmConfig(_Config):
                 data needs extra transforms and might not concatenate episode chunks
                 contained in different `SampleBatch`es in the data. If possible avoid
                 to read `SampleBatch`es and convert them in a controlled form into
-                RLlib`s `EpisodeType`s (i.e. `SingleAgentEpisode` or
-                `MultiAgentEpisode`). The default is `False`. `input_read_episodes`
-                and `inpuit_read_sample_batches` cannot be `True` at the same time.
+                RLlib's `EpisodeType` (i.e. `SingleAgentEpisode` or
+                `MultiAgentEpisode`). The default is False. `input_read_episodes`
+                and `input_read_sample_batches` cannot be True at the same time.
             input_filesystem: A cloud filesystem to handle access to cloud storage when
-                reading experiences. Should be either `gcs` for Google Cloud Storage,
-                `s3` for AWS S3 buckets, or `abs` for Azure Blob Storage.
+                reading experiences. Should be either "gcs" for Google Cloud Storage,
+                "s3" for AWS S3 buckets, or "abs" for Azure Blob Storage.
             input_filesystem_kwargs: A dictionary holding the kwargs for the filesystem
                 given by `input_filesystem`. See `gcsfs.GCSFilesystem` for GCS,
                 `pyarrow.fs.S3FileSystem`, for S3, and `ablfs.AzureBlobFilesystem` for
                 ABS filesystem arguments.
             input_compress_columns: What input columns are compressed with LZ4 in the
-                input data. If data is stored in `RLlib`'s `SingleAgentEpisode` (
+                input data. If data is stored in RLlib's `SingleAgentEpisode` (
                 `MultiAgentEpisode` not supported, yet). Note,
                 `rllib.core.columns.Columns.OBS` will also try to decompress
                 `rllib.core.columns.Columns.NEXT_OBS`.
-            map_batches_kwargs: `kwargs` for the `map_batches` method. These will be
+            map_batches_kwargs: Keyword args for the `map_batches` method. These will be
                 passed into the `ray.data.Dataset.map_batches` method when sampling
-                without checking. If no arguments passed in the default arguments `{
-                'concurrency': max(2, num_learners), 'zero_copy_batch': True}` is
-                used. Use these `kwargs`` together with the `input_read_method_kwargs`
+                without checking. If no arguments passed in the default arguments
+                `{'concurrency': max(2, num_learners), 'zero_copy_batch': True}` is
+                used. Use these keyword args together with `input_read_method_kwargs`
                 and `iter_batches_kwargs` to tune the performance of the data pipeline.
-            iter_batches_kwargs: `kwargs` for the `iter_batches` method. These will be
-                passed into the `ray.data.Dataset.iter_batches` method when sampling
-                without checking. If no arguments are passed in, the default argument `{
-                'prefetch_batches': 2, 'local_buffer_shuffle_size':
-                train_batch_size_per_learner * 4}` is used. Use these `kwargs``
-                together with the `input_read_method_kwargs` and `map_batches_kwargs`
-                to tune the performance of the data pipeline.
+            iter_batches_kwargs: Keyword args for the `iter_batches` method. These will
+                be passed into the `ray.data.Dataset.iter_batches` method when sampling
+                without checking. If no arguments are passed in, the default argument
+                `{'prefetch_batches': 2, 'local_buffer_shuffle_size':
+                train_batch_size_per_learner * 4}` is used. Use these keyword args
+                together with `input_read_method_kwargs` and `map_batches_kwargs` to
+                tune the performance of the data pipeline.
             prelearner_class: An optional `OfflinePreLearner` class that is used to
                 transform data batches in `ray.data.map_batches` used in the
                 `OfflineData` class to transform data from columns to batches that can
-                be used in the `Learner`'s `update` methods. Override the
+                be used in the `Learner.update...()` methods. Override the
                 `OfflinePreLearner` class and pass your dervied class in here, if you
                 need to make some further transformations specific for your data or
-                loss. The default is `None` which uses the base `OfflinePreLearner`
+                loss. The default is None which uses the base `OfflinePreLearner`
                 defined in `ray.rllib.offline.offline_prelearner`.
             prelearner_buffer_class: The episode buffer class to use in the `PreLearner`
                 when sampling from the dataset. This is needed and defaults to the
@@ -2549,8 +2550,8 @@ class AlgorithmConfig(_Config):
                 sample exactly the defined `train_batch_size_per_learner` from it. Any
                 buffer that inherits from
                 `ray.rllib.utils.replay_buffers.EpisodeReplayBuffer` can be used, e.g.
-                you could use RLlib's prrioritized episode buffer
-                `ray.rllib.utils.replay_buffers.PrioritizedEpsiodeReplayBuffer`. See
+                you could use RLlib's prioritized episode buffer
+                `ray.rllib.utils.replay_buffers.PrioritizedEpisodeReplayBuffer`. See
                 `prelearner_buffer_kwargs` for passing in further arguments into the
                 buffer's constructor. Note, the buffer acts (a) as a buffer to dissect
                 `SampleBatch` (or `SingleAgentEpisode`) data into smaller chunks, (b)
@@ -2576,13 +2577,13 @@ class AlgorithmConfig(_Config):
                 and thus might slow down the data pipeline. The default value chosen
                 by the `OfflinePreLearner` is 10.
             dataset_num_iters_per_learner: Number of updates to run in each learner
-                during a single training iteration. If `None`, each learner runs a
+                during a single training iteration. If None, each learner runs a
                 complete epoch over its data block (the dataset is partitioned into
                 at least as many blocks as there are learners). The default is `None`.
-            input_config: Arguments that describe the settings for reading the inpu t.
-                If input is `sample`, this will be environment configuation, e.g.
+            input_config: Arguments that describe the settings for reading the input.
+                If input is "sample", this will be environment configuration, e.g.
                 `env_name` and `env_config`, etc. See `EnvContext` for more info.
-                If the input is `dataset`, this will be e.g. `format`, `path`.
+                If the input is "dataset", this will be e.g. `format`, `path`.
             actions_in_input_normalized: True, if the actions in a given offline "input"
                 are already normalized (between -1.0 and 1.0). This is usually the case
                 when the offline file has been generated by another RLlib algorithm
@@ -2616,8 +2617,8 @@ class AlgorithmConfig(_Config):
             output_write_method_kwargs: `kwargs` for the `output_write_method`. These
                 will be passed into the write method without checking.
             output_filesystem: A cloud filesystem to handle access to cloud storage when
-                writing experiences. Should be either `gcs` for Google Cloud Storage,
-                `s3` for AWS S3 buckets, or `abs` for Azure Blob Storage.
+                writing experiences. Should be either "gcs" for Google Cloud Storage,
+                "s3" for AWS S3 buckets, or "abs" for Azure Blob Storage.
             output_filesystem_kwargs: A dictionary holding the kwargs for the filesystem
                 given by `output_filesystem`. See `gcsfs.GCSFilesystem` for GCS,
                 `pyarrow.fs.S3FileSystem`, for S3, and `ablfs.AzureBlobFilesystem` for
