@@ -6,7 +6,6 @@ import time
 import pytest
 from ray.dag import InputNode, MultiOutputNode
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
-from ray.dag import DAGContext
 from ray.tests.conftest import *  # noqa
 
 if sys.platform != "linux" and sys.platform != "darwin":
