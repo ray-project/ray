@@ -115,7 +115,6 @@ def do_exec_tasks(
             if done:
                 break
             for operation in schedule:
-                print("SANG-TODO operation: ", operation)
                 done = tasks[operation.exec_task_idx].exec_operation(
                     self, operation.type
                 )
@@ -1555,7 +1554,7 @@ class CompiledDAG:
 
     def _build_execution_schedule(
         self,
-    ) -> Dict[int, Dict[_DAGNodeOperationType, _DAGOperationGraphNode]]:
+    ) -> Dict["ray.actor.ActorHandle", List[_DAGNodeOperation]]:
         """
         Generate an execution schedule for each actor. The schedule is a list of
         _DAGNodeOperation.
