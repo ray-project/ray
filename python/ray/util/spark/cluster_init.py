@@ -89,7 +89,6 @@ class RayClusterOnSpark:
         self,
         address,
         head_proc,
-        spark_job_group_id,
         min_worker_nodes,
         max_worker_nodes,
         temp_dir,
@@ -102,7 +101,6 @@ class RayClusterOnSpark:
     ):
         self.address = address
         self.head_proc = head_proc
-        self.spark_job_group_id = spark_job_group_id
         self.min_worker_nodes = min_worker_nodes
         self.max_worker_nodes = max_worker_nodes
         self.temp_dir = temp_dir
@@ -672,7 +670,6 @@ def _setup_ray_cluster(
     ray_cluster_handler = RayClusterOnSpark(
         address=cluster_address,
         head_proc=ray_head_proc,
-        spark_job_group_id=None,
         min_worker_nodes=min_worker_nodes,
         max_worker_nodes=max_worker_nodes,
         temp_dir=ray_temp_dir,
