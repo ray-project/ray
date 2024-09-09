@@ -167,14 +167,12 @@ class TestMARWIL(unittest.TestCase):
 
         # Calculate our own expected values (to then compare against the
         # agent's loss output).
-        module = algo.learner_group._learner.module[DEFAULT_MODULE_ID].unwrapped()
-        fwd_out = module.forward_train(
-            {k: v for k, v in batch[DEFAULT_MODULE_ID].items()}
+        fwd_out = (
+            algo.learner_group._learner.module[DEFAULT_MODULE_ID]
+            .unwrapped()
+            .forward_train({k: v for k, v in batch[DEFAULT_MODULE_ID].items()})
         )
-        advantages = (
-            batch[DEFAULT_MODULE_ID][Columns.VALUE_TARGETS].detach().cpu().numpy()
-            - module.compute_values(batch[DEFAULT_MODULE_ID]).detach().cpu().numpy()
-        )
+        advantages = batch[DEFAULT_MODULE_ID][Columns.ADVANTAGES].detach().cpu().numpy()
         advantages_squared = possibly_masked_mean(np.square(advantages))
         c_2 = 100.0 + 1e-8 * (advantages_squared - 100.0)
         c = np.sqrt(c_2)
