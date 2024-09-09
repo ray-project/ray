@@ -607,9 +607,10 @@ void NodeManager::DestroyWorker(std::shared_ptr<WorkerInterface> worker,
 }
 
 void NodeManager::HandleJobStarted(const JobID &job_id, const JobTableData &job_data) {
-  RAY_LOG(INFO) << "New job has started. Job id " << job_id << " Driver pid "
-                << job_data.driver_pid() << " is dead: " << job_data.is_dead()
-                << " driver address: " << job_data.driver_address().ip_address();
+  RAY_LOG(DEBUG).WithField(job_id)
+      << "HandleJobStarted Driver pid " << job_data.driver_pid()
+      << " is dead: " << job_data.is_dead()
+      << " driver address: " << job_data.driver_address().ip_address();
   worker_pool_.HandleJobStarted(job_id, job_data.config());
   // Tasks of this job may already arrived but failed to pop a worker because the job
   // config is not local yet. So we trigger dispatching again here to try to
@@ -618,7 +619,7 @@ void NodeManager::HandleJobStarted(const JobID &job_id, const JobTableData &job_
 }
 
 void NodeManager::HandleJobFinished(const JobID &job_id, const JobTableData &job_data) {
-  RAY_LOG(DEBUG) << "HandleJobFinished " << job_id;
+  RAY_LOG(DEBUG).WithField(job_id) << "HandleJobFinished";
   RAY_CHECK(job_data.is_dead());
   // Force kill all the worker processes belonging to the finished job
   // so that no worker processes is leaked.

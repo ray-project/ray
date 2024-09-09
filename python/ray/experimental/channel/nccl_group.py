@@ -1,9 +1,13 @@
 import logging
 from types import ModuleType
-from typing import TYPE_CHECKING, List, Optional
+from typing import TYPE_CHECKING, List, Optional, Tuple
 
 import ray
 from ray.exceptions import RayChannelError
+from ray.experimental.channel.gpu_communicator import (
+    GPUCommunicator,
+    TorchTensorAllocator,
+)
 
 if TYPE_CHECKING:
     import cupy as cp
@@ -16,9 +20,10 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-class _NcclGroup:
+class _NcclGroup(GPUCommunicator):
     """
-    Represents an actor's NCCL communicator.
+    Represents an actor's NCCL communicator. This is the default NCCL communicator
+    to be used in aDAG if a custom communicator is not provided.
 
     This class is not thread-safe.
     """
@@ -62,6 +67,7 @@ class _NcclGroup:
             cuda_stream: A raw CUDA stream to dispatch NCCL ops to. If rank is
                 specified, then this must be specified too.
         """
+        self._world_size = world_size
         self._rank: Optional[int] = rank
         self.nccl_util: Optional[ModuleType] = None
         self._actor_handles = actor_handles
@@ -100,7 +106,11 @@ class _NcclGroup:
 
         self._closed = False
 
-    def _get_actor_handles(self) -> List["ray.actor.ActorHandle"]:
+    def initialize(self, rank: int) -> None:
+        # No additional initialization is needed.
+        pass
+
+    def get_actor_handles(self) -> List["ray.actor.ActorHandle"]:
         return self._actor_handles
 
     def get_rank(self, actor: ray.actor.ActorHandle) -> int:
@@ -123,7 +133,13 @@ class _NcclGroup:
         """
         return self._rank
 
-    def send(self, value: "torch.Tensor", peer_rank: int):
+    def get_world_size(self) -> int:
+        """
+        Return the number of ranks in the NCCL communicator.
+        """
+        return self._world_size
+
+    def send(self, value: "torch.Tensor", peer_rank: int) -> None:
         """
         Send a torch.Tensor to a peer.
 
@@ -151,7 +167,13 @@ class _NcclGroup:
             self._cuda_stream.ptr,
         )
 
-    def recv(self, buf: "torch.Tensor", peer_rank: int):
+    def recv(
+        self,
+        shape: Tuple[int],
+        dtype: "torch.dtype",
+        peer_rank: int,
+        allocator=Optional[TorchTensorAllocator],
+    ) -> "torch.Tensor":
         """
         Receive a torch.Tensor from a peer and synchronize the current stream.
 
@@ -165,6 +187,8 @@ class _NcclGroup:
         """
         if self._closed:
             raise RayChannelError("NCCL group has been destroyed.")
+        assert allocator is not None, "NCCL group requires a tensor allocator"
+        buf = allocator(shape, dtype)
         self._comm.recv(
             self.nccl_util.get_tensor_ptr(buf),
             buf.numel(),
@@ -180,8 +204,9 @@ class _NcclGroup:
         self._cuda_stream.synchronize()
         if self._closed:
             raise RayChannelError("NCCL group has been destroyed.")
+        return buf
 
-    def destroy(self):
+    def destroy(self) -> None:
         """
         Destroy the NCCL group.
         """
