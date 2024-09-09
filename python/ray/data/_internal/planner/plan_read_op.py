@@ -3,7 +3,6 @@ import warnings
 from typing import Iterable, List
 
 import ray
-import ray.cloudpickle as cloudpickle
 from ray.data._internal.compute import TaskPoolStrategy
 from ray.data._internal.execution.interfaces import PhysicalOperator, RefBundle
 from ray.data._internal.execution.interfaces.task_context import TaskContext
