@@ -1275,7 +1275,9 @@ class CompiledDAG:
         # Create executable tasks for each actor
         for actor_handle, tasks in self.actor_to_tasks.items():
             # Dict from non-dag-input arg to the set of tasks that consume it.
-            arg_to_consumers: Dict[DAGNode, Set[CompiledTask]] = defaultdict(set)
+            non_input_arg_to_consumers: Dict[DAGNode, Set[CompiledTask]] = defaultdict(
+                set
+            )
             # The number of tasks that consume InputNode (or InputAttributeNode)
             # Note that _preprocess() ensures that all tasks either use InputNode
             # or use InputAttributeNode, but not both.
@@ -1295,7 +1297,7 @@ class CompiledDAG:
                         is_input_consumer = True
                     elif isinstance(arg, DAGNode):  # Other DAGNodes
                         has_at_least_one_channel_input = True
-                        arg_to_consumers[arg].add(task)
+                        non_input_arg_to_consumers[arg].add(task)
                         arg_idx = self.dag_node_to_idx[arg]
                         upstream_task = self.idx_to_task[arg_idx]
                         assert len(upstream_task.output_channels) == 1
@@ -1318,7 +1320,7 @@ class CompiledDAG:
             # created CachedChannel (if the original channel is read more than once).
             channel_dict: Dict[ChannelInterface, ChannelInterface] = {}
             # Handle non-input args
-            for arg, consumers in arg_to_consumers.items():
+            for arg, consumers in non_input_arg_to_consumers.items():
                 arg_idx = self.dag_node_to_idx[arg]
                 upstream_task = self.idx_to_task[arg_idx]
                 assert len(upstream_task.output_channels) == 1
