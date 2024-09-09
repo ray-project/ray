@@ -174,7 +174,7 @@ class OfflinePreLearner:
             episodes = OfflinePreLearner._map_sample_batch_to_episode(
                 self._is_multi_agent,
                 batch,
-                finalize=False,
+                finalize=True,
                 schema=SCHEMA | self.config.input_read_schema,
                 input_compress_columns=self.config.input_compress_columns,
             )["episodes"]
@@ -560,7 +560,7 @@ class OfflinePreLearner:
                 )
                 # Create a `SingleAgentEpisode`.
                 episode = SingleAgentEpisode(
-                    id_=batch[schema[Columns.EPS_ID]][i][0],
+                    id_=str(batch[schema[Columns.EPS_ID]][i][0]),
                     agent_id=agent_id,
                     observations=obs,
                     infos=(
