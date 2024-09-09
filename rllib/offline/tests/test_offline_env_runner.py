@@ -62,7 +62,7 @@ class TestOfflineEnvRunner(unittest.TestCase):
         )
 
         offline_env_runner = OfflineSingleAgentEnvRunner(config, worker_index=1)
-        # Sample 1ßß episodes.
+        # Sample 100 episodes.
         _ = offline_env_runner.sample(
             num_episodes=100,
             random_actions=True,

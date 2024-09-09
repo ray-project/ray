@@ -1,6 +1,4 @@
 import logging
-import msgpack
-import msgpack_numpy as m
 import ray
 
 from pathlib import Path
@@ -20,7 +18,7 @@ from ray.util.debug import log_once
 logger = logging.Logger(__file__)
 
 # TODO (simon): This class can be agnostic to the episode type as it
-# calls only get_state.
+#  calls only get_state.
 
 
 class OfflineSingleAgentEnvRunner(SingleAgentEnvRunner):
@@ -126,16 +124,20 @@ class OfflineSingleAgentEnvRunner(SingleAgentEnvRunner):
 
         # Add data to the buffers.
         if self.output_write_episodes:
+
+            import msgpack
+            import msgpack_numpy as mnp
+
             if log_once("msgpack"):
                 logger.info(
                     "Packing episodes with `msgpack` and encode array with "
-                    "`msg_pack-numpy` for serialization. This is needed for "
+                    "`msgpack_numpy` for serialization. This is needed for "
                     "recording episodes."
                 )
             # Note, we serialize episodes with `msgpack` and `msgpack_numpy` to
             # ensure version compatibility.
             self._samples.extend(
-                [msgpack.packb(eps.get_state(), default=m.encode) for eps in samples]
+                [msgpack.packb(eps.get_state(), default=mnp.encode) for eps in samples]
             )
         else:
             self._map_episodes_to_data(samples)
