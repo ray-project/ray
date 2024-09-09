@@ -20,6 +20,7 @@ from ray.data._internal.logical.operators.read_operator import Read
 from ray.data._internal.util import _warn_on_high_parallelism, call_with_retry
 from ray.data.block import Block, BlockMetadata
 from ray.data.datasource.datasource import ReadTask
+from ray.experimental.locations import get_local_object_locations
 from ray.util.debug import log_once
 
 TASK_SIZE_WARN_THRESHOLD_BYTES = 1024 * 1024  # 1 MiB
@@ -32,8 +33,13 @@ READ_FILE_RETRY_MAX_BACKOFF_SECONDS = 32
 logger = logging.getLogger(__name__)
 
 
-def cleaned_metadata(read_task: ReadTask) -> BlockMetadata:
-    task_size = len(cloudpickle.dumps(read_task))
+def cleaned_metadata(read_task: ReadTask, read_task_ref) -> BlockMetadata:
+    # NOTE: Use the `get_local_object_locations` API to get the size of the
+    # serialized ReadTask, instead of pickling.
+    # Because the ReadTask may capture ObjectRef objects, which cannot
+    # be serialized out-of-band.
+    locations = get_local_object_locations([read_task_ref])
+    task_size = locations[read_task_ref]["object_size"]
     if task_size > TASK_SIZE_WARN_THRESHOLD_BYTES and log_once(
         f"large_read_task_{read_task.read_fn.__name__}"
     ):
@@ -73,14 +79,16 @@ def plan_read_op(
         read_tasks = op._datasource_or_legacy_reader.get_read_tasks(parallelism)
         _warn_on_high_parallelism(parallelism, len(read_tasks))
 
-        return [
-            RefBundle(
+        ret = []
+        for read_task in read_tasks:
+            read_task_ref = ray.put(read_task)
+            ref_bundle = RefBundle(
                 [
                     (
                         # TODO(chengsu): figure out a better way to pass read
                         # tasks other than ray.put().
-                        ray.put(read_task),
-                        cleaned_metadata(read_task),
+                        read_task_ref,
+                        cleaned_metadata(read_task, read_task_ref),
                     )
                 ],
                 # `owns_blocks` is False, because these refs are the root of the
@@ -88,8 +96,8 @@ def plan_read_op(
                 # be reconstructed.
                 owns_blocks=False,
             )
-            for read_task in read_tasks
-        ]
+            ret.append(ref_bundle)
+        return ret
 
     inputs = InputDataBuffer(
         input_data_factory=get_input_data,
