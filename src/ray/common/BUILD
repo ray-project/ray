@@ -1,4 +1,4 @@
-load("//bazel:ray.bzl", "ray_cc_library")
+load("//bazel:ray.bzl", "ray_cc_library", "ray_cc_test")
 
 ray_cc_library(
     name = "constants",
@@ -272,5 +272,16 @@ ray_cc_library(
     ],
     deps = [
         "//src/ray/util",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+ray_cc_test(
+    name = "status_test",
+    srcs = ["status_test.cc"],
+    deps = [
+        ":status",
+        "@com_google_absl//absl/strings",
+        "@com_google_googletest//:gtest_main",
     ],
 )
