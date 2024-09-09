@@ -15,8 +15,8 @@ apt-get install -y --no-install-recommends \
 		ca-certificates \
 		netbase \
 		tzdata \
-                curl \
-                sudo
+		curl \
+		sudo
 useradd -ms /bin/bash -d /home/ray ray --uid 1000 --gid 100
 usermod -aG sudo ray
 echo 'ray ALL=NOPASSWD: ALL' >> /etc/sudoers

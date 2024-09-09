@@ -145,26 +145,27 @@ curl -sfL "${OSS_WHEEL_URL_PREFIX}${CPP_WHEEL_FILE}" -o "${BUILD_TMP}/oss-whl/${
 
 aws s3 cp "${S3_TEMP}/${WHEEL_FILE}" "${BUILD_TMP}/runtime-whl/${WHEEL_FILE}"
 
-readonly ANYSCALE_DATAPLANE_LAYER="s3://runtime-release-test-artifacts/dataplane/20240613/dataplane.tar.gz"
+if [[ "${USE_MINIMIZED_BASE}" == "1" ]]; then
+    readonly ANYSCALE_DATAPLANE_LAYER="s3://runtime-release-test-artifacts/dataplane/20240906/dataplane_slim.tar.gz"
+    readonly DATAPLANE_TGZ_WANT="1caf415fd69aa3954d89814fe0521216f6d98d2bec1f68a674c32b64680d30f3"
+    readonly BASE_IMG="${RAYCI_WORK_REPO}:${IMAGE_PREFIX}-min-py${PY_VERSION}-${IMG_TYPE}-base"
+else
+    readonly ANYSCALE_DATAPLANE_LAYER="s3://runtime-release-test-artifacts/dataplane/20240906/dataplane.tar.gz"
+    readonly DATAPLANE_TGZ_WANT="4f8322060db950bf1e6477744a98e2cebf0ffacac81063c74bfccadb8d9de9d9"
+    readonly BASE_IMG="${RAYCI_WORK_REPO}:${IMAGE_PREFIX}-${BASE_TYPE}-py${PY_VERSION}-${IMG_TYPE}-base"
+fi
+
 aws s3 cp "${ANYSCALE_DATAPLANE_LAYER}" "${BUILD_TMP}/dataplane.tar.gz"
 DATAPLANE_TGZ_GOT="$(sha256sum "${BUILD_TMP}/dataplane.tar.gz" | cut -d' ' -f1)"
-DATAPLANE_TGZ_WANT="b7c68dd3cf9ef05b2b1518a32729fc036f06ae83bae9b9ecd241e33b37868944"
 if [[ "${DATAPLANE_TGZ_GOT}" != "${DATAPLANE_TGZ_WANT}" ]]; then
     echo "Dataplane tarball sha256 digest:" \
         "got ${DATAPLANE_TGZ_GOT}, want ${DATAPLANE_TGZ_WANT}" >/dev/stderr
     exit 1
 fi
 
-if [[ "${USE_MINIMIZED_BASE}" == "1" ]]; then
-    BASE_IMG="${RAYCI_WORK_REPO}:${IMAGE_PREFIX}-min-py${PY_VERSION}-${IMG_TYPE}-base"
-else
-    BASE_IMG="${RAYCI_WORK_REPO}:${IMAGE_PREFIX}-${BASE_TYPE}-py${PY_VERSION}-${IMG_TYPE}-base"
-fi
-
 aws ecr get-login-password --region us-west-2 | docker login --username AWS --password-stdin "${RUNTIME_ECR}"
 
 docker pull "${BASE_IMG}"
-
 
 if [[ "${BUILDKITE:-}" == "true" ]]; then
     rm -rf /artifact-mount/sitepkg
@@ -316,15 +317,9 @@ fi
 rm -rf "${CONTEXT_TMP}"
 
 echo "--- Build ${ANYSCALE_IMG}"
-if [[ "${USE_MINIMIZED_BASE}" == "1" ]]; then
-    # this minimizes the image should satisfy anyscale dataplane dependencies
-    # so simply re-tagging the image.
-    docker tag "${RAY_IMG}" "${ANYSCALE_IMG}"
-else
-    docker build --progress=plain \
-        --build-arg BASE_IMAGE="${RAY_IMG}" \
-        -t "${ANYSCALE_IMG}" -f Dockerfile - < "${BUILD_TMP}/dataplane.tar.gz"
-fi
+docker build --progress=plain \
+    --build-arg BASE_IMAGE="${RAY_IMG}" \
+    -t "${ANYSCALE_IMG}" -f Dockerfile - < "${BUILD_TMP}/dataplane.tar.gz"
 
 
 ####
