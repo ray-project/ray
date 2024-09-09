@@ -232,7 +232,8 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
 
             # Reset the environment.
             # TODO (simon): Check, if we need here the seed from the config.
-            obs, infos = self.env.reset()
+            obs, infos = self._try_reset_env()
+
             self._cached_to_module = None
 
             # Call `on_episode_start()` callbacks.
@@ -313,7 +314,7 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
             # Step the environment.
             # TODO (sven): [0] = actions is vectorized, but env is NOT a vector Env.
             #  Support vectorized multi-agent envs.
-            obs, rewards, terminateds, truncateds, infos = self.env.step(
+            obs, rewards, terminateds, truncateds, infos = self._try_step_env(
                 actions_for_env[0]
             )
             ts += self._increase_sampled_metrics(self.num_envs, obs, self._episode)
@@ -376,7 +377,7 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
                 self._make_on_episode_callback("on_episode_created")
 
                 # Reset the environment.
-                obs, infos = self.env.reset()
+                obs, infos = self._try_reset_env()
                 # Add initial observations and infos.
                 self._episode.add_env_reset(observations=obs, infos=infos)
 
@@ -444,7 +445,7 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
 
         # Reset the environment.
         # TODO (simon): Check, if we need here the seed from the config.
-        obs, infos = self.env.reset()
+        obs, infos = self._try_reset_env()
         # Set initial obs and infos in the episodes.
         _episode.add_env_reset(observations=obs, infos=infos)
         self._make_on_episode_callback("on_episode_start", _episode)
@@ -588,7 +589,7 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
                 self._make_on_episode_callback("on_episode_created", _episode)
 
                 # Reset the environment.
-                obs, infos = self.env.reset()
+                obs, infos = self._try_reset_env()
                 # Add initial observations and infos.
                 _episode.add_env_reset(observations=obs, infos=infos)
 
@@ -803,6 +804,7 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
                     "Tried closing the existing env (multi-agent), but failed with "
                     f"error: {e.args[0]}"
                 )
+            del self.env
 
         env_ctx = self.config.env_config
         if not isinstance(env_ctx, EnvContext):
@@ -866,6 +868,36 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
     def stop(self):
         # Note, `MultiAgentEnv` inherits `close()`-method from `gym.Env`.
         self.env.close()
+
+    def _try_reset_env(self):
+        try:
+            obs, infos = self.env.reset()
+            return obs, infos
+        except Exception as e:
+            if self.config.restart_failed_sub_environments:
+                logger.exception(
+                    "Resetting the env resulted in an error! The original error "
+                    f"is: {e.args[0]}"
+                )
+                # Recreate the env.
+                self.make_env()
+            else:
+                raise e
+
+    def _try_step_env(self):
+        try:
+            obs, infos = self.env.reset()
+            return obs, infos
+        except Exception as e:
+            if self.config.restart_failed_sub_environments:
+                logger.exception(
+                    "Resetting the env resulted in an error! The original error "
+                    f"is: {e.args[0]}"
+                )
+                # Recreate the env.
+                self.make_env()
+            else:
+                raise e
 
     def _setup_metrics(self):
         self.metrics = MetricsLogger()
