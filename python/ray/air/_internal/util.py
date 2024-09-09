@@ -5,7 +5,7 @@ import queue
 import socket
 import threading
 from contextlib import closing
-from typing import Dict, Optional
+from typing import Optional
 
 import numpy as np
 
@@ -32,9 +32,13 @@ def is_nan_or_inf(value):
 class StartTraceback(Exception):
     """These exceptions (and their tracebacks) can be skipped with `skip_exceptions`"""
 
-    def __init__(self, *args: object, tags: Optional[Dict] = None) -> None:
-        super().__init__(*args)
-        self.tags = tags if tags else {}
+    pass
+
+
+class StartTracebackWithWorkerRank(StartTraceback):
+    def __init__(self, worker_rank) -> None:
+        super().__init__()
+        self.worker_rank = worker_rank
 
 
 def skip_exceptions(exc: Optional[Exception]) -> Exception:

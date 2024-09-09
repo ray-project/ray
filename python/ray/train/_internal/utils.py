@@ -18,7 +18,11 @@ from typing import (
 
 import ray
 from ray.actor import ActorHandle
-from ray.air._internal.util import StartTraceback, find_free_port
+from ray.air._internal.util import (
+    StartTraceback,
+    StartTracebackWithWorkerRank,
+    find_free_port,
+)
 from ray.exceptions import RayActorError
 from ray.types import ObjectRef
 
@@ -57,8 +61,10 @@ def check_for_failure(
                 return False, exc
             except Exception as exc:
                 # Other (e.g. training) errors should be directly raised
-                failed_actor_rank = remote_values.index(object_ref)
-                raise StartTraceback(tags={"failed_rank": failed_actor_rank}) from exc
+                failed_worker_rank = remote_values.index(object_ref)
+                raise StartTracebackWithWorkerRank(
+                    worker_rank=failed_worker_rank
+                ) from exc
 
     return True, None
 

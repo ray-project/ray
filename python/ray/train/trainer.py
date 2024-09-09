@@ -1,9 +1,12 @@
 import logging
-import traceback
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, TypeVar, Union
 
-from ray.air._internal.util import StartTraceback
+from ray.air._internal.util import (
+    StartTraceback,
+    StartTracebackWithWorkerRank,
+    skip_exceptions,
+)
 from ray.data import Dataset
 from ray.train import Checkpoint, DataConfig
 from ray.train._internal.backend_executor import (
@@ -133,8 +136,11 @@ class TrainingIterator:
         except StartTraceback as e:
             # If this is a StartTraceback, then this is a user error.
             # We raise it directly
-            stack_trace = traceback.format_exc()
-            failed_rank = e.tags.get("failed_rank", None)
+            stack_trace = skip_exceptions(e)
+            if isinstance(e, StartTracebackWithWorkerRank):
+                failed_rank = e.worker_rank
+            else:
+                failed_rank = None
             self._backend_executor.report_final_run_status(
                 errored=True, stack_trace=stack_trace, failed_rank=failed_rank
             )

@@ -676,6 +676,7 @@ class BackendExecutor:
             if errored:
                 run_status = RunStatusEnum.ERRORED
                 status_detail = f"Rank {failed_rank} worker raised an error: \n"
+                # Keep only the last part of the stack trace if it's too long.
                 status_detail += stack_trace[-MAX_ERROR_STACK_TRACE_LENGTH:]
             else:
                 run_status = RunStatusEnum.FINISHED
