@@ -14,7 +14,6 @@ from typing import (
 )
 
 import numpy as np
-from mars.dataframe.utils import cloudpickle
 
 import ray
 from ray.data._internal.util import (
@@ -156,12 +155,21 @@ class FileBasedDatasource(Datasource):
         if shuffle == "files":
             self._file_metadata_shuffler = np.random.default_rng()
 
-        self._paths = paths
-        self._file_sizes = file_sizes
+        # Read tasks serialize `FileBasedDatasource` instances, and the list of paths
+        # can be large. To avoid slow serialization speeds, we store a reference to
+        # the paths rather than the paths themselves.
+        self._paths_ref = ray.put(paths)
+        self._file_sizes_ref = ray.put(file_sizes)
+
+    def _paths(self) -> List[str]:
+        return ray.get(self._paths_ref)
+
+    def _file_sizes(self) -> List[float]:
+        return ray.get(self._file_sizes_ref)
 
     def estimate_inmemory_data_size(self) -> Optional[int]:
         total_size = 0
-        for sz in self._file_sizes:
+        for sz in self._file_sizes():
             if sz is not None:
                 total_size += sz
         return total_size
@@ -173,8 +181,8 @@ class FileBasedDatasource(Datasource):
         open_stream_args = self._open_stream_args
         partitioning = self._partitioning
 
-        paths = self._paths
-        file_sizes = self._file_sizes
+        paths = self._paths()
+        file_sizes = self._file_sizes()
 
         if self._file_metadata_shuffler is not None:
             files_metadata = list(zip(paths, file_sizes))
