@@ -1276,8 +1276,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
                              rpc::SendReplyCallback send_reply_callback) override;
 
   /// Implements gRPC server handler.
-  void HandleWaitForActorRefDeleted(rpc::WaitForActorRefDeletedRequest request,
-                                    rpc::WaitForActorRefDeletedReply *reply,
+  void HandleWaitForActorOutOfScope(rpc::WaitForActorOutOfScopeRequest request,
+                                    rpc::WaitForActorOutOfScopeReply *reply,
                                     rpc::SendReplyCallback send_reply_callback) override;
 
   // Implements gRPC server handler.

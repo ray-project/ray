@@ -159,23 +159,10 @@ message KillActorViaGcsReply {
   GcsStatus status = 1;
 }
 
-message ReportActorOutOfScopeRequest {
-  // ID of this actor.
-  bytes actor_id = 1;
-  // The actor after this number of lineage reconstructions is out of scope.
-  // This is used to filter out stale message.
-  uint64 num_restarts_due_to_lineage_reconstruction = 2;
-}
-
-message ReportActorOutOfScopeReply {
-  GcsStatus status = 1;
-}
-
 // Service for actor info access.
 service ActorInfoGcsService {
   // Register actor to gcs service.
   rpc RegisterActor(RegisterActorRequest) returns (RegisterActorReply);
-  rpc RestartActor(RestartActorRequest) returns (RestartActorReply);
   // Create actor which local dependencies are resolved.
   rpc CreateActor(CreateActorRequest) returns (CreateActorReply);
   // Get actor data from GCS Service by actor id.
@@ -188,8 +175,6 @@ service ActorInfoGcsService {
   rpc GetAllActorInfo(GetAllActorInfoRequest) returns (GetAllActorInfoReply);
   // Kill actor via GCS Service.
   rpc KillActorViaGcs(KillActorViaGcsRequest) returns (KillActorViaGcsReply);
-  rpc ReportActorOutOfScope(ReportActorOutOfScopeRequest)
-      returns (ReportActorOutOfScopeReply);
 }
 
 message GetClusterIdRequest {}
@@ -389,16 +374,6 @@ message RegisterActorRequest {
 }
 
 message RegisterActorReply {
-  GcsStatus status = 1;
-}
-
-message RestartActorRequest {
-  bytes actor_id = 1;
-  // The target number of restarts.
-  uint64 num_restarts = 2;
-}
-
-message RestartActorReply {
   GcsStatus status = 1;
 }
 

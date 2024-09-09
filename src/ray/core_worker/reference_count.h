@@ -49,10 +49,7 @@ class ReferenceCounterInterface {
       bool is_reconstructable,
       bool add_local_ref,
       const absl::optional<NodeID> &pinned_at_raylet_id = absl::optional<NodeID>()) = 0;
-  virtual bool AddObjectPrimaryCopyDeleteCallback(
-      const ObjectID &object_id,
-      const std::function<void(const ObjectID &)> callback) = 0;
-  virtual bool SetObjectRefDeletedCallback(
+  virtual bool SetObjectPrimaryCopyDeleteCallback(
       const ObjectID &object_id,
       const std::function<void(const ObjectID &)> callback) = 0;
 
@@ -319,19 +316,13 @@ class ReferenceCounter : public ReferenceCounterInterface,
   void FreePlasmaObjects(const std::vector<ObjectID> &object_ids)
       ABSL_LOCKS_EXCLUDED(mutex_);
 
-  /// Adds the callback that will be run when the object goes out of scope
-  /// (Reference.OutOfScope() returns true).
+  /// Sets the callback that will be run when the object goes out of scope.
   /// Returns true if the object was in scope and the callback was added, else false.
-  bool AddObjectPrimaryCopyDeleteCallback(
+  bool SetObjectPrimaryCopyDeleteCallback(
       const ObjectID &object_id, const std::function<void(const ObjectID &)> callback)
       ABSL_LOCKS_EXCLUDED(mutex_);
 
-  /// Sets the callback that will be run when the object reference is deleted
-  /// from the reference table (all refs including lineage ref count go to 0).
-  /// Returns true if the object was in the reference table and the callback was added
-  /// else false.
-  bool SetObjectRefDeletedCallback(const ObjectID &object_id,
-                                   const std::function<void(const ObjectID &)> callback)
+  void ResetDeleteCallbacks(const std::vector<ObjectID> &object_ids)
       ABSL_LOCKS_EXCLUDED(mutex_);
 
   /// Set a callback for when we are no longer borrowing this object (when our
@@ -787,14 +778,7 @@ class ReferenceCounter : public ReferenceCounterInterface,
 
     /// Callback that will be called when this Object's primary copy
     /// should be deleted: out of scope or internal_api.free
-    /// Note: when an object is out of scope, it can still
-    /// have lineage ref count and on_object_ref_delete
-    /// will be called when lineage ref count is also 0.
-    std::vector<std::function<void(const ObjectID &)>>
-        on_object_primary_copy_delete_callbacks;
-    /// Callback that will be called when the object ref is deleted
-    /// from the reference table (all refs including lineage ref count go to 0).
-    std::function<void(const ObjectID &)> on_object_ref_delete;
+    std::function<void(const ObjectID &)> on_object_primary_copy_delete;
     /// Callback that is called when this process is no longer a borrower
     /// (RefCount() == 0).
     std::function<void(const ObjectID &)> on_ref_removed;

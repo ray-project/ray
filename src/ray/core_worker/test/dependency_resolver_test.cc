@@ -140,18 +140,6 @@ class MockActorCreator : public ActorCreatorInterface {
     return Status::OK();
   }
 
-  Status AsyncRestartActor(const ActorID &actor_id,
-                           uint64_t num_restarts,
-                           gcs::StatusCallback callback) override {
-    return Status::OK();
-  }
-
-  Status AsyncReportActorOutOfScope(const ActorID &actor_id,
-                                    uint64_t num_restarts_due_to_lineage_reconstruction,
-                                    gcs::StatusCallback callback) override {
-    return Status::OK();
-  }
-
   void AsyncWaitForActorRegisterFinish(const ActorID &,
                                        gcs::StatusCallback callback) override {
     callbacks.push_back(callback);

@@ -461,12 +461,6 @@ class ActorState(StateSchema):
     placement_group_id: Optional[str] = state_column(detail=True, filterable=True)
     #: Actor's repr name if a customized __repr__ method exists, else empty string.
     repr_name: Optional[str] = state_column(detail=True, filterable=True)
-    #: Number of restarts that has been tried on this actor.
-    num_restarts: int = state_column(filterable=False, detail=True)
-    #: Number of times this actor is restarted due to lineage reconstructions.
-    num_restarts_due_to_lineage_reconstruction: int = state_column(
-        filterable=False, detail=True
-    )
 
 
 @dataclass(init=not IS_PYDANTIC_2)

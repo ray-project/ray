@@ -114,14 +114,14 @@ class ActorManager {
                          const rpc::Address &caller_address,
                          bool owned);
 
-  /// Wait for actor reference deletion.
+  /// Wait for actor out of scope.
   ///
   /// \param actor_id The actor id that owns the callback.
-  /// \param actor_ref_deleted_callback The callback function that will be called when
-  /// an actor_id has no references.
-  void WaitForActorRefDeleted(
+  /// \param actor_out_of_scope_callback The callback function that will be called when
+  /// an actor_id goes out of scope.
+  void WaitForActorOutOfScope(
       const ActorID &actor_id,
-      std::function<void(const ActorID &)> actor_ref_deleted_callback);
+      std::function<void(const ActorID &)> actor_out_of_scope_callback);
 
   /// Get a list of actor_ids from existing actor handles.
   /// This is used for debugging purpose.
@@ -150,10 +150,10 @@ class ActorManager {
   /// \param[in] call_site The caller's site.
   /// \param[in] actor_id The id of an actor
   /// \param[in] actor_creation_return_id object id of this actor creation
-  /// \param[in] add_local_ref Whether to add a local reference for this actor.
+  /// \param[in] Whether to add a local reference for this actor.
   /// \param[in] is_self Whether this handle is current actor's handle. If true, actor
+  /// to the same actor.
   /// manager won't subscribe actor info from GCS.
-  /// \param[in] owned Whether the actor is owned by the current process.
   /// \return True if the handle was added and False if we already had a handle
   /// to the same actor.
   bool AddActorHandle(std::unique_ptr<ActorHandle> actor_handle,
@@ -162,8 +162,7 @@ class ActorManager {
                       const ActorID &actor_id,
                       const ObjectID &actor_creation_return_id,
                       bool add_local_ref,
-                      bool is_self,
-                      bool owned);
+                      bool is_self = false);
 
   /// Check if named actor is cached locally.
   /// If it has been cached, core worker will not get actor id by name from GCS.
