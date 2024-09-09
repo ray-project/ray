@@ -57,6 +57,7 @@ class DashboardHead:
         http_port: int,
         http_port_retries: int,
         gcs_address: str,
+        cluster_id_hex: str,
         node_ip_address: str,
         grpc_port: int,
         log_dir: str,
@@ -107,6 +108,7 @@ class DashboardHead:
         self.gcs_address = None
         assert gcs_address is not None
         self.gcs_address = gcs_address
+        self.cluster_id_hex = cluster_id_hex
         self.log_dir = log_dir
         self.temp_dir = temp_dir
         self.session_dir = session_dir
@@ -236,8 +238,12 @@ class DashboardHead:
         gcs_address = self.gcs_address
 
         # Dashboard will handle connection failure automatically
-        self.gcs_client = GcsClient(address=gcs_address, nums_reconnect_retry=0)
-        self.gcs_aio_client = GcsAioClient(address=gcs_address, nums_reconnect_retry=0)
+        self.gcs_client = GcsClient(
+            address=gcs_address, nums_reconnect_retry=0, cluster_id=self.cluster_id_hex
+        )
+        self.gcs_aio_client = GcsAioClient(
+            address=gcs_address, nums_reconnect_retry=0, cluster_id=self.cluster_id_hex
+        )
         internal_kv._initialize_internal_kv(self.gcs_client)
 
         if self.minimal:

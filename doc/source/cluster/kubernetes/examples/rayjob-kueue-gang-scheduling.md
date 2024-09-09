@@ -27,8 +27,8 @@ to manage resources that RayJob and RayCluster consume. See the
 
 Gang scheduling is essential when working with expensive, limited hardware accelerators like GPUs.
 It prevents RayJobs from partially provisioning Ray clusters and claiming but not using the GPUs.
-Kueue suspends a RayJob until the Kubernetes cluster and the underlying cloud provider can guarantee 
-the capacity that the RayJob needs to execute. This approach greatly improves GPU utilization and 
+Kueue suspends a RayJob until the Kubernetes cluster and the underlying cloud provider can guarantee
+the capacity that the RayJob needs to execute. This approach greatly improves GPU utilization and
 cost, especially when GPU availability is limited.
 
 ## Create a Kubernetes cluster on GKE
@@ -191,7 +191,7 @@ Following is the expected behavior when you deploy a GPU-requiring RayJob to a c
 * Once the required GPU nodes are available, the ProvisioningRequest is satisfied.
 * Kueue admits the RayJob, allowing Kubernetes to schedule the Ray nodes on the newly provisioned nodes, and the RayJob execution begins.
 
-If GPUs are unavailable, Kueue keeps suspending the RayJob. In addition, the node autoscaler avoids 
+If GPUs are unavailable, Kueue keeps suspending the RayJob. In addition, the node autoscaler avoids
 provisioning new nodes until it can fully satisfy the RayJob's GPU requirements.
 
 Upon creating a RayJob, notice that the RayJob status is immediately `suspended` despite the ClusterQueue having GPU quotas available.
