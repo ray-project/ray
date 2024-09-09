@@ -37,7 +37,7 @@ namespace rpc {
   RAY_CORE_WORKER_RPC_SERVICE_HANDLER(DirectActorCallArgWaitComplete) \
   RAY_CORE_WORKER_RPC_SERVICE_HANDLER(RayletNotifyGCSRestart)         \
   RAY_CORE_WORKER_RPC_SERVICE_HANDLER(GetObjectStatus)                \
-  RAY_CORE_WORKER_RPC_SERVICE_HANDLER(WaitForActorOutOfScope)         \
+  RAY_CORE_WORKER_RPC_SERVICE_HANDLER(WaitForActorRefDeleted)         \
   RAY_CORE_WORKER_RPC_SERVICE_HANDLER(PubsubLongPolling)              \
   RAY_CORE_WORKER_RPC_SERVICE_HANDLER(PubsubCommandBatch)             \
   RAY_CORE_WORKER_RPC_SERVICE_HANDLER(UpdateObjectLocationBatch)      \
@@ -63,7 +63,7 @@ namespace rpc {
   DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(DirectActorCallArgWaitComplete) \
   DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(RayletNotifyGCSRestart)         \
   DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(GetObjectStatus)                \
-  DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(WaitForActorOutOfScope)         \
+  DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(WaitForActorRefDeleted)         \
   DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(PubsubLongPolling)              \
   DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(PubsubCommandBatch)             \
   DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(UpdateObjectLocationBatch)      \
