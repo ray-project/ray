@@ -75,9 +75,9 @@ class MockWorkerClient : public rpc::CoreWorkerClientInterface {
  public:
   MockWorkerClient(instrumented_io_context &io_service) : io_service_(io_service) {}
 
-  void WaitForActorRefDeleted(
-      const rpc::WaitForActorRefDeletedRequest &request,
-      const rpc::ClientCallback<rpc::WaitForActorRefDeletedReply> &callback) override {
+  void WaitForActorOutOfScope(
+      const rpc::WaitForActorOutOfScopeRequest &request,
+      const rpc::ClientCallback<rpc::WaitForActorOutOfScopeReply> &callback) override {
     callbacks_.push_back(callback);
   }
 
@@ -93,12 +93,12 @@ class MockWorkerClient : public rpc::CoreWorkerClientInterface {
 
     // The created_actors_ of gcs actor manager will be modified in io_service thread.
     // In order to avoid multithreading reading and writing created_actors_, we also
-    // send the `WaitForActorRefDeleted` callback operation to io_service thread.
+    // send the `WaitForActorOutOfScope` callback operation to io_service thread.
     std::promise<bool> promise;
     io_service_.post(
         [this, status, &promise]() {
           auto callback = callbacks_.front();
-          auto reply = rpc::WaitForActorRefDeletedReply();
+          auto reply = rpc::WaitForActorOutOfScopeReply();
           callback(status, std::move(reply));
           promise.set_value(false);
         },
@@ -109,7 +109,7 @@ class MockWorkerClient : public rpc::CoreWorkerClientInterface {
     return true;
   }
 
-  std::list<rpc::ClientCallback<rpc::WaitForActorRefDeletedReply>> callbacks_;
+  std::list<rpc::ClientCallback<rpc::WaitForActorOutOfScopeReply>> callbacks_;
   std::vector<ActorID> killed_actors_;
   instrumented_io_context &io_service_;
 };
@@ -298,7 +298,7 @@ TEST_F(GcsActorManagerTest, TestBasic) {
       "DEPENDENCIES_UNREADY", "PENDING_CREATION", "ALIVE", "DEAD"};
   std::vector<std::string> vc;
   for (int i = 0; i < num_retry; i++) {
-    Mocker::ReadContentFromFile(vc, log_dir_ + "/export_events/event_EXPORT_ACTOR.log");
+    Mocker::ReadContentFromFile(vc, log_dir_ + "/events/event_EXPORT_ACTOR.log");
     if ((int)vc.size() == num_export_events) {
       for (int event_idx = 0; event_idx < num_export_events; event_idx++) {
         json export_event_as_json = json::parse(vc[event_idx]);
@@ -308,8 +308,7 @@ TEST_F(GcsActorManagerTest, TestBasic) {
           // Verify death cause for last actor DEAD event
           ASSERT_EQ(
               event_data["death_cause"]["actor_died_error_context"]["error_message"],
-              "The actor is dead because all references to the actor were removed "
-              "including lineage ref count.");
+              "The actor is dead because all references to the actor were removed.");
         }
       }
       return;
@@ -319,7 +318,7 @@ TEST_F(GcsActorManagerTest, TestBasic) {
       vc.clear();
     }
   }
-  Mocker::ReadContentFromFile(vc, log_dir_ + "/export_events/event_EXPORT_ACTOR.log");
+  Mocker::ReadContentFromFile(vc, log_dir_ + "/events/event_EXPORT_ACTOR.log");
   std::ostringstream lines;
   for (auto line : vc) {
     lines << line << "\n";
