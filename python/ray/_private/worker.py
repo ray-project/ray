@@ -1242,7 +1242,7 @@ def init(
     logging_level: int = ray_constants.LOGGER_LEVEL,
     logging_format: Optional[str] = None,
     logging_config: Optional[LoggingConfig] = None,
-    log_to_driver: bool = True,
+    log_to_driver: Optional[bool] = None,
     namespace: Optional[str] = None,
     runtime_env: Optional[Union[Dict[str, Any], "RuntimeEnv"]] = None,  # noqa: F821
     storage: Optional[str] = None,
@@ -1401,6 +1401,9 @@ def init(
         Exception: An exception is raised if an inappropriate combination of
             arguments is passed in.
     """
+    if log_to_driver is None:
+        log_to_driver = ray_constants.RAY_LOG_TO_DRIVER
+
     # Configure the "ray" logger for the driver process.
     if configure_logging:
         setup_logger(logging_level, logging_format or ray_constants.LOGGER_FORMAT)
