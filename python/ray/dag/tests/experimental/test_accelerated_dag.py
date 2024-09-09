@@ -105,6 +105,9 @@ class Actor:
     def return_two_from_three(self, x):
         return x, x + 1, x + 2
 
+    def get_events(self):
+        return getattr(self, "__ray_adag_events", [])
+
 
 @ray.remote
 class Collector:
@@ -1817,6 +1820,36 @@ def test_payload_large(ray_start_cluster):
     # Note: must teardown before starting a new Ray session, otherwise you'll get
     # a segfault from the dangling monitor thread upon the new Ray init.
     compiled_dag.teardown()
+
+
+def test_event_profiling(ray_start_regular, monkeypatch):
+    monkeypatch.setattr(ray.dag.constants, "RAY_ADAG_ENABLE_PROFILING", True)
+
+    a = Actor.options(name="a").remote(0)
+    b = Actor.options(name="b").remote(0)
+    with InputNode() as inp:
+        x = a.inc.bind(inp)
+        y = b.inc.bind(inp)
+        z = b.inc.bind(y)
+        dag = MultiOutputNode([x, z])
+    adag = dag.experimental_compile()
+    ray.get(adag.execute(1))
+
+    a_events = ray.get(a.get_events.remote())
+    b_events = ray.get(b.get_events.remote())
+
+    # a: 1 x READ, 1 x COMPUTE, 1 x WRITE
+    assert len(a_events) == 3
+    # a: 2 x READ, 2 x COMPUTE, 2 x WRITE
+    assert len(b_events) == 6
+
+    for event in a_events + b_events:
+        assert event.actor_classname == "Actor"
+        assert event.actor_name in ["a", "b"]
+        assert event.method_name == "inc"
+        assert event.operation in ["READ", "COMPUTE", "WRITE"]
+
+    adag.teardown()
 
 
 @ray.remote
