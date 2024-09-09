@@ -46,7 +46,6 @@ def test_schema(ray_start_regular):
             task_count={
                 "ReadRange": 10,
                 "reduce": 5,
-                "_get_datasource_or_legacy_reader": 1,
             }
         ),
         last_snapshot,
@@ -89,7 +88,7 @@ def test_schema_no_execution(ray_start_regular):
     last_snapshot = get_initial_core_execution_metrics_snapshot()
     ds = ray.data.range(100, override_num_blocks=10)
     last_snapshot = assert_core_execution_metrics_equals(
-        CoreExecutionMetrics(task_count={"_get_datasource_or_legacy_reader": 1}),
+        CoreExecutionMetrics(task_count={}),
         last_snapshot,
     )
     # We do not kick off the read task by default.
@@ -146,9 +145,7 @@ def test_count(ray_start_regular):
     # for ray.data.range(), as the number of rows is known beforehand.
     assert not ds._plan.has_started_execution
 
-    assert_core_execution_metrics_equals(
-        CoreExecutionMetrics(task_count={"_get_datasource_or_legacy_reader": 1})
-    )
+    assert_core_execution_metrics_equals(CoreExecutionMetrics(task_count={}))
 
 
 def test_count_edge_case(ray_start_regular):
@@ -189,11 +186,7 @@ def test_limit_execution(ray_start_regular):
 
     ds = ds.map(delay)
     last_snapshot = assert_core_execution_metrics_equals(
-        CoreExecutionMetrics(
-            task_count={
-                "_get_datasource_or_legacy_reader": 1,
-            }
-        ),
+        CoreExecutionMetrics(task_count={}),
         last_snapshot=last_snapshot,
     )
 
@@ -218,7 +211,6 @@ def test_limit_execution(ray_start_regular):
         CoreExecutionMetrics(
             task_count={
                 "ReadRange": 20,
-                "_get_datasource_or_legacy_reader": 1,
             }
         ),
         last_snapshot=last_snapshot,

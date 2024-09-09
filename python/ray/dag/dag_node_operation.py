@@ -272,6 +272,12 @@ def _build_dag_node_operation_graph(
 
     # Add an edge from WRITE of the writer task to READ of the reader task.
     for task_idx, task in idx_to_task.items():
+        if (
+            isinstance(task.dag_node, ClassMethodNode)
+            and task.dag_node.is_class_method_output
+        ):
+            # TODO(wxdeng): Handle the case where the task is a class method output.
+            continue
         if not isinstance(task.dag_node, ClassMethodNode):
             # The graph is used to generate an execution schedule for each actor.
             # The edge from the InputNode has no impact on the final execution
@@ -279,6 +285,13 @@ def _build_dag_node_operation_graph(
             continue
         for downstream_task_idx in task.downstream_task_idxs:
             downstream_dag_node = idx_to_task[downstream_task_idx].dag_node
+            if (
+                isinstance(downstream_dag_node, ClassMethodNode)
+                and downstream_dag_node.is_class_method_output
+            ):
+                # TODO(wxdeng): Handle the case where the downstream task is
+                # a class method output.
+                continue
             if isinstance(downstream_dag_node, MultiOutputNode):
                 continue
             _add_edge(

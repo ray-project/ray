@@ -72,7 +72,8 @@ class DAGNode(DAGNodeBase):
         self.cache_from_last_execute = {}
 
         self._type_hint: Optional[ChannelOutputType] = ChannelOutputType()
-        self.is_output_node = False
+        # Whether this node calls `experimental_compile`.
+        self.is_adag_output_node = False
 
     def _collect_upstream_nodes(self) -> List["DAGNode"]:
         """
@@ -204,10 +205,17 @@ class DAGNode(DAGNodeBase):
         if _max_buffered_results is None:
             _max_buffered_results = ctx.max_buffered_results
 
+        # Validate whether this DAG node has already been compiled.
+        if self.is_adag_output_node:
+            raise ValueError(
+                "It is not allowed to call `experimental_compile` on the same DAG "
+                "object multiple times no matter whether `teardown` is called or not. "
+                "Please reuse the existing compiled DAG or create a new one."
+            )
         # Whether this node is an output node in the DAG. We cannot determine
         # this in the constructor because the output node is determined when
         # `experimental_compile` is called.
-        self.is_output_node = True
+        self.is_adag_output_node = True
         return build_compiled_dag_from_ray_dag(
             self,
             _execution_timeout,
@@ -386,9 +394,21 @@ class DAGNode(DAGNodeBase):
         """
         visited = set()
         queue = [self]
+        adag_output_node: Optional[DAGNode] = None
+
         while queue:
             node = queue.pop(0)
             if node not in visited:
+                if node.is_adag_output_node:
+                    # Validate whether there are multiple nodes that call
+                    # `experimental_compile`.
+                    if adag_output_node is not None:
+                        raise ValueError(
+                            "The DAG was compiled more than once. The following two "
+                            "nodes call `experimental_compile`: "
+                            f"(1) {adag_output_node}, (2) {node}"
+                        )
+                    adag_output_node = node
                 fn(node)
                 visited.add(node)
                 """

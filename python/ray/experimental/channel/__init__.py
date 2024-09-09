@@ -10,6 +10,7 @@ from ray.experimental.channel.common import (  # noqa: F401
     SynchronousWriter,
     WriterInterface,
 )
+from ray.experimental.channel.gpu_communicator import GPUCommunicator
 from ray.experimental.channel.intra_process_channel import IntraProcessChannel
 from ray.experimental.channel.shared_memory_channel import (
     BufferedSharedMemoryChannel,
@@ -23,6 +24,7 @@ __all__ = [
     "AwaitableBackgroundWriter",
     "CachedChannel",
     "Channel",
+    "GPUCommunicator",
     "ReaderInterface",
     "SynchronousReader",
     "SynchronousWriter",
