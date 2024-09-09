@@ -1,12 +1,10 @@
 import gymnasium as gym
-import msgpack
-import msgpack_numpy as m
 import numpy as np
 import random
-import ray
-from ray.actor import ActorHandle
 from typing import Any, Dict, List, Optional, Union, Tuple, TYPE_CHECKING
 
+import ray
+from ray.actor import ActorHandle
 from ray.rllib.core.columns import Columns
 from ray.rllib.core.learner import Learner
 from ray.rllib.core.rl_module.multi_rl_module import MultiRLModuleSpec
@@ -146,9 +144,13 @@ class OfflinePreLearner:
 
         # If we directly read in episodes we just convert to list.
         if self.input_read_episodes:
+
+            import msgpack
+            import msgpack_numpy as mnp
+
             episodes = [
                 SingleAgentEpisode.from_state(
-                    msgpack.unpackb(state, object_hook=m.decode)
+                    msgpack.unpackb(state, object_hook=mnp.decode)
                 )
                 for state in batch["item"]
             ]
