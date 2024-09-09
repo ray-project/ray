@@ -241,7 +241,7 @@ class TestNoUserInfoInLogs:
             assert_no_user_info_in_logs(USER_SECRET)
 
         assert_no_user_info_in_logs(
-            USER_SECRET, file_whitelist=["runtime_env*.log", "event_EXPORT_ACTOR.log"]
+            USER_SECRET, file_whitelist=["runtime_env*.log", "event_EXPORT*.log"]
         )
 
 
