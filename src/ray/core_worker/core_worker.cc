@@ -1516,7 +1516,7 @@ Status CoreWorker::ExperimentalRegisterMutableObjectReaderRemote(
   size_t num_requests = addrs.size();
   RAY_CHECK_EQ(addrs.size(), remote_reader_object_ids.size());
   std::promise<void> promise;
-  for (auto i = 0; i < addrs.size(); i++) {
+  for (size_t i = 0; i < addrs.size(); i++) {
     const auto &addr = addrs[i];
     const auto &reader_object_id = remote_reader_object_ids[i];
     const auto &num_reader = remote_num_readers[i];

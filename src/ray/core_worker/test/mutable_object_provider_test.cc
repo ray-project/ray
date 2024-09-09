@@ -153,7 +153,7 @@ TEST(MutableObjectProvider, RegisterWriterChannel) {
   MutableObjectProvider provider(
       plasma,
       /*factory=*/absl::bind_front(GetTestInterface, interface));
-  provider.RegisterWriterChannel(object_id, {&node_id});
+  provider.RegisterWriterChannel(object_id, {node_id});
 
   std::shared_ptr<Buffer> data;
   EXPECT_EQ(provider

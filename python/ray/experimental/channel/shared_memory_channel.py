@@ -250,7 +250,7 @@ class Channel(ChannelInterface):
             )
             self._writer_ref = _create_channel_ref(self, typ.buffer_size_bytes)
 
-            self._create_reader_refs(reader_and_node_list, typ.buffer_size_bytes)
+            self._create_reader_refs(typ.buffer_size_bytes)
         else:
             assert (
                 _writer_node_id is not None
@@ -342,10 +342,10 @@ class Channel(ChannelInterface):
         remote_reader_node_ids: List[str] = []
         remote_reader_ids: List[str] = []
         remote_num_readers_per_node: List[int] = []
-        for reader_node_id, reader_ref_and_reader_id in self._reader_refs.items():
+        for reader_node_id, reader_info in self._node_id_to_reader_info.items():
             if self.is_local_node(reader_node_id):
                 continue
-            reader_ref, reader_id = reader_ref_and_reader_id
+            reader_ref, reader_id = reader_info
             remote_reader_refs.append(reader_ref)
             remote_reader_ids.append(reader_id)
             remote_reader_node_ids.append(reader_node_id)
