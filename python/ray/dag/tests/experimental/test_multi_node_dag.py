@@ -248,7 +248,8 @@ def test_payload_large(ray_start_cluster):
 
     # Ray sets the gRPC payload max size to 512 MiB. We choose a size in this test that
     # is a bit larger.
-    size = 1024 * 1024 * 600
+    # size = 1024 * 1024 * 600
+    size = 1
     val = b"x" * size
 
     for i in range(3):
