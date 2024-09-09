@@ -372,7 +372,10 @@ class AwaitableBackgroundReader(ReaderInterface):
 @DeveloperAPI
 class WriterInterface:
     def __init__(
-        self, output_channels: List[ChannelInterface], output_idxs: List[Optional[int]]
+        self,
+        output_channels: List[ChannelInterface],
+        output_idxs: List[Optional[int]],
+        is_input=False,
     ):
         """
         Initialize the writer.
@@ -390,6 +393,7 @@ class WriterInterface:
         self._output_idxs = output_idxs
         self._closed = False
         self._num_writes = 0
+        self.is_input = is_input
 
     def get_num_writes(self) -> int:
         return self._num_writes
@@ -415,6 +419,23 @@ class WriterInterface:
             channel.close()
 
 
+def adapt(raw_args, key):
+    from ray.dag.compiled_dag_node import RayDAGArgs
+
+    if not isinstance(raw_args, RayDAGArgs):
+        # Fast path for a single input.
+        return raw_args
+    else:
+        assert isinstance(raw_args, RayDAGArgs)
+        args = raw_args.args
+        kwargs = raw_args.kwargs
+
+    if isinstance(key, int):
+        return args[key]
+    else:
+        return kwargs[key]
+
+
 @DeveloperAPI
 class SynchronousWriter(WriterInterface):
     def start(self):
@@ -422,25 +443,35 @@ class SynchronousWriter(WriterInterface):
             channel.ensure_registered_as_writer()
 
     def write(self, val: Any, timeout: Optional[float] = None) -> None:
-        if len(self._output_channels) > 1:
-            if not isinstance(val, tuple):
-                raise ValueError(
-                    f"Expected a tuple of {len(self._output_channels)} outputs,"
-                    "but got {type(val)}"
-                )
-            if len(val) != len(self._output_channels):
-                raise ValueError(
-                    f"Expected {len(self._output_channels)} outputs, but got"
-                    "{len(val)} outputs"
-                )
+        # TODO (kevin85421)
+        if not self.is_input:
+            if len(self._output_channels) > 1:
+                if not isinstance(val, tuple):
+                    raise ValueError(
+                        f"Expected a tuple of {len(self._output_channels)} outputs, "
+                        f"but got {type(val)}"
+                    )
+                if len(val) != len(self._output_channels):
+                    raise ValueError(
+                        f"Expected {len(self._output_channels)} outputs, but got "
+                        f"{len(val)} outputs"
+                    )
 
-        for i, channel in enumerate(self._output_channels):
-            idx = self._output_idxs[i]
-            if idx is not None:
-                val_i = val[idx]
-            else:
-                val_i = val
-            channel.write(val_i, timeout)
+        if self.is_input:
+            for i, channel in enumerate(self._output_channels):
+                idx = self._output_idxs[i]
+                val_i = adapt(val, idx)
+                # print(f"Writing {val_i} to channel {i}")
+                channel.write(val_i, timeout)
+        else:
+            # TODO (kevin85421): Multi-output support for ClassMethodNode
+            for i, channel in enumerate(self._output_channels):
+                idx = self._output_idxs[i]
+                if idx is not None:
+                    val_i = val[idx]
+                else:
+                    val_i = val
+                channel.write(val_i, timeout)
         self._num_writes += 1
 
 
@@ -482,6 +513,7 @@ class AwaitableBackgroundWriter(WriterInterface):
                     "{len(val)} outputs"
                 )
 
+        # TODO (kevin85421)
         for i, channel in enumerate(self._output_channels):
             idx = self._output_idxs[i]
             if idx is not None:
