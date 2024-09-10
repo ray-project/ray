@@ -9,8 +9,8 @@ from pathlib import Path
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.core.columns import Columns
 from ray.rllib.env.single_agent_episode import SingleAgentEpisode
-from ray.rllib.offline.offline_data import OfflineData
-from ray.rllib.offline.offline_prelearner import OfflinePreLearner, SCHEMA
+from ray.rllib.offline.offline_data import OfflineData, OfflinePreLearner
+from ray.rllib.offline.offline_prelearner import SCHEMA
 
 
 class TestOfflineData(unittest.TestCase):
@@ -42,6 +42,26 @@ class TestOfflineData(unittest.TestCase):
 
         batch = offline_data.data.take_batch(batch_size=10)
         episodes = OfflinePreLearner._map_to_episodes(False, batch)["episodes"]
+
+        self.assertTrue(len(episodes) == 10)
+        self.assertTrue(isinstance(episodes[0], SingleAgentEpisode))
+
+    def test_offline_convert_from_old_sample_batch_to_episodes(self):
+
+        base_path = Path(__file__).parents[2]
+        sample_batch_data_path = base_path / "tests/data/cartpole/large.json"
+        config = AlgorithmConfig().offline_data(
+            input_=["local://" + sample_batch_data_path.as_posix()],
+            input_read_method="read_json",
+            input_read_sample_batches=True,
+        )
+
+        offline_data = OfflineData(config)
+
+        batch = offline_data.data.take_batch(batch_size=10)
+        episodes = OfflinePreLearner._map_sample_batch_to_episode(False, batch)[
+            "episodes"
+        ]
 
         self.assertTrue(len(episodes) == 10)
         self.assertTrue(isinstance(episodes[0], SingleAgentEpisode))

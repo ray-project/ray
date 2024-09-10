@@ -316,7 +316,8 @@ class MapOperator(OneToOneOperator, ABC):
         def _task_done_callback(task_index: int, exception: Optional[Exception]):
             self._metrics.on_task_finished(task_index, exception)
 
-            # Estimate number of tasks from inputs received and tasks submitted so far
+            # Estimate number of tasks and rows from inputs received and tasks
+            # submitted so far
             upstream_op_num_outputs = self.input_dependencies[0].num_outputs_total()
             if upstream_op_num_outputs:
                 estimated_num_tasks = (
@@ -327,6 +328,11 @@ class MapOperator(OneToOneOperator, ABC):
                 self._estimated_num_output_bundles = round(
                     estimated_num_tasks
                     * self._metrics.num_outputs_of_finished_tasks
+                    / self._metrics.num_tasks_finished
+                )
+                self._estimated_output_num_rows = round(
+                    estimated_num_tasks
+                    * self._metrics.rows_task_outputs_generated
                     / self._metrics.num_tasks_finished
                 )
 
@@ -400,6 +406,10 @@ class MapOperator(OneToOneOperator, ABC):
 
     @abstractmethod
     def current_processor_usage(self) -> ExecutionResources:
+        raise NotImplementedError
+
+    @abstractmethod
+    def pending_processor_usage(self) -> ExecutionResources:
         raise NotImplementedError
 
     @abstractmethod

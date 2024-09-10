@@ -106,6 +106,7 @@ from ray.includes.common cimport (
     CJobConfig,
     CConcurrencyGroup,
     CGrpcStatusCode,
+    CLineageReconstructionTask,
     move,
     LANGUAGE_CPP,
     LANGUAGE_JAVA,
@@ -133,7 +134,6 @@ from ray.includes.common cimport (
     kResourceUnitScaling,
     kImplicitResourcePrefix,
     kWorkerSetupHookKeyName,
-    PythonCheckGcsHealth,
     PythonGetNodeLabels,
     PythonGetResourcesTotal,
 )
@@ -196,7 +196,7 @@ from ray.util.scheduling_strategies import (
 import ray._private.ray_constants as ray_constants
 import ray.cloudpickle as ray_pickle
 from ray.core.generated.common_pb2 import ActorDiedErrorContext
-from ray.core.generated.gcs_pb2 import JobTableData, GcsNodeInfo
+from ray.core.generated.gcs_pb2 import JobTableData, GcsNodeInfo, ActorTableData
 from ray.core.generated.gcs_service_pb2 import GetAllResourceUsageReply
 from ray._private.async_compat import (
     sync_to_async,
@@ -2690,15 +2690,14 @@ cdef class GcsClient:
         if self.use_old_client:
             self.inner = OldGcsClient(address, nums_reconnect_retry, cluster_id)
         else:
-            # GcsRpcClient implicitly retries on GetClusterId in Connection. We set
-            # the total timeout to be 1s * (nums_reconnect_retry + 1) to match the old
-            # behavior. The 1s is hard coded in PythonGcsClient retry code:
-            # https://github.com/ray-project/ray/blob/8999fd5194c0f21f845d7bd059e39b6b7d680051/src/ray/gcs/gcs_client/gcs_client.cc#L252 # noqa
-            # Config py_gcs_connect_timeout_s is applied to PythonGcsClient but it's
-            # not effective for gRPC connection failure. We use it as a max timeout.
-            max_timeout_ms = RayConfig.instance().py_gcs_connect_timeout_s() * 1000
-            timeout_ms = min(1000 * (nums_reconnect_retry + 1), max_timeout_ms)
-
+            # For timeout (DEADLINE_EXCEEDED): Both OldGcsClient and NewGcsClient
+            # tries once with timeout_ms.
+            #
+            # For other RpcError (UNAVAILABLE, UNKNOWN): OldGcsClient tries this for
+            # (nums_reconnect_retry + 1) times, each time for timeous_ms (+1s sleep
+            # between each retry). NewGcsClient tries indefinitely until it thinks GCS
+            # is down and kills itself.
+            timeout_ms = RayConfig.instance().py_gcs_connect_timeout_s() * 1000
             self.inner = NewGcsClient.standalone(address, cluster_id, timeout_ms)
         logger.debug(f"Created GcsClient. inner {self.inner}")
 
@@ -3257,53 +3256,10 @@ cdef class _TestOnly_GcsActorSubscriber(_GcsSubscriber):
             check_status(self.inner.get().PollActor(
                 &key_id, timeout_ms, &actor_data))
 
-        from ray.core.generated import gcs_pb2
-
-        info = gcs_pb2.ActorTableData.FromString(
+        info = ActorTableData.FromString(
             actor_data.SerializeAsString())
 
         return [(key_id, info)]
-
-
-def check_health(address: str, timeout=2, skip_version_check=False):
-    """Checks Ray cluster health, before / without actually connecting to the
-    cluster via ray.init().
-
-    Args:
-        address: Ray cluster / GCS address string, e.g. ip:port.
-        timeout: request timeout.
-        skip_version_check: If True, will skip comparision of GCS Ray version with local
-            Ray version. If False (default), will raise exception on mismatch.
-    Returns:
-        Returns True if the cluster is running and has matching Ray version.
-        Returns False if no service is running.
-        Raises an exception otherwise.
-    """
-
-    tokens = address.rsplit(":", 1)
-    if len(tokens) != 2:
-        raise ValueError("Invalid address: {}. Expect 'ip:port'".format(address))
-    gcs_address, gcs_port = tokens
-
-    cdef:
-        c_string c_gcs_address = gcs_address
-        int c_gcs_port = int(gcs_port)
-        int64_t timeout_ms = round(1000 * timeout) if timeout else -1
-        c_string c_ray_version = ray.__version__
-        c_bool c_skip_version_check = skip_version_check
-        c_bool c_is_healthy = True
-
-    try:
-        with nogil:
-            check_status(PythonCheckGcsHealth(
-                c_gcs_address, c_gcs_port, timeout_ms, c_ray_version,
-                c_skip_version_check, c_is_healthy))
-    except RpcError:
-        traceback.print_exc()
-    except RaySystemError as e:
-        raise RuntimeError(str(e))
-
-    return c_is_healthy
 
 
 cdef class CoreWorker:
@@ -3861,6 +3817,25 @@ cdef class CoreWorker:
             check_status(CCoreWorkerProcess.GetCoreWorker().Delete(
                 free_ids, local_only))
 
+    def get_local_ongoing_lineage_reconstruction_tasks(self):
+        cdef:
+            unordered_map[CLineageReconstructionTask, uint64_t] tasks
+            unordered_map[CLineageReconstructionTask, uint64_t].iterator it
+
+        with nogil:
+            tasks = (CCoreWorkerProcess.GetCoreWorker().
+                     GetLocalOngoingLineageReconstructionTasks())
+
+        result = []
+        it = tasks.begin()
+        while it != tasks.end():
+            task = common_pb2.LineageReconstructionTask()
+            task.ParseFromString(dereference(it).first.SerializeAsString())
+            result.append((task, dereference(it).second))
+            postincrement(it)
+
+        return result
+
     def get_local_object_locations(self, object_refs):
         cdef:
             c_vector[optional[CObjectLocation]] results
@@ -4376,6 +4351,16 @@ cdef class CoreWorker:
         CCoreWorkerProcess.GetCoreWorker().RemoveActorHandleReference(
             c_actor_id)
 
+    def get_local_actor_state(self, ActorID actor_id):
+        cdef:
+            CActorID c_actor_id = actor_id.native()
+            optional[int] state = nullopt
+        state = CCoreWorkerProcess.GetCoreWorker().GetLocalActorState(c_actor_id)
+        if state.has_value():
+            return state.value()
+        else:
+            return None
+
     cdef make_actor_handle(self, ActorHandleSharedPtr c_actor_handle,
                            c_bool weak_ref):
         worker = ray._private.worker.global_worker
@@ -4589,9 +4574,9 @@ cdef class CoreWorker:
             return True
         else:
             with nogil:
-                success = (CCoreWorkerProcess.GetCoreWorker()
-                           .PinExistingReturnObject(
-                                   return_id, return_ptr, generator_id))
+                success = (
+                    CCoreWorkerProcess.GetCoreWorker().PinExistingReturnObject(
+                        return_id, return_ptr, generator_id, caller_address))
             return success
 
     cdef store_task_outputs(self,

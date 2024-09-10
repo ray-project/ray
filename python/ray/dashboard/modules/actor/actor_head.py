@@ -3,13 +3,15 @@ import logging
 import os
 import time
 from collections import deque
+from typing import Dict
 
 import aiohttp.web
 
 import ray.dashboard.optional_utils as dashboard_optional_utils
 import ray.dashboard.utils as dashboard_utils
+from ray import ActorID
 from ray._private.gcs_pubsub import GcsAioActorSubscriber
-from ray.core.generated import gcs_service_pb2, gcs_service_pb2_grpc
+from ray.core.generated import gcs_pb2, gcs_service_pb2, gcs_service_pb2_grpc
 from ray.dashboard.datacenter import DataOrganizer, DataSource
 from ray.dashboard.modules.actor import actor_consts
 
@@ -77,11 +79,54 @@ def actor_table_data_to_dict(message):
     return light_message
 
 
+class GetAllActorInfo:
+    """
+    Gets all actor info from GCS via gRPC ActorInfoGcsService.GetAllActorInfo.
+    It makes the call via GcsAioClient or a direct gRPC stub, depends on the env var
+    RAY_USE_OLD_GCS_CLIENT.
+    """
+
+    def __new__(cls, *args, **kwargs):
+        use_old_client = os.getenv("RAY_USE_OLD_GCS_CLIENT") == "1"
+        if use_old_client:
+            return GetAllActorInfoFromGrpc(*args, **kwargs)
+        else:
+            return GetAllActorInfoFromNewGcsClient(*args, **kwargs)
+
+
+class GetAllActorInfoFromNewGcsClient:
+    def __init__(self, dashboard_head):
+        self.gcs_aio_client = dashboard_head.gcs_aio_client
+
+    async def __call__(self, timeout) -> Dict[ActorID, gcs_pb2.ActorTableData]:
+        return await self.gcs_aio_client.get_all_actor_info(timeout=timeout)
+
+
+class GetAllActorInfoFromGrpc:
+    def __init__(self, dashboard_head):
+        gcs_channel = dashboard_head.aiogrpc_gcs_channel
+        self._gcs_actor_info_stub = gcs_service_pb2_grpc.ActorInfoGcsServiceStub(
+            gcs_channel
+        )
+
+    async def __call__(self, timeout) -> Dict[ActorID, gcs_pb2.ActorTableData]:
+        request = gcs_service_pb2.GetAllActorInfoRequest()
+        reply = await self._gcs_actor_info_stub.GetAllActorInfo(
+            request, timeout=timeout
+        )
+        if reply.status.code != 0:
+            raise Exception(f"Failed to GetAllActorInfo: {reply.status.message}")
+        actors = {}
+        for message in reply.actor_table_data:
+            actors[ActorID(message.actor_id)] = message
+        return actors
+
+
 class ActorHead(dashboard_utils.DashboardHeadModule):
     def __init__(self, dashboard_head):
         super().__init__(dashboard_head)
-        # ActorInfoGcsService
-        self._gcs_actor_info_stub = None
+
+        self.get_all_actor_info = None
         # A queue of dead actors in order of when they died
         self.dead_actors_queue = deque()
 
@@ -91,37 +136,43 @@ class ActorHead(dashboard_utils.DashboardHeadModule):
         self.accumulative_event_processing_s = 0
 
     async def _update_actors(self):
+        """
+        Processes actor info. First gets all actors from GCS, then subscribes to
+        actor updates. For each actor update, updates DataSource.node_actors and
+        DataSource.actors.
+
+        To prevent Time-of-check to time-of-use issue [1], the get-all-actor-info
+        happens after the subscription. That is, an update between get-all-actor-info
+        and the subscription is not missed.
+        # [1] https://en.wikipedia.org/wiki/Time-of-check_to_time-of-use
+        """
+        # Receive actors from channel.
+        gcs_addr = self._dashboard_head.gcs_address
+        subscriber = GcsAioActorSubscriber(address=gcs_addr)
+        await subscriber.subscribe()
+
         # Get all actor info.
         while True:
             try:
                 logger.info("Getting all actor info from GCS.")
-                request = gcs_service_pb2.GetAllActorInfoRequest()
-                reply = await self._gcs_actor_info_stub.GetAllActorInfo(
-                    request, timeout=5
-                )
-                if reply.status.code == 0:
-                    actors = {}
-                    for message in reply.actor_table_data:
-                        actor_table_data = actor_table_data_to_dict(message)
-                        actors[actor_table_data["actorId"]] = actor_table_data
-                    # Update actors.
-                    DataSource.actors.reset(actors)
-                    # Update node actors and job actors.
-                    node_actors = {}
-                    for actor_id, actor_table_data in actors.items():
-                        node_id = actor_table_data["address"]["rayletId"]
-                        # Update only when node_id is not Nil.
-                        if node_id != actor_consts.NIL_NODE_ID:
-                            node_actors.setdefault(node_id, {})[
-                                actor_id
-                            ] = actor_table_data
-                    DataSource.node_actors.reset(node_actors)
-                    logger.info("Received %d actor info from GCS.", len(actors))
-                    break
-                else:
-                    raise Exception(
-                        f"Failed to GetAllActorInfo: {reply.status.message}"
-                    )
+
+                actors = await self.get_all_actor_info(timeout=5)
+                actor_dicts: Dict[str, dict] = {
+                    actor_id.hex(): actor_table_data_to_dict(actor_table_data)
+                    for actor_id, actor_table_data in actors.items()
+                }
+                # Update actors.
+                DataSource.actors.reset(actor_dicts)
+                # Update node actors and job actors.
+                node_actors = {}
+                for actor_id, actor_table_data in actor_dicts.items():
+                    node_id = actor_table_data["address"]["rayletId"]
+                    # Update only when node_id is not Nil.
+                    if node_id != actor_consts.NIL_NODE_ID:
+                        node_actors.setdefault(node_id, {})[actor_id] = actor_table_data
+                DataSource.node_actors.reset(node_actors)
+                logger.info("Received %d actor info from GCS.", len(actors))
+                break  # breaks the while True.
             except Exception:
                 logger.exception("Error Getting all actor info from GCS.")
                 await asyncio.sleep(
@@ -161,11 +212,6 @@ class ActorHead(dashboard_utils.DashboardHeadModule):
                 node_actors = DataSource.node_actors.get(node_id, {})
                 node_actors[actor_id] = actor_table_data
                 DataSource.node_actors[node_id] = node_actors
-
-        # Receive actors from channel.
-        gcs_addr = self._dashboard_head.gcs_address
-        subscriber = GcsAioActorSubscriber(address=gcs_addr)
-        await subscriber.subscribe()
 
         while True:
             try:
@@ -258,10 +304,7 @@ class ActorHead(dashboard_utils.DashboardHeadModule):
         )
 
     async def run(self, server):
-        gcs_channel = self._dashboard_head.aiogrpc_gcs_channel
-        self._gcs_actor_info_stub = gcs_service_pb2_grpc.ActorInfoGcsServiceStub(
-            gcs_channel
-        )
+        self.get_all_actor_info = GetAllActorInfo(self._dashboard_head)
         await asyncio.gather(self._update_actors(), self._cleanup_actors())
 
     @staticmethod

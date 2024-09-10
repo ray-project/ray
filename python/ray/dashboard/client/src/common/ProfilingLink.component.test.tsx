@@ -65,7 +65,7 @@ describe("ProfilerButton", () => {
     expect(formatSelect).toBeInTheDocument();
     expect(screen.getByText(/Generate report/)).toHaveAttribute(
       "href",
-      `${mockProps.profilerUrl}&format=flamegraph&duration=5&leaks=1&native=0&trace_python_alocators=0`,
+      `${mockProps.profilerUrl}&format=flamegraph&duration=5&leaks=1&native=0&trace_python_allocators=0`,
     );
   });
 });

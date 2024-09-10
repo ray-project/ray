@@ -11,7 +11,6 @@ from fsspec.implementations.http import HTTPFileSystem
 from fsspec.implementations.local import LocalFileSystem
 
 import ray
-from ray._private.test_utils import wait_for_condition
 from ray.data._internal.execution.interfaces import TaskContext
 from ray.data.block import Block, BlockAccessor
 from ray.data.datasource import Datasink, DummyOutputDatasink
@@ -133,11 +132,9 @@ def test_fsspec_filesystem(ray_start_regular_shared, tmp_path):
     ds._set_uuid("data")
     ds.write_parquet(out_path)
 
-    ds_df1 = pd.read_parquet(os.path.join(out_path, "data_000000_000000.parquet"))
-    ds_df2 = pd.read_parquet(os.path.join(out_path, "data_000001_000000.parquet"))
-    ds_df = pd.concat([ds_df1, ds_df2])
-    df = pd.concat([df1, df2])
-    assert ds_df.equals(df)
+    actual_data = set(pd.read_parquet(out_path).itertuples(index=False))
+    expected_data = set(pd.concat([df1, df2]).itertuples(index=False))
+    assert actual_data == expected_data, (actual_data, expected_data)
 
 
 def test_fsspec_http_file_system(ray_start_regular_shared, http_server, http_file):
@@ -329,32 +326,6 @@ def test_read_s3_file_error(shutdown_only, s3_path):
 
 # NOTE: All tests above share a Ray cluster, while the tests below do not. These
 # tests should only be carefully reordered to retain this invariant!
-
-
-def test_get_reader(shutdown_only):
-    # Note: if you get TimeoutErrors here, try installing required dependencies
-    # with `pip install -U "ray[default]"`.
-    ray.init()
-
-    head_node_id = ray.get_runtime_context().get_node_id()
-
-    # Issue read so `_get_datasource_or_legacy_reader` being executed.
-    ray.data.range(10).materialize()
-
-    # Verify `_get_datasource_or_legacy_reader` being executed on same node (head node).
-    def verify_get_reader():
-        from ray.util.state import list_tasks
-
-        task_states = list_tasks(
-            filters=[("name", "=", "_get_datasource_or_legacy_reader")]
-        )
-        # Verify only one task being executed on same node.
-        assert len(task_states) == 1
-        assert task_states[0]["name"] == "_get_datasource_or_legacy_reader"
-        assert task_states[0]["node_id"] == head_node_id
-        return True
-
-    wait_for_condition(verify_get_reader, timeout=20)
 
 
 if __name__ == "__main__":

@@ -15,8 +15,8 @@ from ray.data._internal.datasource.parquet_bulk_datasource import ParquetBulkDat
 from ray.data._internal.datasource.parquet_datasource import (
     NUM_CPUS_FOR_META_FETCH_TASK,
     ParquetDatasource,
+    SerializedFragment,
     _deserialize_fragments_with_retry,
-    _SerializedFragment,
 )
 from ray.data._internal.execution.interfaces.ref_bundle import (
     _ref_bundles_iterator_to_block_refs_list,
@@ -30,6 +30,19 @@ from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.mock_http_server import *  # noqa
 from ray.data.tests.test_util import ConcurrencyCounter  # noqa
 from ray.tests.conftest import *  # noqa
+
+
+def test_write_parquet_supports_gzip(ray_start_regular_shared, tmp_path):
+    ray.data.range(1).write_parquet(tmp_path, compression="gzip")
+
+    # Test that all written files are gzip compressed.
+    for filename in os.listdir(tmp_path):
+        file_metadata = pq.ParquetFile(tmp_path / filename).metadata
+        compression = file_metadata.row_group(0).column(0).compression
+        assert compression == "GZIP", compression
+
+    # Test that you can read the written files.
+    assert pq.read_table(tmp_path).to_pydict() == {"id": [0]}
 
 
 def test_include_paths(ray_start_regular_shared, tmp_path):
@@ -66,7 +79,7 @@ def test_parquet_deserialize_fragments_with_retry(
     pq_ds = pq.ParquetDataset(
         data_path, **dataset_kwargs, filesystem=fs, use_legacy_dataset=False
     )
-    serialized_fragments = [_SerializedFragment(p) for p in pq_ds.fragments]
+    serialized_fragments = [SerializedFragment(p) for p in pq_ds.fragments]
 
     # test 1st attempt succeed
     fragments = _deserialize_fragments_with_retry(serialized_fragments)
@@ -1019,22 +1032,27 @@ def test_parquet_write_create_dir(
     ],
 )
 def test_parquet_roundtrip(ray_start_regular_shared, fs, data_path):
-    df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
-    df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
-    ds = ray.data.from_pandas([df1, df2])
-    ds._set_uuid("data")
     path = os.path.join(data_path, "test_parquet_dir")
     if fs is None:
         os.mkdir(path)
     else:
         fs.create_dir(_unwrap_protocol(path))
+
+    df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
+    df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
+    ds = ray.data.from_pandas([df1, df2])
     ds.write_parquet(path, filesystem=fs)
-    ds2 = ray.data.read_parquet(path, override_num_blocks=2, filesystem=fs)
-    ds2df = ds2.to_pandas()
-    assert pd.concat([df1, df2], ignore_index=True).equals(ds2df)
+
+    ds2 = ray.data.read_parquet(path, filesystem=fs)
+
+    read_data = set(ds2.to_pandas().itertuples(index=False))
+    written_data = set(pd.concat([df1, df2]).itertuples(index=False))
+    assert read_data == written_data
+
     # Test metadata ops.
     for block, meta in ds2._plan.execute().blocks:
         BlockAccessor.for_block(ray.get(block)).size_bytes() == meta.size_bytes
+
     if fs is None:
         shutil.rmtree(path)
     else:
@@ -1111,15 +1129,20 @@ def test_parquet_concurrency(ray_start_regular_shared, fs, data_path):
 # tests should only be carefully reordered to retain this invariant!
 
 
-def test_parquet_read_spread(ray_start_cluster, tmp_path):
+def test_parquet_read_spread(ray_start_cluster, tmp_path, restore_data_context):
     ray.shutdown()
     cluster = ray_start_cluster
     cluster.add_node(
         resources={"bar:1": 100},
         num_cpus=10,
+        object_store_memory=2 * 1024 * 1024 * 1024,
         _system_config={"max_direct_call_object_size": 0},
     )
-    cluster.add_node(resources={"bar:2": 100}, num_cpus=10)
+    cluster.add_node(
+        resources={"bar:2": 100},
+        num_cpus=10,
+        object_store_memory=2 * 1024 * 1024 * 1024,
+    )
     cluster.add_node(resources={"bar:3": 100}, num_cpus=0)
 
     ray.init(cluster.address)
@@ -1139,6 +1162,9 @@ def test_parquet_read_spread(ray_start_cluster, tmp_path):
     path2 = os.path.join(data_path, "test2.parquet")
     df2.to_parquet(path2)
 
+    # Minimize the block size to prevent Ray Data from reading multiple fragments in a
+    # single task.
+    ray.data.DataContext.get_current().target_max_block_size = 1
     ds = ray.data.read_parquet(data_path)
 
     # Force reads.
@@ -1149,7 +1175,7 @@ def test_parquet_read_spread(ray_start_cluster, tmp_path):
     locations = []
     for block in block_refs:
         locations.extend(location_data[block]["node_ids"])
-    assert set(locations) == {node1_id, node2_id}
+    assert set(locations) == {node1_id, node2_id}, set(locations)
 
 
 def test_parquet_bulk_columns(ray_start_regular_shared):
@@ -1169,6 +1195,18 @@ def test_write_num_rows_per_file(tmp_path, ray_start_regular_shared, num_rows_pe
     for filename in os.listdir(tmp_path):
         table = pq.read_table(os.path.join(tmp_path, filename))
         assert len(table) == num_rows_per_file
+
+
+@pytest.mark.parametrize("shuffle", [True, False, "file"])
+def test_invalid_shuffle_arg_raises_error(ray_start_regular_shared, shuffle):
+
+    with pytest.raises(ValueError):
+        ray.data.read_parquet("example://iris.parquet", shuffle=shuffle)
+
+
+@pytest.mark.parametrize("shuffle", [None, "files"])
+def test_valid_shuffle_arg_does_not_raise_error(ray_start_regular_shared, shuffle):
+    ray.data.read_parquet("example://iris.parquet", shuffle=shuffle)
 
 
 if __name__ == "__main__":

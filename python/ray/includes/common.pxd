@@ -229,6 +229,9 @@ cdef extern from "src/ray/protobuf/common.pb.h" nogil:
         CLabelNotIn* mutable_label_not_in()
         CLabelExists* mutable_label_exists()
         CLabelDoesNotExist* mutable_label_does_not_exist()
+    cdef cppclass CLineageReconstructionTask "ray::rpc::LineageReconstructionTask":
+        CLineageReconstructionTask()
+        const c_string &SerializeAsString() const
 
 
 # This is a workaround for C++ enum class since Cython has no corresponding
@@ -370,17 +373,36 @@ cdef extern from "ray/core_worker/common.h" nogil:
 cdef extern from "ray/gcs/gcs_client/python_callbacks.h" namespace "ray::gcs":
     cdef cppclass MultiItemPyCallback[T]:
         MultiItemPyCallback(
-            object (*)(CRayStatus, c_vector[T] &&),
-            void (object, void*), void*) nogil
+            object (*)(CRayStatus, c_vector[T] &&) nogil,
+            void (object, object) nogil,
+            object) nogil
 
     cdef cppclass OptionalItemPyCallback[T]:
         OptionalItemPyCallback(
-            object (*)(CRayStatus, const optional[T]&),
-            void (object, void*), void*) nogil
+            object (*)(CRayStatus, const optional[T]&) nogil,
+            void (object, object) nogil,
+            object) nogil
+
+    cdef cppclass StatusPyCallback:
+        StatusPyCallback(
+            object (*)(CRayStatus) nogil,
+            void (object, object) nogil,
+            object) nogil
 
 cdef extern from "ray/gcs/gcs_client/accessor.h" nogil:
     cdef cppclass CActorInfoAccessor "ray::gcs::ActorInfoAccessor":
-        pass
+        CRayStatus AsyncGetAllByFilter(
+            const optional[CActorID] &actor_id,
+            const optional[CJobID] &job_id,
+            const optional[c_string] &actor_state_name,
+            const MultiItemPyCallback[CActorTableData] &callback,
+            int64_t timeout_ms)
+
+        CRayStatus AsyncKillActor(const CActorID &actor_id,
+                                  c_bool force_kill,
+                                  c_bool no_restart,
+                                  const StatusPyCallback &callback,
+                                  int64_t timeout_ms)
 
     cdef cppclass CJobInfoAccessor "ray::gcs::JobInfoAccessor":
         CRayStatus GetAll(
@@ -410,6 +432,10 @@ cdef extern from "ray/gcs/gcs_client/accessor.h" nogil:
         CRayStatus GetAllNoCache(
             int64_t timeout_ms,
             c_vector[CGcsNodeInfo] &result)
+
+        CRayStatus AsyncGetAll(
+            const MultiItemPyCallback[CGcsNodeInfo] &callback,
+            int64_t timeout_ms)
 
     cdef cppclass CNodeResourceInfoAccessor "ray::gcs::NodeResourceInfoAccessor":
         CRayStatus GetAllResourceUsage(
@@ -671,11 +697,6 @@ cdef extern from "ray/gcs/pubsub/gcs_pub_sub.h" namespace "ray::gcs" nogil:
 cdef extern from "ray/gcs/gcs_client/gcs_client.h" namespace "ray::gcs" nogil:
     unordered_map[c_string, c_string] PythonGetNodeLabels(
         const CGcsNodeInfo& node_info)
-
-    CRayStatus PythonCheckGcsHealth(
-        const c_string& gcs_address, const int gcs_port, const int64_t timeout_ms,
-        const c_string& ray_version, const c_bool skip_version_check,
-        c_bool& is_healthy)
 
 cdef extern from "src/ray/protobuf/gcs.pb.h" nogil:
     cdef enum CChannelType "ray::rpc::ChannelType":

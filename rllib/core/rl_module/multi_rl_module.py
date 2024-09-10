@@ -6,6 +6,7 @@ from typing import (
     Callable,
     Collection,
     Dict,
+    ItemsView,
     KeysView,
     List,
     Optional,
@@ -13,12 +14,14 @@ from typing import (
     Tuple,
     Type,
     Union,
+    ValuesView,
 )
 
 from ray.rllib.core.models.specs.typing import SpecType
 from ray.rllib.core.rl_module.rl_module import RLModule, RLModuleSpec
 
 from ray.rllib.policy.sample_batch import MultiAgentBatch
+from ray.rllib.utils import force_list
 from ray.rllib.utils.annotations import (
     ExperimentalAPI,
     override,
@@ -119,9 +122,17 @@ class MultiRLModule(RLModule):
             if not isinstance(module_spec, RLModuleSpec):
                 raise ValueError(f"Module {module_id} is not a RLModuleSpec object.")
 
+    def items(self) -> ItemsView[ModuleID, RLModule]:
+        """Returns a keys view over the module IDs in this MultiRLModule."""
+        return self._rl_modules.items()
+
     def keys(self) -> KeysView[ModuleID]:
         """Returns a keys view over the module IDs in this MultiRLModule."""
         return self._rl_modules.keys()
+
+    def values(self) -> ValuesView[ModuleID]:
+        """Returns a keys view over the module IDs in this MultiRLModule."""
+        return self._rl_modules.values()
 
     def __len__(self) -> int:
         """Returns the number of RLModules within this MultiRLModule."""
@@ -196,21 +207,32 @@ class MultiRLModule(RLModule):
         del self.config.modules[module_id]
 
     def foreach_module(
-        self, func: Callable[[ModuleID, RLModule, Optional[Any]], T], **kwargs
-    ) -> List[T]:
+        self,
+        func: Callable[[ModuleID, RLModule, Optional[Any]], T],
+        *,
+        return_dict: bool = False,
+        **kwargs,
+    ) -> Union[List[T], Dict[ModuleID, T]]:
         """Calls the given function with each (module_id, module).
 
         Args:
             func: The function to call with each (module_id, module) tuple.
+            return_dict: Whether to return a dict mapping ModuleID to the individual
+                module's return values of calling `func`. If False (default), return
+                a list.
 
         Returns:
-            The lsit of return values of all calls to
-            `func([module_id, module, **kwargs])`.
+            The list of return values of all calls to
+            `func([module_id, module, **kwargs])` or a dict (if `return_dict=True`)
+            mapping ModuleIDs to the respective models' return values.
         """
-        return [
-            func(module_id, module.unwrapped(), **kwargs)
+        ret_dict = {
+            module_id: func(module_id, module.unwrapped(), **kwargs)
             for module_id, module in self._rl_modules.items()
-        ]
+        }
+        if return_dict:
+            return ret_dict
+        return list(ret_dict.values())
 
     def __contains__(self, item) -> bool:
         """Returns whether the given `item` (ModuleID) is present in self."""
@@ -435,6 +457,9 @@ class MultiRLModuleSpec:
 
     multi_rl_module_class: Type[MultiRLModule] = MultiRLModule
     inference_only: bool = False
+    # TODO (sven): Once we support MultiRLModules inside other MultiRLModules, we would
+    #  need this flag in here as well, but for now, we'll leave it out for simplicity.
+    # learner_only: bool = False
     module_specs: Union[RLModuleSpec, Dict[ModuleID, RLModuleSpec]] = None
     load_state_path: Optional[str] = None
     modules_to_load: Optional[Set[ModuleID]] = None
@@ -515,6 +540,15 @@ class MultiRLModuleSpec:
             else:
                 self.module_specs[module_id].update(module_spec)
 
+    def remove_modules(self, module_ids: Union[ModuleID, Collection[ModuleID]]) -> None:
+        """Removes the provided ModuleIDs from this MultiRLModuleSpec.
+
+        Args:
+            module_ids: Collection of the ModuleIDs to remove from this spec.
+        """
+        for module_id in force_list(module_ids):
+            self.module_specs.pop(module_id, None)
+
     @classmethod
     def from_module(self, module: MultiRLModule) -> "MultiRLModuleSpec":
         """Creates a MultiRLModuleSpec from a MultiRLModule.
@@ -574,7 +608,7 @@ class MultiRLModuleSpec:
     def update(
         self,
         other: Union["MultiRLModuleSpec", RLModuleSpec],
-        override=False,
+        override: bool = False,
     ) -> None:
         """Updates this spec with the other spec.
 
@@ -612,6 +646,10 @@ class MultiRLModuleSpec:
     def __contains__(self, item) -> bool:
         """Returns whether the given `item` (ModuleID) is present in self."""
         return item in self.module_specs
+
+    def __getitem__(self, item) -> RLModuleSpec:
+        """Returns the RLModuleSpec under the ModuleID."""
+        return self.module_specs[item]
 
     @Deprecated(new="MultiRLModuleSpec.as_multi_rl_module_spec()", error=True)
     def as_multi_agent(self):

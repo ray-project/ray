@@ -1,3 +1,4 @@
+import gzip
 import json
 import os
 import shutil
@@ -651,6 +652,39 @@ def test_write_num_rows_per_file(tmp_path, ray_start_regular_shared, num_rows_pe
         with open(os.path.join(tmp_path, filename), "r") as file:
             num_rows_written = len(file.read().splitlines())
             assert num_rows_written == num_rows_per_file
+
+
+def test_mixed_gzipped_json_files(ray_start_regular_shared, tmp_path):
+    # Create a non-empty gzipped JSON file
+    non_empty_file_path = os.path.join(tmp_path, "non_empty.json.gz")
+    data = [{"col1": "value1", "col2": "value2", "col3": "value3"}]
+    with gzip.open(non_empty_file_path, "wt", encoding="utf-8") as f:
+        for record in data:
+            json.dump(record, f)
+            f.write("\n")
+
+    # Create an empty gzipped JSON file
+    empty_file_path = os.path.join(tmp_path, "empty.json.gz")
+    with gzip.open(empty_file_path, "wt", encoding="utf-8"):
+        pass  # Write nothing to create an empty file
+
+    # Attempt to read both files with Ray
+    ds = ray.data.read_json(
+        [non_empty_file_path, empty_file_path],
+        arrow_open_stream_args={"compression": "gzip"},
+    )
+
+    # The dataset should only contain data from the non-empty file
+    assert ds.count() == 1
+    # Iterate through each row in the dataset and compare with the expected data
+    for row in ds.iter_rows():
+        assert row == data[0], f"Row {row} does not match expected {data[0]}"
+
+    # Verify the data content using take
+    retrieved_data = ds.take(1)[0]
+    assert (
+        retrieved_data == data[0]
+    ), f"Retrieved data {retrieved_data} does not match expected {data[0]}."
 
 
 if __name__ == "__main__":

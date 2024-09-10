@@ -721,6 +721,22 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
 
         return batch
 
+    @override(EnvRunner)
+    def get_spaces(self) -> Dict[str, Tuple[Space, Space]]:
+        spaces = self.foreach_policy(
+            lambda p, pid: (pid, p.observation_space, p.action_space)
+        )
+        spaces = {e[0]: (getattr(e[1], "original_space", e[1]), e[2]) for e in spaces}
+        # Try to add the actual env's obs/action spaces.
+        env_spaces = self.foreach_env(
+            lambda env: (env.observation_space, env.action_space)
+        )
+        if env_spaces:
+            from ray.rllib.env import INPUT_ENV_SPACES
+
+            spaces[INPUT_ENV_SPACES] = env_spaces[0]
+        return spaces
+
     @ray.method(num_returns=2)
     def sample_with_count(self) -> Tuple[SampleBatchType, int]:
         """Same as sample() but returns the count as a separate value.
@@ -1533,7 +1549,14 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
                 }
 
             for pid, w in weights.items():
-                self.policy_map[pid].set_weights(w)
+                if pid in self.policy_map:
+                    self.policy_map[pid].set_weights(w)
+                elif log_once("set_weights_on_non_existent_policy"):
+                    logger.warning(
+                        "`RolloutWorker.set_weights()` used with weights from "
+                        f"policyID={pid}, but this policy cannot be found on this "
+                        f"worker! Skipping ..."
+                    )
 
         self.weights_seq_no = weights_seq_no
 

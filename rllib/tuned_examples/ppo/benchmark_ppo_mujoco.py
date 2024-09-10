@@ -104,7 +104,6 @@ config = (
     # TODO (simon): Adjust to new model_config_dict.
     .training(
         # Following the paper.
-        gamma=0.99,
         lambda_=0.95,
         lr=0.0003,
         num_sgd_iter=15,

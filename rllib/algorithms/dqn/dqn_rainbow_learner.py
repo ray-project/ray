@@ -6,12 +6,6 @@ from ray.rllib.core.learner.utils import update_target_network
 from ray.rllib.core.rl_module.apis.target_network_api import TargetNetworkAPI
 from ray.rllib.core.rl_module.multi_rl_module import MultiRLModuleSpec
 from ray.rllib.core.rl_module.rl_module import RLModuleSpec
-from ray.rllib.connectors.common.add_observations_from_episodes_to_batch import (
-    AddObservationsFromEpisodesToBatch,
-)
-from ray.rllib.connectors.learner.add_next_observations_from_episodes_to_train_batch import (  # noqa
-    AddNextObservationsFromEpisodesToTrainBatch,
-)
 from ray.rllib.utils.annotations import (
     override,
     OverrideToImplementCustomLogic_CallToSuperRecommended,
@@ -55,14 +49,6 @@ class DQNRainbowLearner(Learner):
             )
         )
 
-        # Prepend a NEXT_OBS from episodes to train batch connector piece (right
-        # after the observation default piece).
-        if self.config.add_default_connectors_to_learner_pipeline:
-            self._learner_connector.insert_after(
-                AddObservationsFromEpisodesToBatch,
-                AddNextObservationsFromEpisodesToTrainBatch(),
-            )
-
     @override(Learner)
     def add_module(
         self,
@@ -72,7 +58,12 @@ class DQNRainbowLearner(Learner):
         config_overrides: Optional[Dict] = None,
         new_should_module_be_updated: Optional[ShouldModuleBeUpdatedFn] = None,
     ) -> MultiRLModuleSpec:
-        marl_spec = super().add_module(module_id=module_id)
+        marl_spec = super().add_module(
+            module_id=module_id,
+            module_spec=module_spec,
+            config_overrides=config_overrides,
+            new_should_module_be_updated=new_should_module_be_updated,
+        )
         # Create target networks for added Module, if applicable.
         if isinstance(self.module[module_id].unwrapped(), TargetNetworkAPI):
             self.module[module_id].unwrapped().make_target_networks()

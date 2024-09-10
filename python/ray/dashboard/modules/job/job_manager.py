@@ -29,6 +29,7 @@ from ray.dashboard.modules.job.common import (
 )
 from ray.dashboard.modules.job.job_log_storage_client import JobLogStorageClient
 from ray.dashboard.modules.job.job_supervisor import JobSupervisor
+from ray.dashboard.modules.job.utils import get_head_node_id
 from ray.exceptions import ActorUnschedulableError, RuntimeEnvSetupError
 from ray.job_submission import JobStatus
 from ray.runtime_env import RuntimeEnvConfig
@@ -71,6 +72,7 @@ class JobManager:
         self._gcs_aio_client = gcs_aio_client
         self._job_info_client = JobInfoStorageClient(gcs_aio_client)
         self._gcs_address = gcs_aio_client.address
+        self._cluster_id_hex = gcs_aio_client.cluster_id.hex()
         self._log_client = JobLogStorageClient()
         self._supervisor_actor_cls = ray.remote(JobSupervisor)
         self.monitored_jobs = set()
@@ -397,12 +399,8 @@ class JobManager:
         # If the user did not specify any resources or set the driver on worker nodes
         # env var, we will run the driver on the head node.
 
-        head_node_id_bytes = await self._gcs_aio_client.internal_kv_get(
-            "head_node_id".encode(),
-            namespace=ray_constants.KV_NAMESPACE_JOB,
-            timeout=30,
-        )
-        if head_node_id_bytes is None:
+        head_node_id = await get_head_node_id(self._gcs_aio_client)
+        if head_node_id is None:
             logger.info(
                 "Head node ID not found in GCS. Using Ray's default actor "
                 "scheduling strategy for the job driver instead of running "
@@ -410,7 +408,6 @@ class JobManager:
             )
             scheduling_strategy = "DEFAULT"
         else:
-            head_node_id = head_node_id_bytes.decode()
             logger.info(
                 "Head node ID found in GCS; scheduling job driver on "
                 f"head node {head_node_id}"
@@ -541,7 +538,13 @@ class JobManager:
                     runtime_env, submission_id, resources_specified
                 ),
                 namespace=SUPERVISOR_ACTOR_RAY_NAMESPACE,
-            ).remote(submission_id, entrypoint, metadata or {}, self._gcs_address)
+            ).remote(
+                submission_id,
+                entrypoint,
+                metadata or {},
+                self._gcs_address,
+                self._cluster_id_hex,
+            )
             supervisor.run.remote(
                 _start_signal_actor=_start_signal_actor,
                 resources_specified=resources_specified,

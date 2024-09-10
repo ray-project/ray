@@ -1,10 +1,10 @@
+import gymnasium as gym
 import numpy as np
 import random
 import ray
 from ray.actor import ActorHandle
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Union, Tuple, TYPE_CHECKING
 
-from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.core.columns import Columns
 from ray.rllib.core.learner import Learner
 from ray.rllib.core.rl_module.multi_rl_module import MultiRLModuleSpec
@@ -16,7 +16,11 @@ from ray.rllib.utils.annotations import (
     OverrideToImplementCustomLogic_CallToSuperRecommended,
 )
 from ray.rllib.utils.compression import unpack_if_needed
+from ray.rllib.utils.spaces.space_utils import from_jsonable_if_needed
 from ray.rllib.utils.typing import EpisodeType, ModuleID
+
+if TYPE_CHECKING:
+    from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 
 # This is the default schema used if no `input_read_schema` is set in
 # the config. If a user passes in a schema into `input_read_schema`
@@ -65,7 +69,7 @@ class OfflinePreLearner:
     the `__call__` method and `_map_to_episodes` can be overridden to induce
     custom logic for the complete transformation pipeline (`__call__`) or
     for converting to episodes only ('_map_to_episodes`). For an example
-    how this class can be sued to also compute values and advantages see
+    how this class can be used to also compute values and advantages see
     `rllib.algorithm.marwil.marwil_prelearner.MAWRILOfflinePreLearner`.
 
     Custom `OfflinePreLearner` classes can be passed into
@@ -76,14 +80,17 @@ class OfflinePreLearner:
     @OverrideToImplementCustomLogic_CallToSuperRecommended
     def __init__(
         self,
-        config: AlgorithmConfig,
+        config: "AlgorithmConfig",
         learner: Union[Learner, list[ActorHandle]],
+        spaces: Optional[Tuple[gym.Space, gym.Space]] = None,
         locality_hints: Optional[list] = None,
         module_spec: Optional[MultiRLModuleSpec] = None,
         module_state: Optional[Dict[ModuleID, Any]] = None,
     ):
 
         self.config = config
+        self.input_read_episodes = self.config.input_read_episodes
+        self.input_read_sample_batches = self.config.input_read_sample_batches
         # We need this learner to run the learner connector pipeline.
         # If it is a `Learner` instance, the `Learner` is local.
         if isinstance(learner, Learner):
@@ -114,10 +121,16 @@ class OfflinePreLearner:
             # Build the module from spec. Note, this will be a MultiRLModule.
             self._module = module_spec.build()
             self._module.set_state(module_state)
+
+        # Store the observation and action space if defined, otherwise we
+        # set them to `None`. Note, if `None` the `convert_from_jsonable`
+        # will not convert the input space samples.
+        self.observation_space, self.action_space = spaces or (None, None)
+
         # Build the learner connector pipeline.
         self._learner_connector = self.config.build_learner_connector(
-            input_observation_space=None,
-            input_action_space=None,
+            input_observation_space=self.observation_space,
+            input_action_space=self.action_space,
         )
         # Cache the policies to be trained to update weights only for these.
         self._policies_to_train = self.config.policies_to_train
@@ -128,10 +141,31 @@ class OfflinePreLearner:
 
     @OverrideToImplementCustomLogic
     def __call__(self, batch: Dict[str, np.ndarray]) -> Dict[str, List[EpisodeType]]:
-        # Map the batch to episodes.
-        episodes = self._map_to_episodes(
-            self._is_multi_agent, batch, schema=SCHEMA | self.config.input_read_schema
-        )
+
+        # If we directly read in episodes we just convert to list.
+        if self.input_read_episodes:
+            episodes = batch["item"].tolist()
+        # Else, if we have old stack `SampleBatch`es.
+        elif self.input_read_sample_batches:
+            episodes = OfflinePreLearner._map_sample_batch_to_episode(
+                self._is_multi_agent,
+                batch,
+                finalize=True,
+                schema=SCHEMA | self.config.input_read_schema,
+                input_compress_columns=self.config.input_compress_columns,
+            )["episodes"]
+        # Otherwise we map the batch to episodes.
+        else:
+            episodes = self._map_to_episodes(
+                self._is_multi_agent,
+                batch,
+                schema=SCHEMA | self.config.input_read_schema,
+                finalize=True,
+                input_compress_columns=self.config.input_compress_columns,
+                observation_space=self.observation_space,
+                action_space=self.action_space,
+            )["episodes"]
+
         # TODO (simon): Make synching work. Right now this becomes blocking or never
         # receives weights. Learners appear to be non accessable via other actors.
         # Increase the counter for updating the module.
@@ -162,8 +196,8 @@ class OfflinePreLearner:
         # Run the `Learner`'s connector pipeline.
         batch = self._learner_connector(
             rl_module=self._module,
-            data={},
-            episodes=episodes["episodes"],
+            batch={},
+            episodes=episodes,
             shared_data={},
         )
         # Convert to `MultiAgentBatch`.
@@ -174,7 +208,7 @@ class OfflinePreLearner:
             },
             # TODO (simon): This can be run once for the batch and the
             # metrics, but we run it twice: here and later in the learner.
-            env_steps=sum(e.env_steps() for e in episodes["episodes"]),
+            env_steps=sum(e.env_steps() for e in episodes),
         )
         # Remove all data from modules that should not be trained. We do
         # not want to pass around more data than necessaty.
@@ -203,13 +237,29 @@ class OfflinePreLearner:
     @staticmethod
     def _map_to_episodes(
         is_multi_agent: bool,
-        batch: Dict[str, np.ndarray],
+        batch: Dict[str, Union[list, np.ndarray]],
         schema: Dict[str, str] = SCHEMA,
+        finalize: bool = False,
+        input_compress_columns: Optional[List[str]] = None,
+        observation_space: gym.Space = None,
+        action_space: gym.Space = None,
     ) -> Dict[str, List[EpisodeType]]:
         """Maps a batch of data to episodes."""
 
+        # Set to empty list, if `None`.
+        input_compress_columns = input_compress_columns or []
+
+        # If spaces are given, we can use the space-specific
+        # conversion method to convert space samples.
+        if observation_space and action_space:
+            convert = from_jsonable_if_needed
+        # Otherwise we use an identity function.
+        else:
+
+            def convert(sample, space):
+                return sample
+
         episodes = []
-        # TODO (simon): Give users possibility to provide a custom schema.
         for i, obs in enumerate(batch[schema[Columns.OBS]]):
 
             # If multi-agent we need to extract the agent ID.
@@ -231,15 +281,27 @@ class OfflinePreLearner:
 
             if is_multi_agent:
                 # TODO (simon): Add support for multi-agent episodes.
-                pass
+                NotImplementedError
             else:
                 # Build a single-agent episode with a single row of the batch.
                 episode = SingleAgentEpisode(
-                    id_=batch[schema[Columns.EPS_ID]][i],
+                    id_=str(batch[schema[Columns.EPS_ID]][i]),
                     agent_id=agent_id,
+                    # Observations might be (a) serialized and/or (b) converted
+                    # to a JSONable (when a composite space was used). We unserialize
+                    # and then reconvert from JSONable to space sample.
                     observations=[
-                        unpack_if_needed(obs),
-                        unpack_if_needed(batch[schema[Columns.NEXT_OBS]][i]),
+                        convert(unpack_if_needed(obs), observation_space)
+                        if Columns.OBS in input_compress_columns
+                        else convert(obs, observation_space),
+                        convert(
+                            unpack_if_needed(batch[schema[Columns.NEXT_OBS]][i]),
+                            observation_space,
+                        )
+                        if Columns.OBS in input_compress_columns
+                        else convert(
+                            batch[schema[Columns.NEXT_OBS]][i], observation_space
+                        ),
                     ],
                     infos=[
                         {},
@@ -247,7 +309,17 @@ class OfflinePreLearner:
                         if schema[Columns.INFOS] in batch
                         else {},
                     ],
-                    actions=[batch[schema[Columns.ACTIONS]][i]],
+                    # Actions might be (a) serialized and/or (b) converted to a JSONable
+                    # (when a composite space was used). We unserializer and then
+                    # reconvert from JSONable to space sample.
+                    actions=[
+                        convert(
+                            unpack_if_needed(batch[schema[Columns.ACTIONS]][i]),
+                            action_space,
+                        )
+                        if Columns.ACTIONS in input_compress_columns
+                        else convert(batch[schema[Columns.ACTIONS]][i], action_space)
+                    ],
                     rewards=[batch[schema[Columns.REWARDS]][i]],
                     terminated=batch[
                         schema[Columns.TERMINATEDS]
@@ -261,13 +333,136 @@ class OfflinePreLearner:
                     # t_started=batch[Columns.T if Columns.T in batch else
                     # "unroll_id"][i][0],
                     # TODO (simon): Single-dimensional columns are not supported.
+                    # Extra model outputs might be serialized. We unserialize them here
+                    # if needed.
+                    # TODO (simon): Check, if we need here also reconversion from
+                    # JSONable in case of composite spaces.
                     extra_model_outputs={
-                        k: [v[i]]
+                        k: [
+                            unpack_if_needed(v[i])
+                            if k in input_compress_columns
+                            else v[i]
+                        ]
                         for k, v in batch.items()
-                        if (k not in schema and k not in schema.values())
+                        if (
+                            k not in schema
+                            and k not in schema.values()
+                            and k not in ["dones", "agent_index", "type"]
+                        )
                     },
                     len_lookback_buffer=0,
                 )
+
+            if finalize:
+                episode.finalize()
             episodes.append(episode)
+        # Note, `map_batches` expects a `Dict` as return value.
+        return {"episodes": episodes}
+
+    def _map_sample_batch_to_episode(
+        is_multi_agent: bool,
+        batch: Dict[str, Union[list, np.ndarray]],
+        schema: Dict[str, str] = SCHEMA,
+        finalize: bool = False,
+        input_compress_columns: Optional[List[str]] = None,
+    ) -> Dict[str, List[EpisodeType]]:
+        """Maps an old stack `SampleBatch` to new stack episodes."""
+
+        # Set `input_compress_columns` to an empty `list` if `None`.
+        input_compress_columns = input_compress_columns or []
+
+        # TODO (simon): CHeck, if needed. It could possibly happen that a batch contains
+        #   data from different episodes. Merging and resplitting the batch would then
+        # be the solution.
+        # Check, if batch comes actually from multiple episodes.
+        # episode_begin_indices = np.where(np.diff(np.hstack(batch["eps_id"])) != 0) + 1
+
+        # Define a container to collect episodes.
+        episodes = []
+        # Loop over `SampleBatch`es in the `ray.data` batch (a dict).
+        for i, obs in enumerate(batch[schema[Columns.OBS]]):
+
+            # If multi-agent we need to extract the agent ID.
+            # TODO (simon): Check, what happens with the module ID.
+            if is_multi_agent:
+                agent_id = (
+                    # The old stack uses "agent_index" instead of "agent_id".
+                    batch[schema["agent_index"]][i][0]
+                    if schema["agent_index"] in batch
+                    else None
+                )
+            else:
+                agent_id = None
+
+            if is_multi_agent:
+                # TODO (simon): Add support for multi-agent episodes.
+                NotImplementedError
+            else:
+                # Unpack observations, if needed.
+                obs = (
+                    unpack_if_needed(obs.tolist())
+                    if schema[Columns.OBS] in input_compress_columns
+                    else obs.tolist()
+                )
+                # Append the last `new_obs` to get the correct length of observations.
+                obs.append(
+                    unpack_if_needed(batch[schema[Columns.NEXT_OBS]][i][-1])
+                    if schema[Columns.OBS] in input_compress_columns
+                    else batch[schema[Columns.NEXT_OBS]][i][-1]
+                )
+                # Create a `SingleAgentEpisode`.
+                episode = SingleAgentEpisode(
+                    id_=str(batch[schema[Columns.EPS_ID]][i][0]),
+                    agent_id=agent_id,
+                    observations=obs,
+                    infos=(
+                        batch[schema[Columns.INFOS]][i]
+                        if schema[Columns.INFOS] in batch
+                        else [{}] * len(obs)
+                    ),
+                    # Actions might be (a) serialized. We unserialize them here.
+                    actions=(
+                        unpack_if_needed(batch[schema[Columns.ACTIONS]][i])
+                        if Columns.ACTIONS in input_compress_columns
+                        else batch[schema[Columns.ACTIONS]][i]
+                    ),
+                    rewards=batch[schema[Columns.REWARDS]][i],
+                    terminated=(
+                        any(batch[schema[Columns.TERMINATEDS]][i])
+                        if schema[Columns.TERMINATEDS] in batch
+                        else any(batch["dones"][i])
+                    ),
+                    truncated=(
+                        any(batch[schema[Columns.TRUNCATEDS]][i])
+                        if schema[Columns.TRUNCATEDS] in batch
+                        else False
+                    ),
+                    # TODO (simon): Results in zero-length episodes in connector.
+                    # t_started=batch[Columns.T if Columns.T in batch else
+                    # "unroll_id"][i][0],
+                    # TODO (simon): Single-dimensional columns are not supported.
+                    # Extra model outputs might be serialized. We unserialize them here
+                    # if needed.
+                    # TODO (simon): Check, if we need here also reconversion from
+                    # JSONable in case of composite spaces.
+                    extra_model_outputs={
+                        k: unpack_if_needed(v[i])
+                        if k in input_compress_columns
+                        else v[i]
+                        for k, v in batch.items()
+                        if (
+                            k not in schema
+                            and k not in schema.values()
+                            and k not in ["dones", "agent_index", "type"]
+                        )
+                    },
+                    len_lookback_buffer=0,
+                )
+                # Finalize, if necessary.
+                # TODO (simon, sven): Check, if we should convert all data to lists
+                # before. Right now only obs are lists.
+                if finalize:
+                    episode.finalize()
+                episodes.append(episode)
         # Note, `map_batches` expects a `Dict` as return value.
         return {"episodes": episodes}

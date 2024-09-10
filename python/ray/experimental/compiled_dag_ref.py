@@ -95,7 +95,7 @@ class CompiledDAGRef:
 
 
 @PublicAPI(stability="alpha")
-class CompiledDAGFuture(CompiledDAGRef):
+class CompiledDAGFuture:
     """
     A reference to a compiled DAG execution result, when executed with asyncio.
     This differs from CompiledDAGRef in that `await` must be called on the
@@ -149,6 +149,7 @@ class CompiledDAGFuture(CompiledDAGRef):
         self._fut = None
 
         return_vals = yield from fut.__await__()
+        self._dag.increment_max_finished_execution_index()
 
         return _process_return_vals(
             return_vals,

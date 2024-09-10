@@ -75,11 +75,6 @@ message GcsEntry {
   repeated bytes entries = 3;
 }
 
-message ObjectTableData {
-  // The node manager ID that this object appeared on or was evicted by.
-  bytes manager = 1;
-}
-
 message ActorTableData {
   // State of an actor.
   enum ActorState {
@@ -158,6 +153,8 @@ message ActorTableData {
   string repr_name = 31;
   // Whether the actor was on a preempted node
   bool preempted = 32;
+  // Number of times this actor is restarted due to lineage reconstructions.
+  uint64 num_restarts_due_to_lineage_reconstruction = 33;
 }
 
 message ErrorTableData {
@@ -631,12 +628,14 @@ message PlacementGroupTableData {
   enum PlacementGroupState {
     // Placement Group is pending or scheduling
     PENDING = 0;
+    // Placement Group is scheduled, and all nodes have prepared the resources.
+    PREPARED = 1;
     // Placement Group is created.
-    CREATED = 1;
+    CREATED = 2;
     // Placement Group is already removed and won't be reschedule.
-    REMOVED = 2;
+    REMOVED = 3;
     // Placement Group is rescheduling because the node it placed is dead.
-    RESCHEDULING = 3;
+    RESCHEDULING = 4;
   }
 
   // ID of the PlacementGroup.
