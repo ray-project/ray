@@ -222,7 +222,8 @@ class Channel(ChannelInterface):
 
         self._writer_registered = _writer_registered
         self._reader_registered = _reader_registered
-        # A list of reader ref.
+        # NodeID -> ReaderRefInfo on that node. Note that there's only 1
+        # reader ref per node.
         self._node_id_to_reader_ref_info: Dict[str, ReaderRefInfo] = (
             _node_id_to_reader_ref_info or {}
         )
