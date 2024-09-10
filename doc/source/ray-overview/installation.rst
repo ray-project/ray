@@ -3,6 +3,13 @@
 Installing Ray
 ==============
 
+.. raw:: html
+
+    <a id="try-anyscale-quickstart-install-ray" target="_blank" href="https://console.anyscale.com/register/ha?utm_source=ray_docs&utm_medium=docs&utm_campaign=installing_ray&redirectTo=/v2/template-preview/workspace-intro">
+      <img src="../_static/img/quickstart-with-ray.svg" alt="Run Quickstart on Anyscale" />
+      <br/><br/>
+    </a>
+
 Ray currently officially supports x86_64, aarch64 (ARM) for Linux, and Apple silicon (M1) hardware.
 Ray on Windows is currently in beta.
 
