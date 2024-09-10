@@ -284,6 +284,22 @@ Status ActorInfoAccessor::SyncListNamedActors(
   return status;
 }
 
+Status ActorInfoAccessor::AsyncRestartActor(const ray::ActorID &actor_id,
+                                            uint64_t num_restarts,
+                                            const ray::gcs::StatusCallback &callback,
+                                            int64_t timeout_ms) {
+  rpc::RestartActorRequest request;
+  request.set_actor_id(actor_id.Binary());
+  request.set_num_restarts(num_restarts);
+  client_impl_->GetGcsRpcClient().RestartActor(
+      request,
+      [callback](const Status &status, rpc::RestartActorReply &&reply) {
+        callback(status);
+      },
+      timeout_ms);
+  return Status::OK();
+}
+
 Status ActorInfoAccessor::AsyncRegisterActor(const ray::TaskSpecification &task_spec,
                                              const ray::gcs::StatusCallback &callback,
                                              int64_t timeout_ms) {
@@ -339,6 +355,26 @@ Status ActorInfoAccessor::AsyncCreateActor(
       request, [callback](const Status &status, rpc::CreateActorReply &&reply) {
         callback(status, std::move(reply));
       });
+  return Status::OK();
+}
+
+Status ActorInfoAccessor::AsyncReportActorOutOfScope(
+    const ActorID &actor_id,
+    uint64_t num_restarts_due_to_lineage_reconstruction,
+    const StatusCallback &callback,
+    int64_t timeout_ms) {
+  rpc::ReportActorOutOfScopeRequest request;
+  request.set_actor_id(actor_id.Binary());
+  request.set_num_restarts_due_to_lineage_reconstruction(
+      num_restarts_due_to_lineage_reconstruction);
+  client_impl_->GetGcsRpcClient().ReportActorOutOfScope(
+      request,
+      [callback](const Status &status, rpc::ReportActorOutOfScopeReply &&reply) {
+        if (callback) {
+          callback(status);
+        }
+      },
+      timeout_ms);
   return Status::OK();
 }
 

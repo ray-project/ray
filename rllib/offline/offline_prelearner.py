@@ -144,23 +144,33 @@ class OfflinePreLearner:
 
         # If we directly read in episodes we just convert to list.
         if self.input_read_episodes:
-
+            # Import `msgpack` for decoding.
             import msgpack
             import msgpack_numpy as mnp
 
+            # Read the episodes and decode them.
             episodes = [
                 SingleAgentEpisode.from_state(
                     msgpack.unpackb(state, object_hook=mnp.decode)
                 )
                 for state in batch["item"]
             ]
-        # Otherwise we ap the batch to episodes.
+        # Else, if we have old stack `SampleBatch`es.
+        elif self.input_read_sample_batches:
+            episodes = OfflinePreLearner._map_sample_batch_to_episode(
+                self._is_multi_agent,
+                batch,
+                finalize=True,
+                schema=SCHEMA | self.config.input_read_schema,
+                input_compress_columns=self.config.input_compress_columns,
+            )["episodes"]
+        # Otherwise we map the batch to episodes.
         else:
             episodes = self._map_to_episodes(
                 self._is_multi_agent,
                 batch,
                 schema=SCHEMA | self.config.input_read_schema,
-                finalize=False,
+                finalize=True,
                 input_compress_columns=self.config.input_compress_columns,
                 observation_space=self.observation_space,
                 action_space=self.action_space,
@@ -285,7 +295,7 @@ class OfflinePreLearner:
             else:
                 # Build a single-agent episode with a single row of the batch.
                 episode = SingleAgentEpisode(
-                    id_=batch[schema[Columns.EPS_ID]][i],
+                    id_=str(batch[schema[Columns.EPS_ID]][i]),
                     agent_id=agent_id,
                     # Observations might be (a) serialized and/or (b) converted
                     # to a JSONable (when a composite space was used). We unserialize
@@ -412,7 +422,7 @@ class OfflinePreLearner:
                 )
                 # Create a `SingleAgentEpisode`.
                 episode = SingleAgentEpisode(
-                    id_=batch[schema[Columns.EPS_ID]][i][0],
+                    id_=str(batch[schema[Columns.EPS_ID]][i][0]),
                     agent_id=agent_id,
                     observations=obs,
                     infos=(

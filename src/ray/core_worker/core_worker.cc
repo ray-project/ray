@@ -522,7 +522,8 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
                              *task_manager_,
                              *actor_creator_,
                              on_excess_queueing,
-                             io_service_));
+                             io_service_,
+                             reference_counter_));
 
   auto node_addr_factory = [this](const NodeID &node_id) {
     absl::optional<rpc::Address> addr;
@@ -2349,7 +2350,7 @@ Status CoreWorker::CreateActor(const RayFunction &function,
                                    root_detached_actor_id);
   // Add the actor handle before we submit the actor creation task, since the
   // actor handle must be in scope by the time the GCS sends the
-  // WaitForActorOutOfScopeRequest.
+  // WaitForActorRefDeletedRequest.
   RAY_CHECK(actor_manager_->AddNewActorHandle(
       std::move(actor_handle), CurrentCallSite(), rpc_address_, /*owned=*/!is_detached))
       << "Actor " << actor_id << " already exists";
@@ -3650,11 +3651,10 @@ void CoreWorker::PopulateObjectStatus(const ObjectID &object_id,
   }
 }
 
-void CoreWorker::HandleWaitForActorOutOfScope(
-    rpc::WaitForActorOutOfScopeRequest request,
-    rpc::WaitForActorOutOfScopeReply *reply,
+void CoreWorker::HandleWaitForActorRefDeleted(
+    rpc::WaitForActorRefDeletedRequest request,
+    rpc::WaitForActorRefDeletedReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
-  // Currently WaitForActorOutOfScope is only used when GCS actor service is enabled.
   if (HandleWrongRecipient(WorkerID::FromBinary(request.intended_worker_id()),
                            send_reply_callback)) {
     return;
@@ -3663,7 +3663,7 @@ void CoreWorker::HandleWaitForActorOutOfScope(
   // Send a response to trigger cleaning up the actor state once the handle is
   // no longer in scope.
   auto respond = [send_reply_callback](const ActorID &actor_id) {
-    RAY_LOG(DEBUG).WithField(actor_id) << "Replying to HandleWaitForActorOutOfScope";
+    RAY_LOG(DEBUG).WithField(actor_id) << "Replying to HandleWaitForActorRefDeleted";
     send_reply_callback(Status::OK(), nullptr, nullptr);
   };
 
@@ -3674,13 +3674,13 @@ void CoreWorker::HandleWaitForActorOutOfScope(
           if (!status.ok()) {
             respond(actor_id);
           } else {
-            RAY_LOG(DEBUG).WithField(actor_id) << "Received HandleWaitForActorOutOfScope";
-            actor_manager_->WaitForActorOutOfScope(actor_id, std::move(respond));
+            RAY_LOG(DEBUG).WithField(actor_id) << "Received HandleWaitForActorRefDeleted";
+            actor_manager_->WaitForActorRefDeleted(actor_id, std::move(respond));
           }
         });
   } else {
-    RAY_LOG(DEBUG).WithField(actor_id) << "Received HandleWaitForActorOutOfScope";
-    actor_manager_->WaitForActorOutOfScope(actor_id, std::move(respond));
+    RAY_LOG(DEBUG).WithField(actor_id) << "Received HandleWaitForActorRefDeleted";
+    actor_manager_->WaitForActorRefDeleted(actor_id, std::move(respond));
   }
 }
 
@@ -3729,7 +3729,7 @@ void CoreWorker::ProcessSubscribeForObjectEviction(
   // Returns true if the object was present and the callback was added. It might have
   // already been evicted by the time we get this request, in which case we should
   // respond immediately so the raylet unpins the object.
-  if (!reference_counter_->SetObjectPrimaryCopyDeleteCallback(object_id, unpin_object)) {
+  if (!reference_counter_->AddObjectPrimaryCopyDeleteCallback(object_id, unpin_object)) {
     // If the object is already evicted (callback cannot be set), unregister the
     // subscription & publish the message so that the subscriber knows it.
     unpin_object(object_id);
