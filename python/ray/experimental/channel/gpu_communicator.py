@@ -6,6 +6,7 @@ from ray.experimental.util.types import ReduceOp
 from ray.util.annotations import DeveloperAPI
 
 if TYPE_CHECKING:
+    import cupy as cp
     import torch
 
 
@@ -79,6 +80,7 @@ class GPUCommunicator(ABC):
             value: The torch.Tensor to send. It should already be on this
                 actor's default device.
             peer_rank: The rank of the actor to send to.
+            future: An optional future to wait on before sending.
         """
         raise NotImplementedError
 
@@ -102,6 +104,22 @@ class GPUCommunicator(ABC):
             dtype: The dtype of the tensor to receive.
             peer_rank: The rank of the actor to receive from.
             allocator: A function to allocate the tensor to receive into.
+        """
+        raise NotImplementedError
+
+    @property
+    @abstractmethod
+    def recv_stream(self) -> Optional["cp.cuda.ExternalStream"]:
+        """
+        Return the cuda stream used for receiving tensors.
+        """
+        raise NotImplementedError
+
+    @property
+    @abstractmethod
+    def send_stream(self) -> Optional["cp.cuda.ExternalStream"]:
+        """
+        Return the cuda stream used for sending tensors.
         """
         raise NotImplementedError
 
