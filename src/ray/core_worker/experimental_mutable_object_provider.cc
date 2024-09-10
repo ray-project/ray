@@ -234,20 +234,31 @@ void MutableObjectProvider::PollWriterClosure(
   RAY_CHECK(object->GetData());
   RAY_CHECK(object->GetMetadata());
 
-  RAY_LOG(ERROR) << "SANG-TODO Push mutable object! " << object_id;
-  reader->PushMutableObject(
-      object_id,
-      object->GetData()->Size(),
-      object->GetMetadata()->Size(),
-      object->GetData()->Data(),
-      [this, &io_context, object_id, reader](const Status &status,
-                                             const rpc::PushMutableObjectReply &reply) {
-        io_context.post(
-            [this, &io_context, object_id, reader]() {
-              PollWriterClosure(io_context, object_id, reader);
-            },
-            "experimental::MutableObjectProvider.PollWriter");
-      });
+  std::shared_ptr<size_t> num_replied = std::make_shared<size_t>(0);
+  for (const auto &reader : *remote_readers) {
+    reader->PushMutableObject(
+        writer_object_id,
+        object->GetData()->Size(),
+        object->GetMetadata()->Size(),
+        object->GetData()->Data(),
+        [this, &io_context, writer_object_id, remote_readers, num_replied](
+            const Status &status, const rpc::PushMutableObjectReply &reply) {
+          *num_replied += 1;
+          if (!status.ok()) {
+            RAY_LOG(ERROR)
+                << "Failed to transfer object to a remote node for an object id "
+                << writer_object_id << ". It can cause hang.";
+          }
+
+          if (*num_replied == remote_readers->size()) {
+            io_context.post(
+                [this, &io_context, writer_object_id, remote_readers]() {
+                  PollWriterClosure(io_context, writer_object_id, remote_readers);
+                },
+                "experimental::MutableObjectProvider.PollWriter");
+          }
+        });
+  }
 }
 
 void MutableObjectProvider::RunIOContext(instrumented_io_context &io_context) {
