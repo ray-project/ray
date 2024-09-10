@@ -60,8 +60,9 @@ class TaskEventBufferTest : public ::testing::Test {
     if (task_event_buffer_) task_event_buffer_->Stop();
     try {
       std::filesystem::remove_all(log_dir_.c_str());
-    } catch (const std::filesystem::filesystem_error& e) {
-      std::cerr << "Filesystem error for TaskEventBufferTest teardown: " << e.what() << '\n';
+    } catch (const std::filesystem::filesystem_error &e) {
+      std::cerr << "Filesystem error for TaskEventBufferTest teardown: " << e.what()
+                << '\n';
       std::cerr << "Error code: " << e.code().message() << '\n';
     }
   };
