@@ -175,15 +175,17 @@ void GcsJobManager::HandleGetAllJobInfo(rpc::GetAllJobInfoRequest request,
     job_or_submission_id = request.job_or_submission_id();
   }
 
-  auto filter_ok = [job_or_submission_id](const ray::JobID &job_id,
-                                          std::string_view job_submission_id) {
+  auto filter_ok = [job_or_submission_id](
+                       const ray::JobID &job_id,
+                       std::optional<std::string_view> job_submission_id) {
     if (!job_or_submission_id.has_value()) {
       return true;
     }
     if (job_id.Hex() == *job_or_submission_id) {
       return true;
     }
-    if (job_submission_id == *job_or_submission_id) {
+    if (job_submission_id.has_value() &&
+        (job_submission_id.value() == *job_or_submission_id)) {
       return true;
     }
     return false;
@@ -224,7 +226,10 @@ void GcsJobManager::HandleGetAllJobInfo(rpc::GetAllJobInfoRequest request,
 
       auto &metadata = data.second.config().metadata();
       auto iter = metadata.find("job_submission_id");
-      if (!filter_ok(data.first, iter == metadata.end() ? "" : iter->second)) {
+      if (!filter_ok(data.first,
+                     iter == metadata.end()
+                         ? std::nullopt
+                         : std::optional<std::string_view>(iter->second))) {
         continue;
       }
       reply->add_job_info_list()->CopyFrom(data.second);

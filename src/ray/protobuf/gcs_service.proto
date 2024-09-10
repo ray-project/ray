@@ -41,7 +41,7 @@ message GetAllJobInfoRequest {
   optional int32 limit = 1;
   // If set, only return the job with that job id in hex, or the job with that
   // job_submission_id.
-  optional bytes job_or_submission_id = 3;
+  optional string job_or_submission_id = 3;
 }
 
 message GetAllJobInfoReply {

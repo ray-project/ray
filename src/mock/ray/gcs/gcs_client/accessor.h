@@ -105,7 +105,7 @@ class MockJobInfoAccessor : public JobInfoAccessor {
               (override));
   MOCK_METHOD(Status,
               AsyncGetAll,
-              (const std::string &job_or_submission_id,
+              (const std::optional<std::string> &job_or_submission_id,
                const MultiItemCallback<rpc::JobTableData> &callback,
                int64_t timeout_ms),
               (override));

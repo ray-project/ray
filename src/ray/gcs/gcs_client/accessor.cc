@@ -82,7 +82,8 @@ Status JobInfoAccessor::AsyncSubscribeAll(
         done(status);
       }
     };
-    RAY_CHECK_OK(AsyncGetAll(/*job_or_submission_id=*/"", callback, /*timeout_ms=*/-1));
+    RAY_CHECK_OK(
+        AsyncGetAll(/*job_or_submission_id=*/std::nullopt, callback, /*timeout_ms=*/-1));
   };
   subscribe_operation_ = [this, subscribe](const StatusCallback &done) {
     return client_impl_->GetGcsSubscriber().SubscribeAllJobs(subscribe, done);
@@ -105,14 +106,15 @@ void JobInfoAccessor::AsyncResubscribe() {
   }
 }
 
-Status JobInfoAccessor::AsyncGetAll(const std::string &job_or_submission_id,
-                                    const MultiItemCallback<rpc::JobTableData> &callback,
-                                    int64_t timeout_ms) {
+Status JobInfoAccessor::AsyncGetAll(
+    const std::optional<std::string> &job_or_submission_id,
+    const MultiItemCallback<rpc::JobTableData> &callback,
+    int64_t timeout_ms) {
   RAY_LOG(DEBUG) << "Getting all job info.";
   RAY_CHECK(callback);
   rpc::GetAllJobInfoRequest request;
-  if (!job_or_submission_id.empty()) {
-    request.set_job_or_submission_id(job_or_submission_id);
+  if (job_or_submission_id.has_value()) {
+    request.set_job_or_submission_id(job_or_submission_id.value());
   }
   client_impl_->GetGcsRpcClient().GetAllJobInfo(
       request,
@@ -124,12 +126,12 @@ Status JobInfoAccessor::AsyncGetAll(const std::string &job_or_submission_id,
   return Status::OK();
 }
 
-Status JobInfoAccessor::GetAll(const std::string &job_or_submission_id,
+Status JobInfoAccessor::GetAll(const std::optional<std::string> &job_or_submission_id,
                                std::vector<rpc::JobTableData> &job_data_list,
                                int64_t timeout_ms) {
   rpc::GetAllJobInfoRequest request;
-  if (!job_or_submission_id.empty()) {
-    request.set_job_or_submission_id(job_or_submission_id);
+  if (job_or_submission_id.has_value()) {
+    request.set_job_or_submission_id(job_or_submission_id.value());
   }
   rpc::GetAllJobInfoReply reply;
   RAY_RETURN_NOT_OK(

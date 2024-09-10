@@ -158,6 +158,9 @@ async def get_driver_jobs(
     The second dictionary contains drivers that belong to submission jobs.
     It's keyed by the submission job's submission id.
     Only the last driver of a submission job is returned.
+
+    An optional job_or_submission_id filter can be provided to only return
+    jobs with the job id or submission id.
     """
     job_infos = await gcs_aio_client.get_all_job_info(
         job_or_submission_id=job_or_submission_id, timeout=timeout

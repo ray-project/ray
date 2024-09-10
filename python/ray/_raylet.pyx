@@ -2914,15 +2914,18 @@ cdef class OldGcsClient:
         # so we serialize the pb to string to cross the FFI interface.
         cdef:
             c_string c_job_or_submission_id
+            optional[c_string] c_optional_job_or_submission_id = nullopt
             int64_t timeout_ms = round(1000 * timeout) if timeout else -1
             CJobTableData c_job_info
             c_vector[CJobTableData] c_job_infos
             c_vector[c_string] serialized_job_infos
         if job_or_submission_id:
-            c_job_or_submission_id = job_or_submission_id.encode()
+            c_job_or_submission_id = job_or_submission_id
+            c_optional_job_or_submission_id = \
+                make_optional[c_string](c_job_or_submission_id)
         with nogil:
             check_status(self.inner.get().GetAllJobInfo(
-                c_job_or_submission_id, timeout_ms, c_job_infos))
+                c_optional_job_or_submission_id, timeout_ms, c_job_infos))
             for c_job_info in c_job_infos:
                 serialized_job_infos.push_back(c_job_info.SerializeAsString())
         result = {}

@@ -258,20 +258,20 @@ class JobInfoAccessor {
 
   /// Get all job info from GCS asynchronously.
   ///
-  /// \param job_or_submission_id If not empty, filter the jobs with this id.
+  /// \param job_or_submission_id If not null, filter the jobs with this id.
   /// \param callback Callback that will be called after lookup finished.
   /// \return Status
-  virtual Status AsyncGetAll(const std::string &job_or_submission_id,
+  virtual Status AsyncGetAll(const std::optional<std::string> &job_or_submission_id,
                              const MultiItemCallback<rpc::JobTableData> &callback,
                              int64_t timeout_ms);
 
   /// Get all job info from GCS synchronously.
   ///
-  /// \param job_or_submission_id If not empty, filter the jobs with this id.
+  /// \param job_or_submission_id If not null, filter the jobs with this id.
   /// \param[out] job_data_list The list of job data retrieved from GCS.
   /// \param timeout_ms -1 means infinite.
   /// \return Status
-  virtual Status GetAll(const std::string &job_or_submission_id,
+  virtual Status GetAll(const std::optional<std::string> &job_or_submission_id,
                         std::vector<rpc::JobTableData> &job_data_list,
                         int64_t timeout_ms);
 
