@@ -144,6 +144,10 @@ std::string LogEventReporter::ExportEventToString(const rpc::ExportEvent &export
     RAY_CHECK(google::protobuf::util::MessageToJsonString(
                   export_event.actor_event_data(), &event_data_as_string, options)
                   .ok());
+  } else if (export_event.has_driver_job_event_data()) {
+    RAY_CHECK(google::protobuf::util::MessageToJsonString(
+                  export_event.driver_job_event_data(), &event_data_as_string, options)
+                  .ok());
   } else {
     RAY_LOG(FATAL)
         << "event_data missing from export event with id " << export_event.event_id()
