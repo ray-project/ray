@@ -655,7 +655,6 @@ bool TaskManager::HandleReportGeneratorItemReturns(
                  << " generator_id: " << generator_id;
   auto backpressure_threshold = -1;
 
-  TaskSpecification spec;
   {
     absl::MutexLock lock(&mu_);
     auto it = submissible_tasks_.find(task_id);
@@ -670,10 +669,7 @@ bool TaskManager::HandleReportGeneratorItemReturns(
             Status::NotFound("Stale object reports from the previous attempt."), -1);
         return false;
       }
-      RAY_LOG(INFO) << "[HandleReportGeneratorItemReturns] hejialing test:"
-                    << (it->second.num_successful_executions == 0);
       if (it->second.num_successful_executions == 0) {
-        spec = it->second.spec;
         for (const auto &return_object : request.dynamic_return_objects()) {
           const auto object_id = ObjectID::FromBinary(return_object.object_id());
           if (return_object.in_plasma()) {
