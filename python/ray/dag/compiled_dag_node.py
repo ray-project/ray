@@ -112,7 +112,6 @@ def do_exec_tasks(
             if done:
                 break
             for operation in schedule:
-                print("SANG-TODO operation: ", operation)
                 done = tasks[operation.exec_task_idx].exec_operation(
                     self, operation.type
                 )
