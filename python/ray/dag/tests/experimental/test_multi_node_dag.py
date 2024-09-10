@@ -44,6 +44,7 @@ class Actor:
         return self.i
 
     def echo(self, x):
+        print("ECHO!")
         self.count += 1
         self._fail_if_needed()
         return x
@@ -187,7 +188,9 @@ def test_pp(ray_start_cluster):
     compiled_dag.teardown()
 
 
-def test_payload_large(ray_start_cluster):
+def test_payload_large(ray_start_cluster, monkeypatch):
+    GRPC_MAX_SIZE = 1024 * 1024 * 5
+    monkeypatch.setenv("RAY_max_grpc_message_size", str(GRPC_MAX_SIZE))
     cluster = ray_start_cluster
     # This node is for the driver (including the CompiledDAG.DAGDriverProxyActor).
     first_node_handle = cluster.add_node(num_cpus=1)
@@ -225,9 +228,7 @@ def test_payload_large(ray_start_cluster):
 
     compiled_dag = dag.experimental_compile()
 
-    # Ray sets the gRPC payload max size to 512 MiB. We choose a size in this test that
-    # is a bit larger.
-    size = 1024 * 1024 * 600
+    size = GRPC_MAX_SIZE + (1024 * 1024 * 2)
     val = b"x" * size
 
     for i in range(3):
