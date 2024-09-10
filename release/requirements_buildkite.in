@@ -16,10 +16,10 @@ PyGithub
 requests
 retry
 twine == 5.0.0
-docker == 7.0.0
+docker >= 7.1.0
 
 # Below are requirements only used by ray_ci
 tzdata
 aws_requests_auth
-requests
+requests >= 2.31.0
 -r requirements-doc.txt
