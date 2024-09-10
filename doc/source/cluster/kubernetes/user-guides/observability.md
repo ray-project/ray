@@ -27,7 +27,7 @@ Use this command to redirect the operator's logs to a file called `operator-log`
 kubectl describe [raycluster|rayjob|rayservice] $CUSTOM_RESOURCE_NAME -n $YOUR_NAMESPACE
 ```
 
-After running this command, check events and the `state`, and `conditions` in the status of the custom resource for any errors and progresses.
+After running this command, check events and the `state`, and `conditions` in the status of the custom resource for any errors and progress.
 
 
 #### RayCluster `.Status.State`
@@ -46,7 +46,7 @@ The `.Status.State` field, which currently represents the cluster's situation, w
 Although `Status.State` can represent the cluster situation, it's still only a single field. By enabling the feature gate `RayClusterStatusConditions` on the KubeRay v1.2.1, you can access to new `Status.Conditions` for more detailed cluster history and states.
 
 :::{warning}
-`RayClusterStatusConditions` is still an alpha feature and may undergo changes in the future.
+`RayClusterStatusConditions` is still an alpha feature and may change in the future.
 :::
 
 If you deployed KubeRay with Helm, then enable the `RayClusterStatusConditions` gate in the `featureGates` of your Helm values.
@@ -57,7 +57,7 @@ helm upgrade kuberay-operator kuberay/kuberay-operator --version 1.2.1 \
   --set featureGates\[0\].enabled=true
 ```
 
-Or, just make your KubeRay operator executable run with `--feature-gates=RayClusterStatusConditions=true` argument.
+Or, just make your KubeRay Operator executable run with `--feature-gates=RayClusterStatusConditions=true` argument.
 
 | Type                     | Status | Reason                         | Description                                                                                                          |
 |--------------------------|--------|--------------------------------|----------------------------------------------------------------------------------------------------------------------|
