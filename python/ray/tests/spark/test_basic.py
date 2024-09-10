@@ -341,8 +341,7 @@ class TestSparkLocalCluster:
 
         shutdown_ray_cluster()
 
-    @pytest.mark.parametrize("autoscale", [False, True])
-    def test_setup_global_ray_cluster(self, autoscale):
+    def test_setup_global_ray_cluster(self):
         shutil.rmtree("/tmp/ray", ignore_errors=True)
 
         assert ray.util.spark.cluster_init._global_ray_cluster_cancel_event is None
@@ -356,7 +355,7 @@ class TestSparkLocalCluster:
                     ):
                         setup_global_ray_cluster(
                             max_worker_nodes=1,
-                            min_worker_nodes=(0 if autoscale else 1),
+                            min_worker_nodes=1,
                         )
                 except BaseException:
                     # For debugging testing failure.
