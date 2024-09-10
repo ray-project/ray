@@ -51,12 +51,17 @@ def main(production: bool, check: bool) -> None:
         )
         logger.info("Weekly green metric updated successfully")
 
-    if check and blockers.totalCount != 0:
-        print(
-            f"Found {blockers.totalCount} release blockers.",
-            file=sys.stderr,
-        )
-        sys.exit(42)  # Not retrying the check on Buildkite jobs
+    if check:
+        if len(blockers) > 0:
+            print(
+                f"Found {len(blockers)} release blockers.",
+                file=sys.stderr,
+            )
+            for issue in blockers:
+                print(f"{issue.html_url} - {issue.title}", file=sys.stderr)
+            sys.exit(42)  # Not retrying the check on Buildkite jobs
+        else:
+            print("No release blockers. Woohoo!", file=sys.stderr)
 
 
 if __name__ == "__main__":

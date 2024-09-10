@@ -712,45 +712,6 @@ std::unordered_map<std::string, std::string> PythonGetNodeLabels(
                                                       node_info.labels().end());
 }
 
-Status PythonCheckGcsHealth(const std::string &gcs_address,
-                            const int gcs_port,
-                            const int64_t timeout_ms,
-                            const std::string &ray_version,
-                            const bool skip_version_check,
-                            bool &is_healthy) {
-  auto channel = rpc::GcsRpcClient::CreateGcsChannel(gcs_address, gcs_port);
-  auto stub = rpc::NodeInfoGcsService::NewStub(channel);
-  grpc::ClientContext context;
-  if (timeout_ms != -1) {
-    context.set_deadline(std::chrono::system_clock::now() +
-                         std::chrono::milliseconds(timeout_ms));
-  }
-  rpc::CheckAliveRequest request;
-  rpc::CheckAliveReply reply;
-  grpc::Status status = stub->CheckAlive(&context, request, &reply);
-  if (!status.ok()) {
-    is_healthy = false;
-    return Status::RpcError(status.error_message(), status.error_code());
-  }
-  if (reply.status().code() != static_cast<int>(StatusCode::OK)) {
-    is_healthy = false;
-    return HandleGcsError(reply.status());
-  }
-  if (!skip_version_check) {
-    // Check for Ray version match
-    if (reply.ray_version() != ray_version) {
-      is_healthy = false;
-      std::ostringstream ss;
-      ss << "Ray cluster at " << gcs_address << ":" << gcs_port << " has version "
-         << reply.ray_version() << ", but this process "
-         << "is running Ray version " << ray_version << ".";
-      return Status::Invalid(ss.str());
-    }
-  }
-  is_healthy = true;
-  return Status::OK();
-}
-
 /// Creates a singleton thread that runs an io_service.
 /// All ConnectToGcsStandalone calls will share this io_service.
 class SingletonIoContext {

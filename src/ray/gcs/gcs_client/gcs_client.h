@@ -352,13 +352,6 @@ std::unordered_map<std::string, double> PythonGetResourcesTotal(
 std::unordered_map<std::string, std::string> PythonGetNodeLabels(
     const rpc::GcsNodeInfo &node_info);
 
-Status PythonCheckGcsHealth(const std::string &gcs_address,
-                            const int gcs_port,
-                            const int64_t timeout_ms,
-                            const std::string &ray_version,
-                            const bool skip_version_check,
-                            bool &is_healthy);
-
 }  // namespace gcs
 
 }  // namespace ray
