@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import Any, Callable, Dict, Iterator, List, Optional, Union
+from typing import TYPE_CHECKING, Any, Callable, Dict, Iterator, List, Optional, Union
 
 import ray
 from .ref_bundle import RefBundle
@@ -15,6 +15,10 @@ from ray.data._internal.execution.interfaces.op_runtime_metrics import OpRuntime
 from ray.data._internal.logical.interfaces import LogicalOperator, Operator
 from ray.data._internal.stats import StatsDict
 from ray.data.context import DataContext
+
+if TYPE_CHECKING:
+    from ray.data._internal.execution.operators.map_operator import MapTaskStats
+
 
 # TODO(hchen): Ray Core should have a common interface for these two types.
 Waitable = Union[ray.ObjectRef, ObjectRefGenerator]
@@ -47,7 +51,9 @@ class DataOpTask(OpTask):
         task_index: int,
         streaming_gen: ObjectRefGenerator,
         output_ready_callback: Callable[[RefBundle], None],
-        task_done_callback: Callable[[Optional[Exception]], None],
+        task_done_callback: Callable[
+            [Optional[Exception], Optional["MapTaskStats"]], None
+        ],
     ):
         """
         Args:
@@ -136,6 +142,45 @@ class MetadataOpTask(OpTask):
         self._task_done_callback()
 
 
+class TaskBackPressureState:
+    def __init__(self):
+        self._in_task_submission_backpressure = False
+        self._in_task_submission_backpressure_reason = ""
+        self._in_task_output_backpressure = False
+        self._in_task_output_backpressure_reason = ""
+
+    def set_in_task_submission_backpressure(
+        self, in_backpressure: bool, reason: str
+    ) -> bool:
+        self._in_task_submission_backpressure = in_backpressure
+        self._in_task_submission_backpressure_reason = reason
+        return (
+            self._in_task_submission_backpressure != in_backpressure
+            or self._in_task_submission_backpressure_reason != reason
+        )
+
+    def set_in_task_output_backpressure(
+        self, in_backpressure: bool, reason: str
+    ) -> bool:
+        self._in_task_output_backpressure = in_backpressure
+        self._in_task_output_backpressure_reason = reason
+        return (
+            self._in_task_output_backpressure != in_backpressure
+            or self._in_task_output_backpressure_reason != reason
+        )
+
+    def is_in_backpressure(self):
+        return (
+            self._in_task_output_backpressure or self._in_task_submission_backpressure
+        )
+
+    def is_in_task_output_backpressure(self):
+        return self._in_task_output_backpressure
+
+    def is_in_task_submission_backpressure(self):
+        return self._in_task_submission_backpressure
+
+
 class PhysicalOperator(Operator):
     """Abstract class for physical operators.
 
@@ -183,9 +228,8 @@ class PhysicalOperator(Operator):
         self._inputs_complete = not input_dependencies
         self._target_max_block_size = target_max_block_size
         self._started = False
-        self._in_task_submission_backpressure = False
-        self._in_task_output_backpressure = False
         self._metrics = OpRuntimeMetrics(self)
+        self._backpressure_state = TaskBackPressureState()
         self._estimated_num_output_bundles = None
         self._estimated_output_num_rows = None
         self._execution_completed = False
@@ -481,17 +525,30 @@ class PhysicalOperator(Operator):
         """
         return ExecutionResources()
 
-    def notify_in_task_submission_backpressure(self, in_backpressure: bool) -> None:
+    def notify_in_task_submission_backpressure(
+        self, in_backpressure: bool, reason: str
+    ) -> None:
         """Called periodically from the executor to update internal in backpressure
         status for stats collection purposes.
 
         Args:
             in_backpressure: Value this operator's in_backpressure should be set to.
+            reason: reason for in_backpressure
         """
         # only update on change to in_backpressure
-        if self._in_task_submission_backpressure != in_backpressure:
+        changed = self._backpressure_state.set_in_task_submission_backpressure(
+            in_backpressure, reason
+        )
+        if changed:
             self._metrics.on_toggle_task_submission_backpressure(in_backpressure)
-            self._in_task_submission_backpressure = in_backpressure
+
+    def notify_in_task_output_backpressure(
+        self, in_backpressure: bool, reason: str
+    ) -> None:
+        # only update on change to in_backpressure
+        self._backpressure_state.set_in_task_output_backpressure(
+            in_backpressure, reason
+        )
 
     def get_autoscaling_actor_pools(self) -> List[AutoscalingActorPool]:
         """Return a list of `AutoscalingActorPool`s managed by this operator."""

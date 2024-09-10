@@ -192,6 +192,28 @@ class ExecutionResources:
             and self.object_store_memory <= limit.object_store_memory
         )
 
+    def satisfies_limit_with_reason(self, limit: "ExecutionResources") -> List[str]:
+        """Return if this resource struct meets the specified limits.
+
+        Note that None for a field means no limit.
+        """
+        not_satisfied = []
+
+        if self.cpu is not None and limit.cpu is not None and self.cpu > limit.cpu:
+            not_satisfied.append("CPU")
+        if self.gpu is not None and limit.gpu is not None and self.gpu > limit.gpu:
+            not_satisfied.append("GPU")
+        if (
+            self.object_store_memory is not None
+            and limit.object_store_memory is not None
+            and self.object_store_memory > limit.object_store_memory
+        ):
+            not_satisfied.append("MEM")
+
+        if not not_satisfied:
+            return []
+        return not_satisfied
+
     def scale(self, f: float) -> "ExecutionResources":
         """Return copy with all set values scaled by `f`."""
         if f < 0:

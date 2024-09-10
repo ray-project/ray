@@ -3,7 +3,7 @@ import os
 import time
 from abc import ABC, abstractmethod
 from collections import defaultdict
-from typing import TYPE_CHECKING, Callable, Dict, Iterable, List, Optional
+from typing import TYPE_CHECKING, Callable, Dict, Iterable, List, Optional, Tuple
 
 from ray.data._internal.execution.interfaces.execution_options import (
     ExecutionOptions,
@@ -282,6 +282,13 @@ class OpResourceAllocator(ABC):
         ...
 
     @abstractmethod
+    def can_submit_new_task_with_reason(
+        self, op: PhysicalOperator
+    ) -> Tuple[bool, List[str]]:
+        """Return whether the given operator can submit a new task with reason."""
+        ...
+
+    @abstractmethod
     def max_task_output_bytes_to_read(self, op: PhysicalOperator) -> Optional[int]:
         """Return the maximum bytes of pending task outputs can be read for
         the given operator. None means no limit."""
@@ -493,12 +500,24 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
 
             self._total_shared = self._total_shared.max(ExecutionResources.zero())
 
-    def can_submit_new_task(self, op: PhysicalOperator) -> bool:
-        if op not in self._op_budgets:
-            return True
+    # return not_satisfied resources
+    def can_submit_new_task_with_reason(
+        self, op: PhysicalOperator
+    ) -> Tuple[bool, List[str]]:
+        """Whether the operator can submit a new task.
+        If the operator can't submit a new task, returns the reason.
+        """
+        if not self._is_op_eligible(op) or op not in self._op_budgets:
+            return True, []
         budget = self._op_budgets[op]
-        res = op.incremental_resource_usage().satisfies_limit(budget)
-        return res
+        incremental_usage = op.incremental_resource_usage()
+        unsatified_resources = incremental_usage.satisfies_limit_with_reason(budget)
+
+        return len(unsatified_resources) == 0, unsatified_resources
+
+    def can_submit_new_task(self, op: PhysicalOperator) -> bool:
+        can_submit, not_satisfied = self.can_submit_new_task_with_reason(op)
+        return can_submit
 
     def _should_unblock_streaming_output_backpressure(
         self, op: PhysicalOperator
