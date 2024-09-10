@@ -1,5 +1,5 @@
 import logging
-from typing import TYPE_CHECKING, List, Optional, Tuple
+from typing import TYPE_CHECKING, List, Optional, Tuple, Union
 
 import ray
 from ray.experimental.channel import ChannelContext, ChannelOutputType
