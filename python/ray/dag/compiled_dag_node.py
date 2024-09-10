@@ -776,14 +776,11 @@ class CompiledDAG:
     def __str__(self) -> str:
         return f"CompiledDAG({self._dag_id})"
 
-    def _add_node(self, node: "ray.dag.DAGNode", is_artificial: bool = False) -> None:
+    def _add_node(self, node: "ray.dag.DAGNode") -> None:
         idx = self.counter
         self.idx_to_task[idx] = CompiledTask(idx, node)
         self.dag_node_to_idx[node] = idx
         self.counter += 1
-
-        if isinstance(node, ray.dag.MultiOutputNode) and not is_artificial:
-            self._returns_list = True
 
     def _preprocess(self) -> None:
         """Before compiling, preprocess the DAG to build an index from task to
@@ -831,8 +828,10 @@ class CompiledDAG:
         # Add an MultiOutputNode to the end of the DAG if it's not already there.
         if not isinstance(output_node, MultiOutputNode):
             output_node = MultiOutputNode([output_node])
-            self._add_node(output_node, True)
+            self._add_node(output_node)
             self.output_task_idx = self.dag_node_to_idx[output_node]
+        else:
+            self._returns_list = True
 
         # TODO: Support no-input DAGs (use an empty object to signal).
         if self.input_task_idx is None:
@@ -1447,6 +1446,11 @@ class CompiledDAG:
         assert [
             output_channel is not None for output_channel in self.dag_output_channels
         ]
+        # If no MultiOutputNode was specified during the DAG creation, there is only
+        # one output. Return a single output channel instead of a list of
+        # channels.
+        if not self._returns_list:
+            assert len(self.dag_output_channels) == 1
 
         # Driver should ray.put on input, ray.get/release on output
         self._monitor = self._monitor_failures()
