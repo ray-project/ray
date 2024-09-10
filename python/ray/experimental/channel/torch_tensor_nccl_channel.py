@@ -9,9 +9,7 @@ import ray
 import ray.util.serialization
 from ray.experimental.channel import ChannelContext
 from ray.experimental.channel.common import ChannelInterface, _ResizeChannel
-from ray.experimental.channel.gpu_communicator import (
-    GPUCommunicator,
-)
+from ray.experimental.channel.gpu_communicator import GPUCommunicator
 from ray.experimental.channel.nccl_group import _NcclGroup
 from ray.experimental.channel.shared_memory_channel import SharedMemoryType
 from ray.experimental.channel.torch_tensor_type import TorchTensorType
@@ -216,8 +214,7 @@ class TorchTensorNcclChannel(ChannelInterface):
                 # of tensors found in future values.
                 self._num_serialized_tensors = len(tensors_to_send)
 
-    def read(self, timeout: Optional[float] = None,
-            deserialize: bool = True) -> Any:
+    def read(self, timeout: Optional[float] = None, deserialize: bool = True) -> Any:
         """
         Read a value that may contain torch.Tensors sent via external
         transport.
@@ -276,7 +273,7 @@ class TorchTensorNcclChannel(ChannelInterface):
 def _torch_zeros_allocator(
     shape: Union[int, Tuple[int]],
     dtype: "torch.dtype",
-    ):
+):
     """
     Allocate a zeros tensor buffer matching the given metadata.
     """
@@ -490,7 +487,9 @@ class _TorchTensorNcclChannel(ChannelInterface):
             for rank in self._reader_ranks:
                 self._nccl_group.send(tensor, rank)
 
-    def _get_recv_tensors_metadata(self, timeout: Optional[float] = None) -> List[_TorchTensorMetadata]:
+    def _get_recv_tensors_metadata(
+        self, timeout: Optional[float] = None
+    ) -> List[_TorchTensorMetadata]:
         """
         Get the shape(s) and dtype(s) of the tensors to receive from the
         metadata channel. If static_shape=True was set, then we reuse the first
@@ -507,7 +506,8 @@ class _TorchTensorNcclChannel(ChannelInterface):
         return meta
 
     def read(
-        self, timeout: Optional[float] = None,
+        self,
+        timeout: Optional[float] = None,
         deserialize: bool = True,
     ) -> Union["torch.Tensor", List["torch.Tensor"]]:
         """
@@ -528,10 +528,8 @@ class _TorchTensorNcclChannel(ChannelInterface):
         bufs: List["torch.Tensor"] = []
         for meta in meta_list:
             buf = self._nccl_group.recv(
-                    meta.shape,
-                    meta.dtype,
-                    self._writer_rank,
-                    _torch_zeros_allocator)
+                meta.shape, meta.dtype, self._writer_rank, _torch_zeros_allocator
+            )
             bufs.append(buf)
         # TODO: Sync CUDA stream after receiving all tensors, instead of after
         # each tensor.

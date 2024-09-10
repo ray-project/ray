@@ -2,6 +2,7 @@ import asyncio
 import concurrent
 import threading
 import time
+from collections import namedtuple
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
@@ -18,6 +19,15 @@ if TYPE_CHECKING:
     import torch
 
 
+# aDAG maintains 1 reader object reference (also called buffer) per node.
+# reader_ref: The object reference.
+# ref_owner_actor_id: The actor who created the object reference.
+# num_readers: The number of reader actors who reads this object reference.
+ReaderRefInfo = namedtuple(
+    "ReaderRefInfo", ["reader_ref", "ref_owner_actor_id", "num_reader_actors"]
+)
+
+
 class _ResizeChannel:
     """
     When a channel must be resized, the channel backing store must be resized on both
@@ -26,8 +36,15 @@ class _ResizeChannel:
     resize its own backing store. The class instance is sent through the channel.
     """
 
-    def __init__(self, reader_ref: "ray.ObjectRef"):
-        self._reader_ref = reader_ref
+    def __init__(
+        self,
+        _node_id_to_reader_ref_info: Dict[str, ReaderRefInfo],
+    ):
+        """
+        Args:
+            _node_id_to_reader_ref_info: A node id to ReaderRefInfo.
+        """
+        self._node_id_to_reader_ref_info = _node_id_to_reader_ref_info
 
 
 @PublicAPI(stability="alpha")
@@ -182,8 +199,7 @@ class ChannelInterface:
         """
         raise NotImplementedError
 
-    def read(self, timeout: Optional[float] = None,
-            deserialize: bool = True) -> Any:
+    def read(self, timeout: Optional[float] = None, deserialize: bool = True) -> Any:
         """
         Read the latest value from the channel. This call will block until a
         value is available to read.

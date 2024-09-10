@@ -275,9 +275,7 @@ def test_static_shape(ray_start_cluster):
         sender.get_num_channel_ops.remote("tensor_metadata")
     )
     assert num_tensor_metadata_ops == 1
-    num_tensor_schema_ops = ray.get(
-        sender.get_num_channel_ops.remote("tensor_schema")
-    )
+    num_tensor_schema_ops = ray.get(sender.get_num_channel_ops.remote("tensor_schema"))
     assert num_tensor_schema_ops == 3
 
     # Attempting to write tensors of the wrong shape or dtype will error.
@@ -377,9 +375,7 @@ def test_static_tensor_schema(ray_start_cluster):
         sender.get_num_channel_ops.remote("tensor_metadata")
     )
     assert num_tensor_metadata_ops == 3
-    num_tensor_schema_ops = ray.get(
-        sender.get_num_channel_ops.remote("tensor_schema")
-    )
+    num_tensor_schema_ops = ray.get(sender.get_num_channel_ops.remote("tensor_schema"))
     assert num_tensor_schema_ops == 1
 
     # Attempting to write a different number of tensors will error.
@@ -478,9 +474,7 @@ def test_static_shape_and_tensor_schema(ray_start_cluster):
     assert num_tensor_metadata_ops == 1
     # When static_tensor_schema=True, we should only send one non-tensor data
     # op. After the first data is sent, we reuse it for all future sends.
-    num_tensor_schema_ops = ray.get(
-        sender.get_num_channel_ops.remote("tensor_schema")
-    )
+    num_tensor_schema_ops = ray.get(sender.get_num_channel_ops.remote("tensor_schema"))
     assert num_tensor_schema_ops == 1
 
     # Attempting to write tensors of the wrong shape or dtype will error.

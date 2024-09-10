@@ -348,10 +348,10 @@ def test_torch_tensor_custom_comm(ray_start_regular):
         shape = (i * 10,)
         dtype = torch.float16
         kwargs = {
-                "shape": shape,
-                "dtype": dtype,
-                "value": i,
-                }
+            "shape": shape,
+            "dtype": dtype,
+            "value": i,
+        }
         ref = compiled_dag.execute(*kwargs)
         result = ray.get(ref)
         assert result == (i, shape, dtype)
@@ -568,10 +568,10 @@ def test_torch_tensor_custom_comm_inited(ray_start_regular):
         shape = (i * 10,)
         dtype = torch.float16
         kwargs = {
-                "shape": shape,
-                "dtype": dtype,
-                "value": i,
-                }
+            "shape": shape,
+            "dtype": dtype,
+            "value": i,
+        }
         ref = compiled_dag.execute(**kwargs)
         result = ray.get(ref)
         assert result == (i, shape, dtype)

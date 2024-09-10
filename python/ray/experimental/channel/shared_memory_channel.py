@@ -1,7 +1,7 @@
 import io
 import logging
 import time
-from collections import defaultdict, namedtuple
+from collections import defaultdict
 from typing import Any, Dict, List, Optional, Set, Tuple, Union
 
 import ray
@@ -10,10 +10,11 @@ from ray._raylet import SerializedObject
 from ray.experimental.channel.common import (
     ChannelInterface,
     ChannelOutputType,
+    ReaderRefInfo,
     _ResizeChannel,
 )
 from ray.experimental.channel.intra_process_channel import IntraProcessChannel
-from ray.util.annotations import PublicAPI, DeveloperAPI
+from ray.util.annotations import DeveloperAPI, PublicAPI
 
 # Logger for this module. It should be configured at the entry point
 # into the program using Ray. Ray provides a default configuration at
@@ -79,36 +80,13 @@ def _get_self_actor() -> Optional["ray.actor.ActorHandle"]:
         return None
 
 
-# aDAG maintains 1 reader object reference (also called buffer) per node.
-# reader_ref: The object reference.
-# ref_owner_actor_id: The actor who created the object reference.
-# num_readers: The number of reader actors who reads this object reference.
-ReaderRefInfo = namedtuple(
-    "ReaderRefInfo", ["reader_ref", "ref_owner_actor_id", "num_reader_actors"]
-)
-
-
-class _ResizeChannel:
-    """
-    When a channel must be resized, the channel backing store must be resized on both
-    the writer and the reader nodes. The writer first resizes its own backing store. The
-    writer then uses an instance of this class as a sentinel value to tell the reader to
-    resize its own backing store. The class instance is sent through the channel.
-    """
-
+class SharedMemoryType(ChannelOutputType):
     def __init__(
         self,
-        _node_id_to_reader_ref_info: Dict[str, ReaderRefInfo],
+        *,
+        buffer_size_bytes: Optional[int] = None,
+        num_shm_buffers: Optional[int] = None,
     ):
-        """
-        Args:
-            _node_id_to_reader_ref_info: A node id to ReaderRefInfo.
-        """
-        self._node_id_to_reader_ref_info = _node_id_to_reader_ref_info
-
-
-class SharedMemoryType(ChannelOutputType):
-    def __init__(self, *, buffer_size_bytes: Optional[int] = None, num_shm_buffers: Optional[int] = None):
         """
         Args:
             buffer_size_bytes: The number of bytes to allocate for the object data and

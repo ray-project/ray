@@ -3,10 +3,8 @@ from typing import TYPE_CHECKING, List, Optional, Tuple, Union
 
 import ray
 from ray.experimental.channel import ChannelContext, ChannelOutputType
+from ray.experimental.channel.gpu_communicator import GPUCommunicator
 from ray.experimental.channel.shared_memory_channel import SharedMemoryType
-from ray.experimental.channel.gpu_communicator import (
-    GPUCommunicator,
-)
 from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
