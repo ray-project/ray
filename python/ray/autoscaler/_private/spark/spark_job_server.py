@@ -200,7 +200,13 @@ class SparkJobServer(ThreadingHTTPServer):
         super().shutdown()
         for spark_job_group_id in self.task_status_dict:
             self.spark.sparkContext.cancelJobGroup(spark_job_group_id)
-        time.sleep(1)  # wait for all spark job cancellation
+        # Sleep 1 second to wait for all spark job cancellation
+        # The spark job cancellation will do things asyncly in a background thread,
+        # On Databricks platform, when detaching a notebook, it triggers SIGTERM
+        # and then sigterm handler triggers Ray cluster shutdown, without sleep,
+        # after the SIGTERM handler execution the process is killed and then
+        # these cancelling spark job background threads are killed.
+        time.sleep(1)
 
 
 def _start_spark_job_server(host, port, spark):
