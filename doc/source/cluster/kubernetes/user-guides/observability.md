@@ -21,7 +21,7 @@ kubectl logs $KUBERAY_OPERATOR_POD -n $YOUR_NAMESPACE | tee operator-log
 
 Use this command to redirect the operator's logs to a file called `operator-log`. Then search for errors in the file.
 
-### Method 2: Check the status and events of custom resources.
+### Method 2: Check the status and events of custom resources
 
 ```bash
 kubectl describe [raycluster|rayjob|rayservice] $CUSTOM_RESOURCE_NAME -n $YOUR_NAMESPACE
@@ -32,18 +32,18 @@ After running this command, check events and the `state`, and `conditions` in th
 
 #### RayCluster `.Status.State`
 
-The `.Status.State` field, which currently represents the cluster's situation, will be deprecated in the future due to its limited representation. Please use the new `Status.Conditions` as an alternative.
+The `.Status.State` field, which currently represents the cluster's situation, will be deprecated in the future due to its limited representation. Use the new `Status.Conditions` instead.
 
 | State     | Description                                                                                                                            |
 |-----------|----------------------------------------------------------------------------------------------------------------------------------------|
-| Ready     | The state will be set to `Ready` once all the Pods in the cluster are ready. The `State` will remain `Ready` until the cluster is suspended. |
-| Suspended | The state will be set to `Suspended` when `Spec.Suspend` is set to true and all Pods in the cluster have been deleted.                             |
+| Ready     | KubeRay sets the state to `Ready` once all the Pods in the cluster are ready. The `State` remains `Ready` until KubeRay suspends the cluster. |
+| Suspended | KubeRay sets the state to `Suspended` when it sets `Spec.Suspend` to true and deletes all Pods in the cluster.                                     |
 
 
 
 #### RayCluster `.Status.Conditions`
 
-Although `Status.State` can represent the cluster situation, it is still only a single field. By enabling the feature gate `RayClusterStatusConditions` on the KubeRay v1.2.1, you can access to new `Status.Conditions` for more detailed cluster history and states.
+Although `Status.State` can represent the cluster situation, it's still only a single field. By enabling the feature gate `RayClusterStatusConditions` on the KubeRay v1.2.1, you can access to new `Status.Conditions` for more detailed cluster history and states.
 
 :::{warning}
 `RayClusterStatusConditions` is still an alpha feature and may undergo changes in the future.
@@ -57,18 +57,18 @@ helm upgrade kuberay-operator kuberay/kuberay-operator --version 1.2.1 \
   --set featureGates\[0\].enabled=true
 ```
 
-Or, just make your kuberay operator executable run with `--feature-gates=RayClusterStatusConditions=true` argument.
+Or, just make your KubeRay operator executable run with `--feature-gates=RayClusterStatusConditions=true` argument.
 
 | Type                     | Status | Reason                         | Description                                                                                                          |
 |--------------------------|--------|--------------------------------|----------------------------------------------------------------------------------------------------------------------|
-| RayClusterProvisioned    | True   | AllPodRunningAndReadyFirstTime | Once all the Pods in the cluster are ready, this condition will be set to `True` and will remain `True` even if some Pods fail later. |
+| RayClusterProvisioned    | True   | AllPodRunningAndReadyFirstTime | Once all the Pods in the cluster are ready, this condition is set to `True` and remains `True` even if some Pods fail later. |
 |                          | False  | RayClusterPodsProvisioning     |                                                                                                                      |
-| RayClusterReplicaFailure | True   | FailedDeleteAllPods            | This condition will be set to `True` when there is a reconciliation error, otherwise the condition will be cleared.            |
-|                          | True   | FailedDeleteHeadPod            | Please refer to the `Reason` and the `Message` of the condition for more detailed debugging information.                 |
+| RayClusterReplicaFailure | True   | FailedDeleteAllPods            | KubeRay sets this condition to `True` when there's a reconciliation error, otherwise KubeRay clears the condition.            |
+|                          | True   | FailedDeleteHeadPod            | See the `Reason` and the `Message` of the condition for more detailed debugging information.                 |
 |                          | True   | FailedCreateHeadPod            |                                                                                                                      |
 |                          | True   | FailedDeleteWorkerPod          |                                                                                                                      |
 |                          | True   | FailedCreateWorkerPod          |                                                                                                                      |
-| HeadPodReady             | True   | HeadPodRunningAndReady         | This condition will be `True` only if the HeadPod is currently ready; otherwise, it will be `False`.                         |
+| HeadPodReady             | True   | This condition is `True` only if the HeadPod is currently ready; otherwise, it's `False`.                |
 |                          | False  | HeadPodNotFound                |                                                                                                                      |
 
 
