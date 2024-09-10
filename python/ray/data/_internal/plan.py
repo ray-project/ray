@@ -26,10 +26,6 @@ if TYPE_CHECKING:
     from ray.data.dataset import Dataset
 
 
-# Scheduling strategy can be inherited from prev operator if not specified.
-INHERITABLE_REMOTE_ARGS = ["scheduling_strategy"]
-
-
 logger = logging.getLogger(__name__)
 
 
@@ -42,7 +38,7 @@ class ExecutionPlan:
     overhead and data copies.
 
     Internally, the execution plan holds a snapshot of a computed list of
-    blocks and their associated metadata under ``self._snapshot_bundle``,
+    blocks and their associated metadata under ``self._snapshot_bundles``,
     where this snapshot is the cached output of executing the operator chain."""
 
     def __init__(
@@ -63,7 +59,7 @@ class ExecutionPlan:
         # output blocks and stats.
         self._snapshot_operator: Optional[LogicalOperator] = None
         self._snapshot_stats = None
-        self._snapshot_bundle = None
+        self._snapshot_bundles = None
         # Snapshot of only metadata corresponding to the final operator's
         # output bundles, used as the source of truth for the Dataset's schema
         # and count. This is calculated and cached when the plan is executed as an
@@ -147,10 +143,10 @@ class ExecutionPlan:
                 self._logical_plan.dag
             )
 
-            if self._snapshot_bundle is not None:
-                # This plan has executed some but not all operators.
-                schema = unify_block_metadata_schema(self._snapshot_bundle.metadata)
-                count = self._snapshot_bundle.num_rows()
+            if self._snapshot_bundles is not None:
+                # This plan has executed some but not all operators
+                schema = _unify_schema_from_bundles(self._snapshot_bundles)
+                count = _count_num_rows_in_bundles(self._snapshot_bundles)
             elif self._snapshot_metadata is not None:
                 schema = self._snapshot_metadata.schema
                 count = self._snapshot_metadata.num_rows
@@ -171,7 +167,7 @@ class ExecutionPlan:
         else:
             # Get schema of output blocks.
             schema = self.schema(fetch_if_missing=False)
-            count = self._snapshot_bundle.num_rows()
+            count = _count_num_rows_in_bundles(self._snapshot_bundles)
 
         if schema is None:
             schema_str = "Unknown schema"
@@ -293,9 +289,9 @@ class ExecutionPlan:
             self._in_stats,
             data_context=self._context,
         )
-        if self._snapshot_bundle is not None:
+        if self._snapshot_bundles is not None:
             # Copy over the existing snapshot.
-            plan_copy._snapshot_bundle = self._snapshot_bundle
+            plan_copy._snapshot_bundle = self._snapshot_bundles
             plan_copy._snapshot_operator = self._snapshot_operator
             plan_copy._snapshot_stats = self._snapshot_stats
         plan_copy._dataset_name = self._dataset_name
@@ -310,9 +306,9 @@ class ExecutionPlan:
             A deep copy of this execution plan.
         """
         plan_copy = ExecutionPlan(copy.copy(self._in_stats))
-        if self._snapshot_bundle:
+        if self._snapshot_bundles:
             # Copy over the existing snapshot.
-            plan_copy._snapshot_bundle = copy.copy(self._snapshot_bundle)
+            plan_copy._snapshot_bundle = copy.copy(self._snapshot_bundles)
             plan_copy._snapshot_operator = copy.copy(self._snapshot_operator)
             plan_copy._snapshot_stats = copy.copy(self._snapshot_stats)
         plan_copy._dataset_name = self._dataset_name
@@ -342,7 +338,7 @@ class ExecutionPlan:
 
         schema = None
         if self.has_computed_output():
-            schema = unify_block_metadata_schema(self._snapshot_bundle.metadata)
+            schema = _unify_schema_from_bundles(self._snapshot_bundles)
         elif self._logical_plan.dag.aggregate_output_metadata().schema is not None:
             schema = self._logical_plan.dag.aggregate_output_metadata().schema
         elif fetch_if_missing:
@@ -386,7 +382,7 @@ class ExecutionPlan:
             The number of records of the result Dataset, or None.
         """
         if self.has_computed_output():
-            num_rows = sum(m.num_rows for m in self._snapshot_bundle.metadata)
+            num_rows = _count_num_rows_in_bundles(self._snapshot_bundles)
         elif self._logical_plan.dag.aggregate_output_metadata().num_rows is not None:
             num_rows = self._logical_plan.dag.aggregate_output_metadata().num_rows
         else:
@@ -435,7 +431,7 @@ class ExecutionPlan:
     def execute(
         self,
         preserve_order: bool = False,
-    ) -> RefBundle:
+    ) -> List[RefBundle]:
         """Execute this plan.
 
         Args:
@@ -462,7 +458,6 @@ class ExecutionPlan:
         if not self.has_computed_output():
             from ray.data._internal.execution.legacy_compat import (
                 _get_initial_stats_from_plan,
-                execute_to_legacy_block_list,
             )
 
             if self._logical_plan.dag.output_data() is not None:
@@ -470,21 +465,11 @@ class ExecutionPlan:
                 # skip execution and directly return the output data. This avoids
                 # recording unnecessary metrics for an empty plan execution.
                 stats = _get_initial_stats_from_plan(self)
-
-                # TODO(@bveeramani): Make `ExecutionPlan.execute()` return
-                # `List[RefBundle]` instead of `RefBundle`. Among other reasons, it'd
-                # allow us to remove the unwrapping logic below.
-                output_bundles = self._logical_plan.dag.output_data()
-                owns_blocks = all(bundle.owns_blocks for bundle in output_bundles)
-                bundle = RefBundle(
-                    [
-                        (block, metadata)
-                        for bundle in output_bundles
-                        for block, metadata in bundle.blocks
-                    ],
-                    owns_blocks=owns_blocks,
-                )
+                bundles = self._logical_plan.dag.output_data()
             else:
+                from ray.data._internal.execution.legacy_compat import (
+                    _get_execution_dag,
+                )
                 from ray.data._internal.execution.streaming_executor import (
                     StreamingExecutor,
                 )
@@ -494,16 +479,14 @@ class ExecutionPlan:
                     copy.deepcopy(context.execution_options),
                     metrics_tag,
                 )
-                blocks = execute_to_legacy_block_list(
+                dag, stats = _get_execution_dag(
                     executor,
                     self,
-                    dataset_uuid=self._dataset_uuid,
-                    preserve_order=preserve_order,
+                    preserve_order,
                 )
-                bundle = RefBundle(
-                    tuple(blocks.iter_blocks_with_metadata()),
-                    owns_blocks=blocks._owned_by_consumer,
-                )
+                bundles = list(executor.execute(dag, initial_stats=stats))
+                # Set the stats UUID after execution finishes.
+                _set_stats_uuid_recursive(executor.get_stats(), self._dataset_uuid)
                 stats = executor.get_stats()
                 stats_summary_string = stats.to_summary().to_string(
                     include_parent=False
@@ -542,12 +525,13 @@ class ExecutionPlan:
             collect_stats(stats)
 
             # Set the snapshot to the output of the final operator.
-            self._snapshot_bundle = bundle
+            self._snapshot_bundles = bundles
+            print("Setting snapshot bundles to", self._snapshot_bundles)
             self._snapshot_operator = self._logical_plan.dag
             self._snapshot_stats = stats
             self._snapshot_stats.dataset_uuid = self._dataset_uuid
 
-        return self._snapshot_bundle
+        return self._snapshot_bundles
 
     @property
     def has_started_execution(self) -> bool:
@@ -556,7 +540,7 @@ class ExecutionPlan:
 
     def clear_snapshot(self) -> None:
         """Clear the snapshot kept in the plan to the beginning state."""
-        self._snapshot_bundle = None
+        self._snapshot_bundles = None
         self._snapshot_operator = None
         self._snapshot_stats = None
 
@@ -586,7 +570,7 @@ class ExecutionPlan:
         output of this plan.
         """
         return (
-            self._snapshot_bundle is not None
+            self._snapshot_bundles is not None
             and self._snapshot_operator == self._logical_plan.dag
         )
 
@@ -599,3 +583,22 @@ class ExecutionPlan:
             if isinstance(op, (Zip, Sort)):
                 return True
         return False
+
+
+def _count_num_rows_in_bundles(bundles: List[RefBundle]) -> int:
+    if any(bundle.num_rows() is None for bundle in bundles):
+        return None
+    else:
+        return sum(bundle.num_rows() for bundle in bundles)
+
+
+def _unify_schema_from_bundles(bundles: List[RefBundle]):
+    metadata = list(itertools.chain(*[bundle.metadata for bundle in bundles]))
+    return unify_block_metadata_schema(metadata)
+
+
+def _set_stats_uuid_recursive(stats: DatasetStats, dataset_uuid: str) -> None:
+    if not stats.dataset_uuid:
+        stats.dataset_uuid = dataset_uuid
+    for parent in stats.parents or []:
+        _set_stats_uuid_recursive(parent, dataset_uuid)
