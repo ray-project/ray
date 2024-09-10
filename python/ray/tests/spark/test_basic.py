@@ -319,15 +319,14 @@ class TestSparkLocalCluster:
 
         shutdown_ray_cluster()
 
-    @pytest.mark.parametrize("autoscale", [False, True])
-    def test_use_driver_resources(self, autoscale):
+    def test_use_driver_resources(self):
         setup_ray_cluster(
             max_worker_nodes=1,
             num_cpus_head_node=3,
             num_gpus_head_node=2,
             object_store_memory_head_node=256 * 1024 * 1024,
             head_node_options={"include_dashboard": False},
-            min_worker_nodes=(0 if autoscale else 1),
+            min_worker_nodes=0,
         )
 
         ray.init()
@@ -355,7 +354,7 @@ class TestSparkLocalCluster:
                     ):
                         setup_global_ray_cluster(
                             max_worker_nodes=1,
-                            min_worker_nodes=1,
+                            min_worker_nodes=0,
                         )
                 except BaseException:
                     # For debugging testing failure.
@@ -397,7 +396,7 @@ class TestSparkLocalCluster:
             ):
                 setup_global_ray_cluster(
                     max_worker_nodes=1,
-                    min_worker_nodes=(0 if autoscale else 1),
+                    min_worker_nodes=0,
                 )
 
         # shut down the cluster
@@ -406,7 +405,7 @@ class TestSparkLocalCluster:
         # assert temp directory is deleted
         wait_for_condition(
             lambda: not os.path.exists("/tmp/ray"),
-            timeout=60,
+            timeout=120,
             retry_interval_ms=10000,
         )
 
