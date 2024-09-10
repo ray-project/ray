@@ -179,14 +179,6 @@ class OfflinePreLearner:
                 )
                 for state in batch["item"]
             ]
-            self.episode_buffer.add(episodes)
-            episodes = self.episode_buffer.sample(
-                num_items=self.config.train_batch_size_per_learner,
-                # TODO (simon): This can be removed as soon as DreamerV3 has been
-                # cleaned up, i.e. can use episode samples for training.
-                sample_episodes=True,
-                finalize=True,
-            )
         # Else, if we have old stack `SampleBatch`es.
         elif self.input_read_sample_batches:
             episodes = OfflinePreLearner._map_sample_batch_to_episode(
