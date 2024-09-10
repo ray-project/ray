@@ -655,6 +655,7 @@ bool TaskManager::HandleReportGeneratorItemReturns(
                  << " generator_id: " << generator_id;
   auto backpressure_threshold = -1;
 
+  TaskSpecification spec;
   {
     absl::MutexLock lock(&mu_);
     auto it = submissible_tasks_.find(task_id);
@@ -668,6 +669,18 @@ bool TaskManager::HandleReportGeneratorItemReturns(
         execution_signal_callback(
             Status::NotFound("Stale object reports from the previous attempt."), -1);
         return false;
+      }
+      RAY_LOG(INFO) << "[HandleReportGeneratorItemReturns] hejialing test:"
+                    << (it->second.num_successful_executions == 0);
+      if (it->second.num_successful_executions == 0) {
+        spec = it->second.spec;
+        for (const auto &return_object : request.dynamic_return_objects()) {
+          const auto object_id = ObjectID::FromBinary(return_object.object_id());
+          if (return_object.in_plasma()) {
+            it->second.reconstructable_return_ids.insert(object_id);
+          }
+          it->second.streaming_generator_return_ids.insert(object_id);
+        }
       }
     }
   }
@@ -1034,8 +1047,9 @@ void TaskManager::FailPendingTask(const TaskID &task_id,
   TaskSpecification spec;
   // Check whether the error should be stored in plasma or not.
   bool first_execution = false;
-  const auto store_in_plasma_ids =
+  auto store_in_plasma_ids =
       GetTaskReturnObjectsToStoreInPlasma(task_id, &first_execution);
+  absl::flat_hash_set<ObjectID> streaming_generator_return_ids;
   {
     absl::MutexLock lock(&mu_);
     auto it = submissible_tasks_.find(task_id);
@@ -1058,6 +1072,12 @@ void TaskManager::FailPendingTask(const TaskID &task_id,
                ? gcs::GetRayErrorInfo(error_type, (status ? status->ToString() : ""))
                : *ray_error_info));
     }
+    if (it->second.spec.IsStreamingGenerator() && first_execution) {
+      for (const auto object_id : it->second.reconstructable_return_ids) {
+        store_in_plasma_ids.insert(object_id);
+      }
+    }
+    streaming_generator_return_ids = it->second.streaming_generator_return_ids;
     submissible_tasks_.erase(it);
     num_pending_tasks_--;
 
@@ -1088,7 +1108,12 @@ void TaskManager::FailPendingTask(const TaskID &task_id,
                                rpc::Address(),
                                ReferenceCounter::ReferenceTableProto());
 
-  MarkTaskReturnObjectsFailed(spec, error_type, ray_error_info, store_in_plasma_ids);
+  MarkTaskReturnObjectsFailed(spec,
+                              error_type,
+                              ray_error_info,
+                              store_in_plasma_ids,
+                              first_execution,
+                              streaming_generator_return_ids);
 
   ShutdownIfNeeded();
 }
@@ -1298,7 +1323,9 @@ void TaskManager::MarkTaskReturnObjectsFailed(
     const TaskSpecification &spec,
     rpc::ErrorType error_type,
     const rpc::RayErrorInfo *ray_error_info,
-    const absl::flat_hash_set<ObjectID> &store_in_plasma_ids) {
+    const absl::flat_hash_set<ObjectID> &store_in_plasma_ids,
+    bool first_execution,
+    const absl::flat_hash_set<ObjectID> &streaming_generator_return_ids) {
   const TaskID task_id = spec.TaskId();
   RayObject error(error_type, ray_error_info);
   RAY_LOG(DEBUG) << "Treat task as failed. task_id: " << task_id
@@ -1336,13 +1363,23 @@ void TaskManager::MarkTaskReturnObjectsFailed(
     // case, all these objects are lost from the plasma store, so we
     // can overwrite them. See the test test_dynamic_generator_reconstruction_fails
     // for more details.
-    auto num_streaming_generator_returns = spec.NumStreamingGeneratorReturns();
-    for (size_t i = 0; i < num_streaming_generator_returns; i++) {
-      const auto generator_return_id = spec.StreamingGeneratorReturnId(i);
-      if (store_in_plasma_ids.count(generator_return_id)) {
-        put_in_local_plasma_callback_(error, generator_return_id);
-      } else {
-        in_memory_store_->Put(error, generator_return_id);
+    if (first_execution) {
+      for (const auto &generator_return_id : streaming_generator_return_ids) {
+        if (store_in_plasma_ids.count(generator_return_id)) {
+          put_in_local_plasma_callback_(error, generator_return_id);
+        } else {
+          in_memory_store_->Put(error, generator_return_id);
+        }
+      }
+    } else {
+      auto num_streaming_generator_returns = spec.NumStreamingGeneratorReturns();
+      for (size_t i = 0; i < num_streaming_generator_returns; i++) {
+        const auto generator_return_id = spec.StreamingGeneratorReturnId(i);
+        if (store_in_plasma_ids.count(generator_return_id)) {
+          put_in_local_plasma_callback_(error, generator_return_id);
+        } else {
+          in_memory_store_->Put(error, generator_return_id);
+        }
       }
     }
   }
