@@ -260,6 +260,15 @@ def test_multi_output_multi_refs_get(ray_start_regular):
         res = ray.get(compiled_dag.execute(1))
         assert res == [1, 2]
 
+    refs = compiled_dag.execute(1)
+    refs.append(None)
+    with pytest.raises(
+        ValueError,
+        match="Invalid type of object refs. 'object_refs' must be a list of "
+        "CompiledDAGRefs if there is any CompiledDAGRef within it.",
+    ):
+        ray.get(refs)
+
     compiled_dag.teardown()
 
 

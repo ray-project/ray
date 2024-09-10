@@ -2660,13 +2660,19 @@ def get(
             return object_refs.get(timeout=timeout)
 
         if isinstance(object_refs, list):
-            allCompiledDAGRefs = True
+            all_compiled_dag_refs = True
+            any_compiled_dag_refs = False
             for object_ref in object_refs:
-                allCompiledDAGRefs = allCompiledDAGRefs and isinstance(
-                    object_ref, CompiledDAGRef
-                )
-            if allCompiledDAGRefs:
+                is_dag_ref = isinstance(object_ref, CompiledDAGRef)
+                all_compiled_dag_refs = all_compiled_dag_refs and is_dag_ref
+                any_compiled_dag_refs = any_compiled_dag_refs or is_dag_ref
+            if all_compiled_dag_refs:
                 return [object_ref.get(timeout=timeout) for object_ref in object_refs]
+            elif any_compiled_dag_refs:
+                raise ValueError(
+                    "Invalid type of object refs. 'object_refs' must be a list of "
+                    "CompiledDAGRefs if there is any CompiledDAGRef within it. "
+                )
 
         is_individual_id = isinstance(object_refs, ray.ObjectRef)
         if is_individual_id:
