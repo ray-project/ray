@@ -70,7 +70,6 @@ from ray.data.datasource import (
     BaseFileMetadataProvider,
     Connection,
     Datasource,
-    ParquetMetadataProvider,
     PathPartitionFilter,
 )
 from ray.data.datasource.datasource import Reader
@@ -1790,10 +1789,7 @@ def read_tfrecords(
             )
 
     if meta_provider is None:
-        meta_provider = get_generic_metadata_provider(
-            TFRecordDatasource._FILE_EXTENSIONS
-        )
-
+        meta_provider = DefaultFileMetadataProvider()
     datasource = TFRecordDatasource(
         paths,
         tf_schema=tf_schema,
@@ -1895,9 +1891,7 @@ def read_webdataset(
     .. _tf.train.Example: https://www.tensorflow.org/api_docs/python/tf/train/Example
     """  # noqa: E501
     if meta_provider is None:
-        meta_provider = get_generic_metadata_provider(
-            WebDatasetDatasource._FILE_EXTENSIONS
-        )
+        meta_provider = DefaultFileMetadataProvider()
 
     datasource = WebDatasetDatasource(
         paths,
