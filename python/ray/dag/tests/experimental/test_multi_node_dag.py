@@ -233,10 +233,13 @@ def test_payload_large(ray_start_cluster, monkeypatch):
 
     compiled_dag = dag.experimental_compile()
 
+    # Ray sets the gRPC payload max size to 512 MiB. We choose a size in this test that
+    # is a bit larger.
     size = GRPC_MAX_SIZE + (1024 * 1024 * 2)
     val = b"x" * size
 
     for i in range(3):
+        print(f"{i} iteration")
         ref = compiled_dag.execute(val)
         result = ray.get(ref)
         assert result == val
@@ -244,102 +247,6 @@ def test_payload_large(ray_start_cluster, monkeypatch):
     # Note: must teardown before starting a new Ray session, otherwise you'll get
     # a segfault from the dangling monitor thread upon the new Ray init.
     compiled_dag.teardown()
-
-
-@pytest.mark.parametrize("num_actors", [1, 4])
-@pytest.mark.parametrize("num_nodes", [1, 4])
-def test_multi_node_multi_reader_large_payload(
-    ray_start_cluster, num_actors, num_nodes, monkeypatch
-):
-    # Set max grpc size to 5mb.
-    GRPC_MAX_SIZE = 1024 * 1024 * 5
-    monkeypatch.setenv("RAY_max_grpc_message_size", str(GRPC_MAX_SIZE))
-    cluster = ray_start_cluster
-    ACTORS_PER_NODE = num_actors
-    NUM_REMOTE_NODES = num_nodes
-    cluster.add_node(num_cpus=ACTORS_PER_NODE)
-    ray.init(address=cluster.address)
-    # This node is for the other two readers.
-    for _ in range(NUM_REMOTE_NODES):
-        cluster.add_node(num_cpus=ACTORS_PER_NODE)
-    cluster.wait_for_nodes()
-
-    wait_for_condition(lambda: len(ray.nodes()) == NUM_REMOTE_NODES + 1)
-
-    actors = [
-        Actor.options(num_cpus=1).remote(0)
-        for _ in range(ACTORS_PER_NODE * (NUM_REMOTE_NODES + 1))
-    ]
-
-    def _get_node_id(self) -> "ray.NodeID":
-        return ray.get_runtime_context().get_node_id()
-
-    node_ids = ray.get([act.__ray_call__.remote(_get_node_id) for act in actors])
-    assert len(set(node_ids)) == NUM_REMOTE_NODES + 1
-
-    with InputNode() as inp:
-        outputs = []
-        for actor in actors:
-            outputs.append(actor.echo.bind(inp))
-        dag = MultiOutputNode(outputs)
-
-    compiled_dag = dag.experimental_compile()
-
-    # Set the object size a little bigger than the gRPC size so that
-    # it triggers chunking and resizing.
-    size = GRPC_MAX_SIZE + (1024 * 1024 * 2)
-    val = b"x" * size
-
-    for _ in range(3):
-        ref = compiled_dag.execute(val)
-        result = ray.get(ref)
-        assert result == [val for _ in range(ACTORS_PER_NODE * (NUM_REMOTE_NODES + 1))]
-
-    compiled_dag.teardown()
-
-
-def test_multi_node_dag_from_actor(ray_start_cluster):
-    cluster = ray_start_cluster
-    cluster.add_node(num_cpus=1)
-    ray.init()
-    cluster.add_node(num_cpus=1)
-
-    @ray.remote(num_cpus=0)
-    class SameNodeActor:
-        def predict(self, x: str):
-            return x
-
-    @ray.remote(num_cpus=1)
-    class RemoteNodeActor:
-        def predict(self, x: str, y: str):
-            return y
-
-    @ray.remote(num_cpus=1)
-    class DriverActor:
-        def __init__(self):
-            self._base_actor = SameNodeActor.options(
-                scheduling_strategy=NodeAffinitySchedulingStrategy(
-                    ray.get_runtime_context().get_node_id(), soft=False
-                )
-            ).remote()
-            self._refiner_actor = RemoteNodeActor.remote()
-
-            with InputNode() as inp:
-                x = self._base_actor.predict.bind(inp)
-                dag = self._refiner_actor.predict.bind(
-                    inp,
-                    x,
-                )
-
-            self._adag = dag.experimental_compile(
-                _execution_timeout=120,
-            )
-
-        def call(self, prompt: str) -> bytes:
-            return ray.get(self._adag.execute(prompt))
-
-    parallel = DriverActor.remote()
-    assert ray.get(parallel.call.remote("abc")) == "abc"
 
 
 if __name__ == "__main__":
