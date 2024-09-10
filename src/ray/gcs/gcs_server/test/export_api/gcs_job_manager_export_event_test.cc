@@ -100,7 +100,11 @@ TEST_F(GcsJobManagerTest, TestExportDriverJobEvents) {
   )");
   const std::vector<ray::SourceTypeVariant> source_types = {
       rpc::ExportEvent_SourceType::ExportEvent_SourceType_EXPORT_DRIVER_JOB};
-  RayEventInit(source_types, absl::flat_hash_map<std::string, std::string>(), log_dir_);
+  RayEventInit_(source_types,
+                absl::flat_hash_map<std::string, std::string>(),
+                log_dir_,
+                "warning",
+                false);
   gcs::GcsJobManager gcs_job_manager(gcs_table_storage_,
                                      gcs_publisher_,
                                      runtime_env_manager_,
