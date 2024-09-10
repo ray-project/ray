@@ -216,6 +216,7 @@ void MutableObjectProvider::PollWriterClosure(
   RAY_CHECK(object->GetData());
   RAY_CHECK(object->GetMetadata());
 
+  RAY_LOG(ERROR) << "SANG-TODO Push mutable object! " << object_id;
   reader->PushMutableObject(
       object_id,
       object->GetData()->Size(),
