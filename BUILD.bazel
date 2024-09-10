@@ -991,6 +991,7 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         ":core_worker_lib",
+        ":ray_mock",
         "@com_google_googletest//:gtest_main",
     ],
 )
