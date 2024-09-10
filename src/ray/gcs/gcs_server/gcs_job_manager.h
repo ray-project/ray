@@ -31,7 +31,6 @@
 #include "ray/rpc/worker/core_worker_client.h"
 #include "ray/rpc/worker/core_worker_client_pool.h"
 #include "ray/util/event.h"
-#include "ray/util/thread_checker.h"
 
 namespace ray {
 namespace gcs {
@@ -96,11 +95,6 @@ class GcsJobManager : public rpc::JobInfoHandler {
   void OnNodeDead(const NodeID &node_id);
 
   void WriteDriverJobExportEvent(rpc::JobTableData job_data) const;
-
-  /// Record metrics.
-  /// For job manager, (1) running jobs count gauge and (2) new finished jobs (whether
-  /// succeed or fail) will be reported periodically.
-  void RecordMetrics();
 
  private:
   void ClearJobInfos(const rpc::JobTableData &job_data);
