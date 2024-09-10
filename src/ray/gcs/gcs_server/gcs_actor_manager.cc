@@ -1107,10 +1107,21 @@ void GcsActorManager::DestroyActor(const ActorID &actor_id,
   RAY_CHECK_OK(gcs_table_storage_->ActorTable().Put(
       actor->GetActorID(),
       *actor_table_data,
-      [this, actor, actor_id, actor_table_data](Status status) {
+      [this,
+       actor,
+       actor_id,
+       actor_table_data,
+       is_restartable,
+       done_callback = std::move(done_callback)](Status status) {
+        if (done_callback) {
+          done_callback();
+        }
         RAY_CHECK_OK(gcs_publisher_->PublishActor(
             actor_id, *GenActorDataOnlyWithStates(*actor_table_data), nullptr));
-        RAY_CHECK_OK(gcs_table_storage_->ActorTaskSpecTable().Delete(actor_id, nullptr));
+        if (!is_restartable) {
+          RAY_CHECK_OK(
+              gcs_table_storage_->ActorTaskSpecTable().Delete(actor_id, nullptr));
+        }
         actor->WriteActorExportEvent();
         // Destroy placement group owned by this actor.
         destroy_owned_placement_group_if_needed_(actor_id);
@@ -1352,8 +1363,8 @@ void GcsActorManager::RestartActor(const ActorID &actor_id,
   // could've been destroyed and dereigstered before restart.
   auto iter = registered_actors_.find(actor_id);
   if (iter == registered_actors_.end()) {
-    RAY_LOG(DEBUG).WithField(actor_id.JobId()).WithField(actor_id)
-        << "Actor is destroyed before restart";
+    RAY_LOG(DEBUG) << "Actor is destroyed before restart, actor id = " << actor_id
+                   << ", job id = " << actor_id.JobId();
     if (done_callback) {
       done_callback();
     }
@@ -1399,7 +1410,10 @@ void GcsActorManager::RestartActor(const ActorID &actor_id,
     RAY_CHECK_OK(gcs_table_storage_->ActorTable().Put(
         actor_id,
         *mutable_actor_table_data,
-        [this, actor, actor_id, mutable_actor_table_data](Status status) {
+        [this, actor, actor_id, mutable_actor_table_data, done_callback](Status status) {
+          if (done_callback) {
+            done_callback();
+          }
           RAY_CHECK_OK(gcs_publisher_->PublishActor(
               actor_id, *GenActorDataOnlyWithStates(*mutable_actor_table_data), nullptr));
           actor->WriteActorExportEvent();
