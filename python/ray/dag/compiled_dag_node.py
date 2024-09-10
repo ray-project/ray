@@ -673,10 +673,8 @@ class CompiledDAG:
         # Preprocessing identifies the input node and output node.
         self.input_task_idx: Optional[int] = None
         self.output_task_idx: Optional[int] = None
-        # Denotes whether CompiledDAGRef/CompiledDAGFuture wraps a single result
-        # or a list of results. False only if the output node is a MultiOutputNode
-        # and its returns_multiple_refs is False.
-        self._has_single_output: bool = False
+        # Denotes whether execute/execute_async returns a list of refs/futures.
+        self._returns_list: bool = False
         # Number of expected positional args and kwargs that may be passed to
         # dag.execute.
         self._input_num_positional_args: Optional[int] = None
@@ -727,11 +725,6 @@ class CompiledDAG:
         self._max_execution_index: int = -1
         # execution_index -> {channel_index -> result}
         self._result_buffer: Dict[int, Dict[int, Any]] = defaultdict(dict)
-        # Denotes whether execute or execute_async return a single
-        # CompiledDAGRef/CompiledDAGFuture or a list of
-        # CompiledDAGRef/CompiledDAGFuture. True only if the output node
-        # is a MultiOutputNode and its returns_multiple_refs is True.
-        self._returns_multiple_refs: bool = False
 
         def _get_creator_or_proxy_actor() -> "ray.actor.ActorHandle":
             """
@@ -774,10 +767,6 @@ class CompiledDAG:
 
         self._creator_or_proxy_actor = _get_creator_or_proxy_actor()
 
-    @property
-    def has_single_output(self):
-        return self._has_single_output
-
     def get_id(self) -> str:
         """
         Get the unique ID of the compiled DAG.
@@ -787,17 +776,14 @@ class CompiledDAG:
     def __str__(self) -> str:
         return f"CompiledDAG({self._dag_id})"
 
-    def _add_node(self, node: "ray.dag.DAGNode") -> None:
+    def _add_node(self, node: "ray.dag.DAGNode", is_artificial: bool = False) -> None:
         idx = self.counter
         self.idx_to_task[idx] = CompiledTask(idx, node)
         self.dag_node_to_idx[node] = idx
         self.counter += 1
 
-        if isinstance(node, ray.dag.MultiOutputNode):
-            self._has_single_output = (
-                self._has_single_output or node.returns_multiple_refs
-            )
-            self._returns_multiple_refs = node.returns_multiple_refs
+        if isinstance(node, ray.dag.MultiOutputNode) and not is_artificial:
+            self._returns_list = True
 
     def _preprocess(self) -> None:
         """Before compiling, preprocess the DAG to build an index from task to
@@ -844,9 +830,8 @@ class CompiledDAG:
         output_node = self.idx_to_task[self.output_task_idx].dag_node
         # Add an MultiOutputNode to the end of the DAG if it's not already there.
         if not isinstance(output_node, MultiOutputNode):
-            self._has_single_output = True
             output_node = MultiOutputNode([output_node])
-            self._add_node(output_node)
+            self._add_node(output_node, True)
             self.output_task_idx = self.dag_node_to_idx[output_node]
 
         # TODO: Support no-input DAGs (use an empty object to signal).
@@ -2035,7 +2020,7 @@ class CompiledDAG:
 
         self._dag_submitter.write(inp, self._execution_timeout)
 
-        if self._returns_multiple_refs:
+        if self._returns_list:
             ref = [
                 CompiledDAGRef(self, self._execution_index, channel_index)
                 for channel_index in range(len(self.dag_output_channels))
@@ -2103,7 +2088,7 @@ class CompiledDAG:
             fut = asyncio.Future()
             await self._fut_queue.put(fut)
 
-        if self._returns_multiple_refs:
+        if self._returns_list:
             fut = [
                 CompiledDAGFuture(self, self._execution_index, fut, channel_index)
                 for channel_index in range(len(self.dag_output_channels))

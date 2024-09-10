@@ -100,9 +100,9 @@ def generate_1f1b_dag(
 
 
 @pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 2}], indirect=True)
-@pytest.mark.parametrize("returns_multiple_refs", [True, False])
+@pytest.mark.parametrize("single_fetch", [True, False])
 def test_simulate_pp_2workers_2batches_1f1b(
-    ray_start_regular, returns_multiple_refs, monkeypatch
+    ray_start_regular, single_fetch, monkeypatch
 ):
     """
     This test simulates a simple 1F1B pipeline parallelism for training with
@@ -136,12 +136,7 @@ def test_simulate_pp_2workers_2batches_1f1b(
         batch_2 = w2.bwd.bind(batch_2)
         batch_2.with_type_hint(TorchTensorType(transport=TorchTensorType.NCCL))
         batch_2 = w1.bwd.bind(batch_2)
-        if returns_multiple_refs:
-            dag = MultiOutputNode(
-                [batch_1, batch_2], returns_multiple_refs=returns_multiple_refs
-            )
-        else:
-            dag = MultiOutputNode([batch_1, batch_2])
+        dag = MultiOutputNode([batch_1, batch_2])
     compiled_dag = dag.experimental_compile()
 
     w1_expected_schedule = [
@@ -190,7 +185,7 @@ def test_simulate_pp_2workers_2batches_1f1b(
     tensor_cuda = tensor_cpu.to("cuda:0")
     refs = compiled_dag.execute(tensor_cpu)
 
-    if returns_multiple_refs:
+    if single_fetch:
         assert len(refs) == 2
         for ref in refs:
             tensor = ray.get(ref)
@@ -298,10 +293,8 @@ def test_three_actors_with_nccl_1(ray_start_regular):
 
 
 @pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 3}], indirect=True)
-@pytest.mark.parametrize("returns_multiple_refs", [True, False])
-def test_three_actors_with_nccl_2(
-    ray_start_regular, returns_multiple_refs, monkeypatch
-):
+@pytest.mark.parametrize("single_fetch", [True, False])
+def test_three_actors_with_nccl_2(ray_start_regular, single_fetch, monkeypatch):
     if not USE_GPU:
         pytest.skip("NCCL tests require GPUs")
 
@@ -318,23 +311,13 @@ def test_three_actors_with_nccl_2(
         branch2.with_type_hint(TorchTensorType(transport="nccl"))
         branch3 = c.no_op.bind(inp)
         branch3.with_type_hint(TorchTensorType(transport="nccl"))
-        if returns_multiple_refs:
-            dag = MultiOutputNode(
-                [
-                    a.no_op.bind(branch3),
-                    b.no_op.bind(branch1),
-                    c.no_op.bind(branch2),
-                ],
-                returns_multiple_refs=returns_multiple_refs,
-            )
-        else:
-            dag = MultiOutputNode(
-                [
-                    a.no_op.bind(branch3),
-                    b.no_op.bind(branch1),
-                    c.no_op.bind(branch2),
-                ]
-            )
+        dag = MultiOutputNode(
+            [
+                a.no_op.bind(branch3),
+                b.no_op.bind(branch1),
+                c.no_op.bind(branch2),
+            ]
+        )
 
     compiled_dag = dag.experimental_compile()
 
@@ -380,7 +363,7 @@ def test_three_actors_with_nccl_2(
     tensor_cuda = tensor_cpu.to("cuda:0")
     refs = compiled_dag.execute(tensor_cpu)
 
-    if returns_multiple_refs:
+    if single_fetch:
         assert len(refs) == 3
         for ref in refs:
             tensor = ray.get(ref)

@@ -98,7 +98,7 @@ class CompiledDAGRef:
         return_vals = self._dag._execute_until(
             self._execution_index, self._channel_index, timeout
         )
-        return _process_return_vals(return_vals, self._dag.has_single_output)
+        return _process_return_vals(return_vals, True)
 
 
 @PublicAPI(stability="alpha")
@@ -165,4 +165,4 @@ class CompiledDAGFuture:
         return_vals = self._dag._get_execution_results(
             self._execution_index, self._channel_index
         )
-        return _process_return_vals(return_vals, self._dag.has_single_output)
+        return _process_return_vals(return_vals, True)
