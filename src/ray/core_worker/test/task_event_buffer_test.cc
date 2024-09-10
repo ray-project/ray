@@ -58,7 +58,12 @@ class TaskEventBufferTest : public ::testing::Test {
 
   virtual void TearDown() {
     if (task_event_buffer_) task_event_buffer_->Stop();
-    std::filesystem::remove_all(log_dir_.c_str());
+    try {
+      std::filesystem::remove_all(log_dir_.c_str());
+    } catch (const std::filesystem::filesystem_error& e) {
+      std::cerr << "Filesystem error for TaskEventBufferTest teardown: " << e.what() << '\n';
+      std::cerr << "Error code: " << e.code().message() << '\n';
+    }
   };
 
   std::vector<TaskID> GenTaskIDs(size_t num_tasks) {
