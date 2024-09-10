@@ -96,11 +96,6 @@ class GcsJobManager : public rpc::JobInfoHandler {
 
   void WriteDriverJobExportEvent(rpc::JobTableData job_data) const;
 
-  /// Record metrics.
-  /// For job manager, (1) running jobs count gauge and (2) new finished jobs (whether
-  /// succeed or fail) will be reported periodically.
-  void RecordMetrics();
-
  private:
   void ClearJobInfos(const rpc::JobTableData &job_data);
 
