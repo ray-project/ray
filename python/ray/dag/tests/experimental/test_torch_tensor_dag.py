@@ -338,7 +338,7 @@ def test_torch_tensor_custom_comm(ray_start_regular):
     comm_id = nccl.get_unique_id()
     nccl_group = TestNcclGroup(2, comm_id, [sender, receiver])
     with InputNode() as inp:
-        dag = sender.send_with_tuple_args.bind(inp)
+        dag = sender.send.bind(inp.shape, inp.dtype, inp.value)
         dag = dag.with_type_hint(TorchTensorType(transport=nccl_group))
         dag = receiver.recv.bind(dag)
 
@@ -347,8 +347,12 @@ def test_torch_tensor_custom_comm(ray_start_regular):
         i += 1
         shape = (i * 10,)
         dtype = torch.float16
-        args = (shape, dtype, i)
-        ref = compiled_dag.execute(args)
+        kwargs = {
+                "shape": shape,
+                "dtype": dtype,
+                "value": i,
+                }
+        ref = compiled_dag.execute(*kwargs)
         result = ray.get(ref)
         assert result == (i, shape, dtype)
 
@@ -424,10 +428,10 @@ def test_torch_tensor_custom_comm_invalid(ray_start_regular):
     # Mixed usage of NCCL groups should throw an error
     # Case 1: custom NCCL group first, then default NCCL group
     with InputNode() as inp:
-        dag = actor1.send_with_tuple_args.bind(inp)
+        dag = actor1.send.bind(inp.shape, inp.dtype, inp.value)
         dag = dag.with_type_hint(TorchTensorType(transport=nccl_group))
         dag = actor2.recv.bind(dag)
-        dag = actor2.send_with_tuple_args.bind(dag)
+        dag = actor2.send.bind(*dag)
         dag = dag.with_type_hint(TorchTensorType(transport="nccl"))
         dag = actor1.recv.bind(dag)
     with pytest.raises(
@@ -438,10 +442,10 @@ def test_torch_tensor_custom_comm_invalid(ray_start_regular):
 
     # Case 2: default NCCL group first, then custom NCCL group
     with InputNode() as inp:
-        dag = actor1.send_with_tuple_args.bind(inp)
+        dag = actor1.send.bind(inp.shape, inp.dtype, inp.value)
         dag = dag.with_type_hint(TorchTensorType(transport="nccl"))
         dag = actor2.recv.bind(dag)
-        dag = actor2.send_with_tuple_args.bind(dag)
+        dag = actor2.send.bind(*dag)
         dag = dag.with_type_hint(TorchTensorType(transport=nccl_group))
         dag = actor1.recv.bind(dag)
     with pytest.raises(
@@ -454,10 +458,10 @@ def test_torch_tensor_custom_comm_invalid(ray_start_regular):
 
     # Using two different custom NCCL groups are currently not supported
     with InputNode() as inp:
-        dag = actor1.send_with_tuple_args.bind(inp)
+        dag = actor1.send.bind(inp.shape, inp.dtype, inp.value)
         dag = dag.with_type_hint(TorchTensorType(transport=nccl_group))
         dag = actor2.recv.bind(dag)
-        dag = actor2.send_with_tuple_args.bind(dag)
+        dag = actor2.send.bind(*dag)
         dag = dag.with_type_hint(TorchTensorType(transport=nccl_group2))
         dag = actor1.recv.bind(dag)
     with pytest.raises(
@@ -554,7 +558,7 @@ def test_torch_tensor_custom_comm_inited(ray_start_regular):
 
     nccl_group = InitedNcclGroup(2, [sender, receiver])
     with InputNode() as inp:
-        dag = sender.send_with_tuple_args.bind(inp)
+        dag = sender.send.bind(inp.shape, inp.dtype, inp.value)
         dag = dag.with_type_hint(TorchTensorType(transport=nccl_group))
         dag = receiver.recv.bind(dag)
 
@@ -563,8 +567,12 @@ def test_torch_tensor_custom_comm_inited(ray_start_regular):
         i += 1
         shape = (i * 10,)
         dtype = torch.float16
-        args = (shape, dtype, i)
-        ref = compiled_dag.execute(args)
+        kwargs = {
+                "shape": shape,
+                "dtype": dtype,
+                "value": i,
+                }
+        ref = compiled_dag.execute(**kwargs)
         result = ray.get(ref)
         assert result == (i, shape, dtype)
 

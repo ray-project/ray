@@ -528,8 +528,8 @@ class _TorchTensorNcclChannel(ChannelInterface):
         bufs: List["torch.Tensor"] = []
         for meta in meta_list:
             buf = self._nccl_group.recv(
-                    meta._shape,
-                    meta._dtype,
+                    meta.shape,
+                    meta.dtype,
                     self._writer_rank,
                     _torch_zeros_allocator)
             bufs.append(buf)
