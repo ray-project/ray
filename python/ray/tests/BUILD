@@ -447,6 +447,7 @@ py_test_module_list(
 py_test_module_list(
   files = [
     "test_actor.py",
+    "test_actor_lineage_reconstruction.py",
     "test_actor_retry1.py",
     "test_actor_retry2.py",
     "test_actor_failures.py",
