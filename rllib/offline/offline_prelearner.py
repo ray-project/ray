@@ -168,7 +168,17 @@ class OfflinePreLearner:
 
         # If we directly read in episodes we just convert to list.
         if self.input_read_episodes:
-            episodes = batch["item"].tolist()
+            # Import `msgpack` for decoding.
+            import msgpack
+            import msgpack_numpy as mnp
+
+            # Read the episodes and decode them.
+            episodes = [
+                SingleAgentEpisode.from_state(
+                    msgpack.unpackb(state, object_hook=mnp.decode)
+                )
+                for state in batch["item"]
+            ]
         # Else, if we have old stack `SampleBatch`es.
         elif self.input_read_sample_batches:
             episodes = OfflinePreLearner._map_sample_batch_to_episode(
