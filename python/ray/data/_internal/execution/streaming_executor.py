@@ -392,6 +392,8 @@ class StreamingExecutor(Executor, threading.Thread):
         }
 
     def _update_stats_metrics(self, state: str, force_update: bool = False):
+        for op in self._topology:
+            op.metrics.calc_rate()
         StatsManager.update_execution_metrics(
             self._dataset_tag,
             [op.metrics for op in self._topology],

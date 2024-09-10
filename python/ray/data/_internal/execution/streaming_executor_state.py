@@ -31,6 +31,7 @@ from ray.data._internal.execution.operators.base_physical_operator import (
 )
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.execution.resource_manager import ResourceManager
+from ray.data._internal.execution.util import memory_string
 from ray.data._internal.progress_bar import ProgressBar
 from ray.data.context import DataContext
 
@@ -260,11 +261,12 @@ class OpState:
         queued = self.num_queued() + self.op.internal_queue_size()
         active = self.op.num_active_tasks()
         desc = f"- {self.op.name}: {active} active, {queued} queued"
-        if (
-            self.op._in_task_submission_backpressure
-            or self.op._in_task_output_backpressure
-        ):
-            desc += " 🚧"
+        if self.op._in_task_submission_backpressure:
+            desc += (f" [🚧 BACKPRESSURED, Reason(S): "
+                     f"{self.op._in_task_submission_backpressure_reason} 🚧")
+        if self.op._in_task_output_backpressure:
+            desc += (f" [🚧 BACKPRESSURED, Reason(O): "
+                     f"{self.op._in_task_output_backpressure_reason} 🚧")
         desc += f", [{resource_manager.get_op_usage_str(self.op)}]"
         suffix = self.op.progress_str()
         if suffix:
@@ -393,6 +395,15 @@ def process_completed_tasks(
         The number of errored blocks.
     """
 
+    def op_output_backpressure(opstate: OpState, max_bytes_to_read: Optional[float]) -> bool:
+        op = opstate.op
+        in_backpressure = max_bytes_to_read is not None and max_bytes_to_read <= 0
+        in_backpressure_reason = f"max_bytes_to_read({memory_string(max_bytes_to_read)})" if in_backpressure else ""
+
+        # TODO(jkj add some output backpressures)
+        op.notify_in_task_output_backpressure(in_backpressure, in_backpressure_reason)
+        return in_backpressure
+
     # All active tasks, keyed by their waitables.
     active_tasks: Dict[Waitable, Tuple[OpState, OpTask]] = {}
     for op, state in topology.items():
@@ -434,11 +445,16 @@ def process_completed_tasks(
             for task in ready_tasks:
                 if isinstance(task, DataOpTask):
                     try:
+                        # TODO(jkj Add logic to skip data reading when output backpressure occurs.)
                         bytes_read = task.on_data_ready(
                             max_bytes_to_read_per_op.get(state, None)
                         )
+                        print("jkj-max_bytes_to_read_per_op -----" + str(max_bytes_to_read_per_op))
                         if state in max_bytes_to_read_per_op:
                             max_bytes_to_read_per_op[state] -= bytes_read
+                            op_output_backpressure(state, max_bytes_to_read_per_op[state])
+                        else:
+                            op_output_backpressure(state, None)
                     except Exception as e:
                         num_errored_blocks += 1
                         should_ignore = (
@@ -538,14 +554,30 @@ def select_operator_to_run(
     ops = []
     for op, state in topology.items():
         if resource_manager.op_resource_allocator_enabled():
-            under_resource_limits = (
-                resource_manager.op_resource_allocator.can_submit_new_task(op)
-            )
+            can_submit_with_reason = resource_manager.op_resource_allocator.can_submit_new_task_with_reason(op)
+            under_resource_limits = can_submit_with_reason["can_submit"]
+            limit_reason = f"(new tasks: {''.join(can_submit_with_reason['usage'])})" \
+                if not under_resource_limits else ""
         else:
-            under_resource_limits = _execution_allowed(op, resource_manager)
-        in_backpressure = not under_resource_limits or any(
-            not p.can_add_input(op) for p in backpressure_policies
-        )
+            allowed_execution = _execution_allowed_with_reason(op, resource_manager)
+            under_resource_limits = allowed_execution["allowed_exec"]
+            limit_reason = f"(exec allowed: {''.join(can_submit_with_reason['usage'])})" \
+                if not under_resource_limits else ""
+        in_backpressure = not under_resource_limits
+        in_backpressure_reason = f"under_resource_limits-> {limit_reason}" \
+            if in_backpressure else ""
+        # backpressure policies
+        if not in_backpressure:
+            for p in backpressure_policies:
+                if not p.can_add_input(op):
+                    in_backpressure = True
+                    in_backpressure_reason = p.__class__.__name__
+                    break
+        # should add input
+        if not in_backpressure and not op.should_add_input():
+            in_backpressure = True
+            in_backpressure_reason = "op.should_add_input"
+
         op_runnable = False
         if (
             not in_backpressure
@@ -563,7 +595,13 @@ def select_operator_to_run(
         )
 
         # Signal whether op in backpressure for stats collections
-        op.notify_in_task_submission_backpressure(in_backpressure)
+        if op.completed():
+            op.notify_in_task_submission_backpressure(False, "")
+        else:
+            # Signal whether op in backpressure for stats collections
+            op.notify_in_task_submission_backpressure(
+                in_backpressure, in_backpressure_reason
+            )
 
     # To ensure liveness, allow at least 1 op to run regardless of limits. This is
     # gated on `ensure_at_least_one_running`, which is set if the consumer is blocked.
@@ -596,6 +634,10 @@ def select_operator_to_run(
 
 
 def _execution_allowed(op: PhysicalOperator, resource_manager: ResourceManager) -> bool:
+    allowed_with_reason = _execution_allowed_with_reason(op, resource_manager)
+    return allowed_with_reason["allowed_exec"]
+
+def _execution_allowed_with_reason(op: PhysicalOperator, resource_manager: ResourceManager):
     """Return whether an operator is allowed to execute given resource usage.
 
     Operators are throttled globally based on CPU and GPU limits for the stream.
@@ -655,11 +697,16 @@ def _execution_allowed(op: PhysicalOperator, resource_manager: ResourceManager) 
     global_limits_sans_memory = ExecutionResources.for_limits(
         cpu=global_limits.cpu, gpu=global_limits.gpu
     )
-    global_ok_sans_memory = new_usage.satisfies_limit(global_limits_sans_memory)
+    global_ok_sans_memory = new_usage.satisfies_limit_with_reason(global_limits_sans_memory)
     downstream_memory = resource_manager.get_downstream_object_store_memory(op)
     downstream_limit = global_limits.scale(resource_manager.get_downstream_fraction(op))
     downstream_memory_ok = ExecutionResources(
         object_store_memory=downstream_memory
-    ).satisfies_limit(downstream_limit)
+    ).satisfies_limit_with_reason(downstream_limit)
 
-    return global_ok_sans_memory and downstream_memory_ok
+    if global_ok_sans_memory is True and downstream_memory_ok is True:
+        return {"allowed_exec": True}
+    return {
+        "allowed_exec": False,
+        "usage": f"G({global_ok_sans_memory}/D{downstream_memory_ok}",
+    }

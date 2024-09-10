@@ -275,6 +275,11 @@ class OpResourceAllocator(ABC):
         ...
 
     @abstractmethod
+    def can_submit_new_task_with_reason(self, op: PhysicalOperator) -> dict:
+        """Return whether the given operator can submit a new task with reason."""
+        ...
+
+    @abstractmethod
     def max_task_output_bytes_to_read(self, op: PhysicalOperator) -> Optional[int]:
         """Return the maximum bytes of pending task outputs can be read for
         the given operator. None means no limit."""
@@ -486,12 +491,23 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
 
             self._total_shared = self._total_shared.max(ExecutionResources.zero())
 
-    def can_submit_new_task(self, op: PhysicalOperator) -> bool:
+    def can_submit_new_task_with_reason(self, op: PhysicalOperator) -> dict:
         if op not in self._op_budgets:
-            return True
+            return {"can_submit": True}
         budget = self._op_budgets[op]
-        res = op.incremental_resource_usage().satisfies_limit(budget)
-        return res
+        incremental_usage = op.incremental_resource_usage()
+        res = incremental_usage.satisfies_limit_with_reason(budget)
+        if res is True:
+            return {"can_submit": True}
+
+        return {
+            "can_submit": False,
+            "usage": res,
+        }
+
+    def can_submit_new_task(self, op: PhysicalOperator) -> bool:
+        can_submit_with_reason = self.can_submit_new_task_with_reason(op)
+        return can_submit_with_reason["can_submit"]
 
     def _should_unblock_streaming_output_backpressure(
         self, op: PhysicalOperator

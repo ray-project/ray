@@ -1,6 +1,8 @@
 import time
 from dataclasses import dataclass, field, fields
-from typing import TYPE_CHECKING, Any, Dict, Optional
+from typing import TYPE_CHECKING, Any, Dict, Optional, Set
+
+from Cython.Compiler.Parsing import p_as_name
 
 import ray
 from ray.data._internal.execution.interfaces.ref_bundle import RefBundle
@@ -10,6 +12,7 @@ if TYPE_CHECKING:
     from ray.data._internal.execution.interfaces.physical_operator import (
         PhysicalOperator,
     )
+    from ray.data._internal.execution.operators.map_operator import MapTaskStats
 
 
 @dataclass
@@ -17,6 +20,7 @@ class RunningTaskInfo:
     inputs: RefBundle
     num_outputs: int
     bytes_outputs: int
+    task_start_time: float
 
 
 @dataclass
@@ -208,6 +212,68 @@ class OpRuntimeMetrics:
             "metrics_group": "tasks",
         },
     )
+    task_submission_backpressure_reason_time: dict[str, float] = field(
+        default_factory=dict,
+        metadata={
+            "description": "Time spent in task submission backpressure by each reason.",
+            "metrics_group": "tasks_with_reason",
+        },
+    )
+    task_submission_backpressure_reason_time_ratio: dict[str, float] = field(
+        default_factory=dict,
+        metadata={
+            "description": "Proportion of time spent in task submission backpressure for each reason.",
+            "metrics_group": "tasks_with_reason",
+        },
+    )
+    task_output_backpressure_time: float = field(
+        default=0,
+        metadata={
+            "description": "Time spent in task submission backpressure.",
+            "metrics_group": "tasks",
+        },
+    )
+    task_output_backpressure_reason_time: dict[str, float] = field(
+        default_factory=dict,
+        metadata={
+            "description": "Time spent in task output backpressure for each reason.",
+            "metrics_group": "tasks_with_reason",
+        },
+    )
+    task_output_backpressure_reason_time_ratio: dict[str, float] = field(
+        default_factory=dict,
+        metadata={
+            "description": "Proportion of time spent in task output"
+                           " backpressure for each reason.",
+            "metrics_group": "tasks_with_reason",
+        },
+    )
+    task_pending_wall_time: float = field(
+        default=0,
+        metadata={
+            "description": "Sum of wall time spent pending of all succeeded tasks."
+            " driver's wall time - actual running wall time",
+            "metrics_group": "tasks",
+            "map_only": True,
+        },
+    )
+    task_running_wall_time: float = field(
+        default=0,
+        metadata={
+            "description": "Sum of wall time spent running of all succeeded tasks.",
+            "metrics_group": "tasks",
+            "map_only": True,
+        },
+    )
+    task_backpressure_wall_time: float = field(
+        default=0,
+        metadata={
+            "description": "Sum of wall time spent yielding outputs of "
+            "all succeeded tasks.",
+            "metrics_group": "tasks",
+            "map_only": True,
+        },
+    )
 
     # === Object store memory metrics ===
     obj_store_mem_internal_inqueue_blocks: int = field(
@@ -274,18 +340,120 @@ class OpRuntimeMetrics:
         },
     )
 
+
+    # 4 seconds is chosen here because the frequency of reporting to StatsActor is once
+    # every 5 seconds. 4 seconds can be as long as possible within the reporting period,
+    # but it still ensures that the status will be updated when it is reported.
+    RATE_UPDATE_INTERVAL_SECONDS: float = 4
+
+    def calc_rate(self):
+        now = time.monotonic()
+        last_time = self._last_rate_calc_time
+        diff_time = now - last_time
+        if diff_time < OpRuntimeMetrics.RATE_UPDATE_INTERVAL_SECONDS:
+            return
+        self._last_rate_calc_time = now
+        self._calc_task_submission_rate(last_time, diff_time)
+        self._calc_task_output_rate(last_time, diff_time)
+
+    def _calc_task_submission_rate(self, last_time: float, diff_time: float):
+        if last_time == -1:
+            self._task_submission_backpressure_time_last = (
+                self.task_submission_backpressure_time
+            )
+            self._task_submission_backpressure_reason_time_last = {
+                **self.task_submission_backpressure_reason_time
+            }
+            return
+
+        if self._task_submission_backpressure_start_time != -1:
+            perf_now = time.perf_counter()
+            elapse_time = perf_now - self._task_submission_backpressure_start_time
+            self.task_submission_backpressure_time += elapse_time
+            self.task_submission_backpressure_reason_time[self._task_submission_backpressure_reason] += elapse_time
+            self._task_submission_backpressure_start_time = perf_now
+
+        self.task_submission_backpressure_time_ratio = (
+                                                           self.task_submission_backpressure_time
+                                                           - self._task_submission_backpressure_time_last
+                                                       ) / diff_time
+
+        self._task_submission_backpressure_time_last = (
+            self.task_submission_backpressure_time
+        )
+        for reason, val in self.task_submission_backpressure_reason_time.items():
+            print(f"-------- {reason}: {val} - {self._task_submission_backpressure_reason_time_last.get(reason, 0)}")
+            self.task_submission_backpressure_reason_time_ratio[reason] = (
+                                                                              val - self._task_submission_backpressure_reason_time_last.get(reason, 0)
+                                                                          ) / diff_time
+        self._task_submission_backpressure_reason_time_last = {
+            **self.task_submission_backpressure_reason_time
+        }
+
+
+    def _calc_task_output_rate(self, last_time: float, diff_time: float):
+        if last_time == -1:
+            self._task_output_backpressure_time_last = (
+                self.task_output_backpressure_time
+            )
+            self._task_output_backpressure_reason_time_last = {
+                **self.task_output_backpressure_reason_time
+            }
+            return
+
+        if self._task_output_backpressure_start_time != -1:
+            perf_now = time.perf_counter()
+            self.task_output_backpressure_time += (
+                perf_now - self._task_output_backpressure_start_time
+            )
+            self.task_output_backpressure_reason_time[
+                self._task_output_backpressure_reason
+            ] += (perf_now - self._task_output_backpressure_start_time)
+            self._task_output_backpressure_start_time = perf_now
+
+        self.task_output_backpressure_time_ratio = (
+                                                       self.task_output_backpressure_time
+                                                       - self._task_output_backpressure_time_last
+                                                   ) / diff_time
+
+        self._task_output_backpressure_time_last = self.task_output_backpressure_time
+        for reason, val in self.task_output_backpressure_reason_time.items():
+            self.task_output_backpressure_reason_time_ratio[reason] = (
+                                                                          val - self._task_output_backpressure_reason_time_last.get(reason, 0)
+                                                                      ) / diff_time
+        self._task_output_backpressure_reason_time_last = {
+            **self.task_output_backpressure_reason_time
+        }
+
     # === Miscellaneous metrics ===
     # Use "metrics_group: "misc" in the metadata for new metrics in this section.
 
-    def __init__(self, op: "PhysicalOperator"):
+    @staticmethod
+    def create(op: "PhysicalOperator") -> "OpRuntimeMetrics":
         from ray.data._internal.execution.operators.map_operator import MapOperator
 
-        self._op = op
-        self._is_map = isinstance(op, MapOperator)
+        metrics = OpRuntimeMetrics()
+        metrics._op = op
+        metrics._is_map = isinstance(op, MapOperator)
+        return metrics
+
+    def __post_init__(self)  -> None:
+        from ray.data._internal.execution.operators.map_operator import MapOperator
+        self._op: "PhysicalOperator" = None
         self._running_tasks: Dict[int, RunningTaskInfo] = {}
         self._extra_metrics: Dict[str, Any] = {}
         # Start time of current pause due to task submission backpressure
         self._task_submission_backpressure_start_time = -1
+        self._task_submission_backpressure_reason = ""
+        self._task_output_backpressure_start_time = -1
+        self._task_output_backpressure_reason = ""
+
+        self._last_rate_calc_time = -1
+        self._task_submission_backpressure_time_last = 0
+        self._task_submission_backpressure_reason_time_last = {}
+        self._task_output_backpressure_time_last = 0
+        self._task_output_backpressure_reason_time_last = {}
+        self._known_task_reasons: Set[str] = set()
 
     @property
     def extra_metrics(self) -> Dict[str, Any]:
@@ -409,7 +577,7 @@ class OpRuntimeMetrics:
 
     def on_input_received(self, input: RefBundle):
         """Callback when the operator receives a new input."""
-        self.num_inputs_received += 1
+        self.num_inputs_received += 1;
         self.bytes_inputs_received += input.size_bytes()
 
     def on_input_queued(self, input: RefBundle):
@@ -444,16 +612,73 @@ class OpRuntimeMetrics:
             output_size,
         )
 
-    def on_toggle_task_submission_backpressure(self, in_backpressure):
-        if in_backpressure and self._task_submission_backpressure_start_time == -1:
-            # backpressure starting, start timer
-            self._task_submission_backpressure_start_time = time.perf_counter()
+    def on_toggle_task_output_backpressure(self, in_backpressure: bool, reason: str):
+        if in_backpressure:
+            if self._task_output_backpressure_start_time == -1:
+                # backpressure starting, start timer
+                self._task_output_backpressure_start_time = time.perf_counter()
+                self._task_output_backpressure_reason = reason
+                if reason not in self.task_output_backpressure_reason_time:
+                    self.task_output_backpressure_reason_time[reason] = 0
+                    self._known_task_reasons.add(reason)
+            elif self._task_output_backpressure_reason != reason:
+                # backpressure for another reason, restart timer
+                perf_now = time.perf_counter()
+                self.task_output_backpressure_time += (
+                    perf_now - self._task_output_backpressure_start_time
+                )
+                self.task_output_backpressure_reason_time[
+                    self._task_output_backpressure_reason
+                ] += (perf_now - self._task_output_backpressure_start_time)
+                self._task_output_backpressure_start_time = perf_now
+                self._task_output_backpressure_reason = reason
+                if reason not in self.task_output_backpressure_reason_time:
+                    self.task_output_backpressure_reason_time[reason] = 0
+        elif self._task_output_backpressure_start_time != -1:
+            # backpressure stopping, stop timer
+            perf_now = time.perf_counter()
+            self.task_output_backpressure_time += (
+                perf_now - self._task_output_backpressure_start_time
+            )
+            self.task_output_backpressure_reason_time[
+                self._task_output_backpressure_reason
+            ] += (perf_now - self._task_output_backpressure_start_time)
+            self._task_output_backpressure_start_time = -1
+            self._task_output_backpressure_reason = ""
+
+    def on_toggle_task_submission_backpressure(self, in_backpressure: bool, reason: str):
+        if in_backpressure:
+            if self._task_submission_backpressure_start_time == -1:
+                # backpressure starting, start timer
+                self._task_submission_backpressure_start_time = time.perf_counter()
+                self._task_submission_backpressure_reason = reason
+                if reason not in self.task_submission_backpressure_reason_time:
+                    self.task_submission_backpressure_reason_time[reason] = 0
+                    self._known_task_reasons.add(reason)
+            elif self._task_submission_backpressure_reason != reason:
+                # backpressure for another reason, restart timer
+                perf_now = time.perf_counter()
+                self.task_submission_backpressure_time += (
+                    perf_now - self._task_submission_backpressure_start_time
+                )
+                self.task_submission_backpressure_reason_time[
+                    self._task_submission_backpressure_reason
+                ] += (perf_now - self._task_submission_backpressure_start_time)
+                self._task_submission_backpressure_start_time = perf_now
+                self._task_submission_backpressure_reason = reason
+                if reason not in self.task_submission_backpressure_reason_time:
+                    self.task_submission_backpressure_reason_time[reason] = 0
         elif self._task_submission_backpressure_start_time != -1:
             # backpressure stopping, stop timer
+            perf_now = time.perf_counter()
             self.task_submission_backpressure_time += (
-                time.perf_counter() - self._task_submission_backpressure_start_time
+                perf_now - self._task_submission_backpressure_start_time
             )
+            self.task_submission_backpressure_reason_time[
+                self._task_submission_backpressure_reason
+            ] += (perf_now - self._task_submission_backpressure_start_time)
             self._task_submission_backpressure_start_time = -1
+            self._task_submission_backpressure_reason = ""
 
     def on_output_taken(self, output: RefBundle):
         """Callback when an output is taken from the operator."""
@@ -466,7 +691,9 @@ class OpRuntimeMetrics:
         self.num_tasks_running += 1
         self.bytes_inputs_of_submitted_tasks += inputs.size_bytes()
         self.obj_store_mem_pending_task_inputs += inputs.size_bytes()
-        self._running_tasks[task_index] = RunningTaskInfo(inputs, 0, 0)
+        self._running_tasks[task_index] = RunningTaskInfo(
+            inputs, 0, 0, time.perf_counter()
+        )
 
     def on_task_output_generated(self, task_index: int, output: RefBundle):
         """Callback when a new task generates an output."""
@@ -489,7 +716,12 @@ class OpRuntimeMetrics:
             self.rows_task_outputs_generated += meta.num_rows
             trace_allocation(block_ref, "operator_output")
 
-    def on_task_finished(self, task_index: int, exception: Optional[Exception]):
+    def on_task_finished(
+        self,
+        task_index: int,
+        exception: Optional[Exception],
+        stats: Optional["MapTaskStats"],
+    ):
         """Callback when a task is finished."""
         self.num_tasks_running -= 1
         self.num_tasks_finished += 1
@@ -499,6 +731,17 @@ class OpRuntimeMetrics:
         task_info = self._running_tasks[task_index]
         self.num_outputs_of_finished_tasks += task_info.num_outputs
         self.bytes_outputs_of_finished_tasks += task_info.bytes_outputs
+
+        driver_task_duration_s = time.perf_counter() - task_info.task_start_time
+
+        if stats is not None:
+            self.task_running_wall_time += (
+                stats.task_duration_s - stats.task_backpressure_duration_s
+            )
+            self.task_pending_wall_time += (
+                driver_task_duration_s - stats.task_duration_s
+            )
+            self.task_backpressure_wall_time += stats.task_backpressure_duration_s
 
         inputs = self._running_tasks[task_index].inputs
         self.num_task_inputs_processed += len(inputs)

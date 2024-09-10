@@ -1,6 +1,7 @@
 import copy
 import functools
 import itertools
+import time
 from abc import ABC, abstractmethod
 from collections import defaultdict, deque
 from typing import Any, Callable, Deque, Dict, Iterator, List, Optional, Set, Union
@@ -313,8 +314,12 @@ class MapOperator(OneToOneOperator, ABC):
             self._output_queue.notify_task_output_ready(task_index, output)
             self._metrics.on_output_queued(output)
 
-        def _task_done_callback(task_index: int, exception: Optional[Exception]):
-            self._metrics.on_task_finished(task_index, exception)
+        def _task_done_callback(
+            task_index: int,
+            exception: Optional[Exception],
+            stats: Optional[MapTaskStats],
+        ):
+            self._metrics.on_task_finished(task_index, exception, stats)
 
             # Estimate number of tasks and rows from inputs received and tasks
             # submitted so far
@@ -438,6 +443,38 @@ class MapOperator(OneToOneOperator, ABC):
         return len(self._data_tasks)
 
 
+class MapTaskStats:
+    def __init__(self):
+        self.task_duration_s: float = 0
+        self.task_backpressure_duration_s: float = 0
+
+    @staticmethod
+    def builder() -> "_MapTaskStatsBuilder":
+        return _MapTaskStatsBuilder()
+
+
+class _MapTaskStatsBuilder:
+    def __init__(self):
+        self._task_start_time_s = time.perf_counter()
+        self._backpressure_duration_s = 0
+        self._backpressure_start_time_s = 0
+
+    def enter_backpressure(self):
+        self._backpressure_start_time_s = time.perf_counter()
+
+    def leave_backpressure(self):
+        self._backpressure_duration_s += (
+            time.perf_counter() - self._backpressure_start_time_s
+        )
+        self._backpressure_start_time_s = 0
+
+    def build(self) -> MapTaskStats:
+        stats = MapTaskStats()
+        stats.task_duration_s = time.perf_counter() - self._task_start_time_s
+        stats.task_backpressure_duration_s = self._backpressure_duration_s
+        return stats
+
+
 def _map_task(
     map_transformer: MapTransformer,
     data_context: DataContext,
@@ -457,6 +494,7 @@ def _map_task(
     """
     DataContext._set_current(data_context)
     stats = BlockExecStats.builder()
+    task_stats = MapTaskStats.builder()
     map_transformer.set_target_max_block_size(ctx.target_max_block_size)
     for b_out in map_transformer.apply_transform(iter(blocks), ctx):
         # TODO(Clark): Add input file propagation from input blocks.
@@ -464,10 +502,12 @@ def _map_task(
         m_out.exec_stats = stats.build()
         m_out.exec_stats.udf_time_s = map_transformer.udf_time()
         m_out.exec_stats.task_idx = ctx.task_idx
+        task_stats.enter_backpressure()
         yield b_out
         yield m_out
+        task_stats.leave_backpressure()
         stats = BlockExecStats.builder()
-
+        task_stats.build()
 
 class _BlockRefBundler:
     """Rebundles RefBundles to get them close to a particular number of rows."""
