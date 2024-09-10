@@ -4,7 +4,7 @@ import gymnasium as gym
 import torch
 
 from ray.rllib.algorithms.dqn.torch.dqn_rainbow_torch_learner import (
-    DQNRainbowTorchLearner
+    DQNRainbowTorchLearner,
 )
 from ray.rllib.algorithms.ppo.torch.ppo_torch_learner import PPOTorchLearner
 from ray.rllib.connectors.common.add_observations_from_episodes_to_batch import (
@@ -52,9 +52,9 @@ def add_intrinsic_curiosity_connectors(torch_learner: TorchLearner) -> None:
     # Assert, we are only training one policy (RLModule) and we have the ICM
     # in our MultiRLModule.
     assert (
-            len(torch_learner.module) == 2
-            and DEFAULT_MODULE_ID in torch_learner.module
-            and ICM_MODULE_ID in torch_learner.module
+        len(torch_learner.module) == 2
+        and DEFAULT_MODULE_ID in torch_learner.module
+        and ICM_MODULE_ID in torch_learner.module
     )
 
     # Make sure both curiosity loss settings are explicitly set in the
@@ -111,12 +111,12 @@ class IntrinsicCuriosityModelConnector(ConnectorV2):
     """
 
     def __init__(
-            self,
-            input_observation_space: Optional[gym.Space] = None,
-            input_action_space: Optional[gym.Space] = None,
-            *,
-            intrinsic_reward_coeff: float,
-            **kwargs,
+        self,
+        input_observation_space: Optional[gym.Space] = None,
+        input_action_space: Optional[gym.Space] = None,
+        *,
+        intrinsic_reward_coeff: float,
+        **kwargs,
     ):
         """Initializes a CountBasedCuriosity instance.
 
@@ -129,14 +129,14 @@ class IntrinsicCuriosityModelConnector(ConnectorV2):
         self.intrinsic_reward_coeff = intrinsic_reward_coeff
 
     def __call__(
-            self,
-            *,
-            rl_module: RLModule,
-            batch: Any,
-            episodes: List[EpisodeType],
-            explore: Optional[bool] = None,
-            shared_data: Optional[dict] = None,
-            **kwargs,
+        self,
+        *,
+        rl_module: RLModule,
+        batch: Any,
+        episodes: List[EpisodeType],
+        explore: Optional[bool] = None,
+        shared_data: Optional[dict] = None,
+        **kwargs,
     ) -> Any:
         # Assert that the batch is ready.
         assert DEFAULT_MODULE_ID in batch and ICM_MODULE_ID not in batch
