@@ -6,20 +6,24 @@ class InferenceOnlyAPI(abc.ABC):
     """An API to be implemented by RLModules that have an inference-only mode.
 
     Only the `get_non_inference_attributes` method needs to get implemented for
-    a RLModule to have the following functionality:
-    - On EnvRunners (or when self.config.inference_only=True), RLlib will remove
-    those parts of the model not required for action computation.
-    - An RLModule on a Learner (where `self.config.inference_only=False`) will return
-    only those weights from `get_state()` that are part of its inference-only version,
-    thus possibly saving network traffic/time.
+    an RLModule to have the following functionality:
+        - On EnvRunners (or when self.config.inference_only=True), RLlib will remove
+        those parts of the model not required for action computation.
+        - An RLModule on a Learner (where `self.config.inference_only=False`) will
+        return only those weights from `get_state()` that are part of its inference-only
+        version, thus possibly saving network traffic/time.
     """
 
     @abc.abstractmethod
     def get_non_inference_attributes(self) -> List[str]:
-        """Returns a list of names (str) of attributes of inference-only components.
+        """Returns a list of attribute names (str) of components NOT used for inference.
 
-        The `inference_only` mode is activated by setting `inference_only` to True
-        in any RLModule's `RLModuleSpec`.
+        RLlib will use this information to remove those attributes/components from an
+        RLModule, whose `config.inference_only` is set to True. This so-called
+        "inference-only setup" is activated. Normally, all RLModules located on
+        EnvRunners are constructed this way (because they are only used for computing
+        actions). Similarly, when deployed into a production environment, users should
+        consider building their RLModules with this flag set to True as well.
 
         For example:
 
@@ -35,19 +39,21 @@ class InferenceOnlyAPI(abc.ABC):
         .. testcode::
             :skipif: True
 
-            def setup(self):
-                self._policy_head = [some NN component]
-                self._value_function_head = [some NN component]
+            class MyRLModule(RLModule):
 
-                self._encoder = [some NN component with attributes
-                                 `pol` (policy encoder) and `vf` (value func encoder)]
+                def setup(self):
+                    self._policy_head = [some NN component]
+                    self._value_function_head = [some NN component]
+
+                    self._encoder = [some NN component with attributes: `pol` and `vf`
+                                     (policy- and value func. encoder)]
 
         Then its `get_non_inference_attributes()` should return:
         `["_value_function_head", "_encoder.vf"]`
 
         Note the "." notation to separate attributes and their sub-attributes in case
-        you need more fine-grained control over which sub-attributes to exclude in an
-        inference-only setup.
+        you need more fine-grained control over which exact sub-attributes to exclude in
+        the inference-only setup.
 
         Returns:
             A list of names (str) of those attributes (or sub-attributes) that should be

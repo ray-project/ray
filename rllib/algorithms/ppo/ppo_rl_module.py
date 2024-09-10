@@ -93,7 +93,8 @@ class PPORLModule(RLModule, InferenceOnlyAPI, ValueFunctionAPI, abc.ABC):
     @override(InferenceOnlyAPI)
     def get_non_inference_attributes(self) -> List[str]:
         """Return attributes, which are NOT inference-only (only used for training)."""
-        ret = ["vf"]
-        if hasattr(self.encoder, "critic_encoder"):
-            ret += ["encoder.critic_encoder"]
-        return ret
+        return ["vf"] + (
+            []
+            if self.config.model_config_dict.get("vf_share_layers")
+            else ["encoder.critic_encoder"]
+        )

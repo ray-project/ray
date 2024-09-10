@@ -81,7 +81,9 @@ class DQNRainbowRLModule(RLModule, InferenceOnlyAPI, TargetNetworkAPI):
 
     @override(InferenceOnlyAPI)
     def get_non_inference_attributes(self) -> List[str]:
-        return ["_target_encoder", "_target_af", "_target_vf"]
+        return ["_target_encoder", "_target_af"] + (
+            ["_target_vf"] if self.uses_dueling else []
+        )
 
     @override(TargetNetworkAPI)
     def get_target_network_pairs(self) -> List[Tuple[NetworkType, NetworkType]]:
