@@ -4,6 +4,8 @@ disable_existing_loggers: False
 formatters:
     ray:
         class: ray._private.ray_logging.formatters.JSONFormatter
+    ray_console:
+        format: "%(asctime)s\t%(levelname)s %(filename)s:%(lineno)s -- %(message)s"
 
 filters:
     console_filter:
@@ -19,7 +21,7 @@ handlers:
         filters: [core_context_filter]
     console:
         class: ray._private.log.PlainRayHandler
-        formatter: ray
+        formatter: ray_console
         level: INFO
         filters: [console_filter, core_context_filter]
 
