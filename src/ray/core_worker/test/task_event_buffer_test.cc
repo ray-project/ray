@@ -58,13 +58,6 @@ class TaskEventBufferTest : public ::testing::Test {
 
   virtual void TearDown() {
     if (task_event_buffer_) task_event_buffer_->Stop();
-    std::error_code ec;
-    std::filesystem::remove_all(log_dir_.c_str(), ec);
-    if (ec) {
-      std::cerr << "Error removing log_dir_ in TaskEventBufferTest teardown: "
-                << ec.message() << '\n';
-      std::cerr << "Error code: " << ec.value() << '\n';
-    }
   };
 
   std::vector<TaskID> GenTaskIDs(size_t num_tasks) {
@@ -135,7 +128,7 @@ class TaskEventBufferTest : public ::testing::Test {
   }
 
   std::unique_ptr<TaskEventBufferImpl> task_event_buffer_ = nullptr;
-  std::string log_dir_ = "event_123";
+  std::string log_dir_;
 };
 
 class TaskEventBufferTestManualStart : public TaskEventBufferTest {
@@ -201,7 +194,13 @@ class TaskEventTestWriteExport : public TaskEventBufferTest {
   "enable_export_api_write": true
 }
   )");
+    log_dir_ = "event_123";
   }
+
+  virtual void TearDown() override {
+    TaskEventBufferTest::TearDown();
+    std::filesystem::remove_all(log_dir_.c_str());
+  };
 };
 
 void ReadContentFromFile(std::vector<std::string> &vc,
