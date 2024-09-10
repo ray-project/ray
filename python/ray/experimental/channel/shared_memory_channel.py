@@ -571,7 +571,7 @@ class BufferedSharedMemoryChannel(ChannelInterface):
         self._next_write_index += 1
         self._next_write_index %= self._num_shm_buffers
 
-    def read(self, timeout: Optional[float] = None) -> Any:
+    def read(self, timeout: Optional[float] = None, deserialize: bool = True) -> Any:
         """Read a value from a channel.
 
         If the next buffer is available, it returns immediately. If the next
@@ -581,7 +581,7 @@ class BufferedSharedMemoryChannel(ChannelInterface):
         """
         # A single channel is not supposed to read and write at the same time.
         assert self._next_write_index == 0
-        output = self._buffers[self._next_read_index].read(timeout)
+        output = self._buffers[self._next_read_index].read(timeout, deserialize=deserialize)
         self._next_read_index += 1
         self._next_read_index %= self._num_shm_buffers
         return output
