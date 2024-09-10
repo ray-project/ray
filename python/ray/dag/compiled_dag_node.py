@@ -115,7 +115,6 @@ def do_exec_tasks(
             if done:
                 break
             for operation in schedule:
-                print("SANG-TODO operation: ", operation)
                 done = tasks[operation.exec_task_idx].exec_operation(
                     self, operation.type
                 )
@@ -1835,7 +1834,6 @@ class CompiledDAG:
                     return
 
                 logger.info("Tearing down compiled DAG")
-
                 outer._dag_submitter.close()
                 outer._dag_output_fetcher.close()
 
