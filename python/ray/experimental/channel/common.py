@@ -4,6 +4,7 @@ import copy
 import threading
 import time
 from dataclasses import dataclass
+from functools import partial
 from typing import TYPE_CHECKING, Any, Dict, List, NamedTuple, Optional, Tuple, Union
 
 import ray
@@ -205,7 +206,11 @@ class ChannelInterface:
         """
         raise NotImplementedError
 
-    def write(self, value: Any, timeout: Optional[float] = None) -> None:
+    def write(
+        self,
+        future: "ray.dag.dag_operation_future.DAGOperationFuture",
+        timeout: Optional[float] = None,
+    ) -> None:
         """
         Write a value to the channel.
 
@@ -222,7 +227,9 @@ class ChannelInterface:
         """
         raise NotImplementedError
 
-    def read(self, timeout: Optional[float] = None) -> Any:
+    def read(
+        self, timeout: Optional[float] = None
+    ) -> "ray.dag.dag_operation_future.DAGOperationFuture":
         """
         Read the latest value from the channel. This call will block until a
         value is available to read.
@@ -271,7 +278,9 @@ class ReaderInterface:
     def start(self):
         raise NotImplementedError
 
-    def _read_list(self, timeout: Optional[float] = None) -> List[Any]:
+    def _read_list(
+        self, timeout: Optional[float] = None
+    ) -> List["ray.dag.dag_operation_future.DAGOperationFuture"]:
         """
         Read a list of values from this reader.
 
@@ -284,7 +293,9 @@ class ReaderInterface:
         """
         raise NotImplementedError
 
-    def read(self, timeout: Optional[float] = None) -> List[Any]:
+    def read(
+        self, timeout: Optional[float] = None
+    ) -> List["ray.dag.dag_operation_future.DAGOperationFuture"]:
         """
         Read from this reader.
 
@@ -318,7 +329,9 @@ class SynchronousReader(ReaderInterface):
     def start(self):
         pass
 
-    def _read_list(self, timeout: Optional[float] = None) -> List[Any]:
+    def _read_list(
+        self, timeout: Optional[float] = None
+    ) -> List["ray.dag.dag_operation_future.DAGOperationFuture"]:
         results = []
         for c in self._input_channels:
             start_time = time.monotonic()
@@ -463,36 +476,59 @@ def _adapt(raw_args: Any, key: Optional[Union[int, str]], is_input: bool):
             return raw_args
 
 
+def _extract(val: Any, key: Optional[Union[int, str]], is_input: bool):
+    """
+    Extract the raw arguments to the key. If `is_input` is True, this method will
+    retrieve the value from the input data for an InputAttributeNode. Otherwise, it
+    will retrieve either a partial value or the entire value from the output of
+    a ClassMethodNode.
+
+    Args:
+        raw_args: The raw arguments to adapt.
+        key: The key to adapt.
+        is_input: Whether the writer is DAG input writer or not.
+    """
+    if isinstance(val, Exception):
+        return val
+
+    if is_input:
+        if not isinstance(val, RayDAGArgs):
+            # Fast path for a single input.
+            return val
+        else:
+            args = val.args
+            kwargs = val.kwargs
+
+        if isinstance(key, int):
+            return args[key]
+        else:
+            return kwargs[key]
+    else:
+        if key is None:
+            return val
+        assert key in val, f"Expected key {key} in {val}"
+        return val[key]
+
+
 @DeveloperAPI
 class SynchronousWriter(WriterInterface):
     def start(self):
         for channel in self._output_channels:
             channel.ensure_registered_as_writer()
 
-    def write(self, val: Any, timeout: Optional[float] = None) -> None:
-        # If it is an exception, there's only 1 return value.
-        # We have to send the same data to all channels.
-        if isinstance(val, Exception):
-            if len(self._output_channels) > 1:
-                val = tuple(val for _ in range(len(self._output_channels)))
-
-        if not self._is_input:
-            if len(self._output_channels) > 1:
-                if not isinstance(val, tuple):
-                    raise ValueError(
-                        f"Expected a tuple of {len(self._output_channels)} outputs, "
-                        f"but got {type(val)}"
-                    )
-                if len(val) != len(self._output_channels):
-                    raise ValueError(
-                        f"Expected {len(self._output_channels)} outputs, but got "
-                        f"{len(val)} outputs"
-                    )
+    def write(
+        self,
+        future: "ray.dag.dag_operation_future.DAGOperationFuture",
+        timeout: Optional[float] = None,
+    ) -> None:
+        from ray.dag.dag_operation_future import WrappedFuture
 
         for i, channel in enumerate(self._output_channels):
             idx = self._output_idxs[i]
-            val_i = _adapt(val, idx, self._is_input)
-            channel.write(val_i, timeout)
+            wrapped = WrappedFuture(
+                future, partial(_extract, key=idx, is_input=self._is_input)
+            )
+            channel.write(wrapped, timeout)
         self._num_writes += 1
 
 

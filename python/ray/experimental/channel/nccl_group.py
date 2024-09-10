@@ -35,6 +35,7 @@ class _NcclGroup(GPUCommunicator):
         rank: Optional[int],
         actor_handles: List["ray.actor.ActorHandle"],
         cuda_stream: Optional[int],
+        use_communication_streams: bool = False,
     ):
         """
         Initialize a NCCL communicator that can be used to communicate p2p with
@@ -66,11 +67,15 @@ class _NcclGroup(GPUCommunicator):
             actor_handles: A list of actor handles, in rank order.
             cuda_stream: A raw CUDA stream to dispatch NCCL ops to. If rank is
                 specified, then this must be specified too.
+            use_communication_streams: Whether to use dedicated send and recv
+                streams for communication. If True, communication and computation
+                can be overlapped to improve perfomrance.
         """
         self._world_size = world_size
         self._rank: Optional[int] = rank
         self.nccl_util: Optional[ModuleType] = None
         self._actor_handles = actor_handles
+        self._use_communication_streams = use_communication_streams
 
         if rank is not None:
             assert ray.get_gpu_ids(), "NCCL actor has no GPUs assigned"
@@ -102,6 +107,23 @@ class _NcclGroup(GPUCommunicator):
             self._cuda_stream = cp.cuda.ExternalStream(
                 cuda_stream, device_id=device.index
             )
+
+            if use_communication_streams:
+                import torch
+
+                self._send_stream = cp.cuda.ExternalStream(
+                    torch.cuda.Stream().cuda_stream, device_id=device.index
+                )
+                self._recv_stream = cp.cuda.ExternalStream(
+                    torch.cuda.Stream().cuda_stream, device_id=device.index
+                )
+                event = cp.cuda.Event()
+                event.record(cp.cuda.get_current_stream())
+                self._send_stream.wait_event(event)
+                self._recv_stream.wait_event(event)
+            else:
+                self._send_stream = self._cuda_stream
+                self._recv_stream = self._cuda_stream
 
         self._closed = False
 
@@ -138,7 +160,11 @@ class _NcclGroup(GPUCommunicator):
         """
         return self._world_size
 
-    def send(self, value: "torch.Tensor", peer_rank: int) -> None:
+    def send(
+        self,
+        future: "ray.dag.dag_operation_future.DAGOperationFuture['torch.Tensor']",
+        peer_rank: int,
+    ) -> None:
         """
         Send a torch.Tensor to a peer.
 
@@ -156,6 +182,17 @@ class _NcclGroup(GPUCommunicator):
         """
         if self._closed:
             raise RayChannelError("NCCL group has been destroyed.")
+
+        if self._use_communication_streams:
+            # We observed that if all recv/compute/send operations run on GPU,
+            # since there is no synchrnoziation, the CPU execution loop may be
+            # far ahead of the GPU operations and lead to runtime failures.
+            # To avoid that, we synchrnozie on the send stream.
+            # TODO(rui): find a better approach
+            self._send_stream.synchronize()
+
+        value = future.wait(self._send_stream)
+
         # TODO(swang): Handle send/recv async NCCL errors such as network
         # failures.
         self._comm.send(
@@ -163,7 +200,7 @@ class _NcclGroup(GPUCommunicator):
             value.numel(),
             self.nccl_util.get_nccl_tensor_dtype(value),
             peer_rank,
-            self._cuda_stream.ptr,
+            self._send_stream.ptr,
         )
 
     def recv(
@@ -172,7 +209,7 @@ class _NcclGroup(GPUCommunicator):
         dtype: "torch.dtype",
         peer_rank: int,
         allocator=Optional[TorchTensorAllocator],
-    ) -> "torch.Tensor":
+    ) -> "ray.dag.dag_operation_future.DAGOperationFuture['torch.Tensor']":
         """
         Receive a torch.Tensor from a peer and synchronize the current stream.
 
@@ -188,22 +225,45 @@ class _NcclGroup(GPUCommunicator):
             raise RayChannelError("NCCL group has been destroyed.")
         assert allocator is not None, "NCCL group requires a tensor allocator"
         buf = allocator(shape, dtype)
-        self._comm.recv(
-            self.nccl_util.get_tensor_ptr(buf),
-            buf.numel(),
-            self.nccl_util.get_nccl_tensor_dtype(buf),
-            peer_rank,
-            self._cuda_stream.ptr,
-        )
 
-        # Buffer values are undefined if NCCL ops are aborted. Therefore, we
-        # need to synchronize here and check that the channel is still open to
-        # ensure that the receive buffer is valid.
-        # TODO(swang): Avoid CUDA synchronization.
-        self._cuda_stream.synchronize()
+        from ray.dag.dag_operation_future import ReadyFuture, _GPUFuture
+
+        if self._use_communication_streams:
+            # We observed that if all recv/compute/send operations run on GPU,
+            # since there is no synchrnoziation, the CPU execution loop may be
+            # far ahead of the GPU operations and lead to runtime failures.
+            # To avoid that, we synchrnozie on the recv stream.
+            # TODO(rui): find a better approach
+            self._recv_stream.synchronize()
+
+            self._comm.recv(
+                self.nccl_util.get_tensor_ptr(buf),
+                buf.numel(),
+                self.nccl_util.get_nccl_tensor_dtype(buf),
+                peer_rank,
+                self._recv_stream.ptr,
+            )
+            future = _GPUFuture(buf)
+            future.record_event(self._recv_stream)
+        else:
+            self._comm.recv(
+                self.nccl_util.get_tensor_ptr(buf),
+                buf.numel(),
+                self.nccl_util.get_nccl_tensor_dtype(buf),
+                peer_rank,
+                self._recv_stream.ptr,
+            )
+
+            # Buffer values are undefined if NCCL ops are aborted. Therefore, we
+            # need to synchronize here and check that the channel is still open to
+            # ensure that the receive buffer is valid.
+            # TODO(swang): Avoid CUDA synchronization.
+            self._cuda_stream.synchronize()
+            future = ReadyFuture(buf)
+
         if self._closed:
             raise RayChannelError("NCCL group has been destroyed.")
-        return buf
+        return future
 
     def destroy(self) -> None:
         """

@@ -66,7 +66,11 @@ class GPUCommunicator(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def send(self, value: "torch.Tensor", peer_rank: int) -> None:
+    def send(
+        self,
+        value: "ray.dag.compiled_dag_node.DAGOperationFuture['torch.Tensor']",
+        peer_rank: int,
+    ) -> None:
         """
         Send a torch.Tensor to a peer.
 
@@ -78,6 +82,7 @@ class GPUCommunicator(ABC):
             value: The torch.Tensor to send. It should already be on this
                 actor's default device.
             peer_rank: The rank of the actor to send to.
+            future: An optional future to wait on before sending.
         """
         raise NotImplementedError
 
@@ -88,7 +93,7 @@ class GPUCommunicator(ABC):
         dtype: "torch.dtype",
         peer_rank: int,
         allocator: Optional[TorchTensorAllocator] = None,
-    ) -> "torch.Tensor":
+    ) -> "ray.dag.compiled_dag_node.DAGOperationFuture['torch.Tensor']":
         """
         Receive a torch.Tensor from a peer and synchronize.
 

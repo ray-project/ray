@@ -3,6 +3,7 @@ import logging
 import os
 import sys
 from typing import List, Optional, Tuple
+from ray.dag.output_node import MultiOutputNode
 from ray.experimental.channel.gpu_communicator import (
     GPUCommunicator,
     TorchTensorAllocator,
@@ -133,7 +134,7 @@ def test_torch_tensor_p2p(ray_start_regular):
         dag = sender.send.bind(shape, dtype, inp)
         # TODO(swang): Test that we are using the minimum number of
         # channels/messages when _direct_return=True.
-        dag = dag.with_type_hint(TorchTensorType((20,), dtype, _direct_return=True))
+        dag = dag.with_type_hint(TorchTensorType((20,), dtype))
         dag = receiver.recv.bind(dag)
     compiled_dag = dag.experimental_compile()
     for i in range(3):
@@ -229,6 +230,7 @@ def test_torch_tensor_nccl(ray_start_regular):
     # Test normal execution.
     compiled_dag = dag.experimental_compile()
 
+    print("testing original")
     for i in range(3):
         ref = compiled_dag.execute(i)
         result = ray.get(ref)
@@ -249,6 +251,7 @@ def test_torch_tensor_nccl(ray_start_regular):
     ):
         compiled_dag = dag.experimental_compile()
 
+    print("testing reuse")
     # Test that actors can be reused for a valid DAG.
     with InputNode() as inp:
         dag = sender.send.bind(shape, dtype, inp)
@@ -266,6 +269,52 @@ def test_torch_tensor_nccl(ray_start_regular):
     # to a ref counting assertion error.
     # ray.get(sender.ping.remote())
     # ray.get(receiver.ping.remote())
+
+
+@pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
+def test_torch_tensor_nccl_overlap(ray_start_regular):
+    if not USE_GPU:
+        pytest.skip("NCCL tests require GPUs")
+
+    assert (
+        sum(node["Resources"].get("GPU", 0) for node in ray.nodes()) > 2
+    ), "This test requires at least 3 GPUs"
+
+    actor_cls = TorchTensorWorker.options(num_cpus=0, num_gpus=1)
+
+    sender1 = actor_cls.remote()
+    sender2 = actor_cls.remote()
+    receiver = actor_cls.remote()
+    print(f"{receiver=}")
+
+    shape = (100000,)
+    dtype = torch.float16
+
+    with InputNode() as inp:
+        branch1 = sender1.send.bind(shape, dtype, inp)
+
+        branch1 = branch1.with_type_hint(
+            TorchTensorType(shape, dtype, transport="nccl", _direct_return=True)
+        )
+        branch1 = receiver.recv.bind(branch1)
+
+        branch2 = sender2.send.bind(shape, dtype, inp)
+        branch2 = branch2.with_type_hint(
+            TorchTensorType(shape, dtype, transport="nccl", _direct_return=True)
+        )
+        branch2 = receiver.recv.bind(branch2)
+        dag = MultiOutputNode([branch1, branch2])
+
+    # Test normal execution.
+    compiled_dag = dag.experimental_compile(_overlap_gpu_communication=True)
+
+    for i in range(3):
+        ref = compiled_dag.execute(i)
+        result = ray.get(ref)
+        # print(f"{result=}")
+        assert result == [(i, shape, dtype), (i, shape, dtype)]
+
+    compiled_dag.teardown()
 
 
 @pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
@@ -576,7 +625,12 @@ def test_torch_tensor_custom_comm_inited(ray_start_regular):
         def get_actor_handles(self) -> List["ray.actor.ActorHandle"]:
             return self._actor_handles
 
-        def send(self, value: "torch.Tensor", peer_rank: int) -> None:
+        def send(
+            self,
+            future: "ray.dag.dag_operation_future.DAGOperationFuture['torch.Tensor']",
+            peer_rank: int,
+        ) -> None:
+            value = future.wait()
             torch.distributed.send(value, peer_rank)
 
         def recv(
@@ -585,10 +639,12 @@ def test_torch_tensor_custom_comm_inited(ray_start_regular):
             dtype: "torch.dtype",
             peer_rank: int,
             allocator: Optional[TorchTensorAllocator] = None,
-        ) -> "torch.Tensor":
+        ) -> "ray.dag.dag_operation_future.DAGOperationFuture['torch.Tensor']":
             tensor = torch.empty(torch.Size(shape), dtype=dtype, device=self._device)
             torch.distributed.recv(tensor, peer_rank)
-            return tensor
+            from ray.dag.dag_operation_future import ReadyFuture
+
+            return ReadyFuture(tensor)
 
         def destroy(self) -> None:
             pass

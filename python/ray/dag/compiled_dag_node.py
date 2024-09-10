@@ -8,6 +8,7 @@ import time
 import uuid
 import traceback
 
+from ray.dag.dag_operation_future import _GPUFuture, DAGOperationFuture, ReadyFuture
 from ray.experimental.channel.cached_channel import CachedChannel
 from ray.experimental.channel.gpu_communicator import GPUCommunicator
 import ray
@@ -45,6 +46,8 @@ from ray.dag.dag_node_operation import (
     _DAGOperationGraphNode,
     _build_dag_node_operation_graph,
     _generate_actor_to_execution_schedule,
+    _optimize_execution_schedule,
+    _visualize_execution_schedule,
 )
 
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
@@ -93,6 +96,7 @@ def do_exec_tasks(
     self,
     tasks: List["ExecutableTask"],
     schedule: List[_DAGNodeOperation],
+    overlap_gpu_communication: bool = False,
 ) -> None:
     """A generic actor method to begin executing the operations belonging to an
     actor. This runs an infinite loop to execute each _DAGNodeOperation in the
@@ -102,6 +106,8 @@ def do_exec_tasks(
     Args:
         tasks: the executable tasks corresponding to the actor methods.
         schedule: A list of _DAGNodeOperation that should be executed in order.
+        overlap_gpu_communication: Whether to overlap GPU communication with
+            computation during DAG execution to improve performance.
     """
     try:
         for task in tasks:
@@ -113,7 +119,7 @@ def do_exec_tasks(
                 break
             for operation in schedule:
                 done = tasks[operation.exec_task_idx].exec_operation(
-                    self, operation.type
+                    self, operation.type, overlap_gpu_communication
                 )
                 if done:
                     break
@@ -271,7 +277,9 @@ class _ExecutableTaskInput:
         """
 
         if isinstance(self.input_variant, ChannelInterface):
-            value = channel_results[self.channel_idx]
+            future = channel_results[self.channel_idx]
+            assert isinstance(future, DAGOperationFuture)
+            value = future.wait()
         else:
             value = self.input_variant
         return value
@@ -375,21 +383,19 @@ class ExecutableTask:
         self.input_reader.start()
         self.output_writer.start()
 
-    def set_intermediate_buffer(self, data: Any):
+    def set_intermediate_buffer(self, data: DAGOperationFuture):
         """
         Store the intermediate result of a READ or COMPUTE operation.
-
         Args:
             data: The intermediate result of a READ or COMPUTE operation.
         """
         assert self._intermediate_buffer is None
         self._intermediate_buffer = data
 
-    def reset_intermediate_buffer(self) -> Any:
+    def reset_intermediate_buffer(self) -> DAGOperationFuture:
         """
         Retrieve the intermediate result of a READ or COMPUTE operation,
         and reset the intermediate buffer to None.
-
         Returns:
             The intermediate result of a READ or COMPUTE operation.
         """
@@ -414,18 +420,21 @@ class ExecutableTask:
             exit = True
         return exit
 
-    def _compute(self, class_handle) -> bool:
+    def _compute(
+        self,
+        overlap_gpu_communication: bool,
+        class_handle,
+    ) -> bool:
         """
         Retrieve the intermediate result from the READ operation and perform the
-        computation. Then, cache the new intermediate result. The caller must ensure
-        that the last operation executed is READ so that the function retrieves the
-        correct intermediate result.
+        computation. Then, cache the new intermediate result.
 
         Args:
+            overlap_gpu_communication: Whether to overlap GPU communication with
+                computation during DAG execution to improve performance.
             class_handle: An instance of the class to which the actor belongs. For
                 example, the type of `class_handle` is <class 'xxxx.Worker'> if the
                 actor belongs to the `class Worker` class.
-
         Returns:
             True if system error occurs and exit the loop; otherwise, False.
         """
@@ -438,7 +447,7 @@ class ExecutableTask:
             # Propagate it and skip the actual task. We don't need to wrap the
             # exception in a RayTaskError here because it has already been wrapped
             # by the previous task.
-            self.set_intermediate_buffer(exc)
+            self.set_intermediate_buffer(ReadyFuture(exc))
             return False
 
         resolved_inputs = []
@@ -449,7 +458,15 @@ class ExecutableTask:
             output_val = method(*resolved_inputs, **self.resolved_kwargs)
         except Exception as exc:
             output_val = _wrap_exception(exc)
-        self.set_intermediate_buffer(output_val)
+
+        if overlap_gpu_communication:
+            import cupy as cp
+
+            future = _GPUFuture(output_val)
+            future.record_event(cp.cuda.get_current_stream())
+        else:
+            future = ReadyFuture(output_val)
+        self.set_intermediate_buffer(future)
         return False
 
     def _write(self) -> bool:
@@ -461,10 +478,10 @@ class ExecutableTask:
         Returns:
             True if system error occurs and exit the loop; otherwise, False.
         """
-        output_val = self.reset_intermediate_buffer()
+        future = self.reset_intermediate_buffer()
         exit = False
         try:
-            self.output_writer.write(output_val)
+            self.output_writer.write(future)
         except RayChannelError:
             # Channel closed. Exit the loop.
             exit = True
@@ -474,25 +491,26 @@ class ExecutableTask:
         self,
         class_handle,
         op_type: _DAGNodeOperationType,
+        overlap_gpu_communication: bool = False,
     ) -> bool:
         """
         An ExecutableTask corresponds to a DAGNode. It consists of three
         operations: READ, COMPUTE, and WRITE, which should be executed in
         order to ensure that each operation can read the correct intermediate
         result.
-
         Args:
             class_handle: The handle of the class to which the actor belongs.
             op_type: The type of the operation. Possible types are READ,
                 COMPUTE, and WRITE.
-
+            overlap_gpu_communication: Whether to overlap GPU communication with
+                computation during DAG execution to improve performance.
         Returns:
             True if the next operation should not be executed; otherwise, False.
         """
         if op_type == _DAGNodeOperationType.READ:
             return self._read()
         elif op_type == _DAGNodeOperationType.COMPUTE:
-            return self._compute(class_handle)
+            return self._compute(overlap_gpu_communication, class_handle)
         elif op_type == _DAGNodeOperationType.WRITE:
             return self._write()
 
@@ -548,6 +566,7 @@ class CompiledDAG:
         asyncio_max_queue_size: Optional[int] = None,
         max_buffered_results: Optional[int] = None,
         max_inflight_executions: Optional[int] = None,
+        overlap_gpu_communication: Optional[bool] = None,
     ):
         """
         Args:
@@ -580,6 +599,11 @@ class CompiledDAG:
                 are allowed to be sent to this DAG. Before submitting more requests,
                 the caller is responsible for calling ray.get to get the result,
                 otherwise, RayAdagCapacityExceeded is raised.
+            overlap_gpu_communication: Whether to overlap GPU communication with
+                computation during DAG execution. If True, the communication
+                and computation can be overlapped, which can improve the
+                performance of the DAG execution. If None, the default value
+                will be used.
 
         Returns:
             Channel: A wrapper around ray.ObjectRef.
@@ -605,6 +629,9 @@ class CompiledDAG:
         self._buffer_size_bytes: Optional[int] = buffer_size_bytes
         if self._buffer_size_bytes is None:
             self._buffer_size_bytes = ctx.buffer_size_bytes
+        self._overlap_gpu_communication: Optional[bool] = overlap_gpu_communication
+        if self._overlap_gpu_communication is None:
+            self._overlap_gpu_communication = ctx.overlap_gpu_communication
 
         self._default_type_hint: ChannelOutputType = SharedMemoryType(
             self._buffer_size_bytes,
@@ -924,7 +951,9 @@ class CompiledDAG:
         if None in nccl_actors:
             raise ValueError("Driver cannot participate in the NCCL group.")
         if nccl_actors and self._nccl_group_id is None:
-            self._nccl_group_id = _init_nccl_group(nccl_actors, self._custom_nccl_group)
+            self._nccl_group_id = _init_nccl_group(
+                nccl_actors, self._custom_nccl_group, self._overlap_gpu_communication
+            )
 
         if direct_input:
             self._input_num_positional_args = 1
@@ -1315,6 +1344,7 @@ class CompiledDAG:
                 exec_task_func,
                 executable_tasks,
                 self.actor_to_execution_schedule[actor_handle],
+                self._overlap_gpu_communication,
             )
 
         assert self.output_task_idx is not None
@@ -1397,23 +1427,35 @@ class CompiledDAG:
                 # and WRITE. Each _DAGOperationGraphNode has a _DAGNodeOperation.
                 task_index = exec_task.task_idx
                 dag_node = self.idx_to_task[task_index].dag_node
+                method_name = exec_task.method_name
                 actor_handle = dag_node._get_actor_handle()
                 requires_nccl = dag_node.type_hint.requires_nccl()
+                upstream_requires_nccl = False
+                for upstream_node in dag_node._upstream_nodes:
+                    if upstream_node.type_hint.requires_nccl():
+                        upstream_requires_nccl = True
+                        break
 
                 read_node = _DAGOperationGraphNode(
-                    _DAGNodeOperation(exec_task_idx, _DAGNodeOperationType.READ),
+                    _DAGNodeOperation(
+                        exec_task_idx, _DAGNodeOperationType.READ, method_name
+                    ),
                     task_index,
                     actor_handle,
-                    requires_nccl,
+                    upstream_requires_nccl,
                 )
                 compute_node = _DAGOperationGraphNode(
-                    _DAGNodeOperation(exec_task_idx, _DAGNodeOperationType.COMPUTE),
+                    _DAGNodeOperation(
+                        exec_task_idx, _DAGNodeOperationType.COMPUTE, method_name
+                    ),
                     task_index,
                     actor_handle,
-                    requires_nccl,
+                    False,
                 )
                 write_node = _DAGOperationGraphNode(
-                    _DAGNodeOperation(exec_task_idx, _DAGNodeOperationType.WRITE),
+                    _DAGNodeOperation(
+                        exec_task_idx, _DAGNodeOperationType.WRITE, method_name
+                    ),
                     task_index,
                     actor_handle,
                     requires_nccl,
@@ -1459,7 +1501,27 @@ class CompiledDAG:
         )
         # Step 2: Generate an execution schedule for each actor using topological sort
         actor_to_execution_schedule = _generate_actor_to_execution_schedule(graph)
-        return actor_to_execution_schedule
+
+        # Step 3: Optimize the execution schedule if configured
+        actor_to_optimized_schedule = _optimize_execution_schedule(
+            actor_to_execution_schedule,
+            self._overlap_gpu_communication,
+        )
+
+        from ray.dag.constants import RAY_ADAG_VISUALIZE_SCHEDULE
+
+        if RAY_ADAG_VISUALIZE_SCHEDULE:
+            _visualize_execution_schedule(
+                actor_to_execution_schedule, actor_to_optimized_schedule, graph
+            )
+
+        # Extract _DAGNodeOperation from _DAGOperationGraphNode in the schedule
+        # and discard unnecessary information
+        actor_to_final_execution_schedule = {
+            actor: [node.operation for node in nodes]
+            for actor, nodes in actor_to_optimized_schedule.items()
+        }
+        return actor_to_final_execution_schedule
 
     def _detect_deadlock(self) -> bool:
         """
@@ -1655,7 +1717,7 @@ class CompiledDAG:
     def _cache_execution_results(
         self,
         execution_index: int,
-        result: Any,
+        futures: List[DAGOperationFuture],
     ):
         """Cache execution results in self._result_buffer. Results are converted
         to dictionary format to allow efficient element removal and calculation of
@@ -1666,8 +1728,8 @@ class CompiledDAG:
             result: The results from all channels to be cached.
         """
         assert not self._has_execution_results(execution_index)
-        for chan_idx, res in enumerate(result):
-            self._result_buffer[execution_index][chan_idx] = res
+        for chan_idx, fut in enumerate(futures):
+            self._result_buffer[execution_index][chan_idx] = fut
 
     def _get_execution_results(
         self, execution_index: int, channel_index: Optional[int]
@@ -1805,7 +1867,7 @@ class CompiledDAG:
             inp = RayDAGArgs(args=args, kwargs=kwargs)
 
         self.raise_if_too_many_inflight_requests()
-        self._dag_submitter.write(inp, self._execution_timeout)
+        self._dag_submitter.write(ReadyFuture(inp), self._execution_timeout)
 
         if self._returns_list:
             ref = [
@@ -1871,7 +1933,7 @@ class CompiledDAG:
                 inp = RayDAGArgs(args=args, kwargs=kwargs)
 
             self.raise_if_too_many_inflight_requests()
-            await self._dag_submitter.write(inp)
+            await self._dag_submitter.write(ReadyFuture(inp))
             # Allocate a future that the caller can use to get the result.
             fut = asyncio.Future()
             await self._fut_queue.put(fut)
@@ -1914,6 +1976,7 @@ def build_compiled_dag_from_ray_dag(
     asyncio_max_queue_size: Optional[int] = None,
     max_buffered_results: Optional[int] = None,
     max_inflight_executions: Optional[int] = None,
+    overlap_gpu_communication: Optional[bool] = None,
 ) -> "CompiledDAG":
     compiled_dag = CompiledDAG(
         execution_timeout,
@@ -1922,6 +1985,7 @@ def build_compiled_dag_from_ray_dag(
         asyncio_max_queue_size,
         max_buffered_results,
         max_inflight_executions,
+        overlap_gpu_communication,
     )
 
     def _build_compiled_dag(node):
