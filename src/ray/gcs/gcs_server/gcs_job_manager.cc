@@ -250,7 +250,7 @@ void GcsJobManager::HandleGetAllJobInfo(rpc::GetAllJobInfoRequest request,
       i++;
     }
 
-    if (!request.skip_job_info_field()) {
+    if (!request.skip_submission_job_info_field()) {
       // Load the JobInfo for jobs submitted via the Ray Job API.
       auto kv_multi_get_callback =
           [reply,

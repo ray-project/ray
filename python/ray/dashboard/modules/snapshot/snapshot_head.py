@@ -231,7 +231,7 @@ class APIHead(dashboard_utils.DashboardHeadModule):
         # created with every cluster
         try:
             reply = await self._gcs_aio_client.get_all_job_info(
-                skip_job_info_field=True,
+                skip_submission_job_info_field=True,
                 skip_is_running_tasks_field=True,
                 timeout=timeout,
             )

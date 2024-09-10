@@ -501,7 +501,7 @@ Status PythonGcsClient::GetAllNodeInfo(int64_t timeout_ms,
   return Status::RpcError(status.error_message(), status.error_code());
 }
 
-Status PythonGcsClient::GetAllJobInfo(bool skip_job_info_field,
+Status PythonGcsClient::GetAllJobInfo(bool skip_submission_job_info_field,
                                       bool skip_is_running_tasks_field,
                                       int64_t timeout_ms,
                                       std::vector<rpc::JobTableData> &result) {
@@ -510,7 +510,7 @@ Status PythonGcsClient::GetAllJobInfo(bool skip_job_info_field,
 
   absl::ReaderMutexLock lock(&mutex_);
   rpc::GetAllJobInfoRequest request;
-  request.set_skip_job_info_field(skip_job_info_field);
+  request.set_skip_submission_job_info_field(skip_submission_job_info_field);
   request.set_skip_is_running_tasks_field(skip_is_running_tasks_field);
   rpc::GetAllJobInfoReply reply;
 

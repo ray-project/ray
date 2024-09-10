@@ -250,7 +250,7 @@ class JobInfoAccessor {
   /// \param callback Callback that will be called after lookup finished.
   /// \return Status
   virtual Status AsyncGetAll(const MultiItemCallback<rpc::JobTableData> &callback,
-                             bool skip_job_info_field,
+                             bool skip_submission_job_info_field,
                              bool skip_is_running_tasks_field,
                              int64_t timeout_ms);
 
@@ -260,7 +260,7 @@ class JobInfoAccessor {
   /// \param[out] job_data_list The list of job data retrieved from GCS.
   /// \return Status
   virtual Status GetAll(std::vector<rpc::JobTableData> &job_data_list,
-                        bool skip_job_info_field,
+                        bool skip_submission_job_info_field,
                         bool skip_is_running_tasks_field,
                         int64_t timeout_ms);
 
