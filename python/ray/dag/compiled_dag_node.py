@@ -112,6 +112,7 @@ def do_exec_tasks(
             if done:
                 break
             for operation in schedule:
+                print("SANG-TODO operation: ", operation)
                 done = tasks[operation.exec_task_idx].exec_operation(
                     self, operation.type
                 )
@@ -611,7 +612,7 @@ class CompiledDAG:
             # We conservatively set num_shm_buffers to _max_inflight_executions.
             # It means that the DAG can be underutilized, but it guarantees there's
             # no false positive timeouts.
-            num_shm_buffers=1,
+            num_shm_buffers=self._max_inflight_executions,
         )
         if not isinstance(self._buffer_size_bytes, int) or self._buffer_size_bytes <= 0:
             raise ValueError(
@@ -686,8 +687,7 @@ class CompiledDAG:
         # The maximum index of finished executions.
         # All results with higher indexes have not been generated yet.
         self._max_finished_execution_index: int = -1
-        # execution_index -> {channel_index -> result}
-        self._result_buffer: Dict[int, Dict[int, Any]] = defaultdict(dict)
+        self._result_buffer: Dict[int, Any] = {}
 
         def _create_proxy_actor() -> "ray.actor.ActorHandle":
             # Creates the driver actor on the same node as the driver.
@@ -710,6 +710,10 @@ class CompiledDAG:
         figure out the max number of in-flight requests to the DAG
         """
         self._max_finished_execution_index += 1
+
+    @property
+    def has_single_output(self):
+        return self._has_single_output
 
     def get_id(self) -> str:
         """
@@ -1651,79 +1655,6 @@ class CompiledDAG:
                 "`adag.experimental_compile(_max_inflight_executions=...)`"
             )
 
-    def _has_execution_results(
-        self,
-        execution_index: int,
-    ) -> bool:
-        """Check whether there are results corresponding to the given execution
-        index stored in self._result_buffer. This helps avoid fetching and
-        caching results again.
-
-        Args:
-            execution_index: The execution index corresponding to the result.
-
-        Returns:
-            Whether the result for the given index has been fetched and cached.
-        """
-        return execution_index in self._result_buffer
-
-    def _cache_execution_results(
-        self,
-        execution_index: int,
-        result: Any,
-    ):
-        """Cache execution results in self._result_buffer. Results are converted
-        to dictionary format to allow efficient element removal and calculation of
-        the buffer size. This can only be called once per execution index.
-
-        Args:
-            execution_index: The execution index corresponding to the result.
-            result: The results from all channels to be cached.
-        """
-        assert not self._has_execution_results(execution_index)
-        for chan_idx, res in enumerate(result):
-            self._result_buffer[execution_index][chan_idx] = res
-
-    def _get_execution_results(
-        self, execution_index: int, channel_index: Optional[int]
-    ) -> List[Any]:
-        """Retrieve execution results from self._result_buffer and return the result.
-        Results are converted back to original list format ordered by output channel
-        index.
-
-        Args:
-            execution_index: The execution index to retrieve results from.
-            channel_index: The index of the output channel corresponding to the result.
-                Channel indexing is consistent with the order of
-                self.dag_output_channels. None means that the result wraps outputs from
-                all output channels.
-
-        Returns:
-            The execution result corresponding to the given execution index and channel
-            index.
-        """
-        # Although CompiledDAGRef and CompiledDAGFuture guarantee that the same
-        # execution index and channel index combination will not be requested multiple
-        # times and therefore self._result_buffer will always have execution_index as
-        # a key, we still do a sanity check to avoid misuses.
-        assert execution_index in self._result_buffer
-
-        if channel_index is None:
-            # Convert results stored in self._result_buffer back to original
-            # list representation
-            result = [
-                kv[1]
-                for kv in sorted(
-                    self._result_buffer.pop(execution_index).items(),
-                    key=lambda kv: kv[0],
-                )
-            ]
-        else:
-            result = [self._result_buffer[execution_index].pop(channel_index)]
-            if len(self._result_buffer[execution_index]) == 0:
-                del self._result_buffer[execution_index]
-        return result
-
     def _execute_until(
         self,
         execution_index: int,
@@ -1760,6 +1691,11 @@ class CompiledDAG:
                 timeout = ctx.retrieval_timeout
 
         while self._max_finished_execution_index < execution_index:
+            if self._max_finished_execution_index + 1 == execution_index:
+                # Directly fetch and return without buffering
+                self.increment_max_finished_execution_index()
+                return self._dag_output_fetcher.read(timeout)
+            # Otherwise, buffer the result
             if len(self._result_buffer) >= self._max_buffered_results:
                 raise ValueError(
                     "Too many buffered results: the allowed max count for "
@@ -1769,14 +1705,9 @@ class CompiledDAG:
                 )
             self.increment_max_finished_execution_index()
             start_time = time.monotonic()
-
-            # Fetch results from each output channel up to execution_index and cache
-            # them separately to enable individual retrieval
-            self._cache_execution_results(
-                self._max_finished_execution_index,
-                self._dag_output_fetcher.read(timeout),
-            )
-
+            self._result_buffer[
+                self._max_finished_execution_index
+            ] = self._dag_output_fetcher.read(timeout)
             if timeout != -1:
                 timeout -= time.monotonic() - start_time
                 timeout = max(timeout, 0)
