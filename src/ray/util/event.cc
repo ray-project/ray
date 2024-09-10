@@ -129,8 +129,6 @@ std::string LogEventReporter::ExportEventToString(const rpc::ExportEvent &export
   j["source_type"] = ExportEvent_SourceType_Name(export_event.source_type());
   std::string event_data_as_string;
   google::protobuf::util::JsonPrintOptions options;
-  // Required so enum with value 0 is not omitted
-  options.always_print_primitive_fields = true;
   options.preserve_proto_field_names = true;
   // Required so enum with value 0 is not omitted
   options.always_print_primitive_fields = true;
