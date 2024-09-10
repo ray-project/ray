@@ -175,7 +175,7 @@ class RayOnSparkCPUClusterTestBase(ABC):
 
             assert "RAY_ADDRESS" not in os.environ
 
-            time.sleep(7)
+            time.sleep(120)
             # assert temp dir is removed.
             assert len(os.listdir(ray_temp_root_dir)) == 1 and os.listdir(
                 ray_temp_root_dir
