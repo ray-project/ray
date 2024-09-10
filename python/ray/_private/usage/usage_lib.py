@@ -538,7 +538,7 @@ def get_total_num_running_jobs_to_report(gcs_client) -> Optional[int]:
     """Return the total number of running jobs in the cluster excluding internal ones"""
     try:
         result = gcs_client.get_all_job_info(
-            skip_job_info_field=True, skip_is_running_tasks_field=True
+            skip_submission_job_info_field=True, skip_is_running_tasks_field=True
         )
         total_num_running_jobs = 0
         for job_info in result.values():
