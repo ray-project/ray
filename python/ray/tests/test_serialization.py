@@ -735,7 +735,8 @@ def test_usage_with_dataclass(ray_start_regular):
     assert dataclasses.asdict(new_y) == expect_dict
 
 
-def test_cannot_out_of_band_serialize_object_ref(shutdown_only):
+def test_cannot_out_of_band_serialize_object_ref(shutdown_only, monkeypatch):
+    monkeypatch.setenv("RAY_allow_out_of_band_object_ref_serialization", "0")
     ray.init()
     ref = ray.put(1)
 

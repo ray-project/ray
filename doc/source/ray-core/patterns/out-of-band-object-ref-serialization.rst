@@ -9,10 +9,11 @@ Ray's ``ray.ObjectRef`` is distributed reference counted. Ray pins the underlyin
 When all references are gone, the pinned object is garbage collected and cleaned up from the system.
 However, if user code serializes ``ray.objectRef``, Ray cannot keep track of the reference.
 
-If you have to serialize ``ray.ObjectRef``, use ``ray.cloudpickle``. Since it is not useful for most of use cases,
-Ray by default raises an exception (from Ray 2.36) when an object ref is serialized with ``ray.cloudpickle``.
-However, you can set an environment variable RAY_allow_out_of_band_object_ref_serialization=1 to avoid raising an exception.
-In this case, the object is pinned for the lifetime of a worker instead (which is prone to Ray object leaks, which can lead disk spilling).
+To avoid incorrect behavior, if ``ray.ObjectRef`` is serialized by ``ray.cloudpickle``, Ray pins the object for the lifetime of a worker. "pin" means that object cannot be evicted from the object store
+until the corresponding worker dies. It is prone to Ray object leaks, which can lead disk spilling.
+
+To detect if this pattern exists in your code, you can set an environment variable ``RAY_allow_out_of_band_object_ref_serialization=0``. If Ray detects
+``ray.ObjectRef`` is serialized by ``ray.cloudpickle``, it raises an exception with helpful messages.
 
 Code example
 ------------

@@ -1,3 +1,4 @@
+# __anti_pattern_start__
 import ray
 import pickle
 from ray._private.internal_api import memory_summary
@@ -60,3 +61,4 @@ ray.get(
 )
 # you can see objects are stil pinned although it is GC'ed and not used anymore.
 print(memory_summary())
+# __anti_pattern_end__
