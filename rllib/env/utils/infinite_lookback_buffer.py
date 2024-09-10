@@ -73,11 +73,12 @@ class InfiniteLookbackBuffer:
             A dict containing all the data and metadata from the buffer.
         """
         return {
-            "data": to_jsonable_if_needed(self.data, self.space)
-            if self.space
-            else self.data,
+            "data": self.data,
             "lookback": self.lookback,
             "finalized": self.finalized,
+            "space_struct": gym_space_to_dict(self.space_struct)
+            if self.space_struct
+            else self.space_struct,
             "space": gym_space_to_dict(self.space) if self.space else self.space,
         }
 
@@ -93,16 +94,16 @@ class InfiniteLookbackBuffer:
             from the state dict.
         """
         buffer = InfiniteLookbackBuffer()
+        buffer.data = state["data"]
         buffer.lookback = state["lookback"]
         buffer.finalized = state["finalized"]
-        buffer.space = gym_space_from_dict(state["space"]) if state["space"] else None
         buffer.space_struct = (
-            get_base_struct_from_space(buffer.space) if buffer.space else None
+            gym_space_from_dict(state["space_struct"])
+            if state["space_struct"]
+            else state["space_struct"]
         )
-        buffer.data = (
-            from_jsonable_if_needed(state["data"], buffer.space)
-            if buffer.space
-            else state["data"]
+        buffer.space = (
+            gym_space_from_dict(state["space"]) if state["space"] else state["space"]
         )
 
         return buffer
