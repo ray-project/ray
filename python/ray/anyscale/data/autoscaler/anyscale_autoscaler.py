@@ -250,8 +250,6 @@ class AnyscaleAutoscaler(Autoscaler):
         op: "PhysicalOperator",
         util: float,
     ):
-        if self._disable_actor_pool_scaling_down:
-            return False
         # Scale down, if the op is completed or no more inputs are coming.
         if op.completed() or (op._inputs_complete and op.internal_queue_size() == 0):
             return True
@@ -260,6 +258,8 @@ class AnyscaleAutoscaler(Autoscaler):
             return True
         elif actor_pool.current_size() <= actor_pool.min_size():
             # Do not scale down, if the actor pool is already at min size.
+            return False
+        if self._disable_actor_pool_scaling_down:
             return False
         # Determine whether to scale down based on the actor pool utilization.
         return util < self._actor_pool_scaling_down_threshold
