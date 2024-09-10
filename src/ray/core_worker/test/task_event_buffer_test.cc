@@ -197,10 +197,16 @@ class TaskEventTestWriteExport : public TaskEventBufferTest {
     log_dir_ = "event_123";
   }
 
-  virtual void TearDown() override {
+  void TearDown() override {
     TaskEventBufferTest::TearDown();
-    std::filesystem::remove_all(log_dir_.c_str());
-  };
+    std::error_code ec;
+    std::filesystem::remove_all(log_dir_.c_str(), ec);
+    if (ec) {
+      std::cerr << "Error removing log_dir_ in TaskEventTestWriteExport teardown: "
+                << ec.message() << '\n';
+      std::cerr << "Error code: " << ec.value() << '\n';
+    }
+  }
 };
 
 void ReadContentFromFile(std::vector<std::string> &vc,
