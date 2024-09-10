@@ -105,7 +105,10 @@ class MockJobInfoAccessor : public JobInfoAccessor {
               (override));
   MOCK_METHOD(Status,
               AsyncGetAll,
-              (const MultiItemCallback<rpc::JobTableData> &callback, int64_t timeout_ms),
+              (const MultiItemCallback<rpc::JobTableData> &callback,
+               bool skip_job_info_field,
+               bool skip_is_running_tasks_field,
+               int64_t timeout_ms),
               (override));
   MOCK_METHOD(void, AsyncResubscribe, (), (override));
   MOCK_METHOD(Status,
