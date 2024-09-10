@@ -879,7 +879,7 @@ class Learner(Checkpointable):
 
             module = self.module[module_id].unwrapped()
             if isinstance(module, SelfSupervisedLossAPI):
-                loss = module.compute_loss_for_module(
+                loss = module.compute_self_supervised_loss(
                     learner=self,
                     module_id=module_id,
                     config=self.config.get_config_for_module(module_id),

@@ -1,8 +1,11 @@
 import abc
-from typing import Any, Dict
+from typing import Any, Dict, TYPE_CHECKING
 
-from ray.rllib.core.learner.learner import Learner
 from ray.rllib.utils.typing import ModuleID, TensorType
+
+if TYPE_CHECKING:
+    from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
+    from ray.rllib.core.learner.learner import Learner
 
 
 class SelfSupervisedLossAPI(abc.ABC):
@@ -18,7 +21,7 @@ class SelfSupervisedLossAPI(abc.ABC):
     def compute_self_supervised_loss(
         self,
         *,
-        learner: Learner,
+        learner: "Learner",
         module_id: ModuleID,
         config: "AlgorithmConfig",
         batch: Dict[str, Any],
