@@ -244,7 +244,7 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
     message.mutable_actor_creation_task_spec()->set_actor_id(actor_id.Binary());
     message.mutable_actor_creation_task_spec()->set_is_detached(is_detached);
     message.mutable_actor_creation_task_spec()->set_ray_namespace("test");
-    // If the actor is non-detached, the `WaitForActorOutOfScope` function of the core
+    // If the actor is non-detached, the `WaitForActorRefDeleted` function of the core
     // worker client is called during the actor registration process. In order to simulate
     // the scenario of registration failure, we set the address to an illegal value.
     if (!is_detached) {
@@ -743,7 +743,7 @@ TEST_P(GcsClientTest, TestActorTableResubscribe) {
   auto expected_num_subscribe_one_notifications = num_subscribe_one_notifications + 1;
 
   // NOTE: In the process of actor registration, if the callback function of
-  // `WaitForActorOutOfScope` is executed first, and then the callback function of
+  // `WaitForActorRefDeleted` is executed first, and then the callback function of
   // `ActorTable().Put` is executed, the actor registration fails, we will receive one
   // notification message; otherwise, the actor registration succeeds, we will receive
   // two notification messages. So we can't assert whether the actor is registered

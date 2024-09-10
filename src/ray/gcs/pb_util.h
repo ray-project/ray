@@ -189,6 +189,15 @@ inline std::string GenErrorMessageFromDeathCause(
   }
 }
 
+inline bool IsActorRestartable(const rpc::ActorTableData &actor) {
+  RAY_CHECK_EQ(actor.state(), rpc::ActorTableData::DEAD);
+  return actor.death_cause().context_case() == ContextCase::kActorDiedErrorContext &&
+         actor.death_cause().actor_died_error_context().reason() ==
+             rpc::ActorDiedErrorContext::OUT_OF_SCOPE &&
+         ((actor.max_restarts() == -1) ||
+          (static_cast<int64_t>(actor.num_restarts()) < actor.max_restarts()));
+}
+
 inline std::string RayErrorInfoToString(const ray::rpc::RayErrorInfo &error_info) {
   std::stringstream ss;
   ss << "Error type " << error_info.error_type() << " exception string "
