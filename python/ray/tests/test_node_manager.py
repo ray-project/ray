@@ -357,6 +357,55 @@ def test_jobs_prestart_worker_once(call_ray_start, shutdown_only):
             time.sleep(1)
 
 
+def idle_worker_pids():
+    result = subprocess.check_output(
+        "ps aux | grep ray::IDLE | grep -v grep",
+        shell=True,
+        text=True,  # This ensures the output is a string, not bytes
+    )
+    pids = [int(line.split()[1]) for line in result.splitlines()]
+    return pids
+
+
+@pytest.mark.parametrize("use_gpu", [False, True])
+@pytest.mark.parametrize("workload", ["task", "actor"])
+def test_can_use_prestart_idle_workers(ray_start_cluster, use_gpu, workload):
+    """Test that actors and GPU tasks can use prestarted workers."""
+    cluster = ray_start_cluster
+    NUM_CPUS = 4
+    NUM_GPUS = 4
+    cluster.add_node(num_cpus=NUM_CPUS, num_gpus=NUM_GPUS)
+    ray.init(address=cluster.address)
+
+    wait_for_condition(lambda: len(idle_worker_pids()) == NUM_CPUS)
+
+    # These workers don't have job_id or is_actor_worker.
+    idle_pids = idle_worker_pids()
+
+    @ray.remote
+    class A:
+        def getpid(self):
+            return os.getpid()
+
+    @ray.remote
+    def f():
+        return os.getpid()
+
+    if use_gpu:
+        options = {"num_gpus": 1}
+    else:
+        options = {}
+
+    if workload == "actor":
+        actor = A.options(**options).remote()
+        handle = actor.getpid
+    else:
+        handle = f.options(**options)
+
+    pid = ray.get(handle.remote())
+    assert pid in idle_pids
+
+
 if __name__ == "__main__":
     import sys
 

@@ -980,16 +980,12 @@ void LocalTaskManager::Dispatch(
     std::function<void(void)> send_reply_callback) {
   const auto &task_spec = task.GetTaskSpecification();
 
-  worker->SetJobId(task_spec.JobId());
-  worker->SetBundleId(task_spec.PlacementGroupBundleId());
-  worker->SetOwnerAddress(task_spec.CallerAddress());
   if (task_spec.IsActorCreationTask()) {
     // The actor belongs to this worker now.
     worker->SetLifetimeAllocatedInstances(allocated_instances);
   } else {
     worker->SetAllocatedInstances(allocated_instances);
   }
-  worker->AssignTaskId(task_spec.TaskId());
   worker->SetAssignedTask(task);
 
   // Pass the contact info of the worker to use.
