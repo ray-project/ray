@@ -1836,8 +1836,6 @@ def _install_sigterm_signal():
     _origin_sigterm_handler = signal.getsignal(signal.SIGTERM)
 
     def _sigterm_handler(signum, frame):
-        global _active_ray_cluster
-
         try:
             shutdown_ray_cluster()
         except Exception:
