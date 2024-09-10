@@ -149,7 +149,7 @@ async def parse_and_validate_request(
 
 async def get_driver_jobs(
     gcs_aio_client: GcsAioClient,
-    job_or_submission_id: str = None,
+    job_or_submission_id: Optional[str] = None,
     timeout: Optional[int] = None,
 ) -> Tuple[Dict[str, JobDetails], Dict[str, DriverInfo]]:
     """Returns a tuple of dictionaries related to drivers.
