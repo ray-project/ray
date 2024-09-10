@@ -48,7 +48,17 @@ config = (
     # as remote learners.
     .offline_data(
         input_=[data_path.as_posix()],
-        input_read_method_kwargs={"override_num_blocks": max(args.num_gpus, 1)},
+        # The `kwargs` for the `input_read_method`. We override the
+        # the number of blocks to pull at once b/c our dataset is
+        # small.
+        input_read_method_kwargs={"override_num_blocks": max(args.num_gpus * 2, 2)},
+        # The `kwargs` for the `map_batches` method in which our
+        # `OfflinePreLearner` is run. 2 data workers should be run
+        # concurrently.
+        map_batches_kwargs={"concurrency": 2, "num_cpus": 2},
+        # The `kwargs` for the `iter_batches` method. Due to the small
+        # dataset we choose only a single batch to prefetch.
+        iter_batches_kwargs={"prefetch_batches": 1},
         prelearner_module_synch_period=20,
         dataset_num_iters_per_learner=1 if args.num_gpus == 0 else None,
     )
@@ -57,7 +67,7 @@ config = (
         # increase the learning rate correspondingly.
         beta=1.0,
         lr=0.0008 * max(1, args.num_gpus**0.5),
-        train_batch_size_per_learner=2000,
+        train_batch_size_per_learner=1024,
     )
 )
 

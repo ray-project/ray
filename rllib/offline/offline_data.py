@@ -1,6 +1,7 @@
 import logging
 from pathlib import Path
 import ray
+import time
 
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.core import COMPONENT_RL_MODULE
@@ -68,9 +69,12 @@ class OfflineData:
 
         try:
             # Load the dataset.
+            start_time = time.perf_counter()
             self.data = getattr(ray.data, self.data_read_method)(
                 self.path, **self.data_read_method_kwargs
-            )
+            ).materialize()
+            stop_time = time.perf_counter()
+            logger.debug(f"Time for loading dataset: {stop_time - start_time}s.")
             logger.info("Reading data from {}".format(self.path))
             logger.info(self.data.schema())
         except Exception as e:
@@ -98,29 +102,28 @@ class OfflineData:
         num_shards: int = 1,
     ):
         if (
-            not return_iterator
-            or return_iterator
-            and num_shards <= 1
-            and not self.batch_iterator
-        ):
+            not return_iterator or (return_iterator and num_shards <= 1)
+        ) and not self.batch_iterator:
             # If no iterator should be returned, or if we want to return a single
             # batch iterator, we instantiate the batch iterator once, here.
             # TODO (simon, sven): The iterator depends on the `num_samples`, i.e.abs
             # sampling later with a different batch size would need a
             # reinstantiation of the iterator.
 
-            self.batch_iterator = self.data.map_batches(
-                self.prelearner_class,
-                fn_constructor_kwargs={
-                    "config": self.config,
-                    "learner": self.learner_handles[0],
-                    "spaces": self.spaces[INPUT_ENV_SPACES],
-                },
-                batch_size=num_samples,
-                **self.map_batches_kwargs,
-            ).iter_batches(
-                batch_size=num_samples,
-                **self.iter_batches_kwargs,
+            self.batch_iterator = iter(
+                self.data.map_batches(
+                    self.prelearner_class,
+                    fn_constructor_kwargs={
+                        "config": self.config,
+                        "learner": self.learner_handles[0],
+                        "spaces": self.spaces[INPUT_ENV_SPACES],
+                    },
+                    batch_size=num_samples,
+                    **self.map_batches_kwargs,
+                ).iter_batches(
+                    batch_size=num_samples,
+                    **self.iter_batches_kwargs,
+                )
             )
 
         # Do we want to return an iterator or a single batch?
@@ -159,8 +162,43 @@ class OfflineData:
             else:
                 return self.batch_iterator
         else:
+            # try:
+            #     batches = []
+            #     while self.batch_count < 5:
+            #         start = time.perf_counter()
+            #         batch = next(self.batch_iterator)["batch"][0]
+            #         # batch = next(self.batch_iterator)
+            #         print(
+            #             f"===> got batch {self.batch_count} in "
+            #             f"{time.perf_counter() - start} s"
+            #         )
+            #         self.batch_count += 1
+            #         batches.append(batch)
+            #     return batches[0]
+            # except StopIteration:
+            #     print(
+            #        "===> reached end of iterator when getting "
+            #        f"batch {self.batch_count}"
+            #     )
+            #     raise
+            #     self.batch_iterator = None
+            #     return self.sample(
+            #         num_samples=num_samples,
+            #         return_iterator=return_iterator,
+            #         num_shards=num_shards,
+            #     )
             # Return a single batch from the iterator.
-            return next(iter(self.batch_iterator))["batch"][0]
+            try:
+                return next(self.batch_iterator)["batch"][0]
+            except StopIteration:
+                # If the batch iterator is exhausted, reinitiate a new one.
+                logger.debug("Batch iterator exhausted. Reinitiating ...")
+                self.batch_iterator = None
+                return self.sample(
+                    num_samples=num_samples,
+                    return_iterator=return_iterator,
+                    num_shards=num_shards,
+                )
 
     @property
     def default_read_method_kwargs(self):
