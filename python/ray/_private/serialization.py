@@ -71,14 +71,14 @@ def pickle_dumps(obj: Any, error_msg: str):
     """
     try:
         return pickle.dumps(obj)
-    except (TypeError, ray.exceptions.OufOfBandRefSerializationException) as e:
+    except (TypeError, ray.exceptions.OufOfBandObjectRefSerializationException) as e:
         sio = io.StringIO()
         inspect_serializability(obj, print_file=sio)
         msg = f"{error_msg}:\n{sio.getvalue()}"
         if isinstance(e, TypeError):
             raise TypeError(msg) from e
         else:
-            raise ray.exceptions.OufOfBandRefSerializationException(msg)
+            raise ray.exceptions.OufOfBandObjectRefSerializationException(msg)
 
 
 def _object_ref_deserializer(binary, call_site, owner_address, object_status):
@@ -227,7 +227,7 @@ class SerializationContext:
             self._thread_local.object_refs.add(object_ref)
         else:
             if not allow_out_of_band_serialization:
-                raise ray.exceptions.OufOfBandRefSerializationException(
+                raise ray.exceptions.OufOfBandObjectRefSerializationException(
                     f"It is not allowed to serialize ray.ObjectRef {object_ref.hex()}. "
                     "If you want to allow serialization, "
                     "set `RAY_allow_out_of_band_object_ref_serialization=1.` "

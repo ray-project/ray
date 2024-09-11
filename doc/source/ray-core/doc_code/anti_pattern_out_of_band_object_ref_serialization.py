@@ -13,8 +13,8 @@ def out_of_band_serialization_pickle():
     import pickle
 
     # object_ref is serialized from user code using a regular pickle.
-    # Ray cannot keep track of the reference, so the underlying object
-    # can be GC'ed unexpectedly which can cause unexpected hangs.
+    # Ray can't keep track of the reference, so the underlying object
+    # can be GC'ed unexpectedly, which can cause unexpected hangs.
     return pickle.dumps(obj_ref)
 
 
@@ -25,7 +25,7 @@ def out_of_band_serialization_ray_cloudpickle():
 
     # ray.cloudpickle can serialize only when
     # RAY_allow_out_of_band_object_ref_serialization=1 env var is set.
-    # However, the object_ref is pinned for the lifetime of the worker
+    # However, the object_ref is pinned for the lifetime of the worker,
     # which can cause Ray object leaks that can cause spilling.
     return cloudpickle.dumps(obj_ref)
 
@@ -38,27 +38,35 @@ except ray.exceptions.GetTimeoutError:
     print("Underlying object is unexpectedly GC'ed!\n\n")
 
 print("==== serialize object ref with ray.cloudpickle ====")
-# By default, it is not allowed to serialize ray.ObjectRef using
+# By default, it's allowed to serialize ray.ObjectRef using
 # ray.cloudpickle.
-try:
-    ray.get(out_of_band_serialization_ray_cloudpickle.remote())
-except Exception as e:
-    print(f"Exception raised from out_of_band_serialization_ray_cloudpickle {e}\n\n")
-
-print(
-    "==== serialize object ref with ray.cloudpickle with env var "
-    "RAY_allow_out_of_band_object_ref_serialization ===="
-)
-# It is allowed to use ray.cloudpickle to serialize object ref using an env var.
 ray.get(
     out_of_band_serialization_ray_cloudpickle.options(
         runtime_env={
             "env_vars": {
-                "RAY_allow_out_of_band_object_ref_serialization": "1",
+                "RAY_allow_out_of_band_object_ref_serialization": "0",
             }
         }
     ).remote()
 )
-# you can see objects are stil pinned although it is GC'ed and not used anymore.
+# you can see objects are stil pinned although it's GC'ed and not used anymore.
 print(memory_summary())
+
+print(
+    "==== serialize object ref with ray.cloudpickle with env var "
+    "RAY_allow_out_of_band_object_ref_serialization=0 for debugging ===="
+)
+try:
+    ray.get(
+        out_of_band_serialization_ray_cloudpickle.options(
+            runtime_env={
+                "env_vars": {
+                    "RAY_allow_out_of_band_object_ref_serialization": "0",
+                }
+            }
+        ).remote()
+    )
+except Exception as e:
+    print(f"Exception raised from out_of_band_serialization_ray_cloudpickle {e}\n\n")
+
 # __anti_pattern_end__

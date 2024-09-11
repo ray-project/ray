@@ -738,21 +738,28 @@ def test_usage_with_dataclass(ray_start_regular):
 def test_cannot_out_of_band_serialize_object_ref(shutdown_only, monkeypatch):
     monkeypatch.setenv("RAY_allow_out_of_band_object_ref_serialization", "0")
     ray.init()
-    ref = ray.put(1)
 
+    # Use ray.remote as a workaround because
+    # RAY_allow_out_of_band_object_ref_serialization cannot be set dynamically.
     @ray.remote
-    def f():
-        ref
+    def test():
+        ref = ray.put(1)
 
-    with pytest.raises(ray.exceptions.OufOfBandRefSerializationException):
-        ray.get(f.remote())
+        @ray.remote
+        def f():
+            ref
 
-    @ray.remote
-    def f():
-        cloudpickle.dumps(ray.put(1))
+        with pytest.raises(ray.exceptions.OufOfBandObjectRefSerializationException):
+            ray.get(f.remote())
 
-    with pytest.raises(ray.exceptions.OufOfBandRefSerializationException):
-        ray.get(f.remote())
+        @ray.remote
+        def f():
+            cloudpickle.dumps(ray.put(1))
+
+        with pytest.raises(ray.exceptions.OufOfBandObjectRefSerializationException):
+            ray.get(f.remote())
+
+    return ray.get(test.remote())
 
 
 def test_can_out_of_band_serialize_object_ref_with_env_var(shutdown_only, monkeypatch):
