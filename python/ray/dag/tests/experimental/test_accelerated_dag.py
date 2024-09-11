@@ -195,7 +195,8 @@ def test_two_returns_second(ray_start_regular):
     compiled_dag.teardown()
 
 
-def test_two_returns_one_reader(ray_start_regular):
+@pytest.mark.parametrize("single_fetch", [True, False])
+def test_two_returns_one_reader(ray_start_regular, single_fetch):
     a = Actor.remote(0)
     b = Actor.remote(0)
     with InputNode() as i:
@@ -206,13 +207,20 @@ def test_two_returns_one_reader(ray_start_regular):
 
     compiled_dag = dag.experimental_compile()
     for _ in range(3):
-        res = ray.get(compiled_dag.execute(1))
-        assert res == [1, 2]
+        refs = compiled_dag.execute(1)
+        if single_fetch:
+            for i, ref in enumerate(refs):
+                res = ray.get(ref)
+                assert res == i + 1
+        else:
+            res = ray.get(refs)
+            assert res == [1, 2]
 
     compiled_dag.teardown()
 
 
-def test_two_returns_two_readers(ray_start_regular):
+@pytest.mark.parametrize("single_fetch", [True, False])
+def test_two_returns_two_readers(ray_start_regular, single_fetch):
     a = Actor.remote(0)
     b = Actor.remote(0)
     c = Actor.remote(0)
@@ -224,13 +232,20 @@ def test_two_returns_two_readers(ray_start_regular):
 
     compiled_dag = dag.experimental_compile()
     for _ in range(3):
-        res = ray.get(compiled_dag.execute(1))
-        assert res == [1, 2]
+        refs = compiled_dag.execute(1)
+        if single_fetch:
+            for i, ref in enumerate(refs):
+                res = ray.get(ref)
+                assert res == i + 1
+        else:
+            res = ray.get(refs)
+            assert res == [1, 2]
 
     compiled_dag.teardown()
 
 
-def test_inc_two_returns(ray_start_regular):
+@pytest.mark.parametrize("single_fetch", [True, False])
+def test_inc_two_returns(ray_start_regular, single_fetch):
     a = Actor.remote(0)
     with InputNode() as i:
         o1, o2 = a.inc_and_return_two.bind(i)
@@ -238,8 +253,14 @@ def test_inc_two_returns(ray_start_regular):
 
     compiled_dag = dag.experimental_compile()
     for i in range(3):
-        res = ray.get(compiled_dag.execute(1))
-        assert res == [i + 1, i + 2]
+        refs = compiled_dag.execute(1)
+        if single_fetch:
+            for j, ref in enumerate(refs):
+                res = ray.get(ref)
+                assert res == i + j + 1
+        else:
+            res = ray.get(refs)
+            assert res == [i + 1, i + 2]
 
     compiled_dag.teardown()
 
@@ -254,6 +275,29 @@ def test_two_as_one_return(ray_start_regular):
     for _ in range(3):
         res = ray.get(compiled_dag.execute(1))
         assert res == (1, 2)
+
+    compiled_dag.teardown()
+
+
+def test_multi_output_get_exception(ray_start_regular):
+    a = Actor.remote(0)
+    b = Actor.remote(0)
+    with InputNode() as i:
+        o1, o2 = a.return_two.bind(i)
+        o3 = b.echo.bind(o1)
+        o4 = b.echo.bind(o2)
+        dag = MultiOutputNode([o3, o4])
+
+    compiled_dag = dag.experimental_compile()
+    refs = compiled_dag.execute(1)
+    refs.append(None)
+
+    with pytest.raises(
+        ValueError,
+        match="Invalid type of object refs. 'object_refs' must be a list of "
+        "CompiledDAGRefs if there is any CompiledDAGRef within it.",
+    ):
+        ray.get(refs)
 
     compiled_dag.teardown()
 
@@ -2151,7 +2195,7 @@ def test_buffered_inputs(shutdown_only, temporary_change_timeout):
         for i, ref in enumerate(output_refs):
             assert await ref == i
 
-        # Test there are more items than max bufcfered inputs.
+        # Test there are more items than max buffered inputs.
         output_refs = []
         for i in range(MAX_INFLIGHT_EXECUTIONS):
             output_refs.append(await async_dag.execute_async(i))
@@ -2282,7 +2326,8 @@ def test_intra_process_channel(shutdown_only):
     assert ray.get(ref) == 3
 
 
-def test_multiple_readers_multiple_writers(shutdown_only):
+@pytest.mark.parametrize("single_fetch", [True, False])
+def test_multiple_readers_multiple_writers(shutdown_only, single_fetch):
     """
     Replica -> Worker1 -> Replica
             |          |
@@ -2301,8 +2346,10 @@ def test_multiple_readers_multiple_writers(shutdown_only):
             self.compiled_dag = dag.experimental_compile()
 
         def call(self, value):
-            ref = self.compiled_dag.execute(value)
-            return ray.get(ref)
+            if single_fetch:
+                return [ray.get(ref) for ref in self.compiled_dag.execute(value)]
+            else:
+                return ray.get(self.compiled_dag.execute(value))
 
     replica = Replica.remote()
     ref = replica.call.remote(1)
@@ -2338,7 +2385,8 @@ def test_multiple_readers_single_writer(shutdown_only):
     assert ray.get(ref) == 4
 
 
-def test_single_reader_multiple_writers(shutdown_only):
+@pytest.mark.parametrize("single_fetch", [True, False])
+def test_single_reader_multiple_writers(shutdown_only, single_fetch):
     """
     Replica -> Worker1 -> Worker1 -> Replica
                         |          |
@@ -2359,7 +2407,10 @@ def test_single_reader_multiple_writers(shutdown_only):
             self.compiled_dag = dag.experimental_compile()
 
         def call(self, value):
-            return ray.get(self.compiled_dag.execute(value))
+            if single_fetch:
+                return [ray.get(ref) for ref in self.compiled_dag.execute(value)]
+            else:
+                return ray.get(self.compiled_dag.execute(value))
 
     replica = Replica.remote()
     ref = replica.call.remote(1)
