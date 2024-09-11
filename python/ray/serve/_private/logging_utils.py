@@ -353,8 +353,8 @@ def configure_component_logger(
     # Remove unwanted attributes from the log record.
     file_handler.addFilter(ServeLogAttributeRemovalFilter())
 
-    # Redirect print, stdout, and stderr to Serve logger.
-    if not RAY_SERVE_LOG_TO_STDERR:
+    # Redirect print, stdout, and stderr to Serve logger, only when it's on the replica.
+    if not RAY_SERVE_LOG_TO_STDERR and component_type == ServeComponentType.REPLICA:
         builtins.print = redirected_print
         sys.stdout = StreamToLogger(logger, logging.INFO, sys.stdout)
         sys.stderr = StreamToLogger(logger, logging.INFO, sys.stderr)
