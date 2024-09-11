@@ -25,7 +25,7 @@ QF_TARGET_NEXT_PREDS = "qf_target_next_preds"
 QF_TARGET_NEXT_PROBS = "qf_target_next_probs"
 
 
-@DeveloperAPI(stability="alpha")
+@ExperimentalAPI
 class DQNRainbowRLModule(RLModule, InferenceOnlyAPI, TargetNetworkAPI):
     @override(RLModule)
     def setup(self):
@@ -56,7 +56,7 @@ class DQNRainbowRLModule(RLModule, InferenceOnlyAPI, TargetNetworkAPI):
         # the same encoder is used.
         # Note further, by using the base encoder the correct encoder
         # is chosen for the observation space used.
-        self.encoder = self.catalog.build_encoder(framework=self.framework)
+        self.encoder = catalog.build_encoder(framework=self.framework)
 
         # Build heads.
         self.af = self.catalog.build_af_head(framework=self.framework)
