@@ -82,8 +82,11 @@ Status JobInfoAccessor::AsyncSubscribeAll(
         done(status);
       }
     };
-    RAY_CHECK_OK(
-        AsyncGetAll(/*job_or_submission_id=*/std::nullopt, callback, /*timeout_ms=*/-1));
+    RAY_CHECK_OK(AsyncGetAll(/*job_or_submission_id=*/std::nullopt,
+                             /*skip_submission_job_info_field=*/true,
+                             /*skip_is_running_tasks_field=*/true,
+                             callback,
+                             /*timeout_ms=*/-1));
   };
   subscribe_operation_ = [this, subscribe](const StatusCallback &done) {
     return client_impl_->GetGcsSubscriber().SubscribeAllJobs(subscribe, done);
@@ -108,11 +111,15 @@ void JobInfoAccessor::AsyncResubscribe() {
 
 Status JobInfoAccessor::AsyncGetAll(
     const std::optional<std::string> &job_or_submission_id,
+    bool skip_submission_job_info_field,
+    bool skip_is_running_tasks_field,
     const MultiItemCallback<rpc::JobTableData> &callback,
     int64_t timeout_ms) {
   RAY_LOG(DEBUG) << "Getting all job info.";
   RAY_CHECK(callback);
   rpc::GetAllJobInfoRequest request;
+  request.set_skip_submission_job_info_field(skip_submission_job_info_field);
+  request.set_skip_is_running_tasks_field(skip_is_running_tasks_field);
   if (job_or_submission_id.has_value()) {
     request.set_job_or_submission_id(job_or_submission_id.value());
   }
@@ -127,9 +134,13 @@ Status JobInfoAccessor::AsyncGetAll(
 }
 
 Status JobInfoAccessor::GetAll(const std::optional<std::string> &job_or_submission_id,
+                               bool skip_submission_job_info_field,
+                               bool skip_is_running_tasks_field,
                                std::vector<rpc::JobTableData> &job_data_list,
                                int64_t timeout_ms) {
   rpc::GetAllJobInfoRequest request;
+  request.set_skip_submission_job_info_field(skip_submission_job_info_field);
+  request.set_skip_is_running_tasks_field(skip_is_running_tasks_field);
   if (job_or_submission_id.has_value()) {
     request.set_job_or_submission_id(job_or_submission_id.value());
   }
