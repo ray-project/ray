@@ -38,16 +38,6 @@ namespace core {
 
 namespace worker {
 
-std::string GenerateLogDir() {
-  // Generate a random event directory in the current working
-  // directory (tmp directory created by bazel)
-  std::string log_dir_generate = std::string(5, ' ');
-  FillRandom(&log_dir_generate);
-  std::string log_dir = "event" + StringToHex(log_dir_generate);
-  std::filesystem::path log_dir_path = std::filesystem::current_path() / log_dir;
-  return log_dir_path.string();
-}
-
 class TaskEventBufferTest : public ::testing::Test {
  public:
   TaskEventBufferTest() {
@@ -68,6 +58,7 @@ class TaskEventBufferTest : public ::testing::Test {
 
   virtual void TearDown() {
     if (task_event_buffer_) task_event_buffer_->Stop();
+    std::filesystem::remove_all(log_dir_.c_str());
   };
 
   std::vector<TaskID> GenTaskIDs(size_t num_tasks) {
@@ -138,7 +129,7 @@ class TaskEventBufferTest : public ::testing::Test {
   }
 
   std::unique_ptr<TaskEventBufferImpl> task_event_buffer_ = nullptr;
-  std::string log_dir_;
+  std::string log_dir_ = "event_123";
 };
 
 class TaskEventBufferTestManualStart : public TaskEventBufferTest {
@@ -204,20 +195,6 @@ class TaskEventTestWriteExport : public TaskEventBufferTest {
   "enable_export_api_write": true
 }
   )");
-    log_dir_ = GenerateLogDir();
-  }
-
-  void TearDown() override {
-    TaskEventBufferTest::TearDown();
-    std::error_code ec;
-    std::filesystem::remove_all(log_dir_.c_str(), ec);
-    if (ec) {
-      // log_dir_ will be cleaned up by bazel if it isn't deleted
-      // in this teardown step.
-      std::cerr << "Error removing log_dir_ in TaskEventTestWriteExport teardown: "
-                << ec.message() << '\n';
-      std::cerr << "Error code: " << ec.value() << '\n';
-    }
   }
 };
 
