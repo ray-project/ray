@@ -12,8 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "ray/core_worker/task_event_buffer.h"
-
 #include <google/protobuf/util/message_differencer.h>
 
 #include <filesystem>
@@ -27,6 +25,7 @@
 #include "mock/ray/gcs/gcs_client/gcs_client.h"
 #include "ray/common/task/task_spec.h"
 #include "ray/common/test_util.h"
+#include "ray/core_worker/task_event_buffer.h"
 #include "ray/util/event.h"
 
 using ::testing::_;
@@ -86,11 +85,25 @@ class TaskEventTestWriteExport : public ::testing::Test {
                                              running_ts,
                                              nullptr,
                                              state_update);
-}
+  }
 
   std::unique_ptr<TaskEventBufferImpl> task_event_buffer_ = nullptr;
   std::string log_dir_ = "event_123";
 };
+
+void ReadContentFromFile(std::vector<std::string> &vc,
+                         std::string log_file,
+                         std::string filter = "") {
+  std::string line;
+  std::ifstream read_file;
+  read_file.open(log_file, std::ios::binary);
+  while (std::getline(read_file, line)) {
+    if (filter.empty() || line.find(filter) != std::string::npos) {
+      vc.push_back(line);
+    }
+  }
+  read_file.close();
+}
 
 TEST_F(TaskEventTestWriteExport, TestWriteTaskExportEvents) {
   /*
@@ -155,7 +168,7 @@ TEST_F(TaskEventTestWriteExport, TestWriteTaskExportEvents) {
   std::vector<std::string> vc;
   for (int i = 0; i * batch_size < max_export_events_on_buffer; i++) {
     task_event_buffer_->FlushEvents(true);
-    Mocker::ReadContentFromFile(
+    ReadContentFromFile(
         vc, log_dir_ + "/events/event_EXPORT_TASK_" + std::to_string(getpid()) + ".log");
     EXPECT_EQ((int)vc.size(), (i + 1) * batch_size);
     vc.clear();
@@ -164,7 +177,7 @@ TEST_F(TaskEventTestWriteExport, TestWriteTaskExportEvents) {
   // Verify that all max_export_events_on_buffer events are written to file even though
   // max_export_events_on_buffer > task_events_max_num_status_events_buffer_on_worker
   vc.clear();
-  Mocker::ReadContentFromFile(
+  ReadContentFromFile(
       vc, log_dir_ + "/events/event_EXPORT_TASK_" + std::to_string(getpid()) + ".log");
   EXPECT_EQ((int)vc.size(), max_export_events_on_buffer);
   for (size_t i = 0; i < max_export_events_on_buffer; i++) {
