@@ -1357,6 +1357,13 @@ void ReferenceCounter::UpdateObjectPendingCreationInternal(const ObjectID &objec
   auto it = object_id_refs_.find(object_id);
   bool push = false;
   if (it != object_id_refs_.end()) {
+    if (it->second.mark_object_failed) {
+      if (pending_creation) {
+        RAY_LOG(WARNING) << "Object[" << object_id << "] has already been "
+                         << "marked as failed and cannot continue pending creation";
+      }
+      pending_creation = false;
+    }
     push = (it->second.pending_creation != pending_creation);
     it->second.pending_creation = pending_creation;
   }
@@ -1516,6 +1523,16 @@ void ReferenceCounter::UpdateObjectPendingCreation(const ObjectID &object_id,
                                                    bool pending_creation) {
   absl::MutexLock lock(&mutex_);
   UpdateObjectPendingCreationInternal(object_id, pending_creation);
+}
+
+void ReferenceCounter::MarkObjectFailed(const ObjectID &object_id) {
+  absl::MutexLock lock(&mutex_);
+  auto it = object_id_refs_.find(object_id);
+  if (it == object_id_refs_.end()) {
+    return;
+  }
+  it->second.mark_object_failed = true;
+  UpdateObjectPendingCreationInternal(object_id, /*pending_creation=*/false);
 }
 
 bool ReferenceCounter::IsObjectPendingCreation(const ObjectID &object_id) const {

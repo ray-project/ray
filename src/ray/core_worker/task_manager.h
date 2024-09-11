@@ -78,7 +78,7 @@ class TaskResubmissionInterface {
 
 using TaskStatusCounter = CounterMap<std::tuple<std::string, rpc::TaskStatus, bool>>;
 using PutInLocalPlasmaCallback =
-    std::function<void(const RayObject &object, const ObjectID &object_id)>;
+    std::function<void(const RayObject &object, const ObjectID &object_id, const bool mark_object_failed)>;
 using RetryTaskCallback = std::function<void(
     TaskSpecification &spec, bool object_recovery, bool update_seqno, uint32_t delay_ms)>;
 using ReconstructObjectCallback = std::function<void(const ObjectID &object_id)>;

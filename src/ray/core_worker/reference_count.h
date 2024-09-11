@@ -564,6 +564,8 @@ class ReferenceCounter : public ReferenceCounterInterface,
   /// Update whether the object is pending creation.
   void UpdateObjectPendingCreation(const ObjectID &object_id, bool pending_creation);
 
+  void MarkObjectFailed(const ObjectID &object_id);
+
   /// Whether the object is pending creation (the task that creates it is
   /// scheduled/executing).
   bool IsObjectPendingCreation(const ObjectID &object_id) const;
@@ -811,6 +813,8 @@ class ReferenceCounter : public ReferenceCounterInterface,
 
     /// Whether or not this object was spilled.
     bool did_spill = false;
+
+    bool mark_object_failed = false;
   };
 
   using ReferenceTable = absl::flat_hash_map<ObjectID, Reference>;
