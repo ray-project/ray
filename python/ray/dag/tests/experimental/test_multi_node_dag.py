@@ -5,10 +5,8 @@ import sys
 import time
 import pytest
 from ray.dag import InputNode, MultiOutputNode
-import ray.remote_function
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 from ray.tests.conftest import *  # noqa
-from ray.tests.conftest import wait_for_condition
 
 if sys.platform != "linux" and sys.platform != "darwin":
     pytest.skip("Skipping, requires Linux or Mac.", allow_module_level=True)
@@ -71,79 +69,100 @@ def test_readers_on_different_nodes(ray_start_cluster):
     cluster = ray_start_cluster
     # This node is for the driver (including the CompiledDAG.DAGDriverProxyActor) and
     # one of the readers.
-    cluster.add_node(num_cpus=1)
+    first_node_handle = cluster.add_node(num_cpus=2)
+    # This node is for the other reader.
+    second_node_handle = cluster.add_node(num_cpus=1)
     ray.init(address=cluster.address)
-    # 2 more nodes for other readers.
-    cluster.add_node(num_cpus=1)
-    cluster.add_node(num_cpus=1)
     cluster.wait_for_nodes()
-    # Wait until nodes actually start, otherwise the code below will fail.
-    wait_for_condition(lambda: len(ray.nodes()) == 3)
 
-    a = Actor.options(num_cpus=1).remote(0)
-    b = Actor.options(num_cpus=1).remote(0)
-    c = Actor.options(num_cpus=1).remote(0)
-    actors = [a, b, c]
+    nodes = [first_node_handle.node_id, second_node_handle.node_id]
+    # We want to check that the readers are on different nodes. Thus, we convert `nodes`
+    # to a set and then back to a list to remove duplicates. Then we check that the
+    # length of `nodes` is 2.
+    nodes = list(set(nodes))
+    assert len(nodes) == 2
+
+    def create_actor(node):
+        return Actor.options(
+            scheduling_strategy=NodeAffinitySchedulingStrategy(node, soft=False)
+        ).remote(0)
+
+    a = create_actor(nodes[0])
+    b = create_actor(nodes[1])
+    actors = [a, b]
 
     def _get_node_id(self) -> "ray.NodeID":
         return ray.get_runtime_context().get_node_id()
 
-    node_ids = ray.get([act.__ray_call__.remote(_get_node_id) for act in actors])
-    assert len(set(node_ids)) == 3
+    nodes_check = ray.get([act.__ray_call__.remote(_get_node_id) for act in actors])
+    a_node = nodes_check[0]
+    b_node = nodes_check[1]
+    assert a_node != b_node
 
     with InputNode() as inp:
         x = a.inc.bind(inp)
         y = b.inc.bind(inp)
-        z = c.inc.bind(inp)
-        dag = MultiOutputNode([x, y, z])
+        dag = MultiOutputNode([x, y])
 
-    adag = dag.experimental_compile()
-
-    for i in range(1, 10):
-        assert ray.get(adag.execute(1)) == [i, i, i]
-
-    adag.teardown()
+    with pytest.raises(
+        ValueError,
+        match="All reader actors must be on the same node.*",
+    ):
+        dag.experimental_compile()
 
 
 def test_bunch_readers_on_different_nodes(ray_start_cluster):
     cluster = ray_start_cluster
-    ACTORS_PER_NODE = 2
-    NUM_REMOTE_NODES = 2
-    # driver node
-    cluster.add_node(num_cpus=ACTORS_PER_NODE)
+    # This node is for the driver (including the CompiledDAG.DAGDriverProxyActor) and
+    # two of the readers.
+    first_node_handle = cluster.add_node(num_cpus=3)
+    # This node is for the other two readers.
+    second_node_handle = cluster.add_node(num_cpus=2)
     ray.init(address=cluster.address)
-    # additional nodes for multi readers in multi nodes
-    for _ in range(NUM_REMOTE_NODES):
-        cluster.add_node(num_cpus=ACTORS_PER_NODE)
     cluster.wait_for_nodes()
 
-    wait_for_condition(lambda: len(ray.nodes()) == NUM_REMOTE_NODES + 1)
+    nodes = [first_node_handle.node_id, second_node_handle.node_id]
+    # We want to check that the readers are on different nodes. Thus, we convert `nodes`
+    # to a set and then back to a list to remove duplicates. Then we check that the
+    # length of `nodes` is 2.
+    nodes = list(set(nodes))
+    assert len(nodes) == 2
 
-    actors = [
-        Actor.options(num_cpus=1).remote(0)
-        for _ in range(ACTORS_PER_NODE * (NUM_REMOTE_NODES + 1))
-    ]
+    def create_actor(node):
+        return Actor.options(
+            scheduling_strategy=NodeAffinitySchedulingStrategy(node, soft=False)
+        ).remote(0)
+
+    a = create_actor(nodes[0])
+    b = create_actor(nodes[0])
+    c = create_actor(nodes[1])
+    d = create_actor(nodes[1])
+    actors = [a, b, c, d]
 
     def _get_node_id(self) -> "ray.NodeID":
         return ray.get_runtime_context().get_node_id()
 
-    node_ids = ray.get([act.__ray_call__.remote(_get_node_id) for act in actors])
-    assert len(set(node_ids)) == NUM_REMOTE_NODES + 1
+    nodes_check = ray.get([act.__ray_call__.remote(_get_node_id) for act in actors])
+    a_node = nodes_check[0]
+    b_node = nodes_check[1]
+    c_node = nodes_check[2]
+    d_node = nodes_check[3]
+    assert a_node == b_node
+    assert b_node != c_node
+    assert c_node == d_node
 
     with InputNode() as inp:
-        outputs = []
-        for actor in actors:
-            outputs.append(actor.inc.bind(inp))
-        dag = MultiOutputNode(outputs)
+        w = a.inc.bind(inp)
+        x = b.inc.bind(inp)
+        y = c.inc.bind(inp)
+        z = d.inc.bind(inp)
+        dag = MultiOutputNode([w, x, y, z])
 
-    adag = dag.experimental_compile()
-
-    for i in range(1, 10):
-        assert ray.get(adag.execute(1)) == [
-            i for _ in range(ACTORS_PER_NODE * (NUM_REMOTE_NODES + 1))
-        ]
-
-    adag.teardown()
+    with pytest.raises(
+        ValueError,
+        match="All reader actors must be on the same node.*",
+    ):
+        dag.experimental_compile()
 
 
 def test_pp(ray_start_cluster):
@@ -228,68 +247,19 @@ def test_payload_large(ray_start_cluster, monkeypatch):
 
     compiled_dag = dag.experimental_compile()
 
+    # Ray sets the gRPC payload max size to 512 MiB. We choose a size in this test that
+    # is a bit larger.
     size = GRPC_MAX_SIZE + (1024 * 1024 * 2)
     val = b"x" * size
 
     for i in range(3):
+        print(f"{i} iteration")
         ref = compiled_dag.execute(val)
         result = ray.get(ref)
         assert result == val
 
     # Note: must teardown before starting a new Ray session, otherwise you'll get
     # a segfault from the dangling monitor thread upon the new Ray init.
-    compiled_dag.teardown()
-
-
-@pytest.mark.parametrize("num_actors", [1, 4])
-@pytest.mark.parametrize("num_nodes", [1, 4])
-def test_multi_node_multi_reader_large_payload(
-    ray_start_cluster, num_actors, num_nodes, monkeypatch
-):
-    # Set max grpc size to 5mb.
-    GRPC_MAX_SIZE = 1024 * 1024 * 5
-    monkeypatch.setenv("RAY_max_grpc_message_size", str(GRPC_MAX_SIZE))
-    cluster = ray_start_cluster
-    ACTORS_PER_NODE = num_actors
-    NUM_REMOTE_NODES = num_nodes
-    cluster.add_node(num_cpus=ACTORS_PER_NODE)
-    ray.init(address=cluster.address)
-    # This node is for the other two readers.
-    for _ in range(NUM_REMOTE_NODES):
-        cluster.add_node(num_cpus=ACTORS_PER_NODE)
-    cluster.wait_for_nodes()
-
-    wait_for_condition(lambda: len(ray.nodes()) == NUM_REMOTE_NODES + 1)
-
-    actors = [
-        Actor.options(num_cpus=1).remote(0)
-        for _ in range(ACTORS_PER_NODE * (NUM_REMOTE_NODES + 1))
-    ]
-
-    def _get_node_id(self) -> "ray.NodeID":
-        return ray.get_runtime_context().get_node_id()
-
-    node_ids = ray.get([act.__ray_call__.remote(_get_node_id) for act in actors])
-    assert len(set(node_ids)) == NUM_REMOTE_NODES + 1
-
-    with InputNode() as inp:
-        outputs = []
-        for actor in actors:
-            outputs.append(actor.echo.bind(inp))
-        dag = MultiOutputNode(outputs)
-
-    compiled_dag = dag.experimental_compile()
-
-    # Set the object size a little bigger than the gRPC size so that
-    # it triggers chunking and resizing.
-    size = GRPC_MAX_SIZE + (1024 * 1024 * 2)
-    val = b"x" * size
-
-    for _ in range(3):
-        ref = compiled_dag.execute(val)
-        result = ray.get(ref)
-        assert result == [val for _ in range(ACTORS_PER_NODE * (NUM_REMOTE_NODES + 1))]
-
     compiled_dag.teardown()
 
 

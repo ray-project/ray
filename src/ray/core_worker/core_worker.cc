@@ -1488,54 +1488,59 @@ Status CoreWorker::ExperimentalChannelReadRelease(
   return experimental_mutable_object_provider_->ReadRelease(object_ids[0]);
 }
 
-Status CoreWorker::ExperimentalRegisterMutableObjectWriter(
-    const ObjectID &writer_object_id, const std::vector<NodeID> &remote_reader_node_ids) {
-  experimental_mutable_object_provider_->RegisterWriterChannel(writer_object_id,
-                                                               remote_reader_node_ids);
+Status CoreWorker::ExperimentalRegisterMutableObjectWriter(const ObjectID &object_id,
+                                                           const NodeID *node_id) {
+  experimental_mutable_object_provider_->RegisterWriterChannel(object_id, node_id);
   return Status::OK();
 }
 
 Status CoreWorker::ExperimentalRegisterMutableObjectReaderRemote(
     const ObjectID &writer_object_id,
-    const std::vector<ray::experimental::ReaderRefInfo> &remote_reader_ref_info) {
-  if (remote_reader_ref_info.size() == 0) {
-    return Status::OK();
+    const ActorID &reader_actor,
+    int64_t num_readers,
+    const ObjectID &reader_object_id) {
+  rpc::Address addr;
+  {
+    std::promise<void> promise;
+    RAY_CHECK(gcs_client_->Actors()
+                  .AsyncGet(reader_actor,
+                            [&addr, &promise](
+                                Status status,
+                                const std::optional<rpc::ActorTableData> &result) {
+                              RAY_CHECK(result);
+                              if (result) {
+                                addr.set_ip_address(result->address().ip_address());
+                                addr.set_port(result->address().port());
+                                addr.set_worker_id(result->address().worker_id());
+                              }
+                              promise.set_value();
+                            })
+                  .ok());
+    promise.get_future().wait();
   }
 
-  std::shared_ptr<size_t> num_replied = std::make_shared<size_t>(0);
-  size_t num_requests = remote_reader_ref_info.size();
-  std::promise<void> promise;
-  for (const auto &reader_ref_info : remote_reader_ref_info) {
-    const auto &owner_reader_actor_id = reader_ref_info.owner_reader_actor_id;
-    const auto &reader_object_id = reader_ref_info.reader_ref_id;
-    const auto &num_reader = reader_ref_info.num_reader_actors;
-    const auto &addr = actor_task_submitter_->GetActorAddress(owner_reader_actor_id);
-    // It can happen if an actor is not created yet. We assume the API is called only when
-    // an actor is alive, which is true now.
-    RAY_CHECK(addr.has_value());
-
+  // TODO(jhumphri): Support case where there are readers on multiple different nodes.
+  // Currently, this code only supports the case where all readers are on a single node.
+  {
     std::shared_ptr<rpc::CoreWorkerClientInterface> conn =
-        core_worker_client_pool_->GetOrConnect(*addr);
+        core_worker_client_pool_->GetOrConnect(addr);
 
     rpc::RegisterMutableObjectReaderRequest req;
     req.set_writer_object_id(writer_object_id.Binary());
-    req.set_num_readers(num_reader);
+    req.set_num_readers(num_readers);
     req.set_reader_object_id(reader_object_id.Binary());
     rpc::RegisterMutableObjectReaderReply reply;
 
-    // TODO(sang): Add timeout.
+    std::promise<void> promise;
     conn->RegisterMutableObjectReader(
         req,
-        [&promise, num_replied, num_requests, addr](
-            const Status &status, const rpc::RegisterMutableObjectReaderReply &reply) {
+        [&promise](const Status &status,
+                   const rpc::RegisterMutableObjectReaderReply &reply) {
           RAY_CHECK(status.ok());
-          *num_replied += 1;
-          if (*num_replied == num_requests) {
-            promise.set_value();
-          }
+          promise.set_value();
         });
+    promise.get_future().wait();
   }
-  promise.get_future().wait();
 
   return Status::OK();
 }
