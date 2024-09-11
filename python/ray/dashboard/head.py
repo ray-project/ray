@@ -1,5 +1,6 @@
 import asyncio
 import logging
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Optional, Set
 
@@ -56,6 +57,7 @@ class DashboardHead:
         http_port: int,
         http_port_retries: int,
         gcs_address: str,
+        cluster_id_hex: str,
         node_ip_address: str,
         grpc_port: int,
         log_dir: str,
@@ -96,9 +98,17 @@ class DashboardHead:
         self._modules_to_load = modules_to_load
         self._modules_loaded = False
 
+        # A TPE holding background, compute-heavy, latency-tolerant jobs, typically
+        # state updates.
+        self._thread_pool_executor = ThreadPoolExecutor(
+            max_workers=dashboard_consts.RAY_DASHBOARD_THREAD_POOL_MAX_WORKERS,
+            thread_name_prefix="dashboard_head_tpe",
+        )
+
         self.gcs_address = None
         assert gcs_address is not None
         self.gcs_address = gcs_address
+        self.cluster_id_hex = cluster_id_hex
         self.log_dir = log_dir
         self.temp_dir = temp_dir
         self.session_dir = session_dir
@@ -228,8 +238,12 @@ class DashboardHead:
         gcs_address = self.gcs_address
 
         # Dashboard will handle connection failure automatically
-        self.gcs_client = GcsClient(address=gcs_address, nums_reconnect_retry=0)
-        self.gcs_aio_client = GcsAioClient(address=gcs_address, nums_reconnect_retry=0)
+        self.gcs_client = GcsClient(
+            address=gcs_address, nums_reconnect_retry=0, cluster_id=self.cluster_id_hex
+        )
+        self.gcs_aio_client = GcsAioClient(
+            address=gcs_address, nums_reconnect_retry=0, cluster_id=self.cluster_id_hex
+        )
         internal_kv._initialize_internal_kv(self.gcs_client)
 
         if self.minimal:
@@ -312,7 +326,7 @@ class DashboardHead:
             self._gcs_check_alive(),
             _async_notify(),
             DataOrganizer.purge(),
-            DataOrganizer.organize(),
+            DataOrganizer.organize(self._thread_pool_executor),
         ]
         for m in modules:
             concurrent_tasks.append(m.run(self.server))

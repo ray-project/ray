@@ -307,8 +307,8 @@ class StreamingExecutor(Executor, threading.Thread):
         i = 0
         while op is not None:
             i += 1
-            if i > PROGRESS_BAR_UPDATE_INTERVAL:
-                break
+            if i % PROGRESS_BAR_UPDATE_INTERVAL == 0:
+                self._refresh_progress_bars(topology)
             topology[op].dispatch_next_task()
             self._resource_manager.update_usages()
             op = select_operator_to_run(
@@ -320,13 +320,7 @@ class StreamingExecutor(Executor, threading.Thread):
             )
 
         update_operator_states(topology)
-
-        # Update the progress bar to reflect scheduling decisions.
-        for op_state in topology.values():
-            op_state.refresh_progress_bar(self._resource_manager)
-        # Refresh the global progress bar to update elapsed time progress.
-        if self._global_info:
-            self._global_info.refresh()
+        self._refresh_progress_bars(topology)
 
         self._update_stats_metrics(state="RUNNING")
         if time.time() - self._last_debug_log_time >= DEBUG_LOG_INTERVAL_SECONDS:
@@ -347,19 +341,31 @@ class StreamingExecutor(Executor, threading.Thread):
         # Keep going until all operators run to completion.
         return not all(op.completed() for op in topology)
 
+    def _refresh_progress_bars(self, topology: Topology):
+        # Update the progress bar to reflect scheduling decisions.
+        for op_state in topology.values():
+            op_state.refresh_progress_bar(self._resource_manager)
+        # Refresh the global progress bar to update elapsed time progress.
+        if self._global_info:
+            self._global_info.refresh()
+
     def _consumer_idling(self) -> bool:
         """Returns whether the user thread is blocked on topology execution."""
         return len(self._output_node.outqueue) == 0
 
     def _report_current_usage(self) -> None:
-        cur_usage = self._resource_manager.get_global_usage()
+        running_usage = self._resource_manager.get_global_running_usage()
+        pending_usage = self._resource_manager.get_global_pending_usage()
         limits = self._resource_manager.get_global_limits()
         resources_status = (
-            "Running: "
-            f"{cur_usage.cpu:.4g}/{limits.cpu:.4g} CPU, "
-            f"{cur_usage.gpu:.4g}/{limits.gpu:.4g} GPU, "
-            f"{cur_usage.object_store_memory_str()}/"
-            f"{limits.object_store_memory_str()} object_store_memory"
+            "Running. Resources: "
+            f"{running_usage.cpu:.4g}/{limits.cpu:.4g} CPU, "
+            f"{running_usage.gpu:.4g}/{limits.gpu:.4g} GPU, "
+            f"{running_usage.object_store_memory_str()}/"
+            f"{limits.object_store_memory_str()} object_store_memory "
+            "(pending: "
+            f"{pending_usage.cpu:.4g} CPU, "
+            f"{pending_usage.gpu:.4g} GPU)"
         )
         if self._global_info:
             self._global_info.set_description(resources_status)

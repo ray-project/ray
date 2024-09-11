@@ -159,7 +159,7 @@ class StateDataSourceClient:
         self._runtime_env_agent_addresses = {}  # {node_id -> url}
         self._log_agent_stub = {}
         self._job_client = JobInfoStorageClient(gcs_aio_client)
-        self._id_id_map = IdToIpMap()
+        self._id_ip_map = IdToIpMap()
         self._gcs_aio_client = gcs_aio_client
         self._client_session = aiohttp.ClientSession()
 
@@ -200,12 +200,12 @@ class StateDataSourceClient:
         self._runtime_env_agent_addresses[
             node_id
         ] = f"http://{address}:{runtime_env_agent_port}"
-        self._id_id_map.put(node_id, address)
+        self._id_ip_map.put(node_id, address)
 
     def unregister_raylet_client(self, node_id: str):
         self._raylet_stubs.pop(node_id)
         self._runtime_env_agent_addresses.pop(node_id)
-        self._id_id_map.pop(node_id)
+        self._id_ip_map.pop(node_id)
 
     def register_agent_client(self, node_id, address: str, port: int):
         options = _STATE_MANAGER_GRPC_OPTIONS
@@ -213,11 +213,11 @@ class StateDataSourceClient:
             f"{address}:{port}", options=options, asynchronous=True
         )
         self._log_agent_stub[node_id] = LogServiceStub(channel)
-        self._id_id_map.put(node_id, address)
+        self._id_ip_map.put(node_id, address)
 
     def unregister_agent_client(self, node_id: str):
         self._log_agent_stub.pop(node_id)
-        self._id_id_map.pop(node_id)
+        self._id_ip_map.pop(node_id)
 
     def get_all_registered_raylet_ids(self) -> List[str]:
         return self._raylet_stubs.keys()
@@ -243,7 +243,7 @@ class StateDataSourceClient:
         """
         if not ip:
             return None
-        return self._id_id_map.get_node_id(ip)
+        return self._id_ip_map.get_node_id(ip)
 
     @handle_grpc_network_errors
     async def get_all_actor_info(

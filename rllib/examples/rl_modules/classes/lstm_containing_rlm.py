@@ -13,7 +13,7 @@ from ray.rllib.utils.typing import TensorType
 torch, nn = try_import_torch()
 
 
-class LSTMContainingRLModule(TorchRLModule):
+class LSTMContainingRLModule(TorchRLModule, ValueFunctionAPI):
     """An example TorchRLModule that contains an LSTM layer.
 
     .. testcode::

@@ -57,6 +57,7 @@ parser = add_rllib_example_script_args(
     default_reward=300.0,
     default_timesteps=2000000,
 )
+parser.set_defaults(enable_new_api_stack=True)
 
 
 if __name__ == "__main__":

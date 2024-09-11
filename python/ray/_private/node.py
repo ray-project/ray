@@ -1122,6 +1122,7 @@ class Node:
             raise_on_failure,
             self._ray_params.dashboard_host,
             self.gcs_address,
+            self.cluster_id.hex(),
             self._node_ip_address,
             self._temp_dir,
             self._logs_dir,

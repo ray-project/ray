@@ -11,7 +11,7 @@ from PIL import Image
 import ray
 from ray.data._internal.datasource.image_datasource import (
     ImageDatasource,
-    _ImageFileMetadataProvider,
+    ImageFileMetadataProvider,
 )
 from ray.data.datasource import Partitioning
 from ray.data.datasource.file_meta_provider import FastFileMetadataProvider
@@ -241,7 +241,7 @@ class TestReadImages:
             mode=image_mode,
             filesystem=LocalFileSystem(),
             partitioning=None,
-            meta_provider=_ImageFileMetadataProvider(),
+            meta_provider=ImageFileMetadataProvider(),
         )
         assert (
             datasource._encoding_ratio >= expected_ratio

@@ -169,6 +169,7 @@ class SACTorchLearner(DQNRainbowTorchLearner, SACLearner):
         # Hence, we can't do `fwd_out[q_curr].detach()`!
         # Note further, we minimize here, while the original equation in Haarnoja et
         # al. (2018) considers maximization.
+        # TODO (simon): Rename to `resampled` to `current`.
         actor_loss = torch.mean(
             alpha.detach() * fwd_out["logp_resampled"] - fwd_out["q_curr"]
         )

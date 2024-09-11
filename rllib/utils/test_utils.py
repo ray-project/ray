@@ -349,8 +349,14 @@ def check(x, y, decimals=5, atol=None, rtol=None, false=False):
             assert bool(x) is not bool(y), f"ERROR: x ({x}) is y ({y})!"
         else:
             assert bool(x) is bool(y), f"ERROR: x ({x}) is not y ({y})!"
-    # Nones or primitives.
-    elif x is None or y is None or isinstance(x, (str, int)):
+    # Nones or primitives (excluding int vs float, which should be compared with
+    # tolerance/decimals as well).
+    elif (
+        x is None
+        or y is None
+        or isinstance(x, str)
+        or (isinstance(x, int) and isinstance(y, int))
+    ):
         if false is True:
             assert x != y, f"ERROR: x ({x}) is the same as y ({y})!"
         else:
@@ -367,6 +373,7 @@ def check(x, y, decimals=5, atol=None, rtol=None, false=False):
             if false is False:
                 raise e
     # Everything else (assume numeric or tf/torch.Tensor).
+    # Also includes int vs float comparison, which is performed with tolerance/decimals.
     else:
         if tf1 is not None:
             # y should never be a Tensor (y=expected value).
