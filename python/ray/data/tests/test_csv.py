@@ -722,48 +722,6 @@ def test_csv_roundtrip(ray_start_regular_shared, fs, data_path):
         BlockAccessor.for_block(ray.get(block)).size_bytes() == meta.size_bytes
 
 
-def test_csv_read_no_header(ray_start_regular_shared, tmp_path):
-    from pyarrow import csv
-
-    file_path = os.path.join(tmp_path, "test.csv")
-    df = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
-    df.to_csv(file_path, index=False, header=False)
-    ds = ray.data.read_csv(
-        file_path,
-        read_options=csv.ReadOptions(column_names=["one", "two"]),
-    )
-    out_df = ds.to_pandas()
-    assert df.equals(out_df)
-
-
-def test_csv_read_with_column_type_specified(ray_start_regular_shared, tmp_path):
-    from pyarrow import csv
-
-    file_path = os.path.join(tmp_path, "test.csv")
-    df = pd.DataFrame({"one": [1, 2, 3e1], "two": ["a", "b", "c"]})
-    df.to_csv(file_path, index=False)
-
-    # Incorrect to parse scientific notation in int64 as PyArrow represents
-    # it as double.
-    with pytest.raises(ValueError):
-        ray.data.read_csv(
-            file_path,
-            convert_options=csv.ConvertOptions(
-                column_types={"one": "int64", "two": "string"}
-            ),
-        ).schema()
-
-    # Parsing scientific notation in double should work.
-    ds = ray.data.read_csv(
-        file_path,
-        convert_options=csv.ConvertOptions(
-            column_types={"one": "float64", "two": "string"}
-        ),
-    )
-    expected_df = pd.DataFrame({"one": [1.0, 2.0, 30.0], "two": ["a", "b", "c"]})
-    assert ds.to_pandas().equals(expected_df)
-
-
 def test_csv_read_filter_non_csv_file(ray_start_regular_shared, tmp_path):
     df = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
 
@@ -801,6 +759,52 @@ def test_csv_read_filter_non_csv_file(ray_start_regular_shared, tmp_path):
     # Directory of CSV and non-CSV files with filter.
     ds = ray.data.read_csv(tmp_path, file_extensions=["csv"])
     assert ds.to_pandas().equals(df)
+
+
+# NOTE: The last test using the shared ray_start_regular_shared cluster must use the
+# shutdown_only fixture so the shared cluster is shut down, otherwise the below
+# test_write_datasink_ray_remote_args test, which uses a cluster_utils cluster, will
+# fail with a double-init.
+def test_csv_read_no_header(shutdown_only, tmp_path):
+    from pyarrow import csv
+
+    file_path = os.path.join(tmp_path, "test.csv")
+    df = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
+    df.to_csv(file_path, index=False, header=False)
+    ds = ray.data.read_csv(
+        file_path,
+        read_options=csv.ReadOptions(column_names=["one", "two"]),
+    )
+    out_df = ds.to_pandas()
+    assert df.equals(out_df)
+
+
+def test_csv_read_with_column_type_specified(shutdown_only, tmp_path):
+    from pyarrow import csv
+
+    file_path = os.path.join(tmp_path, "test.csv")
+    df = pd.DataFrame({"one": [1, 2, 3e1], "two": ["a", "b", "c"]})
+    df.to_csv(file_path, index=False)
+
+    # Incorrect to parse scientific notation in int64 as PyArrow represents
+    # it as double.
+    with pytest.raises(ValueError):
+        ray.data.read_csv(
+            file_path,
+            convert_options=csv.ConvertOptions(
+                column_types={"one": "int64", "two": "string"}
+            ),
+        ).schema()
+
+    # Parsing scientific notation in double should work.
+    ds = ray.data.read_csv(
+        file_path,
+        convert_options=csv.ConvertOptions(
+            column_types={"one": "float64", "two": "string"}
+        ),
+    )
+    expected_df = pd.DataFrame({"one": [1.0, 2.0, 30.0], "two": ["a", "b", "c"]})
+    assert ds.to_pandas().equals(expected_df)
 
 
 @pytest.mark.skipif(

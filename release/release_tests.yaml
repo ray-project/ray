@@ -3322,6 +3322,9 @@
   group: core-daily-test
   working_dir: nightly_tests
 
+  # TODO: https://github.com/ray-project/ray/issues/47596
+  stable: false
+
   frequency: nightly
   team: core
   env: aws_perf
