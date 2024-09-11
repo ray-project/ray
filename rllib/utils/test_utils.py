@@ -116,6 +116,13 @@ def add_rllib_example_script_args(
         help="The number of (remote) EnvRunners to use for the experiment.",
     )
     parser.add_argument(
+        "--num-envs-per-env-runner",
+        type=int,
+        default=None,
+        help="The number of (vectorized) environments per EnvRunner. Note that "
+        "this is identical to the batch size for (inference) action computations.",
+    )
+    parser.add_argument(
         "--num-agents",
         type=int,
         default=0,

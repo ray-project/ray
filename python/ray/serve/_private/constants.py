@@ -1,8 +1,5 @@
 import os
 
-#: Used for debugging to turn on DEBUG-level logs
-DEBUG_LOG_ENV_VAR = "SERVE_DEBUG_LOG"
-
 #: Logger used by serve components
 SERVE_LOGGER_NAME = "ray.serve"
 
@@ -14,11 +11,6 @@ SERVE_PROXY_NAME = "SERVE_PROXY_ACTOR"
 
 #: Ray namespace used for all Serve actors
 SERVE_NAMESPACE = "serve"
-
-#: HTTP Address
-DEFAULT_HTTP_ADDRESS = os.environ.get(
-    "RAY_SERVE_DEFAULT_HTTP_ADDRESS", "http://127.0.0.1:8000"
-)
 
 #: HTTP Host
 DEFAULT_HTTP_HOST = os.environ.get("RAY_SERVE_DEFAULT_HTTP_HOST", "127.0.0.1")
@@ -175,11 +167,6 @@ MIGRATION_MESSAGE = (
     "See https://docs.ray.io/en/latest/serve/index.html for more information."
 )
 
-DAG_DEPRECATION_MESSAGE = (
-    "The DAG API is deprecated. Please use the recommended model composition pattern "
-    "instead (see https://docs.ray.io/en/latest/serve/model_composition.html)."
-)
-
 # Environment variable name for to specify the encoding of the log messages
 RAY_SERVE_LOG_ENCODING = os.environ.get("RAY_SERVE_LOG_ENCODING", "TEXT")
 
@@ -200,8 +187,6 @@ SERVE_LOG_REPLICA = "replica"
 SERVE_LOG_COMPONENT = "component_name"
 SERVE_LOG_COMPONENT_ID = "component_id"
 SERVE_LOG_MESSAGE = "message"
-SERVE_LOG_ACTOR_ID = "actor_id"
-SERVE_LOG_WORKER_ID = "worker_id"
 # This is a reserved for python logging module attribute, it should not be changed.
 SERVE_LOG_LEVEL_NAME = "levelname"
 SERVE_LOG_TIME = "asctime"
