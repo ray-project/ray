@@ -115,7 +115,6 @@ def do_exec_tasks(
             if done:
                 break
             for operation in schedule:
-                print(f"Executing operation {operation.type}")
                 done = tasks[operation.exec_task_idx].exec_operation(
                     self, operation.type
                 )
@@ -1057,6 +1056,7 @@ class CompiledDAG:
             visited.add(cur_idx)
 
             task = self.idx_to_task[cur_idx]
+            print("idx", cur_idx, "downstream_task_idxs", task.downstream_task_idxs)
             type_hint = task.dag_node.type_hint
             if type_hint.requires_nccl():
                 type_hint.set_nccl_group_id(self._nccl_group_id)
@@ -1321,6 +1321,7 @@ class CompiledDAG:
             # created CachedChannel (if the original channel is read more than once).
             channel_dict: Dict[ChannelInterface, ChannelInterface] = {}
             for arg, consumers in arg_to_consumers.items():
+                print("idx", self.dag_node_to_idx[arg], "consumers", consumers)
                 # Handle non-input args
                 if not isinstance(arg, InputNode) and not isinstance(
                     arg, InputAttributeNode
@@ -1329,24 +1330,16 @@ class CompiledDAG:
                     upstream_task = self.idx_to_task[arg_idx]
                     assert len(upstream_task.output_channels) == 1
                     arg_channel = upstream_task.output_channels[0]
-                    assert arg_channel is not None
-                    if len(consumers) > 1:
-                        channel_dict[arg_channel] = CachedChannel(
-                            len(consumers),
-                            arg_channel,
-                        )
-                    else:
-                        channel_dict[arg_channel] = arg_channel
                 else:
                     arg_channel = self.data_to_input_channel[arg]
-                    assert arg_channel is not None
-                    if len(consumers) > 1:
-                        channel_dict[arg_channel] = CachedChannel(
-                            len(consumers),
-                            arg_channel,
-                        )
-                    else:
-                        channel_dict[arg_channel] = arg_channel
+                assert arg_channel is not None
+                if len(consumers) > 1:
+                    channel_dict[arg_channel] = CachedChannel(
+                        len(consumers),
+                        arg_channel,
+                    )
+                else:
+                    channel_dict[arg_channel] = arg_channel
 
             # Step 3: create executable tasks for the actor
             executable_tasks = []
