@@ -300,24 +300,24 @@ def test_multi_node_dag_from_actor(ray_start_cluster):
     cluster.add_node(num_cpus=1)
 
     @ray.remote(num_cpus=0)
-    class BaseModelActor:
+    class SameNodeActor:
         def predict(self, x: str):
             return x
 
     @ray.remote(num_cpus=1)
-    class RefinerModelActor:
+    class RemoteNodeActor:
         def predict(self, x: str, y: str):
             return y
 
     @ray.remote(num_cpus=1)
-    class SDXLModelParallel:
+    class DriverActor:
         def __init__(self):
-            self._base_actor = BaseModelActor.options(
+            self._base_actor = SameNodeActor.options(
                 scheduling_strategy=NodeAffinitySchedulingStrategy(
                     ray.get_runtime_context().get_node_id(), soft=False
                 )
             ).remote()
-            self._refiner_actor = RefinerModelActor.remote()
+            self._refiner_actor = RemoteNodeActor.remote()
 
             with InputNode() as inp:
                 x = self._base_actor.predict.bind(inp)
@@ -333,7 +333,7 @@ def test_multi_node_dag_from_actor(ray_start_cluster):
         def call(self, prompt: str) -> bytes:
             return ray.get(self._adag.execute(prompt))
 
-    parallel = SDXLModelParallel.remote()
+    parallel = DriverActor.remote()
     assert ray.get(parallel.call.remote("abc")) == "abc"
 
 
