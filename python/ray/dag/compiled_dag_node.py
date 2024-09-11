@@ -241,69 +241,19 @@ Outputs: {self.output_channels}
 """
 
 
-@DeveloperAPI
-class DAGInputAdapter:
-    """Adapter to extract individual positional arguments and kwargs
-    from objects read from DAG input channel."""
-
-    def __init__(
-        self,
-        input_attr_node: Optional["ray.dag.InputAttributeNode"],
-        dag_input_channel: "ray.experimental.channel.ChannelInterface",
-    ):
-        """
-        Args:
-            input_attr_node: The input attribute node that this adapter is
-                created for. None should be used when creating an adapter for
-                the DAG input node itself; in this case, the adapter will
-                extract the 0th positional argument.
-            dag_input_channel: The DAG input channel.
-        """
-        self._dag_input_channel = dag_input_channel
-
-        def extractor(key: Union[int, str]):
-            def extract_arg(raw_args):
-                if not isinstance(raw_args, RayDAGArgs):
-                    # Fast path for a single input.
-                    return raw_args
-                else:
-                    assert isinstance(raw_args, RayDAGArgs)
-                    args = raw_args.args
-                    kwargs = raw_args.kwargs
-
-                if isinstance(key, int):
-                    return args[key]
-                else:
-                    return kwargs[key]
-
-            return extract_arg
-
-        if input_attr_node:
-            key = input_attr_node.key
-        else:
-            key = 0
-        self._adapt_method = extractor(key)
-
-    def adapt(self, input):
-        return self._adapt_method(input)
-
-    def get_dag_input_channel(self):
-        return self._dag_input_channel
-
-
 class _ExecutableTaskInput:
     """Represents an input to an ExecutableTask.
 
     Args:
-        input_variant: either an unresolved input (when type is ChannelInterface
-            or DAGInputAdapter), or a resolved input value (when type is Any)
+        input_variant: either an unresolved input (when type is ChannelInterface)
+            , or a resolved input value (when type is Any)
         channel_idx: if input_variant is an unresolved input, this is the index
             into the input channels list.
     """
 
     def __init__(
         self,
-        input_variant: Union[ChannelInterface, DAGInputAdapter, Any],
+        input_variant: Union[ChannelInterface, Any],
         channel_idx: Optional[int],
     ):
         self.input_variant = input_variant
@@ -319,9 +269,6 @@ class _ExecutableTaskInput:
 
         if isinstance(self.input_variant, ChannelInterface):
             value = channel_results[self.channel_idx]
-        elif isinstance(self.input_variant, DAGInputAdapter):
-            adapter = self.input_variant
-            value = adapter.adapt(channel_results[self.channel_idx])
         else:
             value = self.input_variant
         return value
@@ -369,7 +316,7 @@ class ExecutableTask:
         input_channel_to_idx: dict[ChannelInterface, int] = {}
 
         for arg in resolved_args:
-            if isinstance(arg, ChannelInterface) or isinstance(arg, DAGInputAdapter):
+            if isinstance(arg, ChannelInterface):
                 if isinstance(arg, ChannelInterface):
                     channel = arg
                 else:
@@ -393,7 +340,6 @@ class ExecutableTask:
         # Currently DAGs do not support binding kwargs to other DAG nodes.
         for val in self.resolved_kwargs.values():
             assert not isinstance(val, ChannelInterface)
-            assert not isinstance(val, DAGInputAdapter)
 
         # Input reader to read input data from upstream DAG nodes.
         self.input_reader: ReaderInterface = SynchronousReader(self.input_channels)
@@ -481,6 +427,7 @@ class ExecutableTask:
             True if system error occurs and exit the loop; otherwise, False.
         """
         input_data = self.reset_intermediate_buffer()
+        # print("_compute", input_data)
         method = getattr(class_handle, self.method_name)
         try:
             _process_return_vals(input_data, return_single_output=False)
@@ -494,7 +441,8 @@ class ExecutableTask:
 
         resolved_inputs = []
         for task_input in self.task_inputs:
-            resolved_inputs.append(task_input.resolve(input_data))
+            resolved_data = task_input.resolve(input_data)
+            resolved_inputs.append(resolved_data)
 
         try:
             output_val = method(*resolved_inputs, **self.resolved_kwargs)
@@ -1274,8 +1222,6 @@ class CompiledDAG:
                                 (reader_handle, reader_node_id)
                             )
 
-                # print(f"Data to reader and node set: {input_data_to_reader_and_node_set}")
-
                 self.data_to_input_channel: Dict[DAGNode, ChannelInterface] = {}
                 task.output_channels = []
                 self.input_node_output_idxs = []
@@ -1414,8 +1360,7 @@ class CompiledDAG:
                         arg, InputAttributeNode
                     ):
                         input_channel = channel_dict[self.data_to_input_channel[arg]]
-                        input_adapter = DAGInputAdapter(None, input_channel)
-                        resolved_args.append(input_adapter)
+                        resolved_args.append(input_channel)
                     elif isinstance(arg, DAGNode):  # Other DAGNodes
                         arg_idx = self.dag_node_to_idx[arg]
                         upstream_task = self.idx_to_task[arg_idx]

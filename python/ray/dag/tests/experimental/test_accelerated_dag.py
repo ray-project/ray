@@ -628,6 +628,7 @@ def test_multi_args_basic(ray_start_regular):
     result = ray.get(ref)
     assert result == [3, 2]
 
+    time.sleep(1)
     compiled_dag.teardown()
 
 
@@ -697,6 +698,7 @@ def test_multi_args_branch(ray_start_regular):
     result = ray.get(ref)
     assert result == [2, 3]
 
+    time.sleep(3)
     compiled_dag.teardown()
 
 
