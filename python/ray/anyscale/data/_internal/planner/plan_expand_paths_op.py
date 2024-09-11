@@ -33,7 +33,7 @@ MAX_NUM_INPUT_BLOCKS = 200
 
 # To amortize overheads associated with launching Ray tasks and using multi-threading,
 # produce multiple blocks in each read task.
-NUM_NUM_BLOCKS_PER_READ_TASK = 8
+NUM_BLOCKS_PER_READ_TASK = 8
 
 
 def plan_expand_paths_op(
@@ -112,7 +112,7 @@ def create_expand_paths_operator(
                     if (
                         running_in_memory_size
                         > ray.data.DataContext.get_current().target_max_block_size
-                        * NUM_NUM_BLOCKS_PER_READ_TASK
+                        * NUM_BLOCKS_PER_READ_TASK
                     ):
                         block = pa.Table.from_pydict({"path": file_paths})
                         yield block
