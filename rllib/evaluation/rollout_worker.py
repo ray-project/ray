@@ -626,6 +626,13 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
         self.weights_seq_no: Optional[int] = None
 
     @override(EnvRunner)
+    def make_env(self):
+        # Override this method, b/c it's abstract and must be overridden.
+        # However, we see no point in implementing it for the old API stack any longer
+        # (the RolloutWorker class will be deprecated soon).
+        raise NotImplementedError
+
+    @override(EnvRunner)
     def assert_healthy(self):
         is_healthy = self.policy_map and self.input_reader and self.output_writer
         assert is_healthy, (
