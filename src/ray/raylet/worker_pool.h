@@ -730,8 +730,8 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   void ExecuteOnPrestartWorkersStarted(std::function<void()> callback);
 
   // If this worker can serve the task.
-  WorkerUnfitForTaskReason WorkerFitsForTask(
-      const WorkerInterface &worker, const PopWorkerRequest &pop_worker_request) const;
+  WorkerUnfitForTaskReason WorkerFitsForTask(const WorkerInterface &worker,
+                                             const TaskSpecification &task_spec) const;
 
   /// For Process class for managing subprocesses (e.g. reaping zombies).
   instrumented_io_context *io_service_;
