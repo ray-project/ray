@@ -53,6 +53,18 @@ class MetricsLogger:
         self._tensor_mode = False
         self._tensor_keys = set()
 
+    def __contains__(self, key: Union[str, Tuple[str, ...]]) -> bool:
+        """Returns True, if `key` can be found in self.stats.
+
+        Args:
+            key: The key to find in self.stats. This must be either a str (single,
+                top-level key) or a tuple of str (nested key).
+
+        Returns:
+            Whether `key` could be found in self.stats.
+        """
+        return self._key_in_stats(key)
+
     def peek(
         self,
         key: Union[str, Tuple[str, ...]],
