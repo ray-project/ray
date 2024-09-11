@@ -162,7 +162,7 @@ class BatchIndividualItems(ConnectorV2):
 
             # Single-agent case: There is a dict under `column` mapping
             # `eps_id` to lists of items:
-            # Sort by eps_id, concat all these lists, then batch.
+            # Concat all these lists, then batch.
             elif not self._multi_agent:
                 # TODO: only really need this in non-Learner connector pipeline
                 memorized_map_structure = []

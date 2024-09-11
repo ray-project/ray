@@ -507,7 +507,7 @@ Ray Data interoperates with distributed data processing frameworks like
         call :func:`~ray.data.from_spark`. This function creates a ``Dataset`` backed by
         the distributed Spark DataFrame partitions that underly the Spark DataFrame.
 
-        .. 
+        ..
             TODO: This code snippet might not work correctly. We should test it.
 
         .. testcode::
@@ -857,7 +857,7 @@ Call :func:`~ray.data.read_sql` to read data from a database that provides a
 
             export DATABRICKS_HOST=adb-<workspace-id>.<random-number>.azuredatabricks.net
 
-        Then, call :func:`ray.data.read_databricks_tables` to read from the Databricks 
+        Then, call :func:`ray.data.read_databricks_tables` to read from the Databricks
         SQL warehouse.
 
         .. testcode::
