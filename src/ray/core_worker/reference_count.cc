@@ -741,6 +741,9 @@ void ReferenceCounter::EraseReference(ReferenceTable::iterator it) {
       num_objects_owned_by_us_--;
     }
   }
+  if (it->second.on_object_ref_delete) {
+    it->second.on_object_ref_delete(it->first);
+  }
   object_id_refs_.erase(it);
   ShutdownIfNeeded();
 }
@@ -762,11 +765,13 @@ int64_t ReferenceCounter::EvictLineage(int64_t min_bytes_to_evict) {
 }
 
 void ReferenceCounter::DeleteObjectPrimaryCopy(ReferenceTable::iterator it) {
-  if (it->second.on_object_primary_copy_delete) {
-    RAY_LOG(DEBUG) << "Calling on_object_primary_copy_delete for object " << it->first;
-    it->second.on_object_primary_copy_delete(it->first);
-    it->second.on_object_primary_copy_delete = nullptr;
+  RAY_LOG(DEBUG) << "Calling on_object_primary_copy_delete for object " << it->first
+                 << " num callbacks: "
+                 << it->second.on_object_primary_copy_delete_callbacks.size();
+  for (const auto &callback : it->second.on_object_primary_copy_delete_callbacks) {
+    callback(it->first);
   }
+  it->second.on_object_primary_copy_delete_callbacks.clear();
   it->second.pinned_at_raylet_id.reset();
   if (it->second.spilled && !it->second.spilled_node_id.IsNil()) {
     // The spilled copy of the object should get deleted during the
@@ -779,7 +784,18 @@ void ReferenceCounter::DeleteObjectPrimaryCopy(ReferenceTable::iterator it) {
   }
 }
 
-bool ReferenceCounter::SetObjectPrimaryCopyDeleteCallback(
+bool ReferenceCounter::SetObjectRefDeletedCallback(
+    const ObjectID &object_id, const std::function<void(const ObjectID &)> callback) {
+  absl::MutexLock lock(&mutex_);
+  auto it = object_id_refs_.find(object_id);
+  if (it == object_id_refs_.end()) {
+    return false;
+  }
+  it->second.on_object_ref_delete = callback;
+  return true;
+}
+
+bool ReferenceCounter::AddObjectPrimaryCopyDeleteCallback(
     const ObjectID &object_id, const std::function<void(const ObjectID &)> callback) {
   absl::MutexLock lock(&mutex_);
   auto it = object_id_refs_.find(object_id);
@@ -796,13 +812,7 @@ bool ReferenceCounter::SetObjectPrimaryCopyDeleteCallback(
     return false;
   }
 
-  // NOTE: In two cases, `GcsActorManager` will send `WaitForActorOutOfScope` request more
-  // than once, causing the delete callback to be set repeatedly.
-  // 1.If actors have not been registered successfully before GCS restarts, gcs client
-  // will resend the registration request after GCS restarts.
-  // 2.After GCS restarts, GCS will send `WaitForActorOutOfScope` request to owned actors
-  // again.
-  it->second.on_object_primary_copy_delete = callback;
+  it->second.on_object_primary_copy_delete_callbacks.emplace_back(callback);
   return true;
 }
 
