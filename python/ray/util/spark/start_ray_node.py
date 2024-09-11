@@ -63,14 +63,6 @@ if __name__ == "__main__":
     # using the temp directory.
     fcntl.flock(lock_fd, fcntl.LOCK_SH)
 
-    def preexec_function():
-        # Make Ray node process runs in a separate group,
-        # otherwise Ray node will be in the same group of parent process,
-        # if parent process is a Jupyter notebook kernel, when user
-        # clicks interrupt cell button, SIGINT signal is sent, then Ray node will
-        # receive SIGINT signal and it causes Ray node process dies.
-        os.setpgrp()
-
     process = subprocess.Popen(
         # 'ray start ...' command uses python that is set by
         # Shebang #! ..., the Shebang line is hardcoded in ray script,
@@ -80,7 +72,6 @@ if __name__ == "__main__":
         # '`sys.executable` `which ray` start ...'
         [sys.executable, shutil.which(ray_cli_cmd), "start", *arg_list],
         text=True,
-        preexec_fn=preexec_function,
     )
 
     exit_handler_executed = False
