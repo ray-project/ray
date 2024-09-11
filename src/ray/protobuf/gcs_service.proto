@@ -42,6 +42,8 @@ message GetAllJobInfoRequest {
   // If set, only return the job with that job id in hex, or the job with that
   // job_submission_id.
   optional string job_or_submission_id = 2;
+  optional bool skip_submission_job_info_field = 3;
+  optional bool skip_is_running_tasks_field = 4;
 }
 
 message GetAllJobInfoReply {
