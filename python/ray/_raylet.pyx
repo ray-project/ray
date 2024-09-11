@@ -2907,8 +2907,10 @@ cdef class OldGcsClient:
         return result
 
     @_auto_reconnect
-    def get_all_job_info(self, job_or_submission_id: str = None,
-                         timeout=None) -> Dict[JobID, JobTableData]:
+    def get_all_job_info(
+        self, *, job_or_submission_id: str = None, skip_submission_job_info_field=False,
+        skip_is_running_tasks_field=False, timeout=None
+    ) -> Dict[JobID, JobTableData]:
         # Ideally we should use json_format.MessageToDict(job_info),
         # but `job_info` is a cpp pb message not a python one.
         # Manually converting each and every protobuf field is out of question,
@@ -2917,6 +2919,8 @@ cdef class OldGcsClient:
             c_string c_job_or_submission_id
             optional[c_string] c_optional_job_or_submission_id = nullopt
             int64_t timeout_ms = round(1000 * timeout) if timeout else -1
+            c_bool c_skip_submission_job_info_field = skip_submission_job_info_field
+            c_bool c_skip_is_running_tasks_field = skip_is_running_tasks_field
             CJobTableData c_job_info
             c_vector[CJobTableData] c_job_infos
             c_vector[c_string] serialized_job_infos
@@ -2926,7 +2930,8 @@ cdef class OldGcsClient:
                 make_optional[c_string](c_job_or_submission_id)
         with nogil:
             check_status(self.inner.get().GetAllJobInfo(
-                c_optional_job_or_submission_id, timeout_ms, c_job_infos))
+                c_optional_job_or_submission_id, c_skip_submission_job_info_field,
+                c_skip_is_running_tasks_field, timeout_ms, c_job_infos))
             for c_job_info in c_job_infos:
                 serialized_job_infos.push_back(c_job_info.SerializeAsString())
         result = {}
