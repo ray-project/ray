@@ -298,6 +298,8 @@ class RAY_EXPORT PythonGcsClient {
   Status PinRuntimeEnvUri(const std::string &uri, int expiration_s, int64_t timeout_ms);
   Status GetAllNodeInfo(int64_t timeout_ms, std::vector<rpc::GcsNodeInfo> &result);
   Status GetAllJobInfo(const std::optional<std::string> &job_or_submission_id,
+                       bool skip_submission_job_info_field,
+                       bool skip_is_running_tasks_field,
                        int64_t timeout_ms,
                        std::vector<rpc::JobTableData> &result);
   Status GetAllResourceUsage(int64_t timeout_ms, std::string &serialized_reply);
