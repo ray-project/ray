@@ -279,6 +279,7 @@ def configure_component_logger(
     component_type: Optional[ServeComponentType] = None,
     max_bytes: Optional[int] = None,
     backup_count: Optional[int] = None,
+    default_serve_logger: bool = False,
 ):
     """Configure a logger to be used by a Serve component.
 
@@ -293,12 +294,20 @@ def configure_component_logger(
     logger.handlers.clear()
 
     # Only add stream handler if RAY_SERVE_LOG_TO_STDERR is True.
-    if RAY_SERVE_LOG_TO_STDERR:
+    # Also, setup stream handler if the default serve logger is being configured.
+    if RAY_SERVE_LOG_TO_STDERR or default_serve_logger:
         stream_handler = logging.StreamHandler()
         stream_handler.setFormatter(ServeFormatter(component_name, component_id))
         stream_handler.addFilter(log_to_stderr_filter)
         stream_handler.addFilter(ServeContextFilter())
         logger.addHandler(stream_handler)
+
+    # Skip setting up file handler and stdout/stderr redirect if the default serve
+    # logger is being configured. Default serve logger can be configured outside the
+    # context of a Serve component, we don't want those logs to redirect into serve's
+    # logger and log files.
+    if default_serve_logger:
+        return
 
     if logging_config.logs_dir:
         logs_dir = logging_config.logs_dir
@@ -362,6 +371,7 @@ def configure_default_serve_logger():
         logging_config=LoggingConfig(),
         max_bytes=LOGGING_ROTATE_BYTES,
         backup_count=LOGGING_ROTATE_BACKUP_COUNT,
+        default_serve_logger=True,
     )
 
 
