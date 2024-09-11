@@ -1,7 +1,7 @@
 import inspect
 import logging
 import weakref
-from typing import Any, Dict, List, Literal, Optional, Union
+from typing import Any, Dict, List, Literal, Optional, Tuple, Union
 
 import ray._private.ray_constants as ray_constants
 import ray._private.signature as signature
@@ -235,9 +235,10 @@ class ActorMethod:
         num_returns=None,
         concurrency_group=None,
         _generator_backpressure_num_objects=None,
-    ):
+    ) -> Union["ray.dag.ClassMethodNode", Tuple["ray.dag.ClassMethodNode", ...]]:
         from ray.dag.class_node import (
             BIND_INDEX_KEY,
+            IS_CLASS_METHOD_OUTPUT_KEY,
             PARENT_CLASS_NODE_KEY,
             PREV_CLASS_METHOD_CALL_KEY,
             ClassMethodNode,
@@ -271,7 +272,21 @@ class ActorMethod:
             options,
             other_args_to_resolve=other_args_to_resolve,
         )
-        return node
+
+        if node.num_returns > 1:
+            output_nodes: List[ClassMethodNode] = []
+            for i in range(node.num_returns):
+                output_node = ClassMethodNode(
+                    f"return_idx_{i}",
+                    (node, i),
+                    dict(),
+                    dict(),
+                    {IS_CLASS_METHOD_OUTPUT_KEY: True},
+                )
+                output_nodes.append(output_node)
+            return tuple(output_nodes)
+        else:
+            return node
 
     @wrap_auto_init
     @_tracing_actor_method_invocation

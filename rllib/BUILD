@@ -1722,13 +1722,6 @@ py_test(
     srcs = ["core/learner/torch/tests/test_torch_learner_compile.py"]
 )
 
-py_test(
-    name = "test_bc_algorithm",
-    tags = ["team:rllib", "core"],
-    size = "medium",
-    srcs = ["core/testing/tests/test_bc_algorithm.py"]
-)
-
 # --------------------------------------------------------------------
 # Models and Distributions
 # rllib/models/
@@ -3108,6 +3101,16 @@ py_test(
     args = ["--enable-new-api-stack", "--as-test"]
 )
 
+py_test(
+    name = "examples/learners/ppo_with_torch_lr_schedulers",
+    main = "examples/learners/ppo_with_torch_lr_schedulers.py",
+    tags = ["team:rllib", "examples"],
+    size = "medium",
+    srcs = ["examples/learners/ppo_with_torch_lr_schedulers.py"],
+    args = ["--enable-new-api-stack", "--as-test"]
+)
+
+
 #@OldAPIStack @HybridAPIStack
 py_test(
     name = "examples/learners/ppo_tuner_local_cpu_torch",
@@ -3504,6 +3507,13 @@ py_test(
     srcs = ["examples/rl_modules/classes/mobilenet_rlm.py"],
 )
 
+py_test(
+    name = "examples/rl_modules/migrate_modelv2_to_new_api_stack_by_config",
+    main = "examples/rl_modules/migrate_modelv2_to_new_api_stack_by_config.py",
+    tags = ["team:rllib", "examples"],
+    size = "large",
+    srcs = ["examples/rl_modules/migrate_modelv2_to_new_api_stack_by_config.py"],
+)
 py_test(
     name = "examples/rl_modules/migrate_modelv2_to_new_api_stack_by_policy_checkpoint",
     main = "examples/rl_modules/migrate_modelv2_to_new_api_stack_by_policy_checkpoint.py",
