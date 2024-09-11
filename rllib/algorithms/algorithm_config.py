@@ -2464,8 +2464,9 @@ class AlgorithmConfig(_Config):
                 - A dict with string keys and sampling probabilities as values (e.g.,
                 {"sampler": 0.4, "/tmp/*.json": 0.4, "s3://bucket/expert.json": 0.2}).
                 - A callable that takes an `IOContext` object as only arg and returns a
-                ray.rllib.offline.InputReader.
-                - A string key that indexes a callable with tune.registry.register_input
+                `ray.rllib.offline.InputReader`.
+                - A string key that indexes a callable with
+                `tune.registry.register_input`
             input_read_method: Read method for the `ray.data.Dataset` to read in the
                 offline data from `input_`. The default is `read_parquet` for Parquet
                 files. See https://docs.ray.io/en/latest/data/api/input_output.html for
@@ -2528,14 +2529,14 @@ class AlgorithmConfig(_Config):
                 be passed into the `ray.data.Dataset.iter_batches` method when sampling
                 without checking. If no arguments are passed in, the default argument
                 `{'prefetch_batches': 2, 'local_buffer_shuffle_size':
-                train_batch_size_per_learner * 4}` is used. Use these keyword args
+                train_batch_size_per_learner x 4}` is used. Use these keyword args
                 together with `input_read_method_kwargs` and `map_batches_kwargs` to
                 tune the performance of the data pipeline.
             prelearner_class: An optional `OfflinePreLearner` class that is used to
                 transform data batches in `ray.data.map_batches` used in the
                 `OfflineData` class to transform data from columns to batches that can
                 be used in the `Learner.update...()` methods. Override the
-                `OfflinePreLearner` class and pass your dervied class in here, if you
+                `OfflinePreLearner` class and pass your derived class in here, if you
                 need to make some further transformations specific for your data or
                 loss. The default is None which uses the base `OfflinePreLearner`
                 defined in `ray.rllib.offline.offline_prelearner`.
@@ -2560,7 +2561,7 @@ class AlgorithmConfig(_Config):
                 experiences from different episodes.
             prelearner_buffer_kwargs: `kwargs` for the `prelearner_buffer_class`. If no
                 arguments are passed in the buffer's `capacity` will be set to
-                `10 x train_batch_size_per_learner` and the `batch_size_B` to the
+                10 x `train_batch_size_per_learner` and the `batch_size_B` to the
                 `train_batch_size_per_learner`. The capacity will act (a) as a shuffler
                 for experiences randomizing experiences while sampling and (b) as a
                 buffer for the episodes, i.e. will keep episodes longer available for
