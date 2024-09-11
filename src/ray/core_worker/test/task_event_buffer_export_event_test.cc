@@ -12,8 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "ray/core_worker/task_event_buffer.h"
-
 #include <google/protobuf/util/message_differencer.h>
 
 #include <filesystem>
@@ -27,6 +25,7 @@
 #include "mock/ray/gcs/gcs_client/gcs_client.h"
 #include "ray/common/task/task_spec.h"
 #include "ray/common/test_util.h"
+#include "ray/core_worker/task_event_buffer.h"
 #include "ray/util/event.h"
 
 using ::testing::_;
