@@ -433,12 +433,16 @@ cdef class NewGcsClient:
     #############################################################
 
     def get_all_job_info(
-        self, job_or_submission_id: Optional[str] = None,
+        self, *, job_or_submission_id: Optional[str] = None,
+        skip_submission_job_info_field: bool = False,
+        skip_is_running_tasks_field: bool = False,
         timeout: Optional[float] = None
     ) -> Dict[JobID, gcs_pb2.JobTableData]:
         cdef c_string c_job_or_submission_id
         cdef optional[c_string] c_optional_job_or_submission_id = nullopt
         cdef int64_t timeout_ms = round(1000 * timeout) if timeout else -1
+        cdef c_bool c_skip_submission_job_info_field = skip_submission_job_info_field
+        cdef c_bool c_skip_is_running_tasks_field = skip_is_running_tasks_field
         cdef CRayStatus status
         cdef c_vector[CJobTableData] reply
         if job_or_submission_id:
@@ -447,17 +451,22 @@ cdef class NewGcsClient:
                 make_optional[c_string](c_job_or_submission_id)
         with nogil:
             status = self.inner.get().Jobs().GetAll(
-                c_optional_job_or_submission_id, reply, timeout_ms)
+                c_optional_job_or_submission_id, c_skip_submission_job_info_field,
+                c_skip_is_running_tasks_field, reply, timeout_ms)
         return raise_or_return((convert_get_all_job_info(status, move(reply))))
 
     def async_get_all_job_info(
-        self, job_or_submission_id: Optional[str] = None,
+        self, *, job_or_submission_id: Optional[str] = None,
+        skip_submission_job_info_field: bool = False,
+        skip_is_running_tasks_field: bool = False,
         timeout: Optional[float] = None
     ) -> Future[Dict[JobID, gcs_pb2.JobTableData]]:
         cdef:
             c_string c_job_or_submission_id
             optional[c_string] c_optional_job_or_submission_id = nullopt
             int64_t timeout_ms = round(1000 * timeout) if timeout else -1
+            c_bool c_skip_submission_job_info_field = skip_submission_job_info_field
+            c_bool c_skip_is_running_tasks_field = skip_is_running_tasks_field
             fut = incremented_fut()
         if job_or_submission_id:
             c_job_or_submission_id = job_or_submission_id
@@ -467,6 +476,8 @@ cdef class NewGcsClient:
             check_status_timeout_as_rpc_error(
                 self.inner.get().Jobs().AsyncGetAll(
                     c_optional_job_or_submission_id,
+                    c_skip_submission_job_info_field,
+                    c_skip_is_running_tasks_field,
                     MultiItemPyCallback[CJobTableData](
                         &convert_get_all_job_info,
                         assign_and_decrement_fut,
