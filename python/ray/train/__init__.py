@@ -26,6 +26,22 @@ from ray.train.backend import BackendConfig
 from ray.train.constants import TRAIN_DATASET_KEY
 from ray.train.context import get_context
 from ray.train.trainer import TrainingIterator
+from ray.train.v2._internal.constants import is_v2_enabled
+
+if is_v2_enabled():
+    from ray.train.v2.api.config import (  # noqa: F811
+        FailureConfig,
+        RunConfig,
+        ScalingConfig,
+    )
+    from ray.train.v2.api.result import Result  # noqa: F811
+    from ray.train.v2.api.train_fn_utils import (  # noqa: F811
+        get_checkpoint,
+        get_context,
+        get_dataset_shard,
+        report,
+    )
+
 
 usage_lib.record_library_usage("train")
 
@@ -63,3 +79,12 @@ RunConfig.__module__ = "ray.train"
 ScalingConfig.__module__ = "ray.train"
 SyncConfig.__module__ = "ray.train"
 TrainingIterator.__module__ = "ray.train"
+
+
+# Append Anyscale proprietary APIs and apply patches
+if is_v2_enabled():
+    from ray.anyscale.train.api.config import (  # noqa: E402, F811, isort: skip
+        ScalingConfig,
+    )
+
+    ScalingConfig.__module__ = "ray.train"
