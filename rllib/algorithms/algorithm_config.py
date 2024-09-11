@@ -2540,36 +2540,6 @@ class AlgorithmConfig(_Config):
                 need to make some further transformations specific for your data or
                 loss. The default is None which uses the base `OfflinePreLearner`
                 defined in `ray.rllib.offline.offline_prelearner`.
-            prelearner_buffer_class: The episode buffer class to use in the `PreLearner`
-                when sampling from the dataset. This is needed and defaults to the
-                `ray.rllib.utils.replay_buffers.EpisodeReplayBuffer` in case of a
-                dataset storing RLlib's old API stack's `SampleBatch`es, i.e.
-                `input_read_sample_batches=True` or a dataset storing new API stack
-                `SingleAgentEpisode`s, i.e. `input_read_episodes=True`. As each
-                `SampleBatch` or `SingleAgentEpisode` could potentially hold more than a
-                single timestep, the episode buffer is used to buffer episodes and
-                sample exactly the defined `train_batch_size_per_learner` from it. Any
-                buffer that inherits from
-                `ray.rllib.utils.replay_buffers.EpisodeReplayBuffer` can be used, e.g.
-                you could use RLlib's prioritized episode buffer
-                `ray.rllib.utils.replay_buffers.PrioritizedEpisodeReplayBuffer`. See
-                `prelearner_buffer_kwargs` for passing in further arguments into the
-                buffer's constructor. Note, the buffer acts (a) as a buffer to dissect
-                `SampleBatch` (or `SingleAgentEpisode`) data into smaller chunks, (b)
-                to concatenate episode chunks from different `SampleBatch`es (or
-                `SingleAgentEpisode`s), and (c) to act as a shuffler that shuffles
-                experiences from different episodes.
-            prelearner_buffer_kwargs: `kwargs` for the `prelearner_buffer_class`. If no
-                arguments are passed in the buffer's `capacity` will be set to
-                10 x `train_batch_size_per_learner` and the `batch_size_B` to the
-                `train_batch_size_per_learner`. The capacity will act (a) as a shuffler
-                for experiences randomizing experiences while sampling and (b) as a
-                buffer for the episodes, i.e. will keep episodes longer available for
-                sampling depending on the capacity. If you want to traverse the dataset
-                as is and to avoid sampling the same experiences multiple times choose a
-                small enough capacity to buffer episodes from your `SampleBatch` (or
-                `SingleAgentEpisode`) data, but to evict old experiences as soon as
-                possible.
             prelearner_module_synch_period: The period (number of batches converted)
                 after which the `RLModule` held by the `PreLearner` should sync weights.
                 The `PreLearner` is used to preprocess batches for the learners. The
