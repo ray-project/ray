@@ -7,6 +7,7 @@ import ray
 from pyspark.sql import SparkSession
 from ray.util.spark import setup_ray_cluster
 import ray.util.spark.databricks_hook
+from ray._private.test_utils import wait_for_condition
 
 
 pytestmark = pytest.mark.skipif(
@@ -68,7 +69,11 @@ class TestDatabricksHook:
             )
             cluster = ray.util.spark.cluster_init._active_ray_cluster
             assert not cluster.is_shutdown
-            time.sleep(45)
+            wait_for_condition(
+                lambda: cluster.is_shutdown,
+                timeout=45,
+                retry_interval_ms=10000,
+            )
             assert cluster.is_shutdown
             assert ray.util.spark.cluster_init._active_ray_cluster is None
         finally:
