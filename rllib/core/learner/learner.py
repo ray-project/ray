@@ -899,12 +899,22 @@ class Learner(Checkpointable):
             module_batch = batch[module_id]
             module_fwd_out = fwd_out[module_id]
 
-            loss = self.compute_loss_for_module(
-                module_id=module_id,
-                config=self.config.get_config_for_module(module_id),
-                batch=module_batch,
-                fwd_out=module_fwd_out,
-            )
+            module = self.module[module_id].unwrapped()
+            if isinstance(module, SelfSupervisedLossAPI):
+                loss = module.compute_self_supervised_loss(
+                    learner=self,
+                    module_id=module_id,
+                    config=self.config.get_config_for_module(module_id),
+                    batch=module_batch,
+                    fwd_out=module_fwd_out,
+                )
+            else:
+                loss = self.compute_loss_for_module(
+                    module_id=module_id,
+                    config=self.config.get_config_for_module(module_id),
+                    batch=module_batch,
+                    fwd_out=module_fwd_out,
+                )
             loss_per_module[module_id] = loss
 
         return loss_per_module
