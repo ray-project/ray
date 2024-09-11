@@ -182,6 +182,7 @@ class OfflinePreLearner:
                 # TODO (simon): This can be removed as soon as DreamerV3 has been
                 # cleaned up, i.e. can use episode samples for training.
                 sample_episodes=True,
+                finalize=True,
             )
         # Else, if we have old stack `SampleBatch`es.
         elif self.input_read_sample_batches:
@@ -198,6 +199,7 @@ class OfflinePreLearner:
                 # TODO (simon): This can be removed as soon as DreamerV3 has been
                 # cleaned up, i.e. can use episode samples for training.
                 sample_episodes=True,
+                finalize=True,
             )
         # Otherwise we map the batch to episodes.
         else:
@@ -414,9 +416,9 @@ class OfflinePreLearner:
                     len_lookback_buffer=0,
                 )
 
-            if finalize:
-                episode.finalize()
-            episodes.append(episode)
+                if finalize:
+                    episode.finalize()
+                episodes.append(episode)
         # Note, `map_batches` expects a `Dict` as return value.
         return {"episodes": episodes}
 
