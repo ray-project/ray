@@ -1254,19 +1254,12 @@ class CompiledDAG:
                         task.output_idxs.append(upstream_task.output_idxs[i])
                 assert len(task.output_channels) == 1
             elif isinstance(task.dag_node, InputNode):
-                # TODO (kevin85421): Currently, the shared memory channel doesn't
-                # support multiple readers on the same actor. However, if the
-                # InputNode is an actor instead of the driver process, we can support
-                # multiple readers on the same actor if the readers are on the same
-                # actor using IntraProcessChannel, which supports multiple readers
-                # on the same actor. We need to remove reader_handles_set in the future
-                # when we support multiple readers for both shared memory channel
-                # and IntraProcessChannel.
-                data_to_reader_and_node_set: Dict[
-                    DAGNode, Set[Tuple["ray.actor.ActorHandle", str]]
+                # A dictionary that maps an InputNode or InputAttributeNode to its
+                # readers and the node on which the reader is running.
+                input_data_to_reader_and_node_set: Dict[
+                    Union[InputNode, InputAttributeNode],
+                    Set[Tuple["ray.actor.ActorHandle", str]],
                 ] = defaultdict(set)
-                self.data_to_input_channel: Dict[DAGNode, ChannelInterface] = {}
-                task.output_channels = []
 
                 for idx in task.downstream_task_idxs:
                     reader_task = self.idx_to_task[idx]
@@ -1277,15 +1270,17 @@ class CompiledDAG:
                         if isinstance(arg, InputAttributeNode) or isinstance(
                             arg, InputNode
                         ):
-                            data_to_reader_and_node_set[arg].add(
+                            input_data_to_reader_and_node_set[arg].add(
                                 (reader_handle, reader_node_id)
                             )
 
-                # print(f"Data to reader and node set: {data_to_reader_and_node_set}")
+                # print(f"Data to reader and node set: {input_data_to_reader_and_node_set}")
 
+                self.data_to_input_channel: Dict[DAGNode, ChannelInterface] = {}
+                task.output_channels = []
                 self.input_node_output_idxs = []
-                for data in data_to_reader_and_node_set:
-                    reader_and_node_list = list(data_to_reader_and_node_set[data])
+                for data in input_data_to_reader_and_node_set:
+                    reader_and_node_list = list(input_data_to_reader_and_node_set[data])
                     output_channel = do_allocate_channel(
                         self,
                         reader_and_node_list,
@@ -1294,9 +1289,9 @@ class CompiledDAG:
                     self.data_to_input_channel[data] = output_channel
                     task.output_channels.append(output_channel)
                     if isinstance(data, InputNode):
-                        self.input_node_output_idxs.append(None)
+                        task.output_idxs.append(None)
                     else:
-                        self.input_node_output_idxs.append(data.key)
+                        task.output_idxs.append(data.key)
                 # print(f"Output channels: {task.output_channels}")
                 # print(f"Output idxs: {self.input_node_output_idxs}")
             else:
@@ -1346,9 +1341,7 @@ class CompiledDAG:
         # Create executable tasks for each actor
         for actor_handle, tasks in self.actor_to_tasks.items():
             # Dict from non-dag-input arg to the set of tasks that consume it.
-            arg_to_consumers: Dict[DAGNode, Set[CompiledTask]] = defaultdict(
-                set
-            )
+            arg_to_consumers: Dict[DAGNode, Set[CompiledTask]] = defaultdict(set)
             # The number of tasks that consume InputNode (or InputAttributeNode)
             # Note that _preprocess() ensures that all tasks either use InputNode
             # or use InputAttributeNode, but not both.
@@ -1487,10 +1480,11 @@ class CompiledDAG:
 
         # Driver should ray.put on input, ray.get/release on output
         self._monitor = self._monitor_failures()
+        input_task = self.idx_to_task[self.input_task_idx]
         if self._enable_asyncio:
             self._dag_submitter = AwaitableBackgroundWriter(
                 self.dag_input_channels,
-                self.input_node_output_idxs,
+                input_task.output_idxs,
                 self._asyncio_max_queue_size,
             )
             self._dag_output_fetcher = AwaitableBackgroundReader(
@@ -1499,7 +1493,7 @@ class CompiledDAG:
             )
         else:
             self._dag_submitter = SynchronousWriter(
-                self.dag_input_channels, self.input_node_output_idxs, is_input=True
+                self.dag_input_channels, input_task.output_idxs, is_input=True
             )
             self._dag_output_fetcher = SynchronousReader(self.dag_output_channels)
 
