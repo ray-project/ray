@@ -17,7 +17,7 @@ from ray.util.annotations import DeveloperAPI, PublicAPI
 # entry/init points.
 logger = logging.getLogger(__name__)
 
-DEFAULT_MAX_BUFFER_SIZE = int(1e6)  # 100 mB
+DEFAULT_MAX_BUFFER_SIZE = int(100e6)  # 100 mB
 # The min buffer size must be large enough to at least fit an instance of the
 # _ResizeChannel class along with any metadata.
 MIN_BUFFER_SIZE = int(1000)  # 1000 bytes
