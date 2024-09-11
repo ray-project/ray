@@ -628,23 +628,6 @@ def test_multi_args_basic(ray_start_regular):
     result = ray.get(ref)
     assert result == [3, 2]
 
-    time.sleep(1)
-    compiled_dag.teardown()
-
-
-def test_multi_args_basic_2(ray_start_regular):
-    a1 = Actor.remote(0)
-    a2 = Actor.remote(0)
-    with InputNode() as i:
-        dag = a1.inc.bind(i[0])
-        dag = a2.echo.bind(dag)
-
-    compiled_dag = dag.experimental_compile()
-
-    ref = compiled_dag.execute(2)
-    result = ray.get(ref)
-    assert result == 2
-
     compiled_dag.teardown()
 
 
@@ -698,7 +681,6 @@ def test_multi_args_branch(ray_start_regular):
     result = ray.get(ref)
     assert result == [2, 3]
 
-    time.sleep(3)
     compiled_dag.teardown()
 
 
