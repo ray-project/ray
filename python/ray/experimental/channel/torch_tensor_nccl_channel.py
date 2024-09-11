@@ -269,9 +269,7 @@ class TorchTensorNcclChannel(ChannelInterface):
             # metadata channel that will be used to send the shape and dtype of
             # the tensor to the receiver(s).
             metadata_type = SharedMemoryType(
-                buffer_size_bytes=TENSOR_METADATA_SIZE_BYTES,
-                # We only need 1 buffer per channel.
-                num_shm_buffers=1,
+                buffer_size_bytes=TENSOR_METADATA_SIZE_BYTES
             )
             self._meta_channel = metadata_type.create_channel(
                 self._writer,

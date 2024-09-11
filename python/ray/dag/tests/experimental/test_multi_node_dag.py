@@ -44,7 +44,6 @@ class Actor:
         return self.i
 
     def echo(self, x):
-        print("ECHO!")
         self.count += 1
         self._fail_if_needed()
         return x

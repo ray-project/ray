@@ -36,9 +36,6 @@ class _DAGNodeOperation:
         self.exec_task_idx = exec_task_idx
         self.type = operation_type
 
-    def __repr__(self):
-        return f"(Task idx: {self.exec_task_idx}, Type: {self.type})"
-
 
 @total_ordering
 class _DAGOperationGraphNode:

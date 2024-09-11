@@ -149,7 +149,6 @@ class CompiledDAGFuture:
         self._fut = None
 
         return_vals = yield from fut.__await__()
-        self._dag.increment_max_finished_execution_index()
 
         return _process_return_vals(
             return_vals,
