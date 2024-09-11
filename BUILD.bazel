@@ -2233,7 +2233,7 @@ ray_cc_library(
 
 ray_cc_test(
     name = "redis_store_client_test",
-    size = "small",
+    size = "medium",
     srcs = ["src/ray/gcs/store_client/test/redis_store_client_test.cc"],
     args = [
         "$(location redis-server)",
@@ -2254,7 +2254,7 @@ ray_cc_test(
 
 ray_cc_test(
     name = "chaos_redis_store_client_test",
-    size = "small",
+    size = "medium",
     srcs = ["src/ray/gcs/store_client/test/redis_store_client_test.cc"],
     args = [
         "$(location redis-server)",
