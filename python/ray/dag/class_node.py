@@ -245,7 +245,7 @@ class ClassMethodNode(DAGNode):
 
     def __str__(self) -> str:
         return get_dag_node_str(self, f"{self._method_name}()")
-    
+
     def __repr__(self) -> str:
         return self.__str__()
 

@@ -192,7 +192,7 @@ def test_set_error_before_read(ray_start_regular):
         def __init__(self):
             self.arr = None
 
-        def create_channel(self, writer, reader_and_node_list, read_by_multi_output_node):
+        def create_channel(self, writer, reader_and_node_list):
             self._channel = ray_channel.Channel(writer, reader_and_node_list, 1000)
             return self._channel
 

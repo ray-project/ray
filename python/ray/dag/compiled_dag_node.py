@@ -74,6 +74,7 @@ def do_allocate_channel(
         reader_and_node_list: A list of tuples, where each tuple contains a reader
             actor handle and the node ID where the actor is located.
         typ: The output type hint for the channel.
+        read_by_multi_output_node: True if the channel is read by multi output node.
 
     Returns:
         The allocated channel.
@@ -738,7 +739,7 @@ class CompiledDAG:
         self._max_finished_execution_index: int = -1
         self._result_buffer: Dict[int, Any] = {}
 
-        def _get_creator_or_proxy_actor() -> "ray.actor.ActorHandle":
+        def _get_proxy_actor() -> "ray.actor.ActorHandle":
             """
             Get the creator actor or proxy actor handle of the DAG.
 
@@ -755,15 +756,6 @@ class CompiledDAG:
             Raises:
                 NotImplementedError: If the current process is a Ray task.
             """
-            # runtime_context = ray.get_runtime_context()
-            # if runtime_context.worker.mode == ray.WORKER_MODE:
-            #     try:
-            #         return ray.get_runtime_context().current_actor
-            #     except RuntimeError:
-            #         raise NotImplementedError(
-            #             "Compiled DAGs currently require the InputNode() to be the "
-            #             "driver process or an actor method. Ray task is not supported."
-            #         )
             # Creates the driver actor on the same node as the driver.
             #
             # To support the driver as a reader, the output writer needs to be able to
@@ -777,7 +769,7 @@ class CompiledDAG:
                 )
             ).remote()
 
-        self._creator_or_proxy_actor = _get_creator_or_proxy_actor()
+        self._creator_or_proxy_actor = _get_proxy_actor()
 
     def increment_max_finished_execution_index(self) -> None:
         """Increment the max finished execution index. It is used to
@@ -1152,9 +1144,7 @@ class CompiledDAG:
                             read_by_multi_output_node = True
                             break
 
-                    reader_and_node_list: List[
-                        Tuple["ray.actor.ActorHandle", str]
-                    ] = []
+                    reader_and_node_list: List[Tuple["ray.actor.ActorHandle", str]] = []
                     if read_by_multi_output_node:
                         if len(readers) != 1:
                             raise ValueError(
@@ -1188,7 +1178,6 @@ class CompiledDAG:
 
                         assert self._creator_or_proxy_actor is not None
                         for reader in readers:
-                            print(f"SANG-TODO {self._creator_or_proxy_actor._actor_id=}")
                             reader_and_node_list.append(
                                 (
                                     self._creator_or_proxy_actor,
@@ -1209,7 +1198,6 @@ class CompiledDAG:
                             reader_handles_set.add(reader_handle)
 
                     # Create an output channel for each output of the current node.
-                    # SANG-TODO fix it. deadlock.
                     output_channel = ray.get(
                         fn.remote(
                             do_allocate_channel,
@@ -1423,6 +1411,7 @@ class CompiledDAG:
 
         # Build an execution schedule for each actor
         from ray.dag.constants import RAY_ADAG_ENABLE_PROFILING
+
         if RAY_ADAG_ENABLE_PROFILING:
             exec_task_func = do_profile_tasks
         else:

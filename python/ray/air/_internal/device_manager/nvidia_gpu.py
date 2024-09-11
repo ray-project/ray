@@ -26,11 +26,7 @@ class CUDATorchDeviceManager(TorchDeviceManager):
         # GPU IDs are assigned by Ray after you specify "use_gpu"
         # GPU `ray.get_gpu_ids()` may return ints or may return strings.
         # We should always convert to strings.
-
-        if os.environ.get('CUDA_VISIBLE_DEVICES'):
-            gpu_ids = [os.environ.get('CUDA_VISIBLE_DEVICES')]
-        else:
-            gpu_ids = [str(id) for id in ray.get_gpu_ids()]
+        gpu_ids = [str(id) for id in ray.get_gpu_ids()]
 
         device_ids = []
 

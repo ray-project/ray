@@ -119,7 +119,7 @@ class SharedMemoryType(ChannelOutputType):
         self,
         writer: Optional["ray.actor.ActorHandle"],
         reader_and_node_list: List[Tuple["ray.actor.ActorHandle", str]],
-        read_by_multi_output_node,
+        read_by_multi_output_node: bool,
     ) -> "Channel":
         """
         Instantiate a ChannelInterface class that can be used
@@ -129,6 +129,8 @@ class SharedMemoryType(ChannelOutputType):
             writer: The actor that may write to the channel. None signifies the driver.
             reader_and_node_list: A list of tuples, where each tuple contains a reader
                 actor handle and the node ID where the actor is located.
+            read_by_multi_output_node: True if the channel will be read by multi output
+                node.
         Returns:
             A ChannelInterface that can be used to pass data
                 of this type.
@@ -154,7 +156,12 @@ class SharedMemoryType(ChannelOutputType):
                     cpu_data_typ=cpu_data_typ,
                 )
 
-        return CompositeChannel(writer, reader_and_node_list, self._num_shm_buffers, read_by_multi_output_node)
+        return CompositeChannel(
+            writer,
+            reader_and_node_list,
+            self._num_shm_buffers,
+            read_by_multi_output_node,
+        )
 
     def set_nccl_group_id(self, group_id: str) -> None:
         assert self.requires_nccl()
@@ -244,8 +251,8 @@ class Channel(ChannelInterface):
             # actor, so we shouldn't need to include `writer` in the
             # constructor args. Either support Channels being constructed by
             # someone other than the writer or remove it from the args.
-            # self_actor = _get_self_actor()
-            # assert writer == self_actor
+            self_actor = _get_self_actor()
+            assert writer == self_actor
 
             self._writer_node_id = (
                 ray.runtime_context.get_runtime_context().get_node_id()
@@ -706,7 +713,6 @@ class CompositeChannel(ChannelInterface):
         use the actor ID of the DAGDriverProxyActor.
         """
         actor_id = ray.get_runtime_context().get_actor_id()
-        print(f"SANG-TODO {self._writer=}")
         if self._read_by_multi_output_node:
             # The reader is the driver process.
             # Use the actor ID of the DAGDriverProxyActor.

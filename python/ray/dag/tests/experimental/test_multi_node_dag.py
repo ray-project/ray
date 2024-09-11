@@ -304,7 +304,6 @@ def test_multi_node_dag_from_actor(ray_start_cluster):
         def predict(self, x: str):
             return x
 
-
     @ray.remote(num_cpus=1)
     class RefinerModelActor:
         def predict(self, x: str, y: str):
@@ -315,12 +314,13 @@ def test_multi_node_dag_from_actor(ray_start_cluster):
         def __init__(self):
             self._base_actor = BaseModelActor.options(
                 scheduling_strategy=NodeAffinitySchedulingStrategy(
-                    ray.get_runtime_context().get_node_id(), soft=False)).remote()
+                    ray.get_runtime_context().get_node_id(), soft=False
+                )
+            ).remote()
             self._refiner_actor = RefinerModelActor.remote()
 
             with InputNode() as inp:
-                x = self._base_actor.predict.bind(
-                    inp)
+                x = self._base_actor.predict.bind(inp)
                 dag = self._refiner_actor.predict.bind(
                     inp,
                     x,
