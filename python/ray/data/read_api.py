@@ -30,7 +30,7 @@ from ray.data._internal.datasource.delta_sharing_datasource import (
 from ray.data._internal.datasource.iceberg_datasource import IcebergDatasource
 from ray.data._internal.datasource.image_datasource import (
     ImageDatasource,
-    _ImageFileMetadataProvider,
+    ImageFileMetadataProvider,
 )
 from ray.data._internal.datasource.json_datasource import JSONDatasource
 from ray.data._internal.datasource.lance_datasource import LanceDatasource
@@ -887,7 +887,7 @@ def read_images(
         ValueError: if ``mode`` is unsupported.
     """
     if meta_provider is None:
-        meta_provider = _ImageFileMetadataProvider()
+        meta_provider = ImageFileMetadataProvider()
 
     datasource = ImageDatasource(
         paths,
