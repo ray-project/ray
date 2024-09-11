@@ -52,7 +52,7 @@ def strip_keys_with_value_none(d: Dict[str, Any]) -> Dict[str, Any]:
 
 def redact_url_password(url: str) -> str:
     """Redact any passwords in a URL."""
-    secret = re.findall("https?:\/\/.*:(.*)@.*", url)
+    secret = re.findall(r"https?:\/\/.*:(.*)@.*", url)
     if len(secret) > 0:
         url = url.replace(f":{secret[0]}@", ":<redacted>@")
 
