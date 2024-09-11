@@ -74,7 +74,7 @@ class EnvRunner(FaultAwareApply, metaclass=abc.ABCMeta):
             AssertionError: If the EnvRunner Actor has NOT been properly initialized.
         """
 
-    @abc.abstractmethod
+    # TODO: Make this an abstract method that must be implemented.
     def make_env(self):
         """Creates the RL environment for this EnvRunner and assigns it to `self.env`.
 
@@ -85,6 +85,7 @@ class EnvRunner(FaultAwareApply, metaclass=abc.ABCMeta):
         the existing env (for example `close()` it), re-create a new one, and then
         continue sampling with that new env.
         """
+        pass
 
     @abc.abstractmethod
     def sample(self, **kwargs) -> Any:
