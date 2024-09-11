@@ -1,6 +1,7 @@
 import io
 import logging
 import time
+from collections import defaultdict, namedtuple
 from typing import Any, Dict, List, Optional, Set, Tuple, Union
 
 import ray
@@ -16,7 +17,7 @@ from ray.util.annotations import DeveloperAPI, PublicAPI
 # entry/init points.
 logger = logging.getLogger(__name__)
 
-DEFAULT_MAX_BUFFER_SIZE = int(100 * 1e6)  # 100 mB
+DEFAULT_MAX_BUFFER_SIZE = int(1e6)  # 100 mB
 # The min buffer size must be large enough to at least fit an instance of the
 # _ResizeChannel class along with any metadata.
 MIN_BUFFER_SIZE = int(1000)  # 1000 bytes
@@ -73,6 +74,15 @@ def _get_self_actor() -> Optional["ray.actor.ActorHandle"]:
         return None
 
 
+# aDAG maintains 1 reader object reference (also called buffer) per node.
+# reader_ref: The object reference.
+# ref_owner_actor_id: The actor who created the object reference.
+# num_readers: The number of reader actors who reads this object reference.
+ReaderRefInfo = namedtuple(
+    "ReaderRefInfo", ["reader_ref", "ref_owner_actor_id", "num_reader_actors"]
+)
+
+
 class _ResizeChannel:
     """
     When a channel must be resized, the channel backing store must be resized on both
@@ -81,8 +91,15 @@ class _ResizeChannel:
     resize its own backing store. The class instance is sent through the channel.
     """
 
-    def __init__(self, reader_ref: "ray.ObjectRef"):
-        self._reader_ref = reader_ref
+    def __init__(
+        self,
+        _node_id_to_reader_ref_info: Dict[str, ReaderRefInfo],
+    ):
+        """
+        Args:
+            _node_id_to_reader_ref_info: A node id to ReaderRefInfo.
+        """
+        self._node_id_to_reader_ref_info = _node_id_to_reader_ref_info
 
 
 class SharedMemoryType(ChannelOutputType):
@@ -159,9 +176,8 @@ class Channel(ChannelInterface):
         reader_and_node_list: List[Tuple["ray.actor.ActorHandle", str]],
         typ: Optional[Union[int, SharedMemoryType]] = None,
         _writer_node_id: Optional["ray.NodeID"] = None,
-        _reader_node_id: Optional["ray.NodeID"] = None,
         _writer_ref: Optional["ray.ObjectRef"] = None,
-        _reader_ref: Optional["ray.ObjectRef"] = None,
+        _node_id_to_reader_ref_info: Optional[Dict[str, ReaderRefInfo]] = None,
         _writer_registered: bool = False,
         _reader_registered: bool = False,
     ):
@@ -206,6 +222,19 @@ class Channel(ChannelInterface):
 
         self._writer_registered = _writer_registered
         self._reader_registered = _reader_registered
+        # NodeID -> ReaderRefInfo on that node. Note that there's only 1
+        # reader ref per node.
+        self._node_id_to_reader_ref_info: Dict[str, ReaderRefInfo] = (
+            _node_id_to_reader_ref_info or {}
+        )
+
+        # Node ID -> a list of reader actors.
+        self._node_id_to_readers: Dict[str, "ray.actor.ActorHandle"] = defaultdict(list)
+        for reader, node_id in self._reader_and_node_list:
+            self._node_id_to_readers[node_id].append(reader)
+
+        # Number of readers in a local node.
+        self._num_local_readers = 0
 
         if _writer_ref is None:
             # We are the writer. Check that the passed handle matches the
@@ -217,79 +246,84 @@ class Channel(ChannelInterface):
             self_actor = _get_self_actor()
             assert writer == self_actor
 
-            # For now, all readers must be on the same node. Note that the writer can
-            # still be on a different node than the readers though.
-            #
-            # Note that we only check this when the writer is creating the channel.
-            # Ideally, when each reader constructs its own instance of the channel, it
-            # would check this as well. However, this could result in deadlock as two
-            # readers attempt to execute a remote function on each other to get each
-            # other's node ID. We cannot use a separate concurrency group to execute the
-            # function because reader actors may not have been declared with an
-            # additional concurrency group beyond default.
-            #
-            # TODO(jhumphri): Allow different readers for the same channel to be on
-            # different nodes.
-            prev_reader_node = None
-            prev_reader = None
-            for reader, node in reader_and_node_list:
-                if prev_reader_node is None:
-                    prev_reader_node = node
-                elif prev_reader_node != node:
-                    raise ValueError(
-                        f"All reader actors must be on the same node. Actor "
-                        f"{prev_reader} is on node {prev_reader_node} while actor "
-                        f"{reader} is on node {node}."
-                    )
-                prev_reader = reader
-
             self._writer_node_id = (
                 ray.runtime_context.get_runtime_context().get_node_id()
             )
             self._writer_ref = _create_channel_ref(self, typ.buffer_size_bytes)
-            self._reader_node_id = prev_reader_node
 
-            self._create_reader_ref(reader_and_node_list, typ.buffer_size_bytes)
-
-            assert self._reader_ref is not None
+            self._create_reader_refs(typ.buffer_size_bytes)
         else:
             assert (
                 _writer_node_id is not None
             ), "_writer_node_id must also be passed to the constructor when "
             "_writer_ref is."
-            assert (
-                _reader_ref is not None
-            ), "_reader_ref must also be passed to the constructor when _writer_ref is."
+            assert _node_id_to_reader_ref_info is not None, (
+                "_node_id_to_reader_ref_info must also be passed to the constructor "
+                "when _writer_ref is."
+            )
 
             self._writer_ref = _writer_ref
             self._writer_node_id = _writer_node_id
-            self._reader_node_id = _reader_node_id
-            self._reader_ref = _reader_ref
+            self._node_id_to_reader_ref_info = _node_id_to_reader_ref_info
 
-        self._num_readers = len(self._reader_and_node_list)
-        if self.is_remote():
-            # Even though there may be multiple readers on a remote node, we set
-            # `self._num_readers` to 1 here. On this local node, only the IO thread in
-            # the mutable object provider will read the mutable object. The IO thread
-            # will then send a gRPC with the mutable object contents to the remote node
-            # where the readers are.
-            self._num_readers = 1
+        assert self._num_local_readers == 0
+        remote_node_exists = False
+        for node_id, readers in self._node_id_to_readers.items():
+            if self.is_local_node(node_id):
+                self._num_local_readers += len(readers)
+            else:
+                remote_node_exists = True
+        # If remote node exists, we have 1 additional reader that listens
+        # to object changes and push them to remote nodes.
+        if remote_node_exists:
+            self._num_local_readers += 1
+        # There must be at least 1 local reader
+        assert self._num_local_readers > 0
 
-    def _create_reader_ref(
+        self._local_reader_ref: Optional["ray.ObjectRef"] = self._get_local_reader_ref(
+            self._node_id_to_reader_ref_info
+        )
+
+    def _get_local_reader_ref(
+        self, _node_id_to_reader_ref_info: Dict[str, ReaderRefInfo]
+    ) -> Optional["ray.ObjectRef"]:
+        for node_id, reader_ref_info in _node_id_to_reader_ref_info.items():
+            if self.is_local_node(node_id):
+                return reader_ref_info.reader_ref
+        return None
+
+    def _create_reader_refs(
         self,
-        reader_and_node_list: List[Tuple["ray.actor.ActorHandle", str]],
         buffer_size_bytes: int,
     ):
         # TODO(jhumphri): Free the current reader ref once the reference to it is
         # destroyed below.
-        reader = reader_and_node_list[0][0]
-        if self.is_remote():
-            fn = reader.__ray_call__
-            self._reader_ref = ray.get(
-                fn.remote(_create_channel_ref, buffer_size_bytes)
-            )
-        else:
-            self._reader_ref = self._writer_ref
+
+        for node_id, readers in self._node_id_to_readers.items():
+            if not self.is_local_node(node_id):
+                # Find 1 reader in a remote node to create a reference that's
+                # shared by all readers. When a new value is written to a reference,
+                # it is sent to this reference.
+                reader = readers[0]
+                fn = reader.__ray_call__
+                self._node_id_to_reader_ref_info[node_id] = ReaderRefInfo(
+                    reader_ref=ray.get(
+                        fn.remote(_create_channel_ref, buffer_size_bytes)
+                    ),
+                    ref_owner_actor_id=reader._actor_id,
+                    num_reader_actors=len(readers),
+                )
+            else:
+                writer_id = ray.ActorID.nil()
+                if self._writer is not None:
+                    writer_id = self._writer._actor_id
+                self._node_id_to_reader_ref_info[node_id] = ReaderRefInfo(
+                    reader_ref=self._writer_ref,
+                    ref_owner_actor_id=writer_id,
+                    num_reader_actors=len(readers),
+                )
+        # There must be only 1 node reader reference per node.
+        assert len(self._node_id_to_reader_ref_info) == len(self._node_id_to_readers)
 
         # We need to register the new writer_ref.
         self._writer_registered = False
@@ -298,9 +332,6 @@ class Channel(ChannelInterface):
     @staticmethod
     def is_local_node(node_id):
         return ray.runtime_context.get_runtime_context().get_node_id() == node_id
-
-    def is_remote(self):
-        return self._writer_node_id != self._reader_node_id
 
     def ensure_registered_as_writer(self) -> None:
         if self._writer_registered:
@@ -312,17 +343,15 @@ class Channel(ChannelInterface):
                 "the writer is on."
             )
 
-        assert (
-            self._reader_ref
-        ), "`self._reader_ref` must be not be None when registering a writer, because "
-        "it should have been initialized in the constructor."
+        remote_reader_ref_info: Dict[str, ReaderRefInfo] = {}
+        for node_id, reader_ref_info in self._node_id_to_reader_ref_info.items():
+            if self.is_local_node(node_id):
+                continue
+            remote_reader_ref_info[node_id] = reader_ref_info
+
         self._worker.core_worker.experimental_channel_register_writer(
             self._writer_ref,
-            self._reader_ref,
-            self._writer_node_id,
-            self._reader_node_id,
-            self._reader_and_node_list[0][0]._actor_id,
-            len(self._reader_and_node_list),
+            remote_reader_ref_info,
         )
         self._writer_registered = True
 
@@ -330,9 +359,11 @@ class Channel(ChannelInterface):
         if self._reader_registered:
             return
 
-        self._worker.core_worker.experimental_channel_register_reader(
-            self._reader_ref,
-        )
+        for node_id, reader_ref_info in self._node_id_to_reader_ref_info.items():
+            if self.is_local_node(node_id):
+                self._worker.core_worker.experimental_channel_register_reader(
+                    reader_ref_info.reader_ref,
+                )
         self._reader_registered = True
 
     @staticmethod
@@ -341,9 +372,8 @@ class Channel(ChannelInterface):
         reader_and_node_list: List[Tuple["ray.actor.ActorHandle", str]],
         typ: int,
         writer_node_id,
-        reader_node_id,
         writer_ref: "ray.ObjectRef",
-        reader_ref: "ray.ObjectRef",
+        node_id_to_reader_ref_info: Dict[str, ReaderRefInfo],
         writer_registered: bool,
         reader_registered: bool,
     ) -> "Channel":
@@ -352,31 +382,30 @@ class Channel(ChannelInterface):
             reader_and_node_list,
             typ,
             _writer_node_id=writer_node_id,
-            _reader_node_id=reader_node_id,
             _writer_ref=writer_ref,
-            _reader_ref=reader_ref,
+            _node_id_to_reader_ref_info=node_id_to_reader_ref_info,
             _writer_registered=writer_registered,
             _reader_registered=reader_registered,
         )
         return chan
 
     def __reduce__(self):
-        assert self._reader_ref is not None
+        assert self._node_id_to_reader_ref_info is not None
         return self._deserialize_reader_channel, (
             self._writer,
             self._reader_and_node_list,
             self._typ,
             self._writer_node_id,
-            self._reader_node_id,
             self._writer_ref,
-            self._reader_ref,
+            self._node_id_to_reader_ref_info,
             self._writer_registered,
             self._reader_registered,
         )
 
     def __str__(self) -> str:
         return (
-            f"Channel(_reader_ref={self._reader_ref}, _writer_ref={self._writer_ref})"
+            f"Channel(_node_id_to_reader_ref_info={self._node_id_to_reader_ref_info}, "
+            f"_writer_ref={self._writer_ref})"
         )
 
     def _resize_channel_if_needed(self, serialized_value: str, timeout_ms: int):
@@ -389,25 +418,32 @@ class Channel(ChannelInterface):
             self._typ.buffer_size_bytes = size
             # TODO(jhumphri): Free the current writer ref once the reference to it is
             # destroyed below.
+            # TODO(sang): Support different policies such as 2X buffer size.
             prev_writer_ref = self._writer_ref
             self._writer_ref = _create_channel_ref(self, self._typ.buffer_size_bytes)
-
-            self._create_reader_ref(
-                self._reader_and_node_list, self._typ.buffer_size_bytes
+            self._create_reader_refs(self._typ.buffer_size_bytes)
+            self._local_reader_ref = self._get_local_reader_ref(
+                self._node_id_to_reader_ref_info
             )
 
             # Write a special message to the channel so that the readers know to
             # stop using the current reader_ref.
-            special_message = _ResizeChannel(self._reader_ref)
+            special_message = _ResizeChannel(self._node_id_to_reader_ref_info)
             special_message_serialized = (
                 self._worker.get_serialization_context().serialize(special_message)
             )
             self._worker.core_worker.experimental_channel_put_serialized(
                 special_message_serialized,
                 prev_writer_ref,
-                self._num_readers,
+                self._num_local_readers,
                 timeout_ms,
             )
+            # TODO(sang): Clean the previous ref that won't be used.
+            # Right now, if we just close it here, it will not work because
+            # of race conditions.
+            # self._worker.core_worker.experimental_channel_set_error(
+            #     prev_writer_ref
+            # )
 
     def write(self, value: Any, timeout: Optional[float] = None) -> None:
         self.ensure_registered_as_writer()
@@ -443,7 +479,7 @@ class Channel(ChannelInterface):
         self._worker.core_worker.experimental_channel_put_serialized(
             serialized_value,
             self._writer_ref,
-            self._num_readers,
+            self._num_local_readers,
             timeout_ms,
         )
 
@@ -455,11 +491,14 @@ class Channel(ChannelInterface):
 
         start_time = time.monotonic()
         ret = self._worker.get_objects(
-            [self._reader_ref], timeout=timeout, return_exceptions=True
+            [self._local_reader_ref], timeout=timeout, return_exceptions=True
         )[0][0]
 
         if isinstance(ret, _ResizeChannel):
-            self._reader_ref = ret._reader_ref
+            self._node_id_to_reader_ref_info = ret._node_id_to_reader_ref_info
+            self._local_reader_ref = self._get_local_reader_ref(
+                self._node_id_to_reader_ref_info
+            )
             # We need to register the new reader_ref.
             self._reader_registered = False
             self.ensure_registered_as_reader()
@@ -467,7 +506,7 @@ class Channel(ChannelInterface):
                 timeout -= time.monotonic() - start_time
                 timeout = max(timeout, 0)
             ret = self._worker.get_objects(
-                [self._reader_ref], timeout=timeout, return_exceptions=True
+                [self._local_reader_ref], timeout=timeout, return_exceptions=True
             )[0][0]
 
         return ret
@@ -478,9 +517,18 @@ class Channel(ChannelInterface):
         reader_ref.
         """
         self._worker.core_worker.experimental_channel_set_error(self._writer_ref)
-        if self.is_local_node(self._reader_node_id):
+        is_local_node_reader = False
+
+        for node_id in self._node_id_to_readers.keys():
+            if self.is_local_node(node_id):
+                is_local_node_reader = True
+        if is_local_node_reader:
             self.ensure_registered_as_reader()
-        self._worker.core_worker.experimental_channel_set_error(self._reader_ref)
+
+        for reader_ref_info in self._node_id_to_reader_ref_info.values():
+            self._worker.core_worker.experimental_channel_set_error(
+                reader_ref_info.reader_ref
+            )
 
 
 @DeveloperAPI
