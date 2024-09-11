@@ -127,7 +127,7 @@ class PPOLearner(Learner):
         config: PPOConfig,
         kl_loss: float,
     ) -> None:
-        """Dynamically update the KL loss coefficients of each module with.
+        """Dynamically update the KL loss coefficients of each module.
 
         The update is completed using the mean KL divergence between the action
         distributions current policy and old policy of each module. That action
