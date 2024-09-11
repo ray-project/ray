@@ -2852,8 +2852,9 @@ def from_huggingface(
         # For non-streaming Hugging Face Dataset, we don't support override_num_blocks
         if override_num_blocks is not None:
             raise ValueError(
-                f"Invalid value for 'override_num_blocks': {override_num_blocks}. "
-                "Valid value is None for non-streaming Hugging Face Dataset"
+                "`override_num_blocks` parameter is not supported for "
+                "streaming Hugging Face Datasets. Please omit the parameter or "
+                "use non-streaming mode to read the dataset."
             )
 
         # To get the resulting Arrow table from a Hugging Face Dataset after
