@@ -425,7 +425,9 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
       memory_store_,
       reference_counter_,
       /*put_in_local_plasma_callback=*/
-      [this](const RayObject &object, const ObjectID &object_id, const bool mark_object_failed = false) {
+      [this](const RayObject &object,
+             const ObjectID &object_id,
+             const bool mark_object_failed = false) {
         RAY_CHECK_OK(PutInLocalPlasmaStore(object, object_id, /*pin_object=*/true));
         if (mark_object_failed) {
           reference_counter_->MarkObjectFailed(object_id);

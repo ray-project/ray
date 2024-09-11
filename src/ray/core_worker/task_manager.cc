@@ -1307,7 +1307,7 @@ void TaskManager::MarkTaskReturnObjectsFailed(
   for (int i = 0; i < num_returns; i++) {
     const auto object_id = ObjectID::FromIndex(task_id, /*index=*/i + 1);
     if (store_in_plasma_ids.count(object_id)) {
-      put_in_local_plasma_callback_(error, object_id,  /*mark_object_failed=*/true);
+      put_in_local_plasma_callback_(error, object_id, /*mark_object_failed=*/true);
     } else {
       in_memory_store_->Put(error, object_id);
     }
@@ -1315,7 +1315,8 @@ void TaskManager::MarkTaskReturnObjectsFailed(
   if (spec.ReturnsDynamic()) {
     for (const auto &dynamic_return_id : spec.DynamicReturnIds()) {
       if (store_in_plasma_ids.count(dynamic_return_id)) {
-        put_in_local_plasma_callback_(error, dynamic_return_id,  /*mark_object_failed=*/true);
+        put_in_local_plasma_callback_(
+            error, dynamic_return_id, /*mark_object_failed=*/true);
       } else {
         in_memory_store_->Put(error, dynamic_return_id);
       }
@@ -1340,7 +1341,8 @@ void TaskManager::MarkTaskReturnObjectsFailed(
     for (size_t i = 0; i < num_streaming_generator_returns; i++) {
       const auto generator_return_id = spec.StreamingGeneratorReturnId(i);
       if (store_in_plasma_ids.count(generator_return_id)) {
-        put_in_local_plasma_callback_(error, generator_return_id, /*mark_object_failed=*/true);
+        put_in_local_plasma_callback_(
+            error, generator_return_id, /*mark_object_failed=*/true);
       } else {
         in_memory_store_->Put(error, generator_return_id);
       }
