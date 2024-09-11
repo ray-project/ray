@@ -957,6 +957,21 @@ ray_cc_test(
 )
 
 ray_cc_test(
+    name = "task_event_buffer_export_event_test",
+    size = "small",
+    srcs = ["src/ray/core_worker/test/task_event_buffer_export_event_test.cc"],
+    tags = [
+        "team:core",
+        "no_windows"
+    ],
+    deps = [
+        ":core_worker_lib",
+        ":ray_mock",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+ray_cc_test(
     name = "actor_creator_test",
     size = "small",
     srcs = ["src/ray/core_worker/test/actor_creator_test.cc"],
@@ -991,6 +1006,7 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         ":core_worker_lib",
+        ":ray_mock",
         "@com_google_googletest//:gtest_main",
     ],
 )
