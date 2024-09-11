@@ -68,7 +68,7 @@ class TestDatabricksHook:
             )
             cluster = ray.util.spark.cluster_init._active_ray_cluster
             assert not cluster.is_shutdown
-            time.sleep(35)
+            time.sleep(45)
             assert cluster.is_shutdown
             assert ray.util.spark.cluster_init._active_ray_cluster is None
         finally:

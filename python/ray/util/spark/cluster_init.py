@@ -214,7 +214,10 @@ class RayClusterOnSpark:
         import fcntl
 
         if not self.is_shutdown:
-            self.disconnect()
+            try:
+                self.disconnect()
+            except Exception:
+                pass
             os.environ.pop("RAY_ADDRESS", None)
 
             if self.global_cluster_lock_fd is not None:
@@ -680,6 +683,8 @@ def _setup_ray_cluster(
         global_cluster_lock_fd=global_cluster_lock_fd,
         ray_client_server_port=ray_client_server_port,
     )
+
+    start_hook.on_cluster_created(ray_cluster_handler)
 
     return ray_cluster_handler
 
