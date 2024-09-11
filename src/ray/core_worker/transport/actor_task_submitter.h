@@ -191,6 +191,10 @@ class ActorTaskSubmitter : public ActorTaskSubmitterInterface {
   /// \return Whether this actor is alive.
   bool IsActorAlive(const ActorID &actor_id) const;
 
+  /// Get the given actor id's address.
+  /// It returns nullopt if the actor's address is not reported.
+  std::optional<rpc::Address> GetActorAddress(const ActorID &actor_id) const;
+
   /// Get the local actor state. nullopt if the state is unknown.
   std::optional<rpc::ActorTableData::ActorState> GetLocalActorState(
       const ActorID &actor_id) const;
