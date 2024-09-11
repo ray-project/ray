@@ -20,7 +20,7 @@ from ray.rllib.utils.typing import NetworkType
 from ray.util.annotations import DeveloperAPI
 
 
-@DeveloperAPI(stability="alpha")
+@ExperimentalAPI
 class SACRLModule(RLModule, InferenceOnlyAPI, TargetNetworkAPI):
     """`RLModule` for the Soft-Actor-Critic (SAC) algorithm.
 
