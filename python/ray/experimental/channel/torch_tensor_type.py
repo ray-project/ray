@@ -126,6 +126,7 @@ class TorchTensorType(ChannelOutputType):
         reader_and_node_list: List[Tuple["ray.actor.ActorHandle", str]],
         _torch_tensor_allocator: Optional["TorchTensorAllocator"] = None,
     ) -> type:
+
         if self.requires_nccl():
             from ray.experimental.channel.torch_tensor_nccl_channel import (
                 TorchTensorNcclChannel,
