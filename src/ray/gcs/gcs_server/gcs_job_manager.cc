@@ -29,6 +29,51 @@ void GcsJobManager::Initialize(const GcsInitData &gcs_init_data) {
   }
 }
 
+void GcsJobManager::WriteDriverJobExportEvent(rpc::JobTableData job_data) const {
+  /// Write job_data as a export driver job event if
+  /// enable_export_api_write() is enabled and if this job is
+  /// not in the _ray_internal_ namespace.
+  if (!RayConfig::instance().enable_export_api_write()) {
+    return;
+  }
+  if (job_data.config().ray_namespace().find(kRayInternalNamespacePrefix) == 0) {
+    // Namespace of this job starts with _ray_internal_ so
+    // don't write export event.
+    return;
+  }
+  std::shared_ptr<rpc::ExportDriverJobEventData> export_driver_job_data_ptr =
+      std::make_shared<rpc::ExportDriverJobEventData>();
+  export_driver_job_data_ptr->set_job_id(job_data.job_id());
+  export_driver_job_data_ptr->set_is_dead(job_data.is_dead());
+  export_driver_job_data_ptr->set_driver_pid(job_data.driver_pid());
+  export_driver_job_data_ptr->set_start_time(job_data.start_time());
+  export_driver_job_data_ptr->set_end_time(job_data.end_time());
+  export_driver_job_data_ptr->set_entrypoint(job_data.entrypoint());
+  export_driver_job_data_ptr->set_driver_ip_address(
+      job_data.driver_address().ip_address());
+  export_driver_job_data_ptr->mutable_config()->mutable_metadata()->insert(
+      job_data.config().metadata().begin(), job_data.config().metadata().end());
+
+  auto export_runtime_env_info =
+      export_driver_job_data_ptr->mutable_config()->mutable_runtime_env_info();
+  export_runtime_env_info->set_serialized_runtime_env(
+      job_data.config().runtime_env_info().serialized_runtime_env());
+  auto export_runtime_env_uris = export_runtime_env_info->mutable_uris();
+  export_runtime_env_uris->set_working_dir_uri(
+      job_data.config().runtime_env_info().uris().working_dir_uri());
+  export_runtime_env_uris->mutable_py_modules_uris()->CopyFrom(
+      job_data.config().runtime_env_info().uris().py_modules_uris());
+  auto export_runtime_env_config = export_runtime_env_info->mutable_runtime_env_config();
+  export_runtime_env_config->set_setup_timeout_seconds(
+      job_data.config().runtime_env_info().runtime_env_config().setup_timeout_seconds());
+  export_runtime_env_config->set_eager_install(
+      job_data.config().runtime_env_info().runtime_env_config().eager_install());
+  export_runtime_env_config->mutable_log_files()->CopyFrom(
+      job_data.config().runtime_env_info().runtime_env_config().log_files());
+
+  RayExportEvent(export_driver_job_data_ptr).SendEvent();
+}
+
 void GcsJobManager::HandleAddJob(rpc::AddJobRequest request,
                                  rpc::AddJobReply *reply,
                                  rpc::SendReplyCallback send_reply_callback) {
@@ -58,6 +103,7 @@ void GcsJobManager::HandleAddJob(rpc::AddJobRequest request,
       cached_job_configs_[job_id] =
           std::make_shared<rpc::JobConfig>(mutable_job_table_data.config());
     }
+    WriteDriverJobExportEvent(mutable_job_table_data);
     GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
   };
 
@@ -86,6 +132,7 @@ void GcsJobManager::MarkJobAsFinished(rpc::JobTableData job_table_data,
       RAY_LOG(INFO) << "Finished marking job state, job id = " << job_id;
     }
     function_manager_.RemoveJobReference(job_id);
+    WriteDriverJobExportEvent(job_table_data);
     done_callback(status);
   };
 
@@ -145,6 +192,16 @@ void GcsJobManager::AddJobFinishedListener(JobFinishListenerCallback listener) {
 void GcsJobManager::HandleGetAllJobInfo(rpc::GetAllJobInfoRequest request,
                                         rpc::GetAllJobInfoReply *reply,
                                         rpc::SendReplyCallback send_reply_callback) {
+  // Get all job info. This is a complex operation:
+  // 1. One GetAll from the job table.
+  // 2. For each job, Send RPC to core worker for is_running_tasks value.
+  // 3. One MultiKVGet for jobs submitted via the Ray Job API.
+  // Step 2 and 3 are asynchronous and concurrent among jobs. After all jobs are
+  // processed, send the reply.
+  //
+  // We support filtering by job_id or job_submission_id. job_id is easy to handle: just
+  // only get job info by the id. job_submission_id however is not indexed. So we have
+  // to get all job info and filter by job_submission_id.
   RAY_LOG(DEBUG) << "Getting all job info.";
 
   int limit = std::numeric_limits<int>::max();
@@ -160,8 +217,28 @@ void GcsJobManager::HandleGetAllJobInfo(rpc::GetAllJobInfoRequest request,
     RAY_LOG(DEBUG) << "Getting job info with limit " << limit << ".";
   }
 
-  auto on_done = [this, request, reply, send_reply_callback, limit](
-                     const absl::flat_hash_map<JobID, JobTableData> &result) {
+  std::optional<std::string> job_or_submission_id;
+  if (request.has_job_or_submission_id()) {
+    job_or_submission_id = request.job_or_submission_id();
+  }
+
+  auto filter_ok = [job_or_submission_id](
+                       const ray::JobID &job_id,
+                       std::optional<std::string_view> job_submission_id) {
+    if (!job_or_submission_id.has_value()) {
+      return true;
+    }
+    if (job_id.Hex() == *job_or_submission_id) {
+      return true;
+    }
+    if (job_submission_id.has_value() &&
+        (job_submission_id.value() == *job_or_submission_id)) {
+      return true;
+    }
+    return false;
+  };
+  auto on_done = [this, filter_ok, request, reply, send_reply_callback, limit](
+                     const absl::flat_hash_map<JobID, JobTableData> &&result) {
     // Internal KV keys for jobs that were submitted via the Ray Job API.
     std::vector<std::string> job_api_data_keys;
 
@@ -192,9 +269,16 @@ void GcsJobManager::HandleGetAllJobInfo(rpc::GetAllJobInfoRequest request,
       if (i >= limit) {
         break;
       }
-      reply->add_job_info_list()->CopyFrom(data.second);
+
       auto &metadata = data.second.config().metadata();
       auto iter = metadata.find("job_submission_id");
+      if (!filter_ok(data.first,
+                     iter == metadata.end()
+                         ? std::nullopt
+                         : std::optional<std::string_view>(iter->second))) {
+        continue;
+      }
+      reply->add_job_info_list()->CopyFrom(data.second);
       if (iter != metadata.end()) {
         // This job was submitted via the Ray Job API, so it has JobInfo in the kv.
         std::string job_submission_id = iter->second;
@@ -257,11 +341,11 @@ void GcsJobManager::HandleGetAllJobInfo(rpc::GetAllJobInfoRequest request,
            send_reply_callback,
            job_data_key_to_indices,
            kv_callback_done,
-           try_send_reply](std::unordered_map<std::string, std::string> result) {
-            for (auto &data : result) {
-              std::string job_data_key = data.first;
+           try_send_reply](std::unordered_map<std::string, std::string> &&result) {
+            for (const auto &data : result) {
+              const std::string &job_data_key = data.first;
               // The JobInfo stored by the Ray Job API.
-              std::string job_info_json = data.second;
+              const std::string &job_info_json = data.second;
               if (!job_info_json.empty()) {
                 // Parse the JSON into a JobsAPIInfo proto.
                 rpc::JobsAPIInfo jobs_api_info;
@@ -275,7 +359,7 @@ void GcsJobManager::HandleGetAllJobInfo(rpc::GetAllJobInfoRequest request,
                 // Add the JobInfo to the correct indices in the reply.
                 for (int i : job_data_key_to_indices.at(job_data_key)) {
                   reply->mutable_job_info_list(i)->mutable_job_info()->CopyFrom(
-                      std::move(jobs_api_info));
+                      jobs_api_info);
                 }
               }
             }

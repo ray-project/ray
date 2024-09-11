@@ -204,6 +204,7 @@ class OldGcsAioClient:
 
     async def get_all_job_info(
         self,
+        job_or_submission_id: Optional[str] = None,
         skip_submission_job_info_field: bool = False,
         skip_is_running_tasks_field: bool = False,
         timeout: Optional[float] = None,
@@ -212,5 +213,8 @@ class OldGcsAioClient:
         Return dict key: bytes of job_id; value: JobTableData pb message.
         """
         return await self._async_proxy.get_all_job_info(
-            skip_submission_job_info_field, skip_is_running_tasks_field, timeout
+            job_or_submission_id,
+            skip_submission_job_info_field,
+            skip_is_running_tasks_field,
+            timeout,
         )
