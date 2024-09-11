@@ -1,10 +1,11 @@
-from typing import Any, List, Optional, Union
+from typing import Any, Dict, List, Optional, Union
 
 import gymnasium as gym
 import numpy as np
 import tree  # pip install dm_tree
 
 from ray.rllib.utils.numpy import LARGE_INTEGER, one_hot, one_hot_multidiscrete
+from ray.rllib.utils.serialization import gym_space_from_dict, gym_space_to_dict
 from ray.rllib.utils.spaces.space_utils import (
     batch,
     get_dummy_batch_for_space,
@@ -33,6 +34,77 @@ class InfiniteLookbackBuffer:
         self.finalized = not isinstance(self.data, list)
         self.space_struct = None
         self.space = space
+
+    def __eq__(
+        self,
+        other: "InfiniteLookbackBuffer",
+    ) -> bool:
+        """Compares two `InfiniteLookbackBuffers.
+
+        Args:
+            other: Another object. If another `LookbackBuffer` instance all
+                their attributes are compared.
+
+        Returns:
+            `True`, if `other` is an `InfiniteLookbackBuffer` instance and all
+            attributes are identical. Otherwise, returns `False`.
+        """
+        if isinstance(other, InfiniteLookbackBuffer):
+            if (
+                self.data == other.data
+                and self.lookback == other.lookback
+                and self.finalized == other.finalized
+                and self.space_struct == other.space_struct
+                and self.space == other.space
+            ):
+                return True
+        return False
+
+    def get_state(self) -> Dict[str, Any]:
+        """Returns the pickable state of a buffer.
+
+        The data in the buffer is stored into a dictionary. Note that
+        buffers can also be generated from pickable states (see
+        `InfiniteLookbackBuffer.from_state`)
+
+        Returns:
+            A dict containing all the data and metadata from the buffer.
+        """
+        return {
+            "data": self.data,
+            "lookback": self.lookback,
+            "finalized": self.finalized,
+            "space_struct": gym_space_to_dict(self.space_struct)
+            if self.space_struct
+            else self.space_struct,
+            "space": gym_space_to_dict(self.space) if self.space else self.space,
+        }
+
+    @staticmethod
+    def from_state(state: Dict[str, Any]) -> None:
+        """Creates a new `InfiniteLookbackBuffer` from a state dict.
+
+        Args:
+            state: The state dict, as returned by `self.get_state`.
+
+        Returns:
+            A new `InfiniteLookbackBuffer` instance with the data and metadata
+            from the state dict.
+        """
+        buffer = InfiniteLookbackBuffer()
+        buffer.data = state["data"]
+        buffer.lookback = state["lookback"]
+        buffer.finalized = state["finalized"]
+        buffer.space_struct = (
+            gym_space_from_dict(state["space_struct"])
+            if state["space_struct"]
+            else state["space_struct"]
+        )
+        buffer.space = (
+            gym_space_from_dict(state["space"]) if state["space"] else state["space"]
+        )
+
+        return buffer
 
     def append(self, item) -> None:
         """Appends the given item to the end of this buffer."""

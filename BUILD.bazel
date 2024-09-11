@@ -991,6 +991,7 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         ":core_worker_lib",
+        ":ray_mock",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -1628,25 +1629,6 @@ ray_cc_test(
         "src/ray/gcs/gcs_server/test/gcs_node_manager_test.cc",
     ],
     tags = ["team:core"],
-    deps = [
-        ":gcs_server_lib",
-        ":gcs_server_test_util",
-        ":gcs_test_util_lib",
-        ":ray_mock",
-        "@com_google_googletest//:gtest_main",
-    ],
-)
-
-ray_cc_test(
-    name = "gcs_node_manager_export_event_test",
-    size = "small",
-    srcs = [
-        "src/ray/gcs/gcs_server/test/gcs_node_manager_export_event_test.cc",
-    ],
-    tags = [
-        "no_windows",
-        "team:core"
-    ],
     deps = [
         ":gcs_server_lib",
         ":gcs_server_test_util",
@@ -2359,6 +2341,25 @@ ray_cc_test(
     deps = [
         ":gcs",
         "//src/ray/util",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+ray_cc_test(
+    name = "gcs_export_event_test",
+    size = "small",
+    srcs = glob([
+        "src/ray/gcs/gcs_server/test/export_api/*.cc",
+    ]),
+    tags = [
+        "no_windows",
+        "team:core"
+    ],
+    deps = [
+        ":gcs_server_lib",
+        ":gcs_server_test_util",
+        ":gcs_test_util_lib",
+        ":ray_mock",
         "@com_google_googletest//:gtest_main",
     ],
 )
