@@ -3000,7 +3000,7 @@ py_test(
     tags = ["team:rllib", "exclusive", "examples"],
     size = "large",
     srcs = ["examples/fault_tolerance/crashing_and_stalling_env.py"],
-    args = ["--algo=PPO", "--num-agents=2", --enable-new-api-stack", "--as-test", "--restart-failed-envs", "--stop-reward=800.0"]
+    args = ["--algo=PPO", "--num-agents=2", "--enable-new-api-stack", "--as-test", "--restart-failed-envs", "--stop-reward=800.0"]
 )
 
 # subdirectory: gpus/
