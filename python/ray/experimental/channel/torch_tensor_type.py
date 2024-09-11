@@ -124,6 +124,7 @@ class TorchTensorType(ChannelOutputType):
         self,
         writer: Optional["ray.actor.ActorHandle"],
         reader_and_node_list: List[Tuple["ray.actor.ActorHandle", str]],
+        read_by_multi_output_node,
         _torch_tensor_allocator: Optional["TorchTensorAllocator"] = None,
     ) -> type:
 

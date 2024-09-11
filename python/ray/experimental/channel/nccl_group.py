@@ -84,7 +84,7 @@ class _NcclGroup(GPUCommunicator):
             from ray.util.collective.collective_group import nccl_util
 
             self.nccl_util = nccl_util
-
+            print(f"SANG-TODO {world_size=} {comm_id=} {rank=}")
             self._comm = self.nccl_util.NcclCommunicator(world_size, comm_id, rank)
         else:
             # Driver does not have a rank.
