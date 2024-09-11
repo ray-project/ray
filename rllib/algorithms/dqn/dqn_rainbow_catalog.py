@@ -48,13 +48,6 @@ class DQNRainbowCatalog(Catalog):
     Any module built for exploration or inference is built with the flag
     `ìnference_only=True` and does not contain any target networks. This flag can
     be set in a `SingleAgentModuleSpec` through the `inference_only` boolean flag.
-    Whenever the default configuration or build methods are overridden, the
-    `inference_only` flag must be used with
-    care to ensure that the module synching works correctly.
-    The module classes contain a `_inference_only_state_dict_keys` attribute that
-    contains the keys to be taken care of when synching the state. The method
-    `__set_inference_only_state_dict_keys` has to be overridden to define these keys
-    and `_inference_only_get_state_hook`.
     """
 
     @override(Catalog)

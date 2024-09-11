@@ -1554,7 +1554,7 @@ class CompiledDAG:
 
     def _build_execution_schedule(
         self,
-    ) -> Dict[int, Dict[_DAGNodeOperationType, _DAGOperationGraphNode]]:
+    ) -> Dict["ray.actor.ActorHandle", List[_DAGNodeOperation]]:
         """
         Generate an execution schedule for each actor. The schedule is a list of
         _DAGNodeOperation.
