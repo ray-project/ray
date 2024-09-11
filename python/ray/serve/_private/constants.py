@@ -12,11 +12,6 @@ SERVE_PROXY_NAME = "SERVE_PROXY_ACTOR"
 #: Ray namespace used for all Serve actors
 SERVE_NAMESPACE = "serve"
 
-#: HTTP Address
-DEFAULT_HTTP_ADDRESS = os.environ.get(
-    "RAY_SERVE_DEFAULT_HTTP_ADDRESS", "http://127.0.0.1:8000"
-)
-
 #: HTTP Host
 DEFAULT_HTTP_HOST = os.environ.get("RAY_SERVE_DEFAULT_HTTP_HOST", "127.0.0.1")
 
