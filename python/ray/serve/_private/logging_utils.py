@@ -293,8 +293,8 @@ def configure_component_logger(
     logger.setLevel(logging_config.log_level)
     logger.handlers.clear()
 
-    # Only add stream handler if RAY_SERVE_LOG_TO_STDERR is True.
-    # Also, setup stream handler if the default serve logger is being configured.
+    # Only add stream handler if RAY_SERVE_LOG_TO_STDERR is True or if
+    # `stream_handler_only` is set to True.
     if RAY_SERVE_LOG_TO_STDERR or stream_handler_only:
         stream_handler = logging.StreamHandler()
         stream_handler.setFormatter(ServeFormatter(component_name, component_id))
@@ -303,7 +303,7 @@ def configure_component_logger(
         logger.addHandler(stream_handler)
 
     # Skip setting up file handler and stdout/stderr redirect if `stream_handler_only`
-    # is set to True. Default serve logger can be configured outside the
+    # is set to True. Logger such as default serve logger can be configured outside the
     # context of a Serve component, we don't want those logs to redirect into serve's
     # logger and log files.
     if stream_handler_only:
