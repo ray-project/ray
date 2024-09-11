@@ -1,12 +1,12 @@
 import asyncio
 import datetime
+import os
 import threading
 import time
 from copy import copy, deepcopy
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import grpc
-import pytest
 import requests
 from starlette.requests import Request
 
@@ -15,7 +15,12 @@ import ray.util.state as state_api
 from ray import serve
 from ray.actor import ActorHandle
 from ray.serve._private.client import ServeControllerClient
-from ray.serve._private.common import ApplicationStatus, DeploymentID, DeploymentStatus
+from ray.serve._private.common import (
+    ApplicationStatus,
+    DeploymentID,
+    DeploymentStatus,
+    RequestProtocol,
+)
 from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME, SERVE_NAMESPACE
 from ray.serve._private.deployment_state import ALL_REPLICA_STATES, ReplicaState
 from ray.serve._private.proxy import DRAINING_MESSAGE
@@ -197,6 +202,45 @@ class MockPlacementGroup:
         self._soft_target_node_id = _soft_target_node_id
 
 
+class MockDeploymentHandle:
+    def __init__(self, deployment_name: str, app_name: str = SERVE_DEFAULT_APP_NAME):
+        self._deployment_name = deployment_name
+        self._app_name = app_name
+        self._protocol = RequestProtocol.UNDEFINED
+        self._running_replicas_populated = False
+
+    def options(self, *args, **kwargs):
+        return self
+
+    def __eq__(self, dep: Tuple[str]):
+        other_deployment_name, other_app_name = dep
+        return (
+            self._deployment_name == other_deployment_name
+            and self._app_name == other_app_name
+        )
+
+    def _set_request_protocol(self, protocol: RequestProtocol):
+        self._protocol = protocol
+
+    def _get_or_create_router(self):
+        pass
+
+    def running_replicas_populated(self) -> bool:
+        return self._running_replicas_populated
+
+    def set_running_replicas_populated(self, val: bool):
+        self._running_replicas_populated = val
+
+
+@serve.deployment
+class GetPID:
+    def __call__(self):
+        return os.getpid()
+
+
+get_pid_entrypoint = GetPID.bind()
+
+
 def check_ray_stopped():
     try:
         requests.get("http://localhost:52365/api/ray/version")
@@ -372,6 +416,8 @@ def check_telemetry(
 
 
 def ping_grpc_list_applications(channel, app_names, test_draining=False):
+    import pytest
+
     stub = serve_pb2_grpc.RayServeAPIServiceStub(channel)
     request = serve_pb2.ListApplicationsRequest()
     if test_draining:
@@ -388,6 +434,8 @@ def ping_grpc_list_applications(channel, app_names, test_draining=False):
 
 
 def ping_grpc_healthz(channel, test_draining=False):
+    import pytest
+
     stub = serve_pb2_grpc.RayServeAPIServiceStub(channel)
     request = serve_pb2.HealthzRequest()
     if test_draining:
@@ -403,6 +451,8 @@ def ping_grpc_healthz(channel, test_draining=False):
 
 
 def ping_grpc_call_method(channel, app_name, test_not_found=False):
+    import pytest
+
     stub = serve_pb2_grpc.UserDefinedServiceStub(channel)
     request = serve_pb2.UserDefinedMessage(name="foo", num=30, foo="bar")
     metadata = (("application", app_name),)
