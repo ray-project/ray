@@ -146,6 +146,27 @@ class IOWorkerPoolInterface {
 class WorkerInterface;
 class Worker;
 
+enum class WorkerUnfitForTaskReason {
+  NONE = 0,                      // OK
+  ROOT_MISMATCH = 1,             // job ID or root detached actor ID mismatch
+  RUNTIME_ENV_MISMATCH = 2,      // runtime env hash mismatch
+  DYNAMIC_OPTIONS_MISMATCH = 3,  // dynamic options mismatch
+  OTHERS = 4,                    // reasons we don't do stats for (e.g. language)
+};
+static constexpr absl::string_view kWorkerUnfitForTaskReasonDebugName[] = {
+    "NONE",
+    "ROOT_MISMATCH",
+    "RUNTIME_ENV_MISMATCH",
+    "DYNAMIC_OPTIONS_MISMATCH",
+    "OTHERS",
+};
+
+inline std::ostream &operator<<(std::ostream &os,
+                                const WorkerUnfitForTaskReason &reason) {
+  os << kWorkerUnfitForTaskReasonDebugName[static_cast<int>(reason)];
+  return os;
+}
+
 /// \class WorkerPool
 ///
 /// The WorkerPool is responsible for managing a pool of Workers. Each Worker
@@ -693,6 +714,10 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
       const WorkerPool::State &state) const;
 
   void ExecuteOnPrestartWorkersStarted(std::function<void()> callback);
+
+  // If this worker can serve the task.
+  WorkerUnfitForTaskReason WorkerFitsForTask(const WorkerInterface &worker,
+                                             const TaskSpecification &task_spec) const;
 
   /// For Process class for managing subprocesses (e.g. reaping zombies).
   instrumented_io_context *io_service_;
