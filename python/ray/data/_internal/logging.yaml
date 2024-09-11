@@ -19,11 +19,24 @@ handlers:
         formatter: ray
         level: INFO
         filters: [console_filter]
+    error-file:
+        class: ray.data._internal.logging.SessionFileHandler
+        level: ERROR
+        formatter: ray
+        filename: ray-data-errors.log
 
 loggers:
     ray.data:
         level: DEBUG
-        handlers: [file, console]
+        handlers: [file, console, error-file]
+        propagate: False
+    ray.anyscale.data:
+        level: DEBUG
+        handlers: [file, console, error-file]
+        propagate: False
+    ray.anyscale.air._internal.autoscaling_coordinator:
+        level: DEBUG
+        handlers: [file, console, error-file]
         propagate: False
     ray.air.util.tensor_extensions:
         level: DEBUG
