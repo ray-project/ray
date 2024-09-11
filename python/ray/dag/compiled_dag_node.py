@@ -1224,7 +1224,6 @@ class CompiledDAG:
 
                 self.data_to_input_channel: Dict[DAGNode, ChannelInterface] = {}
                 task.output_channels = []
-                self.input_node_output_idxs = []
                 for data in input_data_to_reader_and_node_set:
                     reader_and_node_list = list(input_data_to_reader_and_node_set[data])
                     output_channel = do_allocate_channel(
@@ -1238,8 +1237,6 @@ class CompiledDAG:
                         task.output_idxs.append(None)
                     else:
                         task.output_idxs.append(data.key)
-                # print(f"Output channels: {task.output_channels}")
-                # print(f"Output idxs: {self.input_node_output_idxs}")
             else:
                 assert isinstance(task.dag_node, InputAttributeNode) or isinstance(
                     task.dag_node, MultiOutputNode
