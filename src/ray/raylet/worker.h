@@ -323,10 +323,10 @@ class Worker : public WorkerInterface {
   RayTask assigned_task_;
   /// Time when the last task was assigned to this worker.
   absl::Time task_assign_time_;
-  /// If this worker ever holded a GPU resource. Once it holds a GPU or non-GPU task
+  /// Whether this worker ever holded a GPU resource. Once it holds a GPU or non-GPU task
   /// it can't switch to the other type.
   std::optional<bool> is_gpu_ = std::nullopt;
-  /// If this worker can hold an actor. Once it holds an actor or a normal task, it
+  /// Whether this worker can hold an actor. Once it holds an actor or a normal task, it
   /// can't switch to the other type.
   std::optional<bool> is_actor_worker_ = std::nullopt;
   /// If true, a RPC need to be sent to notify the worker about GCS restarting.

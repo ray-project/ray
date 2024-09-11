@@ -1185,13 +1185,13 @@ WorkerUnfitForTaskReason WorkerPool::WorkerFitsForTask(
     bool task_is_gpu =
         task_spec.GetRequiredResources().Get(scheduling::ResourceID::GPU()) > 0;
     if (is_gpu.value() != task_is_gpu) {
-      return WorkerUnfitForTaskReason::RUNTIME_ENV_MISMATCH;
+      return WorkerUnfitForTaskReason::OTHERS;
     }
   }
   auto is_actor_worker = worker.GetIsActorWorker();
   if (is_actor_worker.has_value() &&
       is_actor_worker.value() != task_spec.IsActorCreationTask()) {
-    return WorkerUnfitForTaskReason::RUNTIME_ENV_MISMATCH;
+    return WorkerUnfitForTaskReason::OTHERS;
   }
   // TODO(clarng): consider re-using worker that has runtime envionrment
   // if the task doesn't require one.
@@ -1362,7 +1362,7 @@ void WorkerPool::PrestartWorkers(const TaskSpecification &task_spec,
 }
 
 void WorkerPool::PrestartDefaultCpuWorkers(ray::Language language, int64_t num_needed) {
-  // default workers uses 1 cpu and doesn't use runtime env.
+  // default workers don't use runtime env.
   RAY_LOG(DEBUG) << "PrestartDefaultCpuWorkers " << num_needed;
   for (int i = 0; i < num_needed; i++) {
     PopWorkerStatus status;

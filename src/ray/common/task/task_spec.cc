@@ -598,6 +598,8 @@ std::string TaskSpecification::CallSiteString() const {
 
 int CalculateRuntimeEnvHash(const std::string &serialized_runtime_env) {
   if (IsRuntimeEnvEmpty(serialized_runtime_env)) {
+    // It's useful to have the same predetermined value for both unspecified and empty
+    // runtime envs.
     return 0;
   }
   size_t hash = std::hash<std::string>()(serialized_runtime_env);

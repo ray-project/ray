@@ -147,9 +147,9 @@ class WorkerInterface;
 class Worker;
 
 enum class WorkerUnfitForTaskReason {
-  NONE = 0,                  // OK
-  ROOT_MISMATCH = 1,         // job ID or root detached actor ID mismatch
-  RUNTIME_ENV_MISMATCH = 2,  // runtime env hash mismatch, is_gpu or is_actor mismatch.
+  NONE = 0,                      // OK
+  ROOT_MISMATCH = 1,             // job ID or root detached actor ID mismatch
+  RUNTIME_ENV_MISMATCH = 2,      // runtime env hash mismatch
   DYNAMIC_OPTIONS_MISMATCH = 3,  // dynamic options mismatch
   OTHERS = 4,                    // reasons we don't do stats for (e.g. language)
 };
