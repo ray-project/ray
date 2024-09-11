@@ -2043,7 +2043,7 @@ def test_buffered_inputs(shutdown_only, temporary_change_timeout):
         for i, ref in enumerate(output_refs):
             assert await ref == i
 
-        # Test there are more items than max bufcfered inputs.
+        # Test there are more items than max buffered inputs.
         output_refs = []
         for i in range(MAX_INFLIGHT_EXECUTIONS):
             output_refs.append(await async_dag.execute_async(i))
