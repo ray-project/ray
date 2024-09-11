@@ -2908,7 +2908,7 @@ cdef class OldGcsClient:
 
     @_auto_reconnect
     def get_all_job_info(
-        self, job_or_submission_id: str = None, skip_submission_job_info_field=False,
+        self, *, job_or_submission_id: str = None, skip_submission_job_info_field=False,
         skip_is_running_tasks_field=False, timeout=None
     ) -> Dict[JobID, JobTableData]:
         # Ideally we should use json_format.MessageToDict(job_info),

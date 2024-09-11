@@ -204,6 +204,7 @@ class OldGcsAioClient:
 
     async def get_all_job_info(
         self,
+        *,
         job_or_submission_id: Optional[str] = None,
         skip_submission_job_info_field: bool = False,
         skip_is_running_tasks_field: bool = False,

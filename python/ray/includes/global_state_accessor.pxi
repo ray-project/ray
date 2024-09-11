@@ -49,7 +49,7 @@ cdef class GlobalStateAccessor:
             self.inner.get().Disconnect()
 
     def get_job_table(
-        self, skip_submission_job_info_field=False, skip_is_running_tasks_field=False
+        self, *, skip_submission_job_info_field=False, skip_is_running_tasks_field=False
     ):
         cdef c_vector[c_string] result
         cdef c_bool c_skip_submission_job_info_field = skip_submission_job_info_field

@@ -297,7 +297,6 @@ void GcsJobManager::HandleGetAllJobInfo(rpc::GetAllJobInfoRequest request,
           reply->mutable_job_info_list(i)->set_is_running_tasks(false);
           core_worker_clients_.Disconnect(worker_id);
           (*num_processed_jobs)++;
-          ;
           try_send_reply();
         } else {
           // Get is_running_tasks from the core worker for the driver.

@@ -433,7 +433,7 @@ cdef class NewGcsClient:
     #############################################################
 
     def get_all_job_info(
-        self, job_or_submission_id: Optional[str] = None,
+        self, *, job_or_submission_id: Optional[str] = None,
         skip_submission_job_info_field: bool = False,
         skip_is_running_tasks_field: bool = False,
         timeout: Optional[float] = None
@@ -456,7 +456,7 @@ cdef class NewGcsClient:
         return raise_or_return((convert_get_all_job_info(status, move(reply))))
 
     def async_get_all_job_info(
-        self, job_or_submission_id: Optional[str] = None,
+        self, *, job_or_submission_id: Optional[str] = None,
         skip_submission_job_info_field: bool = False,
         skip_is_running_tasks_field: bool = False,
         timeout: Optional[float] = None
