@@ -1222,6 +1222,10 @@ def test_readers_on_different_nodes(ray_start_cluster):
         def get_node_id(self):
             return ray.get_runtime_context().get_node_id()
 
+        def read(self, channel, val):
+            assert channel.read() == val
+            return val
+
     def create_actor(node):
         return Actor.options(
             scheduling_strategy=NodeAffinitySchedulingStrategy(node, soft=False)
@@ -1239,12 +1243,12 @@ def test_readers_on_different_nodes(ray_start_cluster):
     driver_actor = create_driver_actor()
     driver_node = get_actor_node_id(driver_actor)
 
-    with pytest.raises(
-        ValueError, match="All reader actors must be on the same node.*"
-    ):
-        ray_channel.Channel(
-            None, [(driver_actor, driver_node), (a, a_node), (b, b_node)], 1000
-        )
+    ch = ray_channel.Channel(
+        None, [(driver_actor, driver_node), (a, a_node), (b, b_node)], 1000
+    )
+    val = 1
+    ch.write(val)
+    assert ray.get([a.read.remote(ch, val) for a in actors]) == [val, val]
 
 
 @pytest.mark.skipif(
@@ -1273,6 +1277,10 @@ def test_bunch_readers_on_different_nodes(ray_start_cluster):
         def get_node_id(self):
             return ray.get_runtime_context().get_node_id()
 
+        def read(self, channel, val):
+            assert channel.read() == val
+            return val
+
     def create_actor(node):
         return Actor.options(
             scheduling_strategy=NodeAffinitySchedulingStrategy(node, soft=False)
@@ -1296,20 +1304,22 @@ def test_bunch_readers_on_different_nodes(ray_start_cluster):
     driver_actor = create_driver_actor()
     driver_node = get_actor_node_id(driver_actor)
 
-    with pytest.raises(
-        ValueError, match="All reader actors must be on the same node.*"
-    ):
-        ray_channel.Channel(
-            None,
-            [
-                (driver_actor, driver_node),
-                (a, a_node),
-                (b, b_node),
-                (c, c_node),
-                (d, d_node),
-            ],
-            1000,
-        )
+    ch = ray_channel.Channel(
+        None,
+        [
+            (driver_actor, driver_node),
+            (a, a_node),
+            (b, b_node),
+            (c, c_node),
+            (d, d_node),
+        ],
+        1000,
+    )
+    i = 1
+    ch.write(i)
+    assert ray.get([a.read.remote(ch, i) for a in actors]) == [
+        i for _ in range(len(actors))
+    ]
 
 
 def test_buffered_channel(shutdown_only):
