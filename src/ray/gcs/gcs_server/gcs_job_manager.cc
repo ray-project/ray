@@ -263,10 +263,9 @@ void GcsJobManager::HandleGetAllJobInfo(rpc::GetAllJobInfoRequest request,
     }
     return false;
   };
-  auto on_done = [this, filter_ok, request, reply, send_reply_callback, limit](
-                     const absl::flat_hash_map<JobID, JobTableData> &&result) {
-    RAY_CHECK(thread_checker_.IsOnSameThread());
 
+  auto on_done = [this, filter_ok, reply, send_reply_callback, limit](
+                     absl::flat_hash_map<JobID, JobTableData> &&result) {
     // Internal KV keys for jobs that were submitted via the Ray Job API.
     std::vector<std::string> job_api_data_keys;
 
@@ -298,116 +297,72 @@ void GcsJobManager::HandleGetAllJobInfo(rpc::GetAllJobInfoRequest request,
         job_api_data_keys.push_back(job_data_key);
         job_data_key_to_indices[job_data_key].push_back(i);
       }
+
+      JobID job_id = data.first;
+      WorkerID worker_id = WorkerID::FromBinary(data.second.driver_address().worker_id());
+
+      // If job is not dead, get is_running_tasks from the core worker for the driver.
+      if (data.second.is_dead()) {
+        reply->mutable_job_info_list(i)->set_is_running_tasks(false);
+        core_worker_clients_.Disconnect(worker_id);
+        (*num_processed_jobs)++;
+        try_send_reply();
+      } else {
+        // Get is_running_tasks from the core worker for the driver.
+        auto client = core_worker_clients_.GetOrConnect(data.second.driver_address());
+        auto request = std::make_unique<rpc::NumPendingTasksRequest>();
+        constexpr int64_t kNumPendingTasksRequestTimeoutMs = 1000;
+        RAY_LOG(DEBUG) << "Send NumPendingTasksRequest to worker " << worker_id
+                       << ", timeout " << kNumPendingTasksRequestTimeoutMs << " ms.";
+        client->NumPendingTasks(
+            std::move(request),
+            [job_id, worker_id, reply, i, num_processed_jobs, try_send_reply](
+                const Status &status,
+                const rpc::NumPendingTasksReply &num_pending_tasks_reply) {
+              RAY_LOG(DEBUG).WithField(worker_id)
+                  << "Received NumPendingTasksReply from worker.";
+              if (!status.ok()) {
+                RAY_LOG(WARNING).WithField(job_id).WithField(worker_id)
+                    << "Failed to get num_pending_tasks from core worker: " << status
+                    << ", is_running_tasks is unset.";
+                reply->mutable_job_info_list(i)->clear_is_running_tasks();
+              } else {
+                bool is_running_tasks = num_pending_tasks_reply.num_pending_tasks() > 0;
+                reply->mutable_job_info_list(i)->set_is_running_tasks(is_running_tasks);
+              }
+              (*num_processed_jobs)++;
+              try_send_reply();
+            },
+            kNumPendingTasksRequestTimeoutMs);
+      }
       i++;
     }
 
-    // Jobs are filtered. Now, optionally populate is_running_tasks and job_info. We
-    // do async calls to:
-    //
-    // - N outbound RPCs, one to each jobs' core workers on GcsServer::main_service_.
-    // - One InternalKV MultiGet call on GcsServer::kv_service_.
-    //
-    // And then we wait all by examining an atomic num_finished_tasks counter and then
-    // reply. The wait counter is written from 2 different thread, which requires an
-    // atomic read-and-increment. Each thread performs read-and-increment, and check
-    // the atomic readout to ensure try_send_reply is executed exactly once.
-
-    // Atomic counter of pending async tasks before sending the reply.
-    // Once it reaches total_tasks, the reply is sent.
-    std::shared_ptr<std::atomic<size_t>> num_finished_tasks =
-        std::make_shared<std::atomic<size_t>>(0);
-
-    // N tasks for N jobs; and 1 task for the MultiKVGet. If either is skipped the counter
-    // still increments.
-    const size_t total_tasks = reply->job_info_list_size() + 1;
-    auto try_send_reply =
-        [reply, send_reply_callback, total_tasks](size_t finished_tasks) {
-          if (finished_tasks == total_tasks) {
-            RAY_LOG(DEBUG) << "Finished getting all job info.";
-            GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
-          }
-        };
-
-    if (request.skip_is_running_tasks_field()) {
-      // Skipping RPCs to workers, just mark all job tasks as done.
-      const size_t job_count = reply->job_info_list_size();
-      size_t updated_finished_tasks =
-          num_finished_tasks->fetch_add(job_count) + job_count;
-      try_send_reply(updated_finished_tasks);
-    } else {
-      for (int i = 0; i < reply->job_info_list_size(); i++) {
-        const auto &data = reply->job_info_list(i);
-        auto job_id = JobID::FromBinary(data.job_id());
-        WorkerID worker_id = WorkerID::FromBinary(data.driver_address().worker_id());
-
-        // If job is dead, no need to get.
-        if (data.is_dead()) {
-          reply->mutable_job_info_list(i)->set_is_running_tasks(false);
-          core_worker_clients_.Disconnect(worker_id);
-          size_t updated_finished_tasks = num_finished_tasks->fetch_add(1) + 1;
-          try_send_reply(updated_finished_tasks);
-        } else {
-          // Get is_running_tasks from the core worker for the driver.
-          auto client = core_worker_clients_.GetOrConnect(data.driver_address());
-          auto request = std::make_unique<rpc::NumPendingTasksRequest>();
-          constexpr int64_t kNumPendingTasksRequestTimeoutMs = 1000;
-          RAY_LOG(DEBUG) << "Send NumPendingTasksRequest to worker " << worker_id
-                         << ", timeout " << kNumPendingTasksRequestTimeoutMs << " ms.";
-          client->NumPendingTasks(
-              std::move(request),
-              [job_id, worker_id, reply, i, num_finished_tasks, try_send_reply](
-                  const Status &status,
-                  const rpc::NumPendingTasksReply &num_pending_tasks_reply) {
-                RAY_LOG(DEBUG).WithField(worker_id)
-                    << "Received NumPendingTasksReply from worker.";
-                if (!status.ok()) {
-                  RAY_LOG(WARNING).WithField(job_id).WithField(worker_id)
-                      << "Failed to get num_pending_tasks from core worker: " << status
-                      << ", is_running_tasks is unset.";
-                  reply->mutable_job_info_list(i)->clear_is_running_tasks();
-                } else {
-                  bool is_running_tasks = num_pending_tasks_reply.num_pending_tasks() > 0;
-                  reply->mutable_job_info_list(i)->set_is_running_tasks(is_running_tasks);
-                }
-                size_t updated_finished_tasks = num_finished_tasks->fetch_add(1) + 1;
-                try_send_reply(updated_finished_tasks);
-              },
-              kNumPendingTasksRequestTimeoutMs);
-        }
-      }
-    }
-
-    if (request.skip_submission_job_info_field()) {
-      // Skipping MultiKVGet, just mark the counter.
-      size_t updated_finished_tasks = num_finished_tasks->fetch_add(1) + 1;
-      try_send_reply(updated_finished_tasks);
-    } else {
-      // Load the JobInfo for jobs submitted via the Ray Job API.
-      auto kv_multi_get_callback =
-          [reply,
-           send_reply_callback,
-           job_data_key_to_indices,
-           num_finished_tasks,
-           try_send_reply](std::unordered_map<std::string, std::string> &&result) {
-            for (const auto &data : result) {
-              const std::string &job_data_key = data.first;
-              // The JobInfo stored by the Ray Job API.
-              const std::string &job_info_json = data.second;
-              if (!job_info_json.empty()) {
-                // Parse the JSON into a JobsAPIInfo proto.
-                rpc::JobsAPIInfo jobs_api_info;
-                auto status = google::protobuf::util::JsonStringToMessage(job_info_json,
-                                                                          &jobs_api_info);
-                if (!status.ok()) {
-                  RAY_LOG(ERROR)
-                      << "Failed to parse JobInfo JSON into JobsAPIInfo protobuf. JSON: "
-                      << job_info_json << " Error: " << status.message();
-                }
-                // Add the JobInfo to the correct indices in the reply.
-                for (int i : job_data_key_to_indices.at(job_data_key)) {
-                  reply->mutable_job_info_list(i)->mutable_job_info()->CopyFrom(
-                      jobs_api_info);
-                }
+    // Load the JobInfo for jobs submitted via the Ray Job API.
+    auto kv_multi_get_callback =
+        [reply,
+         send_reply_callback,
+         job_data_key_to_indices,
+         kv_callback_done,
+         try_send_reply](std::unordered_map<std::string, std::string> &&result) {
+          for (const auto &data : result) {
+            const std::string &job_data_key = data.first;
+            // The JobInfo stored by the Ray Job API.
+            const std::string &job_info_json = data.second;
+            if (!job_info_json.empty()) {
+              // Parse the JSON into a JobsAPIInfo proto.
+              rpc::JobsAPIInfo jobs_api_info;
+              auto status = google::protobuf::util::JsonStringToMessage(job_info_json,
+                                                                        &jobs_api_info);
+              if (!status.ok()) {
+                RAY_LOG(ERROR)
+                    << "Failed to parse JobInfo JSON into JobsAPIInfo protobuf. JSON: "
+                    << job_info_json << " Error: " << status.message();
+              }
+              // Add the JobInfo to the correct indices in the reply.
+              for (int i : job_data_key_to_indices.at(job_data_key)) {
+                reply->mutable_job_info_list(i)->mutable_job_info()->CopyFrom(
+                    jobs_api_info);
               }
             }
             size_t updated_finished_tasks = num_finished_tasks->fetch_add(1) + 1;
