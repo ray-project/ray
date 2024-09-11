@@ -85,25 +85,44 @@ if __name__ == "__main__":
 
     exit_handler_executed = False
     sigterm_handler_executed = False
+    ON_EXIT_HANDLER_WAIT_TIME = 3
 
     def on_exit_handler():
         global exit_handler_executed
 
+        f = open("/tmp/on_exit_handler.txt", "a")
+        f.write("on_exit_handler # 1\n")
+        f.flush()
         if exit_handler_executed:
+            # wait for exit_handler execution completed in other threads.
+            time.sleep(ON_EXIT_HANDLER_WAIT_TIME)
             return
 
+        f.write("on_exit_handler # 2\n")
+        f.flush()
         exit_handler_executed = True
 
         try:
             # Wait for a while to ensure the children processes of the ray node all
             # exited.
+            f.write("on_exit_handler # 3\n")
+            f.flush()
             time.sleep(SIGTERM_GRACE_PERIOD_SECONDS + 0.5)
-            if process.poll() is None:
-                # "ray start ..." command process is still alive. Force to kill it.
-                process.kill()
+
+            try:
+                if process.poll() is None:
+                    # "ray start ..." command process is still alive. Force to kill it.
+                    process.kill()
+                    time.sleep(0.5)
+            except Exception as e:
+                f.write(f"on_exit_handler # 3.5 {repr(e)}\n")
+                f.flush()
+                pass
 
             # Release the shared lock, representing current ray node does not use the
             # temp dir.
+            f.write("on_exit_handler # 4\n")
+            f.flush()
             fcntl.flock(lock_fd, fcntl.LOCK_UN)
 
             try:
@@ -117,7 +136,11 @@ if __name__ == "__main__":
                 # directory as well.
                 lock_acquired = False
 
+            f.write("on_exit_handler # 5\n")
+            f.flush()
             if lock_acquired:
+                f.write("on_exit_handler # 6\n")
+                f.flush()
                 # This is the final terminated ray node on current spark worker,
                 # start copy logs (including all local ray nodes logs) to destination.
                 if collect_log_to_path:
@@ -153,11 +176,16 @@ if __name__ == "__main__":
                         )
 
                 # Start cleaning the temp-dir,
+                f.write("on_exit_handler # 7\n")
+                f.flush()
                 shutil.rmtree(temp_dir, ignore_errors=True)
-        except Exception:
+        except Exception as e:
             # swallow any exception.
+            f.write(f"on_exit_handler # 8, {str(e)}\n")
+            f.flush()
             pass
         finally:
+            exit_handler_completed = True
             fcntl.flock(lock_fd, fcntl.LOCK_UN)
             os.close(lock_fd)
 
@@ -166,6 +194,8 @@ if __name__ == "__main__":
         while True:
             time.sleep(0.5)
             if os.getppid() != orig_parent_pid:
+                # Note raising SIGTERM signal in a background thread
+                # doesn't work
                 sigterm_handler()
                 break
 
@@ -192,6 +222,9 @@ if __name__ == "__main__":
                 sigterm_handler_executed = True
                 process.terminate()
                 on_exit_handler()
+            else:
+                # wait for exit_handler execution completed in other threads.
+                time.sleep(ON_EXIT_HANDLER_WAIT_TIME)
             # Sigterm exit code is 143.
             os._exit(143)
 
