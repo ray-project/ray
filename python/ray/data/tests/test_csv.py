@@ -758,7 +758,9 @@ def test_csv_read_filter_non_csv_file(ray_start_regular_shared, tmp_path):
 
     # Directory of CSV files.
     ds = ray.data.read_csv(tmp_path)
-    assert ds.to_pandas().equals(pd.concat([df, df], ignore_index=True))
+    actual_data = sorted(ds.to_pandas().itertuples(index=False))
+    expected_data = sorted(pd.concat([df, df]).itertuples(index=False))
+    assert actual_data == expected_data, (actual_data, expected_data)
 
     # Non-CSV file in Parquet format.
     table = pa.Table.from_pandas(df)
