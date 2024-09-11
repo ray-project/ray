@@ -79,6 +79,8 @@ def do_allocate_channel(
     Returns:
         The allocated channel.
     """
+    # None means it is called from a driver.
+    writer: Optional["ray.actor.ActorHandle"] = None
     try:
         writer = ray.get_runtime_context().current_actor
     except RuntimeError:

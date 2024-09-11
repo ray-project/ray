@@ -907,7 +907,9 @@ def test_composite_channel_single_reader(ray_start_cluster):
             self._chan = channel
 
         def create_composite_channel(self, writer, reader_and_node_list):
-            self._chan = ray_channel.CompositeChannel(writer, reader_and_node_list, 10)
+            self._chan = ray_channel.CompositeChannel(
+                writer, reader_and_node_list, 10, False
+            )
             return self._chan
 
         def read(self):
@@ -922,7 +924,9 @@ def test_composite_channel_single_reader(ray_start_cluster):
     node2 = get_actor_node_id(actor2)
 
     # Create a channel to communicate between driver process and actor1.
-    driver_to_actor1_channel = ray_channel.CompositeChannel(None, [(actor1, node1)], 10)
+    driver_to_actor1_channel = ray_channel.CompositeChannel(
+        None, [(actor1, node1)], 10, False
+    )
     ray.get(actor1.pass_channel.remote(driver_to_actor1_channel))
     driver_to_actor1_channel.write("hello")
     assert ray.get(actor1.read.remote()) == "hello"
@@ -979,7 +983,9 @@ def test_composite_channel_multiple_readers(ray_start_cluster):
             self._chan = channel
 
         def create_composite_channel(self, writer, reader_and_node_list):
-            self._chan = ray_channel.CompositeChannel(writer, reader_and_node_list, 10)
+            self._chan = ray_channel.CompositeChannel(
+                writer, reader_and_node_list, 10, False
+            )
             return self._chan
 
         def read(self):
@@ -995,7 +1001,7 @@ def test_composite_channel_multiple_readers(ray_start_cluster):
 
     # The driver writes data to CompositeChannel and actor1 and actor2 read it.
     driver_output_channel = ray_channel.CompositeChannel(
-        None, [(actor1, node1), (actor2, node2)], 10
+        None, [(actor1, node1), (actor2, node2)], 10, False
     )
     ray.get(actor1.pass_channel.remote(driver_output_channel))
     ray.get(actor2.pass_channel.remote(driver_output_channel))
