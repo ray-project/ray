@@ -262,6 +262,8 @@ class JobInfoAccessor {
   /// \param callback Callback that will be called after lookup finished.
   /// \return Status
   virtual Status AsyncGetAll(const std::optional<std::string> &job_or_submission_id,
+                             bool skip_submission_job_info_field,
+                             bool skip_is_running_tasks_field,
                              const MultiItemCallback<rpc::JobTableData> &callback,
                              int64_t timeout_ms);
 
@@ -272,6 +274,8 @@ class JobInfoAccessor {
   /// \param timeout_ms -1 means infinite.
   /// \return Status
   virtual Status GetAll(const std::optional<std::string> &job_or_submission_id,
+                        bool skip_submission_job_info_field,
+                        bool skip_is_running_tasks_field,
                         std::vector<rpc::JobTableData> &job_data_list,
                         int64_t timeout_ms);
 
