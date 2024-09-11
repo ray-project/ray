@@ -2007,7 +2007,8 @@ class CompiledDAG:
             # Fetch results from each output channel up to execution_index and cache
             # them separately to enable individual retrieval
             self._cache_execution_results(
-                self._max_finished_execution_index, self._dag_output_fetcher.read(timeout)
+                self._max_finished_execution_index,
+                self._dag_output_fetcher.read(timeout),
             )
 
             if timeout != -1:

@@ -2232,6 +2232,7 @@ def test_multiple_readers_single_writer(shutdown_only):
     ref = replica.call.remote(1)
     assert ray.get(ref) == 4
 
+
 @pytest.mark.parametrize("single_fetch", [True, False])
 def test_single_reader_multiple_writers(shutdown_only, single_fetch):
     """
