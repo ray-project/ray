@@ -90,6 +90,9 @@ class FakeReplicaScheduler(ReplicaScheduler):
         self._replica_queue_len_cache = ReplicaQueueLengthCache()
         self._dropped_replicas: Set[ReplicaID] = set()
 
+    def create_replica_wrapper(self, replica_info: RunningReplicaInfo):
+        return FakeReplica(replica_info)
+
     @property
     def replica_queue_len_cache(self) -> ReplicaQueueLengthCache:
         return self._replica_queue_len_cache
