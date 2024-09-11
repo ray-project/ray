@@ -2195,7 +2195,7 @@ def test_buffered_inputs(shutdown_only, temporary_change_timeout):
         for i, ref in enumerate(output_refs):
             assert await ref == i
 
-        # Test there are more items than max bufcfered inputs.
+        # Test there are more items than max buffered inputs.
         output_refs = []
         for i in range(MAX_INFLIGHT_EXECUTIONS):
             output_refs.append(await async_dag.execute_async(i))
@@ -2326,7 +2326,8 @@ def test_intra_process_channel(shutdown_only):
     assert ray.get(ref) == 3
 
 
-def test_multiple_readers_multiple_writers(shutdown_only):
+@pytest.mark.parametrize("single_fetch", [True, False])
+def test_multiple_readers_multiple_writers(shutdown_only, single_fetch):
     """
     Replica -> Worker1 -> Replica
             |          |
@@ -2345,8 +2346,10 @@ def test_multiple_readers_multiple_writers(shutdown_only):
             self.compiled_dag = dag.experimental_compile()
 
         def call(self, value):
-            ref = self.compiled_dag.execute(value)
-            return ray.get(ref)
+            if single_fetch:
+                return [ray.get(ref) for ref in self.compiled_dag.execute(value)]
+            else:
+                return ray.get(self.compiled_dag.execute(value))
 
     replica = Replica.remote()
     ref = replica.call.remote(1)
@@ -2382,7 +2385,8 @@ def test_multiple_readers_single_writer(shutdown_only):
     assert ray.get(ref) == 4
 
 
-def test_single_reader_multiple_writers(shutdown_only):
+@pytest.mark.parametrize("single_fetch", [True, False])
+def test_single_reader_multiple_writers(shutdown_only, single_fetch):
     """
     Replica -> Worker1 -> Worker1 -> Replica
                         |          |
@@ -2403,7 +2407,10 @@ def test_single_reader_multiple_writers(shutdown_only):
             self.compiled_dag = dag.experimental_compile()
 
         def call(self, value):
-            return ray.get(self.compiled_dag.execute(value))
+            if single_fetch:
+                return [ray.get(ref) for ref in self.compiled_dag.execute(value)]
+            else:
+                return ray.get(self.compiled_dag.execute(value))
 
     replica = Replica.remote()
     ref = replica.call.remote(1)
