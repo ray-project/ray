@@ -664,7 +664,10 @@ class BackendExecutor:
         return results
 
     def report_final_run_status(
-        self, errored=False, failed_rank=None, stack_trace=None
+        self,
+        errored: bool = False,
+        failed_rank: Optional[int] = None,
+        stack_trace: Optional[str] = None,
     ):
         """Report the final train run status, error, and end time to TrainStateActor."""
         if self.state_tracking_enabled:
@@ -675,9 +678,12 @@ class BackendExecutor:
 
             if errored:
                 run_status = RunStatusEnum.ERRORED
-                status_detail = f"Rank {failed_rank} worker raised an error: \n"
-                # Keep only the last part of the stack trace if it's too long.
-                status_detail += stack_trace[-MAX_ERROR_STACK_TRACE_LENGTH:]
+                status_detail = ""
+                if failed_rank is not None:
+                    status_detail += f"Rank {failed_rank} worker raised an error. \n"
+                if stack_trace is not None:
+                    # Keep only the last part of the stack trace if it's too long.
+                    status_detail += stack_trace[-MAX_ERROR_STACK_TRACE_LENGTH:]
             else:
                 run_status = RunStatusEnum.FINISHED
                 status_detail = ""

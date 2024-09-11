@@ -36,7 +36,7 @@ class StartTraceback(Exception):
 
 
 class StartTracebackWithWorkerRank(StartTraceback):
-    def __init__(self, worker_rank) -> None:
+    def __init__(self, worker_rank: int) -> None:
         super().__init__()
         self.worker_rank = worker_rank
 
