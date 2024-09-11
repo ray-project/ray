@@ -84,8 +84,10 @@ from ray.rllib.examples.learners.classes.intrinsic_curiosity_learners import (
 from ray.rllib.core import DEFAULT_MODULE_ID
 from ray.rllib.core.rl_module.multi_rl_module import MultiRLModuleSpec
 from ray.rllib.core.rl_module.rl_module import RLModuleSpec
-from ray.rllib.examples.rl_modules.classes.intrinsic_curiosity_model_rlm import (
+from ray.rllib.examples.learners.classes.intrinsic_curiosity_learners import (
     ICM_MODULE_ID,
+)
+from ray.rllib.examples.rl_modules.classes.intrinsic_curiosity_model_rlm import (
     IntrinsicCuriosityModel,
 )
 from ray.rllib.utils.metrics import (
