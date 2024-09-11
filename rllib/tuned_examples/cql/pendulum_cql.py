@@ -34,6 +34,13 @@ config = (
     )
     .offline_data(
         input_=[data_path.as_posix()],
+        # Define the number of reading blocks, these should be larger than 1
+        # and aligned with the data size.
+        input_read_method_kwargs={"override_num_blocks": max(args.num_gpus, 2)},
+        # Concurrency defines the number of processes that run the
+        # `map_batches` transformations. This should be aligned with the
+        # 'prefetch_batches' argument in 'iter_batches_kwargs'.
+        map_batches_kwargs={"concurrency": max(2, args.num_gpus * 2)},
         actions_in_input_normalized=True,
         dataset_num_iters_per_learner=1 if args.num_gpus == 0 else None,
     )
