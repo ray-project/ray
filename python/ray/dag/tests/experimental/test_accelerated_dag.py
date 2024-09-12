@@ -785,6 +785,21 @@ class TestMultiArgs:
         ):
             dag.experimental_compile()
 
+    def test_multi_args_same_actor(self, ray_start_regular):
+        a1 = Actor.remote(0)
+        with InputNode() as i:
+            branch1 = a1.inc.bind(i[0])
+            branch2 = a1.inc.bind(i[1])
+            dag = MultiOutputNode([branch1, branch2])
+
+        compiled_dag = dag.experimental_compile()
+
+        ref = compiled_dag.execute(1, 2)
+        result = ray.get(ref)
+        assert result == [1, 3]
+
+        compiled_dag.teardown()
+
     def test_multi_args_basic_asyncio(self, ray_start_regular):
         a1 = Actor.remote(0)
         a2 = Actor.remote(0)
