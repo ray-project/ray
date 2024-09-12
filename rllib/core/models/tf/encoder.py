@@ -236,6 +236,13 @@ class TfGRUEncoder(TfModel, Encoder):
             input_dims = (1, 1, config.hidden_dim)
             self.grus.append(layer)
 
+        # Add the linear output layer
+        self.output_layer = tf.keras.layers.Dense(
+            config.output_dims[0],
+            activation=None,
+            use_bias=True,
+        )
+
     @override(Model)
     def get_input_specs(self) -> Optional[Spec]:
         return SpecDict(
@@ -300,6 +307,9 @@ class TfGRUEncoder(TfModel, Encoder):
         for i, layer in enumerate(self.grus):
             out, h = layer(out, states_in["h"][i])
             states_out.append(h)
+
+        # Apply the linear output layer
+        out = self.output_layer(out)
 
         # Insert them into the output dict.
         outputs[ENCODER_OUT] = out
@@ -367,6 +377,13 @@ class TfLSTMEncoder(TfModel, Encoder):
             layer.build(input_dims)
             input_dims = (1, 1, config.hidden_dim)
             self.lstms.append(layer)
+
+        # Add the linear output layer
+        self.output_layer = tf.keras.layers.Dense(
+            config.output_dims[0],
+            activation=None,
+            use_bias=True,
+        )
 
     @override(Model)
     def get_input_specs(self) -> Optional[Spec]:
@@ -447,6 +464,9 @@ class TfLSTMEncoder(TfModel, Encoder):
             out, h, c = layer(out, (states_in["h"][i], states_in["c"][i]))
             states_out_h.append(h)
             states_out_c.append(c)
+
+        # Apply the linear output layer
+        out = self.output_layer(out)
 
         # Insert them into the output dict.
         outputs[ENCODER_OUT] = out
