@@ -18,8 +18,6 @@ from ray.rllib.evaluation.postprocessing import Postprocessing
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.tf_utils import explained_variance
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.nested_dict import NestedDict
-from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.typing import ModuleID, TensorType
 
 _, tf, _ = try_import_tf()
@@ -38,13 +36,12 @@ class PPOTfLearner(PPOLearner, TfLearner):
         *,
         module_id: ModuleID,
         config: PPOConfig,
-        batch: NestedDict,
+        batch: Dict,
         fwd_out: Dict[str, TensorType],
     ) -> TensorType:
-        # TODO (Kourosh): batch type is NestedDict.
         # TODO (Kourosh): We may or may not user module_id. For example if we have an
-        # agent based learning rate scheduler, we may want to use module_id to get the
-        # learning rate for that agent.
+        #  agent based learning rate scheduler, we may want to use module_id to get the
+        #  learning rate for that agent.
 
         # RNN case: Mask away 0-padded chunks at end of time axis.
         if self.module[module_id].is_stateful():
@@ -153,10 +150,9 @@ class PPOTfLearner(PPOLearner, TfLearner):
         *,
         module_id: ModuleID,
         config: PPOConfig,
+        kl_loss: float,
     ) -> None:
-        kl = convert_to_numpy(self.metrics.peek((module_id, LEARNER_RESULTS_KL_KEY)))
-
-        if np.isnan(kl):
+        if np.isnan(kl_loss):
             logger.warning(
                 f"KL divergence for Module {module_id} is non-finite, this "
                 "will likely destabilize your model and the training "
@@ -170,10 +166,10 @@ class PPOTfLearner(PPOLearner, TfLearner):
 
         # Update the KL coefficient.
         curr_var = self.curr_kl_coeffs_per_module[module_id]
-        if kl > 2.0 * config.kl_target:
+        if kl_loss > 2.0 * config.kl_target:
             # TODO (Kourosh) why not 2?
             curr_var.assign(curr_var * 1.5)
-        elif kl < 0.5 * config.kl_target:
+        elif kl_loss < 0.5 * config.kl_target:
             curr_var.assign(curr_var * 0.5)
 
         # Log the updated KL-coeff value.

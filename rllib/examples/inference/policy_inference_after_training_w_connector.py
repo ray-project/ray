@@ -118,6 +118,8 @@ register_env("stateless-cart", _env_creator)
 
 parser = add_rllib_example_script_args(default_reward=200.0)
 parser.set_defaults(
+    # Script only runs on new API stack.
+    enable_new_api_stack=True,
     # Make sure that - by default - we produce checkpoints during training.
     checkpoint_freq=1,
     checkpoint_at_end=True,
@@ -188,12 +190,14 @@ if __name__ == "__main__":
     best_result = results.get_best_result(
         metric=f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}", mode="max"
     )
-    # Create new Algorithm and restore its state from the last checkpoint.
+
+    # Create RLModule from a checkpoint.
     rl_module = RLModule.from_checkpoint(
         os.path.join(
             best_result.checkpoint.path,
+            "learner_group",
             "learner",
-            "module_state",
+            "rl_module",
             DEFAULT_MODULE_ID,
         )
     )
@@ -230,7 +234,7 @@ if __name__ == "__main__":
             rl_module_out = rl_module.forward_exploration(input_dict)
 
         to_env = module_to_env(
-            data=rl_module_out,
+            batch=rl_module_out,
             episodes=[episode],  # ConnectorV2 pipelines operate on lists of episodes.
             rl_module=rl_module,
             explore=args.explore_during_inference,

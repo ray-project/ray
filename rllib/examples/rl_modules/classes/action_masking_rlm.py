@@ -3,6 +3,7 @@ from typing import Dict, Optional, Tuple
 
 from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import PPOTorchRLModule
 from ray.rllib.core.columns import Columns
+from ray.rllib.core.rl_module.apis.value_function_api import ValueFunctionAPI
 from ray.rllib.core.rl_module.rl_module import RLModule, RLModuleConfig
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
@@ -99,8 +100,8 @@ class ActionMaskingTorchRLModule(ActionMaskingRLModule, PPOTorchRLModule):
         # Mask the action logits and return.
         return self._mask_action_logits(outs, action_mask)
 
-    @override(PPOTorchRLModule)
-    def _compute_values(self, batch: Dict[str, TensorType]):
+    @override(ValueFunctionAPI)
+    def compute_values(self, batch: Dict[str, TensorType]):
         # Preprocess the batch to extract the `observations` to `Columns.OBS`.
         _, batch = self._preprocess_batch(batch)
         # Call the super's method to compute values for GAE.

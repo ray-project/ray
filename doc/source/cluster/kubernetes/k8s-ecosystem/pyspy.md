@@ -52,7 +52,7 @@ kubectl port-forward svc/raycluster-py-spy-head-svc 8265:8265
 kubectl exec -it ${YOUR_HEAD_POD} -- bash
 
 # (Head Pod) Run a sample job in the Pod
-# `long_running_task` includes a `while True` loop to ensure the task remains actively running indefinitely. 
+# `long_running_task` includes a `while True` loop to ensure the task remains actively running indefinitely.
 # This allows you ample time to view the Stack Trace and CPU Flame Graph via Ray Dashboard.
 python3 samples/long_running_task.py
 ```

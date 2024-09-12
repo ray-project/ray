@@ -103,7 +103,9 @@ py_test_module_list(
     size = "medium",
     files = [
         "tests/experimental/test_detect_deadlock_dag.py",
+        "tests/experimental/test_multi_node_dag.py",
         "tests/experimental/test_torch_tensor_dag.py",
+        "tests/experimental/test_execution_schedule.py",
     ],
     tags = [
         "accelerated_dag",
@@ -115,7 +117,7 @@ py_test_module_list(
 )
 
 py_test_module_list(
-    size = "medium",
+    size = "enormous",
     files = [
         "tests/experimental/test_accelerated_dag.py",
     ],

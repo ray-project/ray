@@ -11,6 +11,9 @@ import pytest
 
 import ray
 from ray.data._internal.aggregate import Count, Max, Mean, Min, Quantile, Std, Sum
+from ray.data._internal.execution.interfaces.ref_bundle import (
+    _ref_bundles_iterator_to_block_refs_list,
+)
 from ray.data.aggregate import AggregateFn
 from ray.data.context import DataContext
 from ray.data.tests.conftest import *  # noqa
@@ -1251,7 +1254,8 @@ def test_random_shuffle_spread(ray_start_cluster, use_push_based_shuffle):
     node2_id = ray.get(get_node_id.options(resources={"bar:2": 1}).remote())
 
     ds = ray.data.range(100, override_num_blocks=2).random_shuffle()
-    blocks = ds.get_internal_block_refs()
+    bundles = ds.iter_internal_ref_bundles()
+    blocks = _ref_bundles_iterator_to_block_refs_list(bundles)
     ray.wait(blocks, num_returns=len(blocks), fetch_local=False)
     location_data = ray.experimental.get_object_locations(blocks)
     locations = []

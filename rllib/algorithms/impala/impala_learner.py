@@ -42,7 +42,7 @@ QUEUE_SIZE_LEARNER_THREAD_QUEUE = "queue_size_learner_thread_queue"
 QUEUE_SIZE_RESULTS_QUEUE = "queue_size_results_queue"
 
 
-class ImpalaLearner(Learner):
+class IMPALALearner(Learner):
     @override(Learner)
     def build(self) -> None:
         super().build()
@@ -63,7 +63,10 @@ class ImpalaLearner(Learner):
         # Extend all episodes by one artificual timestep to allow the value function net
         # to compute the bootstrap values (and add a mask to the batch to know, which
         # slots to mask out).
-        if self.config.add_default_connectors_to_learner_pipeline:
+        if (
+            self._learner_connector is not None
+            and self.config.add_default_connectors_to_learner_pipeline
+        ):
             self._learner_connector.prepend(AddOneTsToEpisodesAndTruncate())
 
         # Create and start the GPU-loader thread. It picks up train-ready batches from
@@ -106,7 +109,7 @@ class ImpalaLearner(Learner):
         #  algos that actually need (and know how) to do minibatching.
         minibatch_size: Optional[int] = None,
         num_iters: int = 1,
-        min_total_mini_batches: int = 0,
+        num_total_mini_batches: int = 0,
         reduce_fn=None,  # Deprecated args.
         **kwargs,
     ) -> ResultDict:
@@ -130,7 +133,7 @@ class ImpalaLearner(Learner):
         with self.metrics.log_time((ALL_MODULES, EPISODES_TO_BATCH_TIMER)):
             batch = self._learner_connector(
                 rl_module=self.module,
-                data={},
+                batch={},
                 episodes=episodes,
                 shared_data={},
             )
@@ -172,6 +175,9 @@ class ImpalaLearner(Learner):
     def remove_module(self, module_id: str):
         super().remove_module(module_id)
         self.entropy_coeff_schedulers_per_module.pop(module_id)
+
+
+ImpalaLearner = IMPALALearner
 
 
 class _GPULoaderThread(threading.Thread):

@@ -14,7 +14,11 @@ from ray import ObjectRef
 from ray.rllib import SampleBatch
 from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
-from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
+from ray.rllib.core import (
+    COMPONENT_ENV_TO_MODULE_CONNECTOR,
+    COMPONENT_MODULE_TO_ENV_CONNECTOR,
+)
+from ray.rllib.core.rl_module.rl_module import RLModuleSpec
 from ray.rllib.env.env_runner_group import _handle_remote_call_result_errors
 from ray.rllib.execution.buffers.mixin_replay_buffer import MixInMultiAgentReplayBuffer
 from ray.rllib.execution.learner_thread import LearnerThread
@@ -74,7 +78,7 @@ logger = logging.getLogger(__name__)
 LEARNER_RESULTS_CURR_ENTROPY_COEFF_KEY = "curr_entropy_coeff"
 
 
-class ImpalaConfig(AlgorithmConfig):
+class IMPALAConfig(AlgorithmConfig):
     """Defines a configuration class from which an Impala can be built.
 
     .. testcode::
@@ -488,14 +492,14 @@ class ImpalaConfig(AlgorithmConfig):
     def get_default_learner_class(self):
         if self.framework_str == "torch":
             from ray.rllib.algorithms.impala.torch.impala_torch_learner import (
-                ImpalaTorchLearner,
+                IMPALATorchLearner,
             )
 
-            return ImpalaTorchLearner
+            return IMPALATorchLearner
         elif self.framework_str == "tf2":
-            from ray.rllib.algorithms.impala.tf.impala_tf_learner import ImpalaTfLearner
+            from ray.rllib.algorithms.impala.tf.impala_tf_learner import IMPALATfLearner
 
-            return ImpalaTfLearner
+            return IMPALATfLearner
         else:
             raise ValueError(
                 f"The framework {self.framework_str} is not supported. "
@@ -503,23 +507,19 @@ class ImpalaConfig(AlgorithmConfig):
             )
 
     @override(AlgorithmConfig)
-    def get_default_rl_module_spec(self) -> SingleAgentRLModuleSpec:
+    def get_default_rl_module_spec(self) -> RLModuleSpec:
         from ray.rllib.algorithms.ppo.ppo_catalog import PPOCatalog
 
         if self.framework_str == "tf2":
             from ray.rllib.algorithms.ppo.tf.ppo_tf_rl_module import PPOTfRLModule
 
-            return SingleAgentRLModuleSpec(
-                module_class=PPOTfRLModule, catalog_class=PPOCatalog
-            )
+            return RLModuleSpec(module_class=PPOTfRLModule, catalog_class=PPOCatalog)
         elif self.framework_str == "torch":
             from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import (
                 PPOTorchRLModule,
             )
 
-            return SingleAgentRLModuleSpec(
-                module_class=PPOTorchRLModule, catalog_class=PPOCatalog
-            )
+            return RLModuleSpec(module_class=PPOTorchRLModule, catalog_class=PPOCatalog)
         else:
             raise ValueError(
                 f"The framework {self.framework_str} is not supported. "
@@ -527,7 +527,10 @@ class ImpalaConfig(AlgorithmConfig):
             )
 
 
-class Impala(Algorithm):
+ImpalaConfig = IMPALAConfig
+
+
+class IMPALA(Algorithm):
     """Importance weighted actor/learner architecture (IMPALA) Algorithm
 
     == Overview of data flow in IMPALA ==
@@ -640,9 +643,7 @@ class Impala(Algorithm):
 
         if not self.config.enable_rl_module_and_learner:
             # Create and start the learner thread.
-            self._learner_thread = make_learner_thread(
-                self.workers.local_worker(), self.config
-            )
+            self._learner_thread = make_learner_thread(self.env_runner, self.config)
             self._learner_thread.start()
 
     @override(Algorithm)
@@ -792,7 +793,7 @@ class Impala(Algorithm):
                 )
                 self.metrics.log_value(NUM_SYNCH_WORKER_WEIGHTS, 1, reduce="sum")
                 with self.metrics.log_time((TIMERS, SYNCH_WORKER_WEIGHTS_TIMER)):
-                    self.workers.sync_env_runner_states(
+                    self.env_runner_group.sync_env_runner_states(
                         config=self.config,
                         env_runner_indices_to_update=env_runner_indices_to_update,
                         env_steps_sampled=self.metrics.peek(
@@ -811,7 +812,10 @@ class Impala(Algorithm):
             _episodes = _worker.sample()
             # Get the EnvRunner's connector states.
             _connector_states = _worker.get_state(
-                components=["env_to_module_connector", "module_to_env_connector"]
+                components=[
+                    COMPONENT_ENV_TO_MODULE_CONNECTOR,
+                    COMPONENT_MODULE_TO_ENV_CONNECTOR,
+                ]
             )
             _metrics = _worker.get_metrics()
             # Return episode lists by reference so we don't have to send them to the
@@ -822,14 +826,16 @@ class Impala(Algorithm):
         episode_refs = []
         connector_states = []
         env_runner_metrics = []
-        num_healthy_remote_workers = self.workers.num_healthy_remote_workers()
+        num_healthy_remote_workers = self.env_runner_group.num_healthy_remote_workers()
 
         # Perform asynchronous sampling on all (healthy) remote rollout workers.
         if num_healthy_remote_workers > 0:
-            self.workers.foreach_worker_async(_remote_sample_get_state_and_metrics)
+            self.env_runner_group.foreach_worker_async(
+                _remote_sample_get_state_and_metrics
+            )
             async_results: List[
                 Tuple[int, ObjectRef]
-            ] = self.workers.fetch_ready_async_reqs(
+            ] = self.env_runner_group.fetch_ready_async_reqs(
                 timeout_seconds=self.config.timeout_s_sampler_manager,
                 return_obj_refs=False,
             )
@@ -846,12 +852,15 @@ class Impala(Algorithm):
                 env_runner_metrics.append(metrics)
         # Sample from the local EnvRunner.
         else:
-            episodes = self.workers.local_worker().sample()
-            env_runner_metrics = [self.workers.local_worker().get_metrics()]
+            episodes = self.env_runner.sample()
+            env_runner_metrics = [self.env_runner.get_metrics()]
             episode_refs = [ray.put(episodes)]
             connector_states = [
-                self.workers.local_worker().get_state(
-                    components=["env_to_module_connector", "module_to_env_connector"]
+                self.env_runner.get_state(
+                    components=[
+                        COMPONENT_ENV_TO_MODULE_CONNECTOR,
+                        COMPONENT_MODULE_TO_ENV_CONNECTOR,
+                    ]
                 )
             ]
 
@@ -1064,6 +1073,7 @@ class Impala(Algorithm):
         if self._aggregator_actor_manager:
             self._aggregator_actor_manager.probe_unhealthy_actors(
                 timeout_seconds=self.config.env_runner_health_probe_timeout_s,
+                mark_healthy=True,
             )
 
         return train_results
@@ -1094,21 +1104,22 @@ class Impala(Algorithm):
             # env_instance (either because there are no remote workers or
             # self.config.create_env_on_local_worker == True), then sample from the
             # local worker. Otherwise just return an empty list.
-            if self.workers.num_healthy_remote_workers() > 0:
+            if self.env_runner_group.num_healthy_remote_workers() > 0:
                 # Perform asynchronous sampling on all (remote) rollout workers.
-                self.workers.foreach_worker_async(lambda worker: worker.sample())
+                self.env_runner_group.foreach_worker_async(
+                    lambda worker: worker.sample()
+                )
                 sample_batches: List[
                     Tuple[int, ObjectRef]
-                ] = self.workers.fetch_ready_async_reqs(
+                ] = self.env_runner_group.fetch_ready_async_reqs(
                     timeout_seconds=self.config.timeout_s_sampler_manager,
                     return_obj_refs=return_object_refs,
                 )
             elif self.config.num_env_runners == 0 or (
-                self.workers.local_worker()
-                and self.workers.local_worker().async_env is not None
+                self.env_runner and self.env_runner.async_env is not None
             ):
                 # Sampling from the local worker
-                sample_batch = self.workers.local_worker().sample()
+                sample_batch = self.env_runner.sample()
                 if return_object_refs:
                     sample_batch = ray.put(sample_batch)
                 sample_batches = [(0, sample_batch)]
@@ -1386,42 +1397,41 @@ class Impala(Algorithm):
             policy_ids: Optional list of Policy IDs to update. If None, will update all
                 policies on the to-be-updated workers.
         """
-        local_worker = self.workers.local_worker()
         # Update global vars of the local worker.
         if self.config.policy_states_are_swappable:
-            local_worker.lock()
+            self.env_runner.lock()
         global_vars = {
             "timestep": self._counters[NUM_AGENT_STEPS_TRAINED],
             "num_grad_updates_per_policy": {
-                pid: local_worker.policy_map[pid].num_grad_updates
+                pid: self.env_runner.policy_map[pid].num_grad_updates
                 for pid in policy_ids or []
             },
         }
-        local_worker.set_global_vars(global_vars, policy_ids=policy_ids)
+        self.env_runner.set_global_vars(global_vars, policy_ids=policy_ids)
         if self.config.policy_states_are_swappable:
-            local_worker.unlock()
+            self.env_runner.unlock()
 
         # Only need to update workers if there are remote workers.
         self._counters[NUM_TRAINING_STEP_CALLS_SINCE_LAST_SYNCH_WORKER_WEIGHTS] += 1
         if (
-            self.workers.num_remote_workers() > 0
+            self.env_runner_group.num_remote_workers() > 0
             and self._counters[NUM_TRAINING_STEP_CALLS_SINCE_LAST_SYNCH_WORKER_WEIGHTS]
             >= self.config.broadcast_interval
             and workers_that_need_updates
         ):
             if self.config.policy_states_are_swappable:
-                local_worker.lock()
-            weights = local_worker.get_weights(policy_ids)
+                self.env_runner.lock()
+            weights = self.env_runner.get_weights(policy_ids)
             if self.config.policy_states_are_swappable:
-                local_worker.unlock()
+                self.env_runner.unlock()
             weights_ref = ray.put(weights)
 
             self._learner_thread.policy_ids_updated.clear()
             self._counters[NUM_TRAINING_STEP_CALLS_SINCE_LAST_SYNCH_WORKER_WEIGHTS] = 0
             self._counters[NUM_SYNCH_WORKER_WEIGHTS] += 1
-            self.workers.foreach_worker(
+            self.env_runner_group.foreach_worker(
                 func=lambda w: w.set_weights(ray.get(weights_ref), global_vars),
-                local_worker=False,
+                local_env_runner=False,
                 remote_worker_ids=list(workers_that_need_updates),
                 timeout_seconds=0,  # Don't wait for the workers to finish.
             )
@@ -1436,6 +1446,9 @@ class Impala(Algorithm):
                 result, overwrite_learner_info=False
             )
         return result
+
+
+Impala = IMPALA
 
 
 @DeveloperAPI

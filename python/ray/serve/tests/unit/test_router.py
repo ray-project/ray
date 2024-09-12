@@ -9,6 +9,7 @@ import pytest
 
 from ray._private.test_utils import async_wait_for_condition
 from ray._private.utils import get_or_create_event_loop
+from ray.exceptions import ActorDiedError, ActorUnavailableError
 from ray.serve._private.common import (
     DeploymentHandleSource,
     DeploymentID,
@@ -39,10 +40,12 @@ class FakeReplica(ReplicaWrapper):
         *,
         queue_len_info: Optional[ReplicaQueueLengthInfo] = None,
         is_cross_language: bool = False,
+        error: Optional[Exception] = None,
     ):
         self._replica_id = replica_id
         self._is_cross_language = is_cross_language
         self._queue_len_info = queue_len_info
+        self._error = error
 
     @property
     def replica_id(self) -> ReplicaID:
@@ -67,6 +70,9 @@ class FakeReplica(ReplicaWrapper):
         self,
         pr: PendingRequest,
     ) -> Tuple[Optional[FakeObjectRefGen], ReplicaQueueLengthInfo]:
+        if self._error:
+            raise self._error
+
         assert not self.is_cross_language, "Rejection not supported for cross language."
         assert (
             self._queue_len_info is not None
@@ -82,13 +88,18 @@ class FakeReplicaScheduler(ReplicaScheduler):
         self._replica_to_return: Optional[FakeReplica] = None
         self._replica_to_return_on_retry: Optional[FakeReplica] = None
         self._replica_queue_len_cache = ReplicaQueueLengthCache()
+        self._dropped_replicas: Set[ReplicaID] = set()
 
     @property
     def replica_queue_len_cache(self) -> ReplicaQueueLengthCache:
         return self._replica_queue_len_cache
 
     @property
-    def curr_replicas(self) -> Dict[str, ReplicaWrapper]:
+    def dropped_replicas(self) -> Set[ReplicaID]:
+        return self._dropped_replicas
+
+    @property
+    def curr_replicas(self) -> Dict[ReplicaID, ReplicaWrapper]:
         replicas = {}
         if self._replica_to_return is not None:
             replicas[self._replica_to_return.replica_id] = self._replica_to_return
@@ -101,6 +112,12 @@ class FakeReplicaScheduler(ReplicaScheduler):
 
     def update_replicas(self, replicas: List[ReplicaWrapper]):
         pass
+
+    def on_replica_actor_died(self, replica_id: ReplicaID):
+        self._dropped_replicas.add(replica_id)
+
+    def on_replica_actor_unavailable(self, replica_id: ReplicaID):
+        self._replica_queue_len_cache.invalidate_key(replica_id)
 
     def set_should_block_requests(self, block_requests: bool):
         self._block_requests = block_requests
@@ -162,6 +179,15 @@ def setup_router(request) -> Tuple[Router, FakeReplicaScheduler]:
         replica_scheduler=fake_replica_scheduler,
     )
     return router, fake_replica_scheduler
+
+
+def dummy_request_metadata(is_streaming: bool = False) -> RequestMetadata:
+    return RequestMetadata(
+        request_id="test-request-1",
+        internal_request_id="test-internal-request-1",
+        endpoint="",
+        is_streaming=is_streaming,
+    )
 
 
 @pytest.mark.asyncio
@@ -498,6 +524,108 @@ class TestAssignRequest:
             ]
         )
 
+    @pytest.mark.parametrize(
+        "setup_router",
+        [
+            {
+                "enable_strict_max_ongoing_requests": True,
+                "enable_queue_len_cache": True,
+            },
+        ],
+        indirect=True,
+    )
+    async def test_replica_actor_died(
+        self, setup_router: Tuple[Router, FakeReplicaScheduler]
+    ):
+        router, fake_replica_scheduler = setup_router
+        d_id = DeploymentID(name="test")
+        r1_id = ReplicaID(unique_id="r1", deployment_id=d_id)
+        r2_id = ReplicaID(unique_id="r2", deployment_id=d_id)
+
+        fake_replica_scheduler.set_replica_to_return(
+            FakeReplica(r1_id, error=ActorDiedError())
+        )
+        fake_replica_scheduler.set_replica_to_return_on_retry(
+            FakeReplica(
+                r2_id,
+                queue_len_info=ReplicaQueueLengthInfo(
+                    accepted=True, num_ongoing_requests=5
+                ),
+            )
+        )
+        await router.assign_request(dummy_request_metadata())
+        assert r1_id in fake_replica_scheduler.dropped_replicas
+
+    @pytest.mark.parametrize(
+        "setup_router",
+        [
+            {
+                "enable_strict_max_ongoing_requests": True,
+                "enable_queue_len_cache": True,
+            },
+        ],
+        indirect=True,
+    )
+    async def test_replica_actor_unavailable(
+        self, setup_router: Tuple[Router, FakeReplicaScheduler]
+    ):
+        router, fake_replica_scheduler = setup_router
+        # Two replicas
+        d_id = DeploymentID(name="test")
+        r1_id = ReplicaID(unique_id="r1", deployment_id=d_id)
+        r2_id = ReplicaID(unique_id="r2", deployment_id=d_id)
+
+        # First request is sent to r1, cache should be populated with r1:5
+        fake_replica_scheduler.set_replica_to_return(
+            FakeReplica(
+                r1_id,
+                queue_len_info=ReplicaQueueLengthInfo(
+                    accepted=True, num_ongoing_requests=5
+                ),
+            )
+        )
+        fake_obj_ref = await router.assign_request(dummy_request_metadata())
+        assert fake_obj_ref.replica_id == r1_id
+        # Cache should have R1:5
+        assert fake_replica_scheduler.replica_queue_len_cache.get(r1_id) == 5
+        assert fake_replica_scheduler.replica_queue_len_cache.get(r2_id) is None
+
+        # Second request is sent to r2, cache should be populated with r2:10
+        fake_replica_scheduler.set_replica_to_return(
+            FakeReplica(
+                r2_id,
+                queue_len_info=ReplicaQueueLengthInfo(
+                    accepted=True, num_ongoing_requests=10
+                ),
+            )
+        )
+        fake_obj_ref = await router.assign_request(dummy_request_metadata())
+        assert fake_obj_ref.replica_id == r2_id
+        # Cache should have R1:5, R2:10
+        assert fake_replica_scheduler.replica_queue_len_cache.get(r1_id) == 5
+        assert fake_replica_scheduler.replica_queue_len_cache.get(r2_id) == 10
+
+        # Third request is sent to r1 again, but system message yields
+        # an ActorUnavailableError
+        fake_replica_scheduler.set_replica_to_return(
+            FakeReplica(
+                r1_id,
+                error=ActorUnavailableError(error_message="unavailable", actor_id=None),
+            )
+        )
+        fake_replica_scheduler.set_replica_to_return_on_retry(
+            FakeReplica(
+                r2_id,
+                queue_len_info=ReplicaQueueLengthInfo(
+                    accepted=True, num_ongoing_requests=15
+                ),
+            )
+        )
+        await router.assign_request(dummy_request_metadata())
+        # R1 should be REMOVED from cache, cache should now be R2:15
+        assert fake_replica_scheduler.replica_queue_len_cache.get(r1_id) is None
+        assert fake_replica_scheduler.replica_queue_len_cache.get(r2_id) == 15
+
 
 def running_replica_info(replica_id: ReplicaID) -> RunningReplicaInfo:
     return RunningReplicaInfo(
@@ -613,9 +741,9 @@ class TestRouterMetricsManager:
 
         # Requests at r1 and r2 drop to 0
         for _ in range(1):
-            metrics_manager.dec_num_running_requests_for_replica(r1, None)
+            metrics_manager.dec_num_running_requests_for_replica(r1)
         for _ in range(2):
-            metrics_manager.dec_num_running_requests_for_replica(r2, None)
+            metrics_manager.dec_num_running_requests_for_replica(r2)
         assert metrics_manager.num_requests_sent_to_replicas[r1] == 0
         assert metrics_manager.num_requests_sent_to_replicas[r2] == 0
 

@@ -202,7 +202,8 @@ Status MutableObjectManager::WriteAcquire(const ObjectID &object_id,
                                           const uint8_t *metadata,
                                           int64_t metadata_size,
                                           int64_t num_readers,
-                                          std::shared_ptr<Buffer> &data) {
+                                          std::shared_ptr<Buffer> &data,
+                                          int64_t timeout_ms) {
   RAY_LOG(DEBUG) << "WriteAcquire " << object_id;
   absl::ReaderMutexLock guard(&destructor_lock_);
 
@@ -233,14 +234,34 @@ Status MutableObjectManager::WriteAcquire(const ObjectID &object_id,
   RAY_RETURN_NOT_OK(object->header->CheckHasError());
   RAY_CHECK(!channel->written) << "You must call WriteRelease() before WriteAcquire()";
 
-  RAY_RETURN_NOT_OK(
-      object->header->WriteAcquire(sem, data_size, metadata_size, num_readers));
+  auto timeout_point = ToTimeoutPoint(timeout_ms);
+  RAY_RETURN_NOT_OK(object->header->WriteAcquire(
+      sem, data_size, metadata_size, num_readers, timeout_point));
   data = SharedMemoryBuffer::Slice(object->buffer, 0, data_size);
   if (metadata) {
     // Copy the metadata to the buffer.
     memcpy(data->Data() + data_size, metadata, metadata_size);
   }
   channel->written = true;
+  return Status::OK();
+}
+
+Status MutableObjectManager::GetObjectBackingStore(const ObjectID &object_id,
+                                                   int64_t data_size,
+                                                   int64_t metadata_size,
+                                                   std::shared_ptr<Buffer> &data) {
+  RAY_LOG(DEBUG) << "WriteGetObjectBackingStore " << object_id;
+  absl::ReaderMutexLock guard(&destructor_lock_);
+
+  Channel *channel = GetChannel(object_id);
+  if (!channel) {
+    return Status::ChannelError("Channel has not been registered");
+  }
+  RAY_CHECK(channel->written);
+
+  std::unique_ptr<plasma::MutableObject> &object = channel->mutable_object;
+  int64_t total_size = data_size + metadata_size;
+  data = SharedMemoryBuffer::Slice(object->buffer, 0, total_size);
   return Status::OK();
 }
 
@@ -270,7 +291,8 @@ Status MutableObjectManager::WriteRelease(const ObjectID &object_id) {
 }
 
 Status MutableObjectManager::ReadAcquire(const ObjectID &object_id,
-                                         std::shared_ptr<RayObject> &result)
+                                         std::shared_ptr<RayObject> &result,
+                                         int64_t timeout_ms)
     ABSL_NO_THREAD_SAFETY_ANALYSIS {
   RAY_LOG(DEBUG) << "ReadAcquire " << object_id;
   absl::ReaderMutexLock guard(&destructor_lock_);
@@ -289,16 +311,27 @@ Status MutableObjectManager::ReadAcquire(const ObjectID &object_id,
   // Check whether the channel has an error set before checking that we are the only
   // reader. If the channel is already closed, then it's OK to ReadAcquire and
   // ReadRelease in any order.
+
+  auto timeout_point = ToTimeoutPoint(timeout_ms);
+  bool locked = false;
+  bool expired = false;
   do {
     RAY_RETURN_NOT_OK(object->header->CheckHasError());
     // The channel is still open. This lock ensures that there is only one reader
     // at a time. The lock is released in `ReadRelease()`.
-  } while (!channel->lock->try_lock());
-  channel->reading = true;
+    locked = channel->lock->try_lock();
+    expired = timeout_point && std::chrono::steady_clock::now() >= *timeout_point;
+  } while (!locked && !expired);
+  if (!locked) {
+    // If timeout_ms == 0, we want to try once to get the lock,
+    // therefore we check locked rather than expired.
+    return Status::ChannelTimeoutError("Timed out acquiring the read lock.");
+  }
 
+  channel->reading = true;
   int64_t version_read = 0;
-  Status s =
-      object->header->ReadAcquire(sem, channel->next_version_to_read, version_read);
+  Status s = object->header->ReadAcquire(
+      object_id, sem, channel->next_version_to_read, version_read, timeout_point);
   if (!s.ok()) {
     RAY_LOG(DEBUG) << "ReadAcquire error was set, returning " << object_id;
     // Failed because the error bit was set on the mutable object.
@@ -428,6 +461,31 @@ Status MutableObjectManager::SetErrorAll() {
   return ret;
 }
 
+std::unique_ptr<std::chrono::steady_clock::time_point>
+MutableObjectManager::ToTimeoutPoint(int64_t timeout_ms) {
+  if (timeout_ms == -1) {
+    return nullptr;
+  }
+  auto now = std::chrono::steady_clock::now();
+  auto timeout_duration = std::chrono::milliseconds(timeout_ms);
+  auto timeout_point =
+      std::make_unique<std::chrono::steady_clock::time_point>(now + timeout_duration);
+  return timeout_point;
+}
+
+Status MutableObjectManager::GetChannelStatus(const ObjectID &object_id, bool is_reader) {
+  Channel *channel = GetChannel(object_id);
+  if (!channel) {
+    return Status::NotFound(
+        absl::StrFormat("Could not find channel for object ID %s.", object_id.Hex()));
+  }
+  if ((is_reader && channel->reader_registered) ||
+      (!is_reader && channel->writer_registered)) {
+    return Status::OK();
+  }
+  return channel->mutable_object->header->CheckHasError();
+}
+
 #else  // defined(__APPLE__) || defined(__linux__)
 
 MutableObjectManager::~MutableObjectManager() {}
@@ -436,6 +494,13 @@ Status MutableObjectManager::RegisterChannel(
     const ObjectID &object_id,
     std::unique_ptr<plasma::MutableObject> mutable_object,
     bool reader) {
+  return Status::NotImplemented("Not supported on Windows.");
+}
+
+Status MutableObjectManager::GetObjectBackingStore(const ObjectID &object_id,
+                                                   int64_t data_size,
+                                                   int64_t metadata_size,
+                                                   std::shared_ptr<Buffer> &data) {
   return Status::NotImplemented("Not supported on Windows.");
 }
 
@@ -467,7 +532,8 @@ Status MutableObjectManager::WriteAcquire(const ObjectID &object_id,
                                           const uint8_t *metadata,
                                           int64_t metadata_size,
                                           int64_t num_readers,
-                                          std::shared_ptr<Buffer> &data) {
+                                          std::shared_ptr<Buffer> &data,
+                                          int64_t timeout_ms) {
   return Status::NotImplemented("Not supported on Windows.");
 }
 
@@ -476,7 +542,8 @@ Status MutableObjectManager::WriteRelease(const ObjectID &object_id) {
 }
 
 Status MutableObjectManager::ReadAcquire(const ObjectID &object_id,
-                                         std::shared_ptr<RayObject> &result)
+                                         std::shared_ptr<RayObject> &result,
+                                         int64_t timeout_ms)
     ABSL_NO_THREAD_SAFETY_ANALYSIS {
   return Status::NotImplemented("Not supported on Windows.");
 }
@@ -495,6 +562,15 @@ Status MutableObjectManager::SetErrorInternal(const ObjectID &object_id) {
 }
 
 Status MutableObjectManager::SetErrorAll() {
+  return Status::NotImplemented("Not supported on Windows.");
+}
+
+std::unique_ptr<std::chrono::steady_clock::time_point>
+MutableObjectManager::ToTimeoutPoint(int64_t timeout_ms) {
+  return nullptr;
+}
+
+Status MutableObjectManager::GetChannelStatus(const ObjectID &object_id, bool is_reader) {
   return Status::NotImplemented("Not supported on Windows.");
 }
 

@@ -75,8 +75,11 @@ class RayTestTimeoutException(Exception):
 
 
 def make_global_state_accessor(ray_context):
-    gcs_options = GcsClientOptions.from_gcs_address(
-        ray_context.address_info["gcs_address"]
+    gcs_options = GcsClientOptions.create(
+        ray_context.address_info["gcs_address"],
+        None,
+        allow_cluster_id_nil=True,
+        fetch_cluster_id_if_nil=False,
     )
     global_state_accessor = GlobalStateAccessor(gcs_options)
     global_state_accessor.connect()
@@ -416,6 +419,7 @@ def run_string_as_driver(driver_script: str, env: Dict = None, encode: str = "ut
         output = proc.communicate(driver_script.encode(encoding=encode))[0]
         if proc.returncode:
             print(ray._private.utils.decode(output, encode_type=encode))
+            logger.error(proc.stderr)
             raise subprocess.CalledProcessError(
                 proc.returncode, proc.args, output, proc.stderr
             )
@@ -1704,6 +1708,14 @@ def get_and_run_resource_killer(
         time.sleep(kill_delay_s)
         resource_killer.run.remote()
     return resource_killer
+
+
+def get_actor_node_id(actor_handle: "ray.actor.ActorHandle") -> str:
+    return ray.get(
+        actor_handle.__ray_call__.remote(
+            lambda self: ray.get_runtime_context().get_node_id()
+        )
+    )
 
 
 @contextmanager

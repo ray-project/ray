@@ -1,5 +1,5 @@
 import logging
-from typing import Dict
+from typing import Any, Dict
 
 import numpy as np
 
@@ -17,8 +17,6 @@ from ray.rllib.core.learner.torch.torch_learner import TorchLearner
 from ray.rllib.evaluation.postprocessing import Postprocessing
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
-from ray.rllib.utils.nested_dict import NestedDict
-from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.torch_utils import explained_variance
 from ray.rllib.utils.typing import ModuleID, TensorType
 
@@ -39,21 +37,20 @@ class PPOTorchLearner(PPOLearner, TorchLearner):
         *,
         module_id: ModuleID,
         config: PPOConfig,
-        batch: NestedDict,
+        batch: Dict[str, Any],
         fwd_out: Dict[str, TensorType],
     ) -> TensorType:
-        # TODO (Kourosh): batch type is NestedDict.
-
         # Possibly apply masking to some sub loss terms and to the total loss term
         # at the end. Masking could be used for RNN-based model (zero padded `batch`)
         # and for PPO's batched value function (and bootstrap value) computations,
         # for which we add an additional (artificial) timestep to each episode to
         # simplify the actual computation.
         if Columns.LOSS_MASK in batch:
-            num_valid = torch.sum(batch[Columns.LOSS_MASK])
+            mask = batch[Columns.LOSS_MASK]
+            num_valid = torch.sum(mask)
 
             def possibly_masked_mean(data_):
-                return torch.sum(data_[batch[Columns.LOSS_MASK]]) / num_valid
+                return torch.sum(data_[mask]) / num_valid
 
         else:
             possibly_masked_mean = torch.mean
@@ -101,9 +98,8 @@ class PPOTorchLearner(PPOLearner, TorchLearner):
             mean_vf_unclipped_loss = possibly_masked_mean(vf_loss)
         # Ignore the value function.
         else:
-            value_fn_out = torch.tensor(0.0).to(surrogate_loss.device)
-            mean_vf_unclipped_loss = torch.tensor(0.0).to(surrogate_loss.device)
-            vf_loss_clipped = mean_vf_loss = torch.tensor(0.0).to(surrogate_loss.device)
+            z = torch.tensor(0.0, device=surrogate_loss.device)
+            value_fn_out = mean_vf_unclipped_loss = vf_loss_clipped = mean_vf_loss = z
 
         total_loss = possibly_masked_mean(
             -surrogate_loss
@@ -143,10 +139,9 @@ class PPOTorchLearner(PPOLearner, TorchLearner):
         *,
         module_id: ModuleID,
         config: PPOConfig,
+        kl_loss: float,
     ) -> None:
-        kl = convert_to_numpy(self.metrics.peek((module_id, LEARNER_RESULTS_KL_KEY)))
-
-        if np.isnan(kl):
+        if np.isnan(kl_loss):
             logger.warning(
                 f"KL divergence for Module {module_id} is non-finite, this "
                 "will likely destabilize your model and the training "
@@ -160,10 +155,10 @@ class PPOTorchLearner(PPOLearner, TorchLearner):
 
         # Update the KL coefficient.
         curr_var = self.curr_kl_coeffs_per_module[module_id]
-        if kl > 2.0 * config.kl_target:
+        if kl_loss > 2.0 * config.kl_target:
             # TODO (Kourosh) why not 2?
             curr_var.data *= 1.5
-        elif kl < 0.5 * config.kl_target:
+        elif kl_loss < 0.5 * config.kl_target:
             curr_var.data *= 0.5
 
         # Log the updated KL-coeff value.

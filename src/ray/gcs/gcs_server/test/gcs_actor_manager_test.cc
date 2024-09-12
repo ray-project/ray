@@ -72,9 +72,9 @@ class MockWorkerClient : public rpc::CoreWorkerClientInterface {
  public:
   MockWorkerClient(instrumented_io_context &io_service) : io_service_(io_service) {}
 
-  void WaitForActorOutOfScope(
-      const rpc::WaitForActorOutOfScopeRequest &request,
-      const rpc::ClientCallback<rpc::WaitForActorOutOfScopeReply> &callback) override {
+  void WaitForActorRefDeleted(
+      const rpc::WaitForActorRefDeletedRequest &request,
+      const rpc::ClientCallback<rpc::WaitForActorRefDeletedReply> &callback) override {
     callbacks_.push_back(callback);
   }
 
@@ -90,13 +90,13 @@ class MockWorkerClient : public rpc::CoreWorkerClientInterface {
 
     // The created_actors_ of gcs actor manager will be modified in io_service thread.
     // In order to avoid multithreading reading and writing created_actors_, we also
-    // send the `WaitForActorOutOfScope` callback operation to io_service thread.
+    // send the `WaitForActorRefDeleted` callback operation to io_service thread.
     std::promise<bool> promise;
     io_service_.post(
         [this, status, &promise]() {
           auto callback = callbacks_.front();
-          auto reply = rpc::WaitForActorOutOfScopeReply();
-          callback(status, reply);
+          auto reply = rpc::WaitForActorRefDeletedReply();
+          callback(status, std::move(reply));
           promise.set_value(false);
         },
         "test");
@@ -106,7 +106,7 @@ class MockWorkerClient : public rpc::CoreWorkerClientInterface {
     return true;
   }
 
-  std::list<rpc::ClientCallback<rpc::WaitForActorOutOfScopeReply>> callbacks_;
+  std::list<rpc::ClientCallback<rpc::WaitForActorRefDeletedReply>> callbacks_;
   std::vector<ActorID> killed_actors_;
   instrumented_io_context &io_service_;
 };
@@ -904,7 +904,7 @@ TEST_F(GcsActorManagerTest, TestDestroyActorBeforeActorCreationCompletes) {
   auto actor = mock_actor_scheduler_->actors.back();
   mock_actor_scheduler_->actors.clear();
 
-  // Simulate the reply of WaitForActorOutOfScope request to trigger actor destruction.
+  // Simulate the reply of WaitForActorRefDeleted request to trigger actor destruction.
   ASSERT_TRUE(worker_client_->Reply());
 
   // Check that the actor is in state `DEAD`.

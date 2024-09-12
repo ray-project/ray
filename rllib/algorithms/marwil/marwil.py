@@ -2,6 +2,15 @@ from typing import Callable, Optional, Type, Union
 
 from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
+from ray.rllib.algorithms.marwil.marwil_catalog import MARWILCatalog
+from ray.rllib.connectors.learner import (
+    AddObservationsFromEpisodesToBatch,
+    AddOneTsToEpisodesAndTruncate,
+    AddNextObservationsFromEpisodesToTrainBatch,
+    GeneralAdvantageEstimation,
+)
+from ray.rllib.core.learner.learner import Learner
+from ray.rllib.core.rl_module.rl_module import RLModuleSpec
 from ray.rllib.execution.rollout_ops import (
     synchronous_parallel_sample,
 )
@@ -13,14 +22,24 @@ from ray.rllib.policy.policy import Policy
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.deprecation import deprecation_warning
 from ray.rllib.utils.metrics import (
+    ALL_MODULES,
+    LEARNER_RESULTS,
+    LEARNER_UPDATE_TIMER,
     NUM_AGENT_STEPS_SAMPLED,
     NUM_ENV_STEPS_SAMPLED,
-    SYNCH_WORKER_WEIGHTS_TIMER,
+    NUM_ENV_STEPS_TRAINED,
+    NUM_ENV_STEPS_TRAINED_LIFETIME,
+    NUM_MODULE_STEPS_TRAINED,
+    NUM_MODULE_STEPS_TRAINED_LIFETIME,
+    OFFLINE_SAMPLING_TIMER,
     SAMPLE_TIMER,
+    SYNCH_WORKER_WEIGHTS_TIMER,
+    TIMERS,
 )
 from ray.rllib.utils.typing import (
     EnvType,
     ResultDict,
+    RLModuleSpecType,
 )
 from ray.tune.logger import Logger
 
@@ -77,6 +96,7 @@ class MARWILConfig(AlgorithmConfig):
         self.moving_average_sqd_adv_norm_update_rate = 1e-8
         self.moving_average_sqd_adv_norm_start = 100.0
         self.vf_coeff = 1.0
+        self.model["vf_share_layers"] = False
         self.grad_clip = None
 
         # Override some of AlgorithmConfig's default values with MARWIL-specific values.
@@ -92,6 +112,7 @@ class MARWILConfig(AlgorithmConfig):
         self.input_ = "sampler"
         self.postprocess_inputs = True
         self.lr = 1e-4
+        self.lambda_ = 1.0
         self.train_batch_size = 2000
         # TODO (Artur): MARWIL should not need an exploration config as an offline
         #  algorithm. However, the current implementation of the CRR algorithm
@@ -158,6 +179,37 @@ class MARWILConfig(AlgorithmConfig):
         return self
 
     @override(AlgorithmConfig)
+    def get_default_rl_module_spec(self) -> RLModuleSpecType:
+        if self.framework_str == "torch":
+            from ray.rllib.algorithms.marwil.torch.marwil_torch_rl_module import (
+                MARWILTorchRLModule,
+            )
+
+            return RLModuleSpec(
+                module_class=MARWILTorchRLModule,
+                catalog_class=MARWILCatalog,
+            )
+        else:
+            raise ValueError(
+                f"The framework {self.framework_str} is not supported. "
+                "Use 'torch' instead."
+            )
+
+    @override(AlgorithmConfig)
+    def get_default_learner_class(self) -> Union[Type["Learner"], str]:
+        if self.framework_str == "torch":
+            from ray.rllib.algorithms.marwil.torch.marwil_torch_learner import (
+                MARWILTorchLearner,
+            )
+
+            return MARWILTorchLearner
+        else:
+            raise ValueError(
+                f"The framework {self.framework_str} is not supported. "
+                "Use 'torch' instead."
+            )
+
+    @override(AlgorithmConfig)
     def evaluation(
         self,
         **kwargs,
@@ -172,6 +224,26 @@ class MARWILConfig(AlgorithmConfig):
         if "off_policy_estimation_methods" in kwargs:
             # User specified their OPE methods.
             self._set_off_policy_estimation_methods = True
+
+        return self
+
+    @override(AlgorithmConfig)
+    def offline_data(self, **kwargs) -> "MARWILConfig":
+
+        super().offline_data(**kwargs)
+
+        # Check, if the passed in class incorporates the `OfflinePreLearner`
+        # interface.
+        if "prelearner_class" in kwargs:
+            from ray.rllib.offline.offline_data import OfflinePreLearner
+
+            if not issubclass(kwargs.get("prelearner_class"), OfflinePreLearner):
+                raise ValueError(
+                    f"`prelearner_class` {kwargs.get('prelearner_class')} is not a "
+                    "subclass of `OfflinePreLearner`. Any class passed to "
+                    "`prelearner_class` needs to implement the interface given by "
+                    "`OfflinePreLearner`."
+                )
 
         return self
 
@@ -193,6 +265,42 @@ class MARWILConfig(AlgorithmConfig):
         return super().build(env, logger_creator)
 
     @override(AlgorithmConfig)
+    def build_learner_connector(
+        self,
+        input_observation_space,
+        input_action_space,
+        device=None,
+    ):
+        pipeline = super().build_learner_connector(
+            input_observation_space=input_observation_space,
+            input_action_space=input_action_space,
+            device=device,
+        )
+
+        # Before anything, add one ts to each episode (and record this in the loss
+        # mask, so that the computations at this extra ts are not used to compute
+        # the loss).
+        pipeline.prepend(AddOneTsToEpisodesAndTruncate())
+
+        # Prepend the "add-NEXT_OBS-from-episodes-to-train-batch" connector piece (right
+        # after the corresponding "add-OBS-..." default piece).
+        pipeline.insert_after(
+            AddObservationsFromEpisodesToBatch,
+            AddNextObservationsFromEpisodesToTrainBatch(),
+        )
+
+        # At the end of the pipeline (when the batch is already completed), add the
+        # GAE connector, which performs a vf forward pass, then computes the GAE
+        # computations, and puts the results of this (advantages, value targets)
+        # directly back in the batch. This is then the batch used for
+        # `forward_train` and `compute_losses`.
+        pipeline.append(
+            GeneralAdvantageEstimation(gamma=self.gamma, lambda_=self.lambda_)
+        )
+
+        return pipeline
+
+    @override(AlgorithmConfig)
     def validate(self) -> None:
         # Call super's validation method.
         super().validate()
@@ -207,9 +315,24 @@ class MARWILConfig(AlgorithmConfig):
                 "`config.offline_data(postprocess_inputs=True)`."
             )
 
+        # Assert that for a local learner the number of iterations is 1. Note,
+        # this is needed because we have no iterators, but instead a single
+        # batch returned directly from the `OfflineData.sample` method.
+        if (
+            self.num_learners == 0
+            and not self.dataset_num_iters_per_learner
+            and self.enable_rl_module_and_learner
+        ):
+            raise ValueError(
+                "When using a local Learner (`config.num_learners=0`), the number of "
+                "iterations per learner (`dataset_num_iters_per_learner`) has to be "
+                "defined! Set this hyperparameter through `config.offline_data("
+                "dataset_num_iters_per_learner=...)`."
+            )
+
     @property
     def _model_auto_keys(self):
-        return super()._model_auto_keys | {"beta": self.beta}
+        return super()._model_auto_keys | {"beta": self.beta, "vf_share_layers": False}
 
 
 class MARWIL(Algorithm):
@@ -242,12 +365,96 @@ class MARWIL(Algorithm):
 
     @override(Algorithm)
     def training_step(self) -> ResultDict:
+        if self.config.enable_env_runner_and_connector_v2:
+            return self._training_step_new_api_stack()
+        elif self.config.enable_rl_module_and_learner:
+            raise ValueError(
+                "`enable_rl_module_and_learner=True`. Hybrid stack is not "
+                "supported for MARWIL. Either use the old stack with "
+                "`ModelV2` or the new stack with `RLModule`. You can enable "
+                "the new stack by setting both, `enable_rl_module_and_learner` "
+                "and `enable_env_runner_and_connector_v2` to `True`."
+            )
+        else:
+            return self._training_step_old_api_stack()
+
+    def _training_step_new_api_stack(self) -> ResultDict:
+        """Implements training logic for the new stack
+
+        Note, this includes so far training with the `OfflineData`
+        class (multi-/single-learner setup) and evaluation on
+        `EnvRunner`s. Note further, evaluation on the dataset itself
+        using estimators is not implemented, yet.
+        """
+        # Implement logic using RLModule and Learner API.
+        # TODO (simon): Take care of sampler metrics: right
+        # now all rewards are `nan`, which possibly confuses
+        # the user that sth. is not right, although it is as
+        # we do not step the env.
+        with self.metrics.log_time((TIMERS, OFFLINE_SAMPLING_TIMER)):
+            # Sampling from offline data.
+            batch = self.offline_data.sample(
+                num_samples=self.config.train_batch_size_per_learner,
+                num_shards=self.config.num_learners,
+                return_iterator=self.config.num_learners > 1,
+            )
+
+        with self.metrics.log_time((TIMERS, LEARNER_UPDATE_TIMER)):
+            # Updating the policy.
+            # TODO (simon, sven): Check, if we should execute directly s.th. like
+            # update_from_iterator.
+            learner_results = self.learner_group.update_from_batch(
+                batch,
+                minibatch_size=self.config.train_batch_size_per_learner,
+                num_iters=self.config.dataset_num_iters_per_learner,
+            )
+
+            # Log training results.
+            self.metrics.merge_and_log_n_dicts(learner_results, key=LEARNER_RESULTS)
+            self.metrics.log_value(
+                NUM_ENV_STEPS_TRAINED_LIFETIME,
+                self.metrics.peek(
+                    (LEARNER_RESULTS, ALL_MODULES, NUM_ENV_STEPS_TRAINED)
+                ),
+                reduce="sum",
+            )
+            self.metrics.log_dict(
+                {
+                    (LEARNER_RESULTS, mid, NUM_MODULE_STEPS_TRAINED_LIFETIME): (
+                        stats[NUM_MODULE_STEPS_TRAINED]
+                    )
+                    for mid, stats in self.metrics.peek(LEARNER_RESULTS).items()
+                },
+                reduce="sum",
+            )
+        # Synchronize weights.
+        # As the results contain for each policy the loss and in addition the
+        # total loss over all policies is returned, this total loss has to be
+        # removed.
+        modules_to_update = set(learner_results[0].keys()) - {ALL_MODULES}
+
+        # Update weights - after learning on the local worker -
+        # on all remote workers.
+        with self.metrics.log_time((TIMERS, SYNCH_WORKER_WEIGHTS_TIMER)):
+            self.env_runner_group.sync_weights(
+                # Sync weights from learner_group to all EnvRunners.
+                from_worker_or_learner_group=self.learner_group,
+                policies=modules_to_update,
+                inference_only=True,
+            )
+
+        return self.metrics.reduce()
+
+    def _training_step_old_api_stack(self) -> ResultDict:
         # Collect SampleBatches from sample workers.
         with self._timers[SAMPLE_TIMER]:
-            train_batch = synchronous_parallel_sample(worker_set=self.workers)
-        train_batch = train_batch.as_multi_agent()
+            train_batch = synchronous_parallel_sample(worker_set=self.env_runner_group)
+        train_batch = train_batch.as_multi_agent(
+            module_id=list(self.config.policies)[0]
+        )
         self._counters[NUM_AGENT_STEPS_SAMPLED] += train_batch.agent_steps()
         self._counters[NUM_ENV_STEPS_SAMPLED] += train_batch.env_steps()
+
         # Train.
         if self.config.simple_optimizer:
             train_results = train_one_step(self, train_batch)
@@ -265,13 +472,13 @@ class MARWIL(Algorithm):
 
         # Update weights - after learning on the local worker - on all remote
         # workers (only those policies that were actually trained).
-        if self.workers.remote_workers():
+        if self.env_runner_group.remote_workers():
             with self._timers[SYNCH_WORKER_WEIGHTS_TIMER]:
-                self.workers.sync_weights(
+                self.env_runner_group.sync_weights(
                     policies=list(train_results.keys()), global_vars=global_vars
                 )
 
         # Update global vars on local worker as well.
-        self.workers.local_worker().set_global_vars(global_vars)
+        self.env_runner.set_global_vars(global_vars)
 
         return train_results

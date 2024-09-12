@@ -1,21 +1,19 @@
-import pathlib
-from typing import Any, Mapping, Union, Type
+from typing import Any, Collection, Dict, Optional, Union, Type
 
 from packaging import version
 
-from ray.rllib.core.rl_module import RLModule
-from ray.rllib.core.rl_module.rl_module_with_target_networks_interface import (
-    RLModuleWithTargetNetworksInterface,
-)
+from ray.rllib.core.rl_module.apis import InferenceOnlyAPI
+from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.core.rl_module.torch.torch_compile_config import TorchCompileConfig
 from ray.rllib.models.torch.torch_distributions import TorchDistribution
-from ray.rllib.utils.annotations import override
+from ray.rllib.utils.annotations import override, OverrideToImplementCustomLogic
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.torch_utils import (
     convert_to_torch_tensor,
     TORCH_COMPILE_REQUIRED_VERSION,
 )
+from ray.rllib.utils.typing import StateDict
 
 torch, nn = try_import_torch()
 
@@ -39,11 +37,34 @@ class TorchRLModule(nn.Module, RLModule):
 
     framework: str = "torch"
 
+    # Stick with torch default.
+    STATE_FILE_NAME = "module_state.pt"
+
     def __init__(self, *args, **kwargs) -> None:
         nn.Module.__init__(self)
         RLModule.__init__(self, *args, **kwargs)
 
-    def forward(self, batch: Mapping[str, Any], **kwargs) -> Mapping[str, Any]:
+        # If an inference-only class AND self.config.inference_only is True,
+        # remove all attributes that are returned by
+        # `self.get_non_inference_attributes()`.
+        if self.config.inference_only and isinstance(self, InferenceOnlyAPI):
+            for attr in self.get_non_inference_attributes():
+                parts = attr.split(".")
+                if not hasattr(self, parts[0]):
+                    continue
+                target = getattr(self, parts[0])
+                # Traverse from the next part on (if nested).
+                for part in parts[1:]:
+                    if not hasattr(target, part):
+                        target = None
+                        break
+                    target = getattr(target, part)
+                # Delete, if target is valid.
+                if target is not None:
+                    del target
+
+    @override(nn.Module)
+    def forward(self, batch: Dict[str, Any], **kwargs) -> Dict[str, Any]:
         """forward pass of the module.
 
         This is aliased to forward_train because Torch DDP requires a forward method to
@@ -62,57 +83,42 @@ class TorchRLModule(nn.Module, RLModule):
         """
         return compile_wrapper(self, compile_config)
 
+    @OverrideToImplementCustomLogic
     @override(RLModule)
-    def get_state(self, inference_only: bool = False) -> Mapping[str, Any]:
-        return self.state_dict()
+    def get_state(
+        self,
+        components: Optional[Union[str, Collection[str]]] = None,
+        *,
+        not_components: Optional[Union[str, Collection[str]]] = None,
+        inference_only: bool = False,
+        **kwargs,
+    ) -> StateDict:
+        state_dict = self.state_dict()
+        # Filter out `inference_only` keys from the state dict if `inference_only` and
+        # this RLModule is NOT `inference_only` (but does implement the
+        # InferenceOnlyAPI).
+        if (
+            inference_only
+            and not self.config.inference_only
+            and isinstance(self, InferenceOnlyAPI)
+        ):
+            attr = self.get_non_inference_attributes()
+            for key in list(state_dict.keys()):
+                if any(
+                    key.startswith(a) and (len(key) == len(a) or key[len(a)] == ".")
+                    for a in attr
+                ):
+                    del state_dict[key]
+        return convert_to_numpy(state_dict)
 
+    @OverrideToImplementCustomLogic
     @override(RLModule)
-    def set_state(self, state_dict: Mapping[str, Any]) -> None:
-        state_dict = convert_to_torch_tensor(state_dict)
-        self.load_state_dict(state_dict)
-
-    def _module_state_file_name(self) -> pathlib.Path:
-        return pathlib.Path("module_state.pt")
-
-    @override(RLModule)
-    def save_state(self, dir: Union[str, pathlib.Path]) -> None:
-        path = str(pathlib.Path(dir) / self._module_state_file_name())
-        torch.save(convert_to_numpy(self.state_dict()), path)
-
-    @override(RLModule)
-    def load_state(self, dir: Union[str, pathlib.Path]) -> None:
-        path = str(pathlib.Path(dir) / self._module_state_file_name())
-        self.set_state(torch.load(path))
-
-    def _set_inference_only_state_dict_keys(self) -> None:
-        """Sets expected and unexpected keys for the inference-only module.
-
-        This method is called during setup to set the expected and unexpected keys
-        for the inference-only module. The expected keys are used to rename the keys
-        in the state dict when syncing from the learner to the inference module.
-        The unexpected keys are used to remove keys from the state dict when syncing
-        from the learner to the inference module.
-        """
-        pass
-
-    def _inference_only_get_state_hook(
-        self, state_dict: Mapping[str, Any]
-    ) -> Mapping[str, Any]:
-        """Removes or renames the parameters in the state dict for the inference module.
-
-        This hook is called when the state dict is created on a learner module for an
-        inference-only module. The method removes or renames the parameters in the state
-        dict that are not used by the inference module.
-        The hook uses the expected and unexpected keys set during setup to remove or
-        rename the parameters.
-
-        Args:
-            state_dict: The state dict to be modified.
-
-        Returns:
-            The modified state dict.
-        """
-        pass
+    def set_state(self, state: StateDict) -> None:
+        # If state contains more keys than `self.state_dict()`, then we simply ignore
+        # these keys (strict=False). This is most likely due to `state` coming from
+        # an `inference_only=False` RLModule, while `self` is an `inference_only=True`
+        # RLModule.
+        self.load_state_dict(convert_to_torch_tensor(state), strict=False)
 
 
 class TorchDDPRLModule(RLModule, nn.parallel.DistributedDataParallel):
@@ -122,27 +128,38 @@ class TorchDDPRLModule(RLModule, nn.parallel.DistributedDataParallel):
         # the interface of that base-class not the actual implementation.
         self.config = self.unwrapped().config
 
+    @override(RLModule)
     def get_train_action_dist_cls(self, *args, **kwargs) -> Type[TorchDistribution]:
         return self.unwrapped().get_train_action_dist_cls(*args, **kwargs)
 
+    @override(RLModule)
     def get_exploration_action_dist_cls(
         self, *args, **kwargs
     ) -> Type[TorchDistribution]:
         return self.unwrapped().get_exploration_action_dist_cls(*args, **kwargs)
 
+    @override(RLModule)
     def get_inference_action_dist_cls(self, *args, **kwargs) -> Type[TorchDistribution]:
         return self.unwrapped().get_inference_action_dist_cls(*args, **kwargs)
+
+    @override(RLModule)
+    def get_initial_state(self) -> Any:
+        return self.unwrapped().get_initial_state()
+
+    @override(RLModule)
+    def is_stateful(self) -> bool:
+        return self.unwrapped().is_stateful()
 
     @override(RLModule)
     def _forward_train(self, *args, **kwargs):
         return self(*args, **kwargs)
 
     @override(RLModule)
-    def _forward_inference(self, *args, **kwargs) -> Mapping[str, Any]:
+    def _forward_inference(self, *args, **kwargs) -> Dict[str, Any]:
         return self.unwrapped()._forward_inference(*args, **kwargs)
 
     @override(RLModule)
-    def _forward_exploration(self, *args, **kwargs) -> Mapping[str, Any]:
+    def _forward_exploration(self, *args, **kwargs) -> Dict[str, Any]:
         return self.unwrapped()._forward_exploration(*args, **kwargs)
 
     @override(RLModule)
@@ -154,48 +171,20 @@ class TorchDDPRLModule(RLModule, nn.parallel.DistributedDataParallel):
         self.unwrapped().set_state(*args, **kwargs)
 
     @override(RLModule)
-    def save_state(self, *args, **kwargs):
-        self.unwrapped().save_state(*args, **kwargs)
+    def save_to_path(self, *args, **kwargs):
+        self.unwrapped().save_to_path(*args, **kwargs)
 
     @override(RLModule)
-    def load_state(self, *args, **kwargs):
-        self.unwrapped().load_state(*args, **kwargs)
+    def restore_from_path(self, *args, **kwargs):
+        self.unwrapped().restore_from_path(*args, **kwargs)
 
     @override(RLModule)
-    def save_to_checkpoint(self, *args, **kwargs):
-        self.unwrapped().save_to_checkpoint(*args, **kwargs)
-
-    @override(RLModule)
-    def _save_module_metadata(self, *args, **kwargs):
-        self.unwrapped()._save_module_metadata(*args, **kwargs)
-
-    @override(RLModule)
-    def _module_metadata(self, *args, **kwargs):
-        return self.unwrapped()._module_metadata(*args, **kwargs)
-
-    # TODO (sven): Figure out a better way to avoid having to method-spam this wrapper
-    #  class, whenever we add a new API to any wrapped RLModule here. We could try
-    #  auto generating the wrapper methods, but this will bring its own challenge
-    #  (e.g. recursive calls due to __getattr__ checks, etc..).
-    def _compute_values(self, *args, **kwargs):
-        return self.unwrapped()._compute_values(*args, **kwargs)
+    def get_metadata(self, *args, **kwargs):
+        self.unwrapped().get_metadata(*args, **kwargs)
 
     @override(RLModule)
     def unwrapped(self) -> "RLModule":
         return self.module
-
-
-class TorchDDPRLModuleWithTargetNetworksInterface(
-    TorchDDPRLModule,
-    RLModuleWithTargetNetworksInterface,
-):
-    @override(RLModuleWithTargetNetworksInterface)
-    def get_target_network_pairs(self, *args, **kwargs):
-        return self.module.get_target_network_pairs(*args, **kwargs)
-
-    @override(RLModuleWithTargetNetworksInterface)
-    def sync_target_networks(self, *args, **kwargs):
-        return self.module.sync_target_networks(*args, **kwargs)
 
 
 def compile_wrapper(rl_module: "TorchRLModule", compile_config: TorchCompileConfig):

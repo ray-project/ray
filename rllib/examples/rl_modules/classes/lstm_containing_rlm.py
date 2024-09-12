@@ -1,17 +1,19 @@
-from typing import Any
+from typing import Any, Dict
 
 import numpy as np
 
 from ray.rllib.core.columns import Columns
+from ray.rllib.core.rl_module.apis.value_function_api import ValueFunctionAPI
 from ray.rllib.core.rl_module.torch import TorchRLModule
 from ray.rllib.models.torch.torch_distributions import TorchCategorical
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
+from ray.rllib.utils.typing import TensorType
 
 torch, nn = try_import_torch()
 
 
-class LSTMContainingRLModule(TorchRLModule):
+class LSTMContainingRLModule(TorchRLModule, ValueFunctionAPI):
     """An example TorchRLModule that contains an LSTM layer.
 
     .. testcode::
@@ -154,13 +156,10 @@ class LSTMContainingRLModule(TorchRLModule):
     def get_train_action_dist_cls(self):
         return TorchCategorical
 
-    # TODO (sven): In order for this RLModule to work with PPO, we must define
-    #  our own `_compute_values()` method. This would become more obvious, if we simply
-    #  subclassed the `PPOTorchRLModule` directly here (which we didn't do for
-    #  simplicity and to keep some generality). We might change even get rid of algo-
-    #  specific RLModule subclasses altogether in the future and replace them
-    #  by mere algo-specific APIs (w/o any actual implementations).
-    def _compute_values(self, batch):
+    # We implement this RLModule as a ValueFunctionAPI RLModule, so it can be used
+    # by value-based methods like PPO or IMPALA.
+    @override(ValueFunctionAPI)
+    def compute_values(self, batch: Dict[str, Any]) -> TensorType:
         obs = batch[Columns.OBS]
         state_in = batch[Columns.STATE_IN]
         h, c = state_in["h"], state_in["c"]
