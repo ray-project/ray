@@ -1343,7 +1343,7 @@ class CompiledDAG:
             for task in tasks:
                 resolved_args: List[Any] = []
                 for arg in task.args:
-                    if isinstance(arg, DAGNode):  # Other DAGNodes
+                    if isinstance(arg, DAGNode):
                         arg_idx = self.dag_node_to_idx[arg]
                         upstream_task = self.idx_to_task[arg_idx]
                         assert len(upstream_task.output_channels) == 1
