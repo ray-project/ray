@@ -394,7 +394,7 @@ class WriterInterface:
         self._output_idxs = output_idxs
         self._closed = False
         self._num_writes = 0
-        self.is_input = is_input
+        self._is_input = is_input
 
     def get_num_writes(self) -> int:
         return self._num_writes
@@ -461,7 +461,7 @@ class SynchronousWriter(WriterInterface):
             channel.ensure_registered_as_writer()
 
     def write(self, val: Any, timeout: Optional[float] = None) -> None:
-        if not self.is_input:
+        if not self._is_input:
             if len(self._output_channels) > 1:
                 if not isinstance(val, tuple):
                     raise ValueError(
@@ -476,7 +476,7 @@ class SynchronousWriter(WriterInterface):
 
         for i, channel in enumerate(self._output_channels):
             idx = self._output_idxs[i]
-            val_i = _adapt(val, idx, self.is_input)
+            val_i = _adapt(val, idx, self._is_input)
             channel.write(val_i, timeout)
         self._num_writes += 1
 
