@@ -621,7 +621,10 @@ class Router:
                         replica_id
                     )
                     callback = partial(self._process_finished_request, replica_id)
-                    ref.add_callback(callback)
+                    if isinstance(ref, (ray.ObjectRef, FakeObjectRef)):
+                        ref._on_completed(callback)
+                    else:
+                        ref.completed()._on_completed(callback)
 
                 return ref
             except asyncio.CancelledError:
