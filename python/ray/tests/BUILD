@@ -691,6 +691,14 @@ py_test(
 )
 
 py_test(
+  name = "test_collections",
+  size = "small",
+  srcs = ["test_collections.py"],
+  tags = ["exclusive", "small_size_python_tests", "team:core"],
+  deps = ["//:ray_lib", ":conftest"]
+)
+
+py_test(
     name = "test_runtime_env_validation",
     size = "small",
     srcs = ["test_runtime_env_validation.py"],
