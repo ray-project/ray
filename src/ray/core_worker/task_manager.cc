@@ -371,6 +371,19 @@ bool TaskManager::ResubmitTask(const TaskID &task_id, std::vector<ObjectID> *tas
     // it's not for now.
     retry_task_callback_(
         spec, /*object_recovery*/ true, /*update_seqno=*/true, /*delay_ms*/ 0);
+
+    // After resubmitting the task, there may be some errors that prevent
+    // the task from being sent out, and it is immediately determined to be
+    // unretryable.
+    {
+      absl::MutexLock lock(&mu_);
+      auto it = submissible_tasks_.find(task_id);
+      if (it == submissible_tasks_.end()) {
+        // This can happen when the task has already been
+        // retried up to its max attempts.
+        return false;
+      }
+    }
   }
 
   return true;
