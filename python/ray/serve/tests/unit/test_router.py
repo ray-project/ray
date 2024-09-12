@@ -539,22 +539,15 @@ class TestAssignRequest:
     ):
         router, fake_replica_scheduler = setup_router
         d_id = DeploymentID(name="test")
-        r1_id = ReplicaID(unique_id="r1", deployment_id=d_id)
-        r2_id = ReplicaID(unique_id="r2", deployment_id=d_id)
+        r_id = ReplicaID(unique_id="r1", deployment_id=d_id)
 
         fake_replica_scheduler.set_replica_to_return(
-            FakeReplica(r1_id, error=ActorDiedError())
+            FakeReplica(r_id, error=ActorDiedError())
         )
-        fake_replica_scheduler.set_replica_to_return_on_retry(
-            FakeReplica(
-                r2_id,
-                queue_len_info=ReplicaQueueLengthInfo(
-                    accepted=True, num_ongoing_requests=5
-                ),
-            )
-        )
-        await router.assign_request(dummy_request_metadata())
-        assert r1_id in fake_replica_scheduler.dropped_replicas
+        with pytest.raises(ActorDiedError):
+            await router.assign_request(dummy_request_metadata())
+
+        assert r_id in fake_replica_scheduler.dropped_replicas
 
     @pytest.mark.parametrize(
         "setup_router",
@@ -613,18 +606,11 @@ class TestAssignRequest:
                 error=ActorUnavailableError(error_message="unavailable", actor_id=None),
             )
         )
-        fake_replica_scheduler.set_replica_to_return_on_retry(
-            FakeReplica(
-                r2_id,
-                queue_len_info=ReplicaQueueLengthInfo(
-                    accepted=True, num_ongoing_requests=15
-                ),
-            )
-        )
-        await router.assign_request(dummy_request_metadata())
-        # R1 should be REMOVED from cache, cache should now be R2:15
+        with pytest.raises(ActorUnavailableError):
+            await router.assign_request(dummy_request_metadata())
+        # R1 should be REMOVED from cache, cache should now be R2:10
         assert fake_replica_scheduler.replica_queue_len_cache.get(r1_id) is None
-        assert fake_replica_scheduler.replica_queue_len_cache.get(r2_id) == 15
+        assert fake_replica_scheduler.replica_queue_len_cache.get(r2_id) == 10
 
 
 def running_replica_info(replica_id: ReplicaID) -> RunningReplicaInfo:
@@ -741,9 +727,9 @@ class TestRouterMetricsManager:
 
         # Requests at r1 and r2 drop to 0
         for _ in range(1):
-            metrics_manager.dec_num_running_requests_for_replica(r1)
+            metrics_manager.dec_num_running_requests_for_replica(r1, None)
         for _ in range(2):
-            metrics_manager.dec_num_running_requests_for_replica(r2)
+            metrics_manager.dec_num_running_requests_for_replica(r2, None)
         assert metrics_manager.num_requests_sent_to_replicas[r1] == 0
         assert metrics_manager.num_requests_sent_to_replicas[r2] == 0
 
