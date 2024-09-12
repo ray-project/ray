@@ -70,9 +70,9 @@ class TestOfflineData(unittest.TestCase):
 
         # Now return an iterator.
         iter = algo.offline_data.sample(num_samples=10, return_iterator=True)
-        from ray.data import DataIterator
+        from ray.data.iterator import _IterableFromIterator
 
-        self.assertIsInstance(iter, DataIterator)
+        self.assertIsInstance(iter, _IterableFromIterator)
 
     def test_sample_multiple_learners(self):
         """Tests sampling using multiple learners."""
