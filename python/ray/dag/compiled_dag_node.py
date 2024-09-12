@@ -210,14 +210,21 @@ class CompiledTask:
 
         # Dict from task index to actor handle for immediate downstream tasks.
         self.downstream_task_idxs: Dict[int, "ray.actor.ActorHandle"] = {}
+        # Case 1: The task represents a ClassMethodNode.
+        #
         # Multiple return values are written to separate `output_channels`.
         # `output_idxs` represents the tuple index of the output value for
         # multiple returns in a tuple. If an output index is None, it means
         # the complete return value is written to the output channel.
         # Otherwise, the return value is a tuple and the index is used
         # to extract the value to be written to the output channel.
+        #
+        # Case 2: The task represents an InputNode.
+        #
+        # `output_idxs` can be an integer or a string to retrieve the
+        # corresponding value from `args` or `kwargs` in the DAG's input.
         self.output_channels: List[ChannelInterface] = []
-        self.output_idxs: List[Optional[int]] = []
+        self.output_idxs: List[Optional[Union[int, str]]] = []
         self.arg_type_hints: List["ChannelOutputType"] = []
 
     @property
@@ -1203,7 +1210,7 @@ class CompiledDAG:
                 # readers and the node on which the reader is running. Use `set` to
                 # deduplicate readers on the same actor because with CachedChannel
                 # each actor will only read from the shared memory once.
-                input_dag_node_to_reader_and_node_set: Dict[
+                input_node_to_reader_and_node_set: Dict[
                     Union[InputNode, InputAttributeNode],
                     Set[Tuple["ray.actor.ActorHandle", str]],
                 ] = defaultdict(set)
@@ -1217,7 +1224,7 @@ class CompiledDAG:
                         if isinstance(arg, InputAttributeNode) or isinstance(
                             arg, InputNode
                         ):
-                            input_dag_node_to_reader_and_node_set[arg].add(
+                            input_node_to_reader_and_node_set[arg].add(
                                 (reader_handle, reader_node_id)
                             )
 
@@ -1226,9 +1233,9 @@ class CompiledDAG:
                 # each InputAttributeNode, or a single channel for the entire
                 # input data if there are no InputAttributeNodes.
                 task.output_channels = []
-                for input_dag_node in input_dag_node_to_reader_and_node_set:
+                for input_dag_node in input_node_to_reader_and_node_set:
                     reader_and_node_list = list(
-                        input_dag_node_to_reader_and_node_set[input_dag_node]
+                        input_node_to_reader_and_node_set[input_dag_node]
                     )
                     output_channel = do_allocate_channel(
                         self,

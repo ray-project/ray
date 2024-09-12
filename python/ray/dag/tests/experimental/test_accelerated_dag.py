@@ -765,6 +765,31 @@ class TestMultiArgs:
 
         compiled_dag.teardown()
 
+    def test_multi_args_and_torch_type(self, ray_start_regular):
+        a1 = Actor.remote(0)
+        a2 = Actor.remote(0)
+        c = Collector.remote()
+        with InputNode() as i:
+            i.with_type_hint(TorchTensorType())
+            branch1 = a1.echo.bind(i[0])
+            branch1.with_type_hint(TorchTensorType())
+            branch2 = a2.echo.bind(i[1])
+            branch2.with_type_hint(TorchTensorType())
+            dag = c.collect_two.bind(branch2, branch1)
+            dag.with_type_hint(TorchTensorType())
+
+        compiled_dag = dag.experimental_compile()
+
+        cpu_tensors = [torch.tensor([0, 0, 0, 0, 0]), torch.tensor([1, 1, 1, 1, 1])]
+        ref = compiled_dag.execute(cpu_tensors[0], cpu_tensors[1])
+
+        tensors = ray.get(ref)
+        assert len(tensors) == len(cpu_tensors)
+        assert torch.equal(tensors[0], cpu_tensors[1])
+        assert torch.equal(tensors[1], cpu_tensors[0])
+
+        compiled_dag.teardown()
+
     def test_mix_entire_input_and_args(self, ray_start_regular):
         """
         It is not allowed to consume both the entire input and a partial
