@@ -81,7 +81,7 @@ class NestedTorchTensorNcclChannel(ChannelInterface):
             self._cpu_data_channel: Optional["Channel"] = None
             if cpu_data_typ is not None:
                 self._cpu_data_channel = cpu_data_typ.create_channel(
-                    writer, reader_and_node_list
+                    writer, reader_and_node_list, False
                 )
 
         # Used for serialization.
@@ -276,6 +276,7 @@ class TorchTensorNcclChannel(ChannelInterface):
             self._meta_channel = metadata_type.create_channel(
                 self._writer,
                 self._reader_and_node_list,
+                False,
             )
 
         if self._meta_channel is None:

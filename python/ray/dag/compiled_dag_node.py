@@ -66,7 +66,7 @@ def do_allocate_channel(
     self,
     reader_and_node_list: List[Tuple["ray.actor.ActorHandle", str]],
     typ: ChannelOutputType,
-    read_by_multi_output_node: bool,
+    read_by_adag_driver: bool,
 ) -> ChannelInterface:
     """Generic actor method to allocate an output channel.
 
@@ -74,7 +74,8 @@ def do_allocate_channel(
         reader_and_node_list: A list of tuples, where each tuple contains a reader
             actor handle and the node ID where the actor is located.
         typ: The output type hint for the channel.
-        read_by_multi_output_node: True if the channel is read by multi output node.
+        read_by_adag_driver: True if the channel will be read by an aDAG driver
+            (Ray driver or actor and task that creates an aDAG).
 
     Returns:
         The allocated channel.
@@ -90,7 +91,7 @@ def do_allocate_channel(
     output_channel = typ.create_channel(
         writer,
         reader_and_node_list,
-        read_by_multi_output_node,
+        read_by_adag_driver,
     )
     return output_channel
 
@@ -742,22 +743,6 @@ class CompiledDAG:
         self._result_buffer: Dict[int, Any] = {}
 
         def _get_proxy_actor() -> "ray.actor.ActorHandle":
-            """
-            Get the creator actor or proxy actor handle of the DAG.
-
-            If the current process is an actor, it is the creator of the DAG,
-            its actor handle is returned. Otherwise, create a proxy actor and
-            return its actor handle. Note that this actor is always on the same
-            node where the DAG is created.
-
-            Returns:
-              Return the actor handle if the current task is an actor method.
-              Create a DAGDriverProxyActor actor and return its handle if the
-              current process is the driver process.
-
-            Raises:
-                NotImplementedError: If the current process is a Ray task.
-            """
             # Creates the driver actor on the same node as the driver.
             #
             # To support the driver as a reader, the output writer needs to be able to

@@ -906,9 +906,11 @@ def test_composite_channel_single_reader(ray_start_cluster):
         def pass_channel(self, channel):
             self._chan = channel
 
-        def create_composite_channel(self, writer, reader_and_node_list):
+        def create_composite_channel(
+            self, writer, reader_and_node_list, read_by_adag_driver
+        ):
             self._chan = ray_channel.CompositeChannel(
-                writer, reader_and_node_list, 10, False
+                writer, reader_and_node_list, 10, read_by_adag_driver
             )
             return self._chan
 
@@ -932,13 +934,13 @@ def test_composite_channel_single_reader(ray_start_cluster):
     assert ray.get(actor1.read.remote()) == "hello"
 
     # Create a channel to communicate between two tasks in actor1.
-    ray.get(actor1.create_composite_channel.remote(actor1, [(actor1, node1)]))
+    ray.get(actor1.create_composite_channel.remote(actor1, [(actor1, node1)], False))
     ray.get(actor1.write.remote("world"))
     assert ray.get(actor1.read.remote()) == "world"
 
     # Create a channel to communicate between actor1 and actor2.
     actor1_to_actor2_channel = ray.get(
-        actor1.create_composite_channel.remote(actor1, [(actor2, node2)])
+        actor1.create_composite_channel.remote(actor1, [(actor2, node2)], False)
     )
     ray.get(actor2.pass_channel.remote(actor1_to_actor2_channel))
     ray.get(actor1.write.remote("hello world"))
@@ -948,7 +950,7 @@ def test_composite_channel_single_reader(ray_start_cluster):
     driver_actor = create_driver_actor()
     actor2_to_driver_channel = ray.get(
         actor2.create_composite_channel.remote(
-            actor2, [(driver_actor, get_actor_node_id(driver_actor))]
+            actor2, [(driver_actor, get_actor_node_id(driver_actor))], True
         )
     )
     ray.get(actor2.write.remote("world hello"))
