@@ -228,6 +228,7 @@ if setup_spec.type == SetupType.RAY:
     pandas_dep = "pandas >= 1.3"
     numpy_dep = "numpy >= 1.20"
     pyarrow_dep = "pyarrow >= 6.0.1"
+    pydantic_dep = "pydantic!=2.0.*,!=2.1.*,!=2.2.*,!=2.3.*,!=2.4.*,<3"
     setup_spec.extras = {
         "adag": [
             "cupy-cuda12x; sys_platform != 'darwin'",
@@ -256,7 +257,7 @@ if setup_spec.type == SetupType.RAY:
             "grpcio >= 1.32.0; python_version < '3.10'",  # noqa:E501
             "grpcio >= 1.42.0; python_version >= '3.10'",  # noqa:E501
             "opencensus",
-            "pydantic!=2.0.*,!=2.1.*,!=2.2.*,!=2.3.*,!=2.4.*,<3",
+            pydantic_dep,
             "prometheus_client >= 0.7.1",
             "smart_open",
             "virtualenv >=20.0.24, !=20.21.1",  # For pip runtime env.
@@ -307,7 +308,7 @@ if setup_spec.type == SetupType.RAY:
         "rich",
     ]
 
-    setup_spec.extras["train"] = setup_spec.extras["tune"]
+    setup_spec.extras["train"] = setup_spec.extras["tune"] + [pydantic_dep]
 
     # Ray AI Runtime should encompass Data, Tune, and Serve.
     setup_spec.extras["air"] = list(
@@ -771,51 +772,52 @@ build_dir = os.path.join(ROOT_DIR, "build")
 if os.path.isdir(build_dir):
     shutil.rmtree(build_dir)
 
-setuptools.setup(
-    name=setup_spec.name,
-    version=setup_spec.version,
-    author="Ray Team",
-    author_email="ray-dev@googlegroups.com",
-    description=(setup_spec.description),
-    long_description=io.open(
-        os.path.join(ROOT_DIR, os.path.pardir, "README.rst"), "r", encoding="utf-8"
-    ).read(),
-    url="https://github.com/ray-project/ray",
-    keywords=(
-        "ray distributed parallel machine-learning hyperparameter-tuning"
-        "reinforcement-learning deep-learning serving python"
-    ),
-    python_requires=">=3.8",
-    classifiers=[
-        "Programming Language :: Python :: 3.8",
-        "Programming Language :: Python :: 3.9",
-        "Programming Language :: Python :: 3.10",
-        "Programming Language :: Python :: 3.11",
-    ],
-    packages=setup_spec.get_packages(),
-    cmdclass={"build_ext": build_ext},
-    # The BinaryDistribution argument triggers build_ext.
-    distclass=BinaryDistribution,
-    install_requires=setup_spec.install_requires,
-    setup_requires=["cython >= 0.29.32", "wheel"],
-    extras_require=setup_spec.extras,
-    entry_points={
-        "console_scripts": [
-            "ray=ray.scripts.scripts:main",
-            "rllib=ray.rllib.scripts:cli [rllib]",
-            "tune=ray.tune.cli.scripts:cli",
-            "serve=ray.serve.scripts:cli",
-        ]
-    },
-    package_data={
-        "ray": ["includes/*.pxd", "*.pxd", "data/_internal/logging.yaml"],
-    },
-    include_package_data=True,
-    exclude_package_data={
-        # Empty string means "any package".
-        # Therefore, exclude BUILD from every package:
-        "": ["BUILD"],
-    },
-    zip_safe=False,
-    license="Apache 2.0",
-) if __name__ == "__main__" else None
+if __name__ == "__main__":
+    setuptools.setup(
+        name=setup_spec.name,
+        version=setup_spec.version,
+        author="Ray Team",
+        author_email="ray-dev@googlegroups.com",
+        description=(setup_spec.description),
+        long_description=io.open(
+            os.path.join(ROOT_DIR, os.path.pardir, "README.rst"), "r", encoding="utf-8"
+        ).read(),
+        url="https://github.com/ray-project/ray",
+        keywords=(
+            "ray distributed parallel machine-learning hyperparameter-tuning"
+            "reinforcement-learning deep-learning serving python"
+        ),
+        python_requires=">=3.8",
+        classifiers=[
+            "Programming Language :: Python :: 3.8",
+            "Programming Language :: Python :: 3.9",
+            "Programming Language :: Python :: 3.10",
+            "Programming Language :: Python :: 3.11",
+        ],
+        packages=setup_spec.get_packages(),
+        cmdclass={"build_ext": build_ext},
+        # The BinaryDistribution argument triggers build_ext.
+        distclass=BinaryDistribution,
+        install_requires=setup_spec.install_requires,
+        setup_requires=["cython >= 0.29.32", "wheel"],
+        extras_require=setup_spec.extras,
+        entry_points={
+            "console_scripts": [
+                "ray=ray.scripts.scripts:main",
+                "rllib=ray.rllib.scripts:cli [rllib]",
+                "tune=ray.tune.cli.scripts:cli",
+                "serve=ray.serve.scripts:cli",
+            ]
+        },
+        package_data={
+            "ray": ["includes/*.pxd", "*.pxd", "data/_internal/logging.yaml"],
+        },
+        include_package_data=True,
+        exclude_package_data={
+            # Empty string means "any package".
+            # Therefore, exclude BUILD from every package:
+            "": ["BUILD"],
+        },
+        zip_safe=False,
+        license="Apache 2.0",
+    )
