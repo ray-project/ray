@@ -426,7 +426,6 @@ class ExecutableTask:
             True if system error occurs and exit the loop; otherwise, False.
         """
         input_data = self.reset_intermediate_buffer()
-        # print("_compute", input_data)
         method = getattr(class_handle, self.method_name)
         try:
             _process_return_vals(input_data, return_single_output=False)
@@ -440,8 +439,7 @@ class ExecutableTask:
 
         resolved_inputs = []
         for task_input in self.task_inputs:
-            resolved_data = task_input.resolve(input_data)
-            resolved_inputs.append(resolved_data)
+            resolved_inputs.append(task_input.resolve(input_data))
 
         try:
             output_val = method(*resolved_inputs, **self.resolved_kwargs)
