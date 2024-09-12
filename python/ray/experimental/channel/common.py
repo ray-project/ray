@@ -514,12 +514,12 @@ class AwaitableBackgroundWriter(WriterInterface):
             if len(self._output_channels) > 1:
                 if not isinstance(res, tuple):
                     raise ValueError(
-                        f"Expected a tuple of {len(self._output_channels)} outputs,"
+                        f"Expected a tuple of {len(self._output_channels)} outputs, "
                         f"but got {type(res)}"
                     )
                 if len(res) != len(self._output_channels):
                     raise ValueError(
-                        f"Expected {len(self._output_channels)} outputs, but got"
+                        f"Expected {len(self._output_channels)} outputs, but got "
                         f"{len(res)} outputs"
                     )
 
