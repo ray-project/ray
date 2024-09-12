@@ -219,12 +219,19 @@ class KubeRayProvider(ICloudInstanceProvider):
         )
 
         # Calculate the desired number of workers by type.
+        worker_node_types = set()
         num_workers_dict = defaultdict(int)
         for _, cur_instance in cur_instances.items():
             if cur_instance.node_kind == NodeKind.HEAD:
                 # Only track workers.
                 continue
-            num_workers_dict[cur_instance.node_type] += 1
+            worker_node_types.add(cur_instance.node_type)
+
+        for node_type in worker_node_types:
+            group_index = _worker_group_index(ray_cluster, node_type)
+            num_workers_dict[node_type] = _worker_group_replicas(
+                ray_cluster, group_index
+            )
 
         # Add to launch nodes.
         for node_type, count in to_launch.items():
@@ -247,6 +254,12 @@ class KubeRayProvider(ICloudInstanceProvider):
             assert num_workers_dict[to_delete_instance.node_type] >= 0
             to_delete_instances_by_type[to_delete_instance.node_type].append(
                 to_delete_instance
+            )
+
+        for node_type, count in num_workers_dict.items():
+            logger.info(
+                f"Initialize scale_request for node type {node_type}"
+                f" with target instance number is {count}."
             )
 
         scale_request = KubeRayProvider.ScaleRequest(
