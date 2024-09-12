@@ -234,10 +234,10 @@ class CompiledTask:
 
     def __str__(self) -> str:
         return f"""
-Node: {self.dag_node}
-Arguments: {self.args}
-Outputs: {self.output_channels}
-"""
+            Node: {self.dag_node}
+            Arguments: {self.args}
+            Output: {self.output_channels}
+            """
 
 
 @DeveloperAPI
@@ -597,6 +597,7 @@ class CompiledDAG:
         enable_asyncio: bool = False,
         asyncio_max_queue_size: Optional[int] = None,
         max_buffered_results: Optional[int] = None,
+        max_inflight_executions: Optional[int] = None,
     ):
         """
         Args:
@@ -625,6 +626,10 @@ class CompiledDAG:
                 executions is beyond the DAG capacity, the new execution would
                 be blocked in the first place; therefore, this limit is only
                 enforced when it is smaller than the DAG capacity.
+            max_inflight_executions: The maximum number of in-flight executions that
+                are allowed to be sent to this DAG. Before submitting more requests,
+                the caller is responsible for calling ray.get to get the result,
+                otherwise, RayAdagCapacityExceeded is raised.
 
         Returns:
             Channel: A wrapper around ray.ObjectRef.
@@ -633,22 +638,6 @@ class CompiledDAG:
 
         ctx = DAGContext.get_current()
 
-        self._dag_id = uuid.uuid4().hex
-        self._execution_timeout: Optional[float] = execution_timeout
-        if self._execution_timeout is None:
-            self._execution_timeout = ctx.execution_timeout
-        self._buffer_size_bytes: Optional[int] = buffer_size_bytes
-        if self._buffer_size_bytes is None:
-            self._buffer_size_bytes = ctx.buffer_size_bytes
-        self._default_type_hint: ChannelOutputType = SharedMemoryType(
-            self._buffer_size_bytes
-        )
-        if not isinstance(self._buffer_size_bytes, int) or self._buffer_size_bytes <= 0:
-            raise ValueError(
-                "`buffer_size_bytes` must be a positive integer, found "
-                f"{self._buffer_size_bytes}"
-            )
-
         self._enable_asyncio: bool = enable_asyncio
         self._fut_queue = asyncio.Queue()
         self._asyncio_max_queue_size: Optional[int] = asyncio_max_queue_size
@@ -656,6 +645,30 @@ class CompiledDAG:
         self._max_buffered_results: Optional[int] = max_buffered_results
         if self._max_buffered_results is None:
             self._max_buffered_results = ctx.max_buffered_results
+        self._max_inflight_executions = max_inflight_executions
+        if self._max_inflight_executions is None:
+            self._max_inflight_executions = ctx.max_inflight_executions
+        self._dag_id = uuid.uuid4().hex
+        self._execution_timeout: Optional[float] = execution_timeout
+        if self._execution_timeout is None:
+            self._execution_timeout = ctx.execution_timeout
+        self._buffer_size_bytes: Optional[int] = buffer_size_bytes
+        if self._buffer_size_bytes is None:
+            self._buffer_size_bytes = ctx.buffer_size_bytes
+
+        self._default_type_hint: ChannelOutputType = SharedMemoryType(
+            self._buffer_size_bytes,
+            # We conservatively set num_shm_buffers to _max_inflight_executions.
+            # It means that the DAG can be underutilized, but it guarantees there's
+            # no false positive timeouts.
+            num_shm_buffers=self._max_inflight_executions,
+        )
+        if not isinstance(self._buffer_size_bytes, int) or self._buffer_size_bytes <= 0:
+            raise ValueError(
+                "`buffer_size_bytes` must be a positive integer, found "
+                f"{self._buffer_size_bytes}"
+            )
+
         # Used to ensure that the future returned to the
         # caller corresponds to the correct DAG output. I.e.
         # order of futures added to fut_queue should match the
@@ -673,7 +686,8 @@ class CompiledDAG:
         # Preprocessing identifies the input node and output node.
         self.input_task_idx: Optional[int] = None
         self.output_task_idx: Optional[int] = None
-        self._has_single_output: bool = False
+        # Denotes whether execute/execute_async returns a list of refs/futures.
+        self._returns_list: bool = False
         # Number of expected positional args and kwargs that may be passed to
         # dag.execute.
         self._input_num_positional_args: Optional[int] = None
@@ -721,8 +735,9 @@ class CompiledDAG:
         self._execution_index: int = 0
         # The maximum index of finished executions.
         # All results with higher indexes have not been generated yet.
-        self._max_execution_index: int = -1
-        self._result_buffer: Dict[int, Any] = {}
+        self._max_finished_execution_index: int = -1
+        # execution_index -> {channel_index -> result}
+        self._result_buffer: Dict[int, Dict[int, Any]] = defaultdict(dict)
 
         def _get_creator_or_proxy_actor() -> "ray.actor.ActorHandle":
             """
@@ -765,9 +780,11 @@ class CompiledDAG:
 
         self._creator_or_proxy_actor = _get_creator_or_proxy_actor()
 
-    @property
-    def has_single_output(self):
-        return self._has_single_output
+    def increment_max_finished_execution_index(self) -> None:
+        """Increment the max finished execution index. It is used to
+        figure out the max number of in-flight requests to the DAG
+        """
+        self._max_finished_execution_index += 1
 
     def get_id(self) -> str:
         """
@@ -829,10 +846,11 @@ class CompiledDAG:
         output_node = self.idx_to_task[self.output_task_idx].dag_node
         # Add an MultiOutputNode to the end of the DAG if it's not already there.
         if not isinstance(output_node, MultiOutputNode):
-            self._has_single_output = True
             output_node = MultiOutputNode([output_node])
             self._add_node(output_node)
             self.output_task_idx = self.dag_node_to_idx[output_node]
+        else:
+            self._returns_list = True
 
         # TODO: Support no-input DAGs (use an empty object to signal).
         if self.input_task_idx is None:
@@ -1307,8 +1325,10 @@ class CompiledDAG:
 
         # Create executable tasks for each actor
         for actor_handle, tasks in self.actor_to_tasks.items():
-            # Dict from the arg to the set of tasks that consume it.
-            arg_to_consumers: Dict[DAGNode, Set[CompiledTask]] = defaultdict(set)
+            # Dict from non-dag-input arg to the set of tasks that consume it.
+            non_input_arg_to_consumers: Dict[DAGNode, Set[CompiledTask]] = defaultdict(
+                set
+            )
             # The number of tasks that consume InputNode (or InputAttributeNode)
             # Note that _preprocess() ensures that all tasks either use InputNode
             # or use InputAttributeNode, but not both.
@@ -1322,15 +1342,13 @@ class CompiledDAG:
                 for arg in task.args:
                     if isinstance(arg, InputNode):
                         has_at_least_one_channel_input = True
-                        arg_to_consumers[arg].add(task)
                         is_input_consumer = True
                     elif isinstance(arg, InputAttributeNode):
                         has_at_least_one_channel_input = True
-                        arg_to_consumers[arg].add(task)
                         is_input_consumer = True
                     elif isinstance(arg, DAGNode):  # Other DAGNodes
                         has_at_least_one_channel_input = True
-                        arg_to_consumers[arg].add(task)
+                        non_input_arg_to_consumers[arg].add(task)
                         arg_idx = self.dag_node_to_idx[arg]
                         upstream_task = self.idx_to_task[arg_idx]
                         assert len(upstream_task.output_channels) == 1
@@ -1352,23 +1370,20 @@ class CompiledDAG:
             # The value of this dict is either the original channel or a newly
             # created CachedChannel (if the original channel is read more than once).
             channel_dict: Dict[ChannelInterface, ChannelInterface] = {}
-            for arg, consumers in arg_to_consumers.items():
-                # Handle non-input args
-                if not isinstance(arg, InputNode) and not isinstance(
-                    arg, InputAttributeNode
-                ):
-                    arg_idx = self.dag_node_to_idx[arg]
-                    upstream_task = self.idx_to_task[arg_idx]
-                    assert len(upstream_task.output_channels) == 1
-                    arg_channel = upstream_task.output_channels[0]
-                    assert arg_channel is not None
-                    if len(consumers) > 1:
-                        channel_dict[arg_channel] = CachedChannel(
-                            len(consumers),
-                            arg_channel,
-                        )
-                    else:
-                        channel_dict[arg_channel] = arg_channel
+            # Handle non-input args
+            for arg, consumers in non_input_arg_to_consumers.items():
+                arg_idx = self.dag_node_to_idx[arg]
+                upstream_task = self.idx_to_task[arg_idx]
+                assert len(upstream_task.output_channels) == 1
+                arg_channel = upstream_task.output_channels[0]
+                assert arg_channel is not None
+                if len(consumers) > 1:
+                    channel_dict[arg_channel] = CachedChannel(
+                        len(consumers),
+                        arg_channel,
+                    )
+                else:
+                    channel_dict[arg_channel] = arg_channel
             # Handle input args
             if num_input_consumers > 1:
                 channel_dict[self.dag_input_channel] = CachedChannel(
@@ -1450,7 +1465,7 @@ class CompiledDAG:
         # If no MultiOutputNode was specified during the DAG creation, there is only
         # one output. Return a single output channel instead of a list of
         # channels.
-        if self._has_single_output:
+        if not self._returns_list:
             assert len(self.dag_output_channels) == 1
 
         # Driver should ray.put on input, ray.get/release on output
@@ -1535,7 +1550,7 @@ class CompiledDAG:
 
     def _build_execution_schedule(
         self,
-    ) -> Dict[int, Dict[_DAGNodeOperationType, _DAGOperationGraphNode]]:
+    ) -> Dict["ray.actor.ActorHandle", List[_DAGNodeOperation]]:
         """
         Generate an execution schedule for each actor. The schedule is a list of
         _DAGNodeOperation.
@@ -1818,7 +1833,6 @@ class CompiledDAG:
                     return
 
                 logger.info("Tearing down compiled DAG")
-
                 outer._dag_submitter.close()
                 outer._dag_output_fetcher.close()
 
@@ -1857,64 +1871,157 @@ class CompiledDAG:
         monitor.start()
         return monitor
 
+    def raise_if_too_many_inflight_requests(self):
+        num_in_flight_requests = (
+            self._execution_index - self._max_finished_execution_index
+        )
+        if num_in_flight_requests > self._max_inflight_executions:
+            raise ray.exceptions.RayAdagCapacityExceeded(
+                f"There are {num_in_flight_requests} in-flight requests which "
+                "is more than specified _max_inflight_executions of the dag: "
+                f"{self._max_inflight_executions}. Retrieve the output using "
+                "ray.get before submitting more requests or increase "
+                "`max_inflight_executions`. "
+                "`adag.experimental_compile(_max_inflight_executions=...)`"
+            )
+
+    def _has_execution_results(
+        self,
+        execution_index: int,
+    ) -> bool:
+        """Check whether there are results corresponding to the given execution
+        index stored in self._result_buffer. This helps avoid fetching and
+        caching results again.
+
+        Args:
+            execution_index: The execution index corresponding to the result.
+
+        Returns:
+            Whether the result for the given index has been fetched and cached.
+        """
+        return execution_index in self._result_buffer
+
+    def _cache_execution_results(
+        self,
+        execution_index: int,
+        result: Any,
+    ):
+        """Cache execution results in self._result_buffer. Results are converted
+        to dictionary format to allow efficient element removal and calculation of
+        the buffer size. This can only be called once per execution index.
+
+        Args:
+            execution_index: The execution index corresponding to the result.
+            result: The results from all channels to be cached.
+        """
+        assert not self._has_execution_results(execution_index)
+        for chan_idx, res in enumerate(result):
+            self._result_buffer[execution_index][chan_idx] = res
+
+    def _get_execution_results(
+        self, execution_index: int, channel_index: Optional[int]
+    ) -> List[Any]:
+        """Retrieve execution results from self._result_buffer and return the result.
+        Results are converted back to original list format ordered by output channel
+        index.
+
+        Args:
+            execution_index: The execution index to retrieve results from.
+            channel_index: The index of the output channel corresponding to the result.
+                Channel indexing is consistent with the order of
+                self.dag_output_channels. None means that the result wraps outputs from
+                all output channels.
+
+        Returns:
+            The execution result corresponding to the given execution index and channel
+            index.
+        """
+        # Although CompiledDAGRef and CompiledDAGFuture guarantee that the same
+        # execution index and channel index combination will not be requested multiple
+        # times and therefore self._result_buffer will always have execution_index as
+        # a key, we still do a sanity check to avoid misuses.
+        assert execution_index in self._result_buffer
+
+        if channel_index is None:
+            # Convert results stored in self._result_buffer back to original
+            # list representation
+            result = [
+                kv[1]
+                for kv in sorted(
+                    self._result_buffer.pop(execution_index).items(),
+                    key=lambda kv: kv[0],
+                )
+            ]
+        else:
+            result = [self._result_buffer[execution_index].pop(channel_index)]
+            if len(self._result_buffer[execution_index]) == 0:
+                del self._result_buffer[execution_index]
+        return result
+
     def _execute_until(
         self,
         execution_index: int,
+        channel_index: Optional[int] = None,
         timeout: Optional[float] = None,
-    ) -> Any:
+    ) -> List[Any]:
         """Repeatedly execute this DAG until the given execution index,
         and buffer all results up to that index. If the DAG has already
         been executed up to the given index, just return the result
-        corresponding to the given index.
+        corresponding to the given index and channel.
 
         Args:
             execution_index: The execution index to execute until.
+            channel_index: The index of the output channel to get the result from.
+                Channel indexing is consistent with the order of
+                self.dag_output_channels. None means wrapping results from all output
+                channels into a single list.
             timeout: The maximum time in seconds to wait for the result.
                 None means using default timeout (DAGContext.retrieval_timeout),
                 0 means immediate timeout (immediate success or timeout without
                 blocking), -1 means infinite timeout (block indefinitely).
 
         Returns:
-            The execution result corresponding to the given execution index.
+            The execution result corresponding to the given execution index and
+            channel index.
 
         TODO(rui): catch the case that user holds onto the CompiledDAGRefs
         """
-        from ray.dag import DAGContext
+        if self._max_finished_execution_index < execution_index:
+            from ray.dag import DAGContext
 
-        ctx = DAGContext.get_current()
-        if timeout is None:
-            timeout = ctx.retrieval_timeout
+            ctx = DAGContext.get_current()
+            if timeout is None:
+                timeout = ctx.retrieval_timeout
 
-        while self._max_execution_index < execution_index:
-            if self._max_execution_index + 1 == execution_index:
-                # Directly fetch and return without buffering
-                self._max_execution_index += 1
-                return self._dag_output_fetcher.read(timeout)
-            # Otherwise, buffer the result
+        while self._max_finished_execution_index < execution_index:
             if len(self._result_buffer) >= self._max_buffered_results:
                 raise ValueError(
                     "Too many buffered results: the allowed max count for "
-                    f"buffered results is {self._max_buffered_results}; call ray.get() "
-                    "on previous CompiledDAGRefs to free them up from buffer."
+                    f"buffered results is {self._max_buffered_results}; call "
+                    "ray.get() on previous CompiledDAGRefs to free them up "
+                    "from buffer."
                 )
-            self._max_execution_index += 1
+            self.increment_max_finished_execution_index()
             start_time = time.monotonic()
-            self._result_buffer[
-                self._max_execution_index
-            ] = self._dag_output_fetcher.read(timeout)
+
+            # Fetch results from each output channel up to execution_index and cache
+            # them separately to enable individual retrieval
+            self._cache_execution_results(
+                self._max_finished_execution_index,
+                self._dag_output_fetcher.read(timeout),
+            )
+
             if timeout != -1:
                 timeout -= time.monotonic() - start_time
                 timeout = max(timeout, 0)
 
-        # CompiledDAGRef guarantees that the same execution index will not
-        # be requested multiple times
-        return self._result_buffer.pop(execution_index)
+        return self._get_execution_results(execution_index, channel_index)
 
     def execute(
         self,
         *args,
         **kwargs,
-    ) -> CompiledDAGRef:
+    ) -> Union[CompiledDAGRef, List[CompiledDAGRef]]:
         """Execute this DAG using the compiled execution path.
 
         Args:
@@ -1946,9 +2053,17 @@ class CompiledDAG:
         else:
             inp = RayDAGArgs(args=args, kwargs=kwargs)
 
+        self.raise_if_too_many_inflight_requests()
         self._dag_submitter.write(inp, self._execution_timeout)
 
-        ref = CompiledDAGRef(self, self._execution_index)
+        if self._returns_list:
+            ref = [
+                CompiledDAGRef(self, self._execution_index, channel_index)
+                for channel_index in range(len(self.dag_output_channels))
+            ]
+        else:
+            ref = CompiledDAGRef(self, self._execution_index)
+
         self._execution_index += 1
         return ref
 
@@ -1975,7 +2090,7 @@ class CompiledDAG:
         self,
         *args,
         **kwargs,
-    ) -> CompiledDAGFuture:
+    ) -> Union[CompiledDAGFuture, List[CompiledDAGFuture]]:
         """Execute this DAG using the compiled execution path.
 
         NOTE: Not threadsafe.
@@ -2004,12 +2119,20 @@ class CompiledDAG:
             else:
                 inp = RayDAGArgs(args=args, kwargs=kwargs)
 
+            self.raise_if_too_many_inflight_requests()
             await self._dag_submitter.write(inp)
             # Allocate a future that the caller can use to get the result.
             fut = asyncio.Future()
             await self._fut_queue.put(fut)
 
-        fut = CompiledDAGFuture(self, self._execution_index, fut)
+        if self._returns_list:
+            fut = [
+                CompiledDAGFuture(self, self._execution_index, fut, channel_index)
+                for channel_index in range(len(self.dag_output_channels))
+            ]
+        else:
+            fut = CompiledDAGFuture(self, self._execution_index, fut)
+
         self._execution_index += 1
         return fut
 
@@ -2039,6 +2162,7 @@ def build_compiled_dag_from_ray_dag(
     enable_asyncio: bool = False,
     asyncio_max_queue_size: Optional[int] = None,
     max_buffered_results: Optional[int] = None,
+    max_inflight_executions: Optional[int] = None,
 ) -> "CompiledDAG":
     compiled_dag = CompiledDAG(
         execution_timeout,
@@ -2046,6 +2170,7 @@ def build_compiled_dag_from_ray_dag(
         enable_asyncio,
         asyncio_max_queue_size,
         max_buffered_results,
+        max_inflight_executions,
     )
 
     def _build_compiled_dag(node):

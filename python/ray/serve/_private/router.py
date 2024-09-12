@@ -9,7 +9,7 @@ from typing import Any, DefaultDict, Dict, List, Optional, Tuple, Union
 
 import ray
 from ray.actor import ActorHandle
-from ray.exceptions import ActorDiedError, ActorUnavailableError
+from ray.exceptions import ActorDiedError, ActorUnavailableError, RayError
 from ray.serve._private.common import (
     DeploymentHandleSource,
     DeploymentID,
@@ -240,7 +240,7 @@ class RouterMetricsManager:
                 sum(self.num_requests_sent_to_replicas.values())
             )
 
-    def dec_num_running_requests_for_replica(self, replica_id: ReplicaID, *args):
+    def dec_num_running_requests_for_replica(self, replica_id: ReplicaID):
         with self._queries_lock:
             self.num_requests_sent_to_replicas[replica_id] -= 1
             self.num_running_requests_gauge.set(
@@ -495,6 +495,30 @@ class Router:
         # Return new args and new kwargs
         return new_args, new_kwargs
 
+    def _process_finished_request(
+        self, replica_id: ReplicaID, result: Union[Any, RayError]
+    ):
+        self._metrics_manager.dec_num_running_requests_for_replica(replica_id)
+        if isinstance(result, ActorDiedError):
+            # Replica has died but controller hasn't notified the router yet.
+            # Don't consider this replica for requests in the future, and retry
+            # scheduling request.
+            self._replica_scheduler.on_replica_actor_died(replica_id)
+            logger.warning(
+                f"{replica_id} will not be considered for future "
+                "requests because it has died."
+            )
+        elif isinstance(result, ActorUnavailableError):
+            # There are network issues, or replica has died but GCS is down so
+            # ActorUnavailableError will be raised until GCS recovers. For the
+            # time being, invalidate the cache entry so that we don't try to
+            # send requests to this replica without actively probing, and retry
+            # scheduling request.
+            self._replica_scheduler.on_replica_actor_unavailable(replica_id)
+            logger.warning(
+                f"Request failed because {replica_id} is temporarily unavailable."
+            )
+
     async def schedule_and_send_request(
         self, pr: PendingRequest
     ) -> Tuple[Union[ray.ObjectRef, ray.ObjectRefGenerator], ReplicaID]:
@@ -534,20 +558,21 @@ class Router:
                 raise
             except ActorDiedError:
                 # Replica has died but controller hasn't notified the router yet.
-                # Don't consider this replica for requests in the future.
+                # Don't consider this replica for requests in the future, and retry
+                # scheduling request.
                 self._replica_scheduler.on_replica_actor_died(replica.replica_id)
                 logger.warning(
                     f"{replica.replica_id} will not be considered for future "
                     "requests because it has died."
                 )
-                raise
             except ActorUnavailableError:
                 # There are network issues, or replica has died but GCS is down so
                 # ActorUnavailableError will be raised until GCS recovers. For the
                 # time being, invalidate the cache entry so that we don't try to
-                # send requests to this replica without actively probing.
+                # send requests to this replica without actively probing, and retry
+                # scheduling request.
                 self._replica_scheduler.on_replica_actor_unavailable(replica.replica_id)
-                raise
+                logger.warning(f"{replica.replica_id} is temporarily unavailable.")
 
             # If the replica rejects the request, retry the scheduling process. The
             # request will be placed on the front of the queue to avoid tail latencies.
@@ -591,10 +616,7 @@ class Router:
                     self._metrics_manager.inc_num_running_requests_for_replica(
                         replica_id
                     )
-                    callback = partial(
-                        self._metrics_manager.dec_num_running_requests_for_replica,
-                        replica_id,
-                    )
+                    callback = partial(self._process_finished_request, replica_id)
                     if isinstance(ref, (ray.ObjectRef, FakeObjectRef)):
                         ref._on_completed(callback)
                     else:
