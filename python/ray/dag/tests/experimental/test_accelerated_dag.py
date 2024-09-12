@@ -785,6 +785,101 @@ class TestMultiArgs:
         ):
             dag.experimental_compile()
 
+    def test_multi_args_basic_asyncio(self, ray_start_regular):
+        a1 = Actor.remote(0)
+        a2 = Actor.remote(0)
+        c = Collector.remote()
+        with InputNode() as i:
+            branch1 = a1.inc.bind(i[0])
+            branch2 = a2.inc.bind(i[1])
+            dag = c.collect_two.bind(branch2, branch1)
+        compiled_dag = dag.experimental_compile(enable_asyncio=True)
+
+        async def main():
+            fut = await compiled_dag.execute_async(2, 3)
+            result = await fut
+            assert result == [3, 2]
+
+        loop = get_or_create_event_loop()
+        loop.run_until_complete(asyncio.gather(main()))
+        compiled_dag.teardown()
+
+    def test_multi_args_branch_asyncio(self, ray_start_regular):
+        a = Actor.remote(0)
+        c = Collector.remote()
+        with InputNode() as i:
+            branch = a.inc.bind(i[0])
+            dag = c.collect_two.bind(branch, i[1])
+
+        compiled_dag = dag.experimental_compile(enable_asyncio=True)
+
+        async def main():
+            fut = await compiled_dag.execute_async(2, 3)
+            result = await fut
+            assert result == [2, 3]
+
+        loop = get_or_create_event_loop()
+        loop.run_until_complete(asyncio.gather(main()))
+        compiled_dag.teardown()
+
+    def test_kwargs_basic_asyncio(self, ray_start_regular):
+        a1 = Actor.remote(0)
+        a2 = Actor.remote(0)
+        c = Collector.remote()
+        with InputNode() as i:
+            branch1 = a1.inc.bind(i.x)
+            branch2 = a2.inc.bind(i.y)
+            dag = c.collect_two.bind(branch2, branch1)
+
+        compiled_dag = dag.experimental_compile(enable_asyncio=True)
+
+        async def main():
+            fut = await compiled_dag.execute_async(x=2, y=3)
+            result = await fut
+            assert result == [3, 2]
+
+        loop = get_or_create_event_loop()
+        loop.run_until_complete(asyncio.gather(main()))
+        compiled_dag.teardown()
+
+    def test_kwargs_branch_asyncio(self, ray_start_regular):
+        a = Actor.remote(0)
+        c = Collector.remote()
+        with InputNode() as i:
+            branch = a.inc.bind(i.x)
+            dag = c.collect_two.bind(i.y, branch)
+
+        compiled_dag = dag.experimental_compile(enable_asyncio=True)
+
+        async def main():
+            fut = await compiled_dag.execute_async(x=2, y=3)
+            result = await fut
+            assert result == [3, 2]
+
+        loop = get_or_create_event_loop()
+        loop.run_until_complete(asyncio.gather(main()))
+        compiled_dag.teardown()
+
+    def test_multi_args_and_kwargs_asyncio(self, ray_start_regular):
+        a1 = Actor.remote(0)
+        a2 = Actor.remote(0)
+        c = Collector.remote()
+        with InputNode() as i:
+            branch1 = a1.inc.bind(i[0])
+            branch2 = a2.inc.bind(i.y)
+            dag = c.collect_three.bind(branch2, i.z, branch1)
+
+        compiled_dag = dag.experimental_compile(enable_asyncio=True)
+
+        async def main():
+            fut = await compiled_dag.execute_async(2, y=3, z=4)
+            result = await fut
+            assert result == [3, 4, 2]
+
+        loop = get_or_create_event_loop()
+        loop.run_until_complete(asyncio.gather(main()))
+        compiled_dag.teardown()
+
 
 @pytest.mark.parametrize("num_actors", [1, 4])
 def test_scatter_gather_dag(ray_start_regular, num_actors):

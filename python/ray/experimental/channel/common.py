@@ -488,8 +488,9 @@ class AwaitableBackgroundWriter(WriterInterface):
         output_channels: List[ChannelInterface],
         output_idxs: List[Optional[int]],
         max_queue_size: Optional[int] = None,
+        is_input=False,
     ):
-        super().__init__(output_channels, output_idxs)
+        super().__init__(output_channels, output_idxs, is_input=is_input)
         if max_queue_size is None:
             from ray.dag import DAGContext
 
@@ -507,25 +508,22 @@ class AwaitableBackgroundWriter(WriterInterface):
         self._background_task = asyncio.ensure_future(self.run())
 
     def _run(self, res):
-        if len(self._output_channels) > 1:
-            if not isinstance(res, tuple):
-                raise ValueError(
-                    f"Expected a tuple of {len(self._output_channels)} outputs,"
-                    "but got {type(val)}"
-                )
-            if len(res) != len(self._output_channels):
-                raise ValueError(
-                    f"Expected {len(self._output_channels)} outputs, but got"
-                    "{len(val)} outputs"
-                )
+        if not self._is_input:
+            if len(self._output_channels) > 1:
+                if not isinstance(res, tuple):
+                    raise ValueError(
+                        f"Expected a tuple of {len(self._output_channels)} outputs,"
+                        "but got {type(val)}"
+                    )
+                if len(res) != len(self._output_channels):
+                    raise ValueError(
+                        f"Expected {len(self._output_channels)} outputs, but got"
+                        "{len(val)} outputs"
+                    )
 
-        # TODO (kevin85421)
         for i, channel in enumerate(self._output_channels):
             idx = self._output_idxs[i]
-            if idx is not None:
-                res_i = res[idx]
-            else:
-                res_i = res
+            res_i = _adapt(res, idx, self._is_input)
             channel.write(res_i)
 
     async def run(self):

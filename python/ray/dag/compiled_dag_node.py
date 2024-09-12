@@ -1413,6 +1413,7 @@ class CompiledDAG:
                 self.dag_input_channels,
                 input_task.output_idxs,
                 self._asyncio_max_queue_size,
+                is_input=True,
             )
             self._dag_output_fetcher = AwaitableBackgroundReader(
                 self.dag_output_channels,
