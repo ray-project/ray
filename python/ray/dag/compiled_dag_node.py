@@ -1054,7 +1054,6 @@ class CompiledDAG:
             visited.add(cur_idx)
 
             task = self.idx_to_task[cur_idx]
-            print("idx", cur_idx, "downstream_task_idxs", task.downstream_task_idxs)
             type_hint = task.dag_node.type_hint
             if type_hint.requires_nccl():
                 type_hint.set_nccl_group_id(self._nccl_group_id)
@@ -1222,9 +1221,8 @@ class CompiledDAG:
 
                 # A single channel is responsible for sending the same data to
                 # corresponding consumers. Therefore, we create a channel for
-                # each InputAttributeNode. Additionally, if the InputNode is
-                # used by consumers, we also create a channel for it. In other
-                # words, it is possible to have multiple input channels for a DAG.
+                # each InputAttributeNode, or a single channel for the entire
+                # input data if there are no InputAttributeNodes.
                 task.output_channels = []
 
                 # Maps each InputNode or InputAttributeNode to its channel
