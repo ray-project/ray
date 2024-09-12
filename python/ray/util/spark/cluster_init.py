@@ -1816,27 +1816,36 @@ class AutoscalingCluster:
 
         self.ray_head_node_cmd = ray_head_node_cmd
 
-        def preexec_function():
-            # Make `start_ray_node` script and Ray node process run
-            # in a separate group,
-            # otherwise Ray node will be in the same group of parent process,
-            # if parent process is a Jupyter notebook kernel, when user
-            # clicks interrupt cell button, SIGINT signal is sent, then Ray node will
-            # receive SIGINT signal, and it causes Ray node process dies.
-            # `start_ray_node` script should also run in a separate group
-            # because on Databricks Runtime, because if Databricks notebook
-            # is detached, if the children processes don't exit within 1s,
-            # they will receive SIGKILL, this behavior makes start_ray_node
-            # doesn't have enough time to complete cleanup work like removing
-            # temp directory and collecting logs.
-            os.setpgrp()
-
-        return exec_cmd(
+        return _start_ray_head_node(
             ray_head_node_cmd,
             synchronous=False,
-            extra_env=extra_env,
-            preexec_fn=preexec_function,
+            extra_env=extra_env
         )
+
+
+def _start_ray_head_node(ray_head_node_cmd, synchronous, extra_env):
+
+    def preexec_function():
+        # Make `start_ray_node` script and Ray node process run
+        # in a separate group,
+        # otherwise Ray node will be in the same group of parent process,
+        # if parent process is a Jupyter notebook kernel, when user
+        # clicks interrupt cell button, SIGINT signal is sent, then Ray node will
+        # receive SIGINT signal, and it causes Ray node process dies.
+        # `start_ray_node` script should also run in a separate group
+        # because on Databricks Runtime, because if Databricks notebook
+        # is detached, if the children processes don't exit within 1s,
+        # they will receive SIGKILL, this behavior makes start_ray_node
+        # doesn't have enough time to complete cleanup work like removing
+        # temp directory and collecting logs.
+        os.setpgrp()
+
+    return exec_cmd(
+        ray_head_node_cmd,
+        synchronous=synchronous,
+        extra_env=extra_env,
+        preexec_fn=preexec_function,
+    )
 
 
 _sigterm_signal_installed = False

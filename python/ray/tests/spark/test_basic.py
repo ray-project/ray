@@ -470,6 +470,31 @@ class TestSparkLocalCluster:
         assert config["provider"]["extra_aa"] == "abc"
         assert config["provider"]["extra_bb"] == 789
 
+    def test_start_ray_node_in_new_process_group(self):
+        from ray.util.spark.cluster_init import _start_ray_head_node
+
+        proc, _ = _start_ray_head_node(
+            [
+                sys.executable,
+                "-m",
+                "ray.util.spark.start_ray_node",
+                "--head",
+                "--block",
+                "--port=44335",
+            ],
+            synchronous=False,
+            extra_env={
+                "RAY_ON_SPARK_COLLECT_LOG_TO_PATH": "",
+                "RAY_ON_SPARK_START_RAY_PARENT_PID": str(os.getpid()),
+            },
+        )
+        time.sleep(10)
+
+        # Assert the created Ray head node process has a different
+        # group id from parent process group id.
+        assert os.getpgid(proc.pid) != os.getpgrp()
+        proc.terminate()
+
 
 if __name__ == "__main__":
     if os.environ.get("PARALLEL_CI"):
