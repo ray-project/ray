@@ -4,7 +4,7 @@ import copy
 import threading
 import time
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Union
 
 import ray
 from ray.experimental.channel.gpu_communicator import GPUCommunicator
@@ -386,6 +386,7 @@ class WriterInterface:
                 It is the same length as output_channels. If an index is None,
                 the entire value is written. Otherwise, the value at the index
                 of the tuple is written.
+            is_input: Whether the writer is DAG input writer or not.
         """
 
         assert len(output_channels) == len(output_idxs)
@@ -419,21 +420,38 @@ class WriterInterface:
             channel.close()
 
 
-def adapt(raw_args, key):
+def _adapt(raw_args: Any, key: Optional[Union[int, str]], is_input: bool):
+    """
+    Adapt the raw arguments to the key. If `is_input` is True, this method will
+    retrieve the value from the input data for an InputAttributeNode. Otherwise, it
+    will retrieve either a partial value or the entire value from the output of
+    a ClassMethodNode.
+
+    Args:
+        raw_args: The raw arguments to adapt.
+        key: The key to adapt.
+        is_input: Whether the writer is DAG input writer or not.
+    """
     from ray.dag.compiled_dag_node import RayDAGArgs
 
-    if not isinstance(raw_args, RayDAGArgs):
-        # Fast path for a single input.
-        return raw_args
-    else:
-        assert isinstance(raw_args, RayDAGArgs)
-        args = raw_args.args
-        kwargs = raw_args.kwargs
+    if is_input:
+        if not isinstance(raw_args, RayDAGArgs):
+            # Fast path for a single input.
+            return raw_args
+        else:
+            assert isinstance(raw_args, RayDAGArgs)
+            args = raw_args.args
+            kwargs = raw_args.kwargs
 
-    if isinstance(key, int):
-        return args[key]
+        if isinstance(key, int):
+            return args[key]
+        else:
+            return kwargs[key]
     else:
-        return kwargs[key]
+        if key is not None:
+            return raw_args[key]
+        else:
+            return raw_args
 
 
 @DeveloperAPI
@@ -443,7 +461,6 @@ class SynchronousWriter(WriterInterface):
             channel.ensure_registered_as_writer()
 
     def write(self, val: Any, timeout: Optional[float] = None) -> None:
-        # TODO (kevin85421)
         if not self.is_input:
             if len(self._output_channels) > 1:
                 if not isinstance(val, tuple):
@@ -457,21 +474,10 @@ class SynchronousWriter(WriterInterface):
                         f"{len(val)} outputs"
                     )
 
-        if self.is_input:
-            for i, channel in enumerate(self._output_channels):
-                idx = self._output_idxs[i]
-                val_i = adapt(val, idx)
-                # print(f"Writing {val_i} to channel {i}")
-                channel.write(val_i, timeout)
-        else:
-            # TODO (kevin85421): Multi-output support for ClassMethodNode
-            for i, channel in enumerate(self._output_channels):
-                idx = self._output_idxs[i]
-                if idx is not None:
-                    val_i = val[idx]
-                else:
-                    val_i = val
-                channel.write(val_i, timeout)
+        for i, channel in enumerate(self._output_channels):
+            idx = self._output_idxs[i]
+            val_i = _adapt(val, idx, self.is_input)
+            channel.write(val_i, timeout)
         self._num_writes += 1
 
 

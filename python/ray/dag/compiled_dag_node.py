@@ -1204,7 +1204,7 @@ class CompiledDAG:
             elif isinstance(task.dag_node, InputNode):
                 # A dictionary that maps an InputNode or InputAttributeNode to its
                 # readers and the node on which the reader is running.
-                input_data_to_reader_and_node_set: Dict[
+                input_dag_node_to_reader_and_node_set: Dict[
                     Union[InputNode, InputAttributeNode],
                     Set[Tuple["ray.actor.ActorHandle", str]],
                 ] = defaultdict(set)
@@ -1218,25 +1218,40 @@ class CompiledDAG:
                         if isinstance(arg, InputAttributeNode) or isinstance(
                             arg, InputNode
                         ):
-                            input_data_to_reader_and_node_set[arg].add(
+                            input_dag_node_to_reader_and_node_set[arg].add(
                                 (reader_handle, reader_node_id)
                             )
 
-                self.data_to_input_channel: Dict[DAGNode, ChannelInterface] = {}
+                # A single channel is responsible for sending the same data to
+                # corresponding consumers. Therefore, we create a channel for
+                # each InputAttributeNode. Additionally, if the InputNode is
+                # used by consumers, we also create a channel for it. In other
+                # words, it is possible to have multiple input channels for a DAG.
                 task.output_channels = []
-                for data in input_data_to_reader_and_node_set:
-                    reader_and_node_list = list(input_data_to_reader_and_node_set[data])
+
+                # Maps each InputNode or InputAttributeNode to its channel
+                # which is responsible for sending the data to corresponding
+                # consumers.
+                self.input_dag_node_to_input_channel: Dict[
+                    Union[InputNode, InputAttributeNode], ChannelInterface
+                ] = {}
+                for input_dag_node in input_dag_node_to_reader_and_node_set:
+                    reader_and_node_list = list(
+                        input_dag_node_to_reader_and_node_set[input_dag_node]
+                    )
                     output_channel = do_allocate_channel(
                         self,
                         reader_and_node_list,
                         typ=type_hint,
                     )
-                    self.data_to_input_channel[data] = output_channel
+                    self.input_dag_node_to_input_channel[
+                        input_dag_node
+                    ] = output_channel
                     task.output_channels.append(output_channel)
-                    if isinstance(data, InputNode):
+                    if isinstance(input_dag_node, InputNode):
                         task.output_idxs.append(None)
                     else:
-                        task.output_idxs.append(data.key)
+                        task.output_idxs.append(input_dag_node.key)
             else:
                 assert isinstance(task.dag_node, InputAttributeNode) or isinstance(
                     task.dag_node, MultiOutputNode
@@ -1331,7 +1346,7 @@ class CompiledDAG:
                     assert len(upstream_task.output_channels) == 1
                     arg_channel = upstream_task.output_channels[0]
                 else:
-                    arg_channel = self.data_to_input_channel[arg]
+                    arg_channel = self.input_dag_node_to_input_channel[arg]
                 assert arg_channel is not None
                 if len(consumers) > 1:
                     channel_dict[arg_channel] = CachedChannel(
@@ -1349,7 +1364,9 @@ class CompiledDAG:
                     if isinstance(arg, InputNode) or isinstance(
                         arg, InputAttributeNode
                     ):
-                        input_channel = channel_dict[self.data_to_input_channel[arg]]
+                        input_channel = channel_dict[
+                            self.input_dag_node_to_input_channel[arg]
+                        ]
                         resolved_args.append(input_channel)
                     elif isinstance(arg, DAGNode):  # Other DAGNodes
                         arg_idx = self.dag_node_to_idx[arg]
