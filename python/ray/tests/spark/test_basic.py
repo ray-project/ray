@@ -1,6 +1,5 @@
 import os
 import shutil
-import signal
 import tempfile
 import socket
 import threading
@@ -9,7 +8,6 @@ import pytest
 import sys
 from unittest import mock
 from abc import ABC
-import subprocess
 
 import ray
 

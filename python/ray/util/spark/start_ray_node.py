@@ -153,7 +153,6 @@ if __name__ == "__main__":
             # swallow any exception.
             pass
         finally:
-            exit_handler_completed = True
             fcntl.flock(lock_fd, fcntl.LOCK_UN)
             os.close(lock_fd)
 

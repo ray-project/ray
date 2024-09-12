@@ -1746,7 +1746,6 @@ class AutoscalingCluster:
             RAY_ON_SPARK_COLLECT_LOG_TO_PATH,
             _append_resources_config,
             _convert_ray_node_options,
-            exec_cmd,
         )
 
         if ray_temp_dir is not None:
@@ -1817,14 +1816,11 @@ class AutoscalingCluster:
         self.ray_head_node_cmd = ray_head_node_cmd
 
         return _start_ray_head_node(
-            ray_head_node_cmd,
-            synchronous=False,
-            extra_env=extra_env
+            ray_head_node_cmd, synchronous=False, extra_env=extra_env
         )
 
 
 def _start_ray_head_node(ray_head_node_cmd, synchronous, extra_env):
-
     def preexec_function():
         # Make `start_ray_node` script and Ray node process run
         # in a separate group,
