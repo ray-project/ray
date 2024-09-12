@@ -258,6 +258,7 @@ def test_no_available_replicas_does_not_block_proxy(serve_instance):
         assert ray.get(blocked_ref) == "hi"
 
 
+@pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
 @pytest.mark.parametrize("die_during_request", [False, True])
 def test_replica_actor_died(serve_instance, die_during_request):
     """Test replica death paired with delayed handle notification.
