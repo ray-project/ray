@@ -613,160 +613,157 @@ def test_regular_args(ray_start_regular):
     compiled_dag.teardown()
 
 
-def test_multi_args_basic(ray_start_regular):
-    a1 = Actor.remote(0)
-    a2 = Actor.remote(0)
-    c = Collector.remote()
-    with InputNode() as i:
-        branch1 = a1.inc.bind(i[0])
-        branch2 = a2.inc.bind(i[1])
-        dag = c.collect_two.bind(branch2, branch1)
+class TestMultiArgs:
+    def test_multi_args_basic(self, ray_start_regular):
+        a1 = Actor.remote(0)
+        a2 = Actor.remote(0)
+        c = Collector.remote()
+        with InputNode() as i:
+            branch1 = a1.inc.bind(i[0])
+            branch2 = a2.inc.bind(i[1])
+            dag = c.collect_two.bind(branch2, branch1)
 
-    compiled_dag = dag.experimental_compile()
+        compiled_dag = dag.experimental_compile()
 
-    ref = compiled_dag.execute(2, 3)
-    result = ray.get(ref)
-    assert result == [3, 2]
-
-    compiled_dag.teardown()
-
-
-def test_multi_args_single_actor(ray_start_regular):
-    c = Collector.remote()
-    with InputNode() as i:
-        dag = c.collect_three.bind(i[0], i[1], i[0])
-
-    compiled_dag = dag.experimental_compile()
-
-    expected = [[0, 1, 0], [0, 1, 0, 1, 2, 1], [0, 1, 0, 1, 2, 1, 2, 3, 2]]
-    for i in range(3):
-        ref = compiled_dag.execute(i, i + 1)
+        ref = compiled_dag.execute(2, 3)
         result = ray.get(ref)
-        assert result == expected[i]
+        assert result == [3, 2]
 
-    with pytest.raises(
-        ValueError,
-        match=r"dag.execute\(\) or dag.execute_async\(\) must be called with 2 "
-        "positional args, got 1",
-    ):
-        compiled_dag.execute((2, 3))
+        compiled_dag.teardown()
 
-    with pytest.raises(
-        ValueError,
-        match=r"dag.execute\(\) or dag.execute_async\(\) must be called with 2 "
-        "positional args, got 0",
-    ):
-        compiled_dag.execute()
+    def test_multi_args_single_actor(self, ray_start_regular):
+        c = Collector.remote()
+        with InputNode() as i:
+            dag = c.collect_three.bind(i[0], i[1], i[0])
 
-    with pytest.raises(
-        ValueError,
-        match=r"dag.execute\(\) or dag.execute_async\(\) must be called with 2 "
-        "positional args, got 0",
-    ):
-        compiled_dag.execute(args=(2, 3))
+        compiled_dag = dag.experimental_compile()
 
-    compiled_dag.teardown()
+        expected = [[0, 1, 0], [0, 1, 0, 1, 2, 1], [0, 1, 0, 1, 2, 1, 2, 3, 2]]
+        for i in range(3):
+            ref = compiled_dag.execute(i, i + 1)
+            result = ray.get(ref)
+            assert result == expected[i]
 
+        with pytest.raises(
+            ValueError,
+            match=r"dag.execute\(\) or dag.execute_async\(\) must be called with 2 "
+            "positional args, got 1",
+        ):
+            compiled_dag.execute((2, 3))
 
-def test_multi_args_branch(ray_start_regular):
-    a = Actor.remote(0)
-    c = Collector.remote()
-    with InputNode() as i:
-        branch = a.inc.bind(i[0])
-        dag = c.collect_two.bind(branch, i[1])
+        with pytest.raises(
+            ValueError,
+            match=r"dag.execute\(\) or dag.execute_async\(\) must be called with 2 "
+            "positional args, got 0",
+        ):
+            compiled_dag.execute()
 
-    compiled_dag = dag.experimental_compile()
+        with pytest.raises(
+            ValueError,
+            match=r"dag.execute\(\) or dag.execute_async\(\) must be called with 2 "
+            "positional args, got 0",
+        ):
+            compiled_dag.execute(args=(2, 3))
 
-    ref = compiled_dag.execute(2, 3)
-    result = ray.get(ref)
-    assert result == [2, 3]
+        compiled_dag.teardown()
 
-    compiled_dag.teardown()
+    def test_multi_args_branch(self, ray_start_regular):
+        a = Actor.remote(0)
+        c = Collector.remote()
+        with InputNode() as i:
+            branch = a.inc.bind(i[0])
+            dag = c.collect_two.bind(branch, i[1])
 
+        compiled_dag = dag.experimental_compile()
 
-def test_kwargs_basic(ray_start_regular):
-    a1 = Actor.remote(0)
-    a2 = Actor.remote(0)
-    c = Collector.remote()
-    with InputNode() as i:
-        branch1 = a1.inc.bind(i.x)
-        branch2 = a2.inc.bind(i.y)
-        dag = c.collect_two.bind(branch2, branch1)
+        ref = compiled_dag.execute(2, 3)
+        result = ray.get(ref)
+        assert result == [2, 3]
 
-    compiled_dag = dag.experimental_compile()
+        compiled_dag.teardown()
 
-    ref = compiled_dag.execute(x=2, y=3)
-    result = ray.get(ref)
-    assert result == [3, 2]
+    def test_kwargs_basic(self, ray_start_regular):
+        a1 = Actor.remote(0)
+        a2 = Actor.remote(0)
+        c = Collector.remote()
+        with InputNode() as i:
+            branch1 = a1.inc.bind(i.x)
+            branch2 = a2.inc.bind(i.y)
+            dag = c.collect_two.bind(branch2, branch1)
 
-    compiled_dag.teardown()
+        compiled_dag = dag.experimental_compile()
 
-
-def test_kwargs_single_actor(ray_start_regular):
-    c = Collector.remote()
-    with InputNode() as i:
-        dag = c.collect_two.bind(i.y, i.x)
-
-    compiled_dag = dag.experimental_compile()
-
-    for i in range(3):
         ref = compiled_dag.execute(x=2, y=3)
         result = ray.get(ref)
-        assert result == [3, 2] * (i + 1)
+        assert result == [3, 2]
 
-    with pytest.raises(
-        ValueError,
-        match=r"dag.execute\(\) or dag.execute_async\(\) must be called with kwarg",
-    ):
-        compiled_dag.execute()
+        compiled_dag.teardown()
 
-    with pytest.raises(
-        ValueError,
-        match=r"dag.execute\(\) or dag.execute_async\(\) must be called with kwarg `x`",
-    ):
-        compiled_dag.execute(y=3)
+    def test_kwargs_single_actor(self, ray_start_regular):
+        c = Collector.remote()
+        with InputNode() as i:
+            dag = c.collect_two.bind(i.y, i.x)
 
-    with pytest.raises(
-        ValueError,
-        match=r"dag.execute\(\) or dag.execute_async\(\) must be called with kwarg `y`",
-    ):
-        compiled_dag.execute(x=3)
+        compiled_dag = dag.experimental_compile()
 
-    compiled_dag.teardown()
+        for i in range(3):
+            ref = compiled_dag.execute(x=2, y=3)
+            result = ray.get(ref)
+            assert result == [3, 2] * (i + 1)
 
+        with pytest.raises(
+            ValueError,
+            match=r"dag.execute\(\) or dag.execute_async\(\) must be called with kwarg",
+        ):
+            compiled_dag.execute()
 
-def test_kwargs_branch(ray_start_regular):
-    a = Actor.remote(0)
-    c = Collector.remote()
-    with InputNode() as i:
-        branch = a.inc.bind(i.x)
-        dag = c.collect_two.bind(i.y, branch)
+        with pytest.raises(
+            ValueError,
+            match=r"dag.execute\(\) or dag.execute_async\(\) "
+            "must be called with kwarg `x`",
+        ):
+            compiled_dag.execute(y=3)
 
-    compiled_dag = dag.experimental_compile()
+        with pytest.raises(
+            ValueError,
+            match=r"dag.execute\(\) or dag.execute_async\(\) "
+            "must be called with kwarg `y`",
+        ):
+            compiled_dag.execute(x=3)
 
-    ref = compiled_dag.execute(x=2, y=3)
-    result = ray.get(ref)
-    assert result == [3, 2]
+        compiled_dag.teardown()
 
-    compiled_dag.teardown()
+    def test_kwargs_branch(self, ray_start_regular):
+        a = Actor.remote(0)
+        c = Collector.remote()
+        with InputNode() as i:
+            branch = a.inc.bind(i.x)
+            dag = c.collect_two.bind(i.y, branch)
 
+        compiled_dag = dag.experimental_compile()
 
-def test_multi_args_and_kwargs(ray_start_regular):
-    a1 = Actor.remote(0)
-    a2 = Actor.remote(0)
-    c = Collector.remote()
-    with InputNode() as i:
-        branch1 = a1.inc.bind(i[0])
-        branch2 = a2.inc.bind(i.y)
-        dag = c.collect_three.bind(branch2, i.z, branch1)
+        ref = compiled_dag.execute(x=2, y=3)
+        result = ray.get(ref)
+        assert result == [3, 2]
 
-    compiled_dag = dag.experimental_compile()
+        compiled_dag.teardown()
 
-    ref = compiled_dag.execute(2, y=3, z=4)
-    result = ray.get(ref)
-    assert result == [3, 4, 2]
+    def test_multi_args_and_kwargs(self, ray_start_regular):
+        a1 = Actor.remote(0)
+        a2 = Actor.remote(0)
+        c = Collector.remote()
+        with InputNode() as i:
+            branch1 = a1.inc.bind(i[0])
+            branch2 = a2.inc.bind(i.y)
+            dag = c.collect_three.bind(branch2, i.z, branch1)
 
-    compiled_dag.teardown()
+        compiled_dag = dag.experimental_compile()
+
+        ref = compiled_dag.execute(2, y=3, z=4)
+        result = ray.get(ref)
+        assert result == [3, 4, 2]
+
+        compiled_dag.teardown()
 
 
 @pytest.mark.parametrize("num_actors", [1, 4])
