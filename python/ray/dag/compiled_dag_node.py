@@ -1200,7 +1200,9 @@ class CompiledDAG:
                 assert len(task.output_channels) == 1
             elif isinstance(task.dag_node, InputNode):
                 # A dictionary that maps an InputNode or InputAttributeNode to its
-                # readers and the node on which the reader is running.
+                # readers and the node on which the reader is running. Use `set` to
+                # deduplicate readers on the same actor because with CachedChannel
+                # each actor will only read from the shared memory once.
                 input_dag_node_to_reader_and_node_set: Dict[
                     Union[InputNode, InputAttributeNode],
                     Set[Tuple["ray.actor.ActorHandle", str]],
@@ -1244,10 +1246,11 @@ class CompiledDAG:
                         input_dag_node
                     ] = output_channel
                     task.output_channels.append(output_channel)
-                    if isinstance(input_dag_node, InputNode):
-                        task.output_idxs.append(None)
-                    else:
-                        task.output_idxs.append(input_dag_node.key)
+                    task.output_idxs.append(
+                        None
+                        if isinstance(input_dag_node, InputNode)
+                        else input_dag_node.key
+                    )
             else:
                 assert isinstance(task.dag_node, InputAttributeNode) or isinstance(
                     task.dag_node, MultiOutputNode
