@@ -101,6 +101,10 @@ x = []
 
 for _ in range(10):
     x.append(ray.put(bytes(100 * 1024 * 1024)))
+
+# NOTE: This ray.get is necessary to make sure object is persisted
+#       (and spilled) int he OS
+ray.get(x)
 """
 
     proc = run_string_as_driver_nonblocking(script, env={"RAY_verbose_spill_logs": "1"})
