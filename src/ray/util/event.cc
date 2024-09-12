@@ -532,8 +532,9 @@ void RayEventLog::StartPeriodicFlushThread() {
 }
 
 void RayEventLog::PeriodicFlush() {
+  std::unique_lock<std::mutex> lock(periodic_flush_mtx_);
   while (!stop_periodic_flush_flag_) {
-    std::this_thread::sleep_for(std::chrono::seconds(1));
+    periodic_flush_cv_.wait_for(lock, std::chrono::seconds(5));
     FlushExportEvents();
   }
 }
@@ -548,7 +549,11 @@ void RayEventLog::FlushExportEvents() {
 
 void RayEventLog::StopPeriodicFlushThread() {
   if (periodic_flush_thread_.joinable()) {
-    stop_periodic_flush_flag_ = true;
+    {
+      std::lock_guard<std::mutex> lock(periodic_flush_mtx_);
+      stop_periodic_flush_flag_ = true;
+    }
+    periodic_flush_cv_.notify_one();
     periodic_flush_thread_.join();
   }
 }

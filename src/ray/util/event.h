@@ -396,7 +396,9 @@ class RayEventLog final {
   ~RayEventLog() { StopPeriodicFlushThread(); }
 
   std::thread periodic_flush_thread_;
-  std::atomic<bool> stop_periodic_flush_flag_;
+  bool stop_periodic_flush_flag_;
+  std::mutex periodic_flush_mtx_;
+  std::condition_variable periodic_flush_cv_;
 
   FRIEND_TEST(EventTest, TestExportEvent);
   FRIEND_TEST(EventTest, TestRayEventInit);
