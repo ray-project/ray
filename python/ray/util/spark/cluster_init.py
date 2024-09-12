@@ -1854,8 +1854,6 @@ def _install_sigterm_signal():
         return
 
     try:
-        _sigterm_signal_installed = True
-
         _origin_sigterm_handler = signal.getsignal(signal.SIGTERM)
 
         def _sigterm_handler(signum, frame):
@@ -1873,5 +1871,6 @@ def _install_sigterm_signal():
             )  # Re-raise the signal to trigger original behavior
 
         signal.signal(signal.SIGTERM, _sigterm_handler)
+        _sigterm_signal_installed = True
     except Exception:
         _logger.warning("Install Ray-on-Spark SIGTERM handler failed.")
