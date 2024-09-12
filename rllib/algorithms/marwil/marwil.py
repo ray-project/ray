@@ -47,41 +47,42 @@ from ray.tune.logger import Logger
 class MARWILConfig(AlgorithmConfig):
     """Defines a configuration class from which a MARWIL Algorithm can be built.
 
+    .. testcode:
 
-    Example:
-        >>> from ray.rllib.algorithms.marwil import MARWILConfig
-        >>> # Run this from the ray directory root.
-        >>> config = MARWILConfig()  # doctest: +SKIP
-        >>> config = config.training(beta=1.0, lr=0.00001, gamma=0.99)  # doctest: +SKIP
-        >>> config = config.offline_data(  # doctest: +SKIP
-        ...     input_=["./rllib/tests/data/cartpole/large.json"])
-        >>> print(config.to_dict()) # doctest: +SKIP
-        ...
-        >>> # Build an Algorithm object from the config and run 1 training iteration.
-        >>> algo = config.build()  # doctest: +SKIP
-        >>> algo.train() # doctest: +SKIP
-
-    Example:
-        >>> from ray.rllib.algorithms.marwil import MARWILConfig
-        >>> from ray import tune
-        >>> config = MARWILConfig()
-        >>> # Print out some default values.
-        >>> print(config.beta)  # doctest: +SKIP
-        >>> # Update the config object.
-        >>> config.training(lr=tune.grid_search(  # doctest: +SKIP
-        ...     [0.001, 0.0001]), beta=0.75)
-        >>> # Set the config object's data path.
-        >>> # Run this from the ray directory root.
-        >>> config.offline_data( # doctest: +SKIP
-        ...     input_=["./rllib/tests/data/cartpole/large.json"])
-        >>> # Set the config object's env, used for evaluation.
-        >>> config.environment(env="CartPole-v1")  # doctest: +SKIP
-        >>> # Use to_dict() to get the old-style python config dict
-        >>> # when running with tune.
-        >>> tune.Tuner(  # doctest: +SKIP
-        ...     "MARWIL",
-        ...     param_space=config.to_dict(),
-        ... ).fit()
+    from pathlib import Path
+    from ray.rllib.algorithms.marwil import MARWILConfig
+    # Get the base path (to ray/rllib)
+    base_path = Path(__file__).parents[3]
+    # Get the path to the data in rllib folder.
+    data_path = base_path / "tests/data/cartpole/cartpole-v1_large"
+    config = MARWILConfig()
+    # Enable the new API stack.
+    config.api_stack(
+        enable_rl_module_and_learner=True,
+        enable_env_runner_and_connector_v2=True,
+    )
+    # Define the environment for which to learn a policy
+    # from offline data.
+    config.environment("CartPole-v1")
+    # Set the training parameters.
+    config.training(
+        beta=1.0,
+        lr=1e-5,
+        gamma=0.99,
+        # We must define a train batch size for each
+        # learner (here 1 local learner).
+        train_batch_size_per_learner=2000,
+    )
+    # Define the data source for offline data.
+    config.offline_data(
+        input_=[data_path.as_posix()],
+        # Run exactly one update per training iteration.
+        dataset_num_iters_per_learner=1,
+    )
+    # Build an `Algorithm` object from the config and run 1 training
+    # iteration.
+    algo = config.build()
+    algo.train()
     """
 
     def __init__(self, algo_class=None):

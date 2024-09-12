@@ -112,7 +112,8 @@ doctest(
         ]
     ),
     tags = ["team:rllib"],
-    size = "enormous"
+    data = ["//rllib/tests/data/cartpole/cartpole-v1_large:data"],
+    size = "enormous",
 )
 
 # --------------------------------------------------------------------
