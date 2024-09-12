@@ -1595,21 +1595,11 @@ def _start_ray_worker_nodes(
                 extra_env=ray_worker_node_extra_envs,
             )
         except Exception as e:
-            # In the following 2 cases, exception is raised:
-            # (1)
-            # Starting Ray worker node fails, the `e` will contain detail
-            # subprocess stdout/stderr output.
-            # (2)
             # In autoscaling mode, when Ray worker node is down, autoscaler will
             # try to start new Ray worker node if necessary,
-            # and it creates a new spark job to launch Ray worker node process,
-            # note the old spark job will reschedule the failed spark task
-            # and raise error of "Starting Ray worker node twice with the same
-            # node id is not allowed".
-            #
-            # For either case (1) or case (2),
-            # to avoid Spark triggers more spark task retries, we swallow
-            # exception here to make spark the task exit normally.
+            # but we use spark job to launch Ray worker node process,
+            # to avoid trigger spark task retries, we swallow exception here
+            # to make spark task exit normally.
             _logger.warning(f"Ray worker node process exit, reason: {repr(e)}.")
 
         yield 0
