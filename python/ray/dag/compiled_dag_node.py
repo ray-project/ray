@@ -1226,13 +1226,6 @@ class CompiledDAG:
                 # each InputAttributeNode, or a single channel for the entire
                 # input data if there are no InputAttributeNodes.
                 task.output_channels = []
-
-                # Maps each InputNode or InputAttributeNode to its channel
-                # which is responsible for sending the data to corresponding
-                # consumers.
-                self.input_dag_node_to_input_channel: Dict[
-                    Union[InputNode, InputAttributeNode], ChannelInterface
-                ] = {}
                 for input_dag_node in input_dag_node_to_reader_and_node_set:
                     reader_and_node_list = list(
                         input_dag_node_to_reader_and_node_set[input_dag_node]
@@ -1242,15 +1235,20 @@ class CompiledDAG:
                         reader_and_node_list,
                         typ=type_hint,
                     )
-                    self.input_dag_node_to_input_channel[
-                        input_dag_node
-                    ] = output_channel
                     task.output_channels.append(output_channel)
                     task.output_idxs.append(
                         None
                         if isinstance(input_dag_node, InputNode)
                         else input_dag_node.key
                     )
+
+                    # Update the InputAttributeNode's `output_channels`, which is
+                    # used to determine whether to create a CachedChannel.
+                    if isinstance(input_dag_node, InputAttributeNode):
+                        input_attr_idx = self.dag_node_to_idx[input_dag_node]
+                        input_attr_task = self.idx_to_task[input_attr_idx]
+                        input_attr_task.output_channels.append(output_channel)
+                        assert len(input_attr_task.output_channels) == 1
             else:
                 assert isinstance(task.dag_node, InputAttributeNode) or isinstance(
                     task.dag_node, MultiOutputNode
@@ -1335,17 +1333,10 @@ class CompiledDAG:
             # created CachedChannel (if the original channel is read more than once).
             channel_dict: Dict[ChannelInterface, ChannelInterface] = {}
             for arg, consumers in arg_to_consumers.items():
-                print("idx", self.dag_node_to_idx[arg], "consumers", consumers)
-                # Handle non-input args
-                if not isinstance(arg, InputNode) and not isinstance(
-                    arg, InputAttributeNode
-                ):
-                    arg_idx = self.dag_node_to_idx[arg]
-                    upstream_task = self.idx_to_task[arg_idx]
-                    assert len(upstream_task.output_channels) == 1
-                    arg_channel = upstream_task.output_channels[0]
-                else:
-                    arg_channel = self.input_dag_node_to_input_channel[arg]
+                arg_idx = self.dag_node_to_idx[arg]
+                upstream_task = self.idx_to_task[arg_idx]
+                assert len(upstream_task.output_channels) == 1
+                arg_channel = upstream_task.output_channels[0]
                 assert arg_channel is not None
                 if len(consumers) > 1:
                     channel_dict[arg_channel] = CachedChannel(
@@ -1360,14 +1351,7 @@ class CompiledDAG:
             for task in tasks:
                 resolved_args: List[Any] = []
                 for arg in task.args:
-                    if isinstance(arg, InputNode) or isinstance(
-                        arg, InputAttributeNode
-                    ):
-                        input_channel = channel_dict[
-                            self.input_dag_node_to_input_channel[arg]
-                        ]
-                        resolved_args.append(input_channel)
-                    elif isinstance(arg, DAGNode):  # Other DAGNodes
+                    if isinstance(arg, DAGNode):  # Other DAGNodes
                         arg_idx = self.dag_node_to_idx[arg]
                         upstream_task = self.idx_to_task[arg_idx]
                         assert len(upstream_task.output_channels) == 1
