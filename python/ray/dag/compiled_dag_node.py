@@ -1295,22 +1295,14 @@ class CompiledDAG:
 
         # Create executable tasks for each actor
         for actor_handle, tasks in self.actor_to_tasks.items():
-            # Dict from non-dag-input arg to the set of tasks that consume it.
+            # Dict from arg to the set of tasks that consume it.
             arg_to_consumers: Dict[DAGNode, Set[CompiledTask]] = defaultdict(set)
-            # The number of tasks that consume InputNode (or InputAttributeNode)
-            # Note that _preprocess() ensures that all tasks either use InputNode
-            # or use InputAttributeNode, but not both.
 
             # Step 1: populate `arg_to_consumers` and perform some validation.
             for task in tasks:
                 has_at_least_one_channel_input = False
                 for arg in task.args:
-                    if isinstance(arg, InputNode) or isinstance(
-                        arg, InputAttributeNode
-                    ):
-                        has_at_least_one_channel_input = True
-                        arg_to_consumers[arg].add(task)
-                    elif isinstance(arg, DAGNode):  # Other DAGNodes
+                    if isinstance(arg, DAGNode):
                         has_at_least_one_channel_input = True
                         arg_to_consumers[arg].add(task)
                         arg_idx = self.dag_node_to_idx[arg]
