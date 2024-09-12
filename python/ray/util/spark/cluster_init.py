@@ -1853,21 +1853,25 @@ def _install_sigterm_signal():
     if _sigterm_signal_installed:
         return
 
-    _sigterm_signal_installed = True
+    try:
+        _sigterm_signal_installed = True
 
-    _origin_sigterm_handler = signal.getsignal(signal.SIGTERM)
+        _origin_sigterm_handler = signal.getsignal(signal.SIGTERM)
 
-    def _sigterm_handler(signum, frame):
-        try:
-            shutdown_ray_cluster()
-        except Exception:
-            # swallow exception to continue executing the following code in the handler
-            pass
-        signal.signal(
-            signal.SIGTERM, _origin_sigterm_handler
-        )  # Reset to original signal
-        os.kill(
-            os.getpid(), signal.SIGTERM
-        )  # Re-raise the signal to trigger original behavior
+        def _sigterm_handler(signum, frame):
+            try:
+                shutdown_ray_cluster()
+            except Exception:
+                # swallow exception to continue executing the following code in the
+                # handler
+                pass
+            signal.signal(
+                signal.SIGTERM, _origin_sigterm_handler
+            )  # Reset to original signal
+            os.kill(
+                os.getpid(), signal.SIGTERM
+            )  # Re-raise the signal to trigger original behavior
 
-    signal.signal(signal.SIGTERM, _sigterm_handler)
+        signal.signal(signal.SIGTERM, _sigterm_handler)
+    except Exception:
+        _logger.warning("Install Ray-on-Spark SIGTERM handler failed.")

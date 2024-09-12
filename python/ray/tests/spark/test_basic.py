@@ -173,7 +173,7 @@ class RayOnSparkCPUClusterTestBase(ABC):
 
             assert "RAY_ADDRESS" not in os.environ
 
-            time.sleep(120)
+            time.sleep(7)
             # assert temp dir is removed.
             assert len(os.listdir(ray_temp_root_dir)) == 1 and os.listdir(
                 ray_temp_root_dir
@@ -403,7 +403,7 @@ class TestSparkLocalCluster:
         # assert temp directory is deleted
         wait_for_condition(
             lambda: not os.path.exists("/tmp/ray"),
-            timeout=120,
+            timeout=60,
             retry_interval_ms=10000,
         )
 
