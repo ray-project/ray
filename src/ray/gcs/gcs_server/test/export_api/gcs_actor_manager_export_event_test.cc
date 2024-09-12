@@ -251,10 +251,11 @@ class GcsActorManagerTest : public ::testing::Test {
   std::string log_dir_;
 };
 
-TEST_F(GcsActorManagerTest, TestBasic) {
+TEST_F(GcsActorManagerTest, TestActorExportEvents) {
   std::vector<SourceTypeVariant> source_types = {
       rpc::ExportEvent_SourceType::ExportEvent_SourceType_EXPORT_ACTOR};
-  RayEventInit(source_types, absl::flat_hash_map<std::string, std::string>(), log_dir_);
+  ray::RayEventLog::Instance().Init(
+      source_types, absl::flat_hash_map<std::string, std::string>(), log_dir_);
   auto job_id = JobID::FromInt(1);
   auto registered_actor = RegisterActor(job_id);
   rpc::CreateActorRequest create_actor_request;
@@ -297,6 +298,7 @@ TEST_F(GcsActorManagerTest, TestBasic) {
       "DEPENDENCIES_UNREADY", "PENDING_CREATION", "ALIVE", "DEAD"};
   std::vector<std::string> vc;
   for (int i = 0; i < num_retry; i++) {
+    ray::RayEventLog::Instance().FlushExportEvents();
     Mocker::ReadContentFromFile(vc, log_dir_ + "/events/event_EXPORT_ACTOR.log");
     if ((int)vc.size() == num_export_events) {
       for (int event_idx = 0; event_idx < num_export_events; event_idx++) {

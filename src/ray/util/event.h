@@ -134,6 +134,8 @@ class LogEventReporter : public BaseEventReporter {
   std::string file_name_;
 
   std::shared_ptr<spdlog::logger> log_sink_;
+
+  friend class RayEventLog;
 };
 
 // store the reporters, add reporters and clean reporters
@@ -159,6 +161,9 @@ class EventManager final {
 
   void AddExportReporter(rpc::ExportEvent_SourceType source_type,
                          std::shared_ptr<LogEventReporter> reporter);
+
+  absl::flat_hash_map<rpc::ExportEvent_SourceType, std::shared_ptr<LogEventReporter>>
+      &GetExportLogReporterMap();
 
   void ClearReporters();
 
@@ -343,35 +348,61 @@ class RayExportEvent {
   ExportEventDataPtr event_data_ptr_;
 };
 
-/// Ray Event initialization.
-///
-/// This function should be called when the main thread starts.
-/// Redundant calls in other thread don't take effect.
-/// \param source_types List of source types the current process can create events for. If
-/// there are multiple rpc::Event_SourceType source_types, the last one will be used as
-/// the source type for the RAY_EVENT macro.
-/// \param custom_fields The global custom fields. These are only set for
-/// rpc::Event_SourceType events.
-/// \param log_dir The log directory to generate event subdirectory.
-/// \param event_level The input event level. It should be one of "info","warning",
-/// "error" and "fatal". You can also use capital letters for the options above.
-/// \param emit_event_to_log_file if True, it will emit the event to the process log file
-/// (e.g., gcs_server.out). Otherwise, event will only be recorded to the event log file.
-/// \return void.
-void RayEventInit(const std::vector<SourceTypeVariant> source_types,
-                  const absl::flat_hash_map<std::string, std::string> &custom_fields,
-                  const std::string &log_dir,
-                  const std::string &event_level = "warning",
-                  bool emit_event_to_log_file = false);
+class RayEventLog final {
+ public:
+  static RayEventLog &Instance();
+  /// Ray Event initialization.
+  ///
+  /// This function should be called when the main thread starts.
+  /// Redundant calls in other thread don't take effect.
+  /// \param source_types List of source types the current process can create events for.
+  /// If there are multiple rpc::Event_SourceType source_types, the last one will be used
+  /// as the source type for the RAY_EVENT macro.
+  /// \param custom_fields The global custom fields. These are only set for
+  /// rpc::Event_SourceType events.
+  /// \param log_dir The log directory to generate event subdirectory.
+  /// \param event_level The input event level. It should be one of "info","warning",
+  /// "error" and "fatal". You can also use capital letters for the options above.
+  /// \param emit_event_to_log_file if True, it will emit the event to the process logfile
+  /// file (e.g., gcs_server.out). Otherwise, event will only be recorded to the event log
+  /// file.
+  /// \return void.
+  void Init(const std::vector<SourceTypeVariant> source_types,
+            const absl::flat_hash_map<std::string, std::string> &custom_fields,
+            const std::string &log_dir,
+            const std::string &event_level = "warning",
+            bool emit_event_to_log_file = false);
+  void StartPeriodicFlushThread();
+  void StopPeriodicFlushThread();
 
-/// Logic called by RayEventInit. This function can be called multiple times,
-/// and has been separated out so RayEventInit can be called multiple times in
-/// tests.
-/// **Note**: This should only be called from tests.
-void RayEventInit_(const std::vector<SourceTypeVariant> source_types,
-                   const absl::flat_hash_map<std::string, std::string> &custom_fields,
-                   const std::string &log_dir,
-                   const std::string &event_level,
-                   bool emit_event_to_log_file);
+ private:
+  /// Logic called by RayEventInit. This function can be called multiple times,
+  /// and has been separated out so RayEventInit can be called multiple times in
+  /// tests.
+  /// **Note**: This should only be called from tests.
+  void Init_(const std::vector<SourceTypeVariant> source_types,
+             const absl::flat_hash_map<std::string, std::string> &custom_fields,
+             const std::string &log_dir,
+             const std::string &event_level,
+             bool emit_event_to_log_file);
+  void PeriodicFlush();
+  void FlushExportEvents();
+
+  /// Used to allow tests to flush export events when the
+  /// namespace of the test is different than RayEventLog.
+  friend void FlushExportEventsInTest(RayEventLog &obj) { obj.FlushExportEvents(); }
+
+  RayEventLog() : periodic_flush_thread_() {}
+  ~RayEventLog() { StopPeriodicFlushThread(); }
+
+  std::thread periodic_flush_thread_;
+
+  FRIEND_TEST(EventTest, TestExportEvent);
+  FRIEND_TEST(EventTest, TestRayEventInit);
+  FRIEND_TEST(GcsActorManagerTest, TestActorExportEvents);
+  FRIEND_TEST(GcsJobManagerTest, TestExportDriverJobEvents);
+  FRIEND_TEST(GcsNodeManagerExportAPITest, TestExportEventRegisterNode);
+  FRIEND_TEST(GcsNodeManagerExportAPITest, TestExportEventUnregisterNode);
+};
 
 }  // namespace ray

@@ -52,13 +52,6 @@ class GcsNodeManagerExportAPITest : public ::testing::Test {
 }
   )");
     log_dir_ = GenerateLogDir();
-    const std::vector<ray::SourceTypeVariant> source_types = {
-        rpc::ExportEvent_SourceType::ExportEvent_SourceType_EXPORT_NODE};
-    RayEventInit_(source_types,
-                  absl::flat_hash_map<std::string, std::string>(),
-                  log_dir_,
-                  "warning",
-                  false);
   }
 
   virtual ~GcsNodeManagerExportAPITest() {
@@ -78,6 +71,13 @@ class GcsNodeManagerExportAPITest : public ::testing::Test {
 
 TEST_F(GcsNodeManagerExportAPITest, TestExportEventRegisterNode) {
   // Test export event is written when a node is added with HandleRegisterNode
+  const std::vector<ray::SourceTypeVariant> source_types = {
+      rpc::ExportEvent_SourceType::ExportEvent_SourceType_EXPORT_NODE};
+  ray::RayEventLog::Instance().Init_(source_types,
+                                     absl::flat_hash_map<std::string, std::string>(),
+                                     log_dir_,
+                                     "warning",
+                                     false);
   gcs::GcsNodeManager node_manager(
       gcs_publisher_, gcs_table_storage_, client_pool_, ClusterID::Nil());
   auto node = Mocker::GenNodeInfo();
@@ -90,6 +90,7 @@ TEST_F(GcsNodeManagerExportAPITest, TestExportEventRegisterNode) {
 
   node_manager.HandleRegisterNode(register_request, &register_reply, send_reply_callback);
   io_service_.poll();
+  ray::RayEventLog::Instance().FlushExportEvents();
 
   std::vector<std::string> vc;
   Mocker::ReadContentFromFile(vc, log_dir_ + "/events/event_EXPORT_NODE.log");
@@ -100,6 +101,13 @@ TEST_F(GcsNodeManagerExportAPITest, TestExportEventRegisterNode) {
 
 TEST_F(GcsNodeManagerExportAPITest, TestExportEventUnregisterNode) {
   // Test export event is written when a node is removed with HandleUnregisterNode
+  const std::vector<ray::SourceTypeVariant> source_types = {
+      rpc::ExportEvent_SourceType::ExportEvent_SourceType_EXPORT_NODE};
+  ray::RayEventLog::Instance().Init_(source_types,
+                                     absl::flat_hash_map<std::string, std::string>(),
+                                     log_dir_,
+                                     "warning",
+                                     false);
   gcs::GcsNodeManager node_manager(
       gcs_publisher_, gcs_table_storage_, client_pool_, ClusterID::Nil());
   auto node = Mocker::GenNodeInfo();
@@ -118,6 +126,7 @@ TEST_F(GcsNodeManagerExportAPITest, TestExportEventUnregisterNode) {
   node_manager.HandleUnregisterNode(
       unregister_request, &unregister_reply, send_reply_callback);
   io_service_.poll();
+  ray::RayEventLog::Instance().FlushExportEvents();
 
   std::vector<std::string> vc;
   Mocker::ReadContentFromFile(vc, log_dir_ + "/events/event_EXPORT_NODE.log");
