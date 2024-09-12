@@ -765,6 +765,26 @@ class TestMultiArgs:
 
         compiled_dag.teardown()
 
+    def test_mix_entire_input_and_args(self, ray_start_regular):
+        """
+        It is not allowed to consume both the entire input and a partial
+        input (i.e., an InputAttributeNode) as arguments.
+        """
+        a = Actor.remote(0)
+        c = Collector.remote()
+        with InputNode() as i:
+            branch = a.inc_two.bind(i[0], i[1])
+            dag = c.collect_two.bind(i, branch)
+
+        with pytest.raises(
+            ValueError,
+            match=re.escape(
+                "All tasks must either use InputNode() directly, "
+                "or they must index to specific args or kwargs."
+            ),
+        ):
+            dag.experimental_compile()
+
 
 @pytest.mark.parametrize("num_actors", [1, 4])
 def test_scatter_gather_dag(ray_start_regular, num_actors):
