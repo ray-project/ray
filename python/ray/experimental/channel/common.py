@@ -374,7 +374,7 @@ class WriterInterface:
     def __init__(
         self,
         output_channels: List[ChannelInterface],
-        output_idxs: List[Optional[int]],
+        output_idxs: List[Optional[Union[int, str]]],
         is_input=False,
     ):
         """
@@ -383,9 +383,11 @@ class WriterInterface:
         Args:
             output_channels: The output channels to write to.
             output_idxs: The indices of the values to write to each channel.
-                It is the same length as output_channels. If an index is None,
-                the entire value is written. Otherwise, the value at the index
-                of the tuple is written.
+                This has the same length as `output_channels`. If `is_input` is True,
+                the index can be an integer or a string to retrieve the corresponding
+                value from `args` or `kwargs` in the DAG's input. If `is_input`
+                is False, the entire value is written if the index is None. Otherwise,
+                the value at the specified index in the tuple is written.
             is_input: Whether the writer is DAG input writer or not.
         """
 
@@ -486,7 +488,7 @@ class AwaitableBackgroundWriter(WriterInterface):
     def __init__(
         self,
         output_channels: List[ChannelInterface],
-        output_idxs: List[Optional[int]],
+        output_idxs: List[Optional[Union[int, str]]],
         max_queue_size: Optional[int] = None,
         is_input=False,
     ):
