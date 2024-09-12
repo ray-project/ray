@@ -36,7 +36,10 @@ def load_mnist_data(train: bool, download: bool):
         )
 
 
-def train_epoch(dataloader, model, loss_fn, optimizer):
+def train_epoch(epoch, dataloader, model, loss_fn, optimizer):
+    if ray.train.get_context().get_world_size() > 1:
+        dataloader.sampler.set_epoch(epoch)
+
     for X, y in dataloader:
         # Compute prediction error
         pred = model(X)
@@ -83,7 +86,7 @@ def training_loop(config):
         validation_dataset = Subset(validation_dataset, list(range(64)))
 
     train_loader = DataLoader(
-        train_dataset, batch_size=config["batch_size"], num_workers=2
+        train_dataset, batch_size=config["batch_size"], num_workers=2, shuffle=True
     )
     validation_loader = DataLoader(
         validation_dataset, batch_size=config["batch_size"], num_workers=2
@@ -96,7 +99,7 @@ def training_loop(config):
     criterion = nn.CrossEntropyLoss()
 
     for epoch_idx in range(2):
-        train_epoch(train_loader, model, criterion, optimizer)
+        train_epoch(epoch_idx, train_loader, model, criterion, optimizer)
         validation_loss = validate_epoch(validation_loader, model, criterion)
 
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -177,7 +180,10 @@ def setup_serve(model, use_gpu: bool = False):
     )  # Start on every node so `predict` can hit localhost.
     serve.run(
         MnistDeployment.options(
-            num_replicas=2, ray_actor_options={"num_gpus": bool(use_gpu)}
+            num_replicas=2,
+            ray_actor_options={"num_gpus": 1, "resources": {"worker": 1}}
+            if use_gpu
+            else {},
         ).bind(model)
     )
 

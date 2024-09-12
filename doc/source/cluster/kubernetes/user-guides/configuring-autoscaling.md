@@ -16,6 +16,10 @@ Autoscaling can reduce workload costs, but adds node launch overheads and can be
 We recommend starting with non-autoscaling clusters if you're new to Ray.
 ```
 
+```{admonition} Ray Autoscaling V2 alpha with KubeRay (@ray 2.10.0)
+With Ray 2.10, Ray Autoscaler V2 alpha is available with KubeRay. It has improvements on observability and stability. Please see the [section](kuberay-autoscaler-v2) for more details.
+```
+
 ## Overview
 
 The following diagram illustrates the integration of the Ray Autoscaler with the KubeRay operator.
@@ -51,7 +55,7 @@ Then, the KubeRay operator deletes the Pods in the `workersToDelete` field.
 ### Step 1: Create a Kubernetes cluster with Kind
 
 ```bash
-kind create cluster --image=kindest/node:v1.23.0
+kind create cluster --image=kindest/node:v1.26.0
 ```
 
 ### Step 2: Install the KubeRay operator
@@ -61,8 +65,7 @@ Follow [this document](kuberay-operator-deploy) to install the latest stable Kub
 ### Step 3: Create a RayCluster custom resource with autoscaling enabled
 
 ```bash
-curl -LO https://raw.githubusercontent.com/ray-project/kuberay/v1.0.0/ray-operator/config/samples/ray-cluster.autoscaler.yaml
-kubectl apply -f ray-cluster.autoscaler.yaml
+kubectl apply -f https://raw.githubusercontent.com/ray-project/kuberay/v1.1.1/ray-operator/config/samples/ray-cluster.autoscaler.yaml
 ```
 
 ### Step 4: Verify the Kubernetes cluster status
@@ -85,7 +88,7 @@ kubectl get configmaps
 ```
 
 The RayCluster has one head Pod and zero worker Pods. The head Pod has two containers: a Ray head container and a Ray Autoscaler sidecar container.
-Additionally, the [ray-cluster.autoscaler.yaml](https://github.com/ray-project/kuberay/blob/v1.0.0/ray-operator/config/samples/ray-cluster.autoscaler.yaml) includes a ConfigMap named `ray-example` that houses two Python scripts: `detached_actor.py` and `terminate_detached_actor`.py.
+Additionally, the [ray-cluster.autoscaler.yaml](https://github.com/ray-project/kuberay/blob/v1.1.1/ray-operator/config/samples/ray-cluster.autoscaler.yaml) includes a ConfigMap named `ray-example` that houses two Python scripts: `detached_actor.py` and `terminate_detached_actor`.py.
 
 * `detached_actor.py` is a Python script that creates a detached actor which requires 1 CPU.
   ```py
@@ -178,7 +181,7 @@ kubectl get pods -l=ray.io/is-ray-node=yes
 # raycluster-autoscaler-head-xxxxx                 2/2     Running   0          xxm
 # raycluster-autoscaler-worker-small-group-zzzzz   1/1     Running   0          xxm
 
-# Step 6.3: Terminate the detached actor "actor1".
+# Step 6.3: Terminate the detached actor "actor2".
 kubectl exec -it $HEAD_POD -- python3 /home/ray/samples/terminate_detached_actor.py actor2
 
 # Step 6.4: A worker Pod will be deleted after `idleTimeoutSeconds` (default 60s) seconds.
@@ -245,7 +248,7 @@ kubectl logs $HEAD_POD -c autoscaler | tail -n 20
 
 ```bash
 # Delete RayCluster and ConfigMap
-kubectl delete -f ray-cluster.autoscaler.yaml
+kubectl delete -f https://raw.githubusercontent.com/ray-project/kuberay/v1.1.1/ray-operator/config/samples/ray-cluster.autoscaler.yaml
 
 # Uninstall the KubeRay operator
 helm uninstall kuberay-operator
@@ -254,13 +257,13 @@ helm uninstall kuberay-operator
 (kuberay-autoscaling-config)=
 ## KubeRay Autoscaling Configurations
 
-The [ray-cluster.autoscaler.yaml](https://github.com/ray-project/kuberay/blob/v1.0.0/ray-operator/config/samples/ray-cluster.autoscaler.yaml) used in the quickstart example contains detailed comments about the configuration options.
+The [ray-cluster.autoscaler.yaml](https://github.com/ray-project/kuberay/blob/v1.1.1/ray-operator/config/samples/ray-cluster.autoscaler.yaml) used in the quickstart example contains detailed comments about the configuration options.
 ***It's recommended to read this section in conjunction with the YAML file.***
 
 ### 1. Enabling autoscaling
 
 * **`enableInTreeAutoscaling`**: By setting `enableInTreeAutoscaling: true`, the KubeRay operator automatically configures an autoscaling sidecar container for the Ray head Pod.
-* **`minReplicas` / `maxReplicas` / `replicas`**: 
+* **`minReplicas` / `maxReplicas` / `replicas`**:
 Set the `minReplicas` and `maxReplicas` fields to define the range for `replicas` in an autoscaling `workerGroup`.
 Typically, you would initialize both `replicas` and `minReplicas` with the same value during the deployment of an autoscaling cluster.
 Subsequently, the Ray Autoscaler adjusts the `replicas` field as it adds or removes Pods from the cluster.
@@ -302,7 +305,7 @@ The default values are indicated below:
 
 * **`image`**:
 This field overrides the Autoscaler container image.
-The container uses the same **image** as the Ray container by default. 
+The container uses the same **image** as the Ray container by default.
 
 * **`imagePullPolicy`**:
 This field overrides the Autoscaler container's image pull policy.
@@ -313,6 +316,153 @@ These fields specify Autoscaler container environment variables.
 These fields should be formatted following the [Kubernetes API](https://kubernetes.io/docs/reference/kubernetes-api/workload-resources/Pod-v1/#environment-variables)
 for container environment variables.
 
+### 4. Set the `rayStartParams` and the resource limits for the Ray container
+
+The Ray Autoscaler reads the `rayStartParams` field or the Ray container's resource limits in the RayCluster custom resource specification to determine the Ray Pod's resource requirements.
+The information regarding the number of CPUs is essential for the Ray Autoscaler to scale the cluster.
+Therefore, without this information, the Ray Autoscaler would report an error and fail to start.
+Take [ray-cluster.autoscaler.yaml](https://github.com/ray-project/kuberay/blob/v1.1.1/ray-operator/config/samples/ray-cluster.autoscaler.yaml) as an example below:
+
+* If users set `num-cpus` in `rayStartParams`, Ray Autoscaler would work regardless of the resource limits on the container.
+* If users don't set `rayStartParams`, the Ray container must have a specified CPU resource limit.
+
+```yaml
+headGroupSpec:
+  rayStartParams:
+    num-cpus: "0"
+  template:
+    spec:
+      containers:
+      - name: ray-head
+        resources:
+          # The Ray Autoscaler still functions if you comment out the `limits` field for the
+          # head container, as users have already specified `num-cpus` in `rayStartParams`.
+          limits:
+            cpu: "1"
+            memory: "2G"
+          requests:
+            cpu: "1"
+            memory: "2G"
+...
+workerGroupSpecs:
+- groupName: small-group
+  rayStartParams: {}
+  template:
+    spec:
+      containers:
+      - name: ray-worker
+        resources:
+          limits:
+            # The Ray Autoscaler will fail to start if the CPU resource limit for the worker
+            # container is commented out because `rayStartParams` is empty.
+            cpu: "1"
+            memory: "1G"
+          requests:
+            cpu: "1"
+            memory: "1G"
+```
+
+
 ## Next steps
 
 See [(Advanced) Understanding the Ray Autoscaler in the Context of Kubernetes](ray-k8s-autoscaler-comparison) for more details about the relationship between the Ray Autoscaler and Kubernetes autoscalers.
+
+(kuberay-autoscaler-v2)=
+### Autoscaler V2 with KubeRay
+
+#### Prerequisites
+* Ray 2.10.0 or nightly Ray version
+* KubeRay 1.1.0 or later
+
+The release of Ray 2.10.0 introduces the alpha version of Ray Autoscaler V2 integrated with KubeRay, bringing enhancements in terms of observability and stability:
+
+
+1. **Observability**: The Autoscaler V2 provides instance level tracing on each Ray worker's lifecycle, making it easier to debug and understand the Autoscaler behavior. It also reports
+the idle information (why it's idle, why it's not idle) of each node:
+
+```bash
+
+> ray status -v
+
+======== Autoscaler status: 2024-03-08 21:06:21.023751 ========
+GCS request time: 0.003238s
+
+Node status
+---------------------------------------------------------------
+Active:
+ 1 node_40f427230584b2d9c9f113d8db51d10eaf914aa9bf61f81dc7fabc64
+Idle:
+ 1 node_2d5fd3d4337ba5b5a8c3106c572492abb9a8de2dee9da7f6c24c1346
+Pending:
+ (no pending nodes)
+Recent failures:
+ (no failures)
+
+Resources
+---------------------------------------------------------------
+Total Usage:
+ 1.0/64.0 CPU
+ 0B/72.63GiB memory
+ 0B/33.53GiB object_store_memory
+
+Total Demands:
+ (no resource demands)
+
+Node: 40f427230584b2d9c9f113d8db51d10eaf914aa9bf61f81dc7fabc64
+ Usage:
+  1.0/32.0 CPU
+  0B/33.58GiB memory
+  0B/16.79GiB object_store_memory
+ # New in autoscaler V2: activity information
+ Activity:
+  Busy workers on node.
+  Resource: CPU currently in use.
+
+Node: 2d5fd3d4337ba5b5a8c3106c572492abb9a8de2dee9da7f6c24c1346
+ # New in autoscaler V2: idle information
+ Idle: 107356 ms
+ Usage:
+  0.0/32.0 CPU
+  0B/39.05GiB memory
+  0B/16.74GiB object_store_memory
+ Activity:
+  (no activity)
+```
+
+2. **Stability**
+Improvements in the termination of idle nodes have been made in Autoscaler V2. Unlike the V1 Autoscaler, which could prematurely terminate nodes no longer idle at the time of termination processing (potentially leading to task or actor failures), V2 employs Ray's graceful draining mechanism to ensure idle nodes are terminated without disrupting ongoing tasks or actors.
+
+
+In order to enable Autoscaler V2, one could modify the `ray-cluster.autoscaler.yaml` like below.
+
+```bash
+# Change 1: Select the Ray version to either the nightly build or version 2.10.0+
+
+spec:
+  # Specify Ray version 2.10.0 or use the nightly build.
+  rayVersion: '2.10.0'
+...
+
+
+# Change 2: Enable Autoscaler V2 by setting the RAY_enable_autoscaler_v2 environment variable on the Ray head container.
+  headGroupSpec:
+    template:
+      spec:
+        containers:
+        - name: ray-head
+          image: rayproject/ray:2.10.0
+          # Include the environment variable.
+          env:
+            - name: RAY_enable_autoscaler_v2
+              value: "1"
+        restartPolicy: Never # Prevent container restart to maintain Ray health.
+
+
+# Change 3: Prevent Kubernetes from restarting Ray worker pod containers, enabling correct instance management by Ray.
+  workerGroupSpecs:
+  - replicas: 1
+    template:
+      spec:
+        restartPolicy: Never
+        ...
+```

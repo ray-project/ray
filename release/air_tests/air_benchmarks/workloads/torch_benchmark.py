@@ -18,17 +18,6 @@ CONFIG = {"lr": 1e-3, "batch_size": 64}
 VANILLA_RESULT_JSON = "/tmp/vanilla_out.json"
 
 
-def find_network_interface():
-    for iface in os.listdir("/sys/class/net"):
-        if iface.startswith("ens"):
-            network_interface = iface
-            break
-    else:
-        network_interface = "^lo,docker"
-
-    return network_interface
-
-
 # Define model
 class NeuralNetwork(nn.Module):
     def __init__(self):
@@ -194,7 +183,10 @@ def train_func(use_ray: bool, config: Dict):
     loss_fn = nn.CrossEntropyLoss()
     optimizer = torch.optim.SGD(model.parameters(), lr=lr)
 
-    for _ in range(epochs):
+    for epoch in range(epochs):
+        if world_size > 1:
+            train_dataloader.sampler.set_epoch(epoch)
+
         train_epoch(
             train_dataloader,
             model,
@@ -308,19 +300,12 @@ def train_torch_vanilla(
 
     num_epochs = config["epochs"]
 
-    try:
-        nccl_network_interface = find_network_interface()
-        runtime_env = {"env_vars": {"NCCL_SOCKET_IFNAME": nccl_network_interface}}
-    except Exception:
-        runtime_env = {}
-
     actors = create_actors_with_options(
         num_actors=num_workers,
         resources={
             "CPU": cpus_per_worker,
             "GPU": int(use_gpu),
         },
-        runtime_env=runtime_env,
     )
 
     run_fn_on_actors(actors=actors, fn=lambda: os.environ.pop("OMP_NUM_THREADS", None))

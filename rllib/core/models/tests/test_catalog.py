@@ -11,11 +11,10 @@ import tree
 from ray.rllib.algorithms.ppo.ppo import PPOConfig
 from ray.rllib.algorithms.ppo.ppo_catalog import PPOCatalog
 from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import PPOTorchRLModule
+from ray.rllib.core.columns import Columns
 from ray.rllib.core.models.base import (
     Encoder,
-    STATE_IN,
     ENCODER_OUT,
-    STATE_OUT,
 )
 from ray.rllib.core.models.catalog import (
     Catalog,
@@ -28,7 +27,7 @@ from ray.rllib.core.models.configs import (
     CNNEncoderConfig,
 )
 from ray.rllib.core.models.torch.base import TorchModel
-from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
+from ray.rllib.core.rl_module.rl_module import RLModuleSpec
 from ray.rllib.models import MODEL_DEFAULTS
 from ray.rllib.models.tf.tf_distributions import (
     TfCategorical,
@@ -42,11 +41,9 @@ from ray.rllib.models.torch.torch_distributions import (
     TorchMultiCategorical,
     TorchMultiDistribution,
 )
-from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.spaces.space_utils import get_dummy_batch_for_space
-from ray.rllib.utils.test_utils import framework_iterator
 from ray.rllib.utils.torch_utils import convert_to_torch_tensor
 
 _, tf, _ = try_import_tf()
@@ -83,19 +80,19 @@ class TestCatalog(unittest.TestCase):
         )
         seq_lens = convert_method([32])
         inputs = {
-            SampleBatch.OBS: observations,
-            STATE_IN: states,
-            SampleBatch.SEQ_LENS: seq_lens,
+            Columns.OBS: observations,
+            Columns.STATE_IN: states,
+            Columns.SEQ_LENS: seq_lens,
         }
         outputs = model(inputs)
 
         self.assertEqual(outputs[ENCODER_OUT].shape, (32, expected_latent_dim))
-        if STATE_OUT in outputs:
+        if Columns.STATE_OUT in outputs:
             tree.map_structure_with_path(
                 lambda p, v: (
                     True if v is None else self.assertEqual(v.shape, states[p].shape)
                 ),
-                outputs[STATE_OUT],
+                outputs[Columns.STATE_OUT],
             )
 
     def test_get_encoder_config(self):
@@ -105,7 +102,6 @@ class TestCatalog(unittest.TestCase):
         input_spaces_and_config_types = [
             (Box(-1.0, 1.0, (5,), dtype=np.float32), MLPEncoderConfig),
             (Box(-1.0, 1.0, (84, 84, 1), dtype=np.float32), CNNEncoderConfig),
-            (Box(-1.0, 1.0, (240, 320, 3), dtype=np.float32), CNNEncoderConfig),
             # Box(-1.0, 1.0, (5, 5), dtype=np.float32),
             # MultiBinary([3, 10, 10]),
             # Discrete(5),
@@ -323,63 +319,54 @@ class TestCatalog(unittest.TestCase):
                 model_config_dict=MODEL_DEFAULTS.copy(),
             )
 
-            for framework in framework_iterator(frameworks=["tf2", "torch"]):
+            dist_cls = catalog._get_dist_cls_from_action_space(
+                action_space=action_space,
+                framework="torch",
+            )
 
-                if framework == "tf2":
-                    framework = "tf2"
-
-                dist_cls = catalog._get_dist_cls_from_action_space(
+            # Check if we can query the required input dimensions
+            expected_cls = expected_cls_dict["torch"]
+            if (
+                expected_cls is TorchMultiDistribution
+                or expected_cls is TfMultiDistribution
+            ):
+                # For these special cases, we need to create partials of the
+                # expected classes so that we can calculate the required inputs
+                expected_cls = _multi_action_dist_partial_helper(
+                    catalog_cls=catalog,
                     action_space=action_space,
-                    framework=framework,
+                    framework="torch",
+                )
+            elif (
+                expected_cls is TorchMultiCategorical
+                or expected_cls is TfMultiCategorical
+            ):
+                # For these special cases, we need to create partials of the
+                # expected classes so that we can calculate the required inputs
+                expected_cls = _multi_categorical_dist_partial_helper(
+                    action_space=action_space, framework="torch"
                 )
 
-                # Check if we can query the required input dimensions
-                expected_cls = expected_cls_dict[framework]
-                if (
-                    expected_cls is TorchMultiDistribution
-                    or expected_cls is TfMultiDistribution
-                ):
-                    # For these special cases, we need to create partials of the
-                    # expected classes so that we can calculate the required inputs
-                    expected_cls = _multi_action_dist_partial_helper(
-                        catalog_cls=catalog,
-                        action_space=action_space,
-                        framework=framework,
-                    )
-                elif (
-                    expected_cls is TorchMultiCategorical
-                    or expected_cls is TfMultiCategorical
-                ):
-                    # For these special cases, we need to create partials of the
-                    # expected classes so that we can calculate the required inputs
-                    expected_cls = _multi_categorical_dist_partial_helper(
-                        action_space=action_space, framework=framework
-                    )
+            # Now that we have sorted out special cases, we can finally get the
+            # input_dim
+            input_dim = expected_cls.required_input_dim(action_space)
+            logits = np.ones((32, input_dim), dtype=np.float32)
+            logits = torch.from_numpy(logits)
+            # We don't need a model if we input tensors
+            dist = dist_cls.from_logits(logits=logits)
+            self.assertTrue(
+                isinstance(dist, expected_cls_dict["torch"]),
+                msg=f"Expected {expected_cls_dict['torch']}, " f"got {type(dist)}",
+            )
+            # Test if sampling works
+            actions = dist.sample()
+            # Test is logp works
+            dist.logp(actions)
 
-                # Now that we have sorted out special cases, we can finally get the
-                # input_dim
-                input_dim = expected_cls.required_input_dim(action_space)
-                logits = np.ones((32, input_dim), dtype=np.float32)
-                if framework == "torch":
-                    logits = torch.from_numpy(logits)
-                else:
-                    logits = tf.convert_to_tensor(logits)
-                # We don't need a model if we input tensors
-                dist = dist_cls.from_logits(logits=logits)
-                self.assertTrue(
-                    isinstance(dist, expected_cls_dict[framework]),
-                    msg=f"Expected {expected_cls_dict[framework]}, "
-                    f"got {type(dist)}",
-                )
-                # Test if sampling works
-                actions = dist.sample()
-                # Test is logp works
-                dist.logp(actions)
-
-                # For any array of actions in a possibly nested space, convert to
-                # numpy and pick the first one to check if it is in the action space.
-                action = tree.map_structure(lambda a: convert_to_numpy(a)[0], actions)
-                self.assertTrue(action_space.contains(action))
+            # For any array of actions in a possibly nested space, convert to
+            # numpy and pick the first one to check if it is in the action space.
+            action = tree.map_structure(lambda a: convert_to_numpy(a)[0], actions)
+            self.assertTrue(action_space.contains(action))
 
     def test_customize_catalog_from_algorithm_config(self):
         """Test if we can pass catalog to algorithm config and it ends up inside
@@ -391,9 +378,9 @@ class TestCatalog(unittest.TestCase):
 
         config = (
             PPOConfig()
-            .experimental(_enable_new_api_stack=True)
+            .api_stack(enable_rl_module_and_learner=True)
             .rl_module(
-                rl_module_spec=SingleAgentRLModuleSpec(catalog_class=MyCatalog),
+                rl_module_spec=RLModuleSpec(catalog_class=MyCatalog),
             )
             .framework("torch")
         )
@@ -408,7 +395,7 @@ class TestCatalog(unittest.TestCase):
         config = (
             PPOConfig()
             .rl_module(
-                rl_module_spec=SingleAgentRLModuleSpec(
+                rl_module_spec=RLModuleSpec(
                     module_class=PPOTorchRLModule, catalog_class=MyCatalog
                 )
             )
@@ -445,7 +432,7 @@ class TestCatalog(unittest.TestCase):
             def _forward(self, input_dict, **kwargs):
                 return {
                     ENCODER_OUT: (self.net(input_dict["obs"])),
-                    STATE_OUT: None,
+                    Columns.STATE_OUT: None,
                 }
 
         class MyCustomCatalog(PPOCatalog):
@@ -458,7 +445,7 @@ class TestCatalog(unittest.TestCase):
                     input_dims=self.observation_space.shape,
                 )
 
-        spec = SingleAgentRLModuleSpec(
+        spec = RLModuleSpec(
             module_class=PPOTorchRLModule,
             observation_space=env.observation_space,
             action_space=env.action_space,
@@ -468,7 +455,7 @@ class TestCatalog(unittest.TestCase):
         module = spec.build()
 
         module.forward_inference(
-            input_data={"obs": torch.ones((32, *env.observation_space.shape))}
+            batch={"obs": torch.ones((32, *env.observation_space.shape))}
         )
 
 

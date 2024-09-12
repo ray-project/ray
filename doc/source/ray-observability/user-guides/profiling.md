@@ -49,6 +49,19 @@ memray is a memory profiler for Python. It can track memory allocations in Pytho
 
 Here are the {ref}`steps to profile the memory usage of Ray Tasks and Actors <memray-profiling>`.
 
+#### Ray Dashboard View
+You can now do memory profiling for Ray Driver or Worker processes in the Ray Dashboard, by clicking on the "Memory profiling” actions for active Worker processes, Tasks, Actors, and a Job’s driver process.
+
+![memory profiling action](../images/memory-profiling-dashboard-view.png)
+
+Additionally, you can specify the following profiling Memray parameters from the dashboard view:
+- **Format:** Format of the profiling result. The value is either "flamegraph" or "table"
+- **Duration:** Duration to track for (in seconds)
+- **Leaks:** Enables the Memory Leaks View, which displays memory that Ray didn't deallocate, instead of peak memory usage
+- **Natives:** Track native (C/C++) stack frames (only supported in Linux)
+- **Python Allocator Tracing:** Record allocations made by the pymalloc allocator
+
+
 (profiling-gpu)=
 ## GPU profiling
 GPU and GRAM profiling for your GPU workloads like distributed training. This helps you analyze performance and debug memory issues. 

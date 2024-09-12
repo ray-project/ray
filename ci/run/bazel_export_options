@@ -1,9 +1,14 @@
 #!/usr/bin/env bash
 
 mkdir -p /tmp/bazel_event_logs
+if [[ "${OSTYPE}" == "msys" ]]; then
+  artifact_mount_path="/c/artifact-mount"
+else
+  artifact_mount_path="/artifact-mount"
+fi
 event_json_flag=--build_event_json_file=$(mktemp /tmp/bazel_event_logs/bazel_log.XXXXX)
-logs_archive_flag=--test_env=RAY_TEST_FAILURE_LOGS_ARCHIVE_DIR=/artifact-mount/.failed_test_logs
-summary_directory_flag=--test_env=RAY_TEST_SUMMARY_DIR=/artifact-mount/test-summaries
+logs_archive_flag=--test_env=RAY_TEST_FAILURE_LOGS_ARCHIVE_DIR="${artifact_mount_path}"/failed_test_logs
+summary_directory_flag=--test_env=RAY_TEST_SUMMARY_DIR="${artifact_mount_path}"/test-summaries
 summary_directory_host_flag=--test_env=RAY_TEST_SUMMARY_DIR_HOST=/tmp/artifacts/test-summaries
 buildkite_env_vars="--test_env=BUILDKITE_COMMIT --test_env=BUILDKITE_LABEL --test_env=BUILDKITE_JOB_ID"
 mujoco_env_var="--test_env=LD_LIBRARY_PATH=/root/.mujoco/mujoco210/bin"

@@ -17,6 +17,7 @@
 #include "ray/common/buffer.h"
 #include "ray/common/common_protocol.h"
 #include "ray/common/constants.h"
+#include "ray/core_worker/common.h"
 #include "ray/gcs/pb_util.h"
 #include "ray/util/exponential_backoff.h"
 #include "ray/util/util.h"
@@ -57,14 +58,45 @@ absl::flat_hash_set<ObjectID> ObjectRefStream::GetItemsUnconsumed() const {
   return result;
 }
 
+std::vector<ObjectID> ObjectRefStream::PopUnconsumedItems() {
+  // Get all unconsumed refs.
+  std::vector<ObjectID> unconsumed_ids;
+  for (int64_t index = 0; index <= max_index_seen_; index++) {
+    const auto &object_id = GetObjectRefAtIndex(index);
+    auto it = refs_written_to_stream_.find(object_id);
+    if (it == refs_written_to_stream_.end()) {
+      continue;
+    }
+
+    if (index >= next_index_) {
+      unconsumed_ids.push_back(object_id);
+      refs_written_to_stream_.erase(it);
+    }
+  }
+
+  if (end_of_stream_index_ != -1) {
+    // End of stream index is never consumed by a caller
+    // so we should add it here.
+    const auto &object_id = GetObjectRefAtIndex(end_of_stream_index_);
+    unconsumed_ids.push_back(object_id);
+  }
+
+  // Temporarily owned refs are not consumed.
+  for (const auto &object_id : temporarily_owned_refs_) {
+    unconsumed_ids.push_back(object_id);
+  }
+  temporarily_owned_refs_.clear();
+
+  return unconsumed_ids;
+}
+
 bool ObjectRefStream::IsObjectConsumed(int64_t item_index) {
   return item_index < next_index_;
 }
 
 Status ObjectRefStream::TryReadNextItem(ObjectID *object_id_out) {
   *object_id_out = GetObjectRefAtIndex(next_index_);
-  bool is_eof_set = end_of_stream_index_ != -1;
-  if (is_eof_set && next_index_ >= end_of_stream_index_) {
+  if (IsFinished()) {
     // next_index_ cannot be bigger than end_of_stream_index_.
     RAY_CHECK(next_index_ == end_of_stream_index_);
     RAY_LOG(DEBUG) << "ObjectRefStream of an id " << generator_id_
@@ -90,7 +122,19 @@ Status ObjectRefStream::TryReadNextItem(ObjectID *object_id_out) {
   return Status::OK();
 }
 
-ObjectID ObjectRefStream::PeekNextItem() { return GetObjectRefAtIndex(next_index_); }
+bool ObjectRefStream::IsFinished() const {
+  bool is_eof_set = end_of_stream_index_ != -1;
+  return is_eof_set && next_index_ >= end_of_stream_index_;
+}
+
+std::pair<ObjectID, bool> ObjectRefStream::PeekNextItem() {
+  const auto &object_id = GetObjectRefAtIndex(next_index_);
+  if (refs_written_to_stream_.find(object_id) == refs_written_to_stream_.end()) {
+    return {object_id, false};
+  } else {
+    return {object_id, true};
+  }
+}
 
 bool ObjectRefStream::TemporarilyInsertToStreamIfNeeded(const ObjectID &object_id) {
   // Write to a stream if the object ID is not consumed yet.
@@ -138,13 +182,16 @@ void ObjectRefStream::MarkEndOfStream(int64_t item_index,
   if (end_of_stream_index_ != -1) {
     return;
   }
-  // ObjectRefStream should guarantee the max_index_seen_
-  // will always have an object reference to avoid hang.
-  // That said, if there was already an index that's bigger than a given
-  // end of stream index, we should mark that as the end of stream.
-  // It can happen when a task is retried and return less values
-  // (e.g., the second retry is failed by an exception or worker failure).
-  end_of_stream_index_ = std::max(max_index_seen_ + 1, item_index);
+  // ObjectRefStream should guarantee that next_index_ will always have an
+  // object value, to avoid hanging the caller the next time it tries to read
+  // the stream.
+  //
+  // NOTE: If the task returns a nondeterministic number of values, the second
+  // try may return fewer values than the first try. If the first try fails
+  // mid-execution, then on a successful second try, when we mark the end of
+  // the stream here, any extra unconsumed returns from the first try will be
+  // dropped.
+  end_of_stream_index_ = std::max(next_index_, item_index);
 
   auto end_of_stream_id = GetObjectRefAtIndex(end_of_stream_index_);
   *object_id_in_last_index = end_of_stream_id;
@@ -228,7 +275,7 @@ std::vector<rpc::ObjectReference> TaskManager::AddPendingTask(
   if (spec.IsStreamingGenerator()) {
     const auto generator_id = spec.ReturnId(0);
     RAY_LOG(DEBUG) << "Create an object ref stream of an id " << generator_id;
-    absl::MutexLock lock(&objet_ref_stream_ops_mu_);
+    absl::MutexLock lock(&object_ref_stream_ops_mu_);
     auto inserted =
         object_ref_streams_.emplace(generator_id, ObjectRefStream(generator_id));
     ref_stream_execution_signal_callbacks_.emplace(
@@ -244,10 +291,12 @@ std::vector<rpc::ObjectReference> TaskManager::AddPendingTask(
     num_pending_tasks_++;
   }
 
-  RecordTaskStatusEvent(spec.AttemptNumber(),
-                        spec,
-                        rpc::TaskStatus::PENDING_ARGS_AVAIL,
-                        /* include_task_info */ true);
+  RAY_UNUSED(RecordTaskStatusEventIfNeeded(spec.TaskId(),
+                                           spec.JobId(),
+                                           spec.AttemptNumber(),
+                                           spec,
+                                           rpc::TaskStatus::PENDING_ARGS_AVAIL,
+                                           /* include_task_info */ true));
 
   return returned_refs;
 }
@@ -255,7 +304,6 @@ std::vector<rpc::ObjectReference> TaskManager::AddPendingTask(
 bool TaskManager::ResubmitTask(const TaskID &task_id, std::vector<ObjectID> *task_deps) {
   TaskSpecification spec;
   bool resubmit = false;
-  std::vector<ObjectID> return_ids;
   {
     absl::MutexLock lock(&mu_);
     auto it = submissible_tasks_.find(task_id);
@@ -282,10 +330,6 @@ bool TaskManager::ResubmitTask(const TaskID &task_id, std::vector<ObjectID> *tas
         RAY_CHECK(it->second.num_retries_left == -1);
       }
       spec = it->second.spec;
-
-      for (const auto &return_id : it->second.reconstructable_return_ids) {
-        return_ids.push_back(return_id);
-      }
     }
   }
 
@@ -301,7 +345,7 @@ bool TaskManager::ResubmitTask(const TaskID &task_id, std::vector<ObjectID> *tas
       }
     }
 
-    reference_counter_->UpdateResubmittedTaskReferences(return_ids, *task_deps);
+    reference_counter_->UpdateResubmittedTaskReferences(*task_deps);
 
     for (const auto &task_dep : *task_deps) {
       bool was_freed = reference_counter_->TryMarkFreedObjectInUseAgain(task_dep);
@@ -318,13 +362,15 @@ bool TaskManager::ResubmitTask(const TaskID &task_id, std::vector<ObjectID> *tas
     }
     if (spec.IsActorTask()) {
       const auto actor_creation_return_id = spec.ActorCreationDummyObjectId();
-      reference_counter_->UpdateResubmittedTaskReferences(return_ids,
-                                                          {actor_creation_return_id});
+      reference_counter_->UpdateResubmittedTaskReferences({actor_creation_return_id});
     }
 
     RAY_LOG(INFO) << "Resubmitting task that produced lost plasma object, attempt #"
                   << spec.AttemptNumber() << ": " << spec.DebugString();
-    retry_task_callback_(spec, /*object_recovery*/ true, /*delay_ms*/ 0);
+    // We should actually detect if the actor for this task is dead, but let's just assume
+    // it's not for now.
+    retry_task_callback_(
+        spec, /*object_recovery*/ true, /*update_seqno=*/true, /*delay_ms*/ 0);
   }
 
   return true;
@@ -441,43 +487,18 @@ bool TaskManager::HandleTaskReturn(const ObjectID &object_id,
   return direct_return;
 }
 
-void TaskManager::DelObjectRefStream(const ObjectID &generator_id) {
-  absl::MutexLock lock(&objet_ref_stream_ops_mu_);
-
-  RAY_LOG(DEBUG) << "Deleting an object ref stream of an id " << generator_id;
-  absl::flat_hash_set<ObjectID> object_ids_unconsumed;
-
-  auto it = object_ref_streams_.find(generator_id);
-  auto signal_it = ref_stream_execution_signal_callbacks_.find(generator_id);
-  if (it == object_ref_streams_.end()) {
-    RAY_CHECK(signal_it == ref_stream_execution_signal_callbacks_.end());
-    return;
+bool TaskManager::TryDelObjectRefStream(const ObjectID &generator_id) {
+  absl::MutexLock lock(&object_ref_stream_ops_mu_);
+  bool can_gc_lineage = TryDelObjectRefStreamInternal(generator_id);
+  if (!can_gc_lineage) {
+    RAY_LOG(DEBUG) << "Generator " << generator_id
+                   << " still has lineage in scope, try again later";
+    return false;
   }
 
-  // If a stream is deleted, signal the executor to just resume.
-  // Otherwise the executor will pause forever.
-  RAY_CHECK(signal_it != ref_stream_execution_signal_callbacks_.end());
-  for (const auto &execution_signal : signal_it->second) {
-    execution_signal(Status::NotFound("Stream is deleted."), -1);
-  }
-  ref_stream_execution_signal_callbacks_.erase(signal_it);
-
-  const auto &stream = it->second;
-  object_ids_unconsumed = stream.GetItemsUnconsumed();
+  RAY_LOG(DEBUG) << "Deleting object ref stream of an id " << generator_id;
   object_ref_streams_.erase(generator_id);
-
-  // When calling RemoveLocalReference, we shouldn't hold a lock.
-  for (const auto &object_id : object_ids_unconsumed) {
-    std::vector<ObjectID> deleted;
-    RAY_LOG(DEBUG) << "Removing unconsume streaming ref " << object_id;
-    reference_counter_->RemoveLocalReference(object_id, &deleted);
-    // TODO(sang): This is required because the reference counter
-    // cannot remove objects from the in memory store.
-    // Instead of doing this manually here, we should modify
-    // reference_count.h to automatically remove objects
-    // when the ref goes to 0.
-    in_memory_store_->Delete(deleted);
-  }
+  return true;
 }
 
 Status TaskManager::TryReadObjectRefStream(const ObjectID &generator_id,
@@ -491,7 +512,7 @@ Status TaskManager::TryReadObjectRefStream(const ObjectID &generator_id,
     }
   }
 
-  absl::MutexLock lock(&objet_ref_stream_ops_mu_);
+  absl::MutexLock lock(&object_ref_stream_ops_mu_);
   RAY_CHECK(object_id_out != nullptr);
   auto stream_it = object_ref_streams_.find(generator_id);
   RAY_CHECK(stream_it != object_ref_streams_.end())
@@ -524,30 +545,81 @@ Status TaskManager::TryReadObjectRefStream(const ObjectID &generator_id,
   return status;
 }
 
-ObjectID TaskManager::PeekObjectRefStream(const ObjectID &generator_id) {
+bool TaskManager::StreamingGeneratorIsFinished(const ObjectID &generator_id) const {
+  absl::MutexLock lock(&object_ref_stream_ops_mu_);
+  auto stream_it = object_ref_streams_.find(generator_id);
+  RAY_CHECK(stream_it != object_ref_streams_.end())
+      << "IsFinished API can be used only when the stream has been "
+         "created "
+         "and not removed.";
+  return stream_it->second.IsFinished();
+}
+
+bool TaskManager::TryDelObjectRefStreamInternal(const ObjectID &generator_id) {
+  // Call execution signal callbacks to ensure that the executor does not block
+  // after the generator goes out of scope at the caller.
+  auto signal_it = ref_stream_execution_signal_callbacks_.find(generator_id);
+  if (signal_it != ref_stream_execution_signal_callbacks_.end()) {
+    RAY_LOG(DEBUG) << "Deleting execution signal callbacks for generator "
+                   << generator_id;
+    for (const auto &execution_signal : signal_it->second) {
+      execution_signal(Status::NotFound("Stream is deleted."), -1);
+    }
+    // We may still receive more generator return reports in the future, if the
+    // generator task is still running or is retried. They will get the
+    // callback immediately because we deleted this entry.
+    ref_stream_execution_signal_callbacks_.erase(signal_it);
+  }
+
+  auto stream_it = object_ref_streams_.find(generator_id);
+  if (stream_it == object_ref_streams_.end()) {
+    return true;
+  }
+
+  // Remove any unconsumed refs from the stream metadata in-memory store.
+  auto unconsumed_ids = stream_it->second.PopUnconsumedItems();
+  std::vector<ObjectID> deleted;
+  reference_counter_->TryReleaseLocalRefs(unconsumed_ids, &deleted);
+  in_memory_store_->Delete(deleted);
+
+  int64_t num_objects_generated = stream_it->second.EofIndex();
+  if (num_objects_generated == -1) {
+    RAY_LOG(DEBUG) << "Skip streaming generator deletion, EOF not written yet";
+    // Generator task has not finished yet. Wait for EoF to be marked before
+    // deleting.
+    return false;
+  }
+
+  bool can_gc_lineage = reference_counter_->CheckGeneratorRefsLineageOutOfScope(
+      generator_id, num_objects_generated);
+  return can_gc_lineage;
+}
+
+std::pair<ObjectID, bool> TaskManager::PeekObjectRefStream(const ObjectID &generator_id) {
   ObjectID next_object_id;
-  absl::MutexLock lock(&objet_ref_stream_ops_mu_);
+  absl::MutexLock lock(&object_ref_stream_ops_mu_);
   auto stream_it = object_ref_streams_.find(generator_id);
   RAY_CHECK(stream_it != object_ref_streams_.end())
       << "PeekObjectRefStream API can be used only when the stream has been "
          "created and not removed.";
-  next_object_id = stream_it->second.PeekNextItem();
+  const auto &result = stream_it->second.PeekNextItem();
 
   // Temporarily own the ref since the corresponding reference is probably
   // not reported yet.
-  TemporarilyOwnGeneratorReturnRefIfNeededInternal(next_object_id, generator_id);
-  return next_object_id;
+  TemporarilyOwnGeneratorReturnRefIfNeededInternal(result.first /*=object_id*/,
+                                                   generator_id);
+  return result;
 }
 
 bool TaskManager::ObjectRefStreamExists(const ObjectID &generator_id) {
-  absl::MutexLock lock(&objet_ref_stream_ops_mu_);
+  absl::MutexLock lock(&object_ref_stream_ops_mu_);
   auto it = object_ref_streams_.find(generator_id);
   return it != object_ref_streams_.end();
 }
 
 void TaskManager::MarkEndOfStream(const ObjectID &generator_id,
                                   int64_t end_of_stream_index) {
-  absl::MutexLock lock(&objet_ref_stream_ops_mu_);
+  absl::MutexLock lock(&object_ref_stream_ops_mu_);
   ObjectID last_object_id;
 
   auto stream_it = object_ref_streams_.find(generator_id);
@@ -557,10 +629,11 @@ void TaskManager::MarkEndOfStream(const ObjectID &generator_id,
   }
 
   stream_it->second.MarkEndOfStream(end_of_stream_index, &last_object_id);
-  RAY_LOG(DEBUG) << "Write EoF to the object ref stream. Index: " << end_of_stream_index
-                 << ". Last object id: " << last_object_id;
-
   if (!last_object_id.IsNil()) {
+    RAY_LOG(DEBUG) << "Write EoF to the object ref stream. Index: "
+                   << stream_it->second.EofIndex()
+                   << ". Last object id: " << last_object_id;
+
     reference_counter_->OwnDynamicStreamingTaskReturnRef(last_object_id, generator_id);
     RayObject error(rpc::ErrorType::END_OF_STREAMING_GENERATOR);
     // Put a dummy object at the end of the stream. We don't need to check if
@@ -603,7 +676,7 @@ bool TaskManager::HandleReportGeneratorItemReturns(
   // it is always empty.
   const auto store_in_plasma_ids = GetTaskReturnObjectsToStoreInPlasma(task_id);
 
-  absl::MutexLock lock(&objet_ref_stream_ops_mu_);
+  absl::MutexLock lock(&object_ref_stream_ops_mu_);
   auto stream_it = object_ref_streams_.find(generator_id);
   if (stream_it == object_ref_streams_.end()) {
     // Stream has been already deleted. Do not handle it.
@@ -628,7 +701,7 @@ bool TaskManager::HandleReportGeneratorItemReturns(
       num_objects_written += 1;
     }
     // When an object is reported, the object is ready to be fetched.
-    reference_counter_->UpdateObjectReady(object_id);
+    reference_counter_->UpdateObjectPendingCreation(object_id, false);
     HandleTaskReturn(object_id,
                      return_object,
                      NodeID::FromBinary(request.worker_addr().raylet_id()),
@@ -655,8 +728,11 @@ bool TaskManager::HandleReportGeneratorItemReturns(
                    << ". total_consumed: " << total_consumed
                    << ". threshold: " << backpressure_threshold;
     auto signal_it = ref_stream_execution_signal_callbacks_.find(generator_id);
-    RAY_CHECK(signal_it != ref_stream_execution_signal_callbacks_.end());
-    signal_it->second.push_back(execution_signal_callback);
+    if (signal_it == ref_stream_execution_signal_callbacks_.end()) {
+      execution_signal_callback(Status::NotFound("Stream is deleted."), -1);
+    } else {
+      signal_it->second.push_back(execution_signal_callback);
+    }
   } else {
     // No need to backpressure.
     execution_signal_callback(Status::OK(), total_consumed);
@@ -666,7 +742,7 @@ bool TaskManager::HandleReportGeneratorItemReturns(
 
 bool TaskManager::TemporarilyOwnGeneratorReturnRefIfNeeded(const ObjectID &object_id,
                                                            const ObjectID &generator_id) {
-  absl::MutexLock lock(&objet_ref_stream_ops_mu_);
+  absl::MutexLock lock(&object_ref_stream_ops_mu_);
   return TemporarilyOwnGeneratorReturnRefIfNeededInternal(object_id, generator_id);
 }
 
@@ -770,6 +846,11 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
                          << " return objects.";
           for (const auto &return_id_info : reply.streaming_generator_return_ids()) {
             if (return_id_info.is_plasma_object()) {
+              // TODO(swang): It is possible that the dynamically returned refs
+              // have already been consumed by the caller and deleted. This can
+              // cause a memory leak of the task metadata, because we will
+              // never receive a callback from the ReferenceCounter to erase
+              // the task.
               it->second.reconstructable_return_ids.insert(
                   ObjectID::FromBinary(return_id_info.object_id()));
             }
@@ -873,6 +954,11 @@ bool TaskManager::RetryTaskIfPossible(const TaskID &task_id,
   int32_t num_retries_left = 0;
   int32_t num_oom_retries_left = 0;
   bool task_failed_due_to_oom = error_info.error_type() == rpc::ErrorType::OUT_OF_MEMORY;
+  // If the actor isn't dead and it's a user exception, we should update the seq no. If an
+  // actor is dead and restarted, the seqno is reset, and we don't need to update it when
+  // resubmitting a task.
+  bool update_seqno = error_info.error_type() != rpc::ErrorType::ACTOR_DIED &&
+                      error_info.error_type() != rpc::ErrorType::ACTOR_UNAVAILABLE;
   {
     absl::MutexLock lock(&mu_);
     auto it = submissible_tasks_.find(task_id);
@@ -925,7 +1011,7 @@ bool TaskManager::RetryTaskIfPossible(const TaskID &task_id,
                                  spec.AttemptNumber(),
                                  RayConfig::instance().task_oom_retry_delay_base_ms())
                            : RayConfig::instance().task_retry_delay_ms();
-    retry_task_callback_(spec, /*object_recovery*/ false, delay_ms);
+    retry_task_callback_(spec, /*object_recovery*/ false, update_seqno, delay_ms);
     return true;
   } else {
     RAY_LOG(INFO) << "No retries left for task " << spec.TaskId()
@@ -1015,9 +1101,13 @@ bool TaskManager::FailOrRetryPendingTask(const TaskID &task_id,
                                          bool fail_immediately) {
   // Note that this might be the __ray_terminate__ task, so we don't log
   // loudly with ERROR here.
-  RAY_LOG(DEBUG) << "Task attempt " << task_id << " failed with error "
-                 << rpc::ErrorType_Name(error_type) << " Fail immediately? "
-                 << fail_immediately;
+  RAY_LOG(WARNING) << "Task attempt " << task_id << " failed with error "
+                   << rpc::ErrorType_Name(error_type) << " Fail immediately? "
+                   << fail_immediately << ", status "
+                   << (status == nullptr ? "null" : status->ToString()) << ", error info "
+                   << (ray_error_info == nullptr ? "null"
+                                                 : ray_error_info->DebugString());
+
   bool will_retry = false;
   if (!fail_immediately) {
     will_retry = RetryTaskIfPossible(
@@ -1146,6 +1236,13 @@ int64_t TaskManager::RemoveLineageReference(const ObjectID &object_id,
       }
     }
 
+    if (it->second.spec.IsActorTask()) {
+      // We need to decrement the actor lineage ref count here
+      // since it's incremented during TaskManager::AddPendingTask.
+      const auto actor_creation_return_id = it->second.spec.ActorCreationDummyObjectId();
+      released_objects->push_back(actor_creation_return_id);
+    }
+
     total_lineage_footprint_bytes_ -= it->second.lineage_footprint_bytes;
     // The task has finished and none of the return IDs are in scope anymore,
     // so it is safe to remove the task spec.
@@ -1156,6 +1253,16 @@ int64_t TaskManager::RemoveLineageReference(const ObjectID &object_id,
 }
 
 bool TaskManager::MarkTaskCanceled(const TaskID &task_id) {
+  ObjectID generator_id = TaskGeneratorId(task_id);
+  if (!generator_id.IsNil()) {
+    // Pass -1 because the task has been cancelled, so we should just end the
+    // stream at the caller's current index. This is needed because we may
+    // receive generator reports out of order. If the task reports a later
+    // index then exits because it was cancelled, we will hang waiting for the
+    // intermediate indices.
+    MarkEndOfStream(generator_id, /*eof_index=*/-1);
+  }
+
   absl::MutexLock lock(&mu_);
   auto it = submissible_tasks_.find(task_id);
   if (it != submissible_tasks_.end()) {
@@ -1283,9 +1390,10 @@ void TaskManager::MarkDependenciesResolved(const TaskID &task_id) {
   if (it == submissible_tasks_.end()) {
     return;
   }
-  if (it->second.GetStatus() == rpc::TaskStatus::PENDING_ARGS_AVAIL) {
-    SetTaskStatus(it->second, rpc::TaskStatus::PENDING_NODE_ASSIGNMENT);
-  }
+
+  RAY_CHECK(it->second.GetStatus() == rpc::TaskStatus::PENDING_ARGS_AVAIL)
+      << ", task ID = " << it->first << ", status = " << it->second.GetStatus();
+  SetTaskStatus(it->second, rpc::TaskStatus::PENDING_NODE_ASSIGNMENT);
 }
 
 void TaskManager::MarkTaskWaitingForExecution(const TaskID &task_id,
@@ -1296,20 +1404,27 @@ void TaskManager::MarkTaskWaitingForExecution(const TaskID &task_id,
   if (it == submissible_tasks_.end()) {
     return;
   }
-  RAY_CHECK(it->second.GetStatus() == rpc::TaskStatus::PENDING_NODE_ASSIGNMENT);
+  RAY_CHECK(it->second.GetStatus() == rpc::TaskStatus::PENDING_NODE_ASSIGNMENT)
+      << ", task ID = " << it->first << ", status = " << it->second.GetStatus();
   it->second.SetNodeId(node_id);
   it->second.SetStatus(rpc::TaskStatus::SUBMITTED_TO_WORKER);
-  RecordTaskStatusEvent(it->second.spec.AttemptNumber(),
-                        it->second.spec,
-                        rpc::TaskStatus::SUBMITTED_TO_WORKER,
-                        /* include_task_info */ false,
-                        worker::TaskStatusEvent::TaskStateUpdate(node_id, worker_id));
+  RAY_UNUSED(RecordTaskStatusEventIfNeeded(
+      it->second.spec.TaskId(),
+      it->second.spec.JobId(),
+      it->second.spec.AttemptNumber(),
+      it->second.spec,
+      rpc::TaskStatus::SUBMITTED_TO_WORKER,
+      /* include_task_info */ false,
+      worker::TaskStatusEvent::TaskStateUpdate(node_id, worker_id)));
 }
 
 void TaskManager::MarkTaskRetryOnResubmit(TaskEntry &task_entry) {
   // Record the old attempt status as FINISHED.
-  RecordTaskStatusEvent(
-      task_entry.spec.AttemptNumber(), task_entry.spec, rpc::TaskStatus::FINISHED);
+  RAY_UNUSED(RecordTaskStatusEventIfNeeded(task_entry.spec.TaskId(),
+                                           task_entry.spec.JobId(),
+                                           task_entry.spec.AttemptNumber(),
+                                           task_entry.spec,
+                                           rpc::TaskStatus::FINISHED));
   task_entry.MarkRetryOnResubmit();
 
   // Mark the new status and also include task spec info for the new attempt.
@@ -1317,28 +1432,35 @@ void TaskManager::MarkTaskRetryOnResubmit(TaskEntry &task_entry) {
   // NOTE(rickyx): We only increment the AttemptNumber on the task spec when
   // `retry_task_callback_` is invoked. In order to record the correct status change for
   // the new task attempt, we pass the the attempt number explicitly.
-  RecordTaskStatusEvent(task_entry.spec.AttemptNumber() + 1,
-                        task_entry.spec,
-                        rpc::TaskStatus::PENDING_ARGS_AVAIL,
-                        /* include_task_info */ true);
+  RAY_UNUSED(RecordTaskStatusEventIfNeeded(task_entry.spec.TaskId(),
+                                           task_entry.spec.JobId(),
+                                           task_entry.spec.AttemptNumber() + 1,
+                                           task_entry.spec,
+                                           rpc::TaskStatus::PENDING_ARGS_AVAIL,
+                                           /* include_task_info */ true));
 }
 
 void TaskManager::MarkTaskRetryOnFailed(TaskEntry &task_entry,
                                         const rpc::RayErrorInfo &error_info) {
   // Record the old attempt status as FAILED.
-  RecordTaskStatusEvent(task_entry.spec.AttemptNumber(),
-                        task_entry.spec,
-                        rpc::TaskStatus::FAILED,
-                        /* include_task_info */ false,
-                        worker::TaskStatusEvent::TaskStateUpdate(error_info));
+  RAY_UNUSED(RecordTaskStatusEventIfNeeded(
+      task_entry.spec.TaskId(),
+      task_entry.spec.JobId(),
+      task_entry.spec.AttemptNumber(),
+      task_entry.spec,
+      rpc::TaskStatus::FAILED,
+      /* include_task_info */ false,
+      worker::TaskStatusEvent::TaskStateUpdate(error_info)));
   task_entry.MarkRetryOnFailed();
 
   // Mark the new status and also include task spec info for the new attempt.
-  task_entry.SetStatus(rpc::TaskStatus::PENDING_NODE_ASSIGNMENT);
-  RecordTaskStatusEvent(task_entry.spec.AttemptNumber() + 1,
-                        task_entry.spec,
-                        rpc::TaskStatus::PENDING_NODE_ASSIGNMENT,
-                        /* include_task_info */ true);
+  task_entry.SetStatus(rpc::TaskStatus::PENDING_ARGS_AVAIL);
+  RAY_UNUSED(RecordTaskStatusEventIfNeeded(task_entry.spec.TaskId(),
+                                           task_entry.spec.JobId(),
+                                           task_entry.spec.AttemptNumber() + 1,
+                                           task_entry.spec,
+                                           rpc::TaskStatus::PENDING_ARGS_AVAIL,
+                                           /* include_task_info */ true));
 }
 
 void TaskManager::SetTaskStatus(
@@ -1346,11 +1468,45 @@ void TaskManager::SetTaskStatus(
     rpc::TaskStatus status,
     const absl::optional<const rpc::RayErrorInfo> &error_info) {
   task_entry.SetStatus(status);
-  RecordTaskStatusEvent(task_entry.spec.AttemptNumber(),
-                        task_entry.spec,
-                        status,
-                        /* include_task_info */ false,
-                        worker::TaskStatusEvent::TaskStateUpdate(error_info));
+  RAY_UNUSED(RecordTaskStatusEventIfNeeded(
+      task_entry.spec.TaskId(),
+      task_entry.spec.JobId(),
+      task_entry.spec.AttemptNumber(),
+      task_entry.spec,
+      status,
+      /* include_task_info */ false,
+      worker::TaskStatusEvent::TaskStateUpdate(error_info)));
+}
+
+std::unordered_map<rpc::LineageReconstructionTask, uint64_t>
+TaskManager::GetOngoingLineageReconstructionTasks() const {
+  absl::MutexLock lock(&mu_);
+  std::unordered_map<rpc::LineageReconstructionTask, uint64_t> result;
+  for (const auto &task_it : submissible_tasks_) {
+    const auto &task_entry = task_it.second;
+    if (!task_entry.IsPending()) {
+      continue;
+    }
+
+    if (task_entry.num_successful_executions == 0) {
+      // Not lineage reconstruction task
+      continue;
+    }
+
+    rpc::LineageReconstructionTask task;
+    task.set_name(task_entry.spec.GetName());
+    auto resources = task_entry.spec.GetRequiredResources().GetResourceUnorderedMap();
+    task.mutable_resources()->insert(resources.begin(), resources.end());
+    task.set_status(task_entry.GetStatus());
+
+    if (result.find(task) != result.end()) {
+      result[task] += 1;
+    } else {
+      result[task] = 1;
+    }
+  }
+
+  return result;
 }
 
 void TaskManager::FillTaskInfo(rpc::GetCoreWorkerStatsReply *reply,
@@ -1401,21 +1557,28 @@ void TaskManager::FillTaskInfo(rpc::GetCoreWorkerStatsReply *reply,
 
 void TaskManager::RecordMetrics() {
   absl::MutexLock lock(&mu_);
+  ray::stats::STATS_total_lineage_bytes.Record(total_lineage_footprint_bytes_);
   task_counter_.FlushOnChangeCallbacks();
 }
 
-void TaskManager::RecordTaskStatusEvent(
+bool TaskManager::RecordTaskStatusEventIfNeeded(
+    const TaskID &task_id,
+    const JobID &job_id,
     int32_t attempt_number,
     const TaskSpecification &spec,
     rpc::TaskStatus status,
     bool include_task_info,
     absl::optional<const worker::TaskStatusEvent::TaskStateUpdate> state_update) {
   if (!task_event_buffer_.Enabled()) {
-    return;
+    return false;
   }
+  if (!spec.EnableTaskEvents()) {
+    return false;
+  }
+
   auto task_event = std::make_unique<worker::TaskStatusEvent>(
-      spec.TaskId(),
-      spec.JobId(),
+      task_id,
+      job_id,
       attempt_number,
       status,
       /* timestamp */ absl::GetCurrentTimeNanos(),
@@ -1423,6 +1586,7 @@ void TaskManager::RecordTaskStatusEvent(
       std::move(state_update));
 
   task_event_buffer_.AddTaskEvent(std::move(task_event));
+  return true;
 }
 
 ObjectID TaskManager::TaskGeneratorId(const TaskID &task_id) const {

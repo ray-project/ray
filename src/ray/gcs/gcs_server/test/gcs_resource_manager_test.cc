@@ -40,7 +40,8 @@ class GcsResourceManagerTest : public ::testing::Test {
       const absl::flat_hash_map<std::string, double> &available_resources,
       const absl::flat_hash_map<std::string, double> &total_resources,
       int64_t idle_ms = 0,
-      bool is_draining = false) {
+      bool is_draining = false,
+      int64_t draining_deadline_timestamp_ms = -1) {
     syncer::ResourceViewSyncMessage resource_view_sync_message;
     for (const auto &resource : available_resources) {
       (*resource_view_sync_message.mutable_resources_available())[resource.first] =
@@ -52,6 +53,8 @@ class GcsResourceManagerTest : public ::testing::Test {
     }
     resource_view_sync_message.set_idle_duration_ms(idle_ms);
     resource_view_sync_message.set_is_draining(is_draining);
+    resource_view_sync_message.set_draining_deadline_timestamp_ms(
+        draining_deadline_timestamp_ms);
     gcs_resource_manager_->UpdateFromResourceView(node_id, resource_view_sync_message);
   }
 
@@ -224,11 +227,13 @@ TEST_F(GcsResourceManagerTest, TestGetDrainingNodes) {
   auto node1 = Mocker::GenNodeInfo();
   node1->mutable_resources_total()->insert({"CPU", 10});
   gcs_resource_manager_->OnNodeAdd(*node1);
-  UpdateFromResourceViewSync(NodeID::FromBinary(node1->node_id()),
-                             {/* available */ {"CPU", 10}},
-                             /* total*/ {{"CPU", 10}},
-                             /* idle_duration_ms */ 8,
-                             /* is_draining */ true);
+  UpdateFromResourceViewSync(
+      NodeID::FromBinary(node1->node_id()),
+      {/* available */ {"CPU", 10}},
+      /* total*/ {{"CPU", 10}},
+      /* idle_duration_ms */ 8,
+      /* is_draining */ true,
+      /* draining_deadline_timestamp_ms */ std::numeric_limits<int64_t>::max());
 
   auto node2 = Mocker::GenNodeInfo();
   node2->mutable_resources_total()->insert({"CPU", 1});
@@ -237,15 +242,16 @@ TEST_F(GcsResourceManagerTest, TestGetDrainingNodes) {
                              {/* available */ {"CPU", 1}},
                              /* total*/ {{"CPU", 1}},
                              /* idle_duration_ms */ 5,
-                             /* is_draining */ false);
+                             /* is_draining */ false,
+                             /* draining_deadline_timestamp_ms */ -1);
 
   rpc::GetDrainingNodesRequest request;
   rpc::GetDrainingNodesReply reply;
   auto send_reply_callback =
       [](ray::Status status, std::function<void()> f1, std::function<void()> f2) {};
   gcs_resource_manager_->HandleGetDrainingNodes(request, &reply, send_reply_callback);
-  ASSERT_EQ(reply.node_ids_size(), 1);
-  ASSERT_EQ(reply.node_ids(0), node1->node_id());
+  ASSERT_EQ(reply.draining_nodes_size(), 1);
+  ASSERT_EQ(reply.draining_nodes(0).node_id(), node1->node_id());
 }
 
 }  // namespace ray

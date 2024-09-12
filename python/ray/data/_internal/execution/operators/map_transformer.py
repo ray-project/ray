@@ -1,4 +1,5 @@
 import itertools
+import time
 from abc import abstractmethod
 from enum import Enum
 from typing import Any, Callable, Dict, Iterable, List, Optional, TypeVar, Union
@@ -33,6 +34,7 @@ class MapTransformFn:
         self,
         input_type: MapTransformFnDataType,
         output_type: MapTransformFnDataType,
+        is_udf: bool = False,
     ):
         """
         Args:
@@ -44,6 +46,7 @@ class MapTransformFn:
         self._input_type = input_type
         self._output_type = output_type
         self._target_max_block_size = None
+        self._is_udf = is_udf
 
     @abstractmethod
     def __call__(
@@ -89,6 +92,7 @@ class MapTransformer:
         self.set_transform_fns(transform_fns)
         self._init_fn = init_fn if init_fn is not None else lambda: None
         self._target_max_block_size = None
+        self._udf_time = 0
 
     def set_transform_fns(self, transform_fns: List[MapTransformFn]) -> None:
         """Set the transform functions."""
@@ -121,6 +125,18 @@ class MapTransformer:
         """
         self._init_fn()
 
+    def _udf_timed_iter(
+        self, input: Iterable[MapTransformFnData]
+    ) -> Iterable[MapTransformFnData]:
+        while True:
+            try:
+                start = time.perf_counter()
+                output = next(input)
+                self._udf_time += time.perf_counter() - start
+                yield output
+            except StopIteration:
+                break
+
     def apply_transform(
         self,
         input_blocks: Iterable[Block],
@@ -137,6 +153,8 @@ class MapTransformer:
         # Apply the transform functions sequentially to the input iterable.
         for transform_fn in self._transform_fns:
             iter = transform_fn(iter, ctx)
+            if transform_fn._is_udf:
+                iter = self._udf_timed_iter(iter)
         return iter
 
     def fuse(self, other: "MapTransformer") -> "MapTransformer":
@@ -162,6 +180,9 @@ class MapTransformer:
         transformer.set_target_max_block_size(target_max_block_size)
         return transformer
 
+    def udf_time(self) -> float:
+        return self._udf_time
+
 
 def create_map_transformer_from_block_fn(
     block_fn: MapTransformCallable[Block, Block],
@@ -185,11 +206,10 @@ def create_map_transformer_from_block_fn(
 class RowMapTransformFn(MapTransformFn):
     """A rows-to-rows MapTransformFn."""
 
-    def __init__(self, row_fn: MapTransformCallable[Row, Row]):
+    def __init__(self, row_fn: MapTransformCallable[Row, Row], is_udf: bool = False):
         self._row_fn = row_fn
         super().__init__(
-            MapTransformFnDataType.Row,
-            MapTransformFnDataType.Row,
+            MapTransformFnDataType.Row, MapTransformFnDataType.Row, is_udf=is_udf
         )
 
     def __call__(self, input: Iterable[Row], ctx: TaskContext) -> Iterable[Row]:
@@ -202,11 +222,12 @@ class RowMapTransformFn(MapTransformFn):
 class BatchMapTransformFn(MapTransformFn):
     """A batch-to-batch MapTransformFn."""
 
-    def __init__(self, batch_fn: MapTransformCallable[DataBatch, DataBatch]):
+    def __init__(
+        self, batch_fn: MapTransformCallable[DataBatch, DataBatch], is_udf: bool = False
+    ):
         self._batch_fn = batch_fn
         super().__init__(
-            MapTransformFnDataType.Batch,
-            MapTransformFnDataType.Batch,
+            MapTransformFnDataType.Batch, MapTransformFnDataType.Batch, is_udf=is_udf
         )
 
     def __call__(

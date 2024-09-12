@@ -2,8 +2,10 @@ import collections
 import os
 import time
 from dataclasses import dataclass
+from enum import Enum
 from typing import (
     TYPE_CHECKING,
+    Any,
     Callable,
     Dict,
     Iterator,
@@ -19,7 +21,8 @@ from typing import (
 import numpy as np
 
 import ray
-from ray import ObjectRefGenerator
+from ray import DynamicObjectRefGenerator
+from ray.air.util.tensor_extensions.arrow import ArrowConversionError
 from ray.data._internal.util import _check_pyarrow_version, _truncated_repr
 from ray.types import ObjectRef
 from ray.util.annotations import DeveloperAPI
@@ -36,7 +39,7 @@ if TYPE_CHECKING:
     import pyarrow
 
     from ray.data._internal.block_builder import BlockBuilder
-    from ray.data._internal.sort import SortKey
+    from ray.data._internal.planner.exchange.sort_task_spec import SortKey
     from ray.data.aggregate import AggregateFn
 
 
@@ -52,6 +55,13 @@ AggType = TypeVar("AggType")
 # Block data can be accessed in a uniform way via ``BlockAccessors`` like`
 # ``ArrowBlockAccessor``.
 Block = Union["pyarrow.Table", "pandas.DataFrame"]
+
+
+@DeveloperAPI
+class BlockType(Enum):
+    ARROW = "arrow"
+    PANDAS = "pandas"
+
 
 # User-facing data batch type. This is the data type for data that is supplied to and
 # returned from batch UDFs.
@@ -82,39 +92,31 @@ BlockPartition = List[Tuple[ObjectRef[Block], "BlockMetadata"]]
 # same type as the metadata that describes each block in the partition.
 BlockPartitionMetadata = List["BlockMetadata"]
 
-# TODO(ekl/chengsu): replace this with just `ObjectRefGenerator` once block splitting
+# TODO(ekl/chengsu): replace this with just
+# `DynamicObjectRefGenerator` once block splitting
 # is on by default. When block splitting is off, the type is a plain block.
-MaybeBlockPartition = Union[Block, ObjectRefGenerator]
+MaybeBlockPartition = Union[Block, DynamicObjectRefGenerator]
 
-VALID_BATCH_FORMATS = ["default", "native", "pandas", "pyarrow", "numpy", None]
+VALID_BATCH_FORMATS = ["pandas", "pyarrow", "numpy", None]
+DEFAULT_BATCH_FORMAT = "numpy"
 
-VALID_BATCH_FORMATS_STRICT_MODE = ["pandas", "pyarrow", "numpy", None]
 
-
-def _apply_strict_mode_batch_format(given_batch_format: Optional[str]) -> str:
+def _apply_batch_format(given_batch_format: Optional[str]) -> str:
     if given_batch_format == "default":
-        given_batch_format = "numpy"
-    if given_batch_format not in VALID_BATCH_FORMATS_STRICT_MODE:
+        given_batch_format = DEFAULT_BATCH_FORMAT
+    if given_batch_format not in VALID_BATCH_FORMATS:
         raise ValueError(
-            f"The given batch format {given_batch_format} is not allowed "
-            f"in Ray 2.5 (must be one of {VALID_BATCH_FORMATS_STRICT_MODE})."
+            f"The given batch format {given_batch_format} isn't allowed (must be one of"
+            f" {VALID_BATCH_FORMATS})."
         )
     return given_batch_format
 
 
-def _apply_strict_mode_batch_size(
-    given_batch_size: Optional[Union[int, Literal["default"]]], use_gpu: bool
+def _apply_batch_size(
+    given_batch_size: Optional[Union[int, Literal["default"]]]
 ) -> Optional[int]:
-    if use_gpu and (not given_batch_size or given_batch_size == "default"):
-        raise ValueError(
-            "`batch_size` must be provided to `map_batches` when requesting GPUs. "
-            "The optimal batch size depends on the model, data, and GPU used. "
-            "It is recommended to use the largest batch size that doesn't result "
-            "in your GPU device running out of memory. You can view the GPU memory "
-            "usage via the Ray dashboard."
-        )
-    elif given_batch_size == "default":
-        return ray.data.context.STRICT_MODE_DEFAULT_BATCH_SIZE
+    if given_batch_size == "default":
+        return ray.data.context.DEFAULT_BATCH_SIZE
     else:
         return given_batch_size
 
@@ -133,11 +135,13 @@ class BlockExecStats:
         self.start_time_s: Optional[float] = None
         self.end_time_s: Optional[float] = None
         self.wall_time_s: Optional[float] = None
+        self.udf_time_s: Optional[float] = 0
         self.cpu_time_s: Optional[float] = None
         self.node_id = ray.runtime_context.get_runtime_context().get_node_id()
         # Max memory usage. May be an overestimate since we do not
         # differentiate from previous tasks on the same worker.
         self.max_rss_bytes: int = 0
+        self.task_idx: Optional[int] = None
 
     @staticmethod
     def builder() -> "_BlockExecStatsBuilder":
@@ -148,6 +152,7 @@ class BlockExecStats:
             {
                 "wall_time_s": self.wall_time_s,
                 "cpu_time_s": self.cpu_time_s,
+                "udf_time_s": self.udf_time_s,
                 "node_id": self.node_id,
             }
         )
@@ -326,7 +331,9 @@ class BlockAccessor:
         raise NotImplementedError
 
     def get_metadata(
-        self, input_files: List[str], exec_stats: Optional[BlockExecStats]
+        self,
+        input_files: Optional[List[str]] = None,
+        exec_stats: Optional[BlockExecStats] = None,
     ) -> BlockMetadata:
         """Create a metadata object from this block."""
         return BlockMetadata(
@@ -346,8 +353,12 @@ class BlockAccessor:
         """Create a builder for this block type."""
         raise NotImplementedError
 
-    @staticmethod
-    def batch_to_block(batch: DataBatch) -> Block:
+    @classmethod
+    def batch_to_block(
+        cls,
+        batch: DataBatch,
+        block_type: Optional[BlockType] = None,
+    ) -> Block:
         """Create a block from user-facing data formats."""
 
         if isinstance(batch, np.ndarray):
@@ -359,19 +370,32 @@ class BlockAccessor:
             )
 
         elif isinstance(batch, collections.abc.Mapping):
-            import pyarrow as pa
-
-            from ray.data._internal.arrow_block import ArrowBlockAccessor
-
-            try:
-                return ArrowBlockAccessor.numpy_to_block(batch)
-            except (pa.ArrowNotImplementedError, pa.ArrowInvalid, pa.ArrowTypeError):
-                import pandas as pd
-
-                # TODO(ekl) once we support Python objects within Arrow blocks, we
-                # don't need this fallback path.
-                return pd.DataFrame(dict(batch))
+            if block_type is None or block_type == BlockType.ARROW:
+                try:
+                    return cls.batch_to_arrow_block(batch)
+                except ArrowConversionError as e:
+                    if block_type is None:
+                        return cls.batch_to_pandas_block(batch)
+                    else:
+                        raise e
+            else:
+                assert block_type == BlockType.PANDAS
+                return cls.batch_to_pandas_block(batch)
         return batch
+
+    @classmethod
+    def batch_to_arrow_block(cls, batch: Dict[str, Any]) -> Block:
+        """Create an Arrow block from user-facing data formats."""
+        from ray.data._internal.arrow_block import ArrowBlockAccessor
+
+        return ArrowBlockAccessor.numpy_to_block(batch)
+
+    @classmethod
+    def batch_to_pandas_block(cls, batch: Dict[str, Any]) -> Block:
+        """Create a Pandas block from user-facing data formats."""
+        from ray.data._internal.pandas_block import PandasBlockAccessor
+
+        return PandasBlockAccessor.numpy_to_block(batch)
 
     @staticmethod
     def for_block(block: Block) -> "BlockAccessor[T]":
@@ -429,4 +453,8 @@ class BlockAccessor:
         blocks: List[Block], key: Optional[str], agg: "AggregateFn"
     ) -> Tuple[Block, BlockMetadata]:
         """Aggregate partially combined and sorted blocks."""
+        raise NotImplementedError
+
+    def block_type(self) -> BlockType:
+        """Return the block type of this block."""
         raise NotImplementedError

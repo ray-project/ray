@@ -23,6 +23,21 @@ def env_integer(key, default):
     return default
 
 
+def env_float(key, default):
+    if key in os.environ:
+        value = os.environ[key]
+        try:
+            return float(value)
+        except ValueError:
+            logger.debug(
+                f"Found {key} in environment, but value must "
+                f"be a float. Got: {value}. Returning "
+                f"provided default {default}."
+            )
+            return default
+    return default
+
+
 def env_bool(key, default):
     if key in os.environ:
         return (
@@ -39,6 +54,8 @@ def env_set_by_user(key):
 
 # Whether event logging to driver is enabled. Set to 0 to disable.
 AUTOSCALER_EVENTS = env_integer("RAY_SCHEDULER_EVENTS", 1)
+
+RAY_LOG_TO_DRIVER = env_bool("RAY_LOG_TO_DRIVER", True)
 
 # Filter level under which events will be filtered out, i.e. not printing to driver
 RAY_LOG_TO_DRIVER_EVENT_LEVEL = os.environ.get("RAY_LOG_TO_DRIVER_EVENT_LEVEL", "INFO")
@@ -62,6 +79,13 @@ DEFAULT_OBJECT_STORE_MEMORY_PROPORTION = 0.3
 # The smallest cap on the memory used by the object store that we allow.
 # This must be greater than MEMORY_RESOURCE_UNIT_BYTES
 OBJECT_STORE_MINIMUM_MEMORY_BYTES = 75 * 1024 * 1024
+# Each ObjectRef currently uses about 3KB of caller memory.
+CALLER_MEMORY_USAGE_PER_OBJECT_REF = 3000
+# Match max_direct_call_object_size in
+# src/ray/common/ray_config_def.h.
+# TODO(swang): Ideally this should be pulled directly from the
+# config in case the user overrides it.
+DEFAULT_MAX_DIRECT_CALL_OBJECT_SIZE = 100 * 1024
 # The default maximum number of bytes that the non-primary Redis shards are
 # allowed to use unless overridden by the user.
 DEFAULT_REDIS_MAX_MEMORY_BYTES = 10**10
@@ -86,6 +110,10 @@ RAY_RUNTIME_ENV_ENVIRONMENT_VARIABLE = "RAY_RUNTIME_ENV"
 RAY_RUNTIME_ENV_URI_PIN_EXPIRATION_S_ENV_VAR = (
     "RAY_RUNTIME_ENV_TEMPORARY_REFERENCE_EXPIRATION_S"
 )
+# Ray populates this env var to the working dir in the creation of a runtime env.
+# For example, `pip` and `conda` users can use this environment variable to locate the
+# `requirements.txt` file.
+RAY_RUNTIME_ENV_CREATE_WORKING_DIR_ENV_VAR = "RAY_RUNTIME_ENV_CREATE_WORKING_DIR"
 # Defaults to 10 minutes. This should be longer than the total time it takes for
 # the local working_dir and py_modules to be uploaded, or these files might get
 # garbage collected before the job starts.
@@ -156,28 +184,20 @@ RAY_OVERRIDE_DASHBOARD_URL = "RAY_OVERRIDE_DASHBOARD_URL"
 # Different types of Ray errors that can be pushed to the driver.
 # TODO(rkn): These should be defined in flatbuffers and must be synced with
 # the existing C++ definitions.
-WAIT_FOR_CLASS_PUSH_ERROR = "wait_for_class"
 PICKLING_LARGE_OBJECT_PUSH_ERROR = "pickling_large_object"
 WAIT_FOR_FUNCTION_PUSH_ERROR = "wait_for_function"
-TASK_PUSH_ERROR = "task"
-REGISTER_REMOTE_FUNCTION_PUSH_ERROR = "register_remote_function"
-FUNCTION_TO_RUN_PUSH_ERROR = "function_to_run"
 VERSION_MISMATCH_PUSH_ERROR = "version_mismatch"
-CHECKPOINT_PUSH_ERROR = "checkpoint"
 WORKER_CRASH_PUSH_ERROR = "worker_crash"
 WORKER_DIED_PUSH_ERROR = "worker_died"
 WORKER_POOL_LARGE_ERROR = "worker_pool_large"
 PUT_RECONSTRUCTION_PUSH_ERROR = "put_reconstruction"
-INFEASIBLE_TASK_ERROR = "infeasible_task"
 RESOURCE_DEADLOCK_ERROR = "resource_deadlock"
 REMOVED_NODE_ERROR = "node_removed"
 MONITOR_DIED_ERROR = "monitor_died"
 LOG_MONITOR_DIED_ERROR = "log_monitor_died"
-REPORTER_DIED_ERROR = "reporter_died"
 DASHBOARD_AGENT_DIED_ERROR = "dashboard_agent_died"
 DASHBOARD_DIED_ERROR = "dashboard_died"
 RAYLET_DIED_ERROR = "raylet_died"
-RAYLET_CONNECTION_ERROR = "raylet_connection_error"
 DETACHED_ACTOR_ANONYMOUS_NAMESPACE_ERROR = "detached_actor_anonymous_namespace"
 EXCESS_QUEUEING_WARNING = "excess_queueing_warning"
 
@@ -188,9 +208,6 @@ RESOURCE_CONSTRAINT_PREFIX = "accelerator_type:"
 # from cluster.yaml.
 RESOURCES_ENVIRONMENT_VARIABLE = "RAY_OVERRIDE_RESOURCES"
 LABELS_ENVIRONMENT_VARIABLE = "RAY_OVERRIDE_LABELS"
-
-# The reporter will report its statistics this often (milliseconds).
-REPORTER_UPDATE_INTERVAL_MS = env_integer("REPORTER_UPDATE_INTERVAL_MS", 2500)
 
 # Temporary flag to disable log processing in the dashboard.  This is useful
 # if the dashboard is overloaded by logs and failing to process other
@@ -300,10 +317,6 @@ LOG_PREFIX_ACTOR_NAME = ":actor_name:"
 LOG_PREFIX_TASK_NAME = ":task_name:"
 # Job ids are recorded in the logs with this magic token as a prefix.
 LOG_PREFIX_JOB_ID = ":job_id:"
-# Task attempts magic token marked the beginning of the task logs
-LOG_PREFIX_TASK_ATTEMPT_START = ":task_attempt_start:"
-# Task attempts magic token marked the beginning of the task logs
-LOG_PREFIX_TASK_ATTEMPT_END = ":task_attempt_end:"
 
 # The object metadata field uses the following format: It is a comma
 # separated list of fields. The first field is mandatory and is the
@@ -371,7 +384,11 @@ CALL_STACK_LINE_DELIMITER = " | "
 # The default gRPC max message size is 4 MiB, we use a larger number of 250 MiB
 # NOTE: This is equal to the C++ limit of (RAY_CONFIG::max_grpc_message_size)
 GRPC_CPP_MAX_MESSAGE_SIZE = 250 * 1024 * 1024
+
 # The gRPC send & receive max length for "dashboard agent" server.
+# NOTE: This is equal to the C++ limit of RayConfig::max_grpc_message_size
+#       and HAVE TO STAY IN SYNC with it (ie, meaning that both of these values
+#       have to be set at the same time)
 AGENT_GRPC_MAX_MESSAGE_LENGTH = env_integer(
     "AGENT_GRPC_MAX_MESSAGE_LENGTH", 20 * 1024 * 1024  # 20MB
 )
@@ -393,6 +410,7 @@ KV_NAMESPACE_PDB = b"ray_pdb"
 KV_NAMESPACE_HEALTHCHECK = b"healthcheck"
 KV_NAMESPACE_JOB = b"job"
 KV_NAMESPACE_CLUSTER = b"cluster"
+KV_HEAD_NODE_ID_KEY = b"head_node_id"
 # TODO: Set package for runtime env
 # We need to update ray client for this since runtime env use ray client
 # This might introduce some compatibility issues so leave it here for now.
@@ -408,10 +426,13 @@ NOSET_CUDA_VISIBLE_DEVICES_ENV_VAR = "RAY_EXPERIMENTAL_NOSET_CUDA_VISIBLE_DEVICE
 CUDA_VISIBLE_DEVICES_ENV_VAR = "CUDA_VISIBLE_DEVICES"
 NEURON_RT_VISIBLE_CORES_ENV_VAR = "NEURON_RT_VISIBLE_CORES"
 TPU_VISIBLE_CHIPS_ENV_VAR = "TPU_VISIBLE_CHIPS"
+NPU_RT_VISIBLE_DEVICES_ENV_VAR = "ASCEND_RT_VISIBLE_DEVICES"
 
 NEURON_CORES = "neuron_cores"
 GPU = "GPU"
 TPU = "TPU"
+NPU = "NPU"
+HPU = "HPU"
 
 
 RAY_WORKER_NICENESS = "RAY_worker_niceness"
@@ -438,7 +459,7 @@ DEFAULT_RESOURCES = {"CPU", "GPU", "memory", "object_store_memory"}
 # Supported Python versions for runtime env's "conda" field. Ray downloads
 # Ray wheels into the conda environment, so the Ray wheels for these Python
 # versions must be available online.
-RUNTIME_ENV_CONDA_PY_VERSIONS = [(3, 8), (3, 9), (3, 10), (3, 11)]
+RUNTIME_ENV_CONDA_PY_VERSIONS = [(3, 9), (3, 10), (3, 11), (3, 12)]
 
 # Whether to enable Ray clusters (in addition to local Ray).
 # Ray clusters are not explicitly supported for Windows and OSX.
@@ -469,6 +490,7 @@ RAY_ENABLE_RECORD_ACTOR_TASK_LOGGING = env_bool(
     "RAY_ENABLE_RECORD_ACTOR_TASK_LOGGING", False
 )
 
+# RuntimeEnv env var to indicate it exports a function
 WORKER_PROCESS_SETUP_HOOK_ENV_VAR = "__RAY_WORKER_PROCESS_SETUP_HOOK_ENV_VAR"
 RAY_WORKER_PROCESS_SETUP_HOOK_LOAD_TIMEOUT_ENV_VAR = (
     "RAY_WORKER_PROCESS_SETUP_HOOK_LOAD_TIMEOUT"  # noqa
@@ -480,3 +502,7 @@ RAY_TPU_MAX_CONCURRENT_CONNECTIONS_ENV_VAR = "RAY_TPU_MAX_CONCURRENT_ACTIVE_CONN
 
 
 RAY_NODE_IP_FILENAME = "node_ip_address.json"
+
+PLACEMENT_GROUP_BUNDLE_RESOURCE_NAME = "bundle"
+
+RAY_LOGGING_CONFIG_ENCODING = os.environ.get("RAY_LOGGING_CONFIG_ENCODING")

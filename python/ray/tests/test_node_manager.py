@@ -185,6 +185,59 @@ ray.get(f.options(num_cpus=99999999).remote())
     )
 
 
+@pytest.mark.parametrize(
+    "call_ray_start",
+    ["ray start --head --ray-client-server-port=25555"],
+    indirect=True,
+)
+def test_exiting_driver_clears_infeasible(call_ray_start):
+    # Test that there is no leaking infeasible demands
+    # from an exited driver.
+    # See https://github.com/ray-project/ray/issues/43687
+    # for a bug where it happened.
+
+    driver = """
+import ray
+
+ray.init()
+
+@ray.remote
+def f():
+    pass
+
+f.options(num_cpus=99999999).remote()
+  """
+    proc = run_string_as_driver_nonblocking(driver)
+    proc.wait()
+
+    client_driver = """
+import ray
+
+ray.init("ray://127.0.0.1:25555")
+
+@ray.remote
+def f():
+    pass
+
+f.options(num_cpus=99999999).remote()
+  """
+    proc = run_string_as_driver_nonblocking(client_driver)
+    proc.wait()
+
+    ctx = ray.init(address=call_ray_start)
+
+    # Give gcs some time to update the load
+    time.sleep(1)
+
+    wait_for_condition(
+        check_infeasible,
+        timeout=10,
+        retry_interval_ms=1000,
+        expect_infeasible=False,
+        ray_ctx=ctx,
+    )
+
+
 def test_kill_driver_keep_infeasible_detached_actor(ray_start_cluster):
     cluster = ray_start_cluster
     address = cluster.address
@@ -302,6 +355,45 @@ def test_jobs_prestart_worker_once(call_ray_start, shutdown_only):
             workers = list_workers(filters=[("worker_type", "=", "WORKER")])
             assert len(workers) == get_num_cpus(), workers
             time.sleep(1)
+
+
+def test_can_use_prestart_idle_workers(ray_start_cluster):
+    """Test that actors and GPU tasks can use prestarted workers."""
+    cluster = ray_start_cluster
+    NUM_CPUS = 4
+    NUM_GPUS = 4
+    cluster.add_node(num_cpus=NUM_CPUS, num_gpus=NUM_GPUS)
+    ray.init(address=cluster.address)
+
+    wait_for_condition(
+        lambda: len(list_workers(filters=[("worker_type", "=", "WORKER")])) == NUM_CPUS
+    )
+
+    # These workers don't have job_id or is_actor_worker.
+    workers = list_workers(filters=[("worker_type", "=", "WORKER")], detail=True)
+    worker_pids = {worker.pid for worker in workers}
+    assert len(worker_pids) == NUM_CPUS
+
+    @ray.remote
+    class A:
+        def getpid(self):
+            return os.getpid()
+
+    @ray.remote
+    def f():
+        return os.getpid()
+
+    used_worker_pids = set()
+    cpu_actor = A.options(num_cpus=1).remote()
+    used_worker_pids.add(ray.get(cpu_actor.getpid.remote()))
+
+    gpu_actor = A.options(num_gpus=1).remote()
+    used_worker_pids.add(ray.get(gpu_actor.getpid.remote()))
+
+    used_worker_pids.add(ray.get(f.options(num_cpus=1).remote()))
+    used_worker_pids.add(ray.get(f.options(num_gpus=1).remote()))
+
+    assert used_worker_pids == worker_pids
 
 
 if __name__ == "__main__":

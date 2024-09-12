@@ -104,6 +104,15 @@ def upload_py_modules_if_needed(
                             logger=logger,
                         )
                     except Exception as e:
+                        from ray.util.spark.utils import is_in_databricks_runtime
+
+                        if is_in_databricks_runtime():
+                            raise RuntimeEnvSetupError(
+                                f"Failed to upload module {module_path} to the Ray "
+                                f"cluster, please ensure there are only files under "
+                                f"the module path, notebooks under the path are "
+                                f"not allowed, original exception: {e}"
+                            ) from e
                         raise RuntimeEnvSetupError(
                             f"Failed to upload module {module_path} to the Ray "
                             f"cluster: {e}"
@@ -169,7 +178,7 @@ class PyModulesPlugin(RuntimeEnvPlugin):
 
         return local_dir_size
 
-    def get_uris(self, runtime_env: dict) -> List[str]:
+    def get_uris(self, runtime_env) -> List[str]:
         return runtime_env.py_modules()
 
     async def create(

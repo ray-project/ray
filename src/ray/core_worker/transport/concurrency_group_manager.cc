@@ -41,7 +41,7 @@ ConcurrencyGroupManager<ExecutorType>::ConcurrencyGroupManager(
   // the thread pools instead of main thread.
   if (ExecutorType::NeedDefaultExecutor(max_concurrency_for_default_concurrency_group) ||
       !concurrency_groups.empty()) {
-    defatult_executor_ =
+    default_executor_ =
         std::make_shared<ExecutorType>(max_concurrency_for_default_concurrency_group);
   }
 }
@@ -49,6 +49,13 @@ ConcurrencyGroupManager<ExecutorType>::ConcurrencyGroupManager(
 template <typename ExecutorType>
 std::shared_ptr<ExecutorType> ConcurrencyGroupManager<ExecutorType>::GetExecutor(
     const std::string &concurrency_group_name, const ray::FunctionDescriptor &fd) {
+  if (concurrency_group_name == RayConfig::instance().system_concurrency_group_name() &&
+      name_to_executor_index_.find(concurrency_group_name) ==
+          name_to_executor_index_.end()) {
+    auto executor = std::make_shared<ExecutorType>(1);
+    name_to_executor_index_[concurrency_group_name] = executor;
+  }
+
   if (!concurrency_group_name.empty()) {
     auto it = name_to_executor_index_.find(concurrency_group_name);
     /// TODO(qwang): Fail the user task.
@@ -64,26 +71,26 @@ std::shared_ptr<ExecutorType> ConcurrencyGroupManager<ExecutorType>::GetExecutor
       functions_to_executor_index_.end()) {
     return functions_to_executor_index_[fd->ToString()];
   }
-  return defatult_executor_;
+  return default_executor_;
 }
 
 /// Get the default executor.
 template <typename ExecutorType>
 std::shared_ptr<ExecutorType> ConcurrencyGroupManager<ExecutorType>::GetDefaultExecutor()
     const {
-  return defatult_executor_;
+  return default_executor_;
 }
 
 /// Stop and join the executors that the this manager owns.
 template <typename ExecutorType>
 void ConcurrencyGroupManager<ExecutorType>::Stop() {
-  if (defatult_executor_) {
+  if (default_executor_) {
     RAY_LOG(DEBUG) << "Default executor is stopping.";
-    defatult_executor_->Stop();
+    default_executor_->Stop();
     RAY_LOG(INFO) << "Default executor is joining. If the 'Default executor is joined.' "
                      "message is not printed after this, the worker is probably "
                      "hanging because the actor task is running an infinite loop.";
-    defatult_executor_->Join();
+    default_executor_->Join();
     RAY_LOG(INFO) << "Default executor is joined.";
   }
 

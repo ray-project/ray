@@ -225,7 +225,7 @@ def test_runtime_env_conda_not_exists_not_hang(shutdown_only):
     for ref in refs:
         with pytest.raises(ray.exceptions.RuntimeEnvSetupError) as exc_info:
             ray.get(ref)
-        assert "doesn't exist from the output of `conda env list --json`" in str(
+        assert "doesn't exist from the output of `conda info --json`" in str(
             exc_info.value
         )  # noqa
 
@@ -275,6 +275,98 @@ def test_get_requirements_file():
                 ],
             )
         assert "Could not find a valid filename for the internal " in str(excinfo.value)
+
+
+def test_working_dir_applies_for_pip_creation(start_cluster, tmp_working_dir):
+    cluster, address = start_cluster
+
+    with open(Path(tmp_working_dir) / "requirements.txt", "w") as f:
+        f.write("-r more_requirements.txt")
+
+    with open(Path(tmp_working_dir) / "more_requirements.txt", "w") as f:
+        f.write("pip-install-test==0.5")
+
+    ray.init(
+        address,
+        runtime_env={
+            "working_dir": tmp_working_dir,
+            "pip": ["-r ${RAY_RUNTIME_ENV_CREATE_WORKING_DIR}/requirements.txt"],
+        },
+    )
+
+    @ray.remote
+    def test_import():
+        import pip_install_test
+
+        return pip_install_test.__name__
+
+    assert ray.get(test_import.remote()) == "pip_install_test"
+
+
+def test_working_dir_applies_for_pip_creation_files(start_cluster, tmp_working_dir):
+    """
+    Different from test_working_dir_applies_for_pip_creation, this test uses a file
+    in `pip`. This file is read by the driver and hence has no relative path to the
+    more_requirements.txt file, so you need to add a
+    ${RAY_RUNTIME_ENV_CREATE_WORKING_DIR} in the referenced path.
+    """
+    cluster, address = start_cluster
+
+    with open(Path(tmp_working_dir) / "requirements.txt", "w") as f:
+        f.write("-r ${RAY_RUNTIME_ENV_CREATE_WORKING_DIR}/more_requirements.txt")
+
+    with open(Path(tmp_working_dir) / "more_requirements.txt", "w") as f:
+        f.write("pip-install-test==0.5")
+
+    ray.init(
+        address,
+        runtime_env={
+            "working_dir": tmp_working_dir,
+            "pip": str(Path(tmp_working_dir) / "requirements.txt"),
+        },
+    )
+
+    @ray.remote
+    def test_import():
+        import pip_install_test
+
+        return pip_install_test.__name__
+
+    assert ray.get(test_import.remote()) == "pip_install_test"
+
+
+def test_working_dir_applies_for_conda_creation(start_cluster, tmp_working_dir):
+    cluster, address = start_cluster
+
+    with open(Path(tmp_working_dir) / "requirements.txt", "w") as f:
+        f.write("-r more_requirements.txt")
+
+    with open(Path(tmp_working_dir) / "more_requirements.txt", "w") as f:
+        f.write("pip-install-test==0.5")
+
+    # Note: if you want to refernce some file in the working dir, you need to use
+    # the ${RAY_RUNTIME_ENV_CREATE_WORKING_DIR} variable.
+    with open(Path(tmp_working_dir) / "environment.yml", "w") as f:
+        f.write("dependencies:\n")
+        f.write(" - pip\n")
+        f.write(" - pip:\n")
+        f.write("   - -r ${RAY_RUNTIME_ENV_CREATE_WORKING_DIR}/more_requirements.txt\n")
+
+    ray.init(
+        address,
+        runtime_env={
+            "working_dir": tmp_working_dir,
+            "conda": str(Path(tmp_working_dir) / "environment.yml"),
+        },
+    )
+
+    @ray.remote
+    def test_import():
+        import pip_install_test
+
+        return pip_install_test.__name__
+
+    assert ray.get(test_import.remote()) == "pip_install_test"
 
 
 if __name__ == "__main__":

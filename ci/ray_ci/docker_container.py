@@ -1,47 +1,84 @@
 import os
 from typing import List
+from datetime import datetime
+from enum import Enum
 
-from ci.ray_ci.container import Container
+from ci.ray_ci.linux_container import LinuxContainer
+from ci.ray_ci.builder_container import DEFAULT_ARCHITECTURE, DEFAULT_PYTHON_VERSION
 
 
-PLATFORM = [
+PLATFORMS_RAY = [
     "cpu",
-    "cu11.5.2",
-    "cu11.6.2",
-    "cu11.7.1",
-    "cu11.8.0",
-    "cu12.1.1",
+    "cu11.7.1-cudnn8",
+    "cu11.8.0-cudnn8",
+    "cu12.1.1-cudnn8",
+    "cu12.3.2-cudnn9",
 ]
-GPU_PLATFORM = "cu11.8.0"
-DEFAULT_PYTHON_VERSION = "3.8"
+PLATFORMS_RAY_ML = [
+    "cpu",
+    "cu12.1.1-cudnn8",
+]
+GPU_PLATFORM = "cu12.1.1-cudnn8"
+
+PYTHON_VERSIONS_RAY = ["3.9", "3.10", "3.11"]
+PYTHON_VERSIONS_RAY_ML = ["3.9", "3.10"]
+ARCHITECTURES_RAY = ["x86_64", "aarch64"]
+ARCHITECTURES_RAY_ML = ["x86_64"]
 
 
-class DockerContainer(Container):
+class RayType(str, Enum):
+    RAY = "ray"
+    RAY_ML = "ray-ml"
+
+
+class DockerContainer(LinuxContainer):
     """
     Container for building and publishing ray docker images
     """
 
-    def __init__(self, python_version: str, platform: str, image_type: str) -> None:
+    def __init__(
+        self,
+        python_version: str,
+        platform: str,
+        image_type: str,
+        architecture: str = DEFAULT_ARCHITECTURE,
+        canonical_tag: str = None,
+        upload: bool = False,
+    ) -> None:
         assert "RAYCI_CHECKOUT_DIR" in os.environ, "RAYCI_CHECKOUT_DIR not set"
         rayci_checkout_dir = os.environ["RAYCI_CHECKOUT_DIR"]
         self.python_version = python_version
         self.platform = platform
         self.image_type = image_type
+        self.architecture = architecture
+        self.canonical_tag = canonical_tag
+        self.upload = upload
 
         super().__init__(
-            "forge",
+            "forge" if architecture == "x86_64" else "forge-aarch64",
             volumes=[
                 f"{rayci_checkout_dir}:/rayci",
                 "/var/run/docker.sock:/var/run/docker.sock",
             ],
         )
 
-    def _get_image_version_tags(self) -> List[str]:
+    def _get_image_version_tags(self, external: bool) -> List[str]:
+        """
+        Get version tags.
+
+        Args:
+            external: If True, return the external image tags. If False, return the
+                internal image tags.
+        """
         branch = os.environ.get("BUILDKITE_BRANCH")
         sha_tag = os.environ["BUILDKITE_COMMIT"][:6]
         pr = os.environ.get("BUILDKITE_PULL_REQUEST", "false")
+        formatted_date = datetime.now().strftime("%y%m%d")
+
         if branch == "master":
-            return [sha_tag, "nightly"]
+            if external and os.environ.get("RAYCI_SCHEDULE") == "nightly":
+                return [f"nightly.{formatted_date}.{sha_tag}", "nightly"]
+            return [sha_tag]
 
         if branch and branch.startswith("releases/"):
             release_name = branch[len("releases/") :]
@@ -58,10 +95,10 @@ class DockerContainer(Container):
         #
         # The canonical tag is the most complete tag with no abbreviation,
         # e.g. sha-pyversion-platform
-        return self._get_image_tags()[0]
+        return self.canonical_tag if self.canonical_tag else self._get_image_tags()[0]
 
     def get_python_version_tag(self) -> str:
-        return f"-py{self.python_version.replace('.', '')}"  # 3.8 -> py38
+        return f"-py{self.python_version.replace('.', '')}"  # 3.x -> py3x
 
     def get_platform_tag(self) -> str:
         if self.platform == "cpu":
@@ -69,11 +106,20 @@ class DockerContainer(Container):
         versions = self.platform.split(".")
         return f"-{versions[0]}{versions[1]}"  # cu11.8.0 -> cu118
 
-    def _get_image_tags(self) -> List[str]:
-        # An image tag is composed by ray version tag, python version and platform.
-        # See https://docs.ray.io/en/latest/ray-overview/installation.html for
-        # more information on the image tags.
-        versions = self._get_image_version_tags()
+    def _get_image_tags(self, external: bool = False) -> List[str]:
+        """
+        Get image tags & alias for the container image.
+
+        An image tag is composed by ray version tag, python version and platform.
+        See https://docs.ray.io/en/latest/ray-overview/installation.html for
+        more information on the image tags.
+
+        Args:
+            external: If True, return the external image tags. If False, return the
+                internal image tags.
+        """
+
+        versions = self._get_image_version_tags(external)
 
         platforms = [self.get_platform_tag()]
         if self.platform == "cpu" and self.image_type == "ray":
@@ -94,6 +140,9 @@ class DockerContainer(Container):
         for version in versions:
             for platform in platforms:
                 for py_version in py_versions:
-                    tag = f"{version}{py_version}{platform}"
+                    if self.architecture == DEFAULT_ARCHITECTURE:
+                        tag = f"{version}{py_version}{platform}"
+                    else:
+                        tag = f"{version}{py_version}{platform}-{self.architecture}"
                     tags.append(tag)
         return tags

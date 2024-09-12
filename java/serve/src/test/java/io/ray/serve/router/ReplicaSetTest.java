@@ -5,6 +5,7 @@ import io.ray.api.ObjectRef;
 import io.ray.api.Ray;
 import io.ray.serve.BaseServeTest;
 import io.ray.serve.DummyServeController;
+import io.ray.serve.common.Constants;
 import io.ray.serve.config.DeploymentConfig;
 import io.ray.serve.deployment.DeploymentVersion;
 import io.ray.serve.deployment.DeploymentWrapper;
@@ -44,23 +45,22 @@ public class ReplicaSetTest {
     try {
       BaseServeTest.initRay();
 
-      String controllerName = deploymentName + "_controller";
       String replicaTag = deploymentName + "_replica";
       String actorName = replicaTag;
       String version = "v1";
       String appName = "app1";
       // Controller
       ActorHandle<DummyServeController> controllerHandle =
-          Ray.actor(DummyServeController::new, "").setName(controllerName).remote();
+          Ray.actor(DummyServeController::new, "")
+              .setName(Constants.SERVE_CONTROLLER_NAME)
+              .remote();
 
       // Replica
       DeploymentConfig deploymentConfig =
           new DeploymentConfig().setDeploymentLanguage(DeploymentLanguage.JAVA);
 
       Object[] initArgs =
-          new Object[] {
-            deploymentName, replicaTag, controllerName, new Object(), new HashMap<>(), appName
-          };
+          new Object[] {deploymentName, replicaTag, new Object(), new HashMap<>(), appName};
 
       DeploymentWrapper deploymentWrapper =
           new DeploymentWrapper()
@@ -71,7 +71,7 @@ public class ReplicaSetTest {
               .setInitArgs(initArgs);
 
       ActorHandle<RayServeWrappedReplica> replicaHandle =
-          Ray.actor(RayServeWrappedReplica::new, deploymentWrapper, replicaTag, controllerName)
+          Ray.actor(RayServeWrappedReplica::new, deploymentWrapper, replicaTag)
               .setName(actorName)
               .remote();
       Assert.assertTrue(replicaHandle.task(RayServeWrappedReplica::checkHealth).remote().get());

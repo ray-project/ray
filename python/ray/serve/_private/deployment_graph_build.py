@@ -2,29 +2,16 @@ import inspect
 from collections import OrderedDict
 from typing import List
 
-from ray import cloudpickle
-from ray.dag import PARENT_CLASS_NODE_KEY, ClassMethodNode, ClassNode, DAGNode
+from ray.dag import ClassNode, DAGNode
 from ray.dag.function_node import FunctionNode
-from ray.dag.input_node import InputNode
 from ray.dag.utils import _DAGNodeNameGenerator
 from ray.experimental.gradio_utils import type_to_string
-from ray.serve._private.constants import (
-    RAY_SERVE_ENABLE_NEW_HANDLE_API,
-    SERVE_DEFAULT_APP_NAME,
-)
-from ray.serve._private.deployment_executor_node import DeploymentExecutorNode
-from ray.serve._private.deployment_function_executor_node import (
-    DeploymentFunctionExecutorNode,
-)
+from ray.serve._private.common import DeploymentHandleSource
+from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME
 from ray.serve._private.deployment_function_node import DeploymentFunctionNode
-from ray.serve._private.deployment_method_executor_node import (
-    DeploymentMethodExecutorNode,
-)
-from ray.serve._private.deployment_method_node import DeploymentMethodNode
 from ray.serve._private.deployment_node import DeploymentNode
 from ray.serve.deployment import Deployment, schema_to_deployment
-from ray.serve.deployment_graph import RayServeDAGHandle
-from ray.serve.handle import DeploymentHandle, RayServeHandle
+from ray.serve.handle import DeploymentHandle, _HandleOptions
 from ray.serve.schema import DeploymentSchema
 
 
@@ -105,20 +92,8 @@ def build(
             "you're using the DAG API, the function should be bound to a DAGDriver."
         )
 
-    # After Ray DAG is transformed to Serve DAG with deployments and their init
-    # args filled, generate a minimal weight executor serve dag for perf
-    serve_executor_root_dag = serve_root_dag.apply_recursive(
-        transform_serve_dag_to_serve_executor_dag
-    )
-    root_driver_deployment = deployments[-1]
-    new_driver_deployment = generate_executor_dag_driver_deployment(
-        serve_executor_root_dag, root_driver_deployment
-    )
-    # Replace DAGDriver deployment with executor DAGDriver deployment
-    deployments[-1] = new_driver_deployment
-    # Validate and only expose HTTP for the endpoint
+    # Validate and only expose HTTP for the endpoint.
     deployments_with_http = process_ingress_deployment_in_serve_dag(deployments)
-
     return deployments_with_http
 
 
@@ -152,33 +127,10 @@ def transform_ray_dag_to_serve_dag(
 ):
     """
     Transform a Ray DAG to a Serve DAG. Map ClassNode to DeploymentNode with
-    ray decorated body passed in, and ClassMethodNode to DeploymentMethodNode.
-    When provided name, all Deployment name will {name}_{deployment_name}
+    ray decorated body passed in.
     """
     if isinstance(dag_node, ClassNode):
         deployment_name = node_name_generator.get_node_name(dag_node)
-
-        # Deployment can be passed into other DAGNodes as init args. This is
-        # supported pattern in ray DAG that user can instantiate and pass class
-        # instances as init args to others.
-
-        # However in ray serve we send init args via .remote() that requires
-        # pickling, and all DAGNode types are not picklable by design.
-
-        # Thus we need convert all DeploymentNode used in init args into
-        # deployment handles (executable and picklable) in ray serve DAG to make
-        # serve DAG end to end executable.
-        def replace_with_handle(node):
-            if isinstance(node, DeploymentNode) or isinstance(
-                node, DeploymentFunctionNode
-            ):
-                if RAY_SERVE_ENABLE_NEW_HANDLE_API:
-                    return DeploymentHandle(node._deployment.name, app_name, sync=False)
-                else:
-                    return RayServeHandle(node._deployment.name, app_name, sync=False)
-            elif isinstance(node, DeploymentExecutorNode):
-                return node._deployment_handle
-
         (
             replaced_deployment_init_args,
             replaced_deployment_init_kwargs,
@@ -191,14 +143,14 @@ def transform_ray_dag_to_serve_dag(
                 # re-resolved child DAGNodes, otherwise with KeyError
                 (
                     DeploymentNode,
-                    DeploymentMethodNode,
                     DeploymentFunctionNode,
-                    DeploymentExecutorNode,
-                    DeploymentFunctionExecutorNode,
-                    DeploymentMethodExecutorNode,
                 ),
             ),
-            apply_fn=replace_with_handle,
+            apply_fn=lambda node: DeploymentHandle(
+                node._deployment.name,
+                app_name,
+                handle_options=_HandleOptions(_source=DeploymentHandleSource.REPLICA),
+            ),
         )
 
         # ClassNode is created via bind on serve.deployment decorated class
@@ -242,28 +194,6 @@ def transform_ray_dag_to_serve_dag(
             dag_node.get_kwargs(),
             dag_node.get_options(),
             other_args_to_resolve=dag_node.get_other_args_to_resolve(),
-        )
-
-    elif isinstance(dag_node, ClassMethodNode):
-        other_args_to_resolve = dag_node.get_other_args_to_resolve()
-        # TODO: (jiaodong) Need to capture DAGNodes in the parent node
-        parent_deployment_node = other_args_to_resolve[PARENT_CLASS_NODE_KEY]
-
-        parent_class = parent_deployment_node._deployment.func_or_class
-        method = getattr(parent_class, dag_node._method_name)
-        if "return" in method.__annotations__:
-            other_args_to_resolve["result_type_string"] = type_to_string(
-                method.__annotations__["return"]
-            )
-
-        return DeploymentMethodNode(
-            parent_deployment_node._deployment,
-            dag_node._method_name,
-            app_name,
-            dag_node.get_args(),
-            dag_node.get_kwargs(),
-            dag_node.get_options(),
-            other_args_to_resolve=other_args_to_resolve,
         )
     elif isinstance(
         dag_node,
@@ -327,117 +257,6 @@ def extract_deployments_from_serve_dag(
     serve_dag_root.apply_recursive(extractor)
 
     return list(deployments.values())
-
-
-def transform_serve_dag_to_serve_executor_dag(serve_dag_root_node: DAGNode):
-    """Given a runnable serve dag with deployment init args and options
-    processed, transform into an equivalent, but minimal dag optimized for
-    execution.
-    """
-    if isinstance(serve_dag_root_node, DeploymentNode):
-        return DeploymentExecutorNode(
-            serve_dag_root_node._deployment_handle,
-            serve_dag_root_node.get_args(),
-            serve_dag_root_node.get_kwargs(),
-        )
-    elif isinstance(serve_dag_root_node, DeploymentMethodNode):
-        return DeploymentMethodExecutorNode(
-            # Deployment method handle
-            serve_dag_root_node._deployment_method_name,
-            serve_dag_root_node.get_args(),
-            serve_dag_root_node.get_kwargs(),
-            other_args_to_resolve=serve_dag_root_node.get_other_args_to_resolve(),
-        )
-    elif isinstance(serve_dag_root_node, DeploymentFunctionNode):
-        return DeploymentFunctionExecutorNode(
-            serve_dag_root_node._deployment_handle,
-            serve_dag_root_node.get_args(),
-            serve_dag_root_node.get_kwargs(),
-            other_args_to_resolve=serve_dag_root_node.get_other_args_to_resolve(),
-        )
-    else:
-        return serve_dag_root_node
-
-
-def generate_executor_dag_driver_deployment(
-    serve_executor_dag_root_node: DAGNode, original_driver_deployment: Deployment
-):
-    """Given a transformed minimal execution serve dag, and original DAGDriver
-    deployment, generate new DAGDriver deployment that uses new serve executor
-    dag as init_args.
-
-    Args:
-        serve_executor_dag_root_node: Transformed
-            executor serve dag with only barebone deployment handles.
-        original_driver_deployment: User's original DAGDriver
-            deployment that wrapped Ray DAG as init args.
-    Returns:
-        executor_dag_driver_deployment: New DAGDriver deployment
-            with executor serve dag as init args.
-    """
-
-    def replace_with_handle(node):
-        if isinstance(node, DeploymentExecutorNode):
-            return node._deployment_handle
-        elif isinstance(node, DeploymentFunctionExecutorNode):
-            if len(node.get_args()) == 0 and len(node.get_kwargs()) == 0:
-                return node._deployment_function_handle
-            else:
-                return RayServeDAGHandle(cloudpickle.dumps(node))
-        elif isinstance(node, DeploymentMethodExecutorNode):
-            return RayServeDAGHandle(cloudpickle.dumps(node))
-
-    (
-        replaced_deployment_init_args,
-        replaced_deployment_init_kwargs,
-    ) = serve_executor_dag_root_node.apply_functional(
-        [
-            serve_executor_dag_root_node.get_args(),
-            serve_executor_dag_root_node.get_kwargs(),
-        ],
-        predictate_fn=lambda node: isinstance(
-            node,
-            (
-                DeploymentExecutorNode,
-                DeploymentFunctionExecutorNode,
-                DeploymentMethodExecutorNode,
-            ),
-        ),
-        apply_fn=replace_with_handle,
-    )
-
-    return original_driver_deployment.options(
-        _init_args=replaced_deployment_init_args,
-        _init_kwargs=replaced_deployment_init_kwargs,
-        _internal=True,
-    )
-
-
-def get_pipeline_input_node(serve_dag_root_node: DAGNode):
-    """Return the InputNode singleton node from serve dag, and throw
-    exceptions if we didn't find any, or found more than one.
-
-    Args:
-        ray_dag_root_node: DAGNode acting as root of a Ray authored DAG. It
-            should be executable via `ray_dag_root_node.execute(user_input)`
-            and should have `InputNode` in it.
-    Returns
-        pipeline_input_node: Singleton input node for the serve pipeline.
-    """
-
-    input_nodes = []
-
-    def extractor(dag_node):
-        if isinstance(dag_node, InputNode):
-            input_nodes.append(dag_node)
-
-    serve_dag_root_node.apply_recursive(extractor)
-    assert len(input_nodes) == 1, (
-        "There should be one and only one InputNode in the DAG. "
-        f"Found {len(input_nodes)} InputNode(s) instead."
-    )
-
-    return input_nodes[0]
 
 
 def process_ingress_deployment_in_serve_dag(

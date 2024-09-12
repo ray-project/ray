@@ -66,7 +66,7 @@ There is no relationship between the Ray Autoscaler and the Kubernetes
 [Vertical Pod Autoscaler](https://github.com/kubernetes/autoscaler/tree/master/vertical-pod-autoscaler) (VPA),
 which is meant to size individual Pods to the appropriate size based on current and past usage.
 If you find that the load on your individual Ray Pods is too high, there are a number
-of manual techniques to decrease the load
+of manual techniques to decrease the load.
 One method is to schedule fewer tasks/actors per node by increasing the resource
 requirements specified in the `ray.remote` annotation.
 For example, changing `@ray.remote(num_cpus=2)` to `@ray.remote(num_cpus=4)`

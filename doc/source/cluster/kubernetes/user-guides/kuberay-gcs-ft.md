@@ -34,7 +34,7 @@ See {ref}`Ray Serve end-to-end fault tolerance documentation <serve-e2e-ft-guide
 ### Step 1: Create a Kubernetes cluster with Kind
 
 ```sh
-kind create cluster --image=kindest/node:v1.23.0
+kind create cluster --image=kindest/node:v1.26.0
 ```
 
 ### Step 2: Install the KubeRay operator
@@ -48,7 +48,7 @@ curl -LO https://raw.githubusercontent.com/ray-project/kuberay/v1.0.0/ray-operat
 kubectl apply -f ray-cluster.external-redis.yaml
 ```
 
-### Step 4: Verify the Kubernetes cluster status 
+### Step 4: Verify the Kubernetes cluster status
 
 ```sh
 # Step 4.1: List all Pods in the `default` namespace.
@@ -223,14 +223,16 @@ KEYS *
 # [Expected output]: (empty list or set)
 ```
 
-Starting from KubeRay v1.0.0, the KubeRay operator creates a Kubernetes Job to delete the Redis key when a user removes the RayCluster custom resource.
-To ensure Redis cleanup, the KubeRay operator adds a Kubernetes finalizer to the RayCluster with GCS fault tolerance enabled.
+In KubeRay v1.0.0, the KubeRay operator adds a Kubernetes finalizer to the RayCluster with GCS fault tolerance enabled to ensure Redis cleanup.
 KubeRay only removes this finalizer after the Kubernetes Job successfully cleans up Redis.
 
 * In other words, if the Kubernetes Job fails, the RayCluster won't be deleted. In that case, you should remove the finalizer and cleanup Redis manually.
   ```shell
   kubectl patch rayclusters.ray.io raycluster-external-redis --type json --patch='[ { "op": "remove", "path": "/metadata/finalizers" } ]'
   ```
+
+Starting with KubeRay v1.1.0, KubeRay changes the Redis cleanup behavior from a mandatory to a best-effort basis.
+KubeRay still removes the Kubernetes finalizer from the RayCluster if the Kubernetes Job fails, thereby unblocking the deletion of the RayCluster.
 
 Users can turn off this by setting the feature gate value `ENABLE_GCS_FT_REDIS_CLEANUP`.
 Refer to the [KubeRay GCS fault tolerance configurations](kuberay-redis-cleanup-gate) section for more details.
@@ -308,7 +310,21 @@ Refer to [this section](kuberay-external-storage-namespace-example) in the earli
 (kuberay-redis-cleanup-gate)=
 ### 4. Turn off Redis cleanup
 
-* `ENABLE_GCS_FT_REDIS_CLEANUP`: The feature gate `ENABLE_GCS_FT_REDIS_CLEANUP` is true by default, and users can turn if off by setting the environment variable in [KubeRay operator's Helm chart](https://github.com/ray-project/kuberay/blob/master/helm-chart/kuberay-operator/values.yaml).
+* `ENABLE_GCS_FT_REDIS_CLEANUP`: True by default. You can turn this feature off by setting the environment variable in the [KubeRay operator's Helm chart](https://github.com/ray-project/kuberay/blob/master/helm-chart/kuberay-operator/values.yaml).
+
+```{admonition} Key eviction setup on Redis
+If you disable `ENABLE_GCS_FT_REDIS_CLEANUP` but want Redis to remove GCS metadata automatically,
+set these two options in your `redis.conf` or in the command line options of your redis-server command [(example)](https://github.com/ray-project/ray/pull/40949#issuecomment-1799057691):
+
+* `maxmemory=<your_memory_limit>`
+* `maxmemory-policy=allkeys-lru`
+
+These two options instruct Redis to delete the least recently used keys when it reaches the `maxmemory` limit.
+See [Key eviction](https://redis.io/docs/reference/eviction/) from Redis for more information.
+
+Note that Redis does this eviction and it doesn't guarantee that
+Ray won't use the deleted keys.
+```
 
 ## Next steps
 

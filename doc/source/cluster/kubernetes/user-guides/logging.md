@@ -179,7 +179,7 @@ Run the following command to create a ConfigMap named `cluster-info` with the cl
 
 ```shell
 ClusterName=fluent-bit-demo
-RegionName=us-west-2  
+RegionName=us-west-2
 FluentBitHttpPort='2020'
 FluentBitReadFromHead='Off'
 [[ ${FluentBitReadFromHead} = 'On' ]] && FluentBitReadFromTail='Off'|| FluentBitReadFromTail='On'
@@ -245,16 +245,20 @@ Learn how to write filters in this [filter pattern syntax doc](https://docs.aws.
 (redirect-to-stderr)=
 ## Redirecting Ray logs to stderr
 
-By default, Ray writes logs to files under the ``/tmp/ray/session_*/logs`` directory. If you prefer to redirect logs to stderr of the host pods instead, set the environment variable ``RAY_LOG_TO_STDERR=1`` on all Ray nodes. This practice is not recommended but may be useful if your log processing tool only captures log records written to stderr.
+By default, Ray writes logs to files in the `/tmp/ray/session_*/logs` directory.
+If your log processing tool is capable of capturing log records written to stderr, you can redirect Ray logs to the stderr stream of Ray containers by setting the environment variable `RAY_LOG_TO_STDERR=1` on all Ray nodes.
 
-```{admonition} Alert
+```{admonition} Alert: this practice isn't recommended.
 :class: caution
-There are known issues with this feature. For example, it may break features like {ref}`Worker log redirection to Driver <log-redirection-to-driver>`. If those features are wanted, use the {ref}`Fluent Bit solution <kuberay-fluentbit>` above.
 
-For Clusters on VMs, do not redirect logs to stderr. Follow {ref}`this guide <vm-logging>` to persist logs.
+If `RAY_LOG_TO_STDERR=1` is set, Ray doesn't write logs to files.
+Consequently, this behavior can cause some Ray features that rely on log files to malfunction.
+For instance, {ref}`worker log redirection to driver <log-redirection-to-driver>` doesn't work if you redirect Ray logs to stderr.
+If you need these features, consider using the {ref}`Fluent Bit solution <kuberay-fluentbit>` mentioned above.
+For clusters on VMs, don't redirect logs to stderr. Instead, follow {ref}`this guide <vm-logging>` to persist logs.
 ```
 
-Redirecting logging to stderr also prepends a ``({component})`` prefix, for example ``(raylet)``, to each log record messages.
+Redirecting logging to stderr also prepends a `({component})` prefix, for example, `(raylet)`, to each log record message.
 
 ```bash
 [2022-01-24 19:42:02,978 I 1829336 1829336] (gcs_server) grpc_server.cc:103: GcsServer server started, listening on port 50009.
@@ -263,7 +267,7 @@ Redirecting logging to stderr also prepends a ``({component})`` prefix, for exam
 2022-01-24 19:42:07,500 INFO (dashboard_agent) agent.py:105 -- Dashboard agent grpc address: 0.0.0.0:49228
 ```
 
-These prefixes allow you to filter the stderr stream of logs down to the component of interest. Note that multi-line log records do **not** have this component marker at the beginning of each line.
+These prefixes allow you to filter the stderr stream of logs by the component of interest. Note, however, that multi-line log records **don't** have this component marker at the beginning of each line.
 
 Follow the steps below to set the environment variable ``RAY_LOG_TO_STDERR=1`` on all Ray nodes
 
@@ -283,12 +287,9 @@ Follow the steps below to set the environment variable ``RAY_LOG_TO_STDERR=1`` o
   :::
 
   :::{tab-item} KubeRay
-  Set `RAY_LOG_TO_STDERR` to `1` in `spec.headGroupSpec.template.spec.containers.env` and `spec.workerGroupSpec.template.spec.containers.env`. Check out this [example YAML file](https://gist.github.com/scottsun94/da4afda045d6e1cc32f9ccd6c33281c2)
-
+  Set the `RAY_LOG_TO_STDERR` environment variable to `1` in the Ray container of each Ray Pod.
+  Use this [example YAML file](https://gist.github.com/kevin85421/3d676abae29ebd5677428ddbbd4c8d74) as a reference.
   :::
 
 
   ::::
-
-
-

@@ -31,13 +31,14 @@
 #include "ray/rpc/gcs_server/gcs_rpc_server.h"
 #include "ray/rpc/node_manager/node_manager_client.h"
 #include "ray/rpc/node_manager/node_manager_client_pool.h"
+#include "ray/util/event.h"
 #include "src/ray/protobuf/gcs.pb.h"
 
 namespace ray {
-class GcsMonitorServerTest;
 namespace gcs {
 
 class GcsAutoscalerStateManagerTest;
+class GcsStateTest;
 /// GcsNodeManager is responsible for managing and monitoring nodes as well as handing
 /// node and resource related rpc requests.
 /// This class is not thread-safe.
@@ -63,6 +64,11 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
                           rpc::SendReplyCallback send_reply_callback) override;
 
   /// Handle unregister rpc request come from raylet.
+  void HandleUnregisterNode(rpc::UnregisterNodeRequest request,
+                            rpc::UnregisterNodeReply *reply,
+                            rpc::SendReplyCallback send_reply_callback) override;
+
+  /// Handle unregister rpc request come from raylet.
   void HandleDrainNode(rpc::DrainNodeRequest request,
                        rpc::DrainNodeReply *reply,
                        rpc::SendReplyCallback send_reply_callback) override;
@@ -82,20 +88,36 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
                         rpc::CheckAliveReply *reply,
                         rpc::SendReplyCallback send_reply_callback) override;
 
-  void OnNodeFailure(const NodeID &node_id);
+  /// Handle a node failure. This will mark the failed node as dead in gcs
+  /// node table.
+  ///
+  /// \param node_id The ID of the failed node.
+  /// \param node_table_updated_callback The status callback function after
+  /// faled node info is updated to gcs node table.
+  void OnNodeFailure(const NodeID &node_id,
+                     const StatusCallback &node_table_updated_callback);
 
   /// Add an alive node.
   ///
   /// \param node The info of the node to be added.
   void AddNode(std::shared_ptr<rpc::GcsNodeInfo> node);
 
-  /// Remove from alive nodes.
+  /// Set the node to be draining.
+  ///
+  /// \param node_id The ID of the draining node. This node must already
+  /// be in the alive nodes.
+  /// \param request The drain node request.
+  void SetNodeDraining(const NodeID &node_id,
+                       std::shared_ptr<rpc::autoscaler::DrainNodeRequest> request);
+
+  /// Remove a node from alive nodes. The node's death information will also be set.
   ///
   /// \param node_id The ID of the node to be removed.
-  /// \param is_intended False if this is triggered by `node_failure_detector_`, else
-  /// True.
+  /// \param node_death_info The node death info to set.
+  /// \return The removed node, with death info set. If the node is not found, return
+  /// nullptr.
   std::shared_ptr<rpc::GcsNodeInfo> RemoveNode(const NodeID &node_id,
-                                               bool is_intended = false);
+                                               const rpc::NodeDeathInfo &node_death_info);
 
   /// Get alive node by ID.
   ///
@@ -146,6 +168,7 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
 
   /// Drain the given node.
   /// Idempotent.
+  /// This is technically not draining a node. It should be just called "kill node".
   virtual void DrainNode(const NodeID &node_id);
 
  private:
@@ -155,8 +178,65 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
   /// \param node The node which is dead.
   void AddDeadNodeToCache(std::shared_ptr<rpc::GcsNodeInfo> node);
 
+  /// Infer death cause of the node based on existing draining requests.
+  ///
+  /// \param node_id The ID of the node. The node must not be removed
+  /// from alive nodes yet.
+  /// \return The inferred death info of the node.
+  rpc::NodeDeathInfo InferDeathInfo(const NodeID &node_id);
+
+  void WriteNodeExportEvent(rpc::GcsNodeInfo node_info) const;
+
+  rpc::ExportNodeData::GcsNodeState ConvertGCSNodeStateToExport(
+      rpc::GcsNodeInfo::GcsNodeState node_state) const {
+    switch (node_state) {
+    case rpc::GcsNodeInfo_GcsNodeState::GcsNodeInfo_GcsNodeState_ALIVE:
+      return rpc::ExportNodeData_GcsNodeState::ExportNodeData_GcsNodeState_ALIVE;
+    case rpc::GcsNodeInfo_GcsNodeState::GcsNodeInfo_GcsNodeState_DEAD:
+      return rpc::ExportNodeData_GcsNodeState::ExportNodeData_GcsNodeState_DEAD;
+    default:
+      // Unknown rpc::GcsNodeInfo::GcsNodeState value
+      RAY_LOG(FATAL) << "Invalid value for rpc::GcsNodeInfo::GcsNodeState "
+                     << rpc::GcsNodeInfo::GcsNodeState_Name(node_state);
+      return rpc::ExportNodeData_GcsNodeState::ExportNodeData_GcsNodeState_DEAD;
+    }
+  }
+
+  rpc::ExportNodeData::NodeDeathInfo::Reason ConvertNodeDeathReasonToExport(
+      rpc::NodeDeathInfo::Reason reason) const {
+    switch (reason) {
+    case rpc::NodeDeathInfo_Reason::NodeDeathInfo_Reason_UNSPECIFIED:
+      return rpc::ExportNodeData_NodeDeathInfo_Reason::
+          ExportNodeData_NodeDeathInfo_Reason_UNSPECIFIED;
+    case rpc::NodeDeathInfo_Reason::NodeDeathInfo_Reason_EXPECTED_TERMINATION:
+      return rpc::ExportNodeData_NodeDeathInfo_Reason::
+          ExportNodeData_NodeDeathInfo_Reason_EXPECTED_TERMINATION;
+    case rpc::NodeDeathInfo_Reason::NodeDeathInfo_Reason_UNEXPECTED_TERMINATION:
+      return rpc::ExportNodeData_NodeDeathInfo_Reason::
+          ExportNodeData_NodeDeathInfo_Reason_UNEXPECTED_TERMINATION;
+    case rpc::NodeDeathInfo_Reason::NodeDeathInfo_Reason_AUTOSCALER_DRAIN_PREEMPTED:
+      return rpc::ExportNodeData_NodeDeathInfo_Reason::
+          ExportNodeData_NodeDeathInfo_Reason_AUTOSCALER_DRAIN_PREEMPTED;
+    case rpc::NodeDeathInfo_Reason::NodeDeathInfo_Reason_AUTOSCALER_DRAIN_IDLE:
+      return rpc::ExportNodeData_NodeDeathInfo_Reason::
+          ExportNodeData_NodeDeathInfo_Reason_AUTOSCALER_DRAIN_IDLE;
+    default:
+      // Unknown rpc::GcsNodeInfo::GcsNodeState value
+      RAY_LOG(FATAL) << "Invalid value for rpc::NodeDeathInfo::Reason "
+                     << rpc::NodeDeathInfo::Reason_Name(reason);
+      return rpc::ExportNodeData_NodeDeathInfo_Reason::
+          ExportNodeData_NodeDeathInfo_Reason_UNSPECIFIED;
+    }
+  }
+
   /// Alive nodes.
   absl::flat_hash_map<NodeID, std::shared_ptr<rpc::GcsNodeInfo>> alive_nodes_;
+  /// Draining nodes.
+  /// This map is used to store the nodes which have received the drain request.
+  /// Invariant: its keys should alway be a subset of the keys of `alive_nodes_`,
+  /// and entry in it should be removed whenever a node is removed from `alive_nodes_`.
+  absl::flat_hash_map<NodeID, std::shared_ptr<rpc::autoscaler::DrainNodeRequest>>
+      draining_nodes_;
   /// Dead nodes.
   absl::flat_hash_map<NodeID, std::shared_ptr<rpc::GcsNodeInfo>> dead_nodes_;
   /// The nodes are sorted according to the timestamp, and the oldest is at the head of
@@ -193,8 +273,8 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
                    boost::bimaps::unordered_multiset_of<std::string>>;
   NodeIDAddrBiMap node_map_;
 
-  friend GcsMonitorServerTest;
   friend GcsAutoscalerStateManagerTest;
+  friend GcsStateTest;
 };
 
 }  // namespace gcs

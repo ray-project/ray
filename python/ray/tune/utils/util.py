@@ -12,22 +12,21 @@ from threading import Thread
 from typing import Any, Callable, Dict, List, Optional, Sequence, Type, Union
 
 import numpy as np
-import psutil
+
 import ray
-from ray.util.annotations import DeveloperAPI, PublicAPI
-from ray.air._internal.json import SafeFallbackEncoder  # noqa
-from ray.air._internal.util import (  # noqa: F401
-    is_nan,
-    is_nan_or_inf,
-)
 from ray._private.dict import (  # noqa: F401
-    merge_dicts,
     deep_update,
     flatten_dict,
+    merge_dicts,
     unflatten_dict,
     unflatten_list_dict,
     unflattened_lookup,
 )
+from ray.air._internal.json import SafeFallbackEncoder  # noqa
+from ray.air._internal.util import is_nan, is_nan_or_inf  # noqa: F401
+from ray.util.annotations import DeveloperAPI, PublicAPI
+
+import psutil
 
 logger = logging.getLogger(__name__)
 
@@ -335,7 +334,7 @@ def diagnose_serialization(trainable: Callable):
         assert diagnose_serialization(test) is True
 
     """
-    from ray.tune.registry import register_trainable, _check_serializability
+    from ray.tune.registry import _check_serializability, register_trainable
 
     def check_variables(objects, failure_set, printer):
         for var_name, variable in objects.items():
@@ -475,7 +474,7 @@ def wait_for_gpu(
     .. code-block:: python
 
         def tune_func(config):
-            tune.util.wait_for_gpu()
+            tune.utils.wait_for_gpu()
             train()
 
         tuner = tune.Tuner(
@@ -582,40 +581,6 @@ def validate_save_restore(
     res = ray.get(trainable_2.train.remote())
     assert res[TRAINING_ITERATION] == 5
     return True
-
-
-def _detect_checkpoint_function(train_func, abort=False, partial=False):
-    """Use checkpointing if any arg has "checkpoint_dir" and args = 2"""
-    func_sig = inspect.signature(train_func)
-    validated = True
-    try:
-        # check if signature is func(config, checkpoint_dir=None)
-        if partial:
-            func_sig.bind_partial({}, checkpoint_dir="tmp/path")
-        else:
-            func_sig.bind({}, checkpoint_dir="tmp/path")
-    except Exception as e:
-        logger.debug(str(e))
-        validated = False
-    if abort and not validated:
-        func_args = inspect.getfullargspec(train_func).args
-        raise ValueError(
-            "Provided training function must have 1 `config` argument "
-            "`func(config)`. Got {}".format(func_args)
-        )
-    return validated
-
-
-def _detect_reporter(func):
-    """Use reporter if any arg has "reporter" and args = 2"""
-    func_sig = inspect.signature(func)
-    use_reporter = True
-    try:
-        func_sig.bind({}, reporter=None)
-    except Exception as e:
-        logger.debug(str(e))
-        use_reporter = False
-    return use_reporter
 
 
 def _detect_config_single(func):

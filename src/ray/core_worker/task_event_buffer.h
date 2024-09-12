@@ -27,6 +27,7 @@
 #include "ray/common/task/task_spec.h"
 #include "ray/gcs/gcs_client/gcs_client.h"
 #include "ray/util/counter_map.h"
+#include "src/ray/protobuf/export_api/export_task_event.pb.h"
 #include "src/ray/protobuf/gcs.pb.h"
 
 namespace ray {
@@ -56,6 +57,12 @@ class TaskEvent {
   /// rpc::TaskEvents.
   /// \param[out] rpc_task_events The rpc task event to be filled.
   virtual void ToRpcTaskEvents(rpc::TaskEvents *rpc_task_events) = 0;
+
+  /// Convert itself a rpc::ExportTaskEventData
+  ///
+  /// \param[out] rpc_task_export_event_data The rpc export task event data to be filled.
+  virtual void ToRpcTaskExportEvents(
+      std::shared_ptr<rpc::ExportTaskEventData> rpc_task_export_event_data) = 0;
 
   /// If it is a profile event.
   virtual bool IsProfileEvent() const = 0;
@@ -94,6 +101,8 @@ class TaskStatusEvent : public TaskEvent {
 
     TaskStateUpdate(uint32_t pid) : pid_(pid) {}
 
+    TaskStateUpdate(bool is_debugger_paused) : is_debugger_paused_(is_debugger_paused) {}
+
    private:
     friend class TaskStatusEvent;
 
@@ -109,6 +118,8 @@ class TaskStatusEvent : public TaskEvent {
     const std::string actor_repr_name_ = "";
     /// Worker's pid if it's a RUNNING status change.
     const absl::optional<uint32_t> pid_ = absl::nullopt;
+    /// Is the task is paused by the debugger.
+    const absl::optional<bool> is_debugger_paused_ = absl::nullopt;
   };
 
   explicit TaskStatusEvent(
@@ -121,6 +132,9 @@ class TaskStatusEvent : public TaskEvent {
       absl::optional<const TaskStateUpdate> state_update = absl::nullopt);
 
   void ToRpcTaskEvents(rpc::TaskEvents *rpc_task_events) override;
+
+  void ToRpcTaskExportEvents(
+      std::shared_ptr<rpc::ExportTaskEventData> rpc_task_export_event_data) override;
 
   bool IsProfileEvent() const override { return false; }
 
@@ -149,6 +163,9 @@ class TaskProfileEvent : public TaskEvent {
 
   void ToRpcTaskEvents(rpc::TaskEvents *rpc_task_events) override;
 
+  void ToRpcTaskExportEvents(
+      std::shared_ptr<rpc::ExportTaskEventData> rpc_task_export_event_data) override;
+
   bool IsProfileEvent() const override { return true; }
 
   void SetEndTime(int64_t end_time) { end_time_ = end_time; }
@@ -173,6 +190,7 @@ enum TaskEventBufferCounter {
   kNumTaskProfileEventsStored,
   kNumTaskStatusEventsStored,
   kNumDroppedTaskAttemptsStored,
+  kNumTaskStatusEventsForExportAPIStored,
   kTotalNumTaskProfileEventDropped,
   kTotalNumTaskStatusEventDropped,
   kTotalNumTaskAttemptsReported,
@@ -258,7 +276,7 @@ class TaskEventBufferImpl : public TaskEventBuffer {
   /// Constructor
   ///
   /// \param gcs_client GCS client
-  TaskEventBufferImpl(std::unique_ptr<gcs::GcsClient> gcs_client);
+  TaskEventBufferImpl(std::shared_ptr<gcs::GcsClient> gcs_client);
 
   ~TaskEventBufferImpl() override;
 
@@ -291,10 +309,15 @@ class TaskEventBufferImpl : public TaskEventBuffer {
   /// Get data related to task status events to be send to GCS.
   ///
   /// \param[out] status_events_to_send Task status events to be sent.
+  /// \param[out] status_events_to_write_for_export Task status events that will
+  ///              be written to the Export API. This includes both status events
+  ///              that are sent to GCS, and as many dropped status events that
+  ///              fit in the buffer.
   /// \param[out] dropped_task_attempts_to_send Task attempts that were dropped due to
   ///             status events being dropped.
   void GetTaskStatusEventsToSend(
-      std::vector<std::unique_ptr<TaskEvent>> *status_events_to_send,
+      std::vector<std::shared_ptr<TaskEvent>> *status_events_to_send,
+      std::vector<std::shared_ptr<TaskEvent>> *status_events_to_write_for_export,
       absl::flat_hash_set<TaskAttempt> *dropped_task_attempts_to_send)
       ABSL_LOCKS_EXCLUDED(mutex_);
 
@@ -302,7 +325,7 @@ class TaskEventBufferImpl : public TaskEventBuffer {
   ///
   /// \param[out] profile_events_to_send Task profile events to be sent.
   void GetTaskProfileEventsToSend(
-      std::vector<std::unique_ptr<TaskEvent>> *profile_events_to_send)
+      std::vector<std::shared_ptr<TaskEvent>> *profile_events_to_send)
       ABSL_LOCKS_EXCLUDED(profile_mutex_);
 
   /// Get the task events to GCS.
@@ -313,9 +336,20 @@ class TaskEventBufferImpl : public TaskEventBuffer {
   ///        status events being dropped.
   /// \return A unique_ptr to rpc::TaskEvents to be sent to GCS.
   std::unique_ptr<rpc::TaskEventData> CreateDataToSend(
-      std::vector<std::unique_ptr<TaskEvent>> &&status_events_to_send,
-      std::vector<std::unique_ptr<TaskEvent>> &&profile_events_to_send,
+      std::vector<std::shared_ptr<TaskEvent>> &&status_events_to_send,
+      std::vector<std::shared_ptr<TaskEvent>> &&profile_events_to_send,
       absl::flat_hash_set<TaskAttempt> &&dropped_task_attempts_to_send);
+
+  /// Write task events for the Export API.
+  ///
+  /// \param status_events_to_write_for_export Task status events that will
+  ///              be written to the Export API. This includes both status events
+  ///              that are sent to GCS, and as many dropped status events that
+  ///              fit in the buffer.
+  /// \param profile_events_to_send Task profile events to be written.
+  void WriteExportData(
+      std::vector<std::shared_ptr<TaskEvent>> &&status_events_to_write_for_export,
+      std::vector<std::shared_ptr<TaskEvent>> &&profile_events_to_send);
 
   /// Reset the counters during flushing data to GCS.
   void ResetCountersForFlush();
@@ -377,14 +411,19 @@ class TaskEventBufferImpl : public TaskEventBuffer {
   PeriodicalRunner periodical_runner_;
 
   /// Client to the GCS used to push profile events to it.
-  std::unique_ptr<gcs::GcsClient> gcs_client_ ABSL_GUARDED_BY(mutex_);
+  std::shared_ptr<gcs::GcsClient> gcs_client_ ABSL_GUARDED_BY(mutex_);
 
   /// True if the TaskEventBuffer is enabled.
   std::atomic<bool> enabled_ = false;
 
   /// Circular buffered task status events.
-  boost::circular_buffer<std::unique_ptr<TaskEvent>> status_events_
+  boost::circular_buffer<std::shared_ptr<TaskEvent>> status_events_
       ABSL_GUARDED_BY(mutex_);
+
+  /// Status events that will be written for the export API. This could
+  /// contain events that were dropped from being sent to GCS. A circular
+  /// buffer is used to limit memory.
+  boost::circular_buffer<std::shared_ptr<TaskEvent>> status_events_for_export_;
 
   /// Buffered task attempts that were dropped due to status events being dropped.
   /// This will be sent to GCS to surface the dropped task attempts.
@@ -392,7 +431,7 @@ class TaskEventBufferImpl : public TaskEventBuffer {
       ABSL_GUARDED_BY(mutex_);
 
   /// Buffered task profile events. A FIFO queue to be sent to GCS.
-  absl::flat_hash_map<TaskAttempt, std::vector<std::unique_ptr<TaskEvent>>>
+  absl::flat_hash_map<TaskAttempt, std::vector<std::shared_ptr<TaskEvent>>>
       profile_events_ ABSL_GUARDED_BY(profile_mutex_);
 
   /// Stats counter map.
@@ -402,6 +441,9 @@ class TaskEventBufferImpl : public TaskEventBuffer {
   /// GCS with too many calls. There is no point sending more events if GCS could not
   /// process them quick enough.
   std::atomic<bool> grpc_in_progress_ = false;
+
+  /// If true, task events are exported for Export API
+  bool export_event_write_enabled_ = false;
 
   FRIEND_TEST(TaskEventBufferTestManualStart, TestGcsClientFail);
   FRIEND_TEST(TaskEventBufferTestBatchSend, TestBatchedSend);
@@ -413,6 +455,7 @@ class TaskEventBufferImpl : public TaskEventBuffer {
   FRIEND_TEST(TaskEventBufferTestLimitBuffer, TestBufferSizeLimitStatusEvents);
   FRIEND_TEST(TaskEventBufferTestLimitProfileEvents, TestBufferSizeLimitProfileEvents);
   FRIEND_TEST(TaskEventBufferTestLimitProfileEvents, TestLimitProfileEventsPerTask);
+  FRIEND_TEST(TaskEventTestWriteExport, TestWriteTaskExportEvents);
 };
 
 }  // namespace worker

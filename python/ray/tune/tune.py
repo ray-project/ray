@@ -9,6 +9,7 @@ import threading
 import time
 import warnings
 from typing import (
+    TYPE_CHECKING,
     Any,
     Callable,
     Dict,
@@ -17,7 +18,6 @@ from typing import (
     Sequence,
     Type,
     Union,
-    TYPE_CHECKING,
 )
 
 import ray
@@ -25,62 +25,52 @@ from ray.air._internal import usage as air_usage
 from ray.air._internal.usage import AirEntrypoint
 from ray.air.util.node import _force_on_current_node
 from ray.train import CheckpointConfig, SyncConfig
-from ray.train.constants import RAY_CHDIR_TO_TRIAL_DIR, _DEPRECATED_VALUE
+from ray.train.constants import _DEPRECATED_VALUE, RAY_CHDIR_TO_TRIAL_DIR
 from ray.tune.analysis import ExperimentAnalysis
 from ray.tune.callback import Callback
 from ray.tune.error import TuneError
+from ray.tune.execution.placement_groups import PlacementGroupFactory
 from ray.tune.execution.tune_controller import TuneController
-from ray.tune.experiment import Experiment, _convert_to_experiment_list
-from ray.tune.experimental.output import (
-    get_air_verbosity,
-    IS_NOTEBOOK,
-    AirVerbosity,
-)
-
+from ray.tune.experiment import Experiment, Trial, _convert_to_experiment_list
+from ray.tune.experimental.output import IS_NOTEBOOK, AirVerbosity, get_air_verbosity
 from ray.tune.impl.placeholder import create_resolvers_map, inject_placeholders
 from ray.tune.logger import TBXLoggerCallback
 from ray.tune.progress_reporter import (
     ProgressReporter,
-    _detect_reporter,
     _detect_progress_metrics,
+    _detect_reporter,
     _prepare_progress_reporter_for_ray_client,
     _stream_client_output,
 )
-from ray.tune.registry import get_trainable_cls, is_function_trainable
+from ray.tune.registry import get_trainable_cls
 
 # Must come last to avoid circular imports
 from ray.tune.schedulers import (
     FIFOScheduler,
     PopulationBasedTraining,
     PopulationBasedTrainingReplay,
-    ResourceChangingScheduler,
     TrialScheduler,
 )
 from ray.tune.schedulers.util import (
     _set_search_properties_backwards_compatible as scheduler_set_search_props,
 )
-from ray.tune.stopper import Stopper
 from ray.tune.search import (
     BasicVariantGenerator,
-    SearchAlgorithm,
-    SearchGenerator,
     ConcurrencyLimiter,
+    SearchAlgorithm,
     Searcher,
+    SearchGenerator,
     create_searcher,
 )
 from ray.tune.search.util import (
     _set_search_properties_backwards_compatible as searcher_set_search_props,
 )
 from ray.tune.search.variant_generator import _has_unresolved_values
+from ray.tune.stopper import Stopper
 from ray.tune.trainable import Trainable
-from ray.tune.experiment import Trial
+from ray.tune.tune_config import ResumeConfig
 from ray.tune.utils.callback import _create_default_callbacks
-from ray.tune.utils.log import (
-    Verbosity,
-    has_verbosity,
-    set_verbosity,
-)
-from ray.tune.execution.placement_groups import PlacementGroupFactory
+from ray.tune.utils.log import Verbosity, has_verbosity, set_verbosity
 from ray.util.annotations import PublicAPI
 from ray.util.queue import Queue
 
@@ -111,6 +101,49 @@ def _get_trainable(
         return None
 
     return trainable_cls
+
+
+def _build_resume_config_from_legacy_config(
+    resume: Union[str, bool]
+) -> Optional[ResumeConfig]:
+    """Converts the legacy resume (str, bool) to a ResumeConfig object.
+    Returns None if resume is False.
+    """
+    if resume is False:
+        return None
+    if resume is True:
+        return ResumeConfig()
+
+    # Parse resume string, e.g. AUTO+ERRORED
+    resume_settings = resume.split("+")
+    resume_str = resume_settings[0]
+
+    if resume_str in ("LOCAL", "REMOTE", "PROMPT", "ERRORED_ONLY"):
+        raise DeprecationWarning(
+            f"'{resume_str}' is deprecated. "
+            "Please pass in one of (True, False, 'AUTO')."
+        )
+
+    resume_config = ResumeConfig()
+    for setting in resume_settings[1:]:
+        if setting == "ERRORED":
+            resume_config = ResumeConfig(errored=ResumeConfig.ResumeType.RESUME)
+        elif setting == "RESTART_ERRORED":
+            resume_config = ResumeConfig(errored=ResumeConfig.ResumeType.RESTART)
+        elif setting == "ERRORED_ONLY":
+            resume_config = ResumeConfig(
+                unfinished=ResumeConfig.ResumeType.SKIP,
+                errored=ResumeConfig.ResumeType.RESUME,
+            )
+        elif setting == "RESTART_ERRORED_ONLY":
+            resume_config = ResumeConfig(
+                unfinished=ResumeConfig.ResumeType.SKIP,
+                errored=ResumeConfig.ResumeType.RESTART,
+            )
+        else:
+            raise ValueError(f"Invalid resume setting: '{setting}'")
+
+    return resume_config
 
 
 def _check_default_resources_override(
@@ -259,9 +292,9 @@ def run(
     max_failures: int = 0,
     fail_fast: bool = False,
     restore: Optional[str] = None,
-    server_port: Optional[int] = None,
-    resume: Union[bool, str] = False,
-    reuse_actors: Optional[bool] = None,
+    resume: Optional[Union[bool, str]] = None,
+    resume_config: Optional[ResumeConfig] = None,
+    reuse_actors: bool = False,
     raise_on_failed_trial: bool = True,
     callbacks: Optional[Sequence[Callback]] = None,
     max_concurrent_trials: Optional[int] = None,
@@ -310,12 +343,10 @@ def run(
         tune.run(my_trainable, config=space, stop={"training_iteration": 10})
 
         # Resumes training if a previous machine crashed
-        tune.run(my_trainable, config=space,
-                 local_dir=<path/to/dir>, resume=True)
-
-        # Rerun ONLY failed trials after an experiment is finished.
-        tune.run(my_trainable, config=space,
-                 local_dir=<path/to/dir>, resume="ERRORED_ONLY")
+        tune.run(
+            my_trainable, config=space,
+            storage_path=<path/to/dir>, name=<exp_name>, resume=True
+        )
 
     Args:
         run_or_experiment: If function|class|str, this is the algorithm or
@@ -397,14 +428,7 @@ def run(
             unique identifier (such as `Trial.trial_id`) is used in each trial's
             directory name. Otherwise, trials could overwrite artifacts and checkpoints
             of other trials. The return value cannot be a path.
-        chdir_to_trial_dir: Deprecated. Use `RAY_CHDIR_TO_TRIAL_DIR=0` instead.
-            Whether to change the working directory of each worker
-            to its corresponding trial directory. Defaults to `True` to prevent
-            contention between workers saving trial-level outputs.
-            If set to `False`, files are accessible with paths relative to the
-            original working directory. However, all workers on the same node now
-            share the same working directory, so be sure to use
-            `ray.train.get_context().get_trial_dir()` as the path to save any outputs.
+        chdir_to_trial_dir: Deprecated. Set the `RAY_CHDIR_TO_TRIAL_DIR` env var instead
         sync_config: Configuration object for syncing. See train.SyncConfig.
         export_formats: List of formats that exported at the end of
             the experiment. Default is None.
@@ -419,19 +443,11 @@ def run(
             is best used with `ray.init(local_mode=True)`).
         restore: Path to checkpoint. Only makes sense to set if
             running 1 trial. Defaults to None.
-        server_port: Port number for launching TuneServer.
-        resume: One of [True, False, "LOCAL", "REMOTE", "PROMPT", "AUTO"]. Can
+        resume: One of [True, False, "AUTO"]. Can
             be suffixed with one or more of ["+ERRORED", "+ERRORED_ONLY",
             "+RESTART_ERRORED", "+RESTART_ERRORED_ONLY"] (e.g. ``AUTO+ERRORED``).
-            "LOCAL"/True restores the checkpoint from the
-            local experiment directory, determined
-            by ``name`` and ``local_dir``.
-            "REMOTE" restores the checkpoint
-            from ``upload_dir`` (as passed to ``sync_config``).
-            "PROMPT" provides the CLI feedback.
-            False forces a new experiment.
-            "AUTO" will attempt to resume from a checkpoint and otherwise
-            start a new experiment.
+            `resume=True` and `resume="AUTO"` will attempt to resume from a
+            checkpoint and otherwise start a new experiment.
             The suffix "+ERRORED" resets and reruns errored trials upon resume -
             previous trial artifacts will be left untouched. It will try to continue
             from the last observed checkpoint.
@@ -439,14 +455,14 @@ def run(
             scratch. "+ERRORED_ONLY" and "+RESTART_ERRORED_ONLY" will disable
             resuming non-errored trials - they will be added as finished instead. New
             trials can still be generated by the search algorithm.
-            If resume is set but checkpoint does not exist,
-            ValueError will be thrown.
+        resume_config: [Experimental] Config object that controls how to resume
+            trials of different statuses. Can be used as a substitute to the
+            `resume` suffixes described above.
         reuse_actors: Whether to reuse actors between different trials
             when possible. This can drastically speed up experiments that start
             and stop actors often (e.g., PBT in time-multiplexing mode). This
             requires trials to have the same resource requirements.
-            Defaults to ``True`` for function trainables and ``False`` for
-            class and registered trainables.
+            Defaults to ``False``.
         raise_on_failed_trial: Raise TuneError if there exists failed
             trial (of ERROR state) when the experiments complete.
         callbacks: List of callbacks that will be called at different
@@ -462,6 +478,7 @@ def run(
         _remote: Whether to run the Tune driver in a remote function.
             This is disabled automatically if a custom trial executor is
             passed in. This is enabled by default in Ray client mode.
+        local_dir: Deprecated. Use `storage_path` instead.
         keep_checkpoints_num: Deprecated. use checkpoint_config instead.
         checkpoint_score_attr: Deprecated. use checkpoint_config instead.
         checkpoint_freq: Deprecated. use checkpoint_config instead.
@@ -484,9 +501,9 @@ def run(
 
     if _entrypoint == AirEntrypoint.TRAINER:
         error_message_map = {
-            "entrypoint": "Trainer(...)",
+            "entrypoint": "<FrameworkTrainer>(...)",
             "search_space_arg": "param_space",
-            "restore_entrypoint": 'Trainer.restore(path="{path}", ...)',
+            "restore_entrypoint": '<FrameworkTrainer>.restore(path="{path}", ...)',
         }
     elif _entrypoint == AirEntrypoint.TUNER:
         error_message_map = {
@@ -549,15 +566,29 @@ def run(
 
     del remote_run_kwargs
 
+    # TODO(justinvyu): [Deprecated] Remove in 2.30
+    ENV_VAR_DEPRECATION_MESSAGE = (
+        "The environment variable `{}` is deprecated. "
+        "It is no longer used and will not have any effect. "
+        "You should set the `storage_path` instead. Files will no longer be "
+        "written to `~/ray_results` as long as `storage_path` is set."
+        "See the docs: https://docs.ray.io/en/latest/train/user-guides/"
+        "persistent-storage.html#setting-the-local-staging-directory"
+    )
     if os.environ.get("TUNE_RESULT_DIR"):
-        # Deprecate: Raise in 2.6, remove in 2.7
-        warnings.warn(
-            "The TUNE_RESULT_DIR environment variable is deprecated and will be "
-            "removed in the future. If you want to set persistent storage to "
-            "a local directory, pass `storage_path` instead. If you are using "
-            "remote storage and want to control the local cache directory, "
-            "set the RAY_AIR_LOCAL_CACHE_DIR environment variable instead.",
-            DeprecationWarning,
+        raise DeprecationWarning(ENV_VAR_DEPRECATION_MESSAGE.format("TUNE_RESULT_DIR"))
+
+    if os.environ.get("RAY_AIR_LOCAL_CACHE_DIR"):
+        raise DeprecationWarning(
+            ENV_VAR_DEPRECATION_MESSAGE.format("RAY_AIR_LOCAL_CACHE_DIR")
+        )
+
+    if local_dir is not None:
+        raise DeprecationWarning(
+            "The `local_dir` argument is deprecated. "
+            "You should set the `storage_path` instead. "
+            "See the docs: https://docs.ray.io/en/latest/train/user-guides/"
+            "persistent-storage.html#setting-the-local-staging-directory"
         )
 
     ray._private.usage.usage_lib.record_library_usage("tune")
@@ -591,13 +622,6 @@ def run(
         air_verbosity = None
 
     if air_verbosity is not None:
-        logger.info(
-            f"[output] This will use the new output engine with verbosity "
-            f"{air_verbosity}. To disable the new output and use the legacy "
-            f"output engine, set the environment variable RAY_AIR_NEW_OUTPUT=0. "
-            f"For more information, please see "
-            f"https://github.com/ray-project/ray/issues/36949"
-        )
         # Disable old output engine
         set_verbosity(0)
     else:
@@ -615,12 +639,6 @@ def run(
         )
 
     sync_config = sync_config or SyncConfig()
-
-    # TODO(justinvyu): Finalize the local_dir vs. env var API in 2.8.
-    # For now, keep accepting both options.
-    if local_dir is not None:
-        os.environ["RAY_AIR_LOCAL_CACHE_DIR"] = local_dir
-
     checkpoint_config = checkpoint_config or CheckpointConfig()
 
     # For backward compatibility
@@ -668,16 +686,15 @@ def run(
         )
         checkpoint_config.checkpoint_at_end = checkpoint_at_end
 
+    # TODO(justinvyu): [Deprecated] Remove in 2.11.
     if chdir_to_trial_dir != _DEPRECATED_VALUE:
-        warnings.warn(
-            "`chdir_to_trial_dir` is deprecated and will be removed. "
+        raise DeprecationWarning(
+            "`chdir_to_trial_dir` is deprecated. "
             f"Use the {RAY_CHDIR_TO_TRIAL_DIR} environment variable instead. "
             "Set it to 0 to disable the default behavior of changing the "
             "working directory.",
             DeprecationWarning,
         )
-        if chdir_to_trial_dir is False:
-            os.environ[RAY_CHDIR_TO_TRIAL_DIR] = "0"
 
     if num_samples == -1:
         num_samples = sys.maxsize
@@ -705,39 +722,6 @@ def run(
                 f"to 1 instead."
             )
             os.environ["TUNE_RESULT_BUFFER_LENGTH"] = "1"
-
-    # If reuse_actors is unset, default to False for string and class trainables,
-    # and default to True for everything else (i.e. function trainables)
-    if reuse_actors is None:
-        trainable = (
-            run_or_experiment.run_identifier
-            if isinstance(run_or_experiment, Experiment)
-            else run_or_experiment
-        )
-        reuse_actors = (
-            # Only default to True for function trainables that meet certain conditions
-            is_function_trainable(trainable)
-            and not (
-                # Changing resources requires restarting actors
-                scheduler
-                and isinstance(scheduler, ResourceChangingScheduler)
-            )
-            and not (
-                # If GPUs are requested we could run into problems with device memory
-                _check_gpus_in_resources(resources_per_trial)
-            )
-            and not (
-                # If the resource request is overridden, we don't know if GPUs
-                # will be requested, yet, so default to False
-                _check_default_resources_override(trainable)
-            )
-            and not (
-                # Mixins do not work with reuse_actors as the mixin setup will only
-                # be invoked once
-                _check_mixin(trainable)
-            )
-        )
-        logger.debug(f"Auto-detected `reuse_actors={reuse_actors}`")
 
     if (
         isinstance(scheduler, (PopulationBasedTraining, PopulationBasedTrainingReplay))
@@ -921,15 +905,20 @@ def run(
         progress_reporter = None
 
     if air_verbosity is None:
-        progress_reporter = progress_reporter or _detect_reporter()
+        is_trainer = _entrypoint == AirEntrypoint.TRAINER
+        progress_reporter = progress_reporter or _detect_reporter(
+            _trainer_api=is_trainer
+        )
+
+    if resume is not None:
+        resume_config = resume_config or _build_resume_config_from_legacy_config(resume)
 
     runner_kwargs = dict(
         search_alg=search_alg,
         placeholder_resolvers=placeholder_resolvers,
         scheduler=scheduler,
         stopper=experiments[0].stopper,
-        resume=resume,
-        server_port=server_port,
+        resume_config=resume_config,
         fail_fast=fail_fast,
         callbacks=callbacks,
         metric=metric,
@@ -982,7 +971,7 @@ def run(
                 )
                 break
 
-    experiment_local_path = runner._storage.experiment_local_path
+    experiment_local_path = runner._storage.experiment_driver_staging_path
     experiment_dir_name = runner._storage.experiment_dir_name
 
     if any(isinstance(cb, TBXLoggerCallback) for cb in callbacks):
@@ -1014,10 +1003,17 @@ def run(
 
     tune_taken = time.time() - tune_start
 
+    final_sync_start = time.time()
     try:
         runner.checkpoint(force=True, wait=True)
-    except Exception as e:
-        logger.warning(f"Trial Runner checkpointing failed: {str(e)}")
+        logger.info(
+            "Wrote the latest version of all result files and experiment state to "
+            f"'{runner.experiment_path}' in {time.time() - final_sync_start:.4f}s."
+        )
+    except Exception:
+        logger.error(
+            "Experiment state snapshotting failed:", exc_info=True, stack_info=True
+        )
 
     if has_verbosity(Verbosity.V1_EXPERIMENT):
         _report_progress(runner, progress_reporter, done=True)
@@ -1075,11 +1071,11 @@ def run(
 def run_experiments(
     experiments: Union[Experiment, Mapping, Sequence[Union[Experiment, Mapping]]],
     scheduler: Optional[TrialScheduler] = None,
-    server_port: Optional[int] = None,
     verbose: Optional[Union[int, AirVerbosity, Verbosity]] = None,
     progress_reporter: Optional[ProgressReporter] = None,
-    resume: Union[bool, str] = False,
-    reuse_actors: Optional[bool] = None,
+    resume: Optional[Union[bool, str]] = None,
+    resume_config: Optional[ResumeConfig] = None,
+    reuse_actors: bool = False,
     raise_on_failed_trial: bool = True,
     concurrent: bool = True,
     callbacks: Optional[Sequence[Callback]] = None,
@@ -1127,10 +1123,10 @@ def run_experiments(
             remote_run.remote(
                 experiments,
                 scheduler,
-                server_port,
                 verbose,
                 progress_reporter,
                 resume,
+                resume_config,
                 reuse_actors,
                 raise_on_failed_trial,
                 concurrent,
@@ -1144,32 +1140,22 @@ def run_experiments(
     # and it conducts the implicit registration.
     experiments = _convert_to_experiment_list(experiments)
 
+    tune_run_params = dict(
+        verbose=verbose,
+        progress_reporter=progress_reporter,
+        resume=resume,
+        resume_config=resume_config,
+        reuse_actors=reuse_actors,
+        raise_on_failed_trial=raise_on_failed_trial,
+        scheduler=scheduler,
+        callbacks=callbacks,
+        _entrypoint=AirEntrypoint.TUNE_RUN_EXPERIMENTS,
+    )
+
     if concurrent:
-        return run(
-            experiments,
-            server_port=server_port,
-            verbose=verbose,
-            progress_reporter=progress_reporter,
-            resume=resume,
-            reuse_actors=reuse_actors,
-            raise_on_failed_trial=raise_on_failed_trial,
-            scheduler=scheduler,
-            callbacks=callbacks,
-            _entrypoint=AirEntrypoint.TUNE_RUN_EXPERIMENTS,
-        ).trials
+        return run(experiments, **tune_run_params).trials
     else:
         trials = []
         for exp in experiments:
-            trials += run(
-                exp,
-                server_port=server_port,
-                verbose=verbose,
-                progress_reporter=progress_reporter,
-                resume=resume,
-                reuse_actors=reuse_actors,
-                raise_on_failed_trial=raise_on_failed_trial,
-                scheduler=scheduler,
-                callbacks=callbacks,
-                _entrypoint=AirEntrypoint.TUNE_RUN_EXPERIMENTS,
-            ).trials
+            trials += run(exp, **tune_run_params).trials
         return trials

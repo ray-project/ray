@@ -83,6 +83,12 @@ from ray_release.result import Result
         "Will switch `anyscale_job` run type to `job` (Ray Job)."
     ),
 )
+@click.option(
+    "--test-definition-root",
+    default=None,
+    type=str,
+    help="Root of the test definition files. Default is the root of the repo.",
+)
 def main(
     test_name: str,
     test_collection_file: Tuple[str],
@@ -93,13 +99,15 @@ def main(
     env: Optional[str] = None,
     global_config: str = "oss_config.yaml",
     no_terminate: bool = False,
+    test_definition_root: Optional[str] = None,
 ):
     global_config_file = os.path.join(
         os.path.dirname(__file__), "..", "configs", global_config
     )
     init_global_config(global_config_file)
     test_collection = read_and_validate_release_test_collection(
-        test_collection_file or ["release/release_tests.yaml"]
+        test_collection_file or ["release/release_tests.yaml"],
+        test_definition_root,
     )
     test = find_test(test_collection, test_name)
 
@@ -148,6 +156,7 @@ def main(
             cluster_id=cluster_id,
             cluster_env_id=cluster_env_id,
             no_terminate=no_terminate,
+            test_definition_root=test_definition_root,
         )
         return_code = result.return_code
     except ReleaseTestError as e:

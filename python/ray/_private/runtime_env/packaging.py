@@ -1,3 +1,4 @@
+import time
 import asyncio
 import hashlib
 import logging
@@ -149,8 +150,8 @@ def _hash_directory(
     BUF_SIZE = 4096 * 1024
 
     def handler(path: Path):
-        md5 = hashlib.md5()
-        md5.update(str(path.relative_to(relative_path)).encode())
+        sha1 = hashlib.sha1()
+        sha1.update(str(path.relative_to(relative_path)).encode())
         if not path.is_dir():
             try:
                 f = path.open("rb")
@@ -163,13 +164,13 @@ def _hash_directory(
                 try:
                     data = f.read(BUF_SIZE)
                     while len(data) != 0:
-                        md5.update(data)
+                        sha1.update(data)
                         data = f.read(BUF_SIZE)
                 finally:
                     f.close()
 
         nonlocal hash_val
-        hash_val = _xor_bytes(hash_val, md5.digest())
+        hash_val = _xor_bytes(hash_val, sha1.digest())
 
     excludes = [] if excludes is None else [excludes]
     _dir_travel(root, excludes, handler, logger=logger)
@@ -393,7 +394,7 @@ def _zip_directory(
         directory inside the zip file.
     """
     pkg_file = Path(output_path).absolute()
-    with ZipFile(pkg_file, "w") as zip_handler:
+    with ZipFile(pkg_file, "w", strict_timestamps=False) as zip_handler:
         # Put all files in the directory into the zip file.
         dir_path = Path(directory).absolute()
 
@@ -444,7 +445,7 @@ def get_uri_for_package(package: Path) -> str:
             protocol=Protocol.GCS.value, whl_filename=package.name
         )
     else:
-        hash_val = hashlib.md5(package.read_bytes()).hexdigest()
+        hash_val = hashlib.sha1(package.read_bytes()).hexdigest()
         return "{protocol}://{pkg_name}.zip".format(
             protocol=Protocol.GCS.value, pkg_name=RAY_PKG_PREFIX + hash_val
         )
@@ -578,17 +579,23 @@ def upload_package_if_needed(
         return False
 
     package_file = Path(_get_local_path(base_directory, pkg_uri))
+    # Make the temporary zip file name unique so that it doesn't conflict with
+    # concurrent upload_package_if_needed calls with the same pkg_uri.
+    # See https://github.com/ray-project/ray/issues/47471.
+    package_file = package_file.with_name(
+        f"{time.time_ns()}_{os.getpid()}_{package_file.name}"
+    )
     create_package(
         directory,
         package_file,
         include_parent_dir=include_parent_dir,
         excludes=excludes,
     )
-
-    upload_package_to_gcs(pkg_uri, package_file.read_bytes())
-
+    package_file_bytes = package_file.read_bytes()
     # Remove the local file to avoid accumulating temporary zip files.
     package_file.unlink()
+
+    upload_package_to_gcs(pkg_uri, package_file_bytes)
 
     return True
 

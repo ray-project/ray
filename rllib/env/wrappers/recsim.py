@@ -1,7 +1,7 @@
 """Tools and utils to create RLlib-ready recommender system envs using RecSim.
 
 For examples on how to generate a RecSim env class (usable in RLlib):
-See ray.rllib.examples.env.recommender_system_envs_with_recsim.py
+See ray.rllib.examples.envs.classes.recommender_system_envs_with_recsim.py
 
 For more information on google's RecSim itself:
 https://github.com/google-research/recsim
@@ -19,7 +19,6 @@ from typing import Callable, List, Optional, Type
 
 from ray.rllib.env.env_context import EnvContext
 from ray.rllib.utils.error import UnsupportedSpaceException
-from ray.rllib.utils.gym import convert_old_gym_space_to_gymnasium_space
 from ray.rllib.utils.spaces.space_utils import convert_element_to_space_type
 
 
@@ -37,7 +36,7 @@ class RecSimObservationSpaceWrapper(gym.ObservationWrapper):
 
     def __init__(self, env: gym.Env):
         super().__init__(env)
-        obs_space = convert_old_gym_space_to_gymnasium_space(self.env.observation_space)
+        obs_space = self.env.observation_space
         doc_space = Dict(
             OrderedDict(
                 [
@@ -56,9 +55,7 @@ class RecSimObservationSpaceWrapper(gym.ObservationWrapper):
             )
         )
         self._sampled_obs = self.observation_space.sample()
-        self.action_space = convert_old_gym_space_to_gymnasium_space(
-            self.env.action_space
-        )
+        self.action_space = self.env.action_space
 
     def observation(self, obs):
         new_obs = OrderedDict()
@@ -82,7 +79,7 @@ class RecSimObservationBanditWrapper(gym.ObservationWrapper):
 
     def __init__(self, env: gym.Env):
         super().__init__(env)
-        obs_space = convert_old_gym_space_to_gymnasium_space(self.env.observation_space)
+        obs_space = self.env.observation_space
 
         num_items = len(obs_space["doc"])
         embedding_dim = next(iter(obs_space["doc"].values())).shape[-1]
@@ -99,9 +96,7 @@ class RecSimObservationBanditWrapper(gym.ObservationWrapper):
             )
         )
         self._sampled_obs = self.observation_space.sample()
-        self.action_space = convert_old_gym_space_to_gymnasium_space(
-            self.env.action_space
-        )
+        self.action_space = self.env.action_space
 
     def observation(self, obs):
         new_obs = OrderedDict()

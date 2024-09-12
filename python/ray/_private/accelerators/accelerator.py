@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import Optional, List, Tuple
+from typing import Dict, Optional, List, Tuple
 
 
 class AcceleratorManager(ABC):
@@ -49,6 +49,21 @@ class AcceleratorManager(ABC):
             The detected accelerator type of this family: e.g., H100 for Nvidia GPU.
             Return None if it's unknown or the node doesn't have
             accelerators of this family.
+        """
+
+    @staticmethod
+    @abstractmethod
+    def get_current_node_additional_resources() -> Optional[Dict[str, float]]:
+        """Get any additional resources required for the current node.
+
+        In case a particular accelerator type requires considerations for
+        additional resources (e.g. for TPUs, providing the TPU pod type and
+        TPU name), this function can be used to provide the
+        additional logical resources.
+
+        Returns:
+            A dictionary representing additional resources that may be
+            necessary for a particular accelerator type.
         """
 
     @staticmethod

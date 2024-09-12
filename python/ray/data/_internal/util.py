@@ -2,8 +2,10 @@ import importlib
 import logging
 import os
 import pathlib
+import random
 import sys
 import threading
+import time
 import urllib.parse
 from collections import deque
 from types import ModuleType
@@ -15,6 +17,7 @@ from typing import (
     Iterator,
     List,
     Optional,
+    Tuple,
     TypeVar,
     Union,
 )
@@ -24,14 +27,14 @@ import numpy as np
 import ray
 from ray._private.utils import _get_pyarrow_version
 from ray.data._internal.arrow_ops.transform_pyarrow import unify_schemas
-from ray.data.context import WARN_PREFIX, DataContext
+from ray.data.context import DEFAULT_READ_OP_MIN_NUM_BLOCKS, WARN_PREFIX, DataContext
 
 if TYPE_CHECKING:
     import pandas
     import pyarrow
 
     from ray.data._internal.compute import ComputeStrategy
-    from ray.data._internal.sort import SortKey
+    from ray.data._internal.planner.exchange.sort_task_spec import SortKey
     from ray.data.block import Block, BlockMetadata, UserDefinedFunction
     from ray.data.datasource import Datasource, Reader
     from ray.util.placement_group import PlacementGroup
@@ -75,7 +78,7 @@ def _check_pyarrow_version():
 
         version = _get_pyarrow_version()
         if version is not None:
-            from pkg_resources._vendor.packaging.version import parse as parse_version
+            from packaging.version import parse as parse_version
 
             if parse_version(version) < parse_version(MIN_PYARROW_VERSION):
                 raise ImportError(
@@ -105,12 +108,14 @@ def _autodetect_parallelism(
     mem_size: Optional[int] = None,
     placement_group: Optional["PlacementGroup"] = None,
     avail_cpus: Optional[int] = None,
-) -> (int, str, int, Optional[int]):
+) -> Tuple[int, str, Optional[int]]:
     """Returns parallelism to use and the min safe parallelism to avoid OOMs.
 
     This detects parallelism using the following heuristics, applied in order:
 
-     1) We start with the default parallelism of 200.
+     1) We start with the default value of 200. This can be overridden by
+        setting the `read_op_min_num_blocks` attribute of
+        :class:`~ray.data.context.DataContext`.
      2) Min block size. If the parallelism would make blocks smaller than this
         threshold, the parallelism is reduced to avoid the overhead of tiny blocks.
      3) Max block size. If the parallelism would make blocks larger than this
@@ -135,9 +140,8 @@ def _autodetect_parallelism(
 
     Returns:
         Tuple of detected parallelism (only if -1 was specified), the reason
-        for the detected parallelism (only if -1 was specified), the min safe
-        parallelism (which can be used to generate warnings about large
-        blocks), and the estimated inmemory size of the dataset.
+        for the detected parallelism (only if -1 was specified), and the estimated
+        inmemory size of the dataset.
     """
     min_safe_parallelism = 1
     max_reasonable_parallelism = sys.maxsize
@@ -151,18 +155,33 @@ def _autodetect_parallelism(
     if parallelism < 0:
         if parallelism != -1:
             raise ValueError("`parallelism` must either be -1 or a positive integer.")
+
+        if (
+            ctx.min_parallelism is not None
+            and ctx.min_parallelism != DEFAULT_READ_OP_MIN_NUM_BLOCKS
+            and ctx.read_op_min_num_blocks == DEFAULT_READ_OP_MIN_NUM_BLOCKS
+        ):
+            logger.warning(
+                "``DataContext.min_parallelism`` is deprecated in Ray 2.10. "
+                "Please specify ``DataContext.read_op_min_num_blocks`` instead."
+            )
+            ctx.read_op_min_num_blocks = ctx.min_parallelism
+
         # Start with 2x the number of cores as a baseline, with a min floor.
         if placement_group is None:
             placement_group = ray.util.get_current_placement_group()
         avail_cpus = avail_cpus or _estimate_avail_cpus(placement_group)
         parallelism = max(
-            min(ctx.min_parallelism, max_reasonable_parallelism),
+            min(ctx.read_op_min_num_blocks, max_reasonable_parallelism),
             min_safe_parallelism,
             avail_cpus * 2,
         )
 
-        if parallelism == ctx.min_parallelism:
-            reason = f"DataContext.get_current().min_parallelism={ctx.min_parallelism}"
+        if parallelism == ctx.read_op_min_num_blocks:
+            reason = (
+                "DataContext.get_current().read_op_min_num_blocks="
+                f"{ctx.read_op_min_num_blocks}"
+            )
         elif parallelism == max_reasonable_parallelism:
             reason = (
                 "output blocks of size at least "
@@ -187,7 +206,7 @@ def _autodetect_parallelism(
             f"estimated_data_size={mem_size}."
         )
 
-    return parallelism, reason, min_safe_parallelism, mem_size
+    return parallelism, reason, mem_size
 
 
 def _estimate_avail_cpus(cur_pg: Optional["PlacementGroup"]) -> int:
@@ -500,37 +519,107 @@ def _split_list(arr: List[Any], num_splits: int) -> List[List[Any]]:
     return splits
 
 
-def validate_compute(
+def get_compute_strategy(
     fn: "UserDefinedFunction",
-    compute: Optional[Union[str, "ComputeStrategy"]],
     fn_constructor_args: Optional[Iterable[Any]] = None,
-) -> None:
+    compute: Optional[Union[str, "ComputeStrategy"]] = None,
+    concurrency: Optional[Union[int, Tuple[int, int]]] = None,
+) -> "ComputeStrategy":
+    """Get `ComputeStrategy` based on the function or class, and concurrency
+    information.
+
+    Args:
+        fn: The function or generator to apply to a record batch, or a class type
+            that can be instantiated to create such a callable.
+        fn_constructor_args: Positional arguments to pass to ``fn``'s constructor.
+        compute: Either "tasks" (default) to use Ray Tasks or an
+                :class:`~ray.data.ActorPoolStrategy` to use an autoscaling actor pool.
+        concurrency: The number of Ray workers to use concurrently.
+
+    Returns:
+       The `ComputeStrategy` for execution.
+    """
     # Lazily import these objects to avoid circular imports.
     from ray.data._internal.compute import ActorPoolStrategy, TaskPoolStrategy
     from ray.data.block import CallableClass
 
-    if isinstance(fn, CallableClass) and (
-        compute is None or compute == "tasks" or isinstance(compute, TaskPoolStrategy)
-    ):
-        raise ValueError(
-            "``compute`` must be specified when using a CallableClass, and must "
-            f"specify the actor compute strategy, but got: {compute}. "
-            "For example, use ``compute=ray.data.ActorPoolStrategy(size=n)``."
-        )
+    if isinstance(fn, CallableClass):
+        is_callable_class = True
+    else:
+        # TODO(chengsu): disallow object that is not a function. For example,
+        # An object instance of class often indicates a bug in user code.
+        is_callable_class = False
+        if fn_constructor_args is not None:
+            raise ValueError(
+                "``fn_constructor_args`` can only be specified if providing a "
+                f"callable class instance for ``fn``, but got: {fn}."
+            )
 
-    if fn_constructor_args is not None:
-        if compute is None or (
-            compute != "actors" and not isinstance(compute, ActorPoolStrategy)
+    if compute is not None:
+        # Legacy code path to support `compute` argument.
+        logger.warning(
+            "The argument ``compute`` is deprecated in Ray 2.9. Please specify "
+            "argument ``concurrency`` instead. For more information, see "
+            "https://docs.ray.io/en/master/data/transforming-data.html#"
+            "stateful-transforms."
+        )
+        if is_callable_class and (
+            compute == "tasks" or isinstance(compute, TaskPoolStrategy)
         ):
             raise ValueError(
-                "fn_constructor_args can only be specified if using the actor "
-                f"pool compute strategy, but got: {compute}"
+                "``compute`` must specify an actor compute strategy when using a "
+                f"callable class, but got: {compute}. For example, use "
+                "``compute=ray.data.ActorPoolStrategy(size=n)``."
             )
-        if not isinstance(fn, CallableClass):
+        elif not is_callable_class and (
+            compute == "actors" or isinstance(compute, ActorPoolStrategy)
+        ):
             raise ValueError(
-                "fn_constructor_args can only be specified if providing a "
-                f"CallableClass instance for fn, but got: {fn}"
+                f"``compute`` is specified as the actor compute strategy: {compute}, "
+                f"but ``fn`` is not a callable class: {fn}. Pass a callable class or "
+                "use the default ``compute`` strategy."
             )
+        return compute
+    elif concurrency is not None:
+        if isinstance(concurrency, tuple):
+            if (
+                len(concurrency) == 2
+                and isinstance(concurrency[0], int)
+                and isinstance(concurrency[1], int)
+            ):
+                if is_callable_class:
+                    return ActorPoolStrategy(
+                        min_size=concurrency[0], max_size=concurrency[1]
+                    )
+                else:
+                    raise ValueError(
+                        "``concurrency`` is set as a tuple of integers, but ``fn`` "
+                        f"is not a callable class: {fn}. Use ``concurrency=n`` to "
+                        "control maximum number of workers to use."
+                    )
+            else:
+                raise ValueError(
+                    "``concurrency`` is expected to be set as a tuple of "
+                    f"integers, but got: {concurrency}."
+                )
+        elif isinstance(concurrency, int):
+            if is_callable_class:
+                return ActorPoolStrategy(size=concurrency)
+            else:
+                return TaskPoolStrategy(size=concurrency)
+        else:
+            raise ValueError(
+                "``concurrency`` is expected to be set as an integer or a "
+                f"tuple of integers, but got: {concurrency}."
+            )
+    else:
+        if is_callable_class:
+            raise ValueError(
+                "``concurrency`` must be specified when using a callable class. "
+                "For example, use ``concurrency=n`` for a pool of ``n`` workers."
+            )
+        else:
+            return TaskPoolStrategy()
 
 
 def capfirst(s: str):
@@ -560,15 +649,11 @@ def capitalize(s: str):
 def pandas_df_to_arrow_block(df: "pandas.DataFrame") -> "Block":
     from ray.data.block import BlockAccessor, BlockExecStats
 
+    block = BlockAccessor.for_block(df).to_arrow()
     stats = BlockExecStats.builder()
-    import pyarrow as pa
-
-    block = pa.table(df)
     return (
         block,
-        BlockAccessor.for_block(block).get_metadata(
-            input_files=None, exec_stats=stats.build()
-        ),
+        BlockAccessor.for_block(block).get_metadata(exec_stats=stats.build()),
     )
 
 
@@ -579,9 +664,7 @@ def ndarray_to_block(ndarray: np.ndarray, ctx: DataContext) -> "Block":
 
     stats = BlockExecStats.builder()
     block = BlockAccessor.batch_to_block({"data": ndarray})
-    metadata = BlockAccessor.for_block(block).get_metadata(
-        input_files=None, exec_stats=stats.build()
-    )
+    metadata = BlockAccessor.for_block(block).get_metadata(exec_stats=stats.build())
     return block, metadata
 
 
@@ -591,9 +674,7 @@ def get_table_block_metadata(
     from ray.data.block import BlockAccessor, BlockExecStats
 
     stats = BlockExecStats.builder()
-    return BlockAccessor.for_block(table).get_metadata(
-        input_files=None, exec_stats=stats.build()
-    )
+    return BlockAccessor.for_block(table).get_metadata(exec_stats=stats.build())
 
 
 def unify_block_metadata_schema(
@@ -864,3 +945,110 @@ def make_async_gen(
         num_threads_alive = num_workers - num_threads_finished
         if num_threads_alive > 0:
             output_queue.release(num_threads_alive)
+
+
+def call_with_retry(
+    f: Callable[[], Any],
+    description: str,
+    *,
+    match: Optional[List[str]] = None,
+    max_attempts: int = 10,
+    max_backoff_s: int = 32,
+) -> Any:
+    """Retry a function with exponential backoff.
+
+    Args:
+        f: The function to retry.
+        match: A list of strings to match in the exception message. If ``None``, any
+            error is retried.
+        description: An imperitive description of the function being retried. For
+            example, "open the file".
+        max_attempts: The maximum number of attempts to retry.
+        max_backoff_s: The maximum number of seconds to backoff.
+    """
+    assert max_attempts >= 1, f"`max_attempts` must be positive. Got {max_attempts}."
+
+    for i in range(max_attempts):
+        try:
+            return f()
+        except Exception as e:
+            is_retryable = match is None or any(
+                [pattern in str(e) for pattern in match]
+            )
+            if is_retryable and i + 1 < max_attempts:
+                # Retry with binary expoential backoff with random jitter.
+                backoff = min((2 ** (i + 1)), max_backoff_s) * random.random()
+                logger.debug(
+                    f"Retrying {i+1} attempts to {description} after {backoff} seconds."
+                )
+                time.sleep(backoff)
+            else:
+                raise e from None
+
+
+def iterate_with_retry(
+    iterable_factory: Callable[[], Iterable],
+    description: str,
+    *,
+    match: Optional[List[str]] = None,
+    max_attempts: int = 10,
+    max_backoff_s: int = 32,
+) -> Any:
+    """Iterate through an iterable with retries.
+
+    If the iterable raises an exception, this function recreates and re-iterates
+    through the iterable, while skipping the items that have already been yielded.
+
+    Args:
+        iterable_factory: A no-argument function that creates the iterable.
+        match: A list of strings to match in the exception message. If ``None``, any
+            error is retried.
+        description: An imperitive description of the function being retried. For
+            example, "open the file".
+        max_attempts: The maximum number of attempts to retry.
+        max_backoff_s: The maximum number of seconds to backoff.
+    """
+    assert max_attempts >= 1, f"`max_attempts` must be positive. Got {max_attempts}."
+
+    num_items_yielded = 0
+    for i in range(max_attempts):
+        try:
+            iterable = iterable_factory()
+            for i, item in enumerate(iterable):
+                if i < num_items_yielded:
+                    # Skip items that have already been yielded.
+                    continue
+
+                num_items_yielded += 1
+                yield item
+            return
+        except Exception as e:
+            is_retryable = match is None or any(
+                [pattern in str(e) for pattern in match]
+            )
+            if is_retryable and i + 1 < max_attempts:
+                # Retry with binary expoential backoff with random jitter.
+                backoff = min((2 ** (i + 1)), max_backoff_s) * random.random()
+                logger.debug(
+                    f"Retrying {i+1} attempts to {description} after {backoff} seconds."
+                )
+                time.sleep(backoff)
+            else:
+                raise e from None
+
+
+def create_dataset_tag(dataset_name: Optional[str], *args):
+    tag = dataset_name or "dataset"
+    for arg in args:
+        tag += f"_{arg}"
+    return tag
+
+
+def convert_bytes_to_human_readable_str(num_bytes: int) -> str:
+    if num_bytes >= 1e9:
+        num_bytes_str = f"{round(num_bytes / 1e9)}GB"
+    elif num_bytes >= 1e6:
+        num_bytes_str = f"{round(num_bytes / 1e6)}MB"
+    else:
+        num_bytes_str = f"{round(num_bytes / 1e3)}KB"
+    return num_bytes_str

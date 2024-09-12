@@ -1,7 +1,17 @@
+# @OldAPIStack
+
+# TODO (sven): Move this script to `examples/rl_modules/...`
+
 import argparse
 import os
 
-from ray.rllib.examples.env.stateless_cartpole import StatelessCartPole
+from ray.air.constants import TRAINING_ITERATION
+from ray.rllib.examples.envs.classes.stateless_cartpole import StatelessCartPole
+from ray.rllib.utils.metrics import (
+    ENV_RUNNER_RESULTS,
+    EPISODE_RETURN_MEAN,
+    NUM_ENV_STEPS_SAMPLED_LIFETIME,
+)
 from ray.rllib.utils.test_utils import check_learning_achieved
 from ray.tune.registry import get_trainable_cls
 
@@ -60,14 +70,14 @@ if __name__ == "__main__":
         config.training(num_sgd_iter=5, vf_loss_coeff=0.0001, train_batch_size=512)
         config.model["vf_share_layers"] = True
     elif args.run == "IMPALA":
-        config.rollouts(num_rollout_workers=2)
+        config.env_runners(num_env_runners=2)
         config.resources(num_gpus=0)
         config.training(vf_loss_coeff=0.01)
 
     stop = {
-        "training_iteration": args.stop_iters,
-        "timesteps_total": args.stop_timesteps,
-        "episode_reward_mean": args.stop_reward,
+        TRAINING_ITERATION: args.stop_iters,
+        NUM_ENV_STEPS_SAMPLED_LIFETIME: args.stop_timesteps,
+        f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": args.stop_reward,
     }
 
     tuner = tune.Tuner(

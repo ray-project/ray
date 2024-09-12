@@ -1,5 +1,5 @@
 import logging
-from collections import defaultdict
+from collections import Counter, defaultdict
 from dataclasses import _MISSING_TYPE, dataclass, fields
 from pathlib import Path
 from typing import (
@@ -10,26 +10,27 @@ from typing import (
     List,
     Mapping,
     Optional,
-    Union,
     Tuple,
+    Union,
 )
 
 import pyarrow.fs
 
+from ray._private.ray_constants import RESOURCE_CONSTRAINT_PREFIX
+from ray._private.storage import _get_storage_uri
 from ray._private.thirdparty.tabulate.tabulate import tabulate
-from ray.util.annotations import PublicAPI, Deprecated
-from ray.widgets import Template, make_table_html_repr
 from ray.data.preprocessor import Preprocessor
+from ray.util.annotations import Deprecated, PublicAPI
+from ray.widgets import Template, make_table_html_repr
 
 if TYPE_CHECKING:
+    from ray.train import SyncConfig
     from ray.tune.callback import Callback
-    from ray.tune.progress_reporter import ProgressReporter
+    from ray.tune.execution.placement_groups import PlacementGroupFactory
+    from ray.tune.experimental.output import AirVerbosity
     from ray.tune.search.sample import Domain
     from ray.tune.stopper import Stopper
-    from ray.train import SyncConfig
-    from ray.tune.experimental.output import AirVerbosity
     from ray.tune.utils.log import Verbosity
-    from ray.tune.execution.placement_groups import PlacementGroupFactory
 
 
 # Dict[str, List] is to support `tune.grid_search`:
@@ -102,8 +103,13 @@ class ScalingConfig:
     """Configuration for scaling training.
 
     Args:
-        trainer_resources: Resources to allocate for the trainer. If None is provided,
-            will default to 1 CPU for most trainers.
+        trainer_resources: Resources to allocate for the training coordinator.
+            The training coordinator launches the worker group and executes
+            the training function per worker, and this process does NOT require
+            GPUs. The coordinator is always scheduled on the same node as the
+            rank 0 worker, so one example use case is to set a minimum amount
+            of resources (e.g. CPU memory) required by the rank 0 node.
+            By default, this assigns 1 CPU to the training coordinator.
         num_workers: The number of workers (Ray actors) to launch.
             Each worker will reserve 1 CPU by default. The number of CPUs
             reserved by each worker can be overridden with the
@@ -119,6 +125,12 @@ class ScalingConfig:
         placement_strategy: The placement strategy to use for the
             placement group of the Ray actors. See :ref:`Placement Group
             Strategies <pgroup-strategy>` for the possible options.
+        accelerator_type: [Experimental] If specified, Ray Train will launch the
+            training coordinator and workers on the nodes with the specified type
+            of accelerators.
+            See :ref:`the available accelerator types <accelerator_types>`.
+            Ensure that your cluster has instances with the specified accelerator type
+            or is able to autoscale to fulfill the request.
 
     Example:
 
@@ -138,13 +150,12 @@ class ScalingConfig:
 
     """
 
-    # If adding new attributes here, please also update
-    # ray.train.gbdt_trainer._convert_scaling_config_to_ray_params
     trainer_resources: Optional[Union[Dict, SampleRange]] = None
-    num_workers: Optional[Union[int, SampleRange]] = None
+    num_workers: Union[int, SampleRange] = 1
     use_gpu: Union[bool, SampleRange] = False
     resources_per_worker: Optional[Union[Dict, SampleRange]] = None
     placement_strategy: Union[str, SampleRange] = "PACK"
+    accelerator_type: Optional[str] = None
 
     def __post_init__(self):
         if self.resources_per_worker:
@@ -181,13 +192,20 @@ class ScalingConfig:
                 # Note that we don't request any CPUs, which avoids possible
                 # scheduling contention. Generally nodes have many more CPUs than
                 # GPUs, so not requesting a CPU does not lead to oversubscription.
-                return {"GPU": 1}
+                resources_per_worker = {"GPU": 1}
             else:
-                return {"CPU": 1}
-        resources_per_worker = {
-            k: v for k, v in self.resources_per_worker.items() if v != 0
-        }
-        resources_per_worker.setdefault("GPU", int(self.use_gpu))
+                resources_per_worker = {"CPU": 1}
+        else:
+            resources_per_worker = {
+                k: v for k, v in self.resources_per_worker.items() if v != 0
+            }
+
+        if self.use_gpu:
+            resources_per_worker.setdefault("GPU", 1)
+
+        if self.accelerator_type:
+            accelerator = f"{RESOURCE_CONSTRAINT_PREFIX}{self.accelerator_type}"
+            resources_per_worker.setdefault(accelerator, 0.001)
         return resources_per_worker
 
     @property
@@ -203,24 +221,28 @@ class ScalingConfig:
                 try:
                     import google.colab  # noqa: F401
 
-                    trainer_resources = 0
+                    trainer_num_cpus = 0
                 except ImportError:
-                    trainer_resources = 1
+                    trainer_num_cpus = 1
             else:
                 # If there are no additional workers, then always reserve 1 CPU for
                 # the Trainer.
-                trainer_resources = 1
+                trainer_num_cpus = 1
 
-            return {"CPU": trainer_resources}
-        return {k: v for k, v in self.trainer_resources.items() if v != 0}
+            trainer_resources = {"CPU": trainer_num_cpus}
+        else:
+            trainer_resources = {
+                k: v for k, v in self.trainer_resources.items() if v != 0
+            }
+
+        return trainer_resources
 
     @property
     def total_resources(self):
         """Map of total resources required for the trainer."""
         total_resource_map = defaultdict(float, self._trainer_resources_not_none)
-        num_workers = self.num_workers or 0
         for k, value in self._resources_per_worker_not_none.items():
-            total_resource_map[k] += value * num_workers
+            total_resource_map[k] += value * self.num_workers
         return dict(total_resource_map)
 
     @property
@@ -246,49 +268,44 @@ class ScalingConfig:
         """Returns a PlacementGroupFactory to specify resources for Tune."""
         from ray.tune.execution.placement_groups import PlacementGroupFactory
 
-        trainer_resources = self._trainer_resources_not_none
-        trainer_bundle = [trainer_resources]
-        worker_resources = {
-            "CPU": self.num_cpus_per_worker,
-            "GPU": self.num_gpus_per_worker,
-        }
-        worker_resources_extra = (
-            {} if self.resources_per_worker is None else self.resources_per_worker
-        )
-        worker_bundles = [
-            {**worker_resources, **worker_resources_extra}
-            for _ in range(self.num_workers if self.num_workers else 0)
-        ]
-        bundles = trainer_bundle + worker_bundles
+        trainer_bundle = self._trainer_resources_not_none
+        worker_bundle = self._resources_per_worker_not_none
+
+        # Colocate Trainer and rank0 worker by merging their bundles
+        # Note: This empty bundle is required so that the Tune actor manager schedules
+        # the Trainable onto the combined bundle while taking none of its resources,
+        # rather than a non-empty head bundle.
+        combined_bundle = dict(Counter(trainer_bundle) + Counter(worker_bundle))
+        bundles = [{}, combined_bundle] + [worker_bundle] * (self.num_workers - 1)
         return PlacementGroupFactory(bundles, strategy=self.placement_strategy)
 
     @classmethod
     def from_placement_group_factory(
         cls, pgf: "PlacementGroupFactory"
     ) -> "ScalingConfig":
-        """Create a ScalingConfig from a Tune's PlacementGroupFactory"""
-        if pgf.head_bundle_is_empty:
-            trainer_resources = {}
-            worker_bundles = pgf.bundles
-        else:
-            trainer_resources = pgf.bundles[0]
-            worker_bundles = pgf.bundles[1:]
+        """Create a ScalingConfig from a Tune's PlacementGroupFactory
 
-        use_gpu = False
+        Note that this is only needed for ResourceChangingScheduler, which
+        modifies a trial's PlacementGroupFactory but doesn't propagate
+        the changes to ScalingConfig. TrainTrainable needs to reconstruct
+        a ScalingConfig from on the trial's PlacementGroupFactory.
+        """
+
+        # pgf.bundles = [{trainer + worker}, {worker}, ..., {worker}]
+        num_workers = len(pgf.bundles)
+        combined_resources = pgf.bundles[0]
+        resources_per_worker = pgf.bundles[-1]
+        use_gpu = bool(resources_per_worker.get("GPU", False))
         placement_strategy = pgf.strategy
-        resources_per_worker = None
-        num_workers = None
 
-        if worker_bundles:
-            first_bundle = worker_bundles[0]
-            if not all(bundle == first_bundle for bundle in worker_bundles[1:]):
-                raise ValueError(
-                    "All worker bundles (any other than the first one) "
-                    "must be equal to each other."
-                )
-            use_gpu = bool(first_bundle.get("GPU"))
-            num_workers = len(worker_bundles)
-            resources_per_worker = first_bundle
+        # In `as_placement_group_factory`, we merged the trainer resource into the
+        # first worker resources bundle. We need to calculate the resources diff to
+        # get the trainer resources.
+        # Note: If there's only one worker, we won't be able to calculate the diff.
+        # We'll have empty trainer bundle and assign all resources to the worker.
+        trainer_resources = dict(
+            Counter(combined_resources) - Counter(resources_per_worker)
+        )
 
         return ScalingConfig(
             trainer_resources=trainer_resources,
@@ -382,27 +399,26 @@ class FailureConfig:
             Will recover from the latest checkpoint if present.
             Setting to -1 will lead to infinite recovery retries.
             Setting to 0 will disable retries. Defaults to 0.
-        fail_fast: Whether to fail upon the first error. Only used for
-            Ray Tune - this does not apply
-            to single training runs (e.g. with ``Trainer.fit()``).
-            If fail_fast='raise' provided, Ray Tune will automatically
-            raise the exception received by the Trainable. fail_fast='raise'
-            can easily leak resources and should be used with caution (it
-            is best used with `ray.init(local_mode=True)`).
+        fail_fast: Whether to fail upon the first error.
+            If fail_fast='raise' provided, the original error during training will be
+            immediately raised. fail_fast='raise' can easily leak resources and
+            should be used with caution.
     """
 
     max_failures: int = 0
     fail_fast: Union[bool, str] = False
 
     def __post_init__(self):
-        # Same check as in tune.run
-        if self.fail_fast and self.max_failures != 0:
-            raise ValueError("max_failures must be 0 if fail_fast=True.")
-
         # Same check as in TuneController
         if not (isinstance(self.fail_fast, bool) or self.fail_fast.upper() == "RAISE"):
             raise ValueError(
                 "fail_fast must be one of {bool, 'raise'}. " f"Got {self.fail_fast}."
+            )
+
+        # Same check as in tune.run
+        if self.fail_fast and self.max_failures != 0:
+            raise ValueError(
+                f"max_failures must be 0 if fail_fast={repr(self.fail_fast)}."
             )
 
     def __repr__(self):
@@ -584,10 +600,14 @@ class RunConfig:
     Args:
         name: Name of the trial or experiment. If not provided, will be deduced
             from the Trainable.
-        storage_path: [Beta] Path to store results at. Can be a local directory or
-            a destination on cloud storage. If Ray storage is set up,
-            defaults to the storage location. Otherwise, this defaults to
-            the local ``~/ray_results`` directory.
+        storage_path: [Beta] Path where all results and checkpoints are persisted.
+            Can be a local directory or a destination on cloud storage.
+            For multi-node training/tuning runs, this must be set to a
+            shared storage location (e.g., S3, NFS).
+            This defaults to the local ``~/ray_results`` directory.
+        storage_filesystem: [Beta] A custom filesystem to use for storage.
+            If this is provided, `storage_path` should be a path with its
+            prefix stripped (e.g., `s3://bucket/path` -> `bucket/path`).
         failure_config: Failure mode configuration.
         checkpoint_config: Checkpointing configuration.
         sync_config: Configuration object for syncing. See train.SyncConfig.
@@ -629,7 +649,9 @@ class RunConfig:
     verbose: Optional[Union[int, "AirVerbosity", "Verbosity"]] = None
     stop: Optional[Union[Mapping, "Stopper", Callable[[str, Mapping], bool]]] = None
     callbacks: Optional[List["Callback"]] = None
-    progress_reporter: Optional["ProgressReporter"] = None
+    progress_reporter: Optional[
+        "ray.tune.progress_reporter.ProgressReporter"  # noqa: F821
+    ] = None
     log_to_file: Union[bool, str, Tuple[str, str]] = False
 
     # Deprecated
@@ -637,7 +659,29 @@ class RunConfig:
 
     def __post_init__(self):
         from ray.train import SyncConfig
+        from ray.train.constants import DEFAULT_STORAGE_PATH
         from ray.tune.experimental.output import AirVerbosity, get_air_verbosity
+
+        if self.local_dir is not None:
+            raise DeprecationWarning(
+                "The `RunConfig(local_dir)` argument is deprecated. "
+                "You should set the `RunConfig(storage_path)` instead."
+                "See the docs: https://docs.ray.io/en/latest/train/user-guides/"
+                "persistent-storage.html#setting-the-local-staging-directory"
+            )
+
+        if self.storage_path is None:
+            # TODO(justinvyu): [Deprecated] Remove in 2.30
+            self.storage_path = DEFAULT_STORAGE_PATH
+
+            # If no remote path is set, try to get Ray Storage URI
+            ray_storage_uri: Optional[str] = _get_storage_uri()
+            if ray_storage_uri is not None:
+                logger.info(
+                    "Using configured Ray Storage URI as the `storage_path`: "
+                    f"{ray_storage_uri}"
+                )
+                self.storage_path = ray_storage_uri
 
         if not self.failure_config:
             self.failure_config = FailureConfig()
@@ -654,10 +698,6 @@ class RunConfig:
             # For old output engine, this is Verbosity.V3_TRIAL_DETAILS
             # Todo (krfricke): Currently uses number to pass test_configs::test_repr
             self.verbose = get_air_verbosity(AirVerbosity.DEFAULT) or 3
-
-        # Convert Paths to strings
-        if isinstance(self.local_dir, Path):
-            self.local_dir = self.local_dir.as_posix()
 
         if isinstance(self.storage_path, Path):
             self.storage_path = self.storage_path.as_posix()

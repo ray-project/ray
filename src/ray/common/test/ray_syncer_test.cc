@@ -501,17 +501,13 @@ TEST_F(SyncerTest, Test1To1) {
   std::mt19937 gen(rd());
   std::uniform_int_distribution<> rand_sleep(0, 10000);
   std::uniform_int_distribution<> choose_component(0, kTestComponents - 1);
-  size_t s1_updated = 0;
-  size_t s2_updated = 0;
 
   auto start = steady_clock::now();
   for (int i = 0; i < 10000; ++i) {
     if (choose_component(gen) == 0) {
       s1.local_versions[0]++;
-      ++s1_updated;
     } else {
       s2.local_versions[choose_component(gen)]++;
-      ++s2_updated;
     }
     if (rand_sleep(gen) < 5) {
       std::this_thread::sleep_for(1s);
@@ -924,8 +920,8 @@ TEST_F(SyncerReactorTest, TestReactorFailure) {
   auto [node_s, node_c] = GetNodeID();
   ASSERT_TRUE(s != nullptr);
   ASSERT_TRUE(c != nullptr);
+  *s->disconnected_ = true;
   s->Finish(grpc::Status::CANCELLED);
-  s->disconnected_ = true;
   auto c_cleanup = client_cleanup.get_future().get();
   ASSERT_EQ(node_s, c_cleanup.first);
   ASSERT_EQ(true, c_cleanup.second);

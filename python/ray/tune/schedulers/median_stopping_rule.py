@@ -1,11 +1,11 @@
 import collections
 import logging
-from typing import Dict, List, Optional, TYPE_CHECKING
+from typing import TYPE_CHECKING, Dict, List, Optional
 
 import numpy as np
 
-from ray.tune.result import DEFAULT_METRIC
 from ray.tune.experiment import Trial
+from ray.tune.result import DEFAULT_METRIC
 from ray.tune.schedulers.trial_scheduler import FIFOScheduler, TrialScheduler
 from ray.util.annotations import PublicAPI
 

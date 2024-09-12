@@ -22,7 +22,6 @@ from filelock import FileLock
 import ray
 import ray._private.ray_constants as ray_constants
 import ray._private.services
-import ray._private.utils
 from ray._private import storage
 from ray._raylet import GcsClient, get_session_key_from_storage
 from ray._private.resource_spec import ResourceSpec
@@ -55,6 +54,7 @@ class Node:
         spawn_reaper: bool = True,
         connect_only: bool = False,
         default_worker: bool = False,
+        ray_init_cluster: bool = False,
     ):
         """Start a node.
 
@@ -70,6 +70,7 @@ class Node:
             connect_only: If true, connect to the node without starting
                 new processes.
             default_worker: Whether it's running from a ray worker or not
+            ray_init_cluster: Whether it's a cluster created by ray.init()
         """
         if shutdown_at_exit:
             if connect_only:
@@ -84,6 +85,10 @@ class Node:
         )
         self.all_processes: dict = {}
         self.removal_lock = threading.Lock()
+
+        self.ray_init_cluster = ray_init_cluster
+        if ray_init_cluster:
+            assert head, "ray.init() created cluster only has the head node"
 
         # Set up external Redis when `RAY_REDIS_ADDRESS` is specified.
         redis_address_env = os.environ.get("RAY_REDIS_ADDRESS")
@@ -242,12 +247,14 @@ class Node:
             # Get socket names from the configuration.
             self._plasma_store_socket_name = ray_params.plasma_store_socket_name
             self._raylet_socket_name = ray_params.raylet_socket_name
+            self._node_id = ray_params.node_id
 
             # If user does not provide the socket name, get it from Redis.
             if (
                 self._plasma_store_socket_name is None
                 or self._raylet_socket_name is None
                 or self._ray_params.node_manager_port is None
+                or self._node_id is None
             ):
                 # Get the address info of the processes to connect to
                 # from Redis or GCS.
@@ -258,6 +265,7 @@ class Node:
                 self._plasma_store_socket_name = node_info["object_store_socket_name"]
                 self._raylet_socket_name = node_info["raylet_socket_name"]
                 self._ray_params.node_manager_port = node_info["node_manager_port"]
+                self._node_id = node_info["node_id"]
         else:
             # If the user specified a socket name, use it.
             self._plasma_store_socket_name = self._prepare_socket_file(
@@ -266,16 +274,37 @@ class Node:
             self._raylet_socket_name = self._prepare_socket_file(
                 self._ray_params.raylet_socket_name, default_prefix="raylet"
             )
+            if (
+                self._ray_params.env_vars is not None
+                and "RAY_OVERRIDE_NODE_ID_FOR_TESTING" in self._ray_params.env_vars
+            ):
+                node_id = self._ray_params.env_vars["RAY_OVERRIDE_NODE_ID_FOR_TESTING"]
+                logger.debug(
+                    f"Setting node ID to {node_id} "
+                    "based on ray_params.env_vars override"
+                )
+                self._node_id = node_id
+            elif os.environ.get("RAY_OVERRIDE_NODE_ID_FOR_TESTING"):
+                node_id = os.environ["RAY_OVERRIDE_NODE_ID_FOR_TESTING"]
+                logger.debug(f"Setting node ID to {node_id} based on env override")
+                self._node_id = node_id
+            else:
+                node_id = ray.NodeID.from_random().hex()
+                logger.debug(f"Setting node ID to {node_id}")
+                self._node_id = node_id
+
+        # The dashboard agent port is assigned first to avoid
+        # other processes accidentally taking its default port
+        self._dashboard_agent_listen_port = self._get_cached_port(
+            "dashboard_agent_listen_port",
+            default_port=ray_params.dashboard_agent_listen_port,
+        )
 
         self.metrics_agent_port = self._get_cached_port(
             "metrics_agent_port", default_port=ray_params.metrics_agent_port
         )
         self._metrics_export_port = self._get_cached_port(
             "metrics_export_port", default_port=ray_params.metrics_export_port
-        )
-        self._dashboard_agent_listen_port = self._get_cached_port(
-            "dashboard_agent_listen_port",
-            default_port=ray_params.dashboard_agent_listen_port,
         )
         self._runtime_env_agent_port = self._get_cached_port(
             "runtime_env_agent_port",
@@ -320,9 +349,9 @@ class Node:
                     "could happen because some of the Ray processes "
                     "failed to startup."
                 ) from te
-            node_info = ray._private.services.get_node_to_connect_for_driver(
+            node_info = ray._private.services.get_node(
                 self.gcs_address,
-                self._raylet_ip_address,
+                self._node_id,
             )
             if self._ray_params.node_manager_port == 0:
                 self._ray_params.node_manager_port = node_info["node_manager_port"]
@@ -330,7 +359,9 @@ class Node:
         # Makes sure the Node object has valid addresses after setup.
         self.validate_ip_port(self.address)
         self.validate_ip_port(self.gcs_address)
-        self._record_stats()
+
+        if not connect_only:
+            self._record_stats()
 
     def check_persisted_session_name(self):
         if self._ray_params.external_addresses is None:
@@ -385,7 +416,10 @@ class Node:
 
         if not cluster_metadata:
             return
-        ray._private.utils.check_version_info(cluster_metadata)
+        node_ip_address = ray._private.services.get_node_ip_address()
+        ray._private.utils.check_version_info(
+            cluster_metadata, f"node {node_ip_address}"
+        )
 
     def _register_shutdown_hooks(self):
         # Register the atexit handler. In this case, we shouldn't call sys.exit
@@ -550,6 +584,11 @@ class Node:
         return self._resource_spec
 
     @property
+    def node_id(self):
+        """Get the node ID."""
+        return self._node_id
+
+    @property
     def session_name(self):
         """Get the session name (cluster ID)."""
         return self._session_name
@@ -684,6 +723,8 @@ class Node:
         else:
             gcs_process = None
 
+        # TODO(ryw) instead of create a new GcsClient, wrap the one from
+        # CoreWorkerProcess to save a grpc channel.
         for _ in range(ray_constants.NUM_REDIS_GET_RETRIES):
             gcs_address = None
             last_ex = None
@@ -691,9 +732,9 @@ class Node:
                 gcs_address = self.gcs_address
                 client = GcsClient(
                     address=gcs_address,
-                    cluster_id=self._ray_params.cluster_id,
+                    cluster_id=self._ray_params.cluster_id,  # Hex string
                 )
-                self.cluster_id = client.get_cluster_id()
+                self.cluster_id = client.cluster_id
                 if self.head:
                     # Send a simple request to make sure GCS is alive
                     # if it's a head node.
@@ -723,11 +764,12 @@ class Node:
                     f" Last {len(errors)} lines of error files:"
                     f"{error_msg}."
                     f"Please check {os.path.join(self._logs_dir, 'gcs_server.out')}"
-                    " for details"
+                    f" for details. Last connection error: {last_ex}"
                 )
             else:
                 raise RuntimeError(
-                    f"Failed to {'start' if self.head else 'connect to'} GCS."
+                    f"Failed to {'start' if self.head else 'connect to'} GCS. Last "
+                    f"connection error: {last_ex}"
                 )
 
         ray.experimental.internal_kv._initialize_internal_kv(self._gcs_client)
@@ -966,9 +1008,14 @@ class Node:
                 port = int(ports_by_node[self.unique_id][port_name])
             else:
                 # Pick a new port to use and cache it at this node.
-                port = default_port or self._get_unused_port(
-                    set(ports_by_node[self.unique_id].values())
-                )
+                allocated_ports = set(ports_by_node[self.unique_id].values())
+
+                if default_port is not None and default_port in allocated_ports:
+                    # The default port is already in use, so don't use it.
+                    default_port = None
+
+                port = default_port or self._get_unused_port(allocated_ports)
+
                 ports_by_node[self.unique_id][port_name] = port
                 with open(file_path, "w") as f:
                     json.dump(ports_by_node, f)
@@ -1000,7 +1047,7 @@ class Node:
                 logger.info(
                     f"Can't find a `{ray_constants.RAY_NODE_IP_FILENAME}` "
                     f"file from {self.get_session_dir_path()}. "
-                    "Have you started Ray instsance using "
+                    "Have you started Ray instance using "
                     "`ray start` or `ray.init`?"
                 )
 
@@ -1075,6 +1122,7 @@ class Node:
             raise_on_failure,
             self._ray_params.dashboard_host,
             self.gcs_address,
+            self.cluster_id.hex(),
             self._node_ip_address,
             self._temp_dir,
             self._logs_dir,
@@ -1150,11 +1198,12 @@ class Node:
         process_info = ray._private.services.start_raylet(
             self.redis_address,
             self.gcs_address,
+            self._node_id,
             self._node_ip_address,
             self._ray_params.node_manager_port,
             self._raylet_socket_name,
             self._plasma_store_socket_name,
-            self.cluster_id,
+            self.cluster_id.hex(),
             self._ray_params.worker_path,
             self._ray_params.setup_worker_path,
             self._ray_params.storage,
@@ -1206,6 +1255,8 @@ class Node:
         any modification to these files may break existing
         cluster launching commands.
         """
+        from ray.autoscaler.v2.utils import is_autoscaler_v2
+
         stdout_file, stderr_file = self.get_log_file_handles("monitor", unique=True)
         process_info = ray._private.services.start_monitor(
             self.gcs_address,
@@ -1217,6 +1268,7 @@ class Node:
             max_bytes=self.max_bytes,
             backup_count=self.backup_count,
             monitor_ip=self._node_ip_address,
+            autoscaler_v2=is_autoscaler_v2(fetch_from_server=True),
         )
         assert ray_constants.PROCESS_TYPE_MONITOR not in self.all_processes
         self.all_processes[ray_constants.PROCESS_TYPE_MONITOR] = [process_info]
@@ -1250,7 +1302,9 @@ class Node:
         # Make sure the cluster metadata wasn't reported before.
         import ray._private.usage.usage_lib as ray_usage_lib
 
-        ray_usage_lib.put_cluster_metadata(self.get_gcs_client())
+        ray_usage_lib.put_cluster_metadata(
+            self.get_gcs_client(), ray_init_cluster=self.ray_init_cluster
+        )
         # Make sure GCS is up.
         added = self.get_gcs_client().internal_kv_put(
             b"session_name",
@@ -1332,12 +1386,13 @@ class Node:
             f"Process STDOUT and STDERR is being " f"redirected to {self._logs_dir}."
         )
 
-        # Clean up external storage in case a previous Raylet instance crashed
-        # on this node and spilled objects remain on disk.
         if not self.head:
             # Get the system config from GCS first if this is a non-head node.
-            gcs_options = ray._raylet.GcsClientOptions.from_gcs_address(
-                self.gcs_address
+            gcs_options = ray._raylet.GcsClientOptions.create(
+                self.gcs_address,
+                self.cluster_id.hex(),
+                allow_cluster_id_nil=False,
+                fetch_cluster_id_if_nil=False,
             )
             global_state = ray._private.state.GlobalState()
             global_state._initialize_global_state(gcs_options)
@@ -1350,7 +1405,6 @@ class Node:
                 f" GCS system config: {new_config}"
             )
             self._config = new_config
-        self.destroy_external_storage()
 
         # Make sure we don't call `determine_plasma_store_config` multiple
         # times to avoid printing multiple warnings.
@@ -1672,7 +1726,7 @@ class Node:
             from ray._private import external_storage
 
             storage = external_storage.setup_external_storage(
-                object_spilling_config, self._session_name
+                object_spilling_config, self._node_id, self._session_name
             )
             storage.destroy_external_storage()
 
@@ -1716,15 +1770,30 @@ class Node:
         # Validate external storage usage.
         from ray._private import external_storage
 
-        external_storage.setup_external_storage(deserialized_config, self._session_name)
+        # Node ID is available only after GCS is connected. However,
+        # validate_external_storage() needs to be called before it to
+        # be able to validate the configs early. Therefore, we use a
+        # dummy node ID here and make sure external storage can be set
+        # up based on the provided config. This storage is destroyed
+        # right after the validation.
+        dummy_node_id = ray.NodeID.from_random().hex()
+        storage = external_storage.setup_external_storage(
+            deserialized_config, dummy_node_id, self._session_name
+        )
+        storage.destroy_external_storage()
         external_storage.reset_external_storage()
 
     def _record_stats(self):
+        # This is only called when a new node is started.
         # Initialize the internal kv so that the metrics can be put
-        from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
+        from ray._private.usage.usage_lib import (
+            TagKey,
+            record_extra_usage_tag,
+            record_hardware_usage,
+        )
 
         if not ray.experimental.internal_kv._internal_kv_initialized():
-            ray.experimental.internal_kv._initialize_internal_kv(self.get_gcs_client)
+            ray.experimental.internal_kv._initialize_internal_kv(self.get_gcs_client())
         assert ray.experimental.internal_kv._internal_kv_initialized()
         if self.head:
             # record head node stats
@@ -1732,3 +1801,9 @@ class Node:
                 "redis" if os.environ.get("RAY_REDIS_ADDRESS") is not None else "memory"
             )
             record_extra_usage_tag(TagKey.GCS_STORAGE, gcs_storage_type)
+        cpu_model_name = ray._private.utils.get_current_node_cpu_model_name()
+        if cpu_model_name:
+            # CPU model name can be an arbitrary long string
+            # so we truncate it to the first 50 characters
+            # to avoid any issues.
+            record_hardware_usage(cpu_model_name[:50])

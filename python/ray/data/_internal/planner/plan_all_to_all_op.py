@@ -1,3 +1,5 @@
+from typing import List
+
 from ray.data._internal.execution.interfaces import PhysicalOperator
 from ray.data._internal.execution.operators.base_physical_operator import (
     AllToAllOperator,
@@ -19,33 +21,67 @@ from ray.data.context import DataContext
 
 
 def plan_all_to_all_op(
-    op: AbstractAllToAll,
-    input_physical_dag: PhysicalOperator,
+    op: AbstractAllToAll, physical_children: List[PhysicalOperator]
 ) -> AllToAllOperator:
     """Get the corresponding physical operators DAG for AbstractAllToAll operators.
 
     Note this method only converts the given `op`, but not its input dependencies.
     See Planner.plan() for more details.
     """
+    assert len(physical_children) == 1
+    input_physical_dag = physical_children[0]
+
     target_max_block_size = None
     if isinstance(op, RandomizeBlocks):
         fn = generate_randomize_blocks_fn(op)
         # Randomize block order does not actually compute anything, so we
         # want to inherit the upstream op's target max block size.
     elif isinstance(op, RandomShuffle):
-        fn = generate_random_shuffle_fn(op._seed, op._num_outputs, op._ray_remote_args)
+        debug_limit_shuffle_execution_to_num_blocks = (
+            DataContext.get_current().get_config(
+                "debug_limit_shuffle_execution_to_num_blocks", None
+            )
+        )
+        fn = generate_random_shuffle_fn(
+            op._seed,
+            op._num_outputs,
+            op._ray_remote_args,
+            debug_limit_shuffle_execution_to_num_blocks,
+        )
         target_max_block_size = DataContext.get_current().target_shuffle_max_block_size
     elif isinstance(op, Repartition):
-        fn = generate_repartition_fn(op._num_outputs, op._shuffle)
+        debug_limit_shuffle_execution_to_num_blocks = None
         if op._shuffle:
             target_max_block_size = (
                 DataContext.get_current().target_shuffle_max_block_size
             )
+            debug_limit_shuffle_execution_to_num_blocks = (
+                DataContext.get_current().get_config(
+                    "debug_limit_shuffle_execution_to_num_blocks", None
+                )
+            )
+        fn = generate_repartition_fn(
+            op._num_outputs,
+            op._shuffle,
+            debug_limit_shuffle_execution_to_num_blocks,
+        )
     elif isinstance(op, Sort):
-        fn = generate_sort_fn(op._sort_key)
+        debug_limit_shuffle_execution_to_num_blocks = (
+            DataContext.get_current().get_config(
+                "debug_limit_shuffle_execution_to_num_blocks", None
+            )
+        )
+        fn = generate_sort_fn(op._sort_key, debug_limit_shuffle_execution_to_num_blocks)
         target_max_block_size = DataContext.get_current().target_shuffle_max_block_size
     elif isinstance(op, Aggregate):
-        fn = generate_aggregate_fn(op._key, op._aggs)
+        debug_limit_shuffle_execution_to_num_blocks = (
+            DataContext.get_current().get_config(
+                "debug_limit_shuffle_execution_to_num_blocks", None
+            )
+        )
+        fn = generate_aggregate_fn(
+            op._key, op._aggs, debug_limit_shuffle_execution_to_num_blocks
+        )
         target_max_block_size = DataContext.get_current().target_shuffle_max_block_size
     else:
         raise ValueError(f"Found unknown logical operator during planning: {op}")

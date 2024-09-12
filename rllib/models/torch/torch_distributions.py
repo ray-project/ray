@@ -5,7 +5,7 @@ already be familiar with.
 """
 import gymnasium as gym
 import numpy as np
-from typing import Optional, List, Mapping, Iterable, Dict
+from typing import Dict, Iterable, List, Optional
 import tree
 import abc
 
@@ -13,6 +13,7 @@ import abc
 from ray.rllib.models.distributions import Distribution
 from ray.rllib.utils.annotations import override, DeveloperAPI
 from ray.rllib.utils.framework import try_import_torch
+from ray.rllib.utils.numpy import MAX_LOG_NN_OUTPUT, MIN_LOG_NN_OUTPUT, SMALL_NUMBER
 from ray.rllib.utils.typing import TensorType, Union, Tuple
 
 torch, nn = try_import_torch()
@@ -112,10 +113,11 @@ class TorchCategorical(TorchDistribution):
 
         self.probs = probs
         self.logits = logits
-        self.one_hot = torch.distributions.one_hot_categorical.OneHotCategorical(
-            logits=logits, probs=probs
-        )
         super().__init__(logits=logits, probs=probs)
+
+        # Build this distribution only if really needed (in `self.rsample()`). It's
+        # quite expensive according to cProfile.
+        self._one_hot = None
 
     @override(TorchDistribution)
     def _get_torch_distribution(
@@ -133,7 +135,11 @@ class TorchCategorical(TorchDistribution):
 
     @override(Distribution)
     def rsample(self, sample_shape=()):
-        one_hot_sample = self.one_hot.sample(sample_shape)
+        if self._one_hot is None:
+            self._one_hot = torch.distributions.one_hot_categorical.OneHotCategorical(
+                logits=self.logits, probs=self.probs
+            )
+        one_hot_sample = self._one_hot.sample(sample_shape)
         return (one_hot_sample - self.probs).detach() + self.probs
 
     @classmethod
@@ -229,6 +235,102 @@ class TorchDiagGaussian(TorchDistribution):
 
 
 @DeveloperAPI
+class TorchSquashedGaussian(TorchDistribution):
+    @override(TorchDistribution)
+    def __init__(
+        self,
+        loc: Union[float, torch.Tensor],
+        scale: Optional[Union[float, torch.Tensor]] = 1.0,
+        low: float = -1.0,
+        high: float = 1.0,
+    ):
+        self.loc = loc
+        self.low = low
+        self.high = high
+
+        super().__init__(loc=loc, scale=scale)
+
+    def _get_torch_distribution(self, loc, scale) -> "torch.distributions.Distribution":
+        return torch.distributions.normal.Normal(loc, scale)
+
+    @override(TorchDistribution)
+    def sample(
+        self, *, sample_shape=torch.Size()
+    ) -> Union[TensorType, Tuple[TensorType, TensorType]]:
+        # Sample from the Normal distribution.
+        sample = super().sample(sample_shape=sample_shape)
+        # Return the squashed sample.
+        return self._squash(sample)
+
+    @override(TorchDistribution)
+    def rsample(
+        self, *, sample_shape=torch.Size()
+    ) -> Union[TensorType, Tuple[TensorType, TensorType]]:
+        # Sample from the Normal distribution.
+        sample = super().rsample(sample_shape=sample_shape)
+        # Return the squashed sample.
+        return self._squash(sample)
+
+    @override(TorchDistribution)
+    def logp(self, value: TensorType, **kwargs) -> TensorType:
+        # Unsquash value.
+        value = self._unsquash(value)
+        # Get log-probabilities from Normal distribution.
+        logp = super().logp(value, **kwargs)
+        # Clip the log probabilities as a safeguard and sum.
+        logp = torch.clamp(logp, -100, 100).sum(-1)
+        # Return the log probabilities for squashed Normal.
+        value = torch.tanh(value)
+        return logp - torch.log(1 - value**2 + SMALL_NUMBER).sum(-1)
+
+    @override(TorchDistribution)
+    def entropy(self) -> TensorType:
+        raise ValueError("ENtropy not defined for `TorchSquashedGaussian`.")
+
+    @override(TorchDistribution)
+    def kl(self, other: Distribution) -> TensorType:
+        raise ValueError("KL not defined for `TorchSquashedGaussian`.")
+
+    def _squash(self, sample: TensorType) -> TensorType:
+        # Rescale the sample to interval given by the bounds (including the bounds).
+        sample = ((torch.tanh(sample) + 1.0) / 2.0) * (self.high - self.low) + self.low
+        # Return a clipped sample to comply with the bounds.
+        return torch.clamp(sample, self.low, self.high)
+
+    def _unsquash(self, sample: TensorType) -> TensorType:
+        # Rescale to [-1.0, 1.0].
+        sample = (sample - self.low) / (self.high - self.low) * 2.0 - 1.0
+        # Stabilize input to atanh function.
+        sample = torch.clamp(sample, -1.0 + SMALL_NUMBER, 1.0 - SMALL_NUMBER)
+        return torch.atanh(sample)
+
+    @staticmethod
+    @override(Distribution)
+    def required_input_dim(space: gym.Space, **kwargs) -> int:
+        assert isinstance(space, gym.spaces.Box)
+        return int(np.prod(space.shape, dtype=np.int32) * 2)
+
+    @classmethod
+    @override(TorchDistribution)
+    def from_logits(
+        cls, logits: TensorType, low: float = -1.0, high: float = 1.0, **kwargs
+    ) -> "TorchSquashedGaussian":
+        loc, log_std = logits.chunk(2, dim=-1)
+        # Clip the `scale` values (coming from the `RLModule.forward()`) to
+        # reasonable values.
+        log_std = torch.clamp(log_std, MIN_LOG_NN_OUTPUT, MAX_LOG_NN_OUTPUT)
+        scale = log_std.exp()
+
+        # Assert that `low` is smaller than `high`.
+        assert np.all(np.less(low, high))
+        # Return class instance.
+        return TorchSquashedGaussian(loc=loc, scale=scale, low=low, high=high)
+
+    def to_deterministic(self) -> Distribution:
+        return TorchDeterministic(loc=self.loc)
+
+
+@DeveloperAPI
 class TorchDeterministic(Distribution):
     """The distribution that returns the input values directly.
 
@@ -278,15 +380,15 @@ class TorchDeterministic(Distribution):
 
     @override(Distribution)
     def logp(self, value: TensorType, **kwargs) -> TensorType:
-        raise ValueError(f"Cannot return logp for {self.__class__.__name__}.")
+        return torch.zeros_like(self.loc)
 
     @override(Distribution)
     def entropy(self, **kwargs) -> TensorType:
-        raise torch.zeros_like(self.loc)
+        raise RuntimeError(f"`entropy()` not supported for {self.__class__.__name__}.")
 
     @override(Distribution)
     def kl(self, other: "Distribution", **kwargs) -> TensorType:
-        raise ValueError(f"Cannot return kl for {self.__class__.__name__}.")
+        raise RuntimeError(f"`kl()` not supported for {self.__class__.__name__}.")
 
     @staticmethod
     @override(Distribution)
@@ -498,15 +600,20 @@ class TorchMultiDistribution(Distribution):
 
     @staticmethod
     @override(Distribution)
-    def required_input_dim(space: gym.Space, input_lens: List[int], **kwargs) -> int:
-        return sum(input_lens)
+    def required_input_dim(
+        space: gym.Space, input_lens: List[int], as_list: bool = False, **kwargs
+    ) -> int:
+        if as_list:
+            return input_lens
+        else:
+            return sum(input_lens)
 
     @classmethod
     @override(Distribution)
     def from_logits(
         cls,
         logits: torch.Tensor,
-        child_distribution_cls_struct: Union[Mapping, Iterable],
+        child_distribution_cls_struct: Union[Dict, Iterable],
         input_lens: Union[Dict, List[int]],
         space: gym.Space,
         **kwargs,
@@ -533,7 +640,7 @@ class TorchMultiDistribution(Distribution):
         """
         logit_lens = tree.flatten(input_lens)
         child_distribution_cls_list = tree.flatten(child_distribution_cls_struct)
-        split_logits = torch.split(logits, logit_lens, dim=1)
+        split_logits = torch.split(logits, logit_lens, dim=-1)
 
         child_distribution_list = tree.map_structure(
             lambda dist, input_: dist.from_logits(input_),

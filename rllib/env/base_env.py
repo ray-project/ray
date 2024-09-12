@@ -3,7 +3,7 @@ from typing import Callable, Tuple, Optional, List, Dict, Any, TYPE_CHECKING, Un
 
 import gymnasium as gym
 import ray
-from ray.rllib.utils.annotations import Deprecated, DeveloperAPI, PublicAPI
+from ray.rllib.utils.annotations import OldAPIStack
 from ray.rllib.utils.typing import AgentID, EnvID, EnvType, MultiEnvDict
 
 if TYPE_CHECKING:
@@ -14,7 +14,7 @@ ASYNC_RESET_RETURN = "async_reset_return"
 logger = logging.getLogger(__name__)
 
 
-@PublicAPI
+@OldAPIStack
 class BaseEnv:
     """The lowest-level env interface used by RLlib for sampling.
 
@@ -130,7 +130,6 @@ class BaseEnv:
         """
         return self
 
-    @PublicAPI
     def poll(
         self,
     ) -> Tuple[
@@ -163,7 +162,6 @@ class BaseEnv:
         """
         raise NotImplementedError
 
-    @PublicAPI
     def send_actions(self, action_dict: MultiEnvDict) -> None:
         """Called to send actions back to running agents in this env.
 
@@ -175,7 +173,6 @@ class BaseEnv:
         """
         raise NotImplementedError
 
-    @PublicAPI
     def try_reset(
         self,
         env_id: Optional[EnvID] = None,
@@ -210,7 +207,6 @@ class BaseEnv:
         """
         return None, None
 
-    @DeveloperAPI
     def try_restart(self, env_id: Optional[EnvID] = None) -> None:
         """Attempt to restart the sub-env with the given id or all sub-envs.
 
@@ -222,7 +218,6 @@ class BaseEnv:
         """
         return None
 
-    @PublicAPI
     def get_sub_environments(self, as_dict: bool = False) -> Union[List[EnvType], dict]:
         """Return a reference to the underlying sub environments, if any.
 
@@ -236,7 +231,6 @@ class BaseEnv:
             return {}
         return []
 
-    @PublicAPI
     def get_agent_ids(self) -> Set[AgentID]:
         """Return the agent ids for the sub_environment.
 
@@ -245,7 +239,6 @@ class BaseEnv:
         """
         return {}
 
-    @PublicAPI
     def try_render(self, env_id: Optional[EnvID] = None) -> None:
         """Tries to render the sub-environment with the given id or all.
 
@@ -257,7 +250,6 @@ class BaseEnv:
         # By default, do nothing.
         pass
 
-    @PublicAPI
     def stop(self) -> None:
         """Releases all resources used."""
 
@@ -266,12 +258,7 @@ class BaseEnv:
             if hasattr(env, "close"):
                 env.close()
 
-    @Deprecated(new="get_sub_environments", error=True)
-    def get_unwrapped(self) -> List[EnvType]:
-        return self.get_sub_environments()
-
     @property
-    @PublicAPI
     def observation_space(self) -> gym.Space:
         """Returns the observation space for each agent.
 
@@ -284,7 +271,6 @@ class BaseEnv:
         raise NotImplementedError
 
     @property
-    @PublicAPI
     def action_space(self) -> gym.Space:
         """Returns the action space for each agent.
 
@@ -296,7 +282,6 @@ class BaseEnv:
         """
         raise NotImplementedError
 
-    @PublicAPI
     def action_space_sample(self, agent_id: list = None) -> MultiEnvDict:
         """Returns a random action for each environment, and potentially each
             agent in that environment.
@@ -312,7 +297,6 @@ class BaseEnv:
         del agent_id
         return {}
 
-    @PublicAPI
     def observation_space_sample(self, agent_id: list = None) -> MultiEnvDict:
         """Returns a random observation for each environment, and potentially
             each agent in that environment.
@@ -328,7 +312,6 @@ class BaseEnv:
         del agent_id
         return {}
 
-    @PublicAPI
     def last(
         self,
     ) -> Tuple[MultiEnvDict, MultiEnvDict, MultiEnvDict, MultiEnvDict, MultiEnvDict]:
@@ -343,7 +326,6 @@ class BaseEnv:
         logger.warning("last has not been implemented for this environment.")
         return {}, {}, {}, {}, {}
 
-    @PublicAPI
     def observation_space_contains(self, x: MultiEnvDict) -> bool:
         """Checks if the given observation is valid for each environment.
 
@@ -356,7 +338,6 @@ class BaseEnv:
         """
         return self._space_contains(self.observation_space, x)
 
-    @PublicAPI
     def action_space_contains(self, x: MultiEnvDict) -> bool:
         """Checks if the given actions is valid for each environment.
 
@@ -399,7 +380,7 @@ class BaseEnv:
 _DUMMY_AGENT_ID = "agent0"
 
 
-@PublicAPI
+@OldAPIStack
 def with_dummy_agent_id(
     env_id_to_values: Dict[EnvID, Any], dummy_id: "AgentID" = _DUMMY_AGENT_ID
 ) -> MultiEnvDict:
@@ -412,7 +393,7 @@ def with_dummy_agent_id(
     return ret
 
 
-@DeveloperAPI
+@OldAPIStack
 def convert_to_base_env(
     env: EnvType,
     make_env: Callable[[int], EnvType] = None,
@@ -524,10 +505,3 @@ def convert_to_base_env(
     assert isinstance(env, BaseEnv), env
 
     return env
-
-
-@Deprecated(new="with_dummy_agent_id()", error=True)
-def _with_dummy_agent_id(
-    env_id_to_values: Dict[EnvID, Any], dummy_id: "AgentID" = _DUMMY_AGENT_ID
-) -> MultiEnvDict:
-    return {k: {dummy_id: v} for (k, v) in env_id_to_values.items()}

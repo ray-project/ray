@@ -1,21 +1,21 @@
 group: build
 steps:
-  - label: ":tapioca: build: wheel {{matrix}}"
+  - label: ":tapioca: build: wheel {{matrix}} (x86_64)"
+    key: linux_wheels
     tags:
       - linux_wheels
       - oss
     instance_type: medium
     commands:
-      - bazel run //ci/ray_ci:build_in_docker -- wheel --python-version {{matrix}}
+      - bazel run //ci/ray_ci:build_in_docker -- wheel --python-version {{matrix}} --architecture x86_64 --upload
     matrix:
-      - "3.8"
       - "3.9"
       - "3.10"
       - "3.11"
+      - "3.12"
     depends_on:
       - manylinux
       - forge
-    job_env: forge
 
   - label: ":tapioca: build: debug wheel"
     tags:
@@ -23,13 +23,13 @@ steps:
       - oss
     instance_type: medium
     commands:
-      - bazel run //ci/ray_ci:build_in_docker -- wheel --python-version 3.8 --build-type debug
+      - bazel run //ci/ray_ci:build_in_docker -- wheel --build-type debug --upload
     depends_on:
       - manylinux
       - forge
-    job_env: forge
 
   - label: ":tapioca: build: jar"
+    key: java_wheels
     tags:
       - java
       - oss
@@ -42,63 +42,52 @@ steps:
     job_env: manylinux
 
   - label: ":tapioca: build: doc"
+    key: doc_build
     instance_type: medium
     commands:
-      - bazel run //ci/ray_ci:build_in_docker -- doc
+      - bazel run //ci/ray_ci/doc:cmd_build
     depends_on: docbuild
-    job_env: forge
+    job_env: docbuild-py3.12
 
-  - label: ":tapioca: build: ray py{{matrix}} docker"
+  - label: ":tapioca: build: ray py{{matrix}} docker (x86_64)"
     tags:
       - python_dependencies
       - docker
-      - core_cpp
       - oss
     instance_type: medium
     commands:
       - bazel run //ci/ray_ci:build_in_docker -- docker --python-version {{matrix}}
-        --platform cu11.5.2 --platform cu11.6.2 --platform cu11.7.1 
-        --platform cu11.8.0 --platform cu12.1.1 --platform cpu
-        --image-type ray
+        --platform cu11.7.1-cudnn8 --platform cu11.8.0-cudnn8
+        --platform cu12.1.1-cudnn8 --platform cu12.3.2-cudnn9
+        --platform cpu
+        --image-type ray --upload
     depends_on:
       - manylinux
       - forge
       - raycudabase
       - raycpubase
-    job_env: forge
     matrix:
-      - "3.8"
       - "3.9"
       - "3.10"
       - "3.11"
+      - "3.12"
 
-  - label: ":tapioca: build: ray-ml py{{matrix}} docker"
+  - label: ":tapioca: build: ray-ml py{{matrix}} docker (x86_64)"
     tags:
       - python_dependencies
       - docker
-      - core_cpp
       - oss
     instance_type: medium
     commands:
       - bazel run //ci/ray_ci:build_in_docker -- docker --python-version {{matrix}}
-        --platform cu11.8.0 --platform cpu --image-type ray-ml
+        --platform cu12.1.1-cudnn8 --platform cpu --image-type ray-ml
+        --upload
     depends_on:
       - manylinux
       - forge
       - ray-mlcudabase
       - ray-mlcpubase
-    job_env: forge
     matrix:
-      - "3.8"
       - "3.9"
       - "3.10"
-
-  - label: ":tapioca: build: pip-compile dependencies"
-    instance_type: small
-    commands:
-      - rm ./python/requirements_compiled.txt
-      - ./ci/ci.sh compile_pip_dependencies
-      - cp -f ./python/requirements_compiled.txt /artifact-mount/
-    soft_fail: true
-    depends_on:
-      - forge
+      - "3.11"

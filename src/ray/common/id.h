@@ -75,10 +75,12 @@ class BaseID {
 
  protected:
   BaseID(const std::string &binary) {
-    RAY_CHECK(binary.size() == Size() || binary.size() == 0)
-        << "expected size is " << Size() << ", but got data " << binary << " of size "
-        << binary.size();
-    std::memcpy(const_cast<uint8_t *>(this->Data()), binary.data(), binary.size());
+    if (!binary.empty()) {
+      RAY_CHECK(binary.size() == Size())
+          << "expected size is " << Size() << ", but got data " << binary << " of size "
+          << binary.size();
+      std::memcpy(const_cast<uint8_t *>(this->Data()), binary.data(), Size());
+    }
   }
   // All IDs are immutable for hash evaluations. MutableData is only allow to use
   // in construction time, so this function is protected.
@@ -316,7 +318,12 @@ class ObjectID : public BaseID<ObjectID> {
   /// \return The computed object ID.
   static ObjectID ForActorHandle(const ActorID &actor_id);
 
+  /// Whether this ObjectID represents an actor handle. This is the ObjectID
+  /// returned by the actor's creation task.
   static bool IsActorID(const ObjectID &object_id);
+  /// Return the ID of the actor that produces this object. For the actor
+  /// creation task and for tasks executed by the actor, this will return a
+  /// non-nil ActorID.
   static ActorID ToActorID(const ObjectID &object_id);
 
   MSGPACK_DEFINE(id_);
@@ -401,10 +408,12 @@ std::ostream &operator<<(std::ostream &os, const PlacementGroupID &id);
                                                                                          \
    private:                                                                              \
     explicit type(const std::string &binary) {                                           \
-      RAY_CHECK(binary.size() == Size() || binary.size() == 0)                           \
-          << "expected size is " << Size() << ", but got data " << binary << " of size " \
-          << binary.size();                                                              \
-      std::memcpy(&id_, binary.data(), binary.size());                                   \
+      if (!binary.empty()) {                                                             \
+        RAY_CHECK(binary.size() == Size())                                               \
+            << "expected size is " << Size() << ", but got data " << binary              \
+            << " of size " << binary.size();                                             \
+        std::memcpy(&id_, binary.data(), Size());                                        \
+      }                                                                                  \
     }                                                                                    \
   };
 
@@ -431,10 +440,14 @@ T BaseID<T>::FromRandom() {
 
 template <typename T>
 T BaseID<T>::FromBinary(const std::string &binary) {
-  RAY_CHECK(binary.size() == T::Size() || binary.size() == 0)
-      << "expected size is " << T::Size() << ", but got data size is " << binary.size();
   T t;
-  std::memcpy(t.MutableData(), binary.data(), binary.size());
+  if (binary.empty()) {
+    return t;  // nil
+  }
+  RAY_CHECK(binary.size() == T::Size())
+      << "expected size is " << T::Size() << ", but got data size is " << binary.size();
+
+  std::memcpy(t.MutableData(), binary.data(), T::Size());
   return t;
 }
 
@@ -485,8 +498,7 @@ const T &BaseID<T>::Nil() {
 
 template <typename T>
 bool BaseID<T>::IsNil() const {
-  static T nil_id = T::Nil();
-  return *this == nil_id;
+  return *this == T::Nil();
 }
 
 template <typename T>
@@ -537,6 +549,41 @@ std::string BaseID<T>::Hex() const {
   }
   return result;
 }
+
+template <>
+struct DefaultLogKey<JobID> {
+  constexpr static std::string_view key = kLogKeyJobID;
+};
+
+template <>
+struct DefaultLogKey<WorkerID> {
+  constexpr static std::string_view key = kLogKeyWorkerID;
+};
+
+template <>
+struct DefaultLogKey<NodeID> {
+  constexpr static std::string_view key = kLogKeyNodeID;
+};
+
+template <>
+struct DefaultLogKey<ActorID> {
+  constexpr static std::string_view key = kLogKeyActorID;
+};
+
+template <>
+struct DefaultLogKey<TaskID> {
+  constexpr static std::string_view key = kLogKeyTaskID;
+};
+
+template <>
+struct DefaultLogKey<ObjectID> {
+  constexpr static std::string_view key = kLogKeyObjectID;
+};
+
+template <>
+struct DefaultLogKey<PlacementGroupID> {
+  constexpr static std::string_view key = kLogKeyPlacementGroupID;
+};
 
 }  // namespace ray
 

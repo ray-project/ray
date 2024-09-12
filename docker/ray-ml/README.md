@@ -8,11 +8,10 @@ Images are `tagged` with the format `{Ray version}[-{Python version}][-{Platform
 | Ray version tag | Description |
 | --------------- | ----------- |
 | `latest`                     | The most recent Ray release. |
-| `x.y.z`                      | A specific Ray release, e.g. 1.12.1 |
-| `nightly`                    | The most recent Ray development build (a recent commit from Github `master`) |
-| `6 character Git SHA prefix` | A specific development build (uses a SHA from the Github `master`, e.g. `8960af`). |
+| `x.y.z`                      | A specific Ray release, e.g. 2.9.3 |
+| `nightly`                    | The most recent Ray development build (a recent commit from GitHub `master`) |
 
-The optional `Python version` tag specifies the Python version in the image. All Python versions supported by Ray are available, e.g. `py38`, `py39` and `py310`. If unspecified, the tag points to an image using `Python 3.8`.
+The optional `Python version` tag specifies the Python version in the image. All Python versions supported by Ray are available, e.g. `py39`, `py310` and `py311`. If unspecified, the tag points to an image using `Python 3.9`.
 
 The optional `Platform` tag specifies the platform where the image is intended for:
 
@@ -25,9 +24,9 @@ The optional `Platform` tag specifies the platform where the image is intended f
 
 Examples tags:
 - none: equivalent to `latest`
-- `latest`: equivalent to `latest-py38-gpu`, i.e. image for the most recent Ray release
-- `nightly-py38-cpu`
-- `806c18-py38-cu112`
+- `latest`: equivalent to `latest-py39-gpu`, i.e. image for the most recent Ray release
+- `nightly-py39-cpu`
+- `806c18-py39-cu112`
 
 The `ray-ml` images are not built for the `arm64` (`aarch64`) architecture.
 

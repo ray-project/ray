@@ -27,7 +27,7 @@ namespace raylet {
 
 /// A constructor responsible for initializing the state of a worker.
 Worker::Worker(const JobID &job_id,
-               const int runtime_env_hash,
+               int runtime_env_hash,
                const WorkerID &worker_id,
                const Language &language,
                rpc::WorkerType worker_type,
@@ -133,21 +133,11 @@ void Worker::AssignTaskId(const TaskID &task_id) { assigned_task_id_ = task_id; 
 
 const TaskID &Worker::GetAssignedTaskId() const { return assigned_task_id_; }
 
-bool Worker::AddBlockedTaskId(const TaskID &task_id) {
-  auto inserted = blocked_task_ids_.insert(task_id);
-  return inserted.second;
-}
-
-bool Worker::RemoveBlockedTaskId(const TaskID &task_id) {
-  auto erased = blocked_task_ids_.erase(task_id);
-  return erased == 1;
-}
-
-const std::unordered_set<TaskID> &Worker::GetBlockedTaskIds() const {
-  return blocked_task_ids_;
-}
-
 const JobID &Worker::GetAssignedJobId() const { return assigned_job_id_; }
+
+std::optional<bool> Worker::GetIsGpu() const { return is_gpu_; }
+
+std::optional<bool> Worker::GetIsActorWorker() const { return is_actor_worker_; }
 
 int Worker::GetRuntimeEnvHash() const { return runtime_env_hash_; }
 
@@ -204,6 +194,23 @@ void Worker::SetJobId(const JobID &job_id) {
   RAY_CHECK(assigned_job_id_ == job_id)
       << "Job_id mismatch, assigned: " << assigned_job_id_.Hex()
       << ", actual: " << job_id.Hex();
+}
+
+void Worker::SetIsGpu(bool is_gpu) {
+  if (!is_gpu_.has_value()) {
+    is_gpu_ = is_gpu;
+  }
+  RAY_CHECK_EQ(is_gpu_.value(), is_gpu)
+      << "is_gpu mismatch, assigned: " << is_gpu_.value() << ", actual: " << is_gpu;
+}
+
+void Worker::SetIsActorWorker(bool is_actor_worker) {
+  if (!is_actor_worker_.has_value()) {
+    is_actor_worker_ = is_actor_worker;
+  }
+  RAY_CHECK_EQ(is_actor_worker_.value(), is_actor_worker)
+      << "is_actor_worker mismatch, assigned: " << is_actor_worker_.value()
+      << ", actual: " << is_actor_worker;
 }
 
 }  // namespace raylet

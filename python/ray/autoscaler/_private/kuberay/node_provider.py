@@ -1,6 +1,7 @@
 import json
 import logging
 import os
+from abc import ABC, abstractmethod
 from collections import defaultdict
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -29,14 +30,23 @@ KUBERAY_LABEL_KEY_KIND = "ray.io/node-type"
 # Key for KubeRay label that identifies the worker group (autoscaler node type) of a
 # Ray pod.
 KUBERAY_LABEL_KEY_TYPE = "ray.io/group"
+
+# These should be synced with:
+# https://github.com/ray-project/kuberay/blob/f2d94ffe213dd8f69481b09c474047cb899fa73b/ray-operator/apis/ray/v1/raycluster_types.go#L165-L171 # noqa
 # Kind label value indicating the pod is the head.
 KUBERAY_KIND_HEAD = "head"
+# Kind label value indicating the pod is the worker.
+KUBERAY_KIND_WORKER = "worker"
+
 # Group name (node type) to use for the head.
 KUBERAY_TYPE_HEAD = "head-group"
 # KubeRay CRD version
 KUBERAY_CRD_VER = os.getenv("KUBERAY_CRD_VER", "v1alpha1")
 
 RAY_HEAD_POD_NAME = os.getenv("RAY_HEAD_POD_NAME")
+
+# Key for GKE label that identifies which multi-host replica a pod belongs to
+REPLICA_INDEX_KEY = "replicaIndex"
 
 # Design:
 
@@ -46,16 +56,16 @@ RAY_HEAD_POD_NAME = os.getenv("RAY_HEAD_POD_NAME")
 # it decreases the number of replicas and adds the exact pods that should be
 # terminated to the scaleStrategy).
 
-# KuberayNodeProvider inherits from BatchingNodeProvider.
+# KubeRayNodeProvider inherits from BatchingNodeProvider.
 # Thus, the autoscaler's create and terminate requests are batched into a single
 # Scale Request object which is submitted at the end of autoscaler update.
 # KubeRay node provider converts the ScaleRequest into a RayCluster CR patch
 # and applies the patch in the submit_scale_request method.
 
-# To reduce potential for race conditions, KuberayNodeProvider
+# To reduce potential for race conditions, KubeRayNodeProvider
 # aborts the autoscaler update if the operator has not yet processed workersToDelete -
-# see KuberayNodeProvider.safe_to_scale().
-# Once it is confirmed that workersToDelete have been cleaned up, KuberayNodeProvider
+# see KubeRayNodeProvider.safe_to_scale().
+# Once it is confirmed that workersToDelete have been cleaned up, KubeRayNodeProvider
 # clears the workersToDelete list.
 
 
@@ -72,7 +82,10 @@ def node_data_from_pod(pod: Dict[str, Any]) -> NodeData:
     kind, type = kind_and_type(pod)
     status = status_tag(pod)
     ip = pod_ip(pod)
-    return NodeData(kind=kind, type=type, status=status, ip=ip)
+    replica_index = _replica_index_label(pod)
+    return NodeData(
+        kind=kind, type=type, replica_index=replica_index, status=status, ip=ip
+    )
 
 
 def kind_and_type(pod: Dict[str, Any]) -> Tuple[NodeKind, NodeType]:
@@ -87,6 +100,16 @@ def kind_and_type(pod: Dict[str, Any]) -> Tuple[NodeKind, NodeType]:
         kind = NODE_KIND_WORKER
         type = labels[KUBERAY_LABEL_KEY_TYPE]
     return kind, type
+
+
+def _replica_index_label(pod: Dict[str, Any]) -> Optional[str]:
+    """Returns the replicaIndex label for a Pod in a multi-host TPU worker group.
+    The replicaIndex label is set by the GKE TPU Ray webhook and is of
+    the form {$WORKER_GROUP_NAME-$REPLICA_INDEX} where $REPLICA_INDEX
+    is an integer from 0 to Replicas-1.
+    """
+    labels = pod["metadata"]["labels"]
+    return labels.get(REPLICA_INDEX_KEY, None)
 
 
 def pod_ip(pod: Dict[str, Any]) -> NodeIP:
@@ -153,7 +176,9 @@ def load_k8s_secrets() -> Tuple[Dict[str, str], str]:
     return headers, verify
 
 
-def url_from_resource(namespace: str, path: str) -> str:
+def url_from_resource(
+    namespace: str, path: str, kuberay_crd_version: str = KUBERAY_CRD_VER
+) -> str:
     """Convert resource path to REST URL for Kubernetes API server.
 
     Args:
@@ -164,7 +189,7 @@ def url_from_resource(namespace: str, path: str) -> str:
     if path.startswith("pods"):
         api_group = "/api/v1"
     elif path.startswith("rayclusters"):
-        api_group = "/apis/ray.io/" + KUBERAY_CRD_VER
+        api_group = "/apis/ray.io/" + kuberay_crd_version
     else:
         raise NotImplementedError("Tried to access unknown entity at {}".format(path))
     return (
@@ -202,25 +227,100 @@ def _worker_group_replicas(raycluster: Dict[str, Any], group_index: int):
     return raycluster["spec"]["workerGroupSpecs"][group_index].get("replicas", 1)
 
 
-class KuberayNodeProvider(BatchingNodeProvider):  # type: ignore
+class IKubernetesHttpApiClient(ABC):
+    """
+    An interface for a Kubernetes HTTP API client.
+
+    This interface could be used to mock the Kubernetes API client in tests.
+    """
+
+    @abstractmethod
+    def get(self, path: str) -> Dict[str, Any]:
+        """Wrapper for REST GET of resource with proper headers."""
+        pass
+
+    @abstractmethod
+    def patch(self, path: str, payload: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """Wrapper for REST PATCH of resource with proper headers."""
+        pass
+
+
+class KubernetesHttpApiClient(IKubernetesHttpApiClient):
+    def __init__(self, namespace: str, kuberay_crd_version: str = KUBERAY_CRD_VER):
+        self._kuberay_crd_version = kuberay_crd_version
+        self._namespace = namespace
+        self._headers, self._verify = load_k8s_secrets()
+
+    def get(self, path: str) -> Dict[str, Any]:
+        """Wrapper for REST GET of resource with proper headers.
+
+        Args:
+            path: The part of the resource path that starts with the resource type.
+
+        Returns:
+            The JSON response of the GET request.
+
+        Raises:
+            HTTPError: If the GET request fails.
+        """
+        url = url_from_resource(
+            namespace=self._namespace,
+            path=path,
+            kuberay_crd_version=self._kuberay_crd_version,
+        )
+        result = requests.get(url, headers=self._headers, verify=self._verify)
+        if not result.status_code == 200:
+            result.raise_for_status()
+        return result.json()
+
+    def patch(self, path: str, payload: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """Wrapper for REST PATCH of resource with proper headers
+
+        Args:
+            path: The part of the resource path that starts with the resource type.
+            payload: The JSON patch payload.
+
+        Returns:
+            The JSON response of the PATCH request.
+
+        Raises:
+            HTTPError: If the PATCH request fails.
+        """
+        url = url_from_resource(
+            namespace=self._namespace,
+            path=path,
+            kuberay_crd_version=self._kuberay_crd_version,
+        )
+        result = requests.patch(
+            url,
+            json.dumps(payload),
+            headers={**self._headers, "Content-type": "application/json-patch+json"},
+            verify=self._verify,
+        )
+        if not result.status_code == 200:
+            result.raise_for_status()
+        return result.json()
+
+
+class KubeRayNodeProvider(BatchingNodeProvider):  # type: ignore
     def __init__(
         self,
         provider_config: Dict[str, Any],
         cluster_name: str,
         _allow_multiple: bool = False,
     ):
-        logger.info("Creating KuberayNodeProvider.")
+        logger.info("Creating KubeRayNodeProvider.")
         self.namespace = provider_config["namespace"]
         self.cluster_name = cluster_name
 
-        self.headers, self.verify = load_k8s_secrets()
+        self.k8s_api_client = KubernetesHttpApiClient(self.namespace)
 
         assert (
             provider_config.get(WORKER_LIVENESS_CHECK_KEY, True) is False
-        ), f"To use KuberayNodeProvider, must set `{WORKER_LIVENESS_CHECK_KEY}:False`."
+        ), f"To use KubeRayNodeProvider, must set `{WORKER_LIVENESS_CHECK_KEY}:False`."
         assert (
             provider_config.get(WORKER_RPC_DRAIN_KEY, False) is True
-        ), f"To use KuberayNodeProvider, must set `{WORKER_RPC_DRAIN_KEY}:True`."
+        ), f"To use KubeRayNodeProvider, must set `{WORKER_RPC_DRAIN_KEY}:True`."
         BatchingNodeProvider.__init__(
             self, provider_config, cluster_name, _allow_multiple
         )
@@ -416,21 +516,8 @@ class KuberayNodeProvider(BatchingNodeProvider):  # type: ignore
 
     def _get(self, path: str) -> Dict[str, Any]:
         """Wrapper for REST GET of resource with proper headers."""
-        url = url_from_resource(namespace=self.namespace, path=path)
-        result = requests.get(url, headers=self.headers, verify=self.verify)
-        if not result.status_code == 200:
-            result.raise_for_status()
-        return result.json()
+        return self.k8s_api_client.get(path)
 
     def _patch(self, path: str, payload: List[Dict[str, Any]]) -> Dict[str, Any]:
         """Wrapper for REST PATCH of resource with proper headers."""
-        url = url_from_resource(namespace=self.namespace, path=path)
-        result = requests.patch(
-            url,
-            json.dumps(payload),
-            headers={**self.headers, "Content-type": "application/json-patch+json"},
-            verify=self.verify,
-        )
-        if not result.status_code == 200:
-            result.raise_for_status()
-        return result.json()
+        return self.k8s_api_client.patch(path, payload)

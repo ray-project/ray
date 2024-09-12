@@ -19,7 +19,7 @@ import timeit
 import traceback
 from collections import defaultdict
 from contextlib import contextmanager, redirect_stderr, redirect_stdout
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional, Tuple
 import uuid
 from dataclasses import dataclass
 
@@ -75,8 +75,11 @@ class RayTestTimeoutException(Exception):
 
 
 def make_global_state_accessor(ray_context):
-    gcs_options = GcsClientOptions.from_gcs_address(
-        ray_context.address_info["gcs_address"]
+    gcs_options = GcsClientOptions.create(
+        ray_context.address_info["gcs_address"],
+        None,
+        allow_cluster_id_nil=True,
+        fetch_cluster_id_if_nil=False,
     )
     global_state_accessor = GlobalStateAccessor(gcs_options)
     global_state_accessor.connect()
@@ -416,11 +419,46 @@ def run_string_as_driver(driver_script: str, env: Dict = None, encode: str = "ut
         output = proc.communicate(driver_script.encode(encoding=encode))[0]
         if proc.returncode:
             print(ray._private.utils.decode(output, encode_type=encode))
+            logger.error(proc.stderr)
             raise subprocess.CalledProcessError(
                 proc.returncode, proc.args, output, proc.stderr
             )
         out = ray._private.utils.decode(output, encode_type=encode)
     return out
+
+
+def run_string_as_driver_stdout_stderr(
+    driver_script: str, env: Dict = None, encode: str = "utf-8"
+) -> Tuple[str, str]:
+    """Run a driver as a separate process.
+
+    Args:
+        driver_script: A string to run as a Python script.
+        env: The environment variables for the driver.
+
+    Returns:
+        The script's stdout and stderr.
+    """
+    proc = subprocess.Popen(
+        [sys.executable, "-"],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        env=env,
+    )
+    with proc:
+        outputs_bytes = proc.communicate(driver_script.encode(encoding=encode))
+        out_str, err_str = [
+            ray._private.utils.decode(output, encode_type=encode)
+            for output in outputs_bytes
+        ]
+        if proc.returncode:
+            print(out_str)
+            print(err_str)
+            raise subprocess.CalledProcessError(
+                proc.returncode, proc.args, out_str, err_str
+            )
+        return out_str, err_str
 
 
 def run_string_as_driver_nonblocking(driver_script, env: Dict = None):
@@ -668,7 +706,7 @@ def get_metric_check_condition(
 
     def f():
         for metric_pattern in metrics_to_check:
-            _, metric_names, metric_samples = fetch_prometheus([prom_addr])
+            _, _, metric_samples = fetch_prometheus([prom_addr])
             for metric_sample in metric_samples:
                 if metric_pattern.matches(metric_sample):
                     break
@@ -1073,7 +1111,7 @@ def fetch_raw_prometheus(prom_addresses):
 
 def fetch_prometheus(prom_addresses):
     components_dict = {}
-    metric_names = set()
+    metric_descriptors = {}
     metric_samples = []
 
     for address in prom_addresses:
@@ -1081,14 +1119,13 @@ def fetch_prometheus(prom_addresses):
             components_dict[address] = set()
 
     for address, response in fetch_raw_prometheus(prom_addresses):
-        for line in response.split("\n"):
-            for family in text_string_to_metric_families(line):
-                for sample in family.samples:
-                    metric_names.add(sample.name)
-                    metric_samples.append(sample)
-                    if "Component" in sample.labels:
-                        components_dict[address].add(sample.labels["Component"])
-    return components_dict, metric_names, metric_samples
+        for metric in text_string_to_metric_families(response):
+            for sample in metric.samples:
+                metric_descriptors[sample.name] = metric
+                metric_samples.append(sample)
+                if "Component" in sample.labels:
+                    components_dict[address].add(sample.labels["Component"])
+    return components_dict, metric_descriptors, metric_samples
 
 
 def fetch_prometheus_metrics(prom_addresses: List[str]) -> Dict[str, List[Any]]:
@@ -1121,12 +1158,17 @@ def raw_metrics(info: RayContext) -> Dict[str, List[Any]]:
     return fetch_prometheus_metrics([metrics_page])
 
 
-def load_test_config(config_file_name):
-    """Loads a config yaml from tests/test_cli_patterns."""
+def get_test_config_path(config_file_name):
+    """Resolve the test config path from the config file dir"""
     here = os.path.realpath(__file__)
     path = pathlib.Path(here)
     grandparent = path.parent.parent
-    config_path = os.path.join(grandparent, "tests/test_cli_patterns", config_file_name)
+    return os.path.join(grandparent, "tests/test_cli_patterns", config_file_name)
+
+
+def load_test_config(config_file_name):
+    """Loads a config yaml from tests/test_cli_patterns."""
+    config_path = get_test_config_path(config_file_name)
     config = yaml.safe_load(open(config_path).read())
     return config
 
@@ -1388,134 +1430,292 @@ def teardown_tls(key_filepath, cert_filepath, temp_dir):
     del os.environ["RAY_TLS_CA_CERT"]
 
 
-def get_and_run_node_killer(
-    node_kill_interval_s,
+class ResourceKillerActor:
+    """Abstract base class used to implement resource killers for chaos testing.
+
+    Subclasses should implement _find_resource_to_kill, which should find a resource
+    to kill. This method should return the args to _kill_resource, which is another
+    abstract method that should kill the resource and add it to the `killed` set.
+    """
+
+    def __init__(
+        self,
+        head_node_id,
+        kill_interval_s: float = 60,
+        max_to_kill: int = 2,
+        kill_filter_fn: Optional[Callable] = None,
+    ):
+        self.kill_interval_s = kill_interval_s
+        self.is_running = False
+        self.head_node_id = head_node_id
+        self.killed = set()
+        self.done = ray._private.utils.get_or_create_event_loop().create_future()
+        self.max_to_kill = max_to_kill
+        self.kill_filter_fn = kill_filter_fn
+        self.kill_immediately_after_found = False
+        # -- logger. --
+        logging.basicConfig(level=logging.INFO)
+
+    def ready(self):
+        pass
+
+    async def run(self):
+        self.is_running = True
+        while self.is_running:
+            to_kill = await self._find_resource_to_kill()
+
+            if not self.is_running:
+                break
+
+            if self.kill_immediately_after_found:
+                sleep_interval = 0
+            else:
+                sleep_interval = random.random() * self.kill_interval_s
+                time.sleep(sleep_interval)
+
+            self._kill_resource(*to_kill)
+            if len(self.killed) >= self.max_to_kill:
+                break
+            await asyncio.sleep(self.kill_interval_s - sleep_interval)
+
+        self.done.set_result(True)
+
+    async def _find_resource_to_kill(self):
+        raise NotImplementedError
+
+    def _kill_resource(self, *args):
+        raise NotImplementedError
+
+    async def stop_run(self):
+        was_running = self.is_running
+        self.is_running = False
+        return was_running
+
+    async def get_total_killed(self):
+        """Get the total number of killed resources"""
+        await self.done
+        return self.killed
+
+
+class NodeKillerBase(ResourceKillerActor):
+    async def _find_resource_to_kill(self):
+        node_to_kill_ip = None
+        node_to_kill_port = None
+        node_id = None
+        while node_to_kill_port is None and self.is_running:
+            nodes = ray.nodes()
+            alive_nodes = self._get_alive_nodes(nodes)
+            if self.kill_filter_fn is not None:
+                nodes = list(filter(self.kill_filter_fn(), nodes))
+            for node in nodes:
+                node_id = node["NodeID"]
+                # make sure at least 1 worker node is alive.
+                if (
+                    node["Alive"]
+                    and node_id != self.head_node_id
+                    and node_id not in self.killed
+                    and alive_nodes > 2
+                ):
+                    node_to_kill_ip = node["NodeManagerAddress"]
+                    node_to_kill_port = node["NodeManagerPort"]
+                    break
+            # Give the cluster some time to start.
+            await asyncio.sleep(0.1)
+
+        return node_id, node_to_kill_ip, node_to_kill_port
+
+    def _get_alive_nodes(self, nodes):
+        alive_nodes = 0
+        for node in nodes:
+            if node["Alive"]:
+                alive_nodes += 1
+        return alive_nodes
+
+
+@ray.remote(num_cpus=0)
+class RayletKiller(NodeKillerBase):
+    def _kill_resource(self, node_id, node_to_kill_ip, node_to_kill_port):
+        if node_to_kill_port is not None:
+            try:
+                self._kill_raylet(node_to_kill_ip, node_to_kill_port, graceful=False)
+            except Exception:
+                pass
+            logging.info(
+                f"Killed node {node_id} at address: "
+                f"{node_to_kill_ip}, port: {node_to_kill_port}"
+            )
+            self.killed.add(node_id)
+
+    def _kill_raylet(self, ip, port, graceful=False):
+        import grpc
+        from grpc._channel import _InactiveRpcError
+        from ray.core.generated import node_manager_pb2_grpc
+
+        raylet_address = f"{ip}:{port}"
+        channel = grpc.insecure_channel(raylet_address)
+        stub = node_manager_pb2_grpc.NodeManagerServiceStub(channel)
+        try:
+            stub.ShutdownRaylet(
+                node_manager_pb2.ShutdownRayletRequest(graceful=graceful)
+            )
+        except _InactiveRpcError:
+            assert not graceful
+
+
+@ray.remote(num_cpus=0)
+class EC2InstanceTerminator(NodeKillerBase):
+    def _kill_resource(self, node_id, node_to_kill_ip, _):
+        if node_to_kill_ip is not None:
+            try:
+                self._terminate_ec2_instance(node_to_kill_ip)
+            except Exception:
+                pass
+            logging.info(f"Terminated instance, {node_id=}, address={node_to_kill_ip}")
+            self.killed.add(node_id)
+
+    def _terminate_ec2_instance(self, ip):
+        # This command uses IMDSv2 to get the host instance id and region.
+        # After that it terminates itself using aws cli.
+        multi_line_command = (
+            'TOKEN=$(curl -X PUT "http://169.254.169.254/latest/api/token" -H "X-aws-ec2-metadata-token-ttl-seconds: 21600");'  # noqa: E501
+            'instanceId=$(curl -H "X-aws-ec2-metadata-token: $TOKEN" http://169.254.169.254/latest/meta-data/instance-id/);'  # noqa: E501
+            'region=$(curl -H "X-aws-ec2-metadata-token: $TOKEN" http://169.254.169.254/latest/meta-data/placement/region);'  # noqa: E501
+            "aws ec2 terminate-instances --region $region --instance-ids $instanceId"  # noqa: E501
+        )
+        # This is a feature on Anyscale platform that enables
+        # easy ssh access to worker nodes.
+        ssh_command = f"ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -p 2222 ray@{ip} '{multi_line_command}'"  # noqa: E501
+
+        result = subprocess.run(
+            ssh_command, shell=True, capture_output=True, text=True, check=True
+        )
+        print(f"STDOUT:\n{result.stdout}\n")
+        print(f"STDERR:\n{result.stderr}\n")
+
+
+@ray.remote(num_cpus=0)
+class WorkerKillerActor(ResourceKillerActor):
+    def __init__(
+        self,
+        head_node_id,
+        kill_interval_s: float = 60,
+        max_to_kill: int = 2,
+        kill_filter_fn: Optional[Callable] = None,
+    ):
+        super().__init__(head_node_id, kill_interval_s, max_to_kill, kill_filter_fn)
+
+        # Kill worker immediately so that the task does
+        # not finish successfully on its own.
+        self.kill_immediately_after_found = True
+
+        from ray.util.state.common import ListApiOptions
+        from ray.util.state.api import StateApiClient
+
+        self.client = StateApiClient()
+        self.task_options = ListApiOptions(
+            filters=[
+                ("state", "=", "RUNNING"),
+                ("name", "!=", "WorkerKillActor.run"),
+            ]
+        )
+
+    async def _find_resource_to_kill(self):
+        from ray.util.state.common import StateResource
+
+        process_to_kill_task_id = None
+        process_to_kill_pid = None
+        process_to_kill_node_id = None
+        while process_to_kill_pid is None and self.is_running:
+            tasks = self.client.list(
+                StateResource.TASKS,
+                options=self.task_options,
+                raise_on_missing_output=False,
+            )
+            if self.kill_filter_fn is not None:
+                tasks = list(filter(self.kill_filter_fn(), tasks))
+
+            for task in tasks:
+                if task.worker_id is not None and task.node_id is not None:
+                    process_to_kill_task_id = task.task_id
+                    process_to_kill_pid = task.worker_pid
+                    process_to_kill_node_id = task.node_id
+                    break
+
+            # Give the cluster some time to start.
+            await asyncio.sleep(0.1)
+
+        return process_to_kill_task_id, process_to_kill_pid, process_to_kill_node_id
+
+    def _kill_resource(
+        self, process_to_kill_task_id, process_to_kill_pid, process_to_kill_node_id
+    ):
+        if process_to_kill_pid is not None:
+
+            @ray.remote
+            def kill_process(pid):
+                import psutil
+
+                proc = psutil.Process(pid)
+                proc.kill()
+
+            scheduling_strategy = (
+                ray.util.scheduling_strategies.NodeAffinitySchedulingStrategy(
+                    node_id=process_to_kill_node_id,
+                    soft=False,
+                )
+            )
+            kill_process.options(scheduling_strategy=scheduling_strategy).remote(
+                process_to_kill_pid
+            )
+            logging.info(
+                f"Killing pid {process_to_kill_pid} on node {process_to_kill_node_id}"
+            )
+            # Store both task_id and pid because retried tasks have same task_id.
+            self.killed.add((process_to_kill_task_id, process_to_kill_pid))
+
+
+def get_and_run_resource_killer(
+    resource_killer_cls,
+    kill_interval_s,
     namespace=None,
     lifetime=None,
     no_start=False,
-    max_nodes_to_kill=2,
+    max_to_kill=2,
+    kill_delay_s=0,
+    kill_filter_fn=None,
 ):
     assert ray.is_initialized(), "The API is only available when Ray is initialized."
 
-    @ray.remote(num_cpus=0)
-    class NodeKillerActor:
-        def __init__(
-            self,
-            head_node_id,
-            node_kill_interval_s: float = 60,
-            max_nodes_to_kill: int = 2,
-        ):
-            self.node_kill_interval_s = node_kill_interval_s
-            self.is_running = False
-            self.head_node_id = head_node_id
-            self.killed_nodes = set()
-            self.done = ray._private.utils.get_or_create_event_loop().create_future()
-            self.max_nodes_to_kill = max_nodes_to_kill
-            # -- logger. --
-            logging.basicConfig(level=logging.INFO)
-
-        def ready(self):
-            pass
-
-        async def run(self):
-            self.is_running = True
-            while self.is_running:
-                node_to_kill_ip = None
-                node_to_kill_port = None
-                while node_to_kill_port is None and self.is_running:
-                    nodes = ray.nodes()
-                    alive_nodes = self._get_alive_nodes(nodes)
-                    for node in nodes:
-                        node_id = node["NodeID"]
-                        # make sure at least 1 worker node is alive.
-                        if (
-                            node["Alive"]
-                            and node_id != self.head_node_id
-                            and node_id not in self.killed_nodes
-                            and alive_nodes > 2
-                        ):
-                            node_to_kill_ip = node["NodeManagerAddress"]
-                            node_to_kill_port = node["NodeManagerPort"]
-                            break
-                    # Give the cluster some time to start.
-                    await asyncio.sleep(0.1)
-
-                if not self.is_running:
-                    break
-
-                sleep_interval = random.random() * self.node_kill_interval_s
-                time.sleep(sleep_interval)
-
-                if node_to_kill_port is not None:
-                    try:
-                        self._kill_raylet(
-                            node_to_kill_ip, node_to_kill_port, graceful=False
-                        )
-                    except Exception:
-                        pass
-                    logging.info(
-                        f"Killed node {node_id} at address: "
-                        f"{node_to_kill_ip}, port: {node_to_kill_port}"
-                    )
-                    self.killed_nodes.add(node_id)
-                if len(self.killed_nodes) >= self.max_nodes_to_kill:
-                    break
-                await asyncio.sleep(self.node_kill_interval_s - sleep_interval)
-
-            self.done.set_result(True)
-
-        async def stop_run(self):
-            was_running = self.is_running
-            self.is_running = False
-            return was_running
-
-        async def get_total_killed_nodes(self):
-            """Get the total number of killed nodes"""
-            await self.done
-            return self.killed_nodes
-
-        def _kill_raylet(self, ip, port, graceful=False):
-            import grpc
-            from grpc._channel import _InactiveRpcError
-            from ray.core.generated import node_manager_pb2_grpc
-
-            raylet_address = f"{ip}:{port}"
-            channel = grpc.insecure_channel(raylet_address)
-            stub = node_manager_pb2_grpc.NodeManagerServiceStub(channel)
-            try:
-                stub.ShutdownRaylet(
-                    node_manager_pb2.ShutdownRayletRequest(graceful=graceful)
-                )
-            except _InactiveRpcError:
-                assert not graceful
-
-        def _get_alive_nodes(self, nodes):
-            alive_nodes = 0
-            for node in nodes:
-                if node["Alive"]:
-                    alive_nodes += 1
-            return alive_nodes
-
     head_node_id = ray.get_runtime_context().get_node_id()
     # Schedule the actor on the current node.
-    node_killer = NodeKillerActor.options(
+    resource_killer = resource_killer_cls.options(
         scheduling_strategy=NodeAffinitySchedulingStrategy(
             node_id=head_node_id, soft=False
         ),
         namespace=namespace,
-        name="node_killer",
+        name="ResourceKiller",
         lifetime=lifetime,
     ).remote(
         head_node_id,
-        node_kill_interval_s=node_kill_interval_s,
-        max_nodes_to_kill=max_nodes_to_kill,
+        kill_interval_s=kill_interval_s,
+        max_to_kill=max_to_kill,
+        kill_filter_fn=kill_filter_fn,
     )
-    print("Waiting for node killer actor to be ready...")
-    ray.get(node_killer.ready.remote())
-    print("Node killer actor is ready now.")
+    print("Waiting for ResourceKiller to be ready...")
+    ray.get(resource_killer.ready.remote())
+    print("ResourceKiller is ready now.")
     if not no_start:
-        node_killer.run.remote()
-    return node_killer
+        time.sleep(kill_delay_s)
+        resource_killer.run.remote()
+    return resource_killer
+
+
+def get_actor_node_id(actor_handle: "ray.actor.ActorHandle") -> str:
+    return ray.get(
+        actor_handle.__ray_call__.remote(
+            lambda self: ray.get_runtime_context().get_node_id()
+        )
+    )
 
 
 @contextmanager
@@ -1977,3 +2177,46 @@ def reset_autoscaler_v2_enabled_cache():
     import ray.autoscaler.v2.utils as u
 
     u.cached_is_autoscaler_v2 = None
+
+
+def skip_flaky_core_test_premerge(reason: str):
+    """
+    Decorator to skip a test if it is flaky (e.g. in premerge)
+
+    Default we will skip the flaky test if not specified otherwise in
+    CI with CI_SKIP_FLAKY_TEST="0"
+    """
+    import pytest
+
+    def wrapper(func):
+        return pytest.mark.skipif(
+            os.environ.get("CI_SKIP_FLAKY_TEST", "1") == "1", reason=reason
+        )(func)
+
+    return wrapper
+
+
+def close_common_connections(pid):
+    """
+    Closes ipv4 connections between the current process and another process specified by
+    its PID.
+    """
+    current_process = psutil.Process()
+    current_connections = current_process.connections(kind="inet")
+    try:
+        other_process = psutil.Process(pid)
+        other_connections = other_process.connections(kind="inet")
+    except psutil.NoSuchProcess:
+        print(f"No process with PID {pid} found.")
+        return
+    # Finding common connections based on matching addresses and ports.
+    common_connections = []
+    for conn1 in current_connections:
+        for conn2 in other_connections:
+            if conn1.laddr == conn2.raddr and conn1.raddr == conn2.laddr:
+                common_connections.append((conn1.fd, conn1.laddr, conn1.raddr))
+    # Closing the FDs.
+    for fd, laddr, raddr in common_connections:
+        if fd != -1:  # FD is -1 if it's not accessible or if it's a pseudo FD.
+            os.close(fd)
+            print(f"Closed FD: {fd}, laddr: {laddr}, raddr: {raddr}")

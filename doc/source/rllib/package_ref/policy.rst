@@ -1,6 +1,9 @@
+.. include:: /_includes/rllib/we_are_hiring.rst
+
+.. include:: /_includes/rllib/new_api_stack.rst
+
 .. _policy-reference-docs:
 
-.. include:: /_includes/rllib/rlm_learner_migration_banner.rst
 
 Policy API
 ==========
@@ -23,8 +26,7 @@ which maps agent IDs to a policy ID.
     by sub-classing either of the available, built-in classes, depending on your
     needs.
 
-.. include::
-    policy/custom_policies.rst
+.. include:: policy/custom_policies.rst
 
 .. currentmodule:: ray.rllib
 
@@ -290,4 +292,3 @@ Tensorflow Policy
 
     ~policy.eager_tf_policy_v2.EagerTFPolicyV2.variables
     ~policy.eager_tf_policy_v2.EagerTFPolicyV2.get_batch_divisibility_req
-

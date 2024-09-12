@@ -1,9 +1,12 @@
 from abc import ABC, abstractmethod
-from typing import Any, Callable, Dict, List, Optional, Union
+from typing import Any, Callable, Dict, Iterator, List, Optional, Union
 
 import ray
 from .ref_bundle import RefBundle
-from ray._raylet import StreamingObjectRefGenerator
+from ray._raylet import ObjectRefGenerator
+from ray.data._internal.execution.autoscaler.autoscaling_actor_pool import (
+    AutoscalingActorPool,
+)
 from ray.data._internal.execution.interfaces.execution_options import (
     ExecutionOptions,
     ExecutionResources,
@@ -14,7 +17,7 @@ from ray.data._internal.stats import StatsDict
 from ray.data.context import DataContext
 
 # TODO(hchen): Ray Core should have a common interface for these two types.
-Waitable = Union[ray.ObjectRef, StreamingObjectRefGenerator]
+Waitable = Union[ray.ObjectRef, ObjectRefGenerator]
 
 
 class OpTask(ABC):
@@ -23,9 +26,16 @@ class OpTask(ABC):
     The task can be either a regular task or an actor task.
     """
 
+    def __init__(self, task_index: int):
+        self._task_index = task_index
+
+    def task_index(self) -> int:
+        """Return the index of the task."""
+        return self._task_index
+
     @abstractmethod
     def get_waitable(self) -> Waitable:
-        """Return the ObjectRef or StreamingObjectRefGenerator to wait on."""
+        """Return the ObjectRef or ObjectRefGenerator to wait on."""
         pass
 
 
@@ -34,9 +44,10 @@ class DataOpTask(OpTask):
 
     def __init__(
         self,
-        streaming_gen: StreamingObjectRefGenerator,
+        task_index: int,
+        streaming_gen: ObjectRefGenerator,
         output_ready_callback: Callable[[RefBundle], None],
-        task_done_callback: Callable[[], None],
+        task_done_callback: Callable[[Optional[Exception]], None],
     ):
         """
         Args:
@@ -45,6 +56,7 @@ class DataOpTask(OpTask):
                 from the generator.
             task_done_callback: The callback to call when the task is done.
         """
+        super().__init__(task_index)
         # TODO(hchen): Right now, the streaming generator is required to yield a Block
         # and a BlockMetadata each time. We should unify task submission with an unified
         # interface. So each individual operator don't need to take care of the
@@ -53,19 +65,19 @@ class DataOpTask(OpTask):
         self._output_ready_callback = output_ready_callback
         self._task_done_callback = task_done_callback
 
-    def get_waitable(self) -> StreamingObjectRefGenerator:
+    def get_waitable(self) -> ObjectRefGenerator:
         return self._streaming_gen
 
-    def on_data_ready(self, max_blocks_to_read: Optional[int]) -> int:
+    def on_data_ready(self, max_bytes_to_read: Optional[int]) -> int:
         """Callback when data is ready to be read from the streaming generator.
 
         Args:
-            max_blocks_to_read: Max number of blocks to read. If None, all available
+            max_bytes_to_read: Max bytes of blocks to read. If None, all available
                 will be read.
         Returns: The number of blocks read.
         """
-        num_blocks_read = 0
-        while max_blocks_to_read is None or num_blocks_read < max_blocks_to_read:
+        bytes_read = 0
+        while max_bytes_to_read is None or bytes_read < max_bytes_to_read:
             try:
                 block_ref = self._streaming_gen._next_sync(0)
                 if block_ref.is_nil():
@@ -73,7 +85,7 @@ class DataOpTask(OpTask):
                     # And it's not stopped yet.
                     break
             except StopIteration:
-                self._task_done_callback()
+                self._task_done_callback(None)
                 break
 
             try:
@@ -85,27 +97,34 @@ class DataOpTask(OpTask):
                 # And in this case, the block_ref is the exception object.
                 # TODO(hchen): Ray Core should have a better interface for
                 # detecting and obtaining the exception.
-                ex = ray.get(block_ref)
-                self._task_done_callback()
-                raise ex
+                try:
+                    ray.get(block_ref)
+                    assert False, "Above ray.get should raise an exception."
+                except Exception as ex:
+                    self._task_done_callback(ex)
+                    raise ex from None
             self._output_ready_callback(
                 RefBundle([(block_ref, meta)], owns_blocks=True)
             )
-            num_blocks_read += 1
-        return num_blocks_read
+            bytes_read += meta.size_bytes
+        return bytes_read
 
 
 class MetadataOpTask(OpTask):
     """Represents an OpTask that only handles metadata, instead of Block data."""
 
     def __init__(
-        self, object_ref: ray.ObjectRef, task_done_callback: Callable[[], None]
+        self,
+        task_index: int,
+        object_ref: ray.ObjectRef,
+        task_done_callback: Callable[[], None],
     ):
         """
         Args:
             object_ref: The ObjectRef of the task.
             task_done_callback: The callback to call when the task is done.
         """
+        super().__init__(task_index)
         self._object_ref = object_ref
         self._task_done_callback = task_done_callback
 
@@ -145,9 +164,9 @@ class PhysicalOperator(Operator):
                 return ready[0]
 
     Note that the above operator fully supports both bulk and streaming execution,
-    since `add_input` and `get_next` can be called in any order. In bulk execution,
-    all inputs would be added up-front, but in streaming execution the calls could
-    be interleaved.
+    since `add_input` and `get_next` can be called in any order. In bulk execution
+    (now deprecated), all inputs would be added up-front, but in streaming
+    execution (now the default execution mode) the calls could be interleaved.
     """
 
     def __init__(
@@ -162,13 +181,29 @@ class PhysicalOperator(Operator):
             assert isinstance(x, PhysicalOperator), x
         self._inputs_complete = not input_dependencies
         self._target_max_block_size = target_max_block_size
-        self._dependents_complete = False
         self._started = False
+        self._in_task_submission_backpressure = False
+        self._in_task_output_backpressure = False
         self._metrics = OpRuntimeMetrics(self)
-        self._estimated_output_blocks = None
+        self._estimated_num_output_bundles = None
+        self._estimated_output_num_rows = None
+        self._execution_completed = False
 
     def __reduce__(self):
         raise ValueError("Operator is not serializable.")
+
+    # Override the following 3 methods to correct type hints.
+
+    @property
+    def input_dependencies(self) -> List["PhysicalOperator"]:
+        return super().input_dependencies  # type: ignore
+
+    @property
+    def output_dependencies(self) -> List["PhysicalOperator"]:
+        return super().output_dependencies  # type: ignore
+
+    def post_order_iter(self) -> Iterator["PhysicalOperator"]:
+        return super().post_order_iter()  # type: ignore
 
     @property
     def target_max_block_size(self) -> Optional[int]:
@@ -188,18 +223,25 @@ class PhysicalOperator(Operator):
             target_max_block_size = DataContext.get_current().target_max_block_size
         return target_max_block_size
 
+    def set_target_max_block_size(self, target_max_block_size: Optional[int]):
+        self._target_max_block_size = target_max_block_size
+
+    def mark_execution_completed(self):
+        """Manually mark this operator has completed execution."""
+        self._execution_completed = True
+
     def completed(self) -> bool:
         """Return True when this operator is completed.
 
-        An operator is completed if any of the following conditions are met:
-        - All upstream operators are completed and all outputs are taken.
-        - All downstream operators are completed.
+        An operator is completed the operator has stopped execution and all
+        outputs are taken.
         """
-        return (
-            self._inputs_complete
-            and self.num_active_tasks() == 0
-            and not self.has_next()
-        ) or self._dependents_complete
+        if not self._execution_completed:
+            if self._inputs_complete and self.num_active_tasks() == 0:
+                # If all inputs are complete and there are no active tasks,
+                # then the operator has completed execution.
+                self._execution_completed = True
+        return self._execution_completed and not self.has_next()
 
     def get_stats(self) -> StatsDict:
         """Return recorded execution stats for use with DatasetStats."""
@@ -223,17 +265,31 @@ class PhysicalOperator(Operator):
         """
         return ""
 
-    def num_outputs_total(self) -> int:
-        """Returns the total number of output bundles of this operator.
+    def num_outputs_total(self) -> Optional[int]:
+        """Returns the total number of output bundles of this operator,
+        or ``None`` if unable to provide a reasonable estimate (for example,
+        if no tasks have finished yet).
 
         The value returned may be an estimate based off the consumption so far.
         This is useful for reporting progress.
+
+        Subclasses should either override this method, or update
+        ``self._estimated_num_output_bundles`` appropriately.
         """
-        if self._estimated_output_blocks is not None:
-            return self._estimated_output_blocks
-        if len(self.input_dependencies) == 1:
-            return self.input_dependencies[0].num_outputs_total()
-        raise AttributeError
+        return self._estimated_num_output_bundles
+
+    def num_output_rows_total(self) -> Optional[int]:
+        """Returns the total number of output rows of this operator,
+        or ``None`` if unable to provide a reasonable estimate (for example,
+        if no tasks have finished yet).
+
+        The value returned may be an estimate based off the consumption so far.
+        This is useful for reporting progress.
+
+        Subclasses should either override this method, or update
+        ``self._estimated_output_num_rows`` appropriately.
+        """
+        return self._estimated_output_num_rows
 
     def start(self, options: ExecutionOptions) -> None:
         """Called by the executor when execution starts for an operator.
@@ -248,13 +304,6 @@ class PhysicalOperator(Operator):
 
         Operators can customize the implementation of this method to apply additional
         backpressure (e.g., waiting for internal actors to be created).
-        """
-        return True
-
-    def need_more_inputs(self) -> bool:
-        """Return true if the operator still needs more inputs.
-
-        Once this return false, it should never return true again.
         """
         return True
 
@@ -295,13 +344,6 @@ class PhysicalOperator(Operator):
         """
         self._inputs_complete = True
 
-    def all_dependents_complete(self) -> None:
-        """Called when all downstream operators have completed().
-
-        After this is called, the operator is marked as completed.
-        """
-        self._dependents_complete = True
-
     def has_next(self) -> bool:
         """Returns when a downstream output is available.
 
@@ -325,11 +367,24 @@ class PhysicalOperator(Operator):
         raise NotImplementedError
 
     def get_active_tasks(self) -> List[OpTask]:
-        """Get a list of the active tasks of this operator."""
+        """Get a list of the active tasks of this operator.
+
+        Subclasses should return *all* running normal/actor tasks. The
+        StreamingExecutor will wait on these tasks and trigger callbacks.
+        """
         return []
 
     def num_active_tasks(self) -> int:
         """Return the number of active tasks.
+
+        This method is used for 2 purposes:
+        * Determine if this operator is completed.
+        * Displaying active task info in the progress bar.
+        Thus, the return value can be less than `len(get_active_tasks())`,
+        if some tasks are not needed for the above purposes. E.g., for the
+        actor pool map operator, readiness checking tasks can be excluded
+        from `num_active_tasks`, but they should be included in
+        `get_active_tasks`.
 
         Subclasses can override this as a performance optimization.
         """
@@ -360,13 +415,40 @@ class PhysicalOperator(Operator):
         if not self._started:
             raise ValueError("Operator must be started before being shutdown.")
 
-    def current_resource_usage(self) -> ExecutionResources:
-        """Returns the current estimated resource usage of this operator.
+    def current_processor_usage(self) -> ExecutionResources:
+        """Returns the current estimated CPU and GPU usage of this operator, excluding
+        object store memory.
 
-        This method is called by the executor to decide how to allocate resources
+        This method is called by the executor to decide how to allocate processors
         between different operators.
         """
-        return ExecutionResources()
+        return ExecutionResources(0, 0, 0)
+
+    def running_processor_usage(self) -> ExecutionResources:
+        """Returns the estimated running CPU and GPU usage of this operator, excluding
+        object store memory.
+
+        This method is called by the resource manager and the streaming
+        executor to display the number of currently running CPUs and GPUs in the
+        progress bar.
+
+        Note, this method returns `current_processor_usage() -
+        pending_processor_usage()` by default. Subclasses should only override
+        `pending_processor_usage()` if needed.
+        """
+        usage = self.current_processor_usage()
+        usage = usage.subtract(self.pending_processor_usage())
+        return usage
+
+    def pending_processor_usage(self) -> ExecutionResources:
+        """Returns the estimated pending CPU and GPU usage of this operator, excluding
+        object store memory.
+
+        This method is called by the resource manager and the streaming
+        executor to display the number of currently pending actors in the
+        progress bar.
+        """
+        return ExecutionResources(0, 0, 0)
 
     def base_resource_usage(self) -> ExecutionResources:
         """Returns the minimum amount of resources required for execution.
@@ -384,13 +466,37 @@ class PhysicalOperator(Operator):
         """
         return ExecutionResources()
 
-    def notify_resource_usage(
-        self, input_queue_size: int, under_resource_limits: bool
-    ) -> None:
-        """Called periodically by the executor.
+    def notify_in_task_submission_backpressure(self, in_backpressure: bool) -> None:
+        """Called periodically from the executor to update internal in backpressure
+        status for stats collection purposes.
 
         Args:
-            input_queue_size: The number of inputs queued outside this operator.
-            under_resource_limits: Whether this operator is under resource limits.
+            in_backpressure: Value this operator's in_backpressure should be set to.
         """
-        pass
+        # only update on change to in_backpressure
+        if self._in_task_submission_backpressure != in_backpressure:
+            self._metrics.on_toggle_task_submission_backpressure(in_backpressure)
+            self._in_task_submission_backpressure = in_backpressure
+
+    def get_autoscaling_actor_pools(self) -> List[AutoscalingActorPool]:
+        """Return a list of `AutoscalingActorPool`s managed by this operator."""
+        return []
+
+    def implements_accurate_memory_accounting(self) -> bool:
+        """Return whether this operator implements accurate memory accounting.
+
+        An operator that implements accurate memory accounting should should properly
+        report its memory usage via the following APIs:
+          - `self._metrics.on_input_queued`.
+          - `self._metrics.on_input_dequeued`.
+          - `self._metrics.on_output_queued`.
+          - `self._metrics.on_output_dequeued`.
+        """
+        # TODO(hchen): Currently we only enable `ReservationOpResourceAllocator` when
+        # all operators in the dataset have implemented accurate memory accounting.
+        # Eventually all operators should implement accurate memory accounting.
+        return False
+
+    def supports_fusion(self) -> bool:
+        """Returns ```True``` if this operator can be fused with other operators."""
+        return False

@@ -14,6 +14,7 @@
 
 #include "ray/gcs/store_client/redis_store_client.h"
 
+#include <boost/optional/optional_io.hpp>
 #include <chrono>
 
 #include "ray/common/test_util.h"
@@ -66,12 +67,9 @@ class RedisStoreClientTest : public StoreClientTestBase {
   }
 
   void InitStoreClient() override {
-    RedisClientOptions options("127.0.0.1",
-                               TEST_REDIS_SERVER_PORTS.front(),
-                               "",
-                               /*enable_sharding_conn=*/false);
+    RedisClientOptions options("127.0.0.1", TEST_REDIS_SERVER_PORTS.front(), "");
     redis_client_ = std::make_shared<RedisClient>(options);
-    RAY_CHECK_OK(redis_client_->Connect(io_service_pool_->GetAll()));
+    RAY_CHECK_OK(redis_client_->Connect(*io_service_pool_->Get()));
 
     store_client_ = std::make_shared<RedisStoreClient>(redis_client_);
   }
@@ -308,7 +306,7 @@ TEST_F(RedisStoreClientTest, Random) {
 
   auto m_get = [&, counter, this](size_t idx) {
     auto k = std::to_string(std::rand() % 1000);
-    boost::optional<std::string> v;
+    std::optional<std::string> v;
     if (dict.count(k)) {
       v = dict[k];
     }

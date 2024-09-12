@@ -31,26 +31,42 @@ def make_time_major(
             for _tensor in tensor
         ]
 
-    assert (trajectory_len != recurrent_seq_len) and (
-        trajectory_len is None or recurrent_seq_len is None
+    assert (
+        trajectory_len is not None or recurrent_seq_len is not None
     ), "Either trajectory_len or recurrent_seq_len must be set."
 
-    if recurrent_seq_len:
-        B = recurrent_seq_len.shape[0]
-        T = tensor.shape[0] // B
+    # Figure out the sizes of the final B and T axes.
+    if recurrent_seq_len is not None:
+        assert len(tensor.shape) == 2
+        # Swap B and T axes.
+        tensor = torch.transpose(tensor, 1, 0)
+        return tensor
     else:
-        # Important: chop the tensor into batches at known episode cut
-        # boundaries.
-        # TODO: (sven) this is kind of a hack and won't work for
-        #  batch_mode=complete_episodes.
         T = trajectory_len
-        B = tensor.shape[0] // T
-    rs = torch.reshape(tensor, [B, T] + list(tensor.shape[1:]))
+        # Zero-pad, if necessary.
+        tensor_0 = tensor.shape[0]
+        B = tensor_0 // T
+        if B != (tensor_0 / T):
+            assert len(tensor.shape) == 1
+            tensor = torch.cat(
+                [
+                    tensor,
+                    torch.zeros(
+                        trajectory_len - tensor_0 % T,
+                        dtype=tensor.dtype,
+                        device=tensor.device,
+                    ),
+                ]
+            )
+            B += 1
+
+    # Reshape tensor (break up B axis into 2 axes: B and T).
+    tensor = torch.reshape(tensor, [B, T] + list(tensor.shape[1:]))
 
     # Swap B and T axes.
-    res = torch.transpose(rs, 1, 0)
+    tensor = torch.transpose(tensor, 1, 0)
 
-    return res
+    return tensor
 
 
 def vtrace_torch(
@@ -60,7 +76,7 @@ def vtrace_torch(
     discounts: "torch.Tensor",
     rewards: "torch.Tensor",
     values: "torch.Tensor",
-    bootstrap_value: "torch.Tensor",
+    bootstrap_values: "torch.Tensor",
     clip_rho_threshold: Union[float, "torch.Tensor"] = 1.0,
     clip_pg_rho_threshold: Union[float, "torch.Tensor"] = 1.0,
 ):
@@ -98,7 +114,7 @@ def vtrace_torch(
             following the behaviour policy.
         values: A float32 tensor of shape [T, B] with the value function estimates
             wrt. the target policy.
-        bootstrap_value: A float32 of shape [B] with the value function estimate at
+        bootstrap_values: A float32 of shape [B] with the value function estimate at
             time T.
         clip_rho_threshold: A scalar float32 tensor with the clipping threshold for
             importance weights (rho) when calculating the baseline targets (vs).
@@ -117,7 +133,7 @@ def vtrace_torch(
     cs = torch.clamp(rhos, max=1.0)
     # Append bootstrapped value to get [v1, ..., v_t+1]
     values_t_plus_1 = torch.cat(
-        [values[1:], torch.unsqueeze(bootstrap_value, 0)], axis=0
+        [values[1:], torch.unsqueeze(bootstrap_values, 0)], axis=0
     )
 
     deltas = clipped_rhos * (rewards + discounts * values_t_plus_1 - values)
@@ -126,7 +142,7 @@ def vtrace_torch(
     discounts_cpu = discounts.to("cpu")
     cs_cpu = cs.to("cpu")
     deltas_cpu = deltas.to("cpu")
-    vs_minus_v_xs_cpu = [torch.zeros_like(bootstrap_value, device="cpu")]
+    vs_minus_v_xs_cpu = [torch.zeros_like(bootstrap_values, device="cpu")]
     for i in reversed(range(len(discounts_cpu))):
         discount_t, c_t, delta_t = discounts_cpu[i], cs_cpu[i], deltas_cpu[i]
         vs_minus_v_xs_cpu.append(delta_t + discount_t * c_t * vs_minus_v_xs_cpu[-1])
@@ -141,7 +157,7 @@ def vtrace_torch(
     vs = torch.add(vs_minus_v_xs, values)
 
     # Advantage for policy gradient.
-    vs_t_plus_1 = torch.cat([vs[1:], torch.unsqueeze(bootstrap_value, 0)], axis=0)
+    vs_t_plus_1 = torch.cat([vs[1:], torch.unsqueeze(bootstrap_values, 0)], axis=0)
     if clip_pg_rho_threshold is not None:
         clipped_pg_rhos = torch.clamp(rhos, max=clip_pg_rho_threshold)
     else:

@@ -17,17 +17,17 @@
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/ray_syncer/ray_syncer.h"
 #include "ray/common/runtime_env_manager.h"
-#include "ray/gcs/gcs_client/usage_stats_client.h"
 #include "ray/gcs/gcs_server/gcs_function_manager.h"
 #include "ray/gcs/gcs_server/gcs_health_check_manager.h"
 #include "ray/gcs/gcs_server/gcs_init_data.h"
 #include "ray/gcs/gcs_server/gcs_kv_manager.h"
-#include "ray/gcs/gcs_server/gcs_monitor_server.h"
 #include "ray/gcs/gcs_server/gcs_redis_failure_detector.h"
+#include "ray/gcs/gcs_server/gcs_resource_manager.h"
 #include "ray/gcs/gcs_server/gcs_table_storage.h"
 #include "ray/gcs/gcs_server/gcs_task_manager.h"
 #include "ray/gcs/gcs_server/pubsub_handler.h"
 #include "ray/gcs/gcs_server/runtime_env_handler.h"
+#include "ray/gcs/gcs_server/usage_stats_client.h"
 #include "ray/gcs/pubsub/gcs_pub_sub.h"
 #include "ray/gcs/redis_client.h"
 #include "ray/raylet/scheduling/cluster_resource_scheduler.h"
@@ -179,9 +179,6 @@ class GcsServer {
   /// Install event listeners.
   void InstallEventListeners();
 
-  /// Initialize monitor service.
-  void InitMonitorServer();
-
  private:
   /// Gets the type of KV storage to use from config.
   StorageType GetStorageType() const;
@@ -253,10 +250,6 @@ class GcsServer {
   std::unique_ptr<GcsFunctionManager> function_manager_;
   /// Node resource info handler and service.
   std::unique_ptr<rpc::NodeResourceInfoGrpcService> node_resource_info_service_;
-  /// Monitor server supports monitor.py
-  std::unique_ptr<GcsMonitorServer> monitor_server_;
-  /// Monitor service for monitor server
-  std::unique_ptr<rpc::MonitorGrpcService> monitor_grpc_service_;
 
   /// Ray Syncer related fields.
   std::unique_ptr<syncer::RaySyncer> ray_syncer_;

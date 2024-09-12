@@ -54,6 +54,10 @@ void OutofOrderActorSubmitQueue::MarkTaskCanceled(uint64_t position) {
   sending_queue_.erase(position);
 }
 
+bool OutofOrderActorSubmitQueue::Empty() {
+  return pending_queue_.empty() && sending_queue_.empty();
+}
+
 void OutofOrderActorSubmitQueue::MarkDependencyResolved(uint64_t position) {
   // move the task from pending_requests queue to sending_requests queue.
   auto it = pending_queue_.find(position);
@@ -101,8 +105,8 @@ uint64_t OutofOrderActorSubmitQueue::GetSequenceNumber(
   return task_spec.ActorCounter();
 }
 
-void OutofOrderActorSubmitQueue::MarkTaskCompleted(uint64_t position,
-                                                   const TaskSpecification &task_spec) {}
+void OutofOrderActorSubmitQueue::MarkSeqnoCompleted(uint64_t position,
+                                                    const TaskSpecification &task_spec) {}
 
 }  // namespace core
 }  // namespace ray

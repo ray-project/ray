@@ -1,14 +1,13 @@
 import tempfile
 import unittest
-from typing import Mapping
 
 import gymnasium as gym
 import tensorflow as tf
 
+from ray.rllib.core.columns import Columns
 from ray.rllib.core.rl_module.rl_module import RLModuleConfig
 from ray.rllib.core.rl_module.tf.tf_rl_module import TfRLModule
 from ray.rllib.core.testing.tf.bc_module import DiscreteBCTFModule
-from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.test_utils import check
 
 
@@ -49,11 +48,11 @@ class TestRLModule(unittest.TestCase):
             output = module.forward_train({"obs": obs})
             action_dist_class = module.get_train_action_dist_cls()
             action_dist = action_dist_class.from_logits(
-                output[SampleBatch.ACTION_DIST_INPUTS]
+                output[Columns.ACTION_DIST_INPUTS]
             )
             loss = -tf.math.reduce_mean(action_dist.logp(actions))
 
-        self.assertIsInstance(output, Mapping)
+        self.assertIsInstance(output, dict)
 
         grads = tape.gradient(loss, module.trainable_variables)
 
@@ -118,7 +117,7 @@ class TestRLModule(unittest.TestCase):
             )
         )
         with tempfile.TemporaryDirectory() as tmpdir:
-            module.save_to_checkpoint(tmpdir)
+            module.save_to_path(tmpdir)
             new_module = DiscreteBCTFModule.from_checkpoint(tmpdir)
 
         check(module.get_state(), new_module.get_state())

@@ -37,7 +37,7 @@ namespace rpc {
   RAY_CORE_WORKER_RPC_SERVICE_HANDLER(DirectActorCallArgWaitComplete) \
   RAY_CORE_WORKER_RPC_SERVICE_HANDLER(RayletNotifyGCSRestart)         \
   RAY_CORE_WORKER_RPC_SERVICE_HANDLER(GetObjectStatus)                \
-  RAY_CORE_WORKER_RPC_SERVICE_HANDLER(WaitForActorOutOfScope)         \
+  RAY_CORE_WORKER_RPC_SERVICE_HANDLER(WaitForActorRefDeleted)         \
   RAY_CORE_WORKER_RPC_SERVICE_HANDLER(PubsubLongPolling)              \
   RAY_CORE_WORKER_RPC_SERVICE_HANDLER(PubsubCommandBatch)             \
   RAY_CORE_WORKER_RPC_SERVICE_HANDLER(UpdateObjectLocationBatch)      \
@@ -46,6 +46,7 @@ namespace rpc {
   RAY_CORE_WORKER_RPC_SERVICE_HANDLER(KillActor)                      \
   RAY_CORE_WORKER_RPC_SERVICE_HANDLER(CancelTask)                     \
   RAY_CORE_WORKER_RPC_SERVICE_HANDLER(RemoteCancelTask)               \
+  RAY_CORE_WORKER_RPC_SERVICE_HANDLER(RegisterMutableObjectReader)    \
   RAY_CORE_WORKER_RPC_SERVICE_HANDLER(GetCoreWorkerStats)             \
   RAY_CORE_WORKER_RPC_SERVICE_HANDLER(LocalGC)                        \
   RAY_CORE_WORKER_RPC_SERVICE_HANDLER(DeleteObjects)                  \
@@ -62,7 +63,7 @@ namespace rpc {
   DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(DirectActorCallArgWaitComplete) \
   DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(RayletNotifyGCSRestart)         \
   DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(GetObjectStatus)                \
-  DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(WaitForActorOutOfScope)         \
+  DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(WaitForActorRefDeleted)         \
   DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(PubsubLongPolling)              \
   DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(PubsubCommandBatch)             \
   DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(UpdateObjectLocationBatch)      \
@@ -71,6 +72,7 @@ namespace rpc {
   DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(KillActor)                      \
   DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(CancelTask)                     \
   DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(RemoteCancelTask)               \
+  DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(RegisterMutableObjectReader)    \
   DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(GetCoreWorkerStats)             \
   DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(LocalGC)                        \
   DECLARE_VOID_RPC_SERVICE_HANDLER_METHOD(DeleteObjects)                  \

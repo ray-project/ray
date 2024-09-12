@@ -1,6 +1,7 @@
 .. include:: /_includes/rllib/we_are_hiring.rst
 
-.. include:: /_includes/rllib/rlm_learner_migration_banner.rst
+.. include:: /_includes/rllib/new_api_stack.rst
+
 
 .. _rllib-policy-walkthrough:
 
@@ -12,7 +13,7 @@ You might find this useful if modifying or adding new algorithms to RLlib.
 
 Policy classes encapsulate the core numerical components of RL algorithms.
 This typically includes the policy model that determines actions to take, a trajectory postprocessor for experiences, and a loss function to improve the policy given post-processed experiences.
-For a simple example, see the policy gradients `policy definition <https://github.com/ray-project/ray/blob/master/rllib/algorithms/pg/pg_tf_policy.py>`__.
+For a simple example, see the policy gradients `policy definition <https://github.com/ray-project/ray/blob/master/rllib/algorithms/ppo/ppo_tf_policy.py>`__.
 
 Most interaction with deep learning frameworks is isolated to the `Policy interface <https://github.com/ray-project/ray/blob/master/rllib/policy/policy.py>`__, allowing RLlib to support multiple frameworks.
 To simplify the definition of policies, RLlib includes `Tensorflow <#building-policies-in-tensorflow>`__ and `PyTorch-specific <#building-policies-in-pytorch>`__ templates.
@@ -161,10 +162,10 @@ We can create an `Algorithm <#algorithms>`__ and try running this policy on a to
             return MyTFPolicy
 
     ray.init()
-    tune.Tuner(MyAlgo, param_space={"env": "CartPole-v1", "num_workers": 2}).fit()
+    tune.Tuner(MyAlgo, param_space={"env": "CartPole-v1", "num_env_runners": 2}).fit()
 
 
-If you run the above snippet `(runnable file here) <https://github.com/ray-project/ray/blob/master/rllib/examples/custom_tf_policy.py>`__, you'll probably notice that CartPole doesn't learn so well:
+If you run the above snippet, notice that CartPole doesn't learn so well:
 
 .. code-block:: bash
 
@@ -248,11 +249,11 @@ the same pre-loaded batch:
         # Collect SampleBatches from sample workers until we have a full batch.
         if self._by_agent_steps:
             train_batch = synchronous_parallel_sample(
-                worker_set=self.workers, max_agent_steps=self.config["train_batch_size"]
+                worker_set=self.env_runner_group, max_agent_steps=self.config["train_batch_size"]
             )
         else:
             train_batch = synchronous_parallel_sample(
-                worker_set=self.workers, max_env_steps=self.config["train_batch_size"]
+                worker_set=self.env_runner_group, max_env_steps=self.config["train_batch_size"]
             )
         train_batch = train_batch.as_multi_agent()
         self._counters[NUM_AGENT_STEPS_SAMPLED] += train_batch.agent_steps()
@@ -272,9 +273,9 @@ the same pre-loaded batch:
 
         # Update weights - after learning on the local worker - on all remote
         # workers.
-        if self.workers.remote_workers():
+        if self.env_runner_group.remote_workers():
             with self._timers[WORKER_UPDATE_TIMER]:
-                self.workers.sync_weights(global_vars=global_vars)
+                self.env_runner_group.sync_weights(global_vars=global_vars)
 
         # For each policy: update KL scale and warn about possible issues
         for policy_id, policy_info in train_results.items():
@@ -284,7 +285,7 @@ the same pre-loaded batch:
             self.get_policy(policy_id).update_kl(kl_divergence)
 
         # Update global vars on local worker as well.
-        self.workers.local_worker().set_global_vars(global_vars)
+        self.env_runner.set_global_vars(global_vars)
 
         return train_results
 
@@ -366,8 +367,7 @@ Building Policies in TensorFlow Eager
 
 Policies built with ``build_tf_policy`` (most of the reference algorithms are)
 can be run in eager mode by setting
-the ``"framework": "tf2"`` / ``"eager_tracing": true`` config options or
-using ``rllib train '{"framework": "tf2", "eager_tracing": true}'``.
+the ``"framework": "tf2"`` / ``"eager_tracing": true`` config options.
 This will tell RLlib to execute the model forward pass, action distribution,
 loss, and stats functions in eager mode.
 
@@ -378,103 +378,6 @@ However, eager can be slower than graph mode unless tracing is enabled.
 
 You can also selectively leverage eager operations within graph mode
 execution with `tf.py_function <https://www.tensorflow.org/api_docs/python/tf/py_function>`__.
-Here's an example of using eager ops embedded
-`within a loss function <https://github.com/ray-project/ray/blob/master/rllib/examples/eager_execution.py>`__.
-
-Building Policies in PyTorch
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-Defining a policy in PyTorch is quite similar to that for TensorFlow (and the process of defining a algorithm given a Torch policy is exactly the same).
-Here's a simple example of a trivial torch policy `(runnable file here) <https://github.com/ray-project/ray/blob/master/rllib/examples/custom_torch_policy.py>`__:
-
-.. code-block:: python
-
-    from ray.rllib.policy.sample_batch import SampleBatch
-    from ray.rllib.policy.torch_policy_template import build_torch_policy
-
-    def policy_gradient_loss(policy, model, dist_class, train_batch):
-        logits, _ = model.from_batch(train_batch)
-        action_dist = dist_class(logits)
-        log_probs = action_dist.logp(train_batch[SampleBatch.ACTIONS])
-        return -train_batch[SampleBatch.REWARDS].dot(log_probs)
-
-    # <class 'ray.rllib.policy.torch_policy_template.MyTorchPolicy'>
-    MyTorchPolicy = build_torch_policy(
-        name="MyTorchPolicy",
-        loss_fn=policy_gradient_loss)
-
-Now, building on the TF examples above, let's look at how the `A3C torch policy <https://github.com/ray-project/ray/blob/master/rllib/algorithms/a3c/a3c_torch_policy.py>`__ is defined:
-
-.. code-block:: python
-
-    A3CTorchPolicy = build_torch_policy(
-        name="A3CTorchPolicy",
-        get_default_config=lambda: ray.rllib.algorithms.a3c.a3c.DEFAULT_CONFIG,
-        loss_fn=actor_critic_loss,
-        stats_fn=loss_and_entropy_stats,
-        postprocess_fn=add_advantages,
-        extra_action_out_fn=model_value_predictions,
-        extra_grad_process_fn=apply_grad_clipping,
-        optimizer_fn=torch_optimizer,
-        mixins=[ValueNetworkMixin])
-
-``loss_fn``: Similar to the TF example, the actor critic loss is defined over ``batch``. We imperatively execute the forward pass by calling ``model()`` on the observations followed by ``dist_class()`` on the output logits. The output Tensors are saved as attributes of the policy object (e.g., ``policy.entropy = dist.entropy.mean()``), and we return the scalar loss:
-
-.. code-block:: python
-
-    def actor_critic_loss(policy, model, dist_class, train_batch):
-        logits, _ = model.from_batch(train_batch)
-        values = model.value_function()
-        action_dist = dist_class(logits)
-        log_probs = action_dist.logp(train_batch[SampleBatch.ACTIONS])
-        policy.entropy = action_dist.entropy().mean()
-        ...
-        return overall_err
-
-``stats_fn``: The stats function references ``entropy``, ``pi_err``, and ``value_err`` saved from the call to the loss function, similar in the PPO TF example:
-
-.. code-block:: python
-
-    def loss_and_entropy_stats(policy, train_batch):
-        return {
-            "policy_entropy": policy.entropy.item(),
-            "policy_loss": policy.pi_err.item(),
-            "vf_loss": policy.value_err.item(),
-        }
-
-``extra_action_out_fn``: We save value function predictions given model outputs. This makes the value function predictions of the model available in the trajectory as ``batch[SampleBatch.VF_PREDS]``:
-
-.. code-block:: python
-
-    def model_value_predictions(policy, input_dict, state_batches, model):
-        return {SampleBatch.VF_PREDS: model.value_function().cpu().numpy()}
-
-``postprocess_fn`` and ``mixins``: Similar to the PPO example, we need access to the value function during postprocessing (i.e., ``add_advantages`` below calls ``policy._value()``. The value function is exposed through a mixin class that defines the method:
-
-.. code-block:: python
-
-    def add_advantages(policy,
-                       sample_batch,
-                       other_agent_batches=None,
-                       episode=None):
-        completed = sample_batch[SampleBatch.DONES][-1]
-        if completed:
-            last_r = 0.0
-        else:
-            last_r = policy._value(sample_batch[SampleBatch.NEXT_OBS][-1])
-        return compute_advantages(sample_batch, last_r, policy.config["gamma"],
-                                  policy.config["lambda"])
-
-    class ValueNetworkMixin(object):
-        def _value(self, obs):
-            with self.lock:
-                obs = torch.from_numpy(obs).float().unsqueeze(0).to(self.device)
-                _, _, vf, _ = self.model({"obs": obs}, [])
-                return vf.detach().cpu().numpy().squeeze()
-
-You can find the full policy definition in `a3c_torch_policy.py <https://github.com/ray-project/ray/blob/master/rllib/algorithms/a3c/a3c_torch_policy.py>`__.
-
-In summary, the main differences between the PyTorch and TensorFlow policy builder functions is that the TF loss and stats functions are built symbolically when the policy is initialized, whereas for PyTorch (or TensorFlow Eager) these functions are called imperatively each time they are used.
 
 Extending Existing Policies
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~

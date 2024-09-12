@@ -133,14 +133,6 @@ py_test(
 )
 
 py_test(
-    name = "test_function_api_legacy",
-    size = "small",
-    srcs = ["tests/test_function_api_legacy.py"],
-    deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive"],
-)
-
-py_test(
     name = "test_integration_pytorch_lightning",
     size = "small",
     srcs = ["tests/test_integration_pytorch_lightning.py"],
@@ -376,14 +368,6 @@ py_test(
 )
 
 py_test(
-    name = "test_tune_server",
-    size = "medium",
-    srcs = ["tests/test_tune_server.py"],
-    deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive"],
-)
-
-py_test(
     name = "test_tuner",
     size = "large",
     srcs = ["tests/test_tuner.py"],
@@ -486,6 +470,14 @@ py_test(
 )
 
 py_test(
+    name = "test_controller_resume_integration",
+    size = "large",
+    srcs = ["tests/execution/test_controller_resume_integration.py"],
+    deps = [":tune_lib"],
+    tags = ["team:ml", "exclusive"]
+)
+
+py_test(
     name = "test_controller_search_alg_integration",
     size = "large",
     srcs = ["tests/execution/test_controller_search_alg_integration.py"],
@@ -525,29 +517,11 @@ py_test(
 )
 
 py_test(
-    name = "blendsearch_example",
-    size = "medium",
-    srcs = ["examples/blendsearch_example.py"],
-    deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive", "example"],
-    args = ["--smoke-test"]
-)
-
-py_test(
     name = "bohb_example",
     size = "medium",
     srcs = ["examples/bohb_example.py"],
     deps = [":tune_lib"],
     tags = ["team:ml", "exclusive", "example"]
-)
-
-py_test(
-    name = "cfo_example",
-    size = "small",
-    srcs = ["examples/cfo_example.py"],
-    deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive", "example"],
-    args = ["--smoke-test"]
 )
 
 py_test(
@@ -563,15 +537,6 @@ py_test(
     name = "custom_func_checkpointing",
     size = "small",
     srcs = ["examples/custom_func_checkpointing.py"],
-    deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive", "example"],
-    args = ["--smoke-test"]
-)
-
-py_test(
-    name = "dragonfly_example",
-    size = "medium",
-    srcs = ["examples/dragonfly_example.py"],
     deps = [":tune_lib"],
     tags = ["team:ml", "exclusive", "example"],
     args = ["--smoke-test"]
@@ -814,36 +779,6 @@ py_test(
 #     args = ["--smoke-test"]
 # )
 
-# Needs SigOpt API key.
-py_test(
-    name = "sigopt_example",
-    size = "medium",
-    srcs = ["examples/sigopt_example.py"],
-    deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive", "example"],
-    args = ["--smoke-test"]
-)
-
-
-# Needs SigOpt API key.
-py_test(
-    name = "sigopt_multi_objective_example",
-    size = "medium",
-    srcs = ["examples/sigopt_multi_objective_example.py"],
-    deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive", "example"],
-    args = ["--smoke-test"]
-)
-
-# Needs SigOpt API key.
-py_test(
-    name = "sigopt_prior_beliefs_example",
-    size = "medium",
-    srcs = ["examples/sigopt_prior_beliefs_example.py"],
-    deps = [":tune_lib"],
-    tags = ["team:ml", "exclusive", "example"],
-    args = ["--smoke-test"]
-)
 
 py_test(
     name = "tf_mnist_example",
@@ -896,7 +831,6 @@ py_test(
     srcs = ["examples/xgboost_dynamic_resources_example.py"],
     deps = [":tune_lib"],
     tags = ["team:ml", "exclusive", "example"],
-    args = ["--test"]
 )
 
 # --------------------------------------------------------------------

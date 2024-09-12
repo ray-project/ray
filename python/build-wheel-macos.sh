@@ -10,18 +10,7 @@ DOWNLOAD_DIR=python_downloads
 
 NODE_VERSION="14"
 
-if [ "$(uname -m)" = "arm64" ]; then
-  # We Don't build wheels for Python 3.7 on Apple Silicon
-  PY_MMS=("3.8"
-          "3.9"
-          "3.10"
-          "3.11")
-else
-  PY_MMS=("3.8"
-          "3.9"
-          "3.10"
-          "3.11")
-fi
+PY_MMS=("3.9" "3.10" "3.11" "3.12")
 
 if [[ -n "${SKIP_DEP_RES}" ]]; then
   ./ci/env/install-bazel.sh
@@ -82,8 +71,8 @@ for ((i=0; i<${#PY_MMS[@]}; ++i)); do
   pushd python
     # Setuptools on CentOS is too old to install arrow 0.9.0, therefore we upgrade.
     # TODO: Unpin after https://github.com/pypa/setuptools/issues/2849 is fixed.
-    $PIP_CMD install --upgrade setuptools==58.4
-    $PIP_CMD install -q cython==0.29.32
+    $PIP_CMD install --upgrade setuptools==69.5.1
+    $PIP_CMD install -q cython==0.29.37
     # Install wheel to avoid the error "invalid command 'bdist_wheel'".
     $PIP_CMD install -q wheel
     # Set the commit SHA in _version.py.
@@ -104,4 +93,8 @@ for ((i=0; i<${#PY_MMS[@]}; ++i)); do
     RAY_INSTALL_CPP=1 $PYTHON_EXE setup.py bdist_wheel
     mv dist/*.whl ../.whl/
   popd
+
+  # cleanup
+  conda deactivate
+  conda env remove -y -n "$CONDA_ENV_NAME"
 done

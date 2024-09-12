@@ -3,7 +3,6 @@
 # __reproducible_start__
 import numpy as np
 from ray import train, tune
-from ray.train import ScalingConfig
 
 
 def train_func(config):
@@ -92,20 +91,6 @@ if not MOCK:
     )
     tuner.fit()
     # __resources_pgf_end__
-
-    # __resources_scalingconfig_start__
-    tuner = tune.Tuner(
-        tune.with_resources(
-            train_fn,
-            resources=ScalingConfig(
-                trainer_resources={"CPU": 2, "GPU": 0.5, "hdd": 80},
-                num_workers=2,
-                resources_per_worker={"CPU": 1},
-            ),
-        )
-    )
-    tuner.fit()
-    # __resources_scalingconfig_end__
 
     # __resources_lambda_start__
     tuner = tune.Tuner(
@@ -237,40 +222,6 @@ data = np.random.random(size=100000000)
 tuner = tune.Tuner(tune.with_parameters(f, data=data))
 tuner.fit()
 # __large_data_end__
-
-MyTrainableClass = None
-
-if not MOCK:
-    # __log_1_start__
-    tuner = tune.Tuner(
-        MyTrainableClass,
-        run_config=train.RunConfig(storage_path="s3://my-log-dir"),
-    )
-    tuner.fit()
-    # __log_1_end__
-
-
-if not MOCK:
-    # __s3_start__
-    from ray import tune
-
-    tuner = tune.Tuner(
-        train_fn,
-        # ...,
-        run_config=train.RunConfig(storage_path="s3://your-s3-bucket/durable-trial/"),
-    )
-    tuner.fit()
-    # __s3_end__
-
-    # __sync_config_start__
-    from ray import train, tune
-
-    tuner = tune.Tuner(
-        train_fn,
-        run_config=train.RunConfig(storage_path="/path/to/shared/storage"),
-    )
-    tuner.fit()
-    # __sync_config_end__
 
 
 import ray

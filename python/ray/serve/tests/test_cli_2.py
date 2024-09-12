@@ -18,13 +18,7 @@ from ray import serve
 from ray._private.pydantic_compat import BaseModel
 from ray._private.test_utils import wait_for_condition
 from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME, SERVE_NAMESPACE
-from ray.serve.generated import serve_pb2, serve_pb2_grpc
-from ray.serve.handle import DeploymentHandle
-from ray.serve.tests.common.remote_uris import (
-    TEST_DAG_PINNED_URI,
-    TEST_DEPLOY_GROUP_PINNED_URI,
-)
-from ray.serve.tests.common.utils import (
+from ray.serve._private.test_utils import (
     ping_fruit_stand,
     ping_grpc_another_method,
     ping_grpc_call_method,
@@ -32,6 +26,12 @@ from ray.serve.tests.common.utils import (
     ping_grpc_list_applications,
     ping_grpc_model_multiplexing,
     ping_grpc_streaming,
+)
+from ray.serve.generated import serve_pb2, serve_pb2_grpc
+from ray.serve.handle import DeploymentHandle
+from ray.serve.tests.common.remote_uris import (
+    TEST_DAG_PINNED_URI,
+    TEST_DEPLOY_GROUP_PINNED_URI,
 )
 from ray.serve.tests.conftest import check_ray_stop
 from ray.tests.conftest import tmp_working_dir  # noqa: F401, E501
@@ -49,11 +49,15 @@ def ping_endpoint(endpoint: str, params: str = ""):
         return CONNECTION_ERROR_MSG
 
 
-def check_app_running(app_name: str):
+def check_app_status(app_name: str, expected_status: str):
     status_response = subprocess.check_output(["serve", "status"])
     status = yaml.safe_load(status_response)["applications"]
-    assert status[app_name]["status"] == "RUNNING"
+    assert status[app_name]["status"] == expected_status
     return True
+
+
+def check_app_running(app_name: str):
+    return check_app_status(app_name, "RUNNING")
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
@@ -447,24 +451,6 @@ def test_run_config_port2(ray_start_stop, config_file):
     p.wait()
 
 
-@pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
-@pytest.mark.parametrize(
-    "config_file", ["basic_graph_http.yaml", "basic_multi_http.yaml"]
-)
-def test_run_config_port3(ray_start_stop, config_file):
-    """If port is specified as argument to `serve run`, it should override config."""
-    config_file_name = os.path.join(
-        os.path.dirname(__file__), "test_config_files", config_file
-    )
-    p = subprocess.Popen(["serve", "run", "--port=8010", config_file_name])
-    wait_for_condition(
-        lambda: requests.post("http://localhost:8010/").text == "wonderful world",
-        timeout=15,
-    )
-    p.send_signal(signal.SIGINT)
-    p.wait()
-
-
 @serve.deployment
 class ConstructorFailure:
     def __init__(self):
@@ -493,19 +479,19 @@ def test_run_teardown(ray_start_stop):
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
-def test_run_route_prefix_default(ray_start_stop):
-    """Test `serve run` with route prefix option."""
+def test_run_route_prefix_and_name_default(ray_start_stop):
+    """Test `serve run` without route_prefix and name options."""
 
     p = subprocess.Popen(["serve", "run", "ray.serve.tests.test_cli_2.echo_app"])
 
-    wait_for_condition(check_app_running, app_name="default")
+    wait_for_condition(check_app_running, app_name=SERVE_DEFAULT_APP_NAME)
     assert ping_endpoint("/") == "hello"
     p.send_signal(signal.SIGINT)
     p.wait()
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
-def test_run_route_prefix_override(ray_start_stop):
+def test_run_route_prefix_and_name_override(ray_start_stop):
     """Test `serve run` with route prefix option."""
 
     p = subprocess.Popen(
@@ -513,11 +499,12 @@ def test_run_route_prefix_override(ray_start_stop):
             "serve",
             "run",
             "--route-prefix=/hello",
+            "--name=hello_app",
             "ray.serve.tests.test_cli_2.echo_app",
         ],
     )
 
-    wait_for_condition(check_app_running, app_name="default")
+    wait_for_condition(check_app_running, app_name="hello_app")
     assert "Path '/' not found" in ping_endpoint("/")
     assert ping_endpoint("/hello") == "hello"
     p.send_signal(signal.SIGINT)
@@ -830,6 +817,7 @@ from ray import serve
 @serve.deployment
 class MessageDeployment:
     def __init__(self, msg):
+        {invalid_suffix}
         self.msg = msg
 
     def __call__(self):
@@ -839,9 +827,9 @@ class MessageDeployment:
 msg_app = MessageDeployment.bind("Hello {message}!")
     """
 
-    def write_file(message: str):
+    def write_file(message: str, invalid_suffix: str = ""):
         with open(os.path.join(tmp_path, "reload_serve.py"), "w") as f:
-            code = code_template.format(message=message)
+            code = code_template.format(invalid_suffix=invalid_suffix, message=message)
             print(f"Writing updated code:\n{code}")
             f.write(code)
             f.flush()
@@ -867,6 +855,18 @@ msg_app = MessageDeployment.bind("Hello {message}!")
     # Write the file: an update should be auto-triggered.
     write_file("Updated")
     wait_for_condition(lambda: ping_endpoint("") == "Hello Updated!", timeout=10)
+
+    # Ensure a bad change doesn't shut down serve and serve reports deploy failed.
+    write_file(message="update1", invalid_suffix="foobar")
+    wait_for_condition(
+        condition_predictor=check_app_status,
+        app_name="default",
+        expected_status="DEPLOY_FAILED",
+    )
+
+    # Ensure the following reload happens as expected.
+    write_file("Updated2")
+    wait_for_condition(lambda: ping_endpoint("") == "Hello Updated2!", timeout=10)
 
     p.send_signal(signal.SIGINT)
     p.wait()
@@ -946,6 +946,61 @@ def test_grpc_proxy_model_composition(ray_start_stop):
 
     # Ensure model composition is responding correctly.
     ping_fruit_stand(channel, app)
+
+
+@serve.deployment(route_prefix="/foo")
+async def deployment_with_route_prefix(args):
+    return "bar..."
+
+
+route_prefix_app = deployment_with_route_prefix.bind()
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
+def test_serve_run_mount_to_correct_deployment_route_prefix(ray_start_stop):
+    """Test running serve run with deployment with route_prefix should mount the
+    deployment to the correct route."""
+
+    import_path = "ray.serve.tests.test_cli_2.route_prefix_app"
+    subprocess.Popen(["serve", "run", import_path])
+
+    # /-/routes should show the app having the correct route.
+    wait_for_condition(
+        lambda: requests.get("http://localhost:8000/-/routes").text
+        == '{"/foo":"default"}'
+    )
+
+    # Ping root path directly should 404.
+    wait_for_condition(
+        lambda: requests.get("http://localhost:8000/").status_code == 404
+    )
+
+    # Ping the mounting route should return 200.
+    wait_for_condition(
+        lambda: requests.get("http://localhost:8000/foo").status_code == 200
+    )
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
+def test_control_c_shutdown_serve_components(ray_start_stop):
+    """Test ctrl+c after `serve run` shuts down serve components."""
+
+    p = subprocess.Popen(["serve", "run", "ray.serve.tests.test_cli_2.echo_app"])
+
+    # Make sure Serve components are up and running
+    wait_for_condition(check_app_running, app_name=SERVE_DEFAULT_APP_NAME)
+    assert ping_endpoint("/-/healthz") == "success"
+    assert json.loads(ping_endpoint("/-/routes")) == {"/": "default"}
+    assert ping_endpoint("/") == "hello"
+
+    # Send ctrl+c to shutdown Serve components
+    p.send_signal(signal.SIGINT)
+    p.wait()
+
+    # Make sure Serve components are shutdown
+    status_response = subprocess.check_output(["serve", "status"])
+    status = yaml.safe_load(status_response)
+    assert status == {"applications": {}, "proxies": {}, "target_capacity": None}
 
 
 if __name__ == "__main__":

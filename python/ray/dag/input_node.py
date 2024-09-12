@@ -3,18 +3,12 @@ from typing import Any, Dict, List, Union, Optional
 from ray.dag import DAGNode
 from ray.dag.format_utils import get_dag_node_str
 from ray.experimental.gradio_utils import type_to_string
-from ray.util.annotations import Deprecated
+from ray.util.annotations import DeveloperAPI
 
 IN_CONTEXT_MANAGER = "__in_context_manager__"
 
 
-@Deprecated(
-    message=(
-        "The DAG API is deprecated. Please use the recommended model "
-        "composition pattern instead (see "
-        "https://docs.ray.io/en/latest/serve/model_composition.html)."
-    )
-)
+@DeveloperAPI
 class InputNode(DAGNode):
     r"""Ray dag node used in DAG building API to mark entrypoints of a DAG.
 
@@ -187,13 +181,7 @@ class InputNode(DAGNode):
             return self._bound_other_args_to_resolve["result_type_string"]
 
 
-@Deprecated(
-    message=(
-        "The DAG API is deprecated. Please use the recommended model "
-        "composition pattern instead (see "
-        "https://docs.ray.io/en/latest/serve/model_composition.html)."
-    )
-)
+@DeveloperAPI
 class InputAttributeNode(DAGNode):
     """Represents partial access of user input based on an index (int),
      object attribute or dict key (str).
@@ -227,7 +215,7 @@ class InputAttributeNode(DAGNode):
     def __init__(
         self,
         dag_input_node: InputNode,
-        key: str,
+        key: Union[int, str],
         accessor_method: str,
         input_type: str = None,
     ):
@@ -303,14 +291,12 @@ class InputAttributeNode(DAGNode):
         if "result_type_string" in self._bound_other_args_to_resolve:
             return self._bound_other_args_to_resolve["result_type_string"]
 
+    @property
+    def key(self) -> Union[int, str]:
+        return self._key
 
-@Deprecated(
-    message=(
-        "The DAG API is deprecated. Please use the recommended model "
-        "composition pattern instead (see "
-        "https://docs.ray.io/en/latest/serve/model_composition.html)."
-    )
-)
+
+@DeveloperAPI
 class DAGInputData:
     """If user passed multiple args and kwargs directly to dag.execute(), we
     generate this wrapper for all user inputs as one object, accessible via

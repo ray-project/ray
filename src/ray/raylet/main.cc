@@ -29,6 +29,9 @@
 #include "ray/raylet/raylet.h"
 #include "ray/stats/stats.h"
 #include "ray/util/event.h"
+#include "ray/util/process.h"
+#include "ray/util/subreaper.h"
+#include "src/ray/protobuf/gcs.pb.h"
 
 using json = nlohmann::json;
 
@@ -39,6 +42,7 @@ DEFINE_int32(node_manager_port, -1, "The port of node manager.");
 DEFINE_int32(metrics_agent_port, -1, "The port of metrics agent.");
 DEFINE_int32(metrics_export_port, 1, "The port at which metrics are exposed.");
 DEFINE_int32(runtime_env_agent_port, 1, "The port of runtime env agent.");
+DEFINE_string(node_id, "", "The id of this node.");
 DEFINE_string(node_ip_address, "", "The ip address of this node.");
 DEFINE_string(gcs_address, "", "The address of the GCS server, including IP and port.");
 DEFINE_int32(min_worker_port,
@@ -141,6 +145,8 @@ int main(int argc, char *argv[]) {
   const int node_manager_port = static_cast<int>(FLAGS_node_manager_port);
   const int metrics_agent_port = static_cast<int>(FLAGS_metrics_agent_port);
   const int runtime_env_agent_port = static_cast<int>(FLAGS_runtime_env_agent_port);
+  RAY_CHECK_NE(FLAGS_node_id, "") << "Expected node ID.";
+  const std::string node_id = FLAGS_node_id;
   const std::string node_ip_address = FLAGS_node_ip_address;
   const int min_worker_port = static_cast<int>(FLAGS_min_worker_port);
   const int max_worker_port = static_cast<int>(FLAGS_max_worker_port);
@@ -187,18 +193,100 @@ int main(int argc, char *argv[]) {
 
   // Initialize gcs client
   std::shared_ptr<ray::gcs::GcsClient> gcs_client;
-  ray::gcs::GcsClientOptions client_options(FLAGS_gcs_address);
+  ray::gcs::GcsClientOptions client_options(FLAGS_gcs_address,
+                                            cluster_id,
+                                            /*allow_cluster_id_nil=*/false,
+                                            /*fetch_cluster_id_if_nil=*/false);
   gcs_client = std::make_shared<ray::gcs::GcsClient>(client_options);
 
-  RAY_CHECK_OK(gcs_client->Connect(main_service, cluster_id));
+  RAY_CHECK_OK(gcs_client->Connect(main_service));
   std::unique_ptr<ray::raylet::Raylet> raylet;
 
+  // Enable subreaper. This is called in `AsyncGetInternalConfig` below, but MSVC does
+  // not allow a macro invocation (#ifdef) in another macro invocation (RAY_CHECK_OK),
+  // so we have to put it here.
+  auto enable_subreaper = [&]() {
+#ifdef __linux__
+    if (ray::SetThisProcessAsSubreaper()) {
+      ray::KnownChildrenTracker::instance().Enable();
+      ray::SetupSigchldHandlerRemoveKnownChildren(main_service);
+      auto runner = std::make_shared<ray::PeriodicalRunner>(main_service);
+      runner->RunFnPeriodically([runner]() { ray::KillUnknownChildren(); },
+                                /*period_ms=*/10000,
+                                "Raylet.KillUnknownChildren");
+      RAY_LOG(INFO) << "Set this process as subreaper. Will kill unknown children every "
+                       "10 seconds.";
+    } else {
+      RAY_LOG(WARNING) << "Failed to set this process as subreaper. Will not kill "
+                          "unknown children.";
+      ray::SetSigchldIgnore();
+    }
+#else
+    RAY_LOG(WARNING) << "Subreaper is not supported on this platform. Will not "
+                        "kill unknown children.";
+    ray::SetSigchldIgnore();
+#endif
+  };
+
+  auto shutted_down = std::make_shared<std::atomic<bool>>(false);
+
+  auto shutdown_raylet_after_unregistration =
+      [&main_service, &raylet_socket_name, &raylet, &gcs_client]() {
+        // We should stop the service and remove the local socket file.
+        raylet->Stop();
+        gcs_client->Disconnect();
+        ray::stats::Shutdown();
+        main_service.stop();
+        remove(raylet_socket_name.c_str());
+      };
+
+  // Shut down raylet gracefully, in a synchronous fashion.
+  // This is an internal method and should only be run on the main_service.
+  auto shutdown_raylet_gracefully_internal =
+      [&raylet, shutted_down, shutdown_raylet_after_unregistration](
+          const ray::rpc::NodeDeathInfo &node_death_info) {
+        // Make the shutdown method idempotent since graceful shutdown can be triggered
+        // by many places.
+        if (*shutted_down) {
+          RAY_LOG(INFO) << "Raylet shutdown already triggered, ignoring this request.";
+          return;
+        }
+        RAY_LOG(INFO) << "Raylet graceful shutdown triggered, reason = "
+                      << NodeDeathInfo_Reason_Name(node_death_info.reason()) << ", "
+                      << "reason message = " << node_death_info.reason_message();
+        RAY_LOG(INFO) << "Shutting down...";
+        *shutted_down = true;
+
+        raylet->UnregisterSelf(node_death_info, shutdown_raylet_after_unregistration);
+      };
+
+  auto shutdown_raylet_gracefully = [&main_service, shutdown_raylet_gracefully_internal](
+                                        const ray::rpc::NodeDeathInfo &node_death_info) {
+    main_service.post(
+        [shutdown_raylet_gracefully_internal, node_death_info]() {
+          shutdown_raylet_gracefully_internal(node_death_info);
+        },
+        "shutdown_raylet_gracefully_internal");
+  };
+
   RAY_CHECK_OK(gcs_client->Nodes().AsyncGetInternalConfig(
-      [&](::ray::Status status,
-          const boost::optional<std::string> &stored_raylet_config) {
+      [&](::ray::Status status, const std::optional<std::string> &stored_raylet_config) {
         RAY_CHECK_OK(status);
         RAY_CHECK(stored_raylet_config.has_value());
-        RayConfig::instance().initialize(stored_raylet_config.get());
+        RayConfig::instance().initialize(*stored_raylet_config);
+        ray::asio::testing::init();
+
+        // Core worker tries to kill child processes when it exits. But they can't do
+        // it perfectly: if the core worker is killed by SIGKILL, the child processes
+        // leak. So in raylet we also kill child processes via Linux subreaper.
+        // Only works on Linux >= 3.4.
+        if (RayConfig::instance()
+                .kill_child_processes_on_worker_exit_with_raylet_subreaper()) {
+          enable_subreaper();
+        } else {
+          RAY_LOG(INFO) << "Raylet is not set to kill unknown children.";
+          ray::SetSigchldIgnore();
+        }
 
         // Parse the worker port list.
         std::istringstream worker_port_list_string(worker_port_list);
@@ -223,7 +311,7 @@ int main(int argc, char *argv[]) {
                            ? static_cast<int>(num_cpus_it->second)
                            : 0;
 
-        node_manager_config.raylet_config = stored_raylet_config.get();
+        node_manager_config.raylet_config = *stored_raylet_config;
         node_manager_config.resource_config = ray::ResourceSet(static_resource_conf);
         RAY_LOG(DEBUG) << "Starting raylet with static resource configuration: "
                        << node_manager_config.resource_config.DebugString();
@@ -304,6 +392,10 @@ int main(int argc, char *argv[]) {
 
         object_manager_config.rpc_service_threads_number =
             std::min(std::max(2, num_cpus / 4), 8);
+        if (RayConfig::instance().object_manager_rpc_threads_num() != 0) {
+          object_manager_config.rpc_service_threads_number =
+              RayConfig::instance().object_manager_rpc_threads_num();
+        }
         object_manager_config.object_chunk_size =
             RayConfig::instance().object_manager_default_chunk_size();
 
@@ -321,11 +413,9 @@ int main(int argc, char *argv[]) {
             {ray::stats::SessionNameKey, session_name}};
         ray::stats::Init(global_tags, metrics_agent_port, WorkerID::Nil());
 
-        ray::NodeID raylet_node_id{
-            (!RayConfig::instance().OVERRIDE_NODE_ID_FOR_TESTING().empty())
-                ? ray::NodeID::FromHex(
-                      RayConfig::instance().OVERRIDE_NODE_ID_FOR_TESTING())
-                : ray::NodeID::FromRandom()};
+        RAY_LOG(INFO) << "Setting node ID to: " << node_id;
+        ray::NodeID raylet_node_id = ray::NodeID::FromHex(node_id);
+
         node_manager_config.AddDefaultLabels(raylet_node_id.Hex());
         // Initialize the node manager.
         raylet = std::make_unique<ray::raylet::Raylet>(main_service,
@@ -337,11 +427,14 @@ int main(int argc, char *argv[]) {
                                                        object_manager_config,
                                                        gcs_client,
                                                        metrics_export_port,
-                                                       is_head_node);
+                                                       is_head_node,
+                                                       shutdown_raylet_gracefully);
 
         // Initialize event framework.
         if (RayConfig::instance().event_log_reporter_enabled() && !log_dir.empty()) {
-          ray::RayEventInit(ray::rpc::Event_SourceType::Event_SourceType_RAYLET,
+          const std::vector<ray::SourceTypeVariant> source_types = {
+              ray::rpc::Event_SourceType::Event_SourceType_RAYLET};
+          ray::RayEventInit(source_types,
                             {{"node_id", raylet->GetNodeId().Hex()}},
                             log_dir,
                             RayConfig::instance().event_level(),
@@ -351,27 +444,26 @@ int main(int argc, char *argv[]) {
         raylet->Start();
       }));
 
-  auto shutted_down = std::make_shared<std::atomic<bool>>(false);
-
-  // Destroy the Raylet on a SIGTERM. The pointer to main_service is
-  // guaranteed to be valid since this function will run the event loop
-  // instead of returning immediately.
-  // We should stop the service and remove the local socket file.
-  auto handler = [&main_service, &raylet_socket_name, &raylet, &gcs_client, shutted_down](
-                     const boost::system::error_code &error, int signal_number) {
-    // Make the shutdown handler idempotent since graceful shutdown can be triggered
-    // by many places.
-    if (*shutted_down) {
-      RAY_LOG(INFO) << "Raylet already received SIGTERM. It will ignore the request.";
-      return;
+  auto signal_handler = [&raylet, shutdown_raylet_gracefully_internal](
+                            const boost::system::error_code &error, int signal_number) {
+    ray::rpc::NodeDeathInfo node_death_info;
+    optional<ray::rpc::DrainRayletRequest> drain_request =
+        raylet->node_manager().GetLocalDrainRequest();
+    RAY_LOG(INFO) << "received SIGTERM. Existing local drain request = "
+                  << (drain_request.has_value() ? drain_request->DebugString() : "None");
+    if (drain_request.has_value() &&
+        drain_request->reason() ==
+            ray::rpc::autoscaler::DrainNodeReason::DRAIN_NODE_REASON_PREEMPTION &&
+        drain_request->deadline_timestamp_ms() != 0 &&
+        drain_request->deadline_timestamp_ms() < current_sys_time_ms()) {
+      node_death_info.set_reason(ray::rpc::NodeDeathInfo::AUTOSCALER_DRAIN_PREEMPTED);
+      node_death_info.set_reason_message(drain_request->reason_message());
+    } else {
+      node_death_info.set_reason(ray::rpc::NodeDeathInfo::EXPECTED_TERMINATION);
+      node_death_info.set_reason_message("received SIGTERM");
     }
-    RAY_LOG(INFO) << "Raylet received SIGTERM, shutting down...";
-    *shutted_down = true;
-    raylet->Stop();
-    gcs_client->Disconnect();
-    ray::stats::Shutdown();
-    main_service.stop();
-    remove(raylet_socket_name.c_str());
+
+    shutdown_raylet_gracefully_internal(node_death_info);
   };
   boost::asio::signal_set signals(main_service);
 #ifdef _WIN32
@@ -379,7 +471,7 @@ int main(int argc, char *argv[]) {
 #else
   signals.add(SIGTERM);
 #endif
-  signals.async_wait(handler);
+  signals.async_wait(signal_handler);
 
   main_service.run();
 }

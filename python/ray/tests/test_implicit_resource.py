@@ -1,6 +1,7 @@
 import os
 import sys
 import time
+import pytest
 
 import ray
 from ray.util.state import list_actors
@@ -24,7 +25,8 @@ def test_implicit_resource(ray_start_regular):
     assert actors[0]["state"] == "PENDING_CREATION"
 
 
-def test_implicit_resource_autoscaling(shutdown_only):
+@pytest.mark.parametrize("autoscaler_v2", [False, True], ids=["v1", "v2"])
+def test_implicit_resource_autoscaling(autoscaler_v2, shutdown_only):
     from ray.cluster_utils import AutoscalingCluster
 
     cluster = AutoscalingCluster(
@@ -39,6 +41,7 @@ def test_implicit_resource_autoscaling(shutdown_only):
                 "max_workers": 100,
             },
         },
+        autoscaler_v2=autoscaler_v2,
     )
 
     cluster.start()

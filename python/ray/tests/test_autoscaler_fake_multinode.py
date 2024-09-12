@@ -6,7 +6,8 @@ from ray.cluster_utils import AutoscalingCluster
 
 
 @pytest.mark.skipif(platform.system() == "Windows", reason="Failing on Windows.")
-def test_fake_autoscaler_basic_e2e(shutdown_only):
+@pytest.mark.parametrize("autoscaler_v2", [False, True], ids=["v1", "v2"])
+def test_fake_autoscaler_basic_e2e(autoscaler_v2, shutdown_only):
     # __example_begin__
     cluster = AutoscalingCluster(
         head_resources={"CPU": 2},
@@ -40,7 +41,18 @@ def test_fake_autoscaler_basic_e2e(shutdown_only):
                 "min_workers": 0,
                 "max_workers": 2,
             },
+            "tpu_v5e_node": {
+                "resources": {
+                    "CPU": 4,
+                    "TPU": 8,
+                    "object_store_memory": 1024 * 1024 * 1024,
+                },
+                "node_config": {},
+                "min_workers": 0,
+                "max_workers": 2,
+            },
         },
+        autoscaler_v2=autoscaler_v2,
     )
 
     try:
@@ -62,16 +74,23 @@ def test_fake_autoscaler_basic_e2e(shutdown_only):
         def h():
             print("tpu ok")
 
+        # Triggers the addition of a 8-chip TPU node.
+        @ray.remote(resources={"TPU": 8})
+        def i():
+            print("8-chip tpu ok")
+
         ray.get(f.remote())
         ray.get(g.remote())
         ray.get(h.remote())
+        ray.get(i.remote())
         ray.shutdown()
     finally:
         cluster.shutdown()
     # __example_end__
 
 
-def test_zero_cpu_default_actor():
+@pytest.mark.parametrize("autoscaler_v2", [False, True], ids=["v1", "v2"])
+def test_zero_cpu_default_actor(autoscaler_v2):
     cluster = AutoscalingCluster(
         head_resources={"CPU": 0},
         worker_node_types={
@@ -84,6 +103,7 @@ def test_zero_cpu_default_actor():
                 "max_workers": 1,
             },
         },
+        autoscaler_v2=autoscaler_v2,
     )
 
     try:
@@ -102,7 +122,8 @@ def test_zero_cpu_default_actor():
         cluster.shutdown()
 
 
-def test_autoscaler_cpu_task_gpu_node_up():
+@pytest.mark.parametrize("autoscaler_v2", [False, True], ids=["v1", "v2"])
+def test_autoscaler_cpu_task_gpu_node_up(autoscaler_v2):
     """Validates that CPU tasks can trigger GPU upscaling.
     See https://github.com/ray-project/ray/pull/31202.
     """
@@ -119,6 +140,7 @@ def test_autoscaler_cpu_task_gpu_node_up():
                 "max_workers": 1,
             },
         },
+        autoscaler_v2=autoscaler_v2,
     )
 
     try:

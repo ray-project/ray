@@ -23,25 +23,19 @@ namespace ray {
 
 namespace gcs {
 
-RedisAsyncContext::RedisAsyncContext(redisAsyncContext *redis_async_context)
-    : redis_async_context_(redis_async_context) {
+RedisAsyncContext::RedisAsyncContext(
+    std::unique_ptr<redisAsyncContext, RedisContextDeleter> redis_async_context)
+    : redis_async_context_(std::move(redis_async_context)) {
   RAY_CHECK(redis_async_context_ != nullptr);
 }
 
-RedisAsyncContext::~RedisAsyncContext() {
-  if (redis_async_context_ != nullptr) {
-    redisAsyncFree(redis_async_context_);
-    redis_async_context_ = nullptr;
-  }
-}
-
 redisAsyncContext *RedisAsyncContext::GetRawRedisAsyncContext() {
-  return redis_async_context_;
+  return redis_async_context_.get();
 }
 
 void RedisAsyncContext::ResetRawRedisAsyncContext() {
   // Reset redis_async_context_ to nullptr because hiredis has released this context.
-  redis_async_context_ = nullptr;
+  redis_async_context_.release();
 }
 
 void RedisAsyncContext::RedisAsyncHandleRead() {
@@ -55,14 +49,14 @@ void RedisAsyncContext::RedisAsyncHandleRead() {
   // python/ray/tests/test_basic.py::test_background_tasks_with_max_calls
   // with -c opt on Windows.
   RAY_CHECK(redis_async_context_) << "redis_async_context_ must not be NULL here";
-  redisAsyncHandleRead(redis_async_context_);
+  redisAsyncHandleRead(redis_async_context_.get());
 }
 
 void RedisAsyncContext::RedisAsyncHandleWrite() {
   // `redisAsyncHandleWrite` will mutate `redis_async_context_`, use a lock to protect
   // it.
   std::lock_guard<std::mutex> lock(mutex_);
-  redisAsyncHandleWrite(redis_async_context_);
+  redisAsyncHandleWrite(redis_async_context_.get());
 }
 
 Status RedisAsyncContext::RedisAsyncCommand(redisCallbackFn *fn,
@@ -79,7 +73,7 @@ Status RedisAsyncContext::RedisAsyncCommand(redisCallbackFn *fn,
     if (!redis_async_context_) {
       return Status::Disconnected("Redis is disconnected");
     }
-    ret_code = redisvAsyncCommand(redis_async_context_, fn, privdata, format, ap);
+    ret_code = redisvAsyncCommand(redis_async_context_.get(), fn, privdata, format, ap);
   }
 
   va_end(ap);
@@ -104,8 +98,8 @@ Status RedisAsyncContext::RedisAsyncCommandArgv(redisCallbackFn *fn,
     if (!redis_async_context_) {
       return Status::Disconnected("Redis is disconnected");
     }
-    ret_code =
-        redisAsyncCommandArgv(redis_async_context_, fn, privdata, argc, argv, argvlen);
+    ret_code = redisAsyncCommandArgv(
+        redis_async_context_.get(), fn, privdata, argc, argv, argvlen);
   }
 
   if (ret_code == REDIS_ERR) {

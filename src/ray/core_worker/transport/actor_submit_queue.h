@@ -32,7 +32,7 @@ namespace core {
  * MarkDependencyResolved; and being removed from the queue if it's beking marked as
  * MarkDependencyFailed.
  * The caller should call PopNextTaskToSend to find next task to send; and once the
- * task is known to send, MarkTaskCompleted is expected to be called to remove
+ * task is known to send, MarkSeqnoCompleted is expected to be called to remove
  * the task from sending queue.
  * This queue is also aware of client connection/reconnection, so it needs to
  * call OnClientConnected whenever client is connected, and use GetSequenceNumber
@@ -78,8 +78,9 @@ class IActorSubmitQueue {
   /// Get the sequence number of the task to send according to the protocol.
   virtual uint64_t GetSequenceNumber(const TaskSpecification &task_spec) const = 0;
   /// Mark a task has been executed on the receiver side.
-  virtual void MarkTaskCompleted(uint64_t sequence_no,
-                                 const TaskSpecification &task_spec) = 0;
+  virtual void MarkSeqnoCompleted(uint64_t sequence_no,
+                                  const TaskSpecification &task_spec) = 0;
+  virtual bool Empty() = 0;
 };
 }  // namespace core
 }  // namespace ray

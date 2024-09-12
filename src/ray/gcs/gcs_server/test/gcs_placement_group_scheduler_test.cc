@@ -125,7 +125,8 @@ class GcsPlacementGroupSchedulerTest : public ::testing::Test {
   }
 
   void RemoveNode(const std::shared_ptr<rpc::GcsNodeInfo> &node) {
-    gcs_node_manager_->RemoveNode(NodeID::FromBinary(node->node_id()));
+    rpc::NodeDeathInfo death_info;
+    gcs_node_manager_->RemoveNode(NodeID::FromBinary(node->node_id()), death_info);
     gcs_resource_manager_->OnNodeDead(NodeID::FromBinary(node->node_id()));
   }
 
@@ -267,17 +268,14 @@ class GcsPlacementGroupSchedulerTest : public ::testing::Test {
         raylet_clients_[1]->GrantPrepareBundleResources(grant1.first, grant1.second));
   }
 
-  void GrantCommitBundleResources(const std::pair<bool, Status> &grant0,
-                                  const std::pair<bool, Status> &grant1) {
+  void GrantCommitBundleResources(const Status &grant0, const Status &grant1) {
     WaitPendingDone(raylet_clients_[0]->commit_callbacks, 1);
     // node0 grants the schedule request.
-    ASSERT_TRUE(
-        raylet_clients_[0]->GrantCommitBundleResources(grant0.first, grant0.second));
+    ASSERT_TRUE(raylet_clients_[0]->GrantCommitBundleResources(grant0));
 
     WaitPendingDone(raylet_clients_[1]->commit_callbacks, 1);
     // node1 is dead and the callback of status is Status::IOError
-    ASSERT_TRUE(
-        raylet_clients_[1]->GrantCommitBundleResources(grant1.first, grant1.second));
+    ASSERT_TRUE(raylet_clients_[1]->GrantCommitBundleResources(grant1));
   }
 
  protected:
@@ -607,14 +605,64 @@ TEST_F(GcsPlacementGroupSchedulerTest, PlacementGroupCancelledDuringCommit) {
   // Now, cancel the schedule request.
   ASSERT_TRUE(raylet_clients_[0]->GrantPrepareBundleResources());
   ASSERT_TRUE(raylet_clients_[1]->GrantPrepareBundleResources());
-  scheduler_->MarkScheduleCancelled(placement_group_id);
   WaitPendingDone(raylet_clients_[0]->commit_callbacks, 1);
   WaitPendingDone(raylet_clients_[1]->commit_callbacks, 1);
+  // Here: PG is PREPARED. Grant 1 commit and then cancel.
   ASSERT_TRUE(raylet_clients_[0]->GrantCommitBundleResources());
+  scheduler_->MarkScheduleCancelled(placement_group_id);
   ASSERT_TRUE(raylet_clients_[1]->GrantCommitBundleResources());
   ASSERT_TRUE(raylet_clients_[0]->GrantCancelResourceReserve());
   ASSERT_TRUE(raylet_clients_[1]->GrantCancelResourceReserve());
   WaitPlacementGroupPendingDone(1, GcsPlacementGroupStatus::FAILURE);
+}
+
+TEST_F(GcsPlacementGroupSchedulerTest, PlacementGroupCancelledDuringPreparedPut) {
+  // After a PG is prepared by all nodes, GCS writes to Redis then commit-all.
+  // If a Cancel is happening during prepare, or during the Redis write, i.e. before the
+  // commit-all is called, the PG should be removed and no commits should be sent.
+  auto node0 = Mocker::GenNodeInfo(0);
+  auto node1 = Mocker::GenNodeInfo(1);
+  AddNode(node0);
+  AddNode(node1);
+  ASSERT_EQ(2, gcs_node_manager_->GetAllAliveNodes().size());
+
+  auto create_placement_group_request = Mocker::GenCreatePlacementGroupRequest();
+  auto placement_group = std::make_shared<gcs::GcsPlacementGroup>(
+      create_placement_group_request, "", counter_);
+
+  // Schedule the placement group successfully.
+  auto failure_handler = [this](std::shared_ptr<gcs::GcsPlacementGroup> placement_group,
+                                bool is_insfeasble) {
+    absl::MutexLock lock(&placement_group_requests_mutex_);
+    failure_placement_groups_.emplace_back(std::move(placement_group));
+  };
+  auto success_handler = [this](std::shared_ptr<gcs::GcsPlacementGroup> placement_group) {
+    absl::MutexLock lock(&placement_group_requests_mutex_);
+    success_placement_groups_.emplace_back(std::move(placement_group));
+  };
+
+  scheduler_->ScheduleUnplacedBundles(placement_group, failure_handler, success_handler);
+  ASSERT_TRUE(raylet_clients_[0]->GrantPrepareBundleResources());
+  scheduler_->MarkScheduleCancelled(placement_group->GetPlacementGroupID());
+  ASSERT_TRUE(raylet_clients_[1]->GrantPrepareBundleResources());
+
+  WaitPlacementGroupPendingDone(1, GcsPlacementGroupStatus::FAILURE);
+
+  // Make sure the commit requests are not sent.
+  ASSERT_EQ(raylet_clients_[0]->commit_callbacks.size(), 0);
+  ASSERT_EQ(raylet_clients_[1]->commit_callbacks.size(), 0);
+
+  // Raylet receives the cancel request.
+  ASSERT_TRUE(raylet_clients_[0]->GrantCancelResourceReserve());
+  ASSERT_TRUE(raylet_clients_[1]->GrantCancelResourceReserve());
+
+  // Make sure there's no more bundles on nodes.
+  auto bundles_on_node0 =
+      scheduler_->GetAndRemoveBundlesOnNode(NodeID::FromBinary(node0->node_id()));
+  ASSERT_EQ(0, bundles_on_node0.size());
+  auto bundles_on_node1 =
+      scheduler_->GetAndRemoveBundlesOnNode(NodeID::FromBinary(node1->node_id()));
+  ASSERT_EQ(0, bundles_on_node1.size());
 }
 
 TEST_F(GcsPlacementGroupSchedulerTest, TestPackStrategyReschedulingWhenNodeAdd) {
@@ -874,7 +922,7 @@ TEST_F(GcsPlacementGroupSchedulerTest, TestNodeDeadDuringPreparingResources) {
 
   scheduler_->ScheduleUnplacedBundles(placement_group, failure_handler, success_handler);
   ASSERT_TRUE(raylet_clients_[0]->GrantPrepareBundleResources());
-  gcs_node_manager_->RemoveNode(NodeID::FromBinary(node1->node_id()));
+  RemoveNode(node1);
   // This should fail because the node is dead.
   ASSERT_TRUE(raylet_clients_[1]->GrantPrepareBundleResources(false));
   ASSERT_TRUE(raylet_clients_[0]->commit_callbacks.size() == 0);
@@ -911,7 +959,7 @@ TEST_F(GcsPlacementGroupSchedulerTest,
 
   scheduler_->ScheduleUnplacedBundles(placement_group, failure_handler, success_handler);
   ASSERT_TRUE(raylet_clients_[0]->GrantPrepareBundleResources());
-  gcs_node_manager_->RemoveNode(NodeID::FromBinary(node1->node_id()));
+  RemoveNode(node1);
   // If node is dead right after raylet succeds to create a bundle, it will reply that
   // the request has been succeed. In this case, we should just treating like a committed
   // bundle that is just removed.
@@ -926,7 +974,7 @@ TEST_F(GcsPlacementGroupSchedulerTest,
   WaitPlacementGroupPendingDone(1, GcsPlacementGroupStatus::FAILURE);
 }
 
-TEST_F(GcsPlacementGroupSchedulerTest, TestNodeDeadDuringCommittingResources) {
+TEST_F(GcsPlacementGroupSchedulerTest, TestNodeDeadBeforeCommittingResources) {
   auto node0 = Mocker::GenNodeInfo(0);
   auto node1 = Mocker::GenNodeInfo(1);
   AddNode(node0);
@@ -942,7 +990,45 @@ TEST_F(GcsPlacementGroupSchedulerTest, TestNodeDeadDuringCommittingResources) {
   auto failure_handler = [this](std::shared_ptr<gcs::GcsPlacementGroup> placement_group,
                                 bool is_insfeasble) {
     absl::MutexLock lock(&placement_group_requests_mutex_);
-    ASSERT_TRUE(placement_group->GetUnplacedBundles().size() == 2);
+    ASSERT_EQ(placement_group->GetUnplacedBundles().size(), 1);
+    failure_placement_groups_.emplace_back(std::move(placement_group));
+  };
+  auto success_handler = [this](std::shared_ptr<gcs::GcsPlacementGroup> placement_group) {
+    absl::MutexLock lock(&placement_group_requests_mutex_);
+    success_placement_groups_.emplace_back(std::move(placement_group));
+  };
+
+  scheduler_->ScheduleUnplacedBundles(placement_group, failure_handler, success_handler);
+  ASSERT_TRUE(raylet_clients_[0]->GrantPrepareBundleResources());
+  // node1 dead right after prepare succeeded. To simulate gcs_placement_group_scheduler
+  // finding the node dead before it tries to commit all nodes, we remove node *before*
+  // the prepare requests are done.
+  RemoveNode(node1);
+  ASSERT_TRUE(raylet_clients_[1]->GrantPrepareBundleResources());
+
+  WaitPendingDone(raylet_clients_[0]->commit_callbacks, 1);
+
+  ASSERT_TRUE(raylet_clients_[0]->GrantCommitBundleResources());
+  WaitPlacementGroupPendingDone(1, GcsPlacementGroupStatus::FAILURE);
+}
+
+TEST_F(GcsPlacementGroupSchedulerTest, TestNodeErrorDuringCommittingResources) {
+  auto node0 = Mocker::GenNodeInfo(0);
+  auto node1 = Mocker::GenNodeInfo(1);
+  AddNode(node0);
+  AddNode(node1);
+  ASSERT_EQ(2, gcs_node_manager_->GetAllAliveNodes().size());
+
+  auto create_placement_group_request = Mocker::GenCreatePlacementGroupRequest();
+  auto placement_group = std::make_shared<gcs::GcsPlacementGroup>(
+      create_placement_group_request, "", counter_);
+
+  // Schedule the placement group.
+  // One node is dead, so one bundle failed to schedule.
+  auto failure_handler = [this](std::shared_ptr<gcs::GcsPlacementGroup> placement_group,
+                                bool is_insfeasble) {
+    absl::MutexLock lock(&placement_group_requests_mutex_);
+    ASSERT_EQ(placement_group->GetUnplacedBundles().size(), 1);
     failure_placement_groups_.emplace_back(std::move(placement_group));
   };
   auto success_handler = [this](std::shared_ptr<gcs::GcsPlacementGroup> placement_group) {
@@ -955,11 +1041,11 @@ TEST_F(GcsPlacementGroupSchedulerTest, TestNodeDeadDuringCommittingResources) {
   ASSERT_TRUE(raylet_clients_[1]->GrantPrepareBundleResources());
   WaitPendingDone(raylet_clients_[0]->commit_callbacks, 1);
   WaitPendingDone(raylet_clients_[1]->commit_callbacks, 1);
-  gcs_node_manager_->RemoveNode(NodeID::FromBinary(node1->node_id()));
   ASSERT_TRUE(raylet_clients_[0]->GrantCommitBundleResources());
-  // Commit will fail because the node is dead.
-  ASSERT_TRUE(raylet_clients_[1]->GrantCommitBundleResources(false));
-  WaitPlacementGroupPendingDone(1, GcsPlacementGroupStatus::SUCCESS);
+  // node1 is experiencing transient connection failure.
+  ASSERT_TRUE(raylet_clients_[1]->GrantCommitBundleResources(
+      ray::Status::RpcError("unavailable", grpc::StatusCode::UNAVAILABLE)));
+  WaitPlacementGroupPendingDone(1, GcsPlacementGroupStatus::FAILURE);
 }
 
 TEST_F(GcsPlacementGroupSchedulerTest, TestNodeDeadDuringRescheduling) {
@@ -1006,7 +1092,7 @@ TEST_F(GcsPlacementGroupSchedulerTest, TestNodeDeadDuringRescheduling) {
 
   ASSERT_TRUE(raylet_clients_[0]->GrantPrepareBundleResources());
   // Before prepare requests are done, suppose a node is dead.
-  gcs_node_manager_->RemoveNode(NodeID::FromBinary(node1->node_id()));
+  RemoveNode(node1);
   // This should fail since the node is dead.
   ASSERT_TRUE(raylet_clients_[1]->GrantPrepareBundleResources(false));
   // Make sure the commit requests are not sent.
@@ -1155,7 +1241,7 @@ TEST_F(GcsPlacementGroupSchedulerTest, TestInitialize) {
       std::make_shared<BundleSpecification>(*placement_group->GetMutableBundle(0)));
   group_to_bundles[placement_group->GetPlacementGroupID()].emplace_back(
       std::make_shared<BundleSpecification>(*placement_group->GetMutableBundle(1)));
-  scheduler_->Initialize(group_to_bundles);
+  scheduler_->Initialize(group_to_bundles, /*prepared_pgs=*/{});
 
   auto bundles =
       scheduler_->GetAndRemoveBundlesOnNode(NodeID::FromBinary(node0->node_id()));
@@ -1249,10 +1335,9 @@ TEST_F(GcsPlacementGroupSchedulerTest, TestCommitToDeadNodes) {
                               /*grant1=*/{true, Status::OK()});
 
   // Grant the prepare of bundle resources.
-  // node0 grants the schedule request with success=false and status=Status::IOError("")
-  // node1 grants the schedule request with success=false and status=Status::IOError("")
-  GrantCommitBundleResources(/*grant0=*/{false, Status::IOError("")},
-                             /*grant1=*/{false, Status::IOError("")});
+  // node0 grants the schedule request status=Status::IOError("")
+  // node1 grants the schedule request status=Status::IOError("")
+  GrantCommitBundleResources(Status::IOError(""), Status::IOError(""));
 
   // Make sure the resources are returned to the cluster_resource_manager at the GCS
   // side.

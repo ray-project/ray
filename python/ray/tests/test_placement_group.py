@@ -1,5 +1,6 @@
 import sys
 import warnings
+import os
 
 import pytest
 
@@ -7,8 +8,14 @@ import ray
 from ray._private.utils import get_ray_doc_version
 import ray.cluster_utils
 from ray._private.test_utils import placement_group_assert_no_leak
+from ray._private.test_utils import skip_flaky_core_test_premerge
 from ray.util.client.ray_client_helpers import connect_to_client_or_not
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
+from ray.util.placement_group import (
+    validate_placement_group,
+    _validate_bundles,
+    VALID_PLACEMENT_GROUP_STRATEGIES,
+)
 
 
 def are_pairwise_unique(g):
@@ -30,7 +37,8 @@ def test_placement_ready(ray_start_regular, connect_to_client):
         def v(self):
             return 10
 
-    # bundle is placement group reserved resources and can't be used in bundles
+    # kBundle_ResourceLabel is placement group reserved resources and
+    # can't be used in bundles
     with pytest.raises(Exception):
         ray.util.placement_group(bundles=[{"bundle": 1}])
     # This test is to test the case that even there all resource in the
@@ -45,6 +53,15 @@ def test_placement_ready(ray_start_regular, connect_to_client):
         ).remote()
         ray.get(a.v.remote())
         ray.get(pg.ready())
+
+        with pytest.raises(ValueError):
+            a = Actor.options(
+                resources={"bundle": 1},
+                scheduling_strategy=PlacementGroupSchedulingStrategy(
+                    placement_group=pg
+                ),
+            ).remote()
+            ray.get(a.v.remote())
 
         placement_group_assert_no_leak([pg])
 
@@ -338,6 +355,7 @@ def test_placement_group_spread(
 
 @pytest.mark.parametrize("connect_to_client", [False, True])
 @pytest.mark.parametrize("gcs_actor_scheduling_enabled", [False, True])
+@skip_flaky_core_test_premerge("https://github.com/ray-project/ray/issues/38726")
 def test_placement_group_strict_spread(
     ray_start_cluster, connect_to_client, gcs_actor_scheduling_enabled
 ):
@@ -646,8 +664,6 @@ def test_omp_num_threads_in_pg(ray_start_cluster):
 
     @ray.remote(num_cpus=3)
     def test_omp_num_threads():
-        import os
-
         omp_threads = os.environ["OMP_NUM_THREADS"]
         return int(omp_threads)
 
@@ -669,9 +685,49 @@ def test_omp_num_threads_in_pg(ray_start_cluster):
     assert ray.get(ref) == 3
 
 
-if __name__ == "__main__":
-    import os
+class TestPlacementGroupValidation:
+    def test_strategy_validation(self):
+        """Test strategy validation when creating a placement group."""
 
+        # Valid strategies should not raise an exception.
+        for strategy in VALID_PLACEMENT_GROUP_STRATEGIES:
+            validate_placement_group(bundles=[{"CPU": 1}], strategy=strategy)
+
+        # Any other strategy should raise a ValueError.
+        with pytest.raises(ValueError, match="Invalid placement group strategy"):
+            validate_placement_group(bundles=[{"CPU": 1}], strategy="invalid")
+
+    def test_bundle_validation(self):
+        """Test _validate_bundle()."""
+
+        # Valid bundles should not raise an exception.
+        valid_bundles = [{"CPU": 1, "custom-resource": 2.2}, {"GPU": 0.75}]
+        _validate_bundles(valid_bundles)
+
+        # Non-list bundles should raise an exception.
+        with pytest.raises(ValueError, match="must be a list"):
+            _validate_bundles("not a list")
+
+        # Empty list bundles should raise an exception.
+        with pytest.raises(ValueError, match="must be a non-empty list"):
+            _validate_bundles([])
+
+        # List that doesn't contain dictionaries should raise an exception.
+        with pytest.raises(ValueError, match="resource dictionaries"):
+            _validate_bundles([{"CPU": 1}, "not a dict"])
+
+        # List with invalid dictionary entries should raise an exception.
+        with pytest.raises(ValueError, match="resource dictionaries"):
+            _validate_bundles([{8: 7}, {5: 3.5}])
+        with pytest.raises(ValueError, match="resource dictionaries"):
+            _validate_bundles([{"CPU": "6"}, {"GPU": "5"}])
+
+        # Bundles with resources that all have 0 values should raise an exception.
+        with pytest.raises(ValueError, match="only 0 values"):
+            _validate_bundles([{"CPU": 0, "GPU": 0}])
+
+
+if __name__ == "__main__":
     if os.environ.get("PARALLEL_CI"):
         sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
     else:

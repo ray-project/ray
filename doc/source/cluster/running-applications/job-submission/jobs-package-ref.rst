@@ -31,6 +31,7 @@ JobSubmissionClient
    JobSubmissionClient.list_jobs
    JobSubmissionClient.get_job_logs
    JobSubmissionClient.tail_job_logs
+   JobSubmissionClient.delete_job
 
 .. _job-status-ref:
 

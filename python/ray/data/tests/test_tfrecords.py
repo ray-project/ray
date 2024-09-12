@@ -1,5 +1,6 @@
 import json
 import os
+import sys
 from typing import TYPE_CHECKING
 
 import numpy as np
@@ -7,11 +8,15 @@ import pytest
 from pandas.api.types import is_float_dtype, is_int64_dtype, is_object_dtype
 
 import ray
-from ray.tests.conftest import *  # noqa
+from ray.data._internal.datasource.tfrecords_datasource import TFXReadOptions
+from ray.tests.conftest import *  # noqa: F401,F403
 
 if TYPE_CHECKING:
-    import tensorflow as tf
     from tensorflow_metadata.proto.v0 import schema_pb2
+
+if sys.version_info <= (3, 12):
+    # Skip this test for Python 3.12+ due to to incompatibility tensorflow
+    import tensorflow as tf
 
 
 def tf_records_partial():
@@ -338,9 +343,21 @@ def _ds_eq_streaming(ds_expected, ds_actual) -> bool:
     assert ds_expected.take() == ds_actual.take()
 
 
-@pytest.mark.parametrize("with_tf_schema", (True, False))
+@pytest.mark.parametrize(
+    "with_tf_schema,tfx_read,compression",
+    [
+        (True, True, None),
+        (True, True, "GZIP"),
+        (True, False, None),
+        (False, True, None),
+        (False, True, "GZIP"),
+        (False, False, None),
+    ],
+)
 def test_read_tfrecords(
     with_tf_schema,
+    tfx_read,
+    compression,
     ray_start_regular_shared,
     tmp_path,
 ):
@@ -354,10 +371,22 @@ def test_read_tfrecords(
         tf_schema = _features_to_schema(example.features)
 
     path = os.path.join(tmp_path, "data.tfrecords")
-    with tf.io.TFRecordWriter(path=path) as writer:
+    with tf.io.TFRecordWriter(
+        path=path, options=tf.io.TFRecordOptions(compression_type=compression)
+    ) as writer:
         writer.write(example.SerializeToString())
 
-    ds = ray.data.read_tfrecords(path, tf_schema=tf_schema)
+    arrow_open_stream_args = None
+    if compression:
+        arrow_open_stream_args = {"compression": compression}
+
+    ds = read_tfrecords_with_tfx_read_override(
+        path,
+        tf_schema=tf_schema,
+        tfx_read=tfx_read,
+        arrow_open_stream_args=arrow_open_stream_args,
+    )
+
     df = ds.to_pandas()
     # Protobuf serializes features in a non-deterministic order.
     if with_tf_schema:
@@ -444,11 +473,13 @@ def test_read_tfrecords_ignore_missing_paths(
     ]
 
     if ignore_missing_paths:
-        ds = ray.data.read_tfrecords(paths, ignore_missing_paths=ignore_missing_paths)
+        ds = read_tfrecords_with_tfx_read_override(
+            path, ignore_missing_paths=ignore_missing_paths
+        )
         assert ds.input_files() == [path]
     else:
         with pytest.raises(FileNotFoundError):
-            ds = ray.data.read_tfrecords(
+            ds = read_tfrecords_with_tfx_read_override(
                 paths, ignore_missing_paths=ignore_missing_paths
             )
             ds.materialize()
@@ -472,10 +503,10 @@ def test_write_tfrecords(
     # The dataset we will write to a .tfrecords file.
     ds = ray.data.from_items(
         data_partial(with_tf_schema),
-        # Here, we specify `parallelism=1` to ensure that all rows end up in the same
-        # block, which is required for type inference involving
-        # partially missing columns.
-        parallelism=1,
+        # Here, we specify `override_num_blocks=1` to ensure that all rows end up in
+        # the same block, which is required for type inference involving partially
+        # missing columns.
+        override_num_blocks=1,
     )
 
     # The corresponding tf.train.Example that we would expect to read
@@ -575,10 +606,10 @@ def test_readback_tfrecords(
     """
 
     # The dataset we will write to a .tfrecords file.
-    # Here and in the read_tfrecords call below, we specify `parallelism=1`
+    # Here and in the read_tfrecords call below, we specify `override_num_blocks=1`
     # to ensure that all rows end up in the same block, which is required
     # for type inference involving partially missing columns.
-    ds = ray.data.from_items(data_partial(with_tf_schema), parallelism=1)
+    ds = ray.data.from_items(data_partial(with_tf_schema), override_num_blocks=1)
     expected_records = tf_records_partial()
 
     tf_schema = None
@@ -589,7 +620,9 @@ def test_readback_tfrecords(
     # Write the TFRecords.
     ds.write_tfrecords(tmp_path, tf_schema=tf_schema)
     # Read the TFRecords.
-    readback_ds = ray.data.read_tfrecords(tmp_path, tf_schema=tf_schema, parallelism=1)
+    readback_ds = read_tfrecords_with_tfx_read_override(
+        tmp_path, tf_schema=tf_schema, override_num_blocks=1
+    )
     _ds_eq_streaming(ds, readback_ds)
 
 
@@ -612,7 +645,7 @@ def test_readback_tfrecords_empty_features(
             # type inference on completely empty columns is ambiguous.
             ds.write_tfrecords(tmp_path)
     else:
-        ds = ray.data.from_items(data_empty(with_tf_schema), parallelism=1)
+        ds = ray.data.from_items(data_empty(with_tf_schema), override_num_blocks=1)
         expected_records = tf_records_empty()
 
         features = expected_records[0].features
@@ -622,10 +655,10 @@ def test_readback_tfrecords_empty_features(
         ds.write_tfrecords(tmp_path, tf_schema=tf_schema)
 
         # Read the TFRecords.
-        readback_ds = ray.data.read_tfrecords(
+        readback_ds = read_tfrecords_with_tfx_read_override(
             tmp_path,
             tf_schema=tf_schema,
-            parallelism=1,
+            override_num_blocks=1,
         )
         _ds_eq_streaming(ds, readback_ds)
 
@@ -642,14 +675,17 @@ def test_write_invalid_tfrecords(ray_start_regular_shared, tmp_path):
         ds.write_tfrecords(tmp_path)
 
 
-def test_read_invalid_tfrecords(ray_start_regular_shared, tmp_path):
+@pytest.mark.parametrize("tfx_read", (True, False))
+def test_read_invalid_tfrecords(ray_start_regular_shared, tfx_read, tmp_path):
     file_path = os.path.join(tmp_path, "file.json")
     with open(file_path, "w") as file:
         json.dump({"number": 0, "string": "foo"}, file)
 
     # Expect RuntimeError raised when reading JSON as TFRecord file.
     with pytest.raises(RuntimeError, match="Failed to read TFRecord file"):
-        ray.data.read_tfrecords(file_path).schema()
+        read_tfrecords_with_tfx_read_override(
+            file_path, tfx_read=tfx_read, tfx_read_auto_infer_schema=False
+        ).schema()
 
 
 def test_read_with_invalid_schema(
@@ -659,7 +695,7 @@ def test_read_with_invalid_schema(
     from tensorflow_metadata.proto.v0 import schema_pb2
 
     # The dataset we will write to a .tfrecords file.
-    ds = ray.data.from_items(data_partial(True), parallelism=1)
+    ds = ray.data.from_items(data_partial(True), override_num_blocks=1)
     expected_records = tf_records_partial()
 
     # Build fake schema proto with missing/incorrect field name
@@ -691,18 +727,49 @@ def test_read_with_invalid_schema(
     # which should raise a `ValueError`.
     ds.write_tfrecords(tmp_path)
     with pytest.raises(ValueError) as e:
-        ray.data.read_tfrecords(tmp_path, tf_schema=tf_schema_wrong_name).materialize()
+        read_tfrecords_with_tfx_read_override(
+            tmp_path, tf_schema=tf_schema_wrong_name
+        ).materialize()
     assert "Found extra unexpected feature" in str(e.value.args[0])
 
     with pytest.raises(ValueError) as e:
-        ray.data.read_tfrecords(tmp_path, tf_schema=tf_schema_wrong_type).materialize()
+        read_tfrecords_with_tfx_read_override(
+            tmp_path, tf_schema=tf_schema_wrong_type
+        ).materialize()
     assert str(e.value.args[0]) == (
         "Schema field type mismatch during read: "
         "specified type is int, but underlying type is bytes"
     )
 
 
+@pytest.mark.parametrize("num_rows_per_file", [5, 10, 50])
+def test_write_num_rows_per_file(tmp_path, ray_start_regular_shared, num_rows_per_file):
+    ray.data.range(100, override_num_blocks=20).write_tfrecords(
+        tmp_path, num_rows_per_file=num_rows_per_file
+    )
+
+    for filename in os.listdir(tmp_path):
+        dataset = tf.data.TFRecordDataset(os.path.join(tmp_path, filename))
+        assert len(list(dataset)) == num_rows_per_file
+
+
+def read_tfrecords_with_tfx_read_override(paths, tfx_read=False, **read_opts):
+    infer_schema = read_opts.pop("tfx_read_auto_infer_schema", tfx_read)
+
+    tfx_read_options = None
+    if tfx_read:
+        tfx_read_options = TFXReadOptions(auto_infer_schema=infer_schema)
+
+    return ray.data.read_tfrecords(
+        paths=paths, tfx_read_options=tfx_read_options, **read_opts
+    )
+
+
 if __name__ == "__main__":
     import sys
+
+    if sys.version_info >= (3, 12):
+        # Skip this test for Python 3.12+ due to to incompatibility tensorflow
+        sys.exit(0)
 
     sys.exit(pytest.main(["-v", __file__]))

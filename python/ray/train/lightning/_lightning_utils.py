@@ -2,17 +2,15 @@ import logging
 import os
 import shutil
 import tempfile
-from typing import Any, Dict, Optional
+from pathlib import Path
+from typing import Any, Dict
 
 import torch
 from packaging.version import Version
-from torch.utils.data import DataLoader, IterableDataset
 
 import ray
 from ray import train
 from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
-from ray.air.constants import MODEL_KEY
-from ray.data.dataset import DataIterator
 from ray.train import Checkpoint
 from ray.util import PublicAPI
 
@@ -28,6 +26,7 @@ def import_lightning():  # noqa: F402
 pl = import_lightning()
 
 _LIGHTNING_GREATER_EQUAL_2_0 = Version(pl.__version__) >= Version("2.0.0")
+_LIGHTNING_LESS_THAN_2_1 = Version(pl.__version__) < Version("2.1.0")
 _TORCH_GREATER_EQUAL_1_12 = Version(torch.__version__) >= Version("1.12.0")
 _TORCH_FSDP_AVAILABLE = _TORCH_GREATER_EQUAL_1_12 and torch.distributed.is_available()
 
@@ -54,15 +53,6 @@ logger = logging.getLogger(__name__)
 LIGHTNING_REPORT_STAGE_KEY = "_report_on"
 
 
-def get_worker_root_device():
-    """Get the first torch device of the current worker if there are multiple."""
-    devices = ray.train.torch.get_device()
-    if isinstance(devices, list):
-        return devices[0]
-    else:
-        return devices
-
-
 @PublicAPI(stability="beta")
 class RayDDPStrategy(pl.strategies.DDPStrategy):
     """Subclass of DDPStrategy to ensure compatibility with Ray orchestration.
@@ -80,7 +70,7 @@ class RayDDPStrategy(pl.strategies.DDPStrategy):
 
     @property
     def root_device(self) -> torch.device:
-        return get_worker_root_device()
+        return ray.train.torch.get_device()
 
     @property
     def distributed_sampler_kwargs(self) -> Dict[str, Any]:
@@ -96,6 +86,11 @@ class RayFSDPStrategy(FSDPStrategy):  # noqa: F821
 
     For a full list of initialization arguments, please refer to:
     https://lightning.ai/docs/pytorch/stable/api/lightning.pytorch.strategies.FSDPStrategy.html
+
+    .. note::
+        It is recommended to upgrade `lightning>=2.1` or above when using FSDP
+        with Lightning, since Lightning starts to natively support `state_dict_type`,
+        `sharding_strategy`, `auto_wrap_policy` and other FSDP configurations from 2.1.
     """
 
     def __init__(self, *args, **kwargs):
@@ -104,7 +99,7 @@ class RayFSDPStrategy(FSDPStrategy):  # noqa: F821
 
     @property
     def root_device(self) -> torch.device:
-        return get_worker_root_device()
+        return ray.train.torch.get_device()
 
     @property
     def distributed_sampler_kwargs(self) -> Dict[str, Any]:
@@ -114,10 +109,23 @@ class RayFSDPStrategy(FSDPStrategy):  # noqa: F821
         )
 
     def lightning_module_state_dict(self) -> Dict[str, Any]:
-        """Gathers the full state dict to rank 0 on CPU."""
+        """Gathers the full state dict to rank 0 on CPU.
+
+        FSDP checkpointing is broken in Lightning 2.0.x. This subclass patches the
+        behavior to perform a full state dict checkpointing, gathering the checkpoint
+        shards on rank 0 CPU. Upgrade to `lightning>=2.1` to do sharded state dict
+        checkpointing.
+
+        See the note in the class docstring for more details.
+        """
+
         assert self.model is not None, "Failed to get the state dict for a None model!"
 
-        if _LIGHTNING_GREATER_EQUAL_2_0 and _TORCH_FSDP_AVAILABLE:
+        if (
+            _TORCH_FSDP_AVAILABLE
+            and _LIGHTNING_GREATER_EQUAL_2_0
+            and _LIGHTNING_LESS_THAN_2_1
+        ):
             with FullyShardedDataParallel.state_dict_type(
                 module=self.model,
                 state_dict_type=StateDictType.FULL_STATE_DICT,
@@ -126,8 +134,16 @@ class RayFSDPStrategy(FSDPStrategy):  # noqa: F821
                 ),
             ):
                 state_dict = self.model.state_dict()
+
+                ckpt_state_dict = {}
                 prefix_len = len("_forward_module.")
-                return {k[prefix_len:]: v for k, v in state_dict.items()}
+                for k, v in state_dict.items():
+                    if k.startswith("_forward_module."):
+                        non_prefixed_key = k[prefix_len:]
+                        ckpt_state_dict[non_prefixed_key] = v
+                    else:
+                        ckpt_state_dict[k] = v
+                return ckpt_state_dict
         else:
             # Otherwise Lightning uses Fairscale FSDP, no need to unshard by ourself.
             return super().lightning_module_state_dict()
@@ -147,7 +163,7 @@ class RayDeepSpeedStrategy(pl.strategies.DeepSpeedStrategy):
 
     @property
     def root_device(self) -> torch.device:
-        return get_worker_root_device()
+        return ray.train.torch.get_device()
 
     @property
     def distributed_sampler_kwargs(self) -> Dict[str, Any]:
@@ -239,11 +255,13 @@ class RayTrainReportCallback(pl.callbacks.Callback):
     guide: :ref:`Saving and Loading Checkpoints <train-dl-saving-checkpoints>`.
     """
 
+    CHECKPOINT_NAME = "checkpoint.ckpt"
+
     def __init__(self) -> None:
         super().__init__()
         self.trial_name = train.get_context().get_trial_name()
         self.local_rank = train.get_context().get_local_rank()
-        self.tmpdir_prefix = os.path.join(tempfile.gettempdir(), self.trial_name)
+        self.tmpdir_prefix = Path(tempfile.gettempdir(), self.trial_name).as_posix()
         if os.path.isdir(self.tmpdir_prefix) and self.local_rank == 0:
             shutil.rmtree(self.tmpdir_prefix)
 
@@ -251,7 +269,7 @@ class RayTrainReportCallback(pl.callbacks.Callback):
 
     def on_train_epoch_end(self, trainer, pl_module) -> None:
         # Creates a checkpoint dir with fixed name
-        tmpdir = os.path.join(self.tmpdir_prefix, str(trainer.current_epoch))
+        tmpdir = Path(self.tmpdir_prefix, str(trainer.current_epoch)).as_posix()
         os.makedirs(tmpdir, exist_ok=True)
 
         # Fetch metrics
@@ -263,7 +281,7 @@ class RayTrainReportCallback(pl.callbacks.Callback):
         metrics["step"] = trainer.global_step
 
         # Save checkpoint to local
-        ckpt_path = os.path.join(tmpdir, "checkpoint.ckpt")
+        ckpt_path = Path(tmpdir, self.CHECKPOINT_NAME).as_posix()
         trainer.save_checkpoint(ckpt_path, weights_only=False)
 
         # Report to train session
@@ -271,136 +289,7 @@ class RayTrainReportCallback(pl.callbacks.Callback):
         train.report(metrics=metrics, checkpoint=checkpoint)
 
         # Add a barrier to ensure all workers finished reporting here
-        torch.distributed.barrier()
+        trainer.strategy.barrier()
 
         if self.local_rank == 0:
             shutil.rmtree(tmpdir)
-
-
-class RayIterableDataset(IterableDataset):
-    def __init__(self, dataset: "DataIterator", config: Dict[str, Any]) -> None:
-        super().__init__()
-        self.dataset = dataset
-        self.config = config
-        self.torch_iterable = self.dataset.iter_torch_batches(**self.config)
-
-    def __iter__(self):
-        return iter(self.torch_iterable)
-
-
-class RayDataModule(pl.LightningDataModule):
-    def __init__(
-        self,
-        dataset_iter_config: Dict[str, Any],
-        train_dataset: "DataIterator",
-        val_dataset: Optional["DataIterator"] = None,
-    ) -> None:
-        super().__init__()
-
-        def _train_dataloader() -> DataLoader:
-            assert train_dataset
-            ds = RayIterableDataset(train_dataset, dataset_iter_config)
-            return DataLoader(ds, batch_size=1, collate_fn=lambda x: x[0])
-
-        def _val_dataloader() -> DataLoader:
-            assert val_dataset
-            ds = RayIterableDataset(val_dataset, dataset_iter_config)
-            return DataLoader(ds, batch_size=1, collate_fn=lambda x: x[0])
-
-        if train_dataset:
-            self.train_dataloader = _train_dataloader
-
-        # ``pl.Trainer`` checks if the val_dataloader method has been overridden
-        # to determine whether to enable the validation loop. To align with this
-        # setting, we only override this method when `val_dataset` is not `None`.
-        if val_dataset:
-            self.val_dataloader = _val_dataloader
-
-
-class RayModelCheckpoint(pl.callbacks.ModelCheckpoint):
-    """
-    AIR customized ModelCheckpoint callback.
-
-    A subclass of ``pytorch_lightning.callbacks.ModelCheckpoint``.
-    This callback function reports the latest metrics to the AIR session and
-    creates an AIR checkpoint whenever a lightning checkpoint is saved.
-    """
-
-    def setup(
-        self,
-        trainer: "pl.Trainer",
-        pl_module: "pl.LightningModule",
-        stage: Optional[str] = None,
-    ) -> None:
-        super().setup(trainer, pl_module, stage)
-        self.is_checkpoint_step = False
-
-        if isinstance(trainer.strategy, pl.strategies.DeepSpeedStrategy):
-            # For DeepSpeed, each node has a unique set of param and optimizer states,
-            # so the local rank 0 workers report the checkpoint shards for all workers
-            # on their node.
-            self.is_report_rank = train.get_context().get_local_rank() == 0
-        else:
-            # For DDP and FSDP, only the global rank 0 worker saves the full model.
-            # Therefore, it is the only one that needs to report checkpoints.
-            self.is_report_rank = train.get_context().get_world_rank() == 0
-
-    def _session_report(self, trainer: "pl.Trainer", stage: str):
-        """Report latest metrics dict and checkpoint to AIR training session.
-
-        This method is called whenever a new checkpoint is created. It creates
-        a `LightningCheckpoint` and reports it to the AIR session along with
-        the latest metrics.
-        """
-
-        from ray.train.lightning.lightning_checkpoint import LightningCheckpoint
-
-        # Align the frequency of checkpointing and logging
-        if not self.is_checkpoint_step:
-            return
-
-        # Report latest logged metrics
-        metrics = {LIGHTNING_REPORT_STAGE_KEY: stage}
-        for k, v in self._monitor_candidates(trainer).items():
-            if isinstance(v, torch.Tensor):
-                metrics[k] = v.item()
-
-        # Ensures all workers already finish writing their checkpoints
-        trainer.strategy.barrier()
-
-        # Create and report the latest checkpoint
-        with tempfile.TemporaryDirectory() as tmpdir:
-            src_model_path = os.path.expanduser(self.last_model_path)
-            dst_model_path = os.path.join(tmpdir, MODEL_KEY)
-
-            # Copy the lightning ckpt into a tmp directory
-            # - File ckpt:       last.ckpt   -> checkpoint_00000x/model
-            # - Directory ckpt:  last.ckpt/* -> checkpoint_00000x/model/*
-            if self.is_report_rank:
-                if os.path.isdir(src_model_path):
-                    shutil.copytree(src_model_path, dst_model_path)
-                elif os.path.isfile(src_model_path):
-                    shutil.copy(src_model_path, dst_model_path)
-
-            # Only the report_rank worker creates the actual checkpoints.
-            # Other workers create placeholder checkpoints to prevent blocking.
-            checkpoint = LightningCheckpoint.from_directory(tmpdir)
-            train.report(metrics=metrics, checkpoint=checkpoint)
-
-        self.is_checkpoint_step = False
-
-    def _save_last_checkpoint(self, *args, **kwargs) -> None:
-        super()._save_last_checkpoint(*args, **kwargs)
-        self.is_checkpoint_step = True
-
-    def on_train_batch_end(self, trainer: "pl.Trainer", *args, **kwargs) -> None:
-        super().on_train_batch_end(trainer, *args, **kwargs)
-        self._session_report(trainer=trainer, stage="train_batch_end")
-
-    def on_train_epoch_end(self, trainer: "pl.Trainer", *args, **kwargs) -> None:
-        super().on_train_epoch_end(trainer, *args, **kwargs)
-        self._session_report(trainer=trainer, stage="train_epoch_end")
-
-    def on_validation_end(self, trainer: "pl.Trainer", *args, **kwargs) -> None:
-        super().on_validation_end(trainer, *args, **kwargs)
-        self._session_report(trainer=trainer, stage="validation_end")

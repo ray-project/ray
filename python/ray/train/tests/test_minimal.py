@@ -48,7 +48,6 @@ def test_run(ray_start_4_cpus):
         return checkpoint_dict[key]
 
     with create_dict_checkpoint({key: value}) as checkpoint:
-
         trainer = DataParallelTrainer(
             train_func,
             backend_config=config,
@@ -78,6 +77,9 @@ def test_failure():
 
     with pytest.raises(ModuleNotFoundError):
         import transformers  # noqa: F401
+
+    with pytest.raises(ModuleNotFoundError):
+        import xgboost  # noqa: F401
 
 
 if __name__ == "__main__":

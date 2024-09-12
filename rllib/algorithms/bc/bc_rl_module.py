@@ -1,13 +1,12 @@
 import abc
-from typing import Any, List, Mapping, Type, Union
+from typing import Any, Dict, List, Type, Union
 
-from ray.rllib.core.models.base import ENCODER_OUT, STATE_OUT
+from ray.rllib.core.columns import Columns
+from ray.rllib.core.models.base import ENCODER_OUT
 from ray.rllib.core.models.specs.typing import SpecType
 from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.models.distributions import Distribution
-from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import ExperimentalAPI, override
-from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.utils.typing import TensorType
 
 
@@ -49,14 +48,14 @@ class BCRLModule(RLModule, abc.ABC):
 
     @override(RLModule)
     def output_specs_exploration(self) -> SpecType:
-        return [SampleBatch.ACTION_DIST_INPUTS]
+        return [Columns.ACTION_DIST_INPUTS]
 
     @override(RLModule)
     def output_specs_train(self) -> SpecType:
         return self.output_specs_exploration()
 
     @override(RLModule)
-    def _forward_inference(self, batch: NestedDict, **kwargs) -> Mapping[str, Any]:
+    def _forward_inference(self, batch: Dict, **kwargs) -> Dict[str, Any]:
         """BC forward pass during inference.
 
         See the `BCTorchRLModule._forward_exploration` method for
@@ -65,7 +64,7 @@ class BCRLModule(RLModule, abc.ABC):
         return self._forward_exploration(batch)
 
     @override(RLModule)
-    def _forward_exploration(self, batch: NestedDict, **kwargs) -> Mapping[str, Any]:
+    def _forward_exploration(self, batch: Dict, **kwargs) -> Dict[str, Any]:
         """BC forward pass during exploration.
 
         Besides the action distribution this method also returns a possible
@@ -80,17 +79,17 @@ class BCRLModule(RLModule, abc.ABC):
 
         # State encodings.
         encoder_outs = self.encoder(batch)
-        if STATE_OUT in encoder_outs:
-            output[STATE_OUT] = encoder_outs[STATE_OUT]
+        if Columns.STATE_OUT in encoder_outs:
+            output[Columns.STATE_OUT] = encoder_outs[Columns.STATE_OUT]
 
         # Actions.
         action_logits = self.pi(encoder_outs[ENCODER_OUT])
-        output[SampleBatch.ACTION_DIST_INPUTS] = action_logits
+        output[Columns.ACTION_DIST_INPUTS] = action_logits
 
         return output
 
     @override(RLModule)
-    def _forward_train(self, batch: NestedDict, **kwargs) -> Mapping[str, Any]:
+    def _forward_train(self, batch: Dict, **kwargs) -> Dict[str, Any]:
         """BC forward pass during training.
 
         See the `BCTorchRLModule._forward_exploration` method for

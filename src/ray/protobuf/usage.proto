@@ -75,7 +75,7 @@ enum TagKey {
   // Whether the `to_object_ref` or any of its variants were used in the
   // `DeploymentHandle` API.
   SERVE_DEPLOYMENT_HANDLE_TO_OBJECT_REF_API_USED = 21;
-  // Whether multuplexed API is was used.
+  // Whether multiplexed API is was used.
   SERVE_MULTIPLEXED_API_USED = 22;
   // Whether or not an HTTP proxy was used ("1" if used).
   SERVE_HTTP_PROXY_USED = 23;
@@ -87,6 +87,18 @@ enum TagKey {
   SERVE_GET_APP_HANDLE_API_USED = 26;
   // Whether the serve.get_deployment_handle API was used ("1" if used)
   SERVE_GET_DEPLOYMENT_HANDLE_API_USED = 27;
+  // Whether the container runtime env feature was used at the
+  // application level ("1" if used)
+  // This feature allows users to run applications in separate
+  // containers with separate images
+  SERVE_APP_CONTAINER_RUNTIME_ENV_USED = 28;
+  // Whether the container runtime env feature was used at the
+  // individual deployment level ("1" if used)
+  SERVE_DEPLOYMENT_CONTAINER_RUNTIME_ENV_USED = 29;
+  // The number of nodes actively compacted by Serve
+  SERVE_NUM_NODE_COMPACTIONS = 30;
+  // Whether the num_replicas="auto" API was used ("1" if used)
+  SERVE_AUTO_NUM_REPLICAS_USED = 31;
 
   // Ray Core State API
   // NOTE(rickyxx): Currently only setting "1" for tracking existence of
@@ -137,6 +149,8 @@ enum TagKey {
   NUM_DRIVERS = 308;
   // State api import usage.
   EXPERIMENTAL_STATE_API_IMPORT = 309;
+  // Autoscaler versions (v1, v2).
+  AUTOSCALER_VERSION = 310;
 
   // Data
   // Logical operators, stored in JSON format with operator name and count.
@@ -156,7 +170,7 @@ enum TagKey {
   // Ray AIR environment variable usage stored in JSON list format
   // This lists which of the environment variables exposed by the AIR libraries
   // are provided by the user.
-  // Ex: ["RAY_AIR_LOCAL_CACHE_DIR", "TUNE_FALLBACK_TO_LATEST_CHECKPOINT"]
+  // Ex: ["RAY_AIR_LOCAL_CACHE_DIR"]
   AIR_ENV_VARS = 503;
   // Fully user-controlled experiment tracking integrations ("1" if used)
   // NOTE: These tags + the callback metrics can be aggregated to extract
@@ -184,4 +198,5 @@ enum TagKey {
   TRAIN_LIGHTNING_RAYLIGHTNINGENVIRONMENT = 517;
   TRAIN_TRANSFORMERS_PREPARE_TRAINER = 518;
   TRAIN_TRANSFORMERS_RAYTRAINREPORTCALLBACK = 519;
+  TRAIN_TORCH_GET_DEVICES = 520;
 }

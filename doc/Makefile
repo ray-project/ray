@@ -2,8 +2,13 @@
 #
 
 # You can set these variables from the command line.
-SPHINXOPTS    = -a -E
+# Allow linkcheck to run without treating warnings as errors; -W will
+# fast-fail if enabled; it's better to gather the whole list of bad links at once.
+SPHINXOPTS    = -a -E -W -j auto
+LOCALSPHINXOPTS = -W -j auto
+LINKCHECKOPTS = -a -E -j auto
 SPHINXBUILD   = sphinx-build
+SPHINXAUTOBUILD = sphinx-autobuild --port 0 --open-browser --ignore "*.log" --ignore "*data/examples*" --ignore "*train/examples*" --ignore "*serve/examples*"
 PAPER         =
 BUILDDIR      = _build
 
@@ -13,60 +18,74 @@ $(error The '$(SPHINXBUILD)' command was not found. Make sure you have Sphinx in
 endif
 
 # Internal variables.
-PAPEROPT_a4     = -D latex_paper_size=a4
-PAPEROPT_letter = -D latex_paper_size=letter
-ALLSPHINXOPTS   = -d $(BUILDDIR)/doctrees $(PAPEROPT_$(PAPER)) $(SPHINXOPTS) source
+PAPEROPT_a4      = -D latex_paper_size=a4
+PAPEROPT_letter  = -D latex_paper_size=letter
+ALLSPHINXOPTS    = -d $(BUILDDIR)/doctrees $(PAPEROPT_$(PAPER)) $(SPHINXOPTS) source
+ALLLOCALSPHINXOPTS    = -d $(BUILDDIR)/doctrees $(PAPEROPT_$(PAPER)) $(LOCALSPHINXOPTS) source
+ALLLINKCHECKOPTS = -d $(BUILDDIR)/doctrees $(PAPEROPT_$(PAPER)) $(LINKCHECKOPTS) source
 # the i18n builder cannot share the environment and doctrees with the others
 I18NSPHINXOPTS  = $(PAPEROPT_$(PAPER)) $(SPHINXOPTS) source
 
-.PHONY: help clean html dirhtml singlehtml pickle json htmlhelp qthelp devhelp epub latex latexpdf text man changes linkcheck doctest coverage gettext
+.PHONY: help clean html dirhtml singlehtml pickle json htmlhelp qthelp devhelp epub latex latexpdf text man changes linkcheck doctest coverage gettext show
 
 help:
 	@echo "Please use \`make <target>' where <target> is one of"
-	@echo "  html       to make standalone HTML files"
-	@echo "  dirhtml    to make HTML files named index.html in directories"
-	@echo "  singlehtml to make a single large HTML file"
-	@echo "  pickle     to make pickle files"
-	@echo "  json       to make JSON files"
-	@echo "  htmlhelp   to make HTML files and a HTML help project"
-	@echo "  qthelp     to make HTML files and a qthelp project"
-	@echo "  applehelp  to make an Apple Help Book"
-	@echo "  devhelp    to make HTML files and a Devhelp project"
-	@echo "  epub       to make an epub"
-	@echo "  latex      to make LaTeX files, you can set PAPER=a4 or PAPER=letter"
-	@echo "  latexpdf   to make LaTeX files and run them through pdflatex"
-	@echo "  latexpdfja to make LaTeX files and run them through platex/dvipdfmx"
-	@echo "  text       to make text files"
-	@echo "  man        to make manual pages"
-	@echo "  texinfo    to make Texinfo files"
-	@echo "  info       to make Texinfo files and run them through makeinfo"
-	@echo "  gettext    to make PO message catalogs"
-	@echo "  changes    to make an overview of all changed/added/deprecated items"
-	@echo "  xml        to make Docutils-native XML files"
-	@echo "  pseudoxml  to make pseudoxml-XML files for display purposes"
-	@echo "  linkcheck  to check all external links for integrity"
-	@echo "  doctest    to run all doctests embedded in the documentation (if enabled)"
-	@echo "  coverage   to run coverage check of the documentation (if enabled)"
+	@echo "  html            to make standalone HTML files"
+	@echo "  dirhtml         to make HTML files named index.html in directories"
+	@echo "  singlehtml      to make a single large HTML file"
+	@echo "  pickle          to make pickle files"
+	@echo "  json            to make JSON files"
+	@echo "  htmlhelp        to make HTML files and a HTML help project"
+	@echo "  qthelp          to make HTML files and a qthelp project"
+	@echo "  applehelp       to make an Apple Help Book"
+	@echo "  devhelp         to make HTML files and a Devhelp project"
+	@echo "  epub            to make an epub"
+	@echo "  latex           to make LaTeX files, you can set PAPER=a4 or PAPER=letter"
+	@echo "  latexpdf        to make LaTeX files and run them through pdflatex"
+	@echo "  latexpdfja      to make LaTeX files and run them through platex/dvipdfmx"
+	@echo "  text            to make text files"
+	@echo "  man             to make manual pages"
+	@echo "  texinfo         to make Texinfo files"
+	@echo "  info            to make Texinfo files and run them through makeinfo"
+	@echo "  gettext         to make PO message catalogs"
+	@echo "  changes         to make an overview of all changed/added/deprecated items"
+	@echo "  xml             to make Docutils-native XML files"
+	@echo "  pseudoxml       to make pseudoxml-XML files for display purposes"
+	@echo "  linkcheck       to check all external links for integrity"
+	@echo "  linkcheck_all   to check all external links for integrity"
+	@echo "  doctest         to run all doctests embedded in the documentation (if enabled)"
+	@echo "  coverage        to run coverage check of the documentation (if enabled)"
 
 clean:
 	rm -rf $(BUILDDIR)/*
+	rm -rf ./source/__pycache__/
+	rm -rf ./source/_ext/__pycache__/
 	rm -rf ./source/*/api/doc/*
 	rm -rf ./source/ray-references/api/*/doc/*
 	rm -rf ./source/cluster/running_applications/doc/*
 	rm -rf ./source/cluster/running_applications/job-submission/doc/*
 	rm -rf ./source/ray-observability/api/state/doc*
 	rm -rf ./source/rllib/package_ref/doc*
+	rm -rf ./source/ray-more-libs/doc/*
+	rm -rf ./source/ray-observability/reference/doc/*
+	rm -f ./source/data/examples.rst
+	rm -f ./source/serve/examples.rst
+	rm -f ./source/train/examples.rst
 
 html:
 	$(SPHINXBUILD) -W --keep-going -b html $(ALLSPHINXOPTS) $(BUILDDIR)/html
 	@echo
 	@echo "Build finished. The HTML pages are in $(BUILDDIR)/html."
-
-develop:
-	FAST=True $(SPHINXBUILD) -b html $(ALLSPHINXOPTS) $(BUILDDIR)/html
-	@echo
-	@echo "Build finished. The HTML pages are in $(BUILDDIR)/html."
 	@echo "View the documentation by opening a browser and going to $(BUILDDIR)/html/index.html."
+
+develop: html
+
+RAY_DIR := $(shell pwd | rev | cut -d'/' -f2- | rev)
+
+local:
+	python load_doc_cache.py --ray-dir=$(RAY_DIR)
+	python update_cache_env.py --ray-dir=$(RAY_DIR)
+	$(SPHINXAUTOBUILD) -W --keep-going -b html $(ALLLOCALSPHINXOPTS) $(BUILDDIR)/html
 
 dirhtml:
 	$(SPHINXBUILD) -b dirhtml $(ALLSPHINXOPTS) $(BUILDDIR)/dirhtml
@@ -178,7 +197,13 @@ changes:
 	@echo "The overview file is in $(BUILDDIR)/changes."
 
 linkcheck:
-	$(SPHINXBUILD) -b linkcheck $(ALLSPHINXOPTS) $(BUILDDIR)/linkcheck
+	$(SPHINXBUILD) -b linkcheck $(ALLLINKCHECKOPTS) $(BUILDDIR)/linkcheck
+	@echo
+	@echo "Link check complete; look for any errors in the above output " \
+	      "or in $(BUILDDIR)/linkcheck/output.txt."
+
+linkcheck_all:
+	LINKCHECK_ALL=1 $(SPHINXBUILD) -b linkcheck $(ALLLINKCHECKOPTS) $(BUILDDIR)/linkcheck
 	@echo
 	@echo "Link check complete; look for any errors in the above output " \
 	      "or in $(BUILDDIR)/linkcheck/output.txt."
@@ -202,3 +227,6 @@ pseudoxml:
 	$(SPHINXBUILD) -b pseudoxml $(ALLSPHINXOPTS) $(BUILDDIR)/pseudoxml
 	@echo
 	@echo "Build finished. The pseudo-XML files are in $(BUILDDIR)/pseudoxml."
+
+show:
+	python -m http.server -d _build/html/

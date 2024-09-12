@@ -1,6 +1,19 @@
 Examples using Ray Tune with ML Frameworks
 ------------------------------------------
 
+.. toctree::
+    :hidden:
+
+    Keras Example <tune_mnist_keras>
+    PyTorch Example <tune-pytorch-cifar>
+    PyTorch Lightning Example <tune-pytorch-lightning>
+    Ray RLlib Example <pbt_ppo_example>
+    XGBoost Example <tune-xgboost>
+    LightGBM Example <lightgbm_example>
+    Horovod Example <horovod_simple>
+    Hugging Face Transformers Example <pbt_transformers>
+
+
 Ray Tune integrates with many popular machine learning frameworks.
 Here you find a few practical examples showing you how to tune your models.
 At the end of these guides you will often find links to even more examples.
@@ -8,14 +21,6 @@ At the end of these guides you will often find links to even more examples.
 .. grid:: 1 2 3 4
     :gutter: 1
     :class-container: container pb-3
-
-    .. grid-item-card::
-        :img-top: /images/tune-sklearn.png
-        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
-
-        .. button-ref:: tune-sklearn
-
-            How To Use Tune's Scikit-Learn Adapters?
 
     .. grid-item-card::
         :img-top: /images/keras.png
@@ -40,14 +45,6 @@ At the end of these guides you will often find links to even more examples.
         .. button-ref:: tune-pytorch-lightning-ref
 
             How To Tune PyTorch Lightning Models
-
-    .. grid-item-card::
-        :img-top: /images/serve.svg
-        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
-
-        .. button-ref:: tune-serve-integration-mnist
-
-            Model Selection & Serving With Ray Serve
 
     .. grid-item-card::
         :img-top: /rllib/images/rllib-logo.png
@@ -88,7 +85,7 @@ At the end of these guides you will often find links to even more examples.
         .. button-ref:: tune-huggingface-example
 
             A Guide To Tuning Huggingface Transformers With Tune
-    
+
     .. grid-item-card::
         :img-top: /images/tune.png
         :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img

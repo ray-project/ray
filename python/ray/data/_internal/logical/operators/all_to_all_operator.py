@@ -3,9 +3,9 @@ from typing import Any, Dict, List, Optional
 from ray.data._internal.logical.interfaces import LogicalOperator
 from ray.data._internal.planner.exchange.interfaces import ExchangeTaskSpec
 from ray.data._internal.planner.exchange.shuffle_task_spec import ShuffleTaskSpec
-from ray.data._internal.planner.exchange.sort_task_spec import SortTaskSpec
-from ray.data._internal.sort import SortKey
+from ray.data._internal.planner.exchange.sort_task_spec import SortKey, SortTaskSpec
 from ray.data.aggregate import AggregateFn
+from ray.data.block import BlockMetadata
 
 
 class AbstractAllToAll(LogicalOperator):
@@ -31,7 +31,7 @@ class AbstractAllToAll(LogicalOperator):
                 operator.
             ray_remote_args: Args to provide to ray.remote.
         """
-        super().__init__(name, [input_op])
+        super().__init__(name, [input_op], num_outputs)
         self._num_outputs = num_outputs
         self._ray_remote_args = ray_remote_args or {}
         self._sub_progress_bar_names = sub_progress_bar_names
@@ -51,6 +51,10 @@ class RandomizeBlocks(AbstractAllToAll):
         )
         self._seed = seed
 
+    def aggregate_output_metadata(self) -> BlockMetadata:
+        assert len(self._input_dependencies) == 1, len(self._input_dependencies)
+        return self._input_dependencies[0].aggregate_output_metadata()
+
 
 class RandomShuffle(AbstractAllToAll):
     """Logical operator for random_shuffle."""
@@ -60,13 +64,11 @@ class RandomShuffle(AbstractAllToAll):
         input_op: LogicalOperator,
         name: str = "RandomShuffle",
         seed: Optional[int] = None,
-        num_outputs: Optional[int] = None,
         ray_remote_args: Optional[Dict[str, Any]] = None,
     ):
         super().__init__(
             name,
             input_op,
-            num_outputs=num_outputs,
             sub_progress_bar_names=[
                 ExchangeTaskSpec.MAP_SUB_PROGRESS_BAR_NAME,
                 ExchangeTaskSpec.REDUCE_SUB_PROGRESS_BAR_NAME,
@@ -74,6 +76,10 @@ class RandomShuffle(AbstractAllToAll):
             ray_remote_args=ray_remote_args,
         )
         self._seed = seed
+
+    def aggregate_output_metadata(self) -> BlockMetadata:
+        assert len(self._input_dependencies) == 1, len(self._input_dependencies)
+        return self._input_dependencies[0].aggregate_output_metadata()
 
 
 class Repartition(AbstractAllToAll):
@@ -102,6 +108,10 @@ class Repartition(AbstractAllToAll):
         )
         self._shuffle = shuffle
 
+    def aggregate_output_metadata(self) -> BlockMetadata:
+        assert len(self._input_dependencies) == 1, len(self._input_dependencies)
+        return self._input_dependencies[0].aggregate_output_metadata()
+
 
 class Sort(AbstractAllToAll):
     """Logical operator for sort."""
@@ -122,6 +132,10 @@ class Sort(AbstractAllToAll):
         )
         self._sort_key = sort_key
 
+    def aggregate_output_metadata(self) -> BlockMetadata:
+        assert len(self._input_dependencies) == 1, len(self._input_dependencies)
+        return self._input_dependencies[0].aggregate_output_metadata()
+
 
 class Aggregate(AbstractAllToAll):
     """Logical operator for aggregate."""
@@ -136,6 +150,7 @@ class Aggregate(AbstractAllToAll):
             "Aggregate",
             input_op,
             sub_progress_bar_names=[
+                SortTaskSpec.SORT_SAMPLE_SUB_PROGRESS_BAR_NAME,
                 ExchangeTaskSpec.MAP_SUB_PROGRESS_BAR_NAME,
                 ExchangeTaskSpec.REDUCE_SUB_PROGRESS_BAR_NAME,
             ],

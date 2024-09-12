@@ -1,8 +1,9 @@
-import inspect
 import logging
-from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Type, Union
+import uuid
+from typing import Any, Callable, Dict, List, Optional, Type, Union
 
 import ray
+from ray._private.ray_constants import env_integer
 from ray._private.thirdparty.tabulate.tabulate import tabulate
 from ray.air.config import RunConfig, ScalingConfig
 from ray.train import BackendConfig, Checkpoint, TrainingIterator
@@ -10,14 +11,12 @@ from ray.train._internal import session
 from ray.train._internal.backend_executor import BackendExecutor, TrialInfo
 from ray.train._internal.data_config import DataConfig
 from ray.train._internal.session import _TrainingResult, get_session
-from ray.train._internal.utils import construct_train_func
+from ray.train._internal.utils import construct_train_func, count_required_parameters
+from ray.train.constants import RAY_TRAIN_ENABLE_STATE_TRACKING
 from ray.train.trainer import BaseTrainer, GenDataset
 from ray.util.annotations import DeveloperAPI, PublicAPI
 from ray.widgets import Template
 from ray.widgets.util import repr_with_fallback
-
-if TYPE_CHECKING:
-    from ray.data.preprocessor import Preprocessor
 
 logger = logging.getLogger(__name__)
 
@@ -192,11 +191,12 @@ class DataParallelTrainer(BaseTrainer):
         dataset_config: Configuration for dataset ingest. This is merged with the
             default dataset config for the given trainer (`cls._dataset_config`).
         run_config: Configuration for the execution of the training run.
-        datasets: Any Datasets to use for training. Use
-            the key "train" to denote which dataset is the training
-            dataset. If a ``preprocessor`` is provided and has not already been fit,
-            it will be fit on the training dataset. All datasets will be transformed
-            by the ``preprocessor`` if one is provided.
+        datasets: Ray Datasets to use for training and evaluation.
+            This is a dict where the key is the name of the dataset, which
+            can be accessed from within the ``train_loop_per_worker`` by calling
+            ``train.get_dataset_shard(dataset_key)``.
+            By default, all datasets are sharded equally across workers.
+            This can be configured via ``dataset_config``.
         metadata: Dict that should be made available via
             `train.get_context().get_metadata()` and in `checkpoint.get_metadata()`
             for checkpoints saved from this Trainer. Must be JSON-serializable.
@@ -213,6 +213,7 @@ class DataParallelTrainer(BaseTrainer):
         "resources_per_worker",
         "use_gpu",
         "placement_strategy",
+        "accelerator_type",
     ]
 
     # For backwards compatibility with the legacy dataset config API.
@@ -234,8 +235,6 @@ class DataParallelTrainer(BaseTrainer):
         datasets: Optional[Dict[str, GenDataset]] = None,
         metadata: Optional[Dict[str, Any]] = None,
         resume_from_checkpoint: Optional[Checkpoint] = None,
-        # Deprecated.
-        preprocessor: Optional["Preprocessor"] = None,
     ):
         self._train_loop_per_worker = train_loop_per_worker
         self._train_loop_config = train_loop_config
@@ -260,9 +259,19 @@ class DataParallelTrainer(BaseTrainer):
             run_config=run_config,
             datasets=datasets,
             metadata=metadata,
-            preprocessor=preprocessor,
             resume_from_checkpoint=resume_from_checkpoint,
         )
+
+        train_total_resources = self.scaling_config.total_resources
+        self._data_config.set_train_total_resources(
+            train_total_resources.get("CPU", 0),
+            train_total_resources.get("GPU", 0),
+        )
+
+        if env_integer(RAY_TRAIN_ENABLE_STATE_TRACKING, 0):
+            from ray.train._internal.state.state_actor import get_or_create_state_actor
+
+            get_or_create_state_actor()
 
     @PublicAPI(stability="beta")
     @classmethod
@@ -309,21 +318,14 @@ class DataParallelTrainer(BaseTrainer):
             self._train_loop_per_worker, "train_loop_per_worker"
         )
 
-    def preprocess_datasets(self) -> None:
-        # Evaluate all datasets.
-        self.datasets = {k: d() if callable(d) else d for k, d in self.datasets.items()}
-        self.datasets = self._data_config._legacy_preprocessing(
-            self.datasets, self.preprocessor
-        )
-
     def _validate_train_loop_per_worker(
         self, train_loop_per_worker: Callable, fn_name: str
     ) -> None:
-        num_params = len(inspect.signature(train_loop_per_worker).parameters)
-        if num_params > 1:
+        num_required_params = count_required_parameters(train_loop_per_worker)
+        if num_required_params > 1:
             raise ValueError(
                 f"{fn_name} should take in 0 or 1 arguments, "
-                f"but it accepts {num_params} arguments instead."
+                f"but it accepts {num_required_params} arguments instead."
             )
 
     @classmethod
@@ -357,61 +359,71 @@ class DataParallelTrainer(BaseTrainer):
 
         return scaling_config
 
-    def _report(self, training_iterator: TrainingIterator) -> None:
-        for results in training_iterator:
+    def _run_training(self, training_iterator: TrainingIterator) -> None:
+        """This method loops over the `TrainingIterator`:
+        The actual iteration (for ... in ...) waits for the training function
+        on each worker to report a result and supplies it as a list of results.
+        Afterwards (in the body of the loop), it will report the result
+        to the Tune session.
+        The iterator ends after the training function on each worker has finished.
+        """
+        for training_results in training_iterator:
             # TODO(ml-team): add ability to report results from multiple workers.
-            first_worker_result = results[0]
-            assert all(isinstance(result, _TrainingResult) for result in results)
+            self._propagate_results(training_results)
 
-            tune_session = get_session()
+    def _propagate_results(self, training_results: List[_TrainingResult]):
+        first_worker_result = training_results[0]
+        assert all(isinstance(result, _TrainingResult) for result in training_results)
 
-            # Check if any workers reported a checkpoint.
-            # If so, report a checkpoint pointing to the persisted location
-            # to Tune for book-keeping.
-            # NOTE: This removes the restriction for any individual worker
-            # (ex: global rank 0 worker) from needing to report a checkpoint.
-            # All workers reported a checkpoint to the same fs path, so there's
-            # no need to report multiple checkpoints to Tune.
-            worker_checkpoints = [
-                result.checkpoint for result in results if result.checkpoint is not None
-            ]
-            at_least_one_reported_checkpoint = len(worker_checkpoints) > 0
+        tune_session = get_session()
 
-            if at_least_one_reported_checkpoint:
-                # Update the coordinator's checkpoint index to the latest.
-                # This is what keeps the checkpoint index in line with the workers.
-                tune_session.storage._update_checkpoint_index(
-                    first_worker_result.metrics
-                )
+        # Check if any workers reported a checkpoint.
+        # If so, report a checkpoint pointing to the persisted location
+        # to Tune for book-keeping.
+        # NOTE: This removes the restriction for any individual worker
+        # (ex: global rank 0 worker) from needing to report a checkpoint.
+        # All workers reported a checkpoint to the same fs path, so there's
+        # no need to report multiple checkpoints to Tune.
+        worker_checkpoints = [
+            result.checkpoint
+            for result in training_results
+            if result.checkpoint is not None
+        ]
+        at_least_one_reported_checkpoint = len(worker_checkpoints) > 0
 
-            # Make sure that all workers uploaded to the same location.
-            assert all(
-                checkpoint.path == tune_session.storage.checkpoint_fs_path
-                for checkpoint in worker_checkpoints
+        if at_least_one_reported_checkpoint:
+            # Update the coordinator's checkpoint index to the latest.
+            # This is what keeps the checkpoint index in line with the workers.
+            tune_session.storage._update_checkpoint_index(first_worker_result.metrics)
+
+        # Make sure that all workers uploaded to the same location.
+        assert all(
+            checkpoint.path == tune_session.storage.checkpoint_fs_path
+            for checkpoint in worker_checkpoints
+        )
+
+        checkpoint = (
+            Checkpoint(
+                filesystem=tune_session.storage.storage_filesystem,
+                path=tune_session.storage.checkpoint_fs_path,
             )
+            if at_least_one_reported_checkpoint
+            else None
+        )
 
-            checkpoint = (
-                Checkpoint(
-                    filesystem=tune_session.storage.storage_filesystem,
-                    path=tune_session.storage.checkpoint_fs_path,
-                )
-                if at_least_one_reported_checkpoint
-                else None
-            )
+        tracked_training_result = _TrainingResult(
+            checkpoint=checkpoint,
+            metrics=first_worker_result.metrics,
+        )
 
-            tracked_training_result = _TrainingResult(
-                checkpoint=checkpoint,
-                metrics=first_worker_result.metrics,
-            )
+        logger.debug(
+            "Report (metrics, checkpoint) to the Tune session:\n"
+            f"  metrics={tracked_training_result.metrics}\n"
+            f"  checkpoint={tracked_training_result.checkpoint}"
+        )
 
-            logger.debug(
-                "Report (metrics, checkpoint) to the Tune session:\n"
-                f"  metrics={tracked_training_result.metrics}\n"
-                f"  checkpoint={tracked_training_result.checkpoint}"
-            )
-
-            # Report the metrics and checkpoint to Tune.
-            tune_session._report_training_result(tracked_training_result)
+        # Report the metrics and checkpoint to Tune.
+        tune_session._report_training_result(tracked_training_result)
 
     def training_loop(self) -> None:
         scaling_config = self._validate_scaling_config(self.scaling_config)
@@ -419,11 +431,10 @@ class DataParallelTrainer(BaseTrainer):
         train_loop_per_worker = construct_train_func(
             self._train_loop_per_worker,
             self._train_loop_config,
+            train_func_context=self._backend_config.train_func_context,
             fn_arg_name="train_loop_per_worker",
             discard_returns=True,
         )
-
-        additional_resources_per_worker = scaling_config.additional_resources_per_worker
 
         trial_info = TrialInfo(
             name=session.get_trial_name(),
@@ -431,16 +442,16 @@ class DataParallelTrainer(BaseTrainer):
             resources=session.get_trial_resources(),
             logdir=session.get_trial_dir(),
             driver_ip=ray.util.get_node_ip_address(),
+            driver_node_id=ray.get_runtime_context().get_node_id(),
             experiment_name=session.get_experiment_name(),
+            run_id=uuid.uuid4().hex,
         )
 
         backend_executor = self._backend_executor_cls(
             backend_config=self._backend_config,
             trial_info=trial_info,
             num_workers=scaling_config.num_workers,
-            num_cpus_per_worker=scaling_config.num_cpus_per_worker,
-            num_gpus_per_worker=scaling_config.num_gpus_per_worker,
-            additional_resources_per_worker=additional_resources_per_worker,
+            resources_per_worker=scaling_config._resources_per_worker_not_none,
             max_retries=0,
         )
 
@@ -457,7 +468,7 @@ class DataParallelTrainer(BaseTrainer):
             checkpoint=self.starting_checkpoint,
         )
 
-        self._report(training_iterator)
+        self._run_training(training_iterator)
 
         # Shutdown workers.
         backend_executor.shutdown()

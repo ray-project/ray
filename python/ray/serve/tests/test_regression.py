@@ -12,12 +12,14 @@ import ray
 from ray import serve
 from ray._private.test_utils import SignalActor
 from ray.serve.context import _get_global_client
-from ray.serve.drivers import DAGDriver
 from ray.serve.handle import DeploymentHandle
 
 
 @pytest.fixture
 def shutdown_ray():
+    if ray.is_initialized():
+        serve.shutdown()
+        ray.shutdown()
     yield
     serve.shutdown()
     ray.shutdown()
@@ -65,18 +67,17 @@ def test_np_in_composed_model(serve_instance):
         def __init__(self, handle: DeploymentHandle):
             self.model = handle
 
-        async def __call__(self, *args):
+        async def __call__(self):
             data = np.ones((10, 10))
             return await self.model.remote(data)
 
     sum_d = Sum.bind()
     cm_d = ComposedModel.bind(sum_d)
-    dag = DAGDriver.bind(cm_d)
-    serve.run(dag)
+    serve.run(cm_d)
 
     result = requests.get("http://127.0.0.1:8000/")
     assert result.status_code == 200
-    assert result.json() == 100.0
+    assert float(result.text) == 100.0
 
 
 def test_replica_memory_growth(serve_instance):
@@ -165,7 +166,7 @@ def test_handle_cache_out_of_scope(serve_instance):
     assert len(handle_cache) == initial_num_cached + 1
 
     def sender_where_handle_goes_out_of_scope():
-        f = _get_global_client().get_handle("f", "app", missing_ok=True, sync=True)
+        f = _get_global_client().get_handle("f", "app", check_exists=False)
         assert f is handle
         assert f.remote().result() == "hi"
 
@@ -253,9 +254,6 @@ def test_healthcheck_timeout(serve_instance):
         graceful_shutdown_timeout_s=0,
     )
     class A:
-        def check_health(self):
-            return True
-
         def __call__(self):
             ray.get(signal.wait.remote())
 

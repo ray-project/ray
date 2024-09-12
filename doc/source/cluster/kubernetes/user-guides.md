@@ -2,6 +2,32 @@
 
 # User Guides
 
+```{toctree}
+:hidden:
+
+Deploy Ray Serve Apps <user-guides/rayservice>
+user-guides/rayservice-high-availability
+user-guides/observability
+user-guides/upgrade-guide
+user-guides/k8s-cluster-setup
+user-guides/storage
+user-guides/config
+user-guides/configuring-autoscaling
+user-guides/kuberay-gcs-ft
+user-guides/gke-gcs-bucket
+user-guides/logging
+user-guides/gpu
+user-guides/tpu
+user-guides/rayserve-dev-doc
+user-guides/pod-command
+user-guides/pod-security
+user-guides/helm-chart-rbac
+user-guides/tls
+user-guides/k8s-autoscaler
+user-guides/static-ray-cluster-without-kuberay
+```
+
+
 :::{note}
 To learn the basics of Ray on Kubernetes, we recommend taking a look
 at the {ref}`introductory guide <kuberay-quickstart>` first.
@@ -16,6 +42,7 @@ at the {ref}`introductory guide <kuberay-quickstart>` first.
 * {ref}`kuberay-config`
 * {ref}`kuberay-autoscaling`
 * {ref}`kuberay-gpu`
+* {ref}`kuberay-tpu`
 * {ref}`kuberay-gcs-ft`
 * {ref}`kuberay-logging`
 * {ref}`kuberay-dev-serve`

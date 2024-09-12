@@ -29,6 +29,12 @@ grpc_options:
   port: ...
   grpc_servicer_functions: ...
 
+logging_config:
+  log_level: ...
+  logs_dir: ...
+  encoding: ...
+  enable_access_log: ...
+
 applications:
 - name: ...
   route_prefix: ...
@@ -42,7 +48,7 @@ applications:
     ...
 ```
 
-The file contains `proxy_location`, `http_options`, `grpc_options`, and `applications`.
+The file contains `proxy_location`, `http_options`, `grpc_options`, `logging_config` and `applications`.
 
 The `proxy_location` field configures where to run proxies to handle traffic to the cluster. You can set `proxy_location` to the following values:
 - EveryNode (default): Run a proxy on every node in the cluster that has at least one replica actor.
@@ -60,6 +66,8 @@ The `grpc_options` are as follows. Note that the gRPC config is global to your R
 - **`port`**: The port that the gRPC proxies listen on. These are optional settings and can be omitted. By default, the port is
   set to `9000`.
 - **`grpc_servicer_functions`**: List of import paths for gRPC `add_servicer_to_server` functions to add to Serve's gRPC proxy. The servicer functions need to be importable from the context of where Serve is running. This defaults to an empty list, which means the gRPC server isn't started.
+
+The `logging_config` is global config, you can configure controller & proxy & replica logs. Note that you can also set application and deployment level logging config, which will take precedence over the global config. See logging config API [here](../../serve/api/doc/ray.serve.schema.LoggingConfig.rst) for more details.
 
 These are the fields per application:
 
@@ -130,6 +138,12 @@ http_options:
 grpc_options:
   port: 9000
   grpc_servicer_functions: []
+
+logging_config:
+  encoding: TEXT
+  log_level: INFO
+  logs_dir: null
+  enable_access_log: true
 
 applications:
 - name: default

@@ -34,6 +34,13 @@ storage = StorageContext(
 )
 
 
+@pytest.fixture(autouse=True, scope="module")
+def ray_start_4_cpus():
+    ray.init(num_cpus=4)
+    yield
+    ray.shutdown()
+
+
 @pytest.fixture(scope="function")
 def session():
     def f():
@@ -91,11 +98,10 @@ def test_world_size(session):
 
 def test_train(session):
     session.start()
-    output = session.finish()
-    assert output == 1
+    session.finish()
 
 
-def test_get_dataset_shard(shutdown_only):
+def test_get_dataset_shard():
     dataset = ray.data.from_items([1, 2, 3])
     init_session(
         training_func=lambda: 1,

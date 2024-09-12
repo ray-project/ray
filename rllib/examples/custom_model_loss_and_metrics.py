@@ -1,3 +1,8 @@
+# @OldAPIStack
+
+#  Users should just inherit the Learner and extend the loss_fn.
+# TODO (sven): Move this example script to `examples/learners/...`
+
 """Example of using custom_loss() with an imitation learning loss under the Policy
 and ModelV2 API.
 
@@ -17,12 +22,13 @@ import os
 
 import ray
 from ray import air, tune
-from ray.rllib.examples.models.custom_loss_model import (
+from ray.air.constants import TRAINING_ITERATION
+from ray.rllib.core import DEFAULT_MODULE_ID
+from ray.rllib.examples._old_api_stack.models.custom_loss_model import (
     CustomLossModel,
     TorchCustomLossModel,
 )
 from ray.rllib.models import ModelCatalog
-from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.metrics.learner_info import LEARNER_INFO, LEARNER_STATS_KEY
 from ray.tune.registry import get_trainable_cls
@@ -68,12 +74,9 @@ if __name__ == "__main__":
     config = (
         get_trainable_cls(args.run)
         .get_default_config()
-        # TODO (Kourosh): This example needs to be migrated to the new RLModule/Learner
-        #  API. Users should just inherit the Learner and extend the loss_fn.
-        .experimental(_enable_new_api_stack=False)
         .environment("CartPole-v1")
         .framework(args.framework)
-        .rollouts(num_rollout_workers=0)
+        .env_runners(num_env_runners=0)
         .training(
             model={
                 "custom_model": "custom_loss",
@@ -86,9 +89,7 @@ if __name__ == "__main__":
         .resources(num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0")))
     )
 
-    stop = {
-        "training_iteration": args.stop_iters,
-    }
+    stop = {TRAINING_ITERATION: args.stop_iters}
 
     tuner = tune.Tuner(
         args.run,
@@ -100,9 +101,9 @@ if __name__ == "__main__":
 
     # Torch metrics structure.
     if args.framework == "torch":
-        assert LEARNER_STATS_KEY in info[LEARNER_INFO][DEFAULT_POLICY_ID]
-        assert "model" in info[LEARNER_INFO][DEFAULT_POLICY_ID]
-        assert "custom_metrics" in info[LEARNER_INFO][DEFAULT_POLICY_ID]
+        assert LEARNER_STATS_KEY in info[LEARNER_INFO][DEFAULT_MODULE_ID]
+        assert "model" in info[LEARNER_INFO][DEFAULT_MODULE_ID]
+        assert "custom_metrics" in info[LEARNER_INFO][DEFAULT_MODULE_ID]
 
     # TODO: (sven) Make sure the metrics structure gets unified between
     #  tf and torch. Tf should work like current torch:
@@ -113,4 +114,4 @@ if __name__ == "__main__":
     #        model: [return values of ModelV2's `metrics` method]
     #        custom_metrics: [return values of callback: `on_learn_on_batch`]
     else:
-        assert "model" in info[LEARNER_INFO][DEFAULT_POLICY_ID][LEARNER_STATS_KEY]
+        assert "model" in info[LEARNER_INFO][DEFAULT_MODULE_ID][LEARNER_STATS_KEY]

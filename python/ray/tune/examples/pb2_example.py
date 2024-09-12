@@ -4,8 +4,8 @@ import argparse
 
 import ray
 from ray import train, tune
-from ray.tune.schedulers.pb2 import PB2
 from ray.tune.examples.pbt_function import pbt_function
+from ray.tune.schedulers.pb2 import PB2
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -44,6 +44,7 @@ if __name__ == "__main__":
             metric="mean_accuracy",
             mode="max",
             num_samples=8,
+            reuse_actors=True,
         ),
         param_space={
             "lr": 0.0001,

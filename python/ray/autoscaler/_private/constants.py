@@ -30,8 +30,9 @@ AUTOSCALER_UTILIZATION_SCORER_KEY = "RAY_AUTOSCALER_UTILIZATION_SCORER"
 # Whether to avoid launching GPU nodes for CPU only tasks.
 AUTOSCALER_CONSERVE_GPU_NODES = env_integer("AUTOSCALER_CONSERVE_GPU_NODES", 1)
 
-# How long to wait for a node to start, in seconds.
+# How long to wait for a node to start and terminate, in seconds.
 AUTOSCALER_NODE_START_WAIT_S = env_integer("AUTOSCALER_NODE_START_WAIT_S", 900)
+AUTOSCALER_NODE_TERMINATE_WAIT_S = env_integer("AUTOSCALER_NODE_TERMINATE_WAIT_S", 900)
 
 # Interval at which to check if node SSH became available.
 AUTOSCALER_NODE_SSH_INTERVAL_S = env_integer("AUTOSCALER_NODE_SSH_INTERVAL_S", 5)
@@ -49,6 +50,14 @@ AUTOSCALER_MAX_LAUNCH_BATCH = env_integer("AUTOSCALER_MAX_LAUNCH_BATCH", 5)
 AUTOSCALER_MAX_CONCURRENT_LAUNCHES = env_integer(
     "AUTOSCALER_MAX_CONCURRENT_LAUNCHES", 10
 )
+
+# Default upscaling speed for the autoscaler. This specifies how many nodes
+# to request at a time, where the desired number to upscale is
+#   min(1, upscaling_speed * current_num_nodes)
+# e.g. 1.0 means to request enough nodes to double
+# the cluster size in each round of requests.
+# When the upscaling speed is 0.0, the autoscaler will request 1 node.
+DEFAULT_UPSCALING_SPEED = 0.0
 
 # Interval at which to perform autoscaling updates.
 AUTOSCALER_UPDATE_INTERVAL_S = env_integer("AUTOSCALER_UPDATE_INTERVAL_S", 5)

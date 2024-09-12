@@ -1,11 +1,11 @@
-from abc import ABCMeta
 import glob
-import os
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 import warnings
+from abc import ABCMeta
+from pathlib import Path
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
-from ray.util.annotations import PublicAPI, DeveloperAPI
 from ray.tune.utils.util import _atomic_save, _load_newest_checkpoint
+from ray.util.annotations import DeveloperAPI, PublicAPI
 
 if TYPE_CHECKING:
     from ray.train import Checkpoint
@@ -30,14 +30,12 @@ class _CallbackMeta(ABCMeta):
     def need_check(
         mcs, cls: type, name: str, bases: Tuple[type], attrs: Dict[str, Any]
     ) -> bool:
-
         return attrs.get("IS_CALLBACK_CONTAINER", False)
 
     @classmethod
     def check(
         mcs, cls: type, name: str, bases: Tuple[type], attrs: Dict[str, Any]
     ) -> None:
-
         methods = set()
         for base in bases:
             methods.update(
@@ -503,8 +501,8 @@ class CallbackList(Callback):
             can_restore: True if the checkpoint_dir contains a file of the
                 format `CKPT_FILE_TMPL`. False otherwise.
         """
-        return bool(
-            glob.glob(os.path.join(checkpoint_dir, self.CKPT_FILE_TMPL.format("*")))
+        return any(
+            glob.iglob(Path(checkpoint_dir, self.CKPT_FILE_TMPL.format("*")).as_posix())
         )
 
     def __len__(self) -> int:

@@ -29,6 +29,9 @@ import click
 import logging
 import math
 import random
+from typing import List, Optional
+
+from starlette.requests import Request
 
 from ray import serve
 from serve_test_utils import (
@@ -43,9 +46,9 @@ from serve_test_cluster_utils import (
     NUM_CPU_PER_NODE,
     NUM_CONNECTIONS,
 )
-from typing import List, Optional
 
 logger = logging.getLogger(__file__)
+logging.basicConfig(level=logging.INFO)
 
 # Experiment configs
 DEFAULT_SMOKE_TEST_NUM_REPLICA = 4
@@ -69,7 +72,13 @@ def setup_multi_deployment_replicas(num_replicas, num_deployments) -> List[str]:
     num_replica_per_deployment = num_replicas // num_deployments
     all_deployment_names = [f"Echo_{i+1}" for i in range(num_deployments)]
 
-    @serve.deployment(num_replicas=num_replica_per_deployment)
+    ray_actor_options = {"num_cpus": 1}
+    if not is_smoke_test():
+        ray_actor_options["resources"] = {"worker": 0.01}
+
+    @serve.deployment(
+        num_replicas=num_replica_per_deployment, ray_actor_options=ray_actor_options
+    )
     class Echo:
         def __init__(self):
             self.all_app_async_handles = []
@@ -86,18 +95,18 @@ def setup_multi_deployment_replicas(num_replicas, num_deployments) -> List[str]:
 
             return random.choice(self.all_app_async_handles)
 
-        async def handle_request(self, request, depth: int):
+        async def handle_request(self, body: bytes, depth: int):
             # Max recursive call depth reached
             if depth > 4:
                 return "hi"
 
             next_async_handle = await self.get_random_async_handle()
-            fut = next_async_handle.handle_request.remote(request, depth + 1)
+            fut = next_async_handle.handle_request.remote(body, depth + 1)
 
             return await fut
 
-        async def __call__(self, request):
-            return await self.handle_request(request, 0)
+        async def __call__(self, request: Request):
+            return await self.handle_request(await request.body(), 0)
 
     for name in all_deployment_names:
         serve.run(Echo.bind(), name=name, route_prefix=f"/{name}")
@@ -157,13 +166,21 @@ def main(
         http_port,
         all_endpoints=all_endpoints,
         ignore_output=True,
+        exclude_head=not is_smoke_test(),
+        debug=True,
     )
 
     logger.info(f"Starting wrk trial on all nodes for {trial_length} ....\n")
     # For detailed discussion, see https://github.com/wg/wrk/issues/205
     # TODO:(jiaodong) What's the best number to use here ?
     all_metrics, all_wrk_stdout = run_wrk_on_all_nodes(
-        trial_length, NUM_CONNECTIONS, http_host, http_port, all_endpoints=all_endpoints
+        trial_length,
+        NUM_CONNECTIONS,
+        http_host,
+        http_port,
+        all_endpoints=all_endpoints,
+        exclude_head=not is_smoke_test(),
+        debug=True,
     )
 
     aggregated_metrics = aggregate_all_metrics(all_metrics)
@@ -173,10 +190,7 @@ def main(
     logger.info("Final aggregated metrics: ")
     for key, val in aggregated_metrics.items():
         logger.info(f"{key}: {val}")
-    save_test_results(
-        aggregated_metrics,
-        default_output_file="/tmp/multi_deployment_1k_noop_replica.json",
-    )
+    save_test_results(aggregated_metrics)
 
 
 if __name__ == "__main__":

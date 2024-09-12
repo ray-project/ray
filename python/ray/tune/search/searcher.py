@@ -3,7 +3,7 @@ import glob
 import logging
 import os
 import warnings
-from typing import Dict, Optional, List, Union, Any, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
 
 from ray.air._internal.usage import tag_searcher
 from ray.tune.search.util import _set_search_properties_backwards_compatible
@@ -11,8 +11,8 @@ from ray.util.annotations import DeveloperAPI, PublicAPI
 from ray.util.debug import log_once
 
 if TYPE_CHECKING:
-    from ray.tune.experiment import Trial
     from ray.tune.analysis import ExperimentAnalysis
+    from ray.tune.experiment import Trial
 
 logger = logging.getLogger(__name__)
 
@@ -227,8 +227,8 @@ class Searcher:
             raise NotImplementedError
 
         # lazy imports to avoid circular dependencies
-        from ray.tune.experiment import Trial
         from ray.tune.analysis import ExperimentAnalysis
+        from ray.tune.experiment import Trial
         from ray.tune.result import DONE
 
         if isinstance(trials_or_analysis, (list, tuple)):
@@ -402,7 +402,7 @@ class Searcher:
                 cost,
                 run_config=train.RunConfig(
                     name=self.experiment_name,
-                    local_dir="~/my_results",
+                    storage_path="~/my_results",
                 ),
                 tune_config=tune.TuneConfig(
                     search_alg=search_alg,

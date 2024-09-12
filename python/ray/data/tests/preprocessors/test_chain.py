@@ -4,13 +4,7 @@ import pytest
 import ray
 from ray.air.util.data_batch_conversion import BatchFormat
 from ray.data.preprocessor import Preprocessor
-from ray.data.preprocessors import (
-    BatchMapper,
-    Chain,
-    LabelEncoder,
-    SimpleImputer,
-    StandardScaler,
-)
+from ray.data.preprocessors import Chain, LabelEncoder, SimpleImputer, StandardScaler
 
 
 def test_chain():
@@ -21,15 +15,10 @@ def test_chain():
     in_df = pd.DataFrame.from_dict({"A": col_a, "B": col_b, "C": col_c})
     ds = ray.data.from_pandas(in_df)
 
-    def udf(df):
-        df["A"] *= 2
-        return df
-
-    batch_mapper = BatchMapper(fn=udf, batch_format="pandas")
     imputer = SimpleImputer(["B"])
     scaler = StandardScaler(["A", "B"])
     encoder = LabelEncoder("C")
-    chain = Chain(scaler, imputer, encoder, batch_mapper)
+    chain = Chain(scaler, imputer, encoder)
 
     # Fit data.
     chain.fit(ds)
@@ -50,7 +39,7 @@ def test_chain():
     transformed = chain.transform(ds)
     out_df = transformed.to_pandas()
 
-    processed_col_a = [-2.0, -2.0, 2.0, 2.0]
+    processed_col_a = [-1.0, -1.0, 1.0, 1.0]
     processed_col_b = [0.0, 0.0, 0.0, 0.0]
     processed_col_c = [1, 0, 2, 2]
     expected_df = pd.DataFrame.from_dict(
@@ -69,7 +58,7 @@ def test_chain():
 
     pred_out_df = chain.transform_batch(pred_in_df)
 
-    pred_processed_col_a = [2, 4, None]
+    pred_processed_col_a = [1, 2, None]
     pred_processed_col_b = [-1.0, 0.0, 1.0]
     pred_processed_col_c = [0, 2, None]
     pred_expected_df = pd.DataFrame.from_dict(
@@ -90,16 +79,11 @@ def test_nested_chain_state():
     in_df = pd.DataFrame.from_dict({"A": col_a, "B": col_b, "C": col_c})
     ds = ray.data.from_pandas(in_df)
 
-    def udf(df):
-        df["A"] *= 2
-        return df
-
     def create_chain():
-        batch_mapper = BatchMapper(fn=udf, batch_format="pandas")
         imputer = SimpleImputer(["B"])
         scaler = StandardScaler(["A", "B"])
         encoder = LabelEncoder("C")
-        return Chain(Chain(scaler, imputer), encoder, batch_mapper)
+        return Chain(Chain(scaler, imputer), encoder)
 
     chain = create_chain()
     assert chain.fit_status() == Preprocessor.FitStatus.NOT_FITTED
@@ -128,15 +112,10 @@ def test_nested_chain():
     in_df = pd.DataFrame.from_dict({"A": col_a, "B": col_b, "C": col_c})
     ds = ray.data.from_pandas(in_df)
 
-    def udf(df):
-        df["A"] *= 2
-        return df
-
-    batch_mapper = BatchMapper(fn=udf, batch_format="pandas")
     imputer = SimpleImputer(["B"])
     scaler = StandardScaler(["A", "B"])
     encoder = LabelEncoder("C")
-    chain = Chain(Chain(scaler, imputer), encoder, batch_mapper)
+    chain = Chain(Chain(scaler, imputer), encoder)
 
     # Fit data.
     chain.fit(ds)
@@ -157,7 +136,7 @@ def test_nested_chain():
     transformed = chain.transform(ds)
     out_df = transformed.to_pandas()
 
-    processed_col_a = [-2.0, -2.0, 2.0, 2.0]
+    processed_col_a = [-1.0, -1.0, 1.0, 1.0]
     processed_col_b = [0.0, 0.0, 0.0, 0.0]
     processed_col_c = [1, 0, 2, 2]
     expected_df = pd.DataFrame.from_dict(
@@ -176,7 +155,7 @@ def test_nested_chain():
 
     pred_out_df = chain.transform_batch(pred_in_df)
 
-    pred_processed_col_a = [2, 4, None]
+    pred_processed_col_a = [1, 2, None]
     pred_processed_col_b = [-1.0, 0.0, 1.0]
     pred_processed_col_c = [0, 2, None]
     pred_expected_df = pd.DataFrame.from_dict(

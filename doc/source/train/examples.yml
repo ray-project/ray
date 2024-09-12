@@ -1,0 +1,159 @@
+text: Below are examples for using Ray Train with a variety of frameworks and use cases. Ray Train makes it easy to scale out each of these examples to a large cluster of GPUs.
+columns_to_show:
+  - frameworks
+groupby: skill_level
+examples:
+  - title: Train an image classifier with PyTorch
+    skill_level: beginner
+    frameworks:
+      - pytorch
+    use_cases:
+      - computer vision
+    link: examples/pytorch/torch_fashion_mnist_example
+  - title: Train an image classifier with Lightning
+    skill_level: beginner
+    frameworks:
+      - lightning
+    use_cases:
+      - computer vision
+    link: examples/lightning/lightning_mnist_example
+  - title: Train a text classifier with Hugging Face Accelerate
+    frameworks:
+      - accelerate
+      - pytorch
+      - hugging face
+    skill_level: beginner
+    use_cases:
+      - large language models
+      - natural language processing
+    link: examples/accelerate/accelerate_example
+  - title: Train an image classifier with TensorFlow
+    frameworks:
+      - tensorflow
+    skill_level: beginner
+    use_cases:
+      - computer vision
+    link: examples/tf/tensorflow_mnist_example
+  - title: Train with Horovod and PyTorch
+    frameworks:
+      - horovod
+    skill_level: beginner
+    link: examples/horovod/horovod_example
+  - title: "Train ResNet model with Intel Gaudi"
+    frameworks:
+      - pytorch
+    skill_level: beginner
+    use_cases:
+      - computer vision
+    contributor: community
+    link: examples/intel_gaudi/resnet
+  - title: "Train BERT model with Intel Gaudi"
+    frameworks:
+      - transformers
+    skill_level: beginner
+    use_cases:
+      - natural language processing
+    contributor: community
+    link: examples/intel_gaudi/bert
+
+  - title: Train a text classifier with DeepSpeed
+    frameworks:
+      - deepspeed
+      - pytorch
+    skill_level: intermediate
+    use_cases:
+      - large language models
+      - natural language processing
+    link: examples/deepspeed/deepspeed_example
+  - title: Fine-tune a personalized Stable Diffusion model
+    skill_level: intermediate
+    frameworks:
+      - pytorch
+    use_cases:
+      - computer vision
+      - generative ai
+    link: examples/pytorch/dreambooth_finetuning
+  - title: Finetune Stable Diffusion and generate images with Intel Gaudi
+    skill_level: intermediate
+    frameworks:
+      - accelerate
+      - transformers
+    use_cases:
+      - computer vision
+      - generative ai
+    contributor: community
+    link: examples/intel_gaudi/sd
+  - title: Train a text classifier with PyTorch Lightning and Ray Data
+    frameworks:
+      - lightning
+    skill_level: intermediate
+    use_cases:
+      - natural language processing
+    link: examples/lightning/lightning_cola_advanced
+  - title: Train a text classifier with Hugging Face Transformers
+    frameworks:
+      - transformers
+    skill_level: intermediate
+    use_cases:
+      - natural language processing
+    link: examples/transformers/huggingface_text_classification
+  - title: "Fine-tune Llama-2-7b and Llama-2-70b with Intel Gaudi"
+    frameworks:
+      - accelerate
+      - transformers
+    skill_level: intermediate
+    use_cases:
+      - natural language processing
+      - large language models
+    contributor: community
+    link: examples/intel_gaudi/llama
+  - title: "Pre-train Llama-2 with Intel Gaudi"
+    frameworks:
+      - accelerate
+      - transformers
+      - deepspeed
+    skill_level: intermediate
+    use_cases:
+      - natural language processing
+      - large language models
+    contributor: community
+    link: examples/intel_gaudi/llama_pretrain
+
+  - title: Fine-tune a Llama-2 text generation models with DeepSpeed and Hugging Face Accelerate
+    frameworks:
+      - accelerate
+      - deepspeed
+      - hugging face
+    skill_level: advanced
+    use_cases:
+      - natural language processing
+      - large language models
+    link: https://github.com/ray-project/ray/tree/master/doc/source/templates/04_finetuning_llms_with_deepspeed
+  - title: Fine-tune a GPT-J-6B text generation model with DeepSpeed and Hugging Face Transformers
+    frameworks:
+      - hugging face
+      - deepspeed
+    skill_level: advanced
+    use_cases:
+      - natural language processing
+      - large language models
+      - generative ai
+    link: examples/deepspeed/gptj_deepspeed_fine_tuning
+  - title: Fine-tune a vicuna-13b text generation model with PyTorch Lightning and DeepSpeed
+    frameworks:
+      - lightning
+      - deepspeed
+    skill_level: advanced
+    use_cases:
+      - large language models
+      - generative ai
+    link: examples/lightning/vicuna_13b_lightning_deepspeed_finetune
+  - title: Fine-tune a dolly-v2-7b text generation model with PyTorch Lightning and FSDP
+    frameworks:
+      - lightning
+    skill_level: advanced
+    use_cases:
+      - large language models
+      - generative ai
+      - natural language processing
+    link: examples/lightning/dolly_lightning_fsdp_finetuning

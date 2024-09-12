@@ -58,9 +58,9 @@ class MockCoreWorker : public CoreWorker {
                rpc::SendReplyCallback send_reply_callback),
               (override));
   MOCK_METHOD(void,
-              HandleWaitForActorOutOfScope,
-              (rpc::WaitForActorOutOfScopeRequest request,
-               rpc::WaitForActorOutOfScopeReply *reply,
+              HandleWaitForActorRefDeleted,
+              (rpc::WaitForActorRefDeletedRequest request,
+               rpc::WaitForActorRefDeletedReply *reply,
                rpc::SendReplyCallback send_reply_callback),
               (override));
   MOCK_METHOD(void,
@@ -115,6 +115,12 @@ class MockCoreWorker : public CoreWorker {
               HandlePlasmaObjectReady,
               (rpc::PlasmaObjectReadyRequest request,
                rpc::PlasmaObjectReadyReply *reply,
+               rpc::SendReplyCallback send_reply_callback),
+              (override));
+  MOCK_METHOD(void,
+              HandleRegisterMutableObjectReader,
+              (rpc::RegisterMutableObjectReaderRequest request,
+               rpc::RegisterMutableObjectReaderReply *reply,
                rpc::SendReplyCallback send_reply_callback),
               (override));
   MOCK_METHOD(void,

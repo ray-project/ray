@@ -1,9 +1,24 @@
 .. include:: /_includes/rllib/we_are_hiring.rst
 
+.. include:: /_includes/rllib/new_api_stack.rst
+
 .. _rllib-index:
 
 RLlib: Industry-Grade Reinforcement Learning
 ============================================
+
+.. toctree::
+    :hidden:
+
+    rllib-training
+    key-concepts
+    rllib-env
+    rllib-algorithms
+    user-guides
+    rllib-examples
+    rllib-new-api-stack
+    package_ref/index
+
 
 .. image:: images/rllib-logo.png
     :align: center
@@ -54,10 +69,10 @@ PyTorch (or both, as shown below):
         <span data-ty="input">pip install "ray[rllib]" tensorflow torch</span>
     </div>
 
-.. margin::
+.. note::
 
     For installation on computers running Apple Silicon (such as M1), please follow instructions
-    `here <https://docs.ray.io/en/latest/installation.html#m1-mac-apple-silicon-support>`._
+    `here. <https://docs.ray.io/en/latest/ray-overview/installation.html#m1-mac-apple-silicon-support>`_
     To be able to run our Atari examples, you should also install
     `pip install "gym[atari]" "gym[accept-rom-license]" atari_py`.
 
@@ -82,7 +97,7 @@ You can also tweak RLlib's default `model` config,and set up a separate config f
 
 If you want to learn more about the RLlib training API,
 `you can learn more about it here <rllib-training.html#using-the-python-api>`_.
-Also, see `here for a simple example on how to write an action inference loop after training. <https://github.com/ray-project/ray/blob/master/rllib/examples/inference_and_serving/policy_inference_after_training.py>`_
+Also, see `here for a simple example on how to write an action inference loop after training. <https://github.com/ray-project/ray/blob/master/rllib/examples/inference/policy_inference_after_training.py>`_
 
 If you want to get a quick preview of which **algorithms** and **environments** RLlib supports,
 click on the dropdowns below:
@@ -110,7 +125,6 @@ click on the dropdowns below:
 
     *  Offline
 
-       -  |pytorch| |tensorflow| :ref:`Conservative Q-Learning (CQL) <cql>`
        -  |pytorch| |tensorflow| :ref:`Advantage Re-Weighted Imitation Learning (MARWIL) <marwil>`
 
 
@@ -152,7 +166,7 @@ Feature Overview
 
         **RLlib Algorithms**
         ^^^
-        Check out the many available RL algorithms of RLlib for model-free and model-based
+        See the many available RL algorithms of RLlib for model-free and model-based
         RL, on-policy and off-policy training, multi-agent RL, and more.
         +++
         .. button-ref:: rllib-algorithms-doc

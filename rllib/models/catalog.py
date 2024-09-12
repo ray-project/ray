@@ -73,6 +73,28 @@ MODEL_DEFAULTS: ModelConfigDict = {
     # Supported values are: "tanh", "relu", "swish" (or "silu", which is the same),
     # "linear" (or None).
     "fcnet_activation": "tanh",
+    # Initializer function or class descriptor for encoder weigths.
+    # Supported values are the initializer names (str), classes or functions listed
+    # by the frameworks (`tf2``, `torch`). See
+    # https://pytorch.org/docs/stable/nn.init.html for `torch` and
+    # https://www.tensorflow.org/api_docs/python/tf/keras/initializers for `tf2`.
+    # Note, if `None`, the default initializer defined by `torch` or `tf2` is used.
+    "fcnet_weights_initializer": None,
+    # Initializer configuration for encoder weights.
+    # This configuration is passed to the initializer defined in
+    # `fcnet_weights_initializer`.
+    "fcnet_weights_initializer_config": None,
+    # Initializer function or class descriptor for encoder bias.
+    # Supported values are the initializer names (str), classes or functions listed
+    # by the frameworks (`tf2``, `torch`). See
+    # https://pytorch.org/docs/stable/nn.init.html for `torch` and
+    # https://www.tensorflow.org/api_docs/python/tf/keras/initializers for `tf2`.
+    # Note, if `None`, the default initializer defined by `torch` or `tf2` is used.
+    "fcnet_bias_initializer": None,
+    # Initializer configuration for encoder bias.
+    # This configuration is passed to the initializer defined in
+    # `fcnet_bias_initializer`.
+    "fcnet_bias_initializer_config": None,
 
     # VisionNetwork (tf and torch): rllib.models.tf|torch.visionnet.py
     # These are used if no custom model is specified and the input space is 2D.
@@ -85,6 +107,50 @@ MODEL_DEFAULTS: ModelConfigDict = {
     # Supported values are: "tanh", "relu", "swish" (or "silu", which is the same),
     # "linear" (or None).
     "conv_activation": "relu",
+    # Initializer function or class descriptor for CNN encoder kernel.
+    # Supported values are the initializer names (str), classes or functions listed
+    # by the frameworks (`tf2``, `torch`). See
+    # https://pytorch.org/docs/stable/nn.init.html for `torch` and
+    # https://www.tensorflow.org/api_docs/python/tf/keras/initializers for `tf2`.
+    # Note, if `None`, the default initializer defined by `torch` or `tf2` is used.
+    "conv_kernel_initializer": None,
+    # Initializer configuration for CNN encoder kernel.
+    # This configuration is passed to the initializer defined in
+    # `conv_weights_initializer`.
+    "conv_kernel_initializer_config": None,
+    # Initializer function or class descriptor for CNN encoder bias.
+    # Supported values are the initializer names (str), classes or functions listed
+    # by the frameworks (`tf2``, `torch`). See
+    # https://pytorch.org/docs/stable/nn.init.html for `torch` and
+    # https://www.tensorflow.org/api_docs/python/tf/keras/initializers for `tf2`.
+    # Note, if `None`, the default initializer defined by `torch` or `tf2` is used.
+    "conv_bias_initializer": None,
+    # Initializer configuration for CNN encoder bias.
+    # This configuration is passed to the initializer defined in
+    # `conv_bias_initializer`.
+    "conv_bias_initializer_config": None,
+    # Initializer function or class descriptor for CNN head (pi, Q, V) kernel.
+    # Supported values are the initializer names (str), classes or functions listed
+    # by the frameworks (`tf2``, `torch`). See
+    # https://pytorch.org/docs/stable/nn.init.html for `torch` and
+    # https://www.tensorflow.org/api_docs/python/tf/keras/initializers for `tf2`.
+    # Note, if `None`, the default initializer defined by `torch` or `tf2` is used.
+    "conv_transpose_kernel_initializer": None,
+    # Initializer configuration for CNN head (pi, Q, V) kernel.
+    # This configuration is passed to the initializer defined in
+    # `conv_transpose_weights_initializer`.
+    "conv_transpose_kernel_initializer_config": None,
+    # Initializer function or class descriptor for CNN head (pi, Q, V) bias.
+    # Supported values are the initializer names (str), classes or functions listed
+    # by the frameworks (`tf2``, `torch`). See
+    # https://pytorch.org/docs/stable/nn.init.html for `torch` and
+    # https://www.tensorflow.org/api_docs/python/tf/keras/initializers for `tf2`.
+    # Note, if `None`, the default initializer defined by `torch` or `tf2` is used.
+    "conv_transpose_bias_initializer": None,
+    # Initializer configuration for CNN head (pi, Q, V) bias.
+    # This configuration is passed to the initializer defined in
+    # `conv_transpose_bias_initializer`.
+    "conv_transpose_bias_initializer_config": None,
 
     # Some default models support a final FC stack of n Dense layers with given
     # activation:
@@ -97,6 +163,28 @@ MODEL_DEFAULTS: ModelConfigDict = {
     # (that's why it's empty by default).
     "post_fcnet_hiddens": [],
     "post_fcnet_activation": "relu",
+    # Initializer function or class descriptor for head (pi, Q, V) weights.
+    # Supported values are the initializer names (str), classes or functions listed
+    # by the frameworks (`tf2``, `torch`). See
+    # https://pytorch.org/docs/stable/nn.init.html for `torch` and
+    # https://www.tensorflow.org/api_docs/python/tf/keras/initializers for `tf2`.
+    # Note, if `None`, the default initializer defined by `torch` or `tf2` is used.
+    "post_fcnet_weights_initializer": None,
+    # Initializer configuration for head (pi, Q, V) weights.
+    # This configuration is passed to the initializer defined in
+    # `post_fcnet_weights_initializer`.
+    "post_fcnet_weights_initializer_config": None,
+    # Initializer function or class descriptor for head (pi, Q, V) bias.
+    # Supported values are the initializer names (str), classes or functions listed
+    # by the frameworks (`tf2``, `torch`). See
+    # https://pytorch.org/docs/stable/nn.init.html for `torch` and
+    # https://www.tensorflow.org/api_docs/python/tf/keras/initializers for `tf2`.
+    # Note, if `None`, the default initializer defined by `torch` or `tf2` is used.
+    "post_fcnet_bias_initializer": None,
+    # Initializer configuration for head (pi, Q, V) bias.
+    # This configuration is passed to the initializer defined in
+    # `post_fcnet_bias_initializer`.
+    "post_fcnet_bias_initializer_config": None,
 
     # For DiagGaussian action distributions, make the second half of the model
     # outputs floating bias variables instead of state-dependent. This only
@@ -120,6 +208,28 @@ MODEL_DEFAULTS: ModelConfigDict = {
     "lstm_use_prev_action": False,
     # Whether to feed r_{t-1} to LSTM.
     "lstm_use_prev_reward": False,
+    # Initializer function or class descriptor for LSTM weights.
+    # Supported values are the initializer names (str), classes or functions listed
+    # by the frameworks (`tf2``, `torch`). See
+    # https://pytorch.org/docs/stable/nn.init.html for `torch` and
+    # https://www.tensorflow.org/api_docs/python/tf/keras/initializers for `tf2`.
+    # Note, if `None`, the default initializer defined by `torch` or `tf2` is used.
+    "lstm_weights_initializer": None,
+    # Initializer configuration for LSTM weights.
+    # This configuration is passed to the initializer defined in
+    # `lstm_weights_initializer`.
+    "lstm_weights_initializer_config": None,
+    # Initializer function or class descriptor for LSTM bias.
+    # Supported values are the initializer names (str), classes or functions listed
+    # by the frameworks (`tf2``, `torch`). See
+    # https://pytorch.org/docs/stable/nn.init.html for `torch` and
+    # https://www.tensorflow.org/api_docs/python/tf/keras/initializers for `tf2`.
+    # Note, if `None`, the default initializer defined by `torch` or `tf2` is used.
+    "lstm_bias_initializer": None,
+    # Initializer configuration for LSTM bias.
+    # This configuration is passed to the initializer defined in
+    # `lstm_bias_initializer`.
+    "lstm_bias_initializer_config": None,
     # Whether the LSTM is time-major (TxBx..) or batch-major (BxTx..).
     "_time_major": False,
 
@@ -275,7 +385,7 @@ class ModelCatalog:
                 dist_cls = (
                     TorchMultiCategorical if framework == "torch" else MultiCategorical
                 )
-                num_cats = int(np.product(action_space.shape))
+                num_cats = int(np.prod(action_space.shape))
                 return (
                     partial(
                         dist_cls,
@@ -385,7 +495,7 @@ class ModelCatalog:
                     size += 1
                 else:
                     all_discrete = False
-                    size += np.product(flat_action_space[i].shape)
+                    size += np.prod(flat_action_space[i].shape)
             size = int(size)
             return dl_lib.int32 if all_discrete else dl_lib.float32, (None, size)
         else:

@@ -66,7 +66,7 @@ class ConcurrencyGroupManager final {
       functions_to_executor_index_;
 
   // The default concurrency group executor. It's nullptr if its max concurrency is 1.
-  std::shared_ptr<ExecutorType> defatult_executor_ = nullptr;
+  std::shared_ptr<ExecutorType> default_executor_ = nullptr;
 
   friend class ConcurrencyGroupManagerTest;
 };

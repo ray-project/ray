@@ -2,6 +2,7 @@ import itertools
 import math
 import random
 import time
+from typing import Any, List, Tuple
 from unittest.mock import patch
 
 import numpy as np
@@ -12,6 +13,9 @@ import ray
 from ray.data._internal.block_list import BlockList
 from ray.data._internal.equalize import _equalize
 from ray.data._internal.execution.interfaces import RefBundle
+from ray.data._internal.execution.interfaces.ref_bundle import (
+    _ref_bundles_iterator_to_block_refs_list,
+)
 from ray.data._internal.logical.interfaces import LogicalPlan
 from ray.data._internal.logical.operators.input_data_operator import InputData
 from ray.data._internal.plan import ExecutionPlan
@@ -24,11 +28,12 @@ from ray.data._internal.split import (
     _split_single_block,
 )
 from ray.data._internal.stats import DatasetStats
-from ray.data.block import BlockAccessor, BlockMetadata
+from ray.data.block import Block, BlockAccessor, BlockMetadata
 from ray.data.dataset import Dataset
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.util import extract_values
 from ray.tests.conftest import *  # noqa
+from ray.types import ObjectRef
 
 
 @ray.remote
@@ -79,9 +84,7 @@ def test_equal_split(shutdown_only):
         ([2, 5], 1),  # Single split.
     ],
 )
-def test_equal_split_balanced(
-    ray_start_regular_shared, enable_optimizer, block_sizes, num_splits
-):
+def test_equal_split_balanced(ray_start_regular_shared, block_sizes, num_splits):
     _test_equal_split_balanced(block_sizes, num_splits)
 
 
@@ -93,15 +96,15 @@ def _test_equal_split_balanced(block_sizes, num_splits):
     for block_size in block_sizes:
         block = pd.DataFrame({"id": list(range(total_rows, total_rows + block_size))})
         blocks.append(ray.put(block))
-        metadata.append(BlockAccessor.for_block(block).get_metadata(None, None))
+        metadata.append(BlockAccessor.for_block(block).get_metadata())
         blk = (blocks[-1], metadata[-1])
         ref_bundles.append(RefBundle((blk,), owns_blocks=True))
         total_rows += block_size
-    block_list = BlockList(blocks, metadata, owned_by_consumer=True)
 
     logical_plan = LogicalPlan(InputData(input_data=ref_bundles))
+    stats = DatasetStats(metadata={"TODO": []}, parent=None)
     ds = Dataset(
-        ExecutionPlan(block_list, DatasetStats.TODO(), run_by_consumer=True),
+        ExecutionPlan(stats),
         logical_plan,
     )
 
@@ -162,7 +165,7 @@ def test_split_small(ray_start_regular_shared):
             for locality_hints in [None, x[:n]]:
                 for equal in [True, False]:
                     print("Testing", m, n, equal, locality_hints)
-                    ds = ray.data.from_items(data, parallelism=m)
+                    ds = ray.data.from_items(data, override_num_blocks=m)
                     splits = ds.split(n, equal=equal, locality_hints=locality_hints)
                     assert len(splits) == n
                     outs = ray.get([take.remote(s) for s in splits])
@@ -193,7 +196,7 @@ def test_split_small(ray_start_regular_shared):
 
 
 def test_split_at_indices_simple(ray_start_regular_shared):
-    ds = ray.data.range(10, parallelism=3)
+    ds = ray.data.range(10, override_num_blocks=3)
 
     with pytest.raises(ValueError):
         ds.split_at_indices([])
@@ -253,7 +256,7 @@ def test_split_at_indices_simple(ray_start_regular_shared):
 def test_split_at_indices_coverage(ray_start_regular_shared, num_blocks, indices):
     # Test that split_at_indices() creates the expected splits on a set of partition and
     # indices configurations.
-    ds = ray.data.range(20, parallelism=num_blocks)
+    ds = ray.data.range(20, override_num_blocks=num_blocks)
     splits = ds.split_at_indices(indices)
     r = [extract_values("id", s.take_all()) for s in splits]
     # Use np.array_split() semantics as our correctness ground-truth.
@@ -291,7 +294,7 @@ def test_split_at_indices_coverage_complete(
 ):
     # Test that split_at_indices() creates the expected splits on a set of partition and
     # indices configurations.
-    ds = ray.data.range(5, parallelism=num_blocks)
+    ds = ray.data.range(5, override_num_blocks=num_blocks)
     splits = ds.split_at_indices(indices)
     r = [extract_values("id", s.take_all()) for s in splits]
     # Use np.array_split() semantics as our correctness ground-truth.
@@ -299,7 +302,7 @@ def test_split_at_indices_coverage_complete(
 
 
 def test_split_proportionately(ray_start_regular_shared):
-    ds = ray.data.range(10, parallelism=3)
+    ds = ray.data.range(10, override_num_blocks=3)
 
     with pytest.raises(ValueError):
         ds.split_proportionately([])
@@ -337,38 +340,30 @@ def test_split_proportionately(ray_start_regular_shared):
 
 
 def test_split(ray_start_regular_shared):
-    ds = ray.data.range(20, parallelism=10)
-    assert ds.num_blocks() == 10
+    ds = ray.data.range(20, override_num_blocks=10)
+    assert ds._plan.initial_num_blocks() == 10
     assert ds.sum() == 190
     assert ds._block_num_rows() == [2] * 10
 
     datasets = ds.split(5)
-    assert [2] * 5 == [
-        dataset._plan.execute().initial_num_blocks() for dataset in datasets
-    ]
+    assert [2] * 5 == [len(dataset._plan.execute().blocks) for dataset in datasets]
     assert 190 == sum([dataset.sum("id") for dataset in datasets])
 
     datasets = ds.split(3)
-    assert [4, 3, 3] == [
-        dataset._plan.execute().initial_num_blocks() for dataset in datasets
-    ]
+    assert [4, 3, 3] == [len(dataset._plan.execute().blocks) for dataset in datasets]
     assert 190 == sum([dataset.sum("id") for dataset in datasets])
 
     datasets = ds.split(1)
-    assert [10] == [
-        dataset._plan.execute().initial_num_blocks() for dataset in datasets
-    ]
+    assert [10] == [len(dataset._plan.execute().blocks) for dataset in datasets]
     assert 190 == sum([dataset.sum("id") for dataset in datasets])
 
     datasets = ds.split(10)
-    assert [1] * 10 == [
-        dataset._plan.execute().initial_num_blocks() for dataset in datasets
-    ]
+    assert [1] * 10 == [len(dataset._plan.execute().blocks) for dataset in datasets]
     assert 190 == sum([dataset.sum("id") for dataset in datasets])
 
     datasets = ds.split(11)
     assert [1] * 10 + [0] == [
-        dataset._plan.execute().initial_num_blocks() for dataset in datasets
+        len(dataset._plan.execute().blocks) for dataset in datasets
     ]
     assert 190 == sum([dataset.sum("id") or 0 for dataset in datasets])
 
@@ -396,8 +391,9 @@ def test_split_hints(ray_start_regular_shared):
                 datasets[1] contains block 2.
         """
         num_blocks = len(block_node_ids)
-        ds = ray.data.range(num_blocks, parallelism=num_blocks)
-        blocks = ds.get_internal_block_refs()
+        ds = ray.data.range(num_blocks, override_num_blocks=num_blocks).materialize()
+        bundles = ds.iter_internal_ref_bundles()
+        blocks = _ref_bundles_iterator_to_block_refs_list(bundles)
         assert len(block_node_ids) == len(blocks)
         actors = [Actor.remote() for i in range(len(actor_node_ids))]
         with patch("ray.experimental.get_object_locations") as location_mock:
@@ -420,7 +416,9 @@ def test_split_hints(ray_start_regular_shared):
                 assert len(datasets) == len(actors)
                 for i in range(len(actors)):
                     assert {blocks[j] for j in expected_split_result[i]} == set(
-                        datasets[i].get_internal_block_refs()
+                        _ref_bundles_iterator_to_block_refs_list(
+                            datasets[i].iter_internal_ref_bundles()
+                        )
                     )
 
     assert_split_assignment(
@@ -498,19 +496,26 @@ def _create_meta(num_rows):
     )
 
 
-def _create_block(data):
-    data = pd.DataFrame({"id": data})
-    return (ray.put(data), _create_meta(len(data)))
+def _create_block_and_metadata(data: Any) -> Tuple[ObjectRef[Block], BlockMetadata]:
+    block = pd.DataFrame({"id": data})
+    metadata = BlockAccessor.for_block(block).get_metadata()
+    return (ray.put(block), metadata)
 
 
 def _create_blocklist(blocks):
     block_refs = []
     meta = []
     for block in blocks:
-        block_ref, block_meta = _create_block(block)
+        block_ref, block_meta = _create_block_and_metadata(block)
         block_refs.append(block_ref)
         meta.append(block_meta)
     return BlockList(block_refs, meta, owned_by_consumer=True)
+
+
+def _create_bundle(blocks: List[List[Any]]) -> RefBundle:
+    return RefBundle(
+        [_create_block_and_metadata(block) for block in blocks], owns_blocks=True
+    )
 
 
 def _create_blocks_with_metadata(blocks):
@@ -595,7 +600,11 @@ def verify_splits(splits, blocks_by_split):
 
 
 def test_generate_global_split_results(ray_start_regular_shared):
-    inputs = [_create_block([1]), _create_block([2, 3]), _create_block([4])]
+    inputs = [
+        _create_block_and_metadata([1]),
+        _create_block_and_metadata([2, 3]),
+        _create_block_and_metadata([4]),
+    ]
 
     splits = list(zip(*_generate_global_split_results(iter(inputs), [1, 2, 1])))
     verify_splits(splits, [[[1]], [[2, 3]], [[4]]])
@@ -645,15 +654,15 @@ def test_private_split_at_indices(ray_start_regular_shared):
     verify_splits(splits, [[], [[1], [2, 3], [4]], []])
 
 
-def equalize_helper(input_block_lists):
+def equalize_helper(input_block_lists: List[List[List[Any]]]):
     result = _equalize(
-        [_create_blocklist(block_list) for block_list in input_block_lists],
+        [_create_bundle(block_list) for block_list in input_block_lists],
         owned_by_consumer=True,
     )
     result_block_lists = []
-    for blocklist in result:
+    for bundle in result:
         block_list = []
-        for block_ref, _ in blocklist.get_blocks_with_metadata():
+        for block_ref in bundle.block_refs:
             block = ray.get(block_ref)
             block_accessor = BlockAccessor.for_block(block)
             block_list.append(list(block_accessor.to_default()["id"]))
@@ -771,7 +780,7 @@ def test_train_test_split(ray_start_regular_shared):
 
 def test_split_is_not_disruptive(ray_start_cluster):
     ray.shutdown()
-    ds = ray.data.range(100, parallelism=10).map_batches(lambda x: x)
+    ds = ray.data.range(100, override_num_blocks=10).map_batches(lambda x: x)
 
     def verify_integrity(splits):
         for dss in splits:

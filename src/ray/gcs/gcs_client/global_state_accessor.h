@@ -49,7 +49,9 @@ class GlobalStateAccessor {
   /// \return All job info. To support multi-language, we serialize each JobTableData and
   /// return the serialized string. Where used, it needs to be deserialized with
   /// protobuf function.
-  std::vector<std::string> GetAllJobInfo() ABSL_LOCKS_EXCLUDED(mutex_);
+  std::vector<std::string> GetAllJobInfo(bool skip_submission_job_info_field = false,
+                                         bool skip_is_running_tasks_field = false)
+      ABSL_LOCKS_EXCLUDED(mutex_);
 
   /// Get next job id from GCS Service.
   ///
@@ -66,14 +68,6 @@ class GlobalStateAccessor {
   /// \return All task events info.
   std::vector<std::string> GetAllTaskEvents() ABSL_LOCKS_EXCLUDED(mutex_);
 
-  /// Get information of a node resource from GCS Service.
-  ///
-  /// \param node_id The ID of node to look up in the GCS Service.
-  /// \return node resource map info. To support multi-language, we serialize each
-  /// ResourceTableData and return the serialized string. Where used, it needs to be
-  /// deserialized with protobuf function.
-  std::string GetNodeResourceInfo(const NodeID &node_id) ABSL_LOCKS_EXCLUDED(mutex_);
-
   /// Get available resources of all nodes.
   ///
   /// \return available resources of all nodes. To support multi-language, we serialize
@@ -81,10 +75,17 @@ class GlobalStateAccessor {
   /// deserialized with protobuf function.
   std::vector<std::string> GetAllAvailableResources() ABSL_LOCKS_EXCLUDED(mutex_);
 
-  /// Get ids of draining nodes.
+  /// Get total resources of all nodes.
   ///
-  /// \return ids of draining nodes.
-  std::vector<NodeID> GetDrainingNodes() ABSL_LOCKS_EXCLUDED(mutex_);
+  /// \return total resources of all nodes. To support multi-language, we serialize
+  /// each TotalResources and return the serialized string. Where used, it needs to be
+  /// deserialized with protobuf function.
+  std::vector<std::string> GetAllTotalResources() ABSL_LOCKS_EXCLUDED(mutex_);
+
+  /// Get draining nodes.
+  ///
+  /// \return Draining node id to draining deadline.
+  std::unordered_map<NodeID, int64_t> GetDrainingNodes() ABSL_LOCKS_EXCLUDED(mutex_);
 
   /// Get newest resource usage of all nodes from GCS Service. Only used when light
   /// rerouce usage report enabled.
@@ -133,12 +134,26 @@ class GlobalStateAccessor {
   /// deserialized with protobuf function.
   std::vector<std::string> GetAllWorkerInfo() ABSL_LOCKS_EXCLUDED(mutex_);
 
+  /// Get the worker debugger port from the GCS Service.
+  ///
+  /// \param worker_id The ID of worker to look up in the GCS Service.
+  /// \return The worker debugger port.
+  uint32_t GetWorkerDebuggerPort(const WorkerID &worker_id);
+
   /// Update the worker debugger port in the GCS Service.
   ///
   /// \param worker_id The ID of worker to update in the GCS Service.
   /// \param debugger_port The debugger port of worker to update in the GCS Service.
   /// \return Is operation success.
   bool UpdateWorkerDebuggerPort(const WorkerID &worker_id, const uint32_t debugger_port);
+
+  /// Update the worker num of paused threads in the GCS Service.
+  ///
+  /// \param worker_id The ID of worker to update in the GCS Service.
+  /// \param num_paused_threads_delta The delta of paused threads of worker to update in
+  /// the GCS Service. \return Is operation success.
+  bool UpdateWorkerNumPausedThreads(const WorkerID &worker_id,
+                                    const int num_paused_threads_delta);
 
   /// Add information of a worker to GCS Service.
   ///
@@ -188,6 +203,15 @@ class GlobalStateAccessor {
   /// \return The serialized system config.
   std::string GetSystemConfig() ABSL_LOCKS_EXCLUDED(mutex_);
 
+  /// Get the node with the specified node ID.
+  ///
+  /// \param[in] node_id The hex string format of the node ID.
+  /// \param[out] node_info The output parameter to store the node info. To support
+  /// multi-language, we serialize each GcsNodeInfo and return the serialized string.
+  /// Where used, it needs to be deserialized with protobuf function.
+  ray::Status GetNode(const std::string &node_id, std::string *node_info)
+      ABSL_LOCKS_EXCLUDED(mutex_);
+
   /// Get the node to connect for a Ray driver.
   ///
   /// \param[in] node_ip_address The IP address of the desired node to connect.
@@ -199,6 +223,12 @@ class GlobalStateAccessor {
       ABSL_LOCKS_EXCLUDED(mutex_);
 
  private:
+  /// Synchronously get the current alive nodes from GCS Service.
+  ///
+  /// \param[out] nodes The output parameter to store the alive nodes.
+  ray::Status GetAliveNodes(std::vector<rpc::GcsNodeInfo> &nodes)
+      ABSL_LOCKS_EXCLUDED(mutex_);
+
   /// MultiItem transformation helper in template style.
   ///
   /// \return MultiItemCallback within in rpc type DATA.
@@ -221,7 +251,7 @@ class GlobalStateAccessor {
   template <class DATA>
   OptionalItemCallback<DATA> TransformForOptionalItemCallback(
       std::unique_ptr<std::string> &data, std::promise<bool> &promise) {
-    return [&data, &promise](const Status &status, const boost::optional<DATA> &result) {
+    return [&data, &promise](const Status &status, const std::optional<DATA> &result) {
       RAY_CHECK_OK(status);
       if (result) {
         data.reset(new std::string(result->SerializeAsString()));
@@ -247,6 +277,12 @@ class GlobalStateAccessor {
 
   // protects is_connected_ and gcs_client_
   mutable absl::Mutex mutex_;
+
+  // protects debugger port related operations
+  mutable absl::Mutex debugger_port_mutex_;
+
+  // protects debugger tasks related operations
+  mutable absl::Mutex debugger_threads_mutex_;
 
   /// Whether this client is connected to gcs server.
   bool is_connected_ ABSL_GUARDED_BY(mutex_) = false;

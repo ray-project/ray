@@ -19,6 +19,60 @@ def test_nodedup_logs_single_process():
     assert out1 == [batch1]
 
 
+def test_nodedup_logs_buffer_only_lines():
+    now = 142300000.0
+
+    def gettime():
+        return now
+
+    dedup = LogDeduplicator(5, None, None, _timesource=gettime)
+    batch1 = {
+        "ip": "node1",
+        "pid": 100,
+        # numbers are canonicalised, so this would lead to empty dedup_key
+        "lines": ["1"],
+    }
+
+    # Immediately prints always.
+    out1 = dedup.deduplicate(batch1)
+    assert out1 == [batch1]
+
+    now += 1.0
+
+    # Should print new lines even if it is number only again
+    batch2 = {
+        "ip": "node2",
+        "pid": 200,
+        "lines": ["2"],
+    }
+    out2 = dedup.deduplicate(batch2)
+    assert out2 == [
+        {
+            "ip": "node2",
+            "pid": 200,
+            "lines": ["2"],
+        }
+    ]
+
+    now += 3.0
+
+    # Should print new lines even if it is same number
+    batch3 = {
+        "ip": "node3",
+        "pid": 300,
+        "lines": ["2"],
+    }
+    # Should buffer duplicates.
+    out3 = dedup.deduplicate(batch3)
+    assert out3 == [
+        {
+            "ip": "node3",
+            "pid": 300,
+            "lines": ["2"],
+        }
+    ]
+
+
 def test_dedup_logs_multiple_processes():
     now = 142300000.0
 
@@ -82,8 +136,8 @@ def test_dedup_logs_multiple_processes():
         "lines": [
             "hello world\x1b[32m [repeated 3x across cluster] (Ray deduplicates "
             "logs by default. Set RAY_DEDUP_LOGS=0 to disable log deduplication, or "
-            "see https://docs.ray.io/en/master/ray-observability/"
-            "ray-logging.html#log-deduplication for more options.)\x1b[0m"
+            "see https://docs.ray.io/en/master/ray-observability/user-guides/"
+            "configure-logging.html#log-deduplication for more options.)\x1b[0m"
         ],
     } in out4
     assert {

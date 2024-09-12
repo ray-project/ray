@@ -111,7 +111,7 @@ class NodeManagerWorkerClient
 
   /// Release unused workers.
   VOID_RPC_CLIENT_METHOD(NodeManagerService,
-                         ReleaseUnusedWorkers,
+                         ReleaseUnusedActorWorkers,
                          grpc_client_,
                          /*method_timeout_ms*/ -1, )
 
@@ -162,12 +162,6 @@ class NodeManagerWorkerClient
                          grpc_client_,
                          /*method_timeout_ms*/ -1, )
 
-  /// Ask the raylet to spill an object to external storage.
-  VOID_RPC_CLIENT_METHOD(NodeManagerService,
-                         RequestObjectSpillage,
-                         grpc_client_,
-                         /*method_timeout_ms*/ -1, )
-
   /// Release unused bundles.
   VOID_RPC_CLIENT_METHOD(NodeManagerService,
                          ReleaseUnusedBundles,
@@ -194,6 +188,16 @@ class NodeManagerWorkerClient
 
   VOID_RPC_CLIENT_METHOD(NodeManagerService,
                          GetTaskFailureCause,
+                         grpc_client_,
+                         /*method_timeout_ms*/ -1, )
+
+  VOID_RPC_CLIENT_METHOD(NodeManagerService,
+                         RegisterMutableObject,
+                         grpc_client_,
+                         /*method_timeout_ms*/ -1, )
+
+  VOID_RPC_CLIENT_METHOD(NodeManagerService,
+                         PushMutableObject,
                          grpc_client_,
                          /*method_timeout_ms*/ -1, )
 

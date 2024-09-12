@@ -1,39 +1,27 @@
 import inspect
 import logging
 import os
+import queue
 from functools import partial
 from numbers import Number
 from typing import Any, Callable, Dict, Optional, Type
 
-from ray.air._internal.util import StartTraceback, RunnerThread
-import queue
-
-from ray.air.constants import (
-    _ERROR_FETCH_TIMEOUT,
-)
 import ray.train
+from ray.air._internal.util import RunnerThread, StartTraceback
+from ray.air.constants import _ERROR_FETCH_TIMEOUT
 from ray.train._internal.checkpoint_manager import _TrainingResult
 from ray.train._internal.session import (
-    init_session,
-    get_session,
-    shutdown_session,
-    _TrainSession,
     TrialInfo,
+    _TrainSession,
+    get_session,
+    init_session,
+    shutdown_session,
 )
 from ray.tune.execution.placement_groups import PlacementGroupFactory
-from ray.tune.result import (
-    DEFAULT_METRIC,
-    RESULT_DUPLICATE,
-    SHOULD_CHECKPOINT,
-)
-from ray.tune.trainable import Trainable
-from ray.tune.utils import (
-    _detect_checkpoint_function,
-    _detect_config_single,
-    _detect_reporter,
-)
+from ray.tune.result import DEFAULT_METRIC, RESULT_DUPLICATE, SHOULD_CHECKPOINT
+from ray.tune.trainable.trainable import Trainable
+from ray.tune.utils import _detect_config_single
 from ray.util.annotations import DeveloperAPI
-
 
 logger = logging.getLogger(__name__)
 
@@ -42,64 +30,6 @@ logger = logging.getLogger(__name__)
 
 NULL_MARKER = ".null_marker"
 TEMP_MARKER = ".temp_marker"
-
-
-_CHECKPOINT_DIR_ARG_DEPRECATION_MSG = """Accepting a `checkpoint_dir` argument in your training function is deprecated.
-Please use `ray.train.get_checkpoint()` to access your checkpoint as a
-`ray.train.Checkpoint` object instead. See below for an example:
-
-Before
-------
-
-from ray import tune
-
-def train_fn(config, checkpoint_dir=None):
-    if checkpoint_dir:
-        torch.load(os.path.join(checkpoint_dir, "checkpoint.pt"))
-    ...
-
-tuner = tune.Tuner(train_fn)
-tuner.fit()
-
-After
------
-
-from ray import train, tune
-
-def train_fn(config):
-    checkpoint: train.Checkpoint = train.get_checkpoint()
-    if checkpoint:
-        with checkpoint.as_directory() as checkpoint_dir:
-            torch.load(os.path.join(checkpoint_dir, "checkpoint.pt"))
-    ...
-
-tuner = tune.Tuner(train_fn)
-tuner.fit()"""  # noqa: E501
-
-_REPORTER_ARG_DEPRECATION_MSG = """Accepting a `reporter` in your training function is deprecated.
-Please use `ray.train.report()` to report results instead. See below for an example:
-
-Before
-------
-
-from ray import tune
-
-def train_fn(config, reporter):
-    reporter(metric=1)
-
-tuner = tune.Tuner(train_fn)
-tuner.fit()
-
-After
------
-
-from ray import train, tune
-
-def train_fn(config):
-    train.report({"metric": 1})
-
-tuner = tune.Tuner(train_fn)
-tuner.fit()"""  # noqa: E501
 
 
 @DeveloperAPI
@@ -117,8 +47,9 @@ class FunctionTrainable(Trainable):
                 name=self.trial_name,
                 id=self.trial_id,
                 resources=self.trial_resources,
-                logdir=self._storage.trial_local_path,
+                logdir=self._storage.trial_driver_staging_path,
                 driver_ip=None,
+                driver_node_id=None,
                 experiment_name=self._storage.experiment_dir_name,
             ),
             storage=self._storage,
@@ -213,11 +144,6 @@ class FunctionTrainable(Trainable):
         # so `_last_training_result.checkpoint` holds onto the latest ckpt.
         return self._last_training_result
 
-    def _create_checkpoint_dir(
-        self, checkpoint_dir: Optional[str] = None
-    ) -> Optional[str]:
-        return None
-
     def load_checkpoint(self, checkpoint_result: _TrainingResult):
         # TODO(justinvyu): This currently breaks the `load_checkpoint` interface.
         session = get_session()
@@ -251,8 +177,9 @@ class FunctionTrainable(Trainable):
                 name=self.trial_name,
                 id=self.trial_id,
                 resources=self.trial_resources,
-                logdir=self._storage.trial_local_path,
+                logdir=self._storage.trial_working_directory,
                 driver_ip=None,
+                driver_node_id=None,
                 experiment_name=self._storage.experiment_dir_name,
             ),
             storage=self._storage,
@@ -271,7 +198,7 @@ class FunctionTrainable(Trainable):
 
 @DeveloperAPI
 def wrap_function(
-    train_func: Callable[[Any], Any], warn: bool = True, name: Optional[str] = None
+    train_func: Callable[[Any], Any], name: Optional[str] = None
 ) -> Type["FunctionTrainable"]:
     inherit_from = (FunctionTrainable,)
 
@@ -279,21 +206,12 @@ def wrap_function(
         inherit_from = train_func.__mixins__ + inherit_from
 
     func_args = inspect.getfullargspec(train_func).args
-    use_checkpoint = _detect_checkpoint_function(train_func)
     use_config_single = _detect_config_single(train_func)
-    use_reporter = _detect_reporter(train_func)
-
-    if use_checkpoint:
-        raise DeprecationWarning(_CHECKPOINT_DIR_ARG_DEPRECATION_MSG)
-
-    if use_reporter:
-        raise DeprecationWarning(_REPORTER_ARG_DEPRECATION_MSG)
 
     if not use_config_single:
-        # use_reporter is hidden
         raise ValueError(
             "Unknown argument found in the Trainable function. "
-            "The function args must include a 'config' positional parameter."
+            "The function args must include a single 'config' positional parameter.\n"
             "Found: {}".format(func_args)
         )
 

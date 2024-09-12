@@ -439,14 +439,18 @@ class AWSNodeProvider(NodeProvider):
 
                         # The correct value is technically
                         # {"code": "0", "Message": "pending"}
-                        state_reason = instance.state_reason or {"Message": "pending"}
+                        state_reason = "pending"
+                        if instance.state_reason:
+                            state_reason = (
+                                instance.state_reason["Message"] or state_reason
+                            )
 
                         cli_logger.print(
                             "Launched instance {}",
                             instance.instance_id,
                             _tags=dict(
                                 state=instance.state["Name"],
-                                info=state_reason["Message"],
+                                info=state_reason,
                             ),
                         )
                 break

@@ -4,8 +4,12 @@ import sys
 import time
 import gc
 import random
+import asyncio
+from typing import Optional
+from pydantic import BaseModel
 
 import ray
+from ray._private.test_utils import SignalActor
 
 RECONSTRUCTION_CONFIG = {
     "health_check_failure_threshold": 10,
@@ -48,7 +52,7 @@ def test_ray_datasetlike_mini_stress_test(
     with monkeypatch.context() as m:
         m.setenv(
             "RAY_testing_asio_delay_us",
-            "CoreWorkerService.grpc_server." "ReportGeneratorItemReturns=10000:1000000",
+            "CoreWorkerService.grpc_server.ReportGeneratorItemReturns=10000:1000000",
         )
         cluster = ray_start_cluster
         cluster.add_node(
@@ -65,7 +69,6 @@ def test_ray_datasetlike_mini_stress_test(
             threshold = -1
 
         @ray.remote(
-            num_returns="streaming",
             max_retries=-1,
             _generator_backpressure_num_objects=threshold,
         )
@@ -122,7 +125,7 @@ def test_local_gc_not_hang(shutdown_only, monkeypatch):
 
         ray.init()
 
-        @ray.remote(num_returns="streaming", _generator_backpressure_num_objects=1)
+        @ray.remote(_generator_backpressure_num_objects=1)
         def f():
             for _ in range(5):
                 yield 1
@@ -133,6 +136,128 @@ def test_local_gc_not_hang(shutdown_only, monkeypatch):
         # It should not hang.
         for ref in gen:
             ray.get(gen)
+
+
+def test_sync_async_mix_regression_test(shutdown_only):
+    """Verify when sync and async tasks are mixed up
+    it doesn't raise a segfault
+
+    https://github.com/ray-project/ray/issues/41346
+    """
+
+    class PayloadPydantic(BaseModel):
+        class Error(BaseModel):
+            msg: str
+            code: int
+            type: str
+
+        text: Optional[str] = None
+        ts: Optional[float] = None
+        reason: Optional[str] = None
+        error: Optional[Error] = None
+
+    ray.init()
+
+    @ray.remote
+    class B:
+        def __init__(self, a):
+            self.a = a
+
+        async def stream(self):
+            async for ref in self.a.stream.remote(1):
+                print("stream")
+                await ref
+
+        async def start(self):
+            await asyncio.gather(*[self.stream() for _ in range(2)])
+
+    @ray.remote
+    class A:
+        def stream(self, i):
+            payload = PayloadPydantic(
+                text="Test output",
+                ts=time.time(),
+                reason="Success!",
+            )
+
+            for _ in range(10):
+                yield payload
+
+        async def aio_stream(self):
+            for _ in range(10):
+                yield 1
+
+    a = A.remote()
+    b = B.remote(a)
+    ray.get(b.start.remote())
+
+
+@pytest.mark.parametrize("use_asyncio", [False, True])
+def test_cancel(shutdown_only, use_asyncio):
+    """Test concurrent task cancellation with generator task.
+
+    Once the caller receives an ack that the executor has cancelled the task
+    execution, the caller should receive a TaskCancelledError for the next
+    ObjectRef that it tries to read from the generator. This should happen even
+    if the caller has already received values for the next object indices in
+    the stream. Also, we should not apply the usual logic that reorders
+    out-of-order reports if the task was cancelled; waiting for the
+    intermediate indices to appear would hang the caller."""
+
+    @ray.remote
+    class Actor:
+        def ready(self):
+            return
+
+        def stream(self, signal):
+            cancelled_ref = signal.wait.remote()
+
+            i = 0
+            done_at = time.time() + 1
+            while time.time() < done_at:
+                yield i
+                i += 1
+
+                ready, _ = ray.wait([cancelled_ref], timeout=0)
+                if not ready:
+                    # Continue executing for one second after the driver
+                    # cancels. This is to make sure that we receive the cancel
+                    # signal while the task is still running.
+                    done_at = time.time() + 1
+
+        async def async_stream(self, signal):
+            cancelled_ref = signal.wait.remote()
+
+            i = 0
+            done_at = time.time() + 1
+            while time.time() < done_at:
+                yield i
+                i += 1
+
+                ready, _ = ray.wait([cancelled_ref], timeout=0)
+                if not ready:
+                    # Continue executing for one second after the driver
+                    # cancels. This is to make sure that we receive the cancel
+                    # signal while the task is still running.
+                    done_at = time.time() + 1
+
+    signal = SignalActor.remote()
+    a = Actor.remote()
+    ray.get(a.ready.remote())
+    if use_asyncio:
+        gen = a.async_stream.remote(signal)
+    else:
+        gen = a.stream.remote(signal)
+
+    try:
+        for i, ref in enumerate(gen):
+            assert i == ray.get(ref)
+            print(i)
+            if i == 0:
+                ray.cancel(gen)
+                signal.send.remote()
+    except ray.exceptions.TaskCancelledError:
+        pass
 
 
 if __name__ == "__main__":

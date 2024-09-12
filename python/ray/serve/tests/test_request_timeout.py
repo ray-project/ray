@@ -1,7 +1,6 @@
 import asyncio
 import os
 import sys
-import time
 from typing import Generator, Set
 
 import pytest
@@ -15,8 +14,8 @@ from ray import serve
 from ray._private.test_utils import SignalActor, wait_for_condition
 from ray.dashboard.modules.serve.sdk import ServeSubmissionClient
 from ray.serve._private.common import ApplicationStatus
+from ray.serve._private.test_utils import send_signal_on_cancellation
 from ray.serve.schema import ServeInstanceDetails
-from ray.serve.tests.common.utils import send_signal_on_cancellation
 from ray.util.state import list_tasks
 
 
@@ -172,7 +171,7 @@ def test_request_hangs_in_assignment(ray_instance, shutdown_serve):
     """
     signal_actor = SignalActor.remote()
 
-    @serve.deployment(graceful_shutdown_timeout_s=0, max_concurrent_queries=1)
+    @serve.deployment(graceful_shutdown_timeout_s=0, max_ongoing_requests=1)
     class HangsOnFirstRequest:
         def __init__(self):
             self._saw_first_request = False
@@ -197,7 +196,7 @@ def test_request_hangs_in_assignment(ray_instance, shutdown_serve):
 @pytest.mark.parametrize(
     "ray_instance",
     [
-        {"RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S": "0.1"},
+        {"RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S": "5"},
     ],
     indirect=True,
 )
@@ -206,22 +205,20 @@ def test_streaming_request_already_sent_and_timed_out(ray_instance, shutdown_ser
     Verify that streaming requests are timed out even if some chunks have already
     been sent.
     """
+    signal_actor = SignalActor.remote()
 
-    @serve.deployment(graceful_shutdown_timeout_s=0, max_concurrent_queries=1)
-    class SleepForNSeconds:
-        def __init__(self, sleep_s: int):
-            self.sleep_s = sleep_s
-
-        def generate_numbers(self) -> Generator[str, None, None]:
+    @serve.deployment(graceful_shutdown_timeout_s=0, max_ongoing_requests=1)
+    class BlockOnSecondChunk:
+        async def generate_numbers(self) -> Generator[str, None, None]:
             for i in range(2):
                 yield f"generated {i}"
-                time.sleep(self.sleep_s)
+                await signal_actor.wait.remote()
 
         def __call__(self, request: Request) -> StreamingResponse:
             gen = self.generate_numbers()
             return StreamingResponse(gen, status_code=200, media_type="text/plain")
 
-    serve.run(SleepForNSeconds.bind(0.11))  # 0.11s > 0.1s timeout
+    serve.run(BlockOnSecondChunk.bind())
 
     r = requests.get("http://localhost:8000", stream=True)
     iterator = r.iter_content(chunk_size=None, decode_unicode=True)
@@ -239,7 +236,10 @@ def test_streaming_request_already_sent_and_timed_out(ray_instance, shutdown_ser
 @pytest.mark.parametrize(
     "ray_instance",
     [
-        {"RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S": "0.5"},
+        {
+            "RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S": "0.5",
+            "RAY_SERVE_ENABLE_TASK_EVENTS": "1",
+        },
     ],
     indirect=True,
 )
@@ -306,11 +306,11 @@ def test_cancel_on_http_timeout_during_execution(
         @serve.ingress(app)
         class Ingress:
             def __init__(self, handle):
-                self._handle = handle.options(use_new_handle_api=True)
+                self._handle = handle
 
             @app.get("/")
             async def wait_for_cancellation(self):
-                await self._handle.remote()._to_object_ref()
+                _ = self._handle.remote()
                 await send_signal_on_cancellation(outer_signal_actor)
 
     else:
@@ -318,10 +318,10 @@ def test_cancel_on_http_timeout_during_execution(
         @serve.deployment
         class Ingress:
             def __init__(self, handle):
-                self._handle = handle.options(use_new_handle_api=True)
+                self._handle = handle
 
             async def __call__(self, request: Request):
-                await self._handle.remote()._to_object_ref()
+                _ = self._handle.remote()
                 await send_signal_on_cancellation(outer_signal_actor)
 
     serve.run(Ingress.bind(inner.bind()))
@@ -345,7 +345,7 @@ def test_cancel_on_http_timeout_during_assignment(ray_instance, shutdown_serve):
     """Test the client disconnecting while the proxy is assigning the request."""
     signal_actor = SignalActor.remote()
 
-    @serve.deployment(max_concurrent_queries=1)
+    @serve.deployment(max_ongoing_requests=1)
     class Ingress:
         def __init__(self):
             self._num_requests = 0
@@ -356,7 +356,7 @@ def test_cancel_on_http_timeout_during_assignment(ray_instance, shutdown_serve):
 
             return self._num_requests
 
-    h = serve.run(Ingress.bind()).options(use_new_handle_api=True)
+    h = serve.run(Ingress.bind())
 
     # Send a request and wait for it to be ongoing so we know that further requests
     # will be blocking trying to assign a replica.

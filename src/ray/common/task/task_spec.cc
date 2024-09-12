@@ -126,6 +126,8 @@ void TaskSpecification::ComputeResources() {
     // Map the scheduling class descriptor to an integer for performance.
     sched_cls_id_ = GetSchedulingClass(sched_cls_desc);
   }
+
+  runtime_env_hash_ = CalculateRuntimeEnvHash(SerializedRuntimeEnv());
 }
 
 // Task specification getter methods.
@@ -157,6 +159,13 @@ TaskID TaskSpecification::ParentTaskId() const {
     return TaskID::Nil();
   }
   return TaskID::FromBinary(message_->parent_task_id());
+}
+
+ActorID TaskSpecification::RootDetachedActorId() const {
+  if (message_->root_detached_actor_id().empty() /* e.g., empty proto default */) {
+    return ActorID::Nil();
+  }
+  return ActorID::FromBinary(message_->root_detached_actor_id());
 }
 
 TaskID TaskSpecification::SubmitterTaskId() const {
@@ -194,13 +203,7 @@ bool TaskSpecification::IsRetry() const { return AttemptNumber() > 0; }
 
 int32_t TaskSpecification::MaxRetries() const { return message_->max_retries(); }
 
-int TaskSpecification::GetRuntimeEnvHash() const {
-  WorkerCacheKey env = {SerializedRuntimeEnv(),
-                        GetRequiredResources().GetResourceMap(),
-                        IsActorCreationTask(),
-                        GetRequiredResources().Get(scheduling::ResourceID::GPU()) > 0};
-  return env.IntHash();
-}
+int TaskSpecification::GetRuntimeEnvHash() const { return runtime_env_hash_; }
 
 const SchedulingClass TaskSpecification::GetSchedulingClass() const {
   if (!IsActorTask()) {
@@ -382,6 +385,10 @@ const std::string TaskSpecification::GetSerializedRetryExceptionAllowlist() cons
   return message_->serialized_retry_exception_allowlist();
 }
 
+bool TaskSpecification::EnableTaskEvents() const {
+  return message_->enable_task_events();
+}
+
 // === Below are getter methods specific to actor creation tasks.
 
 ActorID TaskSpecification::ActorCreationId() const {
@@ -392,6 +399,14 @@ ActorID TaskSpecification::ActorCreationId() const {
 int64_t TaskSpecification::MaxActorRestarts() const {
   RAY_CHECK(IsActorCreationTask());
   return message_->actor_creation_task_spec().max_actor_restarts();
+}
+
+std::vector<std::string> TaskSpecification::DynamicWorkerOptionsOrEmpty() const {
+  if (!IsActorCreationTask()) {
+    return {};
+  }
+  return VectorFromProtobuf(
+      message_->actor_creation_task_spec().dynamic_worker_options());
 }
 
 std::vector<std::string> TaskSpecification::DynamicWorkerOptions() const {
@@ -432,11 +447,6 @@ ObjectID TaskSpecification::ActorCreationDummyObjectId() const {
   RAY_CHECK(IsActorTask());
   return ObjectID::FromBinary(
       message_->actor_task_spec().actor_creation_dummy_object_id());
-}
-
-ObjectID TaskSpecification::ActorDummyObject() const {
-  RAY_CHECK(IsActorTask() || IsActorCreationTask());
-  return ReturnId(NumReturns() - 1);
 }
 
 int TaskSpecification::MaxActorConcurrency() const {
@@ -485,13 +495,13 @@ std::string TaskSpecification::DebugString() const {
 
   stream << ", task_id=" << TaskId() << ", task_name=" << GetName()
          << ", job_id=" << JobId() << ", num_args=" << NumArgs()
-         << ", num_returns=" << NumReturns() << ", depth=" << GetDepth()
-         << ", attempt_number=" << AttemptNumber();
+         << ", num_returns=" << NumReturns() << ", max_retries=" << MaxRetries()
+         << ", depth=" << GetDepth() << ", attempt_number=" << AttemptNumber();
 
   if (IsActorCreationTask()) {
     // Print actor creation task spec.
     stream << ", actor_creation_task_spec={actor_id=" << ActorCreationId()
-           << ", max_restarts=" << MaxActorRestarts() << ", max_retries=" << MaxRetries()
+           << ", max_restarts=" << MaxActorRestarts()
            << ", max_concurrency=" << MaxActorConcurrency()
            << ", is_asyncio_actor=" << IsAsyncioActor()
            << ", is_detached=" << IsDetachedActor() << "}";
@@ -499,9 +509,7 @@ std::string TaskSpecification::DebugString() const {
     // Print actor task spec.
     stream << ", actor_task_spec={actor_id=" << ActorId()
            << ", actor_caller_id=" << CallerId() << ", actor_counter=" << ActorCounter()
-           << "}";
-  } else if (IsNormalTask()) {
-    stream << ", max_retries=" << MaxRetries();
+           << ", retry_exceptions=" << ShouldRetryExceptions() << "}";
   }
 
   // Print non-sensitive runtime env info.
@@ -588,59 +596,15 @@ std::string TaskSpecification::CallSiteString() const {
   return stream.str();
 }
 
-WorkerCacheKey::WorkerCacheKey(
-    const std::string serialized_runtime_env,
-    const absl::flat_hash_map<std::string, double> &required_resources,
-    bool is_actor,
-    bool is_gpu)
-    : serialized_runtime_env(serialized_runtime_env),
-      required_resources(RayConfig::instance().worker_resource_limits_enabled()
-                             ? required_resources
-                             : absl::flat_hash_map<std::string, double>{}),
-      is_actor(is_actor && RayConfig::instance().isolate_workers_across_task_types()),
-      is_gpu(is_gpu && RayConfig::instance().isolate_workers_across_resource_types()),
-      hash_(CalculateHash()) {}
-
-std::size_t WorkerCacheKey::CalculateHash() const {
-  size_t hash = 0;
-  if (EnvIsEmpty()) {
+int CalculateRuntimeEnvHash(const std::string &serialized_runtime_env) {
+  if (IsRuntimeEnvEmpty(serialized_runtime_env)) {
     // It's useful to have the same predetermined value for both unspecified and empty
     // runtime envs.
-    if (is_actor) {
-      hash = 1;
-    } else {
-      hash = 0;
-    }
-  } else {
-    boost::hash_combine(hash, serialized_runtime_env);
-    boost::hash_combine(hash, is_actor);
-    boost::hash_combine(hash, is_gpu);
-
-    std::vector<std::pair<std::string, double>> resource_vars(required_resources.begin(),
-                                                              required_resources.end());
-    // Sort the variables so different permutations yield the same hash.
-    std::sort(resource_vars.begin(), resource_vars.end());
-    for (auto &pair : resource_vars) {
-      boost::hash_combine(hash, pair.first);
-      boost::hash_combine(hash, pair.second);
-    }
+    return 0;
   }
-  return hash;
+  size_t hash = std::hash<std::string>()(serialized_runtime_env);
+  return static_cast<int>(hash);
 }
-
-bool WorkerCacheKey::operator==(const WorkerCacheKey &k) const {
-  // FIXME we should compare fields
-  return Hash() == k.Hash();
-}
-
-bool WorkerCacheKey::EnvIsEmpty() const {
-  return IsRuntimeEnvEmpty(serialized_runtime_env) && required_resources.empty() &&
-         !is_gpu;
-}
-
-std::size_t WorkerCacheKey::Hash() const { return hash_; }
-
-int WorkerCacheKey::IntHash() const { return (int)Hash(); }
 
 std::vector<ConcurrencyGroup> TaskSpecification::ConcurrencyGroups() const {
   RAY_CHECK(IsActorCreationTask());
@@ -652,6 +616,7 @@ std::vector<ConcurrencyGroup> TaskSpecification::ConcurrencyGroups() const {
     auto &curr_group_message = actor_creation_task_spec.concurrency_groups(i);
     std::vector<ray::FunctionDescriptor> function_descriptors;
     const auto func_descriptors_size = curr_group_message.function_descriptors_size();
+    function_descriptors.reserve(func_descriptors_size);
     for (auto j = 0; j < func_descriptors_size; ++j) {
       function_descriptors.push_back(FunctionDescriptorBuilder::FromProto(
           curr_group_message.function_descriptors(j)));

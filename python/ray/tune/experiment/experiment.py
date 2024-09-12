@@ -1,39 +1,39 @@
 import copy
 import datetime
-from functools import partial
 import logging
-from pathlib import Path
-from pickle import PicklingError
 import pprint as pp
 import traceback
+from functools import partial
+from pathlib import Path
+from pickle import PicklingError
 from typing import (
+    TYPE_CHECKING,
     Any,
-    Dict,
-    Optional,
-    Sequence,
-    Union,
     Callable,
-    Type,
+    Dict,
     List,
     Mapping,
-    TYPE_CHECKING,
+    Optional,
+    Sequence,
+    Type,
+    Union,
 )
 
 import ray
 from ray.exceptions import RpcError
 from ray.train import CheckpointConfig, SyncConfig
 from ray.train._internal.storage import StorageContext
+from ray.train.constants import DEFAULT_STORAGE_PATH
 from ray.tune.error import TuneError
-from ray.tune.registry import register_trainable, is_function_trainable
+from ray.tune.registry import is_function_trainable, register_trainable
 from ray.tune.stopper import CombinedStopper, FunctionStopper, Stopper, TimeoutStopper
-
-from ray.util.annotations import DeveloperAPI, Deprecated
+from ray.util.annotations import Deprecated, DeveloperAPI
 
 if TYPE_CHECKING:
     import pyarrow.fs
 
-    from ray.tune.experiment import Trial
     from ray.tune import PlacementGroupFactory
+    from ray.tune.experiment import Trial
 
 
 logger = logging.getLogger(__name__)
@@ -163,6 +163,7 @@ class Experiment:
         if not name:
             name = StorageContext.get_experiment_dir_name(run)
 
+        storage_path = storage_path or DEFAULT_STORAGE_PATH
         self.storage = self._storage_context_cls(
             storage_path=storage_path,
             storage_filesystem=storage_filesystem,
@@ -172,6 +173,11 @@ class Experiment:
         logger.debug(f"StorageContext on the DRIVER:\n{self.storage}")
 
         config = config or {}
+        if not isinstance(config, dict):
+            raise ValueError(
+                f"`Experiment(config)` must be a dict, got: {type(config)}. "
+                "Please convert your search space to a dict before passing it in."
+            )
 
         self._stopper = None
         stopping_criteria = {}
@@ -360,13 +366,13 @@ class Experiment:
 
     @property
     def local_path(self) -> Optional[str]:
-        return self.storage.experiment_local_path
+        return self.storage.experiment_driver_staging_path
 
     @property
     @Deprecated("Replaced by `local_path`")
     def local_dir(self):
-        # Deprecate: Raise in 2.5, Remove in 2.6
-        return self.local_path
+        # TODO(justinvyu): [Deprecated] Remove in 2.11.
+        raise DeprecationWarning("Use `local_path` instead of `local_dir`.")
 
     @property
     def remote_path(self) -> Optional[str]:
@@ -381,11 +387,10 @@ class Experiment:
         return self.spec.get("checkpoint_config")
 
     @property
-    @Deprecated("Replaced by `checkpoint_dir`")
+    @Deprecated("Replaced by `local_path`")
     def checkpoint_dir(self):
-        # Deprecate: Raise in 2.5, Remove in 2.6
-        # Provided when initializing Experiment, if so, return directly.
-        return self.local_path
+        # TODO(justinvyu): [Deprecated] Remove in 2.11.
+        raise DeprecationWarning("Use `local_path` instead of `checkpoint_dir`.")
 
     @property
     def run_identifier(self):

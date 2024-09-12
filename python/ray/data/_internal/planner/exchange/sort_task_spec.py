@@ -1,4 +1,4 @@
-from typing import List, Tuple, TypeVar, Union
+from typing import TYPE_CHECKING, List, Optional, Tuple, TypeVar, Union
 
 import numpy as np
 
@@ -6,11 +6,86 @@ from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.planner.exchange.interfaces import ExchangeTaskSpec
 from ray.data._internal.progress_bar import ProgressBar
 from ray.data._internal.remote_fn import cached_remote_fn
-from ray.data._internal.sort import SortKey
 from ray.data.block import Block, BlockAccessor, BlockExecStats, BlockMetadata
 from ray.types import ObjectRef
 
 T = TypeVar("T")
+
+if TYPE_CHECKING:
+    import pyarrow
+
+
+class SortKey:
+    """SortKey class to convert between different sort args formats."""
+
+    def __init__(
+        self,
+        key: Optional[Union[str, List[str]]] = None,
+        descending: Union[bool, List[bool]] = False,
+        boundaries: Optional[list] = None,
+    ):
+        if key is None:
+            key = []
+        if isinstance(key, str):
+            key = [key]
+        if not (isinstance(key, list) and all(isinstance(k, str) for k in key)):
+            raise ValueError(
+                f"Key must be a string or a list of strings, but got {key}."
+            )
+        if isinstance(descending, bool):
+            descending = [descending for _ in key]
+        elif isinstance(descending, list):
+            if len(descending) != len(key):
+                raise ValueError(
+                    "Length of `descending` does not match the length of the key."
+                )
+            if len(set(descending)) != 1:
+                raise ValueError("Sorting with mixed key orders not supported yet.")
+        self._columns = key
+        self._descending = descending
+        if boundaries:
+            for item in boundaries:
+                if not isinstance(item, (int, float)):
+                    raise ValueError(
+                        "The type of items in boundaries must be int or float."
+                    )
+            boundaries = list(set(boundaries))
+            boundaries.sort()
+        self._boundaries = boundaries
+
+    def get_columns(self) -> List[str]:
+        return self._columns
+
+    def get_descending(self) -> bool:
+        return self._descending[0]
+
+    def to_arrow_sort_args(self) -> List[Tuple[str, str]]:
+        return [
+            (key, "descending" if self._descending[0] else "ascending")
+            for key in self._columns
+        ]
+
+    def to_pandas_sort_args(self) -> Tuple[List[str], bool]:
+        return self._columns, not self._descending[0]
+
+    def validate_schema(self, schema: Optional[Union[type, "pyarrow.lib.Schema"]]):
+        """Check the key function is valid on the given schema."""
+        if schema is None:
+            # Dataset is empty/cleared, validation not possible.
+            return
+
+        if self._columns and len(schema.names) > 0:
+            schema_names_set = set(schema.names)
+            for column in self._columns:
+                if column not in schema_names_set:
+                    raise ValueError(
+                        "The column '{}' does not exist in the "
+                        "schema '{}'.".format(column, schema)
+                    )
+
+    @property
+    def boundaries(self):
+        return self._boundaries
 
 
 class SortTaskSpec(ExchangeTaskSpec):
@@ -57,9 +132,7 @@ class SortTaskSpec(ExchangeTaskSpec):
     ) -> List[Union[BlockMetadata, Block]]:
         stats = BlockExecStats.builder()
         out = BlockAccessor.for_block(block).sort_and_partition(boundaries, sort_key)
-        meta = BlockAccessor.for_block(block).get_metadata(
-            input_files=None, exec_stats=stats.build()
-        )
+        meta = BlockAccessor.for_block(block).get_metadata(exec_stats=stats.build())
         return out + [meta]
 
     @staticmethod
@@ -74,7 +147,10 @@ class SortTaskSpec(ExchangeTaskSpec):
 
     @staticmethod
     def sample_boundaries(
-        blocks: List[ObjectRef[Block]], sort_key: SortKey, num_reducers: int
+        blocks: List[ObjectRef[Block]],
+        sort_key: SortKey,
+        num_reducers: int,
+        sample_bar: Optional[ProgressBar] = None,
     ) -> List[T]:
         """
         Return (num_reducers - 1) items in ascending order from the blocks that
@@ -89,11 +165,14 @@ class SortTaskSpec(ExchangeTaskSpec):
         sample_results = [
             sample_block.remote(block, n_samples, sort_key) for block in blocks
         ]
-        sample_bar = ProgressBar(
-            SortTaskSpec.SORT_SAMPLE_SUB_PROGRESS_BAR_NAME, len(sample_results)
-        )
+        if sample_bar is None:
+            sample_bar = ProgressBar(
+                SortTaskSpec.SORT_SAMPLE_SUB_PROGRESS_BAR_NAME,
+                len(blocks) * n_samples,
+                unit="rows",
+            )
+        # TODO(zhilong): Update sort sample bar before finished.
         samples = sample_bar.fetch_until_complete(sample_results)
-        sample_bar.close()
         del sample_results
         samples = [s for s in samples if len(s) > 0]
         # The dataset is empty

@@ -222,6 +222,31 @@ def test_shuffling_batcher_grid(batch_size, local_shuffle_buffer_size):
     assert count == 10000
 
 
+@pytest.mark.parametrize(
+    "batch_size,local_shuffle_buffer_size",
+    [(1, 1), (10, 1), (1, 10), (10, 100), (100, 10)],
+)
+def test_local_shuffle_determinism(batch_size, local_shuffle_buffer_size):
+    # Preserve order so that the blocks are in the same order prior to shuffling.
+    ctx = ray.data.DataContext.get_current()
+    ctx.execution_options.preserve_order = True
+    TEST_ITERATIONS = 10
+
+    ds = ray.data.range(1000)
+    batch_map = {}
+    for i in range(TEST_ITERATIONS):
+        for batch in ds.iter_batches(
+            batch_size=batch_size,
+            local_shuffle_buffer_size=local_shuffle_buffer_size,
+            local_shuffle_seed=0,
+        ):
+            if i == 0:
+                batch_map[batch["id"][0]] = batch
+            else:
+                # Check that batch is the same as the first dataset's batch
+                assert all(batch_map[batch["id"][0]]["id"] == batch["id"])
+
+
 if __name__ == "__main__":
     import sys
 

@@ -46,6 +46,7 @@
 #include "absl/container/flat_hash_set.h"
 #include "ray/common/asio/asio_util.h"
 #include "ray/common/asio/instrumented_io_context.h"
+#include "ray/common/client_connection.h"
 #include "ray/object_manager/plasma/common.h"
 #include "ray/object_manager/plasma/get_request_queue.h"
 #include "ray/object_manager/plasma/malloc.h"
@@ -112,6 +113,8 @@ PlasmaStore::PlasmaStore(instrumented_io_context &main_service,
             this->AddToClientObjectIds(object_id, fallback_allocated_fd, request->client);
           },
           [this](const auto &request) { this->ReturnFromGet(request); }) {
+  ray::SetCloseOnFork(acceptor_);
+
   if (RayConfig::instance().event_stats_print_interval_ms() > 0 &&
       RayConfig::instance().event_stats()) {
     PrintAndRecordDebugDump();
@@ -243,6 +246,9 @@ void PlasmaStore::ProcessGetRequest(const std::shared_ptr<Client> &client,
                                     const std::vector<ObjectID> &object_ids,
                                     int64_t timeout_ms,
                                     bool is_from_worker) {
+  for (const auto &object_id : object_ids) {
+    RAY_LOG(DEBUG) << "Adding get request " << object_id;
+  }
   get_request_queue_.AddRequest(client, object_ids, timeout_ms, is_from_worker);
 }
 
@@ -416,9 +422,23 @@ Status PlasmaStore::ProcessMessage(const std::shared_ptr<Client> &client,
     ProcessGetRequest(client, object_ids_to_get, timeout_ms, is_from_worker);
   } break;
   case fb::MessageType::PlasmaReleaseRequest: {
-    RAY_RETURN_NOT_OK(ReadReleaseRequest(input, input_size, &object_id));
+    // May unmap: client knows a fallback-allocated fd is involved.
+    // Should unmap: server finds refcnt == 0 -> need to be unmapped.
+    bool may_unmap;
+    RAY_RETURN_NOT_OK(ReadReleaseRequest(input, input_size, &object_id, &may_unmap));
     bool should_unmap = ReleaseObject(object_id, client);
-    RAY_RETURN_NOT_OK(SendReleaseReply(client, object_id, should_unmap, PlasmaError::OK));
+    if (!may_unmap) {
+      RAY_CHECK(!should_unmap)
+          << "Plasma client thinks a mmap should not be unmapped but server thinks so. "
+             "This should not happen because a client knows the object is "
+             "fallback-allocated in Get/Create time. Object ID: "
+          << object_id;
+    }
+    if (may_unmap) {
+      RAY_RETURN_NOT_OK(
+          SendReleaseReply(client, object_id, should_unmap, PlasmaError::OK));
+    }
+
   } break;
   case fb::MessageType::PlasmaDeleteRequest: {
     std::vector<ObjectID> object_ids;
@@ -562,7 +582,7 @@ void PlasmaStore::ScheduleRecordMetrics() const {
 
 std::string PlasmaStore::GetDebugDump() const {
   std::stringstream buffer;
-  buffer << "========== Plasma store: =================\n";
+  buffer << "Plasma store debug dump: \n";
   buffer << "Current usage: " << (allocator_.Allocated() / 1e9) << " / "
          << (allocator_.GetFootprintLimit() / 1e9) << " GB\n";
   buffer << "- num bytes created total: "

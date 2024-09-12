@@ -3,7 +3,7 @@
 # RayService troubleshooting
 
 RayService is a Custom Resource Definition (CRD) designed for Ray Serve. In KubeRay, creating a RayService will first create a RayCluster and then
-create Ray Serve applications once the RayCluster is ready. If the issue pertains to the data plane, specifically your Ray Serve scripts 
+create Ray Serve applications once the RayCluster is ready. If the issue pertains to the data plane, specifically your Ray Serve scripts
 or Ray Serve configurations (`serveConfigV2`), troubleshooting may be challenging. This section provides some tips to help you debug these issues.
 
 ## Observability
@@ -36,7 +36,7 @@ kubectl exec -it $RAY_POD -n $YOUR_NAMESPACE -- bash
 ### Method 4: Check Dashboard
 
 ```bash
-kubectl port-forward $RAY_POD -n $YOUR_NAMESPACE --address 0.0.0.0 8265:8265
+kubectl port-forward $RAY_POD -n $YOUR_NAMESPACE 8265:8265
 # Check $YOUR_IP:8265 in your browser
 ```
 
@@ -64,10 +64,8 @@ kubectl exec -it $HEAD_POD -- ray summary actors
 # 0   ServeController                     ALIVE: 1
 # 1   ServeReplica:fruit_app_OrangeStand  ALIVE: 1
 # 2   ProxyActor                          ALIVE: 3
-# 3   ServeReplica:math_app_DAGDriver     ALIVE: 1
 # 4   ServeReplica:math_app_Multiplier    ALIVE: 1
 # 5   ServeReplica:math_app_create_order  ALIVE: 1
-# 6   ServeReplica:fruit_app_DAGDriver    ALIVE: 1
 # 7   ServeReplica:fruit_app_FruitMarket  ALIVE: 1
 # 8   ServeReplica:math_app_Adder         ALIVE: 1
 # 9   ServeReplica:math_app_Router        ALIVE: 1
@@ -104,7 +102,7 @@ Some tips to help you debug the `serveConfigV2` field:
 
 * Check [the documentation](serve-api) for the schema about
 the Ray Serve Multi-application API `PUT "/api/serve/applications/"`.
-* Unlike `serveConfig`, `serveConfigV2` adheres to the snake case naming convention. For example, `numReplicas` is used in `serveConfig`, while `num_replicas` is used in `serveConfigV2`. 
+* Unlike `serveConfig`, `serveConfigV2` adheres to the snake case naming convention. For example, `numReplicas` is used in `serveConfig`, while `num_replicas` is used in `serveConfigV2`.
 
 (kuberay-raysvc-issue3-1)=
 ### Issue 3-1: The Ray image does not include the required dependencies.
@@ -222,9 +220,9 @@ You may encounter the following error message when KubeRay tries to get Serve ap
 Get "http://${HEAD_SVC_FQDN}:52365/api/serve/applications/": dial tcp $HEAD_IP:52365: connect: connection refused"
 ```
 
-As mentioned in [Issue 5](#issue-5-fail-to-create--update-serve-applications), the KubeRay operator submits a `Put` request to the RayCluster for creating Serve applications once the head Pod is ready.
-After the successful submission of the `Put` request to the dashboard agent, a `Get` request is sent to the dashboard agent port (i.e., 52365). 
-The successful submission indicates that all the necessary components, including the dashboard agent, are fully operational. 
+As mentioned in [Issue 5](#kuberay-raysvc-issue5), the KubeRay operator submits a `Put` request to the RayCluster for creating Serve applications once the head Pod is ready.
+After the successful submission of the `Put` request to the dashboard agent, a `Get` request is sent to the dashboard agent port (i.e., 52365).
+The successful submission indicates that all the necessary components, including the dashboard agent, are fully operational.
 Therefore, unlike Issue 5, the failure of the `Get` request is not expected.
 
 If you consistently encounter this issue, there are several possible causes:
@@ -296,10 +294,10 @@ kubectl apply -f ray-service.insufficient-resources.yaml
 kubectl describe rayservices.ray.io rayservice-sample -n $YOUR_NAMESPACE
 
 # [Example output]
-# fruit_app_DAGDriver:
+# fruit_app_FruitMarket:
 #   Health Last Update Time:  2023-07-11T02:10:02Z
 #   Last Update Time:         2023-07-11T02:10:35Z
-#   Message:                  Deployment "fruit_app_DAGDriver" has 1 replicas that have taken more than 30s to be scheduled. This may be caused by waiting for the cluster to auto-scale, or waiting for a runtime environment to install. Resources required for each replica: {"CPU": 1.0}, resources available: {}.
+#   Message:                  Deployment "fruit_app_FruitMarket" has 1 replicas that have taken more than 30s to be scheduled. This may be caused by waiting for the cluster to auto-scale, or waiting for a runtime environment to install. Resources required for each replica: {"CPU": 1.0}, resources available: {}.
 #   Status:                   UPDATING
 
 # Step 5: A new RayCluster will be created after `serviceUnhealthySecondThreshold` (300s here) seconds.
@@ -323,7 +321,7 @@ However, Ray Serve does not support deploying both API V1 and API V2 in the clus
 Hence, if users want to perform in-place upgrades by replacing `serveConfig` with `serveConfigV2`, they may encounter the following error message:
 
 ```
-ray.serve.exceptions.RayServeException: You are trying to deploy a multi-application config, however a single-application 
+ray.serve.exceptions.RayServeException: You are trying to deploy a multi-application config, however a single-application
 config has been deployed to the current Serve instance already. Mixing single-app and multi-app is not allowed. Please either
 redeploy using the single-application config format `ServeApplicationSchema`, or shutdown and restart Serve to submit a
 multi-app config of format `ServeDeploySchema`. If you are using the REST API, you can submit a multi-app config to the

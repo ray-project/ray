@@ -156,7 +156,7 @@ that sets up and invokes a model. Then, call
 
     ds = (
         ray.data.read_text("s3://anonymous@ray-example-data/this.txt")
-        .map_batches(TextClassifier, compute=ray.data.ActorPoolStrategy(size=2))
+        .map_batches(TextClassifier, concurrency=2)
     )
 
     ds.show(3)
@@ -169,7 +169,7 @@ that sets up and invokes a model. Then, call
 
 For more information on performing inference, see
 :ref:`End-to-end: Offline Batch Inference <batch_inference_home>`
-and :ref:`Transforming batches with actors <transforming_data_actors>`.
+and :ref:`Stateful Transforms <stateful_transforms>`.
 
 .. _saving-text:
 

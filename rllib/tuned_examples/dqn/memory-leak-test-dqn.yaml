@@ -1,6 +1,7 @@
+# @OldAPIStack
 memory-leak-test-dqn:
     env:
-        ray.rllib.examples.env.random_env.RandomLargeObsSpaceEnv
+        ray.rllib.examples.envs.classes.random_env.RandomLargeObsSpaceEnv
     run: DQN
     config:
         # Works for both torch and tf.

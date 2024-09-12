@@ -66,7 +66,7 @@ def test_ray_serve_basic(docker_cluster):
     head, worker = docker_cluster
     output = worker.exec_run(cmd=f"python -c '{scripts.format(num_replicas=1)}'")
     assert output.exit_code == 0, output.output
-    assert b"Adding 1 replica to deployment " in output.output
+    assert b"Adding 1 replica to Deployment(" in output.output
 
     output = worker.exec_run(cmd=f"python -c '{check_script.format(num_replicas=1)}'")
     assert output.exit_code == 0, output.output

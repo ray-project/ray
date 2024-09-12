@@ -164,20 +164,11 @@ documentation, sorted alphabetically.
         the number of “replicas” of the deployment, each of which will map to a Ray
         actor at runtime. Requests to a deployment are load balanced across its replicas.
 
-    .. TODO: Deployment pipeline
-
-    Deployment graph
-        A deployment graph is a group of Ray Serve deployments that are bound together
-        into a directed acyclic graph (DAG) to handle requests. This enables model
-        composition. Each request will be passed through the graph, allowing multiple
-        stages of processing. For example, there might be a different deployment for
-        preprocessing, inference, and postprocessing.
-
     Ingress Deployment
-        The “ingress” deployment is the one that receives and responds to inbound user
-        traffic. It handles HTTP parsing and response formatting. In the case of a
-        deployment graph, it would also fan out requests to other deployments to do
-        things like a forward pass of an ML model.
+        In Ray Serve, the “ingress” deployment is the one that receives and responds to
+        inbound user traffic. It handles HTTP parsing and response formatting. In the case
+        of model composition, it would also fan out requests to other deployments to do
+        things like preprocessing and a forward pass of an ML model.
 
     Driver
         "Driver" is the name of the process running the main script that starts all
@@ -468,13 +459,13 @@ documentation, sorted alphabetically.
         RolloutWorkers are used as ``@ray.remote`` actors to collect and return samples
         from environments or offline files in parallel. An RLlib
         :py:class:`~ray.rllib.algorithms.algorithm.Algorithm` usually has
-        ``num_workers`` :py:class:`~ray.rllib.evaluation.rollout_worker.RolloutWorker`s plus a
-        single "local" :py:class:`~ray.rllib.evaluation.rollout_worker.RolloutWorker` (not ``@ray.remote``) in
-        its :py:class:`~ray.rllib.evaluation.worker_set.WorkerSet` under ``self.workers``.
+        ``num_workers`` :py:class:`~ray.rllib.env.env_runner.EnvRunner` instances plus a
+        single "local" :py:class:`~ray.rllib.env.env_runner.EnvRunner` (not ``@ray.remote``) in
+        its :py:class:`~ray.rllib.env.env_runner_group.EnvRunnerGroup` under ``self.workers``.
 
         Depending on its evaluation config settings, an additional
-        :py:class:`~ray.rllib.evaluation.worker_set.WorkerSet` with
-        :py:class:`~ray.rllib.evaluation.rollout_worker.RolloutWorker`s for evaluation may be present in the
+        :py:class:`~ray.rllib.env.env_runner_group.EnvRunnerGroup` with
+        :py:class:`~ray.rllib.env.env_runner.EnvRunner` instances for evaluation may be present in the
         :py:class:`~ray.rllib.algorithms.algorithm.Algorithm`
         under ``self.evaluation_workers``.
 
@@ -520,11 +511,11 @@ documentation, sorted alphabetically.
 
         Applications can be called via HTTP at their configured ``route_prefix``.
 
-    ServeHandle
-        ServeHandle is the Python API for making requests to Serve deployments. A
+    DeploymentHandle
+        DeploymentHandle is the Python API for making requests to Serve deployments. A
         handle is defined by passing one bound Serve deployment to the constructor of
         another. Then at runtime that reference can be used to make requests. This is
-        used to combine multiple deployments into “deployment graphs.”
+        used to combine multiple deployments for model composition.
 
     Session
         - A Ray Train/Tune session: Tune session at the experiment execution layer

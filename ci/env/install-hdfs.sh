@@ -9,7 +9,7 @@ curl -O https://dist.apache.org/repos/dist/release/hadoop/common/KEYS
 gpg --import KEYS
 
 export HADOOP_VERSION=3.2.4
-export HADOOP_URL=https://www.apache.org/dist/hadoop/common/hadoop-$HADOOP_VERSION/hadoop-$HADOOP_VERSION.tar.gz
+export HADOOP_URL=https://downloads.apache.org/hadoop/common/hadoop-$HADOOP_VERSION/hadoop-$HADOOP_VERSION.tar.gz
 
 set -x && curl -fSL $HADOOP_URL -o /tmp/hadoop.tar.gz && curl -fSL $HADOOP_URL.asc -o /tmp/hadoop.tar.gz.asc && gpg --verify /tmp/hadoop.tar.gz.asc && tar -xvf /tmp/hadoop.tar.gz -C /opt/ && rm /tmp/hadoop.tar.gz*
 

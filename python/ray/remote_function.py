@@ -18,8 +18,8 @@ from ray._private.serialization import pickle_dumps
 from ray._private.utils import get_runtime_env_info, parse_runtime_env
 from ray._raylet import (
     STREAMING_GENERATOR_RETURN,
+    ObjectRefGenerator,
     PythonFunctionDescriptor,
-    StreamingObjectRefGenerator,
 )
 from ray.util.annotations import DeveloperAPI, PublicAPI
 from ray.util.placement_group import _configure_placement_group_based_on_context
@@ -75,7 +75,7 @@ class RemoteFunction:
             return the resulting ObjectRefs. For an example, see
             "test_decorated_function" in "python/ray/tests/test_basic.py".
         _function_signature: The function signature.
-        _last_export_session_and_job: A pair of the last exported session
+        _last_export_cluster_and_job: A pair of the last exported cluster
             and job to help us to know whether this function was exported.
             This is an imperfect mechanism used to determine if we need to
             export the remote function again. It is imperfect in the sense that
@@ -121,6 +121,7 @@ class RemoteFunction:
             self._default_options["runtime_env"] = self._runtime_env
 
         self._language = language
+        self._is_generator = inspect.isgeneratorfunction(function)
         self._function = function
         self._function_signature = None
         # Guards trace injection to enforce exactly once semantics
@@ -129,7 +130,7 @@ class RemoteFunction:
         self._function_descriptor = function_descriptor
         self._is_cross_language = language != Language.PYTHON
         self._decorator = getattr(function, "__ray_invocation_decorator__", None)
-        self._last_export_session_and_job = None
+        self._last_export_cluster_and_job = None
         self._uuid = uuid.uuid4()
 
         # Override task.remote's signature and docstring
@@ -209,6 +210,10 @@ class RemoteFunction:
                 placement group based scheduling;
                 `NodeAffinitySchedulingStrategy`:
                 node id based affinity scheduling.
+            enable_task_events: This specifies whether to enable task events for this
+                task. If set to True, task events such as (task running, finished)
+                are emitted, and available to Ray Dashboard and State API.
+                See :ref:`state-api-overview-ref` for more details.
             _metadata: Extended options for Ray libraries. For example,
                 _metadata={"workflows.io/options": <workflow options>} for
                 Ray workflows.
@@ -278,11 +283,11 @@ class RemoteFunction:
                     self._function
                 )
 
-        # If this function was not exported in this session and job, we need to
+        # If this function was not exported in this cluster and job, we need to
         # export this function again, because the current GCS doesn't have it.
         if (
             not self._is_cross_language
-            and self._last_export_session_and_job != worker.current_session_and_job
+            and self._last_export_cluster_and_job != worker.current_cluster_and_job
         ):
             self._function_descriptor = PythonFunctionDescriptor.from_function(
                 self._function, self._uuid
@@ -301,7 +306,7 @@ class RemoteFunction:
                 f"Could not serialize the function {self._function_descriptor.repr}",
             )
 
-            self._last_export_session_and_job = worker.current_session_and_job
+            self._last_export_cluster_and_job = worker.current_cluster_and_job
             worker.function_actor_manager.export(self)
 
         kwargs = {} if kwargs is None else kwargs
@@ -331,7 +336,14 @@ class RemoteFunction:
             "placement_group_capture_child_tasks"
         ]
         scheduling_strategy = task_options["scheduling_strategy"]
+
         num_returns = task_options["num_returns"]
+        if num_returns is None:
+            if self._is_generator:
+                num_returns = "streaming"
+            else:
+                num_returns = 1
+
         if num_returns == "dynamic":
             num_returns = -1
         elif num_returns == "streaming":
@@ -403,6 +415,9 @@ class RemoteFunction:
         if _task_launch_hook:
             _task_launch_hook(self._function_descriptor, resources, scheduling_strategy)
 
+        # Override enable_task_events to default for actor if not specified (i.e. None)
+        enable_task_events = task_options.get("enable_task_events")
+
         def invocation(args, kwargs):
             if self._is_cross_language:
                 list_args = cross_language._format_args(worker, args, kwargs)
@@ -431,6 +446,7 @@ class RemoteFunction:
                 worker.debugger_breakpoint,
                 serialized_runtime_env_info or "{}",
                 generator_backpressure_num_objects,
+                enable_task_events,
             )
             # Reset worker's debug context from the last "remote" command
             # (which applies only to this .remote call).
@@ -440,7 +456,7 @@ class RemoteFunction:
                 # that is for the generator task.
                 assert len(object_refs) == 1
                 generator_ref = object_refs[0]
-                return StreamingObjectRefGenerator(generator_ref, worker)
+                return ObjectRefGenerator(generator_ref, worker)
             if len(object_refs) == 1:
                 return object_refs[0]
             elif len(object_refs) > 1:

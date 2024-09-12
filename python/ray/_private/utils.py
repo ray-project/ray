@@ -240,7 +240,7 @@ def ensure_str(s, encoding="utf-8", errors="strict"):
     if isinstance(s, str):
         return s
     else:
-        assert isinstance(s, bytes)
+        assert isinstance(s, bytes), f"Expected str or bytes, got {type(s)}"
         return s.decode(encoding, errors)
 
 
@@ -334,12 +334,12 @@ def set_omp_num_threads_if_unset() -> bool:
 
 
 def set_visible_accelerator_ids() -> None:
-    """Set (CUDA_VISIBLE_DEVICES, ONEAPI_DEVICE_SELECTOR, NEURON_RT_VISIBLE_CORES,
-    TPU_VISIBLE_CHIPS , HABANA_VISIBLE_MODULES ,...) environment variables based
-    on the accelerator runtime.
+    """Set (CUDA_VISIBLE_DEVICES, ONEAPI_DEVICE_SELECTOR, ROCR_VISIBLE_DEVICES,
+    NEURON_RT_VISIBLE_CORES, TPU_VISIBLE_CHIPS , HABANA_VISIBLE_MODULES ,...)
+    environment variables based on the accelerator runtime.
     """
     for resource_name, accelerator_ids in (
-        ray.get_runtime_context().get_resource_ids().items()
+        ray.get_runtime_context().get_accelerator_ids().items()
     ):
         ray._private.accelerators.get_accelerator_manager_for_resource(
             resource_name
@@ -365,6 +365,11 @@ def resources_from_ray_options(options_dict: Dict[str, Any]) -> Dict[str, Any]:
         raise ValueError(
             "The resources dictionary must not "
             "contain the key 'memory' or 'object_store_memory'"
+        )
+    elif ray_constants.PLACEMENT_GROUP_BUNDLE_RESOURCE_NAME in resources:
+        raise ValueError(
+            "The resource should not include `bundle` which "
+            f"is reserved for Ray. resources: {resources}"
         )
 
     num_cpus = options_dict.get("num_cpus")
@@ -602,45 +607,38 @@ def get_num_cpus(
 
 
 # TODO(clarng): merge code with c++
-def get_cgroupv1_used_memory(filename):
-    with open(filename, "r") as f:
-        lines = f.readlines()
-        cache_bytes = -1
-        rss_bytes = -1
-        inactive_file_bytes = -1
-        working_set = -1
-        for line in lines:
-            if "total_rss " in line:
-                rss_bytes = int(line.split()[1])
-            elif "cache " in line:
-                cache_bytes = int(line.split()[1])
-            elif "inactive_file" in line:
-                inactive_file_bytes = int(line.split()[1])
-        if cache_bytes >= 0 and rss_bytes >= 0 and inactive_file_bytes >= 0:
-            working_set = rss_bytes + cache_bytes - inactive_file_bytes
-            assert working_set >= 0
-            return working_set
-        return None
-
-
-def get_cgroupv2_used_memory(stat_file, usage_file):
-    # Uses same calculation as libcontainer, that is:
-    # memory.current - memory.stat[inactive_file]
-    # Source: https://github.com/google/cadvisor/blob/24dd1de08a72cfee661f6178454db995900c0fee/container/libcontainer/handler.go#L836  # noqa: E501
+def get_cgroup_used_memory(
+    memory_stat_filename: str,
+    memory_usage_filename: str,
+    inactive_file_key: str,
+    active_file_key: str,
+):
+    """
+    The calculation logic is the same with `GetCGroupMemoryUsedBytes`
+    in `memory_monitor.cc` file.
+    """
     inactive_file_bytes = -1
-    current_usage = -1
-    with open(usage_file, "r") as f:
-        current_usage = int(f.read().strip())
-    with open(stat_file, "r") as f:
+    active_file_bytes = -1
+    with open(memory_stat_filename, "r") as f:
         lines = f.readlines()
         for line in lines:
-            if "inactive_file" in line:
+            if f"{inactive_file_key} " in line:
                 inactive_file_bytes = int(line.split()[1])
-        if current_usage >= 0 and inactive_file_bytes >= 0:
-            working_set = current_usage - inactive_file_bytes
-            assert working_set >= 0
-            return working_set
+            elif f"{active_file_key} " in line:
+                active_file_bytes = int(line.split()[1])
+
+    with open(memory_usage_filename, "r") as f:
+        lines = f.readlines()
+        cgroup_usage_in_bytes = int(lines[0].strip())
+
+    if (
+        inactive_file_bytes == -1
+        or cgroup_usage_in_bytes == -1
+        or active_file_bytes == -1
+    ):
         return None
+
+    return cgroup_usage_in_bytes - inactive_file_bytes - active_file_bytes
 
 
 def get_used_memory():
@@ -653,17 +651,28 @@ def get_used_memory():
     # container.
     docker_usage = None
     # For cgroups v1:
-    memory_usage_filename = "/sys/fs/cgroup/memory/memory.stat"
+    memory_usage_filename_v1 = "/sys/fs/cgroup/memory/memory.usage_in_bytes"
+    memory_stat_filename_v1 = "/sys/fs/cgroup/memory/memory.stat"
     # For cgroups v2:
     memory_usage_filename_v2 = "/sys/fs/cgroup/memory.current"
     memory_stat_filename_v2 = "/sys/fs/cgroup/memory.stat"
-    if os.path.exists(memory_usage_filename):
-        docker_usage = get_cgroupv1_used_memory(memory_usage_filename)
+    if os.path.exists(memory_usage_filename_v1) and os.path.exists(
+        memory_stat_filename_v1
+    ):
+        docker_usage = get_cgroup_used_memory(
+            memory_stat_filename_v1,
+            memory_usage_filename_v1,
+            "total_inactive_file",
+            "total_active_file",
+        )
     elif os.path.exists(memory_usage_filename_v2) and os.path.exists(
         memory_stat_filename_v2
     ):
-        docker_usage = get_cgroupv2_used_memory(
-            memory_stat_filename_v2, memory_usage_filename_v2
+        docker_usage = get_cgroup_used_memory(
+            memory_stat_filename_v2,
+            memory_usage_filename_v2,
+            "inactive_file",
+            "active_file",
         )
 
     if docker_usage is not None:
@@ -1516,11 +1525,34 @@ def get_directory_size_bytes(path: Union[str, Path] = ".") -> int:
     return total_size_bytes
 
 
-def check_version_info(cluster_metadata):
+def check_version_info(
+    cluster_metadata,
+    this_process_address,
+    raise_on_mismatch=True,
+    python_version_match_level="patch",
+):
     """Check if the Python and Ray versions stored in GCS matches this process.
     Args:
         cluster_metadata: Ray cluster metadata from GCS.
+        this_process_address: Informational only. The address of this process.
+            e.g. "node address:port" or "Ray Client".
+        raise_on_mismatch: Raise an exception on True, log a warning otherwise.
+        python_version_match_level: "minor" or "patch". To which python version level we
+            try to match. Note if "minor" and the patch is different, we will still log
+            a warning.
 
+    Behavior:
+        - We raise or log a warning, based on raise_on_mismatch, if:
+            - Ray versions do not match; OR
+            - Python (major, minor) versions do not match,
+                if python_version_match_level == 'minor'; OR
+            - Python (major, minor, patch) versions do not match,
+                if python_version_match_level == 'patch'.
+        - We also log a warning if:
+            - Python (major, minor) versions match, AND
+            - Python patch versions do not match, AND
+            - python_version_match_level == 'minor' AND
+            - raise_on_mismatch == False.
     Raises:
         Exception: An exception is raised if there is a version mismatch.
     """
@@ -1528,18 +1560,41 @@ def check_version_info(cluster_metadata):
         cluster_metadata["ray_version"],
         cluster_metadata["python_version"],
     )
-    version_info = compute_version_info()
-    if version_info != cluster_version_info:
-        node_ip_address = ray._private.services.get_node_ip_address()
-        error_message = (
-            "Version mismatch: The cluster was started with:\n"
-            "    Ray: " + cluster_version_info[0] + "\n"
-            "    Python: " + cluster_version_info[1] + "\n"
-            "This process on node " + node_ip_address + " was started with:" + "\n"
-            "    Ray: " + version_info[0] + "\n"
-            "    Python: " + version_info[1] + "\n"
+    my_version_info = compute_version_info()
+
+    # Calculate: ray_matches, python_matches, python_full_matches
+    ray_matches = cluster_version_info[0] == my_version_info[0]
+    python_full_matches = cluster_version_info[1] == my_version_info[1]
+    if python_version_match_level == "patch":
+        python_matches = cluster_version_info[1] == my_version_info[1]
+    elif python_version_match_level == "minor":
+        my_python_versions = my_version_info[1].split(".")
+        cluster_python_versions = cluster_version_info[1].split(".")
+        python_matches = my_python_versions[:2] == cluster_python_versions[:2]
+    else:
+        raise ValueError(
+            f"Invalid python_version_match_level: {python_version_match_level}, "
+            "want: 'minor' or 'patch'"
         )
-        raise RuntimeError(error_message)
+
+    mismatch_msg = (
+        "The cluster was started with:\n"
+        f"    Ray: {cluster_version_info[0]}\n"
+        f"    Python: {cluster_version_info[1]}\n"
+        f"This process on {this_process_address} was started with:\n"
+        f"    Ray: {my_version_info[0]}\n"
+        f"    Python: {my_version_info[1]}\n"
+    )
+
+    if ray_matches and python_matches:
+        if not python_full_matches:
+            logger.warning(f"Python patch version mismatch: {mismatch_msg}")
+    else:
+        error_message = f"Version mismatch: {mismatch_msg}"
+        if raise_on_mismatch:
+            raise RuntimeError(error_message)
+        else:
+            logger.warning(error_message)
 
 
 def get_runtime_env_info(
@@ -1651,7 +1706,7 @@ def split_address(address: str) -> Tuple[str, str]:
     return (module_string, inner_address)
 
 
-def get_or_create_event_loop() -> asyncio.BaseEventLoop:
+def get_or_create_event_loop() -> asyncio.AbstractEventLoop:
     """Get a running async event loop if one exists, otherwise create one.
 
     This function serves as a proxy for the deprecating get_event_loop().
@@ -1671,7 +1726,6 @@ def get_or_create_event_loop() -> asyncio.BaseEventLoop:
         # This follows the implementation of the deprecating `get_event_loop`
         # in python3.10's asyncio. See python3.10/asyncio/events.py
         # _get_event_loop()
-        loop = None
         try:
             loop = asyncio.get_running_loop()
             assert loop is not None
@@ -1753,7 +1807,7 @@ def _add_creatable_buckets_param_if_s3_uri(uri: str) -> str:
         A URI with the added allow_bucket_creation=true query parameter, if the provided
         URI is an S3 URL; uri will be returned unchanged otherwise.
     """
-    from pkg_resources._vendor.packaging.version import parse as parse_version
+    from packaging.version import parse as parse_version
 
     pyarrow_version = _get_pyarrow_version()
     if pyarrow_version is not None:
@@ -1952,18 +2006,29 @@ def validate_node_labels(labels: Dict[str, str]):
             )
 
 
-def pasre_pg_formatted_resources_to_original(
+def parse_pg_formatted_resources_to_original(
     pg_formatted_resources: Dict[str, float]
 ) -> Dict[str, float]:
     original_resources = {}
 
     for key, value in pg_formatted_resources.items():
-        result = PLACEMENT_GROUP_WILDCARD_RESOURCE_PATTERN.match(key)
-        if result and len(result.groups()) == 2:
-            original_resources[result.group(1)] = value
-            continue
         result = PLACEMENT_GROUP_INDEXED_BUNDLED_RESOURCE_PATTERN.match(key)
         if result and len(result.groups()) == 3:
+            # Filter out resources that have bundle_group_[pg_id] since
+            # it is an implementation detail.
+            # This resource is automatically added to the resource
+            # request for all tasks that require placement groups.
+            if result.group(1) == ray_constants.PLACEMENT_GROUP_BUNDLE_RESOURCE_NAME:
+                continue
+
+            original_resources[result.group(1)] = value
+            continue
+
+        result = PLACEMENT_GROUP_WILDCARD_RESOURCE_PATTERN.match(key)
+        if result and len(result.groups()) == 2:
+            if result.group(1) == "bundle":
+                continue
+
             original_resources[result.group(1)] = value
             continue
         original_resources[key] = value
@@ -2001,3 +2066,28 @@ def validate_actor_state_name(actor_state_name):
             'it must be one of the following: "DEPENDENCIES_UNREADY", '
             '"PENDING_CREATION", "ALIVE", "RESTARTING", or "DEAD"'
         )
+
+
+def get_current_node_cpu_model_name() -> Optional[str]:
+    if not sys.platform.startswith("linux"):
+        return None
+
+    try:
+        """
+        /proc/cpuinfo content example:
+
+        processor	: 0
+        vendor_id	: GenuineIntel
+        cpu family	: 6
+        model		: 85
+        model name	: Intel(R) Xeon(R) Platinum 8259CL CPU @ 2.50GHz
+        stepping	: 7
+        """
+        with open("/proc/cpuinfo", "r") as f:
+            for line in f:
+                if line.startswith("model name"):
+                    return line.split(":")[1].strip()
+        return None
+    except Exception:
+        logger.debug("Failed to get CPU model name", exc_info=True)
+        return None

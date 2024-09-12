@@ -41,21 +41,47 @@ if __name__ == "__main__":
         if arg.startswith(temp_dir_arg_prefix):
             temp_dir = arg[len(temp_dir_arg_prefix) :]
 
-    if temp_dir is None:
-        raise ValueError("Please explicitly set --temp-dir option.")
+    if temp_dir is not None:
+        temp_dir = os.path.normpath(temp_dir)
+    else:
+        # This case is for global mode Ray on spark cluster
+        from ray.util.spark.cluster_init import _get_default_ray_tmp_dir
 
-    temp_dir = os.path.normpath(temp_dir)
+        temp_dir = _get_default_ray_tmp_dir()
+
+    # Multiple Ray nodes might be launched in the same machine,
+    # so set `exist_ok` to True
+    os.makedirs(temp_dir, exist_ok=True)
 
     ray_cli_cmd = "ray"
-
     lock_file = temp_dir + ".lock"
+
     lock_fd = os.open(lock_file, os.O_RDWR | os.O_CREAT | os.O_TRUNC)
 
     # Mutilple ray nodes might start on the same machine, and they are using the
     # same temp directory, adding a shared lock representing current ray node is
     # using the temp directory.
     fcntl.flock(lock_fd, fcntl.LOCK_SH)
-    process = subprocess.Popen([ray_cli_cmd, "start", *arg_list], text=True)
+
+    def preexec_function():
+        # Make Ray node process runs in a separate group,
+        # otherwise Ray node will be in the same group of parent process,
+        # if parent process is a Jupyter notebook kernel, when user
+        # clicks interrupt cell button, SIGINT signal is sent, then Ray node will
+        # receive SIGINT signal and it causes Ray node process dies.
+        os.setpgrp()
+
+    process = subprocess.Popen(
+        # 'ray start ...' command uses python that is set by
+        # Shebang #! ..., the Shebang line is hardcoded in ray script,
+        # it can't be changed to other python executable path.
+        # to enforce using current python executable,
+        # turn the subprocess command to
+        # '`sys.executable` `which ray` start ...'
+        [sys.executable, shutil.which(ray_cli_cmd), "start", *arg_list],
+        text=True,
+        preexec_fn=preexec_function,
+    )
 
     def try_clean_temp_dir_at_exit():
         try:
@@ -86,8 +112,15 @@ if __name__ == "__main__":
                 # start copy logs (including all local ray nodes logs) to destination.
                 if collect_log_to_path:
                     try:
+                        log_dir_prefix = os.path.basename(temp_dir)
+                        if log_dir_prefix == "ray":
+                            # global mode cluster case, append a timestamp to it to
+                            # avoid name conflict with last Ray global cluster log dir.
+                            log_dir_prefix = (
+                                log_dir_prefix + f"-global-{int(time.time())}"
+                            )
                         base_dir = os.path.join(
-                            collect_log_to_path, os.path.basename(temp_dir) + "-logs"
+                            collect_log_to_path, log_dir_prefix + "-logs"
                         )
                         # Note: multiple Ray node launcher process might
                         # execute this line code, so we set exist_ok=True here.
@@ -152,7 +185,15 @@ if __name__ == "__main__":
             os._exit(143)
 
         signal.signal(signal.SIGTERM, sigterm_handler)
-        ret_code = process.wait()
+        while True:
+            try:
+                ret_code = process.wait()
+                break
+            except KeyboardInterrupt:
+                # Jupyter notebook interrupt button triggers SIGINT signal and
+                # `start_ray_node` (subprocess) will receive SIGINT signal and it
+                # causes KeyboardInterrupt exception being raised.
+                pass
         try_clean_temp_dir_at_exit()
         sys.exit(ret_code)
     except Exception:

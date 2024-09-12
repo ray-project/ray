@@ -1,5 +1,7 @@
 .. include:: /_includes/rllib/we_are_hiring.rst
 
+.. include:: /_includes/rllib/new_api_stack.rst
+
 Connectors (Beta)
 ==================
 
@@ -19,7 +21,7 @@ By consolidating these transformations under the framework of connectors, users 
 - Allow policies to be adapted to work with different versions of an environment.
 - Run inference with RLlib policies without worrying about the exact trajectory view requirements or state inputs.
 
-Connectors can be enabled by setting the ``enable_connectors`` parameter to ``True`` with ``AlgorithmConfig.rollouts()`` API.
+Connectors can be enabled by setting the ``enable_connectors`` parameter to ``True`` with ``AlgorithmConfig.env_runners()`` API.
 
 Key Concepts
 ------------
@@ -234,7 +236,7 @@ With connectors essentially checkpointing all the transformations used during tr
 policies can be easily restored without the original algorithm for local inference,
 as demonstrated by the following Cartpole example:
 
-.. literalinclude:: ../../../rllib/examples/connectors/run_connector_policy.py
+.. literalinclude:: ../../../rllib/examples/_old_api_stack/connectors/run_connector_policy.py
    :language: python
    :start-after: __sphinx_doc_begin__
    :end-before: __sphinx_doc_end__
@@ -245,7 +247,7 @@ See `Notable TODOs`_.
 Adapting a Policy for Different Environments
 --------------------------------------------
 
-It is not uncommon for user environments to go through active development iterations.
+It's common for user environments to go through active development iterations.
 Policies trained with an older version of an environment may be rendered useless for updated environments.
 While env wrapper helps with this problem in many cases, connectors allow policies trained with
 different environments to work together at the same time.
@@ -253,7 +255,7 @@ different environments to work together at the same time.
 Here is an example demonstrating adaptation of a policy trained for the standard Cartpole environment
 for a new mock Cartpole environment that returns additional features and requires extra action inputs.
 
-.. literalinclude:: ../../../rllib/examples/connectors/adapt_connector_policy.py
+.. literalinclude:: ../../../rllib/examples/_old_api_stack/connectors/adapt_connector_policy.py
    :language: python
    :start-after: __sphinx_doc_begin__
    :end-before: __sphinx_doc_end__

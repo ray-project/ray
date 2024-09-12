@@ -40,17 +40,17 @@ template <typename Key, typename Data>
 Status GcsTable<Key, Data>::Get(const Key &key,
                                 const OptionalItemCallback<Data> &callback) {
   auto on_done = [callback](const Status &status,
-                            const boost::optional<std::string> &result) {
+                            const std::optional<std::string> &result) {
     if (!callback) {
       return;
     }
-    boost::optional<Data> value;
+    std::optional<Data> value;
     if (result) {
       Data data;
       data.ParseFromString(*result);
       value = std::move(data);
     }
-    callback(status, value);
+    callback(status, std::move(value));
   };
   return store_client_->AsyncGet(table_name_, key.Binary(), on_done);
 }
@@ -203,7 +203,6 @@ Status GcsTableWithJobId<Key, Data>::AsyncRebuildIndexAndGetAll(
 
 template class GcsTable<JobID, JobTableData>;
 template class GcsTable<NodeID, GcsNodeInfo>;
-template class GcsTable<NodeID, ResourceMap>;
 template class GcsTable<NodeID, ResourceUsageBatchData>;
 template class GcsTable<JobID, ErrorTableData>;
 template class GcsTable<WorkerID, WorkerTableData>;
@@ -213,7 +212,6 @@ template class GcsTable<UniqueID, StoredConfig>;
 template class GcsTableWithJobId<ActorID, ActorTableData>;
 template class GcsTableWithJobId<ActorID, TaskSpec>;
 template class GcsTable<PlacementGroupID, PlacementGroupTableData>;
-template class GcsTable<PlacementGroupID, ScheduleData>;
 
 }  // namespace gcs
 }  // namespace ray

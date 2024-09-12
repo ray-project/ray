@@ -306,6 +306,12 @@ class NodeResources {
 
   // Whether the node is being drained or not.
   bool is_draining = false;
+  // This is only meaningful if is_draining
+  // is true.
+  // The value is the timestamp when
+  // the node will be force killed.
+  // 0 if there is no draining deadline.
+  int64_t draining_deadline_timestamp_ms = -1;
 
   // The timestamp of the last resource update if there was a resource report.
   absl::optional<absl::Time> last_resource_update_time = absl::nullopt;

@@ -25,18 +25,17 @@
 #include "ray/common/bundle_spec.h"
 #include "ray/common/id.h"
 #include "ray/common/task/task_spec.h"
-#include "ray/gcs/gcs_client/usage_stats_client.h"
 #include "ray/gcs/gcs_server/gcs_init_data.h"
 #include "ray/gcs/gcs_server/gcs_node_manager.h"
 #include "ray/gcs/gcs_server/gcs_placement_group_scheduler.h"
 #include "ray/gcs/gcs_server/gcs_table_storage.h"
+#include "ray/gcs/gcs_server/usage_stats_client.h"
 #include "ray/gcs/pubsub/gcs_pub_sub.h"
 #include "ray/rpc/worker/core_worker_client.h"
 #include "ray/util/counter_map.h"
 #include "src/ray/protobuf/gcs_service.pb.h"
 
 namespace ray {
-class GcsMonitorServerTest;
 namespace gcs {
 
 /// GcsPlacementGroup just wraps `PlacementGroupTableData` and provides some convenient
@@ -83,6 +82,8 @@ class GcsPlacementGroup {
     placement_group_table_data_.set_is_detached(placement_group_spec.is_detached());
     placement_group_table_data_.set_max_cpu_fraction_per_node(
         placement_group_spec.max_cpu_fraction_per_node());
+    placement_group_table_data_.set_soft_target_node_id(
+        placement_group_spec.soft_target_node_id());
     placement_group_table_data_.set_ray_namespace(ray_namespace);
     placement_group_table_data_.set_placement_group_creation_timestamp_ms(
         current_sys_time_ms());
@@ -158,6 +159,10 @@ class GcsPlacementGroup {
 
   /// Returns the maximum CPU fraction per node for this placement group.
   double GetMaxCpuFractionPerNode() const;
+
+  /// Return the target node ID where bundles of this placement group should be placed.
+  /// Only works for STRICT_PACK placement group.
+  NodeID GetSoftTargetNodeID() const;
 
   const rpc::PlacementGroupStats &GetStats() const;
 
@@ -379,20 +384,6 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoHandler {
     usage_stats_client_ = usage_stats_client;
   }
 
-  /// Get a read only view of the pending placement groups.
-  ///
-  /// \return Pending placement groups.
-  const absl::btree_multimap<
-      int64_t,
-      std::pair<ExponentialBackOff, std::shared_ptr<GcsPlacementGroup>>>
-      &GetPendingPlacementGroups() const;
-
-  /// Get a read only view of the infeasible placement groups.
-  ///
-  /// \return Infeasible placement groups.
-  const std::deque<std::shared_ptr<GcsPlacementGroup>> &GetInfeasiblePlacementGroups()
-      const;
-
   /// Get the placement group load information.
   ///
   /// The API guarantees the returned placement groups' states
@@ -532,8 +523,6 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoHandler {
     CountType_MAX = 7,
   };
   uint64_t counts_[CountType::CountType_MAX] = {0};
-
-  friend GcsMonitorServerTest;
 
   FRIEND_TEST(GcsPlacementGroupManagerMockTest, PendingQueuePriorityReschedule);
   FRIEND_TEST(GcsPlacementGroupManagerMockTest, PendingQueuePriorityFailed);

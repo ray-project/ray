@@ -146,6 +146,7 @@ _common_options = {
         )
     ),
     "_metadata": Option((dict, type(None))),
+    "enable_task_events": Option(bool, default_value=True),
 }
 
 
@@ -169,9 +170,15 @@ _task_only_options = {
         (int, str, type(None)),
         lambda x: None
         if (x is None or x == "dynamic" or x == "streaming" or x >= 0)
-        else "The keyword 'num_returns' only accepts None, a non-negative integer, or "
-        '"dynamic" (for generators)',
-        default_value=1,
+        else "Default None. When None is passed, "
+        "The default value is 1 for a task and actor task, and "
+        "'streaming' for generator tasks and generator actor tasks. "
+        "The keyword 'num_returns' only accepts None, "
+        "a non-negative integer, "
+        "'streaming' (for generators), or 'dynamic'. 'dynamic' flag "
+        "will be deprecated in the future, and it is recommended to use "
+        "'streaming' instead.",
+        default_value=None,
     ),
     "object_store_memory": Option(  # override "_common_options"
         (int, type(None)),
@@ -335,12 +342,6 @@ def validate_actor_options(options: Dict[str, Any], in_options: bool):
     if in_options and "concurrency_groups" in options:
         raise ValueError(
             "Setting 'concurrency_groups' is not supported in '.options()'."
-        )
-
-    if options.get("max_restarts", 0) == 0 and options.get("max_task_retries", 0) != 0:
-        raise ValueError(
-            "'max_task_retries' cannot be set if 'max_restarts' "
-            "is 0 or if 'max_restarts' is not set."
         )
 
     if options.get("get_if_exists") and not options.get("name"):

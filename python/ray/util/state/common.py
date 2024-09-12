@@ -90,7 +90,7 @@ class Humanify:
     convert units into a human readable string."""
 
     def timestamp(x: float):
-        """Converts miliseconds to a datetime object."""
+        """Converts milliseconds to a datetime object."""
         return str(datetime.datetime.fromtimestamp(x / 1000))
 
     def memory(x: int):
@@ -104,7 +104,7 @@ class Humanify:
         return str(format(x, ".3f")) + " B"
 
     def duration(x: int):
-        """Converts miliseconds to a human readable duration."""
+        """Converts milliseconds to a human readable duration."""
         return str(datetime.timedelta(milliseconds=x))
 
     def events(events: List[dict]):
@@ -461,6 +461,12 @@ class ActorState(StateSchema):
     placement_group_id: Optional[str] = state_column(detail=True, filterable=True)
     #: Actor's repr name if a customized __repr__ method exists, else empty string.
     repr_name: Optional[str] = state_column(detail=True, filterable=True)
+    #: Number of restarts that has been tried on this actor.
+    num_restarts: int = state_column(filterable=False, detail=True)
+    #: Number of times this actor is restarted due to lineage reconstructions.
+    num_restarts_due_to_lineage_reconstruction: int = state_column(
+        filterable=False, detail=True
+    )
 
 
 @dataclass(init=not IS_PYDANTIC_2)
@@ -507,6 +513,9 @@ class NodeState(StateSchema):
     #: ALIVE: The node is alive.
     #: DEAD: The node is dead.
     state: TypeNodeStatus = state_column(filterable=True)
+    #: The state message of the node.
+    #: This provides more detailed information about the node's state.
+    state_message: Optional[str] = state_column(filterable=False)
     #: The name of the node if it is given by the name argument.
     node_name: str = state_column(filterable=True)
     #: The total resources of the node.
@@ -627,12 +636,16 @@ class WorkerState(StateSchema):
     #: -> start_time_ms (worker is ready to be used).
     #: -> end_time_ms (worker is destroyed).
     worker_launch_time_ms: Optional[int] = state_column(
-        filterable=False, detail=True, format_fn=Humanify.timestamp
+        filterable=False,
+        detail=True,
+        format_fn=lambda x: "" if x == -1 else Humanify.timestamp(x),
     )
     #: The time worker is succesfully launched
     #: -1 if the value doesn't exist.
     worker_launched_time_ms: Optional[int] = state_column(
-        filterable=False, detail=True, format_fn=Humanify.timestamp
+        filterable=False,
+        detail=True,
+        format_fn=lambda x: "" if x == -1 else Humanify.timestamp(x),
     )
     #: The time when the worker is started and initialized.
     #: 0 if the value doesn't exist.
@@ -647,6 +660,8 @@ class WorkerState(StateSchema):
     )
     # the debugger port of the worker
     debugger_port: Optional[int] = state_column(filterable=True, detail=True)
+    # the number of threads paused in this worker
+    num_paused_threads: Optional[int] = state_column(filterable=True, detail=True)
 
 
 @dataclass(init=not IS_PYDANTIC_2)
@@ -743,6 +758,8 @@ class TaskState(StateSchema):
     task_log_info: Optional[dict] = state_column(detail=True, filterable=False)
     #: Task error detail info.
     error_message: Optional[str] = state_column(detail=True, filterable=False)
+    # Is task paused by the debugger
+    is_debugger_paused: Optional[bool] = state_column(detail=True, filterable=True)
 
 
 @dataclass(init=not IS_PYDANTIC_2)
@@ -1502,7 +1519,7 @@ def protobuf_message_to_dict(
     return dashboard_utils.message_to_dict(
         message,
         fields_to_decode,
-        including_default_value_fields=True,
+        always_print_fields_with_no_presence=True,
         preserving_proto_field_name=preserving_proto_field_name,
     )
 
@@ -1557,7 +1574,14 @@ def protobuf_to_task_state_dict(message: TaskEvents) -> dict:
         (task_attempt, ["task_id", "attempt_number", "job_id"]),
         (
             state_updates,
-            ["node_id", "worker_id", "task_log_info", "actor_repr_name", "worker_pid"],
+            [
+                "node_id",
+                "worker_id",
+                "task_log_info",
+                "actor_repr_name",
+                "worker_pid",
+                "is_debugger_paused",
+            ],
         ),
     ]
     for src, keys in mappings:
@@ -1569,24 +1593,27 @@ def protobuf_to_task_state_dict(message: TaskEvents) -> dict:
     task_state["end_time_ms"] = None
     events = []
 
-    for state in TaskStatus.keys():
-        key = f"{state.lower()}_ts"
-        if key in state_updates:
-            # timestamp is recorded as nanosecond from the backend.
-            # We need to convert it to the second.
-            ts_ms = int(state_updates[key]) // 1e6
-            events.append(
-                {
-                    "state": state,
-                    "created_ms": ts_ms,
-                }
-            )
-            if state == "PENDING_ARGS_AVAIL":
-                task_state["creation_time_ms"] = ts_ms
-            if state == "RUNNING":
-                task_state["start_time_ms"] = ts_ms
-            if state == "FINISHED" or state == "FAILED":
-                task_state["end_time_ms"] = ts_ms
+    if "state_ts_ns" in state_updates:
+        state_ts_ns = state_updates["state_ts_ns"]
+        for state_name, state in TaskStatus.items():
+            # state_ts_ns is Map[str, str] after protobuf MessageToDict
+            key = str(state)
+            if key in state_ts_ns:
+                # timestamp is recorded as nanosecond from the backend.
+                # We need to convert it to the second.
+                ts_ms = int(state_ts_ns[key]) // 1e6
+                events.append(
+                    {
+                        "state": state_name,
+                        "created_ms": ts_ms,
+                    }
+                )
+                if state == TaskStatus.PENDING_ARGS_AVAIL:
+                    task_state["creation_time_ms"] = ts_ms
+                if state == TaskStatus.RUNNING:
+                    task_state["start_time_ms"] = ts_ms
+                if state == TaskStatus.FINISHED or state == TaskStatus.FAILED:
+                    task_state["end_time_ms"] = ts_ms
 
     task_state["events"] = events
     if len(events) > 0:

@@ -17,13 +17,14 @@ from ray._private.test_utils import (
     reason="This test is not supposed to work for minimal installation.",
 )
 @pytest.mark.skipif(sys.platform == "win32", reason="No py-spy on Windows.")
+@pytest.mark.skipif(sys.version_info >= (3, 12), reason="No py-spy on python 3.12.")
 @pytest.mark.skipif(
     sys.platform == "darwin",
     reason="Fails on OSX: https://github.com/ray-project/ray/issues/30114",
 )
 @pytest.mark.parametrize("native", ["0", "1"])
 def test_profiler_endpoints(ray_start_with_dashboard, native):
-    # Sanity check py-spy is installed.
+    # Sanity check py-spy are installed.
     subprocess.check_call(["py-spy", "--version"])
 
     assert wait_until_server_available(ray_start_with_dashboard["webui_url"]) is True
@@ -96,14 +97,98 @@ def test_profiler_endpoints(ray_start_with_dashboard, native):
     os.environ.get("RAY_MINIMAL") == "1",
     reason="This test is not supposed to work for minimal installation.",
 )
-@pytest.mark.skipif(sys.platform == "win32", reason="No py-spy on Windows.")
+@pytest.mark.skipif(sys.platform == "win32", reason="No memray on Windows.")
+@pytest.mark.skipif(sys.version_info >= (3, 12), reason="No memray on python 3.12")
 @pytest.mark.skipif(
     sys.platform == "darwin",
-    reason="Fails on OSX: https://github.com/ray-project/ray/issues/30114",
+    reason="Fails on OSX, requires memray & lldb installed in osx image",
+)
+@pytest.mark.parametrize("leaks", ["0", "1"])
+def test_memory_profiler_endpoint(ray_start_with_dashboard, leaks):
+    # Sanity check memray are installed.
+    subprocess.check_call(["memray", "--version"])
+
+    assert wait_until_server_available(ray_start_with_dashboard["webui_url"]) is True
+    address_info = ray_start_with_dashboard
+    webui_url = address_info["webui_url"]
+    webui_url = format_web_url(webui_url)
+
+    @ray.remote
+    class Actor:
+        def getpid(self):
+            return os.getpid()
+
+        def do_stuff_infinite(self):
+            while True:
+                pass
+
+    a = Actor.remote()
+    pid = ray.get(a.getpid.remote())
+    a.do_stuff_infinite.remote()
+
+    def get_actor_memory_flamegraph():
+        response = requests.get(
+            f"{webui_url}/memory_profile?pid={pid}&leaks={leaks}&duration=5"
+        )
+        response.raise_for_status()
+
+        assert response.headers["Content-Type"] == "text/html", response.headers
+        content = response.content.decode("utf-8")
+        print(content)
+        assert "memray" in content, content
+
+        if leaks == "1":
+            assert "flamegraph report (memory leaks)" in content, content
+        else:
+            assert "flamegraph report" in content, content
+
+    assert wait_until_succeeded_without_exception(
+        get_actor_memory_flamegraph,
+        (requests.RequestException, AssertionError),
+        timeout_ms=20000,
+        retry_interval_ms=1000,
+        raise_last_ex=True,
+    )
+
+    def get_actor_memory_multiple_flamegraphs():
+        response = requests.get(
+            f"{webui_url}/memory_profile?pid={pid}&leaks={leaks}&duration=5"
+        )
+        response.raise_for_status()
+
+        assert response.headers["Content-Type"] == "text/html", response.headers
+        content = response.content.decode("utf-8")
+        print(content)
+        assert "memray" in content, content
+
+        if leaks == "1":
+            assert "flamegraph report (memory leaks)" in content, content
+        else:
+            assert "flamegraph report" in content, content
+
+    assert wait_until_succeeded_without_exception(
+        get_actor_memory_multiple_flamegraphs,
+        (requests.RequestException, AssertionError),
+        timeout_ms=20000,
+        retry_interval_ms=1000,
+        raise_last_ex=True,
+    )
+
+
+@pytest.mark.skipif(
+    os.environ.get("RAY_MINIMAL") == "1",
+    reason="This test is not supposed to work for minimal installation.",
+)
+@pytest.mark.skipif(sys.platform == "win32", reason="No py-spy on Windows.")
+@pytest.mark.skipif(sys.version_info >= (3, 12), reason="No py-spy on python 3.12.")
+@pytest.mark.skipif(
+    sys.platform == "darwin",
+    reason="Fails on OSX, requires memray & lldb installed in osx image",
 )
 def test_profiler_failure_message(ray_start_with_dashboard):
-    # Sanity check py-spy is installed.
+    # Sanity check py-spy and memray is installed.
     subprocess.check_call(["py-spy", "--version"])
+    subprocess.check_call(["memray", "--version"])
 
     assert wait_until_server_available(ray_start_with_dashboard["webui_url"]) is True
     address_info = ray_start_with_dashboard
@@ -151,6 +236,19 @@ def test_profiler_failure_message(ray_start_with_dashboard):
     print(content)
     assert "text/plain" in response.headers["Content-Type"], response.headers
     assert "Failed to execute" in content, content
+
+    # Check we return the right status code and error message on failure.
+    response = requests.get(f"{webui_url}/memory_profile?pid=1234567")
+    content = response.content.decode("utf-8")
+    print(content)
+    assert "text/plain" in response.headers["Content-Type"], response.headers
+    assert "Failed to execute" in content, content
+
+    # Check wrong ip failure
+    response = requests.get(f"{webui_url}/memory_profile?ip=1234567&pid=1234567")
+    content = response.content.decode("utf-8")
+    print(content)
+    assert "Failed to execute: No stub with given ip value" in content, content
 
 
 if __name__ == "__main__":

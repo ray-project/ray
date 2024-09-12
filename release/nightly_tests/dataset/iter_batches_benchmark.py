@@ -35,7 +35,7 @@ def iter_batches(
         "num_rows:",
         ds.count(),
         "num_blocks:",
-        ds.num_blocks(),
+        ds._plan.initial_num_blocks(),
         "num_batches:",
         num_batches,
     )

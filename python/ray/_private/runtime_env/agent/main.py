@@ -58,6 +58,9 @@ if __name__ == "__main__":
         "--gcs-address", required=True, type=str, help="The address (ip:port) of GCS."
     )
     parser.add_argument(
+        "--cluster-id-hex", required=True, type=str, help="The cluster id in hex."
+    )
+    parser.add_argument(
         "--runtime-env-dir",
         required=True,
         type=str,
@@ -141,6 +144,7 @@ if __name__ == "__main__":
         runtime_env_dir=args.runtime_env_dir,
         logging_params=logging_params,
         gcs_address=args.gcs_address,
+        cluster_id_hex=args.cluster_id_hex,
         temp_dir=args.temp_dir,
         address=args.node_ip_address,
         runtime_env_agent_port=args.runtime_env_agent_port,
@@ -194,11 +198,12 @@ if __name__ == "__main__":
     check_raylet_task = None
     if sys.platform not in ["win32", "cygwin"]:
 
-        def parent_dead_callback():
+        def parent_dead_callback(msg):
             agent._logger.info(
                 "Raylet is dead! Exiting Runtime Env Agent. "
                 f"addr: {args.node_ip_address}, "
-                f"port: {args.runtime_env_agent_port}"
+                f"port: {args.runtime_env_agent_port}\n"
+                f"{msg}"
             )
 
         # No need to await this task.

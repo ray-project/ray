@@ -51,6 +51,12 @@ class PPOCatalog(Catalog):
     Any custom head can be built by overriding the build_pi_head() and build_vf_head()
     methods. Alternatively, the PiHeadConfig and VfHeadConfig can be overridden to
     build custom heads during RLModule runtime.
+
+    Any module built for exploration or inference is built with the flag
+    `ìnference_only=True` and does not contain a value network. This flag can be set
+    in the `SingleAgentModuleSpec` through the `inference_only` boolean flag.
+    In case that the actor-critic-encoder is not shared between the policy and value
+    function, the inference-only module will contain only the actor encoder network.
     """
 
     def __init__(

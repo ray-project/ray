@@ -2,9 +2,9 @@ import logging
 import os
 import pickle
 import re
-import shutil
 import tempfile
 import time
+import uuid
 from contextlib import contextmanager
 from pathlib import Path
 from typing import List, Optional, Tuple
@@ -63,20 +63,8 @@ def dummy_context_manager(*args, **kwargs):
     yield "dummy value"
 
 
-@pytest.fixture(autouse=True)
-def disable_driver_artifact_sync():
-    # NOTE: Hack to make sure that the driver doesn't sync the artifacts.
-    from ray.tune import execution
-
-    execution.experiment_state._DRIVER_SYNC_EXCLUDE_PATTERNS = [
-        "*/checkpoint_*",
-        "*/artifact-*.txt",
-    ]
-
-
 @pytest.fixture(autouse=True, scope="module")
 def ray_start_4_cpus():
-    # Make sure to set the env var before calling ray.init()
     ray.init(num_cpus=4)
     yield
     ray.shutdown()
@@ -120,8 +108,8 @@ def _resolve_storage_type(
 def _get_local_inspect_dir(
     root_local_path: Path,
     storage_path: str,
-    storage_local_path: Path,
     storage_filesystem: Optional[pyarrow.fs.FileSystem],
+    storage_local_path: Path = None,
 ) -> Tuple[Path, str]:
     """Downloads the storage path -> local dir for inspecting contents.
 
@@ -177,7 +165,9 @@ def train_fn(config):
         assert train_session.storage.checkpoint_fs_path
 
         # Check that the working dir for each worker is the shared trial dir.
-        assert os.getcwd() == train_session.storage.trial_local_path
+        assert (
+            Path.cwd() == Path(train_session.storage.trial_working_directory).resolve()
+        )
 
     start = 0
 
@@ -416,13 +406,12 @@ def _assert_storage_contents(
 
 
 @pytest.mark.parametrize("trainable", [train_fn, ClassTrainable])
-@pytest.mark.parametrize("storage_path_type", [None, "nfs", "cloud", "custom_fs"])
+@pytest.mark.parametrize("storage_path_type", ["nfs", "cloud", "custom_fs"])
 @pytest.mark.parametrize(
     "checkpoint_config",
     [train.CheckpointConfig(), train.CheckpointConfig(num_to_keep=2)],
 )
 def test_tuner(
-    monkeypatch,
     tmp_path,
     trainable,
     storage_path_type,
@@ -456,16 +445,21 @@ def test_tuner(
     └── train_fn_a2b9e_00001_1_...
         └── ...                     <- Same as above
     """
-    # Set the cache dir to some temp directory
-    LOCAL_CACHE_DIR = tmp_path / "ray_results"
-    monkeypatch.setenv("RAY_AIR_LOCAL_CACHE_DIR", str(LOCAL_CACHE_DIR))
-
-    exp_name = "simple_persistence_test"
+    exp_name = f"tuner_persistence_test-{uuid.uuid4().hex}"
 
     with _resolve_storage_type(storage_path_type, tmp_path) as (
         storage_path,
         storage_filesystem,
     ):
+        run_config = train.RunConfig(
+            storage_path=storage_path,
+            storage_filesystem=storage_filesystem,
+            name=exp_name,
+            verbose=0,
+            failure_config=train.FailureConfig(max_failures=1),
+            checkpoint_config=checkpoint_config,
+            sync_config=train.SyncConfig(sync_artifacts=True),
+        )
         tuner = tune.Tuner(
             trainable,
             param_space={
@@ -475,26 +469,15 @@ def test_tuner(
                 "save_checkpoint_as_dict": tune.grid_search([True, False]),
                 "tmp_path": tmp_path,
             },
-            run_config=train.RunConfig(
-                storage_path=storage_path,
-                storage_filesystem=storage_filesystem,
-                name=exp_name,
-                verbose=0,
-                failure_config=train.FailureConfig(max_failures=1),
-                checkpoint_config=checkpoint_config,
-                sync_config=train.SyncConfig(sync_artifacts=True),
-            ),
+            run_config=run_config,
             # 2 samples (from the grid search). Run 1 at at time to test actor reuse
             tune_config=tune.TuneConfig(num_samples=1, max_concurrent_trials=1),
         )
         result_grid = tuner.fit()
         assert result_grid.errors
 
-        if storage_path:
-            shutil.rmtree(LOCAL_CACHE_DIR, ignore_errors=True)
-
         restored_tuner = tune.Tuner.restore(
-            path=str(URI(storage_path or str(LOCAL_CACHE_DIR)) / exp_name),
+            path=str(URI(run_config.storage_path) / exp_name),
             trainable=trainable,
             storage_filesystem=storage_filesystem,
             resume_errored=True,
@@ -504,8 +487,7 @@ def test_tuner(
 
         local_inspect_dir, storage_fs_path = _get_local_inspect_dir(
             root_local_path=tmp_path,
-            storage_path=storage_path,
-            storage_local_path=LOCAL_CACHE_DIR,
+            storage_path=run_config.storage_path,
             storage_filesystem=storage_filesystem,
         )
 
@@ -532,7 +514,7 @@ def test_tuner(
     )
 
 
-@pytest.mark.parametrize("storage_path_type", [None, "nfs", "cloud", "custom_fs"])
+@pytest.mark.parametrize("storage_path_type", ["nfs", "cloud", "custom_fs"])
 @pytest.mark.parametrize(
     "checkpoint_config",
     [
@@ -545,7 +527,7 @@ def test_tuner(
     ],
 )
 def test_trainer(
-    tmp_path, monkeypatch, storage_path_type, checkpoint_config: train.CheckpointConfig
+    tmp_path, storage_path_type, checkpoint_config: train.CheckpointConfig
 ):
     """Same end-to-end test as `test_tuner`, but also includes a
     `DataParallelTrainer(resume_from_checkpoint)` test at the end.
@@ -575,15 +557,22 @@ def test_trainer(
         ├── artifact-rank=1-iter=1.txt
         └── ...
     """
-    LOCAL_CACHE_DIR = tmp_path / "ray_results"
-    monkeypatch.setenv("RAY_AIR_LOCAL_CACHE_DIR", str(LOCAL_CACHE_DIR))
-    exp_name = "trainer_new_persistence"
+    exp_name = f"trainer_persistence_test-{uuid.uuid4().hex}"
     no_checkpoint_ranks = [0]
 
     with _resolve_storage_type(storage_path_type, tmp_path) as (
         storage_path,
         storage_filesystem,
     ):
+        run_config = train.RunConfig(
+            storage_path=storage_path,
+            storage_filesystem=storage_filesystem,
+            name=exp_name,
+            verbose=0,
+            checkpoint_config=checkpoint_config,
+            failure_config=train.FailureConfig(max_failures=1),
+            sync_config=train.SyncConfig(sync_artifacts=True),
+        )
         trainer = DataParallelTrainer(
             train_fn,
             train_loop_config={
@@ -594,15 +583,7 @@ def test_trainer(
                 "no_checkpoint_ranks": no_checkpoint_ranks,
             },
             scaling_config=train.ScalingConfig(num_workers=TestConstants.NUM_WORKERS),
-            run_config=train.RunConfig(
-                storage_path=storage_path,
-                storage_filesystem=storage_filesystem,
-                name=exp_name,
-                verbose=0,
-                checkpoint_config=checkpoint_config,
-                failure_config=train.FailureConfig(max_failures=1),
-                sync_config=train.SyncConfig(sync_artifacts=True),
-            ),
+            run_config=run_config,
         )
         print("\nStarting initial run.\n")
         with pytest.raises(TrainingFailedError):
@@ -610,26 +591,19 @@ def test_trainer(
 
         print("\nStarting manually restored run.\n")
         restored_trainer = DataParallelTrainer.restore(
-            path=str(URI(storage_path or str(LOCAL_CACHE_DIR)) / exp_name),
+            path=str(URI(run_config.storage_path) / exp_name),
             storage_filesystem=storage_filesystem,
         )
         result = restored_trainer.fit()
 
-        with monkeypatch.context() as m:
-            # This is so that the `resume_from_checkpoint` run doesn't mess up the
-            # assertions later for the `storage_path=None` case.
-            m.setenv(
-                "RAY_AIR_LOCAL_CACHE_DIR", str(tmp_path / "resume_from_checkpoint")
-            )
-            _resume_from_checkpoint(
-                result.checkpoint,
-                expected_state={"iter": TestConstants.NUM_ITERATIONS - 1},
-            )
+        _resume_from_checkpoint(
+            result.checkpoint,
+            expected_state={"iter": TestConstants.NUM_ITERATIONS - 1},
+        )
 
         local_inspect_dir, storage_fs_path = _get_local_inspect_dir(
             root_local_path=tmp_path,
-            storage_path=storage_path,
-            storage_local_path=LOCAL_CACHE_DIR,
+            storage_path=run_config.storage_path,
             storage_filesystem=storage_filesystem,
         )
 
@@ -648,29 +622,6 @@ def test_trainer(
         test_trainer=True,
         no_checkpoint_ranks=no_checkpoint_ranks,
     )
-
-
-def test_local_dir(tmp_path):
-    """Test that local_dir can do the same job as `RAY_AIR_LOCAL_CACHE_DIR`."""
-
-    def train_fn(config):
-        from ray.train._internal.session import get_session
-
-        assert get_session().storage.storage_local_path == str(tmp_path)
-
-    tune.run(train_fn, local_dir=str(tmp_path))
-
-    results = tune.Tuner(
-        train_fn, run_config=train.RunConfig(local_dir=str(tmp_path))
-    ).fit()
-    assert not results.errors
-
-    trainer = DataParallelTrainer(
-        train_fn,
-        scaling_config=train.ScalingConfig(num_workers=2),
-        run_config=train.RunConfig(local_dir=str(tmp_path)),
-    )
-    trainer.fit()
 
 
 if __name__ == "__main__":

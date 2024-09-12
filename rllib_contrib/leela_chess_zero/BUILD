@@ -11,6 +11,16 @@ py_test(
 
 # Learning Tests
 
+py_test(
+    name = "learning_tests_multi_agent_chess_leela_chess_zero",
+    main = "run_regression_tests.py",
+    tags = ["team:rllib", "learning_tests", "rllib_contrib", "torch_only"],
+    size = "large",
+    srcs = ["run_regression_tests.py"],
+    data = ["tuned_examples/multi-agent-chess-leela-chess-zero.py"],
+    args = ["--dir=leela_chess_zero/tuned_examples/", "--framework=torch"]
+)
+
 
 # Compilation Tests
 

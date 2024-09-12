@@ -129,8 +129,11 @@ Provider
             :ref:`location <cluster-configuration-location>`: str
             :ref:`resource_group <cluster-configuration-resource-group>`: str
             :ref:`subscription_id <cluster-configuration-subscription-id>`: str
+            :ref:`msi_name <cluster-configuration-msi-name>`: str
+            :ref:`msi_resource_group <cluster-configuration-msi-resource-group>`: str
             :ref:`cache_stopped_nodes <cluster-configuration-cache-stopped-nodes>`: bool
             :ref:`use_internal_ips <cluster-configuration-use-internal-ips>`: bool
+            :ref:`use_external_head_ip <cluster-configuration-use-external-head-ip>`: bool
 
     .. tab-item:: GCP
 
@@ -181,6 +184,8 @@ vSphere Config
                 :ref:`vSphere Credentials <cluster-configuration-vsphere-credentials-type>`
             :ref:`frozen_vm <cluster-configuration-vsphere-frozen-vm>`:
                 :ref:`vSphere Frozen VM Configs <cluster-configuration-vsphere-frozen-vm-configs>`
+            :ref:`gpu_config <cluster-configuration-vsphere-gpu-config>`:
+                :ref:`vSphere GPU Configs <cluster-configuration-vsphere-gpu-configs>`
 
 .. _cluster-configuration-vsphere-credentials-type:
 
@@ -214,8 +219,20 @@ vSphere Frozen VM Configs
             :ref:`cluster <cluster-configuration-vsphere-frozen-vm-cluster>`: str
             :ref:`datastore <cluster-configuration-vsphere-frozen-vm-datastore>`: str
 
-.. _cluster-configuration-node-types-type:
+.. _cluster-configuration-vsphere-gpu-configs:
 
+vSphere GPU Configs
+~~~~~~~~~~~~~~~~~~~
+
+.. tab-set::
+
+    .. tab-item:: vSphere
+
+        .. parsed-literal::
+
+            :ref:`dynamic_pci_passthrough <cluster-configuration-vsphere-gpu-config-pci-passthrough>`: bool
+
+.. _cluster-configuration-node-types-type:
 
 Node types
 ~~~~~~~~~~
@@ -815,7 +832,7 @@ The user that Ray will authenticate with when launching new nodes.
 
     .. tab-item:: vSphere
 
-        Not available. The vSphere provider expects the key to be located at a fixed path ``~/ray-bootstrap-key.pem`` and will automatically generate one if not found.
+        Not available. The vSphere provider expects the key to be located at a fixed path ``~/ray-bootstrap-key.pem``.
 
 .. _cluster-configuration-ssh-public-key:
 
@@ -1035,6 +1052,62 @@ The user that Ray will authenticate with when launching new nodes.
 
         Not available.
 
+.. _cluster-configuration-msi-name:
+
+``provider.msi_name``
+~~~~~~~~~~~~~~~~~~~~~
+
+.. tab-set::
+
+    .. tab-item:: AWS
+
+        Not available.
+
+    .. tab-item:: Azure
+
+        The name of the managed identity to use for deployment of the Ray cluster. If not specified, Ray will create a default user-assigned managed identity.
+
+        * **Required:** No
+        * **Importance:** Low
+        * **Type:** String
+        * **Default:** ray-default-msi
+
+    .. tab-item:: GCP
+
+        Not available.
+
+    .. tab-item:: vSphere
+
+        Not available.
+
+.. _cluster-configuration-msi-resource-group:
+
+``provider.msi_resource_group``
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. tab-set::
+
+    .. tab-item:: AWS
+
+        Not available.
+
+    .. tab-item:: Azure
+
+        The name of the managed identity's resource group to use for deployment of the Ray cluster, used in conjunction with msi_name. If not specified, Ray will create a default user-assigned managed identity in resource group specified in the provider config.
+
+        * **Required:** No
+        * **Importance:** Low
+        * **Type:** String
+        * **Default:** ray-cluster
+
+    .. tab-item:: GCP
+
+        Not available.
+
+    .. tab-item:: vSphere
+
+        Not available.
+
 .. _cluster-configuration-project-id:
 
 ``provider.project_id``
@@ -1085,7 +1158,7 @@ If enabled, Ray will use private IP addresses for communication between nodes.
 This should be omitted if your network interfaces use public IP addresses.
 
 If enabled, Ray CLI commands (e.g. ``ray up``) will have to be run from a machine
-that is part of the same VPC as the cluster. 
+that is part of the same VPC as the cluster.
 
 This option does not affect the existence of public IP addresses for the nodes, it only
 affects which IP addresses are used by Ray. The existence of public IP addresses is
@@ -1096,6 +1169,38 @@ controlled by your cloud provider's configuration.
 * **Importance:** Low
 * **Type:** Boolean
 * **Default:** ``False``
+
+.. _cluster-configuration-use-external-head-ip:
+
+``provider.use_external_head_ip``
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. tab-set::
+
+    .. tab-item:: AWS
+
+        Not available.
+
+    .. tab-item:: Azure
+
+        If enabled, Ray will provision and use a public IP address for communication with the head node,
+        regardless of the value of ``use_internal_ips``. This option can be used in combination with
+        ``use_internal_ips`` to avoid provisioning excess public IPs for worker nodes (i.e., communicate
+        among nodes using private IPs, but provision a public IP for head node communication only). If
+        ``use_internal_ips`` is ``False``, then this option has no effect.
+
+        * **Required:** No
+        * **Importance:** Low
+        * **Type:** Boolean
+        * **Default:** ``False``
+
+    .. tab-item:: GCP
+
+        Not available.
+
+    .. tab-item:: vSphere
+
+        Not available.
 
 .. _cluster-configuration-security-group:
 
@@ -1334,6 +1439,26 @@ Will take effect only when ``library_item`` is set. If ``resource_pool`` is also
 * **Required:** No
 * **Importance:** Low
 * **Type:** String
+
+.. _cluster-configuration-vsphere-gpu-config:
+
+``vsphere_config.gpu_config``
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. _cluster-configuration-vsphere-gpu-config-pci-passthrough:
+
+``vsphere_config.gpu_config.dynamic_pci_passthrough``
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The switch controlling the way for binding the GPU from ESXi host to the Ray node VM.
+The default value is False, which indicates regular PCI Passthrough.
+If set to True, the Dynamic PCI passthrough (https://docs.vmware.com/en/VMware-vSphere/8.0/vsphere-esxi-host-client/GUID-2B6D43A6-9598-47C4-A2E7-5924E3367BB6.html) will be enabled for the GPU.
+The VM with Dynamic PCI passthrough GPU can still support vSphere DRS (https://www.vmware.com/products/vsphere/drs-dpm.html).
+
+* **Required:** No
+* **Importance:** Low
+* **Type:** Boolean
+
 
 .. _cluster-configuration-node-config:
 

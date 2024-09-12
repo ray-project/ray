@@ -27,7 +27,7 @@ except ImportError:
 
 logger = logging.getLogger(__name__)
 
-SUPPORTED_PYTHONS = [(3, 8), (3, 9), (3, 10), (3, 11)]
+SUPPORTED_PYTHONS = [(3, 9), (3, 10), (3, 11), (3, 12)]
 # When the bazel version is updated, make sure to update it
 # in WORKSPACE file as well.
 
@@ -49,7 +49,7 @@ CLEANABLE_SUBDIRS = [
 
 # In automated builds, we do a few adjustments before building. For instance,
 # the bazel environment is set up slightly differently, and symlinks are
-# replaced with junctions in Windows. This variable is set e.g. in our conda
+# replaced with junctions in Windows. This variable is set e.g. in our conda-forge
 # feedstock.
 is_automated_build = bool(int(os.environ.get("IS_AUTOMATED_BUILD", "0")))
 
@@ -227,34 +227,10 @@ ray_files += [
 if setup_spec.type == SetupType.RAY:
     pandas_dep = "pandas >= 1.3"
     numpy_dep = "numpy >= 1.20"
-    if sys.platform != "win32":
-        pyarrow_dep = "pyarrow >= 6.0.1"
-    else:
-        # Serialization workaround for pyarrow 7.0.0+ doesn't work for Windows.
-        pyarrow_dep = "pyarrow >= 6.0.1, < 7.0.0"
+    pyarrow_dep = "pyarrow >= 6.0.1"
     setup_spec.extras = {
-        "data": [
-            numpy_dep,
-            pandas_dep,
-            pyarrow_dep,
-            "fsspec",
-        ],
-        "default": [
-            # If adding dependencies necessary to launch the dashboard api server,
-            # please add it to dashboard/optional_deps.py as well.
-            "aiohttp >= 3.7",
-            "aiohttp_cors",
-            "colorful",
-            "py-spy >= 0.2.0",
-            "requests",
-            "gpustat >= 1.0.0",  # for windows
-            "grpcio >= 1.32.0; python_version < '3.10'",  # noqa:E501
-            "grpcio >= 1.42.0; python_version >= '3.10'",  # noqa:E501
-            "opencensus",
-            "pydantic < 2",  # 2.0.0 brings breaking changes
-            "prometheus_client >= 0.7.1",
-            "smart_open",
-            "virtualenv >=20.0.24, < 20.21.1",  # For pip runtime env.
+        "adag": [
+            "cupy-cuda12x; sys_platform != 'darwin'",
         ],
         "client": [
             # The Ray client needs a specific range of gRPC to work:
@@ -263,20 +239,42 @@ if setup_spec.type == SetupType.RAY:
             if sys.platform == "darwin"
             else "grpcio",
         ],
-        "serve": [
-            "uvicorn[standard]",
-            "requests",
-            "starlette",
-            "fastapi",
-            "aiorwlock",
-            "watchfiles",
+        "data": [
+            numpy_dep,
+            pandas_dep,
+            pyarrow_dep,
+            "fsspec",
         ],
-        "tune": ["pandas", "tensorboardX>=1.9", "requests", pyarrow_dep, "fsspec"],
+        "default": [
+            # If adding dependencies necessary to launch the dashboard api server,
+            # please add it to python/ray/dashboard/optional_deps.py as well.
+            "aiohttp >= 3.7",
+            "aiohttp_cors",
+            "colorful",
+            "py-spy >= 0.2.0",
+            "requests",
+            "grpcio >= 1.32.0; python_version < '3.10'",  # noqa:E501
+            "grpcio >= 1.42.0; python_version >= '3.10'",  # noqa:E501
+            "opencensus",
+            "pydantic!=2.0.*,!=2.1.*,!=2.2.*,!=2.3.*,!=2.4.*,<3",
+            "prometheus_client >= 0.7.1",
+            "smart_open",
+            "virtualenv >=20.0.24, !=20.21.1",  # For pip runtime env.
+            "memray; sys_platform != 'win32'",
+        ],
         "observability": [
             "opentelemetry-api",
             "opentelemetry-sdk",
             "opentelemetry-exporter-otlp",
         ],
+        "serve": [
+            "uvicorn[standard]",
+            "requests",
+            "starlette",
+            "fastapi",
+            "watchfiles",
+        ],
+        "tune": ["pandas", "tensorboardX>=1.9", "requests", pyarrow_dep, "fsspec"],
     }
 
     # Ray Serve depends on the Ray dashboard components.
@@ -321,9 +319,19 @@ if setup_spec.type == SetupType.RAY:
         )
     )
 
+    # "all" will not include "cpp" anymore. It is a big depedendency
+    # that most people do not need.
+    #
+    # Instead, when cpp is supported, we add a "all-cpp".
     setup_spec.extras["all"] = list(
-        set(chain.from_iterable(setup_spec.extras.values()))
+        set(
+            chain.from_iterable([v for k, v in setup_spec.extras.items() if k != "cpp"])
+        )
     )
+    if RAY_EXTRA_CPP:
+        setup_spec.extras["all-cpp"] = list(
+            set(setup_spec.extras["all"] + setup_spec.extras["cpp"])
+        )
 
 # These are the main dependencies for users of ray. This list
 # should be carefully curated. If you change it, please reflect
@@ -427,7 +435,6 @@ def replace_symlinks_with_junctions():
 
     # Update this list if new symlinks are introduced to the source tree
     _LINKS = {
-        r"ray\dashboard": "../../dashboard",
         r"ray\rllib": "../../rllib",
     }
     root_dir = os.path.dirname(__file__)
@@ -562,13 +569,17 @@ def build(build_python, build_java, build_cpp):
             FutureWarning,
         )
 
-    if not is_automated_build:
-        bazel_precmd_flags = []
     if is_automated_build:
-        root_dir = os.path.join(
-            os.path.abspath(os.environ["SRC_DIR"]), "..", "bazel-root"
-        )
-        out_dir = os.path.join(os.path.abspath(os.environ["SRC_DIR"]), "..", "b-o")
+        src_dir = os.environ.get("SRC_DIR", False) or os.getcwd()
+        src_dir = os.path.abspath(src_dir)
+        if is_native_windows_or_msys():
+            drive = os.path.splitdrive(src_dir)[0] + "\\"
+            root_dir = os.path.join(drive, "bazel-root")
+            out_dir = os.path.join(drive, "b-o")
+            bazel_flags.append("--enable_runfiles=false")
+        else:
+            root_dir = os.path.join(src_dir, "..", "bazel-root")
+            out_dir = os.path.join(src_dir, "..", "b-o")
 
         for d in (root_dir, out_dir):
             if not os.path.exists(d):
@@ -578,9 +589,8 @@ def build(build_python, build_java, build_cpp):
             "--output_user_root=" + root_dir,
             "--output_base=" + out_dir,
         ]
-
-        if is_native_windows_or_msys():
-            bazel_flags.append("--enable_runfiles=false")
+    else:
+        bazel_precmd_flags = []
 
     bazel_targets = []
     bazel_targets += ["//:ray_pkg"] if build_python else []
@@ -601,9 +611,14 @@ def build(build_python, build_java, build_cpp):
     )
 
 
-def walk_directory(directory):
+def _walk_thirdparty_dir(directory):
     file_list = []
     for root, dirs, filenames in os.walk(directory):
+        # Exclude generated bytecode cache directories and tests directories
+        # from vendored packages.
+        for exclude_dir in ["__pycache__", "tests"]:
+            if exclude_dir in dirs:
+                dirs.remove(exclude_dir)
         for name in filenames:
             file_list.append(os.path.join(root, name))
     return file_list
@@ -613,7 +628,7 @@ def copy_file(target_dir, filename, rootdir):
     # TODO(rkn): This feels very brittle. It may not handle all cases. See
     # https://github.com/apache/arrow/blob/master/python/setup.py for an
     # example.
-    # File names can be absolute paths, e.g. from walk_directory().
+    # File names can be absolute paths, e.g. from _walk_thirdparty_dir().
     source = os.path.relpath(filename, rootdir)
     destination = os.path.join(target_dir, source)
     # Create the target directory if it doesn't already exist.
@@ -652,12 +667,14 @@ def pip_run(build_ext):
         setup_spec.files_to_include += ray_files
 
         thirdparty_dir = os.path.join(ROOT_DIR, THIRDPARTY_SUBDIR)
-        setup_spec.files_to_include += walk_directory(thirdparty_dir)
+        setup_spec.files_to_include += _walk_thirdparty_dir(thirdparty_dir)
 
         runtime_env_agent_thirdparty_dir = os.path.join(
             ROOT_DIR, RUNTIME_ENV_AGENT_THIRDPARTY_SUBDIR
         )
-        setup_spec.files_to_include += walk_directory(runtime_env_agent_thirdparty_dir)
+        setup_spec.files_to_include += _walk_thirdparty_dir(
+            runtime_env_agent_thirdparty_dir
+        )
 
         # Copy over the autogenerated protobuf Python bindings.
         for directory in generated_python_directories:
@@ -768,11 +785,12 @@ setuptools.setup(
         "ray distributed parallel machine-learning hyperparameter-tuning"
         "reinforcement-learning deep-learning serving python"
     ),
+    python_requires=">=3.8",
     classifiers=[
-        "Programming Language :: Python :: 3.7",
         "Programming Language :: Python :: 3.8",
         "Programming Language :: Python :: 3.9",
         "Programming Language :: Python :: 3.10",
+        "Programming Language :: Python :: 3.11",
     ],
     packages=setup_spec.get_packages(),
     cmdclass={"build_ext": build_ext},
@@ -790,7 +808,7 @@ setuptools.setup(
         ]
     },
     package_data={
-        "ray": ["includes/*.pxd", "*.pxd"],
+        "ray": ["includes/*.pxd", "*.pxd", "data/_internal/logging.yaml"],
     },
     include_package_data=True,
     exclude_package_data={

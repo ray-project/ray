@@ -62,7 +62,6 @@ trainer = TorchTrainer(
 result = trainer.fit()
 # __pytorch_save_end__
 
-
 # __pytorch_restore_start__
 import os
 import tempfile
@@ -90,12 +89,19 @@ def train_func(config):
     optimizer = Adam(model.parameters(), lr=3e-4)
     criterion = nn.MSELoss()
 
+    # Wrap the model in DDP and move it to GPU.
+    model = ray.train.torch.prepare_model(model)
+
     # ====== Resume training state from the checkpoint. ======
     start_epoch = 0
     checkpoint = train.get_checkpoint()
     if checkpoint:
         with checkpoint.as_directory() as checkpoint_dir:
-            model.load_state_dict(torch.load(os.path.join(checkpoint_dir, "model.pt")))
+            model_state_dict = torch.load(
+                os.path.join(checkpoint_dir, "model.pt"),
+                # map_location=...,  # Load onto a different device if needed.
+            )
+            model.module.load_state_dict(model_state_dict)
             optimizer.load_state_dict(
                 torch.load(os.path.join(checkpoint_dir, "optimizer.pt"))
             )
@@ -103,9 +109,6 @@ def train_func(config):
                 torch.load(os.path.join(checkpoint_dir, "extra_state.pt"))["epoch"] + 1
             )
     # ========================================================
-
-    # Wrap the model in DDP
-    model = ray.train.torch.prepare_model(model)
 
     for epoch in range(start_epoch, config["num_epochs"]):
         y = model.forward(X)
@@ -161,7 +164,6 @@ trainer = TorchTrainer(
     resume_from_checkpoint=result.checkpoint,
 )
 # __pytorch_restore_end__
-
 
 # __checkpoint_from_single_worker_start__
 import tempfile
@@ -415,12 +417,15 @@ from pathlib import Path
 
 from ray.train import Checkpoint
 
-# Create a sample locally available checkpoint
+# For demonstration, create a locally available directory with a `model.pt` file.
 example_checkpoint_dir = Path("/tmp/test-checkpoint")
 example_checkpoint_dir.mkdir()
 example_checkpoint_dir.joinpath("model.pt").touch()
+
+# Create the checkpoint, which is a reference to the directory.
 checkpoint = Checkpoint.from_directory(example_checkpoint_dir)
 
+# Inspect the checkpoint's contents with either `as_directory` or `to_directory`:
 with checkpoint.as_directory() as checkpoint_dir:
     assert Path(checkpoint_dir).joinpath("model.pt").exists()
 

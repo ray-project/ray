@@ -1,11 +1,8 @@
 from enum import Enum
-from typing import List
 
 import starlette.requests
 
 from ray import serve
-from ray.serve.deployment_graph import InputNode
-from ray.serve.drivers import DAGDriver
 from ray.serve.handle import DeploymentHandle
 
 
@@ -54,23 +51,15 @@ class Router:
         self.adder = adder
         self.subtractor = subtractor
 
-    async def route(self, op: Operation, input: int) -> int:
+    async def __call__(self, request: starlette.requests.Request) -> int:
+        op, input = await request.json()
+
         if op == Operation.ADD:
             return await self.adder.add.remote(input)
         elif op == Operation.SUBTRACT:
             return await self.subtractor.subtract.remote(input)
 
 
-async def json_resolver(request: starlette.requests.Request) -> List:
-    return await request.json()
-
-
-with InputNode() as inp:
-    operation, amount_input = inp[0], inp[1]
-
-    adder = Add.bind()
-    subtractor = Subtract.bind()
-    router = Router.bind(adder, subtractor)
-    amount = router.route.bind(operation, amount_input)
-
-serve_dag = DAGDriver.bind(amount, http_adapter=json_resolver)
+adder = Add.bind()
+subtractor = Subtract.bind()
+serve_dag = Router.bind(adder, subtractor)

@@ -3,7 +3,7 @@
 
 # __basic_start__
 import ray
-from ray import tune
+from ray import train, tune
 from ray.tune import Tuner
 from ray.train.xgboost import XGBoostTrainer
 
@@ -17,6 +17,7 @@ trainer = XGBoostTrainer(
         "max_depth": 4,
     },
     datasets={"train": dataset},
+    scaling_config=train.ScalingConfig(num_workers=2),
 )
 
 # Create Tuner
@@ -67,7 +68,7 @@ param_space = {
 
 tuner = Tuner(
     trainable=trainer,
-    run_config=RunConfig(name="test_tuner"),
+    run_config=RunConfig(name="test_tuner_xgboost"),
     param_space=param_space,
     tune_config=tune.TuneConfig(
         mode="min", metric="train-logloss", num_samples=2, max_concurrent_trials=2

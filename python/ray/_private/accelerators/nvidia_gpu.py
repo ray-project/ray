@@ -1,15 +1,7 @@
 import re
 import os
-import sys
 import logging
-import subprocess
-import importlib
 from typing import Optional, List, Tuple
-
-try:
-    import GPUtil
-except ImportError:
-    pass
 
 from ray._private.accelerators.accelerator import AcceleratorManager
 
@@ -39,7 +31,6 @@ class NvidiaGPUAcceleratorManager(AcceleratorManager):
         cuda_visible_devices = os.environ.get(
             NvidiaGPUAcceleratorManager.get_visible_accelerator_ids_env_var(), None
         )
-
         if cuda_visible_devices is None:
             return None
 
@@ -53,58 +44,36 @@ class NvidiaGPUAcceleratorManager(AcceleratorManager):
 
     @staticmethod
     def get_current_node_num_accelerators() -> int:
-        num_gpus = 0
-        if importlib.util.find_spec("GPUtil"):
-            gpu_list = GPUtil.getGPUs()
-            num_gpus = len(gpu_list)
-        elif sys.platform.startswith("linux"):
-            proc_gpus_path = "/proc/driver/nvidia/gpus"
-            if os.path.isdir(proc_gpus_path):
-                num_gpus = len(os.listdir(proc_gpus_path))
-        elif sys.platform == "win32":
-            props = "AdapterCompatibility"
-            cmdargs = ["WMIC", "PATH", "Win32_VideoController", "GET", props]
-            lines = subprocess.check_output(cmdargs).splitlines()[1:]
-            num_gpus = len([x.rstrip() for x in lines if x.startswith(b"NVIDIA")])
-        return num_gpus
+        import ray._private.thirdparty.pynvml as pynvml
+
+        try:
+            pynvml.nvmlInit()
+        except pynvml.NVMLError:
+            return 0  # pynvml init failed
+        device_count = pynvml.nvmlDeviceGetCount()
+        pynvml.nvmlShutdown()
+        return device_count
 
     @staticmethod
     def get_current_node_accelerator_type() -> Optional[str]:
+        import ray._private.thirdparty.pynvml as pynvml
+
         try:
-            if importlib.util.find_spec("GPUtil"):
-                gpu_list = GPUtil.getGPUs()
-                if len(gpu_list) > 0:
-                    gpu_list_names = [gpu.name for gpu in gpu_list]
-                    return NvidiaGPUAcceleratorManager._gpu_name_to_accelerator_type(
-                        gpu_list_names.pop()
-                    )
-            elif sys.platform.startswith("linux"):
-                proc_gpus_path = "/proc/driver/nvidia/gpus"
-                if not os.path.isdir(proc_gpus_path):
-                    return None
-                gpu_dirs = os.listdir(proc_gpus_path)
-                if len(gpu_dirs) == 0:
-                    return None
-                gpu_info_path = f"{proc_gpus_path}/{gpu_dirs[0]}/information"
-                info_str = open(gpu_info_path).read()
-                if not info_str:
-                    return None
-                lines = info_str.split("\n")
-                full_model_name = None
-                for line in lines:
-                    split = line.split(":")
-                    if len(split) != 2:
-                        continue
-                    k, v = split
-                    if k.strip() == "Model":
-                        full_model_name = v.strip()
-                        break
-                return NvidiaGPUAcceleratorManager._gpu_name_to_accelerator_type(
-                    full_model_name
-                )
-        except Exception:
-            logger.exception("Could not parse gpu information.")
-        return None
+            pynvml.nvmlInit()
+        except pynvml.NVMLError:
+            return None  # pynvml init failed
+        device_count = pynvml.nvmlDeviceGetCount()
+        cuda_device_type = None
+        if device_count > 0:
+            handle = pynvml.nvmlDeviceGetHandleByIndex(0)
+            device_name = pynvml.nvmlDeviceGetName(handle)
+            if isinstance(device_name, bytes):
+                device_name = device_name.decode("utf-8")
+            cuda_device_type = (
+                NvidiaGPUAcceleratorManager._gpu_name_to_accelerator_type(device_name)
+            )
+        pynvml.nvmlShutdown()
+        return cuda_device_type
 
     @staticmethod
     def _gpu_name_to_accelerator_type(name):

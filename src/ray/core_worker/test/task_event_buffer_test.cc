@@ -16,11 +16,18 @@
 
 #include <google/protobuf/util/message_differencer.h>
 
+#include <filesystem>
+#include <fstream>
+
+#include "absl/base/thread_annotations.h"
+#include "absl/synchronization/mutex.h"
+#include "absl/types/optional.h"
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include "mock/ray/gcs/gcs_client/gcs_client.h"
 #include "ray/common/task/task_spec.h"
 #include "ray/common/test_util.h"
+#include "ray/util/event.h"
 
 using ::testing::_;
 using ::testing::Return;
@@ -61,11 +68,19 @@ class TaskEventBufferTest : public ::testing::Test {
     return task_ids;
   }
 
-  std::unique_ptr<TaskEvent> GenStatusTaskEvent(TaskID task_id,
-                                                int32_t attempt_num,
-                                                int64_t running_ts = 1) {
-    return std::make_unique<TaskStatusEvent>(
-        task_id, JobID::FromInt(0), attempt_num, rpc::TaskStatus::RUNNING, running_ts);
+  std::unique_ptr<TaskEvent> GenStatusTaskEvent(
+      TaskID task_id,
+      int32_t attempt_num,
+      int64_t running_ts = 1,
+      absl::optional<const TaskStatusEvent::TaskStateUpdate> state_update =
+          absl::nullopt) {
+    return std::make_unique<TaskStatusEvent>(task_id,
+                                             JobID::FromInt(0),
+                                             attempt_num,
+                                             rpc::TaskStatus::RUNNING,
+                                             running_ts,
+                                             nullptr,
+                                             state_update);
   }
 
   std::unique_ptr<TaskEvent> GenProfileTaskEvent(TaskID task_id, int32_t attempt_num) {
@@ -162,6 +177,20 @@ class TaskEventBufferTestLimitProfileEvents : public TaskEventBufferTest {
   )");
   }
 };
+
+void ReadContentFromFile(std::vector<std::string> &vc,
+                         std::string log_file,
+                         std::string filter = "") {
+  std::string line;
+  std::ifstream read_file;
+  read_file.open(log_file, std::ios::binary);
+  while (std::getline(read_file, line)) {
+    if (filter.empty() || line.find(filter) != std::string::npos) {
+      vc.push_back(line);
+    }
+  }
+  read_file.close();
+}
 
 TEST_F(TaskEventBufferTestManualStart, TestGcsClientFail) {
   ASSERT_NE(task_event_buffer_, nullptr);
@@ -260,7 +289,7 @@ TEST_F(TaskEventBufferTest, TestFailedFlush) {
       .Times(2)
       .WillOnce([&](std::unique_ptr<rpc::TaskEventData> actual_data,
                     ray::gcs::StatusCallback callback) {
-        callback(Status::GrpcUnknown("grpc error"));
+        callback(Status::RpcError("grpc error", grpc::StatusCode::UNKNOWN));
         return Status::OK();
       })
       .WillOnce([&](std::unique_ptr<rpc::TaskEventData> actual_data,
@@ -508,6 +537,22 @@ TEST_F(TaskEventBufferTestLimitProfileEvents, TestLimitProfileEventsPerTask) {
   ASSERT_EQ(task_event_buffer_->GetTotalNumProfileTaskEventsDropped(),
             num_total_profile_events - num_profile_events_per_task);
   ASSERT_EQ(task_event_buffer_->GetTotalNumStatusTaskEventsDropped(), 0);
+}
+
+TEST_F(TaskEventBufferTest, TestIsDebuggerPausedFlag) {
+  // Generate the event
+  auto task_id = RandomTaskId();
+  TaskStatusEvent::TaskStateUpdate state_update(true);
+  auto task_event = GenStatusTaskEvent(task_id, 0, 1, state_update);
+
+  // Convert to rpc
+  rpc::TaskEventData expected_data;
+  expected_data.set_num_profile_events_dropped(0);
+  auto event = expected_data.add_events_by_task();
+  task_event->ToRpcTaskEvents(event);
+
+  // Verify the flag is set
+  ASSERT_TRUE(event->state_updates().is_debugger_paused());
 }
 
 TEST_F(TaskEventBufferTest, TestGracefulDestruction) {

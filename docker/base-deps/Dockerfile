@@ -1,7 +1,7 @@
 # The base-deps Docker image installs main libraries needed to run Ray
 
 # The GPU options are NVIDIA CUDA developer images.
-ARG BASE_IMAGE="ubuntu:focal"
+ARG BASE_IMAGE="ubuntu:22.04"
 FROM ${BASE_IMAGE}
 # FROM directive resets ARG
 ARG BASE_IMAGE
@@ -29,9 +29,6 @@ RUN apt-get update -y \
 
 USER $RAY_UID
 ENV HOME=/home/ray
-# Todo (krfricke): Move to latest miniconda version once we stop building
-# images for Python 3.7.
-# https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-${HOSTTYPE}.sh
 
 SHELL ["/bin/bash", "-c"]
 RUN sudo apt-get update -y && sudo apt-get upgrade -y \
@@ -49,36 +46,31 @@ RUN sudo apt-get update -y && sudo apt-get upgrade -y \
         netbase \
         openssh-client \
         gnupg; fi) \
-    && if [[ "${PYTHON_VERSION}" = "3.11" || "${PYTHON_VERSION}" =~ ^3\.11\. ]]; then \
-            MINICONDA_VERSION="py310_23.3.1-0"; \
-            LIBGCC=(libgcc-ng); \
-        else \
-            MINICONDA_VERSION="py37_23.1.0-1"; \
-            # TODO (can): Remove libffi=3.3 once #33299 is resolved
-            LIBGCC=(libgcc-ng libffi=3.3); \
-        fi \
     && wget --quiet \
-        "https://repo.anaconda.com/miniconda/Miniconda3-${MINICONDA_VERSION}-Linux-${HOSTTYPE}.sh" \
+        "https://repo.anaconda.com/miniconda/Miniconda3-py311_24.4.0-0-Linux-${HOSTTYPE}.sh" \
         -O /tmp/miniconda.sh \
     && /bin/bash /tmp/miniconda.sh -b -u -p $HOME/anaconda3 \
     && $HOME/anaconda3/bin/conda init \ 
     && echo 'export PATH=$HOME/anaconda3/bin:$PATH' >> /home/ray/.bashrc \
     && rm /tmp/miniconda.sh  \
-    && $HOME/anaconda3/bin/conda install -y "${LIBGCC[@]}" python=$PYTHON_VERSION \
+    && $HOME/anaconda3/bin/conda install -y libgcc-ng python=$PYTHON_VERSION \
+    && $HOME/anaconda3/bin/conda install -y -c conda-forge libffi=3.4.2 \
     && $HOME/anaconda3/bin/conda clean -y --all \
     && $HOME/anaconda3/bin/pip install --no-cache-dir \
         flatbuffers \
-        cython==0.29.32 \
+        cython==0.29.37 \
         # Necessary for Dataset to work properly.
         numpy\>=1.20 \
         psutil \
+        # Required a recent version of setuptools to be compatible with python 3.12+.
+        setuptools==71.1.0 \
     # To avoid the following error on Jenkins:
     # AttributeError: 'numpy.ufunc' object has no attribute '__module__'
     && $HOME/anaconda3/bin/pip uninstall -y dask \ 
     # We install cmake temporarily to get psutil
     && sudo apt-get autoremove -y cmake zlib1g-dev \
         # We keep g++ on GPU images, because uninstalling removes CUDA Devel tooling
-        $(if [[ "$BASE_IMAGE" == "ubuntu:focal" && "$HOSTTYPE" == "x86_64" ]]; then echo \
+        $(if [[ "$BASE_IMAGE" == "ubuntu:22.04" && "$HOSTTYPE" == "x86_64" ]]; then echo \
         g++; fi) \
     && sudo rm -rf /var/lib/apt/lists/* \
     && sudo apt-get clean \

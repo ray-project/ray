@@ -77,7 +77,7 @@ serve run mobilenet.mobilenet:app
 
 ```sh
 # (On your local machine) Forward the serve port of the head Pod
-kubectl port-forward --address 0.0.0.0 $HEAD_POD 8000
+kubectl port-forward $HEAD_POD 8000
 
 # Clone the repository on your local machine
 git clone https://github.com/ray-project/serve_config_examples.git

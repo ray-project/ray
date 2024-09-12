@@ -12,38 +12,46 @@ from ray._private.test_utils import SignalActor, wait_for_condition
 from ray.cluster_utils import Cluster
 from ray.exceptions import RayActorError
 from ray.serve._private.common import DeploymentID, ReplicaState
-from ray.serve._private.constants import SERVE_NAMESPACE
+from ray.serve._private.constants import (
+    RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY,
+    SERVE_DEFAULT_APP_NAME,
+    SERVE_NAMESPACE,
+)
 from ray.serve._private.deployment_state import ReplicaStartupStatus
-from ray.serve._private.utils import get_head_node_id
+from ray.serve._private.utils import calculate_remaining_timeout, get_head_node_id
 from ray.serve.context import _get_global_client
-from ray.serve.handle import RayServeHandle
+from ray.serve.handle import DeploymentHandle
 from ray.serve.schema import ServeDeploySchema
 
 
 def get_pids(expected, deployment_name="D", app_name="default", timeout=30):
     handle = serve.get_deployment_handle(deployment_name, app_name)
-    refs = []
     pids = set()
     start = time.time()
     while len(pids) < expected:
-        if len(refs) == 0:
-            refs = [handle.remote()._to_object_ref_sync() for _ in range(10)]
-
-        done, pending = ray.wait(refs)
-        for ref in done:
+        for r in [handle.remote() for _ in range(10)]:
             try:
-                pids.add(ray.get(ref))
+                pids.add(
+                    r.result(
+                        timeout_s=calculate_remaining_timeout(
+                            timeout_s=timeout,
+                            start_time_s=start,
+                            curr_time_s=time.time(),
+                        )
+                    )
+                )
             except RayActorError:
                 # Handle sent request to dead actor before running replicas were updated
                 # This can happen because health check period = 1s
                 pass
-        refs = list(pending)
+
         if time.time() - start >= timeout:
             raise TimeoutError("Timed out waiting for pids.")
+
     return pids
 
 
-@serve.deployment(health_check_period_s=1, max_concurrent_queries=1)
+@serve.deployment(health_check_period_s=1, max_ongoing_requests=1)
 def pid():
     time.sleep(0.1)
     return os.getpid()
@@ -112,7 +120,7 @@ def test_node_failure(ray_cluster):
     worker_node = cluster.add_node(num_cpus=2)
 
     @serve.deployment(
-        version="1", num_replicas=5, health_check_period_s=1, max_concurrent_queries=1
+        version="1", num_replicas=5, health_check_period_s=1, max_ongoing_requests=1
     )
     def D(*args):
         time.sleep(0.1)
@@ -156,13 +164,13 @@ def test_replica_startup_status_transitions(ray_cluster):
         async def __init__(self):
             await signal.wait.remote()
 
-    serve.run(E.bind(), _blocking=False)
+    serve._run(E.bind(), _blocking=False)
 
     def get_replicas(replica_state):
         controller = client._controller
         replicas = ray.get(
             controller._dump_replica_states_for_testing.remote(
-                DeploymentID(E.name, "default")
+                DeploymentID(name=E.name)
             )
         )
         return replicas.get([replica_state])
@@ -245,6 +253,9 @@ def test_intelligent_scale_down(ray_cluster):
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Flaky on Windows.")
+@pytest.mark.skipif(
+    RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY, reason="Needs spread strategy."
+)
 def test_replica_spread(ray_cluster):
     cluster = ray_cluster
 
@@ -291,7 +302,7 @@ def test_replica_spread(ray_cluster):
 def test_handle_prefers_replicas_on_same_node(ray_cluster):
     """Verify that handle calls prefer replicas on the same node when possible.
 
-    If all replicas on the same node are occupied (at `max_concurrent_queries` limit),
+    If all replicas on the same node are occupied (at `max_ongoing_requests` limit),
     requests should spill to other nodes.
     """
 
@@ -301,7 +312,7 @@ def test_handle_prefers_replicas_on_same_node(ray_cluster):
 
     signal = SignalActor.remote()
 
-    @serve.deployment(num_replicas=2, max_concurrent_queries=1)
+    @serve.deployment(num_replicas=2, max_ongoing_requests=1)
     def inner(block_on_signal):
         if block_on_signal:
             ray.get(signal.wait.remote())
@@ -310,7 +321,7 @@ def test_handle_prefers_replicas_on_same_node(ray_cluster):
 
     @serve.deployment(num_replicas=1, ray_actor_options={"num_cpus": 0})
     class Outer:
-        def __init__(self, inner_handle: RayServeHandle):
+        def __init__(self, inner_handle: DeploymentHandle):
             self._h = inner_handle.options(_prefer_local_routing=True)
 
         def get_node_id(self) -> str:
@@ -334,7 +345,7 @@ def test_handle_prefers_replicas_on_same_node(ray_cluster):
     with pytest.raises(TimeoutError):
         blocked_response.result(timeout_s=1)
 
-    # Because there's a blocking request and `max_concurrent_queries` is set to 1, all
+    # Because there's a blocking request and `max_ongoing_requests` is set to 1, all
     # requests should now spill to the other node.
     for _ in range(10):
         assert h.call_inner.remote().result() != outer_node_id
@@ -350,8 +361,8 @@ def test_proxy_prefers_replicas_on_same_node(ray_cluster: Cluster, set_flag):
     should route to all replicas equally.
     """
 
-    if set_flag:
-        os.environ["RAY_SERVE_PROXY_PREFER_LOCAL_NODE_ROUTING"] = "1"
+    if not set_flag:
+        os.environ["RAY_SERVE_PROXY_PREFER_LOCAL_NODE_ROUTING"] = "0"
 
     cluster = ray_cluster
     cluster.add_node(num_cpus=1)
@@ -361,7 +372,7 @@ def test_proxy_prefers_replicas_on_same_node(ray_cluster: Cluster, set_flag):
     serve.start(http_options={"location": "HeadOnly"})
     head_node_id = get_head_node_id()
 
-    @serve.deployment(num_replicas=2, max_concurrent_queries=1)
+    @serve.deployment(num_replicas=2, max_ongoing_requests=1)
     def f():
         return ray.get_runtime_context().get_node_id()
 
@@ -378,6 +389,146 @@ def test_proxy_prefers_replicas_on_same_node(ray_cluster: Cluster, set_flag):
 
     if "RAY_SERVE_PROXY_PREFER_LOCAL_NODE_ROUTING" in os.environ:
         del os.environ["RAY_SERVE_PROXY_PREFER_LOCAL_NODE_ROUTING"]
+
+
+class TestHealthzAndRoutes:
+    def test_head_node_proxy_healthy(self, ray_cluster: Cluster):
+        """When a new cluster is started with no replicas, head node proxy should
+        respond with 200 at /-/healthz and /-/routes"""
+
+        cluster = ray_cluster
+        cluster.add_node(num_cpus=0)  # Head node
+        cluster.wait_for_nodes()
+        ray.init(address=cluster.address)
+        serve.start(http_options={"location": "EveryNode"})
+
+        @serve.deployment(ray_actor_options={"num_cpus": 0})
+        class Dummy:
+            pass
+
+        serve.run(Dummy.bind())
+
+        # Head node proxy /-/healthz and /-/routes should return 200
+        r = requests.post("http://localhost:8000/-/healthz")
+        assert r.status_code == 200
+        r = requests.post("http://localhost:8000/-/routes")
+        assert r.status_code == 200
+
+    def test_head_and_worker_nodes_no_replicas(self, ray_cluster: Cluster):
+        """Test `/-/healthz` and `/-/routes` return the correct responses for head and
+        worker nodes.
+
+        When there are replicas on all nodes, `/-/healthz` and `/-/routes` on all nodes
+        should return 200. When there are no replicas on any nodes, `/-/healthz` and
+        `/-/routes` on the head node should continue to return 200. `/-/healthz` and
+        `/-/routes` on the worker node should start to return 503
+        """
+        # Setup worker http proxy to be pointing to port 8001. Head node http proxy will
+        # continue to be pointing to the default port 8000.
+        os.environ["TEST_WORKER_NODE_HTTP_PORT"] = "8001"
+
+        # Setup a cluster with 2 nodes
+        cluster = ray_cluster
+        cluster.add_node(num_cpus=0)
+        cluster.add_node(num_cpus=2)
+        cluster.wait_for_nodes()
+        ray.init(address=cluster.address)
+        serve.start(http_options={"location": "EveryNode"})
+
+        # Deploy 2 replicas, both should be on the worker node.
+        @serve.deployment(num_replicas=2)
+        class HelloModel:
+            def __call__(self):
+                return "hello"
+
+        model = HelloModel.bind()
+        serve.run(target=model)
+
+        # Ensure worker node has both replicas.
+        def check_replicas_on_worker_nodes():
+            _actors = ray._private.state.actors().values()
+            replica_nodes = [
+                a["Address"]["NodeID"]
+                for a in _actors
+                if a["ActorClassName"].startswith("ServeReplica")
+            ]
+            return len(set(replica_nodes)) == 1
+
+        wait_for_condition(check_replicas_on_worker_nodes)
+
+        # Ensure total actors of 2 proxies, 1 controller, and 2 replicas,
+        # and 2 nodes exist.
+        wait_for_condition(lambda: len(ray._private.state.actors()) == 5)
+        assert len(ray.nodes()) == 2
+
+        # Ensure `/-/healthz` and `/-/routes` return 200 and expected responses
+        # on both nodes.
+        def check_request(url: str, expected_code: int, expected_text: str):
+            req = requests.get(url)
+            assert req.status_code == expected_code
+            assert req.text == expected_text
+            return True
+
+        wait_for_condition(
+            condition_predictor=check_request,
+            url="http://127.0.0.1:8000/-/healthz",
+            expected_code=200,
+            expected_text="success",
+        )
+        assert requests.get("http://127.0.0.1:8000/-/routes").status_code == 200
+        assert requests.get("http://127.0.0.1:8000/-/routes").text == '{"/":"default"}'
+        wait_for_condition(
+            condition_predictor=check_request,
+            url="http://127.0.0.1:8001/-/healthz",
+            expected_code=200,
+            expected_text="success",
+        )
+        assert requests.get("http://127.0.0.1:8001/-/routes").status_code == 200
+        assert requests.get("http://127.0.0.1:8001/-/routes").text == '{"/":"default"}'
+
+        # Delete the deployment should bring the active actors down to 3 and drop
+        # replicas on all nodes.
+        serve.delete(name=SERVE_DEFAULT_APP_NAME)
+
+        def _check():
+            _actors = ray._private.state.actors().values()
+            return (
+                len(
+                    list(
+                        filter(
+                            lambda a: a["State"] == "ALIVE",
+                            _actors,
+                        )
+                    )
+                )
+                == 3
+            )
+
+        wait_for_condition(_check)
+
+        # Ensure head node `/-/healthz` and `/-/routes` continue to
+        # return 200 and expected responses. Also, the worker node
+        # `/-/healthz` and `/-/routes` should return 503 and unavailable
+        # responses.
+        wait_for_condition(
+            condition_predictor=check_request,
+            url="http://127.0.0.1:8000/-/healthz",
+            expected_code=200,
+            expected_text="success",
+        )
+        assert requests.get("http://127.0.0.1:8000/-/routes").status_code == 200
+        assert requests.get("http://127.0.0.1:8000/-/routes").text == "{}"
+        wait_for_condition(
+            condition_predictor=check_request,
+            url="http://127.0.0.1:8001/-/healthz",
+            expected_code=503,
+            expected_text="This node is being drained.",
+        )
+        assert requests.get("http://127.0.0.1:8001/-/routes").status_code == 503
+        assert (
+            requests.get("http://127.0.0.1:8001/-/routes").text
+            == "This node is being drained."
+        )
 
 
 if __name__ == "__main__":

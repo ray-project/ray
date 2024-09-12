@@ -103,7 +103,6 @@ DECLARE_stats(gcs_storage_operation_latency_ms);
 DECLARE_stats(gcs_storage_operation_count);
 DECLARE_stats(gcs_task_manager_task_events_dropped);
 DECLARE_stats(gcs_task_manager_task_events_stored);
-DECLARE_stats(gcs_task_manager_task_events_stored_bytes);
 DECLARE_stats(gcs_task_manager_task_events_reported);
 
 /// Object Store
@@ -119,6 +118,9 @@ DECLARE_stats(gcs_actors_count);
 
 /// Memory Manager
 DECLARE_stats(memory_manager_worker_eviction_total);
+
+/// Core Worker Task Manager
+DECLARE_stats(total_lineage_bytes);
 
 /// The below items are legacy implementation of metrics.
 /// TODO(sang): Use DEFINE_stats instead.

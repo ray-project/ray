@@ -86,7 +86,7 @@ py_test(
 
 py_test(
     name = "test_errors",
-    size = "small",
+    size = "medium",
     srcs = ["tests/test_errors.py"],
     tags = ["team:ml", "exclusive"],
     deps = [":ml_lib"]
@@ -118,7 +118,7 @@ py_test(
 
 py_test(
     name = "test_keras_callback",
-    size = "small",
+    size = "medium",
     srcs = ["tests/test_keras_callback.py"],
     tags = ["team:ml", "exclusive"],
     deps = [":ml_lib"]
@@ -144,6 +144,14 @@ py_test(
     name = "test_tensor_extension",
     size = "small",
     srcs = ["tests/test_tensor_extension.py"],
+    tags = ["team:ml", "team:data", "exclusive", "ray_data"],
+    deps = [":ml_lib"]
+)
+
+py_test(
+    name = "test_object_extension",
+    size = "small",
+    srcs = ["tests/test_object_extension.py"],
     tags = ["team:ml", "team:data", "exclusive", "ray_data"],
     deps = [":ml_lib"]
 )
@@ -246,14 +254,6 @@ py_test(
     name = "test_tracked_actor_task",
     size = "small",
     srcs = ["tests/execution/test_tracked_actor_task.py"],
-    tags = ["team:ml", "exclusive"],
-    deps = [":ml_lib"]
-)
-
-py_test(
-    name = "test_result",
-    size = "medium",
-    srcs = ["tests/test_result.py"],
     tags = ["team:ml", "exclusive"],
     deps = [":ml_lib"]
 )

@@ -24,7 +24,7 @@ if __name__ == "__main__":
         PPOConfig()
         .environment("CartPole-v1")
         .framework("torch")
-        .rollouts(num_rollout_workers=0)
+        .env_runners(num_env_runners=0)
     )
     # Note: No ray.init(), to test it works without Ray
     algo = config.build()

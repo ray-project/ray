@@ -20,7 +20,6 @@
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/network_util.h"
 #include "ray/common/ray_config.h"
-#include "ray/gcs/gcs_client/gcs_client.h"
 #include "ray/gcs/gcs_server/gcs_actor_manager.h"
 #include "ray/gcs/gcs_server/gcs_autoscaler_state_manager.h"
 #include "ray/gcs/gcs_server/gcs_job_manager.h"
@@ -115,7 +114,6 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
           rpc::ChannelType::GCS_WORKER_DELTA_CHANNEL,
           rpc::ChannelType::RAY_ERROR_INFO_CHANNEL,
           rpc::ChannelType::RAY_LOG_CHANNEL,
-          rpc::ChannelType::RAY_PYTHON_FUNCTION_CHANNEL,
           rpc::ChannelType::RAY_NODE_RESOURCE_USAGE_CHANNEL,
       },
       /*periodical_runner=*/&pubsub_periodical_runner_,
@@ -133,7 +131,6 @@ RedisClientOptions GcsServer::GetRedisClientOptions() const {
   return RedisClientOptions(config_.redis_address,
                             config_.redis_port,
                             config_.redis_password,
-                            config_.enable_sharding_conn,
                             config_.enable_redis_ssl);
 }
 
@@ -227,28 +224,20 @@ void GcsServer::DoStart(const GcsInitData &gcs_init_data) {
   // Init GCS task manager.
   InitGcsTaskManager();
 
-  // Init Monitor service.
-  InitMonitorServer();
-
   // Install event listeners.
   InstallEventListeners();
 
   // Init autoscaling manager
   InitGcsAutoscalerStateManager(gcs_init_data);
 
+  // Init usage stats client.
+  InitUsageStatsClient();
+
+  RecordMetrics();
+
   // Start RPC server when all tables have finished loading initial
   // data.
   rpc_server_.Run();
-
-  // Init usage stats client
-  // This is done after the RPC server starts
-  // since we need to know the port the rpc server listens on.
-  InitUsageStatsClient();
-  gcs_worker_manager_->SetUsageStatsClient(usage_stats_client_.get());
-  gcs_actor_manager_->SetUsageStatsClient(usage_stats_client_.get());
-  gcs_placement_group_manager_->SetUsageStatsClient(usage_stats_client_.get());
-  gcs_task_manager_->SetUsageStatsClient(usage_stats_client_.get());
-  RecordMetrics();
 
   periodical_runner_.RunFnPeriodically(
       [this] {
@@ -316,7 +305,7 @@ void GcsServer::InitGcsHealthCheckManager(const GcsInitData &gcs_init_data) {
   RAY_CHECK(gcs_node_manager_);
   auto node_death_callback = [this](const NodeID &node_id) {
     main_service_.post(
-        [this, node_id] { return gcs_node_manager_->OnNodeFailure(node_id); },
+        [this, node_id] { return gcs_node_manager_->OnNodeFailure(node_id, nullptr); },
         "GcsServer.NodeDeathCallback");
   };
 
@@ -371,7 +360,7 @@ void GcsServer::InitGcsResourceManager(const GcsInitData &gcs_init_data) {
                            << ". Skip this round of pulling for resource load";
           } else {
             // GetResourceLoad will also get usage. Historically it didn't.
-            raylet_client->GetResourceLoad([this](auto &status, auto &load_and_usage) {
+            raylet_client->GetResourceLoad([this](auto &status, auto &&load_and_usage) {
               if (status.ok()) {
                 // TODO(vitsai): Remove duplicate reporting to GcsResourceManager
                 // after verifying that non-autoscaler paths are taken care of.
@@ -561,8 +550,12 @@ void GcsServer::InitFunctionManager() {
 }
 
 void GcsServer::InitUsageStatsClient() {
-  usage_stats_client_ = std::make_unique<UsageStatsClient>(
-      "127.0.0.1:" + std::to_string(GetPort()), main_service_);
+  usage_stats_client_ = std::make_unique<UsageStatsClient>(kv_manager_->GetInstance());
+
+  gcs_worker_manager_->SetUsageStatsClient(usage_stats_client_.get());
+  gcs_actor_manager_->SetUsageStatsClient(usage_stats_client_.get());
+  gcs_placement_group_manager_->SetUsageStatsClient(usage_stats_client_.get());
+  gcs_task_manager_->SetUsageStatsClient(usage_stats_client_.get());
 }
 
 void GcsServer::InitKVManager() {
@@ -678,6 +671,7 @@ void GcsServer::InitGcsAutoscalerStateManager(const GcsInitData &gcs_init_data) 
   gcs_autoscaler_state_manager_ =
       std::make_unique<GcsAutoscalerStateManager>(config_.session_name,
                                                   *gcs_node_manager_,
+                                                  *gcs_actor_manager_,
                                                   *gcs_placement_group_manager_,
                                                   raylet_client_pool_);
   gcs_autoscaler_state_manager_->Initialize(gcs_init_data);
@@ -694,17 +688,6 @@ void GcsServer::InitGcsTaskManager() {
   task_info_service_.reset(new rpc::TaskInfoGrpcService(gcs_task_manager_->GetIoContext(),
                                                         *gcs_task_manager_));
   rpc_server_.RegisterService(*task_info_service_);
-}
-
-void GcsServer::InitMonitorServer() {
-  monitor_server_ = std::make_unique<GcsMonitorServer>(
-      *gcs_node_manager_,
-      cluster_resource_scheduler_->GetClusterResourceManager(),
-      gcs_resource_manager_,
-      gcs_placement_group_manager_);
-  monitor_grpc_service_.reset(
-      new rpc::MonitorGrpcService(main_service_, *monitor_server_));
-  rpc_server_.RegisterService(*monitor_grpc_service_);
 }
 
 void GcsServer::InstallEventListeners() {
@@ -740,7 +723,7 @@ void GcsServer::InstallEventListeners() {
         // node is removed from the GCS.
         gcs_resource_manager_->OnNodeDead(node_id);
         gcs_placement_group_manager_->OnNodeDead(node_id);
-        gcs_actor_manager_->OnNodeDead(node_id, node_ip_address);
+        gcs_actor_manager_->OnNodeDead(node, node_ip_address);
         gcs_job_manager_->OnNodeDead(node_id);
         raylet_client_pool_->Disconnect(node_id);
         gcs_healthcheck_manager_->RemoveNode(node_id);
@@ -825,7 +808,8 @@ void GcsServer::DumpDebugStateToFile() const {
 
 std::string GcsServer::GetDebugState() const {
   std::ostringstream stream;
-  stream << gcs_node_manager_->DebugString() << "\n\n"
+  stream << "Gcs Debug state:\n\n"
+         << gcs_node_manager_->DebugString() << "\n\n"
          << gcs_actor_manager_->DebugString() << "\n\n"
          << gcs_resource_manager_->DebugString() << "\n\n"
          << gcs_placement_group_manager_->DebugString() << "\n\n"

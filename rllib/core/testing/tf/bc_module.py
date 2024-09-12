@@ -1,17 +1,14 @@
 import tensorflow as tf
-from typing import Any, Mapping
+from typing import Any, Dict
 
-from ray.rllib.core.rl_module.rl_module import RLModule, RLModuleConfig
-from ray.rllib.models.tf.tf_distributions import TfCategorical
-from ray.rllib.core.rl_module.marl_module import (
-    MultiAgentRLModule,
-    MultiAgentRLModuleConfig,
-)
-from ray.rllib.core.rl_module.tf.tf_rl_module import TfRLModule
+from ray.rllib.core.columns import Columns
 from ray.rllib.core.models.specs.typing import SpecType
-from ray.rllib.policy.sample_batch import SampleBatch
+from ray.rllib.core.rl_module.rl_module import RLModule, RLModuleConfig
+from ray.rllib.core.rl_module.multi_rl_module import MultiRLModule, MultiRLModuleConfig
+from ray.rllib.core.rl_module.tf.tf_rl_module import TfRLModule
+from ray.rllib.models.tf.tf_distributions import TfCategorical
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.nested_dict import NestedDict
+from ray.rllib.utils.typing import StateDict
 
 
 class DiscreteBCTFModule(TfRLModule):
@@ -44,40 +41,40 @@ class DiscreteBCTFModule(TfRLModule):
 
     @override(RLModule)
     def output_specs_exploration(self) -> SpecType:
-        return [SampleBatch.ACTION_DIST_INPUTS]
+        return [Columns.ACTION_DIST_INPUTS]
 
     @override(RLModule)
     def output_specs_inference(self) -> SpecType:
-        return [SampleBatch.ACTION_DIST_INPUTS]
+        return [Columns.ACTION_DIST_INPUTS]
 
     @override(RLModule)
     def output_specs_train(self) -> SpecType:
-        return [SampleBatch.ACTION_DIST_INPUTS]
+        return [Columns.ACTION_DIST_INPUTS]
 
-    def _forward_shared(self, batch: NestedDict) -> Mapping[str, Any]:
+    def _forward_shared(self, batch: Dict[str, Any]) -> Dict[str, Any]:
         # We can use a shared forward method because BC does not need to distinguish
         # between train, inference, and exploration.
         action_logits = self.policy(batch["obs"])
-        return {SampleBatch.ACTION_DIST_INPUTS: action_logits}
+        return {Columns.ACTION_DIST_INPUTS: action_logits}
 
     @override(RLModule)
-    def _forward_inference(self, batch: NestedDict) -> Mapping[str, Any]:
+    def _forward_inference(self, batch: Dict[str, Any]) -> Dict[str, Any]:
         return self._forward_shared(batch)
 
     @override(RLModule)
-    def _forward_exploration(self, batch: NestedDict) -> Mapping[str, Any]:
+    def _forward_exploration(self, batch: Dict[str, Any]) -> Dict[str, Any]:
         return self._forward_shared(batch)
 
     @override(RLModule)
-    def _forward_train(self, batch: NestedDict) -> Mapping[str, Any]:
+    def _forward_train(self, batch: Dict[str, Any]) -> Dict[str, Any]:
         return self._forward_shared(batch)
 
     @override(RLModule)
-    def get_state(self) -> Mapping[str, Any]:
+    def get_state(self, *args, **kwargs) -> StateDict:
         return {"policy": self.policy.get_weights()}
 
     @override(RLModule)
-    def set_state(self, state: Mapping[str, Any]) -> None:
+    def set_state(self, state: StateDict) -> None:
         self.policy.set_weights(state["policy"])
 
 
@@ -120,11 +117,11 @@ class BCTfRLModuleWithSharedGlobalEncoder(TfRLModule):
         policy_in = tf.concat([global_enc, obs["local"]], axis=-1)
         action_logits = self.policy_head(policy_in)
 
-        return {SampleBatch.ACTION_DIST_INPUTS: action_logits}
+        return {Columns.ACTION_DIST_INPUTS: action_logits}
 
 
-class BCTfMultiAgentModuleWithSharedEncoder(MultiAgentRLModule):
-    def __init__(self, config: MultiAgentRLModuleConfig) -> None:
+class BCTfMultiAgentModuleWithSharedEncoder(MultiRLModule):
+    def __init__(self, config: MultiRLModuleConfig) -> None:
         super().__init__(config)
 
     def setup(self):

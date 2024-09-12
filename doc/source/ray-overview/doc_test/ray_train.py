@@ -23,7 +23,10 @@ def train_func():
     dataloader = train.torch.prepare_data_loader(dataloader)
 
     # Train.
-    for _ in range(5):
+    for epoch in range(5):
+        if train.get_context().get_world_size() > 1:
+            dataloader.sampler.set_epoch(epoch)
+
         epoch_loss = []
         for X, y in dataloader:
             pred = model(X)

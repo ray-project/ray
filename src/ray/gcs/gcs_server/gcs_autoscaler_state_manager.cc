@@ -14,6 +14,7 @@
 
 #include "ray/gcs/gcs_server/gcs_autoscaler_state_manager.h"
 
+#include "ray/gcs/gcs_server/gcs_actor_manager.h"
 #include "ray/gcs/gcs_server/gcs_node_manager.h"
 #include "ray/gcs/gcs_server/gcs_placement_group_manager.h"
 #include "ray/gcs/gcs_server/state_util.h"
@@ -24,11 +25,13 @@ namespace gcs {
 
 GcsAutoscalerStateManager::GcsAutoscalerStateManager(
     const std::string &session_name,
-    const GcsNodeManager &gcs_node_manager,
+    GcsNodeManager &gcs_node_manager,
+    GcsActorManager &gcs_actor_manager,
     const GcsPlacementGroupManager &gcs_placement_group_manager,
     std::shared_ptr<rpc::NodeManagerClientPool> raylet_client_pool)
     : session_name_(session_name),
       gcs_node_manager_(gcs_node_manager),
+      gcs_actor_manager_(gcs_actor_manager),
       gcs_placement_group_manager_(gcs_placement_group_manager),
       raylet_client_pool_(std::move(raylet_client_pool)),
       last_cluster_resource_state_version_(0),
@@ -215,6 +218,7 @@ void GcsAutoscalerStateManager::UpdateResourceLoadAndUsage(
   new_data.set_object_pulls_queued(data.object_pulls_queued());
   new_data.set_idle_duration_ms(data.idle_duration_ms());
   new_data.set_is_draining(data.is_draining());
+  new_data.set_draining_deadline_timestamp_ms(data.draining_deadline_timestamp_ms());
 
   // Last update time
   iter->second.first = absl::Now();
@@ -352,10 +356,22 @@ void GcsAutoscalerStateManager::HandleDrainNode(
     rpc::SendReplyCallback send_reply_callback) {
   const NodeID node_id = NodeID::FromBinary(request.node_id());
   RAY_LOG(INFO) << "HandleDrainNode " << node_id.Hex()
-                << ", reason: " << request.reason_message();
+                << ", reason: " << request.reason_message()
+                << ", deadline: " << request.deadline_timestamp_ms();
 
-  auto node = gcs_node_manager_.GetAliveNode(node_id);
-  if (!node.has_value()) {
+  int64_t draining_deadline_timestamp_ms = request.deadline_timestamp_ms();
+  if (draining_deadline_timestamp_ms < 0) {
+    std::ostringstream stream;
+    stream << "Draining deadline must be non-negative, received "
+           << draining_deadline_timestamp_ms;
+    auto msg = stream.str();
+    RAY_LOG(WARNING) << msg;
+    send_reply_callback(Status::Invalid(msg), nullptr, nullptr);
+    return;
+  }
+
+  auto maybe_node = gcs_node_manager_.GetAliveNode(node_id);
+  if (!maybe_node.has_value()) {
     if (gcs_node_manager_.GetAllDeadNodes().contains(node_id)) {
       // The node is dead so treat it as drained.
       reply->set_is_accepted(true);
@@ -370,18 +386,31 @@ void GcsAutoscalerStateManager::HandleDrainNode(
     return;
   }
 
+  if (RayConfig::instance().enable_reap_actor_death()) {
+    gcs_actor_manager_.SetPreemptedAndPublish(node_id);
+  }
+
+  auto node = std::move(maybe_node.value());
   rpc::Address raylet_address;
-  raylet_address.set_raylet_id(node.value()->node_id());
-  raylet_address.set_ip_address(node.value()->node_manager_address());
-  raylet_address.set_port(node.value()->node_manager_port());
+  raylet_address.set_raylet_id(node->node_id());
+  raylet_address.set_ip_address(node->node_manager_address());
+  raylet_address.set_port(node->node_manager_port());
 
   const auto raylet_client = raylet_client_pool_->GetOrConnectByAddress(raylet_address);
   raylet_client->DrainRaylet(
       request.reason(),
       request.reason_message(),
-      [reply, send_reply_callback](const Status &status,
-                                   const rpc::DrainRayletReply &raylet_reply) {
+      draining_deadline_timestamp_ms,
+      [this, request, reply, send_reply_callback, node_id](
+          const Status &status, const rpc::DrainRayletReply &raylet_reply) {
         reply->set_is_accepted(raylet_reply.is_accepted());
+
+        if (raylet_reply.is_accepted()) {
+          gcs_node_manager_.SetNodeDraining(
+              node_id, std::make_shared<rpc::autoscaler::DrainNodeRequest>(request));
+        } else {
+          reply->set_rejection_reason_message(raylet_reply.rejection_reason_message());
+        }
         send_reply_callback(status, nullptr, nullptr);
       });
 }

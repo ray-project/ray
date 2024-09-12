@@ -47,16 +47,24 @@ def column_udf(col, udf):
     return wraps
 
 
+def column_udf_class(col, udf):
+    class UDFClass:
+        def __call__(self, row):
+            return {col: udf(row[col])}
+
+    return UDFClass
+
+
 # Ex: named_values("id", [1, 2, 3])
 # Ex: named_values(["id", "id2"], [(1, 1), (2, 2), (3, 3)])
 def named_values(col_names, tuples):
     output = []
     if isinstance(col_names, list):
         for t in tuples:
-            output.append({name: value for (name, value) in zip(col_names, t)})
+            output.append(dict(zip(col_names, t)))
     else:
         for t in tuples:
-            output.append({name: value for (name, value) in zip((col_names,), (t,))})
+            output.append({col_names: t})
     return output
 
 
@@ -72,12 +80,15 @@ def run_op_tasks_sync(op: PhysicalOperator, only_existing=False):
     """
     tasks = op.get_active_tasks()
     while tasks:
-        ray.wait(
+        ref_to_task = {task.get_waitable(): task for task in tasks}
+        ready, _ = ray.wait(
             [task.get_waitable() for task in tasks],
             num_returns=len(tasks),
             fetch_local=False,
+            timeout=0.1,
         )
-        for task in tasks:
+        for ref in ready:
+            task = ref_to_task[ref]
             if isinstance(task, DataOpTask):
                 task.on_data_ready(None)
             else:

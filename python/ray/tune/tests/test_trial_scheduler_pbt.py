@@ -1,34 +1,33 @@
-import tempfile
-from functools import partial
-from typing import List
-
 import json
-import numpy as np
 import os
 import pickle
-import pytest
 import random
-import unittest
 import sys
+import tempfile
 import time
+import unittest
+from functools import partial
+from typing import List
 from unittest.mock import MagicMock
 
+import numpy as np
+import pytest
 
 import ray
 from ray import cloudpickle, train, tune
-from ray.air.config import FailureConfig, RunConfig, CheckpointConfig
+from ray._private.test_utils import object_memory_usage
+from ray.air.config import CheckpointConfig, FailureConfig, RunConfig
 from ray.train import Checkpoint
-from ray.tune import Trainable, Callback
+from ray.tune import Callback, Trainable
 from ray.tune.experiment import Trial
 from ray.tune.schedulers import PopulationBasedTraining
-from ray.tune.schedulers.pbt import _filter_mutated_params_from_config
 from ray.tune.schedulers.pb2 import PB2
 from ray.tune.schedulers.pb2_utils import UCB
+from ray.tune.schedulers.pbt import _filter_mutated_params_from_config
 from ray.tune.tests.execution.utils import create_execution_test_objects
 from ray.tune.tune_config import TuneConfig
-from ray._private.test_utils import object_memory_usage
+from ray.tune.utils.mock_trainable import MOCK_TRAINABLE_NAME, register_mock_trainable
 from ray.tune.utils.util import flatten_dict
-
 
 # Import psutil after ray so the packaged version is used.
 import psutil
@@ -111,7 +110,7 @@ class PopulationBasedTrainingMemoryTest(unittest.TestCase):
 class PopulationBasedTrainingFileDescriptorTest(unittest.TestCase):
     def setUp(self):
         ray.init(num_cpus=2)
-        os.environ["TUNE_GLOBAL_CHECKPOINT_S"] = "0"
+        os.environ["TUNE_GLOBAL_CHECKPOINT_S"] = "1"
 
     def tearDown(self):
         ray.shutdown()
@@ -578,20 +577,19 @@ class PopulationBasedTrainingResumeTest(unittest.TestCase):
             def status(self, status):
                 pass
 
-        trial1 = MockTrial("PPO", config=dict(num=1), storage=storage_context)
-        trial2 = MockTrial("PPO", config=dict(num=2), storage=storage_context)
-        trial3 = MockTrial("PPO", config=dict(num=3), storage=storage_context)
-        trial4 = MockTrial("PPO", config=dict(num=4), storage=storage_context)
+        register_mock_trainable()
+        trials = [
+            MockTrial(MOCK_TRAINABLE_NAME, config=dict(num=i), storage=storage_context)
+            for i in range(1, 5)
+        ]
+        trial1, trial2, trial3, trial4 = trials
 
-        runner.add_trial(trial1)
-        runner.add_trial(trial2)
-        runner.add_trial(trial3)
-        runner.add_trial(trial4)
+        for trial in trials:
+            trial.init_local_path()
+            runner.add_trial(trial)
 
-        scheduler.on_trial_add(runner, trial1)
-        scheduler.on_trial_add(runner, trial2)
-        scheduler.on_trial_add(runner, trial3)
-        scheduler.on_trial_add(runner, trial4)
+        for trial in trials:
+            scheduler.on_trial_add(runner, trial)
 
         # Add initial results.
         scheduler.on_trial_result(
@@ -644,7 +642,7 @@ class PopulationBasedTrainingResumeTest(unittest.TestCase):
         self.assertTrue(scheduler.choose_trial_to_run(runner))
 
         # Assert that trials do not hang when a terminated trial is added
-        trial5 = Trial("PPO", config=dict(num=5))
+        trial5 = Trial(MOCK_TRAINABLE_NAME, config=dict(num=5))
         runner.add_trial(trial5)
         scheduler.on_trial_add(runner, trial5)
         trial5.set_status(Trial.TERMINATED)

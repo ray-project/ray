@@ -4,9 +4,8 @@ import sys
 import time
 from copy import deepcopy
 from tempfile import NamedTemporaryFile
-from typing import List
+from typing import Dict, List, Optional
 
-import click
 import pytest
 import requests
 import yaml
@@ -16,7 +15,7 @@ from ray import serve
 from ray._private.test_utils import wait_for_condition
 from ray.serve._private.common import DeploymentID
 from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME, SERVE_NAMESPACE
-from ray.serve.scripts import convert_args_to_dict, remove_ansi_escape_sequences
+from ray.serve.scripts import remove_ansi_escape_sequences
 from ray.tests.conftest import tmp_working_dir  # noqa: F401, E501
 from ray.util.state import list_actors
 
@@ -27,23 +26,9 @@ def assert_deployments_live(ids: List[DeploymentID]):
     running_actor_names = [actor["name"] for actor in list_actors()]
 
     for deployment_id in ids:
-        prefix = f"{deployment_id.app}#{deployment_id.name}"
+        prefix = f"{deployment_id.app_name}#{deployment_id.name}"
         msg = f"Deployment {deployment_id} is not live"
         assert any(prefix in actor_name for actor_name in running_actor_names), msg
-
-
-def test_convert_args_to_dict():
-    assert convert_args_to_dict(tuple()) == {}
-
-    with pytest.raises(
-        click.ClickException, match="Invalid application argument 'bad_arg'"
-    ):
-        convert_args_to_dict(("bad_arg",))
-
-    assert convert_args_to_dict(("key1=val1", "key2=val2")) == {
-        "key1": "val1",
-        "key2": "val2",
-    }
 
 
 def test_start_shutdown(ray_start_stop):
@@ -51,10 +36,15 @@ def test_start_shutdown(ray_start_stop):
     subprocess.check_output(["serve", "shutdown", "-y"])
 
 
+def check_http_response(expected_text: str, json: Optional[Dict] = None):
+    resp = requests.post("http://localhost:8000/", json=json)
+    assert resp.text == expected_text
+    return True
+
+
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
 def test_deploy_basic(ray_start_stop):
     """Deploys some valid config files and checks that the deployments work."""
-    # Initialize serve in test to enable calling serve.list_deployments()
     ray.init(address="auto", namespace=SERVE_NAMESPACE)
 
     # Create absolute file names to YAML config files
@@ -78,23 +68,23 @@ def test_deploy_basic(ray_start_stop):
         print("Deploy request sent successfully.")
 
         wait_for_condition(
-            lambda: requests.post("http://localhost:8000/", json=["ADD", 2]).json()
-            == "3 pizzas please!",
+            check_http_response,
+            json=["ADD", 2],
+            expected_text="3 pizzas please!",
             timeout=15,
         )
         wait_for_condition(
-            lambda: requests.post("http://localhost:8000/", json=["MUL", 2]).json()
-            == "-4 pizzas please!",
+            check_http_response,
+            json=["MUL", 2],
+            expected_text="-4 pizzas please!",
             timeout=15,
         )
         print("Deployments are reachable over HTTP.")
 
         deployments = [
-            DeploymentID("DAGDriver", SERVE_DEFAULT_APP_NAME),
-            DeploymentID("create_order", SERVE_DEFAULT_APP_NAME),
-            DeploymentID("Router", SERVE_DEFAULT_APP_NAME),
-            DeploymentID("Multiplier", SERVE_DEFAULT_APP_NAME),
-            DeploymentID("Adder", SERVE_DEFAULT_APP_NAME),
+            DeploymentID(name="Router"),
+            DeploymentID(name="Multiplier"),
+            DeploymentID(name="Adder"),
         ]
         assert_deployments_live(deployments)
         print("All deployments are live.\n")
@@ -107,22 +97,23 @@ def test_deploy_basic(ray_start_stop):
         print("Deploy request sent successfully.")
 
         wait_for_condition(
-            lambda: requests.post("http://localhost:8000/", json=["ADD", 0]).json()
-            == 1,
+            check_http_response,
+            json=["ADD", 0],
+            expected_text="1",
             timeout=15,
         )
         wait_for_condition(
-            lambda: requests.post("http://localhost:8000/", json=["SUB", 5]).json()
-            == 3,
+            check_http_response,
+            json=["SUB", 5],
+            expected_text="3",
             timeout=15,
         )
         print("Deployments are reachable over HTTP.")
 
         deployments = [
-            DeploymentID("DAGDriver", SERVE_DEFAULT_APP_NAME),
-            DeploymentID("Router", SERVE_DEFAULT_APP_NAME),
-            DeploymentID("Add", SERVE_DEFAULT_APP_NAME),
-            DeploymentID("Subtract", SERVE_DEFAULT_APP_NAME),
+            DeploymentID(name="Router"),
+            DeploymentID(name="Add"),
+            DeploymentID(name="Subtract"),
         ]
         assert_deployments_live(deployments)
         print("All deployments are live.\n")
@@ -162,7 +153,6 @@ def test_deploy_with_http_options(ray_start_stop):
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
 def test_deploy_multi_app_basic(ray_start_stop):
     """Deploys some valid config files and checks that the deployments work."""
-    # Initialize serve in test to enable calling serve.list_deployments()
     ray.init(address="auto", namespace=SERVE_NAMESPACE)
 
     # Create absolute file names to YAML config files
@@ -210,12 +200,12 @@ def test_deploy_multi_app_basic(ray_start_stop):
         print('Application "app2" is reachable over HTTP.')
 
         deployment_names = [
-            DeploymentID("Router", "app1"),
-            DeploymentID("Multiplier", "app1"),
-            DeploymentID("Adder", "app1"),
-            DeploymentID("Router", "app2"),
-            DeploymentID("Multiplier", "app2"),
-            DeploymentID("Adder", "app2"),
+            DeploymentID(name="Router", app_name="app1"),
+            DeploymentID(name="Multiplier", app_name="app1"),
+            DeploymentID(name="Adder", app_name="app1"),
+            DeploymentID(name="Router", app_name="app2"),
+            DeploymentID(name="Multiplier", app_name="app2"),
+            DeploymentID(name="Adder", app_name="app2"),
         ]
         assert_deployments_live(deployment_names)
         print("All deployments are live.\n")
@@ -245,11 +235,11 @@ def test_deploy_multi_app_basic(ray_start_stop):
         print('Application "app2" is reachable over HTTP.')
 
         deployment_names = [
-            DeploymentID("BasicDriver", "app1"),
-            DeploymentID("f", "app1"),
-            DeploymentID("Router", "app2"),
-            DeploymentID("Multiplier", "app2"),
-            DeploymentID("Adder", "app2"),
+            DeploymentID(name="BasicDriver", app_name="app1"),
+            DeploymentID(name="f", app_name="app1"),
+            DeploymentID(name="Router", app_name="app2"),
+            DeploymentID(name="Multiplier", app_name="app2"),
+            DeploymentID(name="Adder", app_name="app2"),
         ]
         assert_deployments_live(deployment_names)
         print("All deployments are live.\n")
@@ -476,7 +466,7 @@ def test_status_basic(ray_start_stop):
         return len(serve_status["applications"][app_name]["deployments"])
 
     wait_for_condition(
-        lambda: num_live_deployments(SERVE_DEFAULT_APP_NAME) == 5, timeout=15
+        lambda: num_live_deployments(SERVE_DEFAULT_APP_NAME) == 3, timeout=15
     )
     status_response = subprocess.check_output(
         ["serve", "status", "-a", "http://localhost:52365/"]
@@ -485,15 +475,14 @@ def test_status_basic(ray_start_stop):
     default_app = serve_status["applications"][SERVE_DEFAULT_APP_NAME]
 
     expected_deployments = {
-        "DAGDriver",
         "Multiplier",
         "Adder",
         "Router",
-        "create_order",
     }
     for name, status in default_app["deployments"].items():
         expected_deployments.remove(name)
         assert status["status"] in {"HEALTHY", "UPDATING"}
+        assert status["status_trigger"] == "CONFIG_UPDATE_COMPLETED"
         assert status["replica_states"]["RUNNING"] in {0, 1}
         assert "message" in status
     assert len(expected_deployments) == 0
@@ -532,6 +521,10 @@ def test_status_error_msg_format(ray_start_stop):
         api_status = serve.status().applications[SERVE_DEFAULT_APP_NAME]
         assert cli_status["status"] == "DEPLOY_FAILED"
         assert remove_ansi_escape_sequences(cli_status["message"]) in api_status.message
+
+        deployment_status = cli_status["deployments"]["A"]
+        assert deployment_status["status"] == "UNHEALTHY"
+        assert deployment_status["status_trigger"] == "REPLICA_STARTUP_FAILED"
         return True
 
     wait_for_condition(check_for_failed_deployment)
@@ -603,7 +596,11 @@ def test_status_constructor_error(ray_start_stop):
         )
         status = yaml.safe_load(cli_output)["applications"][SERVE_DEFAULT_APP_NAME]
         assert status["status"] == "DEPLOY_FAILED"
-        assert "ZeroDivisionError" in status["deployments"]["A"]["message"]
+
+        deployment_status = status["deployments"]["A"]
+        assert deployment_status["status"] == "UNHEALTHY"
+        assert deployment_status["status_trigger"] == "REPLICA_STARTUP_FAILED"
+        assert "ZeroDivisionError" in deployment_status["message"]
         return True
 
     wait_for_condition(check_for_failed_deployment)
@@ -630,7 +627,7 @@ def test_status_package_unavailable_in_controller(ray_start_stop):
         assert "some_wrong_url" in status["deployments"]["TestDeployment"]["message"]
         return True
 
-    wait_for_condition(check_for_failed_deployment, timeout=15)
+    wait_for_condition(check_for_failed_deployment, timeout=20)
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
@@ -680,6 +677,56 @@ def test_replica_placement_group_options(ray_start_stop):
         return True
 
     wait_for_condition(check_application_status, timeout=15)
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
+def test_deploy_from_import_path(ray_start_stop):
+    """Test that `deploy` works from an import path."""
+
+    import_path = "ray.serve.tests.test_config_files.arg_builders.build_echo_app"
+
+    subprocess.check_output(["serve", "deploy", import_path])
+    wait_for_condition(
+        check_http_response,
+        expected_text="DEFAULT",
+        timeout=15,
+    )
+
+    subprocess.check_output(["serve", "deploy", import_path, "message=redeployed!"])
+    wait_for_condition(
+        check_http_response,
+        expected_text="redeployed!",
+        timeout=15,
+    )
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
+@pytest.mark.parametrize(
+    "ray_start_stop_in_specific_directory",
+    [
+        os.path.join(os.path.dirname(__file__), "test_config_files"),
+    ],
+    indirect=True,
+)
+def test_deploy_with_access_to_current_directory(ray_start_stop_in_specific_directory):
+    """Test serve deploy using modules in the current directory succeeds.
+
+    There was an issue where dashboard client doesn't add the current directory to
+    the sys.path and failed to deploy a Serve app defined in the directory. This
+    test ensures that files in the current directory can be accessed and deployed.
+
+    See: https://github.com/ray-project/ray/issues/43889
+    """
+    # Deploy Serve application with a config in the current directory.
+    subprocess.check_output(["serve", "deploy", "use_current_working_directory.yaml"])
+
+    # Ensure serve deploy eventually succeeds.
+    def check_deploy_successfully():
+        status_response = subprocess.check_output(["serve", "status"])
+        assert b"RUNNING" in status_response
+        return True
+
+    wait_for_condition(check_deploy_successfully, timeout=5)
 
 
 if __name__ == "__main__":

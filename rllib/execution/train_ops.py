@@ -3,17 +3,15 @@ import numpy as np
 import math
 from typing import Dict
 
-from ray.rllib.execution.common import (
-    LEARN_ON_BATCH_TIMER,
-    LOAD_BATCH_TIMER,
-)
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
-from ray.rllib.utils.annotations import DeveloperAPI
+from ray.rllib.utils.annotations import OldAPIStack
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.deprecation import deprecation_warning
 from ray.rllib.utils.metrics import (
     NUM_ENV_STEPS_TRAINED,
     NUM_AGENT_STEPS_TRAINED,
+    LEARN_ON_BATCH_TIMER,
+    LOAD_BATCH_TIMER,
 )
 from ray.rllib.utils.metrics.learner_info import LearnerInfoBuilder
 from ray.rllib.utils.sgd import do_minibatch_sgd
@@ -24,7 +22,7 @@ tf1, tf, tfv = try_import_tf()
 logger = logging.getLogger(__name__)
 
 
-@DeveloperAPI
+@OldAPIStack
 def train_one_step(algorithm, train_batch, policies_to_train=None) -> Dict:
     """Function that improves the all policies in `train_batch` on the local worker.
 
@@ -33,7 +31,7 @@ def train_one_step(algorithm, train_batch, policies_to_train=None) -> Dict:
 
         from ray.rllib.execution.rollout_ops import synchronous_parallel_sample
         algo = [...]
-        train_batch = synchronous_parallel_sample(algo.workers)
+        train_batch = synchronous_parallel_sample(algo.env_runner_group)
         # This trains the policy on one batch.
         print(train_one_step(algo, train_batch)))
 
@@ -45,8 +43,8 @@ def train_one_step(algorithm, train_batch, policies_to_train=None) -> Dict:
     the LEARN_ON_BATCH_TIMER timer of the `algorithm` object.
     """
     config = algorithm.config
-    workers = algorithm.workers
-    local_worker = workers.local_worker()
+    workers = algorithm.env_runner_group
+    local_worker = workers.local_env_runner
     num_sgd_iter = config.get("num_sgd_iter", 1)
     sgd_minibatch_size = config.get("sgd_minibatch_size", 0)
 
@@ -84,7 +82,7 @@ def train_one_step(algorithm, train_batch, policies_to_train=None) -> Dict:
     return info
 
 
-@DeveloperAPI
+@OldAPIStack
 def multi_gpu_train_one_step(algorithm, train_batch) -> Dict:
     """Multi-GPU version of train_one_step.
 
@@ -98,7 +96,7 @@ def multi_gpu_train_one_step(algorithm, train_batch) -> Dict:
 
         from ray.rllib.execution.rollout_ops import synchronous_parallel_sample
         algo = [...]
-        train_batch = synchronous_parallel_sample(algo.workers)
+        train_batch = synchronous_parallel_sample(algo.env_runner_group)
         # This trains the policy on one batch.
         print(multi_gpu_train_one_step(algo, train_batch)))
 
@@ -114,8 +112,8 @@ def multi_gpu_train_one_step(algorithm, train_batch) -> Dict:
             old=("ray.rllib.execution.train_ops." "multi_gpu_train_one_step")
         )
     config = algorithm.config
-    workers = algorithm.workers
-    local_worker = workers.local_worker()
+    workers = algorithm.env_runner_group
+    local_worker = workers.local_env_runner
     num_sgd_iter = config.get("num_sgd_iter", 1)
     sgd_minibatch_size = config.get("sgd_minibatch_size", config["train_batch_size"])
 

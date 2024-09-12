@@ -16,6 +16,11 @@ from typing import (
 import numpy as np
 
 from ray.air.constants import TENSOR_COLUMN_NAME
+from ray.data._internal.numpy_support import (
+    convert_udf_returns_to_numpy,
+    validate_numpy_batch,
+)
+from ray.data._internal.row import TableRow
 from ray.data._internal.table_block import TableBlockAccessor, TableBlockBuilder
 from ray.data._internal.util import find_partitions
 from ray.data.block import (
@@ -23,17 +28,17 @@ from ray.data.block import (
     BlockAccessor,
     BlockExecStats,
     BlockMetadata,
+    BlockType,
     KeyType,
     U,
 )
 from ray.data.context import DataContext
-from ray.data.row import TableRow
 
 if TYPE_CHECKING:
     import pandas
     import pyarrow
 
-    from ray.data._internal.sort import SortKey
+    from ray.data._internal.planner.exchange.sort_task_spec import SortKey
     from ray.data.aggregate import AggregateFn
 
 T = TypeVar("T")
@@ -58,21 +63,23 @@ class PandasRow(TableRow):
     def __getitem__(self, key: Union[str, List[str]]) -> Any:
         from ray.data.extensions import TensorArrayElement
 
+        pd = lazy_import_pandas()
+
         def get_item(keys: List[str]) -> Any:
             col = self._row[keys]
             if len(col) == 0:
                 return None
 
             items = col.iloc[0]
-            if isinstance(items[0], TensorArrayElement):
+            if isinstance(items.iloc[0], TensorArrayElement):
                 # Getting an item in a Pandas tensor column may return
                 # a TensorArrayElement, which we have to convert to an ndarray.
-                return tuple([item.to_numpy() for item in items])
+                return pd.Series(item.to_numpy() for item in items)
 
             try:
                 # Try to interpret this as a numpy-type value.
                 # See https://stackoverflow.com/questions/9452775/converting-numpy-dtypes-to-native-python-types.  # noqa: E501
-                return tuple([item.as_py() for item in items])
+                return pd.Series(item.as_py() for item in items)
 
             except (AttributeError, ValueError):
                 # Fallback to the original form.
@@ -86,7 +93,7 @@ class PandasRow(TableRow):
         if items is None:
             return None
         elif is_single_item:
-            return items[0]
+            return items.iloc[0]
         else:
             return items
 
@@ -141,6 +148,9 @@ class PandasBlockBuilder(TableBlockBuilder):
         pandas = lazy_import_pandas()
         return pandas.DataFrame()
 
+    def block_type(self) -> BlockType:
+        return BlockType.PANDAS
+
 
 # This is to be compatible with pyarrow.lib.schema
 # TODO (kfstorm): We need a format-independent way to represent schema.
@@ -155,6 +165,19 @@ class PandasBlockAccessor(TableBlockAccessor):
 
     def column_names(self) -> List[str]:
         return self._table.columns.tolist()
+
+    def append_column(self, name: str, data: Any) -> Block:
+        assert name not in self._table.columns
+
+        if any(isinstance(item, np.ndarray) for item in data):
+            raise NotImplementedError(
+                f"`{self.__class__.__name__}.append_column()` doesn't support "
+                "array-like data."
+            )
+
+        table = self._table.copy()
+        table[name] = data
+        return table
 
     @staticmethod
     def _build_tensor_row(row: PandasRow) -> np.ndarray:
@@ -228,8 +251,9 @@ class PandasBlockAccessor(TableBlockAccessor):
             columns = [columns]
             should_be_single_ndarray = True
 
+        column_names_set = set(self._table.columns)
         for column in columns:
-            if column not in self._table.columns:
+            if column not in column_names_set:
                 raise ValueError(
                     f"Cannot find column {column}, available columns: "
                     f"{self._table.columns.tolist()}"
@@ -248,7 +272,22 @@ class PandasBlockAccessor(TableBlockAccessor):
     def to_arrow(self) -> "pyarrow.Table":
         import pyarrow
 
-        return pyarrow.table(self._table)
+        # Set `preserve_index=False` so that Arrow doesn't add a '__index_level_0__'
+        # column to the resulting table.
+        return pyarrow.Table.from_pandas(self._table, preserve_index=False)
+
+    @staticmethod
+    def numpy_to_block(
+        batch: Union[Dict[str, np.ndarray], Dict[str, list]],
+    ) -> "pandas.DataFrame":
+        validate_numpy_batch(batch)
+
+        batch = {
+            column_name: convert_udf_returns_to_numpy(column)
+            for column_name, column in batch.items()
+        }
+        block = PandasBlockBuilder._table_from_pydict(batch)
+        return block
 
     def num_rows(self) -> int:
         return self._table.shape[0]
@@ -471,12 +510,12 @@ class PandasBlockAccessor(TableBlockAccessor):
         if len(blocks) == 0:
             ret = PandasBlockAccessor._empty_table()
         else:
+            # Handle blocks of different types.
+            blocks = TableBlockAccessor.normalize_block_types(blocks, "pandas")
             ret = pd.concat(blocks, ignore_index=True)
             columns, ascending = sort_key.to_pandas_sort_args()
             ret = ret.sort_values(by=columns, ascending=ascending)
-        return ret, PandasBlockAccessor(ret).get_metadata(
-            None, exec_stats=stats.build()
-        )
+        return ret, PandasBlockAccessor(ret).get_metadata(exec_stats=stats.build())
 
     @staticmethod
     def aggregate_combined_blocks(
@@ -512,6 +551,9 @@ class PandasBlockAccessor(TableBlockAccessor):
             if key is not None
             else (lambda r: (0,))
         )
+
+        # Handle blocks of different types.
+        blocks = TableBlockAccessor.normalize_block_types(blocks, "pandas")
 
         iter = heapq.merge(
             *[
@@ -585,6 +627,7 @@ class PandasBlockAccessor(TableBlockAccessor):
                 break
 
         ret = builder.build()
-        return ret, PandasBlockAccessor(ret).get_metadata(
-            None, exec_stats=stats.build()
-        )
+        return ret, PandasBlockAccessor(ret).get_metadata(exec_stats=stats.build())
+
+    def block_type(self) -> BlockType:
+        return BlockType.PANDAS

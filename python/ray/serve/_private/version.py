@@ -1,13 +1,13 @@
 import json
 import logging
-from abc import ABC
 from copy import deepcopy
 from typing import Any, Dict, List, Optional
 from zlib import crc32
 
 from ray._private.pydantic_compat import BaseModel
 from ray.serve._private.config import DeploymentConfig
-from ray.serve._private.utils import DeploymentOptionUpdateType, get_random_letters
+from ray.serve._private.utils import DeploymentOptionUpdateType, get_random_string
+from ray.serve.config import AutoscalingConfig
 from ray.serve.generated.serve_pb2 import DeploymentVersion as DeploymentVersionProto
 
 logger = logging.getLogger("ray.serve")
@@ -26,7 +26,7 @@ class DeploymentVersion:
         if code_version is not None and not isinstance(code_version, str):
             raise TypeError(f"code_version must be str, got {type(code_version)}.")
         if code_version is None:
-            self.code_version = get_random_letters()
+            self.code_version = get_random_string()
         else:
             self.code_version = code_version
 
@@ -78,8 +78,8 @@ class DeploymentVersion:
         changed.
         """
         return (
-            self.deployment_config.max_concurrent_queries
-            != new_version.deployment_config.max_concurrent_queries
+            self.deployment_config.max_ongoing_requests
+            != new_version.deployment_config.max_ongoing_requests
         )
 
     def compute_hashes(self):
@@ -175,7 +175,15 @@ class DeploymentVersion:
                 reconfigure_dict[option_name] = getattr(
                     self.deployment_config, option_name
                 )
-                if isinstance(reconfigure_dict[option_name], BaseModel):
+                # If autoscaling config was changed, only broadcast to
+                # replicas if metrics_interval_s or look_back_period_s
+                # was changed, because the rest of the fields are only
+                # used in deployment state manager
+                if isinstance(reconfigure_dict[option_name], AutoscalingConfig):
+                    reconfigure_dict[option_name] = reconfigure_dict[option_name].dict(
+                        include={"metrics_interval_s", "look_back_period_s"}
+                    )
+                elif isinstance(reconfigure_dict[option_name], BaseModel):
                     reconfigure_dict[option_name] = reconfigure_dict[option_name].dict()
 
         if (
@@ -190,12 +198,3 @@ class DeploymentVersion:
 
 def _serialize(json_object):
     return str.encode(json.dumps(json_object, sort_keys=True))
-
-
-class VersionedReplica(ABC):
-    @property
-    def version(self) -> DeploymentVersion:
-        pass
-
-    def update_state(self, state):
-        pass

@@ -160,7 +160,7 @@ Status RedisStoreClient::AsyncGet(const std::string &table_name,
   RAY_CHECK(callback != nullptr);
 
   auto redis_callback = [callback](const std::shared_ptr<CallbackReply> &reply) {
-    boost::optional<std::string> result;
+    std::optional<std::string> result;
     if (!reply->IsNil()) {
       result = reply->ReadAsString();
     }
@@ -296,13 +296,13 @@ void RedisStoreClient::SendRedisCmd(std::vector<std::string> keys,
       absl::MutexLock lock(&mu_);
       *num_ready_keys += 1;
       RAY_CHECK(*num_ready_keys <= keys.size());
-      // There are still pending requets for these keys.
+      // There are still pending requests for these keys.
       if (*num_ready_keys != keys.size()) {
         return;
       }
     }
     // Send the actual request
-    auto cxt = redis_client_->GetShardContext("");
+    auto cxt = redis_client_->GetPrimaryContext();
     cxt->RunArgvAsync(std::move(args),
                       [this,
                        keys = std::move(keys),
@@ -362,7 +362,7 @@ Status RedisStoreClient::DeleteByKeys(const std::vector<std::string> &keys,
   auto total_count = del_cmds.size();
   auto finished_count = std::make_shared<size_t>(0);
   auto num_deleted = std::make_shared<int64_t>(0);
-  auto context = redis_client_->GetShardContext("");
+  auto context = redis_client_->GetPrimaryContext();
   for (auto &command : del_cmds) {
     std::vector<std::string> partition_keys(command.begin() + 2, command.end());
     auto delete_callback = [num_deleted, finished_count, total_count, callback](
@@ -388,9 +388,7 @@ RedisStoreClient::RedisScanner::RedisScanner(
     : table_name_(table_name),
       external_storage_namespace_(external_storage_namespace),
       redis_client_(std::move(redis_client)) {
-  for (size_t index = 0; index < redis_client_->GetShardContexts().size(); ++index) {
-    shard_to_cursor_[index] = 0;
-  }
+  cursor_ = 0;
 }
 
 Status RedisStoreClient::RedisScanner::ScanKeysAndValues(
@@ -405,58 +403,50 @@ Status RedisStoreClient::RedisScanner::ScanKeysAndValues(
 
 void RedisStoreClient::RedisScanner::Scan(const std::string &match_pattern,
                                           const StatusCallback &callback) {
-  // This lock guards the iterator over shard_to_cursor_ because the callbacks
-  // can remove items from the shard_to_cursor_ map. If performance is a concern,
+  // This lock guards cursor_ because the callbacks
+  // can modify cursor_. If performance is a concern,
   // we should consider using a reader-writer lock.
   absl::MutexLock lock(&mutex_);
-  if (shard_to_cursor_.empty()) {
+  if (!cursor_.has_value()) {
     callback(Status::OK());
     return;
   }
 
   size_t batch_count = RayConfig::instance().maximum_gcs_storage_operation_batch_size();
-  for (const auto &item : shard_to_cursor_) {
-    ++pending_request_count_;
+  ++pending_request_count_;
 
-    size_t shard_index = item.first;
-    size_t cursor = item.second;
-
-    auto scan_callback = [this, match_pattern, shard_index, callback](
-                             const std::shared_ptr<CallbackReply> &reply) {
-      OnScanCallback(match_pattern, shard_index, reply, callback);
-    };
-    // Scan by prefix from Redis.
-    std::vector<std::string> args = {"HSCAN",
-                                     external_storage_namespace_,
-                                     std::to_string(cursor),
-                                     "MATCH",
-                                     match_pattern,
-                                     "COUNT",
-                                     std::to_string(batch_count)};
-    auto shard_context = redis_client_->GetShardContexts()[shard_index];
-    shard_context->RunArgvAsync(args, scan_callback);
-  }
+  auto scan_callback =
+      [this, match_pattern, callback](const std::shared_ptr<CallbackReply> &reply) {
+        OnScanCallback(match_pattern, reply, callback);
+      };
+  // Scan by prefix from Redis.
+  std::vector<std::string> args = {"HSCAN",
+                                   external_storage_namespace_,
+                                   std::to_string(cursor_.value()),
+                                   "MATCH",
+                                   match_pattern,
+                                   "COUNT",
+                                   std::to_string(batch_count)};
+  auto primary_context = redis_client_->GetPrimaryContext();
+  primary_context->RunArgvAsync(args, scan_callback);
 }
 
 void RedisStoreClient::RedisScanner::OnScanCallback(
     const std::string &match_pattern,
-    size_t shard_index,
     const std::shared_ptr<CallbackReply> &reply,
     const StatusCallback &callback) {
   RAY_CHECK(reply);
   std::vector<std::string> scan_result;
   size_t cursor = reply->ReadAsScanArray(&scan_result);
-  // Update shard cursors and results_.
+  // Update cursor and results_.
   {
     absl::MutexLock lock(&mutex_);
-    auto shard_it = shard_to_cursor_.find(shard_index);
-    RAY_CHECK(shard_it != shard_to_cursor_.end());
-    // If cursor is equal to 0, it means that the scan of this shard is finished, so we
-    // erase it from shard_to_cursor_.
+    // If cursor is equal to 0, it means that the scan is finished, so we
+    // reset cursor_.
     if (cursor == 0) {
-      shard_to_cursor_.erase(shard_it);
+      cursor_.reset();
     } else {
-      shard_it->second = cursor;
+      cursor_ = cursor;
     }
     RAY_CHECK(scan_result.size() % 2 == 0);
     for (size_t i = 0; i < scan_result.size(); i += 2) {

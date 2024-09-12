@@ -5,18 +5,17 @@ import logging
 
 import ray
 from ray.rllib.policy.policy import Policy
-from ray.rllib.utils.annotations import override
+from ray.rllib.utils.annotations import OldAPIStack, override
 from ray.rllib.utils.deprecation import deprecation_warning
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.threading import with_lock
 from ray.rllib.utils.typing import PolicyID
-from ray.util.annotations import PublicAPI
 
 tf1, tf, tfv = try_import_tf()
 logger = logging.getLogger(__name__)
 
 
-@PublicAPI(stability="beta")
+@OldAPIStack
 class PolicyMap(dict):
     """Maps policy IDs to Policy objects.
 

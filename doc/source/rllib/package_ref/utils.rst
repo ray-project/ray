@@ -1,3 +1,8 @@
+
+.. include:: /_includes/rllib/we_are_hiring.rst
+
+.. include:: /_includes/rllib/new_api_stack.rst
+
 .. _utils-reference-docs:
 
 RLlib Utilities
@@ -176,7 +181,6 @@ Torch utilities
    ~convert_to_torch_tensor
    ~explained_variance
    ~flatten_inputs_to_1d_tensor
-   ~get_device
    ~global_norm
    ~huber_loss
    ~l2_loss
@@ -211,3 +215,48 @@ Numpy utilities
    ~relu
    ~sigmoid
    ~softmax
+
+Checkpoint utilities
+~~~~~~~~~~~~~~~~~~~~
+
+.. currentmodule:: ray.rllib.utils.checkpoints
+
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+
+   Checkpointable
+   convert_to_msgpack_checkpoint
+   convert_to_msgpack_policy_checkpoint
+   get_checkpoint_info
+   try_import_msgpack
+
+Policy utilities
+~~~~~~~~~~~~~~~~
+
+.. currentmodule:: ray.rllib.utils.policy
+
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+
+   compute_log_likelihoods_from_input_dict
+   create_policy_for_framework
+   local_policy_inference
+   parse_policy_specs_from_checkpoint
+
+Other utilities
+~~~~~~~~~~~~~~~
+
+.. currentmodule:: ray.rllib
+
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+
+   utils.tensor_dtype.get_np_dtype
+   common.CLIArguments
+   common.FrameworkEnum
+   common.SupportedFileType
+   core.rl_module.validate_module_id
+   train.load_experiments_from_file

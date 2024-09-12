@@ -27,7 +27,7 @@ reason() {
   echo "${REASON}"
 }
 
-RAY_TEST_SCRIPT=${RAY_TEST_SCRIPT-ray_release/scripts/run_release_test.py}
+RAY_TEST_SCRIPT=${RAY_TEST_SCRIPT-"python ray_release/scripts/run_release_test.py"}
 RELEASE_RESULTS_DIR=${RELEASE_RESULTS_DIR-/tmp/artifacts}
 BUILDKITE_MAX_RETRIES=1
 BUILDKITE_RETRY_CODE=79
@@ -38,9 +38,8 @@ export RAY_TEST_REPO RAY_TEST_BRANCH RELEASE_RESULTS_DIR BUILDKITE_MAX_RETRIES B
 if [ -n "${RAY_COMMIT_OF_WHEEL-}" ]; then 
   git config --global --add safe.directory /workdir
   HEAD_COMMIT=$(git rev-parse HEAD)
-  HEAD_BRANCH=$(git rev-parse --abbrev-ref HEAD)
   echo "The test repo has head commit of ${HEAD_COMMIT}"
-  if [[ "${HEAD_COMMIT}" != "${RAY_COMMIT_OF_WHEEL}" && ("${HEAD_BRANCH}" == "master" || "${HEAD_BRANCH}" = releases/*) ]]; then
+  if [[ "${HEAD_COMMIT}" != "${RAY_COMMIT_OF_WHEEL}" ]]; then
     echo "The checked out test code doesn't match with the installed wheel. \
           This is likely due to a racing condition when a PR is landed between \
           a wheel is installed and test code is checked out."
@@ -94,7 +93,7 @@ while [ "$RETRY_NUM" -lt "$MAX_RETRIES" ]; do
   set +e
 
   trap _term SIGINT SIGTERM
-  python "${RAY_TEST_SCRIPT}" "$@" &
+  ${RAY_TEST_SCRIPT} "$@" &
   proc=$!
 
   wait "$proc"

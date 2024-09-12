@@ -1,7 +1,5 @@
 :orphan:
 
-.. _tensorflow_mnist_example:
-
 Training with TensorFlow and Ray Train
 ======================================
 
@@ -16,6 +14,6 @@ Code example
 See also
 --------
 
-* :ref:`Ray Train Examples <train-examples>` for more use cases.
+* :doc:`Ray Train Examples <../../examples>` for more use cases.
 
-* :ref:`Distributed Tensorflow & Keras <train-tensorflow-overview>` for a tutorial. 
+* :ref:`Distributed Tensorflow & Keras <train-tensorflow-overview>` for a tutorial.

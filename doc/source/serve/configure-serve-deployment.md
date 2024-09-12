@@ -13,15 +13,17 @@ Use this guide to learn the essentials of configuring deployments:
 You can also refer to the [API reference](../serve/api/doc/ray.serve.deployment_decorator.rst) for the `@serve.deployment` decorator.
 
 - `name` - Name uniquely identifying this deployment within the application. If not provided, the name of the class or function is used.
-- `num_replicas` - Number of replicas to run that handle requests to this deployment. Defaults to 1.
+- `num_replicas` - Controls the number of replicas to run that handle requests to this deployment. This can be a positive integer, in which case the number of replicas stays constant, or `auto`, in which case the number of replicas will autoscale with a default configuration (see [Ray Serve Autoscaling](serve-autoscaling) for more). Defaults to 1.
 - `ray_actor_options` - Options to pass to the Ray Actor decorator, such as resource requirements. Valid options are: `accelerator_type`, `memory`, `num_cpus`, `num_gpus`, `object_store_memory`, `resources`, and `runtime_env` For more details - [Resource management in Serve](serve-cpus-gpus)
-- `max_concurrent_queries` - Maximum number of queries that are sent to a replica of this deployment without receiving a response. Defaults to 100. This may be an important parameter to configure for [performance tuning](serve-perf-tuning).
-- `autoscaling_config` - Parameters to configure autoscaling behavior. If this is set, you can't set `num_replicas`. For more details on configurable parameters for autoscaling, see [Ray Serve Autoscaling](serve-autoscaling). 
+- `max_ongoing_requests` - Maximum number of queries that are sent to a replica of this deployment without receiving a response. Defaults to 5 (note the default changed from 100 to 5 in Ray 2.32.0). This may be an important parameter to configure for [performance tuning](serve-perf-tuning).
+- `autoscaling_config` - Parameters to configure autoscaling behavior. If this is set, you can't set `num_replicas` to a number. For more details on configurable parameters for autoscaling, see [Ray Serve Autoscaling](serve-autoscaling).
+- `max_queued_requests` - [EXPERIMENTAL] Maximum number of requests to this deployment that will be queued at each caller (proxy or DeploymentHandle). Once this limit is reached, subsequent requests will raise a BackPressureError (for handles) or return an HTTP 503 status code (for HTTP requests). Defaults to -1 (no limit).
 - `user_config` -  Config to pass to the reconfigure method of the deployment. This can be updated dynamically without restarting the replicas of the deployment. The user_config must be fully JSON-serializable. For more details, see [Serve User Config](serve-user-config). 
 - `health_check_period_s` - Duration between health check calls for the replica. Defaults to 10s. The health check is by default a no-op Actor call to the replica, but you can define your own health check using the "check_health" method in your deployment that raises an exception when unhealthy.
 - `health_check_timeout_s` - Duration in seconds, that replicas wait for a health check method to return before considering it as failed. Defaults to 30s.
 - `graceful_shutdown_wait_loop_s` - Duration that replicas wait until there is no more work to be done before shutting down. Defaults to 2s.
 - `graceful_shutdown_timeout_s` - Duration to wait for a replica to gracefully shut down before being forcefully killed. Defaults to 20s.
+- `logging_config` - Logging Config for the deployment (e.g. log level, log directory, JSON log format and so on). See [LoggingConfig](../serve/api/doc/ray.serve.schema.LoggingConfig.rst) for details.
 
 ## How to specify parameters
 
@@ -62,7 +64,7 @@ applications:
   deployments:
   - name: Translator
     num_replicas: 2
-    max_concurrent_queries: 100
+    max_ongoing_requests: 100
     graceful_shutdown_wait_loop_s: 2.0
     graceful_shutdown_timeout_s: 20.0
     health_check_period_s: 10.0

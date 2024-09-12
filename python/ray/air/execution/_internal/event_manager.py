@@ -1,7 +1,7 @@
 import random
+from typing import Any, Callable, Dict, Iterable, Optional, Set, Tuple, Union
 
 import ray
-from typing import Any, Callable, Dict, Iterable, Optional, Set, Tuple, Union
 
 _ResultCallback = Callable[[Any], None]
 _ErrorCallback = Callable[[Exception], None]

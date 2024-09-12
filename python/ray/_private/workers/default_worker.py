@@ -24,6 +24,12 @@ parser.add_argument(
     help="the auto-generated ID of the cluster",
 )
 parser.add_argument(
+    "--node-id",
+    required=True,
+    type=str,
+    help="the auto-generated ID of the node",
+)
+parser.add_argument(
     "--node-ip-address",
     required=True,
     type=str,
@@ -217,6 +223,7 @@ if __name__ == "__main__":
         session_name=args.session_name,
         webui=args.webui,
         cluster_id=args.cluster_id,
+        node_id=args.node_id,
     )
     node = ray._private.node.Node(
         ray_params,
@@ -240,7 +247,7 @@ if __name__ == "__main__":
         else:
             object_spilling_config = {}
         external_storage.setup_external_storage(
-            object_spilling_config, node.session_name
+            object_spilling_config, node.node_id, node.session_name
         )
 
     ray._private.worker._global_node = node

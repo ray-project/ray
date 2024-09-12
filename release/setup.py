@@ -22,7 +22,7 @@ setup(
         "google-cloud-storage",
         "jinja2",
         "protobuf",
-        "pydantic",
+        "pydantic >= 2.5.0",
         "pytest",
         "pyyaml",
         "pybuildkite",

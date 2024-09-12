@@ -1,11 +1,12 @@
 .. include:: /_includes/rllib/we_are_hiring.rst
 
+.. include:: /_includes/rllib/new_api_stack.rst
 
 
 Using RLlib with torch 2.x compile
 ==================================
 
-torch 2.x comes with the ``torch.compile()`` `API <https://pytorch.org/docs/stable/generated/torch.compile.html#torch.compile>`_, which leverages `torch dynamo <https://pytorch.org/docs/stable/dynamo/index.html#torchdynamo-overview>`_ under the hood to JIT-compile wrapped code. We integrate ``torch.compile()`` with RLlib in the context of `RLModules <rllib-rlmodule.html>`_ and Learners. 
+torch 2.x comes with the ``torch.compile()`` `API <https://pytorch.org/docs/stable/generated/torch.compile.html#torch.compile>`_, which can be used to JIT-compile wrapped code. We integrate ``torch.compile()`` with RLlib in the context of `RLModules <rllib-rlmodule.html>`_ and Learners.
 
 We have integrated this feature with RLModules. You can set the backend and mode via ``framework()`` API on an :py:class:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig` object. Alternatively, you can compile the :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` directly during stand-alone usage, such as inference.
 
@@ -18,7 +19,7 @@ Inference
 ---------
 For the benchmarking metric, we compute the inverse of the time it takes to run :py:meth:`~ray.rllib.core.rl_module.rl_module.RLModule.forward_exploration` of the RLModule. We have conducted this benchmark on the default implementation of PPO RLModule under different hardware settings, torch versions, dynamo backends and modes, as well as different batch sizes. The following table shows the combinations of torch-backend and -mode that yield the highest speedup we could find for a given combination of hardware and PyTorch version:
 
-.. list-table:: 
+.. list-table::
    :widths: 25 25 25 25
    :header-rows: 1
 
@@ -64,7 +65,7 @@ For detailed tables, see `Appendix <../../../../rllib/benchmarks/torch_compile/R
 
 
 .. code-block:: bash
-  
+
   python ./run_inference_bm.py --backend <dynamo_backend> --mode <dynamo_mode> -bs <batch_size>
 
 Some meta-level comments
@@ -79,7 +80,7 @@ Some meta-level comments
 
 Exploration
 ------------
-In RLlib, you can now set the configuration so that it uses the compiled module during sampling of an RL agent training process. By default, the rollout workers run on CPU, therefore it is recommended to use the ``ipex`` or ``onnxrt`` backend. However, you can still run the sampling part on GPUs as well by setting ``num_gpus_per_worker`` in which case other backends can be used as well. For enabling torch-compile during training you can also set `torch_compile_learner` equivalents.
+In RLlib, you can now set the configuration so that it uses the compiled module during sampling of an RL agent training process. By default, the rollout workers run on CPU, therefore it's recommended to use the ``ipex`` or ``onnxrt`` backend. However, you can still run the sampling part on GPUs as well by setting ``num_gpus_per_env_runner`` in which case other backends can be used as well. For enabling torch-compile during training you can also set `torch_compile_learner` equivalents.
 
 
 
@@ -94,18 +95,18 @@ In RLlib, you can now set the configuration so that it uses the compiled module 
     )
 
 
-`This <../../../../rllib/benchmarks/torch_compile/run_ppo_with_inference_bm.py>`_ benchmark script runs the PPO algorithm with the default model architecture for the Atari-Breakout game. It runs the training for ``n`` iterations for both compiled and non-compiled RLModules and reports the speedup. Note that negative speedup values mean a slowdown when you compile the module. 
+`This <../../../../rllib/benchmarks/torch_compile/run_ppo_with_inference_bm.py>`_ benchmark script runs the PPO algorithm with the default model architecture for the Atari-Breakout game. It runs the training for ``n`` iterations for both compiled and non-compiled RLModules and reports the speedup. Note that negative speedup values mean a slowdown when you compile the module.
 
-To run the benchmark script, you need a Ray cluster comprised of at least 129 CPUs (2x64 + 1) and 2 GPUs. If this configuration is not accessible to you, you can change the number of sampling workers and batch size to make the requirements smaller.
+To run the benchmark script, you need a Ray cluster comprised of at least 129 CPUs (2x64 + 1) and 2 GPUs. If this configuration isn't accessible to you, you can change the number of sampling workers and batch size to make the requirements smaller.
 
 .. code-block:: bash
-  
+
   python ./run_ppo_with_inference_bm.py --backend <backend> --mode <mode>
-   
+
 
 Here is a summary of results:
 
-.. list-table:: 
+.. list-table::
    :widths: 33 33 33
    :header-rows: 1
 
@@ -128,5 +129,4 @@ Here is a summary of results:
      - max-autotune
      - 12.88
 
-As you can see, ``onnxrt`` does not gain any speedups in the setup we tested (in fact it slows the workload down by 70%), while the ``ipex`` provides ~10% speedup. If we change the model architecture, these numbers may change. So it is very important to fix the architecture first and then search for the fastest training settings. 
-
+As you can see, ``onnxrt`` does not gain any speedups in the setup we tested (in fact it slows the workload down by 70%), while the ``ipex`` provides ~10% speedup. If we change the model architecture, these numbers may change. So it is very important to fix the architecture first and then search for the fastest training settings.

@@ -49,16 +49,7 @@ class TorchDetectionPredictor(TorchPredictor):
     ) -> Dict[str, np.ndarray]:
         if isinstance(data, dict) and len(data) != 1:
             raise ValueError(
-                f"""Expected input to contain one key, but got {len(data)} instead.
-
-                If you're using `BatchPredictor`, pass a one-element list to
-                `feature_columns`.
-
-                ---
-                predictor = BatchPredictor(checkpoint, TorchDetectionPredictor)
-                predictor.predict(dataset, feature_columns=["image"])
-                ---
-                """
+                f"""Expected input to contain one key, but got {len(data)} instead."""
             )
 
         if dtype is not None and not isinstance(dtype, torch.dtype):

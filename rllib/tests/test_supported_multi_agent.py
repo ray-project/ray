@@ -3,12 +3,15 @@ import unittest
 import ray
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.algorithms.dqn import DQNConfig
-from ray.rllib.algorithms.impala import ImpalaConfig
+from ray.rllib.algorithms.impala import IMPALAConfig
 from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.algorithms.sac import SACConfig
-from ray.rllib.examples.env.multi_agent import MultiAgentCartPole, MultiAgentMountainCar
+from ray.rllib.examples.envs.classes.multi_agent import (
+    MultiAgentCartPole,
+    MultiAgentMountainCar,
+)
 from ray.rllib.policy.policy import PolicySpec
-from ray.rllib.utils.test_utils import check_train_results, framework_iterator
+from ray.rllib.utils.test_utils import check_train_results
 from ray.tune.registry import register_env
 
 
@@ -33,18 +36,15 @@ def check_support_multiagent(alg: str, config: AlgorithmConfig):
 
     config.multi_agent(policies=policies, policy_mapping_fn=policy_mapping_fn)
 
-    for fw in framework_iterator(config):
-        if fw == "tf2" and alg == "IMPALA":
-            continue
-        if alg == "SAC":
-            a = config.build(env="multi_agent_mountaincar")
-        else:
-            a = config.build(env="multi_agent_cartpole")
+    if alg == "SAC":
+        a = config.build(env="multi_agent_mountaincar")
+    else:
+        a = config.build(env="multi_agent_cartpole")
 
-        results = a.train()
-        check_train_results(results)
-        print(results)
-        a.stop()
+    results = a.train()
+    check_train_results(results)
+    print(results)
+    a.stop()
 
 
 class TestSupportedMultiAgentPolicyGradient(unittest.TestCase):
@@ -57,14 +57,14 @@ class TestSupportedMultiAgentPolicyGradient(unittest.TestCase):
         ray.shutdown()
 
     def test_impala_multiagent(self):
-        check_support_multiagent("IMPALA", ImpalaConfig().resources(num_gpus=0))
+        check_support_multiagent("IMPALA", IMPALAConfig().resources(num_gpus=0))
 
     def test_ppo_multiagent(self):
         check_support_multiagent(
             "PPO",
             (
                 PPOConfig()
-                .rollouts(num_rollout_workers=1, rollout_fragment_length=10)
+                .env_runners(num_env_runners=1, rollout_fragment_length=10)
                 .training(num_sgd_iter=1, train_batch_size=10, sgd_minibatch_size=1)
             ),
         )
@@ -95,7 +95,7 @@ class TestSupportedMultiAgentOffPolicy(unittest.TestCase):
             (
                 SACConfig()
                 .environment(normalize_actions=False)
-                .rollouts(num_rollout_workers=0)
+                .env_runners(num_env_runners=0)
                 .training(replay_buffer_config={"capacity": 1000})
             ),
         )
@@ -111,7 +111,7 @@ class TestSupportedMultiAgentMultiGPU(unittest.TestCase):
         ray.shutdown()
 
     def test_impala_multiagent_multi_gpu(self):
-        check_support_multiagent("IMPALA", ImpalaConfig().resources(num_gpus=2))
+        check_support_multiagent("IMPALA", IMPALAConfig().resources(num_gpus=2))
 
 
 if __name__ == "__main__":

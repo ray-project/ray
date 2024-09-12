@@ -209,6 +209,10 @@ To read formats other than Parquet, see the :ref:`Input/Output reference <input-
             petal.width   double
             variety       string
 
+        Ray Data relies on PyArrow for authentication with Amazon S3. For more on how to configure
+        your credentials to be compatible with PyArrow, see their
+        `S3 Filesytem docs <https://arrow.apache.org/docs/python/filesystems.html#s3>`_.
+
     .. tab-item:: GCS
 
         To read files from Google Cloud Storage, install the
@@ -227,7 +231,7 @@ To read formats other than Parquet, see the :ref:`Input/Output reference <input-
 
             filesystem = gcsfs.GCSFileSystem(project="my-google-project")
             ds = ray.data.read_parquet(
-                "s3://anonymous@ray-example-data/iris.parquet",
+                "gcs://anonymous@ray-example-data/iris.parquet",
                 filesystem=filesystem
             )
 
@@ -243,7 +247,11 @@ To read formats other than Parquet, see the :ref:`Input/Output reference <input-
             petal.width   double
             variety       string
 
-    .. tab-item:: ABL
+        Ray Data relies on PyArrow for authentication with Google Cloud Storage. For more on how
+        to configure your credentials to be compatible with PyArrow, see their
+        `GCS Filesytem docs <https://arrow.apache.org/docs/python/filesystems.html#google-cloud-storage-file-system>`_.
+
+    .. tab-item:: ABS
 
         To read files from Azure Blob Storage, install the
         `Filesystem interface to Azure-Datalake Gen1 and Gen2 Storage <https://pypi.org/project/adlfs/>`_
@@ -276,6 +284,10 @@ To read formats other than Parquet, see the :ref:`Input/Output reference <input-
             petal.length  double
             petal.width   double
             variety       string
+
+        Ray Data relies on PyArrow for authentication with Azure Blob Storage. For more on how
+        to configure your credentials to be compatible with PyArrow, see their
+        `fsspec-compatible filesystems docs <https://arrow.apache.org/docs/python/filesystems.html#using-fsspec-compatible-filesystems-with-arrow>`_.
 
 Reading files from NFS
 ~~~~~~~~~~~~~~~~~~~~~~
@@ -454,6 +466,11 @@ Ray Data interoperates with distributed data processing frameworks like
 :ref:`Dask <dask-on-ray>`, :ref:`Spark <spark-on-ray>`, :ref:`Modin <modin-on-ray>`, and
 :ref:`Mars <mars-on-ray>`.
 
+.. note::
+
+    The Ray Community provides these operations but may not actively maintain them. If you run into issues,
+    create a GitHub issue `here <https://github.com/ray-project/ray/issues>`__.
+
 .. tab-set::
 
     .. tab-item:: Dask
@@ -490,7 +507,7 @@ Ray Data interoperates with distributed data processing frameworks like
         call :func:`~ray.data.from_spark`. This function creates a ``Dataset`` backed by
         the distributed Spark DataFrame partitions that underly the Spark DataFrame.
 
-        .. 
+        ..
             TODO: This code snippet might not work correctly. We should test it.
 
         .. testcode::
@@ -507,6 +524,33 @@ Ray Data interoperates with distributed data processing frameworks like
             ds = ray.data.from_spark(df)
 
             ds.show(3)
+
+        .. testoutput::
+
+            {'col1': 0, 'col2': '0'}
+            {'col1': 1, 'col2': '1'}
+            {'col1': 2, 'col2': '2'}
+
+    .. tab-item:: Iceberg
+
+        To create a :class:`~ray.data.dataset.Dataset` from an `Iceberg Table
+        <https://iceberg.apache.org>`__,
+        call :func:`~ray.data.read_iceberg`. This function creates a ``Dataset`` backed by
+        the distributed files that underlie the Iceberg table.
+
+        ..
+
+        .. testcode::
+            :skipif: True
+
+            >>> import ray
+            >>> from pyiceberg.expressions import EqualTo
+            >>> ds = ray.data.read_iceberg(
+            ...     table_identifier="db_name.table_name",
+            ...     row_filter=EqualTo("column_name", "literal_value"),
+            ...     catalog_kwargs={"name": "default", "type": "glue"}
+            ... )
+
 
         .. testoutput::
 
@@ -573,21 +617,25 @@ Ray Data interoperates with distributed data processing frameworks like
 Loading data from ML libraries
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Ray Data interoperates with HuggingFace and TensorFlow datasets.
+Ray Data interoperates with HuggingFace, PyTorch, and TensorFlow datasets.
 
 .. tab-set::
 
     .. tab-item:: HuggingFace
 
-        To convert a 🤗 Dataset to a Ray Datasets, call
+        To convert a HuggingFace Dataset to a Ray Datasets, call
         :func:`~ray.data.from_huggingface`. This function accesses the underlying Arrow
         table and converts it to a Dataset directly.
 
         .. warning::
-            :class:`~ray.data.from_huggingface` doesn't support parallel
-            reads. This isn't an issue with in-memory 🤗 Datasets, but may fail with
-            large memory-mapped 🤗 Datasets. Also, 🤗 ``IterableDataset`` objects aren't
-            supported.
+            :class:`~ray.data.from_huggingface` only supports parallel reads in certain
+            instances, namely for untransformed public HuggingFace Datasets. For those datasets,
+            Ray Data uses `hosted parquet files <https://huggingface.co/docs/datasets-server/parquet#list-parquet-files>`_
+            to perform a distributed read; otherwise, Ray Data uses a single node read.
+            This behavior shouldn't be an issue with in-memory HuggingFace Datasets, but may cause a failure with
+            large memory-mapped HuggingFace Datasets. Additionally, HuggingFace `DatasetDict <https://huggingface.co/docs/datasets/en/package_reference/main_classes#datasets.DatasetDict>`_ and
+            `IterableDatasetDict <https://huggingface.co/docs/datasets/en/package_reference/main_classes#datasets.IterableDatasetDict>`_
+            objects aren't supported.
 
         .. testcode::
 
@@ -602,6 +650,31 @@ Ray Data interoperates with HuggingFace and TensorFlow datasets.
             :options: +MOCK
 
             [{'text': ''}, {'text': ' = Valkyria Chronicles III = \n'}]
+
+    .. tab-item:: PyTorch
+
+        To convert a PyTorch dataset to a Ray Dataset, call :func:`~ray.data.from_torch`.
+
+        .. testcode::
+
+            import ray
+            from torch.utils.data import Dataset
+            from torchvision import datasets
+            from torchvision.transforms import ToTensor
+
+            tds = datasets.CIFAR10(root="data", train=True, download=True, transform=ToTensor())
+            ds = ray.data.from_torch(tds)
+
+            print(ds)
+
+        .. testoutput::
+            :options: +MOCK
+
+            Downloading https://www.cs.toronto.edu/~kriz/cifar-10-python.tar.gz to data/cifar-10-python.tar.gz
+            100%|███████████████████████| 170498071/170498071 [00:07<00:00, 23494838.54it/s]
+            Extracting data/cifar-10-python.tar.gz to data
+            Dataset(num_rows=50000, schema={item: object})
+
 
     .. tab-item:: TensorFlow
 
@@ -641,7 +714,7 @@ Ray Data interoperates with HuggingFace and TensorFlow datasets.
 Reading databases
 =================
 
-Ray Data reads from databases like MySQL, PostgreSQL, and MongoDB.
+Ray Data reads from databases like MySQL, PostgreSQL, MongoDB, and BigQuery.
 
 .. _reading_sql:
 
@@ -770,21 +843,21 @@ Call :func:`~ray.data.read_sql` to read data from a database that provides a
 
     .. tab-item:: Databricks
 
-        To read from Databricks, set the ``DATABRICKS_HOST`` environment variable to
+        To read from Databricks, set the ``DATABRICKS_TOKEN`` environment variable to
         your Databricks warehouse access token.
 
         .. code-block:: console
 
             export DATABRICKS_TOKEN=...
 
-        If you're running your program on the Databricks runtime, also set the 
+        If you're not running your program on the Databricks runtime, also set the
         ``DATABRICKS_HOST`` environment variable.
 
         .. code-block:: console
 
             export DATABRICKS_HOST=adb-<workspace-id>.<random-number>.azuredatabricks.net
 
-        Then, call :func:`ray.data.read_databricks_tables` to read from the Databricks 
+        Then, call :func:`ray.data.read_databricks_tables` to read from the Databricks
         SQL warehouse.
 
         .. testcode::
@@ -793,50 +866,47 @@ Call :func:`~ray.data.read_sql` to read data from a database that provides a
             import ray
 
             dataset = ray.data.read_databricks_tables(
-                warehouse_id='a885ad08b64951ad',  # Databricks SQL warehouse ID
+                warehouse_id='...',  # Databricks SQL warehouse ID
                 catalog='catalog_1',  # Unity catalog name
                 schema='db_1',  # Schema name
                 query="SELECT title, score FROM movie WHERE year >= 1980",
             )
 
-.. _reading_bigquery:
+    .. tab-item:: BigQuery
 
-Reading BigQuery
-~~~~~~~~~~~~~~~~
+        To read from BigQuery, install the
+        `Python Client for Google BigQuery <https://cloud.google.com/python/docs/reference/bigquery/latest>`_ and the `Python Client for Google BigQueryStorage <https://cloud.google.com/python/docs/reference/bigquerystorage/latest>`_.
 
-To read from BigQuery, install the
-`Python Client for Google BigQuery <https://cloud.google.com/python/docs/reference/bigquery/latest>`_ and the `Python Client for Google BigQueryStorage <https://cloud.google.com/python/docs/reference/bigquerystorage/latest>`_.
+        .. code-block:: console
 
-.. code-block:: console
+            pip install google-cloud-bigquery
+            pip install google-cloud-bigquery-storage
 
-    pip install google-cloud-bigquery
-    pip install google-cloud-bigquery-storage
+        To read data from BigQuery, call :func:`~ray.data.read_bigquery` and specify the project id, dataset, and query (if applicable).
 
-To read data from BigQuery, call :func:`~ray.data.read_bigquery` and specify the project id, dataset, and query (if applicable).
+        .. testcode::
+            :skipif: True
 
-.. testcode::
-    :skipif: True
+            import ray
 
-    import ray
+            # Read the entire dataset. Do not specify query.
+            ds = ray.data.read_bigquery(
+                project_id="my_gcloud_project_id",
+                dataset="bigquery-public-data.ml_datasets.iris",
+            )
 
-    # Read the entire dataset (do not specify query)
-    ds = ray.data.read_bigquery(
-        project_id="my_gcloud_project_id",
-        dataset="bigquery-public-data.ml_datasets.iris",
-    )
+            # Read from a SQL query of the dataset. Do not specify dataset.
+            ds = ray.data.read_bigquery(
+                project_id="my_gcloud_project_id",
+                query = "SELECT * FROM `bigquery-public-data.ml_datasets.iris` LIMIT 50",
+            )
 
-    # Read from a SQL query of the dataset (do not specify dataset)
-    ds = ray.data.read_bigquery(
-        project_id="my_gcloud_project_id",
-        query = "SELECT * FROM `bigquery-public-data.ml_datasets.iris` LIMIT 50",
-    )
-
-    # Write back to BigQuery
-    ds.write_bigquery(
-        project_id="my_gcloud_project_id",
-        dataset="destination_dataset.destination_table",
-    )
-
+            # Write back to BigQuery
+            ds.write_bigquery(
+                project_id="my_gcloud_project_id",
+                dataset="destination_dataset.destination_table",
+                overwrite_table=True,
+            )
 
 .. _reading_mongodb:
 
@@ -926,8 +996,11 @@ Loading other datasources
 ==========================
 
 If Ray Data can't load your data, subclass
-:class:`~ray.data.datasource.Datasource`. Then, construct an instance of your custom
-datasource and pass it to :func:`~ray.data.read_datasource`.
+:class:`~ray.data.Datasource`. Then, construct an instance of your custom
+datasource and pass it to :func:`~ray.data.read_datasource`. To write results, you might
+also need to subclass :class:`ray.data.Datasink`. Then, create an instance of your custom
+datasink and pass it to :func:`~ray.data.Dataset.write_datasink`. For more details, see
+:ref:`Advanced: Read and Write Custom File Types <custom_datasource>`.
 
 .. testcode::
     :skipif: True
@@ -935,22 +1008,19 @@ datasource and pass it to :func:`~ray.data.read_datasource`.
     # Read from a custom datasource.
     ds = ray.data.read_datasource(YourCustomDatasource(), **read_args)
 
-    # Write to a custom datasource.
-    ds.write_datasource(YourCustomDatasource(), **write_args)
+    # Write to a custom datasink.
+    ds.write_datasink(YourCustomDatasink())
 
 Performance considerations
 ==========================
 
-The dataset ``parallelism`` determines the number of blocks the base data is split
-into for parallel reads. Ray Data decides internally how many read tasks to run
-concurrently to best utilize the cluster, ranging from ``1...parallelism`` tasks. In
-other words, the higher the parallelism, the smaller the data blocks in the Dataset and
-hence the more opportunity for parallel execution.
+By default, the number of output blocks from all read tasks is dynamically decided
+based on input data size and available resources. It should work well in most cases.
+However, you can also override the default value by setting the ``override_num_blocks``
+argument. Ray Data decides internally how many read tasks to run concurrently to best
+utilize the cluster, ranging from ``1...override_num_blocks`` tasks. In other words,
+the higher the ``override_num_blocks``, the smaller the data blocks in the Dataset and
+hence more opportunities for parallel execution.
 
-.. image:: images/dataset-read.svg
-   :width: 650px
-   :align: center
-
-You can override the default parallelism by setting the ``parallelism`` argument. For 
-more information on how to tune the read parallelism, see 
-:ref:`Advanced: Performance Tips and Tuning <data_performance_tips>`.
+For more information on how to tune the number of output blocks and other suggestions
+for optimizing read performance, see `Optimizing reads <performance-tips.html#optimizing-reads>`__.

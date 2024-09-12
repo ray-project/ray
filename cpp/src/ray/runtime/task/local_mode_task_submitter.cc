@@ -85,8 +85,13 @@ ObjectID LocalModeTaskSubmitter::Submit(InvocationSpec &invocation,
         TaskID::ForActorCreationTask(invocation.actor_id);
     const ObjectID actor_creation_dummy_object_id =
         ObjectID::FromIndex(actor_creation_task_id, 1);
-    builder.SetActorTaskSpec(
-        invocation.actor_id, actor_creation_dummy_object_id, invocation.actor_counter);
+    // NOTE: Ray CPP doesn't support retries and retry_exceptions.
+    builder.SetActorTaskSpec(invocation.actor_id,
+                             actor_creation_dummy_object_id,
+                             /*max_retries=*/0,
+                             /*retry_exceptions=*/false,
+                             /*serialized_retry_exception_allowlist=*/"",
+                             invocation.actor_counter);
   } else {
     throw RayException("unknown task type");
   }

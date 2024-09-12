@@ -31,7 +31,6 @@ class TestUnary:
 
         h = serve.run(D.bind()).options(
             stream=False,
-            use_new_handle_api=True,
         )
         gen = ProxyResponseGenerator(h.remote("Alice"))
 
@@ -59,7 +58,6 @@ class TestUnary:
 
         h = serve.run(D.bind()).options(
             stream=False,
-            use_new_handle_api=True,
         )
 
         def result_callback(result: str) -> str:
@@ -74,14 +72,13 @@ class TestUnary:
     async def test_timeout_while_assigning(self, serve_instance):
         signal_actor = SignalActor.remote()
 
-        @serve.deployment(max_concurrent_queries=1)
+        @serve.deployment(max_ongoing_requests=1)
         class D:
             async def __call__(self):
                 await signal_actor.wait.remote()
 
         h = serve.run(D.bind()).options(
             stream=False,
-            use_new_handle_api=True,
         )
         h.remote()
 
@@ -110,7 +107,6 @@ class TestUnary:
 
         h = serve.run(D.bind()).options(
             stream=False,
-            use_new_handle_api=True,
         )
 
         gen = ProxyResponseGenerator(h.remote(), timeout_s=0.1)
@@ -127,14 +123,13 @@ class TestUnary:
         signal_actor = SignalActor.remote()
         disconnect_event, disconnect_task = disconnect_task_and_event()
 
-        @serve.deployment(max_concurrent_queries=1)
+        @serve.deployment(max_ongoing_requests=1)
         class D:
             async def __call__(self):
                 await signal_actor.wait.remote()
 
         h = serve.run(D.bind()).options(
             stream=False,
-            use_new_handle_api=True,
         )
         h.remote()
 
@@ -173,7 +168,6 @@ class TestUnary:
 
         h = serve.run(D.bind()).options(
             stream=False,
-            use_new_handle_api=True,
         )
 
         gen = ProxyResponseGenerator(h.remote(), disconnected_task=disconnect_task)
@@ -211,7 +205,6 @@ class TestStreaming:
 
         h = serve.run(D.bind()).options(
             stream=True,
-            use_new_handle_api=True,
         )
         gen = ProxyResponseGenerator(h.remote("Alice"))
 
@@ -239,7 +232,6 @@ class TestStreaming:
 
         h = serve.run(D.bind()).options(
             stream=True,
-            use_new_handle_api=True,
         )
 
         def result_callback(result: str) -> str:
@@ -254,7 +246,7 @@ class TestStreaming:
     async def test_timeout_while_assigning(self, serve_instance):
         signal_actor = SignalActor.remote()
 
-        @serve.deployment(max_concurrent_queries=1)
+        @serve.deployment(max_ongoing_requests=1)
         class D:
             async def __call__(self) -> AsyncIterator[str]:
                 yield "hi"
@@ -262,7 +254,6 @@ class TestStreaming:
 
         h = serve.run(D.bind()).options(
             stream=True,
-            use_new_handle_api=True,
         )
         h.remote()
 
@@ -292,7 +283,6 @@ class TestStreaming:
 
         h = serve.run(D.bind()).options(
             stream=True,
-            use_new_handle_api=True,
         )
 
         gen = ProxyResponseGenerator(h.remote(), timeout_s=0.1)
@@ -309,7 +299,7 @@ class TestStreaming:
         signal_actor = SignalActor.remote()
         disconnect_event, disconnect_task = disconnect_task_and_event()
 
-        @serve.deployment(max_concurrent_queries=1)
+        @serve.deployment(max_ongoing_requests=1)
         class D:
             async def __call__(self) -> AsyncIterator[str]:
                 yield "hi"
@@ -317,7 +307,6 @@ class TestStreaming:
 
         h = serve.run(D.bind()).options(
             stream=True,
-            use_new_handle_api=True,
         )
         h.remote()
 
@@ -357,7 +346,6 @@ class TestStreaming:
 
         h = serve.run(D.bind()).options(
             stream=True,
-            use_new_handle_api=True,
         )
 
         gen = ProxyResponseGenerator(h.remote(), disconnected_task=disconnect_task)
@@ -392,7 +380,6 @@ class TestStreaming:
 
         h = serve.run(D.bind()).options(
             stream=True,
-            use_new_handle_api=True,
         )
 
         gen = ProxyResponseGenerator(

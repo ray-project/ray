@@ -1106,7 +1106,7 @@ class AutoscalingTest(unittest.TestCase):
             },
             1,
         )
-        self.provider.error_creates = Exception(":(")
+        self.provider.creation_error = Exception(":(")
         autoscaler = MockAutoscaler(
             config_path,
             LoadMetrics(),
@@ -1146,7 +1146,7 @@ class AutoscalingTest(unittest.TestCase):
             },
             1,
         )
-        self.provider.error_creates = NodeLaunchException(
+        self.provider.creation_error = NodeLaunchException(
             "didn't work", "never did", exc_info
         )
         autoscaler = MockAutoscaler(
@@ -1189,7 +1189,7 @@ class AutoscalingTest(unittest.TestCase):
             },
             1,
         )
-        self.provider.error_creates = NodeLaunchException(
+        self.provider.creation_error = NodeLaunchException(
             "didn't work", "never did", src_exc_info=None
         )
         autoscaler = MockAutoscaler(
@@ -1611,13 +1611,20 @@ class AutoscalingTest(unittest.TestCase):
         new_config["max_workers"] = 10
         self.write_config(new_config)
         autoscaler.update()
+        # TODO(rickyx): This is a hack to avoid running into race conditions
+        # within v1 autoscaler. These should no longer be relevant in v2.
+        time.sleep(3)
         # Because one worker already started, the scheduler waits for its
         # resources to be updated before it launches the remaining min_workers.
         worker_ip = self.provider.non_terminated_node_ips(
             tag_filters={TAG_RAY_NODE_KIND: NODE_KIND_WORKER},
         )[0]
         lm.update(worker_ip, mock_raylet_id(), {"CPU": 1}, {"CPU": 1})
+
         autoscaler.update()
+        # TODO(rickyx): This is a hack to avoid running into race conditions
+        # within v1 autoscaler. These should no longer be relevant in v2.
+        time.sleep(3)
         if foreground_node_launcher:
             # If we launched in the foreground, shouldn't need to wait for nodes
             # to be available. (Node creation should block.)
@@ -2225,11 +2232,16 @@ class AutoscalingTest(unittest.TestCase):
             process_runner=runner,
             update_interval_s=0,
         )
+
         autoscaler.update()
         autoscaler.update()
         self.waitForNodes(2)
         self.provider.finish_starting_nodes()
+        # TODO(rickyx): This is a hack to avoid running into race conditions
+        # within v1 autoscaler. These should no longer be relevant in v2.
+        time.sleep(3)
         autoscaler.update()
+        time.sleep(3)
         self.waitForNodes(2, tag_filters={TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE})
 
     def testReportsConfigFailures(self):
@@ -2313,10 +2325,15 @@ class AutoscalingTest(unittest.TestCase):
             update_interval_s=0,
         )
         autoscaler.update()
+        # TODO(rickyx): This is a hack to avoid running into race conditions
+        # within v1 autoscaler. These should no longer be relevant in v2.
+        time.sleep(3)
         autoscaler.update()
         self.waitForNodes(2)
         self.provider.finish_starting_nodes()
+        time.sleep(3)
         autoscaler.update()
+        time.sleep(3)
         self.waitForNodes(2, tag_filters={TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE})
         runner.calls = []
         new_config = copy.deepcopy(SMALL_CLUSTER)
@@ -3441,7 +3458,7 @@ class AutoscalingTest(unittest.TestCase):
             },
             1,
         )
-        self.provider.error_creates = Exception(":(")
+        self.provider.creation_error = Exception(":(")
         autoscaler = MockAutoscaler(
             config_path,
             LoadMetrics(),

@@ -3,19 +3,18 @@ import os
 import time
 from typing import List, Optional
 
-from freezegun import freeze_time
 import pytest
+from freezegun import freeze_time
 
 import ray
 import ray.cloudpickle as pickle
 from ray.train._internal.storage import (
-    _upload_to_fs_path,
     _download_from_fs_path,
-    get_fs_and_path,
     _FilesystemSyncer,
+    _upload_to_fs_path,
+    get_fs_and_path,
 )
 from ray.train._internal.syncer import _BackgroundProcess
-
 from ray.train.tests.test_new_persistence import _create_mock_custom_fs
 
 

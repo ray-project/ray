@@ -1,10 +1,9 @@
-import os
-import pandas as pd
-import pyarrow
 from typing import Optional, Union
 
+import pandas as pd
+import pyarrow
+
 from ray.air.result import Result
-from ray.cloudpickle import cloudpickle
 from ray.exceptions import RayTaskError
 from ray.tune.analysis import ExperimentAnalysis
 from ray.tune.error import TuneError
@@ -254,15 +253,7 @@ class ResultGrid:
     def _populate_exception(trial: Trial) -> Optional[Union[TuneError, RayTaskError]]:
         if trial.status == Trial.TERMINATED:
             return None
-        # TODO(justinvyu): [populate_exception] for storage_path != None
-        if trial.pickled_error_file and os.path.exists(trial.pickled_error_file):
-            with open(trial.pickled_error_file, "rb") as f:
-                e = cloudpickle.load(f)
-                return e
-        elif trial.error_file and os.path.exists(trial.error_file):
-            with open(trial.error_file, "r") as f:
-                return TuneError(f.read())
-        return None
+        return trial.get_pickled_error() or trial.get_error()
 
     def _trial_to_result(self, trial: Trial) -> Result:
         cpm = trial.run_metadata.checkpoint_manager
@@ -281,13 +272,8 @@ class ResultGrid:
             checkpoint=checkpoint,
             metrics=trial.last_result.copy(),
             error=self._populate_exception(trial),
-            _local_path=trial.local_path,
-            _remote_path=trial.path,
-            _storage_filesystem=(
-                self._experiment_analysis._fs
-                if isinstance(self._experiment_analysis, ExperimentAnalysis)
-                else None
-            ),
+            path=trial.path,
+            _storage_filesystem=self._experiment_analysis._fs,
             metrics_dataframe=metrics_df,
             best_checkpoints=best_checkpoints,
         )

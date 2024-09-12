@@ -51,7 +51,8 @@ TEST_F(GcsNodeManagerTest, TestManagement) {
   node_manager.AddNode(node);
   ASSERT_EQ(node, node_manager.GetAliveNode(node_id).value());
 
-  node_manager.RemoveNode(node_id);
+  rpc::NodeDeathInfo death_info;
+  node_manager.RemoveNode(node_id, death_info);
   ASSERT_TRUE(!node_manager.GetAliveNode(node_id).has_value());
 }
 
@@ -84,8 +85,9 @@ TEST_F(GcsNodeManagerTest, TestListener) {
       [&removed_nodes](std::shared_ptr<rpc::GcsNodeInfo> node) {
         removed_nodes.emplace_back(std::move(node));
       });
+  rpc::NodeDeathInfo death_info;
   for (int i = 0; i < node_count; ++i) {
-    node_manager.RemoveNode(NodeID::FromBinary(added_nodes[i]->node_id()));
+    node_manager.RemoveNode(NodeID::FromBinary(added_nodes[i]->node_id()), death_info);
   }
   ASSERT_EQ(node_count, removed_nodes.size());
   ASSERT_TRUE(node_manager.GetAllAliveNodes().empty());

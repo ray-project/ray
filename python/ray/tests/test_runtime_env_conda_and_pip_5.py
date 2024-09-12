@@ -1,6 +1,6 @@
 import sys
 import pytest
-from pkg_resources import Requirement
+from packaging.version import parse
 
 import ray
 
@@ -8,8 +8,11 @@ import ray
 def test_runtime_env_with_pip_config(start_cluster):
 
     pip_versions = [
-        "==20.2.3",
-        "<20.3, >19",
+        ("==24.1.2", lambda pip_version: parse(pip_version) == parse("24.1.2")),
+        (
+            "<24.2, >19",
+            lambda pip_version: parse("19") < parse(pip_version) < parse("24.2"),
+        ),
     ]
 
     @ray.remote
@@ -18,9 +21,9 @@ def test_runtime_env_with_pip_config(start_cluster):
 
         return pip.__version__
 
-    for pip_version in pip_versions:
-        requirement = Requirement.parse(f"pip{pip_version}")
-        assert (
+    for pip_version_tup in pip_versions:
+        pip_version, check_func = pip_version_tup
+        assert check_func(
             ray.get(
                 f.options(
                     runtime_env={
@@ -31,7 +34,6 @@ def test_runtime_env_with_pip_config(start_cluster):
                     }
                 ).remote()
             )
-            in requirement
         )
 
 
@@ -54,6 +56,10 @@ def test_runtime_env_with_conflict_pip_version(start_cluster):
     assert f"No matching distribution found for pip{pip_version}" in str(error.value)
 
 
+@pytest.mark.skipif(
+    sys.version_info.major == 3 and sys.version_info.minor >= 12,
+    reason="Only pip 23+ support python 3.12 and conflict check always exists",
+)
 def test_runtime_env_cache_with_pip_check(start_cluster):
 
     # moto require requests>=2.5

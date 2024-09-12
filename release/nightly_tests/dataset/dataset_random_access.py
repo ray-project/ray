@@ -26,7 +26,7 @@ def main():
         num_workers = 400
         run_time = 15
 
-    ds = ray.data.range(nrow, parallelism=parallelism)
+    ds = ray.data.range(nrow, override_num_blocks=parallelism)
     rmap = ds.to_random_access_dataset("id", num_workers=num_workers)
 
     print("Multiget throughput: ", end="")

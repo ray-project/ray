@@ -23,7 +23,7 @@ The [Kubeflow](https://www.kubeflow.org/) project is dedicated to making deploym
 ## Step 1: Create a Kubernetes cluster with Kind.
 ```sh
 # Kubeflow is sensitive to Kubernetes version and Kustomize version.
-kind create cluster --image=kindest/node:v1.23.0
+kind create cluster --image=kindest/node:v1.26.0
 kustomize version --short
 # 3.2.0
 ```
@@ -71,9 +71,9 @@ kubectl get pod -l ray.io/cluster=raycluster-kuberay
 * As mentioned in Step 4, Ray is very sensitive to the Python versions and Ray versions between the server (RayCluster) and client (JupyterLab) sides. Open a terminal in the JupyterLab:
     ```sh
     # Check Python version. The version's MAJOR and MINOR should match with RayCluster (i.e. Python 3.8)
-    python --version 
+    python --version
     # Python 3.8.10
-    
+
     # Install Ray 2.2.0
     pip install -U ray[default]==2.2.0
     ```

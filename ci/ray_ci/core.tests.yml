@@ -1,20 +1,13 @@
 flaky_tests:
-  - //python/ray/tests:test_actor_advanced
-  - //python/ray/tests:test_actor_cancel
-  - //python/ray/tests:test_gcs_fault_tolerance
-  - //python/ray/tests:test_placement_group
-  - //python/ray/tests:test_placement_group_3
-  - //python/ray/tests:test_placement_group_5
-  - //python/ray/tests:test_plasma_unlimited
-  - //python/ray/tests:test_runtime_env_2
-  - //python/ray/tests:test_runtime_env_working_dir_3
-  - //python/ray/tests:test_scheduling_performance
-  - //python/ray/tests:test_threaded_actor
-  - //python/ray/tests:test_unhandled_error
-  - //python/ray/tests:test_state_api_log
-  - //python/ray/tests:test_ray_init_2
-  - //python/ray/tests:test_basic_5_client_mode
-  - //python/ray/tests:test_client_builder
-  - //python/ray/tests:test_client_library_integration
-  - //python/ray/tests:test_object_assign_owner_client_mode
-  - //python/ray/workflow:tests/test_http_events_2
+  - windows://:metric_exporter_grpc_test
+  - windows://python/ray/tests:test_actor_retry1
+  - windows://python/ray/tests:test_actor_retry2
+  - windows://python/ray/tests:test_object_spilling
+  - windows://python/ray/tests:test_object_spilling_asan
+  - windows://python/ray/tests:test_object_spilling_debug_mode
+  - windows://python/ray/tests:test_placement_group_3
+  - windows://python/ray/tests:test_reference_counting_2 
+  - windows://python/ray/tests:test_runtime_env_working_dir_3
+  - windows://python/ray/tests:test_task_events_2
+  # Flaky when keep starting many ray sessions on windows.
+  - windows://python/ray/tests:test_task_events_3 

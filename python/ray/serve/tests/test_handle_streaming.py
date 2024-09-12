@@ -5,7 +5,7 @@ import pytest
 
 from ray import serve
 from ray.serve import Deployment
-from ray.serve.handle import RayServeHandle
+from ray.serve.handle import DeploymentHandle
 
 
 @serve.deployment
@@ -94,7 +94,7 @@ class TestAppHandleStreaming:
         with pytest.raises(
             TypeError,
             match=(
-                "Method '__call__' is a generator function. You must use "
+                "Method '__call__' returned a generator. You must use "
                 "`handle.options\(stream=True\)` to call generators on a deployment."
             ),
         ):
@@ -115,7 +115,7 @@ class TestAppHandleStreaming:
         gen = h.unary.remote(0)
         with pytest.raises(
             TypeError,
-            match="must be a generator function, but 'unary' is not",
+            match=r"'unary' .* but it did not return a generator",
         ):
             next(gen)
 
@@ -139,7 +139,7 @@ class TestDeploymentHandleStreaming:
     def test_basic(self, serve_instance, deployment: Deployment):
         @serve.deployment
         class Delegate:
-            def __init__(self, streamer: RayServeHandle):
+            def __init__(self, streamer: DeploymentHandle):
                 self._h = streamer
 
             async def __call__(self):
@@ -166,14 +166,14 @@ class TestDeploymentHandleStreaming:
     def test_call_gen_without_stream_flag(self, serve_instance, deployment: Deployment):
         @serve.deployment
         class Delegate:
-            def __init__(self, streamer: RayServeHandle):
+            def __init__(self, streamer: DeploymentHandle):
                 self._h = streamer
 
             async def __call__(self):
                 with pytest.raises(
                     TypeError,
                     match=(
-                        "Method '__call__' is a generator function. You must use "
+                        "Method '__call__' returned a generator. You must use "
                         "`handle.options\(stream=True\)` to call generators on a "
                         "deployment."
                     ),
@@ -196,7 +196,7 @@ class TestDeploymentHandleStreaming:
     def test_call_no_gen_with_stream_flag(self, serve_instance, deployment: Deployment):
         @serve.deployment
         class Delegate:
-            def __init__(self, streamer: RayServeHandle):
+            def __init__(self, streamer: DeploymentHandle):
                 self._h = streamer
 
             async def __call__(self):
@@ -204,7 +204,8 @@ class TestDeploymentHandleStreaming:
 
                 gen = h.unary.remote(0)
                 with pytest.raises(
-                    TypeError, match="must be a generator function, but 'unary' is not"
+                    TypeError,
+                    match=r"'unary' .* but it did not return a generator",
                 ):
                     await gen.__anext__()
 
@@ -214,7 +215,7 @@ class TestDeploymentHandleStreaming:
     def test_generator_yields_no_results(self, serve_instance, deployment: Deployment):
         @serve.deployment
         class Delegate:
-            def __init__(self, streamer: RayServeHandle):
+            def __init__(self, streamer: DeploymentHandle):
                 self._h = streamer
 
             async def __call__(self):
@@ -230,7 +231,7 @@ class TestDeploymentHandleStreaming:
     def test_exception_raised_in_gen(self, serve_instance, deployment: Deployment):
         @serve.deployment
         class Delegate:
-            def __init__(self, streamer: RayServeHandle):
+            def __init__(self, streamer: DeploymentHandle):
                 self._h = streamer
 
             async def __call__(self):
@@ -246,7 +247,9 @@ class TestDeploymentHandleStreaming:
     def test_call_multiple_downstreams(self, serve_instance, deployment: Deployment):
         @serve.deployment
         class Delegate:
-            def __init__(self, streamer1: RayServeHandle, streamer2: RayServeHandle):
+            def __init__(
+                self, streamer1: DeploymentHandle, streamer2: DeploymentHandle
+            ):
                 self._h1 = streamer1.options(stream=True)
                 self._h2 = streamer2.options(stream=True)
 
@@ -280,7 +283,7 @@ class TestGeneratorFunctionDeployment:
     def test_deployment_handle(self, deployment: Deployment):
         @serve.deployment
         class Delegate:
-            def __init__(self, f: RayServeHandle):
+            def __init__(self, f: DeploymentHandle):
                 self._f = f.options(stream=True)
 
             async def __call__(self):

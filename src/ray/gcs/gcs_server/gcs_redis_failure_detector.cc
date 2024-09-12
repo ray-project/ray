@@ -48,7 +48,7 @@ void GcsRedisFailureDetector::DetectRedis() {
       callback_();
     }
   };
-  auto cxt = redis_client_->GetShardContext("");
+  auto cxt = redis_client_->GetPrimaryContext();
   cxt->RunArgvAsync({"PING"}, redis_callback);
 }
 

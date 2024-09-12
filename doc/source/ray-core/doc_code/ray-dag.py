@@ -89,11 +89,104 @@ with InputNode() as dag_input:
     dag = c.bind(a_ref, b_ref)
 
 #   a(2)  +   b(2)  = c
-# (2 * 2) + (2 * 1)
+# (2 * 2) + (2 + 1)
 assert ray.get(dag.execute(2)) == 7
 
 #   a(3)  +   b(3)  = c
-# (3 * 2) + (3 * 1)
+# (3 * 2) + (3 + 1)
 assert ray.get(dag.execute(3)) == 10
 # __dag_input_node_end__
+# fmt: on
+
+# fmt: off
+# __dag_multi_output_node_begin__
+import ray
+
+from ray.dag.input_node import InputNode
+from ray.dag.output_node import MultiOutputNode
+
+@ray.remote
+def f(input):
+    return input + 1
+
+with InputNode() as input_data:
+    dag = MultiOutputNode([f.bind(input_data["x"]), f.bind(input_data["y"])])
+
+refs = dag.execute({"x": 1, "y": 2})
+assert ray.get(refs) == [2, 3]
+# __dag_multi_output_node_end__
+# fmt: on
+
+# fmt: off
+# __dag_multi_output_node_begin__
+import ray
+
+from ray.dag.input_node import InputNode
+from ray.dag.output_node import MultiOutputNode
+
+@ray.remote
+def f(input):
+    return input + 1
+
+with InputNode() as input_data:
+    dag = MultiOutputNode([f.bind(input_data["x"]), f.bind(input_data["y"])])
+
+refs = dag.execute({"x": 1, "y": 2})
+assert ray.get(refs) == [2, 3]
+# __dag_multi_output_node_end__
+# fmt: on
+
+# fmt: off
+# __dag_multi_output_node_begin__
+import ray
+
+from ray.dag.input_node import InputNode
+from ray.dag.output_node import MultiOutputNode
+
+@ray.remote
+def f(input):
+    return input + 1
+
+with InputNode() as input_data:
+    dag = MultiOutputNode([f.bind(input_data["x"]), f.bind(input_data["y"])])
+
+refs = dag.execute({"x": 1, "y": 2})
+assert ray.get(refs) == [2, 3]
+# __dag_multi_output_node_end__
+# fmt: on
+
+# fmt: off
+# __dag_actor_reuse_begin__
+import ray
+from ray.dag.input_node import InputNode
+from ray.dag.output_node import MultiOutputNode
+
+@ray.remote
+class Worker:
+    def __init__(self):
+        self.forwarded = 0
+
+    def forward(self, input_data: int):
+        self.forwarded += 1
+        return input_data + 1
+
+    def num_forwarded(self):
+        return self.forwarded
+
+# Create an actor via ``remote`` API not ``bind`` API to avoid
+# killing actors when a DAG is finished.
+worker = Worker.remote()
+
+with InputNode() as input_data:
+    dag = MultiOutputNode([worker.forward.bind(input_data)])
+
+# Actors are reused. The DAG definition doesn't include
+# actor creation.
+assert ray.get(dag.execute(1)) == [2]
+assert ray.get(dag.execute(2)) == [3]
+assert ray.get(dag.execute(3)) == [4]
+
+# You can still use other actor methods via `remote` API.
+assert ray.get(worker.num_forwarded.remote()) == 3
+# __dag_actor_reuse_end__
 # fmt: on

@@ -85,15 +85,10 @@ def test_build_anyscale_custom_byod_image() -> None:
     ) -> None:
         cmds.append(cmd)
 
-    with patch(
-        "ray_release.byod.build._byod_image_exist", return_value=False
-    ), patch.dict(
+    with patch("ray_release.byod.build._image_exist", return_value=False), patch.dict(
         "os.environ",
         {"BUILDKITE_COMMIT": "abc123", "BUILDKITE_BRANCH": "master"},
-    ), patch(
-        "subprocess.check_call",
-        side_effect=_mock_check_call,
-    ), patch(
+    ), patch("subprocess.check_call", side_effect=_mock_check_call,), patch(
         "subprocess.check_output",
         return_value=b"abc123",
     ):
@@ -114,6 +109,9 @@ def test_build_anyscale_base_byod_images() -> None:
     def _mock_validate_and_push(image: str) -> None:
         images.append(image)
 
+    def _mock_image_exist(image: str) -> bool:
+        return "rayproject/ray" in image
+
     with patch(
         "ray_release.byod.build._download_dataplane_build_file", return_value=None
     ), patch(
@@ -122,9 +120,7 @@ def test_build_anyscale_base_byod_images() -> None:
     ), patch(
         "subprocess.check_call", return_value=None
     ), patch(
-        "ray_release.byod.build._byod_image_exist", return_value=False
-    ), patch(
-        "ray_release.byod.build._ray_image_exist", return_value=True
+        "ray_release.byod.build._image_exist", side_effect=_mock_image_exist
     ), patch(
         "ray_release.byod.build._validate_and_push", side_effect=_mock_validate_and_push
     ):
@@ -135,7 +131,7 @@ def test_build_anyscale_base_byod_images() -> None:
                 # This is a duplicate of the default.
                 name="aws",
                 env="aws",
-                python="3.8",
+                python="3.9",
                 cluster={"byod": {"type": "cpu"}},
             ),
             Test(name="aws", env="aws", cluster={"byod": {"type": "cu121"}}),
@@ -155,12 +151,12 @@ def test_build_anyscale_base_byod_images() -> None:
         aws_cr = global_config["byod_aws_cr"]
         gcp_cr = global_config["byod_gcp_cr"]
         assert images == [
-            f"{aws_cr}/anyscale/ray:abc123-py38-cpu",
-            f"{aws_cr}/anyscale/ray-ml:abc123-py38-gpu",
-            f"{aws_cr}/anyscale/ray:abc123-py38-cu121",
+            f"{aws_cr}/anyscale/ray:abc123-py39-cpu",
+            f"{aws_cr}/anyscale/ray-ml:abc123-py39-gpu",
+            f"{aws_cr}/anyscale/ray:abc123-py39-cu121",
             f"{aws_cr}/anyscale/ray:abc123-py39-cu116",
             f"{aws_cr}/anyscale/ray:abc123-py311-cu118",
-            f"{gcp_cr}/anyscale/ray:abc123-py38-cpu",
+            f"{gcp_cr}/anyscale/ray:abc123-py39-cpu",
         ]
 
 

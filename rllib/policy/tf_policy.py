@@ -13,7 +13,7 @@ from ray.rllib.policy.policy import Policy, PolicyState, PolicySpec
 from ray.rllib.policy.rnn_sequencing import pad_batch_to_sequences_of_same_size
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils import force_list
-from ray.rllib.utils.annotations import DeveloperAPI, override
+from ray.rllib.utils.annotations import OldAPIStack, override
 from ray.rllib.utils.debug import summarize
 from ray.rllib.utils.deprecation import Deprecated
 from ray.rllib.utils.error import ERR_MSG_TF_POLICY_CANNOT_SAVE_KERAS_MODEL
@@ -42,7 +42,7 @@ tf1, tf, tfv = try_import_tf()
 logger = logging.getLogger(__name__)
 
 
-@DeveloperAPI
+@OldAPIStack
 class TFPolicy(Policy):
     """An agent policy and loss implemented in TensorFlow.
 
@@ -89,7 +89,6 @@ class TFPolicy(Policy):
         TFPolicy.tf_var_creation_scope_counter += 1
         return f"var_scope_{TFPolicy.tf_var_creation_scope_counter}"
 
-    @DeveloperAPI
     def __init__(
         self,
         observation_space: gym.spaces.Space,
@@ -437,7 +436,6 @@ class TFPolicy(Policy):
         return builder.get(fetches)[0]
 
     @override(Policy)
-    @DeveloperAPI
     def learn_on_batch(self, postprocessed_batch: SampleBatch) -> Dict[str, TensorType]:
         assert self.loss_initialized()
 
@@ -473,7 +471,6 @@ class TFPolicy(Policy):
         return stats
 
     @override(Policy)
-    @DeveloperAPI
     def compute_gradients(
         self, postprocessed_batch: SampleBatch
     ) -> Tuple[ModelGradients, Dict[str, TensorType]]:
@@ -525,7 +522,6 @@ class TFPolicy(Policy):
         return new_policy
 
     @override(Policy)
-    @DeveloperAPI
     def apply_gradients(self, gradients: ModelGradients) -> None:
         assert self.loss_initialized()
         builder = _TFRunBuilder(self.get_session(), "apply_gradients")
@@ -533,17 +529,14 @@ class TFPolicy(Policy):
         builder.get(fetches)
 
     @override(Policy)
-    @DeveloperAPI
     def get_weights(self) -> Union[Dict[str, TensorType], List[TensorType]]:
         return self._variables.get_weights()
 
     @override(Policy)
-    @DeveloperAPI
     def set_weights(self, weights) -> None:
         return self._variables.set_weights(weights)
 
     @override(Policy)
-    @DeveloperAPI
     def get_exploration_state(self) -> Dict[str, TensorType]:
         return self.exploration.get_state(sess=self.get_session())
 
@@ -552,17 +545,14 @@ class TFPolicy(Policy):
         return self.get_exploration_state()
 
     @override(Policy)
-    @DeveloperAPI
     def is_recurrent(self) -> bool:
         return len(self._state_inputs) > 0
 
     @override(Policy)
-    @DeveloperAPI
     def num_state_tensors(self) -> int:
         return len(self._state_inputs)
 
     @override(Policy)
-    @DeveloperAPI
     def get_state(self) -> PolicyState:
         # For tf Policies, return Policy weights and optimizer var values.
         state = super().get_state()
@@ -576,7 +566,6 @@ class TFPolicy(Policy):
         return state
 
     @override(Policy)
-    @DeveloperAPI
     def set_state(self, state: PolicyState) -> None:
         # Set optimizer vars first.
         optimizer_vars = state.get("_optimizer_variables", None)
@@ -595,7 +584,6 @@ class TFPolicy(Policy):
         super().set_state(state)
 
     @override(Policy)
-    @DeveloperAPI
     def export_model(self, export_dir: str, onnx: Optional[int] = None) -> None:
         """Export tensorflow graph to export_dir for serving."""
         if onnx:
@@ -653,7 +641,6 @@ class TFPolicy(Policy):
             logger.warning(ERR_MSG_TF_POLICY_CANNOT_SAVE_KERAS_MODEL)
 
     @override(Policy)
-    @DeveloperAPI
     def import_model_from_h5(self, import_file: str) -> None:
         """Imports weights into tf model."""
         if self.model is None:
@@ -798,7 +785,6 @@ class TFPolicy(Policy):
             [v for o in self._optimizers for v in o.variables()], self.get_session()
         )
 
-    @DeveloperAPI
     def copy(self, existing_inputs: List[Tuple[str, "tf1.placeholder"]]) -> "TFPolicy":
         """Creates a copy of self using existing input placeholders.
 
@@ -814,7 +800,6 @@ class TFPolicy(Policy):
         """
         raise NotImplementedError
 
-    @DeveloperAPI
     def extra_compute_action_feed_dict(self) -> Dict[TensorType, TensorType]:
         """Extra dict to pass to the compute actions session run.
 
@@ -824,7 +809,6 @@ class TFPolicy(Policy):
         """
         return {}
 
-    @DeveloperAPI
     def extra_compute_action_fetches(self) -> Dict[str, TensorType]:
         # Cache graph fetches for action computation for better
         # performance.
@@ -834,7 +818,6 @@ class TFPolicy(Policy):
             self._cached_extra_action_out = self.extra_action_out_fn()
         return self._cached_extra_action_out
 
-    @DeveloperAPI
     def extra_action_out_fn(self) -> Dict[str, TensorType]:
         """Extra values to fetch and return from compute_actions().
 
@@ -855,7 +838,6 @@ class TFPolicy(Policy):
             extra_fetches[SampleBatch.ACTION_DIST_INPUTS] = self._dist_inputs
         return extra_fetches
 
-    @DeveloperAPI
     def extra_compute_grad_feed_dict(self) -> Dict[TensorType, TensorType]:
         """Extra dict to pass to the compute gradients session run.
 
@@ -865,7 +847,6 @@ class TFPolicy(Policy):
         """
         return {}  # e.g, kl_coeff
 
-    @DeveloperAPI
     def extra_compute_grad_fetches(self) -> Dict[str, any]:
         """Extra values to fetch and return from compute_gradients().
 
@@ -875,7 +856,6 @@ class TFPolicy(Policy):
         """
         return {LEARNER_STATS_KEY: {}}  # e.g, stats, td error, etc.
 
-    @DeveloperAPI
     def optimizer(self) -> "tf.keras.optimizers.Optimizer":
         """TF optimizer to use for policy optimization.
 
@@ -888,7 +868,6 @@ class TFPolicy(Policy):
         else:
             return tf1.train.AdamOptimizer()
 
-    @DeveloperAPI
     def gradients(
         self,
         optimizer: Union[LocalOptimizer, List[LocalOptimizer]],
@@ -924,7 +903,6 @@ class TFPolicy(Policy):
         else:
             return optimizers[0].compute_gradients(losses[0])
 
-    @DeveloperAPI
     def build_apply_op(
         self,
         optimizer: Union[LocalOptimizer, List[LocalOptimizer]],

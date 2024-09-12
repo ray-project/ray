@@ -1,28 +1,28 @@
 import collections
 import os
-import regex as re
 import unittest
 from unittest.mock import MagicMock, Mock, patch
 
-import pytest
 import numpy as np
+import pytest
+import regex as re
 
 from ray import train, tune
 from ray._private.test_utils import run_string_as_driver
+from ray.tune.experiment.trial import Trial
 from ray.tune.progress_reporter import (
     CLIReporter,
     JupyterNotebookReporter,
     ProgressReporter,
-    _fair_filter_trials,
+    TuneReporterBase,
     _best_trial_str,
     _detect_reporter,
+    _fair_filter_trials,
+    _max_len,
     _time_passed_str,
     _trial_progress_str,
-    TuneReporterBase,
-    _max_len,
 )
 from ray.tune.result import AUTO_RESULT_KEYS
-from ray.tune.experiment.trial import Trial
 
 EXPECTED_RESULT_1 = """Result logdir: /foo
 Number of trials: 5 (1 PENDING, 3 RUNNING, 1 TERMINATED)
@@ -801,6 +801,9 @@ class ProgressReporterTest(unittest.TestCase):
             reporter = _detect_reporter()
             self.assertFalse(isinstance(reporter, CLIReporter))
             self.assertTrue(isinstance(reporter, JupyterNotebookReporter))
+            trainer_reporter = _detect_reporter(_trainer_api=True)
+            self.assertFalse(isinstance(trainer_reporter, JupyterNotebookReporter))
+            self.assertTrue(isinstance(trainer_reporter, CLIReporter))
 
     def testProgressReporterAPI(self):
         class CustomReporter(ProgressReporter):

@@ -1,21 +1,17 @@
 import math
-
 import os
-import torch
-from filelock import FileLock
 
 import pytorch_lightning as pl
-
-
+import torch
+from filelock import FileLock
 from torch.nn import functional as F
 from torch.utils.data import DataLoader, random_split
 from torchmetrics import Accuracy
 from torchvision import transforms
 from torchvision.datasets import MNIST
-from ray.tune.integration.pytorch_lightning import TuneReportCheckpointCallback
 
 from ray import train, tune
-
+from ray.tune.integration.pytorch_lightning import TuneReportCheckpointCallback
 
 PATH_DATASETS = os.environ.get("PATH_DATASETS", ".")
 

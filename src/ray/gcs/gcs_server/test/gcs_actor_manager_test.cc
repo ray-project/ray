@@ -22,6 +22,7 @@
 #include "ray/gcs/test/gcs_test_util.h"
 #include "ray/gcs/gcs_server/gcs_kv_manager.h"
 #include "mock/ray/gcs/gcs_server/gcs_kv_manager.h"
+#include "mock/ray/gcs/gcs_server/gcs_node_manager.h"
 #include "mock/ray/pubsub/publisher.h"
 // clang-format on
 
@@ -36,7 +37,7 @@ class MockActorScheduler : public gcs::GcsActorSchedulerInterface {
 
   void Schedule(std::shared_ptr<gcs::GcsActor> actor) { actors.push_back(actor); }
   void Reschedule(std::shared_ptr<gcs::GcsActor> actor) {}
-  void ReleaseUnusedWorkers(
+  void ReleaseUnusedActorWorkers(
       const absl::flat_hash_map<NodeID, std::vector<WorkerID>> &node_to_workers) {}
   void OnActorDestruction(std::shared_ptr<gcs::GcsActor> actor) {
     const auto &actor_id = actor->GetActorID();
@@ -71,9 +72,9 @@ class MockWorkerClient : public rpc::CoreWorkerClientInterface {
  public:
   MockWorkerClient(instrumented_io_context &io_service) : io_service_(io_service) {}
 
-  void WaitForActorOutOfScope(
-      const rpc::WaitForActorOutOfScopeRequest &request,
-      const rpc::ClientCallback<rpc::WaitForActorOutOfScopeReply> &callback) override {
+  void WaitForActorRefDeleted(
+      const rpc::WaitForActorRefDeletedRequest &request,
+      const rpc::ClientCallback<rpc::WaitForActorRefDeletedReply> &callback) override {
     callbacks_.push_back(callback);
   }
 
@@ -89,13 +90,13 @@ class MockWorkerClient : public rpc::CoreWorkerClientInterface {
 
     // The created_actors_ of gcs actor manager will be modified in io_service thread.
     // In order to avoid multithreading reading and writing created_actors_, we also
-    // send the `WaitForActorOutOfScope` callback operation to io_service thread.
+    // send the `WaitForActorRefDeleted` callback operation to io_service thread.
     std::promise<bool> promise;
     io_service_.post(
         [this, status, &promise]() {
           auto callback = callbacks_.front();
-          auto reply = rpc::WaitForActorOutOfScopeReply();
-          callback(status, reply);
+          auto reply = rpc::WaitForActorRefDeletedReply();
+          callback(status, std::move(reply));
           promise.set_value(false);
         },
         "test");
@@ -105,7 +106,7 @@ class MockWorkerClient : public rpc::CoreWorkerClientInterface {
     return true;
   }
 
-  std::list<rpc::ClientCallback<rpc::WaitForActorOutOfScopeReply>> callbacks_;
+  std::list<rpc::ClientCallback<rpc::WaitForActorRefDeletedReply>> callbacks_;
   std::vector<ActorID> killed_actors_;
   instrumented_io_context &io_service_;
 };
@@ -233,9 +234,11 @@ class GcsActorManagerTest : public ::testing::Test {
     // times in succession, the second call may result in multithreading reading and
     // writing the same variable. In order to avoid the problem of multithreading, we put
     // `OnNodeDead` to io_service thread.
+    auto node_info = std::make_shared<rpc::GcsNodeInfo>();
+    node_info->set_node_id(node_id.Binary());
     io_service_.post(
-        [this, node_id, &promise]() {
-          gcs_actor_manager_->OnNodeDead(node_id, "127.0.0.1");
+        [this, node_info, &promise]() {
+          gcs_actor_manager_->OnNodeDead(node_info, "127.0.0.1");
           promise.set_value(true);
         },
         "test");
@@ -901,7 +904,7 @@ TEST_F(GcsActorManagerTest, TestDestroyActorBeforeActorCreationCompletes) {
   auto actor = mock_actor_scheduler_->actors.back();
   mock_actor_scheduler_->actors.clear();
 
-  // Simulate the reply of WaitForActorOutOfScope request to trigger actor destruction.
+  // Simulate the reply of WaitForActorRefDeleted request to trigger actor destruction.
   ASSERT_TRUE(worker_client_->Reply());
 
   // Check that the actor is in state `DEAD`.
@@ -1184,8 +1187,9 @@ TEST_F(GcsActorManagerTest, TestReuseActorNameInNamespace) {
 
   {
     auto owner_address = request_1.task_spec().caller_address();
-    auto node_id = NodeID::FromBinary(owner_address.raylet_id());
-    gcs_actor_manager_->OnNodeDead(node_id, "");
+    auto node_info = std::make_shared<rpc::GcsNodeInfo>();
+    node_info->set_node_id(owner_address.raylet_id());
+    gcs_actor_manager_->OnNodeDead(node_info, "");
     ASSERT_EQ(gcs_actor_manager_->GetActorIDByName(actor_name, ray_namespace).Binary(),
               ActorID::Nil().Binary());
   }

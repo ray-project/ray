@@ -6,7 +6,7 @@ already be familiar with.
 import gymnasium as gym
 import tree
 import numpy as np
-from typing import Optional, List, Mapping, Iterable, Dict
+from typing import Dict, Iterable, List, Optional
 import abc
 
 
@@ -286,15 +286,15 @@ class TfDeterministic(Distribution):
 
     @override(Distribution)
     def logp(self, value: TensorType, **kwargs) -> TensorType:
-        raise ValueError(f"Cannot return logp for {self.__class__.__name__}.")
+        return tf.zeros_like(self.loc)
 
     @override(Distribution)
     def entropy(self, **kwargs) -> TensorType:
-        raise tf.zeros_like(self.loc)
+        raise RuntimeError(f"`entropy()` not supported for {self.__class__.__name__}.")
 
     @override(Distribution)
     def kl(self, other: "Distribution", **kwargs) -> TensorType:
-        raise ValueError(f"Cannot return kl for {self.__class__.__name__}.")
+        raise RuntimeError(f"`kl()` not supported for {self.__class__.__name__}.")
 
     @staticmethod
     @override(Distribution)
@@ -499,7 +499,7 @@ class TfMultiDistribution(Distribution):
     def from_logits(
         cls,
         logits: tf.Tensor,
-        child_distribution_cls_struct: Union[Mapping, Iterable],
+        child_distribution_cls_struct: Union[Dict, Iterable],
         input_lens: Union[Dict, List[int]],
         space: gym.Space,
         **kwargs,

@@ -1,11 +1,12 @@
 from typing import Optional
 import random
 
+from ray.rllib.utils.annotations import OldAPIStack
 from ray.rllib.utils.replay_buffers.replay_buffer import warn_replay_capacity
 from ray.rllib.utils.typing import SampleBatchType
 
 
-# TODO(sven) deprecate this class.
+@OldAPIStack
 class SimpleReplayBuffer:
     """Simple replay buffer that operates over batches."""
 

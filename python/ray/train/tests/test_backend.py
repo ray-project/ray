@@ -1,5 +1,6 @@
 import math
 import os
+import sys
 import tempfile
 import time
 from unittest.mock import patch
@@ -28,7 +29,6 @@ from ray.train.constants import (
     ENABLE_SHARE_NEURON_CORES_ACCELERATOR_ENV,
     TRAIN_ENABLE_WORKER_SPREAD_ENV,
 )
-from ray.train.tensorflow import TensorflowConfig
 from ray.train.torch import TorchConfig
 from ray.util.placement_group import get_current_placement_group
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
@@ -96,8 +96,21 @@ def mock_add_workers(self, num_workers):
     original_add_workers(self, num_workers)
     for i, worker in enumerate(self.workers):
         metadata = WorkerMetadata(
-            node_id=0,
+            node_id=str(i % 2),
             node_ip=str(i % 2),
+            hostname=0,
+            resource_ids={"GPU": ["0"]},
+            pid=0,
+        )
+        worker.metadata = metadata
+
+
+def mock_add_workers_to_nodes_with_same_ip(self, num_workers):
+    original_add_workers(self, num_workers)
+    for i, worker in enumerate(self.workers):
+        metadata = WorkerMetadata(
+            node_id=str(i % 2),
+            node_ip=0,
             hostname=0,
             resource_ids={"GPU": ["0"]},
             pid=0,
@@ -165,6 +178,18 @@ def test_local_ranks(ray_start_2_cpus):
     assert set(e.finish_training()) == {0, 1}
 
 
+def test_local_ranks_with_same_ip_nodes(ray_2_node_2_cpu):
+    config = TestConfig()
+    e = BackendExecutor(config, num_workers=4)
+    e.start()
+
+    def train_func():
+        return train.get_context().get_local_rank()
+
+    _start_training(e, train_func)
+    assert list(e.finish_training()) == [0, 1, 0, 1]
+
+
 def test_local_world_size(ray_2_node_2_cpu):
     config = TestConfig()
     with patch.object(WorkerGroup, "add_workers", mock_add_workers):
@@ -178,9 +203,39 @@ def test_local_world_size(ray_2_node_2_cpu):
         assert list(e.finish_training()) == [2, 2, 1]
 
 
+def test_local_world_size_with_same_ip_nodes(ray_2_node_2_cpu):
+    config = TestConfig()
+    with patch.object(
+        WorkerGroup, "add_workers", mock_add_workers_to_nodes_with_same_ip
+    ):
+        e = BackendExecutor(config, num_workers=3)
+        e.start()
+
+        def train_func():
+            return train.get_context().get_local_world_size()
+
+        _start_training(e, train_func)
+        assert list(e.finish_training()) == [2, 2, 1]
+
+
 def test_node_ranks(ray_2_node_2_cpu):
     config = TestConfig()
     with patch.object(WorkerGroup, "add_workers", mock_add_workers):
+        e = BackendExecutor(config, num_workers=3)
+        e.start()
+
+        def train_func():
+            return train.get_context().get_node_rank()
+
+        _start_training(e, train_func)
+        assert list(e.finish_training()) == [0, 0, 1]
+
+
+def test_node_ranks_with_same_ip_nodes(ray_2_node_2_cpu):
+    config = TestConfig()
+    with patch.object(
+        WorkerGroup, "add_workers", mock_add_workers_to_nodes_with_same_ip
+    ):
         e = BackendExecutor(config, num_workers=3)
         e.start()
 
@@ -217,43 +272,51 @@ def test_train_failure(ray_start_2_cpus):
     assert e.finish_training() == [1, 1]
 
 
-def test_train_single_worker_failure(ray_start_2_cpus):
-    """Tests if training fails immediately if only one worker raises an Exception."""
+def test_single_worker_user_failure(ray_start_2_cpus):
+    """Tests if training fails immediately if one worker raises an Exception
+    while executing the user training code."""
     config = TestConfig()
     e = BackendExecutor(config, num_workers=2)
     e.start()
 
-    def single_worker_fail():
+    def single_worker_user_failure():
         if train.get_context().get_world_rank() == 0:
-            raise ValueError
+            raise RuntimeError
         else:
             time.sleep(1000000)
 
-    _start_training(e, single_worker_fail)
+    _start_training(e, single_worker_user_failure)
 
     with pytest.raises(StartTraceback) as exc:
         e.get_next_results()
-    assert isinstance(exc.value.__cause__, ValueError)
+    assert isinstance(exc.value.__cause__, RuntimeError)
 
 
-# TODO(@justinvyu: fix test and/or deprecate relevant code path)
-@pytest.mark.skip("Mocked execute_async doesn't work as intended")
-def test_worker_failure(ray_start_2_cpus):
+def test_single_worker_actor_failure(ray_start_2_cpus):
+    """Tests is training fails immediately if one worker actor dies."""
     config = TestConfig()
     e = BackendExecutor(config, num_workers=2)
     e.start()
 
-    def train_fail():
-        ray.actor.exit_actor()
+    def single_worker_actor_failure():
+        if train.get_context().get_world_rank() == 0:
+            # Simulate actor failure
+            os._exit(1)
+        else:
+            time.sleep(1000)
 
-    new_execute_func = gen_execute_special(train_fail)
-    with patch.object(WorkerGroup, "execute_async", new_execute_func):
-        with pytest.raises(TrainingWorkerError):
-            _start_training(e, lambda: 1)
-            e.finish_training()
+    _start_training(e, single_worker_actor_failure)
+
+    with pytest.raises(TrainingWorkerError):
+        e.get_next_results()
 
 
+@pytest.mark.skipif(
+    sys.version_info >= (3, 12), reason="tensorflow is not supported in python 3.12+"
+)
 def test_tensorflow_start(ray_start_2_cpus):
+    from ray.train.tensorflow import TensorflowConfig
+
     num_workers = 2
     tensorflow_config = TensorflowConfig()
     e = BackendExecutor(tensorflow_config, num_workers=num_workers)
@@ -323,7 +386,7 @@ def test_cuda_visible_devices(ray_2_node_2_gpu, worker_results):
 
     os.environ[ENABLE_SHARE_CUDA_VISIBLE_DEVICES_ENV] = "1"
     e = BackendExecutor(
-        config, num_workers=num_workers, num_cpus_per_worker=0, num_gpus_per_worker=1
+        config, num_workers=num_workers, resources_per_worker={"GPU": 1}
     )
     e.start()
     _start_training(e, get_resources)
@@ -369,7 +432,7 @@ def test_cuda_visible_devices_fractional(ray_2_node_2_gpu, worker_results):
 
     os.environ[ENABLE_SHARE_CUDA_VISIBLE_DEVICES_ENV] = "1"
     e = BackendExecutor(
-        config, num_workers=num_workers, num_cpus_per_worker=0, num_gpus_per_worker=0.5
+        config, num_workers=num_workers, resources_per_worker={"GPU": 0.5}
     )
     e.start()
     _start_training(e, get_resources)
@@ -408,7 +471,7 @@ def test_cuda_visible_devices_multiple(ray_2_node_4_gpu, worker_results):
 
     os.environ[ENABLE_SHARE_CUDA_VISIBLE_DEVICES_ENV] = "1"
     e = BackendExecutor(
-        config, num_workers=num_workers, num_cpus_per_worker=0, num_gpus_per_worker=2
+        config, num_workers=num_workers, resources_per_worker={"GPU": 2}
     )
     e.start()
     _start_training(e, get_resources)
@@ -443,8 +506,7 @@ def test_neuron_core_accelerator_ids(ray_2_node_2_neuron_cores, worker_results):
     e = BackendExecutor(
         config,
         num_workers=num_workers,
-        num_cpus_per_worker=0,
-        additional_resources_per_worker={"neuron_cores": 1},
+        resources_per_worker={"neuron_cores": 1},
     )
     e.start()
     _start_training(e, get_resources)
@@ -481,8 +543,7 @@ def test_neuron_core_accelerator_ids_sharing_disabled(
     e = BackendExecutor(
         config,
         num_workers=num_workers,
-        num_cpus_per_worker=0,
-        additional_resources_per_worker={"neuron_cores": 1},
+        resources_per_worker={"neuron_cores": 1},
     )
     e.start()
     _start_training(e, get_resources)

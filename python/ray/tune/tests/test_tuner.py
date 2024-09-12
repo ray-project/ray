@@ -1,24 +1,22 @@
 import os
+import unittest
 from pathlib import Path
+from typing import Optional
 from unittest.mock import patch
 
 import pytest
-import unittest
-from typing import Optional
-
 from sklearn.datasets import load_breast_cancer
 from sklearn.utils import shuffle
 
 import ray
 from ray import train, tune
+from ray.data import Dataset, Datasource, ReadTask, from_pandas, read_datasource
+from ray.data.block import BlockMetadata
 from ray.train import CheckpointConfig, RunConfig, ScalingConfig
-from ray.train.constants import RAY_CHDIR_TO_TRIAL_DIR
+from ray.train.data_parallel_trainer import DataParallelTrainer
 from ray.train.examples.pytorch.torch_linear_example import (
     train_func as linear_train_func,
 )
-from ray.data import Dataset, Datasource, ReadTask, from_pandas, read_datasource
-from ray.data.block import BlockMetadata
-from ray.train.data_parallel_trainer import DataParallelTrainer
 from ray.train.torch import TorchTrainer
 from ray.train.trainer import BaseTrainer
 from ray.train.xgboost import XGBoostTrainer
@@ -87,7 +85,7 @@ class TestDatasource(Datasource):
 
 def gen_dataset_func(do_shuffle: Optional[bool] = False) -> Dataset:
     test_datasource = TestDatasource(do_shuffle)
-    return read_datasource(test_datasource, parallelism=1)
+    return read_datasource(test_datasource, override_num_blocks=1)
 
 
 def gen_dataset_func_eager():
@@ -102,10 +100,8 @@ class TunerTest(unittest.TestCase):
     """The e2e test for hparam tuning using Tuner API."""
 
     @pytest.fixture(autouse=True)
-    def local_dir(self, tmp_path, monkeypatch):
-        monkeypatch.setenv("RAY_AIR_LOCAL_CACHE_DIR", str(tmp_path / "ray_results"))
-        self.local_dir = str(tmp_path / "ray_results")
-        yield self.local_dir
+    def tmp_path(self, tmp_path):
+        self.tmp_path = tmp_path
 
     def setUp(self):
         ray.init()
@@ -193,7 +189,9 @@ class TunerTest(unittest.TestCase):
         tuner = Tuner(
             trainable=trainer,
             run_config=RunConfig(
-                name="test_tuner_driver_fail", callbacks=[FailureInjectionCallback()]
+                name="test_tuner_driver_fail",
+                storage_path=str(self.tmp_path),
+                callbacks=[FailureInjectionCallback()],
             ),
             param_space=param_space,
             tune_config=TuneConfig(mode="min", metric="train-error"),
@@ -205,7 +203,7 @@ class TunerTest(unittest.TestCase):
             tuner.fit()
 
         # Test resume
-        restore_path = os.path.join(self.local_dir, "test_tuner_driver_fail")
+        restore_path = os.path.join(self.tmp_path, "test_tuner_driver_fail")
         tuner = Tuner.restore(restore_path, trainable=trainer, param_space=param_space)
         # A hack before we figure out RunConfig semantics across resumes.
         tuner._local_tuner._run_config.callbacks = None
@@ -420,11 +418,8 @@ def _test_no_chdir(runner_type, runtime_env, use_deprecated_config=False):
 
 def test_tuner_no_chdir_to_trial_dir_deprecated(shutdown_only, chdir_tmpdir):
     """Test the deprecated `chdir_to_trial_dir` config."""
-    _test_no_chdir("tuner", {}, use_deprecated_config=True)
-
-    # The deprecated config will fallback ot setting the environment variable.
-    # Reset it for the following tests
-    os.environ.pop(RAY_CHDIR_TO_TRIAL_DIR, None)
+    with pytest.raises(DeprecationWarning):
+        _test_no_chdir("tuner", {}, use_deprecated_config=True)
 
 
 @pytest.mark.parametrize("runtime_env", [{}, {"working_dir": "."}])
@@ -452,7 +447,9 @@ def test_trainer_no_chdir_to_trial_dir(
 
 
 @pytest.mark.parametrize("runtime_env", [{}, {"working_dir": "."}])
-def test_tuner_relative_pathing_with_env_vars(shutdown_only, chdir_tmpdir, runtime_env):
+def test_tuner_relative_pathing_with_env_vars(
+    shutdown_only, chdir_tmpdir, tmp_path, runtime_env
+):
     """Tests that `TUNE_ORIG_WORKING_DIR` environment variable can be used to access
     relative paths to the original working directory.
     """
@@ -475,14 +472,21 @@ def test_tuner_relative_pathing_with_env_vars(shutdown_only, chdir_tmpdir, runti
         data_path = orig_working_dir / "read.txt"
         assert os.path.exists(data_path) and open(data_path, "r").read() == "data"
 
-        trial_dir = Path(train.get_context().get_trial_dir())
-        # Tune should have changed the working directory to the trial directory
-        assert str(trial_dir) == os.getcwd()
+        # Tune chdirs to the trial working directory
+        storage = train.get_context().get_storage()
+        assert Path(storage.trial_working_directory).resolve() == Path.cwd().resolve()
 
-        with open(trial_dir / "write.txt", "w") as f:
+        with open("write.txt", "w") as f:
             f.write(f"{config['id']}")
 
-    tuner = Tuner(train_func, param_space={"id": tune.grid_search(list(range(4)))})
+    tuner = Tuner(
+        train_func,
+        param_space={"id": tune.grid_search(list(range(4)))},
+        run_config=RunConfig(
+            storage_path=str(tmp_path),
+            sync_config=train.SyncConfig(sync_artifacts=True),
+        ),
+    )
     results = tuner.fit()
     assert not results.errors
     for result in results:
@@ -518,18 +522,18 @@ def test_invalid_param_space(shutdown_only):
 
 
 def test_tuner_restore_classmethod():
-    tuner = Tuner("PPO")
+    tuner = Tuner(lambda x: None)
 
     # Calling `tuner.restore()` on an instance should raise an AttributeError
     with pytest.raises(AttributeError):
-        tuner.restore("/", "PPO")
+        tuner.restore("/", lambda x: None)
 
     # Calling `Tuner.restore()` on the class should work. This will throw a
     # FileNotFoundError because no checkpoint exists at that location. Since
     # this happens in the downstream restoration code, this means that the
     # classmethod check successfully passed.
     with pytest.raises(FileNotFoundError):
-        tuner = Tuner.restore("/invalid", "PPO")
+        tuner = Tuner.restore("/invalid", lambda x: None)
 
 
 if __name__ == "__main__":

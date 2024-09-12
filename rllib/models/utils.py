@@ -1,6 +1,7 @@
 from typing import Callable, Optional, Union
 
 from ray.rllib.core.models.specs.specs_base import TensorSpec
+
 from ray.rllib.core.models.specs.specs_dict import SpecDict
 from ray.rllib.utils.annotations import DeveloperAPI
 from ray.rllib.utils.framework import try_import_jax, try_import_tf, try_import_torch
@@ -8,11 +9,11 @@ from ray.rllib.utils.framework import try_import_jax, try_import_tf, try_import_
 
 @DeveloperAPI
 def input_to_output_specs(
-    input_specs: SpecDict,
+    input_specs,
     num_input_feature_dims: int,
     output_key: str,
     output_feature_spec: TensorSpec,
-) -> SpecDict:
+):
     """Convert an input spec to an output spec, based on a module.
 
     Drops the feature dimension(s) from an input_specs, replacing them with
@@ -154,6 +155,87 @@ def get_activation_fn(
 
 
 @DeveloperAPI
+def get_initializer_fn(name: Optional[Union[str, Callable]], framework: str = "torch"):
+    """Returns the framework-specific initializer class or function.
+
+    This function relies fully on the specified initializer classes and
+    functions in the frameworks `torch` and `tf2` (see for `torch`
+    https://pytorch.org/docs/stable/nn.init.html and for `tf2` see
+    https://www.tensorflow.org/api_docs/python/tf/keras/initializers).
+
+    Note, for framework `torch` the in-place initializers are needed, i.e. names
+    should end with an underscore `_`, e.g. `glorot_uniform_`.
+
+    Args:
+        name: Name of the initializer class or function in one of the two
+            supported frameworks, i.e. `torch` or `tf2`.
+        framework: The framework string, either `torch  or `tf2`.
+
+    Returns:
+        A framework-specific function or class defining an initializer to be used
+        for network initialization,
+
+    Raises:
+        `ValueError` if the `name` is neither class or function in the specified
+        `framework`. Raises also a `ValueError`, if `name` does not define an
+        in-place initializer for framework `torch`.
+    """
+    # Already a callable or `None` return as is. If `None` we use the default
+    # initializer defined in the framework-specific layers themselves.
+    if callable(name) or name is None:
+        return name
+
+    if framework == "torch":
+        name_lower = name.lower() if isinstance(name, str) else name
+
+        _, nn = try_import_torch()
+
+        # Check, if the name includes an underscore. We must use the
+        # in-place initialization from Torch.
+        if not name_lower.endswith("_"):
+            raise ValueError(
+                "Not an in-place initializer: Torch weight initializers "
+                "need to be provided as their in-place version, i.e. "
+                "<initializaer_name> + '_'. See "
+                "https://pytorch.org/docs/stable/nn.init.html. "
+                f"User provided {name}."
+            )
+
+        # First, try to get the initialization directly from `nn.init`.
+        # Note, that all initialization methods in `nn.init` are lower
+        # case and that `<method>_` defines the "in-place" method.
+        fn = getattr(nn.init, name_lower, None)
+        if fn is not None:
+            # TODO (simon): Raise a warning if not "in-place" method.
+            return fn
+        # Unknown initializer.
+        else:
+            # Inform the user that this initializer does not exist.
+            raise ValueError(
+                f"Unknown initializer name: {name_lower} is not a method in "
+                "`torch.nn.init`!"
+            )
+    elif framework == "tf2":
+        # Note, as initializer classes in TensorFlow can be either given by their
+        # name in camel toe typing or by their shortcut we use the `name` as it is.
+        # See https://www.tensorflow.org/api_docs/python/tf/keras/initializers.
+
+        _, tf, _ = try_import_tf()
+
+        # Try to get the initialization function directly from `tf.keras.initializers`.
+        fn = getattr(tf.keras.initializers, name, None)
+        if fn is not None:
+            return fn
+        # Unknown initializer.
+        else:
+            # Inform the user that this initializer does not exist.
+            raise ValueError(
+                f"Unknown initializer: {name} is not a initializer in "
+                "`tf.keras.initializers`!"
+            )
+
+
+@DeveloperAPI
 def get_filter_config(shape):
     """Returns a default Conv2D filter config (list) for a given image shape.
 
@@ -164,18 +246,6 @@ def get_filter_config(shape):
         List[list]: The Conv2D filter configuration usable as `conv_filters`
             inside a model config dict.
     """
-    # VizdoomGym (large 480x640).
-    filters_480x640 = [
-        [16, [24, 32], [14, 18]],
-        [32, [6, 6], 4],
-        [256, [9, 9], 1],
-    ]
-    # VizdoomGym (small 240x320).
-    filters_240x320 = [
-        [16, [12, 16], [7, 9]],
-        [32, [6, 6], 4],
-        [256, [9, 9], 1],
-    ]
     # 96x96x3 (e.g. CarRacing-v0).
     filters_96x96 = [
         [16, [8, 8], 4],
@@ -208,11 +278,7 @@ def get_filter_config(shape):
     ]
 
     shape = list(shape)
-    if len(shape) in [2, 3] and (shape[:2] == [480, 640] or shape[1:] == [480, 640]):
-        return filters_480x640
-    elif len(shape) in [2, 3] and (shape[:2] == [240, 320] or shape[1:] == [240, 320]):
-        return filters_240x320
-    elif len(shape) in [2, 3] and (shape[:2] == [96, 96] or shape[1:] == [96, 96]):
+    if len(shape) in [2, 3] and (shape[:2] == [96, 96] or shape[1:] == [96, 96]):
         return filters_96x96
     elif len(shape) in [2, 3] and (shape[:2] == [84, 84] or shape[1:] == [84, 84]):
         return filters_84x84
@@ -227,9 +293,8 @@ def get_filter_config(shape):
             "No default configuration for obs shape {}".format(shape)
             + ", you must specify `conv_filters` manually as a model option. "
             "Default configurations are only available for inputs of the following "
-            "shapes: [42, 42, K], [84, 84, K], [64, 64, K], [10, 10, K], "
-            "[240, 320, K], and [480, 640, K]. You may alternatively want "
-            "to use a custom model or preprocessor."
+            "shapes: [42, 42, K], [84, 84, K], [64, 64, K], [10, 10, K]. You may "
+            "alternatively want to use a custom model or preprocessor."
         )
 
 

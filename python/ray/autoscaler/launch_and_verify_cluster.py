@@ -21,9 +21,12 @@ import traceback
 from pathlib import Path
 
 import boto3
+import botocore
 import yaml
+from google.cloud import storage
 
 import ray
+from ray.autoscaler._private.aws.config import RAY
 
 
 def check_arguments():
@@ -93,12 +96,12 @@ def get_docker_image(docker_override):
         applicable.
     """
     if docker_override == "latest":
-        return "rayproject/ray:latest-py38"
+        return "rayproject/ray:latest-py39"
     elif docker_override == "nightly":
-        return "rayproject/ray:nightly-py38"
+        return "rayproject/ray:nightly-py39"
     elif docker_override == "commit":
         if re.match("^[0-9]+.[0-9]+.[0-9]+$", ray.__version__):
-            return f"rayproject/ray:{ray.__version__}.{ray.__commit__[:6]}-py38"
+            return f"rayproject/ray:{ray.__version__}.{ray.__commit__[:6]}-py39"
         else:
             print(
                 "Error: docker image is only available for "
@@ -140,7 +143,7 @@ def override_docker_image(config_yaml, docker_image):
     config_yaml["docker"] = docker_config
 
 
-def download_ssh_key():
+def download_ssh_key_aws():
     """Download the ssh key from the S3 bucket to the local machine."""
     print("======================================")
     print("Downloading ssh key...")
@@ -161,7 +164,33 @@ def download_ssh_key():
     os.chmod(local_key_path, 0o400)
 
 
-def cleanup_cluster(cluster_config):
+def download_ssh_key_gcp():
+    """Download the ssh key from the google cloud bucket to the local machine."""
+    print("======================================")
+    print("Downloading ssh key from GCP...")
+
+    # Initialize the GCP storage client
+    client = storage.Client()
+
+    # Set the name of the GCS bucket and the blob (key) to download
+    bucket_name = "gcp-cluster-launcher-release-test-ssh-keys"
+    key_name = "ray-autoscaler_gcp_us-west1_anyscale-bridge-cd812d38_ubuntu_0.pem"
+
+    # Get the bucket and blob
+    bucket = client.get_bucket(bucket_name)
+    blob = bucket.get_blob(key_name)
+
+    # Download the blob to a local file
+    local_key_path = os.path.expanduser(f"~/.ssh/{key_name}")
+    if not os.path.exists(os.path.dirname(local_key_path)):
+        os.makedirs(os.path.dirname(local_key_path))
+    blob.download_to_filename(local_key_path)
+
+    # Set permissions on the key file
+    os.chmod(local_key_path, 0o400)
+
+
+def cleanup_cluster(config_yaml, cluster_config):
     """
     Clean up the cluster using the given cluster configuration file.
 
@@ -184,6 +213,7 @@ def cleanup_cluster(cluster_config):
                 check=True,
                 capture_output=True,
             )
+            cleanup_security_groups(config_yaml)
             # Final success
             return
         except subprocess.CalledProcessError as e:
@@ -202,7 +232,53 @@ def cleanup_cluster(cluster_config):
     raise last_error
 
 
-def run_ray_commands(cluster_config, retries, no_config_cache, num_expected_nodes=1):
+def cleanup_security_group(ec2_client, id):
+    retry = 0
+    while retry < 10:
+        try:
+            ec2_client.delete_security_group(GroupId=id)
+            return
+        except botocore.exceptions.ClientError as e:
+            if e.response["Error"]["Code"] == "DependencyViolation":
+                sleep_time = 2**retry
+                print(
+                    f"Waiting {sleep_time}s for the instance to be terminated before deleting the security group {id}"  # noqa E501
+                )
+                time.sleep(sleep_time)
+                retry += 1
+            else:
+                print(f"Error deleting security group: {e}")
+                return
+
+
+def cleanup_security_groups(config):
+    provider_type = config.get("provider", {}).get("type")
+    if provider_type != "aws":
+        return
+
+    try:
+        ec2_client = boto3.client("ec2", region_name="us-west-2")
+        response = ec2_client.describe_security_groups(
+            Filters=[
+                {
+                    "Name": "tag-key",
+                    "Values": [RAY],
+                },
+                {
+                    "Name": "tag:ray-cluster-name",
+                    "Values": [config["cluster_name"]],
+                },
+            ]
+        )
+        for security_group in response["SecurityGroups"]:
+            cleanup_security_group(ec2_client, security_group["GroupId"])
+    except Exception as e:
+        print(f"Error cleaning up security groups: {e}")
+
+
+def run_ray_commands(
+    config_yaml, cluster_config, retries, no_config_cache, num_expected_nodes=1
+):
     """
     Run the necessary Ray commands to start a cluster, verify Ray is running, and clean
     up the cluster.
@@ -213,8 +289,6 @@ def run_ray_commands(cluster_config, retries, no_config_cache, num_expected_node
         no_config_cache: Whether to pass the --no-config-cache flag to the ray CLI
             commands.
     """
-    print("======================================")
-    cleanup_cluster(cluster_config)
 
     print("======================================")
     print("Starting new cluster...")
@@ -267,7 +341,7 @@ def run_ray_commands(cluster_config, retries, no_config_cache, num_expected_node
             f"Error: Verification failed after {retries} attempts. Cleaning up cluster "
             "before exiting..."
         )
-        cleanup_cluster(cluster_config)
+        cleanup_cluster(config_yaml, cluster_config)
         print("======================================")
         print("Exiting script.")
         sys.exit(1)
@@ -275,7 +349,7 @@ def run_ray_commands(cluster_config, retries, no_config_cache, num_expected_node
     print("======================================")
     print("Ray verification successful.")
 
-    cleanup_cluster(cluster_config)
+    cleanup_cluster(config_yaml, cluster_config)
 
     print("======================================")
     print("Finished executing script successfully.")
@@ -317,11 +391,11 @@ if __name__ == "__main__":
         override_docker_image(config_yaml, docker_override_image)
 
     provider_type = config_yaml.get("provider", {}).get("type")
+    config_yaml["provider"]["cache_stopped_nodes"] = False
     if provider_type == "aws":
-        download_ssh_key()
+        download_ssh_key_aws()
     elif provider_type == "gcp":
-        print("======================================")
-        print("GCP provider detected. Skipping ssh key download step.")
+        download_ssh_key_gcp()
         # Get the active account email
         account_email = (
             subprocess.run(
@@ -360,4 +434,6 @@ if __name__ == "__main__":
         temp.write(yaml.dump(config_yaml).encode("utf-8"))
         temp.flush()
         cluster_config = Path(temp.name)
-        run_ray_commands(cluster_config, retries, no_config_cache, num_expected_nodes)
+        run_ray_commands(
+            config_yaml, cluster_config, retries, no_config_cache, num_expected_nodes
+        )

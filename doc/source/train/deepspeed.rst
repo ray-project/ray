@@ -16,7 +16,7 @@ You only need to run your existing training code with a TorchTrainer. You can ex
     import deepspeed
     from deepspeed.accelerator import get_accelerator
 
-    def train_func(config):
+    def train_func():
         # Instantiate your model and dataset
         model = ...
         train_dataset = ...
@@ -37,23 +37,27 @@ You only need to run your existing training code with a TorchTrainer. You can ex
 
         # Start training
         ...
-    
+
     from ray.train.torch import TorchTrainer
     from ray.train import ScalingConfig
 
     trainer = TorchTrainer(
         train_func,
         scaling_config=ScalingConfig(...),
+        # If running in a multi-node cluster, this is where you
+        # should configure the run's persistent storage that is accessible
+        # across all worker nodes.
+        # run_config=ray.train.RunConfig(storage_path="s3://..."),
         ...
     )
-    trainer.fit()
+    result = trainer.fit()
 
 
-Below is a simple example of ZeRO-3 training with DeepSpeed only. 
+Below is a simple example of ZeRO-3 training with DeepSpeed only.
 
-.. tabs::
+.. tab-set::
 
-    .. group-tab:: Example with Ray Data
+    .. tab-item:: Example with Ray Data
 
         .. dropdown:: Show Code
 
@@ -62,7 +66,7 @@ Below is a simple example of ZeRO-3 training with DeepSpeed only.
                 :start-after: __deepspeed_torch_basic_example_start__
                 :end-before: __deepspeed_torch_basic_example_end__
 
-    .. group-tab:: Example with PyTorch DataLoader
+    .. tab-item:: Example with PyTorch DataLoader
 
         .. dropdown:: Show Code
 
@@ -73,9 +77,9 @@ Below is a simple example of ZeRO-3 training with DeepSpeed only.
 
 .. tip::
 
-    To run DeepSpeed with pure PyTorch, you **don't need to** provide any additional Ray Train utilities 
-    like :meth:`~ray.train.torch.prepare_model` or :meth:`~ray.train.torch.prepare_data_loader` in your training funciton. Instead, 
-    keep using `deepspeed.initialize() <https://deepspeed.readthedocs.io/en/latest/initialize.html>`_ as usual to prepare everything 
+    To run DeepSpeed with pure PyTorch, you **don't need to** provide any additional Ray Train utilities
+    like :meth:`~ray.train.torch.prepare_model` or :meth:`~ray.train.torch.prepare_data_loader` in your training function. Instead,
+    keep using `deepspeed.initialize() <https://deepspeed.readthedocs.io/en/latest/initialize.html>`_ as usual to prepare everything
     for distributed training.
 
 Run DeepSpeed with other frameworks
@@ -93,6 +97,6 @@ Check the below examples for more details:
    * - Accelerate (:ref:`User Guide <train-hf-accelerate>`)
      - `Fine-tune Llama-2 series models with Deepspeed, Accelerate, and Ray Train. <https://github.com/ray-project/ray/tree/master/doc/source/templates/04_finetuning_llms_with_deepspeed>`_
    * - Transformers (:ref:`User Guide <train-pytorch-transformers>`)
-     - :ref:`Fine-tune GPT-J-6b with DeepSpeed and Hugging Face Transformers <gptj_deepspeed_finetune>`
+     - :doc:`Fine-tune GPT-J-6b with DeepSpeed and Hugging Face Transformers <examples/deepspeed/gptj_deepspeed_fine_tuning>`
    * - Lightning (:ref:`User Guide <train-pytorch-lightning>`)
-     - :ref:`Fine-tune vicuna-13b with DeepSpeed and PyTorch Lightning <vicuna_lightning_deepspeed_finetuning>`
+     - :doc:`Fine-tune vicuna-13b with DeepSpeed and PyTorch Lightning <examples/lightning/vicuna_13b_lightning_deepspeed_finetune>`

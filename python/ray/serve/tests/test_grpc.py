@@ -1,5 +1,6 @@
 import os
 import sys
+from typing import Any
 
 import grpc
 
@@ -10,11 +11,8 @@ import ray
 from ray import serve
 from ray._private.test_utils import SignalActor, wait_for_condition
 from ray.cluster_utils import Cluster
-from ray.serve._private.common import DeploymentID
 from ray.serve._private.constants import SERVE_NAMESPACE
-from ray.serve.config import gRPCOptions
-from ray.serve.generated import serve_pb2, serve_pb2_grpc
-from ray.serve.tests.common.utils import (
+from ray.serve._private.test_utils import (
     ping_fruit_stand,
     ping_grpc_another_method,
     ping_grpc_call_method,
@@ -24,6 +22,9 @@ from ray.serve.tests.common.utils import (
     ping_grpc_streaming,
     send_signal_on_cancellation,
 )
+from ray.serve.config import gRPCOptions
+from ray.serve.generated import serve_pb2, serve_pb2_grpc
+from ray.serve.grpc_util import RayServegRPCContext
 from ray.serve.tests.test_config_files.grpc_deployment import g, g2
 
 
@@ -51,28 +52,14 @@ def test_serving_request_through_grpc_proxy(ray_cluster):
             grpc_servicer_functions=grpc_servicer_functions,
         ),
     )
-    replicas = ray.get(
-        serve.context._global_client._controller._all_running_replicas.remote()
-    )
-
-    # Ensures the app is not yet deployed.
-    app_name = "default"
-    deployment_name = "grpc-deployment"
-    replica_name = DeploymentID(deployment_name, app_name)
-    assert replica_name not in replicas
 
     channel = grpc.insecure_channel("localhost:9000")
 
     # Ensures the not found is responding correctly.
+    app_name = "default"
     ping_grpc_call_method(channel, app_name, test_not_found=True)
 
-    serve.run(target=g)
-    replicas = ray.get(
-        serve.context._global_client._controller._all_running_replicas.remote()
-    )
-
-    # Ensures the app is deployed.
-    assert len(replicas[replica_name]) == 1
+    serve.run(g)
 
     # Ensures ListApplications method succeeding.
     ping_grpc_list_applications(channel, [app_name])
@@ -92,15 +79,7 @@ def test_serving_request_through_grpc_proxy(ray_cluster):
     # Ensure Streaming method is responding correctly.
     ping_grpc_streaming(channel, app_name)
 
-    serve.run(target=g2)
-    replicas = ray.get(
-        serve.context._global_client._controller._all_running_replicas.remote()
-    )
-
-    # Ensures the app is deployed.
-    deployment_name = "grpc-deployment-model-composition"
-    replica_name = DeploymentID(deployment_name, app_name)
-    assert len(replicas[replica_name]) == 1
+    serve.run(g2)
 
     # Ensure model composition is responding correctly.
     ping_fruit_stand(channel, app_name)
@@ -131,8 +110,10 @@ def test_serve_start_dictionary_grpc_options(ray_cluster):
 
     channel = grpc.insecure_channel("localhost:9000")
 
+    serve.run(g)
+
     # Ensures ListApplications method succeeding.
-    ping_grpc_list_applications(channel, [])
+    ping_grpc_list_applications(channel, ["default"])
 
     # Ensures Healthz method succeeding.
     ping_grpc_healthz(channel)
@@ -163,17 +144,7 @@ def test_grpc_proxy_routing_without_metadata(ray_cluster):
     )
 
     app1 = "app1"
-    serve.run(target=g, name=app1, route_prefix=f"/{app1}")
-
-    # Ensures the app is not yet deployed.
-    deployment_name = "grpc-deployment"
-    app1_replica_name = DeploymentID(deployment_name, app1)
-    replicas = ray.get(
-        serve.context._global_client._controller._all_running_replicas.remote()
-    )
-
-    # Ensures the app is deployed.
-    assert len(replicas[app1_replica_name]) == 1
+    serve.run(g, name=app1, route_prefix=f"/{app1}")
 
     channel = grpc.insecure_channel("localhost:9000")
     stub = serve_pb2_grpc.UserDefinedServiceStub(channel)
@@ -192,16 +163,7 @@ def test_grpc_proxy_routing_without_metadata(ray_cluster):
 
     # Deploy another app.
     app2 = "app2"
-    serve.run(target=g2, name=app2, route_prefix=f"/{app2}")
-    replicas = ray.get(
-        serve.context._global_client._controller._all_running_replicas.remote()
-    )
-    deployment_name = "grpc-deployment-model-composition"
-
-    # Ensure both apps are deployed
-    app2_replica_name = DeploymentID(deployment_name, app2)
-    assert len(replicas[app1_replica_name]) == 1
-    assert len(replicas[app2_replica_name]) == 1
+    serve.run(g2, name=app2, route_prefix=f"/{app2}")
 
     # Ensure the gRPC request without metadata will now return not found response.
     with pytest.raises(grpc.RpcError) as exception_info:
@@ -236,17 +198,7 @@ def test_grpc_proxy_with_request_id(ray_cluster):
     )
 
     app1 = "app1"
-    serve.run(target=g, name=app1, route_prefix=f"/{app1}")
-
-    # Ensures the app is not yet deployed.
-    deployment_name = "grpc-deployment"
-    app1_replica_name = DeploymentID(deployment_name, app1)
-    replicas = ray.get(
-        serve.context._global_client._controller._all_running_replicas.remote()
-    )
-
-    # Ensures the app is deployed.
-    assert len(replicas[app1_replica_name]) == 1
+    serve.run(g, name=app1, route_prefix=f"/{app1}")
 
     channel = grpc.insecure_channel("localhost:9000")
     stub = serve_pb2_grpc.UserDefinedServiceStub(channel)
@@ -321,7 +273,7 @@ def test_grpc_proxy_on_draining_nodes(ray_cluster):
 
     model = HelloModel.bind()
     app_name = "app1"
-    serve.run(target=model, name=app_name)
+    serve.run(model, name=app_name)
 
     # Ensure worker node has both replicas.
     def check_replicas_on_worker_nodes():
@@ -501,7 +453,7 @@ def test_grpc_proxy_internal_error(ray_instance, ray_shutdown, streaming: bool):
 
     model = HelloModel.bind()
     app_name = "app1"
-    serve.run(target=model, name=app_name)
+    serve.run(model, name=app_name)
 
     channel = grpc.insecure_channel("localhost:9000")
     stub = serve_pb2_grpc.UserDefinedServiceStub(channel)
@@ -555,7 +507,7 @@ async def test_grpc_proxy_cancellation(ray_instance, ray_shutdown, streaming: bo
             yield serve_pb2.UserDefinedResponse(greeting="hello")
 
     downstream = Downstream.bind()
-    serve.run(target=downstream, name="downstream", route_prefix="/downstream")
+    serve.run(downstream, name="downstream", route_prefix="/downstream")
 
     # Send a request and wait for it to start executing.
     channel = grpc.insecure_channel("localhost:9000")
@@ -574,6 +526,269 @@ async def test_grpc_proxy_cancellation(ray_instance, ray_shutdown, streaming: bo
 
     with pytest.raises(grpc.FutureCancelledError):
         r.result()
+
+
+@pytest.mark.parametrize("streaming", [False, True])
+def test_using_grpc_context(ray_instance, ray_shutdown, streaming: bool):
+    """Test using gRPC context.
+
+    When the deployment sets code, details, and trailing metadata in the gRPC context,
+    the response will reflect those values.
+    """
+    grpc_port = 9000
+    grpc_servicer_functions = [
+        "ray.serve.generated.serve_pb2_grpc.add_UserDefinedServiceServicer_to_server",
+    ]
+
+    serve.start(
+        grpc_options=gRPCOptions(
+            port=grpc_port,
+            grpc_servicer_functions=grpc_servicer_functions,
+        ),
+    )
+    error_code = grpc.StatusCode.DATA_LOSS
+    error_message = "my specific error message"
+    trailing_metadata = ("foo", "bar")
+
+    @serve.deployment()
+    class HelloModel:
+        def __call__(
+            self,
+            user_message: serve_pb2.UserDefinedMessage,
+            grpc_context: RayServegRPCContext,
+        ):
+            grpc_context.set_code(error_code)
+            grpc_context.set_details(error_message)
+            grpc_context.set_trailing_metadata([trailing_metadata])
+            return serve_pb2.UserDefinedResponse(greeting="hello")
+
+        def Streaming(
+            self,
+            user_message: serve_pb2.UserDefinedMessage,
+            grpc_context: RayServegRPCContext,
+        ):
+            grpc_context.set_code(error_code)
+            grpc_context.set_details(error_message)
+            grpc_context.set_trailing_metadata([trailing_metadata])
+            yield serve_pb2.UserDefinedResponse(greeting="hello")
+
+    model = HelloModel.bind()
+    app_name = "app1"
+    serve.run(model, name=app_name)
+
+    channel = grpc.insecure_channel("localhost:9000")
+    stub = serve_pb2_grpc.UserDefinedServiceStub(channel)
+    request = serve_pb2.UserDefinedMessage(name="foo", num=30, foo="bar")
+
+    with pytest.raises(grpc.RpcError) as exception_info:
+        if streaming:
+            list(stub.Streaming(request=request))
+        else:
+            _ = stub.__call__(request=request)
+    rpc_error = exception_info.value
+
+    assert rpc_error.code() == error_code
+    assert error_message == rpc_error.details()
+    assert trailing_metadata in rpc_error.trailing_metadata()
+    # request_id should always be set in the trailing metadata.
+    assert any([key == "request_id" for key, _ in rpc_error.trailing_metadata()])
+
+
+@pytest.mark.parametrize("streaming", [False, True])
+def test_using_grpc_context_exception(ray_instance, ray_shutdown, streaming: bool):
+    """Test setting code on gRPC context then raised exception.
+
+    When the deployment in the gRPC context and then raised exception, the response
+    code should still be internal error instead of user defined error.
+    """
+    grpc_port = 9000
+    grpc_servicer_functions = [
+        "ray.serve.generated.serve_pb2_grpc.add_UserDefinedServiceServicer_to_server",
+    ]
+
+    serve.start(
+        grpc_options=gRPCOptions(
+            port=grpc_port,
+            grpc_servicer_functions=grpc_servicer_functions,
+        ),
+    )
+    user_defined_error_code = grpc.StatusCode.DATA_LOSS
+    real_error_message = "test error"
+
+    @serve.deployment()
+    class HelloModel:
+        def __call__(
+            self,
+            user_message: serve_pb2.UserDefinedMessage,
+            grpc_context: RayServegRPCContext,
+        ):
+            grpc_context.set_code(user_defined_error_code)
+            raise RuntimeError(real_error_message)
+
+        def Streaming(
+            self,
+            user_message: serve_pb2.UserDefinedMessage,
+            grpc_context: RayServegRPCContext,
+        ):
+            grpc_context.set_code(user_defined_error_code)
+            raise RuntimeError(real_error_message)
+
+    model = HelloModel.bind()
+    app_name = "app1"
+    serve.run(model, name=app_name)
+
+    channel = grpc.insecure_channel("localhost:9000")
+    stub = serve_pb2_grpc.UserDefinedServiceStub(channel)
+    request = serve_pb2.UserDefinedMessage(name="foo", num=30, foo="bar")
+
+    with pytest.raises(grpc.RpcError) as exception_info:
+        if streaming:
+            list(stub.Streaming(request=request))
+        else:
+            _ = stub.__call__(request=request)
+    rpc_error = exception_info.value
+
+    assert rpc_error.code() == grpc.StatusCode.INTERNAL
+    assert real_error_message in rpc_error.details()
+
+
+@pytest.mark.parametrize("streaming", [False, True])
+@pytest.mark.parametrize("issue", ["incorrect_spelling", "more_args"])
+def test_using_grpc_context_bad_function_signature(
+    ray_instance, ray_shutdown, streaming: bool, issue: str
+):
+    """Test using gRPC context with bad function signature.
+
+    When the deployment sets code, details, and trailing metadata in the gRPC context,
+    the response will reflect those values.
+    """
+    grpc_port = 9000
+    grpc_servicer_functions = [
+        "ray.serve.generated.serve_pb2_grpc.add_UserDefinedServiceServicer_to_server",
+    ]
+
+    serve.start(
+        grpc_options=gRPCOptions(
+            port=grpc_port,
+            grpc_servicer_functions=grpc_servicer_functions,
+        ),
+    )
+    error_code = grpc.StatusCode.DATA_LOSS
+    error_message = "my specific error message"
+    trailing_metadata = ("foo", "bar")
+
+    if issue == "incorrect_spelling":
+
+        @serve.deployment()
+        class HelloModel:
+            def __call__(
+                self,
+                user_message: serve_pb2.UserDefinedMessage,
+                grpc_context_incorrect_spelling: RayServegRPCContext,
+            ):
+                grpc_context_incorrect_spelling.set_code(error_code)
+                grpc_context_incorrect_spelling.set_details(error_message)
+                grpc_context_incorrect_spelling.set_trailing_metadata(
+                    [trailing_metadata]
+                )
+                return serve_pb2.UserDefinedResponse(greeting="hello")
+
+            def Streaming(
+                self,
+                user_message: serve_pb2.UserDefinedMessage,
+                grpc_context_incorrect_spelling: RayServegRPCContext,
+            ):
+                grpc_context_incorrect_spelling.set_code(error_code)
+                grpc_context_incorrect_spelling.set_details(error_message)
+                grpc_context_incorrect_spelling.set_trailing_metadata(
+                    [trailing_metadata]
+                )
+                yield serve_pb2.UserDefinedResponse(greeting="hello")
+
+    elif issue == "more_args":
+
+        @serve.deployment()
+        class HelloModel:
+            def __call__(
+                self,
+                user_message: serve_pb2.UserDefinedMessage,
+                grpc_context: RayServegRPCContext,
+                extra_required_arg: Any,
+            ):
+                grpc_context.set_code(error_code)
+                grpc_context.set_details(error_message)
+                grpc_context.set_trailing_metadata([trailing_metadata])
+                return serve_pb2.UserDefinedResponse(greeting="hello")
+
+            def Streaming(
+                self,
+                user_message: serve_pb2.UserDefinedMessage,
+                grpc_context: RayServegRPCContext,
+                extra_required_arg: Any,
+            ):
+                grpc_context.set_code(error_code)
+                grpc_context.set_details(error_message)
+                grpc_context.set_trailing_metadata([trailing_metadata])
+                yield serve_pb2.UserDefinedResponse(greeting="hello")
+
+    model = HelloModel.bind()
+    app_name = "app1"
+    serve.run(model, name=app_name)
+
+    channel = grpc.insecure_channel("localhost:9000")
+    stub = serve_pb2_grpc.UserDefinedServiceStub(channel)
+    request = serve_pb2.UserDefinedMessage(name="foo", num=30, foo="bar")
+
+    with pytest.raises(grpc.RpcError) as exception_info:
+        if streaming:
+            list(stub.Streaming(request=request))
+        else:
+            _ = stub.__call__(request=request)
+    rpc_error = exception_info.value
+
+    assert rpc_error.code() == grpc.StatusCode.INTERNAL
+    assert "missing 1 required positional argument:" in rpc_error.details()
+    if issue == "incorrect_spelling":
+        assert "grpc_context_incorrect_spelling" in rpc_error.details()
+    elif issue == "more_args":
+        assert "extra_required_arg" in rpc_error.details()
+
+
+def test_grpc_client_sending_large_payload(ray_instance, ray_shutdown):
+    """Test gRPC client sending large payload.
+
+    Serve's gRPC proxy should be configured to allow the client to send large payloads
+    without error.
+    """
+    grpc_port = 9000
+    grpc_servicer_functions = [
+        "ray.serve.generated.serve_pb2_grpc.add_UserDefinedServiceServicer_to_server",
+    ]
+
+    serve.start(
+        grpc_options=gRPCOptions(
+            port=grpc_port,
+            grpc_servicer_functions=grpc_servicer_functions,
+        ),
+    )
+    serve.run(g)
+
+    # This option allows the client to pass larger message.
+    options = [
+        ("grpc.max_receive_message_length", 1024 * 1024 * 1024),
+    ]
+    channel = grpc.insecure_channel("localhost:9000", options=options)
+    stub = serve_pb2_grpc.UserDefinedServiceStub(channel)
+
+    # This is a large payload that exists gRPC's default message limit.
+    large_payload = "foobar" * 1_000_000
+    request = serve_pb2.UserDefinedMessage(name=large_payload, num=30, foo="bar")
+    metadata = (("application", "default"),)
+    response = stub.__call__(request=request, metadata=metadata)
+    assert response == serve_pb2.UserDefinedResponse(
+        greeting=f"Hello {large_payload} from bar",
+        num_x2=60,
+    )
 
 
 if __name__ == "__main__":

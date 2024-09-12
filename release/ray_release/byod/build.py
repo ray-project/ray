@@ -17,8 +17,8 @@ from ray_release.test import (
 )
 
 DATAPLANE_S3_BUCKET = "ray-release-automation-results"
-DATAPLANE_FILENAME = "dataplane_20230718.tgz"
-DATAPLANE_DIGEST = "a3ad426b05f5cf1981fe684ccbffc1dded5e1071a99184d1072b7fc7b4daf8bc"
+DATAPLANE_FILENAME = "dataplane_20240613.tar.gz"
+DATAPLANE_DIGEST = "b7c68dd3cf9ef05b2b1518a32729fc036f06ae83bae9b9ecd241e33b37868944"
 BASE_IMAGE_WAIT_TIMEOUT = 7200
 BASE_IMAGE_WAIT_DURATION = 30
 RELEASE_BYOD_DIR = os.path.join(RELEASE_PACKAGE_DIR, "ray_release/byod")
@@ -54,6 +54,7 @@ def build_champagne_image(
             [
                 "docker",
                 "build",
+                "--progress=plain",
                 "--build-arg",
                 f"BASE_IMAGE={ray_image}",
                 "-t",
@@ -74,7 +75,7 @@ def build_anyscale_custom_byod_image(test: Test) -> None:
         logger.info(f"Test {test.get_name()} does not require a custom byod image")
         return
     byod_image = test.get_anyscale_byod_image()
-    if _byod_image_exist(test, base_image=False):
+    if _image_exist(byod_image):
         logger.info(f"Image {byod_image} already exists")
         return
 
@@ -84,6 +85,7 @@ def build_anyscale_custom_byod_image(test: Test) -> None:
         [
             "docker",
             "build",
+            "--progress=plain",
             "--build-arg",
             f"BASE_IMAGE={test.get_anyscale_base_byod_image()}",
             "--build-arg",
@@ -108,8 +110,6 @@ def build_anyscale_base_byod_images(tests: List[Test]) -> None:
     to_be_built = {}
     built = set()
     for test in tests:
-        if not test.is_byod_cluster():
-            continue
         to_be_built[test.get_anyscale_base_byod_image()] = test
 
     env = os.environ.copy()
@@ -127,12 +127,12 @@ def build_anyscale_base_byod_images(tests: List[Test]) -> None:
             else:
                 byod_requirements = f"{REQUIREMENTS_BYOD}_{py_version}.txt"
 
-            if _byod_image_exist(test):
+            if _image_exist(byod_image):
                 logger.info(f"Image {byod_image} already exists")
                 built.add(byod_image)
                 continue
             ray_image = test.get_ray_image()
-            if not _ray_image_exist(ray_image):
+            if not _image_exist(ray_image):
                 # TODO(can): instead of waiting for the base image to be built, we can
                 #  build it ourselves
                 timeout = BASE_IMAGE_WAIT_TIMEOUT - (int(time.time()) - start)
@@ -148,6 +148,7 @@ def build_anyscale_base_byod_images(tests: List[Test]) -> None:
                     [
                         "docker",
                         "build",
+                        "--progress=plain",
                         "--build-arg",
                         f"BASE_IMAGE={ray_image}",
                         "-t",
@@ -162,6 +163,7 @@ def build_anyscale_base_byod_images(tests: List[Test]) -> None:
                     [
                         "docker",
                         "build",
+                        "--progress=plain",
                         "--build-arg",
                         f"BASE_IMAGE={byod_image}",
                         "--build-arg",
@@ -244,36 +246,13 @@ def _download_dataplane_build_file() -> None:
         assert digest == DATAPLANE_DIGEST, "Mismatched dataplane digest found!"
 
 
-def _ray_image_exist(ray_image: str) -> bool:
+def _image_exist(image: str) -> bool:
     """
     Checks if the given image exists in Docker
     """
     p = subprocess.run(
-        ["docker", "manifest", "inspect", ray_image],
+        ["docker", "manifest", "inspect", image],
         stdout=sys.stderr,
         stderr=sys.stderr,
     )
     return p.returncode == 0
-
-
-def _byod_image_exist(test: Test, base_image: bool = True) -> bool:
-    """
-    Checks if the given Anyscale BYOD image exists.
-    """
-    if os.environ.get("BYOD_NO_CACHE", False):
-        return False
-    if test.is_gce():
-        # TODO(can): check image existence on GCE; without this, we'll always rebuild
-        return False
-    client = boto3.client("ecr", region_name="us-west-2")
-    image_tag = (
-        test.get_byod_base_image_tag() if base_image else test.get_byod_image_tag()
-    )
-    try:
-        client.describe_images(
-            repositoryName=test.get_byod_repo(),
-            imageIds=[{"imageTag": image_tag}],
-        )
-        return True
-    except client.exceptions.ImageNotFoundException:
-        return False

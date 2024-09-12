@@ -3,9 +3,11 @@
 Ray Use Cases
 =============
 
-.. raw:: html
+.. toctree::
+    :hidden:
 
-    <link rel="stylesheet" type="text/css" href="../_static/css/use_cases.css">
+    ../ray-air/getting-started
+
 
 This page indexes common Ray use cases for scaling ML.
 It contains highlighted references to blogs, examples, and tutorials also located
@@ -25,7 +27,13 @@ Large language models (LLMs) and generative AI are rapidly changing industries, 
     :ref-type: doc
     :classes: example-gallery-link
 
-    Explore LLMs and Gen AI examples
+    .. raw:: html
+
+        <svg width='24' height='24' viewBox='0 0 24 24' xmlns='http://www.w3.org/2000/svg' class='star-icon'>
+            <g>
+                <path class='star-icon-path' d='M15.199 9.945C14.7653 9.53412 14.4863 8.98641 14.409 8.394L14.006 5.311L11.276 6.797C10.7511 7.08302 10.1436 7.17943 9.55597 7.07L6.49997 6.5L7.06997 9.556C7.1794 10.1437 7.08299 10.7511 6.79697 11.276L5.31097 14.006L8.39397 14.409C8.98603 14.4865 9.53335 14.7655 9.94397 15.199L12.082 17.456L13.418 14.649C13.6744 14.1096 14.1087 13.6749 14.648 13.418L17.456 12.082L15.199 9.945ZM15.224 15.508L13.011 20.158C12.9691 20.2459 12.9065 20.3223 12.8285 20.3806C12.7505 20.4389 12.6594 20.4774 12.5633 20.4926C12.4671 20.5079 12.3686 20.4995 12.2764 20.4682C12.1842 20.4369 12.101 20.3836 12.034 20.313L8.49197 16.574C8.39735 16.4742 8.27131 16.41 8.13497 16.392L3.02797 15.724C2.93149 15.7113 2.83954 15.6753 2.76006 15.6191C2.68058 15.563 2.61596 15.4883 2.57177 15.4016C2.52758 15.3149 2.50514 15.2187 2.5064 15.1214C2.50765 15.0241 2.53256 14.9285 2.57897 14.843L5.04097 10.319C5.10642 10.198 5.12831 10.0582 5.10297 9.923L4.15997 4.86C4.14207 4.76417 4.14778 4.66541 4.17662 4.57229C4.20546 4.47916 4.25656 4.39446 4.3255 4.32553C4.39444 4.25659 4.47913 4.20549 4.57226 4.17665C4.66539 4.14781 4.76414 4.14209 4.85997 4.16L9.92297 5.103C10.0582 5.12834 10.198 5.10645 10.319 5.041L14.843 2.579C14.9286 2.53257 15.0242 2.50769 15.1216 2.50648C15.219 2.50528 15.3152 2.52781 15.4019 2.57211C15.4887 2.61641 15.5633 2.68116 15.6194 2.76076C15.6755 2.84036 15.7114 2.93242 15.724 3.029L16.392 8.135C16.4099 8.27134 16.4742 8.39737 16.574 8.492L20.313 12.034C20.3836 12.101 20.4369 12.1842 20.4682 12.2765C20.4995 12.3687 20.5079 12.4671 20.4926 12.5633C20.4774 12.6595 20.4389 12.7505 20.3806 12.8285C20.3223 12.9065 20.2459 12.9691 20.158 13.011L15.508 15.224C15.3835 15.2832 15.2832 15.3835 15.224 15.508ZM16.021 17.435L17.435 16.021L21.678 20.263L20.263 21.678L16.021 17.435Z'> </path>
+            </g>
+        </svg>Explore LLMs and Gen AI examples
 
 .. _ref-use-cases-batch-infer:
 
@@ -46,42 +54,15 @@ To learn more about running batch inference with Ray, see the :ref:`batch infere
     :ref-type: doc
     :classes: example-gallery-link
 
-    Explore batch inference examples
+    .. raw:: html
 
-.. _ref-use-cases-mmt:
+        <svg width='24' height='24' viewBox='0 0 24 24' xmlns='http://www.w3.org/2000/svg' class='star-icon'>
+            <g>
+                <path class='star-icon-path' d='M15.199 9.945C14.7653 9.53412 14.4863 8.98641 14.409 8.394L14.006 5.311L11.276 6.797C10.7511 7.08302 10.1436 7.17943 9.55597 7.07L6.49997 6.5L7.06997 9.556C7.1794 10.1437 7.08299 10.7511 6.79697 11.276L5.31097 14.006L8.39397 14.409C8.98603 14.4865 9.53335 14.7655 9.94397 15.199L12.082 17.456L13.418 14.649C13.6744 14.1096 14.1087 13.6749 14.648 13.418L17.456 12.082L15.199 9.945ZM15.224 15.508L13.011 20.158C12.9691 20.2459 12.9065 20.3223 12.8285 20.3806C12.7505 20.4389 12.6594 20.4774 12.5633 20.4926C12.4671 20.5079 12.3686 20.4995 12.2764 20.4682C12.1842 20.4369 12.101 20.3836 12.034 20.313L8.49197 16.574C8.39735 16.4742 8.27131 16.41 8.13497 16.392L3.02797 15.724C2.93149 15.7113 2.83954 15.6753 2.76006 15.6191C2.68058 15.563 2.61596 15.4883 2.57177 15.4016C2.52758 15.3149 2.50514 15.2187 2.5064 15.1214C2.50765 15.0241 2.53256 14.9285 2.57897 14.843L5.04097 10.319C5.10642 10.198 5.12831 10.0582 5.10297 9.923L4.15997 4.86C4.14207 4.76417 4.14778 4.66541 4.17662 4.57229C4.20546 4.47916 4.25656 4.39446 4.3255 4.32553C4.39444 4.25659 4.47913 4.20549 4.57226 4.17665C4.66539 4.14781 4.76414 4.14209 4.85997 4.16L9.92297 5.103C10.0582 5.12834 10.198 5.10645 10.319 5.041L14.843 2.579C14.9286 2.53257 15.0242 2.50769 15.1216 2.50648C15.219 2.50528 15.3152 2.52781 15.4019 2.57211C15.4887 2.61641 15.5633 2.68116 15.6194 2.76076C15.6755 2.84036 15.7114 2.93242 15.724 3.029L16.392 8.135C16.4099 8.27134 16.4742 8.39737 16.574 8.492L20.313 12.034C20.3836 12.101 20.4369 12.1842 20.4682 12.2765C20.4995 12.3687 20.5079 12.4671 20.4926 12.5633C20.4774 12.6595 20.4389 12.7505 20.3806 12.8285C20.3223 12.9065 20.2459 12.9691 20.158 13.011L15.508 15.224C15.3835 15.2832 15.2832 15.3835 15.224 15.508ZM16.021 17.435L17.435 16.021L21.678 20.263L20.263 21.678L16.021 17.435Z'> </path>
+            </g>
+        </svg>Explore batch inference examples
 
-Many Model Training
--------------------
-
-Many model training is common in ML use cases such as time series forecasting, which require fitting of models on multiple data batches corresponding to locations, products, etc.
-The focus is on training many models on subsets of a dataset. This is in contrast to training a single model on the entire dataset.
-
-When any given model you want to train can fit on a single GPU, Ray can assign each training run to a separate Ray Task. In this way, all available workers are utilized to run independent remote training rather than one worker running jobs sequentially.
-
-.. figure:: /images/training_small_models.png
-
-  Data parallelism pattern for distributed training on large datasets.
-
-How do I do many model training on Ray?
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-To train multiple independent models, use the Ray Tune (:ref:`Tutorial <mmt-tune>`) library. This is the recommended library for most cases.
-
-You can use Tune with your current data preprocessing pipeline if your data source fits into the memory of a single machine (node).
-If you need to scale your data, or you want to plan for future scaling, use the :ref:`Ray Data <data>` library.
-Your data must be a :ref:`supported format <input-output>`, to use Ray Data.
-
-Alternative solutions exist for less common cases:
-
-#. If your data is not in a supported format, use Ray Core (:ref:`Tutorial <mmt-core>`) for custom applications. This is an advanced option and requires and understanding of :ref:`design patterns and anti-patterns <core-patterns>`.
-#. If you have a large preprocessing pipeline, you can use the Ray Data library to train multiple models (:ref:`Tutorial <mmt-datasets>`).
-
-.. query-param-ref:: ray-overview/examples
-    :parameters: ?tags=training
-    :ref-type: doc
-    :classes: example-gallery-link
-
-    Explore model training examples
+.. _ref-use-cases-model-serving:
 
 Model Serving
 -------------
@@ -100,8 +81,10 @@ Learn more about model serving with the following resources.
 - `[Blog] Simplify your MLOps with Ray & Ray Serve <https://www.anyscale.com/blog/simplify-your-mlops-with-ray-and-ray-serve>`_
 - :doc:`[Guide] Getting Started with Ray Serve </serve/getting_started>`
 - :doc:`[Guide] Model Composition in Serve </serve/model_composition>`
-- :doc:`[Gallery] Serve Examples Gallery </serve/tutorials/index>`
+- :doc:`[Gallery] Serve Examples Gallery </serve/examples>`
 - `[Gallery] More Serve Use Cases on the Blog <https://www.anyscale.com/blog?tag=ray_serve>`_
+
+.. _ref-use-cases-hyperparameter-tuning:
 
 Hyperparameter Tuning
 ---------------------
@@ -122,6 +105,8 @@ Learn more about the Tune library with the following talks and user guides.
 - `[Blog] Hyperparameter Search with 🤗 Transformers <https://www.anyscale.com/blog/hyperparameter-search-hugging-face-transformers-ray-tune>`_
 - :doc:`[Gallery] Ray Tune Examples Gallery </tune/examples/index>`
 - `More Tune use cases on the Blog <https://www.anyscale.com/blog?tag=ray-tune>`_
+
+.. _ref-use-cases-distributed-training:
 
 Distributed Training
 --------------------
@@ -144,6 +129,8 @@ Learn more about the Train library with the following talks and user guides.
 - :doc:`[Gallery] Ray Train Examples Gallery </train/examples>`
 - `[Gallery] More Train Use Cases on the Blog <https://www.anyscale.com/blog?tag=ray_train>`_
 
+.. _ref-use-cases-reinforcement-learning:
+
 Reinforcement Learning
 ----------------------
 
@@ -161,6 +148,8 @@ Learn more about reinforcement learning with the following resources.
 - `[Talk] Deep reinforcement learning at Riot Games <https://www.anyscale.com/events/2022/03/29/deep-reinforcement-learning-at-riot-games>`_
 - :doc:`[Gallery] RLlib Examples Gallery </rllib/rllib-examples>`
 - `[Gallery] More RL Use Cases on the Blog <https://www.anyscale.com/blog?tag=rllib>`_
+
+.. _ref-use-cases-ml-platform:
 
 ML Platform
 -----------
