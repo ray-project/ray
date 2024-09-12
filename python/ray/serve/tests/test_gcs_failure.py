@@ -111,9 +111,24 @@ def test_controller_gcs_failure(serve_ha, use_handle):  # noqa: F811
         assert pid == call()
 
 
-def router_populated_with_replicas(handle: DeploymentHandle, threshold: int = 1):
+def router_populated_with_replicas(
+    handle: DeploymentHandle,
+    threshold: int,
+    check_cache_populated: bool = False,
+):
     replicas = handle._router._replica_scheduler._replica_id_set
     assert len(replicas) >= threshold
+
+    # Return early if we don't need to check cache
+    if not check_cache_populated:
+        return True
+
+    cache = handle._router._replica_scheduler.replica_queue_len_cache
+    for replica_id in replicas:
+        assert (
+            cache.get(replica_id) is not None
+        ), f"{replica_id} missing from cache {cache._cache}"
+
     return True
 
 
@@ -146,7 +161,7 @@ def test_new_router_on_gcs_failure(serve_ha, use_proxy: bool):
     # waiting for the first request
     h._get_or_create_router()
 
-    wait_for_condition(router_populated_with_replicas, handle=h)
+    wait_for_condition(router_populated_with_replicas, handle=h, threshold=1)
 
     # Kill GCS server before a single request is sent.
     ray.worker._global_node.kill_gcs_server()
@@ -191,7 +206,12 @@ def test_handle_router_updated_replicas_then_gcs_failure(serve_ha):
     config["deployments"][0]["num_replicas"] = 2
     client.deploy_apps(ServeDeploySchema(**{"applications": [config]}))
 
-    wait_for_condition(router_populated_with_replicas, handle=h, threshold=2)
+    wait_for_condition(
+        router_populated_with_replicas,
+        handle=h,
+        threshold=2,
+        check_cache_populated=True,
+    )
 
     # Kill GCS server before router gets to send request to second replica
     ray.worker._global_node.kill_gcs_server()

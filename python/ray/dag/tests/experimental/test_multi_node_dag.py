@@ -146,7 +146,8 @@ def test_bunch_readers_on_different_nodes(ray_start_cluster):
     adag.teardown()
 
 
-def test_pp(ray_start_cluster):
+@pytest.mark.parametrize("single_fetch", [True, False])
+def test_pp(ray_start_cluster, single_fetch):
     cluster = ray_start_cluster
     # This node is for the driver.
     cluster.add_node(num_cpus=0)
@@ -179,8 +180,12 @@ def test_pp(ray_start_cluster):
         dag = MultiOutputNode(outputs)
 
     compiled_dag = dag.experimental_compile()
-    ref = compiled_dag.execute(1)
-    assert ray.get(ref) == [1] * TP
+    refs = compiled_dag.execute(1)
+    if single_fetch:
+        for i in range(TP):
+            assert ray.get(refs[i]) == 1
+    else:
+        assert ray.get(refs) == [1] * TP
 
     # So that raylets' error messages are printed to the driver
     time.sleep(2)
