@@ -258,9 +258,6 @@ def test_no_available_replicas_does_not_block_proxy(serve_instance):
         assert ray.get(blocked_ref) == "hi"
 
 
-@pytest.mark.skipif(
-    sys.platform == "win32", reason="ActorDiedError not raised properly on windows."
-)
 @pytest.mark.parametrize("die_during_request", [False, True])
 def test_replica_actor_died(serve_instance, die_during_request):
     """Test replica death paired with delayed handle notification.
@@ -298,7 +295,7 @@ def test_replica_actor_died(serve_instance, die_during_request):
 
     # Kill one replica.
     if die_during_request:
-        with pytest.raises(RayActorError):
+        with pytest.raises(ActorDiedError):
             h.remote(crash=True).result()
     else:
         replica_to_kill = random.choice(replicas)
