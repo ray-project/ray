@@ -527,11 +527,12 @@ void RayEventLog::Init_(
 }
 
 void RayEventLog::StartPeriodicFlushThread() {
+  stop_periodic_flush_flag_ = false;
   periodic_flush_thread_ = std::thread(&RayEventLog::PeriodicFlush, this);
 }
 
 void RayEventLog::PeriodicFlush() {
-  while (true) {
+  while (!stop_periodic_flush_flag_) {
     std::this_thread::sleep_for(std::chrono::seconds(1));
     FlushExportEvents();
   }
@@ -547,6 +548,7 @@ void RayEventLog::FlushExportEvents() {
 
 void RayEventLog::StopPeriodicFlushThread() {
   if (periodic_flush_thread_.joinable()) {
+    stop_periodic_flush_flag_ = true;
     periodic_flush_thread_.join();
   }
 }
