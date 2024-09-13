@@ -595,7 +595,7 @@ class ReplicaActor:
         self,
         deployment_config: DeploymentConfig = None,
         _after: Optional[Any] = None,
-    ) -> Tuple[DeploymentConfig, DeploymentVersion, Optional[float]]:
+    ) -> Tuple[DeploymentConfig, DeploymentVersion, Optional[float], Optional[int]]:
         """Handles initializing the replica.
 
         Returns: 3-tuple containing
@@ -638,7 +638,7 @@ class ReplicaActor:
     async def reconfigure(
         self,
         deployment_config: DeploymentConfig,
-    ) -> Tuple[DeploymentConfig, DeploymentVersion, Optional[float]]:
+    ) -> Tuple[DeploymentConfig, DeploymentVersion, Optional[float], Optional[int]]:
         try:
             user_config_changed = (
                 deployment_config.user_config != self._deployment_config.user_config
