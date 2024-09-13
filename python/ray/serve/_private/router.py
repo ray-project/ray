@@ -9,6 +9,11 @@ from typing import Any, DefaultDict, Dict, List, Optional, Tuple, Union
 
 import ray
 from ray.actor import ActorHandle
+from ray.anyscale.serve._private.tracing_utils import (
+    create_propagated_context,
+    set_span_attributes,
+    tracing_decorator_factory,
+)
 from ray.exceptions import ActorDiedError, ActorUnavailableError, RayError
 from ray.serve._private.common import (
     DeploymentHandleSource,
@@ -582,6 +587,9 @@ class Router:
                 pr, is_retry=True
             )
 
+    @tracing_decorator_factory(
+        trace_name="proxy_route_to_replica",
+    )
     async def assign_request(
         self,
         request_meta: RequestMetadata,
@@ -589,6 +597,23 @@ class Router:
         **request_kwargs,
     ) -> Union[ray.ObjectRef, ray.ObjectRefGenerator]:
         """Assign a request to a replica and return the resulting object_ref."""
+
+        trace_attributes = {
+            "request_id": request_meta.request_id,
+            "deployment": self.deployment_id.name,
+            "app": self.deployment_id.app_name,
+            "call_method": request_meta.call_method,
+            "route": request_meta.route,
+            "multiplexed_model_id": request_meta.multiplexed_model_id,
+            "is_streaming": request_meta.is_streaming,
+            "is_http_request": request_meta.is_http_request,
+            "is_grpc_request": request_meta.is_grpc_request,
+        }
+        set_span_attributes(trace_attributes)
+        # Add context to request meta to link
+        # traces collected in the replica.
+        propagate_context = create_propagated_context()
+        request_meta.tracing_context = propagate_context
 
         with self._metrics_manager.wrap_request_assignment(request_meta):
             # Optimization: if there are currently zero replicas for a deployment,
