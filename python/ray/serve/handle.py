@@ -395,7 +395,8 @@ class _DeploymentResponseBase:
         if not self._object_ref_future.done():
             self._object_ref_future.cancel()
         elif self._object_ref_future.exception() is None:
-            ray.cancel(self._object_ref_future.result())
+            self._fetch_future_result_sync()
+            self._result_wrapper.cancel()
 
     @DeveloperAPI
     def cancelled(self) -> bool:
