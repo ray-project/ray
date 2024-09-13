@@ -2689,6 +2689,8 @@ cdef class GcsClient:
                   cluster_id: str = None):
         self.use_old_client = os.getenv("RAY_USE_OLD_GCS_CLIENT") == "1"
         if self.use_old_client:
+            logger.error("OLD CLIENT IS USED!!!!!!!!")
+            os._exit(1)
             self.inner = OldGcsClient(address, nums_reconnect_retry, cluster_id)
         else:
             # For timeout (DEADLINE_EXCEEDED): Both OldGcsClient and NewGcsClient
