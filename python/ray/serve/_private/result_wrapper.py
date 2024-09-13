@@ -25,18 +25,6 @@ class ResultWrapper(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def resolve_generator_to_ref_sync(self, timeout_s: Optional[float]):
-        raise NotImplementedError
-
-    @abstractmethod
-    async def resolve_generator_to_ref_async(self):
-        raise NotImplementedError
-
-    @abstractmethod
-    async def resolve_as_top_level_arg(self):
-        raise NotImplementedError
-
-    @abstractmethod
     async def add_callback(self, callback: Callable):
         raise NotImplementedError
 
@@ -47,9 +35,9 @@ class ResultWrapper(ABC):
 
 class ActorResultWrapper(ResultWrapper):
     def __init__(self, obj_ref_or_gen, is_gen: bool):
-        self._obj_ref = None
-        self._obj_ref_gen = None
-        self._is_gen = is_gen
+        self._obj_ref: Optional[ray.ObjectRef] = None
+        self._obj_ref_gen: Optional[ray.ObjectRefGenerator] = None
+        self._is_gen: bool = is_gen
         self._object_ref_or_gen_sync_lock = threading.Lock()
 
         if isinstance(obj_ref_or_gen, ray.ObjectRefGenerator):
@@ -59,7 +47,19 @@ class ActorResultWrapper(ResultWrapper):
 
         self._resolved = None
 
-    def resolve_generator_to_ref_sync(self, timeout_s: Optional[float] = None):
+    @property
+    def obj_ref(self) -> Optional[ray.ObjectRef]:
+        self._obj_ref
+
+    @property
+    def obj_ref_gen(self) -> Optional[ray.ObjectRefGenerator]:
+        self._obj_ref_gen
+
+    def resolve_gen_to_ref_if_necessary_sync(
+        self, timeout_s: Optional[float] = None
+    ) -> Optional[ray.ObjectRef]:
+        """Returns the object ref pointing to the result."""
+
         # NOTE(edoakes): this section needs to be guarded with a lock and the resulting
         # object ref or generator cached in order to avoid calling `__next__()` to
         # resolve to the underlying object ref more than once.
@@ -75,7 +75,11 @@ class ActorResultWrapper(ResultWrapper):
 
                 self._obj_ref = obj_ref
 
-    async def resolve_generator_to_ref_async(self):
+        return self._obj_ref
+
+    async def resolve_gen_to_ref_if_necessary_async(self) -> Optional[ray.ObjectRef]:
+        """Returns the object ref pointing to the result."""
+
         # NOTE(edoakes): this section needs to be guarded with a lock and the resulting
         # object ref or generator cached in order to avoid calling `__anext__()` to
         # resolve to the underlying object ref more than once.
@@ -84,9 +88,11 @@ class ActorResultWrapper(ResultWrapper):
             if self._obj_ref is None and self._obj_ref_gen is not None:
                 self._obj_ref = await self._obj_ref_gen.__anext__()
 
+        return self._obj_ref
+
     def get(self, timeout_s: Optional[float]):
         start_time_s = time.time()
-        self.resolve_generator_to_ref_sync(timeout_s)
+        self.resolve_gen_to_ref_if_necessary_sync(timeout_s)
 
         remaining_timeout_s = calculate_remaining_timeout(
             timeout_s=timeout_s,
@@ -96,7 +102,7 @@ class ActorResultWrapper(ResultWrapper):
         return ray.get(self._obj_ref, timeout=remaining_timeout_s)
 
     async def get_async(self):
-        await self.resolve_generator_to_ref_async()
+        await self.resolve_gen_to_ref_if_necessary_async()
         return await self._obj_ref
 
     def next(self):
@@ -106,12 +112,6 @@ class ActorResultWrapper(ResultWrapper):
     async def anext(self):
         next_obj_ref = await self._obj_ref_gen.__anext__()
         return await next_obj_ref
-
-    async def resolve_as_top_level_arg(self) -> ray.ObjectRef:
-        assert not self._is_gen
-
-        await self.resolve_generator_to_ref_async()
-        return self._obj_ref
 
     def add_callback(self, callback: Callable):
         if self._obj_ref_gen is not None:

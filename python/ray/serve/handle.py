@@ -532,8 +532,7 @@ class DeploymentResponse(_DeploymentResponseBase):
         ServeUsageTag.DEPLOYMENT_HANDLE_TO_OBJECT_REF_API_USED.record("1")
 
         result_wrapper = await self._fetch_future_result_async()
-        await result_wrapper.resolve_generator_to_ref_async()
-        return result_wrapper._obj_ref
+        return await result_wrapper.resolve_gen_to_ref_if_necessary_async()
 
     @DeveloperAPI
     def _to_object_ref_sync(
@@ -573,8 +572,7 @@ class DeploymentResponse(_DeploymentResponseBase):
             start_time_s=start_time_s,
             curr_time_s=time.time(),
         )
-        result_wrapper.resolve_generator_to_ref_sync(remaining_timeout_s)
-        return result_wrapper._obj_ref
+        return result_wrapper.resolve_gen_to_ref_if_necessary_sync(remaining_timeout_s)
 
 
 @PublicAPI(stability="beta")
@@ -637,7 +635,6 @@ class DeploymentResponseGenerator(_DeploymentResponseBase):
         object_ref_future: concurrent.futures.Future,
     ):
         super().__init__(object_ref_future)
-        self._obj_ref_gen: Optional[ObjectRefGenerator] = None
 
     def __await__(self):
         raise TypeError(
@@ -678,7 +675,7 @@ class DeploymentResponseGenerator(_DeploymentResponseBase):
         ServeUsageTag.DEPLOYMENT_HANDLE_TO_OBJECT_REF_API_USED.record("1")
 
         result_wrapper = await self._fetch_future_result_async()
-        return result_wrapper._obj_ref_gen
+        return result_wrapper.obj_ref_gen
 
     @DeveloperAPI
     def _to_object_ref_gen_sync(
@@ -706,7 +703,7 @@ class DeploymentResponseGenerator(_DeploymentResponseBase):
             )
 
         result_wrapper = self._fetch_future_result_sync(_timeout_s)
-        return result_wrapper._obj_ref_gen
+        return result_wrapper.obj_ref_gen
 
 
 @PublicAPI(stability="beta")

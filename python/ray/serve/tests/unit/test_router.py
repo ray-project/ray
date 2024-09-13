@@ -57,9 +57,6 @@ class FakeResultWrapper(ResultWrapper):
     async def resolve_generator_to_ref_async(self):
         raise NotImplementedError
 
-    async def resolve_as_top_level_arg(self):
-        raise NotImplementedError
-
     async def add_callback(self, callback: Callable):
         raise NotImplementedError
 
