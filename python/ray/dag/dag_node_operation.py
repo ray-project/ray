@@ -36,6 +36,9 @@ class _DAGNodeOperation:
         self.exec_task_idx = exec_task_idx
         self.type = operation_type
 
+    def __repr__(self):
+        return f"(Task idx: {self.exec_task_idx}, Type: {self.type})"
+
 
 @total_ordering
 class _DAGOperationGraphNode:
@@ -269,6 +272,12 @@ def _build_dag_node_operation_graph(
 
     # Add an edge from WRITE of the writer task to READ of the reader task.
     for task_idx, task in idx_to_task.items():
+        if (
+            isinstance(task.dag_node, ClassMethodNode)
+            and task.dag_node.is_class_method_output
+        ):
+            # TODO(wxdeng): Handle the case where the task is a class method output.
+            continue
         if not isinstance(task.dag_node, ClassMethodNode):
             # The graph is used to generate an execution schedule for each actor.
             # The edge from the InputNode has no impact on the final execution
@@ -276,6 +285,13 @@ def _build_dag_node_operation_graph(
             continue
         for downstream_task_idx in task.downstream_task_idxs:
             downstream_dag_node = idx_to_task[downstream_task_idx].dag_node
+            if (
+                isinstance(downstream_dag_node, ClassMethodNode)
+                and downstream_dag_node.is_class_method_output
+            ):
+                # TODO(wxdeng): Handle the case where the downstream task is
+                # a class method output.
+                continue
             if isinstance(downstream_dag_node, MultiOutputNode):
                 continue
             _add_edge(
@@ -287,7 +303,7 @@ def _build_dag_node_operation_graph(
 
 def _generate_actor_to_execution_schedule(
     graph: Dict[int, Dict[_DAGNodeOperationType, _DAGOperationGraphNode]]
-):
+) -> Dict["ray.actor.ActorHandle", List[_DAGNodeOperation]]:
     """
     Generate an execution schedule for each actor. The schedule is a list of
     operations to be executed. The function uses a topological sort algorithm

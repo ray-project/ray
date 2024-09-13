@@ -26,6 +26,7 @@ from ray.rllib.connectors.learner.learner_connector_pipeline import (
     LearnerConnectorPipeline,
 )
 from ray.rllib.core import COMPONENT_OPTIMIZER, COMPONENT_RL_MODULE, DEFAULT_MODULE_ID
+from ray.rllib.core.rl_module.apis import SelfSupervisedLossAPI
 from ray.rllib.core.rl_module import validate_module_id
 from ray.rllib.core.rl_module.multi_rl_module import (
     MultiRLModule,
@@ -876,12 +877,22 @@ class Learner(Checkpointable):
             module_batch = batch[module_id]
             module_fwd_out = fwd_out[module_id]
 
-            loss = self.compute_loss_for_module(
-                module_id=module_id,
-                config=self.config.get_config_for_module(module_id),
-                batch=module_batch,
-                fwd_out=module_fwd_out,
-            )
+            module = self.module[module_id].unwrapped()
+            if isinstance(module, SelfSupervisedLossAPI):
+                loss = module.compute_self_supervised_loss(
+                    learner=self,
+                    module_id=module_id,
+                    config=self.config.get_config_for_module(module_id),
+                    batch=module_batch,
+                    fwd_out=module_fwd_out,
+                )
+            else:
+                loss = self.compute_loss_for_module(
+                    module_id=module_id,
+                    config=self.config.get_config_for_module(module_id),
+                    batch=module_batch,
+                    fwd_out=module_fwd_out,
+                )
             loss_per_module[module_id] = loss
 
         return loss_per_module
@@ -1106,6 +1117,9 @@ class Learner(Checkpointable):
             )
         # Call `after_gradient_based_update` to allow for non-gradient based
         # cleanups-, logging-, and update logic to happen.
+        # TODO (simon): Check, if this should stay here, when running multiple
+        # gradient steps inside the iterator loop above (could be a complete epoch)
+        # the target networks might need to be updated earlier.
         self.after_gradient_based_update(timesteps=timesteps or {})
 
         # Reduce results across all minibatch update steps.
@@ -1268,7 +1282,7 @@ class Learner(Checkpointable):
                     },
                     env_steps=sum(len(e) for e in episodes),
                 )
-        # Have to convert to MultiAgentBatch.
+        # Single-agent SampleBatch: Have to convert to MultiAgentBatch.
         elif isinstance(batch, SampleBatch):
             assert len(self.module) == 1
             batch = MultiAgentBatch(

@@ -27,7 +27,9 @@ from ray.serve._private.logging_utils import (
     ServeFormatter,
     StreamToLogger,
     configure_component_logger,
+    configure_default_serve_logger,
     get_serve_logs_dir,
+    redirected_print,
 )
 from ray.serve._private.utils import get_component_file_name
 from ray.serve.context import _get_global_client
@@ -604,6 +606,10 @@ def test_serve_component_filter(is_replica_type_component):
     if is_replica_type_component:
         expected_json["deployment"] = "component"
         expected_json["replica"] = "component_id"
+        expected_json["component_name"] = "replica"
+    else:
+        expected_json["component_name"] = "component"
+        expected_json["component_id"] = "component_id"
 
     # Ensure message exists in the output.
     # Note that there is no "message" key in the record dict until it has been
@@ -869,6 +875,32 @@ def test_json_logging_with_unpickleable_exc_info(
         with open(logs_dir / log_file) as f:
             assert "Logging error" not in f.read()
             assert "cannot pickle" not in f.read()
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="Fail to create temp dir.")
+@pytest.mark.parametrize(
+    "ray_instance",
+    [
+        {"RAY_SERVE_LOG_TO_STDERR": "0"},
+    ],
+    indirect=True,
+)
+def test_configure_default_serve_logger_with_stderr_redirect(
+    serve_and_ray_shutdown, ray_instance, tmp_dir
+):
+    """Test configuring default serve logger with stderr redirect.
+
+    Default serve logger should only be configured with one StreamToLogger handler, and
+    print, stdout, and stderr should NOT be overridden and redirected to the logger.
+    """
+
+    configure_default_serve_logger()
+    serve_logger = logging.getLogger("ray.serve")
+    assert len(serve_logger.handlers) == 1
+    assert isinstance(serve_logger.handlers[0], logging.StreamHandler)
+    assert print != redirected_print
+    assert not isinstance(sys.stdout, StreamToLogger)
+    assert not isinstance(sys.stderr, StreamToLogger)
 
 
 if __name__ == "__main__":

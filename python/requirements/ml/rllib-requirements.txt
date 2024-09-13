@@ -9,4 +9,4 @@ tf2onnx==1.15.1; sys_platform != 'darwin' or platform_machine != 'arm64'
 rich==13.3.2
 # Msgpack checkpoint stuff.
 msgpack
-msgpack_numpy
+msgpack-numpy

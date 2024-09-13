@@ -122,10 +122,10 @@ class CoreWorkerClientInterface : public pubsub::SubscriberClientInterface {
   virtual void GetObjectStatus(const GetObjectStatusRequest &request,
                                const ClientCallback<GetObjectStatusReply> &callback) {}
 
-  /// Ask the actor's owner to reply when the actor has gone out of scope.
-  virtual void WaitForActorOutOfScope(
-      const WaitForActorOutOfScopeRequest &request,
-      const ClientCallback<WaitForActorOutOfScopeReply> &callback) {}
+  /// Ask the actor's owner to reply when the actor has no references.
+  virtual void WaitForActorRefDeleted(
+      const WaitForActorRefDeletedRequest &request,
+      const ClientCallback<WaitForActorRefDeletedReply> &callback) {}
 
   /// Send a long polling request to a core worker for pubsub operations.
   virtual void PubsubLongPolling(const PubsubLongPollingRequest &request,
@@ -256,7 +256,7 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>,
                          override)
 
   VOID_RPC_CLIENT_METHOD(CoreWorkerService,
-                         WaitForActorOutOfScope,
+                         WaitForActorRefDeleted,
                          grpc_client_,
                          /*method_timeout_ms*/ -1,
                          override)
