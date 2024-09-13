@@ -4,8 +4,6 @@ import uuid
 from types import ModuleType
 from typing import TYPE_CHECKING, Any, List, Optional, Tuple, Union
 
-import torch
-
 import ray
 import ray.util.serialization
 from ray.experimental.channel import ChannelContext
@@ -20,6 +18,8 @@ from ray.experimental.channel.torch_tensor_type import TENSOR_METADATA_SIZE_BYTE
 from ray.util.annotations import DeveloperAPI
 
 if TYPE_CHECKING:
+    import torch
+
     from ray.experimental.channel.shared_memory_channel import Channel
     from ray.experimental.channel.torch_tensor_type import TorchTensorType
 
@@ -180,6 +180,8 @@ class NestedTorchTensorNcclChannel(ChannelInterface):
 
 
 def _torch_zeros_allocator(shape: Tuple[int], dtype: "torch.dtype"):
+    import torch
+
     ctx = ChannelContext.get_current()
     return torch.zeros(shape, dtype=dtype, device=ctx.torch_device)
 
@@ -210,6 +212,8 @@ class TorchTensorNcclChannel(ChannelInterface):
                 allocating torch.Tensor buffers on receivers. By default,
                 torch.zeros will be used.
         """
+        import torch
+
         from ray.experimental.channel.torch_tensor_type import TorchTensorType
 
         self.torch: ModuleType = torch
@@ -432,6 +436,8 @@ def _do_init_nccl_group(
     actor_handles,
     custom_nccl_group: Optional[GPUCommunicator] = None,
 ):
+    import torch
+
     assert (
         ray.get_gpu_ids()
     ), "Actors participating in NCCL group must have at least one GPU assigned"
