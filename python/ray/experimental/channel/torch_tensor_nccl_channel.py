@@ -336,7 +336,6 @@ class TorchTensorNcclChannel(ChannelInterface):
         tensors: Union["torch.Tensor", List["torch.Tensor"], Exception],
         timeout: Optional[float] = None,
     ):
-        print("TorchTensorNcclChannel.write")
         if isinstance(tensors, ray.exceptions.RayTaskError):
             # TODO(swang): Write exceptions to the meta channel if it is
             # available.
@@ -371,7 +370,6 @@ class TorchTensorNcclChannel(ChannelInterface):
         # kernel together before either can proceed. Therefore, we send the
         # metadata first so that the receiver can read the metadata and then
         # launch the same NCCL op.
-        print("tensors", tensors)
         for tensor in tensors:
             # TODO: If there are multiple readers, can replace with a
             # broadcast.
