@@ -5,6 +5,7 @@ import sys
 import pytest
 
 import ray
+from ray.dag import InputNode, MultiOutputNode
 import ray.cluster_utils
 from ray.experimental.channel.torch_tensor_type import TorchTensorType
 from ray.tests.conftest import *  # noqa
@@ -35,7 +36,7 @@ def test_multi_args_simulate_pp(ray_start_regular):
     NUM_MICROBATCHES = 2
     w0 = Worker.remote()
     w1 = Worker.remote()
-    with ray.dag.InputNode() as dag_input:
+    with InputNode() as dag_input:
         dag_outs = []
         for microbatch_idx in range(NUM_MICROBATCHES):
             microbatch = dag_input[microbatch_idx]
@@ -51,7 +52,7 @@ def test_multi_args_simulate_pp(ray_start_regular):
             stage_bwd_out = w0.backward.bind(stage_bwd_out)
             dag_outs.append(stage_bwd_out)
 
-        dag = ray.dag.MultiOutputNode(dag_outs)
+        dag = MultiOutputNode(dag_outs)
     compiled_dag = dag.experimental_compile()
 
     tensor_cpu_list = [torch.zeros(1, i + 1) for i in range(3)]
