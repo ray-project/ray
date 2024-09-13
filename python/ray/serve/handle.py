@@ -17,10 +17,7 @@ from ray.serve._private.common import (
     RequestProtocol,
 )
 from ray.serve._private.constants import SERVE_LOGGER_NAME
-from ray.serve._private.default_impl import (
-    create_cluster_node_info_cache,
-    create_result_wrapper,
-)
+from ray.serve._private.default_impl import create_cluster_node_info_cache
 from ray.serve._private.result_wrapper import ResultWrapper
 from ray.serve._private.router import Router
 from ray.serve._private.usage import ServeUsageTag
@@ -350,13 +347,11 @@ class _DeploymentResponseBase:
 
         if self._result_wrapper is None:
             try:
-                result = self._object_ref_future.result(timeout=_timeout_s)
+                self._result_wrapper = self._object_ref_future.result(
+                    timeout=_timeout_s
+                )
             except concurrent.futures.TimeoutError:
                 raise TimeoutError("Timed out resolving to ObjectRef.") from None
-
-            self._result_wrapper = create_result_wrapper(
-                result, is_gen=isinstance(self, DeploymentResponseGenerator)
-            )
 
         return self._result_wrapper
 
@@ -369,10 +364,7 @@ class _DeploymentResponseBase:
         if self._result_wrapper is None:
             # Use `asyncio.wrap_future` so `self._object_ref_future` can be awaited
             # safely from any asyncio loop.
-            result = await asyncio.wrap_future(self._object_ref_future)
-            self._result_wrapper = create_result_wrapper(
-                result, is_gen=isinstance(self, DeploymentResponseGenerator)
-            )
+            self._result_wrapper = await asyncio.wrap_future(self._object_ref_future)
 
         return self._result_wrapper
 

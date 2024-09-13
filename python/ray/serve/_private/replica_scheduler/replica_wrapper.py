@@ -12,6 +12,7 @@ from ray.serve._private.common import (
     RunningReplicaInfo,
 )
 from ray.serve._private.replica_scheduler.common import PendingRequest
+from ray.serve._private.result_wrapper import ActorResultWrapper, ResultWrapper
 from ray.serve._private.utils import JavaActorHandleProxy
 from ray.serve.generated.serve_pb2 import RequestMetadata as RequestMetadataProto
 
@@ -169,7 +170,7 @@ class ActorReplicaWrapper:
     async def send_request_with_rejection(
         self,
         pr: PendingRequest,
-    ) -> Tuple[Optional[ObjectRefGenerator], ReplicaQueueLengthInfo]:
+    ) -> Tuple[Optional[ResultWrapper], ReplicaQueueLengthInfo]:
         assert (
             not self._replica_info.is_cross_language
         ), "Request rejection not supported for Java."
@@ -182,7 +183,10 @@ class ActorReplicaWrapper:
             if not queue_len_info.accepted:
                 return None, queue_len_info
             else:
-                return obj_ref_gen, queue_len_info
+                return (
+                    ActorResultWrapper(obj_ref_gen, is_gen=pr.metadata.is_streaming),
+                    queue_len_info,
+                )
         except asyncio.CancelledError as e:
             # HTTP client disconnected or request was explicitly canceled.
             ray.cancel(obj_ref_gen)

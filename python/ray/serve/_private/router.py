@@ -35,7 +35,8 @@ from ray.serve._private.replica_scheduler import (
     PowerOfTwoChoicesReplicaScheduler,
     ReplicaScheduler,
 )
-from ray.serve._private.utils import FakeObjectRef, inside_ray_client_context
+from ray.serve._private.result_wrapper import ResultWrapper
+from ray.serve._private.utils import inside_ray_client_context
 from ray.serve.config import AutoscalingConfig
 from ray.serve.exceptions import BackPressureError
 from ray.util import metrics
@@ -523,7 +524,7 @@ class Router:
 
     async def schedule_and_send_request(
         self, pr: PendingRequest
-    ) -> Tuple[Union[ray.ObjectRef, ray.ObjectRefGenerator], ReplicaID]:
+    ) -> Tuple[ResultWrapper, ReplicaID]:
         """Choose a replica for the request and send it.
 
         This will block indefinitely if no replicas are available to handle the
@@ -538,10 +539,10 @@ class Router:
             return replica.send_request(pr), replica.replica_id
 
         while True:
-            obj_ref_gen = None
+            result_wrapper = None
             try:
                 (
-                    obj_ref_gen,
+                    result_wrapper,
                     queue_len_info,
                 ) = await replica.send_request_with_rejection(pr)
                 if self._enable_queue_len_cache:
@@ -549,13 +550,13 @@ class Router:
                         replica.replica_id, queue_len_info.num_ongoing_requests
                     )
                 if queue_len_info.accepted:
-                    return obj_ref_gen, replica.replica_id
+                    return result_wrapper, replica.replica_id
             except asyncio.CancelledError:
                 # NOTE(edoakes): this is not strictly necessary because there are
                 # currently no `await` statements between getting the ref and returning,
                 # but I'm adding it defensively.
-                if obj_ref_gen is not None:
-                    ray.cancel(obj_ref_gen)
+                if result_wrapper is not None:
+                    result_wrapper.cancel()
 
                 raise
             except ActorDiedError:
@@ -589,7 +590,7 @@ class Router:
         request_meta: RequestMetadata,
         *request_args,
         **request_kwargs,
-    ) -> Union[ray.ObjectRef, ray.ObjectRefGenerator]:
+    ) -> ResultWrapper:
         """Assign a request to a replica and return the resulting object_ref."""
 
         with self._metrics_manager.wrap_request_assignment(request_meta):
@@ -619,10 +620,7 @@ class Router:
                         replica_id
                     )
                     callback = partial(self._process_finished_request, replica_id)
-                    if isinstance(ref, (ray.ObjectRef, FakeObjectRef)):
-                        ref._on_completed(callback)
-                    else:
-                        ref.completed()._on_completed(callback)
+                    ref.add_callback(callback)
 
                 return ref
             except asyncio.CancelledError:
@@ -630,7 +628,7 @@ class Router:
                 # there are currently no `await` statements between
                 # getting the ref and returning, but I'm adding it defensively.
                 if ref is not None:
-                    ray.cancel(ref)
+                    ref.cancel()
 
                 raise
 

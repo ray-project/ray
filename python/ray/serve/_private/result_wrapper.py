@@ -1,7 +1,7 @@
 import threading
 import time
 from abc import ABC, abstractmethod
-from typing import Optional
+from typing import Callable, Optional
 
 import ray
 from ray.serve._private.utils import calculate_remaining_timeout
@@ -36,8 +36,16 @@ class ResultWrapper(ABC):
     async def resolve_as_top_level_arg(self):
         raise NotImplementedError
 
+    @abstractmethod
+    async def add_callback(self, callback: Callable):
+        raise NotImplementedError
 
-class RayResultWrapper(ResultWrapper):
+    @abstractmethod
+    async def cancel(self):
+        raise NotImplementedError
+
+
+class ActorResultWrapper(ResultWrapper):
     def __init__(self, obj_ref_or_gen, is_gen: bool):
         self._obj_ref = None
         self._obj_ref_gen = None
@@ -99,14 +107,20 @@ class RayResultWrapper(ResultWrapper):
         next_obj_ref = await self._obj_ref_gen.__anext__()
         return await next_obj_ref
 
-    def cancel(self):
-        if self._obj_ref_gen is not None:
-            ray.cancel(self._obj_ref_gen)
-        else:
-            ray.cancel(self._obj_ref)
-
     async def resolve_as_top_level_arg(self) -> ray.ObjectRef:
         assert not self._is_gen
 
         await self.resolve_generator_to_ref_async()
         return self._obj_ref
+
+    def add_callback(self, callback: Callable):
+        if self._obj_ref_gen is not None:
+            self._obj_ref_gen.completed()._on_completed(callback)
+        else:
+            self._obj_ref._on_completed(callback)
+
+    def cancel(self):
+        if self._obj_ref_gen is not None:
+            ray.cancel(self._obj_ref_gen)
+        else:
+            ray.cancel(self._obj_ref)
