@@ -2,7 +2,7 @@ import asyncio
 import random
 import sys
 from collections import defaultdict
-from typing import Callable, Dict, List, Optional, Set, Tuple, Union
+from typing import Callable, Dict, List, Optional, Set, Tuple
 from unittest.mock import Mock, patch
 
 import pytest
