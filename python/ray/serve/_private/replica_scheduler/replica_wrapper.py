@@ -54,9 +54,8 @@ class ReplicaWrapper(ABC):
         pass
 
     async def send_request_with_rejection(
-        self,
-        pr: PendingRequest,
-    ) -> Tuple[Optional[ObjectRefGenerator], ReplicaQueueLengthInfo]:
+        self, pr: PendingRequest
+    ) -> Tuple[Optional[ResultWrapper], ReplicaQueueLengthInfo]:
         """Send request to this replica.
 
         The replica will yield a system message (ReplicaQueueLengthInfo) before
@@ -161,15 +160,19 @@ class ActorReplicaWrapper:
 
         return method.remote(pickle.dumps(pr.metadata), *pr.args, **pr.kwargs)
 
-    def send_request(self, pr: PendingRequest) -> Union[ObjectRef, ObjectRefGenerator]:
+    def send_request(self, pr: PendingRequest) -> ResultWrapper:
         if self._replica_info.is_cross_language:
-            return self._send_request_java(pr)
+            return ActorResultWrapper(
+                self._send_request_java(pr), is_gen=pr.metadata.is_streaming
+            )
         else:
-            return self._send_request_python(pr, with_rejection=False)
+            return ActorResultWrapper(
+                self._send_request_python(pr, with_rejection=False),
+                is_gen=pr.metadata.is_streaming,
+            )
 
     async def send_request_with_rejection(
-        self,
-        pr: PendingRequest,
+        self, pr: PendingRequest
     ) -> Tuple[Optional[ResultWrapper], ReplicaQueueLengthInfo]:
         assert (
             not self._replica_info.is_cross_language
