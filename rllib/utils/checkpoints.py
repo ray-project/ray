@@ -9,6 +9,8 @@ import tempfile
 from types import MappingProxyType
 from typing import Any, Collection, Dict, List, Optional, Tuple, Union
 
+import pyarrow.fs
+
 import ray
 import ray.cloudpickle as pickle
 from ray.rllib.core import (
@@ -92,6 +94,7 @@ class Checkpointable(abc.ABC):
         path: Optional[Union[str, pathlib.Path]] = None,
         *,
         state: Optional[StateDict] = None,
+        filesystem: Optional["pyarrow.fs.FileSystem"] = None,
     ) -> str:
         """Saves the state of the implementing class (or `state`) to `path`.
 
@@ -126,13 +129,20 @@ class Checkpointable(abc.ABC):
                 created (and returned).
             state: An optional state dict to be used instead of getting a new state of
                 the implementing class through `self.get_state()`.
+            filesystem: PyArrow FileSystem to use to access data at the path.
+                If not specified, this is inferred from the URI scheme.
 
         Returns:
             The path (str) where the state has been saved.
         """
-        # Create path, if necessary.
+
+        # If no path is given create a local temporary directory.
         if path is None:
             path = path or tempfile.mkdtemp()
+
+        # If we have no filesystem, figure it out.
+        if path and not filesystem:
+            filesystem, path = pyarrow.fs.FileSystem.from_uri(path)
 
         # Make sure, path exists.
         path = pathlib.Path(path)
@@ -144,11 +154,15 @@ class Checkpointable(abc.ABC):
             metadata["checkpoint_version"] = str(
                 CHECKPOINT_VERSION_LEARNER_AND_ENV_RUNNER
             )
-        with open(path / self.METADATA_FILE_NAME, "w") as f:
-            json.dump(metadata, f)
+        with filesystem.open_output_stream(
+            (path / self.METADATA_FILE_NAME).as_posix()
+        ) as f:
+            f.write(json.dumps(metadata).encode("utf-8"))
 
         # Write the class and constructor args information to disk.
-        with open(path / self.CLASS_AND_CTOR_ARGS_FILE_NAME, "wb") as f:
+        with filesystem.open_output_stream(
+            (path / self.CLASS_AND_CTOR_ARGS_FILE_NAME).as_posix()
+        ) as f:
             pickle.dump(
                 {
                     "class": type(self),
@@ -265,7 +279,9 @@ class Checkpointable(abc.ABC):
                 comp.save_to_path(comp_path, state=comp_state)
 
         # Write all the remaining state to disk.
-        with open(path / self.STATE_FILE_NAME, "wb") as f:
+        with filesystem.open_output_stream(
+            (path / self.STATE_FILE_NAME).as_posix()
+        ) as f:
             pickle.dump(state, f)
 
         return str(path)
@@ -387,6 +403,11 @@ class Checkpointable(abc.ABC):
             with open(path / self.STATE_FILE_NAME, "rb") as f:
                 state = pickle.load(f)
             self.set_state(state)
+
+    def _exists_at_fs_path(fs: pyarrow.fs.FileSystem, path: str) -> bool:
+        """Returns `True` if the path can be found in the filesystem."""
+        valid = fs.get_file_info(path)
+        return valid.type != pyarrow.fs.FileType.NotFound
 
     @classmethod
     def from_checkpoint(
