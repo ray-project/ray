@@ -146,7 +146,7 @@ class Checkpointable(abc.ABC):
 
         # Make sure, path exists.
         path = pathlib.Path(path)
-        path.mkdir(parents=True, exist_ok=True)
+        # path.mkdir(parents=True, exist_ok=True)
 
         # Write metadata file to disk.
         metadata = self.get_metadata()
@@ -291,6 +291,7 @@ class Checkpointable(abc.ABC):
         path: Union[str, pathlib.Path],
         *,
         component: Optional[str] = None,
+        filesystem: Optional["pyarrow.fs.FileSystem"] = None,
         **kwargs,
     ) -> None:
         """Restores the state of the implementing class from the given path.
@@ -331,9 +332,18 @@ class Checkpointable(abc.ABC):
                 case.
             **kwargs: Forward compatibility kwargs.
         """
-        path = pathlib.Path(path)
-        if not path.is_dir():
+        path = path if isinstance(path, str) else path.as_posix()
+
+        if path and not filesystem:
+            filesystem, path = pyarrow.fs.FileSystem.from_uri(path)
+            # Only here convert to a `Path` instance b/c otherwise
+            # cloud path gets broken (i.e. 'gs://' -> 'gs:/').
+            path = pathlib.Path(path)
+
+        if not _exists_at_fs_path(filesystem, path.as_posix()):
             raise FileNotFoundError(f"`path` ({path}) not found!")
+        # if not path.is_dir():
+        #     raise FileNotFoundError(f"`path` ({path}) not found!")
 
         # Restore components of `self` that themselves are `Checkpointable`.
         for comp_name, comp in self.get_checkpointable_components():
@@ -346,8 +356,10 @@ class Checkpointable(abc.ABC):
                 comp_dir = path / comp_name
                 # If subcomponent's dir is not in path, ignore it and don't restore this
                 # subcomponent's state from disk.
-                if not comp_dir.is_dir():
+                if not _exists_at_fs_path(filesystem, comp_dir.as_posix()):
                     continue
+                # if not comp_dir.is_dir():
+                #     continue
             else:
                 comp_dir = path
 
@@ -400,14 +412,11 @@ class Checkpointable(abc.ABC):
 
         # Restore the rest of the state (not based on subcomponents).
         if component is None:
-            with open(path / self.STATE_FILE_NAME, "rb") as f:
+            with filesystem.open_input_stream(
+                (path / self.STATE_FILE_NAME).as_posix()
+            ) as f:
                 state = pickle.load(f)
             self.set_state(state)
-
-    def _exists_at_fs_path(fs: pyarrow.fs.FileSystem, path: str) -> bool:
-        """Returns `True` if the path can be found in the filesystem."""
-        valid = fs.get_file_info(path)
-        return valid.type != pyarrow.fs.FileType.NotFound
 
     @classmethod
     def from_checkpoint(
@@ -555,6 +564,12 @@ class Checkpointable(abc.ABC):
                 subcomponents.append(comp[len(name) + 1 :])
 
         return None if not subcomponents else subcomponents
+
+
+def _exists_at_fs_path(fs: pyarrow.fs.FileSystem, path: str) -> bool:
+    """Returns `True` if the path can be found in the filesystem."""
+    valid = fs.get_file_info(path)
+    return valid.type != pyarrow.fs.FileType.NotFound
 
 
 @PublicAPI(stability="alpha")
