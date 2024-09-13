@@ -15,6 +15,7 @@ if sys.platform != "linux" and sys.platform != "darwin":
 
 USE_GPU = bool(os.environ.get("RAY_PYTEST_USE_GPU", 0))
 
+
 @pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 2}], indirect=True)
 def test_multi_args_simulate_pp(ray_start_regular):
     if not USE_GPU:
@@ -53,9 +54,11 @@ def test_multi_args_simulate_pp(ray_start_regular):
         dag = ray.dag.MultiOutputNode(dag_outs)
     compiled_dag = dag.experimental_compile()
 
-    tensor_cpu_list = [torch.zeros(1, i+1) for i in range(3)]
+    tensor_cpu_list = [torch.zeros(1, i + 1) for i in range(3)]
     tensor_cuda_list = [t.to("cuda:0") for t in tensor_cpu_list]
-    ref = compiled_dag.execute(tensor_cuda_list[0], tensor_cuda_list[1], tensor_cuda_list[2])
+    ref = compiled_dag.execute(
+        tensor_cuda_list[0], tensor_cuda_list[1], tensor_cuda_list[2]
+    )
     tensors = ray.get(ref)
 
     assert len(tensors) == 4
@@ -65,6 +68,7 @@ def test_multi_args_simulate_pp(ray_start_regular):
     assert torch.equal(tensors[3], tensor_cpu_list[2])
 
     compiled_dag.teardown()
+
 
 if __name__ == "__main__":
     if os.environ.get("PARALLEL_CI"):
