@@ -17,10 +17,8 @@ from ray.serve._private.common import (
     RequestMetadata,
     RunningReplicaInfo,
 )
-from ray.serve._private.replica_scheduler.common import (
-    ActorReplicaWrapper,
-    PendingRequest,
-)
+from ray.serve._private.replica_scheduler.common import PendingRequest
+from ray.serve._private.replica_scheduler.replica_wrapper import ActorReplicaWrapper
 from ray.serve._private.test_utils import send_signal_on_cancellation
 
 
