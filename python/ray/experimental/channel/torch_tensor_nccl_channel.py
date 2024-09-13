@@ -12,7 +12,6 @@ from ray.experimental.channel.gpu_communicator import (
     GPUCommunicator,
     TorchTensorAllocator,
 )
-from ray.experimental.channel.nccl_group import _NcclGroup
 from ray.experimental.channel.shared_memory_channel import SharedMemoryType
 from ray.experimental.channel.torch_tensor_type import TENSOR_METADATA_SIZE_BYTES
 from ray.util.annotations import DeveloperAPI
@@ -28,6 +27,33 @@ if TYPE_CHECKING:
 # into the program using Ray. Ray provides a default configuration at
 # entry/init points.
 logger = logging.getLogger(__name__)
+
+def _get_current_device_type() -> str:
+    """
+    Check the current device type (GPU or NPU) and return its name.
+
+    Returns:
+        A string indicating the device type, either 'cuda' for GPU or 'npu' for NPU.
+    """
+    import torch
+
+    # Get the current device type
+    if torch.cuda.is_available():
+        return "cuda"
+    elif hasattr(torch, "npu") and torch.npu.is_available():
+        return "npu"
+    else:
+        raise RuntimeError("No supported accelerator device (GPU or NPU) found.")
+
+
+# Determine which communicator to use based on the current device type
+device_type = _get_current_device_type()
+if device_type == "npu":
+    from ray.experimental.channel.nccl_group import _NcclGroup
+
+else:
+    from ray.experimental.channel.hccl_group import _HcclGroup as _NcclGroup
+
 
 
 class NestedTorchTensorNcclChannel(ChannelInterface):
