@@ -41,6 +41,9 @@ Status NormalTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
 
     bool keep_executing = true;
     {
+      RAY_LOG(INFO) << "[SubmitTask]begin sleep....";
+      std::this_thread::sleep_for(std::chrono::milliseconds(20000));
+      RAY_LOG(INFO) << "[SubmitTask]end sleep...";
       absl::MutexLock lock(&mu_);
       if (cancelled_tasks_.find(task_spec.TaskId()) != cancelled_tasks_.end()) {
         cancelled_tasks_.erase(task_spec.TaskId());
