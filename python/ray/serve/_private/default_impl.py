@@ -12,6 +12,7 @@ from ray.serve._private.deployment_scheduler import (
     DeploymentScheduler,
 )
 from ray.serve._private.replica_scheduler.replica_wrapper import ActorReplicaWrapper
+from ray.serve._private.result_wrapper import RayResultWrapper
 from ray.serve._private.utils import get_head_node_id
 
 # NOTE: Please read carefully before changing!
@@ -41,3 +42,7 @@ def create_deployment_scheduler(
 
 def create_replica_wrapper(replica_info: RunningReplicaInfo):
     return ActorReplicaWrapper(replica_info)
+
+
+def create_result_wrapper(ref_or_gen, is_gen: bool):
+    return RayResultWrapper(ref_or_gen, is_gen)
