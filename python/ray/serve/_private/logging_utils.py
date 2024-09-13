@@ -69,7 +69,7 @@ class ServeComponentFilter(logging.Filter):
             setattr(record, SERVE_LOG_COMPONENT, self.component_type)
         else:
             setattr(record, SERVE_LOG_COMPONENT, self.component_name)
-            setattr(record, SERVE_LOG_REPLICA, self.component_id)
+            setattr(record, SERVE_LOG_COMPONENT_ID, self.component_id)
 
         return True
 
