@@ -34,13 +34,26 @@ config = (
     )
     .offline_data(
         input_=[data_path.as_posix()],
+        # Define the number of reading blocks, these should be larger than 1
+        # and aligned with the data size.
+        input_read_method_kwargs={"override_num_blocks": max(args.num_gpus, 2)},
+        # Concurrency defines the number of processes that run the
+        # `map_batches` transformations. This should be aligned with the
+        # 'prefetch_batches' argument in 'iter_batches_kwargs'.
+        map_batches_kwargs={"concurrency": max(2, args.num_gpus * 2)},
         actions_in_input_normalized=True,
         dataset_num_iters_per_learner=1 if args.num_gpus == 0 else None,
     )
     .training(
-        bc_iters=100,
-        train_batch_size_per_learner=2000,
-        twin_q=False,
+        bc_iters=200,
+        tau=9.5e-3,
+        min_q_weight=5.0,
+        train_batch_size_per_learner=2048,
+        twin_q=True,
+        actor_lr=1.7e-3 * (args.num_gpus or 1) ** 0.5,
+        critic_lr=2.5e-3 * (args.num_gpus or 1) ** 0.5,
+        alpha_lr=1e-3 * (args.num_gpus or 1) ** 0.5,
+        lr=None,
     )
     .reporting(
         min_time_s_per_iteration=10,
@@ -48,14 +61,13 @@ config = (
     )
     .evaluation(
         evaluation_interval=1,
-        evaluation_num_env_runners=2,
+        evaluation_num_env_runners=0,
         evaluation_duration=10,
         evaluation_config={
             "explore": False,
         },
     )
 )
-
 
 stop = {
     f"{EVALUATION_RESULTS}/{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": -700.0,

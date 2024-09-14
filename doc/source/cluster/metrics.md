@@ -233,7 +233,7 @@ Here are some instructions for each of the paths:
 
 (grafana)=
 ### Simplest: Setting up Grafana with Ray-provided configurations
-Grafana is a tool that supports advanced visualizations of Prometheus metrics and allows you to create custom dashboards with your favorite metrics. 
+Grafana is a tool that supports advanced visualizations of Prometheus metrics and allows you to create custom dashboards with your favorite metrics.
 
 ::::{tab-set}
 
@@ -241,7 +241,7 @@ Grafana is a tool that supports advanced visualizations of Prometheus metrics an
 
 ```{admonition} Note
 :class: note
-The instructions below describe one way of starting a Grafana server on a macOS machine. Refer to the [Grafana documentation](https://grafana.com/docs/grafana/latest/setup-grafana/start-restart-grafana/#start-the-grafana-server) for how to start Grafana servers in different systems. 
+The instructions below describe one way of starting a Grafana server on a macOS machine. Refer to the [Grafana documentation](https://grafana.com/docs/grafana/latest/setup-grafana/start-restart-grafana/#start-the-grafana-server) for how to start Grafana servers in different systems.
 
 For KubeRay users, follow [these instructions](kuberay-prometheus-grafana) to set up Grafana.
 ```

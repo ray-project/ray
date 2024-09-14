@@ -147,7 +147,7 @@ number of output files, configure ``num_rows_per_file``.
 
 .. note::
 
-    ``num_rows_per_file`` is a hint, not a strict limit. Ray Data might write more or 
+    ``num_rows_per_file`` is a hint, not a strict limit. Ray Data might write more or
     fewer rows to each file.
 
 .. testcode::
@@ -163,7 +163,7 @@ number of output files, configure ``num_rows_per_file``.
 .. testoutput::
     :options: +MOCK
 
-    ['0_000001_000000.csv', '0_000000_000000.csv', '0_000002_000000.csv']                                                          
+    ['0_000001_000000.csv', '0_000000_000000.csv', '0_000002_000000.csv']
 
 Converting Datasets to other Python libraries
 =============================================

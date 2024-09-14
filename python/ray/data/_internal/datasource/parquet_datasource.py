@@ -29,11 +29,11 @@ from ray.data._internal.util import (
 from ray.data.block import Block
 from ray.data.context import DataContext
 from ray.data.datasource import Datasource
-from ray.data.datasource._default_metadata_providers import (
-    get_generic_metadata_provider,
-)
 from ray.data.datasource.datasource import ReadTask
-from ray.data.datasource.file_meta_provider import _handle_read_os_error
+from ray.data.datasource.file_meta_provider import (
+    DefaultFileMetadataProvider,
+    _handle_read_os_error,
+)
 from ray.data.datasource.parquet_meta_provider import ParquetMetadataProvider
 from ray.data.datasource.partitioning import PathPartitionFilter
 from ray.data.datasource.path_util import (
@@ -194,7 +194,7 @@ class ParquetDatasource(Datasource):
         # files. To avoid this, we expand the input paths with the default metadata
         # provider and then apply the partition filter or file extensions.
         if partition_filter is not None or file_extensions is not None:
-            default_meta_provider = get_generic_metadata_provider(file_extensions=None)
+            default_meta_provider = DefaultFileMetadataProvider()
             expanded_paths, _ = map(
                 list, zip(*default_meta_provider.expand_paths(paths, filesystem))
             )

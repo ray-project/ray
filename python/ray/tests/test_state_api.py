@@ -4,6 +4,7 @@ import json
 import sys
 import signal
 from collections import Counter
+from concurrent.futures import ThreadPoolExecutor
 from typing import List, Tuple
 from unittest.mock import MagicMock, AsyncMock
 
@@ -130,7 +131,9 @@ Unit tests
 @pytest.fixture
 def state_api_manager():
     data_source_client = AsyncMock(StateDataSourceClient)
-    manager = StateAPIManager(data_source_client)
+    manager = StateAPIManager(
+        data_source_client, thread_pool_executor=ThreadPoolExecutor()
+    )
     yield manager
 
 
@@ -1694,11 +1697,7 @@ async def test_state_data_source_client_limit_gcs_source(ray_start_cluster):
     """
     result = await client.get_all_worker_info(limit=2)
     assert len(result.worker_table_data) == 2
-    # Driver + 3 workers for actors + 2 prestarted task-only workers
-    # TODO(clarng): prestart worker on worker lease request doesn't
-    # work, otherwise it should have created the 2 prestarted task-only
-    # workers prior to https://github.com/ray-project/ray/pull/33623
-    assert result.total == 6
+    assert result.total == 4
 
 
 def test_humanify():
