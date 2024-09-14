@@ -877,7 +877,6 @@ def test_path_partition_filter_directory(fs, base_dir):
     ]
 
 
-
 @pytest.mark.parametrize(
     "partition_value,expected_type",
     [

@@ -1,5 +1,4 @@
 import posixpath
-import re
 from dataclasses import dataclass
 from enum import Enum
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Type, Union
@@ -250,7 +249,7 @@ class PathPartitionParser:
         partitions: Dict[str, str] = self._parser_fn(dir_path)
 
         for field, data_type in self._scheme.field_types.items():
-            partitions[field] = _cast_value(partitions[field] , data_type)
+            partitions[field] = _cast_value(partitions[field], data_type)
 
         return partitions
 
