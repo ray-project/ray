@@ -40,15 +40,7 @@ except ray.exceptions.GetTimeoutError:
 print("==== serialize object ref with ray.cloudpickle ====")
 # By default, it's allowed to serialize ray.ObjectRef using
 # ray.cloudpickle.
-ray.get(
-    out_of_band_serialization_ray_cloudpickle.options(
-        runtime_env={
-            "env_vars": {
-                "RAY_allow_out_of_band_object_ref_serialization": "0",
-            }
-        }
-    ).remote()
-)
+ray.get(out_of_band_serialization_ray_cloudpickle.options().remote())
 # you can see objects are stil pinned although it's GC'ed and not used anymore.
 print(memory_summary())
 

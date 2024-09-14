@@ -135,7 +135,6 @@ class SerializationContext:
             serialized, actor_handle_id, weak_ref = obj._serialization_helper()
             # Update ref counting for the actor handle
             if not weak_ref:
-                #
                 self.add_contained_object_ref(
                     actor_handle_id,
                     # Right now, so many tests are failing when this is set.
