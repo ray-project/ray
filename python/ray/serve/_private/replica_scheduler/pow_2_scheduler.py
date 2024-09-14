@@ -35,9 +35,9 @@ from ray.serve._private.constants import (
 from ray.serve._private.replica_scheduler.common import (
     PendingRequest,
     ReplicaQueueLengthCache,
-    ReplicaScheduler,
-    ReplicaWrapper,
 )
+from ray.serve._private.replica_scheduler.replica_scheduler import ReplicaScheduler
+from ray.serve._private.replica_scheduler.replica_wrapper import ReplicaWrapper
 from ray.util import metrics
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
@@ -100,6 +100,9 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
         self_availability_zone: Optional[str] = None,
         use_replica_queue_len_cache: bool = False,
         get_curr_time_s: Optional[Callable[[], float]] = None,
+        create_replica_wrapper_func: Optional[
+            Callable[[RunningReplicaInfo], ReplicaWrapper]
+        ] = None,
     ):
         self._loop = event_loop
         self._deployment_id = deployment_id
@@ -110,6 +113,7 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
         self._self_actor_handle = self_actor_handle
         self._self_availability_zone = self_availability_zone
         self._use_replica_queue_len_cache = use_replica_queue_len_cache
+        self._create_replica_wrapper_func = create_replica_wrapper_func
 
         # Current replicas available to be scheduled.
         # Updated via `update_replicas`.
@@ -235,6 +239,11 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
     @property
     def replica_queue_len_cache(self) -> ReplicaQueueLengthCache:
         return self._replica_queue_len_cache
+
+    def create_replica_wrapper(
+        self, replica_info: RunningReplicaInfo
+    ) -> ReplicaWrapper:
+        return self._create_replica_wrapper_func(replica_info)
 
     def update_replicas(self, replicas: List[ReplicaWrapper]):
         """Update the set of available replicas to be considered for scheduling.
