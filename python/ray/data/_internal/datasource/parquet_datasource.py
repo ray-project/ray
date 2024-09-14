@@ -36,6 +36,7 @@ from ray.data.datasource.datasource import ReadTask
 from ray.data.datasource.file_meta_provider import _handle_read_os_error
 from ray.data.datasource.parquet_meta_provider import ParquetMetadataProvider
 from ray.data.datasource.partitioning import (
+    PartitionDataType,
     Partitioning,
     PathPartitionFilter,
     PathPartitionParser,
@@ -219,10 +220,22 @@ class ParquetDatasource(Datasource):
         if dataset_kwargs is None:
             dataset_kwargs = {}
 
+        if "partitioning" in dataset_kwargs:
+            raise ValueError(
+                "The 'partitioning' parameter isn't supported in 'dataset_kwargs'. "
+                "Use the top-level 'partitioning' parameter instead."
+            )
+
+        # This datasource manually adds partition data at the Ray Data-level. To avoid
+        # duplicating the partition data, we disable PyArrow's partitioning.
+        dataset_kwargs["partitioning"] = None
+
         pq_ds = get_parquet_dataset(paths, filesystem, dataset_kwargs)
 
         if schema is None:
             schema = pq_ds.schema
+            schema = _add_partition_fields_to_schema(partitioning, schema, pq_ds)
+
         if columns:
             schema = pa.schema(
                 [schema.field(column) for column in columns], schema.metadata
@@ -436,6 +449,14 @@ def read_fragments(
             parse = PathPartitionParser(partitioning)
             partitions = parse(fragment.path)
 
+        # Filter out partitions that aren't in the user-specified columns list.
+        if columns is not None:
+            partitions = {
+                field_name: value
+                for field_name, value in partitions.items()
+                if field_name in columns
+            }
+
         def get_batch_iterable():
             return fragment.to_batches(
                 use_threads=use_threads,
@@ -455,7 +476,7 @@ def read_fragments(
             if include_paths:
                 table = table.append_column("path", [[fragment.path]] * len(table))
             if partitions:
-                table = _add_partitions_to_table(table, partitions)
+                table = _add_partitions_to_table(partitions, table)
 
             # If the table is empty, drop it.
             if table.num_rows > 0:
@@ -652,15 +673,49 @@ def sample_fragments(
     return sample_infos
 
 
-def _add_partitions_to_table(table, partitions):
+def _add_partitions_to_table(
+    partitions: Dict[str, PartitionDataType], table: "pyarrow.Table"
+) -> "pyarrow.Table":
     import pyarrow as pa
 
-    for field, value in partitions.items():
+    for field_name, value in partitions.items():
         column = pa.array([value] * len(table))
-        field_index = table.schema.get_field_index(field)
+        field_index = table.schema.get_field_index(field_name)
         if field_index != -1:
-            table = table.set_column(field_index, field, column)
+            table = table.set_column(field_index, field_name, column)
         else:
-            table = table.append_column(field, column)
+            table = table.append_column(field_name, column)
 
     return table
+
+
+def _add_partition_fields_to_schema(
+    partitioning: Partitioning,
+    schema: "pyarrow.Schema",
+    parquet_dataset: "pyarrow.dataset.Dataset",
+) -> "pyarrow.Schema":
+    """Return a new schema with partition fields added.
+
+    This function infers the partition fields from the first file path in the dataset.
+    """
+    import pyarrow as pa
+
+    # If the dataset is empty, we can't infer the partitioning.
+    if len(parquet_dataset.fragments) == 0:
+        return schema
+
+    # If the dataset isn't partitioned, we don't need to add any fields.
+    if partitioning is None:
+        return schema
+
+    first_path = parquet_dataset.fragments[0].path
+    parse = PathPartitionParser(partitioning)
+    partitions = parse(first_path)
+    for field_name in partitions:
+        if field_name in partitioning.field_types:
+            field_type = pa.from_numpy_dtype(partitioning.field_types[field_name])
+        else:
+            field_type = pa.string()
+        schema = schema.append(pa.field(field_name, field_type))
+
+    return schema
