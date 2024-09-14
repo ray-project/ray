@@ -1277,9 +1277,9 @@ class CompiledDAG:
         input_task = self.idx_to_task[self.input_task_idx]
         # Register custom serializers for inputs provided to dag.execute().
         input_task.dag_node.type_hint.register_custom_serializer()
-        self.dag_input_channels = input_task.output_channels
-        assert self.dag_input_channels is not None
-
+        assert len(input_task.output_channels) == 1
+        self.dag_input_channel = input_task.output_channels[0]
+        assert self.dag_input_channel is not None
         # Create executable tasks for each actor
         for actor_handle, tasks in self.actor_to_tasks.items():
             # Dict from non-dag-input arg to the set of tasks that consume it.

@@ -157,7 +157,12 @@ class SharedMemoryType(ChannelOutputType):
                     cpu_data_typ=cpu_data_typ,
                 )
 
-        return CompositeChannel(writer, reader_and_node_list, self._num_shm_buffers)
+        return CompositeChannel(
+            writer,
+            reader_and_node_list,
+            self._num_shm_buffers,
+            read_by_adag_driver,
+        )
 
     def set_nccl_group_id(self, group_id: str) -> None:
         assert self.requires_nccl()
@@ -652,6 +657,7 @@ class CompositeChannel(ChannelInterface):
         writer: Optional[ray.actor.ActorHandle],
         reader_and_node_list: List[Tuple["ray.actor.ActorHandle", str]],
         num_shm_buffers: int,
+        read_by_adag_driver: bool,
         _channel_dict: Optional[Dict[ray.ActorID, ChannelInterface]] = None,
         _channels: Optional[Set[ChannelInterface]] = None,
         _writer_registered: bool = False,
@@ -738,6 +744,7 @@ class CompositeChannel(ChannelInterface):
             self._writer,
             self._reader_and_node_list,
             self._num_shm_buffers,
+            self._read_by_adag_driver,
             self._channel_dict,
             self._channels,
             self._writer_registered,
