@@ -112,7 +112,9 @@ class TrainRunStateManager:
     ):
         """Update the train run status when the training is finished."""
         updates = dict(
-            run_status=run_status, status_detail=status_detail, end_time_ms=end_time_ms
+            run_status=run_status,
+            status_detail=status_detail,
+            end_time_ms=end_time_ms,
         )
         self._update_train_run_info(run_id, updates)
 

@@ -303,7 +303,7 @@ def _build_dag_node_operation_graph(
 
 def _generate_actor_to_execution_schedule(
     graph: Dict[int, Dict[_DAGNodeOperationType, _DAGOperationGraphNode]]
-):
+) -> Dict["ray.actor.ActorHandle", List[_DAGNodeOperation]]:
     """
     Generate an execution schedule for each actor. The schedule is a list of
     operations to be executed. The function uses a topological sort algorithm

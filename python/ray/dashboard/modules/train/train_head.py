@@ -166,11 +166,11 @@ class TrainHead(dashboard_utils.DashboardHeadModule):
             ).get("state")
             if (
                 controller_actor_status == ActorStatusEnum.DEAD
-                and train_run.run_status == RunStatusEnum.STARTED
+                and train_run.run_status == RunStatusEnum.RUNNING
             ):
                 train_run_with_details.run_status = RunStatusEnum.ABORTED
                 train_run_with_details.status_detail = (
-                    "Unexpectedly terminated due to system errors."
+                    "Terminated due to system errors or killed by the user."
                 )
 
             train_runs_with_details.append(train_run_with_details)

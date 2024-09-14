@@ -480,8 +480,9 @@ def _get_ranks(
     actors: List[ray.actor.ActorHandle], custom_nccl_group: Optional[GPUCommunicator]
 ) -> List[int]:
     """
-    Get sorted ranks for the NCCL group to use. If custom_nccl_group is specified,
-    return all ranks from it, otherwise, return list(range(len(actors))).
+    Get ranks for the NCCL group to use. If custom_nccl_group is specified,
+    return the ranks of the actors in the custom NCCL group, in the same
+    order of the actors; otherwise, return list(range(len(actors))).
 
     Args:
         actors: A list of actors that participate in the NCCL group.
@@ -494,18 +495,18 @@ def _get_ranks(
         "The world size of the custom NCCL group does not match the number "
         "of actors."
     )
-    ranks = set()
+    ranks = []
     for actor in actors:
         rank = custom_nccl_group.get_rank(actor)
         assert rank not in ranks, "Duplicate rank in custom NCCL group"
-        ranks.add(rank)
+        ranks.append(rank)
     assert custom_nccl_group.get_world_size() == len(actors), (
         "The world size of the custom NCCL group "
         f"({custom_nccl_group.get_world_size()}) "
         "does not match the number of actors "
         f"({len(actors)})."
     )
-    return sorted(ranks)
+    return ranks
 
 
 def _init_nccl_group(
