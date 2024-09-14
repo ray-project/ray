@@ -3,7 +3,6 @@ import logging
 import threading
 import traceback
 from typing import Any, Optional
-import os
 
 
 import google.protobuf.message
@@ -56,8 +55,8 @@ from ray.util import serialization_addons
 from ray.util import inspect_serializability
 
 logger = logging.getLogger(__name__)
-ALLOW_OUT_OF_BAND_OBJECT_REF_SERIALIZATION = bool(
-    int(os.getenv("RAY_allow_out_of_band_object_ref_serialization", "1"))
+ALLOW_OUT_OF_BAND_OBJECT_REF_SERIALIZATION = ray_constants.env_bool(
+    "RAY_allow_out_of_band_object_ref_serialization", True
 )
 
 
@@ -71,14 +70,14 @@ def pickle_dumps(obj: Any, error_msg: str):
     """
     try:
         return pickle.dumps(obj)
-    except (TypeError, ray.exceptions.OufOfBandRefSerializationException) as e:
+    except (TypeError, ray.exceptions.OufOfBandObjectRefSerializationException) as e:
         sio = io.StringIO()
         inspect_serializability(obj, print_file=sio)
         msg = f"{error_msg}:\n{sio.getvalue()}"
         if isinstance(e, TypeError):
             raise TypeError(msg) from e
         else:
-            raise ray.exceptions.OufOfBandRefSerializationException(msg)
+            raise ray.exceptions.OufOfBandObjectRefSerializationException(msg)
 
 
 def _object_ref_deserializer(binary, call_site, owner_address, object_status):
@@ -136,7 +135,13 @@ class SerializationContext:
             serialized, actor_handle_id, weak_ref = obj._serialization_helper()
             # Update ref counting for the actor handle
             if not weak_ref:
-                self.add_contained_object_ref(actor_handle_id, True)
+                #
+                self.add_contained_object_ref(
+                    actor_handle_id,
+                    # Right now, so many tests are failing when this is set.
+                    # Allow it for now, but we should eventually disallow it here.
+                    allow_out_of_band_serialization=True,
+                )
             return _actor_handle_deserializer, (serialized, weak_ref)
 
         self._register_cloudpickle_reducer(ray.actor.ActorHandle, actor_handle_reducer)
@@ -151,7 +156,9 @@ class SerializationContext:
             worker.check_connected()
             self.add_contained_object_ref(
                 obj,
-                ALLOW_OUT_OF_BAND_OBJECT_REF_SERIALIZATION,
+                allow_out_of_band_serialization=(
+                    ALLOW_OUT_OF_BAND_OBJECT_REF_SERIALIZATION
+                ),
                 call_site=obj.call_site(),
             )
             obj, owner_address, object_status = worker.core_worker.serialize_object_ref(
@@ -215,6 +222,7 @@ class SerializationContext:
     def add_contained_object_ref(
         self,
         object_ref: "ray.ObjectRef",
+        *,
         allow_out_of_band_serialization: bool,
         call_site: Optional[str] = None,
     ):
@@ -227,7 +235,7 @@ class SerializationContext:
             self._thread_local.object_refs.add(object_ref)
         else:
             if not allow_out_of_band_serialization:
-                raise ray.exceptions.OufOfBandRefSerializationException(
+                raise ray.exceptions.OufOfBandObjectRefSerializationException(
                     f"It is not allowed to serialize ray.ObjectRef {object_ref.hex()}. "
                     "If you want to allow serialization, "
                     "set `RAY_allow_out_of_band_object_ref_serialization=1.` "
