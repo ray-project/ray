@@ -77,6 +77,7 @@ class ChannelOutputType:
         self,
         writer: Optional["ray.actor.ActorHandle"],
         reader_and_node_list: List[Tuple["ray.actor.ActorHandle", str]],
+        read_by_adag_driver: bool,
     ) -> "ChannelInterface":
         """
         Instantiate a ChannelInterface class that can be used
@@ -86,6 +87,8 @@ class ChannelOutputType:
             writer: The actor that may write to the channel. None signifies the driver.
             reader_and_node_list: A list of tuples, where each tuple contains a reader
                 actor handle and the node ID where the actor is located.
+            read_by_adag_driver: True if a channel is read by an aDAG driver (Ray driver
+                or an actor that creates the aDAG).
         Returns:
             A ChannelInterface that can be used to pass data
                 of this type.

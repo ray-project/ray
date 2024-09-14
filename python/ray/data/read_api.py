@@ -2838,8 +2838,21 @@ def from_huggingface(
 
     if isinstance(dataset, datasets.IterableDataset):
         # For an IterableDataset, we can use a streaming implementation to read data.
-        return read_datasource(HuggingFaceDatasource(dataset=dataset))
+        return read_datasource(
+            HuggingFaceDatasource(dataset=dataset),
+            parallelism=parallelism,
+            concurrency=concurrency,
+            override_num_blocks=override_num_blocks,
+        )
     if isinstance(dataset, datasets.Dataset):
+        # For non-streaming Hugging Face Dataset, we don't support override_num_blocks
+        if override_num_blocks is not None:
+            raise ValueError(
+                "`override_num_blocks` parameter is not supported for "
+                "streaming Hugging Face Datasets. Please omit the parameter or "
+                "use non-streaming mode to read the dataset."
+            )
+
         # To get the resulting Arrow table from a Hugging Face Dataset after
         # applying transformations (e.g., train_test_split(), shard(), select()),
         # we create a copy of the Arrow table, which applies the indices

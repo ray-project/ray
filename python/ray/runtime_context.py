@@ -380,7 +380,7 @@ class RuntimeContext(object):
 
     @property
     def current_actor(self):
-        """Get the current actor handle of this actor itsself.
+        """Get the current actor handle of this actor itself.
 
         Returns:
             The handle of current actor.
