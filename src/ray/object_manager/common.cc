@@ -162,6 +162,7 @@ Status PlasmaObjectHeader::WriteRelease(Semaphores &sem) {
 }
 
 Status PlasmaObjectHeader::ReadAcquire(
+    const ObjectID &object_id,
     Semaphores &sem,
     int64_t version_to_read,
     int64_t &version_read,
@@ -177,8 +178,8 @@ Status PlasmaObjectHeader::ReadAcquire(
     sched_yield();
     // We need to get the desired version before timeout
     if (timeout_point && std::chrono::steady_clock::now() >= *timeout_point) {
-      return Status::ChannelTimeoutError(
-          "Timed out waiting for object available to read.");
+      return Status::ChannelTimeoutError(absl::StrCat(
+          "Timed out waiting for object available to read. ObjectID: ", object_id.Hex()));
     }
     RAY_RETURN_NOT_OK(TryToAcquireSemaphore(sem.header_sem, timeout_point));
   }
@@ -255,6 +256,7 @@ Status PlasmaObjectHeader::WriteRelease(Semaphores &sem) {
 }
 
 Status PlasmaObjectHeader::ReadAcquire(
+    const ObjectID &object_id,
     Semaphores &sem,
     int64_t version_to_read,
     int64_t &version_read,

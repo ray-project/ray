@@ -43,7 +43,7 @@ Please note that the YAML file in this example uses `serveConfigV2` to specify a
 kubectl apply -f https://raw.githubusercontent.com/ray-project/kuberay/v1.1.1/ray-operator/config/samples/ray-service.sample.yaml
 ```
 
-## Step 4: Verify the Kubernetes cluster status 
+## Step 4: Verify the Kubernetes cluster status
 
 ```sh
 # Step 4.1: List all RayService custom resources in the `default` namespace.
