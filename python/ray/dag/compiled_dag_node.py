@@ -7,13 +7,11 @@ import threading
 import time
 import uuid
 import traceback
-from typing import NamedTuple
 
 from ray.experimental.channel.cached_channel import CachedChannel
 from ray.experimental.channel.gpu_communicator import GPUCommunicator
 import ray
 from ray.exceptions import RayTaskError, RayChannelError
-from ray.util.annotations import PublicAPI
 from ray.experimental.compiled_dag_ref import (
     CompiledDAGRef,
     CompiledDAGFuture,
@@ -28,6 +26,7 @@ from ray.experimental.channel import (
     SynchronousWriter,
     AwaitableBackgroundReader,
     AwaitableBackgroundWriter,
+    RayDAGArgs,
 )
 from ray.util.annotations import DeveloperAPI
 
@@ -49,13 +48,6 @@ from ray.dag.dag_node_operation import (
 )
 
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
-
-
-# Holds the input arguments for an accelerated DAG node.
-@PublicAPI(stability="alpha")
-class RayDAGArgs(NamedTuple):
-    args: Tuple[Any, ...]
-    kwargs: Dict[str, Any]
 
 
 logger = logging.getLogger(__name__)

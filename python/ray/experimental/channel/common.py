@@ -4,7 +4,7 @@ import copy
 import threading
 import time
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Any, Dict, List, NamedTuple, Optional, Tuple, Union
 
 import ray
 from ray.experimental.channel.gpu_communicator import GPUCommunicator
@@ -17,6 +17,13 @@ _context_lock = threading.Lock()
 
 if TYPE_CHECKING:
     import torch
+
+
+# Holds the input arguments for an accelerated DAG node.
+@PublicAPI(stability="alpha")
+class RayDAGArgs(NamedTuple):
+    args: Tuple[Any, ...]
+    kwargs: Dict[str, Any]
 
 
 @PublicAPI(stability="alpha")
@@ -437,14 +444,11 @@ def _adapt(raw_args: Any, key: Optional[Union[int, str]], is_input: bool):
         key: The key to adapt.
         is_input: Whether the writer is DAG input writer or not.
     """
-    from ray.dag.compiled_dag_node import RayDAGArgs
-
     if is_input:
         if not isinstance(raw_args, RayDAGArgs):
             # Fast path for a single input.
             return raw_args
         else:
-            assert isinstance(raw_args, RayDAGArgs)
             args = raw_args.args
             kwargs = raw_args.kwargs
 
