@@ -256,16 +256,7 @@ class ServerCallImpl : public ServerCall {
       service_handler_.WaitUntilInitialized();
     }
     state_ = ServerCallState::PROCESSING;
-    // NOTE(hchen): This `factory` local variable is needed. Because `SendReply` runs in
-    // a different thread, and will cause `this` to be deleted.
-    const auto &factory = factory_;
-    if (factory.GetMaxActiveRPCs() == -1) {
-      // Create a new `ServerCall` to accept the next incoming request.
-      // We create this before handling the request only when no back pressure limit is
-      // set. So that the it can be populated by the completion queue in the background if
-      // a new request comes in.
-      factory.CreateCall();
-    }
+
     if (!auth_success) {
       boost::asio::post(GetServerCallExecutor(), [this]() {
         SendReply(
