@@ -135,18 +135,21 @@ void GrpcServer::Run() {
 
   // Create calls for all the server call factories.
   for (auto &entry : server_call_factories_) {
-    for (int i = 0; i < num_threads_; i++) {
-      // Create a buffer of 100 calls for each RPC handler.
-      // TODO(edoakes): a small buffer should be fine and seems to have better
-      // performance, but we don't currently handle backpressure on the client.
-      int buffer_size = 100;
-      if (entry->GetMaxActiveRPCs() != -1) {
-        buffer_size = entry->GetMaxActiveRPCs();
-      }
-      for (int j = 0; j < std::max(1, buffer_size / num_threads_); j++) {
+    // TODO elaborate
+    int buffer_size;
+    if (entry->GetMaxActiveRPCs() != -1) {
+      buffer_size = std::max(1, int(entry->GetMaxActiveRPCs() / num_threads_));
+    } else {
+      buffer_size = 32;
+    }
+
+    // TODO delete (currently allowing up to 10k concurrent requests)
+    //for (int i = 0; i < num_threads_; i++) {
+      for (int j = 0; j < buffer_size; j++) {
+        // TODO elaborate
         entry->CreateCall();
       }
-    }
+    //}
   }
   // Start threads that polls incoming requests.
   for (int i = 0; i < num_threads_; i++) {
