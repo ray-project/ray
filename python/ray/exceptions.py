@@ -888,5 +888,6 @@ RAY_EXCEPTION_TYPES = [
     ActorUnavailableError,
     RayChannelError,
     RayChannelTimeoutError,
+    OufOfBandObjectRefSerializationException,
     RayAdagCapacityExceeded,
 ]
