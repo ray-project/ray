@@ -744,7 +744,7 @@ class CompiledDAG:
         # execution_index -> {channel_index -> result}
         self._result_buffer: Dict[int, Dict[int, Any]] = defaultdict(dict)
 
-        def _get_proxy_actor() -> "ray.actor.ActorHandle":
+        def _create_proxy_actor() -> "ray.actor.ActorHandle":
             # Creates the driver actor on the same node as the driver.
             #
             # To support the driver as a reader, the output writer needs to be able to
@@ -758,7 +758,7 @@ class CompiledDAG:
                 )
             ).remote()
 
-        self._creator_or_proxy_actor = _get_proxy_actor()
+        self._proxy_actor = _create_proxy_actor()
 
     def increment_max_finished_execution_index(self) -> None:
         """Increment the max finished execution index. It is used to
@@ -1036,7 +1036,7 @@ class CompiledDAG:
         if actor_handle in self.actor_to_node_id:
             return self.actor_to_node_id[actor_handle]
         node_id = None
-        if actor_handle == self._creator_or_proxy_actor:
+        if actor_handle == self._proxy_actor:
             node_id = ray.get_runtime_context().get_node_id()
         else:
             node_id = ray.get(
@@ -1162,12 +1162,12 @@ class CompiledDAG:
 
                         #     compiled_dag.teardown()
 
-                        assert self._creator_or_proxy_actor is not None
+                        assert self._proxy_actor is not None
                         for reader in readers:
                             reader_and_node_list.append(
                                 (
-                                    self._creator_or_proxy_actor,
-                                    self._get_node_id(self._creator_or_proxy_actor),
+                                    self._proxy_actor,
+                                    self._get_node_id(self._proxy_actor),
                                 )
                             )
                     else:
