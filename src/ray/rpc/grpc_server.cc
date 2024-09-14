@@ -248,7 +248,7 @@ void GrpcServer::PollEventsFromCompletionQueue(int index) {
     if (delete_call) {
       if (need_new_call && !is_unbounded_rpc) {
         // Create a new `ServerCall` to accept the next incoming request.
-        server_call->GetServerCallFactory().CreateCall();
+        factory.CreateCall();
       }
       delete server_call;
     }
