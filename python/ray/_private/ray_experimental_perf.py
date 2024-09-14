@@ -22,6 +22,9 @@ class DAGActor:
     def echo(self, x):
         return x
 
+    def echo_multiple(self, *x):
+        return x
+
 
 def check_optimized_build():
     if not ray._raylet.OPTIMIZED:
@@ -316,6 +319,27 @@ def main(results=None):
         "[unstable] compiled multiple args with large payloads DAG calls, "
         f"n={n_actors} actors",
         lambda: _exec(compiled_dag, num_args=n_actors, payload_size=payload_size),
+    )
+    compiled_dag.teardown()
+
+    # Worst case for multiple arguments: a single actor takes all the arguments
+    # with small payloads.
+
+    actor = DAGActor.remote()
+    n_args = 8
+    with InputNode() as inp:
+        dag = actor.echo_multiple.bind(*[inp[i] for i in range(n_args)])
+    payload_size = 1
+    results += timeit(
+        "[unstable] single-actor with all args with small payloads DAG calls, "
+        "n=1 actors",
+        lambda: ray.get(dag.execute(*[b"x" * payload_size for _ in range(n_args)])),
+    )
+    compiled_dag = dag.experimental_compile()
+    results += timeit(
+        "[unstable] single-actor with all args with small payloads DAG calls, "
+        "n=1 actors",
+        lambda: _exec(compiled_dag, num_args=n_args, payload_size=payload_size),
     )
     compiled_dag.teardown()
 
