@@ -188,7 +188,7 @@ void GrpcServer::PollEventsFromCompletionQueue(int index) {
   while (cqs_[index]->Next(&tag, &ok)) {
     auto *server_call = static_cast<ServerCall *>(tag);
 
-    const auto& factory = server_call->GetServerCallFactory();
+    const auto &factory = server_call->GetServerCallFactory();
     // NOTE: For these handlers that have set it to -1, we set default (per
     //       thread) buffer at 32, though it doesn't have any impact on concurrency
     //       (since we're recreating new instance of `ServerCall` as soon as one
