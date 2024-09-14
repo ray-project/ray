@@ -135,7 +135,12 @@ void GrpcServer::Run() {
 
   // Create calls for all the server call factories.
   for (auto &entry : server_call_factories_) {
-    // TODO elaborate
+    // Derive target max inflight RPCs buffer based on `gcs_max_active_rpcs_per_handler`
+    //
+    // NOTE: For these handlers that have set it to -1, we set default (per
+    //       thread) buffer at 32, though it doesn't have any impact on concurrency
+    //       (since we're recreating new instance of `ServerCall` as soon as one
+    //       gets occupied therefore not serving as back-pressure mechanism)
     int buffer_size;
     if (entry->GetMaxActiveRPCs() != -1) {
       buffer_size = std::max(1, int(entry->GetMaxActiveRPCs() / num_threads_));
@@ -143,13 +148,10 @@ void GrpcServer::Run() {
       buffer_size = 32;
     }
 
-    // TODO delete (currently allowing up to 10k concurrent requests)
-    //for (int i = 0; i < num_threads_; i++) {
-      for (int j = 0; j < buffer_size; j++) {
-        // TODO elaborate
-        entry->CreateCall();
-      }
-    //}
+    for (int j = 0; j < buffer_size; j++) {
+      // Create pending `ServerCall` ready to accept incoming requests
+      entry->CreateCall();
+    }
   }
   // Start threads that polls incoming requests.
   for (int i = 0; i < num_threads_; i++) {
