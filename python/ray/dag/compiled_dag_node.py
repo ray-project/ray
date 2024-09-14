@@ -66,6 +66,7 @@ def do_allocate_channel(
     self,
     reader_and_node_list: List[Tuple["ray.actor.ActorHandle", str]],
     typ: ChannelOutputType,
+    read_by_adag_driver: bool,
 ) -> ChannelInterface:
     """Generic actor method to allocate an output channel.
 
@@ -73,20 +74,24 @@ def do_allocate_channel(
         reader_and_node_list: A list of tuples, where each tuple contains a reader
             actor handle and the node ID where the actor is located.
         typ: The output type hint for the channel.
+        read_by_adag_driver: True if the channel will be read by an aDAG driver
+            (Ray driver or actor and task that creates an aDAG).
 
     Returns:
         The allocated channel.
     """
-    self_actor = None
+    # None means it is called from a driver.
+    writer: Optional["ray.actor.ActorHandle"] = None
     try:
-        self_actor = ray.get_runtime_context().current_actor
+        writer = ray.get_runtime_context().current_actor
     except RuntimeError:
         # This is the driver so there is no current actor handle.
         pass
 
     output_channel = typ.create_channel(
-        self_actor,
+        writer,
         reader_and_node_list,
+        read_by_adag_driver,
     )
     return output_channel
 
@@ -739,32 +744,7 @@ class CompiledDAG:
         # execution_index -> {channel_index -> result}
         self._result_buffer: Dict[int, Dict[int, Any]] = defaultdict(dict)
 
-        def _get_creator_or_proxy_actor() -> "ray.actor.ActorHandle":
-            """
-            Get the creator actor or proxy actor handle of the DAG.
-
-            If the current process is an actor, it is the creator of the DAG,
-            its actor handle is returned. Otherwise, create a proxy actor and
-            return its actor handle. Note that this actor is always on the same
-            node where the DAG is created.
-
-            Returns:
-              Return the actor handle if the current task is an actor method.
-              Create a DAGDriverProxyActor actor and return its handle if the
-              current process is the driver process.
-
-            Raises:
-                NotImplementedError: If the current process is a Ray task.
-            """
-            runtime_context = ray.get_runtime_context()
-            if runtime_context.worker.mode == ray.WORKER_MODE:
-                try:
-                    return ray.get_runtime_context().current_actor
-                except RuntimeError:
-                    raise NotImplementedError(
-                        "Compiled DAGs currently require the InputNode() to be the "
-                        "driver process or an actor method. Ray task is not supported."
-                    )
+        def _create_proxy_actor() -> "ray.actor.ActorHandle":
             # Creates the driver actor on the same node as the driver.
             #
             # To support the driver as a reader, the output writer needs to be able to
@@ -778,7 +758,7 @@ class CompiledDAG:
                 )
             ).remote()
 
-        self._creator_or_proxy_actor = _get_creator_or_proxy_actor()
+        self._proxy_actor = _create_proxy_actor()
 
     def increment_max_finished_execution_index(self) -> None:
         """Increment the max finished execution index. It is used to
@@ -1056,7 +1036,7 @@ class CompiledDAG:
         if actor_handle in self.actor_to_node_id:
             return self.actor_to_node_id[actor_handle]
         node_id = None
-        if actor_handle == self._creator_or_proxy_actor:
+        if actor_handle == self._proxy_actor:
             node_id = ray.get_runtime_context().get_node_id()
         else:
             node_id = ray.get(
@@ -1141,11 +1121,7 @@ class CompiledDAG:
                         if task not in output_to_readers:
                             output_to_readers[task] = []
                         output_to_readers[task].append(downstream_task)
-                # `output_to_reader_and_node_list` stores the reader actors and
-                # the reader node IDs for each output of the current node.
-                output_to_reader_and_node_list: Dict[
-                    CompiledTask, List[Tuple["ray.actor.ActorHandle", str]]
-                ] = {task: [] for task in output_to_readers}
+                fn = task.dag_node._get_remote_method("__ray_call__")
                 for output, readers in output_to_readers.items():
                     dag_nodes = [reader.dag_node for reader in readers]
                     read_by_multi_output_node = False
@@ -1153,6 +1129,8 @@ class CompiledDAG:
                         if isinstance(dag_node, MultiOutputNode):
                             read_by_multi_output_node = True
                             break
+
+                    reader_and_node_list: List[Tuple["ray.actor.ActorHandle", str]] = []
                     if read_by_multi_output_node:
                         if len(readers) != 1:
                             raise ValueError(
@@ -1184,22 +1162,15 @@ class CompiledDAG:
 
                         #     compiled_dag.teardown()
 
-                        assert self._creator_or_proxy_actor is not None
-                        reader_and_node_list: List[
-                            Tuple["ray.actor.ActorHandle", str]
-                        ] = []
+                        assert self._proxy_actor is not None
                         for reader in readers:
                             reader_and_node_list.append(
                                 (
-                                    self._creator_or_proxy_actor,
-                                    self._get_node_id(self._creator_or_proxy_actor),
+                                    self._proxy_actor,
+                                    self._get_node_id(self._proxy_actor),
                                 )
                             )
-                        output_to_reader_and_node_list[output] = reader_and_node_list
                     else:
-                        reader_and_node_list: List[
-                            Tuple["ray.actor.ActorHandle", str]
-                        ] = []
                         # Use reader_handles_set to deduplicate readers on the
                         # same actor, because with CachedChannel each actor will
                         # only read from the upstream channel once.
@@ -1211,18 +1182,14 @@ class CompiledDAG:
                                     (reader_handle, self._get_node_id(reader_handle))
                                 )
                             reader_handles_set.add(reader_handle)
-                        output_to_reader_and_node_list[output] = reader_and_node_list
-                fn = task.dag_node._get_remote_method("__ray_call__")
-                for (
-                    output,
-                    reader_and_node_list,
-                ) in output_to_reader_and_node_list.items():
+
                     # Create an output channel for each output of the current node.
                     output_channel = ray.get(
                         fn.remote(
                             do_allocate_channel,
                             reader_and_node_list,
-                            typ=type_hint,
+                            type_hint,
+                            read_by_multi_output_node,
                         )
                     )
                     output_idx = None
@@ -1275,7 +1242,8 @@ class CompiledDAG:
                     do_allocate_channel(
                         self,
                         reader_and_node_list,
-                        typ=type_hint,
+                        type_hint,
+                        False,
                     )
                 ]
             else:
@@ -1322,7 +1290,6 @@ class CompiledDAG:
         assert len(input_task.output_channels) == 1
         self.dag_input_channel = input_task.output_channels[0]
         assert self.dag_input_channel is not None
-
         # Create executable tasks for each actor
         for actor_handle, tasks in self.actor_to_tasks.items():
             # Dict from non-dag-input arg to the set of tasks that consume it.
