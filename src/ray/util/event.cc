@@ -180,6 +180,13 @@ void LogEventReporter::ReportExportEvent(const rpc::ExportEvent &export_event) {
   }
 }
 
+void LogEventReporter::ReportExportEvent(const std::string message) {
+  log_sink_->info(message);
+  if (force_flush_) {
+    Flush();
+  }
+}
+
 ///
 /// EventManager
 ///
@@ -213,6 +220,12 @@ void EventManager::PublishExportEvent(const rpc::ExportEvent &export_event) {
         << "RayEventInit wasn't called with the necessary source type "
         << ExportEvent_SourceType_Name(export_event.source_type())
         << ". This indicates a bug in the code, and the event will be dropped.";
+  }
+}
+
+void EventManager::PublishExportEvent(const std::string message) {
+  for (const auto &element : export_log_reporter_map_) {
+    (element.second)->ReportExportEvent(message);
   }
 }
 
@@ -426,6 +439,11 @@ void RayExportEvent::SendEvent() {
     return;
   }
 
+  if (message_.length()){
+    EventManager::Instance().PublishExportEvent(message_);
+    return;
+  }
+
   static const int kEventIDSize = 18;
   std::string event_id;
   std::string event_id_buffer = std::string(kEventIDSize, ' ');
@@ -435,7 +453,7 @@ void RayExportEvent::SendEvent() {
   rpc::ExportEvent export_event;
   export_event.set_event_id(event_id);
   export_event.set_timestamp(current_sys_time_s());
-
+  
   if (auto ptr_to_task_event_data_ptr =
           std::get_if<std::shared_ptr<rpc::ExportTaskEventData>>(&event_data_ptr_)) {
     export_event.mutable_task_event_data()->CopyFrom(*(*ptr_to_task_event_data_ptr));
