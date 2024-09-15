@@ -35,4 +35,5 @@ __all__ = [
     "IntraProcessChannel",
     "CompositeChannel",
     "BufferedSharedMemoryChannel",
+    "RayDAGArgs",
 ]
