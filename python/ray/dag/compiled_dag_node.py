@@ -207,14 +207,21 @@ class CompiledTask:
 
         # Dict from task index to actor handle for immediate downstream tasks.
         self.downstream_task_idxs: Dict[int, "ray.actor.ActorHandle"] = {}
+        # Case 1: The task represents a ClassMethodNode.
+        #
         # Multiple return values are written to separate `output_channels`.
         # `output_idxs` represents the tuple index of the output value for
         # multiple returns in a tuple. If an output index is None, it means
         # the complete return value is written to the output channel.
         # Otherwise, the return value is a tuple and the index is used
         # to extract the value to be written to the output channel.
+        #
+        # Case 2: The task represents an InputNode.
+        #
+        # `output_idxs` can be an integer or a string to retrieve the
+        # corresponding value from `args` or `kwargs` in the DAG's input.
         self.output_channels: List[ChannelInterface] = []
-        self.output_idxs: List[Optional[int]] = []
+        self.output_idxs: List[Optional[Union[int, str]]] = []
         self.arg_type_hints: List["ChannelOutputType"] = []
 
     @property
@@ -235,56 +242,6 @@ class CompiledTask:
             Arguments: {self.args}
             Output: {self.output_channels}
             """
-
-
-@DeveloperAPI
-class DAGInputAdapter:
-    """Adapter to extract individual positional arguments and kwargs
-    from objects read from DAG input channel."""
-
-    def __init__(
-        self,
-        input_attr_node: Optional["ray.dag.InputAttributeNode"],
-        dag_input_channel: "ray.experimental.channel.ChannelInterface",
-    ):
-        """
-        Args:
-            input_attr_node: The input attribute node that this adapter is
-                created for. None should be used when creating an adapter for
-                the DAG input node itself; in this case, the adapter will
-                extract the 0th positional argument.
-            dag_input_channel: The DAG input channel.
-        """
-        self._dag_input_channel = dag_input_channel
-
-        def extractor(key: Union[int, str]):
-            def extract_arg(raw_args):
-                if not isinstance(raw_args, RayDAGArgs):
-                    # Fast path for a single input.
-                    return raw_args
-                else:
-                    assert isinstance(raw_args, RayDAGArgs)
-                    args = raw_args.args
-                    kwargs = raw_args.kwargs
-
-                if isinstance(key, int):
-                    return args[key]
-                else:
-                    return kwargs[key]
-
-            return extract_arg
-
-        if input_attr_node:
-            key = input_attr_node.key
-        else:
-            key = 0
-        self._adapt_method = extractor(key)
-
-    def adapt(self, input):
-        return self._adapt_method(input)
-
-    def get_dag_input_channel(self):
-        return self._dag_input_channel
 
 
 class _ExecutableTaskInput:
@@ -1216,19 +1173,44 @@ class CompiledDAG:
                     reader_task = self.idx_to_task[idx]
                     assert isinstance(reader_task.dag_node, ClassMethodNode)
                     reader_handle = reader_task.dag_node._get_actor_handle()
-                    if reader_handle not in reader_handles_set:
-                        reader_and_node_list.append(
-                            (reader_handle, self._get_node_id(reader_handle))
-                        )
-                    reader_handles_set.add(reader_handle)
-                task.output_channels = [
-                    do_allocate_channel(
+                    reader_node_id = self._get_node_id(reader_handle)
+                    for arg in reader_task.args:
+                        if isinstance(arg, InputAttributeNode) or isinstance(
+                            arg, InputNode
+                        ):
+                            input_node_to_reader_and_node_set[arg].add(
+                                (reader_handle, reader_node_id)
+                            )
+
+                # A single channel is responsible for sending the same data to
+                # corresponding consumers. Therefore, we create a channel for
+                # each InputAttributeNode, or a single channel for the entire
+                # input data if there are no InputAttributeNodes.
+                task.output_channels = []
+                for input_dag_node in input_node_to_reader_and_node_set:
+                    reader_and_node_list = list(
+                        input_node_to_reader_and_node_set[input_dag_node]
+                    )
+                    output_channel = do_allocate_channel(
                         self,
                         reader_and_node_list,
                         type_hint,
                         False,
                     )
-                ]
+                    task.output_channels.append(output_channel)
+                    task.output_idxs.append(
+                        None
+                        if isinstance(input_dag_node, InputNode)
+                        else input_dag_node.key
+                    )
+
+                    # Update the InputAttributeNode's `output_channels`, which is
+                    # used to determine whether to create a CachedChannel.
+                    if isinstance(input_dag_node, InputAttributeNode):
+                        input_attr_idx = self.dag_node_to_idx[input_dag_node]
+                        input_attr_task = self.idx_to_task[input_attr_idx]
+                        input_attr_task.output_channels.append(output_channel)
+                        assert len(input_attr_task.output_channels) == 1
             else:
                 assert isinstance(task.dag_node, InputAttributeNode) or isinstance(
                     task.dag_node, MultiOutputNode
@@ -1273,42 +1255,26 @@ class CompiledDAG:
         input_task = self.idx_to_task[self.input_task_idx]
         # Register custom serializers for inputs provided to dag.execute().
         input_task.dag_node.type_hint.register_custom_serializer()
-        assert len(input_task.output_channels) == 1
-        self.dag_input_channel = input_task.output_channels[0]
-        assert self.dag_input_channel is not None
+        self.dag_input_channels = input_task.output_channels
+        assert self.dag_input_channels is not None
+
         # Create executable tasks for each actor
         for actor_handle, tasks in self.actor_to_tasks.items():
-            # Dict from non-dag-input arg to the set of tasks that consume it.
-            non_input_arg_to_consumers: Dict[DAGNode, Set[CompiledTask]] = defaultdict(
-                set
-            )
-            # The number of tasks that consume InputNode (or InputAttributeNode)
-            # Note that _preprocess() ensures that all tasks either use InputNode
-            # or use InputAttributeNode, but not both.
-            num_input_consumers = 0
+            # Dict from arg to the set of tasks that consume it.
+            arg_to_consumers: Dict[DAGNode, Set[CompiledTask]] = defaultdict(set)
 
-            # Step 1: populate `arg_to_consumers` and `num_input_consumers` and
-            # perform some validation.
+            # Step 1: populate `arg_to_consumers` and perform some validation.
             for task in tasks:
                 has_at_least_one_channel_input = False
-                is_input_consumer = False
                 for arg in task.args:
-                    if isinstance(arg, InputNode):
+                    if isinstance(arg, DAGNode):
                         has_at_least_one_channel_input = True
-                        is_input_consumer = True
-                    elif isinstance(arg, InputAttributeNode):
-                        has_at_least_one_channel_input = True
-                        is_input_consumer = True
-                    elif isinstance(arg, DAGNode):  # Other DAGNodes
-                        has_at_least_one_channel_input = True
-                        non_input_arg_to_consumers[arg].add(task)
+                        arg_to_consumers[arg].add(task)
                         arg_idx = self.dag_node_to_idx[arg]
                         upstream_task = self.idx_to_task[arg_idx]
                         assert len(upstream_task.output_channels) == 1
                         arg_channel = upstream_task.output_channels[0]
                         assert arg_channel is not None
-                if is_input_consumer:
-                    num_input_consumers += 1
                 # TODO: Support no-input DAGs (use an empty object to signal).
                 if not has_at_least_one_channel_input:
                     raise ValueError(
@@ -1323,8 +1289,7 @@ class CompiledDAG:
             # The value of this dict is either the original channel or a newly
             # created CachedChannel (if the original channel is read more than once).
             channel_dict: Dict[ChannelInterface, ChannelInterface] = {}
-            # Handle non-input args
-            for arg, consumers in non_input_arg_to_consumers.items():
+            for arg, consumers in arg_to_consumers.items():
                 arg_idx = self.dag_node_to_idx[arg]
                 upstream_task = self.idx_to_task[arg_idx]
                 assert len(upstream_task.output_channels) == 1
@@ -1337,14 +1302,6 @@ class CompiledDAG:
                     )
                 else:
                     channel_dict[arg_channel] = arg_channel
-            # Handle input args
-            if num_input_consumers > 1:
-                channel_dict[self.dag_input_channel] = CachedChannel(
-                    num_input_consumers,
-                    self.dag_input_channel,
-                )
-            else:
-                channel_dict[self.dag_input_channel] = self.dag_input_channel
 
             # Step 3: create executable tasks for the actor
             executable_tasks = []
@@ -1418,16 +1375,19 @@ class CompiledDAG:
         input_task = self.idx_to_task[self.input_task_idx]
         if self._enable_asyncio:
             self._dag_submitter = AwaitableBackgroundWriter(
-                [self.dag_input_channel],
-                [None],
+                self.dag_input_channels,
+                input_task.output_idxs,
                 self._asyncio_max_queue_size,
+                is_input=True,
             )
             self._dag_output_fetcher = AwaitableBackgroundReader(
                 self.dag_output_channels,
                 self._fut_queue,
             )
         else:
-            self._dag_submitter = SynchronousWriter([self.dag_input_channel], [None])
+            self._dag_submitter = SynchronousWriter(
+                self.dag_input_channels, input_task.output_idxs, is_input=True
+            )
             self._dag_output_fetcher = SynchronousReader(self.dag_output_channels)
 
         self._dag_submitter.start()
