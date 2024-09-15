@@ -676,25 +676,9 @@ class TestMultiArgs:
 
         compiled_dag = dag.experimental_compile()
 
-    ref = compiled_dag.execute(2, 3)
-    result = ray.get(ref)
-    assert result == [3, 2]
-
-    compiled_dag.teardown()
-
-
-def test_multi_args_single_actor(ray_start_regular):
-    c = Collector.remote()
-    with InputNode() as i:
-        dag = c.collect_three.bind(i[0], i[1], i[0])
-
-    compiled_dag = dag.experimental_compile()
-
-    expected = [[0, 1, 0], [0, 1, 0, 1, 2, 1], [0, 1, 0, 1, 2, 1, 2, 3, 2]]
-    for i in range(3):
-        ref = compiled_dag.execute(i, i + 1)
+        ref = compiled_dag.execute(2, 3)
         result = ray.get(ref)
-        assert result == expected[i]
+        assert result == [3, 2]
 
         compiled_dag.teardown()
 
