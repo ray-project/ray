@@ -6,7 +6,7 @@ Execution Configurations
 
 Ray Data provides a number of configurations that control various aspects
 of Ray Dataset execution. You can modify these configurations by using
-:class:`~ray.data.ExecutionOptions` and :class:`~ray.data.DataContext`. 
+:class:`~ray.data.ExecutionOptions` and :class:`~ray.data.DataContext`.
 This guide describes the most important of these configurations and when to use them.
 
 Configuring :class:`~ray.data.ExecutionOptions`
@@ -17,7 +17,7 @@ To use it, modify the attributes in the current :class:`~ray.data.DataContext` o
 
 .. testcode::
    :hide:
-    
+
    import ray
 
 .. testcode::
@@ -26,7 +26,7 @@ To use it, modify the attributes in the current :class:`~ray.data.DataContext` o
    ctx.execution_options.verbose_progress = True
 
 * `resource_limits`: Set a soft limit on the resource usage during execution. For example, if there are other parts of the code which require some minimum amount of resources, you may want to limit the amount of resources that Ray Data uses. Auto-detected by default.
-* `exclude_resources`: Amount of resources to exclude from Ray Data. Set this if you have other workloads running on the same cluster. Note: 
+* `exclude_resources`: Amount of resources to exclude from Ray Data. Set this if you have other workloads running on the same cluster. Note:
 
   * If you're using Ray Data with Ray Train, training resources are automatically excluded. Otherwise, off by default.
   * For each resource type, you can't set both ``resource_limits`` and ``exclude_resources``.
@@ -45,15 +45,15 @@ error handling/retry behavior, and internal data formats. To use it, modify the 
 
 .. testcode::
 	   :hide:
-	    
-	   import ray 
-	    
+
+	   import ray
+
 .. testcode::
 
    ctx = ray.data.DataContext.get_current()
    ctx.verbose_stats_logs = True
 
-Many of the options in :class:`~ray.data.DataContext` are intended for advanced use cases or debugging, 
+Many of the options in :class:`~ray.data.DataContext` are intended for advanced use cases or debugging,
 and most users shouldn't need to modify them. However, some of the most important options are:
 
 * `max_errored_blocks`: Max number of blocks that are allowed to have errors, unlimited if negative. This option allows application-level exceptions in block processing tasks. These exceptions may be caused by UDFs (for example, due to corrupted data samples) or IO errors. Data in the failed blocks are dropped. This option can be useful to prevent a long-running job from failing due to a small number of bad blocks. By default, no retries are allowed.
