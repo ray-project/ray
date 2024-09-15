@@ -1270,7 +1270,10 @@ class CompiledDAG:
                 if not has_at_least_one_channel_input:
                     raise ValueError(
                         "Compiled DAGs require each task to take a ray.dag.InputNode "
-                        "or at least one other DAGNode as an input"
+                        "or at least one other DAGNode as an input. "
+                        "Invalid task node:\n"
+                        f"{task.dag_node}\n"
+                        "Please bind the task to proper DAG nodes."
                     )
 
         from ray.dag.constants import RAY_ADAG_ENABLE_DETECT_DEADLOCK
