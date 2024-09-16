@@ -138,15 +138,30 @@ class Checkpointable(abc.ABC):
 
         # If no path is given create a local temporary directory.
         if path is None:
-            path = path or tempfile.mkdtemp()
+            import uuid
+
+            # Get the location of the temporary directory on the OS.
+            tmp_dir = Path(tempfile.gettempdir())
+            # Create a random directory name.
+            random_dir_name = str(uuid.uuid4())
+            # Create the path, but do not craet the directory on the
+            # filesystem, yet. This is done by `PyArrow`.
+            path = path or tmp_dir / random_dir_name
+
+        # We need a string path for `pyarrow.fs.FileSystem.from_uri`.
+        path = path if isinstance(path, str) else path.as_posix()
 
         # If we have no filesystem, figure it out.
         if path and not filesystem:
+            # Note the path needs to be a path that is relative to the
+            # filesystem (e.g. `gs://tmp/...` -> `tmp/...`).
             filesystem, path = pyarrow.fs.FileSystem.from_uri(path)
 
         # Make sure, path exists.
+        filesystem.create_dir(path, recursive=True)
+
+        # Convert to `pathlib.Path` for easy handling.
         path = pathlib.Path(path)
-        # path.mkdir(parents=True, exist_ok=True)
 
         # Write metadata file to disk.
         metadata = self.get_metadata()
@@ -276,7 +291,7 @@ class Checkpointable(abc.ABC):
                 # By providing the `state` arg, we make sure that the component does not
                 # have to call its own `get_state()` anymore, but uses what's provided
                 # here.
-                comp.save_to_path(comp_path, state=comp_state)
+                comp.save_to_path(comp_path, filesystem=filesystem, state=comp_state)
 
         # Write all the remaining state to disk.
         with filesystem.open_output_stream(
@@ -330,20 +345,22 @@ class Checkpointable(abc.ABC):
                 the subcomponent and thus, only that subcomponent's state is
                 restored/loaded. All other state of `self` remains unchanged in this
                 case.
+            filesystem: PyArrow FileSystem to use to access data at the path. If not
+                specified, this is inferred from the URI scheme.
             **kwargs: Forward compatibility kwargs.
         """
         path = path if isinstance(path, str) else path.as_posix()
 
         if path and not filesystem:
+            # Note the path needs to be a path that is relative to the
+            # filesystem (e.g. `gs://tmp/...` -> `tmp/...`).
             filesystem, path = pyarrow.fs.FileSystem.from_uri(path)
-            # Only here convert to a `Path` instance b/c otherwise
-            # cloud path gets broken (i.e. 'gs://' -> 'gs:/').
-            path = pathlib.Path(path)
+        # Only here convert to a `Path` instance b/c otherwise
+        # cloud path gets broken (i.e. 'gs://' -> 'gs:/').
+        path = pathlib.Path(path)
 
         if not _exists_at_fs_path(filesystem, path.as_posix()):
             raise FileNotFoundError(f"`path` ({path}) not found!")
-        # if not path.is_dir():
-        #     raise FileNotFoundError(f"`path` ({path}) not found!")
 
         # Restore components of `self` that themselves are `Checkpointable`.
         for comp_name, comp in self.get_checkpointable_components():
@@ -358,8 +375,6 @@ class Checkpointable(abc.ABC):
                 # subcomponent's state from disk.
                 if not _exists_at_fs_path(filesystem, comp_dir.as_posix()):
                     continue
-                # if not comp_dir.is_dir():
-                #     continue
             else:
                 comp_dir = path
 
@@ -408,7 +423,9 @@ class Checkpointable(abc.ABC):
             # Call `restore_from_path()` on local subcomponent, thereby passing in the
             # **kwargs.
             else:
-                comp.restore_from_path(comp_dir, component=comp_arg, **kwargs)
+                comp.restore_from_path(
+                    comp_dir, filesystem=filesystem, component=comp_arg, **kwargs
+                )
 
         # Restore the rest of the state (not based on subcomponents).
         if component is None:
@@ -420,7 +437,10 @@ class Checkpointable(abc.ABC):
 
     @classmethod
     def from_checkpoint(
-        cls, path: Union[str, pathlib.Path], **kwargs
+        cls,
+        path: Union[str, pathlib.Path],
+        filesystem: Optional["pyarrow.fs.FileSystem"] = None,
+        **kwargs,
     ) -> "Checkpointable":
         """Creates a new Checkpointable instance from the given location and returns it.
 
@@ -428,6 +448,8 @@ class Checkpointable(abc.ABC):
             path: The checkpoint path to load (a) the information on how to construct
                 a new instance of the implementing class and (b) the state to restore
                 the created instance to.
+            filesystem: PyArrow FileSystem to use to access data at the path. If not
+                specified, this is inferred from the URI scheme.
             kwargs: Forward compatibility kwargs. Note that these kwargs are sent to
                 each subcomponent's `from_checkpoint()` call.
 
@@ -435,10 +457,22 @@ class Checkpointable(abc.ABC):
              A new instance of the implementing class, already set to the state stored
              under `path`.
         """
+        # We need a string path for the `PyArrow` filesystem.
+        path = path if isinstance(path, str) else path.as_posix()
+
+        # If no filesystem is passed in create one.
+        if path and not filesystem:
+            # Note the path needs to be a path that is relative to the
+            # filesystem (e.g. `gs://tmp/...` -> `tmp/...`).
+            filesystem, path = pyarrow.fs.FileSystem.from_uri(path)
+        # Only here convert to a `Path` instance b/c otherwise
+        # cloud path gets broken (i.e. 'gs://' -> 'gs:/').
         path = pathlib.Path(path)
 
         # Get the class constructor to call.
-        with open(path / cls.CLASS_AND_CTOR_ARGS_FILE_NAME, "rb") as f:
+        with filesystem.open_input_stream(
+            (path / cls.CLASS_AND_CTOR_ARGS_FILE_NAME).as_posix()
+        ) as f:
             ctor_info = pickle.load(f)
         ctor = ctor_info["class"]
 
@@ -460,7 +494,7 @@ class Checkpointable(abc.ABC):
             **ctor_info["ctor_args_and_kwargs"][1],
         )
         # Restore the state of the constructed object.
-        obj.restore_from_path(path, **kwargs)
+        obj.restore_from_path(path, filesystem=filesystem, **kwargs)
         # Return the new object.
         return obj
 
