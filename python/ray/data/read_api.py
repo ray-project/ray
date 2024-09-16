@@ -598,6 +598,7 @@ def read_parquet(
     tensor_column_schema: Optional[Dict[str, Tuple[np.dtype, Tuple[int, ...]]]] = None,
     meta_provider: Optional[ParquetMetadataProvider] = None,
     partition_filter: Optional[PathPartitionFilter] = None,
+    partitioning: Optional[Partitioning] = Partitioning("hive"),
     shuffle: Union[Literal["files"], None] = None,
     include_paths: bool = False,
     file_extensions: Optional[List[str]] = None,
@@ -703,6 +704,8 @@ def read_parquet(
         partition_filter: A
             :class:`~ray.data.datasource.partitioning.PathPartitionFilter`. Use
             with a custom callback to read only selected partitions of a dataset.
+        partitioning: A :class:`~ray.data.datasource.partitioning.Partitioning` object
+            that describes how paths are organized. Defaults to HIVE partitioning.
         shuffle: If setting to "files", randomly shuffle input files order before read.
             Defaults to not shuffle with ``None``.
         arrow_parquet_args: Other parquet read options to pass to PyArrow. For the full
@@ -747,6 +750,7 @@ def read_parquet(
         schema=schema,
         meta_provider=meta_provider,
         partition_filter=partition_filter,
+        partitioning=partitioning,
         shuffle=shuffle,
         include_paths=include_paths,
         file_extensions=file_extensions,
