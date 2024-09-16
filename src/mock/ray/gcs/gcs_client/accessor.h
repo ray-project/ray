@@ -30,7 +30,8 @@ class MockActorInfoAccessor : public ActorInfoAccessor {
               (const std::optional<ActorID> &actor_id,
                const std::optional<JobID> &job_id,
                const std::optional<std::string> &actor_state_name,
-               const MultiItemCallback<rpc::ActorTableData> &callback),
+               const MultiItemCallback<rpc::ActorTableData> &callback,
+               int64_t timeout_ms),
               (override));
   MOCK_METHOD(Status,
               AsyncGetByName,
@@ -61,7 +62,8 @@ class MockActorInfoAccessor : public ActorInfoAccessor {
               (const ActorID &actor_id,
                bool force_kill,
                bool no_restart,
-               const StatusCallback &callback),
+               const StatusCallback &callback,
+               int64_t timeout_ms),
               (override));
   MOCK_METHOD(Status,
               AsyncCreateActor,
@@ -103,7 +105,11 @@ class MockJobInfoAccessor : public JobInfoAccessor {
               (override));
   MOCK_METHOD(Status,
               AsyncGetAll,
-              (const MultiItemCallback<rpc::JobTableData> &callback, int64_t timeout_ms),
+              (const std::optional<std::string> &job_or_submission_id,
+               bool skip_submission_job_info_field,
+               bool skip_is_running_tasks_field,
+               const MultiItemCallback<rpc::JobTableData> &callback,
+               int64_t timeout_ms),
               (override));
   MOCK_METHOD(void, AsyncResubscribe, (), (override));
   MOCK_METHOD(Status,

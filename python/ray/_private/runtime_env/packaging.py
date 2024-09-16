@@ -1,3 +1,4 @@
+import time
 import asyncio
 import hashlib
 import logging
@@ -578,17 +579,23 @@ def upload_package_if_needed(
         return False
 
     package_file = Path(_get_local_path(base_directory, pkg_uri))
+    # Make the temporary zip file name unique so that it doesn't conflict with
+    # concurrent upload_package_if_needed calls with the same pkg_uri.
+    # See https://github.com/ray-project/ray/issues/47471.
+    package_file = package_file.with_name(
+        f"{time.time_ns()}_{os.getpid()}_{package_file.name}"
+    )
     create_package(
         directory,
         package_file,
         include_parent_dir=include_parent_dir,
         excludes=excludes,
     )
-
-    upload_package_to_gcs(pkg_uri, package_file.read_bytes())
-
+    package_file_bytes = package_file.read_bytes()
     # Remove the local file to avoid accumulating temporary zip files.
     package_file.unlink()
+
+    upload_package_to_gcs(pkg_uri, package_file_bytes)
 
     return True
 

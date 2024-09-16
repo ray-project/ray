@@ -49,7 +49,7 @@ class error_code;
 // Return the given status if it is not OK.
 #define RAY_RETURN_NOT_OK(s)           \
   do {                                 \
-    ::ray::Status _s = (s);            \
+    const ::ray::Status &_s = (s);     \
     if (RAY_PREDICT_FALSE(!_s.ok())) { \
       return _s;                       \
     }                                  \
@@ -118,6 +118,7 @@ enum class StatusCode : char {
   ChannelError = 35,
   // Indicates that a read or write on a channel (a mutable plasma object) timed out.
   ChannelTimeoutError = 36,
+  // If you add to this list, please also update kCodeToStr in status.cc.
 };
 
 #if defined(__clang__)

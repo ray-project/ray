@@ -16,9 +16,10 @@ from ray.rllib.core import (
     DEFAULT_MODULE_ID,
 )
 from ray.rllib.core.columns import Columns
-from ray.rllib.core.rl_module.rl_module import RLModule, SingleAgentRLModuleSpec
+from ray.rllib.core.rl_module.rl_module import RLModuleSpec
+from ray.rllib.env import INPUT_ENV_SPACES
 from ray.rllib.env.env_context import EnvContext
-from ray.rllib.env.env_runner import EnvRunner
+from ray.rllib.env.env_runner import EnvRunner, ENV_STEP_FAILURE
 from ray.rllib.env.single_agent_episode import SingleAgentEpisode
 from ray.rllib.env.utils import _gym_env_creator
 from ray.rllib.utils.annotations import override
@@ -96,21 +97,15 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
         # required in the learning step.
         self._cached_to_module = None
 
-        # Create our own instance of the (single-agent) `RLModule` (which
-        # the needs to be weight-synched) each iteration.
+        # Create the RLModule.
         try:
-            module_spec: SingleAgentRLModuleSpec = self.config.rl_module_spec
-            module_spec.observation_space = self._env_to_module.observation_space
-            module_spec.action_space = self.env.single_action_space
-            if module_spec.model_config_dict is None:
-                module_spec.model_config_dict = self.config.model_config
-            # Only load a light version of the module, if available. This is useful
-            # if the the module has target or critic networks not needed in sampling
-            # or inference.
-            # TODO (simon): Once we use `get_marl_module_spec` here, we can remove
-            #  this line here as the function takes care of this flag.
-            module_spec.inference_only = True
-            self.module: RLModule = module_spec.build()
+            module_spec: RLModuleSpec = self.config.get_rl_module_spec(
+                env=self.env, spaces=self.get_spaces(), inference_only=True
+            )
+            # Build the module from its spec.
+            self.module = module_spec.build()
+        # If `AlgorithmConfig.get_rl_module_spec()` is not implemented, this env runner
+        # will not have an RLModule, but might still be usable with random actions.
         except NotImplementedError:
             self.module = None
 
@@ -207,8 +202,8 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
             # For complete episodes mode, sample a single episode and
             # leave coordination of sampling to `synchronous_parallel_sample`.
             # TODO (simon, sven): The coordination will eventually move
-            # to `EnvRunnerGroup` in the future. So from the algorithm one
-            # would do `EnvRunnerGroup.sample()`.
+            #  to `EnvRunnerGroup` in the future. So from the algorithm one
+            #  would do `EnvRunnerGroup.sample()`.
             else:
                 samples = self._sample_episodes(
                     num_episodes=1,
@@ -253,9 +248,9 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
             # leak).
             self._ongoing_episodes_for_metrics.clear()
 
-            # Reset the environment.
+            # Try resetting the environment.
             # TODO (simon): Check, if we need here the seed from the config.
-            obs, infos = self.env.reset()
+            obs, infos = self._try_env_reset()
             obs = unbatch(obs)
             self._cached_to_module = None
 
@@ -309,7 +304,7 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
                 # Module-to-env connector.
                 to_env = self._module_to_env(
                     rl_module=self.module,
-                    data=to_env,
+                    batch=to_env,
                     episodes=self._episodes,
                     explore=explore,
                     shared_data=self._shared_data,
@@ -322,10 +317,16 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
             # are the ones stored permanently in the episode objects.
             actions = to_env.pop(Columns.ACTIONS)
             actions_for_env = to_env.pop(Columns.ACTIONS_FOR_ENV, actions)
-            # Step the environment.
-            obs, rewards, terminateds, truncateds, infos = self.env.step(
-                actions_for_env
-            )
+            # Try stepping the environment.
+            results = self._try_env_step(actions_for_env)
+            if results == ENV_STEP_FAILURE:
+                return self._sample_timesteps(
+                    num_timesteps=num_timesteps,
+                    explore=explore,
+                    random_actions=random_actions,
+                    force_reset=True,
+                )
+            obs, rewards, terminateds, truncateds, infos = results
             obs, actions = unbatch(obs), unbatch(actions)
 
             ts += self.num_envs
@@ -462,9 +463,9 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
             # `gymnasium-v1.0.0a2` PR is coming.
         _shared_data = {}
 
-        # Reset the environment.
+        # Try resetting the environment.
         # TODO (simon): Check, if we need here the seed from the config.
-        obs, infos = self.env.reset()
+        obs, infos = self._try_env_reset()
         for env_index in range(self.num_envs):
             episodes[env_index].add_env_reset(
                 observation=unbatch(obs)[env_index],
@@ -506,7 +507,7 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
                 # Module-to-env connector.
                 to_env = self._module_to_env(
                     rl_module=self.module,
-                    data=to_env,
+                    batch=to_env,
                     episodes=episodes,
                     explore=explore,
                     shared_data=_shared_data,
@@ -519,10 +520,15 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
             # are the ones stored permanently in the episode objects.
             actions = to_env.pop(Columns.ACTIONS)
             actions_for_env = to_env.pop(Columns.ACTIONS_FOR_ENV, actions)
-            # Step the environment.
-            obs, rewards, terminateds, truncateds, infos = self.env.step(
-                actions_for_env
-            )
+            # Try stepping the environment.
+            results = self._try_env_step(actions_for_env)
+            if results == ENV_STEP_FAILURE:
+                return self._sample_episodes(
+                    num_episodes=num_episodes,
+                    explore=explore,
+                    random_actions=random_actions,
+                )
+            obs, rewards, terminateds, truncateds, infos = results
             obs, actions = unbatch(obs), unbatch(actions)
             ts += self.num_envs
 
@@ -609,6 +615,16 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
         self._increase_sampled_metrics(ts)
 
         return samples
+
+    @override(EnvRunner)
+    def get_spaces(self):
+        return {
+            INPUT_ENV_SPACES: (self.env.observation_space, self.env.action_space),
+            DEFAULT_MODULE_ID: (
+                self._env_to_module.observation_space,
+                self.env.single_action_space,
+            ),
+        }
 
     def get_metrics(self) -> ResultDict:
         # Compute per-episode metrics (only on already completed episodes).
@@ -742,7 +758,7 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
     def assert_healthy(self):
         """Checks that self.__init__() has been completed properly.
 
-        Ensures that the instances has a `MultiAgentRLModule` and an
+        Ensures that the instances has a `MultiRLModule` and an
         environment defined.
 
         Raises:

@@ -992,6 +992,8 @@ class Worker:
 def get_gpu_ids() -> Union[List[int], List[str]]:
     """Get the IDs of the GPUs that are available to the worker.
 
+    This method should only be called inside of a task or actor, and not a driver.
+
     If the CUDA_VISIBLE_DEVICES environment variable was set when the worker
     started up, then the IDs returned by this method will be a subset of the
     IDs in CUDA_VISIBLE_DEVICES. If not, the IDs will fall in the range
@@ -1240,7 +1242,7 @@ def init(
     logging_level: int = ray_constants.LOGGER_LEVEL,
     logging_format: Optional[str] = None,
     logging_config: Optional[LoggingConfig] = None,
-    log_to_driver: bool = True,
+    log_to_driver: Optional[bool] = None,
     namespace: Optional[str] = None,
     runtime_env: Optional[Union[Dict[str, Any], "RuntimeEnv"]] = None,  # noqa: F821
     storage: Optional[str] = None,
@@ -1399,6 +1401,9 @@ def init(
         Exception: An exception is raised if an inappropriate combination of
             arguments is passed in.
     """
+    if log_to_driver is None:
+        log_to_driver = ray_constants.RAY_LOG_TO_DRIVER
+
     # Configure the "ray" logger for the driver process.
     if configure_logging:
         setup_logger(logging_level, logging_format or ray_constants.LOGGER_FORMAT)
@@ -2567,6 +2572,13 @@ def get(object_refs: "ObjectRef[R]", *, timeout: Optional[float] = None) -> R:
 
 
 @overload
+def get(
+    object_refs: Sequence[CompiledDAGRef], *, timeout: Optional[float] = None
+) -> List[Any]:
+    ...
+
+
+@overload
 def get(object_refs: CompiledDAGRef, *, timeout: Optional[float] = None) -> Any:
     ...
 
@@ -2574,7 +2586,12 @@ def get(object_refs: CompiledDAGRef, *, timeout: Optional[float] = None) -> Any:
 @PublicAPI
 @client_mode_hook
 def get(
-    object_refs: Union["ObjectRef[Any]", Sequence["ObjectRef[Any]"], CompiledDAGRef],
+    object_refs: Union[
+        "ObjectRef[Any]",
+        Sequence["ObjectRef[Any]"],
+        CompiledDAGRef,
+        Sequence[CompiledDAGRef],
+    ],
     *,
     timeout: Optional[float] = None,
 ) -> Union[Any, List[Any]]:
@@ -2644,6 +2661,21 @@ def get(
 
         if isinstance(object_refs, CompiledDAGRef):
             return object_refs.get(timeout=timeout)
+
+        if isinstance(object_refs, list):
+            all_compiled_dag_refs = True
+            any_compiled_dag_refs = False
+            for object_ref in object_refs:
+                is_dag_ref = isinstance(object_ref, CompiledDAGRef)
+                all_compiled_dag_refs = all_compiled_dag_refs and is_dag_ref
+                any_compiled_dag_refs = any_compiled_dag_refs or is_dag_ref
+            if all_compiled_dag_refs:
+                return [object_ref.get(timeout=timeout) for object_ref in object_refs]
+            elif any_compiled_dag_refs:
+                raise ValueError(
+                    "Invalid type of object refs. 'object_refs' must be a list of "
+                    "CompiledDAGRefs if there is any CompiledDAGRef within it. "
+                )
 
         is_individual_id = isinstance(object_refs, ray.ObjectRef)
         if is_individual_id:

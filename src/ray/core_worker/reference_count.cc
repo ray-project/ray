@@ -14,27 +14,17 @@
 
 #include "ray/core_worker/reference_count.h"
 
-#define PRINT_REF_COUNT(it)                                                        \
-  RAY_LOG(DEBUG) << "REF " << it->first                                            \
-                 << " borrowers: " << it->second.borrow().borrowers.size()         \
-                 << " local_ref_count: " << it->second.local_ref_count             \
-                 << " submitted_count: " << it->second.submitted_task_ref_count    \
-                 << " contained_in_owned: "                                        \
-                 << it->second.nested().contained_in_owned.size()                  \
-                 << " contained_in_borrowed: "                                     \
-                 << (it)->second.nested().contained_in_borrowed_ids.size()         \
-                 << " contains: " << it->second.nested().contains.size()           \
-                 << " stored_in: " << it->second.borrow().stored_in_objects.size() \
-                 << " lineage_ref_count: " << it->second.lineage_ref_count;
+#define PRINT_REF_COUNT(it) \
+  RAY_LOG(DEBUG) << "REF " << it->first << ": " << it->second.DebugString();
 
 namespace {}  // namespace
 
 namespace ray {
 namespace core {
 
-bool ReferenceCounter::OwnObjects() const {
+size_t ReferenceCounter::Size() const {
   absl::MutexLock lock(&mutex_);
-  return !object_id_refs_.empty();
+  return object_id_refs_.size();
 }
 
 bool ReferenceCounter::OwnedByUs(const ObjectID &object_id) const {
@@ -360,6 +350,7 @@ bool ReferenceCounter::AddOwnedObjectInternal(
   if (add_local_ref) {
     it->second.local_ref_count++;
   }
+  PRINT_REF_COUNT(it);
   return true;
 }
 
@@ -551,10 +542,12 @@ int64_t ReferenceCounter::ReleaseLineageReferences(ReferenceTable::iterator ref)
 
     RAY_LOG(DEBUG) << "Releasing lineage internal for argument " << argument_id;
     arg_it->second.lineage_ref_count--;
+    if (arg_it->second.OutOfScope(lineage_pinning_enabled_)) {
+      DeleteObjectPrimaryCopy(arg_it);
+    }
     if (arg_it->second.ShouldDelete(lineage_pinning_enabled_)) {
       RAY_CHECK(arg_it->second.on_ref_removed == nullptr);
       lineage_bytes_evicted += ReleaseLineageReferences(arg_it);
-      ReleasePlasmaObject(arg_it);
       EraseReference(arg_it);
     }
   }
@@ -670,7 +663,7 @@ void ReferenceCounter::FreePlasmaObjects(const std::vector<ObjectID> &object_ids
     }
     // Free only the plasma value. We must keep the reference around so that we
     // have the ownership information.
-    ReleasePlasmaObject(it);
+    DeleteObjectPrimaryCopy(it);
   }
 }
 
@@ -708,7 +701,7 @@ void ReferenceCounter::DeleteReferenceInternal(ReferenceTable::iterator it,
       }
     }
     // Perform the deletion.
-    ReleasePlasmaObject(it);
+    DeleteObjectPrimaryCopy(it);
     if (deleted) {
       deleted->push_back(id);
     }
@@ -748,6 +741,9 @@ void ReferenceCounter::EraseReference(ReferenceTable::iterator it) {
       num_objects_owned_by_us_--;
     }
   }
+  if (it->second.on_object_ref_delete) {
+    it->second.on_object_ref_delete(it->first);
+  }
   object_id_refs_.erase(it);
   ShutdownIfNeeded();
 }
@@ -768,16 +764,18 @@ int64_t ReferenceCounter::EvictLineage(int64_t min_bytes_to_evict) {
   return lineage_bytes_evicted;
 }
 
-void ReferenceCounter::ReleasePlasmaObject(ReferenceTable::iterator it) {
-  if (it->second.on_delete) {
-    RAY_LOG(DEBUG) << "Calling on_delete for object " << it->first;
-    it->second.on_delete(it->first);
-    it->second.on_delete = nullptr;
+void ReferenceCounter::DeleteObjectPrimaryCopy(ReferenceTable::iterator it) {
+  RAY_LOG(DEBUG) << "Calling on_object_primary_copy_delete for object " << it->first
+                 << " num callbacks: "
+                 << it->second.on_object_primary_copy_delete_callbacks.size();
+  for (const auto &callback : it->second.on_object_primary_copy_delete_callbacks) {
+    callback(it->first);
   }
+  it->second.on_object_primary_copy_delete_callbacks.clear();
   it->second.pinned_at_raylet_id.reset();
   if (it->second.spilled && !it->second.spilled_node_id.IsNil()) {
-    // The spilled copy of the object should get deleted during the on_delete
-    // callback, so reset the spill location metadata here.
+    // The spilled copy of the object should get deleted during the
+    // on_object_primary_copy_delete callback, so reset the spill location metadata here.
     // NOTE(swang): Spilled copies in cloud storage are not GCed, so we do not
     // reset the spilled metadata.
     it->second.spilled = false;
@@ -786,7 +784,18 @@ void ReferenceCounter::ReleasePlasmaObject(ReferenceTable::iterator it) {
   }
 }
 
-bool ReferenceCounter::SetDeleteCallback(
+bool ReferenceCounter::SetObjectRefDeletedCallback(
+    const ObjectID &object_id, const std::function<void(const ObjectID &)> callback) {
+  absl::MutexLock lock(&mutex_);
+  auto it = object_id_refs_.find(object_id);
+  if (it == object_id_refs_.end()) {
+    return false;
+  }
+  it->second.on_object_ref_delete = callback;
+  return true;
+}
+
+bool ReferenceCounter::AddObjectPrimaryCopyDeleteCallback(
     const ObjectID &object_id, const std::function<void(const ObjectID &)> callback) {
   absl::MutexLock lock(&mutex_);
   auto it = object_id_refs_.find(object_id);
@@ -803,13 +812,7 @@ bool ReferenceCounter::SetDeleteCallback(
     return false;
   }
 
-  // NOTE: In two cases, `GcsActorManager` will send `WaitForActorOutOfScope` request more
-  // than once, causing the delete callback to be set repeatedly.
-  // 1.If actors have not been registered successfully before GCS restarts, gcs client
-  // will resend the registration request after GCS restarts.
-  // 2.After GCS restarts, GCS will send `WaitForActorOutOfScope` request to owned actors
-  // again.
-  it->second.on_delete = callback;
+  it->second.on_object_primary_copy_delete_callbacks.emplace_back(callback);
   return true;
 }
 
@@ -819,7 +822,7 @@ void ReferenceCounter::ResetObjectsOnRemovedNode(const NodeID &raylet_id) {
     const auto &object_id = it->first;
     if (it->second.pinned_at_raylet_id.value_or(NodeID::Nil()) == raylet_id ||
         it->second.spilled_node_id == raylet_id) {
-      ReleasePlasmaObject(it);
+      DeleteObjectPrimaryCopy(it);
       if (!it->second.OutOfScope(lineage_pinning_enabled_)) {
         objects_to_recover_.push_back(object_id);
       }
@@ -859,7 +862,7 @@ void ReferenceCounter::UpdateObjectPinnedAtRaylet(const ObjectID &object_id,
       if (check_node_alive_(raylet_id)) {
         it->second.pinned_at_raylet_id = raylet_id;
       } else {
-        ReleasePlasmaObject(it);
+        DeleteObjectPrimaryCopy(it);
         objects_to_recover_.push_back(object_id);
       }
     }
@@ -1416,7 +1419,7 @@ bool ReferenceCounter::HandleObjectSpilled(const ObjectID &object_id,
   } else {
     RAY_LOG(DEBUG) << "Object " << object_id << " spilled to dead node "
                    << spilled_node_id;
-    ReleasePlasmaObject(it);
+    DeleteObjectPrimaryCopy(it);
     objects_to_recover_.push_back(object_id);
   }
   return true;
@@ -1612,6 +1615,31 @@ void ReferenceCounter::PublishObjectLocationSnapshot(const ObjectID &object_id) 
   // This will ensure that the subscriber will get the first snapshot of the
   // object location.
   PushToLocationSubscribers(it);
+}
+
+std::string ReferenceCounter::DebugString() const {
+  absl::MutexLock lock(&mutex_);
+  std::stringstream ss;
+  ss << "ReferenceTable{size: " << object_id_refs_.size();
+  if (!object_id_refs_.empty()) {
+    ss << " sample: " << object_id_refs_.begin()->first << ":"
+       << object_id_refs_.begin()->second.DebugString();
+  }
+  ss << "}";
+  return ss.str();
+}
+
+std::string ReferenceCounter::Reference::DebugString() const {
+  std::stringstream ss;
+  ss << "Reference{borrowers: " << borrow().borrowers.size()
+     << " local_ref_count: " << local_ref_count
+     << " submitted_count: " << submitted_task_ref_count
+     << " contained_on_owned: " << nested().contained_in_owned.size()
+     << " contained_in_borrowed: " << nested().contained_in_borrowed_ids.size()
+     << " contains: " << nested().contains.size()
+     << " stored_in: " << borrow().stored_in_objects.size()
+     << " lineage_ref_count: " << lineage_ref_count << "}";
+  return ss.str();
 }
 
 ReferenceCounter::Reference ReferenceCounter::Reference::FromProto(

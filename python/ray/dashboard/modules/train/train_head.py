@@ -1,12 +1,13 @@
 import logging
+from typing import List
 
 from aiohttp.web import Request, Response
 
 import ray
 import ray.dashboard.optional_utils as dashboard_optional_utils
 import ray.dashboard.utils as dashboard_utils
-from ray.core.generated import gcs_service_pb2, gcs_service_pb2_grpc
-from ray.dashboard.modules.actor.actor_head import actor_table_data_to_dict
+from ray.core.generated import gcs_service_pb2_grpc
+from ray.dashboard.datacenter import DataOrganizer
 from ray.dashboard.modules.job.common import JobInfoStorageClient
 from ray.dashboard.modules.job.utils import find_jobs_by_job_ids
 from ray.util.annotations import DeveloperAPI
@@ -29,10 +30,7 @@ class TrainHead(dashboard_utils.DashboardHeadModule):
     @DeveloperAPI
     async def get_train_runs(self, req: Request) -> Response:
         try:
-            from ray.train._internal.state.schema import (
-                TrainRunInfoWithDetails,
-                TrainRunsResponse,
-            )
+            from ray.train._internal.state.schema import TrainRunsResponse
         except ImportError:
             logger.exception(
                 "Train is not installed. Please run `pip install ray[train]` "
@@ -58,24 +56,22 @@ class TrainHead(dashboard_utils.DashboardHeadModule):
         else:
             try:
                 train_runs = await stats_actor.get_all_train_runs.remote()
-                await self._add_actor_status_and_update_run_status(train_runs)
+                train_runs_with_details = (
+                    await self._add_actor_status_and_update_run_status(train_runs)
+                )
                 # Sort train runs in reverse chronological order
-                train_runs = sorted(
-                    train_runs.values(),
+                train_runs_with_details = sorted(
+                    train_runs_with_details,
                     key=lambda run: run.start_time_ms,
                     reverse=True,
                 )
                 job_details = await find_jobs_by_job_ids(
                     self._dashboard_head.gcs_aio_client,
                     self._job_info_client,
-                    [run.job_id for run in train_runs],
+                    [run.job_id for run in train_runs_with_details],
                 )
-                train_runs_with_details = [
-                    TrainRunInfoWithDetails(
-                        **run.dict(), job_details=job_details.get(run.job_id)
-                    )
-                    for run in train_runs
-                ]
+                for run in train_runs_with_details:
+                    run.job_details = job_details.get(run.job_id)
                 details = TrainRunsResponse(train_runs=train_runs_with_details)
             except ray.exceptions.RayTaskError as e:
                 # Task failure sometimes are due to GCS
@@ -95,42 +91,91 @@ class TrainHead(dashboard_utils.DashboardHeadModule):
         )
 
     async def _add_actor_status_and_update_run_status(self, train_runs):
-        from ray.train._internal.state.schema import ActorStatusEnum, RunStatusEnum
+        from ray.train._internal.state.schema import (
+            ActorStatusEnum,
+            RunStatusEnum,
+            TrainRunInfoWithDetails,
+            TrainWorkerInfoWithDetails,
+        )
 
-        actor_status_table = {}
         try:
             logger.info("Getting all actor info from GCS.")
-            request = gcs_service_pb2.GetAllActorInfoRequest()
-            reply = await self._gcs_actor_info_stub.GetAllActorInfo(request, timeout=5)
-            if reply.status.code == 0:
-                for message in reply.actor_table_data:
-                    actor_table_data = actor_table_data_to_dict(message)
-                    actor_status_table[actor_table_data["actorId"]] = actor_table_data[
-                        "state"
-                    ]
+            actors = await DataOrganizer.get_all_actors()
+
         except Exception:
             logger.exception("Error Getting all actor info from GCS.")
 
+        train_runs_with_details: List[TrainRunInfoWithDetails] = []
+
         for train_run in train_runs.values():
+            worker_infos_with_details: List[TrainWorkerInfoWithDetails] = []
+
             for worker_info in train_run.workers:
-                worker_info.status = actor_status_table.get(worker_info.actor_id, None)
+                actor = actors.get(worker_info.actor_id, None)
+                # Add hardware metrics to API response
+                if actor:
+                    gpus = [
+                        gpu
+                        for gpu in actor["gpus"]
+                        if worker_info.pid
+                        in [process["pid"] for process in gpu["processesPids"]]
+                    ]
+                    # Need to convert processesPids into a proper list.
+                    # It's some weird ImmutableList structureo
+                    # We also convert the list of processes into a single item since
+                    # an actor is only a single process and cannot match multiple
+                    # processes.
+                    formatted_gpus = [
+                        {
+                            **gpu,
+                            "processInfo": [
+                                process
+                                for process in gpu["processesPids"]
+                                if process["pid"] == worker_info.pid
+                            ][0],
+                        }
+                        for gpu in gpus
+                    ]
+
+                    worker_info_with_details = TrainWorkerInfoWithDetails.parse_obj(
+                        {
+                            **worker_info.dict(),
+                            "status": actor["state"],
+                            "processStats": actor["processStats"],
+                            "gpus": formatted_gpus,
+                        }
+                    )
+                else:
+                    worker_info_with_details = TrainWorkerInfoWithDetails.parse_obj(
+                        worker_info.dict()
+                    )
+
+                worker_infos_with_details.append(worker_info_with_details)
+
+            train_run_with_details = TrainRunInfoWithDetails.parse_obj(
+                {**train_run.dict(), "workers": worker_infos_with_details}
+            )
 
             # The train run can be unexpectedly terminated before the final run
             # status was updated. This could be due to errors outside of the training
             # function (e.g., system failure or user interruption) that crashed the
             # train controller.
             # We need to detect this case and mark the train run as ABORTED.
-            controller_actor_status = actor_status_table.get(
+            controller_actor_status = actors.get(
                 train_run.controller_actor_id, None
-            )
+            ).get("state")
             if (
                 controller_actor_status == ActorStatusEnum.DEAD
-                and train_run.run_status == RunStatusEnum.STARTED
+                and train_run.run_status == RunStatusEnum.RUNNING
             ):
-                train_run.run_status = RunStatusEnum.ABORTED
-                train_run.status_detail = (
-                    "Unexpectedly terminated due to system errors."
+                train_run_with_details.run_status = RunStatusEnum.ABORTED
+                train_run_with_details.status_detail = (
+                    "Terminated due to system errors or killed by the user."
                 )
+
+            train_runs_with_details.append(train_run_with_details)
+
+        return train_runs_with_details
 
     @staticmethod
     def is_minimal_module():

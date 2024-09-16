@@ -5,7 +5,6 @@ from ray import air
 from ray.air.constants import TRAINING_ITERATION
 from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.utils.framework import try_import_torch
-from ray.rllib.utils.test_utils import framework_iterator
 from ray import tune
 
 torch, _ = try_import_torch()
@@ -43,44 +42,38 @@ class TestGPUs(unittest.TestCase):
                         f"_fake_gpus={fake_gpus}"
                     )
 
-                    frameworks = (
-                        ("tf", "torch") if num_gpus > 1 else ("tf2", "tf", "torch")
-                    )
-                    for _ in framework_iterator(config, frameworks=frameworks):
-                        # Expect that Algorithm creation causes a num_gpu error.
-                        if (
-                            actual_gpus < num_gpus + 2 * num_gpus_per_env_runner
-                            and not fake_gpus
-                        ):
-                            # "Direct" RLlib (create Algorithm on the driver).
-                            # Cannot run through ray.tune.Tuner().fit() as it would
-                            # simply wait infinitely for the resources to
-                            # become available.
-                            print("direct RLlib")
-                            self.assertRaisesRegex(
-                                RuntimeError,
-                                "Found 0 GPUs on your machine",
-                                lambda: config.build(),
-                            )
-                        # If actual_gpus >= num_gpus or faked,
-                        # expect no error.
-                        else:
-                            print("direct RLlib")
-                            algo = config.build()
-                            algo.stop()
-                            # Cannot run through ray.tune.Tuner().fit() w/ fake GPUs
-                            # as it would simply wait infinitely for the
-                            # resources to become available (even though, we
-                            # wouldn't really need them).
-                            if num_gpus == 0:
-                                print("via ray.tune.Tuner().fit()")
-                                tune.Tuner(
-                                    "PPO",
-                                    param_space=config,
-                                    run_config=air.RunConfig(
-                                        stop={TRAINING_ITERATION: 0}
-                                    ),
-                                ).fit()
+                    # Expect that Algorithm creation causes a num_gpu error.
+                    if (
+                        actual_gpus < num_gpus + 2 * num_gpus_per_env_runner
+                        and not fake_gpus
+                    ):
+                        # "Direct" RLlib (create Algorithm on the driver).
+                        # Cannot run through ray.tune.Tuner().fit() as it would
+                        # simply wait infinitely for the resources to
+                        # become available.
+                        print("direct RLlib")
+                        self.assertRaisesRegex(
+                            RuntimeError,
+                            "Found 0 GPUs on your machine",
+                            lambda: config.build(),
+                        )
+                    # If actual_gpus >= num_gpus or faked,
+                    # expect no error.
+                    else:
+                        print("direct RLlib")
+                        algo = config.build()
+                        algo.stop()
+                        # Cannot run through ray.tune.Tuner().fit() w/ fake GPUs
+                        # as it would simply wait infinitely for the
+                        # resources to become available (even though, we
+                        # wouldn't really need them).
+                        if num_gpus == 0:
+                            print("via ray.tune.Tuner().fit()")
+                            tune.Tuner(
+                                "PPO",
+                                param_space=config,
+                                run_config=air.RunConfig(stop={TRAINING_ITERATION: 0}),
+                            ).fit()
         ray.shutdown()
 
     def test_gpus_in_local_mode(self):
@@ -97,17 +90,15 @@ class TestGPUs(unittest.TestCase):
             for fake_gpus in [False, True]:
                 print(f"_fake_gpus={fake_gpus}")
                 config.resources(num_gpus=num_gpus, _fake_gpus=fake_gpus)
-                frameworks = ("tf", "torch") if num_gpus > 1 else ("tf2", "tf", "torch")
-                for _ in framework_iterator(config, frameworks=frameworks):
-                    print("direct RLlib")
-                    algo = config.build()
-                    algo.stop()
-                    print("via ray.tune.Tuner().fit()")
-                    tune.Tuner(
-                        "PPO",
-                        param_space=config,
-                        run_config=air.RunConfig(stop={TRAINING_ITERATION: 0}),
-                    ).fit()
+                print("direct RLlib")
+                algo = config.build()
+                algo.stop()
+                print("via ray.tune.Tuner().fit()")
+                tune.Tuner(
+                    "PPO",
+                    param_space=config,
+                    run_config=air.RunConfig(stop={TRAINING_ITERATION: 0}),
+                ).fit()
 
         ray.shutdown()
 

@@ -35,8 +35,8 @@ import numpy as np
 
 import ray
 from ray.air.constants import TRAINING_ITERATION
-from ray.rllib.core.rl_module.marl_module import MultiAgentRLModuleSpec
-from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
+from ray.rllib.core.rl_module.multi_rl_module import MultiRLModuleSpec
+from ray.rllib.core.rl_module.rl_module import RLModuleSpec
 from ray.rllib.env.utils import try_import_pyspiel, try_import_open_spiel
 from ray.rllib.env.wrappers.open_spiel import OpenSpielEnv
 from ray.rllib.examples.multi_agent.utils import (
@@ -129,7 +129,7 @@ if __name__ == "__main__":
         if args.enable_new_api_stack:
             policies = names
             spec = {
-                mid: SingleAgentRLModuleSpec(
+                mid: RLModuleSpec(
                     module_class=(
                         RandomRLModule
                         if mid in ["main_exploiter_0", "league_exploiter_0"]
@@ -205,9 +205,7 @@ if __name__ == "__main__":
             policies_to_train=["main"],
         )
         .rl_module(
-            rl_module_spec=MultiAgentRLModuleSpec(
-                module_specs=_get_multi_agent()["spec"]
-            ),
+            rl_module_spec=MultiRLModuleSpec(module_specs=_get_multi_agent()["spec"]),
         )
     )
 

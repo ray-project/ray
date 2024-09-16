@@ -20,7 +20,6 @@
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/network_util.h"
 #include "ray/common/ray_config.h"
-#include "ray/gcs/gcs_client/gcs_client.h"
 #include "ray/gcs/gcs_server/gcs_actor_manager.h"
 #include "ray/gcs/gcs_server/gcs_autoscaler_state_manager.h"
 #include "ray/gcs/gcs_server/gcs_job_manager.h"
@@ -231,19 +230,14 @@ void GcsServer::DoStart(const GcsInitData &gcs_init_data) {
   // Init autoscaling manager
   InitGcsAutoscalerStateManager(gcs_init_data);
 
+  // Init usage stats client.
+  InitUsageStatsClient();
+
+  RecordMetrics();
+
   // Start RPC server when all tables have finished loading initial
   // data.
   rpc_server_.Run();
-
-  // Init usage stats client
-  // This is done after the RPC server starts
-  // since we need to know the port the rpc server listens on.
-  InitUsageStatsClient();
-  gcs_worker_manager_->SetUsageStatsClient(usage_stats_client_.get());
-  gcs_actor_manager_->SetUsageStatsClient(usage_stats_client_.get());
-  gcs_placement_group_manager_->SetUsageStatsClient(usage_stats_client_.get());
-  gcs_task_manager_->SetUsageStatsClient(usage_stats_client_.get());
-  RecordMetrics();
 
   periodical_runner_.RunFnPeriodically(
       [this] {
@@ -366,7 +360,7 @@ void GcsServer::InitGcsResourceManager(const GcsInitData &gcs_init_data) {
                            << ". Skip this round of pulling for resource load";
           } else {
             // GetResourceLoad will also get usage. Historically it didn't.
-            raylet_client->GetResourceLoad([this](auto &status, auto &load_and_usage) {
+            raylet_client->GetResourceLoad([this](auto &status, auto &&load_and_usage) {
               if (status.ok()) {
                 // TODO(vitsai): Remove duplicate reporting to GcsResourceManager
                 // after verifying that non-autoscaler paths are taken care of.
@@ -556,10 +550,12 @@ void GcsServer::InitFunctionManager() {
 }
 
 void GcsServer::InitUsageStatsClient() {
-  usage_stats_client_ =
-      std::make_unique<UsageStatsClient>("127.0.0.1:" + std::to_string(GetPort()),
-                                         rpc_server_.GetClusterId(),
-                                         main_service_);
+  usage_stats_client_ = std::make_unique<UsageStatsClient>(kv_manager_->GetInstance());
+
+  gcs_worker_manager_->SetUsageStatsClient(usage_stats_client_.get());
+  gcs_actor_manager_->SetUsageStatsClient(usage_stats_client_.get());
+  gcs_placement_group_manager_->SetUsageStatsClient(usage_stats_client_.get());
+  gcs_task_manager_->SetUsageStatsClient(usage_stats_client_.get());
 }
 
 void GcsServer::InitKVManager() {
@@ -812,7 +808,8 @@ void GcsServer::DumpDebugStateToFile() const {
 
 std::string GcsServer::GetDebugState() const {
   std::ostringstream stream;
-  stream << gcs_node_manager_->DebugString() << "\n\n"
+  stream << "Gcs Debug state:\n\n"
+         << gcs_node_manager_->DebugString() << "\n\n"
          << gcs_actor_manager_->DebugString() << "\n\n"
          << gcs_resource_manager_->DebugString() << "\n\n"
          << gcs_placement_group_manager_->DebugString() << "\n\n"

@@ -31,7 +31,7 @@ An environment in RL is the agent's world, it is a simulation of the problem to 
 
 .. image:: images/env_key_concept1.png
 
-An RLlib environment consists of: 
+An RLlib environment consists of:
 
 1. all possible actions (**action space**)
 2. a complete description of the environment, nothing hidden (**state space**)
@@ -122,7 +122,7 @@ implement reinforcement learning policies in RLlib and can therefore be found in
 where their exploration and inference logic is used to sample from an environment.
 The second place in RLlib where RL Modules commonly occur is the :py:class:`~ray.rllib.core.learner.learner.Learner`,
 where their training logic is used in training the neural network.
-RL Modules extend to the multi-agent case, where a single :py:class:`~ray.rllib.core.rl_module.marl_module.MultiAgentRLModule`
+RL Modules extend to the multi-agent case, where a single :py:class:`~ray.rllib.core.rl_module.multi_rl_module.MultiRLModule`
 contains multiple RL Modules. The following figure is a rough sketch of how the above can look in practice:
 
 .. image:: images/rllib-concepts-rlmodules-sketch.png
@@ -374,5 +374,3 @@ training update.
 :ref:`Replay Buffers <replay-buffer-reference-docs>`:
 RLlib provides `a collection <https://github.com/ray-project/ray/tree/master/rllib/utils/replay_buffers>`__ of replay
 buffers that can be used for storing and sampling experiences.
-
-

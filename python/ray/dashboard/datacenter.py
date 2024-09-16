@@ -1,7 +1,9 @@
 import asyncio
 import logging
+from typing import Any, List, Optional
 
 import ray.dashboard.consts as dashboard_consts
+from ray._private.utils import get_or_create_event_loop
 from ray.dashboard.utils import (
     Dict,
     MutableNotificationDict,
@@ -12,6 +14,7 @@ from ray.dashboard.utils import (
 logger = logging.getLogger(__name__)
 
 
+# NOT thread safe. Every assignment must be on the main event loop thread.
 class DataSource:
     # {node id hex(str): node stats(dict of GetNodeStatsReply
     # in node_manager.proto)}
@@ -26,10 +29,6 @@ class DataSource:
     agents = Dict()
     # {node id hex(str): gcs node info(dict of GcsNodeInfo in gcs.proto)}
     nodes = Dict()
-    # {node id hex(str): ip address(str)}
-    node_id_to_ip = Dict()
-    # {node id hex(str): hostname(str)}
-    node_id_to_hostname = Dict()
     # {node id hex(str): worker list}
     node_workers = Dict()
     # {node id hex(str): {actor id hex(str): actor table data}}
@@ -44,15 +43,13 @@ class DataOrganizer:
     head_node_ip = None
 
     @staticmethod
-    @async_loop_forever(dashboard_consts.PURGE_DATA_INTERVAL_SECONDS)
+    @async_loop_forever(dashboard_consts.RAY_DASHBOARD_STATS_PURGING_INTERVAL)
     async def purge():
         # Purge data that is out of date.
         # These data sources are maintained by DashboardHead,
         # we do not needs to purge them:
         #   * agents
         #   * nodes
-        #   * node_id_to_ip
-        #   * node_id_to_hostname
         alive_nodes = {
             node_id
             for node_id, node_info in DataSource.nodes.items()
@@ -65,15 +62,33 @@ class DataOrganizer:
             DataSource.node_physical_stats.pop(key)
 
     @classmethod
-    @async_loop_forever(dashboard_consts.ORGANIZE_DATA_INTERVAL_SECONDS)
-    async def organize(cls):
+    @async_loop_forever(dashboard_consts.RAY_DASHBOARD_STATS_UPDATING_INTERVAL)
+    async def organize(cls, thread_pool_executor):
+        """
+        Organizes data: read from (node_physical_stats, node_stats) and updates
+        (node_workers, node_worker_stats).
+
+        This methods is not really async, but DataSource is not thread safe so we need
+        to make sure it's on the main event loop thread. To avoid blocking the main
+        event loop, we yield after each node processed.
+        """
         node_workers = {}
         core_worker_stats = {}
-        # await inside for loop, so we create a copy of keys().
+        # nodes may change during process, so we create a copy of keys().
         for node_id in list(DataSource.nodes.keys()):
-            workers = await cls.get_node_workers(node_id)
+            node_physical_stats = DataSource.node_physical_stats.get(node_id, {})
+            node_stats = DataSource.node_stats.get(node_id, {})
+            # Offloads the blocking operation to a thread pool executor. This also
+            # yields to the event loop.
+            workers = await get_or_create_event_loop().run_in_executor(
+                thread_pool_executor,
+                cls.merge_workers_for_node,
+                node_physical_stats,
+                node_stats,
+            )
             for worker in workers:
-                for stats in worker.get("coreWorkerStats", []):
+                stats = worker.get("coreWorkerStats", {})
+                if stats:
                     worker_id = stats["workerId"]
                     core_worker_stats[worker_id] = stats
             node_workers[node_id] = workers
@@ -81,10 +96,8 @@ class DataOrganizer:
         DataSource.core_worker_stats.reset(core_worker_stats)
 
     @classmethod
-    async def get_node_workers(cls, node_id):
+    def merge_workers_for_node(cls, node_physical_stats, node_stats):
         workers = []
-        node_physical_stats = DataSource.node_physical_stats.get(node_id, {})
-        node_stats = DataSource.node_stats.get(node_id, {})
         # Merge coreWorkerStats (node stats) to workers (node physical stats)
         pid_to_worker_stats = {}
         pid_to_language = {}
@@ -93,14 +106,14 @@ class DataOrganizer:
         for core_worker_stats in node_stats.get("coreWorkersStats", []):
             pid = core_worker_stats["pid"]
             pids_on_node.add(pid)
-            pid_to_worker_stats.setdefault(pid, []).append(core_worker_stats)
+            pid_to_worker_stats[pid] = core_worker_stats
             pid_to_language[pid] = core_worker_stats["language"]
             pid_to_job_id[pid] = core_worker_stats["jobId"]
 
         for worker in node_physical_stats.get("workers", []):
             worker = dict(worker)
             pid = worker["pid"]
-            worker["coreWorkerStats"] = pid_to_worker_stats.get(pid, [])
+            worker["coreWorkerStats"] = pid_to_worker_stats.get(pid, {})
             worker["language"] = pid_to_language.get(
                 pid, dashboard_consts.DEFAULT_LANGUAGE
             )
@@ -161,23 +174,40 @@ class DataOrganizer:
         ]
 
     @classmethod
-    async def get_all_node_details(cls):
-        return [
-            await DataOrganizer.get_node_info(node_id)
-            for node_id in DataSource.nodes.keys()
-        ]
+    async def get_agent_infos(
+        cls, target_node_ids: Optional[List[str]] = None
+    ) -> Dict[str, Dict[str, Any]]:
+        """Fetches running Agent (like HTTP/gRPC ports, IP, etc) running on every node
 
-    @classmethod
-    async def get_all_agent_infos(cls):
-        agent_infos = dict()
-        for node_id, (http_port, grpc_port) in DataSource.agents.items():
-            agent_infos[node_id] = dict(
-                ipAddress=DataSource.node_id_to_ip[node_id],
+        :param target_node_ids: Target node ids to fetch agent info for. If omitted will
+                                fetch the info for all agents
+        """
+
+        # Return all available agent infos in case no target node-ids were provided
+        target_node_ids = target_node_ids or DataSource.agents.keys()
+
+        missing_node_ids = [
+            node_id for node_id in target_node_ids if node_id not in DataSource.agents
+        ]
+        if missing_node_ids:
+            logger.warning(
+                f"Agent info was not found for {missing_node_ids}"
+                f" (having agent infos for {list(DataSource.agents.keys())})"
+            )
+            return {}
+
+        def _create_agent_info(node_id: str):
+            (http_port, grpc_port) = DataSource.agents[node_id]
+            node_ip = DataSource.nodes[node_id]["nodeManagerAddress"]
+
+            return dict(
+                ipAddress=node_ip,
                 httpPort=int(http_port or -1),
                 grpcPort=int(grpc_port or -1),
-                httpAddress=f"{DataSource.node_id_to_ip[node_id]}:{http_port}",
+                httpAddress=f"{node_ip}:{http_port}",
             )
-        return agent_infos
+
+        return {node_id: _create_agent_info(node_id) for node_id in target_node_ids}
 
     @classmethod
     async def get_all_actors(cls):
@@ -227,7 +257,7 @@ class DataOrganizer:
             for gpu_stats in node_physical_stats.get("gpus", []):
                 # gpu_stats.get("processes") can be None, an empty list or a
                 # list of dictionaries.
-                for process in gpu_stats.get("processes") or []:
+                for process in gpu_stats.get("processesPids") or []:
                     if process["pid"] == pid:
                         actor_process_gpu_stats.append(gpu_stats)
                         break

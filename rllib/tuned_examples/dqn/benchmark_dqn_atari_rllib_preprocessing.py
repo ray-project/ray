@@ -315,7 +315,6 @@ config = (
         # Note, the paper uses also an Adam epsilon of 0.00015.
         lr=0.0000625,
         n_step=1,
-        gamma=0.99,
         tau=1.0,
         # TODO (simon): Activate when new model_config_dict is available.
         # epsilon=0.01,

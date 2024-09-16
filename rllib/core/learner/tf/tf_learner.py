@@ -12,10 +12,10 @@ from typing import (
 )
 
 from ray.rllib.core.learner.learner import Learner
-from ray.rllib.core.rl_module.marl_module import MultiAgentRLModuleSpec
+from ray.rllib.core.rl_module.multi_rl_module import MultiRLModuleSpec
 from ray.rllib.core.rl_module.rl_module import (
     RLModule,
-    SingleAgentRLModuleSpec,
+    RLModuleSpec,
 )
 from ray.rllib.core.rl_module.tf.tf_rl_module import TfRLModule
 from ray.rllib.policy.eager_tf_policy import _convert_to_tf
@@ -25,7 +25,6 @@ from ray.rllib.utils.annotations import (
     OverrideToImplementCustomLogic,
 )
 from ray.rllib.utils.framework import try_import_tf
-from ray.rllib.utils.metrics import ALL_MODULES
 from ray.rllib.utils.typing import (
     ModuleID,
     Optimizer,
@@ -75,7 +74,7 @@ class TfLearner(Learner):
 
         # For this default implementation, the learning rate is handled by the
         # attached lr Scheduler (controlled by self.config.lr, which can be a
-        # fixed value of a schedule setting).
+        # fixed value or a schedule setting).
         optimizer = tf.keras.optimizers.Adam()
         params = self.get_parameters(module)
 
@@ -99,7 +98,8 @@ class TfLearner(Learner):
         gradient_tape: "tf.GradientTape",
         **kwargs,
     ) -> ParamDict:
-        grads = gradient_tape.gradient(loss_per_module[ALL_MODULES], self._params)
+        total_loss = sum(loss_per_module.values())
+        grads = gradient_tape.gradient(total_loss, self._params)
         return grads
 
     @override(Learner)
@@ -122,8 +122,8 @@ class TfLearner(Learner):
 
     @override(Learner)
     def restore_from_path(self, path: Union[str, pathlib.Path]) -> None:
-        # This operation is potentially very costly because a MARL Module is created at
-        # build time, destroyed, and then a new one is created from a checkpoint.
+        # This operation is potentially very costly because a MultiRLModule is created
+        # at build time, destroyed, and then a new one is created from a checkpoint.
         # However, it is necessary due to complications with the way that Ray Tune
         # restores failed trials. When Tune restores a failed trial, it reconstructs the
         # entire experiment from the initial config. Therefore, to reflect any changes
@@ -194,7 +194,7 @@ class TfLearner(Learner):
         self,
         *,
         module_id: ModuleID,
-        module_spec: SingleAgentRLModuleSpec,
+        module_spec: RLModuleSpec,
     ) -> None:
         # TODO(Avnishn):
         # WARNING:tensorflow:Using MirroredStrategy eagerly has significant overhead
@@ -215,7 +215,7 @@ class TfLearner(Learner):
             )
 
     @override(Learner)
-    def remove_module(self, module_id: ModuleID, **kwargs) -> MultiAgentRLModuleSpec:
+    def remove_module(self, module_id: ModuleID, **kwargs) -> MultiRLModuleSpec:
         with self._strategy.scope():
             marl_spec = super().remove_module(module_id, **kwargs)
 
@@ -300,7 +300,7 @@ class TfLearner(Learner):
         def helper(_batch):
             with tf.GradientTape(persistent=True) as tape:
                 fwd_out = self._module.forward_train(_batch)
-                loss_per_module = self.compute_loss(fwd_out=fwd_out, batch=_batch)
+                loss_per_module = self.compute_losses(fwd_out=fwd_out, batch=_batch)
             gradients = self.compute_gradients(loss_per_module, gradient_tape=tape)
             del tape
             postprocessed_gradients = self.postprocess_gradients(gradients)

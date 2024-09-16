@@ -116,6 +116,9 @@ def random_work():
         np.random.rand(5 * 1024 * 1024)  # 40 MB
 
 
+@pytest.mark.skipif(
+    sys.platform == "win32", reason="setproctitle does not change psutil.cmdline"
+)
 def test_node_physical_stats(enable_test_module, shutdown_only):
     addresses = ray.init(include_dashboard=True, num_cpus=6)
 
@@ -793,7 +796,7 @@ def test_get_task_traceback_running_task(shutdown_only):
     params = {
         "task_id": task.task_id().hex(),
         "attempt_number": 0,
-        "node_id": ray.get_runtime_context().node_id.hex(),
+        "node_id": ray.get_runtime_context().get_node_id(),
     }
 
     def verify():
@@ -840,7 +843,7 @@ def test_get_memory_profile_running_task(shutdown_only):
     params = {
         "task_id": task.task_id().hex(),
         "attempt_number": 0,
-        "node_id": ray.get_runtime_context().node_id.hex(),
+        "node_id": ray.get_runtime_context().get_node_id(),
         "duration": 5,
     }
 

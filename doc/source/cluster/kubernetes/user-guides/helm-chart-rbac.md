@@ -34,7 +34,7 @@ helm install kuberay-operator .
   * Set to `true` in most cases. Set to `false` in the uncommon case of using a Kubernetes cluster managed by GitOps tools such as ArgoCD. For additional details, refer to [ray-project/kuberay#1162](https://github.com/ray-project/kuberay/pull/1162). Default: true.
 
 The [values.yaml](https://github.com/ray-project/kuberay/blob/master/helm-chart/kuberay-operator/values.yaml) file contains detailed descriptions of the parameters.
-See these pull requests for more context on parameters: 
+See these pull requests for more context on parameters:
 * [ray-project/kuberay#1106](https://github.com/ray-project/kuberay/pull/1106)
 * [ray-project/kuberay#1162](https://github.com/ray-project/kuberay/pull/1162)
 * [ray-project/kuberay#1190](https://github.com/ray-project/kuberay/pull/1190)
@@ -121,7 +121,7 @@ helm install raycluster kuberay/ray-cluster --version 1.0.0
 helm install raycluster kuberay/ray-cluster --version 1.0.0 -n n1
 helm install raycluster kuberay/ray-cluster --version 1.0.0 -n n2
 
-# KubeRay only creates a RayCluster in `default`.
+# KubeRay only creates a RayCluster in the `default` namespace.
 kubectl get raycluster -A
 # NAMESPACE   NAME                 DESIRED WORKERS   AVAILABLE WORKERS   STATUS   AGE
 # default     raycluster-kuberay   1                 1                   ready    54s
@@ -177,7 +177,7 @@ helm install raycluster kuberay/ray-cluster --version 1.0.0
 helm install raycluster kuberay/ray-cluster --version 1.0.0 -n n1
 helm install raycluster kuberay/ray-cluster --version 1.0.0 -n n2
 
-# KubeRay creates a RayCluster only in n1 and n2.
+# KubeRay creates a RayCluster only in the `n1` and `n2` namespaces.
 kubectl get raycluster -A
 # NAMESPACE   NAME                 DESIRED WORKERS   AVAILABLE WORKERS   STATUS   AGE
 # default     raycluster-kuberay                                                  74s

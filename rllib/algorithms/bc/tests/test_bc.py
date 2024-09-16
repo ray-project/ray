@@ -3,7 +3,11 @@ import unittest
 import ray
 
 from ray.rllib.algorithms.bc import BCConfig
-from ray.rllib.utils.metrics import ENV_RUNNER_RESULTS, EPISODE_RETURN_MEAN
+from ray.rllib.utils.metrics import (
+    ENV_RUNNER_RESULTS,
+    EPISODE_RETURN_MEAN,
+    EVALUATION_RESULTS,
+)
 
 
 class TestBC(unittest.TestCase):
@@ -20,7 +24,8 @@ class TestBC(unittest.TestCase):
         data_path = "tests/data/cartpole/cartpole-v1_large"
         base_path = Path(__file__).parents[3]
         print(f"base_path={base_path}")
-        data_path = "local://" + base_path.joinpath(data_path).as_posix()
+        data_path = "local://" / base_path / data_path
+
         print(f"data_path={data_path}")
 
         # Define the BC config.
@@ -42,7 +47,10 @@ class TestBC(unittest.TestCase):
             )
             # Note, the `input_` argument is the major argument for the
             # new offline API.
-            .offline_data(input_=[data_path])
+            .offline_data(
+                input_=[data_path.as_posix()],
+                dataset_num_iters_per_learner=1,
+            )
             .training(
                 lr=0.0008,
                 train_batch_size_per_learner=2000,
@@ -59,7 +67,7 @@ class TestBC(unittest.TestCase):
             results = algo.train()
             print(results)
 
-            eval_results = results.get("evaluation", {})
+            eval_results = results.get(EVALUATION_RESULTS, {})
             if eval_results:
                 episode_return_mean = eval_results[ENV_RUNNER_RESULTS][
                     EPISODE_RETURN_MEAN

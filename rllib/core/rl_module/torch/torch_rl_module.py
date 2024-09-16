@@ -2,6 +2,7 @@ from typing import Any, Collection, Dict, Optional, Union, Type
 
 from packaging import version
 
+from ray.rllib.core.rl_module.apis import InferenceOnlyAPI
 from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.core.rl_module.torch.torch_compile_config import TorchCompileConfig
 from ray.rllib.models.torch.torch_distributions import TorchDistribution
@@ -43,6 +44,25 @@ class TorchRLModule(nn.Module, RLModule):
         nn.Module.__init__(self)
         RLModule.__init__(self, *args, **kwargs)
 
+        # If an inference-only class AND self.config.inference_only is True,
+        # remove all attributes that are returned by
+        # `self.get_non_inference_attributes()`.
+        if self.config.inference_only and isinstance(self, InferenceOnlyAPI):
+            for attr in self.get_non_inference_attributes():
+                parts = attr.split(".")
+                if not hasattr(self, parts[0]):
+                    continue
+                target = getattr(self, parts[0])
+                # Traverse from the next part on (if nested).
+                for part in parts[1:]:
+                    if not hasattr(target, part):
+                        target = None
+                        break
+                    target = getattr(target, part)
+                # Delete, if target is valid.
+                if target is not None:
+                    del target
+
     @override(nn.Module)
     def forward(self, batch: Dict[str, Any], **kwargs) -> Dict[str, Any]:
         """forward pass of the module.
@@ -73,7 +93,23 @@ class TorchRLModule(nn.Module, RLModule):
         inference_only: bool = False,
         **kwargs,
     ) -> StateDict:
-        return convert_to_numpy(self.state_dict())
+        state_dict = self.state_dict()
+        # Filter out `inference_only` keys from the state dict if `inference_only` and
+        # this RLModule is NOT `inference_only` (but does implement the
+        # InferenceOnlyAPI).
+        if (
+            inference_only
+            and not self.config.inference_only
+            and isinstance(self, InferenceOnlyAPI)
+        ):
+            attr = self.get_non_inference_attributes()
+            for key in list(state_dict.keys()):
+                if any(
+                    key.startswith(a) and (len(key) == len(a) or key[len(a)] == ".")
+                    for a in attr
+                ):
+                    del state_dict[key]
+        return convert_to_numpy(state_dict)
 
     @OverrideToImplementCustomLogic
     @override(RLModule)
@@ -84,34 +120,6 @@ class TorchRLModule(nn.Module, RLModule):
         # RLModule.
         self.load_state_dict(convert_to_torch_tensor(state), strict=False)
 
-    def _set_inference_only_state_dict_keys(self) -> None:
-        """Sets expected and unexpected keys for the inference-only module.
-
-        This method is called during setup to set the expected and unexpected keys
-        for the inference-only module. The expected keys are used to rename the keys
-        in the state dict when syncing from the learner to the inference module.
-        The unexpected keys are used to remove keys from the state dict when syncing
-        from the learner to the inference module.
-        """
-        pass
-
-    def _inference_only_get_state_hook(self, state_dict: StateDict) -> StateDict:
-        """Removes or renames the parameters in the state dict for the inference module.
-
-        This hook is called when the state dict is created on a learner module for an
-        inference-only module. The method removes or renames the parameters in the state
-        dict that are not used by the inference module.
-        The hook uses the expected and unexpected keys set during setup to remove or
-        rename the parameters.
-
-        Args:
-            state_dict: The state dict to be modified.
-
-        Returns:
-            The modified state dict.
-        """
-        pass
-
 
 class TorchDDPRLModule(RLModule, nn.parallel.DistributedDataParallel):
     def __init__(self, *args, **kwargs) -> None:
@@ -120,16 +128,27 @@ class TorchDDPRLModule(RLModule, nn.parallel.DistributedDataParallel):
         # the interface of that base-class not the actual implementation.
         self.config = self.unwrapped().config
 
+    @override(RLModule)
     def get_train_action_dist_cls(self, *args, **kwargs) -> Type[TorchDistribution]:
         return self.unwrapped().get_train_action_dist_cls(*args, **kwargs)
 
+    @override(RLModule)
     def get_exploration_action_dist_cls(
         self, *args, **kwargs
     ) -> Type[TorchDistribution]:
         return self.unwrapped().get_exploration_action_dist_cls(*args, **kwargs)
 
+    @override(RLModule)
     def get_inference_action_dist_cls(self, *args, **kwargs) -> Type[TorchDistribution]:
         return self.unwrapped().get_inference_action_dist_cls(*args, **kwargs)
+
+    @override(RLModule)
+    def get_initial_state(self) -> Any:
+        return self.unwrapped().get_initial_state()
+
+    @override(RLModule)
+    def is_stateful(self) -> bool:
+        return self.unwrapped().is_stateful()
 
     @override(RLModule)
     def _forward_train(self, *args, **kwargs):
@@ -162,13 +181,6 @@ class TorchDDPRLModule(RLModule, nn.parallel.DistributedDataParallel):
     @override(RLModule)
     def get_metadata(self, *args, **kwargs):
         self.unwrapped().get_metadata(*args, **kwargs)
-
-    # TODO (sven): Figure out a better way to avoid having to method-spam this wrapper
-    #  class, whenever we add a new API to any wrapped RLModule here. We could try
-    #  auto generating the wrapper methods, but this will bring its own challenge
-    #  (e.g. recursive calls due to __getattr__ checks, etc..).
-    def _compute_values(self, *args, **kwargs):
-        return self.unwrapped()._compute_values(*args, **kwargs)
 
     @override(RLModule)
     def unwrapped(self) -> "RLModule":
