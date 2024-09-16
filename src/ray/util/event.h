@@ -88,7 +88,6 @@ class BaseEventReporter {
   virtual void Report(const rpc::Event &event, const json &custom_fields) = 0;
 
   virtual void ReportExportEvent(const rpc::ExportEvent &export_event) = 0;
-  virtual void ReportExportEvent(const std::string message) = 0;
 
   virtual void Close() = 0;
 
@@ -110,7 +109,6 @@ class LogEventReporter : public BaseEventReporter {
   virtual void Report(const rpc::Event &event, const json &custom_fields) override;
 
   virtual void ReportExportEvent(const rpc::ExportEvent &export_event) override;
-  virtual void ReportExportEvent(const std::string message) override;
 
  private:
   virtual std::string replaceLineFeed(std::string message);
@@ -154,7 +152,6 @@ class EventManager final {
   void Publish(const rpc::Event &event, const json &custom_fields);
 
   void PublishExportEvent(const rpc::ExportEvent &export_event);
-  void PublishExportEvent(const std::string message);
 
   // NOTE(ruoqiu) AddReporters, ClearPeporters (along with the Pushlish function) would
   // not be thread-safe. But we assume default initialization and shutdown are placed in
@@ -336,8 +333,7 @@ using ExportEventDataPtr = std::variant<std::shared_ptr<rpc::ExportTaskEventData
                                         std::shared_ptr<rpc::ExportDriverJobEventData>>;
 class RayExportEvent {
  public:
-  RayExportEvent(ExportEventDataPtr event_data_ptr) : event_data_ptr_(event_data_ptr) {};
-  RayExportEvent(std::string message) : message_(message) {};
+  RayExportEvent(ExportEventDataPtr event_data_ptr) : event_data_ptr_(event_data_ptr) {}
 
   ~RayExportEvent();
 
@@ -350,7 +346,6 @@ class RayExportEvent {
 
  private:
   ExportEventDataPtr event_data_ptr_;
-  std::string message_ = "";
 };
 
 class RayEventLog final {
