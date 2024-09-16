@@ -1,6 +1,5 @@
 """This is the script for `ray microbenchmark`."""
 
-import asyncio
 import logging
 from ray._private.ray_microbenchmark_helpers import timeit, asyncio_timeit
 import multiprocessing
