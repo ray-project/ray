@@ -503,12 +503,6 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
     std::vector<std::string> dynamic_options;
   };
 
-  struct TaskWaitingForWorkerInfo {
-    /// The spec of task.
-    TaskSpecification task_spec;
-    /// The callback function which should be called when worker registered.
-    PopWorkerCallback callback;
-  };
   struct PopWorkerRequest {
     rpc::Language language;
     rpc::WorkerType worker_type;

@@ -63,9 +63,16 @@ bool RemoveWorker(
   return worker_pool.erase(worker) > 0;
 }
 
-// If both `ask` and `have` are set, they must match. Else, it is a match.
+// If both `ask` and `have` are set, they must match. If either of them is not set, it
+// is considered a match.
 bool OptionalMatches(const std::optional<bool> &ask, const std::optional<bool> &have) {
   return !ask.has_value() || !have.has_value() || ask.value() == have.value();
+}
+
+// Similar to OptionalMatches, but for JobID or ActorID.
+template <typename IdType>
+bool IdMatches(const IdType &ask, const IdType &have) {
+  return ask.IsNil() || have.IsNil() || ask == have;
 }
 
 }  // namespace
@@ -1167,9 +1174,11 @@ WorkerUnfitForTaskReason WorkerPool::WorkerFitsForTask(
   if (worker.GetWorkerType() != pop_worker_request.worker_type) {
     return WorkerUnfitForTaskReason::OTHERS;
   }
-  if ((!pop_worker_request.job_id.IsNil()) &&
-      (!worker.GetAssignedJobId().IsNil() &&
-       (worker.GetAssignedJobId() != pop_worker_request.job_id))) {
+  if (!IdMatches(pop_worker_request.job_id, worker.GetAssignedJobId())) {
+    return WorkerUnfitForTaskReason::ROOT_MISMATCH;
+  }
+  if (!IdMatches(pop_worker_request.root_detached_actor_id,
+                 worker.GetRootDetachedActorId())) {
     return WorkerUnfitForTaskReason::ROOT_MISMATCH;
   }
   // If the request asks for a is_gpu, and the worker is assigned a different is_gpu,
