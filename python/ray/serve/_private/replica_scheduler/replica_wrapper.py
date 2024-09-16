@@ -49,7 +49,7 @@ class ReplicaWrapper(ABC):
         """
         pass
 
-    def send_request(self, pr: PendingRequest) -> Union[ObjectRef, ObjectRefGenerator]:
+    def send_request(self, pr: PendingRequest) -> ResultWrapper:
         """Send request to this replica."""
         pass
 
