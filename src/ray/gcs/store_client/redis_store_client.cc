@@ -327,17 +327,17 @@ Status RedisStoreClient::DeleteByKeys(const std::string &table,
   auto num_deleted = std::make_shared<int64_t>(0);
   auto context = redis_client_->GetPrimaryContext();
   for (auto &command : del_cmds) {
-    auto delete_callback =
-        [num_deleted, finished_count, total_count, callback = std::move(callback)](
-            const std::shared_ptr<CallbackReply> &reply) {
-          (*num_deleted) += reply->ReadAsInteger();
-          ++(*finished_count);
-          if (*finished_count == total_count) {
-            if (callback) {
-              callback(*num_deleted);
-            }
-          }
-        };
+    // `callback` is copied to each `delete_callback` lambda. Don't move.
+    auto delete_callback = [num_deleted, finished_count, total_count, callback](
+                               const std::shared_ptr<CallbackReply> &reply) {
+      (*num_deleted) += reply->ReadAsInteger();
+      ++(*finished_count);
+      if (*finished_count == total_count) {
+        if (callback) {
+          callback(*num_deleted);
+        }
+      }
+    };
     SendRedisCmdArgsAsKeys(std::move(command), std::move(delete_callback));
   }
   return Status::OK();
