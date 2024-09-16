@@ -121,8 +121,7 @@ class GcsActorManagerTest : public ::testing::Test {
     RayConfig::instance().initialize(
         R"(
 {
-  "maximum_gcs_destroyed_actor_cached_count": 10,
-  "enable_export_api_write": true
+  "maximum_gcs_destroyed_actor_cached_count": 10
 }
   )");
     std::promise<bool> promise;
@@ -292,41 +291,34 @@ TEST_F(GcsActorManagerTest, TestBasic) {
   RAY_CHECK_EQ(gcs_actor_manager_->CountFor(rpc::ActorTableData::DEAD, ""), 1);
 
   // Check correct export events are written for each of the 4 state transitions
-  int num_retry = 5;
+  int num_retry = 10;
   int num_export_events = 4;
   std::vector<std::string> expected_states = {
       "DEPENDENCIES_UNREADY", "PENDING_CREATION", "ALIVE", "DEAD"};
   std::vector<std::string> vc;
   for (int i = 0; i < num_retry; i++) {
     Mocker::ReadContentFromFile(vc, log_dir_ + "/events/event_EXPORT_ACTOR.log");
-    if ((int)vc.size() == num_export_events) {
-      for (int event_idx = 0; event_idx < num_export_events; event_idx++) {
-        json export_event_as_json = json::parse(vc[event_idx]);
-        json event_data = export_event_as_json["event_data"].get<json>();
-        ASSERT_EQ(event_data["state"], expected_states[event_idx]);
-        if (event_idx == num_export_events - 1) {
-          // Verify death cause for last actor DEAD event
-          ASSERT_EQ(
-              event_data["death_cause"]["actor_died_error_context"]["error_message"],
-              "The actor is dead because all references to the actor were removed "
-              "including lineage ref count.");
-        }
-      }
-      return;
-    } else {
-      // Sleep and retry
-      std::this_thread::sleep_for(std::chrono::seconds(1));
-      vc.clear();
+    ASSERT_EQ((int)vc.size(), 0);
+    std::this_thread::sleep_for(std::chrono::seconds(1));
+    vc.clear();
+  }
+
+  FlushExportEvents();
+  vc.clear();
+  Mocker::ReadContentFromFile(vc, log_dir_ + "/events/event_EXPORT_ACTOR.log");
+  ASSERT_EQ((int)vc.size(), num_export_events);
+  for (int event_idx = 0; event_idx < num_export_events; event_idx++) {
+    json export_event_as_json = json::parse(vc[event_idx]);
+    json event_data = export_event_as_json["event_data"].get<json>();
+    ASSERT_EQ(event_data["state"], expected_states[event_idx]);
+    if (event_idx == num_export_events - 1) {
+        // Verify death cause for last actor DEAD event
+        ASSERT_EQ(
+            event_data["death_cause"]["actor_died_error_context"]["error_message"],
+            "The actor is dead because all references to the actor were removed "
+            "including lineage ref count.");
     }
   }
-  Mocker::ReadContentFromFile(vc, log_dir_ + "/events/event_EXPORT_ACTOR.log");
-  std::ostringstream lines;
-  for (auto line : vc) {
-    lines << line << "\n";
-  }
-  ASSERT_TRUE(false) << "Export API wrote " << (int)vc.size() << " lines, but expecting "
-                     << num_export_events << ".\nLines:\n"
-                     << lines.str();
 }
 
 }  // namespace ray

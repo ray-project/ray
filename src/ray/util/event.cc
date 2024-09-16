@@ -175,9 +175,6 @@ void LogEventReporter::ReportExportEvent(const rpc::ExportEvent &export_event) {
   std::string result = ExportEventToString(export_event);
 
   log_sink_->info(result);
-  if (force_flush_) {
-    Flush();
-  }
 }
 
 ///
@@ -223,6 +220,11 @@ void EventManager::AddReporter(std::shared_ptr<BaseEventReporter> reporter) {
 void EventManager::AddExportReporter(rpc::ExportEvent_SourceType source_type,
                                      std::shared_ptr<LogEventReporter> reporter) {
   export_log_reporter_map_.emplace(source_type, reporter);
+}
+
+absl::flat_hash_map<rpc::ExportEvent_SourceType, std::shared_ptr<LogEventReporter>>
+    &EventManager::GetExportLogReporterMap() {
+  return export_log_reporter_map_;
 }
 
 void EventManager::ClearReporters() {
@@ -504,6 +506,14 @@ void RayEventInit(const std::vector<SourceTypeVariant> source_types,
         RayEventInit_(
             source_types, custom_fields, log_dir, event_level, emit_event_to_log_file);
       });
+}
+
+void FlushExportEvents() {
+  absl::flat_hash_map<rpc::ExportEvent_SourceType, std::shared_ptr<LogEventReporter>>
+      &export_log_reporter_map = ray::EventManager::Instance().GetExportLogReporterMap();
+  for (const auto &element : export_log_reporter_map) {
+    (element.second)->Flush();
+  }
 }
 
 }  // namespace ray
