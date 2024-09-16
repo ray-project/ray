@@ -242,6 +242,7 @@ class ActorReplicaWrapper:
         self._last_health_check_time: float = 0.0
         self._consecutive_health_check_failures = 0
         self._initialization_latency_s: Optional[float] = None
+        self._port: Optional[int] = None
 
         # Populated in `on_scheduled` or `recover`.
         self._actor_handle: ActorHandle = None
@@ -913,7 +914,7 @@ class DeploymentReplica:
             max_ongoing_requests=self._actor.max_ongoing_requests,
             is_cross_language=self._actor.is_cross_language,
             multiplexed_model_ids=self.multiplexed_model_ids,
-            # port=self._actor._port,
+            port=self._actor._port,
         )
 
     def record_multiplexed_model_ids(self, multiplexed_model_ids: List[str]):
