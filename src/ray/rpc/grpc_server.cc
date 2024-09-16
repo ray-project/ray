@@ -193,7 +193,7 @@ void GrpcServer::PollEventsFromCompletionQueue(int index) {
     //       thread) buffer at 32, though it doesn't have any impact on concurrency
     //       (since we're recreating new instance of `ServerCall` as soon as one
     //       gets occupied therefore not serving as back-pressure mechanism)
-    bool is_unbounded_rpc = factory.GetMaxActiveRPCs() == -1;
+    const bool is_unbounded_rpc = factory.GetMaxActiveRPCs() == -1;
 
     bool delete_call = false;
     // A new call is needed after the server sends a reply, no matter the reply is
