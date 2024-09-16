@@ -35,6 +35,7 @@ def _register_default_plan_logical_op_fns():
     from ray.data._internal.logical.operators.all_to_all_operator import (
         AbstractAllToAll,
     )
+    from ray.data._internal.logical.operators.count_operator import Count
     from ray.data._internal.logical.operators.from_operators import AbstractFrom
     from ray.data._internal.logical.operators.input_data_operator import InputData
     from ray.data._internal.logical.operators.map_operator import AbstractUDFMap
@@ -90,6 +91,14 @@ def _register_default_plan_logical_op_fns():
         return LimitOperator(logical_op._limit, physical_children[0])
 
     register_plan_logical_op_fn(Limit, plan_limit_op)
+
+    def plan_count_op(_, physical_children):
+        # `Count` is a no-op. It exists so that we can apply counting-related logical
+        # optimizations.
+        assert len(physical_children) == 1
+        return physical_children[0]
+
+    register_plan_logical_op_fn(Count, plan_count_op)
 
 
 _register_default_plan_logical_op_fns()

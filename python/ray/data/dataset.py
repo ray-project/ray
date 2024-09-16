@@ -55,6 +55,7 @@ from ray.data._internal.logical.operators.all_to_all_operator import (
     Repartition,
     Sort,
 )
+from ray.data._internal.logical.operators.count_operator import Count
 from ray.data._internal.logical.operators.input_data_operator import InputData
 from ray.data._internal.logical.operators.map_operator import (
     Filter,
@@ -2532,10 +2533,15 @@ class Dataset:
         if meta_count is not None:
             return meta_count
 
+        plan = self._plan.copy()
+        count_op = Count([self._logical_plan.dag])
+        logical_plan = LogicalPlan(count_op)
+        ds = Dataset(plan, logical_plan)
+
         # Directly loop over the iterator of `RefBundle`s instead of
         # retrieving a full list of `BlockRef`s.
         total_rows = 0
-        for ref_bundle in self.iter_internal_ref_bundles():
+        for ref_bundle in ds.iter_internal_ref_bundles():
             num_rows = ref_bundle.num_rows()
             # Executing the dataset always returns blocks with valid `num_rows`.
             assert num_rows is not None
