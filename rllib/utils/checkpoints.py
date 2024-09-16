@@ -129,8 +129,8 @@ class Checkpointable(abc.ABC):
                 created (and returned).
             state: An optional state dict to be used instead of getting a new state of
                 the implementing class through `self.get_state()`.
-            filesystem: PyArrow FileSystem to use to access data at the path.
-                If not specified, this is inferred from the URI scheme.
+            filesystem: PyArrow FileSystem to use to access data at the `path`.
+                If not specified, this is inferred from the URI scheme of `path`.
 
         Returns:
             The path (str) where the state has been saved.
@@ -345,8 +345,8 @@ class Checkpointable(abc.ABC):
                 the subcomponent and thus, only that subcomponent's state is
                 restored/loaded. All other state of `self` remains unchanged in this
                 case.
-            filesystem: PyArrow FileSystem to use to access data at the path. If not
-                specified, this is inferred from the URI scheme.
+            filesystem: PyArrow FileSystem to use to access data at the `path`. If not
+                specified, this is inferred from the URI scheme of `path`.
             **kwargs: Forward compatibility kwargs.
         """
         path = path if isinstance(path, str) else path.as_posix()
@@ -448,8 +448,8 @@ class Checkpointable(abc.ABC):
             path: The checkpoint path to load (a) the information on how to construct
                 a new instance of the implementing class and (b) the state to restore
                 the created instance to.
-            filesystem: PyArrow FileSystem to use to access data at the path. If not
-                specified, this is inferred from the URI scheme.
+            filesystem: PyArrow FileSystem to use to access data at the `path`. If not
+                specified, this is inferred from the URI scheme of `path`.
             kwargs: Forward compatibility kwargs. Note that these kwargs are sent to
                 each subcomponent's `from_checkpoint()` call.
 
@@ -623,8 +623,8 @@ def get_checkpoint_info(
 
     Args:
         checkpoint: The checkpoint directory (str) or an AIR Checkpoint object.
-        filesystem: PyArrow FileSystem to use to access data at the path. If not
-            specified, this is inferred from the URI scheme.
+        filesystem: PyArrow FileSystem to use to access data at the `checkpoint`. If not
+            specified, this is inferred from the URI scheme provided by `checkpoint`.
 
     Returns:
         A dict containing the keys:
@@ -782,7 +782,7 @@ def get_checkpoint_info(
             for file_info in file_info_list:
                 # Only add subdirs (those are the ones where the RLModule data
                 # is stored, not files (could be json metadata files).
-                module_dir = modules_dir / file_info
+                module_dir = modules_dir / file_info.base_name
                 if _is_dir(filesystem.get_file_info(module_dir.as_posix())):
                     module_ids.add(file_info.base_name)
             info.update({"module_ids": module_ids})

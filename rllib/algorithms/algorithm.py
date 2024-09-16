@@ -326,8 +326,8 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
         Args:
             path: The path (str) to the checkpoint directory to use
                 or an AIR Checkpoint instance to restore from.
-            filesystem: PyArrow FileSystem to use to access data at the path. If not
-                specified, this is inferred from the URI scheme.
+            filesystem: PyArrow FileSystem to use to access data at the `path`. If not
+                specified, this is inferred from the URI scheme of `path`.
             policy_ids: Optional list of PolicyIDs to recover. This allows users to
                 restore an Algorithm with only a subset of the originally present
                 Policies.
