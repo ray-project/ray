@@ -95,6 +95,7 @@ def test_progress_bar(enable_tqdm_ray):
         ("Op->Op", "Op->Op", 5, False),
         ("Op->Op->Op", "Op->...->Op", 9, True),
         ("Op->Op->Op", "Op->Op->Op", 10, False),
+        # Test case for https://github.com/ray-project/ray/issues/47679.
         ("spam", "spam", 1, False),
     ],
 )
