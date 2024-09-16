@@ -289,6 +289,8 @@ class ReplicaActor:
             self._deployment_config.autoscaling_config,
         )
 
+        self._port: Optional[int] = None
+
     def _set_internal_replica_context(self, *, servable_object: Callable = None):
         ray.serve.context._set_internal_replica_context(
             replica_id=self._replica_id,
@@ -593,7 +595,7 @@ class ReplicaActor:
         self,
         deployment_config: DeploymentConfig = None,
         _after: Optional[Any] = None,
-    ) -> Tuple[DeploymentConfig, DeploymentVersion, Optional[float]]:
+    ) -> Tuple[DeploymentConfig, DeploymentVersion, Optional[float], Optional[int]]:
         """Handles initializing the replica.
 
         Returns: 3-tuple containing
@@ -636,7 +638,7 @@ class ReplicaActor:
     async def reconfigure(
         self,
         deployment_config: DeploymentConfig,
-    ) -> Tuple[DeploymentConfig, DeploymentVersion, Optional[float]]:
+    ) -> Tuple[DeploymentConfig, DeploymentVersion, Optional[float], Optional[int]]:
         try:
             user_config_changed = (
                 deployment_config.user_config != self._deployment_config.user_config
@@ -673,11 +675,12 @@ class ReplicaActor:
 
     def _get_metadata(
         self,
-    ) -> Tuple[DeploymentConfig, DeploymentVersion, Optional[float]]:
+    ) -> Tuple[DeploymentConfig, DeploymentVersion, Optional[float], Optional[int]]:
         return (
             self._version.deployment_config,
             self._version,
             self._initialization_latency,
+            self._port,
         )
 
     def _save_cpu_profile_data(self) -> str:
