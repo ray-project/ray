@@ -94,6 +94,7 @@ def setup_fake_replica(ray_instance) -> Tuple[ActorReplicaWrapper, ActorHandle]:
                     "fake_replica", deployment_id=DeploymentID(name="fake_deployment")
                 ),
                 node_id=None,
+                node_ip=None,
                 availability_zone=None,
                 actor_handle=actor_handle,
                 max_ongoing_requests=10,
