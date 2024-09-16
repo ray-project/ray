@@ -374,4 +374,23 @@ void RayEventInit_(const std::vector<SourceTypeVariant> source_types,
                    const std::string &event_level,
                    bool emit_event_to_log_file);
 
+class RayEventLog final {
+ public:
+   static RayEventLog &Instance();
+   void StartPeriodicFlushThread();
+   void StopPeriodicFlushThread();
+
+ private:
+   void PeriodicFlush();
+
+   RayEventLog() : periodic_flush_thread_() {}
+   ~RayEventLog() { StopPeriodicFlushThread(); }
+
+   std::thread periodic_flush_thread_;
+   bool stop_periodic_flush_flag_;
+   std::mutex periodic_flush_mtx_;
+   std::condition_variable periodic_flush_cv_;  
+};
+   
+
 }  // namespace ray
