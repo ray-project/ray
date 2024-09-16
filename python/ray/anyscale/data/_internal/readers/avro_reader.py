@@ -1,7 +1,7 @@
 from collections import defaultdict
 from typing import TYPE_CHECKING, Iterable
 
-from .file_reader import FileReader
+from .native_file_reader import NativeFileReader
 from ray.data._internal.util import _check_import
 from ray.data.block import DataBatch
 
@@ -12,7 +12,7 @@ if TYPE_CHECKING:
 BATCH_SIZE = 128
 
 
-class AvroReader(FileReader):
+class AvroReader(NativeFileReader):
     def __init__(self, **file_reader_kwargs):
         super().__init__(**file_reader_kwargs)
 

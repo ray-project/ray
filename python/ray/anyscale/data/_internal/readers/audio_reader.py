@@ -3,12 +3,12 @@ from typing import Iterable
 
 import pyarrow
 
-from .file_reader import FileReader
+from .native_file_reader import NativeFileReader
 from ray.data._internal.util import _check_import
 from ray.data.block import DataBatch
 
 
-class AudioReader(FileReader):
+class AudioReader(NativeFileReader):
     def __init__(
         self,
         **file_reader_kwargs,

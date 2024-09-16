@@ -1,13 +1,13 @@
 from typing import TYPE_CHECKING, Any, Dict, Iterable, Optional
 
-from .file_reader import FileReader
+from .native_file_reader import NativeFileReader
 from ray.data.block import DataBatch
 
 if TYPE_CHECKING:
     import pyarrow
 
 
-class CSVReader(FileReader):
+class CSVReader(NativeFileReader):
     def __init__(
         self,
         *,

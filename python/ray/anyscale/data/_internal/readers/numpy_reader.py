@@ -3,14 +3,14 @@ from typing import TYPE_CHECKING, Any, Dict, Iterator, Optional
 
 import numpy as np
 
-from .file_reader import FileReader
+from .native_file_reader import NativeFileReader
 from ray.data.block import Block
 
 if TYPE_CHECKING:
     import pyarrow
 
 
-class NumpyReader(FileReader):
+class NumpyReader(NativeFileReader):
     def __init__(
         self,
         *,

@@ -6,26 +6,14 @@ from ray.anyscale.data._internal.execution.operators.streaming_hash_aggregate im
 from ray.anyscale.data._internal.logical.operators.expand_paths_operator import (
     ExpandPaths,
 )
-from ray.anyscale.data._internal.logical.operators.partition_parquet_fragments_operator import (  # noqa: E501
-    PartitionParquetFragments,
-)
 from ray.anyscale.data._internal.logical.operators.read_files_operator import ReadFiles
-from ray.anyscale.data._internal.logical.operators.read_parquet_fragments_operator import (  # noqa: E501
-    ReadParquetFragments,
-)
 from ray.anyscale.data._internal.logical.operators.streaming_aggregate import (
     StreamingAggregate,
 )
 from ray.anyscale.data._internal.planner.plan_expand_paths_op import (
     plan_expand_paths_op,
 )
-from ray.anyscale.data._internal.planner.plan_partition_parquet_fragments_op import (
-    plan_partition_parquet_fragments_op,
-)
 from ray.anyscale.data._internal.planner.plan_read_files_op import plan_read_files_op
-from ray.anyscale.data._internal.planner.plan_read_parquet_fragments_op import (
-    plan_read_parquet_fragments_op,
-)
 from ray.data._internal.execution.interfaces import PhysicalOperator
 from ray.data._internal.planner.planner import register_plan_logical_op_fn
 
@@ -45,7 +33,3 @@ def _register_anyscale_plan_logical_op_fns():
     register_plan_logical_op_fn(StreamingAggregate, plan_streaming_aggregate)
     register_plan_logical_op_fn(ExpandPaths, plan_expand_paths_op)
     register_plan_logical_op_fn(ReadFiles, plan_read_files_op)
-    register_plan_logical_op_fn(
-        PartitionParquetFragments, plan_partition_parquet_fragments_op
-    )
-    register_plan_logical_op_fn(ReadParquetFragments, plan_read_parquet_fragments_op)

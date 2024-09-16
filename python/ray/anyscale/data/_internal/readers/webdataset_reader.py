@@ -1,6 +1,6 @@
 from typing import TYPE_CHECKING, Iterable, Optional, Union
 
-from .file_reader import FileReader
+from .native_file_reader import NativeFileReader
 from ray.data._internal.datasource.webdataset_datasource import (
     _apply_list,
     _default_decoder,
@@ -13,7 +13,7 @@ if TYPE_CHECKING:
     import pyarrow
 
 
-class WebDatasetReader(FileReader):
+class WebDatasetReader(NativeFileReader):
     def __init__(
         self,
         decoder: Optional[Union[bool, str, callable, list]] = True,

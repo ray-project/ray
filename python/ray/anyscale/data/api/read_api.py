@@ -1,10 +1,9 @@
 import functools
 import inspect
 import warnings
-from typing import TYPE_CHECKING, Any, Dict, List, Literal, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Union
 
 import numpy as np
-import pyarrow as pa
 
 import ray
 import ray.data.read_api as oss_read_api
@@ -12,13 +11,7 @@ from ray._private.auto_init_hook import wrap_auto_init
 from ray.anyscale.data._internal.logical.operators.expand_paths_operator import (
     ExpandPaths,
 )
-from ray.anyscale.data._internal.logical.operators.partition_parquet_fragments_operator import (  # noqa: E501
-    PartitionParquetFragments,
-)
 from ray.anyscale.data._internal.logical.operators.read_files_operator import ReadFiles
-from ray.anyscale.data._internal.logical.operators.read_parquet_fragments_operator import (  # noqa: E501
-    ReadParquetFragments,
-)
 from ray.anyscale.data._internal.readers import (
     AudioReader,
     AvroReader,
@@ -28,6 +21,7 @@ from ray.anyscale.data._internal.readers import (
     ImageReader,
     JSONReader,
     NumpyReader,
+    ParquetReader,
     TextReader,
     VideoReader,
     WebDatasetReader,
@@ -36,14 +30,6 @@ from ray.anyscale.data.datasource.snowflake_datasource import SnowflakeDatasourc
 from ray.data._internal.datasource.image_datasource import ImageDatasource
 from ray.data._internal.datasource.json_datasource import JSONDatasource
 from ray.data._internal.datasource.numpy_datasource import NumpyDatasource
-from ray.data._internal.datasource.parquet_datasource import (
-    SerializedFragment,
-    check_for_legacy_tensor_type,
-    estimate_default_read_batch_size_rows,
-    estimate_files_encoding_ratio,
-    get_parquet_dataset,
-    sample_fragments,
-)
 from ray.data._internal.logical.interfaces import LogicalPlan
 from ray.data._internal.plan import ExecutionPlan
 from ray.data._internal.stats import DatasetStats
@@ -65,10 +51,10 @@ def _try_fallback_to_oss(runtime_func):
 
     @functools.wraps(oss_func)
     def wrapped(*args, **kwargs):
-        runtime_parameters = inspect.signature(runtime_func).parameters
-        oss_parameters = inspect.signature(oss_func).parameters
+        runtime_parameters = set(inspect.signature(runtime_func).parameters)
+        oss_parameters = set(inspect.signature(oss_func).parameters)
         # Runtime APIs shouldn't introduce new parameters.
-        assert set(runtime_parameters) <= set(oss_parameters)
+        assert runtime_parameters <= oss_parameters, runtime_parameters - oss_parameters
         # If any user-specified parameter isn't supported on Ray runtime, fall back to
         # the OSS implementation.
         for kwarg in kwargs:
@@ -96,13 +82,12 @@ def read_parquet(
     ray_remote_args: Optional[Dict[str, Any]] = None,
     tensor_column_schema: Optional[Dict[str, Tuple[np.dtype, Tuple[int, ...]]]] = None,
     partition_filter: Optional[PathPartitionFilter] = None,
-    shuffle: Union[Literal["files"], None] = None,
+    partitioning: Partitioning = Partitioning("hive"),
     include_paths: bool = False,
+    file_extensions: Optional[List[str]] = None,
     concurrency: Optional[int] = None,
     **arrow_parquet_args,
 ) -> Dataset:
-    _validate_shuffle_arg(shuffle)
-
     if ray_remote_args is None:
         ray_remote_args = {}
 
@@ -129,6 +114,9 @@ def read_parquet(
     if "scheduling_strategy" not in ray_remote_args:
         ray_remote_args["scheduling_strategy"] = ctx.scheduling_strategy
 
+    # The OSS `read_parquet` interface implicitly supports all of the arguments below.
+    # It isn't great that we expose implementation details in the interface, but we need
+    # to support them on runtime for backward compatibility.
     arrow_parquet_args = _resolve_parquet_args(
         tensor_column_schema,
         **arrow_parquet_args,
@@ -136,54 +124,36 @@ def read_parquet(
     block_udf = arrow_parquet_args.pop("_block_udf", None)
     dataset_kwargs = arrow_parquet_args.pop("dataset_kwargs", {})
     schema = arrow_parquet_args.pop("schema", None)
+    batch_size = arrow_parquet_args.pop("batch_size", None)
+    use_threads = arrow_parquet_args.pop("use_threads", False)
     to_batches_kwargs = arrow_parquet_args
 
-    paths, filesystem = _resolve_paths_and_filesystem(paths, filesystem)
-    parquet_dataset = get_parquet_dataset(paths, filesystem, dataset_kwargs)
-
-    if schema is None:
-        schema = parquet_dataset.schema
-    if columns is not None:
-        schema = pa.schema(
-            [schema.field(column) for column in columns], schema.metadata
+    if "partitioning" in dataset_kwargs:
+        raise ValueError(
+            "The 'partitioning' parameter isn't supported in 'dataset_kwargs'. "
+            "Use the top-level 'partitioning' parameter instead."
         )
 
-    check_for_legacy_tensor_type(schema)
-
-    serialized_fragments = [SerializedFragment(f) for f in parquet_dataset.fragments]
-    sample_infos = sample_fragments(
-        serialized_fragments,
-        to_batches_kwargs=to_batches_kwargs,
-        columns=columns,
+    reader = ParquetReader(
         schema=schema,
+        columns=columns,
+        dataset_kwargs=dataset_kwargs,
+        batch_size=batch_size,
+        use_threads=use_threads,
+        to_batches_kwargs=to_batches_kwargs,
+        block_udf=block_udf,
+        include_paths=include_paths,
+        partitioning=partitioning,
     )
-    encoding_ratio = estimate_files_encoding_ratio(sample_infos)
-    batch_size = estimate_default_read_batch_size_rows(sample_infos)
-
-    partition_parquet_fragments_op = PartitionParquetFragments(
-        serialized_fragments=serialized_fragments,
-        encoding_ratio=encoding_ratio,
-        shuffle=shuffle,
+    return read_files(
+        paths,
+        reader,
         filesystem=filesystem,
         partition_filter=partition_filter,
-    )
-    read_parquet_fragments_op = ReadParquetFragments(
-        partition_parquet_fragments_op,
-        block_udf=block_udf,
-        to_batches_kwargs=to_batches_kwargs,
-        default_read_batch_size_rows=batch_size,
-        columns=columns,
-        schema=schema,
-        include_paths=include_paths,
-        ray_remote_args=ray_remote_args,
+        ignore_missing_paths=False,
+        file_extensions=file_extensions,
         concurrency=concurrency,
-    )
-    logical_plan = LogicalPlan(read_parquet_fragments_op)
-    return Dataset(
-        plan=ExecutionPlan(
-            DatasetStats(metadata={"ReadParquetFragments": []}, parent=None),
-        ),
-        logical_plan=logical_plan,
+        ray_remote_args=ray_remote_args,
     )
 
 
@@ -697,11 +667,3 @@ def read_files(
         ),
         logical_plan=logical_plan,
     )
-
-
-def _validate_shuffle_arg(shuffle: Optional[str]) -> None:
-    if shuffle not in [None, "files"]:
-        raise ValueError(
-            f"Invalid value for 'shuffle': {shuffle}. "
-            "Valid values are None, 'files'."
-        )
