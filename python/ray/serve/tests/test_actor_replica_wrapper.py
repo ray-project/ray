@@ -121,11 +121,11 @@ async def test_send_request(setup_fake_replica, is_streaming: bool):
     )
     result_wrapper = replica.send_request(pr)
     if is_streaming:
-        assert isinstance(result_wrapper._obj_ref_gen, ObjectRefGenerator)
+        assert isinstance(result_wrapper.obj_ref_gen, ObjectRefGenerator)
         for i in range(5):
             assert await result_wrapper.anext() == f"Hello-{i}"
     else:
-        assert isinstance(result_wrapper._obj_ref, ObjectRef)
+        assert isinstance(result_wrapper.obj_ref, ObjectRef)
         assert await result_wrapper.get_async() == "Hello"
 
 
@@ -158,11 +158,11 @@ async def test_send_request_with_rejection(
     if not accepted:
         assert result_wrapper is None
     elif is_streaming:
-        assert isinstance(result_wrapper._obj_ref_gen, ObjectRefGenerator)
+        assert isinstance(result_wrapper.obj_ref_gen, ObjectRefGenerator)
         for i in range(5):
             assert await result_wrapper.anext() == f"Hello-{i}"
     else:
-        assert isinstance(result_wrapper._obj_ref_gen, ObjectRefGenerator)
+        assert isinstance(result_wrapper.obj_ref_gen, ObjectRefGenerator)
         assert await result_wrapper.anext() == "Hello"
 
 
