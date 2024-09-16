@@ -17,19 +17,19 @@ class ResultWrapper(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def next(self):
+    def __next__(self):
         raise NotImplementedError
 
     @abstractmethod
-    async def anext(self):
+    async def __anext__(self):
         raise NotImplementedError
 
     @abstractmethod
-    async def add_callback(self, callback: Callable):
+    def add_callback(self, callback: Callable):
         raise NotImplementedError
 
     @abstractmethod
-    async def cancel(self):
+    def cancel(self):
         raise NotImplementedError
 
 
@@ -49,8 +49,6 @@ class ActorResultWrapper(ResultWrapper):
         else:
             self._obj_ref = obj_ref_or_gen
 
-        self._resolved = None
-
     @property
     def obj_ref(self) -> Optional[ray.ObjectRef]:
         return self._obj_ref
@@ -65,7 +63,7 @@ class ActorResultWrapper(ResultWrapper):
         """Returns the object ref pointing to the result."""
 
         # NOTE(edoakes): this section needs to be guarded with a lock and the resulting
-        # object ref or generator cached in order to avoid calling `__next__()` to
+        # object ref cached in order to avoid calling `__next__()` to
         # resolve to the underlying object ref more than once.
         # See: https://github.com/ray-project/ray/issues/43879.
         with self._object_ref_or_gen_sync_lock:
@@ -85,7 +83,7 @@ class ActorResultWrapper(ResultWrapper):
         """Returns the object ref pointing to the result."""
 
         # NOTE(edoakes): this section needs to be guarded with a lock and the resulting
-        # object ref or generator cached in order to avoid calling `__anext__()` to
+        # object ref cached in order to avoid calling `__anext__()` to
         # resolve to the underlying object ref more than once.
         # See: https://github.com/ray-project/ray/issues/43879.
         with self._object_ref_or_gen_sync_lock:
@@ -117,7 +115,7 @@ class ActorResultWrapper(ResultWrapper):
         await self.resolve_gen_to_ref_if_necessary_async()
         return await self._obj_ref
 
-    def next(self):
+    def __next__(self):
         assert self._obj_ref_gen is not None, (
             "next() can only be called on an ActorResultWrapper initialized with a "
             "ray.ObjectRefGenerator"
@@ -126,7 +124,7 @@ class ActorResultWrapper(ResultWrapper):
         next_obj_ref = self._obj_ref_gen.__next__()
         return ray.get(next_obj_ref)
 
-    async def anext(self):
+    async def __anext__(self):
         assert self._obj_ref_gen is not None, (
             "anext() can only be called on an ActorResultWrapper initialized with a "
             "ray.ObjectRefGenerator"

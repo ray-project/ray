@@ -647,7 +647,7 @@ class DeploymentResponseGenerator(_DeploymentResponseBase):
 
     async def __anext__(self) -> Any:
         result_wrapper = await self._fetch_future_result_async()
-        return await result_wrapper.anext()
+        return await result_wrapper.__anext__()
 
     def __iter__(self) -> Iterator[Any]:
         return self
@@ -661,7 +661,7 @@ class DeploymentResponseGenerator(_DeploymentResponseBase):
             )
 
         result_wrapper = self._fetch_future_result_sync()
-        return result_wrapper.next()
+        return result_wrapper.__next__()
 
     @DeveloperAPI
     async def _to_object_ref_gen(self) -> ObjectRefGenerator:
