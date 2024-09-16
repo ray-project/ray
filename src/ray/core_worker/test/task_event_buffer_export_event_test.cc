@@ -48,8 +48,7 @@ class TaskEventTestWriteExport : public ::testing::Test {
   "task_events_max_num_profile_events_buffer_on_worker": 5,
   "task_events_send_batch_size": 100,
   "export_task_events_write_batch_size": 1,
-  "task_events_max_num_export_status_events_buffer_on_worker": 15,
-  "enable_export_api_write": true
+  "task_events_max_num_export_status_events_buffer_on_worker": 15
 }
   )");
 

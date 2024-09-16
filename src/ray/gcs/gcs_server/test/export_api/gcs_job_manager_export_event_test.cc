@@ -92,12 +92,6 @@ class GcsJobManagerTest : public ::testing::Test {
 TEST_F(GcsJobManagerTest, TestExportDriverJobEvents) {
   // Test adding and marking a driver job as finished, and that corresponding
   // export events are written.
-  RayConfig::instance().initialize(
-      R"(
-{
-  "enable_export_api_write": true
-}
-  )");
   const std::vector<ray::SourceTypeVariant> source_types = {
       rpc::ExportEvent_SourceType::ExportEvent_SourceType_EXPORT_DRIVER_JOB};
   RayEventInit_(source_types,

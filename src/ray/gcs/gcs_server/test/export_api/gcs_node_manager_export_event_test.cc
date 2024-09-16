@@ -45,12 +45,6 @@ class GcsNodeManagerExportAPITest : public ::testing::Test {
         std::make_unique<ray::pubsub::MockPublisher>());
     gcs_table_storage_ = std::make_shared<gcs::InMemoryGcsTableStorage>(io_service_);
 
-    RayConfig::instance().initialize(
-        R"(
-{
-  "enable_export_api_write": true
-}
-  )");
     log_dir_ = GenerateLogDir();
     const std::vector<ray::SourceTypeVariant> source_types = {
         rpc::ExportEvent_SourceType::ExportEvent_SourceType_EXPORT_NODE};
