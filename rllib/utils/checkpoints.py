@@ -141,7 +141,7 @@ class Checkpointable(abc.ABC):
             import uuid
 
             # Get the location of the temporary directory on the OS.
-            tmp_dir = Path(tempfile.gettempdir())
+            tmp_dir = pathlib.Path(tempfile.gettempdir())
             # Create a random directory name.
             random_dir_name = str(uuid.uuid4())
             # Create the path, but do not craet the directory on the
@@ -606,8 +606,16 @@ def _exists_at_fs_path(fs: pyarrow.fs.FileSystem, path: str) -> bool:
     return valid.type != pyarrow.fs.FileType.NotFound
 
 
+def _is_dir(file_info: pyarrow.fs.FileInfo) -> bool:
+    """Returns `True`, if the file info is from a directory."""
+    return file_info.type == pyarrow.fs.FileType.Directory
+
+
 @PublicAPI(stability="alpha")
-def get_checkpoint_info(checkpoint: Union[str, Checkpoint]) -> Dict[str, Any]:
+def get_checkpoint_info(
+    checkpoint: Union[str, Checkpoint],
+    filesystem: Optional["pyarrow.fs.FileSystem"] = None,
+) -> Dict[str, Any]:
     """Returns a dict with information about an Algorithm/Policy checkpoint.
 
     If the given checkpoint is a >=v1.0 checkpoint directory, try reading all
@@ -615,6 +623,8 @@ def get_checkpoint_info(checkpoint: Union[str, Checkpoint]) -> Dict[str, Any]:
 
     Args:
         checkpoint: The checkpoint directory (str) or an AIR Checkpoint object.
+        filesystem: PyArrow FileSystem to use to access data at the path. If not
+            specified, this is inferred from the URI scheme.
 
     Returns:
         A dict containing the keys:
@@ -643,22 +653,33 @@ def get_checkpoint_info(checkpoint: Union[str, Checkpoint]) -> Dict[str, Any]:
     # `checkpoint` is a Checkpoint instance: Translate to directory and continue.
     if isinstance(checkpoint, Checkpoint):
         checkpoint = checkpoint.to_directory()
+
+    if checkpoint and not filesystem:
+        # Note the path needs to be a path that is relative to the
+        # filesystem (e.g. `gs://tmp/...` -> `tmp/...`).
+        filesystem, checkpoint = pyarrow.fs.FileSystem.from_uri(checkpoint)
+    # Only here convert to a `Path` instance b/c otherwise
+    # cloud path gets broken (i.e. 'gs://' -> 'gs:/').
     checkpoint = pathlib.Path(checkpoint)
 
     # Checkpoint is dir.
-    if checkpoint.is_dir():
+    if _exists_at_fs_path(filesystem, checkpoint.as_posix()) and _is_dir(
+        filesystem.get_file_info(checkpoint.as_posix())
+    ):
         info.update({"checkpoint_dir": str(checkpoint)})
 
         # Figure out whether this is an older checkpoint format
         # (with a `checkpoint-\d+` file in it).
-        for file in checkpoint.iterdir():
-            path_file = checkpoint / file
-            if path_file.is_file():
-                if re.match("checkpoint-\\d+", file.name):
+        file_info_list = filesystem.get_file_info(
+            pyarrow.fs.FileSelector(checkpoint.as_posix(), recursive=False)
+        )
+        for file_info in file_info_list:
+            if file_info.is_file:
+                if re.match("checkpoint-\\d+", file_info.base_name):
                     info.update(
                         {
                             "checkpoint_version": version.Version("0.1"),
-                            "state_file": str(path_file),
+                            "state_file": str(file_info.base_name),
                         }
                     )
                     return info
@@ -668,8 +689,14 @@ def get_checkpoint_info(checkpoint: Union[str, Checkpoint]) -> Dict[str, Any]:
         # If rllib_checkpoint.json file present, read available information from it
         # and then continue with the checkpoint analysis (possibly overriding further
         # information).
-        if (checkpoint / "rllib_checkpoint.json").is_file():
-            with open(checkpoint / "rllib_checkpoint.json") as f:
+        if _exists_at_fs_path(
+            filesystem, (checkpoint / "rllib_checkpoint.json").as_posix()
+        ):
+            # if (checkpoint / "rllib_checkpoint.json").is_file():
+            with filesystem.open_input_stream(
+                (checkpoint / "rllib_checkpoint.json").as_posix()
+            ) as f:
+                # with open(checkpoint / "rllib_checkpoint.json") as f:
                 rllib_checkpoint_info = json.load(fp=f)
             if "checkpoint_version" in rllib_checkpoint_info:
                 rllib_checkpoint_info["checkpoint_version"] = version.Version(
@@ -688,7 +715,10 @@ def get_checkpoint_info(checkpoint: Union[str, Checkpoint]) -> Dict[str, Any]:
 
         # Policy checkpoint file found.
         for extension in ["pkl", "msgpck"]:
-            if (checkpoint / ("policy_state." + extension)).is_file():
+            if _exists_at_fs_path(
+                filesystem, (checkpoint / ("policy_state." + extension)).as_posix()
+            ):
+                # if (checkpoint / ("policy_state." + extension)).is_file():
                 info.update(
                     {
                         "type": "Policy",
@@ -703,7 +733,10 @@ def get_checkpoint_info(checkpoint: Union[str, Checkpoint]) -> Dict[str, Any]:
         format = None
         for extension in ["pkl", "msgpck"]:
             state_file = checkpoint / f"algorithm_state.{extension}"
-            if state_file.is_file():
+            if (
+                _exists_at_fs_path(filesystem, state_file.as_posix())
+                and filesystem.get_file_info(state_file.as_posix()).is_file
+            ):
                 format = "cloudpickle" if extension == "pkl" else "msgpack"
                 break
         if format is None:
@@ -721,10 +754,15 @@ def get_checkpoint_info(checkpoint: Union[str, Checkpoint]) -> Dict[str, Any]:
 
         # Collect all policy IDs in the sub-dir "policies/".
         policies_dir = checkpoint / "policies"
-        if policies_dir.is_dir():
+        if _exists_at_fs_path(filesystem, policies_dir.as_posix()) and _is_dir(
+            filesystem.get_file_info(policies_dir.as_posix())
+        ):
             policy_ids = set()
-            for policy_id in policies_dir.iterdir():
-                policy_ids.add(policy_id.name)
+            file_info_list = filesystem.get_file_info(
+                pyarrow.fs.FileSelector(policies_dir.as_posix(), recursive=False)
+            )
+            for file_info in file_info_list:
+                policy_ids.add(file_info.base_name)
             info.update({"policy_ids": policy_ids})
 
         # Collect all module IDs in the sub-dir "learner/module_state/".
@@ -734,18 +772,27 @@ def get_checkpoint_info(checkpoint: Union[str, Checkpoint]) -> Dict[str, Any]:
             / COMPONENT_LEARNER
             / COMPONENT_RL_MODULE
         )
-        if modules_dir.is_dir():
+        if _exists_at_fs_path(filesystem, checkpoint.as_posix()) and _is_dir(
+            filesystem.get_file_info(modules_dir.as_posix())
+        ):
             module_ids = set()
-            for module_id in modules_dir.iterdir():
+            file_info_list = filesystem.get_file_info(
+                pyarrow.fs.FileSelector(modules_dir.as_posix(), recursive=False)
+            )
+            for file_info in file_info_list:
                 # Only add subdirs (those are the ones where the RLModule data
                 # is stored, not files (could be json metadata files).
-                if (modules_dir / module_id).is_dir():
-                    module_ids.add(module_id.name)
+                module_dir = modules_dir / file_info
+                if _is_dir(filesystem.get_file_info(module_dir.as_posix())):
+                    module_ids.add(file_info.base_name)
             info.update({"module_ids": module_ids})
 
     # Checkpoint is a file: Use as-is (interpreting it as old Algorithm checkpoint
     # version).
-    elif checkpoint.is_file():
+    elif (
+        _exists_at_fs_path(filesystem, checkpoint.as_posix())
+        and filesystem.get_file_info(checkpoint.as_posix()).is_file
+    ):
         info.update(
             {
                 "checkpoint_version": version.Version("0.1"),
