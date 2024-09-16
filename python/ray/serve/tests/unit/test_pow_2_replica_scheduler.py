@@ -5,7 +5,7 @@ import random
 import sys
 import time
 import uuid
-from typing import Optional, Set, Union
+from typing import Optional, Set
 
 import pytest
 
