@@ -259,16 +259,16 @@ class OpState:
     def summary_str(self, resource_manager: ResourceManager) -> str:
         queued = self.num_queued() + self.op.internal_queue_size()
         active = self.op.num_active_tasks()
-        desc = f"- {self.op.name}: {active} active, {queued} queued"
+        desc = f"- {self.op.name}. Tasks: {active} 🟢, {queued} 🟡"
         if (
             self.op._in_task_submission_backpressure
             or self.op._in_task_output_backpressure
         ):
             desc += " 🚧"
-        desc += f", [{resource_manager.get_op_usage_str(self.op)}]"
+        desc += f"; Resource usage: {resource_manager.get_op_usage_str(self.op)}"
         suffix = self.op.progress_str()
         if suffix:
-            desc += f", {suffix}"
+            desc += f"; {suffix}"
         return desc
 
     def dispatch_next_task(self) -> None:
