@@ -7,7 +7,7 @@ import ray
 from ray.serve._private.utils import calculate_remaining_timeout
 
 
-class ResultWrapper(ABC):
+class ReplicaResult(ABC):
     @abstractmethod
     def get(self, timeout_s: Optional[float]):
         raise NotImplementedError
@@ -33,7 +33,7 @@ class ResultWrapper(ABC):
         raise NotImplementedError
 
 
-class ActorResultWrapper(ResultWrapper):
+class ActorReplicaResult(ReplicaResult):
     def __init__(
         self,
         obj_ref_or_gen: Union[ray.ObjectRef, ray.ObjectRefGenerator],
@@ -95,7 +95,7 @@ class ActorResultWrapper(ResultWrapper):
     def get(self, timeout_s: Optional[float]):
         assert (
             self._obj_ref is not None or not self._is_streaming
-        ), "get() can only be called on a non-streaming ActorResultWrapper"
+        ), "get() can only be called on a non-streaming ActorReplicaResult"
 
         start_time_s = time.time()
         self.resolve_gen_to_ref_if_necessary_sync(timeout_s)
@@ -110,14 +110,14 @@ class ActorResultWrapper(ResultWrapper):
     async def get_async(self):
         assert (
             self._obj_ref is not None or not self._is_streaming
-        ), "get_async() can only be called on a non-streaming ActorResultWrapper"
+        ), "get_async() can only be called on a non-streaming ActorReplicaResult"
 
         await self.resolve_gen_to_ref_if_necessary_async()
         return await self._obj_ref
 
     def __next__(self):
         assert self._obj_ref_gen is not None, (
-            "next() can only be called on an ActorResultWrapper initialized with a "
+            "next() can only be called on an ActorReplicaResult initialized with a "
             "ray.ObjectRefGenerator"
         )
 
@@ -126,7 +126,7 @@ class ActorResultWrapper(ResultWrapper):
 
     async def __anext__(self):
         assert self._obj_ref_gen is not None, (
-            "anext() can only be called on an ActorResultWrapper initialized with a "
+            "anext() can only be called on an ActorReplicaResult initialized with a "
             "ray.ObjectRefGenerator"
         )
 

@@ -119,14 +119,14 @@ async def test_send_request(setup_fake_replica, is_streaming: bool):
             is_streaming=is_streaming,
         ),
     )
-    result_wrapper = replica.send_request(pr)
+    replica_result = replica.send_request(pr)
     if is_streaming:
-        assert isinstance(result_wrapper.obj_ref_gen, ObjectRefGenerator)
+        assert isinstance(replica_result.obj_ref_gen, ObjectRefGenerator)
         for i in range(5):
-            assert await result_wrapper.anext() == f"Hello-{i}"
+            assert await replica_result.__anext__() == f"Hello-{i}"
     else:
-        assert isinstance(result_wrapper.obj_ref, ObjectRef)
-        assert await result_wrapper.get_async() == "Hello"
+        assert isinstance(replica_result.obj_ref, ObjectRef)
+        assert await replica_result.get_async() == "Hello"
 
 
 @pytest.mark.asyncio
@@ -152,18 +152,18 @@ async def test_send_request_with_rejection(
             is_streaming=is_streaming,
         ),
     )
-    result_wrapper, info = await replica.send_request_with_rejection(pr)
+    replica_result, info = await replica.send_request_with_rejection(pr)
     assert info.accepted == accepted
     assert info.num_ongoing_requests == 10
     if not accepted:
-        assert result_wrapper is None
+        assert replica_result is None
     elif is_streaming:
-        assert isinstance(result_wrapper.obj_ref_gen, ObjectRefGenerator)
+        assert isinstance(replica_result.obj_ref_gen, ObjectRefGenerator)
         for i in range(5):
-            assert await result_wrapper.anext() == f"Hello-{i}"
+            assert await replica_result.__anext__() == f"Hello-{i}"
     else:
-        assert isinstance(result_wrapper.obj_ref_gen, ObjectRefGenerator)
-        assert await result_wrapper.anext() == "Hello"
+        assert isinstance(replica_result.obj_ref_gen, ObjectRefGenerator)
+        assert await replica_result.__anext__() == "Hello"
 
 
 @pytest.mark.asyncio

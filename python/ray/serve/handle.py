@@ -18,7 +18,7 @@ from ray.serve._private.common import (
 )
 from ray.serve._private.constants import SERVE_LOGGER_NAME
 from ray.serve._private.default_impl import create_cluster_node_info_cache
-from ray.serve._private.result_wrapper import ResultWrapper
+from ray.serve._private.replica_result import ReplicaResult
 from ray.serve._private.router import Router
 from ray.serve._private.usage import ServeUsageTag
 from ray.serve._private.utils import (
@@ -327,7 +327,7 @@ class _DeploymentResponseBase:
         self._object_ref_or_gen = None
         self.__lazy_object_ref_or_gen_asyncio_lock = None
         self._object_ref_or_gen_sync_lock = threading.Lock()
-        self._result_wrapper: Optional[ResultWrapper] = None
+        self._replica_result: Optional[ReplicaResult] = None
 
     @property
     def _object_ref_or_gen_asyncio_lock(self) -> asyncio.Lock:
@@ -339,34 +339,34 @@ class _DeploymentResponseBase:
 
     def _fetch_future_result_sync(
         self, _timeout_s: Optional[float] = None
-    ) -> ResultWrapper:
+    ) -> ReplicaResult:
         """Synchronously fetch the result of the `_object_ref_future`.
 
-        Wrap the result in a ResultWrapper and store it in _result.
+        Wrap the result in a ReplicaResult and store it in _result.
         """
 
-        if self._result_wrapper is None:
+        if self._replica_result is None:
             try:
-                self._result_wrapper = self._object_ref_future.result(
+                self._replica_result = self._object_ref_future.result(
                     timeout=_timeout_s
                 )
             except concurrent.futures.TimeoutError:
                 raise TimeoutError("Timed out resolving to ObjectRef.") from None
 
-        return self._result_wrapper
+        return self._replica_result
 
-    async def _fetch_future_result_async(self) -> ResultWrapper:
+    async def _fetch_future_result_async(self) -> ReplicaResult:
         """Asynchronously fetch the result of the `_object_ref_future`.
 
-        Wrap the result in a ResultWrapper and store it in _result.
+        Wrap the result in a ReplicaResult and store it in _result.
         """
 
-        if self._result_wrapper is None:
+        if self._replica_result is None:
             # Use `asyncio.wrap_future` so `self._object_ref_future` can be awaited
             # safely from any asyncio loop.
-            self._result_wrapper = await asyncio.wrap_future(self._object_ref_future)
+            self._replica_result = await asyncio.wrap_future(self._object_ref_future)
 
-        return self._result_wrapper
+        return self._replica_result
 
     def cancel(self):
         """Attempt to cancel the `DeploymentHandle` call.
@@ -396,7 +396,7 @@ class _DeploymentResponseBase:
             self._object_ref_future.cancel()
         elif self._object_ref_future.exception() is None:
             self._fetch_future_result_sync()
-            self._result_wrapper.cancel()
+            self._replica_result.cancel()
 
     @DeveloperAPI
     def cancelled(self) -> bool:
@@ -480,8 +480,8 @@ class DeploymentResponse(_DeploymentResponseBase):
 
     def __await__(self):
         """Yields the final result of the deployment handle call."""
-        result_wrapper = yield from self._fetch_future_result_async().__await__()
-        result = yield from result_wrapper.get_async().__await__()
+        replica_result = yield from self._fetch_future_result_async().__await__()
+        result = yield from replica_result.get_async().__await__()
         return result
 
     def __reduce__(self):
@@ -510,12 +510,12 @@ class DeploymentResponse(_DeploymentResponseBase):
             )
 
         start_time_s = time.time()
-        result_wrapper = self._fetch_future_result_sync(timeout_s)
+        replica_result = self._fetch_future_result_sync(timeout_s)
 
         remaining_timeout_s = calculate_remaining_timeout(
             timeout_s=timeout_s, start_time_s=start_time_s, curr_time_s=time.time()
         )
-        return result_wrapper.get(remaining_timeout_s)
+        return replica_result.get(remaining_timeout_s)
 
     @DeveloperAPI
     async def _to_object_ref(self) -> ray.ObjectRef:
@@ -531,8 +531,8 @@ class DeploymentResponse(_DeploymentResponseBase):
 
         ServeUsageTag.DEPLOYMENT_HANDLE_TO_OBJECT_REF_API_USED.record("1")
 
-        result_wrapper = await self._fetch_future_result_async()
-        return await result_wrapper.resolve_gen_to_ref_if_necessary_async()
+        replica_result = await self._fetch_future_result_async()
+        return await replica_result.resolve_gen_to_ref_if_necessary_async()
 
     @DeveloperAPI
     def _to_object_ref_sync(
@@ -564,7 +564,7 @@ class DeploymentResponse(_DeploymentResponseBase):
 
         # First, fetch the result of the future
         start_time_s = time.time()
-        result_wrapper = self._fetch_future_result_sync(_timeout_s)
+        replica_result = self._fetch_future_result_sync(_timeout_s)
 
         # Then, if necessary, resolve generator to ref
         remaining_timeout_s = calculate_remaining_timeout(
@@ -572,7 +572,7 @@ class DeploymentResponse(_DeploymentResponseBase):
             start_time_s=start_time_s,
             curr_time_s=time.time(),
         )
-        return result_wrapper.resolve_gen_to_ref_if_necessary_sync(remaining_timeout_s)
+        return replica_result.resolve_gen_to_ref_if_necessary_sync(remaining_timeout_s)
 
 
 @PublicAPI(stability="beta")
@@ -646,8 +646,8 @@ class DeploymentResponseGenerator(_DeploymentResponseBase):
         return self
 
     async def __anext__(self) -> Any:
-        result_wrapper = await self._fetch_future_result_async()
-        return await result_wrapper.__anext__()
+        replica_result = await self._fetch_future_result_async()
+        return await replica_result.__anext__()
 
     def __iter__(self) -> Iterator[Any]:
         return self
@@ -660,8 +660,8 @@ class DeploymentResponseGenerator(_DeploymentResponseBase):
                 "instead."
             )
 
-        result_wrapper = self._fetch_future_result_sync()
-        return result_wrapper.__next__()
+        replica_result = self._fetch_future_result_sync()
+        return replica_result.__next__()
 
     @DeveloperAPI
     async def _to_object_ref_gen(self) -> ObjectRefGenerator:
@@ -674,8 +674,8 @@ class DeploymentResponseGenerator(_DeploymentResponseBase):
 
         ServeUsageTag.DEPLOYMENT_HANDLE_TO_OBJECT_REF_API_USED.record("1")
 
-        result_wrapper = await self._fetch_future_result_async()
-        return result_wrapper.obj_ref_gen
+        replica_result = await self._fetch_future_result_async()
+        return replica_result.obj_ref_gen
 
     @DeveloperAPI
     def _to_object_ref_gen_sync(
@@ -702,8 +702,8 @@ class DeploymentResponseGenerator(_DeploymentResponseBase):
                 "instead."
             )
 
-        result_wrapper = self._fetch_future_result_sync(_timeout_s)
-        return result_wrapper.obj_ref_gen
+        replica_result = self._fetch_future_result_sync(_timeout_s)
+        return replica_result.obj_ref_gen
 
 
 @PublicAPI(stability="beta")

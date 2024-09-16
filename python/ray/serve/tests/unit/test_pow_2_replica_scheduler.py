@@ -21,13 +21,13 @@ from ray.serve._private.common import (
     RequestMetadata,
 )
 from ray.serve._private.constants import RAY_SERVE_QUEUE_LENGTH_CACHE_TIMEOUT_S
+from ray.serve._private.replica_result import ReplicaResult
 from ray.serve._private.replica_scheduler import (
     PendingRequest,
     PowerOfTwoChoicesReplicaScheduler,
     ReplicaWrapper,
 )
 from ray.serve._private.replica_scheduler.pow_2_scheduler import ReplicaQueueLengthCache
-from ray.serve._private.result_wrapper import ResultWrapper
 from ray.serve._private.test_utils import MockTimer
 
 TIMER = MockTimer()
@@ -119,10 +119,10 @@ class FakeReplicaWrapper(ReplicaWrapper):
             self.get_queue_len_was_cancelled = True
             raise
 
-    def send_request(self, pr: PendingRequest) -> ResultWrapper:
+    def send_request(self, pr: PendingRequest) -> ReplicaResult:
         raise NotImplementedError()
 
-    def send_request_with_rejection(self, pr: PendingRequest) -> ResultWrapper:
+    def send_request_with_rejection(self, pr: PendingRequest) -> ReplicaResult:
         raise NotImplementedError()
 
 

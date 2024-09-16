@@ -30,12 +30,12 @@ from ray.serve._private.constants import (
 from ray.serve._private.default_impl import create_replica_wrapper
 from ray.serve._private.long_poll import LongPollClient, LongPollNamespace
 from ray.serve._private.metrics_utils import InMemoryMetricsStore, MetricsPusher
+from ray.serve._private.replica_result import ReplicaResult
 from ray.serve._private.replica_scheduler import (
     PendingRequest,
     PowerOfTwoChoicesReplicaScheduler,
     ReplicaScheduler,
 )
-from ray.serve._private.result_wrapper import ResultWrapper
 from ray.serve._private.utils import inside_ray_client_context
 from ray.serve.config import AutoscalingConfig
 from ray.serve.exceptions import BackPressureError
@@ -524,7 +524,7 @@ class Router:
 
     async def schedule_and_send_request(
         self, pr: PendingRequest
-    ) -> Tuple[ResultWrapper, ReplicaID]:
+    ) -> Tuple[ReplicaResult, ReplicaID]:
         """Choose a replica for the request and send it.
 
         This will block indefinitely if no replicas are available to handle the
@@ -539,10 +539,10 @@ class Router:
             return replica.send_request(pr), replica.replica_id
 
         while True:
-            result_wrapper = None
+            replica_result = None
             try:
                 (
-                    result_wrapper,
+                    replica_result,
                     queue_len_info,
                 ) = await replica.send_request_with_rejection(pr)
                 if self._enable_queue_len_cache:
@@ -550,13 +550,13 @@ class Router:
                         replica.replica_id, queue_len_info.num_ongoing_requests
                     )
                 if queue_len_info.accepted:
-                    return result_wrapper, replica.replica_id
+                    return replica_result, replica.replica_id
             except asyncio.CancelledError:
                 # NOTE(edoakes): this is not strictly necessary because there are
                 # currently no `await` statements between getting the ref and returning,
                 # but I'm adding it defensively.
-                if result_wrapper is not None:
-                    result_wrapper.cancel()
+                if replica_result is not None:
+                    replica_result.cancel()
 
                 raise
             except ActorDiedError:
@@ -590,7 +590,7 @@ class Router:
         request_meta: RequestMetadata,
         *request_args,
         **request_kwargs,
-    ) -> ResultWrapper:
+    ) -> ReplicaResult:
         """Assign a request to a replica and return the resulting object_ref."""
 
         with self._metrics_manager.wrap_request_assignment(request_meta):

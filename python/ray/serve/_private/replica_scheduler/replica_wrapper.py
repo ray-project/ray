@@ -11,8 +11,8 @@ from ray.serve._private.common import (
     ReplicaQueueLengthInfo,
     RunningReplicaInfo,
 )
+from ray.serve._private.replica_result import ActorReplicaResult, ReplicaResult
 from ray.serve._private.replica_scheduler.common import PendingRequest
-from ray.serve._private.result_wrapper import ActorResultWrapper, ResultWrapper
 from ray.serve._private.utils import JavaActorHandleProxy
 from ray.serve.generated.serve_pb2 import RequestMetadata as RequestMetadataProto
 
@@ -72,14 +72,14 @@ class ReplicaWrapper(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def send_request(self, pr: PendingRequest) -> ResultWrapper:
+    def send_request(self, pr: PendingRequest) -> ReplicaResult:
         """Send request to this replica."""
         raise NotImplementedError
 
     @abstractmethod
     async def send_request_with_rejection(
         self, pr: PendingRequest
-    ) -> Tuple[Optional[ResultWrapper], ReplicaQueueLengthInfo]:
+    ) -> Tuple[Optional[ReplicaResult], ReplicaQueueLengthInfo]:
         """Send request to this replica.
 
         The replica will yield a system message (ReplicaQueueLengthInfo) before
@@ -148,20 +148,20 @@ class ActorReplicaWrapper(ReplicaWrapper):
 
         return method.remote(pickle.dumps(pr.metadata), *pr.args, **pr.kwargs)
 
-    def send_request(self, pr: PendingRequest) -> ResultWrapper:
+    def send_request(self, pr: PendingRequest) -> ReplicaResult:
         if self._replica_info.is_cross_language:
-            return ActorResultWrapper(
+            return ActorReplicaResult(
                 self._send_request_java(pr), is_streaming=pr.metadata.is_streaming
             )
         else:
-            return ActorResultWrapper(
+            return ActorReplicaResult(
                 self._send_request_python(pr, with_rejection=False),
                 is_streaming=pr.metadata.is_streaming,
             )
 
     async def send_request_with_rejection(
         self, pr: PendingRequest
-    ) -> Tuple[Optional[ResultWrapper], ReplicaQueueLengthInfo]:
+    ) -> Tuple[Optional[ReplicaResult], ReplicaQueueLengthInfo]:
         assert (
             not self._replica_info.is_cross_language
         ), "Request rejection not supported for Java."
@@ -175,7 +175,7 @@ class ActorReplicaWrapper(ReplicaWrapper):
                 return None, queue_len_info
             else:
                 return (
-                    ActorResultWrapper(
+                    ActorReplicaResult(
                         obj_ref_gen, is_streaming=pr.metadata.is_streaming
                     ),
                     queue_len_info,
