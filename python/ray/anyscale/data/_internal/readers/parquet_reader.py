@@ -8,6 +8,7 @@ import pyarrow.dataset
 import ray
 from .file_reader import FileReader
 from ray.data._internal.datasource.parquet_datasource import (
+    PARQUET_ENCODING_RATIO_ESTIMATE_DEFAULT,
     check_for_legacy_tensor_type,
     get_parquet_dataset,
 )
@@ -188,3 +189,9 @@ class ParquetReader(FileReader):
                     yield self._block_udf(table)
                 else:
                     yield table
+
+    def estimate_in_memory_size(self, path: str, file_size: int, *, filesystem) -> int:
+        # Reading a batch of Parquet data can be slow, even if you try to read a single
+        # row. To avoid slow startup times, just return a constant value. For more
+        # information, see https://github.com/anyscale/runtime/issues/924.
+        return PARQUET_ENCODING_RATIO_ESTIMATE_DEFAULT * file_size

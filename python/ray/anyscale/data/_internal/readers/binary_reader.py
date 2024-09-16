@@ -10,3 +10,6 @@ if TYPE_CHECKING:
 class BinaryReader(NativeFileReader):
     def read_stream(self, file: "pyarrow.NativeFile", path: str) -> Iterable[DataBatch]:
         yield {"bytes": [file.readall()]}
+
+    def estimate_in_memory_size(self, path: str, file_size: int, *, filesystem) -> int:
+        return file_size

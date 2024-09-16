@@ -26,3 +26,6 @@ class TextReader(NativeFileReader):
         if self._drop_empty_lines:
             lines = [line for line in lines if line.strip() != ""]
         yield {"text": lines}
+
+    def estimate_in_memory_size(self, path: str, file_size: int, *, filesystem) -> int:
+        return file_size

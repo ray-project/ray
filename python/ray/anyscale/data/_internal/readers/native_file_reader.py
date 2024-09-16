@@ -5,8 +5,9 @@ from typing import Any, Dict, Iterable, List, Optional
 import pyarrow
 
 from .file_reader import FileReader
+from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.util import call_with_retry, make_async_gen
-from ray.data.block import DataBatch
+from ray.data.block import BlockAccessor, DataBatch
 from ray.data.context import DataContext
 from ray.data.datasource import Partitioning, PathPartitionParser
 from ray.data.datasource.file_based_datasource import (
@@ -157,6 +158,33 @@ class NativeFileReader(FileReader):
             file = pa.PythonFile(stream, mode="r")
 
         return file
+
+    def estimate_in_memory_size(self, path: str, file_size: int, *, filesystem) -> int:
+        batches = self.read_paths([path], filesystem=filesystem)
+
+        try:
+            first_batch = next(batches)
+        except StopIteration:
+            # If there's no data, return the on-disk file size.
+            return file_size
+
+        try:
+            # Try to read a second batch. If it succeeds, it means the file contains
+            # multiple batches.
+            next(batches)
+        except StopIteration:
+            # Each file contains exactly one batch.
+            builder = DelegatingBlockBuilder()
+            builder.add_batch(first_batch)
+            block = builder.build()
+
+            in_memory_size = BlockAccessor.for_block(block).size_bytes()
+        else:
+            # Each file contains multiple batches. To avoid reading the entire file to
+            # estimate the encoding ratio, default to the on-disk size.
+            in_memory_size = file_size
+
+        return in_memory_size
 
 
 def _add_column_to_batch(batch: DataBatch, column: str, value: Any) -> DataBatch:

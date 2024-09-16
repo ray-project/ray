@@ -8,7 +8,6 @@ import ray
 from ray.anyscale.data._internal.logical.operators.expand_paths_operator import (
     ExpandPaths,
 )
-from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.execution.interfaces import PhysicalOperator, RefBundle
 from ray.data._internal.execution.interfaces.task_context import TaskContext
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
@@ -188,32 +187,13 @@ def _expand_directory(
 
 
 def _estimate_encoding_ratio(
-    path: str, file_size: int, logical_op: ExpandPaths
+    path: str, file_size: Optional[int], logical_op: ExpandPaths
 ) -> float:
-    batches = logical_op.reader.read_paths([path], filesystem=logical_op.filesystem)
-
-    try:
-        first_batch = next(batches)
-    except StopIteration:
-        # if there is no data use an encoding ratio of 1
-        return 1
-
-    try:
-        # Try to read a second batch. If it succeeds, it means the file contains
-        # multiple batches.
-        next(batches)
-    except StopIteration:
-        # Each file contains exactly one batch.
-        builder = DelegatingBlockBuilder()
-        builder.add_batch(first_batch)
-        block = builder.build()
-
-        in_memory_size = BlockAccessor.for_block(block).size_bytes()
-        encoding_ratio = in_memory_size / file_size if file_size else 1
+    if file_size is not None and file_size > 0:
+        in_memory_size = logical_op.reader.estimate_in_memory_size(
+            path, file_size, filesystem=logical_op.filesystem
+        )
+        encoding_ratio = in_memory_size / file_size
     else:
-        # Each file contains multiple batches. To avoid reading the entire file to
-        # estimate the encoding ratio, we default to 1.
-        encoding_ratio = 1
-
-    assert encoding_ratio > 0, encoding_ratio
+        encoding_ratio = 1.0
     return encoding_ratio

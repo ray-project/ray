@@ -30,3 +30,20 @@ class FileReader(abc.ABC):
             An iterable of data batches. Batches can be any size.
         """
         ...
+
+    @abc.abstractmethod
+    def estimate_in_memory_size(self, path: str, file_size: int, *, filesystem) -> int:
+        """Estimate the in-memory size of the data at the given path.
+
+        This method is used by the `ExpandPaths` operator to ensure that each read
+        task receives an appropriate amount of data.
+
+        Args:
+            path: The path to the file.
+            file_size: The on-disk size of the file in bytes.
+            filesystem: The filesystem to read from.
+
+        Returns:
+            The estimated in-memory size of the data in bytes.
+        """
+        ...
