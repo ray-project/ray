@@ -913,7 +913,7 @@ class DeploymentReplica:
             max_ongoing_requests=self._actor.max_ongoing_requests,
             is_cross_language=self._actor.is_cross_language,
             multiplexed_model_ids=self.multiplexed_model_ids,
-            # port=self._actor._port,
+            port=self._actor._port,
         )
 
     def record_multiplexed_model_ids(self, multiplexed_model_ids: List[str]):
