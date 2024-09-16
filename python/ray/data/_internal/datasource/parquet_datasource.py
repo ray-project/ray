@@ -230,14 +230,6 @@ class ParquetDatasource(Datasource):
         # duplicating the partition data, we disable PyArrow's partitioning.
         dataset_kwargs["partitioning"] = None
 
-        # `read_schema` is the schema object that will be used to perform
-        # read operations.
-        # It should be None, unless user has specified the schema or columns.
-        # We don't use the inferred schema for read, because the pyarrow only infers
-        # schema based on the first file. Thus, files with different schemas will end
-        # up producing blocks with wrong schema.
-        # See https://github.com/ray-project/ray/issues/47960 for more context.
-        read_schema = schema
         pq_ds = get_parquet_dataset(paths, filesystem, dataset_kwargs)
 
         if schema is None:
