@@ -1,4 +1,6 @@
 import functools
+import logging
+from unittest.mock import patch
 
 import pytest
 from pytest import fixture
@@ -84,3 +86,54 @@ def test_progress_bar(enable_tqdm_ray):
     pb.update(total + 1, total)
     assert pb._bar.total == total + 1
     pb.close()
+
+
+@pytest.mark.parametrize(
+    "name, expected_description, max_line_length, should_emit_warning",
+    [
+        ("Op", "Op", 2, False),
+        ("Op->Op", "Op->Op", 5, False),
+        ("Op->Op->Op", "Op->...->Op", 9, True),
+        ("Op->Op->Op", "Op->Op->Op", 10, False),
+        ("spam", "spam", 1, False),
+    ],
+)
+def test_progress_bar_truncates_chained_operators(
+    name,
+    expected_description,
+    max_line_length,
+    should_emit_warning,
+    caplog,
+    propagate_logs,
+):
+    with patch.object(ProgressBar, "MAX_NAME_LENGTH", max_line_length):
+        pb = ProgressBar(name, None, "unit")
+
+    assert pb.get_description() == expected_description
+    if should_emit_warning:
+        assert any(
+            record.levelno == logging.WARNING
+            and "Truncating long operator name" in record.message
+            for record in caplog.records
+        ), caplog.records
+
+
+@pytest.mark.parametrize(
+    "name",
+    [
+        # asdf
+        "spam" * 100,
+        # asdf
+        "Operator->Operator",
+    ],
+)
+def test_progress_bar_does_not_emit_warning_if_name_not_truncated(
+    name, caplog, propagate_logs
+):
+    name = "->".join(["Operator"] * 100)
+    ProgressBar(name, None, "unit")
+    assert any(
+        record.levelno == logging.WARNING
+        and "Truncating long operator name" in record.message
+        for record in caplog.records
+    ), caplog.records
