@@ -1,6 +1,6 @@
 import asyncio
 import pickle
-from abc import ABC
+from abc import ABC, abstractmethod
 from typing import Optional, Set, Tuple, Union
 
 import ray
@@ -23,36 +23,60 @@ class ReplicaWrapper(ABC):
     This is used to abstract away details of Ray actor calls for testing.
     """
 
+    def __init__(self, replica_info: RunningReplicaInfo):
+        self._replica_info = replica_info
+        self._multiplexed_model_ids = set(replica_info.multiplexed_model_ids)
+
+        if replica_info.is_cross_language:
+            self._actor_handle = JavaActorHandleProxy(replica_info.actor_handle)
+        else:
+            self._actor_handle = replica_info.actor_handle
+
     @property
     def replica_id(self) -> ReplicaID:
         """ID of this replica."""
-        pass
+        return self._replica_info.replica_id
+
+    @property
+    def node_id(self) -> str:
+        return self._replica_info.node_id
+
+    @property
+    def availability_zone(self) -> Optional[str]:
+        return self._replica_info.availability_zone
 
     @property
     def multiplexed_model_ids(self) -> Set[str]:
         """Set of model IDs on this replica."""
-        pass
+        return self._multiplexed_model_ids
 
     @property
     def max_ongoing_requests(self) -> int:
         """Max concurrent requests that can be sent to this replica."""
-        pass
+        return self._replica_info.max_ongoing_requests
+
+    @property
+    def is_cross_language(self) -> bool:
+        return self._replica_info.is_cross_language
 
     def push_proxy_handle(self, handle: ActorHandle):
         """When on proxy, push proxy's self handle to replica"""
-        pass
+        self._actor_handle.push_proxy_handle.remote(handle)
 
+    @abstractmethod
     async def get_queue_len(self, *, deadline_s: float) -> int:
         """Returns current queue len for the replica.
 
         `deadline_s` is passed to verify backoff for testing.
         """
-        pass
+        raise NotImplementedError
 
+    @abstractmethod
     def send_request(self, pr: PendingRequest) -> ResultWrapper:
         """Send request to this replica."""
-        pass
+        raise NotImplementedError
 
+    @abstractmethod
     async def send_request_with_rejection(
         self, pr: PendingRequest
     ) -> Tuple[Optional[ResultWrapper], ReplicaQueueLengthInfo]:
@@ -66,46 +90,10 @@ class ReplicaWrapper(ABC):
 
         Only supported for Python replicas.
         """
-        pass
+        raise NotImplementedError
 
 
-class ActorReplicaWrapper:
-    def __init__(self, replica_info: RunningReplicaInfo):
-        self._replica_info = replica_info
-        self._multiplexed_model_ids = set(replica_info.multiplexed_model_ids)
-
-        if replica_info.is_cross_language:
-            self._actor_handle = JavaActorHandleProxy(replica_info.actor_handle)
-        else:
-            self._actor_handle = replica_info.actor_handle
-
-    @property
-    def replica_id(self) -> ReplicaID:
-        return self._replica_info.replica_id
-
-    @property
-    def node_id(self) -> str:
-        return self._replica_info.node_id
-
-    @property
-    def availability_zone(self) -> Optional[str]:
-        return self._replica_info.availability_zone
-
-    @property
-    def multiplexed_model_ids(self) -> Set[str]:
-        return self._multiplexed_model_ids
-
-    @property
-    def max_ongoing_requests(self) -> int:
-        return self._replica_info.max_ongoing_requests
-
-    @property
-    def is_cross_language(self) -> bool:
-        return self._replica_info.is_cross_language
-
-    def push_proxy_handle(self, handle: ActorHandle):
-        self._actor_handle.push_proxy_handle.remote(handle)
-
+class ActorReplicaWrapper(ReplicaWrapper):
     async def get_queue_len(self, *, deadline_s: float) -> int:
         # NOTE(edoakes): the `get_num_ongoing_requests` method name is shared by
         # the Python and Java replica implementations. If you change it, you need to
