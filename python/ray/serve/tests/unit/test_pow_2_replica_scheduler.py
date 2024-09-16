@@ -27,6 +27,7 @@ from ray.serve._private.replica_scheduler import (
     ReplicaWrapper,
 )
 from ray.serve._private.replica_scheduler.pow_2_scheduler import ReplicaQueueLengthCache
+from ray.serve._private.result_wrapper import ResultWrapper
 from ray.serve._private.test_utils import MockTimer
 
 TIMER = MockTimer()
@@ -118,9 +119,10 @@ class FakeReplicaWrapper(ReplicaWrapper):
             self.get_queue_len_was_cancelled = True
             raise
 
-    def send_request(
-        self, pr: PendingRequest
-    ) -> Union[ray.ObjectRef, ray.ObjectRefGenerator]:
+    def send_request(self, pr: PendingRequest) -> ResultWrapper:
+        raise NotImplementedError()
+
+    def send_request_with_rejection(self, pr: PendingRequest) -> ResultWrapper:
         raise NotImplementedError()
 
 

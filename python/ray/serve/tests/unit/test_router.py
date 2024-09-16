@@ -86,6 +86,9 @@ class FakeReplica(ReplicaWrapper):
     def is_cross_language(self) -> bool:
         return self._is_cross_language
 
+    def get_queue_len(self, *, deadline_s: float) -> int:
+        raise NotImplementedError
+
     def send_request(self, pr: PendingRequest) -> FakeResultWrapper:
         if pr.metadata.is_streaming:
             return FakeResultWrapper(self._replica_id, is_generator_object=True)
