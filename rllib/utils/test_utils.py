@@ -1463,7 +1463,7 @@ def run_rllib_example_script_experiment(
     # Log results using WandB.
     tune_callbacks = tune_callbacks or []
     if hasattr(args, "wandb_key") and (
-        args.wandb_key is not None or os.environ[WANDB_ENV_VAR]
+        args.wandb_key is not None or WANDB_ENV_VAR in os.environ
     ):
         wandb_key = args.wandb_key or os.environ[WANDB_ENV_VAR]
         project = args.wandb_project or (
