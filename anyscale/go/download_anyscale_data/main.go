@@ -19,6 +19,9 @@ func main() {
 		"sock", "/tmp/anyscale/anyscaled/sockets/dataplane_service.sock",
 		"Dataplane service unix domain socket",
 	)
+	usePresigned := flag.Bool(
+		"use_presigned", false, "Use presigned URL method",
+	)
 	out := flag.String("out", "-", "Output file, default to stdout")
 	flag.Parse()
 
@@ -44,9 +47,18 @@ func main() {
 		w = f
 	}
 
+	p := args[0]
 	ctx := context.Background()
-	if err := downloadAnyscaleData(ctx, *uds, args[0], w); err != nil {
-		log.Fatal(err)
+	if !*usePresigned {
+		if err := downloadAnyscaleData(ctx, *uds, p, w); err != nil {
+			log.Fatal(err)
+		}
+	} else {
+		if err := downloadAnyscaleDataUsingPresigned(
+			ctx, *uds, p, w,
+		); err != nil {
+			log.Fatal(err)
+		}
 	}
 }
 
@@ -125,15 +137,37 @@ func pipeDownload(
 	return nil
 }
 
-func downloadAnyscaleData(
-	ctx context.Context, uds, p string, out io.Writer,
-) error {
+func newUnixHTTPClient(uds string) *http.Client {
 	dialFunc := func(ctx context.Context, n, addr string) (net.Conn, error) {
 		return net.Dial("unix", uds)
 	}
-	client := &http.Client{
+	return &http.Client{
 		Transport: &http.Transport{DialContext: dialFunc},
 	}
+}
+
+func downloadAnyscaleData(
+	ctx context.Context, uds, p string, out io.Writer,
+) error {
+	client := newUnixHTTPClient(uds)
+
+	q := make(url.Values)
+	q.Set("key", p)
+
+	u := &url.URL{
+		Scheme:   "http",
+		Host:     "unix", // dummy host for unix domain socket,
+		Path:     "/get_object",
+		RawQuery: q.Encode(),
+	}
+
+	return pipeDownload(ctx, client, u, out)
+}
+
+func downloadAnyscaleDataUsingPresigned(
+	ctx context.Context, uds, p string, out io.Writer,
+) error {
+	client := newUnixHTTPClient(uds)
 
 	urlStr, err := presignObjectURL(ctx, client, p)
 	if err != nil {
