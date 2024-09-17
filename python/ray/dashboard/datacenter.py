@@ -102,9 +102,7 @@ class DataOrganizer:
         DataSource.core_worker_stats.reset(core_worker_stats)
 
     @classmethod
-    def _extract_workers_for_node(
-        cls, node_physical_stats, node_stats
-    ):
+    def _extract_workers_for_node(cls, node_physical_stats, node_stats):
         workers = []
         # Merge coreWorkerStats (node stats) to workers (node physical stats)
         pid_to_worker_stats = {}
