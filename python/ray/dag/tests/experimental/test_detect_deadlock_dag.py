@@ -307,8 +307,7 @@ def test_valid_graph_2_actors(ray_start_regular):
         dag.with_type_hint(TorchTensorType(transport="nccl"))
         dag = b.no_op.bind(dag)
 
-    compiled_dag = dag.experimental_compile()
-    compiled_dag.teardown()
+    compiled_dag = dag.experimental_compile()  # noqa
 
 
 @pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 3}], indirect=True)
@@ -333,8 +332,7 @@ def test_valid_graph_3_actors(ray_start_regular):
         branch2.with_type_hint(TorchTensorType(transport="nccl"))
         dag = a.no_op_two.bind(branch1, branch2)
 
-    compiled_dag = dag.experimental_compile()
-    compiled_dag.teardown()
+    compiled_dag = dag.experimental_compile()  # noqa
 
 
 if __name__ == "__main__":

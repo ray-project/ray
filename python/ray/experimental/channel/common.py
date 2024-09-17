@@ -1,12 +1,14 @@
 import asyncio
 import concurrent
 import copy
+import sys
 import threading
 import time
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Dict, List, NamedTuple, Optional, Tuple, Union
 
 import ray
+import ray.exceptions
 from ray.experimental.channel.gpu_communicator import GPUCommunicator
 from ray.experimental.channel.serialization_context import _SerializationContext
 from ray.util.annotations import DeveloperAPI, PublicAPI
@@ -355,7 +357,17 @@ class AwaitableBackgroundReader(ReaderInterface):
         self._background_task = asyncio.ensure_future(self.run())
 
     def _run(self):
-        return [c.read() for c in self._input_channels]
+        results = []
+        for c in self._input_channels:
+            try:
+                results.append(c.read(timeout=1))
+            except ray.exceptions.RayChannelTimeoutError:
+                # Interpreter exits. We should stop reading
+                # so that the thread can join.
+                if sys.is_finalizing():
+                    break
+                pass
+        return results
 
     async def run(self):
         loop = asyncio.get_running_loop()
@@ -533,7 +545,14 @@ class AwaitableBackgroundWriter(WriterInterface):
         for i, channel in enumerate(self._output_channels):
             idx = self._output_idxs[i]
             res_i = _adapt(res, idx, self._is_input)
-            channel.write(res_i)
+            while True:
+                try:
+                    channel.write(res_i, timeout=1)
+                except ray.exceptions.RayChannelTimeoutError:
+                    if sys.is_finalizing():
+                        break
+                else:
+                    break
 
     async def run(self):
         loop = asyncio.get_event_loop()

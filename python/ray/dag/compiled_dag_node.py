@@ -1,3 +1,5 @@
+import atexit
+import weakref
 import asyncio
 from collections import defaultdict, deque
 from dataclasses import dataclass, asdict
@@ -8,6 +10,7 @@ import time
 import uuid
 import traceback
 
+import ray.exceptions
 from ray.experimental.channel.cached_channel import CachedChannel
 from ray.experimental.channel.gpu_communicator import GPUCommunicator
 import ray
@@ -51,6 +54,19 @@ from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 
 logger = logging.getLogger(__name__)
+
+_compiled_dag_queue = weakref.WeakValueDictionary()
+
+
+# Relying on __del__ doesn't work well upon shutdown because
+# the destructor order is not guaranteed. We use atexit handler
+# instead to reliably shutdown compiled dag node.
+def shutdown_compiled_dag_node():
+    for _, compiled_dag in _compiled_dag_queue.items():
+        compiled_dag.teardown()
+
+
+atexit.register(shutdown_compiled_dag_node)
 
 
 @DeveloperAPI
@@ -1694,7 +1710,9 @@ class CompiledDAG:
         return not topological_order_exists
 
     def _monitor_failures(self):
-        outer = self
+        import weakref
+
+        outer = weakref.proxy(self)
 
         class Monitor(threading.Thread):
             def __init__(self):
@@ -1703,6 +1721,7 @@ class CompiledDAG:
                 # Lock to make sure that we only perform teardown for this DAG
                 # once.
                 self.in_teardown_lock = threading.Lock()
+                self.name = "MonitorThread"
 
             def wait_teardown(self):
                 for actor, ref in outer.worker_task_refs.items():
@@ -1742,12 +1761,12 @@ class CompiledDAG:
                         self.wait_teardown()
                     return
 
-                logger.info("Tearing down compiled DAG")
+                logger.debug("Tearing down compiled DAG")
                 outer._dag_submitter.close()
                 outer._dag_output_fetcher.close()
 
                 for actor in outer.actor_refs:
-                    logger.info(f"Cancelling compiled worker on actor: {actor}")
+                    logger.debug(f"Cancelling compiled worker on actor: {actor}")
                 # Cancel all actor loops in parallel.
                 cancel_refs = [
                     actor.__ray_call__.remote(do_cancel_executable_tasks, tasks)
@@ -1755,9 +1774,11 @@ class CompiledDAG:
                 ]
                 for cancel_ref in cancel_refs:
                     try:
-                        # TODO(swang): Suppress exceptions from actors trying to
-                        # read closed channels when DAG is being torn down.
                         ray.get(cancel_ref, timeout=30)
+                    except ray.exceptions.RayChannelError:
+                        # Channel error happens when a channel is closed
+                        # or timed out. In this case, do not log.
+                        pass
                     except Exception:
                         logger.exception("Error cancelling worker task")
                         pass
@@ -1766,9 +1787,9 @@ class CompiledDAG:
                     _destroy_nccl_group(outer._nccl_group_id)
 
                 if wait:
-                    logger.info("Waiting for worker tasks to exit")
+                    logger.debug("Waiting for worker tasks to exit")
                     self.wait_teardown()
-                    logger.info("Teardown complete")
+                    logger.debug("Teardown complete")
 
             def run(self):
                 try:
@@ -2058,10 +2079,7 @@ class CompiledDAG:
         monitor = getattr(self, "_monitor", None)
         if monitor is not None:
             # Teardown asynchronously.
-            # NOTE(swang): Somehow, this can get called after the CoreWorker
-            # has already been destructed, so it is not safe to block in
-            # ray.get.
-            monitor.teardown(wait=False)
+            monitor.teardown(wait=True)
 
 
 @DeveloperAPI
@@ -2090,4 +2108,6 @@ def build_compiled_dag_from_ray_dag(
     root = dag._find_root()
     root.traverse_and_apply(_build_compiled_dag)
     compiled_dag._get_or_compile()
+    global _compiled_dag_queue
+    _compiled_dag_queue[compiled_dag.get_id()] = compiled_dag
     return compiled_dag
