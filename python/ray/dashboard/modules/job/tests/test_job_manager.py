@@ -265,6 +265,37 @@ async def test_get_all_job_info_with_is_running_tasks(call_ray_start):  # noqa: 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     "call_ray_start",
+    [{"env": {"RAY_BACKEND_LOG_JSON": "1"}, "cmd": "ray start --head"}],
+    indirect=True,
+)
+async def test_job_supervisor_log_json(call_ray_start, tmp_path):  # noqa: F811
+    """Test JobSupervisor logs are structured JSON logs"""
+    address_info = ray.init(address=call_ray_start)
+    gcs_aio_client = GcsAioClient(
+        address=address_info["gcs_address"], nums_reconnect_retry=0
+    )
+    job_manager = JobManager(gcs_aio_client, tmp_path)
+    job_id = await job_manager.submit_job(
+        entrypoint="echo hello 1", submission_id="job_1"
+    )
+    await async_wait_for_condition_async_predicate(
+        check_job_succeeded, job_manager=job_manager, job_id=job_id
+    )
+
+    # Verify logs saved to file
+    supervisor_log_path = os.path.join(
+        ray._private.worker._global_node.get_logs_dir_path(),
+        f"jobs/supervisor-{job_id}.log",
+    )
+    log_message = f'"message": "Job {job_id} entrypoint command exited with code 0"'
+    with open(supervisor_log_path, "r") as f:
+        logs = f.read()
+        assert log_message in logs
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "call_ray_start",
     ["ray start --head"],
     indirect=True,
 )
@@ -289,7 +320,8 @@ async def test_job_supervisor_logs_saved(
         ray._private.worker._global_node.get_logs_dir_path(),
         f"jobs/supervisor-{job_id}.log",
     )
-    log_message = f"Job {job_id} entrypoint command exited with code 0"
+    # By default, log is TEXT format
+    log_message = f"-- Job {job_id} entrypoint command exited with code 0"
     with open(supervisor_log_path, "r") as f:
         logs = f.read()
         assert log_message in logs
