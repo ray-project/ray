@@ -50,6 +50,9 @@ class TestOfflineData(unittest.TestCase):
                 input_=[self.data_path],
                 dataset_num_iters_per_learner=1,
             )
+            .learners(
+                num_learners=0,
+            )
             .training(
                 train_batch_size_per_learner=256,
             )
@@ -73,6 +76,8 @@ class TestOfflineData(unittest.TestCase):
         from ray.data.iterator import _IterableFromIterator
 
         self.assertIsInstance(iter, _IterableFromIterator)
+        # Tear down.
+        algo.stop()
 
     def test_sample_multiple_learners(self):
         """Tests sampling using multiple learners."""
@@ -127,6 +132,9 @@ class TestOfflineData(unittest.TestCase):
 
         for s in batch:
             self.assertIsInstance(s, StreamSplitDataIterator)
+
+        # Tear down.
+        algo.stop()
 
     def test_offline_data_with_schema(self):
         """Tests passing in a different schema and sample episodes."""
