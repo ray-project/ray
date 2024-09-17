@@ -181,10 +181,12 @@ def from_items(
     if parallelism == 0:
         raise ValueError(f"parallelism must be -1 or > 0, got: {parallelism}")
 
+    ctx = DataContext.get_current()
     detected_parallelism, _, _ = _autodetect_parallelism(
         parallelism,
-        ray.util.get_current_placement_group(),
-        DataContext.get_current(),
+        ctx.target_max_block_size,
+        ctx,
+        placement_group=ray.util.get_current_placement_group(),
     )
     # Truncate parallelism to number of items to avoid empty blocks.
     detected_parallelism = min(len(items), detected_parallelism)
@@ -394,8 +396,8 @@ def read_datasource(
     requested_parallelism, _, inmemory_size = _autodetect_parallelism(
         parallelism,
         ctx.target_max_block_size,
-        DataContext.get_current(),
-        datasource_or_legacy_reader,
+        ctx,
+        datasource_or_legacy_reader=datasource_or_legacy_reader,
         placement_group=cur_pg,
     )
 

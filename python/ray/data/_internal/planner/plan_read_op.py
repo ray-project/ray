@@ -109,12 +109,11 @@ def plan_read_op(
     transform_fns: List[MapTransformFn] = [
         # First, execute the read tasks.
         BlockMapTransformFn(do_read),
+        BuildOutputBlocksMapTransformFn.for_blocks()
     ]
-    transform_fns.append(BuildOutputBlocksMapTransformFn.for_blocks())
-    map_transformer = MapTransformer(transform_fns)
 
     return MapOperator.create(
-        map_transformer,
+        MapTransformer(transform_fns),
         inputs,
         data_context,
         name=op.name,

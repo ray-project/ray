@@ -164,7 +164,7 @@ def test_count_after_caching_after_execution(ray_start_regular):
     FILE_ROW_COUNT = 150
     DS_ROW_COUNT = FILE_ROW_COUNT * SCALE_FACTOR
     paths = ["example://iris.csv"] * SCALE_FACTOR
-    ds = ray.data.read_csv(paths)
+    ds = ray.data.read_csv(paths, override_num_blocks=2)
     # Row count should be unknown before execution.
     assert "num_rows=?" in str(ds)
     # After iterating over bundles and completing execution, row count should be known.
@@ -367,7 +367,7 @@ def test_empty_dataset(ray_start_regular_shared):
     ds = ds.materialize()
     assert (
         str(ds)
-        == "MaterializedDataset(num_blocks=2, num_rows=0, schema=Unknown schema)"
+        == "MaterializedDataset(num_blocks=1, num_rows=0, schema=Unknown schema)"
     )
 
     # Test map on empty dataset.

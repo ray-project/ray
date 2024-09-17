@@ -1544,8 +1544,13 @@ def test_dataset_throughput():
     ray.shutdown()
     ray.init(num_cpus=2)
 
-    f = dummy_map_batches_sleep(0.01)
-    ds = ray.data.range(100).map(f).materialize().map(f).materialize()
+    dataset = ray.data.range_tensor(5000, shape=(1000,))
+
+    # Assert that there's parallelism in the system
+    assert dataset._plan.initial_num_blocks() >= 2
+
+    f = dummy_map_batches_sleep(0.001)
+    materialized = dataset.map(f).materialize().map(f).materialize()
 
     # Pattern to match operator throughput
     operator_pattern = re.compile(
@@ -1555,7 +1560,7 @@ def test_dataset_throughput():
 
     # Ray data throughput should always be better than single node throughput for
     # multi-cpu case.
-    for match in operator_pattern.findall(ds.stats()):
+    for match in operator_pattern.findall(materialized.stats()):
         assert float(match[1]) >= float(match[2])
 
     # Pattern to match dataset throughput
@@ -1564,7 +1569,7 @@ def test_dataset_throughput():
         re.DOTALL,
     )
 
-    dataset_match = dataset_pattern.search(ds.stats())
+    dataset_match = dataset_pattern.search(materialized.stats())
     assert float(dataset_match[1]) >= float(dataset_match[2])
 
 
@@ -1612,8 +1617,15 @@ def test_spilled_stats(shutdown_only, verbose_stats_logs, restore_data_context):
     context.enable_get_object_locations_for_metrics = True
     # The object store is about 100MB.
     ray.init(object_store_memory=100e6)
-    # The size of dataset is 1000*80*80*4*8B, about 200MB.
-    ds = ray.data.range(1000 * 80 * 80 * 4).map_batches(lambda x: x).materialize()
+    # NOTE: The size of dataset is 1000*80*80*4*8B, about 200MB.
+    #       Provided, that we peg number of target blocks at 2, we'd run exactly 2 task
+    #       processing ~100Mb each therefore resulting in 1 of the blocks being fully
+    #       spilled to disk
+    ds = (
+        ray.data.range(1000 * 80 * 80 * 4, override_num_blocks=2)
+        .map_batches(lambda x: x)
+        .materialize()
+    )
 
     extra_metrics = gen_extra_metrics_str(
         MEM_SPILLED_EXTRA_METRICS_TASK_BACKPRESSURE,

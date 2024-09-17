@@ -151,6 +151,7 @@ def _autodetect_parallelism(
     parallelism: int,
     target_max_block_size: int,
     ctx: DataContext,
+    *,
     datasource_or_legacy_reader: Optional[Union["Datasource", "Reader"]] = None,
     mem_size: Optional[int] = None,
     placement_group: Optional["PlacementGroup"] = None,
@@ -158,23 +159,26 @@ def _autodetect_parallelism(
 ) -> Tuple[int, str, Optional[int]]:
     """Returns parallelism to use and the min safe parallelism to avoid OOMs.
 
-    This detects parallelism using the following heuristics, applied in order:
+    This detects parallelism using the following heuristic (applied in order):
 
-     1) We start with the default value of 200. This can be overridden by
-        setting the `read_op_min_num_blocks` attribute of
-        :class:`~ray.data.context.DataContext`.
-     2) Min block size. If the parallelism would make blocks smaller than this
-        threshold, the parallelism is reduced to avoid the overhead of tiny blocks.
-     3) Max block size. If the parallelism would make blocks larger than this
-        threshold, the parallelism is increased to avoid OOMs during processing.
-     4) Available CPUs. If the parallelism cannot make use of all the available
-        CPUs in the cluster, the parallelism is increased until it can.
+     1) We start with the target parallelism decided as
+
+            target_parallelism = max(default_parallelism, available_cpus * 2)
+
+        Default parallelism can be overridden by setting the `read_op_min_num_blocks`
+        attribute of :class:`~ray.data.context.DataContext`.
+
+     2) Parallelism is capped to produce blocks no smaller than
+        `DataContext.target_min_block_size` threshold.
+
+     3) Parallelism is floored to produce blocks no larger than `target_max_block_size`
+        threshold.
 
     Args:
         parallelism: The user-requested parallelism, or -1 for auto-detection.
         target_max_block_size: The target max block size to
             produce. We pass this separately from the
-            DatasetContext because it may be set per-op instead of
+            `DataContext` because it may be set per-op instead of
             per-Dataset.
         ctx: The current Dataset context to use for configs.
         datasource_or_legacy_reader: The datasource or legacy reader, to be used for
@@ -190,13 +194,51 @@ def _autodetect_parallelism(
         for the detected parallelism (only if -1 was specified), and the estimated
         inmemory size of the dataset.
     """
-    min_safe_parallelism = 1
-    max_reasonable_parallelism = sys.maxsize
+
     if mem_size is None and datasource_or_legacy_reader:
         mem_size = datasource_or_legacy_reader.estimate_inmemory_data_size()
+
+    target_min_block_size = ctx.target_min_block_size
+
+    if target_max_block_size < target_min_block_size:
+        logger.warning(
+            f"Provided `target_max_block_size` ({target_max_block_size / MiB:.1f}MiB) "
+            f"< target_min_block_size` ({target_min_block_size / MiB:.1f}); "
+            f"overriding `target_min_block_size` with `target_max_block_size`"
+        )
+
+        target_min_block_size = target_max_block_size
+
+    def _compose_memory_estimation_context() -> str:
+        estimated_size_in_memory_str = (
+            f"{mem_size / MiB:.2f}MiB" if mem_size is not None else "NaN"
+        )
+
+        return (
+            f"Estimated data size {estimated_size_in_memory_str}; "
+            f"Target min/max block sizes are "
+            f"{target_min_block_size / MiB:.1f}MiB / "
+            f"{target_max_block_size / MiB:.1f}MiB"
+        )
+
+    # Set fallback values for parallelism boundaries
+    min_safe_parallelism = 1
+    max_reasonable_parallelism = sys.maxsize
+
+    # Evaluate safe parallelism bounds based on estimated data size
+    #   - Min (safe) parallelism is determined such that produced blocks
+    #   do not exceed `target_max_block_size`
+    #   - Max (reasonable) parallelism is determined such that produced blocks
+    #   are no smaller than `DataContext.target_min_block_size`
     if mem_size is not None and not np.isnan(mem_size):
         min_safe_parallelism = max(1, int(mem_size / target_max_block_size))
-        max_reasonable_parallelism = max(1, int(mem_size / ctx.target_min_block_size))
+        max_reasonable_parallelism = max(1, int(mem_size / target_min_block_size))
+
+        estimation_context = _compose_memory_estimation_context()
+
+        assert (
+            min_safe_parallelism <= max_reasonable_parallelism
+        ), f"Parallelism boundaries have to overlap: {estimation_context}"
 
     reason = ""
     if parallelism < 0:
@@ -214,43 +256,48 @@ def _autodetect_parallelism(
             )
             ctx.read_op_min_num_blocks = ctx.min_parallelism
 
-        # Start with 2x the number of cores as a baseline, with a min floor.
         if placement_group is None:
             placement_group = ray.util.get_current_placement_group()
+
         avail_cpus = avail_cpus or _estimate_avail_cpus(placement_group)
-        parallelism = max(
-            min(ctx.read_op_min_num_blocks, max_reasonable_parallelism),
-            min_safe_parallelism,
-            avail_cpus * 2,
+
+        # Derive parallelism target as the max of
+        #   - Configured min number of blocks for any read op (floor)
+        #   - 2 x # of available CPUs
+        target_parallelism = max(ctx.read_op_min_num_blocks, avail_cpus * 2)
+        # Verify that target parallelism is w/in safe bounds, ie
+        # min <= target <= max
+        parallelism = min(
+            max(target_parallelism, min_safe_parallelism), max_reasonable_parallelism
         )
 
         if parallelism == ctx.read_op_min_num_blocks:
             reason = (
-                "DataContext.get_current().read_op_min_num_blocks="
-                f"{ctx.read_op_min_num_blocks}"
+                "configured min-level of parallelism of "
+                f"DataContext.read_op_min_num_blocks={ctx.read_op_min_num_blocks}"
             )
         elif parallelism == max_reasonable_parallelism:
             reason = (
                 "output blocks of size at least "
-                "DataContext.get_current().target_min_block_size="
-                f"{ctx.target_min_block_size / (1024 * 1024)}MiB"
+                "DataContext.target_min_block_size="
+                f"{target_min_block_size / MiB}MiB"
             )
         elif parallelism == min_safe_parallelism:
             reason = (
                 "output blocks of size at most "
-                "DataContext.get_current().target_max_block_size="
-                f"{ctx.target_max_block_size / (1024 * 1024)}MiB"
+                "DataContext.target_max_block_size="
+                f"{target_max_block_size / MiB}MiB"
             )
         else:
             reason = (
                 "parallelism at least twice the available number "
-                f"of CPUs ({avail_cpus})"
+                f"of CPUs {avail_cpus}"
             )
 
-        logger.debug(
-            f"Autodetected parallelism={parallelism} based on "
-            f"estimated_available_cpus={avail_cpus} and "
-            f"estimated_data_size={mem_size}."
+        logger.info(
+            f"Autodetected parallelism of {parallelism} based on: {reason}; "
+            f"Estimated available CPUs {avail_cpus}; "
+            f"{_compose_memory_estimation_context()}"
         )
 
     return parallelism, reason, mem_size
