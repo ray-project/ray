@@ -84,7 +84,7 @@ if __name__ == "__main__":
         base_config.training(
             # We don't want high entropy in this Env.
             entropy_coeff=0.00005,
-            num_sgd_iter=4,
+            num_epochs=4,
             vf_loss_coeff=0.01,
         )
 

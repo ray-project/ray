@@ -41,7 +41,7 @@ class AddObservationsFromEpisodesToBatch(ConnectorV2):
     ]
 
     This ConnectorV2:
-    - Operates on a list of Episode objects.
+    - Operates on a list of Episode objects (single- or multi-agent).
     - Gets the most recent observation(s) from all the given episodes and adds them
     to the batch under construction (as a list of individual observations).
     - Does NOT alter any observations (or other data) in the given episodes.

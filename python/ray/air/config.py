@@ -28,7 +28,6 @@ if TYPE_CHECKING:
     from ray.tune.callback import Callback
     from ray.tune.execution.placement_groups import PlacementGroupFactory
     from ray.tune.experimental.output import AirVerbosity
-    from ray.tune.progress_reporter import ProgressReporter
     from ray.tune.search.sample import Domain
     from ray.tune.stopper import Stopper
     from ray.tune.utils.log import Verbosity
@@ -650,7 +649,9 @@ class RunConfig:
     verbose: Optional[Union[int, "AirVerbosity", "Verbosity"]] = None
     stop: Optional[Union[Mapping, "Stopper", Callable[[str, Mapping], bool]]] = None
     callbacks: Optional[List["Callback"]] = None
-    progress_reporter: Optional["ProgressReporter"] = None
+    progress_reporter: Optional[
+        "ray.tune.progress_reporter.ProgressReporter"  # noqa: F821
+    ] = None
     log_to_file: Union[bool, str, Tuple[str, str]] = False
 
     # Deprecated

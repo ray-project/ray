@@ -188,7 +188,7 @@ helm repo update
 helm install kuberay-operator kuberay/kuberay-operator --version 1.1.1
 
 # Step 4: Install RayCluster and create an ingress separately.
-# More information about change of setting was documented in https://github.com/ray-project/kuberay/pull/699 
+# More information about change of setting was documented in https://github.com/ray-project/kuberay/pull/699
 # and `ray-operator/config/samples/ray-cluster.separate-ingress.yaml`
 curl -LO https://raw.githubusercontent.com/ray-project/kuberay/v1.1.1/ray-operator/config/samples/ray-cluster.separate-ingress.yaml
 kubectl apply -f ray-operator/config/samples/ray-cluster.separate-ingress.yaml
