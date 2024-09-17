@@ -472,9 +472,15 @@ def test_get_serve_instance_details_for_imperative_apps(ray_start_stop, url):
     # seems to make Serve stop unexpectedly
     # https://github.com/ray-project/ray/pull/45522#discussion_r1720479757
     deploy = subprocess.run(
-        [sys.executable, str(Path(__file__).parent / "deploy_imperative_serve_apps.py")]
+        [
+            sys.executable,
+            str(Path(__file__).parent / "deploy_imperative_serve_apps.py"),
+        ],
+        capture_output=True,
+        universal_newlines=True,
     )
-    assert deploy.returncode == 200
+    print(deploy.stdout)
+    assert deploy.returncode == 0
 
     def applications_running():
         response = requests.get(url, timeout=15)
