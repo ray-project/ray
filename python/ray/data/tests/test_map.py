@@ -1119,6 +1119,40 @@ def test_map_batches_async_exception_propagation(shutdown_only):
     assert "assert False" in str(exc_info.value)
 
 
+def test_map_batches_async_generator_fast_yield(shutdown_only):
+    # Tests the case where the async generator yields immediately,
+    # and ensures that the internal queue is completely drained.
+    ray.shutdown()
+    ray.init(num_cpus=4)
+
+    async def empty_yield(batch):
+        await asyncio.sleep(0.1)
+        return batch
+
+    class AsyncActor:
+        def __init__(self):
+            pass
+
+        async def __call__(self, batch):
+            # task = asyncio.create_task(empty_yield(batch))
+            # yield await task
+            yield batch
+
+    n = 16
+    ds = ray.data.range(n, override_num_blocks=n)
+    ds = ds.map_batches(
+        AsyncActor,
+        batch_size=1,
+        compute=ray.data.ActorPoolStrategy(max_tasks_in_flight_per_actor=4),
+        concurrency=1,
+        max_concurrency=4,
+    )
+
+    output = ds.take_all()
+    expected_output = list(range(n))
+    assert output == expected_output, (output, expected_output)
+
+
 if __name__ == "__main__":
     import sys
 

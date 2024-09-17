@@ -358,6 +358,14 @@ def _generate_transform_fn_for_async_map_batches(
             _validate_batch_output(out_batch)
             yield out_batch
 
+        # # Drain the queue to yield any remaining results.
+        # while not output_batch_queue.empty():
+        #     out_batch = output_batch_queue.get()
+        #     if isinstance(out_batch, Exception):
+        #         raise out_batch
+        #     _validate_batch_output(out_batch)
+        #     yield out_batch
+
     return transform_fn
 
 
