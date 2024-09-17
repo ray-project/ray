@@ -139,6 +139,7 @@ class LogMonitor:
         is_proc_alive_fn: Callable[[int], bool],
         max_files_open: int = ray_constants.LOG_MONITOR_MAX_OPEN_FILES,
         gcs_address: Optional[str] = None,
+        is_tpu: Optional[bool] = False,
     ):
         """Initialize the log monitor object."""
         self.ip: str = node_ip_address
@@ -151,6 +152,10 @@ class LogMonitor:
         self.max_files_open: int = max_files_open
         self.is_proc_alive_fn: Callable[[int], bool] = is_proc_alive_fn
         self.is_autoscaler_v2: bool = self.get_is_autoscaler_v2(gcs_address)
+        self.is_tpu: bool = is_tpu
+
+        if os.getenv("TPU_WORKER_ID") is not None:
+            self.is_tpu = True
 
         logger.info(
             f"Starting log monitor with [max open files={max_files_open}],"
@@ -235,6 +240,10 @@ class LogMonitor:
 
         # If gcs server restarts, there can be multiple log files.
         monitor_log_paths += glob.glob(f"{self.logs_dir}/gcs_server*.err")
+
+        # Add TPU logs if Ray container is requesting TPUs.
+        if self.is_tpu:
+            monitor_log_paths += glob.glob(f"{self.logs_dir}/tpu_logs/**")
 
         # runtime_env setup process is logged here
         if RAY_RUNTIME_ENV_LOG_TO_DRIVER_ENABLED:
