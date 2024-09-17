@@ -664,6 +664,7 @@ def running_replica_info(replica_id: ReplicaID) -> RunningReplicaInfo:
     return RunningReplicaInfo(
         replica_id=replica_id,
         node_id="node_id",
+        node_ip="node_ip",
         availability_zone="some-az",
         actor_handle=Mock(),
         max_ongoing_requests=1,
