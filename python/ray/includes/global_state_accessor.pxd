@@ -29,7 +29,8 @@ cdef extern from "ray/gcs/gcs_client/global_state_accessor.h" nogil:
         CGlobalStateAccessor(const CGcsClientOptions&)
         c_bool Connect()
         void Disconnect()
-        c_vector[c_string] GetAllJobInfo()
+        c_vector[c_string] GetAllJobInfo(
+          c_bool skip_submission_job_info_field, c_bool skip_is_running_tasks_field)
         CJobID GetNextJobID()
         c_vector[c_string] GetAllNodeInfo()
         c_vector[c_string] GetAllAvailableResources()
