@@ -429,24 +429,6 @@ class ReplicaActor:
         if user_exception is not None:
             raise user_exception from None
 
-    async def handle_request(
-        self,
-        pickled_request_metadata: bytes,
-        *request_args,
-        **request_kwargs,
-    ) -> Tuple[bytes, Any]:
-        """Entrypoint for `stream=False` calls."""
-        request_metadata = pickle.loads(pickled_request_metadata)
-        trace_context = extract_propagated_context(request_metadata.tracing_context)
-        trace_manager = TraceContextManager(
-            trace_name="replica_handle_request",
-            trace_context=trace_context,
-        )
-        with trace_manager, self._wrap_user_method_call(request_metadata):
-            return await self._user_callable_wrapper.call_user_method(
-                request_metadata, request_args, request_kwargs
-            )
-
     async def _call_user_generator(
         self,
         request_metadata: RequestMetadata,
@@ -513,6 +495,24 @@ class ReplicaActor:
 
             if wait_for_message_task is not None and not wait_for_message_task.done():
                 wait_for_message_task.cancel()
+
+    async def handle_request(
+        self,
+        pickled_request_metadata: bytes,
+        *request_args,
+        **request_kwargs,
+    ) -> Tuple[bytes, Any]:
+        """Entrypoint for `stream=False` calls."""
+        request_metadata = pickle.loads(pickled_request_metadata)
+        trace_context = extract_propagated_context(request_metadata.tracing_context)
+        trace_manager = TraceContextManager(
+            trace_name="replica_handle_request",
+            trace_context=trace_context,
+        )
+        with trace_manager, self._wrap_user_method_call(request_metadata):
+            return await self._user_callable_wrapper.call_user_method(
+                request_metadata, request_args, request_kwargs
+            )
 
     async def handle_request_streaming(
         self,

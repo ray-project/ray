@@ -32,15 +32,16 @@ from ray.serve._private.constants import (
     RAY_SERVE_PROXY_PREFER_LOCAL_AZ_ROUTING,
     SERVE_LOGGER_NAME,
 )
-from ray.serve._private.default_impl import create_replica_wrapper
 from ray.serve._private.long_poll import LongPollClient, LongPollNamespace
 from ray.serve._private.metrics_utils import InMemoryMetricsStore, MetricsPusher
+from ray.serve._private.replica_result import ReplicaResult
 from ray.serve._private.replica_scheduler import (
     PendingRequest,
     PowerOfTwoChoicesReplicaScheduler,
     ReplicaScheduler,
 )
-from ray.serve._private.utils import FakeObjectRef, inside_ray_client_context
+from ray.serve._private.replica_scheduler.replica_wrapper import ActorReplicaWrapper
+from ray.serve._private.utils import inside_ray_client_context
 from ray.serve.config import AutoscalingConfig
 from ray.serve.exceptions import BackPressureError
 from ray.util import metrics
@@ -359,6 +360,7 @@ class Router:
                 enable_strict_max_ongoing_requests
             )
 
+        replica_wrapper_cls = ActorReplicaWrapper
         if replica_scheduler is None:
             replica_scheduler = PowerOfTwoChoicesReplicaScheduler(
                 self._event_loop,
@@ -373,7 +375,7 @@ class Router:
                 else None,
                 self_availability_zone,
                 use_replica_queue_len_cache=enable_queue_len_cache,
-                create_replica_wrapper_func=create_replica_wrapper,
+                create_replica_wrapper_func=lambda r: replica_wrapper_cls(r),
             )
 
         self._replica_scheduler: ReplicaScheduler = replica_scheduler
@@ -528,7 +530,7 @@ class Router:
 
     async def schedule_and_send_request(
         self, pr: PendingRequest
-    ) -> Tuple[Union[ray.ObjectRef, ray.ObjectRefGenerator], ReplicaID]:
+    ) -> Tuple[ReplicaResult, ReplicaID]:
         """Choose a replica for the request and send it.
 
         This will block indefinitely if no replicas are available to handle the
@@ -543,10 +545,10 @@ class Router:
             return replica.send_request(pr), replica.replica_id
 
         while True:
-            obj_ref_gen = None
+            replica_result = None
             try:
                 (
-                    obj_ref_gen,
+                    replica_result,
                     queue_len_info,
                 ) = await replica.send_request_with_rejection(pr)
                 if self._enable_queue_len_cache:
@@ -554,13 +556,13 @@ class Router:
                         replica.replica_id, queue_len_info.num_ongoing_requests
                     )
                 if queue_len_info.accepted:
-                    return obj_ref_gen, replica.replica_id
+                    return replica_result, replica.replica_id
             except asyncio.CancelledError:
                 # NOTE(edoakes): this is not strictly necessary because there are
                 # currently no `await` statements between getting the ref and returning,
                 # but I'm adding it defensively.
-                if obj_ref_gen is not None:
-                    ray.cancel(obj_ref_gen)
+                if replica_result is not None:
+                    replica_result.cancel()
 
                 raise
             except ActorDiedError:
@@ -597,7 +599,7 @@ class Router:
         request_meta: RequestMetadata,
         *request_args,
         **request_kwargs,
-    ) -> Union[ray.ObjectRef, ray.ObjectRefGenerator]:
+    ) -> ReplicaResult:
         """Assign a request to a replica and return the resulting object_ref."""
 
         trace_attributes = {
@@ -644,10 +646,7 @@ class Router:
                         replica_id
                     )
                     callback = partial(self._process_finished_request, replica_id)
-                    if isinstance(ref, (ray.ObjectRef, FakeObjectRef)):
-                        ref._on_completed(callback)
-                    else:
-                        ref.completed()._on_completed(callback)
+                    ref.add_callback(callback)
 
                 return ref
             except asyncio.CancelledError:
@@ -655,7 +654,7 @@ class Router:
                 # there are currently no `await` statements between
                 # getting the ref and returning, but I'm adding it defensively.
                 if ref is not None:
-                    ray.cancel(ref)
+                    ref.cancel()
 
                 raise
 
