@@ -454,6 +454,7 @@ class PPO(Algorithm):
                         self.config.enable_env_runner_and_connector_v2
                     ),
                     _return_metrics=True,
+                    _return_episode_refs=True,
                 )
             else:
                 episodes, env_runner_results = synchronous_parallel_sample(
@@ -464,6 +465,7 @@ class PPO(Algorithm):
                         self.config.enable_env_runner_and_connector_v2
                     ),
                     _return_metrics=True,
+                    _return_episode_refs=True,
                 )
             # Return early if all our workers failed.
             if not episodes:
@@ -529,16 +531,12 @@ class PPO(Algorithm):
             #  as it might be a very large set (100s of Modules) vs a smaller Modules
             #  set that's present in the current train batch.
             modules_to_update = set(learner_results[0].keys()) - {ALL_MODULES}
-            # if self.env_runner_group.num_remote_workers() > 0:
             self.env_runner_group.sync_weights(
                 # Sync weights from learner_group to all EnvRunners.
                 from_worker_or_learner_group=self.learner_group,
-                policies=modules_to_update,
+                policies=list(modules_to_update),
                 inference_only=True,
             )
-            # else:
-            #    weights = self.learner_group.get_weights(inference_only=True)
-            #    self.env_runner.set_weights(weights)
 
         return self.metrics.reduce()
 

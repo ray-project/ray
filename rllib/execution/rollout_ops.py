@@ -2,6 +2,7 @@ import logging
 from typing import List, Optional, Union
 import tree
 
+import ray
 from ray.rllib.env.env_runner_group import EnvRunnerGroup
 from ray.rllib.policy.sample_batch import (
     SampleBatch,
@@ -27,6 +28,7 @@ def synchronous_parallel_sample(
     random_actions: bool = False,
     _uses_new_env_runners: bool = False,
     _return_metrics: bool = False,
+    _return_episode_refs: bool = False,
 ) -> Union[List[SampleBatchType], SampleBatchType, List[EpisodeType], EpisodeType]:
     """Runs parallel and synchronous rollouts on all remote workers.
 
@@ -54,6 +56,7 @@ def synchronous_parallel_sample(
             are stalling). If None, will block indefinitely and not timeout.
         _uses_new_env_runners: Whether the new `EnvRunner API` is used. In this case
             episodes instead of `SampleBatch` objects are returned.
+        _return_episode_refs: TODO (sven)
 
     Returns:
         The list of collected sample batch types or episode types (one for each parallel
@@ -97,14 +100,24 @@ def synchronous_parallel_sample(
                 stats_dicts = [worker_set.local_env_runner.get_metrics()]
         # Loop over remote workers' `sample()` method in parallel.
         else:
+            if _return_metrics:
+
+                def _sample(er):
+                    samples = er.sample(**random_action_kwargs)
+                    metrics = er.get_metrics()
+                    if _return_episode_refs:
+                        samples = ray.put(samples)
+                    return samples, metrics
+            else:
+
+                def _sample(er):
+                    return er.sample(**random_action_kwargs)
+
             sampled_data = worker_set.foreach_worker(
-                (
-                    (lambda w: w.sample(**random_action_kwargs))
-                    if not _return_metrics
-                    else (lambda w: (w.sample(**random_action_kwargs), w.get_metrics()))
-                ),
+                _sample,
                 local_env_runner=False,
                 timeout_seconds=sample_timeout_s,
+                return_obj_refs=False,
             )
             # Nothing was returned (maybe all workers are stalling) or no healthy
             # remote workers left: Break.
