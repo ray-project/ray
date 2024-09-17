@@ -46,7 +46,6 @@ class OfflineData:
         # be `gcsfs` for GCS, `pyarrow` for S3 or `adlfs` for Azure Blob Storage.
         # this filesystem is specifically needed, if a session has to be created
         # with the cloud provider.
-
         if self.filesystem == "gcs":
             import gcsfs
 
@@ -107,23 +106,32 @@ class OfflineData:
         return_iterator: bool = False,
         num_shards: int = 1,
     ):
-        # Materialize the mapped data, if necessary. This runs for all the
-        # data the `OfflinePreLearner` logic and maps them to `MultiAgentBatch`es.
-        # TODO (simon, sven): This would never update the module nor the
-        #   the connectors. If this is needed we have to check, if we give
-        #   (a) only an iterator and let the learner and OfflinePreLearner
-        #       communicate through the object storage. This only works when
-        #       not materializing.
-        #   (b) Rematerialize the data every couple of iterations. This is
-        #       is costly.
-        if not self.data_is_mapped:
-            # Constructor `kwargs` for the `OfflinePreLearner`.
-            fn_constructor_kwargs = {
-                "config": self.config,
-                "learner": self.learner_handles[0],
-                "spaces": self.spaces[INPUT_ENV_SPACES],
-            }
-            # If we have multiple learners, add to the constructor `kwargs`.
+        if (
+            not return_iterator or (return_iterator and num_shards <= 1)
+        ) and not self.batch_iterator:
+            # If no iterator should be returned, or if we want to return a single
+            # batch iterator, we instantiate the batch iterator once, here.
+            # TODO (simon, sven): The iterator depends on the `num_samples`, i.e.abs
+            # sampling later with a different batch size would need a
+            # reinstantiation of the iterator.
+            self.batch_iterator = self.data.map_batches(
+                self.prelearner_class,
+                fn_constructor_kwargs={
+                    "config": self.config,
+                    "learner": self.learner_handles[0],
+                    "spaces": self.spaces[INPUT_ENV_SPACES],
+                },
+                batch_size=num_samples,
+                **self.map_batches_kwargs,
+            ).iter_batches(
+                batch_size=num_samples,
+                **self.iter_batches_kwargs,
+            )
+
+        # Do we want to return an iterator or a single batch?
+        if return_iterator:
+            # In case of multiple shards, we return multiple
+            # `StreamingSplitIterator` instances.
             if num_shards > 1:
                 # Call here the learner to get an up-to-date module state.
                 # TODO (simon): This is a workaround as along as learners cannot
