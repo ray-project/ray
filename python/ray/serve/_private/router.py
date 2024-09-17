@@ -27,7 +27,6 @@ from ray.serve._private.constants import (
     RAY_SERVE_PROXY_PREFER_LOCAL_AZ_ROUTING,
     SERVE_LOGGER_NAME,
 )
-from ray.serve._private.default_impl import create_replica_wrapper
 from ray.serve._private.long_poll import LongPollClient, LongPollNamespace
 from ray.serve._private.metrics_utils import InMemoryMetricsStore, MetricsPusher
 from ray.serve._private.replica_result import ReplicaResult
@@ -371,7 +370,7 @@ class Router:
                 else None,
                 self_availability_zone,
                 use_replica_queue_len_cache=enable_queue_len_cache,
-                create_replica_wrapper_func=create_replica_wrapper,
+                create_replica_wrapper_func=lambda r: replica_wrapper_cls(r),
             )
 
         self._replica_scheduler: ReplicaScheduler = replica_scheduler
@@ -622,10 +621,7 @@ class Router:
                         replica_id
                     )
                     callback = partial(self._process_finished_request, replica_id)
-                    if isinstance(ref, (ray.ObjectRef, FakeObjectRef)):
-                        ref._on_completed(callback)
-                    else:
-                        ref.completed()._on_completed(callback)
+                    ref.add_callback(callback)
 
                 return ref
             except asyncio.CancelledError:
