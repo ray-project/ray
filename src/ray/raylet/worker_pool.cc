@@ -990,7 +990,7 @@ void WorkerPool::PushWorker(const std::shared_ptr<WorkerInterface> &worker) {
       << "Idle workers cannot have an assigned task ID";
 
   // Find a task that this worker can fit. If there's none, put it in the idle pool.
-  // Find in pending_registration_requests.
+  // First find in pending_registration_requests, then in pending_start_requests.
   std::shared_ptr<PopWorkerRequest> pop_worker_request = nullptr;
   auto &state = GetStateForLanguage(worker->GetLanguage());
   {

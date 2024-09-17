@@ -204,6 +204,17 @@ if __name__ == "__main__":
     # for asyncio
     try_install_uvloop()
 
+    # If the worker setup function is configured, run it.
+    worker_process_setup_hook_key = os.getenv(
+        ray_constants.WORKER_PROCESS_SETUP_HOOK_ENV_VAR
+    )
+    if worker_process_setup_hook_key:
+        error = load_and_execute_setup_hook(worker_process_setup_hook_key)
+        if error is not None:
+            ray._private.worker.global_worker.core_worker.drain_and_exit_worker(
+                "system", error
+            )
+
     raylet_ip_address = args.raylet_ip_address
     if raylet_ip_address is None:
         raylet_ip_address = args.node_ip_address
@@ -275,15 +286,6 @@ if __name__ == "__main__":
     if mode == ray.WORKER_MODE and args.worker_preload_modules:
         module_names_to_import = args.worker_preload_modules.split(",")
         ray._private.utils.try_import_each_module(module_names_to_import)
-
-    # If the worker setup function is configured, run it.
-    worker_process_setup_hook_key = os.getenv(
-        ray_constants.WORKER_PROCESS_SETUP_HOOK_ENV_VAR
-    )
-    if worker_process_setup_hook_key:
-        error = load_and_execute_setup_hook(worker_process_setup_hook_key)
-        if error is not None:
-            worker.core_worker.drain_and_exit_worker("system", error)
 
     if mode == ray.WORKER_MODE:
         worker.main_loop()
