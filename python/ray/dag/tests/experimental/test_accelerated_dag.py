@@ -119,6 +119,10 @@ class Actor:
         raise RuntimeError
         return 1, 2
 
+    def raise_exception(self, x):
+        raise RuntimeError
+        return 1
+
     def get_events(self):
         return getattr(self, "__ray_adag_events", [])
 
@@ -2467,6 +2471,28 @@ def test_multi_arg_exception(shutdown_only):
             ray.get(x)
         with pytest.raises(RuntimeError):
             ray.get(y)
+
+    compiled_dag.teardown()
+
+
+def test_multi_arg_exception_async(shutdown_only):
+    a = Actor.remote(0)
+    with InputNode() as i:
+        o1, o2 = a.return_two_but_raise_exception.bind(i)
+        dag = MultiOutputNode([o1, o2])
+
+    compiled_dag = dag.experimental_compile(enable_asyncio=True)
+
+    async def main():
+        for _ in range(3):
+            x, y = await compiled_dag.execute_async(1)
+            with pytest.raises(RuntimeError):
+                await x
+            with pytest.raises(RuntimeError):
+                await y
+
+    loop = get_or_create_event_loop()
+    loop.run_until_complete(main())
 
     compiled_dag.teardown()
 
