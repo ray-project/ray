@@ -102,9 +102,7 @@ def do_test_log_likelihood(
                 in_training=False,
             )
 
-            expected_logp = _get_expected_logp(
-                vars, obs_batch, a, layer_key, logp_func
-            )
+            expected_logp = _get_expected_logp(vars, obs_batch, a, layer_key, logp_func)
             check(logp, expected_logp[0], rtol=0.2)
         # Test all available actions for their logp values.
         else:

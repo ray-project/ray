@@ -80,7 +80,8 @@ class TestBC(unittest.TestCase):
 
         if not learnt:
             raise ValueError(
-                f"`BC` did not reach {min_reward} reward from expert offline data!"
+                f"`BC` did not reach {min_return_to_reach} reward from "
+                "expert offline data!"
             )
 
         algo.stop()
