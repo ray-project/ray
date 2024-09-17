@@ -461,7 +461,7 @@ void TaskEventBufferImpl::WriteExportData(
   for (const auto &task_attempt : agg_task_event_insertion_order) {
     auto it = agg_task_events.find(task_attempt);
     RAY_CHECK(it != agg_task_events.end());
-    RayExportEvent(it->second).SendEvent();
+    // RayExportEvent(it->second).SendEvent();
   }
 }
 

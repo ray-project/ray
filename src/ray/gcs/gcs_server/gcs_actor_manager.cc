@@ -247,29 +247,38 @@ void GcsActor::WriteActorExportEvent() const {
   if (!RayConfig::instance().enable_export_api_write()) {
     return;
   }
-  std::shared_ptr<rpc::ExportActorData> export_actor_data_ptr =
-      std::make_shared<rpc::ExportActorData>();
-
-  export_actor_data_ptr->set_actor_id(actor_table_data_->actor_id());
-  export_actor_data_ptr->set_job_id(actor_table_data_->job_id());
-  export_actor_data_ptr->set_state(ConvertActorStateToExport(actor_table_data_->state()));
-  export_actor_data_ptr->set_is_detached(actor_table_data_->is_detached());
-  export_actor_data_ptr->set_name(actor_table_data_->name());
-  export_actor_data_ptr->set_pid(actor_table_data_->pid());
-  export_actor_data_ptr->set_ray_namespace(actor_table_data_->ray_namespace());
-  export_actor_data_ptr->set_serialized_runtime_env(
-      actor_table_data_->serialized_runtime_env());
-  export_actor_data_ptr->set_class_name(actor_table_data_->class_name());
-  export_actor_data_ptr->mutable_death_cause()->CopyFrom(actor_table_data_->death_cause());
-  export_actor_data_ptr->mutable_required_resources()->insert(
-      actor_table_data_->required_resources().begin(),
-      actor_table_data_->required_resources().end());
-  export_actor_data_ptr->set_node_id(actor_table_data_->node_id());
-  export_actor_data_ptr->set_placement_group_id(actor_table_data_->placement_group_id());
-  export_actor_data_ptr->set_repr_name(actor_table_data_->repr_name());
-
-  RayExportEvent(export_actor_data_ptr).SendEvent();
+  RayExportEvent().SendActorEvent(actor_table_data_, actor_table_data_->state(), actor_table_data_->death_cause());
 }
+
+// void GcsActor::WriteActorExportEvent() const {
+//   /// Write actor_table_data_ as a export actor event if
+//   /// enable_export_api_write() is enabled.
+//   if (!RayConfig::instance().enable_export_api_write()) {
+//     return;
+//   }
+//   std::shared_ptr<rpc::ExportActorData> export_actor_data_ptr =
+//       std::make_shared<rpc::ExportActorData>();
+
+//   export_actor_data_ptr->set_actor_id(actor_table_data_->actor_id());
+//   export_actor_data_ptr->set_job_id(actor_table_data_->job_id());
+//   export_actor_data_ptr->set_state(ConvertActorStateToExport(actor_table_data_->state()));
+//   export_actor_data_ptr->set_is_detached(actor_table_data_->is_detached());
+//   export_actor_data_ptr->set_name(actor_table_data_->name());
+//   export_actor_data_ptr->set_pid(actor_table_data_->pid());
+//   export_actor_data_ptr->set_ray_namespace(actor_table_data_->ray_namespace());
+//   export_actor_data_ptr->set_serialized_runtime_env(
+//       actor_table_data_->serialized_runtime_env());
+//   export_actor_data_ptr->set_class_name(actor_table_data_->class_name());
+//   export_actor_data_ptr->mutable_death_cause()->CopyFrom(actor_table_data_->death_cause());
+//   export_actor_data_ptr->mutable_required_resources()->insert(
+//       actor_table_data_->required_resources().begin(),
+//       actor_table_data_->required_resources().end());
+//   export_actor_data_ptr->set_node_id(actor_table_data_->node_id());
+//   export_actor_data_ptr->set_placement_group_id(actor_table_data_->placement_group_id());
+//   export_actor_data_ptr->set_repr_name(actor_table_data_->repr_name());
+
+//   RayExportEvent(export_actor_data_ptr).SendEvent();
+// }
 
 rpc::TaskSpec *GcsActor::GetMutableTaskSpec() { return task_spec_.get(); }
 

@@ -66,7 +66,7 @@ void GcsNodeManager::WriteNodeExportEvent(rpc::GcsNodeInfo node_info) const {
     export_node_data_ptr->mutable_death_info()->set_reason(
         ConvertNodeDeathReasonToExport(node_info.death_info().reason()));
   }
-  RayExportEvent(export_node_data_ptr).SendEvent();
+  // RayExportEvent(export_node_data_ptr).SendEvent();
 }
 
 // Note: ServerCall will populate the cluster_id.

@@ -18,6 +18,7 @@
 
 #include <boost/asio.hpp>
 #include <boost/asio/ip/host_name.hpp>
+#include <boost/circular_buffer.hpp>
 #include <cmath>
 #include <cstring>
 #include <iomanip>
@@ -35,6 +36,7 @@
 #include "spdlog/spdlog.h"
 #include "src/ray/protobuf/event.pb.h"
 #include "src/ray/protobuf/export_api/export_event.pb.h"
+#include "src/ray/protobuf/gcs.pb.h"
 
 using json = nlohmann::json;
 
@@ -134,6 +136,8 @@ class LogEventReporter : public BaseEventReporter {
   std::string file_name_;
 
   std::shared_ptr<spdlog::logger> log_sink_;
+
+  friend class RayEventLog;
 };
 
 // store the reporters, add reporters and clean reporters
@@ -159,6 +163,9 @@ class EventManager final {
 
   void AddExportReporter(rpc::ExportEvent_SourceType source_type,
                          std::shared_ptr<LogEventReporter> reporter);
+  
+  absl::flat_hash_map<rpc::ExportEvent_SourceType, std::shared_ptr<LogEventReporter>>
+    &GetExportLogReporterMap();
 
   void ClearReporters();
 
@@ -326,52 +333,124 @@ using ExportEventDataPtr = std::variant<std::shared_ptr<rpc::ExportTaskEventData
                                         std::shared_ptr<rpc::ExportNodeData>,
                                         std::shared_ptr<rpc::ExportActorData>,
                                         std::shared_ptr<rpc::ExportDriverJobEventData>>;
+
 class RayExportEvent {
  public:
-  RayExportEvent(ExportEventDataPtr event_data_ptr) : event_data_ptr_(event_data_ptr) {}
+  // RayExportEvent(ExportEventDataPtr event_data_ptr) : event_data_ptr_(event_data_ptr) {}
+  RayExportEvent() {};
 
   ~RayExportEvent();
 
-  void SendEvent();
+  // void SendEvent();
+  void SendActorEvent(std::shared_ptr<rpc::ActorTableData> actor_table_data_ptr,
+                      rpc::ActorTableData::ActorState actor_state,
+                      ray::rpc::ActorDeathCause death_cause);
+                      
 
  private:
   RayExportEvent(const RayExportEvent &event) = delete;
 
   const RayExportEvent &operator=(const RayExportEvent &event) = delete;
 
- private:
-  ExportEventDataPtr event_data_ptr_;
+//  private:
+//   ExportEventDataPtr event_data_ptr_;
 };
 
-/// Ray Event initialization.
-///
-/// This function should be called when the main thread starts.
-/// Redundant calls in other thread don't take effect.
-/// \param source_types List of source types the current process can create events for. If
-/// there are multiple rpc::Event_SourceType source_types, the last one will be used as
-/// the source type for the RAY_EVENT macro.
-/// \param custom_fields The global custom fields. These are only set for
-/// rpc::Event_SourceType events.
-/// \param log_dir The log directory to generate event subdirectory.
-/// \param event_level The input event level. It should be one of "info","warning",
-/// "error" and "fatal". You can also use capital letters for the options above.
-/// \param emit_event_to_log_file if True, it will emit the event to the process log file
-/// (e.g., gcs_server.out). Otherwise, event will only be recorded to the event log file.
-/// \return void.
-void RayEventInit(const std::vector<SourceTypeVariant> source_types,
-                  const absl::flat_hash_map<std::string, std::string> &custom_fields,
-                  const std::string &log_dir,
-                  const std::string &event_level = "warning",
-                  bool emit_event_to_log_file = false);
+struct ActorData {
+  std::shared_ptr<rpc::ActorTableData> actor_table_data_ptr;
+  rpc::ActorTableData::ActorState actor_state;
+  ray::rpc::ActorDeathCause death_cause;
+};
 
-/// Logic called by RayEventInit. This function can be called multiple times,
-/// and has been separated out so RayEventInit can be called multiple times in
-/// tests.
-/// **Note**: This should only be called from tests.
-void RayEventInit_(const std::vector<SourceTypeVariant> source_types,
-                   const absl::flat_hash_map<std::string, std::string> &custom_fields,
-                   const std::string &log_dir,
-                   const std::string &event_level,
-                   bool emit_event_to_log_file);
+class RayEventLog final {
+ public:
+  static RayEventLog &Instance();
+  /// Ray Event initialization.
+  ///
+  /// This function should be called when the main thread starts.
+  /// Redundant calls in other thread don't take effect.
+  /// \param source_types List of source types the current process can create events for.
+  /// If there are multiple rpc::Event_SourceType source_types, the last one will be used
+  /// as the source type for the RAY_EVENT macro.
+  /// \param custom_fields The global custom fields. These are only set for
+  /// rpc::Event_SourceType events.
+  /// \param log_dir The log directory to generate event subdirectory.
+  /// \param event_level The input event level. It should be one of "info","warning",
+  /// "error" and "fatal". You can also use capital letters for the options above.
+  /// \param emit_event_to_log_file if True, it will emit the event to the process logfile
+  /// file (e.g., gcs_server.out). Otherwise, event will only be recorded to the event log
+  /// file.
+  /// \return void.
+  void Init(const std::vector<SourceTypeVariant> source_types,
+            const absl::flat_hash_map<std::string, std::string> &custom_fields,
+            const std::string &log_dir,
+            const std::string &event_level = "warning",
+            bool emit_event_to_log_file = false);
+  void StartPeriodicFlushThread();
+  void StopPeriodicFlushThread();
+
+ private:
+  /// Logic called by RayEventInit. This function can be called multiple times,
+  /// and has been separated out so RayEventInit can be called multiple times in
+  /// tests.
+  /// **Note**: This should only be called from tests.
+  void Init_(const std::vector<SourceTypeVariant> source_types,
+             const absl::flat_hash_map<std::string, std::string> &custom_fields,
+             const std::string &log_dir,
+             const std::string &event_level,
+             bool emit_event_to_log_file);
+  void PeriodicFlush();
+  void FlushExportEvents();
+
+  void AddActorDataToBuffer(const ActorData &actor_data);
+  void GetActorDataToWrite(std::vector<ActorData> *actor_data_to_write);
+  void PublishActorDataAsEvent(const ActorData &actor_data);
+
+  rpc::ExportActorData::ActorState ConvertActorStateToExport(
+      rpc::ActorTableData::ActorState actor_state) const {
+    switch (actor_state) {
+    case rpc::ActorTableData::DEPENDENCIES_UNREADY:
+      return rpc::ExportActorData::DEPENDENCIES_UNREADY;
+    case rpc::ActorTableData::PENDING_CREATION:
+      return rpc::ExportActorData::PENDING_CREATION;
+    case rpc::ActorTableData::ALIVE:
+      return rpc::ExportActorData::ALIVE;
+    case rpc::ActorTableData::RESTARTING:
+      return rpc::ExportActorData::RESTARTING;
+    case rpc::ActorTableData::DEAD:
+      return rpc::ExportActorData::DEAD;
+    default:
+      // Unknown rpc::ActorTableData::ActorState value
+      RAY_LOG(FATAL) << "Invalid value for rpc::ActorTableData::ActorState"
+                     << rpc::ActorTableData::ActorState_Name(actor_state);
+      return rpc::ExportActorData::DEAD;
+    }
+  }
+
+  /// Used to allow tests to flush export events when the
+  /// namespace of the test is different than RayEventLog.
+  friend void FlushExportEventsInTest(RayEventLog &obj) { obj.FlushExportEvents(); }
+
+  RayEventLog() : periodic_flush_thread_() {}
+  ~RayEventLog() { StopPeriodicFlushThread(); }
+
+  std::thread periodic_flush_thread_;
+  bool stop_periodic_flush_flag_;
+  std::mutex periodic_flush_mtx_;
+  std::condition_variable periodic_flush_cv_;
+
+  absl::Mutex actor_data_buffer_mutex_;
+  boost::circular_buffer<ActorData> actor_data_buffer_
+      ABSL_GUARDED_BY(actor_data_buffer_mutex_);
+
+  friend class RayExportEvent;
+
+  FRIEND_TEST(EventTest, TestExportEvent);
+  FRIEND_TEST(EventTest, TestRayEventInit);
+  FRIEND_TEST(GcsActorManagerTest, TestActorExportEvents);
+  FRIEND_TEST(GcsJobManagerTest, TestExportDriverJobEvents);
+  FRIEND_TEST(GcsNodeManagerExportAPITest, TestExportEventRegisterNode);
+  FRIEND_TEST(GcsNodeManagerExportAPITest, TestExportEventUnregisterNode);
+};
 
 }  // namespace ray

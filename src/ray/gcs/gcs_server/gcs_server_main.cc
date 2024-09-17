@@ -97,11 +97,12 @@ int main(int argc, char *argv[]) {
         ray::rpc::ExportEvent_SourceType::ExportEvent_SourceType_EXPORT_NODE,
         ray::rpc::ExportEvent_SourceType_EXPORT_ACTOR,
         ray::rpc::ExportEvent_SourceType::ExportEvent_SourceType_EXPORT_DRIVER_JOB};
-    ray::RayEventInit(source_types,
+    ray::RayEventLog::Instance().Init(source_types,
                       absl::flat_hash_map<std::string, std::string>(),
                       log_dir,
                       RayConfig::instance().event_level(),
                       RayConfig::instance().emit_event_to_log_file());
+    ray::RayEventLog::Instance().StartPeriodicFlushThread();
   }
 
   ray::gcs::GcsServerConfig gcs_server_config;
@@ -130,6 +131,7 @@ int main(int argc, char *argv[]) {
     ray::rpc::DrainServerCallExecutor();
     gcs_server.Stop();
     ray::stats::Shutdown();
+    ray::RayEventLog::Instance().StopPeriodicFlushThread();
   };
   boost::asio::signal_set signals(main_service);
 #ifdef _WIN32

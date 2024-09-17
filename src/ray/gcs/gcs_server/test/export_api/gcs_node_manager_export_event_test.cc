@@ -54,11 +54,11 @@ class GcsNodeManagerExportAPITest : public ::testing::Test {
     log_dir_ = GenerateLogDir();
     const std::vector<ray::SourceTypeVariant> source_types = {
         rpc::ExportEvent_SourceType::ExportEvent_SourceType_EXPORT_NODE};
-    RayEventInit_(source_types,
-                  absl::flat_hash_map<std::string, std::string>(),
-                  log_dir_,
-                  "warning",
-                  false);
+    // RayEventInit_(source_types,
+    //               absl::flat_hash_map<std::string, std::string>(),
+    //               log_dir_,
+    //               "warning",
+    //               false);
   }
 
   virtual ~GcsNodeManagerExportAPITest() {

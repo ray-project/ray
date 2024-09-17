@@ -225,6 +225,11 @@ void EventManager::AddExportReporter(rpc::ExportEvent_SourceType source_type,
   export_log_reporter_map_.emplace(source_type, reporter);
 }
 
+absl::flat_hash_map<rpc::ExportEvent_SourceType, std::shared_ptr<LogEventReporter>>
+    &EventManager::GetExportLogReporterMap() {
+  return export_log_reporter_map_;
+}
+
 void EventManager::ClearReporters() {
   reporter_map_.clear();
   export_log_reporter_map_.clear();
@@ -416,59 +421,93 @@ void RayEvent::SendMessage(const std::string &message) {
 ///
 RayExportEvent::~RayExportEvent() {}
 
-void RayExportEvent::SendEvent() {
-  if (EventManager::Instance().IsEmpty()) {
-    return;
-  }
+void RayExportEvent::SendActorEvent(std::shared_ptr<rpc::ActorTableData> actor_table_data_ptr,
+                    rpc::ActorTableData::ActorState actor_state,
+                    ray::rpc::ActorDeathCause death_cause){
+  ActorData actor_data = {actor_table_data_ptr, actor_state, death_cause};
+  ray::RayEventLog::Instance().AddActorDataToBuffer(actor_data);                   
+}
 
-  static const int kEventIDSize = 18;
-  std::string event_id;
-  std::string event_id_buffer = std::string(kEventIDSize, ' ');
-  FillRandom(&event_id_buffer);
-  event_id = StringToHex(event_id_buffer);
+// void RayExportEvent::SendEvent() {
+//   if (EventManager::Instance().IsEmpty()) {
+//     return;
+//   }
 
-  rpc::ExportEvent export_event;
-  export_event.set_event_id(event_id);
-  export_event.set_timestamp(current_sys_time_s());
+//   static const int kEventIDSize = 18;
+//   std::string event_id;
+//   std::string event_id_buffer = std::string(kEventIDSize, ' ');
+//   FillRandom(&event_id_buffer);
+//   event_id = StringToHex(event_id_buffer);
 
-  if (auto ptr_to_task_event_data_ptr =
-          std::get_if<std::shared_ptr<rpc::ExportTaskEventData>>(&event_data_ptr_)) {
-    export_event.mutable_task_event_data()->CopyFrom(*(*ptr_to_task_event_data_ptr));
-    export_event.set_source_type(
-        rpc::ExportEvent_SourceType::ExportEvent_SourceType_EXPORT_TASK);
-  } else if (auto ptr_to_node_event_data_ptr =
-                 std::get_if<std::shared_ptr<rpc::ExportNodeData>>(&event_data_ptr_)) {
-    export_event.mutable_node_event_data()->CopyFrom(*(*ptr_to_node_event_data_ptr));
-    export_event.set_source_type(
-        rpc::ExportEvent_SourceType::ExportEvent_SourceType_EXPORT_NODE);
-  } else if (auto ptr_to_actor_event_data_ptr =
-                 std::get_if<std::shared_ptr<rpc::ExportActorData>>(&event_data_ptr_)) {
-    export_event.mutable_actor_event_data()->CopyFrom(*(*ptr_to_actor_event_data_ptr));
-    export_event.set_source_type(
-        rpc::ExportEvent_SourceType::ExportEvent_SourceType_EXPORT_ACTOR);
-  } else if (auto ptr_to_driver_job_event_data_ptr =
-                 std::get_if<std::shared_ptr<rpc::ExportDriverJobEventData>>(
-                     &event_data_ptr_)) {
-    export_event.mutable_driver_job_event_data()->CopyFrom(
-        *(*ptr_to_driver_job_event_data_ptr));
-    export_event.set_source_type(
-        rpc::ExportEvent_SourceType::ExportEvent_SourceType_EXPORT_DRIVER_JOB);
-  } else {
-    // This shouldn't be possible because event_data_ptr_ is typed as ExportEventDataPtr
-    RAY_LOG(FATAL) << "Invalid event_data type.";
-    return;
-  }
+//   rpc::ExportEvent export_event;
+//   export_event.set_event_id(event_id);
+//   export_event.set_timestamp(current_sys_time_s());
 
-  EventManager::Instance().PublishExportEvent(export_event);
+//   if (auto ptr_to_task_event_data_ptr =
+//           std::get_if<std::shared_ptr<rpc::ExportTaskEventData>>(&event_data_ptr_)) {
+//     export_event.mutable_task_event_data()->CopyFrom(*(*ptr_to_task_event_data_ptr));
+//     export_event.set_source_type(
+//         rpc::ExportEvent_SourceType::ExportEvent_SourceType_EXPORT_TASK);
+//   } else if (auto ptr_to_node_event_data_ptr =
+//                  std::get_if<std::shared_ptr<rpc::ExportNodeData>>(&event_data_ptr_)) {
+//     export_event.mutable_node_event_data()->CopyFrom(*(*ptr_to_node_event_data_ptr));
+//     export_event.set_source_type(
+//         rpc::ExportEvent_SourceType::ExportEvent_SourceType_EXPORT_NODE);
+//   } else if (auto ptr_to_actor_event_data_ptr =
+//                  std::get_if<std::shared_ptr<rpc::ExportActorData>>(&event_data_ptr_)) {
+//     export_event.mutable_actor_event_data()->CopyFrom(*(*ptr_to_actor_event_data_ptr));
+//     export_event.set_source_type(
+//         rpc::ExportEvent_SourceType::ExportEvent_SourceType_EXPORT_ACTOR);
+//   } else if (auto ptr_to_driver_job_event_data_ptr =
+//                  std::get_if<std::shared_ptr<rpc::ExportDriverJobEventData>>(
+//                      &event_data_ptr_)) {
+//     export_event.mutable_driver_job_event_data()->CopyFrom(
+//         *(*ptr_to_driver_job_event_data_ptr));
+//     export_event.set_source_type(
+//         rpc::ExportEvent_SourceType::ExportEvent_SourceType_EXPORT_DRIVER_JOB);
+//   } else {
+//     // This shouldn't be possible because event_data_ptr_ is typed as ExportEventDataPtr
+//     RAY_LOG(FATAL) << "Invalid event_data type.";
+//     return;
+//   }
+
+//   EventManager::Instance().PublishExportEvent(export_event);
+// }
+
+///
+/// RayEventLog
+///
+
+RayEventLog &RayEventLog::Instance() {
+  static RayEventLog instance_;
+  return instance_;
 }
 
 static absl::once_flag init_once_;
 
-void RayEventInit_(const std::vector<SourceTypeVariant> source_types,
-                   const absl::flat_hash_map<std::string, std::string> &custom_fields,
-                   const std::string &log_dir,
-                   const std::string &event_level,
-                   bool emit_event_to_log_file) {
+void RayEventLog::Init(const std::vector<SourceTypeVariant> source_types,
+                       const absl::flat_hash_map<std::string, std::string> &custom_fields,
+                       const std::string &log_dir,
+                       const std::string &event_level,
+                       bool emit_event_to_log_file) {
+  absl::call_once(
+      init_once_,
+      [this,
+       &source_types,
+       &custom_fields,
+       &log_dir,
+       &event_level,
+       emit_event_to_log_file]() {
+        Init_(source_types, custom_fields, log_dir, event_level, emit_event_to_log_file);
+      });
+}
+
+void RayEventLog::Init_(
+    const std::vector<SourceTypeVariant> source_types,
+    const absl::flat_hash_map<std::string, std::string> &custom_fields,
+    const std::string &log_dir,
+    const std::string &event_level,
+    bool emit_event_to_log_file) {
   for (const auto &source_type : source_types) {
     std::string source_type_name = "";
     auto event_dir = std::filesystem::path(log_dir) / std::filesystem::path("events");
@@ -491,19 +530,108 @@ void RayEventInit_(const std::vector<SourceTypeVariant> source_types,
   }
   SetEventLevel(event_level);
   SetEmitEventToLogFile(emit_event_to_log_file);
+
+  absl::MutexLock lock(&actor_data_buffer_mutex_);
+  actor_data_buffer_.set_capacity(1000);
+}
+void RayEventLog::StartPeriodicFlushThread() {
+  stop_periodic_flush_flag_ = false;
+  periodic_flush_thread_ = std::thread(&RayEventLog::PeriodicFlush, this);
 }
 
-void RayEventInit(const std::vector<SourceTypeVariant> source_types,
-                  const absl::flat_hash_map<std::string, std::string> &custom_fields,
-                  const std::string &log_dir,
-                  const std::string &event_level,
-                  bool emit_event_to_log_file) {
-  absl::call_once(
-      init_once_,
-      [&source_types, &custom_fields, &log_dir, &event_level, emit_event_to_log_file]() {
-        RayEventInit_(
-            source_types, custom_fields, log_dir, event_level, emit_event_to_log_file);
-      });
+void RayEventLog::PeriodicFlush() {
+  std::unique_lock<std::mutex> lock(periodic_flush_mtx_);
+  while (!stop_periodic_flush_flag_) {
+    periodic_flush_cv_.wait_for(lock, std::chrono::seconds(5));
+    FlushExportEvents();
+  }
+}
+
+// void RayEventLog::FlushExportEvents() {
+//   absl::flat_hash_map<rpc::ExportEvent_SourceType, std::shared_ptr<LogEventReporter>>
+//       &export_log_reporter_map = ray::EventManager::Instance().GetExportLogReporterMap();
+//   for (const auto &element : export_log_reporter_map) {
+//     (element.second)->Flush();
+//   }
+// }
+
+void RayEventLog::FlushExportEvents() {
+  std::vector<ActorData> actor_data_to_write;
+  GetActorDataToWrite(&actor_data_to_write);
+  for (const auto &actor_data : actor_data_to_write) {
+    PublishActorDataAsEvent(actor_data);
+  }
+}
+
+void RayEventLog::StopPeriodicFlushThread() {
+  if (periodic_flush_thread_.joinable()) {
+    {
+      std::lock_guard<std::mutex> lock(periodic_flush_mtx_);
+      stop_periodic_flush_flag_ = true;
+    }
+    periodic_flush_cv_.notify_one();
+    periodic_flush_thread_.join();
+  }
+}
+
+void RayEventLog::AddActorDataToBuffer(const ActorData &actor_data){
+  absl::MutexLock lock(&actor_data_buffer_mutex_);
+  if (actor_data_buffer_.full()) {
+    // const auto &to_evict = actor_data_buffer_.front();
+    std::cout << "DEBUG Dropping actor export event\n";
+  } 
+  actor_data_buffer_.push_back(actor_data);        
+}
+
+void RayEventLog::GetActorDataToWrite(std::vector<ActorData> *actor_data_to_write){
+  absl::MutexLock lock(&actor_data_buffer_mutex_);
+  size_t batch_size = 1000;
+  size_t num_to_write = std::min(
+      static_cast<size_t>(batch_size),
+      static_cast<size_t>(actor_data_buffer_.size()));
+  actor_data_to_write->insert(
+      actor_data_to_write->end(),
+      std::make_move_iterator(actor_data_buffer_.begin()),
+      std::make_move_iterator(actor_data_buffer_.begin() + num_to_write));
+  actor_data_buffer_.erase(actor_data_buffer_.begin(),
+                           actor_data_buffer_.begin() + num_to_write);
+}
+
+void RayEventLog::PublishActorDataAsEvent(const ActorData &actor_data){
+  std::shared_ptr<rpc::ExportActorData> export_actor_data_ptr =
+      std::make_shared<rpc::ExportActorData>();
+
+  export_actor_data_ptr->set_actor_id(actor_data.actor_table_data_ptr->actor_id());
+  export_actor_data_ptr->set_job_id(actor_data.actor_table_data_ptr->job_id());
+  export_actor_data_ptr->set_state(ConvertActorStateToExport(actor_data.actor_state));
+  export_actor_data_ptr->set_is_detached(actor_data.actor_table_data_ptr->is_detached());
+  export_actor_data_ptr->set_name(actor_data.actor_table_data_ptr->name());
+  export_actor_data_ptr->set_pid(actor_data.actor_table_data_ptr->pid());
+  export_actor_data_ptr->set_ray_namespace(actor_data.actor_table_data_ptr->ray_namespace());
+  export_actor_data_ptr->set_serialized_runtime_env(
+      actor_data.actor_table_data_ptr->serialized_runtime_env());
+  export_actor_data_ptr->set_class_name(actor_data.actor_table_data_ptr->class_name());
+  export_actor_data_ptr->mutable_death_cause()->CopyFrom(actor_data.death_cause);
+  export_actor_data_ptr->mutable_required_resources()->insert(
+      actor_data.actor_table_data_ptr->required_resources().begin(),
+      actor_data.actor_table_data_ptr->required_resources().end());
+  export_actor_data_ptr->set_node_id(actor_data.actor_table_data_ptr->node_id());
+  export_actor_data_ptr->set_placement_group_id(actor_data.actor_table_data_ptr->placement_group_id());
+  export_actor_data_ptr->set_repr_name(actor_data.actor_table_data_ptr->repr_name());
+
+  static const int kEventIDSize = 18;
+  std::string event_id;
+  std::string event_id_buffer = std::string(kEventIDSize, ' ');
+  FillRandom(&event_id_buffer);
+  event_id = StringToHex(event_id_buffer);
+
+  rpc::ExportEvent export_event;
+  export_event.set_event_id(event_id);
+  export_event.set_timestamp(current_sys_time_s());
+  export_event.mutable_actor_event_data()->CopyFrom(*export_actor_data_ptr);
+  export_event.set_source_type(rpc::ExportEvent_SourceType::ExportEvent_SourceType_EXPORT_ACTOR);
+
+  EventManager::Instance().PublishExportEvent(export_event);
 }
 
 }  // namespace ray

@@ -434,7 +434,7 @@ int main(int argc, char *argv[]) {
         if (RayConfig::instance().event_log_reporter_enabled() && !log_dir.empty()) {
           const std::vector<ray::SourceTypeVariant> source_types = {
               ray::rpc::Event_SourceType::Event_SourceType_RAYLET};
-          ray::RayEventInit(source_types,
+          ray::RayEventLog::Instance().Init(source_types,
                             {{"node_id", raylet->GetNodeId().Hex()}},
                             log_dir,
                             RayConfig::instance().event_level(),
