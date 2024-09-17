@@ -88,6 +88,7 @@ class GcsActor {
     actor_table_data_.set_job_id(task_spec.job_id());
     actor_table_data_.set_max_restarts(actor_creation_task_spec.max_actor_restarts());
     actor_table_data_.set_num_restarts(0);
+    actor_table_data_.set_num_restarts_due_to_lineage_reconstruction(0);
 
     actor_table_data_.mutable_function_descriptor()->CopyFrom(
         task_spec.function_descriptor());
@@ -254,6 +255,7 @@ class GcsActor {
 };
 
 using RegisterActorCallback = std::function<void(std::shared_ptr<GcsActor>)>;
+using RestartActorCallback = std::function<void(std::shared_ptr<GcsActor>)>;
 using CreateActorCallback = std::function<void(
     std::shared_ptr<GcsActor>, const rpc::PushTaskReply &reply, const Status &status)>;
 
@@ -263,10 +265,11 @@ using CreateActorCallback = std::function<void(
 ///                                                        3
 ///  0                       1                   2        --->
 /// --->DEPENDENCIES_UNREADY--->PENDING_CREATION--->ALIVE      RESTARTING
-///             |                      |              |   <---      |
-///           8 |                    7 |            6 |     4       | 5
+///             |                      |              |   <---      ^
+///           8 |                    7 |            6 |     4       | 9
 ///             |                      v              |             |
 ///              ------------------> DEAD <-------------------------
+///                                          5
 ///
 /// 0: When GCS receives a `RegisterActor` request from core worker, it will add an actor
 /// to `registered_actors_` and `unresolved_actors_`.
@@ -300,6 +303,7 @@ using CreateActorCallback = std::function<void(
 /// be created. If the actor is non-detached, when GCS detects that its owner is dead, it
 /// will update its state to `DEAD` and remove it from `registered_actors_` and
 /// `created_actors_`.
+/// 9: A dead actor caused by out-of-scope is lineage reconstructed.
 class GcsActorManager : public rpc::ActorInfoHandler {
  public:
   /// Create a GcsActorManager
@@ -321,6 +325,10 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   void HandleRegisterActor(rpc::RegisterActorRequest request,
                            rpc::RegisterActorReply *reply,
                            rpc::SendReplyCallback send_reply_callback) override;
+
+  void HandleRestartActor(rpc::RestartActorRequest request,
+                          rpc::RestartActorReply *reply,
+                          rpc::SendReplyCallback send_reply_callback) override;
 
   void HandleCreateActor(rpc::CreateActorRequest request,
                          rpc::CreateActorReply *reply,
@@ -345,6 +353,10 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   void HandleKillActorViaGcs(rpc::KillActorViaGcsRequest request,
                              rpc::KillActorViaGcsReply *reply,
                              rpc::SendReplyCallback send_reply_callback) override;
+
+  void HandleReportActorOutOfScope(rpc::ReportActorOutOfScopeRequest request,
+                                   rpc::ReportActorOutOfScopeReply *reply,
+                                   rpc::SendReplyCallback send_reply_callback) override;
 
   /// Register actor asynchronously.
   ///
@@ -498,9 +510,9 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   };
 
   /// Poll an actor's owner so that we will receive a notification when the
-  /// actor has gone out of scope, or the owner has died. This should not be
+  /// actor has no references, or the owner has died. This should not be
   /// called for detached actors.
-  void PollOwnerForActorOutOfScope(const std::shared_ptr<GcsActor> &actor);
+  void PollOwnerForActorRefDeleted(const std::shared_ptr<GcsActor> &actor);
 
   /// Destroy an actor that has gone out of scope. This cleans up all local
   /// state associated with the actor and marks the actor as dead. For owned
@@ -512,9 +524,11 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   /// \param[in] actor_id The actor id to destroy.
   /// \param[in] death_cause The reason why actor is destroyed.
   /// \param[in] force_kill Whether destory the actor forcelly.
+  /// \param[in] done_callback Called when destroy finishes.
   void DestroyActor(const ActorID &actor_id,
                     const rpc::ActorDeathCause &death_cause,
-                    bool force_kill = true);
+                    bool force_kill = true,
+                    std::function<void()> done_callback = nullptr);
 
   /// Get unresolved actors that were submitted from the specified node.
   absl::flat_hash_map<WorkerID, absl::flat_hash_set<ActorID>>
@@ -532,9 +546,10 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   /// again.
   /// \param death_cause Context about why this actor is dead. Should only be set when
   /// need_reschedule=false.
-  void ReconstructActor(const ActorID &actor_id,
-                        bool need_reschedule,
-                        const rpc::ActorDeathCause &death_cause);
+  void RestartActor(const ActorID &actor_id,
+                    bool need_reschedule,
+                    const rpc::ActorDeathCause &death_cause,
+                    std::function<void()> done_callback = nullptr);
 
   /// Remove the specified actor from `unresolved_actors_`.
   ///
@@ -574,6 +589,7 @@ class GcsActorManager : public rpc::ActorInfoHandler {
     actor_delta->mutable_death_cause()->CopyFrom(actor.death_cause());
     actor_delta->mutable_address()->CopyFrom(actor.address());
     actor_delta->set_num_restarts(actor.num_restarts());
+    actor_delta->set_max_restarts(actor.max_restarts());
     actor_delta->set_timestamp(actor.timestamp());
     actor_delta->set_pid(actor.pid());
     actor_delta->set_start_time(actor.start_time());
@@ -632,6 +648,11 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   /// messages from a driver/worker caused by some network problems.
   absl::flat_hash_map<ActorID, std::vector<RegisterActorCallback>>
       actor_to_register_callbacks_;
+  /// Callbacks of pending `RestartActor` requests.
+  /// Maps actor ID to actor restart callbacks, which is used to filter duplicated
+  /// messages from a driver/worker caused by some network problems.
+  absl::flat_hash_map<ActorID, std::vector<RestartActorCallback>>
+      actor_to_restart_callbacks_;
   /// Callbacks of actor creation requests.
   /// Maps actor ID to actor creation callbacks, which is used to filter duplicated
   /// messages come from a Driver/Worker caused by some network problems.

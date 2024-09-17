@@ -680,6 +680,13 @@ def test_per_func_name_stats(shutdown_only):
     ray.get(a.__ray_ready__.remote())
     ray.get(b.__ray_ready__.remote())
 
+    # Run a short lived task to make sure there's a ray::IDLE component.
+    @ray.remote
+    def do_nothing():
+        pass
+
+    ray.get(do_nothing.remote())
+
     def verify_components():
         metrics = raw_metrics(addr)
         metric_names = set(metrics.keys())

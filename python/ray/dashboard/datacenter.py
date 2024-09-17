@@ -87,8 +87,7 @@ class DataOrganizer:
                 node_stats,
             )
             for worker in workers:
-                stats = worker.get("coreWorkerStats", {})
-                if stats:
+                for stats in worker.get("coreWorkerStats", []):
                     worker_id = stats["workerId"]
                     core_worker_stats[worker_id] = stats
             node_workers[node_id] = workers
@@ -113,7 +112,9 @@ class DataOrganizer:
         for worker in node_physical_stats.get("workers", []):
             worker = dict(worker)
             pid = worker["pid"]
-            worker["coreWorkerStats"] = pid_to_worker_stats.get(pid, {})
+            core_worker_stats = pid_to_worker_stats.get(pid)
+            # Empty list means core worker stats is not available.
+            worker["coreWorkerStats"] = [core_worker_stats] if core_worker_stats else []
             worker["language"] = pid_to_language.get(
                 pid, dashboard_consts.DEFAULT_LANGUAGE
             )
@@ -146,8 +147,6 @@ class DataOrganizer:
         # Merge node stats to node physical stats under raylet
         node_info["raylet"] = node_stats
         node_info["raylet"].update(ray_stats)
-
-        node_info["status"] = node["stateSnapshot"]["state"]
 
         # Merge GcsNodeInfo to node physical stats
         node_info["raylet"].update(node)

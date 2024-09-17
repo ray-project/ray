@@ -829,6 +829,15 @@ class ObjectRefStreamEndOfStreamError(RayError):
     pass
 
 
+@DeveloperAPI
+class OufOfBandObjectRefSerializationException(RayError):
+    """Raised when an `ray.ObjectRef` is out of band serialized by
+    `ray.cloudpickle`. It is an anti pattern.
+    """
+
+    pass
+
+
 @PublicAPI(stability="alpha")
 class RayChannelError(RaySystemError):
     """Indicates that Ray encountered a system error related
@@ -841,6 +850,13 @@ class RayChannelError(RaySystemError):
 @PublicAPI(stability="alpha")
 class RayChannelTimeoutError(RayChannelError, TimeoutError):
     """Raised when the accelerated DAG channel operation times out."""
+
+    pass
+
+
+@PublicAPI(stability="alpha")
+class RayAdagCapacityExceeded(RaySystemError):
+    """Raised when the accelerated DAG channel's buffer is at max capacity"""
 
     pass
 
@@ -872,4 +888,6 @@ RAY_EXCEPTION_TYPES = [
     ActorUnavailableError,
     RayChannelError,
     RayChannelTimeoutError,
+    OufOfBandObjectRefSerializationException,
+    RayAdagCapacityExceeded,
 ]

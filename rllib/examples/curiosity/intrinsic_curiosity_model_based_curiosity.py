@@ -17,7 +17,6 @@ Therefore, if a state transition was unexpected, the agent becomes
 exploration in sparse rewards environments.
 
 For more details, see here:
-
 [1] Curiosity-driven Exploration by Self-supervised Prediction
 Pathak, Agrawal, Efros, and Darrell - UC Berkeley - ICML 2017.
 https://arxiv.org/pdf/1705.05363.pdf
@@ -74,21 +73,21 @@ Policy NOT using curiosity:
 """
 from collections import defaultdict
 
+from ray import tune
+from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
 from ray.rllib.connectors.env_to_module import FlattenObservations
-from ray.rllib.examples.learners.classes.curiosity_dqn_torch_learner import (
-    DQNConfigWithCuriosity,
+from ray.rllib.examples.learners.classes.intrinsic_curiosity_learners import (
     DQNTorchLearnerWithCuriosity,
+    PPOTorchLearnerWithCuriosity,
 )
 from ray.rllib.core import DEFAULT_MODULE_ID
 from ray.rllib.core.rl_module.multi_rl_module import MultiRLModuleSpec
 from ray.rllib.core.rl_module.rl_module import RLModuleSpec
-from ray.rllib.examples.learners.classes.curiosity_ppo_torch_learner import (
-    PPOConfigWithCuriosity,
-    PPOTorchLearnerWithCuriosity,
+from ray.rllib.examples.learners.classes.intrinsic_curiosity_learners import (
+    ICM_MODULE_ID,
 )
 from ray.rllib.examples.rl_modules.classes.intrinsic_curiosity_model_rlm import (
-    ICM_MODULE_ID,
     IntrinsicCuriosityModel,
 )
 from ray.rllib.utils.metrics import (
@@ -188,12 +187,9 @@ if __name__ == "__main__":
             "Curiosity example only implemented for either DQN or PPO! See the "
         )
 
-    config_class = (
-        PPOConfigWithCuriosity if args.algo == "PPO" else DQNConfigWithCuriosity
-    )
-
     base_config = (
-        config_class()
+        tune.registry.get_trainable_cls(args.algo)
+        .get_default_config()
         .environment(
             "FrozenLake-v1",
             env_config={
@@ -218,17 +214,22 @@ if __name__ == "__main__":
                 "max_episode_steps": 22,
             },
         )
-        # Use our custom `curiosity` method to set up the PPO/ICM-Learner.
-        .curiosity(
-            # Intrinsic reward coefficient.
-            curiosity_eta=0.05,
-            # Forward loss weight (vs inverse dynamics loss, which will be `1. - beta`).
-            # curiosity_beta=0.2,
-        )
         .callbacks(MeasureMaxDistanceToStart)
         .env_runners(
             num_envs_per_env_runner=5 if args.algo == "PPO" else 1,
             env_to_module_connector=lambda env: FlattenObservations(),
+        )
+        .training(
+            learner_config_dict={
+                # Intrinsic reward coefficient.
+                "intrinsic_reward_coeff": 0.05,
+                # Forward loss weight (vs inverse dynamics loss). Total ICM loss is:
+                # L(total ICM) = (
+                #     `forward_loss_weight` * L(forward)
+                #     + (1.0 - `forward_loss_weight`) * L(inverse_dyn)
+                # )
+                "forward_loss_weight": 0.2,
+            }
         )
         .rl_module(
             rl_module_spec=MultiRLModuleSpec(
@@ -262,7 +263,7 @@ if __name__ == "__main__":
             ),
             # Use a different learning rate for training the ICM.
             algorithm_config_overrides_per_module={
-                ICM_MODULE_ID: config_class.overrides(lr=0.0005)
+                ICM_MODULE_ID: AlgorithmConfig.overrides(lr=0.0005)
             },
         )
     )
@@ -270,7 +271,7 @@ if __name__ == "__main__":
     # Set PPO-specific hyper-parameters.
     if args.algo == "PPO":
         base_config.training(
-            num_sgd_iter=6,
+            num_epochs=6,
             # Plug in the correct Learner class.
             learner_class=PPOTorchLearnerWithCuriosity,
             train_batch_size_per_learner=2000,
