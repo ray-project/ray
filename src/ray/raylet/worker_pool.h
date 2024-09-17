@@ -595,8 +595,7 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   /// (due to worker process crash or any other reasons), remove them
   /// from `worker_processes`. Otherwise if we'll mistakenly
   /// think there are unregistered workers, and won't start new workers.
-  void MonitorStartingWorkerProcess(const Process &proc,
-                                    StartupToken proc_startup_token,
+  void MonitorStartingWorkerProcess(StartupToken proc_startup_token,
                                     const Language &language,
                                     rpc::WorkerType worker_type);
 

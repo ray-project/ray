@@ -506,8 +506,7 @@ std::tuple<Process, StartupToken> WorkerPool::StartWorkerProcess(
   if (!IsIOWorkerType(worker_type)) {
     AdjustWorkerOomScore(proc.GetId());
   }
-  MonitorStartingWorkerProcess(
-      proc, worker_startup_token_counter_, language, worker_type);
+  MonitorStartingWorkerProcess(worker_startup_token_counter_, language, worker_type);
   AddWorkerProcess(state, worker_type, proc, start, runtime_env_info, dynamic_options);
   StartupToken worker_startup_token = worker_startup_token_counter_;
   update_worker_startup_token_counter();
@@ -539,8 +538,7 @@ void WorkerPool::AdjustWorkerOomScore(pid_t pid) const {
 #endif
 }
 
-void WorkerPool::MonitorStartingWorkerProcess(const Process &proc,
-                                              StartupToken proc_startup_token,
+void WorkerPool::MonitorStartingWorkerProcess(StartupToken proc_startup_token,
                                               const Language &language,
                                               const rpc::WorkerType worker_type) {
   auto timer = std::make_shared<boost::asio::deadline_timer>(
@@ -548,7 +546,7 @@ void WorkerPool::MonitorStartingWorkerProcess(const Process &proc,
       boost::posix_time::seconds(
           RayConfig::instance().worker_register_timeout_seconds()));
   // Capture timer in lambda to copy it once, so that it can avoid destructing timer.
-  timer->async_wait([timer, language, proc = proc, proc_startup_token, worker_type, this](
+  timer->async_wait([timer, language, proc_startup_token, worker_type, this](
                         const boost::system::error_code e) mutable {
     // check the error code.
     auto &state = this->GetStateForLanguage(language);
@@ -557,14 +555,14 @@ void WorkerPool::MonitorStartingWorkerProcess(const Process &proc,
     auto it = state.worker_processes.find(proc_startup_token);
     if (it != state.worker_processes.end() && it->second.is_pending_registration) {
       RAY_LOG(ERROR)
-          << "Some workers of the worker process(" << proc.GetId()
+          << "Some workers of the worker process(" << it->second.proc.GetId()
           << ") have not registered within the timeout. "
-          << (proc.IsAlive()
+          << (it->second.proc.IsAlive()
                   ? "The process is still alive, probably it's hanging during start."
                   : "The process is dead, probably it crashed during start.");
 
-      if (proc.IsAlive()) {
-        proc.Kill();
+      if (it->second.proc.IsAlive()) {
+        it->second.proc.Kill();
       }
 
       process_failed_pending_registration_++;
@@ -1225,7 +1223,7 @@ void WorkerPool::PopWorkerInner(
     if (status == PopWorkerStatus::OK) {
       RAY_CHECK(proc.IsValid());
       WarnAboutSize();
-      state.pending_registration_requests.emplace_back(std::move(pop_worker_request));
+      state.pending_registration_requests.emplace_back(pop_worker_request);
       MonitorPopWorkerRequestForRegistration(pop_worker_request);
     } else if (status == PopWorkerStatus::TooManyStartingWorkerProcesses) {
       // TODO(jjyao) As an optimization, we don't need to delete the runtime env
