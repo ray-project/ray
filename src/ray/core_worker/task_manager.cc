@@ -17,6 +17,7 @@
 #include "ray/common/buffer.h"
 #include "ray/common/common_protocol.h"
 #include "ray/common/constants.h"
+#include "ray/core_worker/common.h"
 #include "ray/gcs/pb_util.h"
 #include "ray/util/exponential_backoff.h"
 #include "ray/util/util.h"
@@ -303,7 +304,6 @@ std::vector<rpc::ObjectReference> TaskManager::AddPendingTask(
 bool TaskManager::ResubmitTask(const TaskID &task_id, std::vector<ObjectID> *task_deps) {
   TaskSpecification spec;
   bool resubmit = false;
-  std::vector<ObjectID> return_ids;
   {
     absl::MutexLock lock(&mu_);
     auto it = submissible_tasks_.find(task_id);
@@ -330,10 +330,6 @@ bool TaskManager::ResubmitTask(const TaskID &task_id, std::vector<ObjectID> *tas
         RAY_CHECK(it->second.num_retries_left == -1);
       }
       spec = it->second.spec;
-
-      for (const auto &return_id : it->second.reconstructable_return_ids) {
-        return_ids.push_back(return_id);
-      }
     }
   }
 
@@ -349,7 +345,7 @@ bool TaskManager::ResubmitTask(const TaskID &task_id, std::vector<ObjectID> *tas
       }
     }
 
-    reference_counter_->UpdateResubmittedTaskReferences(return_ids, *task_deps);
+    reference_counter_->UpdateResubmittedTaskReferences(*task_deps);
 
     for (const auto &task_dep : *task_deps) {
       bool was_freed = reference_counter_->TryMarkFreedObjectInUseAgain(task_dep);
@@ -366,8 +362,7 @@ bool TaskManager::ResubmitTask(const TaskID &task_id, std::vector<ObjectID> *tas
     }
     if (spec.IsActorTask()) {
       const auto actor_creation_return_id = spec.ActorCreationDummyObjectId();
-      reference_counter_->UpdateResubmittedTaskReferences(return_ids,
-                                                          {actor_creation_return_id});
+      reference_counter_->UpdateResubmittedTaskReferences({actor_creation_return_id});
     }
 
     RAY_LOG(INFO) << "Resubmitting task that produced lost plasma object, attempt #"
@@ -706,7 +701,7 @@ bool TaskManager::HandleReportGeneratorItemReturns(
       num_objects_written += 1;
     }
     // When an object is reported, the object is ready to be fetched.
-    reference_counter_->UpdateObjectReady(object_id);
+    reference_counter_->UpdateObjectPendingCreation(object_id, false);
     HandleTaskReturn(object_id,
                      return_object,
                      NodeID::FromBinary(request.worker_addr().raylet_id()),
@@ -1241,6 +1236,13 @@ int64_t TaskManager::RemoveLineageReference(const ObjectID &object_id,
       }
     }
 
+    if (it->second.spec.IsActorTask()) {
+      // We need to decrement the actor lineage ref count here
+      // since it's incremented during TaskManager::AddPendingTask.
+      const auto actor_creation_return_id = it->second.spec.ActorCreationDummyObjectId();
+      released_objects->push_back(actor_creation_return_id);
+    }
+
     total_lineage_footprint_bytes_ -= it->second.lineage_footprint_bytes;
     // The task has finished and none of the return IDs are in scope anymore,
     // so it is safe to remove the task spec.
@@ -1388,9 +1390,10 @@ void TaskManager::MarkDependenciesResolved(const TaskID &task_id) {
   if (it == submissible_tasks_.end()) {
     return;
   }
-  if (it->second.GetStatus() == rpc::TaskStatus::PENDING_ARGS_AVAIL) {
-    SetTaskStatus(it->second, rpc::TaskStatus::PENDING_NODE_ASSIGNMENT);
-  }
+
+  RAY_CHECK(it->second.GetStatus() == rpc::TaskStatus::PENDING_ARGS_AVAIL)
+      << ", task ID = " << it->first << ", status = " << it->second.GetStatus();
+  SetTaskStatus(it->second, rpc::TaskStatus::PENDING_NODE_ASSIGNMENT);
 }
 
 void TaskManager::MarkTaskWaitingForExecution(const TaskID &task_id,
@@ -1451,12 +1454,12 @@ void TaskManager::MarkTaskRetryOnFailed(TaskEntry &task_entry,
   task_entry.MarkRetryOnFailed();
 
   // Mark the new status and also include task spec info for the new attempt.
-  task_entry.SetStatus(rpc::TaskStatus::PENDING_NODE_ASSIGNMENT);
+  task_entry.SetStatus(rpc::TaskStatus::PENDING_ARGS_AVAIL);
   RAY_UNUSED(RecordTaskStatusEventIfNeeded(task_entry.spec.TaskId(),
                                            task_entry.spec.JobId(),
                                            task_entry.spec.AttemptNumber() + 1,
                                            task_entry.spec,
-                                           rpc::TaskStatus::PENDING_NODE_ASSIGNMENT,
+                                           rpc::TaskStatus::PENDING_ARGS_AVAIL,
                                            /* include_task_info */ true));
 }
 
@@ -1473,6 +1476,37 @@ void TaskManager::SetTaskStatus(
       status,
       /* include_task_info */ false,
       worker::TaskStatusEvent::TaskStateUpdate(error_info)));
+}
+
+std::unordered_map<rpc::LineageReconstructionTask, uint64_t>
+TaskManager::GetOngoingLineageReconstructionTasks() const {
+  absl::MutexLock lock(&mu_);
+  std::unordered_map<rpc::LineageReconstructionTask, uint64_t> result;
+  for (const auto &task_it : submissible_tasks_) {
+    const auto &task_entry = task_it.second;
+    if (!task_entry.IsPending()) {
+      continue;
+    }
+
+    if (task_entry.num_successful_executions == 0) {
+      // Not lineage reconstruction task
+      continue;
+    }
+
+    rpc::LineageReconstructionTask task;
+    task.set_name(task_entry.spec.GetName());
+    auto resources = task_entry.spec.GetRequiredResources().GetResourceUnorderedMap();
+    task.mutable_resources()->insert(resources.begin(), resources.end());
+    task.set_status(task_entry.GetStatus());
+
+    if (result.find(task) != result.end()) {
+      result[task] += 1;
+    } else {
+      result[task] = 1;
+    }
+  }
+
+  return result;
 }
 
 void TaskManager::FillTaskInfo(rpc::GetCoreWorkerStatsReply *reply,
@@ -1523,6 +1557,7 @@ void TaskManager::FillTaskInfo(rpc::GetCoreWorkerStatsReply *reply,
 
 void TaskManager::RecordMetrics() {
   absl::MutexLock lock(&mu_);
+  ray::stats::STATS_total_lineage_bytes.Record(total_lineage_footprint_bytes_);
   task_counter_.FlushOnChangeCallbacks();
 }
 

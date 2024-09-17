@@ -47,6 +47,7 @@ NUM_ENV_STEPS_TRAINED_LIFETIME = "num_env_steps_trained_lifetime"
 NUM_ENV_STEPS_TRAINED_THIS_ITER = "num_env_steps_trained_this_iter"  # @OldAPIStack
 NUM_MODULE_STEPS_TRAINED = "num_module_steps_trained"
 NUM_MODULE_STEPS_TRAINED_LIFETIME = "num_module_steps_trained_lifetime"
+MODULE_TRAIN_BATCH_SIZE_MEAN = "module_train_batch_size_mean"
 # Backward compatibility: Replace with num_env_steps_... or num_agent_steps_...
 STEPS_TRAINED_THIS_ITER_COUNTER = "num_steps_trained_this_iter"
 
@@ -94,11 +95,13 @@ SYNCH_EVAL_ENV_CONNECTOR_STATES_TIMER = "synch_eval_env_connectors"
 GRAD_WAIT_TIMER = "grad_wait"
 SAMPLE_TIMER = "sample"  # @OldAPIStack
 ENV_RUNNER_SAMPLING_TIMER = "env_runner_sampling_timer"
+OFFLINE_SAMPLING_TIMER = "offline_sampling_timer"
+REPLAY_BUFFER_ADD_DATA_TIMER = "replay_buffer_add_data_timer"
 REPLAY_BUFFER_SAMPLE_TIMER = "replay_buffer_sampling_timer"
 REPLAY_BUFFER_UPDATE_PRIOS_TIMER = "replay_buffer_update_prios_timer"
 LEARNER_UPDATE_TIMER = "learner_update_timer"
-LEARNER_ADDITIONAL_UPDATE_TIMER = "learner_additional_update_timer"
 LEARN_ON_BATCH_TIMER = "learn"  # @OldAPIStack
+LEARNER_CONNECTOR_TIMER = "learner_connector_timer"
 LOAD_BATCH_TIMER = "load"
 TARGET_NET_UPDATE_TIMER = "target_net_update"
 

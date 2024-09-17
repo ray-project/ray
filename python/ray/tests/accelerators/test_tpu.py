@@ -1,6 +1,6 @@
 import os
 import sys
-import mock
+from unittest import mock
 import pytest
 import requests
 from unittest.mock import patch

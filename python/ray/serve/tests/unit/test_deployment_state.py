@@ -91,8 +91,10 @@ class MockReplicaActorWrapper:
         self._is_cross_language = False
         self._actor_handle = MockActorHandle()
         self._node_id = None
+        self._node_ip = None
         self._node_id_is_set = False
         self._actor_id = None
+        self._port = None
         self._pg_bundles = None
         self._initialization_latency_s = -1
 
@@ -158,6 +160,10 @@ class MockReplicaActorWrapper:
 
     @property
     def log_file_path(self) -> Optional[str]:
+        return None
+
+    @property
+    def grpc_port(self) -> Optional[int]:
         return None
 
     @property
@@ -3279,18 +3285,20 @@ class TestAutoscaling:
         if target_startup_status == ReplicaStartupStatus.PENDING_INITIALIZATION:
             expected_message = (
                 "Deployment 'test_deployment' in application 'test_app' has 3 replicas "
-                f"that have taken more than {SLOW_STARTUP_WARNING_S}s to "
-                "initialize. This may be caused by a slow __init__ or reconfigure "
-                "method."
+                f"that have taken more than {SLOW_STARTUP_WARNING_S}s to initialize.\n"
+                "This may be caused by a slow __init__ or reconfigure method."
             )
         elif target_startup_status == ReplicaStartupStatus.PENDING_ALLOCATION:
             expected_message = (
                 "Deployment 'test_deployment' in application 'test_app' "
-                "has 3 replicas that have taken more than 30s to be scheduled. This "
-                "may be due to waiting for the cluster to auto-scale or for a runtime "
-                "environment to be installed. Resources required for each replica: "
-                '{"CPU": 0.1}, total resources available: {}. Use `ray status` for '
-                "more details."
+                "has 3 replicas that have taken more than 30s to be scheduled.\n"
+                "This may be due to waiting for the cluster to auto-scale or for "
+                "a runtime environment to be installed.\n"
+                "Resources required for each replica:\n"
+                '{"CPU": 0.1}\n'
+                "Total resources available:\n"
+                "{}\n"
+                "Use `ray status` for more details."
             )
         else:
             raise RuntimeError(f"Got unexpected status: {target_startup_status}")

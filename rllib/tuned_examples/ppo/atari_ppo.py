@@ -13,6 +13,7 @@ parser = add_rllib_example_script_args(
     default_timesteps=3000000,
     default_iters=100000000000,
 )
+parser.set_defaults(enable_new_api_stack=True)
 # Use `parser` to add your own custom command line options to this script
 # and (if needed) use their values toset up `config` below.
 args = parser.parse_args()
@@ -30,7 +31,7 @@ def _make_learner_connector(input_observation_space, input_action_space):
 # We would like our frame stacking connector to do this job.
 def _env_creator(cfg):
     return wrap_atari_for_new_api_stack(
-        gym.make(args.env, **cfg),
+        gym.make(args.env, **cfg, render_mode="rgb_array"),
         # Perform frame-stacking through ConnectorV2 API.
         framestack=None,
     )

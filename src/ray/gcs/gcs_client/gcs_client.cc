@@ -54,12 +54,11 @@ void GcsSubscriberClient::PubsubLongPolling(
   req.set_max_processed_sequence_id(request.max_processed_sequence_id());
   req.set_publisher_id(request.publisher_id());
   rpc_client_->GcsSubscriberPoll(
-      req,
-      [callback](const Status &status, const rpc::GcsSubscriberPollReply &poll_reply) {
+      req, [callback](const Status &status, rpc::GcsSubscriberPollReply &&poll_reply) {
         rpc::PubsubLongPollingReply reply;
-        *reply.mutable_pub_messages() = poll_reply.pub_messages();
-        *reply.mutable_publisher_id() = poll_reply.publisher_id();
-        callback(status, reply);
+        reply.mutable_pub_messages()->Swap(poll_reply.mutable_pub_messages());
+        *reply.mutable_publisher_id() = std::move(*poll_reply.mutable_publisher_id());
+        callback(status, std::move(reply));
       });
 }
 
@@ -72,21 +71,44 @@ void GcsSubscriberClient::PubsubCommandBatch(
   rpc_client_->GcsSubscriberCommandBatch(
       req,
       [callback](const Status &status,
-                 const rpc::GcsSubscriberCommandBatchReply &batch_reply) {
+                 rpc::GcsSubscriberCommandBatchReply &&batch_reply) {
         rpc::PubsubCommandBatchReply reply;
-        callback(status, reply);
+        callback(status, std::move(reply));
       });
 }
 
 }  // namespace
 
+bool GcsClientOptions::ShouldFetchClusterId(ClusterID cluster_id,
+                                            bool allow_cluster_id_nil,
+                                            bool fetch_cluster_id_if_nil) {
+  RAY_CHECK(!((!allow_cluster_id_nil) && fetch_cluster_id_if_nil))
+      << " invalid config combination: if allow_cluster_id_nil == false, "
+         "fetch_cluster_id_if_nil "
+         "must false";
+  if (!cluster_id.IsNil()) {
+    // ClusterID non nil is always good.
+    return false;
+  }
+  RAY_CHECK(allow_cluster_id_nil) << "Unexpected nil Cluster ID.";
+  if (fetch_cluster_id_if_nil) {
+    return true;
+  } else {
+    RAY_LOG(INFO) << "GcsClient has no Cluster ID set, and won't fetch from GCS.";
+    return false;
+  }
+}
+
 GcsClient::GcsClient(const GcsClientOptions &options, UniqueID gcs_client_id)
     : options_(options), gcs_client_id_(gcs_client_id) {}
 
-Status GcsClient::Connect(instrumented_io_context &io_service,
-                          const ClusterID &cluster_id) {
+Status GcsClient::Connect(instrumented_io_context &io_service, int64_t timeout_ms) {
+  if (timeout_ms < 0) {
+    timeout_ms = RayConfig::instance().gcs_rpc_server_connect_timeout_s() * 1000;
+  }
   // Connect to gcs service.
-  client_call_manager_ = std::make_unique<rpc::ClientCallManager>(io_service, cluster_id);
+  client_call_manager_ =
+      std::make_unique<rpc::ClientCallManager>(io_service, options_.cluster_id_);
   gcs_rpc_client_ = std::make_shared<rpc::GcsRpcClient>(
       options_.gcs_address_, options_.gcs_port_, *client_call_manager_);
 
@@ -135,6 +157,32 @@ Status GcsClient::Connect(instrumented_io_context &io_service,
 
   RAY_LOG(DEBUG) << "GcsClient connected " << options_.gcs_address_ << ":"
                  << options_.gcs_port_;
+
+  if (options_.should_fetch_cluster_id_) {
+    RAY_RETURN_NOT_OK(FetchClusterId(timeout_ms));
+  }
+  return Status::OK();
+}
+
+Status GcsClient::FetchClusterId(int64_t timeout_ms) {
+  if (!GetClusterId().IsNil()) {
+    return Status::OK();
+  }
+  rpc::GetClusterIdRequest request;
+  rpc::GetClusterIdReply reply;
+  RAY_LOG(DEBUG) << "Cluster ID is nil, getting cluster ID from GCS server.";
+
+  Status s = gcs_rpc_client_->SyncGetClusterId(request, &reply, timeout_ms);
+  if (!s.ok()) {
+    RAY_LOG(WARNING) << "Failed to get cluster ID from GCS server: " << s;
+    gcs_rpc_client_->Shutdown();
+    gcs_rpc_client_.reset();
+    client_call_manager_.reset();
+    return s;
+  }
+  const auto reply_cluster_id = ClusterID::FromBinary(reply.cluster_id());
+  RAY_LOG(DEBUG) << "Retrieved cluster ID from GCS server: " << reply_cluster_id;
+  client_call_manager_->SetClusterId(reply_cluster_id);
   return Status::OK();
 }
 
@@ -148,7 +196,13 @@ std::pair<std::string, int> GcsClient::GetGcsServerAddress() const {
   return gcs_rpc_client_->GetAddress();
 }
 
-PythonGcsClient::PythonGcsClient(const GcsClientOptions &options) : options_(options) {}
+ClusterID GcsClient::GetClusterId() const {
+  ClusterID cluster_id = client_call_manager_->GetClusterId();
+  return cluster_id;
+}
+
+PythonGcsClient::PythonGcsClient(const GcsClientOptions &options)
+    : options_(options), cluster_id_(options.cluster_id_) {}
 
 namespace {
 Status HandleGcsError(rpc::GcsStatus status) {
@@ -158,14 +212,13 @@ Status HandleGcsError(rpc::GcsStatus status) {
 }
 }  // namespace
 
-Status PythonGcsClient::Connect(const ClusterID &cluster_id,
-                                int64_t timeout_ms,
-                                size_t num_retries) {
+Status PythonGcsClient::Connect(int64_t timeout_ms, size_t num_retries) {
   absl::WriterMutexLock lock(&mutex_);
   channel_ =
       rpc::GcsRpcClient::CreateGcsChannel(options_.gcs_address_, options_.gcs_port_);
   node_info_stub_ = rpc::NodeInfoGcsService::NewStub(channel_);
-  if (cluster_id.IsNil()) {
+  // cluster_id_ may already be fetched from a last Connect() call.
+  if (cluster_id_.IsNil() && options_.should_fetch_cluster_id_) {
     size_t tries = num_retries + 1;
     RAY_CHECK(tries > 0) << "Expected positive retries, but got " << tries;
 
@@ -180,13 +233,20 @@ Status PythonGcsClient::Connect(const ClusterID &cluster_id,
       connect_status =
           GrpcStatusToRayStatus(node_info_stub_->GetClusterId(&context, request, &reply));
 
+      // On RpcError: retry
+      // On GCS side error: return error
+      // On success: set cluster_id_ and break
       if (connect_status.ok()) {
-        cluster_id_ = ClusterID::FromBinary(reply.cluster_id());
-        RAY_LOG(DEBUG) << "Received cluster ID from GCS server: " << cluster_id_;
-        RAY_CHECK(!cluster_id_.IsNil());
-        break;
+        if (reply.status().code() == static_cast<int>(StatusCode::OK)) {
+          cluster_id_ = ClusterID::FromBinary(reply.cluster_id());
+          RAY_LOG(DEBUG) << "Received cluster ID from GCS server: " << cluster_id_;
+          RAY_CHECK(!cluster_id_.IsNil());
+          break;
+        } else {
+          return HandleGcsError(reply.status());
+        }
       } else if (!connect_status.IsRpcError()) {
-        return HandleGcsError(reply.status());
+        return connect_status;
       }
       std::this_thread::sleep_for(std::chrono::milliseconds(1000));
       channel_ =
@@ -194,9 +254,6 @@ Status PythonGcsClient::Connect(const ClusterID &cluster_id,
       node_info_stub_ = rpc::NodeInfoGcsService::NewStub(channel_);
     }
     RAY_RETURN_NOT_OK(connect_status);
-  } else {
-    cluster_id_ = cluster_id;
-    RAY_LOG(DEBUG) << "Client initialized with provided cluster ID: " << cluster_id_;
   }
 
   RAY_CHECK(!cluster_id_.IsNil()) << "Unexpected nil cluster ID.";
@@ -444,13 +501,22 @@ Status PythonGcsClient::GetAllNodeInfo(int64_t timeout_ms,
   return Status::RpcError(status.error_message(), status.error_code());
 }
 
-Status PythonGcsClient::GetAllJobInfo(int64_t timeout_ms,
-                                      std::vector<rpc::JobTableData> &result) {
+Status PythonGcsClient::GetAllJobInfo(
+    const std::optional<std::string> &job_or_submission_id,
+    bool skip_submission_job_info_field,
+    bool skip_is_running_tasks_field,
+    int64_t timeout_ms,
+    std::vector<rpc::JobTableData> &result) {
   grpc::ClientContext context;
   PrepareContext(context, timeout_ms);
 
   absl::ReaderMutexLock lock(&mutex_);
   rpc::GetAllJobInfoRequest request;
+  request.set_skip_submission_job_info_field(skip_submission_job_info_field);
+  request.set_skip_is_running_tasks_field(skip_is_running_tasks_field);
+  if (job_or_submission_id.has_value()) {
+    request.set_job_or_submission_id(job_or_submission_id.value());
+  }
   rpc::GetAllJobInfoReply reply;
 
   grpc::Status status = job_info_stub_->GetAllJobInfo(&context, request, &reply);
@@ -607,7 +673,7 @@ Status PythonGcsClient::DrainNode(const std::string &node_id,
     }
     return Status::OK();
   }
-  return Status::RpcError(status.error_message(), status.error_code());
+  return GrpcStatusToRayStatus(status);
 }
 
 Status PythonGcsClient::DrainNodes(const std::vector<std::string> &node_ids,
@@ -651,43 +717,39 @@ std::unordered_map<std::string, std::string> PythonGetNodeLabels(
                                                       node_info.labels().end());
 }
 
-Status PythonCheckGcsHealth(const std::string &gcs_address,
-                            const int gcs_port,
-                            const int64_t timeout_ms,
-                            const std::string &ray_version,
-                            const bool skip_version_check,
-                            bool &is_healthy) {
-  auto channel = rpc::GcsRpcClient::CreateGcsChannel(gcs_address, gcs_port);
-  auto stub = rpc::NodeInfoGcsService::NewStub(channel);
-  grpc::ClientContext context;
-  if (timeout_ms != -1) {
-    context.set_deadline(std::chrono::system_clock::now() +
-                         std::chrono::milliseconds(timeout_ms));
+/// Creates a singleton thread that runs an io_service.
+/// All ConnectToGcsStandalone calls will share this io_service.
+class SingletonIoContext {
+ public:
+  static SingletonIoContext &Instance() {
+    static SingletonIoContext instance;
+    return instance;
   }
-  rpc::CheckAliveRequest request;
-  rpc::CheckAliveReply reply;
-  grpc::Status status = stub->CheckAlive(&context, request, &reply);
-  if (!status.ok()) {
-    is_healthy = false;
-    return Status::RpcError(status.error_message(), status.error_code());
+
+  instrumented_io_context &GetIoService() { return io_service_; }
+
+ private:
+  SingletonIoContext() : work_(io_service_) {
+    io_thread_ = std::thread([this] {
+      SetThreadName("singleton_io_context.gcs_client");
+      io_service_.run();
+    });
   }
-  if (reply.status().code() != static_cast<int>(StatusCode::OK)) {
-    is_healthy = false;
-    return HandleGcsError(reply.status());
-  }
-  if (!skip_version_check) {
-    // Check for Ray version match
-    if (reply.ray_version() != ray_version) {
-      is_healthy = false;
-      std::ostringstream ss;
-      ss << "Ray cluster at " << gcs_address << ":" << gcs_port << " has version "
-         << reply.ray_version() << ", but this process "
-         << "is running Ray version " << ray_version << ".";
-      return Status::Invalid(ss.str());
+  ~SingletonIoContext() {
+    io_service_.stop();
+    if (io_thread_.joinable()) {
+      io_thread_.join();
     }
   }
-  is_healthy = true;
-  return Status::OK();
+
+  instrumented_io_context io_service_;
+  boost::asio::io_service::work work_;  // to keep io_service_ running
+  std::thread io_thread_;
+};
+
+Status ConnectOnSingletonIoContext(GcsClient &gcs_client, int64_t timeout_ms) {
+  instrumented_io_context &io_service = SingletonIoContext::Instance().GetIoService();
+  return gcs_client.Connect(io_service, timeout_ms);
 }
 
 }  // namespace gcs

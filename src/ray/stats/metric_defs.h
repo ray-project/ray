@@ -119,6 +119,9 @@ DECLARE_stats(gcs_actors_count);
 /// Memory Manager
 DECLARE_stats(memory_manager_worker_eviction_total);
 
+/// Core Worker Task Manager
+DECLARE_stats(total_lineage_bytes);
+
 /// The below items are legacy implementation of metrics.
 /// TODO(sang): Use DEFINE_stats instead.
 

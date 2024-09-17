@@ -20,7 +20,6 @@ from ray.rllib.utils.test_utils import (
     check,
     check_compute_single_action,
     check_train_results,
-    framework_iterator,
 )
 from ray.rllib.utils.framework import try_import_tf
 
@@ -76,15 +75,13 @@ class TestPreprocessors(unittest.TestCase):
         # input space.
 
         num_iterations = 1
-        # Only supported for tf so far.
-        for _ in framework_iterator(config):
-            algo = config.build()
-            for i in range(num_iterations):
-                results = algo.train()
-                check_train_results(results)
-                print(results)
-            check_compute_single_action(algo)
-            algo.stop()
+        algo = config.build()
+        for i in range(num_iterations):
+            results = algo.train()
+            check_train_results(results)
+            print(results)
+        check_compute_single_action(algo)
+        algo.stop()
 
     def test_gym_preprocessors(self):
         p1 = ModelCatalog.get_preprocessor(gym.make("CartPole-v1"))

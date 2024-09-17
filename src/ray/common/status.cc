@@ -65,6 +65,8 @@ namespace ray {
 #define STATUS_CODE_OBJECT_REF_END_OF_STREAM "ObjectRefEndOfStream"
 #define STATUS_CODE_AUTH_ERROR "AuthError"
 #define STATUS_CODE_INVALID_ARGUMENT "InvalidArgument"
+#define STATUS_CODE_CHANNEL_ERROR "ChannelError"
+#define STATUS_CODE_CHANNEL_TIMEOUT_ERROR "ChannelTimeoutError"
 
 // not a real status (catch all for codes not known)
 #define STATUS_CODE_UNKNOWN "Unknown"
@@ -103,6 +105,8 @@ const absl::flat_hash_map<StatusCode, std::string> kCodeToStr = {
     {StatusCode::ObjectRefEndOfStream, STATUS_CODE_OBJECT_REF_END_OF_STREAM},
     {StatusCode::AuthError, STATUS_CODE_AUTH_ERROR},
     {StatusCode::InvalidArgument, STATUS_CODE_INVALID_ARGUMENT},
+    {StatusCode::ChannelError, STATUS_CODE_CHANNEL_ERROR},
+    {StatusCode::ChannelTimeoutError, STATUS_CODE_CHANNEL_TIMEOUT_ERROR},
 };
 
 const absl::flat_hash_map<std::string, StatusCode> kStrToCode = []() {
@@ -146,7 +150,7 @@ std::string Status::CodeAsString() const {
 
 StatusCode Status::StringToCode(const std::string &str) {
   // Note: unknown string is mapped to IOError, while unknown code is mapped to "Unknown"
-  // which is not an error. This means for code -> string -> code is not identity.
+  // which is not an error. This means code -> string -> code is not identity.
   auto it = kStrToCode.find(str);
   if (it == kStrToCode.end()) {
     return StatusCode::IOError;

@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import Dict, Optional
 
 import tree  # pip install dm_tree
 
@@ -24,7 +24,6 @@ from ray.rllib.core.models.specs.specs_dict import SpecDict
 from ray.rllib.models.utils import get_initializer_fn
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf
-from ray.rllib.utils.nested_dict import NestedDict
 
 _, tf, _ = try_import_tf()
 
@@ -172,7 +171,7 @@ class TfMLPEncoder(Encoder, TfModel):
         )
 
     @override(Model)
-    def _forward(self, inputs: NestedDict, **kwargs) -> NestedDict:
+    def _forward(self, inputs: Dict, **kwargs) -> Dict:
         return {ENCODER_OUT: self.net(inputs[Columns.OBS])}
 
 
@@ -281,7 +280,7 @@ class TfGRUEncoder(TfModel, Encoder):
         }
 
     @override(Model)
-    def _forward(self, inputs: NestedDict, **kwargs) -> NestedDict:
+    def _forward(self, inputs: Dict, **kwargs) -> Dict:
         outputs = {}
 
         if self.tokenizer is not None:
@@ -426,7 +425,7 @@ class TfLSTMEncoder(TfModel, Encoder):
         }
 
     @override(Model)
-    def _forward(self, inputs: NestedDict, **kwargs) -> NestedDict:
+    def _forward(self, inputs: Dict, **kwargs) -> Dict:
         outputs = {}
 
         if self.tokenizer is not None:

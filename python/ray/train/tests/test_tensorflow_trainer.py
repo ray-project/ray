@@ -1,4 +1,5 @@
 import os
+import sys
 import tempfile
 
 import pytest
@@ -8,10 +9,15 @@ from ray import train
 from ray.data.preprocessors import Concatenator
 from ray.train import ScalingConfig
 from ray.train.constants import TRAIN_DATASET_KEY
-from ray.train.examples.tf.tensorflow_regression_example import (
-    train_func as tensorflow_linear_train_func,
-)
-from ray.train.tensorflow import TensorflowCheckpoint, TensorflowTrainer
+
+if sys.version_info >= (3, 12):
+    # Tensorflow is not installed for Python 3.12 because of keras compatibility.
+    sys.exit(0)
+else:
+    from ray.train.examples.tf.tensorflow_regression_example import (
+        train_func as tensorflow_linear_train_func,
+    )
+    from ray.train.tensorflow import TensorflowCheckpoint, TensorflowTrainer
 
 
 @pytest.fixture

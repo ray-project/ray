@@ -814,6 +814,7 @@ class Worker:
         self,
         object_refs: list,
         timeout: Optional[float] = None,
+        return_exceptions: bool = False,
     ):
         """Get the values in the object store associated with the IDs.
 
@@ -826,6 +827,10 @@ class Worker:
                 whose values should be retrieved.
             timeout: The maximum amount of time in
                 seconds to wait before returning.
+            return_exceptions: If any of the objects deserialize to an
+                Exception object, whether to return them as values in the
+                returned list. If False, then the first found exception will be
+                raised.
         Returns:
             list: List of deserialized objects
             bytes: UUID of the debugger breakpoint we should drop
@@ -856,14 +861,17 @@ class Worker:
                         len(ray_constants.OBJECT_METADATA_DEBUG_PREFIX) :
                     ]
         values = self.deserialize_objects(data_metadata_pairs, object_refs)
-        for i, value in enumerate(values):
-            if isinstance(value, RayError):
-                if isinstance(value, ray.exceptions.ObjectLostError):
-                    global_worker.core_worker.dump_object_store_memory_usage()
-                if isinstance(value, RayTaskError):
-                    raise value.as_instanceof_cause()
-                else:
-                    raise value
+        if not return_exceptions:
+            # Raise exceptions instead of returning them to the user.
+            for i, value in enumerate(values):
+                if isinstance(value, RayError):
+                    if isinstance(value, ray.exceptions.ObjectLostError):
+                        global_worker.core_worker.dump_object_store_memory_usage()
+                    if isinstance(value, RayTaskError):
+                        raise value.as_instanceof_cause()
+                    else:
+                        raise value
+
         return values, debugger_breakpoint
 
     def main_loop(self):
@@ -983,6 +991,8 @@ class Worker:
 @client_mode_hook
 def get_gpu_ids() -> Union[List[int], List[str]]:
     """Get the IDs of the GPUs that are available to the worker.
+
+    This method should only be called inside of a task or actor, and not a driver.
 
     If the CUDA_VISIBLE_DEVICES environment variable was set when the worker
     started up, then the IDs returned by this method will be a subset of the
@@ -1232,7 +1242,7 @@ def init(
     logging_level: int = ray_constants.LOGGER_LEVEL,
     logging_format: Optional[str] = None,
     logging_config: Optional[LoggingConfig] = None,
-    log_to_driver: bool = True,
+    log_to_driver: Optional[bool] = None,
     namespace: Optional[str] = None,
     runtime_env: Optional[Union[Dict[str, Any], "RuntimeEnv"]] = None,  # noqa: F821
     storage: Optional[str] = None,
@@ -1391,6 +1401,9 @@ def init(
         Exception: An exception is raised if an inappropriate combination of
             arguments is passed in.
     """
+    if log_to_driver is None:
+        log_to_driver = ray_constants.RAY_LOG_TO_DRIVER
+
     # Configure the "ray" logger for the driver process.
     if configure_logging:
         setup_logger(logging_level, logging_format or ray_constants.LOGGER_FORMAT)
@@ -1398,9 +1411,11 @@ def init(
         logging.getLogger("ray").handlers.clear()
 
     # Configure the logging settings for the driver process.
-    if logging_config:
-        dict_config = logging_config._get_dict_config()
-        logging.config.dictConfig(dict_config)
+    if logging_config or ray_constants.RAY_LOGGING_CONFIG_ENCODING:
+        logging_config = logging_config or LoggingConfig(
+            encoding=ray_constants.RAY_LOGGING_CONFIG_ENCODING
+        )
+        logging_config._apply()
 
     # Parse the hidden options:
     _enable_object_reconstruction: bool = kwargs.pop(
@@ -1576,7 +1591,7 @@ def init(
 
     # Pass the logging_config to job_config to configure loggers of all worker
     # processes belonging to the job.
-    if logging_config:
+    if logging_config is not None:
         job_config.set_py_logging_config(logging_config)
 
     redis_address, gcs_address = None, None
@@ -2232,7 +2247,12 @@ def connect(
     assert worker.gcs_client is not None
     _initialize_internal_kv(worker.gcs_client)
     ray._private.state.state._initialize_global_state(
-        ray._raylet.GcsClientOptions.from_gcs_address(node.gcs_address)
+        ray._raylet.GcsClientOptions.create(
+            node.gcs_address,
+            node.cluster_id.hex(),
+            allow_cluster_id_nil=False,
+            fetch_cluster_id_if_nil=False,
+        )
     )
     worker.gcs_publisher = ray._raylet.GcsPublisher(address=worker.gcs_client.address)
     # Initialize some fields.
@@ -2292,7 +2312,12 @@ def connect(
     elif not LOCAL_MODE:
         raise ValueError("Invalid worker mode. Expected DRIVER, WORKER or LOCAL.")
 
-    gcs_options = ray._raylet.GcsClientOptions.from_gcs_address(node.gcs_address)
+    gcs_options = ray._raylet.GcsClientOptions.create(
+        node.gcs_address,
+        node.cluster_id.hex(),
+        allow_cluster_id_nil=False,
+        fetch_cluster_id_if_nil=False,
+    )
     if job_config is None:
         job_config = ray.job_config.JobConfig()
 
@@ -2547,6 +2572,13 @@ def get(object_refs: "ObjectRef[R]", *, timeout: Optional[float] = None) -> R:
 
 
 @overload
+def get(
+    object_refs: Sequence[CompiledDAGRef], *, timeout: Optional[float] = None
+) -> List[Any]:
+    ...
+
+
+@overload
 def get(object_refs: CompiledDAGRef, *, timeout: Optional[float] = None) -> Any:
     ...
 
@@ -2554,7 +2586,12 @@ def get(object_refs: CompiledDAGRef, *, timeout: Optional[float] = None) -> Any:
 @PublicAPI
 @client_mode_hook
 def get(
-    object_refs: Union["ObjectRef[Any]", Sequence["ObjectRef[Any]"], CompiledDAGRef],
+    object_refs: Union[
+        "ObjectRef[Any]",
+        Sequence["ObjectRef[Any]"],
+        CompiledDAGRef,
+        Sequence[CompiledDAGRef],
+    ],
     *,
     timeout: Optional[float] = None,
 ) -> Union[Any, List[Any]]:
@@ -2623,7 +2660,22 @@ def get(
             return object_refs
 
         if isinstance(object_refs, CompiledDAGRef):
-            return object_refs.get()
+            return object_refs.get(timeout=timeout)
+
+        if isinstance(object_refs, list):
+            all_compiled_dag_refs = True
+            any_compiled_dag_refs = False
+            for object_ref in object_refs:
+                is_dag_ref = isinstance(object_ref, CompiledDAGRef)
+                all_compiled_dag_refs = all_compiled_dag_refs and is_dag_ref
+                any_compiled_dag_refs = any_compiled_dag_refs or is_dag_ref
+            if all_compiled_dag_refs:
+                return [object_ref.get(timeout=timeout) for object_ref in object_refs]
+            elif any_compiled_dag_refs:
+                raise ValueError(
+                    "Invalid type of object refs. 'object_refs' must be a list of "
+                    "CompiledDAGRefs if there is any CompiledDAGRef within it. "
+                )
 
         is_individual_id = isinstance(object_refs, ray.ObjectRef)
         if is_individual_id:

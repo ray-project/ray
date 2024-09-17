@@ -21,7 +21,6 @@ from ray.rllib.core.learner.torch.torch_learner import TorchLearner
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.metrics import TD_ERROR_KEY
-from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.utils.typing import ModuleID, TensorType
 
 
@@ -41,7 +40,7 @@ class DQNRainbowTorchLearner(DQNRainbowLearner, TorchLearner):
         *,
         module_id: ModuleID,
         config: DQNConfig,
-        batch: NestedDict,
+        batch: Dict,
         fwd_out: Dict[str, TensorType]
     ) -> TensorType:
 
@@ -256,4 +255,10 @@ class DQNRainbowTorchLearner(DQNRainbowLearner, TorchLearner):
 
     def _reset_noise(self) -> None:
         # Reset the noise for all noisy modules, if necessary.
-        self.module.foreach_module(lambda mid, module: module._reset_noise(target=True))
+        self.module.foreach_module(
+            lambda mid, module: (
+                module._reset_noise(target=True)
+                if hasattr(module, "_reset_noise")
+                else None
+            )
+        )

@@ -1,7 +1,7 @@
 from typing import Dict
 
-from ray.rllib.algorithms.impala.impala import ImpalaConfig
-from ray.rllib.algorithms.impala.impala_learner import ImpalaLearner
+from ray.rllib.algorithms.impala.impala import IMPALAConfig
+from ray.rllib.algorithms.impala.impala_learner import IMPALALearner
 from ray.rllib.algorithms.impala.torch.vtrace_torch_v2 import (
     vtrace_torch,
     make_time_major,
@@ -10,14 +10,13 @@ from ray.rllib.core.columns import Columns
 from ray.rllib.core.learner.learner import ENTROPY_KEY
 from ray.rllib.core.learner.torch.torch_learner import TorchLearner
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.nested_dict import NestedDict
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.typing import ModuleID, TensorType
 
 torch, nn = try_import_torch()
 
 
-class ImpalaTorchLearner(ImpalaLearner, TorchLearner):
+class IMPALATorchLearner(IMPALALearner, TorchLearner):
     """Implements the IMPALA loss function in torch."""
 
     @override(TorchLearner)
@@ -25,8 +24,8 @@ class ImpalaTorchLearner(ImpalaLearner, TorchLearner):
         self,
         *,
         module_id: ModuleID,
-        config: ImpalaConfig,
-        batch: NestedDict,
+        config: IMPALAConfig,
+        batch: Dict,
         fwd_out: Dict[str, TensorType],
     ) -> TensorType:
         # TODO (sven): Now that we do the +1ts trick to be less vulnerable about
@@ -34,8 +33,8 @@ class ImpalaTorchLearner(ImpalaLearner, TorchLearner):
         #  this a more flexible, configurable parameter for users, e.g.
         #  `v_trace_seq_len` (independent of `rollout_fragment_length`). Separation
         #  of concerns (sampling vs learning).
-        recurrent_seq_len = None
         rollout_frag_or_episode_len = config.get_rollout_fragment_length()
+        recurrent_seq_len = batch.get("seq_lens")
 
         loss_mask = batch[Columns.LOSS_MASK].float()
         loss_mask_time_major = make_time_major(
@@ -158,3 +157,6 @@ class ImpalaTorchLearner(ImpalaLearner, TorchLearner):
         )
         # Return the total loss.
         return total_loss
+
+
+ImpalaTorchLearner = IMPALATorchLearner

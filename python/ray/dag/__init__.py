@@ -1,6 +1,9 @@
 from ray.dag.dag_node import DAGNode
 from ray.dag.function_node import FunctionNode
-from ray.dag.class_node import ClassNode, ClassMethodNode
+from ray.dag.class_node import (
+    ClassNode,
+    ClassMethodNode,
+)
 from ray.dag.input_node import (
     InputNode,
     InputAttributeNode,
@@ -13,6 +16,7 @@ from ray.dag.constants import (
     DAGNODE_TYPE_KEY,
 )
 from ray.dag.vis_utils import plot
+from ray.dag.context import DAGContext
 
 __all__ = [
     "ClassNode",
@@ -27,4 +31,5 @@ __all__ = [
     "DAGNODE_TYPE_KEY",
     "plot",
     "MultiOutputNode",
+    "DAGContext",
 ]
