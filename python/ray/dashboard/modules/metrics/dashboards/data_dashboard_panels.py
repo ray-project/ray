@@ -114,13 +114,13 @@ DATA_GRAFANA_PANELS = [
     ),
     Panel(
         id=7,
-        title="Bytes Outputted",
-        description="Total bytes outputted by dataset operators.",
-        unit="bytes",
+        title="Bytes Output / Second",
+        description="Bytes output per second by dataset operators.",
+        unit="Bps",
         targets=[
             Target(
-                expr="sum(ray_data_output_bytes{{{global_filters}}}) by (dataset, operator)",
-                legend="Bytes Outputted: {{dataset}}, {{operator}}",
+                expr="sum(rate(ray_data_output_bytes{{{global_filters}}}[1m])) by (dataset, operator)",
+                legend="Bytes Output / Second: {{dataset}}, {{operator}}",
             )
         ],
         fill=0,
@@ -128,13 +128,13 @@ DATA_GRAFANA_PANELS = [
     ),
     Panel(
         id=11,
-        title="Rows Outputted",
-        description="Total rows outputted by dataset operators.",
-        unit="rows",
+        title="Rows Output / Second",
+        description="Total rows output per second by dataset operators.",
+        unit="rows/sec",
         targets=[
             Target(
-                expr="sum(ray_data_output_rows{{{global_filters}}}) by (dataset, operator)",
-                legend="Rows Outputted: {{dataset}}, {{operator}}",
+                expr="sum(rate(ray_data_output_rows{{{global_filters}}}[1m])) by (dataset, operator)",
+                legend="Rows Output / Second: {{dataset}}, {{operator}}",
             )
         ],
         fill=0,
@@ -143,13 +143,13 @@ DATA_GRAFANA_PANELS = [
     # Ray Data Metrics (Inputs)
     Panel(
         id=17,
-        title="Input Blocks Received by Operator",
-        description="Number of input blocks received by operator.",
-        unit="blocks",
+        title="Input Blocks Received by Operator / Second",
+        description="Number of input blocks received by operator per second.",
+        unit="blocks/sec",
         targets=[
             Target(
-                expr="sum(ray_data_num_inputs_received{{{global_filters}}}) by (dataset, operator)",
-                legend="Blocks Received: {{dataset}}, {{operator}}",
+                expr="sum(rate(ray_data_num_inputs_received{{{global_filters}}}[1m])) by (dataset, operator)",
+                legend="Blocks Received / Second: {{dataset}}, {{operator}}",
             )
         ],
         fill=0,
@@ -157,13 +157,13 @@ DATA_GRAFANA_PANELS = [
     ),
     Panel(
         id=18,
-        title="Input Blocks Received by Operator",
-        description="Byte size of input blocks received by operator.",
-        unit="bytes",
+        title="Input Bytes Received by Operator / Second",
+        description="Byte size of input blocks received by operator per second.",
+        unit="Bps",
         targets=[
             Target(
-                expr="sum(ray_data_bytes_inputs_received{{{global_filters}}}) by (dataset, operator)",
-                legend="Bytes Received: {{dataset}}, {{operator}}",
+                expr="sum(rate(ray_data_bytes_inputs_received{{{global_filters}}}[1m])) by (dataset, operator)",
+                legend="Bytes Received / Second: {{dataset}}, {{operator}}",
             )
         ],
         fill=0,
@@ -171,15 +171,15 @@ DATA_GRAFANA_PANELS = [
     ),
     Panel(
         id=19,
-        title="Input Blocks Processed by Tasks",
+        title="Input Blocks Processed by Tasks / Second",
         description=(
-            "Number of input blocks that operator's tasks " "have finished processing."
+            "Number of input blocks that operator's tasks have finished processing per second."
         ),
-        unit="blocks",
+        unit="blocks/sec",
         targets=[
             Target(
-                expr="sum(ray_data_num_task_inputs_processed{{{global_filters}}}) by (dataset, operator)",
-                legend="Blocks Processed: {{dataset}}, {{operator}}",
+                expr="sum(rate(ray_data_num_task_inputs_processed{{{global_filters}}}[1m])) by (dataset, operator)",
+                legend="Blocks Processed / Second: {{dataset}}, {{operator}}",
             )
         ],
         fill=0,
@@ -187,16 +187,15 @@ DATA_GRAFANA_PANELS = [
     ),
     Panel(
         id=20,
-        title="Input Bytes Processed by Tasks",
+        title="Input Bytes Processed by Tasks / Second",
         description=(
-            "Byte size of input blocks that operator's tasks "
-            "have finished processing."
+            "Byte size of input blocks that operator's tasks have finished processing per second."
         ),
-        unit="bytes",
+        unit="Bps",
         targets=[
             Target(
-                expr="sum(ray_data_bytes_task_inputs_processed{{{global_filters}}}) by (dataset, operator)",
-                legend="Bytes Processed: {{dataset}}, {{operator}}",
+                expr="sum(rate(ray_data_bytes_task_inputs_processed{{{global_filters}}}[1m])) by (dataset, operator)",
+                legend="Bytes Processed / Second: {{dataset}}, {{operator}}",
             )
         ],
         fill=0,
@@ -204,13 +203,13 @@ DATA_GRAFANA_PANELS = [
     ),
     Panel(
         id=21,
-        title="Input Bytes Submitted to Tasks",
-        description="Byte size of input blocks passed to submitted tasks.",
-        unit="bytes",
+        title="Input Bytes Submitted to Tasks / Second",
+        description="Byte size of input blocks passed to submitted tasks per second.",
+        unit="Bps",
         targets=[
             Target(
-                expr="sum(ray_data_bytes_inputs_of_submitted_tasks{{{global_filters}}}) by (dataset, operator)",
-                legend="Bytes Submitted: {{dataset}}, {{operator}}",
+                expr="sum(rate(ray_data_bytes_inputs_of_submitted_tasks{{{global_filters}}}[1m])) by (dataset, operator)",
+                legend="Bytes Submitted / Second: {{dataset}}, {{operator}}",
             )
         ],
         fill=0,
@@ -218,13 +217,13 @@ DATA_GRAFANA_PANELS = [
     ),
     Panel(
         id=22,
-        title="Blocks Generated by Tasks",
-        description="Number of output blocks generated by tasks.",
-        unit="blocks",
+        title="Blocks Generated by Tasks / Second",
+        description="Number of output blocks generated by tasks per second.",
+        unit="blocks/sec",
         targets=[
             Target(
-                expr="sum(ray_data_num_task_outputs_generated{{{global_filters}}}) by (dataset, operator)",
-                legend="Blocks Generated: {{dataset}}, {{operator}}",
+                expr="sum(rate(ray_data_num_task_outputs_generated{{{global_filters}}}[1m])) by (dataset, operator)",
+                legend="Blocks Generated / Second: {{dataset}}, {{operator}}",
             )
         ],
         fill=0,
@@ -232,13 +231,13 @@ DATA_GRAFANA_PANELS = [
     ),
     Panel(
         id=23,
-        title="Bytes Generated by Tasks",
-        description="Byte size of output blocks generated by tasks.",
-        unit="bytes",
+        title="Bytes Generated by Tasks / Second",
+        description="Byte size of output blocks generated by tasks per second.",
+        unit="Bps",
         targets=[
             Target(
-                expr="sum(ray_data_bytes_task_outputs_generated{{{global_filters}}}) by (dataset, operator)",
-                legend="Bytes Generated: {{dataset}}, {{operator}}",
+                expr="sum(rate(ray_data_bytes_task_outputs_generated{{{global_filters}}}[1m])) by (dataset, operator)",
+                legend="Bytes Generated / Second: {{dataset}}, {{operator}}",
             )
         ],
         fill=0,
@@ -246,13 +245,13 @@ DATA_GRAFANA_PANELS = [
     ),
     Panel(
         id=24,
-        title="Rows Generated by Tasks",
-        description="Number of rows in generated output blocks from finished tasks.",
-        unit="rows",
+        title="Rows Generated by Tasks / Second",
+        description="Number of rows in generated output blocks from finished tasks per second.",
+        unit="rows/sec",
         targets=[
             Target(
-                expr="sum(ray_data_rows_task_outputs_generated{{{global_filters}}}) by (dataset, operator)",
-                legend="Rows Generated: {{dataset}}, {{operator}}",
+                expr="sum(rate(ray_data_rows_task_outputs_generated{{{global_filters}}}[1m])) by (dataset, operator)",
+                legend="Rows Generated / Second: {{dataset}}, {{operator}}",
             )
         ],
         fill=0,
@@ -260,13 +259,13 @@ DATA_GRAFANA_PANELS = [
     ),
     Panel(
         id=25,
-        title="Output Blocks Taken by Downstream Operators",
-        description="Number of output blocks that are already taken by downstream operators.",
-        unit="blocks",
+        title="Output Blocks Taken by Downstream Operators / Second",
+        description="Number of output blocks taken by downstream operators per second.",
+        unit="blocks/sec",
         targets=[
             Target(
-                expr="sum(ray_data_num_outputs_taken{{{global_filters}}}) by (dataset, operator)",
-                legend="Blocks Taken: {{dataset}}, {{operator}}",
+                expr="sum(rate(ray_data_num_outputs_taken{{{global_filters}}}[1m])) by (dataset, operator)",
+                legend="Blocks Taken / Second: {{dataset}}, {{operator}}",
             )
         ],
         fill=0,
@@ -274,16 +273,15 @@ DATA_GRAFANA_PANELS = [
     ),
     Panel(
         id=26,
-        title="Output Bytes Taken by Downstream Operators",
+        title="Output Bytes Taken by Downstream Operators / Second",
         description=(
-            "Byte size of output blocks that are already "
-            "taken by downstream operators."
+            "Byte size of output blocks taken by downstream operators per second."
         ),
-        unit="bytes",
+        unit="Bps",
         targets=[
             Target(
-                expr="sum(ray_data_bytes_outputs_taken{{{global_filters}}}) by (dataset, operator)",
-                legend="Bytes Taken: {{dataset}}, {{operator}}",
+                expr="sum(rate(ray_data_bytes_outputs_taken{{{global_filters}}}[1m])) by (dataset, operator)",
+                legend="Bytes Taken / Second: {{dataset}}, {{operator}}",
             )
         ],
         fill=0,

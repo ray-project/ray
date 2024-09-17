@@ -239,7 +239,7 @@ class WorkerPoolMock : public WorkerPool {
   }
 
   std::shared_ptr<WorkerInterface> CreateWorker(
-      Process proc,
+      const Process &proc,
       const Language &language = Language::PYTHON,
       const JobID &job_id = JOB_ID,
       const rpc::WorkerType worker_type = rpc::WorkerType::WORKER,
@@ -305,7 +305,7 @@ class WorkerPoolMock : public WorkerPool {
         int runtime_env_hash = 0;
         bool is_java = false;
         // Parses runtime env hash to make sure the pushed workers can be popped out.
-        for (auto command_args : it->second) {
+        for (const std::string &command_args : it->second) {
           std::string runtime_env_key = "--runtime-env-hash=";
           auto pos = command_args.find(runtime_env_key);
           if (pos != std::string::npos) {
@@ -745,7 +745,7 @@ TEST_F(WorkerPoolDriverRegisteredTest, StartWorkerWithDynamicOptionsCommand) {
       {"-Xmx1g", "-Xms500m", "-Dmy-job.hello=world", "-Dmy-job.foo=bar"});
   // Ray-defined per-process options
   expected_command.push_back("-Dray.raylet.startup-token=0");
-  expected_command.push_back("-Dray.internal.runtime-env-hash=1");
+  expected_command.push_back("-Dray.internal.runtime-env-hash=0");
   // User-defined per-process options
   expected_command.insert(
       expected_command.end(), actor_jvm_options.begin(), actor_jvm_options.end());
@@ -1735,7 +1735,7 @@ TEST_F(WorkerPoolDriverRegisteredTest, CacheWorkersByRuntimeEnvHash) {
                       Language::PYTHON,
                       JOB_ID,
                       actor_creation_id,
-                      /*dynamic_options=*/{},
+                      /*dynamic_worker_options=*/{},
                       TaskID::FromRandom(JobID::Nil()),
                       ExampleRuntimeEnvInfoFromString("mock_runtime_env_1"));
   const auto task_spec_1 =
@@ -1743,7 +1743,7 @@ TEST_F(WorkerPoolDriverRegisteredTest, CacheWorkersByRuntimeEnvHash) {
                       Language::PYTHON,
                       JOB_ID,
                       ActorID::Nil(),
-                      /*dynamic_options=*/{},
+                      /*dynamic_worker_options=*/{},
                       TaskID::FromRandom(JobID::Nil()),
                       ExampleRuntimeEnvInfoFromString("mock_runtime_env_1"));
   const auto task_spec_2 =
@@ -1751,7 +1751,7 @@ TEST_F(WorkerPoolDriverRegisteredTest, CacheWorkersByRuntimeEnvHash) {
                       Language::PYTHON,
                       JOB_ID,
                       ActorID::Nil(),
-                      /*dynamic_options=*/{},
+                      /*dynamic_worker_options=*/{},
                       TaskID::FromRandom(JobID::Nil()),
                       ExampleRuntimeEnvInfoFromString("mock_runtime_env_2"));
 
@@ -1773,12 +1773,7 @@ TEST_F(WorkerPoolDriverRegisteredTest, CacheWorkersByRuntimeEnvHash) {
 
   // Try to pop the worker for task with runtime env 1.
   popped_worker = worker_pool_->PopWorkerSync(task_spec_1);
-  if (RayConfig::instance().isolate_workers_across_task_types()) {
-    ASSERT_NE(popped_worker, nullptr);
-    ASSERT_NE(popped_worker, worker);
-  } else {
-    ASSERT_EQ(popped_worker, worker);
-  }
+  ASSERT_EQ(popped_worker, worker);
 
   // Push another worker with runtime env 1.
   worker = worker_pool_->CreateWorker(Process::CreateNewDummy(),

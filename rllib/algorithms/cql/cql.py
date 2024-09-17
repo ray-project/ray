@@ -306,7 +306,7 @@ class CQL(SAC):
         # Sampling from offline data.
         with self.metrics.log_time((TIMERS, OFFLINE_SAMPLING_TIMER)):
             # Return an iterator in case we are using remote learners.
-            batch = self.offline_data.sample(
+            batch_or_iterator = self.offline_data.sample(
                 num_samples=self.config.train_batch_size_per_learner,
                 num_shards=self.config.num_learners,
                 return_iterator=self.config.num_learners > 1,
@@ -315,9 +315,9 @@ class CQL(SAC):
         # Updating the policy.
         with self.metrics.log_time((TIMERS, LEARNER_UPDATE_TIMER)):
             # TODO (simon, sven): Check, if we should execute directly s.th. like
-            # update_from_iterator.
-            learner_results = self.learner_group.update_from_batch(
-                batch,
+            #  `LearnerGroup.update_from_iterator()`.
+            learner_results = self.learner_group._update(
+                batch=batch_or_iterator,
                 minibatch_size=self.config.train_batch_size_per_learner,
                 num_iters=self.config.dataset_num_iters_per_learner,
             )

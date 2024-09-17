@@ -173,9 +173,9 @@ if __name__ == "__main__":
         )
     )
 
-    # Only for PPO, change the `num_sgd_iter` setting.
+    # Only for PPO, change the `num_epochs` setting.
     if args.algo == "PPO":
-        config.training(num_sgd_iter=20)
+        config.training(num_epochs=20)
 
     stop = {
         NUM_ENV_STEPS_SAMPLED_LIFETIME: args.stop_timesteps,

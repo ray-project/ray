@@ -28,7 +28,10 @@ from ray.data._internal.datasource.delta_sharing_datasource import (
     DeltaSharingDatasource,
 )
 from ray.data._internal.datasource.iceberg_datasource import IcebergDatasource
-from ray.data._internal.datasource.image_datasource import ImageDatasource
+from ray.data._internal.datasource.image_datasource import (
+    ImageDatasource,
+    ImageFileMetadataProvider,
+)
 from ray.data._internal.datasource.json_datasource import JSONDatasource
 from ray.data._internal.datasource.lance_datasource import LanceDatasource
 from ray.data._internal.datasource.mongo_datasource import MongoDatasource
@@ -67,19 +70,17 @@ from ray.data.datasource import (
     BaseFileMetadataProvider,
     Connection,
     Datasource,
-    ParquetMetadataProvider,
     PathPartitionFilter,
-)
-from ray.data.datasource._default_metadata_providers import (
-    get_generic_metadata_provider,
-    get_image_metadata_provider,
-    get_parquet_bulk_metadata_provider,
-    get_parquet_metadata_provider,
 )
 from ray.data.datasource.datasource import Reader
 from ray.data.datasource.file_based_datasource import (
     _unwrap_arrow_serialization_workaround,
 )
+from ray.data.datasource.file_meta_provider import (
+    DefaultFileMetadataProvider,
+    FastFileMetadataProvider,
+)
+from ray.data.datasource.parquet_meta_provider import ParquetMetadataProvider
 from ray.data.datasource.partitioning import Partitioning
 from ray.types import ObjectRef
 from ray.util.annotations import DeveloperAPI, PublicAPI
@@ -597,6 +598,7 @@ def read_parquet(
     tensor_column_schema: Optional[Dict[str, Tuple[np.dtype, Tuple[int, ...]]]] = None,
     meta_provider: Optional[ParquetMetadataProvider] = None,
     partition_filter: Optional[PathPartitionFilter] = None,
+    partitioning: Optional[Partitioning] = Partitioning("hive"),
     shuffle: Union[Literal["files"], None] = None,
     include_paths: bool = False,
     file_extensions: Optional[List[str]] = None,
@@ -702,6 +704,8 @@ def read_parquet(
         partition_filter: A
             :class:`~ray.data.datasource.partitioning.PathPartitionFilter`. Use
             with a custom callback to read only selected partitions of a dataset.
+        partitioning: A :class:`~ray.data.datasource.partitioning.Partitioning` object
+            that describes how paths are organized. Defaults to HIVE partitioning.
         shuffle: If setting to "files", randomly shuffle input files order before read.
             Defaults to not shuffle with ``None``.
         arrow_parquet_args: Other parquet read options to pass to PyArrow. For the full
@@ -727,7 +731,7 @@ def read_parquet(
     _validate_shuffle_arg(shuffle)
 
     if meta_provider is None:
-        meta_provider = get_parquet_metadata_provider(override_num_blocks)
+        meta_provider = ParquetMetadataProvider()
     arrow_parquet_args = _resolve_parquet_args(
         tensor_column_schema,
         **arrow_parquet_args,
@@ -746,6 +750,7 @@ def read_parquet(
         schema=schema,
         meta_provider=meta_provider,
         partition_filter=partition_filter,
+        partitioning=partitioning,
         shuffle=shuffle,
         include_paths=include_paths,
         file_extensions=file_extensions,
@@ -886,7 +891,7 @@ def read_images(
         ValueError: if ``mode`` is unsupported.
     """
     if meta_provider is None:
-        meta_provider = get_image_metadata_provider()
+        meta_provider = ImageFileMetadataProvider()
 
     datasource = ImageDatasource(
         paths,
@@ -1012,7 +1017,7 @@ def read_parquet_bulk(
        :class:`~ray.data.Dataset` producing records read from the specified paths.
     """
     if meta_provider is None:
-        meta_provider = get_parquet_bulk_metadata_provider()
+        meta_provider = FastFileMetadataProvider()
     read_table_args = _resolve_parquet_args(
         tensor_column_schema,
         **arrow_parquet_args,
@@ -1157,7 +1162,7 @@ def read_json(
         :class:`~ray.data.Dataset` producing records read from the specified paths.
     """  # noqa: E501
     if meta_provider is None:
-        meta_provider = get_generic_metadata_provider(JSONDatasource._FILE_EXTENSIONS)
+        meta_provider = DefaultFileMetadataProvider()
 
     datasource = JSONDatasource(
         paths,
@@ -1323,7 +1328,7 @@ def read_csv(
         :class:`~ray.data.Dataset` producing records read from the specified paths.
     """
     if meta_provider is None:
-        meta_provider = get_generic_metadata_provider(CSVDatasource._FILE_EXTENSIONS)
+        meta_provider = DefaultFileMetadataProvider()
 
     datasource = CSVDatasource(
         paths,
@@ -1434,7 +1439,7 @@ def read_text(
         paths.
     """
     if meta_provider is None:
-        meta_provider = get_generic_metadata_provider(TextDatasource._FILE_EXTENSIONS)
+        meta_provider = DefaultFileMetadataProvider()
 
     datasource = TextDatasource(
         paths,
@@ -1542,7 +1547,7 @@ def read_avro(
         :class:`~ray.data.Dataset` holding records from the Avro files.
     """
     if meta_provider is None:
-        meta_provider = get_generic_metadata_provider(AvroDatasource._FILE_EXTENSIONS)
+        meta_provider = DefaultFileMetadataProvider()
 
     datasource = AvroDatasource(
         paths,
@@ -1637,7 +1642,7 @@ def read_numpy(
         Dataset holding Tensor records read from the specified paths.
     """  # noqa: E501
     if meta_provider is None:
-        meta_provider = get_generic_metadata_provider(NumpyDatasource._FILE_EXTENSIONS)
+        meta_provider = DefaultFileMetadataProvider()
 
     datasource = NumpyDatasource(
         paths,
@@ -1788,10 +1793,7 @@ def read_tfrecords(
             )
 
     if meta_provider is None:
-        meta_provider = get_generic_metadata_provider(
-            TFRecordDatasource._FILE_EXTENSIONS
-        )
-
+        meta_provider = DefaultFileMetadataProvider()
     datasource = TFRecordDatasource(
         paths,
         tf_schema=tf_schema,
@@ -1893,9 +1895,7 @@ def read_webdataset(
     .. _tf.train.Example: https://www.tensorflow.org/api_docs/python/tf/train/Example
     """  # noqa: E501
     if meta_provider is None:
-        meta_provider = get_generic_metadata_provider(
-            WebDatasetDatasource._FILE_EXTENSIONS
-        )
+        meta_provider = DefaultFileMetadataProvider()
 
     datasource = WebDatasetDatasource(
         paths,
@@ -2011,7 +2011,7 @@ def read_binary_files(
         :class:`~ray.data.Dataset` producing rows read from the specified paths.
     """
     if meta_provider is None:
-        meta_provider = get_generic_metadata_provider(BinaryDatasource._FILE_EXTENSIONS)
+        meta_provider = DefaultFileMetadataProvider()
 
     datasource = BinaryDatasource(
         paths,
@@ -2842,8 +2842,21 @@ def from_huggingface(
 
     if isinstance(dataset, datasets.IterableDataset):
         # For an IterableDataset, we can use a streaming implementation to read data.
-        return read_datasource(HuggingFaceDatasource(dataset=dataset))
+        return read_datasource(
+            HuggingFaceDatasource(dataset=dataset),
+            parallelism=parallelism,
+            concurrency=concurrency,
+            override_num_blocks=override_num_blocks,
+        )
     if isinstance(dataset, datasets.Dataset):
+        # For non-streaming Hugging Face Dataset, we don't support override_num_blocks
+        if override_num_blocks is not None:
+            raise ValueError(
+                "`override_num_blocks` parameter is not supported for "
+                "streaming Hugging Face Datasets. Please omit the parameter or "
+                "use non-streaming mode to read the dataset."
+            )
+
         # To get the resulting Arrow table from a Hugging Face Dataset after
         # applying transformations (e.g., train_test_split(), shard(), select()),
         # we create a copy of the Arrow table, which applies the indices

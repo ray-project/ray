@@ -9,7 +9,7 @@ config = (
     PPOConfig()
     .environment("FrozenLake-v1")
     .training(
-        num_sgd_iter=2,
+        num_epochs=2,
         model=dict(
             fcnet_hiddens=[10],
         ),

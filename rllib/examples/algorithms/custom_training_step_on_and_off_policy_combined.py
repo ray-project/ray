@@ -178,7 +178,7 @@ if __name__ == "__main__":
             None,
             # Provide entire AlgorithmConfig object, not just an override.
             PPOConfig()
-            .training(num_sgd_iter=10, sgd_minibatch_size=128)
+            .training(num_epochs=10, minibatch_size=128)
             .framework("torch" if args.torch or args.mixed_torch_tf else "tf"),
         ),
         "dqn_policy": (

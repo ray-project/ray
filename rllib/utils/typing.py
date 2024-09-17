@@ -168,6 +168,7 @@ Optimizer = LocalOptimizer
 Param = Union["torch.Tensor", "tf.Variable"]
 ParamRef = Hashable
 ParamDict = Dict[ParamRef, Param]
+ParamList = List[Param]
 
 # A single learning rate or a learning rate schedule (list of sub-lists, each of
 # the format: [ts (int), lr_to_reach_by_ts (float)]).
