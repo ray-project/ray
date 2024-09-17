@@ -79,7 +79,7 @@ class TestCallbacks(unittest.TestCase):
             .environment("CartPole-v1")
             .env_runners(num_env_runners=0)
             .callbacks(EpisodeAndSampleCallbacks)
-            .training(train_batch_size=50, sgd_minibatch_size=50, num_sgd_iter=1)
+            .training(train_batch_size=50, minibatch_size=50, num_epochs=1)
         )
         algo = config.build()
         algo.train()

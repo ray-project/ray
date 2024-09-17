@@ -65,7 +65,7 @@ class TestSupportedMultiAgentPolicyGradient(unittest.TestCase):
             (
                 PPOConfig()
                 .env_runners(num_env_runners=1, rollout_fragment_length=10)
-                .training(num_sgd_iter=1, train_batch_size=10, sgd_minibatch_size=1)
+                .training(num_epochs=1, train_batch_size=10, minibatch_size=1)
             ),
         )
 

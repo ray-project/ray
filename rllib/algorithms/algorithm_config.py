@@ -384,6 +384,13 @@ class AlgorithmConfig(_Config):
         # Simple logic for now: If None, use `train_batch_size`.
         self.train_batch_size_per_learner = None
         self.train_batch_size = 32  # @OldAPIStack
+
+        # These setting have been adopted from the original PPO batch settings:
+        # num_sgd_iter, minibatch_size, and shuffle_sequences.
+        self.num_epochs = 1
+        self.minibatch_size = None
+        self.shuffle_batch_per_epoch = False
+
         # TODO (sven): Unsolved problem with RLModules sometimes requiring settings from
         #  the main AlgorithmConfig. We should not require the user to provide those
         #  settings in both, the AlgorithmConfig (as property) AND the model config
@@ -2064,6 +2071,9 @@ class AlgorithmConfig(_Config):
         grad_clip_by: Optional[str] = NotProvided,
         train_batch_size: Optional[int] = NotProvided,
         train_batch_size_per_learner: Optional[int] = NotProvided,
+        num_epochs: Optional[int] = NotProvided,
+        minibatch_size: Optional[int] = NotProvided,
+        shuffle_batch_per_epoch: Optional[bool] = NotProvided,
         model: Optional[dict] = NotProvided,
         optimizer: Optional[dict] = NotProvided,
         max_requests_in_flight_per_sampler_worker: Optional[int] = NotProvided,
@@ -2073,6 +2083,8 @@ class AlgorithmConfig(_Config):
         ] = NotProvided,
         add_default_connectors_to_learner_pipeline: Optional[bool] = NotProvided,
         learner_config_dict: Optional[Dict[str, Any]] = NotProvided,
+        # Deprecated args.
+        num_sgd_iter=DEPRECATED_VALUE,
     ) -> "AlgorithmConfig":
         """Sets the training related configuration.
 
@@ -2122,6 +2134,15 @@ class AlgorithmConfig(_Config):
                 stack, this setting should no longer be used. Instead, use
                 `train_batch_size_per_learner` (in combination with
                 `num_learners`).
+            num_epochs: The number of complete passes over the entire train batch (per
+                Learner). Each pass might be further split into n minibatches (if
+                `minibatch_size` provided).
+            minibatch_size: The size of minibatches to use to further split the train
+                batch into.
+            shuffle_batch_per_epoch: Whether to shuffle the train batch once per epoch.
+                If the train batch has a time rank (axis=1), shuffling will only take
+                place along the batch axis to not disturb any intact (episode)
+                trajectories.
             model: Arguments passed into the policy model. See models/catalog.py for a
                 full list of the available model options.
                 TODO: Provide ModelConfig objects instead of dicts.
@@ -2168,6 +2189,14 @@ class AlgorithmConfig(_Config):
         Returns:
             This updated AlgorithmConfig object.
         """
+        if num_sgd_iter != DEPRECATED_VALUE:
+            deprecation_warning(
+                old="config.training(num_sgd_iter=..)",
+                new="config.training(num_epochs=..)",
+                error=False,
+            )
+            num_epochs = num_sgd_iter
+
         if gamma is not NotProvided:
             self.gamma = gamma
         if lr is not NotProvided:
@@ -2185,6 +2214,13 @@ class AlgorithmConfig(_Config):
             self.train_batch_size_per_learner = train_batch_size_per_learner
         if train_batch_size is not NotProvided:
             self.train_batch_size = train_batch_size
+        if num_epochs is not NotProvided:
+            self.num_epochs = num_epochs
+        if minibatch_size is not NotProvided:
+            self.minibatch_size = minibatch_size
+        if shuffle_batch_per_epoch is not NotProvided:
+            self.shuffle_batch_per_epoch = shuffle_batch_per_epoch
+
         if model is not NotProvided:
             self.model.update(model)
             if (
