@@ -27,7 +27,7 @@ algorithms_and_configs = {
         # See the comment before the `algorithms_and_configs` dict.
         # explore is set to None for PPO in favor of RLModule API support.
         PPOConfig()
-        .training(num_sgd_iter=5, train_batch_size=1000)
+        .training(num_epochs=5, train_batch_size=1000)
         .env_runners(num_env_runners=2)
         .resources(num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0")))
         .evaluation(

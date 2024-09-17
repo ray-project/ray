@@ -125,7 +125,7 @@ def train_ppo_agent_from_checkpointed_module(
         .training(
             lr=0.0001,
             gamma=0.99,
-            num_sgd_iter=6,
+            num_epochs=6,
             vf_loss_coeff=0.01,
         )
     )

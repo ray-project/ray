@@ -36,7 +36,7 @@ config = (
     .training(
         train_batch_size_per_learner=4000,
         lr=0.0003,
-        num_sgd_iter=6,
+        num_epochs=6,
         vf_loss_coeff=0.01,
     )
     .multi_agent(

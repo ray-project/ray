@@ -81,7 +81,7 @@ if __name__ == "__main__":
         )
         .training(
             train_batch_size_per_learner=1024,
-            num_sgd_iter=6,
+            num_epochs=6,
             lr=0.0009,
             vf_loss_coeff=0.001,
             entropy_coeff=0.0,
