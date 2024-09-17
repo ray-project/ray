@@ -156,7 +156,12 @@ def main(results=None):
     async def exec_async(tag):
         async def _exec_async():
             fut = await compiled_dag.execute_async(b"x")
-            await fut
+            if not isinstance(fut, list):
+                await fut
+            else:
+                # TODO(sang): Right now, it doesn't work with asyncio.gather.
+                for f in fut:
+                    await f
 
         return await asyncio_timeit(
             tag,

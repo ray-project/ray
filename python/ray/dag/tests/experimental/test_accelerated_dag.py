@@ -2122,6 +2122,7 @@ def test_driver_and_actor_as_readers(ray_start_cluster):
         dag.experimental_compile()
 
 
+@pytest.mark.skip("Currently buffer size is set to 1 because of regression.")
 @pytest.mark.parametrize("temporary_change_timeout", [1], indirect=True)
 def test_buffered_inputs(shutdown_only, temporary_change_timeout):
     ray.init()

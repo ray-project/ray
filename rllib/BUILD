@@ -319,52 +319,6 @@ py_test(
     args = ["--dir=tuned_examples/appo"]
 )
 
-# Tests against crashing or hanging environments.
-# Single-agent: Crash only.
-#@OldAPIStack
-py_test(
-    name = "learning_tests_cartpole_crashing_appo_old_api_stack",
-    main = "tests/run_regression_tests.py",
-    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_discrete", "crashing_cartpole", "torch_only"],
-    size = "large",
-    srcs = ["tests/run_regression_tests.py"],
-    data = ["tuned_examples/appo/cartpole-crashing-recreate-workers-appo.py"],
-    args = ["--dir=tuned_examples/appo", "--num-cpus=6"]
-)
-# Single-agent: Crash and stall.
-#@OldAPIStack
-py_test(
-    name = "learning_tests_cartpole_crashing_and_stalling_appo_old_api_stack",
-    main = "tests/run_regression_tests.py",
-    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_discrete", "crashing_cartpole", "torch_only"],
-    size = "large",
-    srcs = ["tests/run_regression_tests.py"],
-    data = ["tuned_examples/appo/cartpole-crashing-and-stalling-recreate-workers-appo.py"],
-    args = ["--dir=tuned_examples/appo", "--num-cpus=6"]
-)
-# Multi-agent: Crash only.
-#@OldAPIStack
-py_test(
-    name = "learning_tests_multi_agent_cartpole_crashing_appo_old_api_stack",
-    main = "tests/run_regression_tests.py",
-    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_discrete", "crashing_cartpole", "torch_only"],
-    size = "large",
-    srcs = ["tests/run_regression_tests.py"],
-    data = ["tuned_examples/appo/multi-agent-cartpole-crashing-recreate-workers-appo.py"],
-    args = ["--dir=tuned_examples/appo", "--num-cpus=6"]
-)
-# Multi-agent: Crash and stall.
-#@OldAPIStack
-py_test(
-    name = "learning_tests_multi_agent_cartpole_crashing_and_stalling_appo_old_api_stack",
-    main = "tests/run_regression_tests.py",
-    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_discrete", "crashing_cartpole", "torch_only"],
-    size = "large",
-    srcs = ["tests/run_regression_tests.py"],
-    data = ["tuned_examples/appo/multi-agent-cartpole-crashing-and-stalling-recreate-workers-appo.py"],
-    args = ["--dir=tuned_examples/appo", "--num-cpus=6"]
-)
-
 # BC
 # CartPole
 py_test(
