@@ -18,7 +18,7 @@ from ray_release.configs.global_config import init_global_config
 GLOBAL_CONFIG_FILE = (
     os.environ.get("RAYCI_GLOBAL_CONFIG") or "ci/ray_ci/oss_config.yaml"
 )
-RAY_VERSION = "2.36.0"
+RAY_VERSION = "2.36.1"
 
 
 def ci_init() -> None:
