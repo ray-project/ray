@@ -1,5 +1,4 @@
 from ray.rllib.algorithms.ppo import PPOConfig
-from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
 from ray.rllib.utils.test_utils import add_rllib_example_script_args
 
 parser = add_rllib_example_script_args(default_reward=450.0, default_timesteps=300000)
@@ -17,11 +16,11 @@ config = (
         vf_loss_coeff=0.01,
     )
     .rl_module(
-        model_config=DefaultModelConfig(
-            fcnet_hiddens=[32],
-            fcnet_activation="linear",
-            vf_share_layers=True,
-        ),
+        model_config_dict={
+            "fcnet_hiddens": [32],
+            "fcnet_activation": "linear",
+            "vf_share_layers": True,
+        }
     )
 )
 
