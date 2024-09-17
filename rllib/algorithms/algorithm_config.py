@@ -623,12 +623,7 @@ class AlgorithmConfig(_Config):
             policies_dict = {}
             for policy_id, policy_spec in config.pop("policies").items():
                 if isinstance(policy_spec, PolicySpec):
-                    policies_dict[policy_id] = (
-                        policy_spec.policy_class,
-                        policy_spec.observation_space,
-                        policy_spec.action_space,
-                        policy_spec.config,
-                    )
+                    policies_dict[policy_id] = policy_spec.get_state()
                 else:
                     policies_dict[policy_id] = policy_spec
             config["policies"] = policies_dict
@@ -770,6 +765,53 @@ class AlgorithmConfig(_Config):
         self.evaluation(**eval_call)
 
         return self
+
+    def get_state(self) -> Dict[str, Any]:
+        """Returns a dict state that can be pickled.
+
+        Returns:
+            A dictionary containing all attributes of the instance.
+        """
+
+        state = self.__dict__.copy()
+        state["class"] = type(self)
+        state.pop("algo_class")
+        state.pop("_is_frozen")
+
+        # Convert `policies` (PolicySpecs?) into dict.
+        # Convert policies dict such that each policy ID maps to a old-style.
+        # 4-tuple: class, obs-, and action space, config.
+        # TODO (simon, sven): Remove when deprecating old stack.
+        if "policies" in state and isinstance(state["policies"], dict):
+            policies_dict = {}
+            for policy_id, policy_spec in state.pop("policies").items():
+                if isinstance(policy_spec, PolicySpec):
+                    policies_dict[policy_id] = policy_spec.get_state()
+                else:
+                    policies_dict[policy_id] = policy_spec
+            state["policies"] = policies_dict
+
+        return state
+
+    @classmethod
+    def from_state(cls, state: Dict[str, Any]) -> "AlgorithmConfig":
+        """Returns an instance constructed from the state.
+
+        Args:
+            cls: An `AlgorithmConfig` class.
+            state: A dictionary containing the state of an `AlgorithmConfig`.
+                See `AlgorithmConfig.get_state` for creating a state.
+
+        Returns:
+            An `AlgorithmConfig` instance with attributes from the `state`.
+        """
+
+        ctor = state["class"]
+        config = ctor()
+
+        config.__dict__.update(state)
+
+        return config
 
     # TODO(sven): We might want to have a `deserialize` method as well. Right now,
     #  simply using the from_dict() API works in this same (deserializing) manner,

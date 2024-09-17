@@ -424,7 +424,6 @@ class Checkpointable(abc.ABC):
                 "an implementer of the `Checkpointable` API!"
             )
 
-        # Construct an initial object.
         obj = ctor(
             *ctor_info["ctor_args_and_kwargs"][0],
             **ctor_info["ctor_args_and_kwargs"][1],

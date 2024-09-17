@@ -124,6 +124,23 @@ class PolicySpec:
             and self.config == other.config
         )
 
+    def get_state(self) -> Dict[str, Any]:
+        """Returns the state of a `PolicyDict` as a dict."""
+        return (
+            self.policy_class,
+            self.observation_space,
+            self.action_space,
+            self.config,
+        )
+
+    @classmethod
+    def from_state(cls, state: Dict[str, Any]) -> "PolicySpec":
+        """Builds a `PolicySpec` from a state."""
+        policy_spec = PolicySpec()
+        policy_spec.__dict__.update(state)
+
+        return policy_spec
+
     def serialize(self) -> Dict:
         from ray.rllib.algorithms.registry import get_policy_class_name
 
