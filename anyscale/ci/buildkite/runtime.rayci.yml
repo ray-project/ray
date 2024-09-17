@@ -1,0 +1,16 @@
+group: runtime-only tests
+sort_key: "~runtime-only"
+depends_on:
+  - forge
+  - oss-ci-base_build
+steps:
+  - name: runtimebuild
+    wanda: anyscale/ci/docker/runtime.build.wanda.yaml
+  
+  - label: "anytensor tests"
+    instance_type: medium
+    commands:
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/anyscale/anytensor/... serve
+        --build-name runtimebuild
+    depends_on: runtimebuild
+    job_env: forge
