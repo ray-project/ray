@@ -60,16 +60,93 @@ class TestPPO(unittest.TestCase):
     def tearDownClass(cls):
         ray.shutdown()
 
+    def test_ppo_compilation_w_connectors(self):
+        """Test whether PPO can be built with all frameworks w/ connectors."""
+
+        # Build a PPOConfig object.
+        config = (
+            ppo.PPOConfig()
+            .training(
+                num_epochs=2,
+                # Setup lr schedule for testing.
+                lr_schedule=[[0, 5e-5], [128, 0.0]],
+                # Set entropy_coeff to a faulty value to proof that it'll get
+                # overridden by the schedule below (which is expected).
+                entropy_coeff=100.0,
+                entropy_coeff_schedule=[[0, 0.1], [256, 0.0]],
+                train_batch_size=128,
+                model=dict(
+                    # Settings in case we use an LSTM.
+                    lstm_cell_size=10,
+                    max_seq_len=20,
+                ),
+            )
+            .env_runners(
+                num_env_runners=1,
+                # Test with compression.
+                compress_observations=True,
+                enable_connectors=True,
+            )
+            .callbacks(MyCallbacks)
+            .evaluation(
+                evaluation_duration=2,
+                evaluation_duration_unit="episodes",
+                evaluation_num_env_runners=1,
+            )
+        )  # For checking lr-schedule correctness.
+
+        num_iterations = 2
+
+        for env in ["FrozenLake-v1", "ALE/MsPacman-v5"]:
+            print("Env={}".format(env))
+            for lstm in [False, True]:
+                print("LSTM={}".format(lstm))
+                config.training(
+                    model=dict(
+                        use_lstm=lstm,
+                        lstm_use_prev_action=lstm,
+                        lstm_use_prev_reward=lstm,
+                    )
+                )
+
+                algo = config.build(env=env)
+                policy = algo.get_policy()
+                entropy_coeff = algo.get_policy().entropy_coeff
+                lr = policy.cur_lr
+                check(entropy_coeff, 0.1)
+                check(lr, config.lr)
+
+                for i in range(num_iterations):
+                    results = algo.train()
+                    check_train_results(results)
+                    print(results)
+
+                algo.evaluate()
+
+                check_inference_w_connectors(policy, env_name=env)
+                algo.stop()
+
     def test_ppo_compilation_and_schedule_mixins(self):
         """Test whether PPO can be built with all frameworks."""
 
         # Build a PPOConfig object with the `SingleAgentEnvRunner` class.
         config = (
             ppo.PPOConfig()
-            # Enable new API stack and use EnvRunner.
-            .api_stack(
-                enable_rl_module_and_learner=True,
-                enable_env_runner_and_connector_v2=True,
+            .training(
+                # Setup lr schedule for testing.
+                lr_schedule=[[0, 5e-5], [256, 0.0]],
+                # Set entropy_coeff to a faulty value to proof that it'll get
+                # overridden by the schedule below (which is expected).
+                entropy_coeff=100.0,
+                entropy_coeff_schedule=[[0, 0.1], [512, 0.0]],
+                train_batch_size=256,
+                minibatch_size=128,
+                num_epochs=2,
+                model=dict(
+                    # Settings in case we use an LSTM.
+                    lstm_cell_size=10,
+                    max_seq_len=20,
+                ),
             )
             .env_runners(num_env_runners=0)
             .training(

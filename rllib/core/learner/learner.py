@@ -889,7 +889,7 @@ class Learner(Checkpointable):
             fwd_out: Output from a call to the `forward_train()` method of the
                 underlying MultiRLModule (`self.module`) during training
                 (`self.update()`).
-            batch: The training batch that was used to compute `fwd_out`.
+            batch: The train batch that was used to compute `fwd_out`.
 
         Returns:
             A dictionary mapping module IDs to individual loss terms.
@@ -1094,6 +1094,7 @@ class Learner(Checkpointable):
             )
 
         self._check_is_built()
+        # minibatch_size = minibatch_size or 32
 
         # Call `before_gradient_based_update` to allow for non-gradient based
         # preparations-, logging-, and update logic to happen.
