@@ -501,6 +501,7 @@ class AlgorithmConfig(_Config):
         self.min_time_s_per_iteration = None
         self.min_train_timesteps_per_iteration = 0
         self.min_sample_timesteps_per_iteration = 0
+        self.log_gradients = True
 
         # `self.checkpointing()`
         self.export_native_model_files = False
@@ -2931,6 +2932,7 @@ class AlgorithmConfig(_Config):
         min_time_s_per_iteration: Optional[float] = NotProvided,
         min_train_timesteps_per_iteration: Optional[int] = NotProvided,
         min_sample_timesteps_per_iteration: Optional[int] = NotProvided,
+        log_gradients: Optional[bool] = NotProvided,
     ) -> "AlgorithmConfig":
         """Sets the config's reporting settings.
 
@@ -2971,6 +2973,9 @@ class AlgorithmConfig(_Config):
                 sampling timestep count has not been reached, will perform n more
                 `training_step()` calls until the minimum timesteps have been
                 executed. Set to 0 or None for no minimum timesteps.
+            log_gradients: Log gradients to results. If this is `True` the global norm
+                of the gradients dictionariy for each optimizer is logged to results.
+                The default is `True`.
 
         Returns:
             This updated AlgorithmConfig object.
@@ -2989,6 +2994,8 @@ class AlgorithmConfig(_Config):
             self.min_train_timesteps_per_iteration = min_train_timesteps_per_iteration
         if min_sample_timesteps_per_iteration is not NotProvided:
             self.min_sample_timesteps_per_iteration = min_sample_timesteps_per_iteration
+        if log_gradients is not NotProvided:
+            self.log_gradients = log_gradients
 
         return self
 
