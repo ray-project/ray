@@ -15,6 +15,7 @@ from ray.serve._private.grpc_util import (
 from ray.serve._private.test_utils import FakeGrpcContext
 from ray.serve.grpc_util import RayServegRPCContext
 
+
 class FakeGrpcServer:
     def __init__(self):
         self.address = None
