@@ -75,6 +75,7 @@ class DataOrganizer:
 
         node_workers = {}
         core_worker_stats = {}
+
         # NOTE: We copy keys of the `DataSource.nodes` to make sure
         #       it doesn't change during the iteration (since its being updated
         #       from another async task)
@@ -88,10 +89,8 @@ class DataOrganizer:
                 cls._extract_workers_for_node,
                 node_physical_stats,
                 node_stats,
-                core_worker_stats,
             )
 
-            # TODO rebase
             for worker in workers:
                 for stats in worker.get("coreWorkerStats", []):
                     worker_id = stats["workerId"]
@@ -104,7 +103,7 @@ class DataOrganizer:
 
     @classmethod
     def _extract_workers_for_node(
-        cls, node_physical_stats, node_stats, worker_stats_map: Dict[str, dict]
+        cls, node_physical_stats, node_stats
     ):
         workers = []
         # Merge coreWorkerStats (node stats) to workers (node physical stats)
@@ -114,9 +113,6 @@ class DataOrganizer:
 
         for core_worker_stats in node_stats.get("coreWorkersStats", []):
             pid = core_worker_stats["pid"]
-            worker_id = core_worker_stats["workerId"]
-
-            worker_stats_map[worker_id] = core_worker_stats
 
             pid_to_worker_stats[pid] = core_worker_stats
             pid_to_language[pid] = core_worker_stats["language"]
