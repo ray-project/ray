@@ -2184,7 +2184,6 @@ class AlgorithmConfig(_Config):
         learner_config_dict: Optional[Dict[str, Any]] = NotProvided,
         # Deprecated args.
         num_sgd_iter=DEPRECATED_VALUE,
-        max_requests_in_flight_per_sampler_worker=DEPRECATED_VALUE,
     ) -> "AlgorithmConfig":
         """Sets the training related configuration.
 
@@ -2240,7 +2239,7 @@ class AlgorithmConfig(_Config):
             minibatch_size: The size of minibatches to use to further split the train
                 batch into.
             shuffle_batch_per_epoch: Whether to shuffle the train batch once per epoch.
-                If the train batch has a time rank (axis=1), shuffling only takes
+                If the train batch has a time rank (axis=1), shuffling will only take
                 place along the batch axis to not disturb any intact (episode)
                 trajectories.
             model: Arguments passed into the policy model. See models/catalog.py for a
@@ -2284,19 +2283,6 @@ class AlgorithmConfig(_Config):
                 error=False,
             )
             num_epochs = num_sgd_iter
-        if max_requests_in_flight_per_sampler_worker != DEPRECATED_VALUE:
-            deprecation_warning(
-                old="AlgorithmConfig.training("
-                "max_requests_in_flight_per_sampler_worker=...)",
-                new="AlgorithmConfig.env_runners("
-                "max_requests_in_flight_per_env_runner=...)",
-                error=False,
-            )
-            self.env_runners(
-                max_requests_in_flight_per_env_runner=(
-                    max_requests_in_flight_per_sampler_worker
-                ),
-            )
 
         if gamma is not NotProvided:
             self.gamma = gamma
