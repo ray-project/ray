@@ -1,4 +1,5 @@
 from ray.rllib.algorithms.ppo import PPOConfig
+from ray.rllib.connectors.env_to_module import MeanStdFilter
 from ray.rllib.utils.test_utils import add_rllib_example_script_args
 
 parser = add_rllib_example_script_args(default_timesteps=400000, default_reward=-300)
@@ -20,10 +21,8 @@ config = (
         minibatch_size=128,
         lr=0.0002 * (args.num_gpus or 1) ** 0.5,
         gamma=0.95,
-        lr=0.0003,
-        lambda_=0.1,
-        vf_clip_param=10.0,
-        sgd_minibatch_size=64,
+        lambda_=0.5,
+        # num_epochs=8,
     )
     .rl_module(
         model_config_dict={
