@@ -403,14 +403,6 @@ class IMPALAConfig(AlgorithmConfig):
 
         # Entropy coeff schedule checking.
         if self.enable_rl_module_and_learner:
-            if not self.enable_env_runner_and_connector_v2:
-                raise ValueError(
-                    "Setting `enable_rl_module_and_learner` to True and "
-                    "`enable_env_runner_and_connector_v2` to False ('hybrid API stack'"
-                    ") is not longer supported! Set both to True or both to False, "
-                    "instead."
-                )
-
             if self.entropy_coeff_schedule is not None:
                 raise ValueError(
                     "`entropy_coeff_schedule` is deprecated and must be None! Use the "
@@ -648,7 +640,7 @@ class IMPALA(Algorithm):
 
     @override(Algorithm)
     def training_step(self) -> ResultDict:
-        # Old- and hybrid API stacks.
+        # Old API stack.
         if not self.config.enable_rl_module_and_learner:
             return self._training_step_old_api_stack()
 
@@ -1026,10 +1018,8 @@ class IMPALA(Algorithm):
 
         # Get sampled SampleBatches from our workers (by ray references if we use
         # tree-aggregation).
-        unprocessed_sample_batches = (
-            self._get_samples_from_workers_old_and_hybrid_api_stack(
-                return_object_refs=use_tree_aggregation,
-            )
+        unprocessed_sample_batches = self._get_samples_from_workers_old_api_stack(
+            return_object_refs=use_tree_aggregation,
         )
         # Tag workers that actually produced ready sample batches this iteration.
         # Those workers will have to get updated at the end of the iteration.
@@ -1079,7 +1069,7 @@ class IMPALA(Algorithm):
         return train_results
 
     @OldAPIStack
-    def _get_samples_from_workers_old_and_hybrid_api_stack(
+    def _get_samples_from_workers_old_api_stack(
         self,
         return_object_refs: Optional[bool] = False,
     ) -> List[Tuple[int, Union[ObjectRef, SampleBatchType]]]:
@@ -1437,10 +1427,8 @@ class IMPALA(Algorithm):
             )
 
     @override(Algorithm)
-    def _compile_iteration_results_old_and_hybrid_api_stacks(self, *args, **kwargs):
-        result = super()._compile_iteration_results_old_and_hybrid_api_stacks(
-            *args, **kwargs
-        )
+    def _compile_iteration_results_old_api_stack(self, *args, **kwargs):
+        result = super()._compile_iteration_results_old_api_stack(*args, **kwargs)
         if not self.config.enable_rl_module_and_learner:
             result = self._learner_thread.add_learner_metrics(
                 result, overwrite_learner_info=False

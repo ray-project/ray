@@ -637,7 +637,7 @@ class DQN(Algorithm):
         # New API stack (RLModule, Learner, EnvRunner, ConnectorV2).
         if self.config.enable_env_runner_and_connector_v2:
             return self._training_step_new_api_stack(with_noise_reset=True)
-        # Old and hybrid API stacks (Policy, RolloutWorker, Connector, maybe RLModule,
+        # Old API stack (Policy, RolloutWorker, Connector, maybe RLModule,
         # maybe Learner).
         else:
             return self._training_step_old_api_stack()
