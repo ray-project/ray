@@ -532,7 +532,7 @@ void RayEventLog::Init_(
   SetEmitEventToLogFile(emit_event_to_log_file);
 
   absl::MutexLock lock(&actor_data_buffer_mutex_);
-  actor_data_buffer_.set_capacity(1000);
+  actor_data_buffer_.set_capacity(1000 * 1000);
 }
 void RayEventLog::StartPeriodicFlushThread() {
   stop_periodic_flush_flag_ = false;
