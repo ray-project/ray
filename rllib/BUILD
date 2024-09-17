@@ -1745,6 +1745,17 @@ py_test(
     ],
 )
 
+py_test(
+    name = "test_offline_prelearner",
+    tags = ["team:rllib", "offline"],
+    size = "small",
+    srcs = ["offline/tests/test_offline_prelearner.py"],
+    data = [
+        "tests/data/cartpole/cartpole-v1_large",
+        "tests/data/cartpole/large.json",
+    ],
+)
+
 # --------------------------------------------------------------------
 # Policies
 # rllib/policy/
