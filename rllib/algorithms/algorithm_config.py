@@ -384,6 +384,13 @@ class AlgorithmConfig(_Config):
         # Simple logic for now: If None, use `train_batch_size`.
         self.train_batch_size_per_learner = None
         self.train_batch_size = 32  # @OldAPIStack
+
+        # These setting have been adopted from the original PPO batch settings:
+        # num_sgd_iter, minibatch_size, and shuffle_sequences.
+        self.num_epochs = 1
+        self.minibatch_size = None
+        self.shuffle_batch_per_epoch = False
+
         # TODO (sven): Unsolved problem with RLModules sometimes requiring settings from
         #  the main AlgorithmConfig. We should not require the user to provide those
         #  settings in both, the AlgorithmConfig (as property) AND the model config
@@ -447,6 +454,8 @@ class AlgorithmConfig(_Config):
         self.map_batches_kwargs = {}
         self.iter_batches_kwargs = {}
         self.prelearner_class = None
+        self.prelearner_buffer_class = None
+        self.prelearner_buffer_kwargs = {}
         self.prelearner_module_synch_period = 10
         self.dataset_num_iters_per_learner = None
         self.input_config = {}
@@ -492,6 +501,7 @@ class AlgorithmConfig(_Config):
         self.min_time_s_per_iteration = None
         self.min_train_timesteps_per_iteration = 0
         self.min_sample_timesteps_per_iteration = 0
+        self.log_gradients = True
 
         # `self.checkpointing()`
         self.export_native_model_files = False
@@ -886,6 +896,8 @@ class AlgorithmConfig(_Config):
         self._validate_input_settings()
         # Check evaluation specific settings.
         self._validate_evaluation_settings()
+        # Check offline specific settings (new API stack).
+        self._validate_offline_settings()
 
         # Check new API stack specific settings.
         self._validate_new_api_stack_settings()
@@ -2106,6 +2118,9 @@ class AlgorithmConfig(_Config):
         grad_clip_by: Optional[str] = NotProvided,
         train_batch_size: Optional[int] = NotProvided,
         train_batch_size_per_learner: Optional[int] = NotProvided,
+        num_epochs: Optional[int] = NotProvided,
+        minibatch_size: Optional[int] = NotProvided,
+        shuffle_batch_per_epoch: Optional[bool] = NotProvided,
         model: Optional[dict] = NotProvided,
         optimizer: Optional[dict] = NotProvided,
         max_requests_in_flight_per_sampler_worker: Optional[int] = NotProvided,
@@ -2115,6 +2130,8 @@ class AlgorithmConfig(_Config):
         ] = NotProvided,
         add_default_connectors_to_learner_pipeline: Optional[bool] = NotProvided,
         learner_config_dict: Optional[Dict[str, Any]] = NotProvided,
+        # Deprecated args.
+        num_sgd_iter=DEPRECATED_VALUE,
     ) -> "AlgorithmConfig":
         """Sets the training related configuration.
 
@@ -2164,6 +2181,15 @@ class AlgorithmConfig(_Config):
                 stack, this setting should no longer be used. Instead, use
                 `train_batch_size_per_learner` (in combination with
                 `num_learners`).
+            num_epochs: The number of complete passes over the entire train batch (per
+                Learner). Each pass might be further split into n minibatches (if
+                `minibatch_size` provided).
+            minibatch_size: The size of minibatches to use to further split the train
+                batch into.
+            shuffle_batch_per_epoch: Whether to shuffle the train batch once per epoch.
+                If the train batch has a time rank (axis=1), shuffling will only take
+                place along the batch axis to not disturb any intact (episode)
+                trajectories.
             model: Arguments passed into the policy model. See models/catalog.py for a
                 full list of the available model options.
                 TODO: Provide ModelConfig objects instead of dicts.
@@ -2210,6 +2236,14 @@ class AlgorithmConfig(_Config):
         Returns:
             This updated AlgorithmConfig object.
         """
+        if num_sgd_iter != DEPRECATED_VALUE:
+            deprecation_warning(
+                old="config.training(num_sgd_iter=..)",
+                new="config.training(num_epochs=..)",
+                error=False,
+            )
+            num_epochs = num_sgd_iter
+
         if gamma is not NotProvided:
             self.gamma = gamma
         if lr is not NotProvided:
@@ -2227,6 +2261,13 @@ class AlgorithmConfig(_Config):
             self.train_batch_size_per_learner = train_batch_size_per_learner
         if train_batch_size is not NotProvided:
             self.train_batch_size = train_batch_size
+        if num_epochs is not NotProvided:
+            self.num_epochs = num_epochs
+        if minibatch_size is not NotProvided:
+            self.minibatch_size = minibatch_size
+        if shuffle_batch_per_epoch is not NotProvided:
+            self.shuffle_batch_per_epoch = shuffle_batch_per_epoch
+
         if model is not NotProvided:
             self.model.update(model)
             if (
@@ -2471,6 +2512,8 @@ class AlgorithmConfig(_Config):
         map_batches_kwargs: Optional[Dict] = NotProvided,
         iter_batches_kwargs: Optional[Dict] = NotProvided,
         prelearner_class: Optional[Type] = NotProvided,
+        prelearner_buffer_class: Optional[Type] = NotProvided,
+        prelearner_buffer_kwargs: Optional[Dict] = NotProvided,
         prelearner_module_synch_period: Optional[int] = NotProvided,
         dataset_num_iters_per_learner: Optional[int] = NotProvided,
         input_config: Optional[Dict] = NotProvided,
@@ -2500,21 +2543,23 @@ class AlgorithmConfig(_Config):
                 - A dict with string keys and sampling probabilities as values (e.g.,
                 {"sampler": 0.4, "/tmp/*.json": 0.4, "s3://bucket/expert.json": 0.2}).
                 - A callable that takes an `IOContext` object as only arg and returns a
-                ray.rllib.offline.InputReader.
-                - A string key that indexes a callable with tune.registry.register_input
+                `ray.rllib.offline.InputReader`.
+                - A string key that indexes a callable with
+                `tune.registry.register_input`
             input_read_method: Read method for the `ray.data.Dataset` to read in the
                 offline data from `input_`. The default is `read_parquet` for Parquet
                 files. See https://docs.ray.io/en/latest/data/api/input_output.html for
                 more info about available read methods in `ray.data`.
-            input_read_method_kwargs: `kwargs` for the `input_read_method`. These will
-                be passed into the read method without checking. If no arguments are
-                passed in the default argument `{'override_num_blocks':
-                max(num_learners * 2, 2)}` is used. Use these `kwargs`` together with
-                the `map_batches_kwargs` and `iter_batches_kwargs` to tune the
-                performance of the data pipeline.
+            input_read_method_kwargs: Keyword args for `input_read_method`. These
+                will be passed into the read method without checking. If no arguments
+                are passed in the default argument
+                `{'override_num_blocks': max(num_learners * 2, 2)}` is used. Use these
+                keyword args together with `map_batches_kwargs` and
+                `iter_batches_kwargs` to tune the performance of the data pipeline.
             input_read_schema: Table schema for converting offline data to episodes.
-                This schema maps the offline data columns to `ray.rllib.core.columns.
-                Columns`: {Columns.OBS: 'o_t', Columns.ACTIONS: 'a_t', ...}. Columns in
+                This schema maps the offline data columns to
+                ray.rllib.core.columns.Columns:
+                `{Columns.OBS: 'o_t', Columns.ACTIONS: 'a_t', ...}`. Columns in
                 the data set that are not mapped via this schema are sorted into
                 episodes' `extra_model_outputs`. If no schema is passed in the default
                 schema used is `ray.rllib.offline.offline_data.SCHEMA`. If your data set
@@ -2528,8 +2573,8 @@ class AlgorithmConfig(_Config):
                 inside of RLlib's schema. The other format is a columnar format and is
                 agnostic to the RL framework used. Use the latter format, if you are
                 unsure when to use the data or in which RL framework. The default is
-                to read column data, i.e. `False`. `input_read_episodes` and
-                `inpuit_read_sample_batches` cannot be `True` at the same time. See
+                to read column data, i.e. False. `input_read_episodes` and
+                `input_read_sample_batches` cannot be True at the same time. See
                 also `output_write_episodes` to define the output data format when
                 recording.
             input_read_sample_batches: Whether offline data is stored in RLlib's old
@@ -2538,41 +2583,41 @@ class AlgorithmConfig(_Config):
                 data needs extra transforms and might not concatenate episode chunks
                 contained in different `SampleBatch`es in the data. If possible avoid
                 to read `SampleBatch`es and convert them in a controlled form into
-                RLlib`s `EpisodeType`s (i.e. `SingleAgentEpisode` or
-                `MultiAgentEpisode`). The default is `False`. `input_read_episodes`
-                and `inpuit_read_sample_batches` cannot be `True` at the same time.
+                RLlib's `EpisodeType` (i.e. `SingleAgentEpisode` or
+                `MultiAgentEpisode`). The default is False. `input_read_episodes`
+                and `input_read_sample_batches` cannot be True at the same time.
             input_filesystem: A cloud filesystem to handle access to cloud storage when
-                reading experiences. Should be either `gcs` for Google Cloud Storage,
-                `s3` for AWS S3 buckets, or `abs` for Azure Blob Storage.
+                reading experiences. Should be either "gcs" for Google Cloud Storage,
+                "s3" for AWS S3 buckets, or "abs" for Azure Blob Storage.
             input_filesystem_kwargs: A dictionary holding the kwargs for the filesystem
                 given by `input_filesystem`. See `gcsfs.GCSFilesystem` for GCS,
                 `pyarrow.fs.S3FileSystem`, for S3, and `ablfs.AzureBlobFilesystem` for
                 ABS filesystem arguments.
             input_compress_columns: What input columns are compressed with LZ4 in the
-                input data. If data is stored in `RLlib`'s `SingleAgentEpisode` (
+                input data. If data is stored in RLlib's `SingleAgentEpisode` (
                 `MultiAgentEpisode` not supported, yet). Note,
                 `rllib.core.columns.Columns.OBS` will also try to decompress
                 `rllib.core.columns.Columns.NEXT_OBS`.
-            map_batches_kwargs: `kwargs` for the `map_batches` method. These will be
+            map_batches_kwargs: Keyword args for the `map_batches` method. These will be
                 passed into the `ray.data.Dataset.map_batches` method when sampling
-                without checking. If no arguments passed in the default arguments `{
-                'concurrency': max(2, num_learners), 'zero_copy_batch': True}` is
-                used. Use these `kwargs`` together with the `input_read_method_kwargs`
+                without checking. If no arguments passed in the default arguments
+                `{'concurrency': max(2, num_learners), 'zero_copy_batch': True}` is
+                used. Use these keyword args together with `input_read_method_kwargs`
                 and `iter_batches_kwargs` to tune the performance of the data pipeline.
-            iter_batches_kwargs: `kwargs` for the `iter_batches` method. These will be
-                passed into the `ray.data.Dataset.iter_batches` method when sampling
-                without checking. If no arguments are passed in, the default argument `{
-                'prefetch_batches': 2, 'local_buffer_shuffle_size':
-                train_batch_size_per_learner * 4}` is used. Use these `kwargs``
-                together with the `input_read_method_kwargs` and `map_batches_kwargs`
-                to tune the performance of the data pipeline.
+            iter_batches_kwargs: Keyword args for the `iter_batches` method. These will
+                be passed into the `ray.data.Dataset.iter_batches` method when sampling
+                without checking. If no arguments are passed in, the default argument
+                `{'prefetch_batches': 2, 'local_buffer_shuffle_size':
+                train_batch_size_per_learner x 4}` is used. Use these keyword args
+                together with `input_read_method_kwargs` and `map_batches_kwargs` to
+                tune the performance of the data pipeline.
             prelearner_class: An optional `OfflinePreLearner` class that is used to
                 transform data batches in `ray.data.map_batches` used in the
                 `OfflineData` class to transform data from columns to batches that can
-                be used in the `Learner`'s `update` methods. Override the
-                `OfflinePreLearner` class and pass your dervied class in here, if you
+                be used in the `Learner.update...()` methods. Override the
+                `OfflinePreLearner` class and pass your derived class in here, if you
                 need to make some further transformations specific for your data or
-                loss. The default is `None` which uses the base `OfflinePreLearner`
+                loss. The default is None which uses the base `OfflinePreLearner`
                 defined in `ray.rllib.offline.offline_prelearner`.
             prelearner_module_synch_period: The period (number of batches converted)
                 after which the `RLModule` held by the `PreLearner` should sync weights.
@@ -2581,14 +2626,14 @@ class AlgorithmConfig(_Config):
                 Values too small will force the `PreLearner` to sync more frequently
                 and thus might slow down the data pipeline. The default value chosen
                 by the `OfflinePreLearner` is 10.
-            dataset_num_iters_per_learner: Number of iterations to run in each learner
-                during a single training iteration. If `None`, each learner runs a
+            dataset_num_iters_per_learner: Number of updates to run in each learner
+                during a single training iteration. If None, each learner runs a
                 complete epoch over its data block (the dataset is partitioned into
-                as many blocks as there are learners). The default is `None`.
-            input_config: Arguments that describe the settings for reading the inpu t.
-                If input is `sample`, this will be environment configuation, e.g.
+                at least as many blocks as there are learners). The default is `None`.
+            input_config: Arguments that describe the settings for reading the input.
+                If input is "sample", this will be environment configuration, e.g.
                 `env_name` and `env_config`, etc. See `EnvContext` for more info.
-                If the input is `dataset`, this will be e.g. `format`, `path`.
+                If the input is "dataset", this will be e.g. `format`, `path`.
             actions_in_input_normalized: True, if the actions in a given offline "input"
                 are already normalized (between -1.0 and 1.0). This is usually the case
                 when the offline file has been generated by another RLlib algorithm
@@ -2622,8 +2667,8 @@ class AlgorithmConfig(_Config):
             output_write_method_kwargs: `kwargs` for the `output_write_method`. These
                 will be passed into the write method without checking.
             output_filesystem: A cloud filesystem to handle access to cloud storage when
-                writing experiences. Should be either `gcs` for Google Cloud Storage,
-                `s3` for AWS S3 buckets, or `abs` for Azure Blob Storage.
+                writing experiences. Should be either "gcs" for Google Cloud Storage,
+                "s3" for AWS S3 buckets, or "abs" for Azure Blob Storage.
             output_filesystem_kwargs: A dictionary holding the kwargs for the filesystem
                 given by `output_filesystem`. See `gcsfs.GCSFilesystem` for GCS,
                 `pyarrow.fs.S3FileSystem`, for S3, and `ablfs.AzureBlobFilesystem` for
@@ -2661,6 +2706,10 @@ class AlgorithmConfig(_Config):
             self.iter_batches_kwargs = iter_batches_kwargs
         if prelearner_class is not NotProvided:
             self.prelearner_class = prelearner_class
+        if prelearner_buffer_class is not NotProvided:
+            self.prelearner_buffer_class = prelearner_buffer_class
+        if prelearner_buffer_kwargs is not NotProvided:
+            self.prelearner_buffer_kwargs = prelearner_buffer_kwargs
         if prelearner_module_synch_period is not NotProvided:
             self.prelearner_module_synch_period = prelearner_module_synch_period
         if dataset_num_iters_per_learner is not NotProvided:
@@ -2925,6 +2974,7 @@ class AlgorithmConfig(_Config):
         min_time_s_per_iteration: Optional[float] = NotProvided,
         min_train_timesteps_per_iteration: Optional[int] = NotProvided,
         min_sample_timesteps_per_iteration: Optional[int] = NotProvided,
+        log_gradients: Optional[bool] = NotProvided,
     ) -> "AlgorithmConfig":
         """Sets the config's reporting settings.
 
@@ -2965,6 +3015,9 @@ class AlgorithmConfig(_Config):
                 sampling timestep count has not been reached, will perform n more
                 `training_step()` calls until the minimum timesteps have been
                 executed. Set to 0 or None for no minimum timesteps.
+            log_gradients: Log gradients to results. If this is `True` the global norm
+                of the gradients dictionariy for each optimizer is logged to results.
+                The default is `True`.
 
         Returns:
             This updated AlgorithmConfig object.
@@ -2983,6 +3036,8 @@ class AlgorithmConfig(_Config):
             self.min_train_timesteps_per_iteration = min_train_timesteps_per_iteration
         if min_sample_timesteps_per_iteration is not NotProvided:
             self.min_sample_timesteps_per_iteration = min_sample_timesteps_per_iteration
+        if log_gradients is not NotProvided:
+            self.log_gradients = log_gradients
 
         return self
 
@@ -4483,6 +4538,31 @@ class AlgorithmConfig(_Config):
                     "`simple_optimizer=False` not supported for "
                     f"config.framework({self.framework_str})!"
                 )
+
+    def _validate_offline_settings(self):
+        from ray.rllib.offline.offline_prelearner import OfflinePreLearner
+
+        if self.prelearner_class and not issubclass(
+            self.prelearner_class, OfflinePreLearner
+        ):
+            raise ValueError(
+                "Unknown `prelearner_class`. Prelearner class needs to inherit "
+                "from `OfflinePreLearner` class."
+            )
+
+        from ray.rllib.utils.replay_buffers.episode_replay_buffer import (
+            EpisodeReplayBuffer,
+        )
+
+        if self.prelearner_buffer_class and not issubclass(
+            self.prelearner_buffer_class, EpisodeReplayBuffer
+        ):
+            raise ValueError(
+                "Unknown `prelearner_buffer_class`. The buffer class for the "
+                "prelearner needs to inherit from `EpisodeReplayBuffer`. "
+                "Specifically it needs to store and sample lists of "
+                "`Single-/MultiAgentEpisode`s."
+            )
 
     @staticmethod
     def _serialize_dict(config):
