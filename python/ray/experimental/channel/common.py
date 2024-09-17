@@ -470,6 +470,8 @@ class SynchronousWriter(WriterInterface):
             channel.ensure_registered_as_writer()
 
     def write(self, val: Any, timeout: Optional[float] = None) -> None:
+        if isinstance(val, Exception):
+            val = tuple(val for _ in range(len(self._output_channels)))
         if not self._is_input:
             if len(self._output_channels) > 1:
                 if not isinstance(val, tuple):
