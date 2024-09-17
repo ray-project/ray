@@ -51,8 +51,8 @@ pb2_scheduler = PB2(
         "vf_loss_coeff": [0.01, 1.0],
         "clip_param": [0.1, 0.3],
         "kl_target": [0.01, 0.03],
-        "sgd_minibatch_size": [512, 4096],
-        "num_sgd_iter": [6, 32],
+        "minibatch_size": [512, 4096],
+        "num_epochs": [6, 32],
         "vf_share_layers": [False, True],
         "use_kl_loss": [False, True],
         "kl_coeff": [0.1, 0.4],
@@ -96,15 +96,15 @@ for env, stop_criteria in benchmark_envs.items():
             vf_loss_coeff=tune.uniform(0.01, 1.0),
             clip_param=tune.uniform(0.1, 0.3),
             kl_target=tune.uniform(0.01, 0.03),
-            sgd_minibatch_size=tune.choice([512, 1024, 2048, 4096]),
-            num_sgd_iter=tune.randint(6, 32),
+            minibatch_size=tune.choice([512, 1024, 2048, 4096]),
+            num_epochs=tune.randint(6, 32),
             vf_share_layers=tune.choice([True, False]),
             use_kl_loss=tune.choice([True, False]),
             kl_coeff=tune.uniform(0.1, 0.4),
             vf_clip_param=tune.choice([10.0, 40.0, float("inf")]),
             grad_clip=tune.choice([None, 40, 100, 200]),
             train_batch_size=tune.sample_from(
-                lambda spec: spec.config["sgd_minibatch_size"] * num_rollout_workers
+                lambda spec: spec.config["minibatch_size"] * num_rollout_workers
             ),
             model={
                 "fcnet_hiddens": [64, 64],

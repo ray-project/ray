@@ -147,8 +147,6 @@ class DataOrganizer:
         node_info["raylet"] = node_stats
         node_info["raylet"].update(ray_stats)
 
-        node_info["status"] = node["stateSnapshot"]["state"]
-
         # Merge GcsNodeInfo to node physical stats
         node_info["raylet"].update(node)
         death_info = node.get("deathInfo", {})

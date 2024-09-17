@@ -794,16 +794,22 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
                 remote=self.config.remote_worker_envs,
             )
 
+        # No env provided -> Error.
+        if not self.config.env:
+            raise ValueError(
+                "`config.env` is not provided! You should provide a valid environment "
+                "to your config through `config.environment([env descriptor e.g. "
+                "'CartPole-v1'])`."
+            )
         # Register env for the local context.
         # Note, `gym.register` has to be called on each worker.
-        if isinstance(self.config.env, str) and _global_registry.contains(
+        elif isinstance(self.config.env, str) and _global_registry.contains(
             ENV_CREATOR, self.config.env
         ):
             entry_point = partial(
                 _global_registry.get(ENV_CREATOR, self.config.env),
                 env_ctx,
             )
-
         else:
             entry_point = partial(
                 _gym_env_creator,
