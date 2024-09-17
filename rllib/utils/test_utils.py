@@ -1392,15 +1392,19 @@ def run_rllib_example_script_experiment(
         # Define compute resources used automatically (only using the --num-gpus arg).
         # New stack.
         if config.enable_rl_module_and_learner:
+            # Do we have GPUs available in the cluster?
+            num_gpus = ray.cluster_resources().get("GPU", 0)
+            if args.num_gpus > 0 and num_gpus < args.num_gpus:
+                logger.warning(
+                    f"You are running your script with --num-gpus={args.num_gpus}, "
+                    f"but your cluster only has {num_gpus} GPUs! Will run "
+                    f"with {num_gpus} CPU Learners instead."
+                )
             # Define compute resources used.
             config.resources(num_gpus=0)
             config.learners(
                 num_learners=args.num_gpus,
-                num_gpus_per_learner=(
-                    1
-                    if torch and torch.cuda.is_available() and args.num_gpus > 0
-                    else 0
-                ),
+                num_gpus_per_learner=1 if num_gpus >= args.num_gpus > 0 else 0,
             )
             config.resources(num_gpus=0)
         # Old stack.
