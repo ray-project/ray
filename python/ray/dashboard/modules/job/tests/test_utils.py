@@ -12,6 +12,16 @@ from ray.dashboard.modules.job.utils import (
 )
 
 
+# Polyfill anext() function for Python 3.9 compatibility
+# May raise StopAsyncIteration.
+async def anext_polyfill(iterator):
+    return await iterator.__anext__()
+
+
+# Use the built-in anext() for Python 3.10+, otherwise use our polyfilled function
+anext = anext if sys.version_info >= (3, 10) else anext_polyfill
+
+
 @pytest.fixture
 def tmp():
     with NamedTemporaryFile() as f:
