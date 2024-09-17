@@ -40,7 +40,11 @@ from ray.serve._private.constants import (
     SERVE_MULTIPLEXED_MODEL_ID,
     SERVE_NAMESPACE,
 )
-from ray.serve._private.grpc_util import DummyServicer, create_serve_grpc_server
+from ray.serve._private.grpc_util import (
+    DummyServicer,
+    add_grpc_address,
+    create_serve_grpc_server,
+)
 from ray.serve._private.http_util import (
     MessageQueue,
     convert_object_to_asgi_messages,
