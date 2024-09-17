@@ -465,13 +465,11 @@ class LearnerGroup(Checkpointable):
                         _episodes_shard=episodes_shard,
                         _timesteps=timesteps,
                         _return_state=(return_state and i == 0),
-                        _num_total_mini_batches=(
-                            (
-                                self.config.total_train_batch_size
-                                / len(self._workers)
-                                // minibatch_size
-                            )
-                            * num_iters
+                        _num_total_minibatches=self._compute_num_total_minibatches(
+                            episodes,
+                            len(self._workers),
+                            minibatch_size,
+                            num_epochs,
                         ),
                         **kwargs,
                     )
@@ -485,13 +483,12 @@ class LearnerGroup(Checkpointable):
                 from ray.data.iterator import DataIterator
 
                 if isinstance(episodes[0], DataIterator):
-                    num_total_minibatches = 0
                     partials = [
                         partial(
                             _learner_update,
                             _episodes_shard=episodes_shard,
                             _timesteps=timesteps,
-                            _num_total_minibatches=num_total_minibatches,
+                            _num_total_minibatches=0,
                         )
                         for episodes_shard in episodes
                     ]
@@ -931,8 +928,8 @@ class LearnerGroup(Checkpointable):
         if not self._is_shut_down:
             self.shutdown()
 
-    @staticmethod
     def _compute_num_total_minibatches(
+        self,
         episodes,
         num_shards,
         minibatch_size,
@@ -941,8 +938,12 @@ class LearnerGroup(Checkpointable):
         # Computing the number of minibatches not required -> Return 0.
         if not minibatch_size or num_shards <= 1:
             return 0
+        # If episodes are object refs, we have no way of finding out the actual size of
+        # the data, so we estimate it through the config.total_train_batch_size.
+        elif isinstance(episodes[0], ObjectRef):
+            max_ts = self.config.total_train_batch_size
         # Count total number of timesteps per module ID.
-        if isinstance(episodes[0], MultiAgentEpisode):
+        elif isinstance(episodes[0], MultiAgentEpisode):
             per_mod_ts = defaultdict(int)
             for ma_episode in episodes:
                 for sa_episode in ma_episode.agent_episodes.values():
