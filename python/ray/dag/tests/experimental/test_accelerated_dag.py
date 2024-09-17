@@ -119,10 +119,6 @@ class Actor:
         raise RuntimeError
         return 1, 2
 
-    def raise_exception(self, x):
-        raise RuntimeError
-        return 1
-
     def get_events(self):
         return getattr(self, "__ray_adag_events", [])
 
