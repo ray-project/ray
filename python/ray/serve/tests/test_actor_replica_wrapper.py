@@ -17,10 +17,8 @@ from ray.serve._private.common import (
     RequestMetadata,
     RunningReplicaInfo,
 )
-from ray.serve._private.replica_scheduler.common import (
-    ActorReplicaWrapper,
-    PendingRequest,
-)
+from ray.serve._private.replica_scheduler.common import PendingRequest
+from ray.serve._private.replica_scheduler.replica_wrapper import ActorReplicaWrapper
 from ray.serve._private.test_utils import send_signal_on_cancellation
 
 
@@ -96,6 +94,7 @@ def setup_fake_replica(ray_instance) -> Tuple[ActorReplicaWrapper, ActorHandle]:
                     "fake_replica", deployment_id=DeploymentID(name="fake_deployment")
                 ),
                 node_id=None,
+                node_ip=None,
                 availability_zone=None,
                 actor_handle=actor_handle,
                 max_ongoing_requests=10,
