@@ -19,7 +19,8 @@ async def anext_polyfill(iterator):
 
 
 # Use the built-in anext() for Python 3.10+, otherwise use our polyfilled function
-anext = anext if sys.version_info >= (3, 10) else anext_polyfill
+if sys.version_info < (3, 10):
+    anext = anext_polyfill
 
 
 @pytest.fixture
