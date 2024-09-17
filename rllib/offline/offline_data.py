@@ -94,6 +94,9 @@ class OfflineData:
         self.learner_handles = None
         self.module_spec = None
 
+        self.materialize_mapped_data = config.get("materialize", True)
+        self.materialized_mapped_data = False
+
     @OverrideToImplementCustomLogic
     def sample(
         self,
@@ -101,6 +104,20 @@ class OfflineData:
         return_iterator: bool = False,
         num_shards: int = 1,
     ):
+        if not self.materialized_mapped_data:
+            self.data = self.data.map_batches(
+                self.prelearner_class,
+                fn_constructor_kwargs={
+                    "config": self.config,
+                    "learner": self.learner_handles[0],
+                    "spaces": self.spaces[INPUT_ENV_SPACES],
+                },
+                batch_size=num_samples,
+                **self.map_batches_kwargs,
+            )
+            self.materialized_mapped_data = True
+            if self.materialize_mapped_data:
+                self.data = self.data.materialize()
         if (
             not return_iterator or (return_iterator and num_shards <= 1)
         ) and not self.batch_iterator:
@@ -111,17 +128,8 @@ class OfflineData:
             # reinstantiation of the iterator.
 
             self.batch_iterator = iter(
-                self.data.map_batches(
-                    self.prelearner_class,
-                    fn_constructor_kwargs={
-                        "config": self.config,
-                        "learner": self.learner_handles[0],
-                        "spaces": self.spaces[INPUT_ENV_SPACES],
-                    },
-                    batch_size=num_samples,
-                    **self.map_batches_kwargs,
-                ).iter_batches(
-                    batch_size=num_samples,
+                self.data.iter_batches(
+                    batch_size=1,
                     **self.iter_batches_kwargs,
                 )
             )
