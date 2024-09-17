@@ -8,6 +8,7 @@ from google.protobuf.any_pb2 import Any as AnyProto
 from ray import cloudpickle
 from ray.serve._private.grpc_util import (
     DummyServicer,
+    add_grpc_address,
     create_serve_grpc_server,
     gRPCServer,
 )
@@ -132,7 +133,7 @@ def test_add_grpc_address():
     fake_grpc_server = FakeGrpcServer()
     grpc_address = "fake_address:50051"
     assert fake_grpc_server.address is None
-    gRPCServer.add_grpc_address(fake_grpc_server, grpc_address)
+    add_grpc_address(fake_grpc_server, grpc_address)
     assert fake_grpc_server.address == grpc_address
 
 
