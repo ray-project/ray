@@ -444,10 +444,8 @@ my_actor = MyActor.remote()
 ray.get(my_actor.print_message.remote())
 """
     stderr = run_string_as_driver(script)
-    lines = stderr.strip().splitlines()
-    assert "This is a Ray actor" in lines[1]
-    should_not_exist = "(MyActor pid="
-    assert should_not_exist not in stderr
+    assert "This is a Ray actor" in stderr
+    assert "(MyActor pid=" not in stderr
 
 
 if __name__ == "__main__":
