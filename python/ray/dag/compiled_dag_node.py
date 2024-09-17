@@ -1,4 +1,3 @@
-import atexit
 import weakref
 import asyncio
 from collections import defaultdict, deque
@@ -59,14 +58,12 @@ _compiled_dag_queue = weakref.WeakValueDictionary()
 
 
 # Relying on __del__ doesn't work well upon shutdown because
-# the destructor order is not guaranteed. We use atexit handler
-# instead to reliably shutdown compiled dag node.
+# the destructor order is not guaranteed. We call this function
+# upon `ray.worker.shutdown` which is registered to atexit handler
+# so that teardown is properly called before objects are destructed.
 def shutdown_compiled_dag_node():
     for _, compiled_dag in _compiled_dag_queue.items():
         compiled_dag.teardown()
-
-
-atexit.register(shutdown_compiled_dag_node)
 
 
 @DeveloperAPI
@@ -1722,6 +1719,7 @@ class CompiledDAG:
                 # once.
                 self.in_teardown_lock = threading.Lock()
                 self.name = "MonitorThread"
+                self._teardown_done = False
 
             def wait_teardown(self):
                 for actor, ref in outer.worker_task_refs.items():
@@ -1751,6 +1749,9 @@ class CompiledDAG:
             def teardown(self, wait: bool):
                 do_teardown = False
                 with self.in_teardown_lock:
+                    if self._teardown_done:
+                        return
+
                     if not self.in_teardown:
                         do_teardown = True
                         self.in_teardown = True
@@ -1790,6 +1791,9 @@ class CompiledDAG:
                     logger.debug("Waiting for worker tasks to exit")
                     self.wait_teardown()
                     logger.debug("Teardown complete")
+
+                with self.in_teardown_lock:
+                    self._teardown_done = True
 
             def run(self):
                 try:

@@ -389,6 +389,7 @@ class AwaitableBackgroundReader(ReaderInterface):
     def close(self):
         super().close()
         self._background_task_executor.shutdown(cancel_futures=True)
+        self._background_task.cancel()
 
 
 @DeveloperAPI
