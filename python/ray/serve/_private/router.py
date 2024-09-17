@@ -27,7 +27,6 @@ from ray.serve._private.constants import (
     RAY_SERVE_PROXY_PREFER_LOCAL_AZ_ROUTING,
     SERVE_LOGGER_NAME,
 )
-from ray.serve._private.default_impl import create_replica_wrapper
 from ray.serve._private.long_poll import LongPollClient, LongPollNamespace
 from ray.serve._private.metrics_utils import InMemoryMetricsStore, MetricsPusher
 from ray.serve._private.replica_result import ReplicaResult
@@ -36,6 +35,7 @@ from ray.serve._private.replica_scheduler import (
     PowerOfTwoChoicesReplicaScheduler,
     ReplicaScheduler,
 )
+from ray.serve._private.replica_scheduler.replica_wrapper import ActorReplicaWrapper
 from ray.serve._private.utils import inside_ray_client_context
 from ray.serve.config import AutoscalingConfig
 from ray.serve.exceptions import BackPressureError
@@ -355,6 +355,7 @@ class Router:
                 enable_strict_max_ongoing_requests
             )
 
+        replica_wrapper_cls = ActorReplicaWrapper
         if replica_scheduler is None:
             replica_scheduler = PowerOfTwoChoicesReplicaScheduler(
                 self._event_loop,
@@ -369,7 +370,7 @@ class Router:
                 else None,
                 self_availability_zone,
                 use_replica_queue_len_cache=enable_queue_len_cache,
-                create_replica_wrapper_func=create_replica_wrapper,
+                create_replica_wrapper_func=lambda r: replica_wrapper_cls(r),
             )
 
         self._replica_scheduler: ReplicaScheduler = replica_scheduler
