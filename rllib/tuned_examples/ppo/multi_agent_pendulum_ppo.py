@@ -1,4 +1,5 @@
 from ray.rllib.algorithms.ppo import PPOConfig
+from ray.rllib.connectors.env_to_module import MeanStdFilter
 from ray.rllib.examples.envs.classes.multi_agent import MultiAgentPendulum
 from ray.rllib.utils.metrics import (
     ENV_RUNNER_RESULTS,
@@ -26,11 +27,15 @@ config = (
         enable_env_runner_and_connector_v2=True,
     )
     .environment("multi_agent_pendulum", env_config={"num_agents": args.num_agents})
+    .env_runners(
+        env_to_module_connector=lambda env: MeanStdFilter(),
+    )
     .training(
-        lr=0.0003,
-        lambda_=0.1,
-        vf_clip_param=10.0,
-        num_epochs=6,
+        train_batch_size_per_learner=1024,
+        minibatch_size=128,
+        lr=0.0002 * (args.num_gpus or 1) ** 0.5,
+        gamma=0.95,
+        lambda_=0.5,
     )
     .rl_module(
         model_config_dict={
