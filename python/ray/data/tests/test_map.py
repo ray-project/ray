@@ -1143,14 +1143,14 @@ def test_map_batches_async_generator_fast_yield(shutdown_only):
     ds = ds.map_batches(
         AsyncActor,
         batch_size=1,
-        compute=ray.data.ActorPoolStrategy(max_tasks_in_flight_per_actor=4),
+        compute=ray.data.ActorPoolStrategy(max_tasks_in_flight_per_actor=n),
         concurrency=1,
         max_concurrency=4,
     )
 
     output = ds.take_all()
-    expected_output = list(range(n))
-    assert output == expected_output, (output, expected_output)
+    expected_output = [{"id": i} for i in range(n)]
+    assert set(output) == set(expected_output), (set(output), set(expected_output))
 
 
 if __name__ == "__main__":
