@@ -218,6 +218,7 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
         include_infos: bool = False,
         include_extra_model_outputs: bool = False,
         sample_episodes: Optional[bool] = False,
+        finalize: bool = False,
         **kwargs,
     ) -> Union[SampleBatchType, SingleAgentEpisode]:
         """Samples from a buffer in a randomized way.
@@ -262,6 +263,7 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
                 actual state of model e.g. action log-probabilities, etc.). If `True`,
                 the extra model outputs at the `"obs"` in the batch is included (the
                 timestep at which the action is computed).
+            finalize: If episodes should be finalized.
 
         Returns:
             Either a batch with transitions in each row or (if `return_episodes=True`)
@@ -279,6 +281,7 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
                 gamma=gamma,
                 include_infos=include_infos,
                 include_extra_model_outputs=include_extra_model_outputs,
+                finalize=finalize,
             )
         else:
             return self._sample_batch(
@@ -424,6 +427,7 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
         gamma: float = 0.99,
         include_infos: bool = False,
         include_extra_model_outputs: bool = False,
+        finalize: bool = False,
         **kwargs,
     ) -> List[SingleAgentEpisode]:
         """Samples episodes from a buffer in a randomized way.
@@ -468,6 +472,7 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
                 actual state of model e.g. action log-probabilities, etc.). If `True`,
                 the extra model outputs at the `"obs"` in the batch is included (the
                 timestep at which the action is computed).
+            finalize: If episodes should be finalized.
 
         Returns:
             A list of 1-step long episodes containing all basic episode data and if
@@ -578,6 +583,8 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
                 len_lookback_buffer=0,
                 t_started=episode_ts,
             )
+            if finalize:
+                sampled_episode.finalize()
             sampled_episodes.append(sampled_episode)
 
             # Increment counter.
