@@ -1432,10 +1432,10 @@ def run_rllib_example_script_experiment(
         for i in range(stop.get(TRAINING_ITERATION, args.stop_iters)):
             results = algo.train()
             if ENV_RUNNER_RESULTS in results:
-                print(
-                    f"iter={i} R={results[ENV_RUNNER_RESULTS][EPISODE_RETURN_MEAN]}",
-                    end="",
+                mean_return = results[ENV_RUNNER_RESULTS].get(
+                    EPISODE_RETURN_MEAN, np.nan
                 )
+                print(f"iter={i} R={mean_return}", end="")
             if EVALUATION_RESULTS in results:
                 Reval = results[EVALUATION_RESULTS][ENV_RUNNER_RESULTS][
                     EPISODE_RETURN_MEAN

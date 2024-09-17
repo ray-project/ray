@@ -134,7 +134,6 @@ class IMPALAConfig(AlgorithmConfig):
         self.vtrace_clip_pg_rho_threshold = 1.0
         self.num_multi_gpu_tower_stacks = 1  # @OldAPIstack
         self.minibatch_buffer_size = 1  # @OldAPIstack
-        self.num_sgd_iter = 1
         self.replay_proportion = 0.0  # @OldAPIstack
         self.replay_buffer_num_slots = 0  # @OldAPIstack
         self.learner_queue_size = 3
@@ -168,10 +167,10 @@ class IMPALAConfig(AlgorithmConfig):
         self._lr_vf = 0.0005  # @OldAPIstack
 
         # Override some of AlgorithmConfig's default values with IMPALA-specific values.
+        self.num_learners = 1
         self.rollout_fragment_length = 50
         self.train_batch_size = 500  # @OldAPIstack
         self.train_batch_size_per_learner = 500
-        self._minibatch_size = "auto"
         self.num_env_runners = 2
         self.num_gpus = 1  # @OldAPIstack
         self.lr = 0.0005
@@ -200,8 +199,6 @@ class IMPALAConfig(AlgorithmConfig):
         num_gpu_loader_threads: Optional[int] = NotProvided,
         num_multi_gpu_tower_stacks: Optional[int] = NotProvided,
         minibatch_buffer_size: Optional[int] = NotProvided,
-        minibatch_size: Optional[Union[int, str]] = NotProvided,
-        num_sgd_iter: Optional[int] = NotProvided,
         replay_proportion: Optional[float] = NotProvided,
         replay_buffer_num_slots: Optional[int] = NotProvided,
         learner_queue_size: Optional[int] = NotProvided,
@@ -252,15 +249,7 @@ class IMPALAConfig(AlgorithmConfig):
                 - This enables us to preload data into these stacks while another stack
                 is performing gradient calculations.
             minibatch_buffer_size: How many train batches should be retained for
-                minibatching. This conf only has an effect if `num_sgd_iter > 1`.
-            minibatch_size: The size of minibatches that are trained over during
-                each SGD iteration. If "auto", will use the same value as
-                `train_batch_size`.
-                Note that this setting only has an effect if
-                `enable_rl_module_and_learner=True` and it must be a multiple of
-                `rollout_fragment_length` or `sequence_length` and smaller than or equal
-                to `train_batch_size`.
-            num_sgd_iter: Number of passes to make over each train batch.
+                minibatching. This conf only has an effect if `num_epochs > 1`.
             replay_proportion: Set >0 to enable experience replay. Saved samples will
                 be replayed with a p:1 proportion to new data samples.
             replay_buffer_num_slots: Number of sample batches to store for replay.
@@ -330,8 +319,6 @@ class IMPALAConfig(AlgorithmConfig):
             self.num_multi_gpu_tower_stacks = num_multi_gpu_tower_stacks
         if minibatch_buffer_size is not NotProvided:
             self.minibatch_buffer_size = minibatch_buffer_size
-        if num_sgd_iter is not NotProvided:
-            self.num_sgd_iter = num_sgd_iter
         if replay_proportion is not NotProvided:
             self.replay_proportion = replay_proportion
         if replay_buffer_num_slots is not NotProvided:
@@ -374,8 +361,6 @@ class IMPALAConfig(AlgorithmConfig):
             self._separate_vf_optimizer = _separate_vf_optimizer
         if _lr_vf is not NotProvided:
             self._lr_vf = _lr_vf
-        if minibatch_size is not NotProvided:
-            self._minibatch_size = minibatch_size
 
         return self
 
@@ -452,14 +437,14 @@ class IMPALAConfig(AlgorithmConfig):
         # Learner API specific checks.
         if (
             self.enable_rl_module_and_learner
-            and self._minibatch_size != "auto"
+            and self.minibatch_size is not None
             and not (
                 (self.minibatch_size % self.rollout_fragment_length == 0)
                 and self.minibatch_size <= self.total_train_batch_size
             )
         ):
             raise ValueError(
-                f"`minibatch_size` ({self._minibatch_size}) must either be 'auto' "
+                f"`minibatch_size` ({self._minibatch_size}) must either be None "
                 "or a multiple of `rollout_fragment_length` "
                 f"({self.rollout_fragment_length}) while at the same time smaller "
                 "than or equal to `total_train_batch_size` "
@@ -473,20 +458,6 @@ class IMPALAConfig(AlgorithmConfig):
         Formula: ratio = 1 / proportion
         """
         return (1 / self.replay_proportion) if self.replay_proportion > 0 else 0.0
-
-    @property
-    def minibatch_size(self):
-        # If 'auto', use the train_batch_size (meaning each SGD iter is a single pass
-        # through the entire train batch). Otherwise, use user provided setting.
-        return (
-            (
-                self.train_batch_size_per_learner
-                if self.enable_env_runner_and_connector_v2
-                else self.train_batch_size
-            )
-            if self._minibatch_size == "auto"
-            else self._minibatch_size
-        )
 
     @override(AlgorithmConfig)
     def get_default_learner_class(self):
@@ -539,7 +510,7 @@ class IMPALA(Algorithm):
     2. If enabled, the replay buffer stores and produces batches of size
        `rollout_fragment_length * num_envs_per_env_runner`.
     3. If enabled, the minibatch ring buffer stores and replays batches of
-       size `train_batch_size` up to `num_sgd_iter` times per batch.
+       size `train_batch_size` up to `num_epochs` times per batch.
     4. The learner thread executes data parallel SGD across `num_gpus` GPUs
        on batches of size `train_batch_size`.
     """
@@ -734,6 +705,9 @@ class IMPALA(Algorithm):
                                 NUM_ENV_STEPS_SAMPLED_LIFETIME, default=0
                             ),
                         },
+                        num_epochs=self.config.num_epochs,
+                        minibatch_size=self.config.minibatch_size,
+                        shuffle_batch_per_epoch=self.config.shuffle_batch_per_epoch,
                     )
                 else:
                     learner_results = self.learner_group.update_from_episodes(
@@ -745,6 +719,9 @@ class IMPALA(Algorithm):
                                 NUM_ENV_STEPS_SAMPLED_LIFETIME, default=0
                             ),
                         },
+                        num_epochs=self.config.num_epochs,
+                        minibatch_size=self.config.minibatch_size,
+                        shuffle_batch_per_epoch=self.config.shuffle_batch_per_epoch,
                     )
                 if not do_async_updates:
                     learner_results = [learner_results]
@@ -1292,7 +1269,7 @@ class IMPALA(Algorithm):
                     ),
                 },
                 async_update=async_update,
-                num_iters=self.config.num_sgd_iter,
+                num_epochs=self.config.num_epochs,
                 minibatch_size=self.config.minibatch_size,
             )
             if not async_update:
@@ -1531,7 +1508,7 @@ def make_learner_thread(local_worker, config):
             lr=config["lr"],
             train_batch_size=config["train_batch_size"],
             num_multi_gpu_tower_stacks=config["num_multi_gpu_tower_stacks"],
-            num_sgd_iter=config["num_sgd_iter"],
+            num_sgd_iter=config["num_epochs"],
             learner_queue_size=config["learner_queue_size"],
             learner_queue_timeout=config["learner_queue_timeout"],
             num_data_load_threads=config["num_gpu_loader_threads"],
@@ -1540,7 +1517,7 @@ def make_learner_thread(local_worker, config):
         learner_thread = LearnerThread(
             local_worker,
             minibatch_buffer_size=config["minibatch_buffer_size"],
-            num_sgd_iter=config["num_sgd_iter"],
+            num_sgd_iter=config["num_epochs"],
             learner_queue_size=config["learner_queue_size"],
             learner_queue_timeout=config["learner_queue_timeout"],
         )
