@@ -1395,9 +1395,10 @@ def run_rllib_example_script_experiment(
             # Do we have GPUs available in the cluster?
             num_gpus = ray.cluster_resources().get("GPU", 0)
             if args.num_gpus > 0 and num_gpus < args.num_gpus:
-                raise ValueError(
+                logger.warning(
                     f"You are running your script with --num-gpus={args.num_gpus}, "
-                    "but your cluster only has {resources['GPU']} GPUs! Will "
+                    f"but your cluster only has {num_gpus} GPUs! Will run "
+                    f"with {num_gpus} CPU Learners instead."
                 )
             # Define compute resources used.
             config.resources(num_gpus=0)
