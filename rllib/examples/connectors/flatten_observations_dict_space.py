@@ -142,7 +142,7 @@ if __name__ == "__main__":
     # PPO-specific settings (for better learning behavior only).
     if args.algo == "PPO":
         base_config.training(
-            num_sgd_iter=6,
+            num_epochs=6,
             vf_loss_coeff=0.01,
         )
     # IMPALA-specific settings (for better learning behavior only).

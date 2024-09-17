@@ -186,7 +186,6 @@ class AddStatesFromEpisodesToBatch(ConnectorV2):
         input_observation_space: Optional[gym.Space] = None,
         input_action_space: Optional[gym.Space] = None,
         *,
-        max_seq_len: Optional[int] = None,
         as_learner_connector: bool = False,
         **kwargs,
     ):
@@ -266,6 +265,15 @@ class AddStatesFromEpisodesToBatch(ConnectorV2):
                         item_list,
                         max_seq_len=self._get_max_seq_len(rl_module, module_id=mid),
                     )
+                    # TODO (sven): Remove this hint/hack once we are not relying on
+                    #  SampleBatch anymore (which has to set its property
+                    #  zero_padded=True when shuffling).
+                    shared_data[
+                        (
+                            "_zero_padded_for_mid="
+                            f"{mid if mid is not None else DEFAULT_MODULE_ID}"
+                        )
+                    ] = True
 
         for sa_episode in self.single_agent_episode_iterator(
             episodes,
@@ -314,14 +322,15 @@ class AddStatesFromEpisodesToBatch(ConnectorV2):
                 self.add_n_batch_items(
                     batch=batch,
                     column=Columns.STATE_IN,
-                    # items_to_add.shape=(B,[state-dim])  # B=episode len // max_seq_len
+                    # items_to_add.shape=(B,[state-dim])
+                    # B=episode len // max_seq_len
                     items_to_add=tree.map_structure(
                         # Explanation:
                         # [::max_seq_len]: only keep every Tth state.
                         # [:-1]: Shift state outs by one, ignore very last
                         # STATE_OUT (but therefore add the lookback/init state at
                         # the beginning).
-                        lambda i, o: np.concatenate([[i], o[:-1]])[::max_seq_len],
+                        lambda i, o, m=max_seq_len: np.concatenate([[i], o[:-1]])[::m],
                         look_back_state,
                         state_outs,
                     ),
