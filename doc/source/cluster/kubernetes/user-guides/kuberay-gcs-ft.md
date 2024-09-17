@@ -136,7 +136,7 @@ export REDIS_POD=$(kubectl get pods --selector=app=redis -o custom-columns=POD:m
 kubectl exec -it $REDIS_POD -- redis-cli -a "5241590000000000"
 
 # Step 6.4: Check the keys in Redis.
-# Note: the schema changed in Ray 2.36.0. Previously we use a single HASH table,
+# Note: the schema changed in Ray 2.38.0. Previously we use a single HASH table,
 # now we use multiple HASH tables with a common prefix.
 
 KEYS *
