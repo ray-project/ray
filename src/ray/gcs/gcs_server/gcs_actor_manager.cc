@@ -175,7 +175,7 @@ bool is_uuid(const std::string &str) {
 }
 
 NodeID GcsActor::GetNodeID() const {
-  const auto &raylet_id_binary = actor_table_data_.address().raylet_id();
+  const auto &raylet_id_binary = actor_table_data_->address().raylet_id();
   if (raylet_id_binary.empty()) {
     return NodeID::Nil();
   }
@@ -183,13 +183,13 @@ NodeID GcsActor::GetNodeID() const {
 }
 
 void GcsActor::UpdateAddress(const rpc::Address &address) {
-  actor_table_data_.mutable_address()->CopyFrom(address);
+  actor_table_data_->mutable_address()->CopyFrom(address);
 }
 
-const rpc::Address &GcsActor::GetAddress() const { return actor_table_data_.address(); }
+const rpc::Address &GcsActor::GetAddress() const { return actor_table_data_->address(); }
 
 WorkerID GcsActor::GetWorkerID() const {
-  const auto &address = actor_table_data_.address();
+  const auto &address = actor_table_data_->address();
   if (address.worker_id().empty()) {
     return WorkerID::Nil();
   }
@@ -205,41 +205,41 @@ NodeID GcsActor::GetOwnerNodeID() const {
 }
 
 const rpc::Address &GcsActor::GetOwnerAddress() const {
-  return actor_table_data_.owner_address();
+  return actor_table_data_->owner_address();
 }
 
 void GcsActor::UpdateState(rpc::ActorTableData::ActorState state) {
-  actor_table_data_.set_state(state);
+  actor_table_data_->set_state(state);
   RefreshMetrics();
 }
 
 rpc::ActorTableData::ActorState GcsActor::GetState() const {
-  return actor_table_data_.state();
+  return actor_table_data_->state();
 }
 
 ActorID GcsActor::GetActorID() const {
-  return ActorID::FromBinary(actor_table_data_.actor_id());
+  return ActorID::FromBinary(actor_table_data_->actor_id());
 }
 
-bool GcsActor::IsDetached() const { return actor_table_data_.is_detached(); }
+bool GcsActor::IsDetached() const { return actor_table_data_->is_detached(); }
 
-std::string GcsActor::GetName() const { return actor_table_data_.name(); }
+std::string GcsActor::GetName() const { return actor_table_data_->name(); }
 
 std::string GcsActor::GetRayNamespace() const {
-  return actor_table_data_.ray_namespace();
+  return actor_table_data_->ray_namespace();
 }
 
 TaskSpecification GcsActor::GetCreationTaskSpecification() const {
   // The task spec is not available when the actor is dead.
-  RAY_CHECK(actor_table_data_.state() != rpc::ActorTableData::DEAD);
+  RAY_CHECK(actor_table_data_->state() != rpc::ActorTableData::DEAD);
   return TaskSpecification(*task_spec_);
 }
 
 const rpc::ActorTableData &GcsActor::GetActorTableData() const {
-  return actor_table_data_;
+  return *actor_table_data_;
 }
 
-rpc::ActorTableData *GcsActor::GetMutableActorTableData() { return &actor_table_data_; }
+rpc::ActorTableData *GcsActor::GetMutableActorTableData() { return actor_table_data_.get(); }
 
 void GcsActor::WriteActorExportEvent() const {
   /// Write actor_table_data_ as a export actor event if
@@ -250,23 +250,23 @@ void GcsActor::WriteActorExportEvent() const {
   std::shared_ptr<rpc::ExportActorData> export_actor_data_ptr =
       std::make_shared<rpc::ExportActorData>();
 
-  export_actor_data_ptr->set_actor_id(actor_table_data_.actor_id());
-  export_actor_data_ptr->set_job_id(actor_table_data_.job_id());
-  export_actor_data_ptr->set_state(ConvertActorStateToExport(actor_table_data_.state()));
-  export_actor_data_ptr->set_is_detached(actor_table_data_.is_detached());
-  export_actor_data_ptr->set_name(actor_table_data_.name());
-  export_actor_data_ptr->set_pid(actor_table_data_.pid());
-  export_actor_data_ptr->set_ray_namespace(actor_table_data_.ray_namespace());
+  export_actor_data_ptr->set_actor_id(actor_table_data_->actor_id());
+  export_actor_data_ptr->set_job_id(actor_table_data_->job_id());
+  export_actor_data_ptr->set_state(ConvertActorStateToExport(actor_table_data_->state()));
+  export_actor_data_ptr->set_is_detached(actor_table_data_->is_detached());
+  export_actor_data_ptr->set_name(actor_table_data_->name());
+  export_actor_data_ptr->set_pid(actor_table_data_->pid());
+  export_actor_data_ptr->set_ray_namespace(actor_table_data_->ray_namespace());
   export_actor_data_ptr->set_serialized_runtime_env(
-      actor_table_data_.serialized_runtime_env());
-  export_actor_data_ptr->set_class_name(actor_table_data_.class_name());
-  export_actor_data_ptr->mutable_death_cause()->CopyFrom(actor_table_data_.death_cause());
+      actor_table_data_->serialized_runtime_env());
+  export_actor_data_ptr->set_class_name(actor_table_data_->class_name());
+  export_actor_data_ptr->mutable_death_cause()->CopyFrom(actor_table_data_->death_cause());
   export_actor_data_ptr->mutable_required_resources()->insert(
-      actor_table_data_.required_resources().begin(),
-      actor_table_data_.required_resources().end());
-  export_actor_data_ptr->set_node_id(actor_table_data_.node_id());
-  export_actor_data_ptr->set_placement_group_id(actor_table_data_.placement_group_id());
-  export_actor_data_ptr->set_repr_name(actor_table_data_.repr_name());
+      actor_table_data_->required_resources().begin(),
+      actor_table_data_->required_resources().end());
+  export_actor_data_ptr->set_node_id(actor_table_data_->node_id());
+  export_actor_data_ptr->set_placement_group_id(actor_table_data_->placement_group_id());
+  export_actor_data_ptr->set_repr_name(actor_table_data_->repr_name());
 
   RayExportEvent(export_actor_data_ptr).SendEvent();
 }

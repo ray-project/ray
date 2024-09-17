@@ -49,7 +49,7 @@ class GcsActor {
       rpc::ActorTableData actor_table_data,
       std::shared_ptr<CounterMap<std::pair<rpc::ActorTableData::ActorState, std::string>>>
           counter)
-      : actor_table_data_(std::move(actor_table_data)), counter_(counter) {
+      : actor_table_data_(std::make_shared<rpc::ActorTableData>(actor_table_data)), counter_(counter) {
     RefreshMetrics();
   }
 
@@ -64,10 +64,10 @@ class GcsActor {
       rpc::TaskSpec task_spec,
       std::shared_ptr<CounterMap<std::pair<rpc::ActorTableData::ActorState, std::string>>>
           counter)
-      : actor_table_data_(std::move(actor_table_data)),
+      : actor_table_data_(std::make_shared<rpc::ActorTableData>(actor_table_data)),
         task_spec_(std::make_unique<rpc::TaskSpec>(task_spec)),
         counter_(counter) {
-    RAY_CHECK(actor_table_data_.state() != rpc::ActorTableData::DEAD);
+    RAY_CHECK(actor_table_data_->state() != rpc::ActorTableData::DEAD);
     RefreshMetrics();
   }
 
@@ -82,31 +82,32 @@ class GcsActor {
       std::shared_ptr<CounterMap<std::pair<rpc::ActorTableData::ActorState, std::string>>>
           counter)
       : task_spec_(std::make_unique<rpc::TaskSpec>(task_spec)), counter_(counter) {
+    actor_table_data_ = std::make_shared<ActorTableData>();
     RAY_CHECK(task_spec.type() == TaskType::ACTOR_CREATION_TASK);
     const auto &actor_creation_task_spec = task_spec.actor_creation_task_spec();
-    actor_table_data_.set_actor_id(actor_creation_task_spec.actor_id());
-    actor_table_data_.set_job_id(task_spec.job_id());
-    actor_table_data_.set_max_restarts(actor_creation_task_spec.max_actor_restarts());
-    actor_table_data_.set_num_restarts(0);
-    actor_table_data_.set_num_restarts_due_to_lineage_reconstruction(0);
+    actor_table_data_->set_actor_id(actor_creation_task_spec.actor_id());
+    actor_table_data_->set_job_id(task_spec.job_id());
+    actor_table_data_->set_max_restarts(actor_creation_task_spec.max_actor_restarts());
+    actor_table_data_->set_num_restarts(0);
+    actor_table_data_->set_num_restarts_due_to_lineage_reconstruction(0);
 
-    actor_table_data_.mutable_function_descriptor()->CopyFrom(
+    actor_table_data_->mutable_function_descriptor()->CopyFrom(
         task_spec.function_descriptor());
 
-    actor_table_data_.set_is_detached(actor_creation_task_spec.is_detached());
-    actor_table_data_.set_name(actor_creation_task_spec.name());
-    actor_table_data_.mutable_owner_address()->CopyFrom(task_spec.caller_address());
+    actor_table_data_->set_is_detached(actor_creation_task_spec.is_detached());
+    actor_table_data_->set_name(actor_creation_task_spec.name());
+    actor_table_data_->mutable_owner_address()->CopyFrom(task_spec.caller_address());
 
-    actor_table_data_.set_state(rpc::ActorTableData::DEPENDENCIES_UNREADY);
+    actor_table_data_->set_state(rpc::ActorTableData::DEPENDENCIES_UNREADY);
 
-    actor_table_data_.mutable_address()->set_raylet_id(NodeID::Nil().Binary());
-    actor_table_data_.mutable_address()->set_worker_id(WorkerID::Nil().Binary());
+    actor_table_data_->mutable_address()->set_raylet_id(NodeID::Nil().Binary());
+    actor_table_data_->mutable_address()->set_worker_id(WorkerID::Nil().Binary());
 
-    actor_table_data_.set_ray_namespace(ray_namespace);
+    actor_table_data_->set_ray_namespace(ray_namespace);
     if (task_spec.scheduling_strategy().scheduling_strategy_case() ==
         rpc::SchedulingStrategy::SchedulingStrategyCase::
             kPlacementGroupSchedulingStrategy) {
-      actor_table_data_.set_placement_group_id(task_spec.scheduling_strategy()
+      actor_table_data_->set_placement_group_id(task_spec.scheduling_strategy()
                                                    .placement_group_scheduling_strategy()
                                                    .placement_group_id());
     }
@@ -114,17 +115,17 @@ class GcsActor {
     // Set required resources.
     auto resource_map =
         GetCreationTaskSpecification().GetRequiredResources().GetResourceMap();
-    actor_table_data_.mutable_required_resources()->insert(resource_map.begin(),
+    actor_table_data_->mutable_required_resources()->insert(resource_map.begin(),
                                                            resource_map.end());
 
     const auto &function_descriptor = task_spec.function_descriptor();
     switch (function_descriptor.function_descriptor_case()) {
     case rpc::FunctionDescriptor::FunctionDescriptorCase::kJavaFunctionDescriptor:
-      actor_table_data_.set_class_name(
+      actor_table_data_->set_class_name(
           function_descriptor.java_function_descriptor().class_name());
       break;
     case rpc::FunctionDescriptor::FunctionDescriptorCase::kPythonFunctionDescriptor:
-      actor_table_data_.set_class_name(
+      actor_table_data_->set_class_name(
           function_descriptor.python_function_descriptor().class_name());
       break;
     default:
@@ -132,8 +133,7 @@ class GcsActor {
       // easy equivalent to class_name for.
       break;
     }
-
-    actor_table_data_.set_serialized_runtime_env(
+    actor_table_data_->set_serialized_runtime_env(
         task_spec.runtime_env_info().serialized_runtime_env());
     RefreshMetrics();
   }
@@ -241,7 +241,7 @@ class GcsActor {
 
   /// The actor meta data which contains the task specification as well as the state of
   /// the gcs actor and so on (see gcs.proto).
-  rpc::ActorTableData actor_table_data_;
+  std::shared_ptr<rpc::ActorTableData> actor_table_data_;
   const std::unique_ptr<rpc::TaskSpec> task_spec_;
   /// Resources acquired by this actor.
   ResourceRequest acquired_resources_;
