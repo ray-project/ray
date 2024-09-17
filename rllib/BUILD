@@ -319,52 +319,6 @@ py_test(
     args = ["--dir=tuned_examples/appo"]
 )
 
-# Tests against crashing or hanging environments.
-# Single-agent: Crash only.
-#@OldAPIStack
-py_test(
-    name = "learning_tests_cartpole_crashing_appo_old_api_stack",
-    main = "tests/run_regression_tests.py",
-    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_discrete", "crashing_cartpole", "torch_only"],
-    size = "large",
-    srcs = ["tests/run_regression_tests.py"],
-    data = ["tuned_examples/appo/cartpole-crashing-recreate-workers-appo.py"],
-    args = ["--dir=tuned_examples/appo", "--num-cpus=6"]
-)
-# Single-agent: Crash and stall.
-#@OldAPIStack
-py_test(
-    name = "learning_tests_cartpole_crashing_and_stalling_appo_old_api_stack",
-    main = "tests/run_regression_tests.py",
-    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_discrete", "crashing_cartpole", "torch_only"],
-    size = "large",
-    srcs = ["tests/run_regression_tests.py"],
-    data = ["tuned_examples/appo/cartpole-crashing-and-stalling-recreate-workers-appo.py"],
-    args = ["--dir=tuned_examples/appo", "--num-cpus=6"]
-)
-# Multi-agent: Crash only.
-#@OldAPIStack
-py_test(
-    name = "learning_tests_multi_agent_cartpole_crashing_appo_old_api_stack",
-    main = "tests/run_regression_tests.py",
-    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_discrete", "crashing_cartpole", "torch_only"],
-    size = "large",
-    srcs = ["tests/run_regression_tests.py"],
-    data = ["tuned_examples/appo/multi-agent-cartpole-crashing-recreate-workers-appo.py"],
-    args = ["--dir=tuned_examples/appo", "--num-cpus=6"]
-)
-# Multi-agent: Crash and stall.
-#@OldAPIStack
-py_test(
-    name = "learning_tests_multi_agent_cartpole_crashing_and_stalling_appo_old_api_stack",
-    main = "tests/run_regression_tests.py",
-    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_discrete", "crashing_cartpole", "torch_only"],
-    size = "large",
-    srcs = ["tests/run_regression_tests.py"],
-    data = ["tuned_examples/appo/multi-agent-cartpole-crashing-and-stalling-recreate-workers-appo.py"],
-    args = ["--dir=tuned_examples/appo", "--num-cpus=6"]
-)
-
 # BC
 # CartPole
 py_test(
@@ -1719,13 +1673,6 @@ py_test(
     srcs = ["core/learner/torch/tests/test_torch_learner_compile.py"]
 )
 
-py_test(
-    name = "test_bc_algorithm",
-    tags = ["team:rllib", "core"],
-    size = "medium",
-    srcs = ["core/testing/tests/test_bc_algorithm.py"]
-)
-
 # --------------------------------------------------------------------
 # Models and Distributions
 # rllib/models/
@@ -2966,6 +2913,41 @@ py_test(
     size = "medium",
     srcs = ["examples/evaluation/evaluation_parallel_to_training.py"],
     args = ["--as-test", "--evaluation-parallel-to-training", "--framework=torch", "--stop-reward=30.0", "--num-cpus=6", "--evaluation-num-env-runners=3", "--evaluation-duration=211", "--evaluation-duration-unit=timesteps"]
+)
+
+# subdirectory: fault_tolerance/
+# ....................................
+py_test(
+    name = "examples/fault_tolerance/crashing_cartpole_recreate_failed_env_runners_appo",
+    main = "examples/fault_tolerance/crashing_and_stalling_env.py",
+    tags = ["team:rllib", "exclusive", "examples"],
+    size = "large",
+    srcs = ["examples/fault_tolerance/crashing_and_stalling_env.py"],
+    args = ["--algo=APPO", "--enable-new-api-stack", "--as-test", "--stop-reward=450.0"]
+)
+py_test(
+    name = "examples/fault_tolerance/crashing_cartpole_restart_failed_envs_appo",
+    main = "examples/fault_tolerance/crashing_and_stalling_env.py",
+    tags = ["team:rllib", "exclusive", "examples"],
+    size = "large",
+    srcs = ["examples/fault_tolerance/crashing_and_stalling_env.py"],
+    args = ["--algo=APPO", "--enable-new-api-stack", "--as-test", "--restart-failed-envs", "--stop-reward=450.0"]
+)
+py_test(
+    name = "examples/fault_tolerance/crashing_and_stalling_cartpole_restart_failed_envs_ppo",
+    main = "examples/fault_tolerance/crashing_and_stalling_env.py",
+    tags = ["team:rllib", "exclusive", "examples"],
+    size = "large",
+    srcs = ["examples/fault_tolerance/crashing_and_stalling_env.py"],
+    args = ["--algo=PPO", "--enable-new-api-stack", "--as-test", "--restart-failed-envs", "--stall", "--stop-reward=450.0"]
+)
+py_test(
+    name = "examples/fault_tolerance/crashing_and_stalling_multi_agent_cartpole_restart_failed_envs_ppo",
+    main = "examples/fault_tolerance/crashing_and_stalling_env.py",
+    tags = ["team:rllib", "exclusive", "examples"],
+    size = "large",
+    srcs = ["examples/fault_tolerance/crashing_and_stalling_env.py"],
+    args = ["--algo=PPO", "--num-agents=2", "--enable-new-api-stack", "--as-test", "--restart-failed-envs", "--stop-reward=800.0"]
 )
 
 # subdirectory: gpus/

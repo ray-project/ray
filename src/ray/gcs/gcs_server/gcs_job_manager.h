@@ -22,6 +22,7 @@
 #include "ray/rpc/gcs_server/gcs_rpc_server.h"
 #include "ray/rpc/worker/core_worker_client.h"
 #include "ray/rpc/worker/core_worker_client_pool.h"
+#include "ray/util/event.h"
 
 namespace ray {
 namespace gcs {
@@ -31,7 +32,7 @@ const std::string kRayInternalNamespacePrefix = "_ray_internal_";
 
 // Please keep these in sync with the definition in dashboard/modules/job/common.py.
 const std::string kJobDataKeyPrefix = kRayInternalNamespacePrefix + "job_info_";
-inline std::string JobDataKey(const std::string submission_id) {
+inline std::string JobDataKey(const std::string &submission_id) {
   return kJobDataKeyPrefix + submission_id;
 }
 
@@ -84,6 +85,8 @@ class GcsJobManager : public rpc::JobInfoHandler {
   ///
   /// \param node_id The specified node id.
   void OnNodeDead(const NodeID &node_id);
+
+  void WriteDriverJobExportEvent(rpc::JobTableData job_data) const;
 
  private:
   std::shared_ptr<GcsTableStorage> gcs_table_storage_;

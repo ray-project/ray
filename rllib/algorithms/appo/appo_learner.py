@@ -128,7 +128,7 @@ class APPOLearner(IMPALALearner):
 
     @abc.abstractmethod
     def _update_module_kl_coeff(self, module_id: ModuleID, config: APPOConfig) -> None:
-        """Dynamically update the KL loss coefficients of each module with.
+        """Dynamically update the KL loss coefficients of each module.
 
         The update is completed using the mean KL divergence between the action
         distributions current policy and old policy of each module. That action

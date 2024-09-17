@@ -190,7 +190,8 @@ if __name__ == "__main__":
     best_result = results.get_best_result(
         metric=f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}", mode="max"
     )
-    # Create new Algorithm and restore its state from the last checkpoint.
+
+    # Create RLModule from a checkpoint.
     rl_module = RLModule.from_checkpoint(
         os.path.join(
             best_result.checkpoint.path,

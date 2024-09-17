@@ -80,9 +80,14 @@ class BCTorchRLModuleWithSharedGlobalEncoder(TorchRLModule):
     """
 
     def __init__(
-        self, encoder: nn.Module, local_dim: int, hidden_dim: int, action_dim: int
+        self,
+        encoder: nn.Module,
+        local_dim: int,
+        hidden_dim: int,
+        action_dim: int,
+        config=None,
     ) -> None:
-        super().__init__(config=None)
+        super().__init__(config=config)
 
         self.encoder = encoder
         self.policy_head = nn.Sequential(
@@ -145,6 +150,7 @@ class BCTorchMultiAgentModuleWithSharedEncoder(MultiRLModule):
         rl_modules = {}
         for module_id, module_spec in module_specs.items():
             rl_modules[module_id] = module_spec.module_class(
+                config=self.config.modules[module_id].get_rl_module_config(),
                 encoder=shared_encoder,
                 local_dim=module_spec.observation_space["local"].shape[0],
                 hidden_dim=hidden_dim,
