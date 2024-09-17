@@ -2,7 +2,6 @@ from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.utils.metrics import (
     ENV_RUNNER_RESULTS,
     EPISODE_RETURN_MEAN,
-    EVALUATION_RESULTS,
     NUM_ENV_STEPS_SAMPLED_LIFETIME,
 )
 from ray.rllib.utils.test_utils import add_rllib_example_script_args
@@ -17,7 +16,8 @@ config = (
     PPOConfig()
     .environment("CartPole-v1")
     .training(
-        lr=0.0003,
+        # train_batch_size_per_learner=4000,
+        lr=0.0003 * (args.num_gpus or 1) ** 0.5,
         num_sgd_iter=6,
         vf_loss_coeff=0.01,
     )
@@ -28,19 +28,11 @@ config = (
             "vf_share_layers": True,
         }
     )
-    .evaluation(
-        evaluation_num_env_runners=1,
-        evaluation_interval=1,
-        evaluation_parallel_to_training=True,
-        evaluation_config=PPOConfig.overrides(exploration=False),
-    )
 )
 
 stop = {
     f"{NUM_ENV_STEPS_SAMPLED_LIFETIME}": args.stop_timesteps,
-    f"{EVALUATION_RESULTS}/{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": (
-        args.stop_reward
-    ),
+    f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": args.stop_reward,
 }
 
 

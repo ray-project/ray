@@ -108,6 +108,7 @@ def synchronous_parallel_sample(
                     if _return_episode_refs:
                         samples = ray.put(samples)
                     return samples, metrics
+
             else:
 
                 def _sample(er):

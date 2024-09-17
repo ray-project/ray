@@ -39,7 +39,7 @@ config = (
         evaluation_num_env_runners=1,
         evaluation_interval=1,
         evaluation_parallel_to_training=True,
-        evaluation_config=PPOConfig.overrides(exploration=False),
+        evaluation_config=PPOConfig.overrides(explore=False),
     )
     .offline_data(
         output="local:///tmp/cartpole/",

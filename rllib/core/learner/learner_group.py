@@ -473,6 +473,14 @@ class LearnerGroup(Checkpointable):
                         _episodes_shard=episodes_shard,
                         _timesteps=timesteps,
                         _return_state=(return_state and i == 0),
+                        _num_total_mini_batches=(
+                            (
+                                self.config.total_train_batch_size
+                                / len(self._workers)
+                                // minibatch_size
+                            )
+                            * num_iters
+                        ),
                         **kwargs,
                     )
                     for i, episodes_shard in enumerate(
@@ -506,14 +514,12 @@ class LearnerGroup(Checkpointable):
                     # In the multi-agent case AND `minibatch_size` AND num_workers
                     # > 1, we compute a max iteration counter such that the different
                     # Learners will not go through a different number of iterations.
-                    num_total_mini_batches = 0
-                    if minibatch_size and len(self._workers) > 1:
-                        num_total_mini_batches = self._compute_num_total_mini_batches(
-                            episodes,
-                            len(self._workers),
-                            minibatch_size,
-                            num_iters,
-                        )
+                    num_total_mini_batches = self._compute_num_total_mini_batches(
+                        episodes,
+                        len(self._workers),
+                        minibatch_size,
+                        num_iters,
+                    )
                     partials = [
                         partial(
                             _learner_update,
@@ -940,6 +946,9 @@ class LearnerGroup(Checkpointable):
         mini_batch_size,
         num_iters,
     ):
+        # Computing the number of minibatches not required -> Return 0.
+        if not mini_batch_size or num_shards <= 1:
+            return 0
         # Count total number of timesteps per module ID.
         if isinstance(episodes[0], MultiAgentEpisode):
             per_mod_ts = defaultdict(int)
