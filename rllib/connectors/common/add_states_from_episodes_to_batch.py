@@ -330,7 +330,7 @@ class AddStatesFromEpisodesToBatch(ConnectorV2):
                         # [:-1]: Shift state outs by one, ignore very last
                         # STATE_OUT (but therefore add the lookback/init state at
                         # the beginning).
-                        lambda i, o: np.concatenate([[i], o[:-1]])[::max_seq_len],
+                        lambda i, o, m=max_seq_len: np.concatenate([[i], o[:-1]])[::m],
                         look_back_state,
                         state_outs,
                     ),
