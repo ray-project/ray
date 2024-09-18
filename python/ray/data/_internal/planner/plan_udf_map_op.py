@@ -348,18 +348,12 @@ def _generate_transform_fn_for_async_map_batches(
         future = asyncio.run_coroutine_threadsafe(process_all_batches(), loop)
 
         # Yield results as they become available.
-        while not future.done():
+        # After all futures are completed, drain the queue to
+        # yield any remaining results.
+        while not future.done() or not output_batch_queue.empty():
             # Here, `out_batch` is a one-row output batch
             # from the async generator, corresponding to a
             # single row from the input batch.
-            out_batch = output_batch_queue.get()
-            if isinstance(out_batch, Exception):
-                raise out_batch
-            _validate_batch_output(out_batch)
-            yield out_batch
-
-        # Drain the queue to yield any remaining results.
-        while not output_batch_queue.empty():
             out_batch = output_batch_queue.get()
             if isinstance(out_batch, Exception):
                 raise out_batch
