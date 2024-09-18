@@ -270,10 +270,10 @@ class ActorPoolMapOperator(MapOperator):
             )
 
     def progress_str(self) -> str:
-        base = f"{self._actor_pool.num_running_actors()} actors"
+        base = f"Actors: {self._actor_pool.num_running_actors()}"
         pending = self._actor_pool.num_pending_actors()
         if pending:
-            base += f" ({pending} pending)"
+            base += f" (⏳: {pending})"
         if self._actor_locality_enabled:
             base += " " + locality_string(
                 self._actor_pool._locality_hits, self._actor_pool._locality_misses
