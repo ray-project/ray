@@ -34,8 +34,11 @@ class OfflineData:
         )
 
         # If data should be materialized.
-        self.materialize_data = False  # config.materialize_data
-        # Flag to identify, if data has already been mapped with the `OfflinePreLearner`.
+        self.materialize_data = config.materialize_data
+        # If mapped data should be materialized.
+        self.materialize_mapped_data = config.materialize_mapped_data
+        # Flag to identify, if data has already been mapped with the
+        # `OfflinePreLearner`.
         self.data_is_mapped = False
 
         # Set the filesystem.
@@ -77,7 +80,7 @@ class OfflineData:
             self.data = getattr(ray.data, self.data_read_method)(
                 self.path, **self.data_read_method_kwargs
             )
-            if True:  # self.materialize_data:
+            if self.materialize_data:
                 self.data = self.data.materialize()
             stop_time = time.perf_counter()
             logger.debug(f"Time for loading dataset: {stop_time - start_time}s.")
@@ -152,7 +155,7 @@ class OfflineData:
             # Set the flag to `True`.
             self.data_is_mapped = True
             # If the user wants to materialize the data in memory.
-            if self.materialize_data:
+            if self.materialize_mapped_data:
                 self.data = self.data.materialize()
         # Build an iterator, if necessary.
         if (
@@ -180,12 +183,12 @@ class OfflineData:
             if num_shards > 1:
                 # TODO (simon): Check, if we should use `iter_batches_kwargs` here
                 #   as well.
-                print("===> Return streaming_split from OfflineData")
+                logger.debug("===> [OfflineData]: Return streaming_split ... ")
                 return self.data.streaming_split(
+                    n=num_shards,
                     # Note, `equal` must be `True`, i.e. the batch size must
                     # be the same for all batches b/c otherwise remote learners
                     # could block each others.
-                    n=num_shards,
                     equal=True,
                     locality_hints=self.locality_hints,
                 )
@@ -199,7 +202,9 @@ class OfflineData:
                 return next(self.batch_iterator)["batch"][0]
             except StopIteration:
                 # If the batch iterator is exhausted, reinitiate a new one.
-                logger.debug("Batch iterator exhausted. Reinitiating ...")
+                logger.debug(
+                    "===> [OfflineData]: Batch iterator exhausted. Reinitiating ..."
+                )
                 self.batch_iterator = None
                 return self.sample(
                     num_samples=num_samples,

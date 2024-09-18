@@ -242,10 +242,7 @@ class OfflinePreLearner:
         #     # module_state =
         # ray.get(self._learner.get_module_state.remote(inference_only=False))
         #     # self._module.set_state(module_state)
-        weights = module["default_policy"].state_dict()[
-            "encoder.encoder.net.mlp.0.weight"
-        ][0]
-        logger.warn(f"===> [OfflinePreLearner]: module weights: {weights}")
+
         # Run the `Learner`'s connector pipeline.
         batch = self._learner_connector(
             rl_module=self._module,

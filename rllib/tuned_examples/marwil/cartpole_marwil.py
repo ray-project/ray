@@ -56,10 +56,10 @@ config = (
         # The `kwargs` for the `map_batches` method in which our
         # `OfflinePreLearner` is run. 2 data workers should be run
         # concurrently.
-        map_batches_kwargs={"concurrency": 1, "num_cpus": 1},
+        map_batches_kwargs={"concurrency": 2, "num_cpus": 2},
         # The `kwargs` for the `iter_batches` method. Due to the small
         # dataset we choose only a single batch to prefetch.
-        iter_batches_kwargs={"prefetch_batches": 0},
+        iter_batches_kwargs={"prefetch_batches": 1},
         prelearner_module_synch_period=20,
         dataset_num_iters_per_learner=1 if args.num_gpus == 0 else None,
     )
@@ -71,13 +71,6 @@ config = (
         train_batch_size_per_learner=1024,
     )
 )
-
-
-# algo = config.build()
-
-# for i in range(10):
-#     res = algo.train()
-#     print(res)
 
 stop = {
     f"{EVALUATION_RESULTS}/{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": 250.0,

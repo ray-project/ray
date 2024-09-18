@@ -1108,6 +1108,8 @@ class Learner(Checkpointable):
         i = 0
         logger.debug(f"===> [Learner {id(self)}]: SLooping through batches ... ")
         for batch in iterator.iter_batches(
+            # Note, this needs to be one b/c data is already mapped to
+            # `MultiAgentBatch`es of `minibatch_size`.
             batch_size=1,
             _finalize_fn=_finalize_fn,
             **kwargs,

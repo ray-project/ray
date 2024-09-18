@@ -451,7 +451,8 @@ class AlgorithmConfig(_Config):
         self.input_filesystem_kwargs = {}
         self.input_compress_columns = [Columns.OBS, Columns.NEXT_OBS]
         self.input_spaces_jsonable = True
-        self.materialize_data = True
+        self.materialize_data = False
+        self.materialize_mapped_data = True
         self.map_batches_kwargs = {}
         self.iter_batches_kwargs = {}
         self.prelearner_class = None
@@ -2469,6 +2470,7 @@ class AlgorithmConfig(_Config):
         input_filesystem_kwargs: Optional[Dict] = NotProvided,
         input_compress_columns: Optional[List[str]] = NotProvided,
         materialize_data: Optional[bool] = NotProvided,
+        materialize_mapped_data: Optional[bool] = NotProvided,
         map_batches_kwargs: Optional[Dict] = NotProvided,
         iter_batches_kwargs: Optional[Dict] = NotProvided,
         prelearner_class: Optional[Type] = NotProvided,
@@ -2558,11 +2560,27 @@ class AlgorithmConfig(_Config):
                 `MultiAgentEpisode` not supported, yet). Note,
                 `rllib.core.columns.Columns.OBS` will also try to decompress
                 `rllib.core.columns.Columns.NEXT_OBS`.
-            materialize_data: If the data should be materialized in memory. This boosts
-                performance extensively, but needs enough memory to avoid an OOM. Make
-                sure that your cluster has the resources available. For very large data
-                you might want to switch to streaming mode, i.e. `False`. The default
-                is `True`.
+            materialize_data: If the raw data should be materialized in memory. This
+                boosts performance extensively, but needs enough memory to avoid an OOM.
+                Make sure that your cluster has the resources available. For very large
+                data you might want to switch to streaming mode, i.e. `False`. The
+                default is `False`. If your algorithm does not need the module in its
+                connectors (`ConnectorV2` pipeline) or all connectors are stateless
+                you might want to consider setting `materialize_mapped_data` to `True`
+                instead and set `materialize_data` to `False`. If your data does not fit
+                into memory set both configurations to `False`.
+            materialize_mapped_data: If the data should be materialized after running it
+                through the learner connectors (i.e. after running the
+                `OfflinePreLearner`). This improves performance extensively, but should
+                only be applied, if the connectors do not depend on the `RLModule` or
+                keep a state (e.g. MARWIL computes the values with a module). In the
+                latter case the training batches become stale after some iterations and
+                learning degrades or diverges. Ensure that your cluster has enough
+                resources available to avoid an OOM. If set to `True` make sure that
+                `materialize_data` is set to `False` to avoid materializing two
+                datasets. The default is `True`. If your data does not fit into memory
+                set both configurations (i.e. `materialize_data` and
+                `materialize_mapped_data`) to `False`.
             map_batches_kwargs: Keyword args for the `map_batches` method. These will be
                 passed into the `ray.data.Dataset.map_batches` method when sampling
                 without checking. If no arguments passed in the default arguments
@@ -2667,6 +2685,8 @@ class AlgorithmConfig(_Config):
             self.input_compress_columns = input_compress_columns
         if materialize_data is not NotProvided:
             self.materialize_data = materialize_data
+        if materialize_mapped_data is not NotProvided:
+            self.materialize_mapped_data = materialize_mapped_data
         if map_batches_kwargs is not NotProvided:
             self.map_batches_kwargs = map_batches_kwargs
         if iter_batches_kwargs is not NotProvided:
