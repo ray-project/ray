@@ -31,7 +31,7 @@ def _make_learner_connector(input_observation_space, input_action_space):
 # We would like our frame stacking connector to do this job.
 def _env_creator(cfg):
     return wrap_atari_for_new_api_stack(
-        gym.make(args.env, **cfg),
+        gym.make(args.env, **cfg, render_mode="rgb_array"),
         # Perform frame-stacking through ConnectorV2 API.
         framestack=None,
     )
@@ -59,13 +59,13 @@ config = (
     .training(
         learner_connector=_make_learner_connector,
         train_batch_size_per_learner=4000,  # 5000 on old yaml example
-        mini_batch_size_per_learner=128,  # 500 on old yaml example
+        minibatch_size=128,  # 500 on old yaml example
         lambda_=0.95,
         kl_coeff=0.5,
         clip_param=0.1,
         vf_clip_param=10.0,
         entropy_coeff=0.01,
-        num_sgd_iter=10,
+        num_epochs=10,
         lr=0.00015 * args.num_gpus,
         grad_clip=100.0,
         grad_clip_by="global_norm",

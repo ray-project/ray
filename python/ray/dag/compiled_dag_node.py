@@ -611,7 +611,7 @@ class CompiledDAG:
             # We conservatively set num_shm_buffers to _max_inflight_executions.
             # It means that the DAG can be underutilized, but it guarantees there's
             # no false positive timeouts.
-            num_shm_buffers=self._max_inflight_executions,
+            num_shm_buffers=1,
         )
         if not isinstance(self._buffer_size_bytes, int) or self._buffer_size_bytes <= 0:
             raise ValueError(
@@ -668,9 +668,6 @@ class CompiledDAG:
         ] = defaultdict(list)
         # Mapping from the actor handle to the node ID that the actor is on.
         self.actor_to_node_id: Dict["ray.actor.ActorHandle", str] = {}
-
-        # Type hints specified by the user for DAG (intermediate) outputs.
-        self._type_hints = []
 
         # This is set to true when type hint of `transport="nccl"`` is used
         self._use_default_nccl_group = False
@@ -744,7 +741,6 @@ class CompiledDAG:
 
         self.input_task_idx, self.output_task_idx = None, None
         self.actor_task_count.clear()
-        self._type_hints.clear()
 
         nccl_actors: Set["ray.actor.ActorHandle"] = set()
 
@@ -949,9 +945,6 @@ class CompiledDAG:
                 if upstream_task.dag_node.type_hint.requires_nccl():
                     # Add all readers to the NCCL group.
                     nccl_actors.add(downstream_actor_handle)
-
-            if dag_node.type_hint is not None:
-                self._type_hints.append(dag_node.type_hint)
 
         # If there were type hints indicating transport via NCCL, initialize
         # the NCCL group on the participating actors.

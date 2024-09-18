@@ -399,8 +399,8 @@ class TestNestedObservationSpaces(unittest.TestCase):
             .env_runners(num_env_runners=0, rollout_fragment_length=5)
             .training(
                 train_batch_size=5,
-                sgd_minibatch_size=5,
-                num_sgd_iter=1,
+                minibatch_size=5,
+                num_epochs=1,
                 model={"custom_model": "composite"},
             )
         )
@@ -441,8 +441,8 @@ class TestNestedObservationSpaces(unittest.TestCase):
             .env_runners(num_env_runners=0, rollout_fragment_length=5)
             .training(
                 train_batch_size=5,
-                num_sgd_iter=1,
-                sgd_minibatch_size=5,
+                num_epochs=1,
+                minibatch_size=5,
                 model={"custom_model": "r1"},
             )
         )
