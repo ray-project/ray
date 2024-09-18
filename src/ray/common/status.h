@@ -32,7 +32,6 @@
 #include <iosfwd>
 #include <string>
 
-#include "absl/strings/str_cat.h"
 #include "ray/util/logging.h"
 #include "ray/util/macros.h"
 #include "ray/util/visibility.h"
@@ -138,13 +137,6 @@ class RAY_EXPORT Status {
   // Copy the specified status.
   Status(const Status &s);
   void operator=(const Status &s);
-
-  // Support abseil string formatting function, for example, `absl::StrCat`,
-  // `absl::StrFormat`, etc.
-  template <typename Sink>
-  friend void AbslStringify(Sink &sink, const Status &status) {
-    sink.Append(status.ToString());
-  }
 
   // Return a success status.
   static Status OK() { return Status(); }
