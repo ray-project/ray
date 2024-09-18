@@ -162,7 +162,7 @@ from ray.includes.libcoreworker cimport (
 from ray.includes.ray_config cimport RayConfig
 from ray.includes.global_state_accessor cimport CGlobalStateAccessor
 from ray.includes.global_state_accessor cimport (
-    RedisDelExternalStorageNamespaceSync,
+    RedisDelKeyPrefixSync,
     RedisGetKeySync
 )
 from ray.includes.optional cimport (
@@ -5179,10 +5179,10 @@ cdef void async_callback(shared_ptr[CRayObject] obj,
         cpython.Py_DECREF(user_callback)
 
 
-def del_external_storage_namespace_from_storage(
-        host, port, password, use_ssl, key_prefix):
-    return RedisDelExternalStorageNamespaceSync(
-        host, port, password, use_ssl, key_prefix)
+# Note this deletes keys with prefix `RAY{key_prefix}@`
+# Example: with key_prefix = `default`, we remove all `RAYdefault@...` keys.
+def del_key_prefix_from_storage(host, port, password, use_ssl, key_prefix):
+    return RedisDelKeyPrefixSync(host, port, password, use_ssl, key_prefix)
 
 
 def get_session_key_from_storage(host, port, password, use_ssl, config, key):

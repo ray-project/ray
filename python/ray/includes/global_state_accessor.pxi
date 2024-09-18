@@ -15,7 +15,7 @@ from ray.includes.unique_ids cimport (
 
 from ray.includes.global_state_accessor cimport (
     CGlobalStateAccessor,
-    RedisDelExternalStorageNamespaceSync,
+    RedisDelKeyPrefixSync,
 )
 
 from ray.includes.optional cimport (

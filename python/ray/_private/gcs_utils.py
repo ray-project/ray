@@ -125,7 +125,7 @@ def cleanup_redis_storage(
        storage_namespace: The namespace of the storage to be deleted.
     """
 
-    from ray._raylet import del_external_storage_namespace_from_storage  # type: ignore
+    from ray._raylet import del_key_prefix_from_storage  # type: ignore
 
     if not isinstance(host, str):
         raise ValueError("Host must be a string")
@@ -143,8 +143,7 @@ def cleanup_redis_storage(
         raise ValueError("storage namespace must be a string")
 
     # Right now, GCS stores all data into multiple hashes with keys prefixed by
-    # storage_namespace. So we only need to delete the specific key to cleanup the
-    # cluster.
-    return del_external_storage_namespace_from_storage(
-        host, port, password, use_ssl, storage_namespace
-    )
+    # storage_namespace. So we only need to delete the specific key prefix to cleanup
+    # the cluster.
+    # Note this deletes all keys with prefix `RAY{key_prefix}@`, not `{key_prefix}`.
+    return del_key_prefix_from_storage(host, port, password, use_ssl, storage_namespace)
