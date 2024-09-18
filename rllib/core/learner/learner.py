@@ -1146,8 +1146,7 @@ class Learner(Checkpointable):
         # to actual (numpy) values.
         self.metrics.tensors_to_numpy(tensor_metrics)
 
-        # Log all individual RLModules' loss terms and its registered optimizers'
-        # current learning rates.
+        # Log all individual RLModules' loss terms.
         for mid, loss in convert_to_numpy(loss_per_module).items():
             self.metrics.log_value(
                 key=(mid, self.TOTAL_LOSS_KEY),
@@ -1441,6 +1440,16 @@ class Learner(Checkpointable):
                 `NUM_ENV_STEPS_SAMPLED_LIFETIME`.
                 # TODO (sven): Make this a more formal structure with its own type.
         """
+        # Log total loss accross all modules.
+        self.metrics.log_value(
+            key=(ALL_MODULES, self.TOTAL_LOSS_KEY),
+            value=sum(
+                self.metrics.peek((mid, self.TOTAL_LOSS_KEY))
+                for mid in self.module.keys()
+            ),
+            window=1,
+        )
+
         # Only update this optimizer's lr, if a scheduler has been registered
         # along with it.
         for module_id, optimizer_names in self._module_optimizers.items():

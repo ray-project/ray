@@ -89,6 +89,7 @@ parser = add_rllib_example_script_args(
     default_timesteps=500000,
     default_reward=-300.0,
 )
+parser.set_defaults(enable_new_api_stack=True)
 parser.add_argument(
     "--disable-mean-std-filter",
     action="store_true",
@@ -109,10 +110,6 @@ class LopsidedObs(gym.ObservationWrapper):
 if __name__ == "__main__":
     args = parser.parse_args()
 
-    assert (
-        args.enable_new_api_stack
-    ), "Must set --enable-new-api-stack when running this script!"
-
     # Register our environment with tune.
     if args.num_agents > 0:
         register_env(
@@ -130,7 +127,7 @@ if __name__ == "__main__":
             # TODO (sven): MAEnvRunner does not support vectorized envs yet
             #  due to gym's env checkers and non-compatability with RLlib's
             #  MultiAgentEnv API.
-            num_envs_per_env_runner=1 if args.num_agents > 0 else 20,
+            num_envs_per_env_runner=1 if args.num_agents > 0 else 10,
             # Define a single connector piece to be prepended to the env-to-module
             # connector pipeline.
             # Alternatively, return a list of n ConnectorV2 pieces (which will then be
@@ -143,18 +140,13 @@ if __name__ == "__main__":
             ),
         )
         .training(
-            train_batch_size_per_learner=512,
+            train_batch_size_per_learner=1024,
             gamma=0.95,
-            # Linearly adjust learning rate based on number of GPUs.
-            lr=0.0003 * (args.num_gpus or 1),
-            vf_loss_coeff=0.01,
+            lr=0.0002 * (args.num_gpus or 1) ** 0.5,
         )
         .rl_module(
             model_config_dict={
                 "fcnet_activation": "relu",
-                "fcnet_weights_initializer": torch.nn.init.xavier_uniform_,
-                "fcnet_bias_initializer": torch.nn.init.constant_,
-                "fcnet_bias_initializer_config": {"val": 0.0},
                 "uses_new_env_runners": True,
             }
         )
@@ -183,9 +175,8 @@ if __name__ == "__main__":
     # PPO specific settings.
     if args.algo == "PPO":
         base_config.training(
-            minibatch_size=64,
-            lambda_=0.1,
-            vf_clip_param=10.0,
+            minibatch_size=128,
+            lambda_=0.5,
         )
 
     # Add a simple multi-agent setup.

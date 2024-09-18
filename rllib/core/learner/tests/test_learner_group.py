@@ -224,14 +224,10 @@ class TestLearnerGroupSyncUpdate(unittest.TestCase):
     #        del training_helper
 
     def test_update_multi_gpu(self):
-        return
-
-        fws = ["torch"]
         scaling_modes = ["multi-gpu-ddp", "remote-gpu"]
-        test_iterator = itertools.product(fws, scaling_modes)
 
-        for fw, scaling_mode in test_iterator:
-            print(f"Testing framework: {fw}, scaling mode: {scaling_mode}.")
+        for scaling_mode in scaling_modes:
+            print(f"Testing scaling mode: {scaling_mode}.")
             env = gym.make("CartPole-v1")
 
             config_overrides = REMOTE_CONFIGS[scaling_mode]
@@ -244,9 +240,7 @@ class TestLearnerGroupSyncUpdate(unittest.TestCase):
                 batch = reader.next()
                 results = learner_group.update_from_batch(batch=batch.as_multi_agent())
 
-                loss = np.mean(
-                    [res[ALL_MODULES][Learner.TOTAL_LOSS_KEY] for res in results]
-                )
+                loss = results[ALL_MODULES][Learner.TOTAL_LOSS_KEY]
                 min_loss = min(loss, min_loss)
                 print(f"[iter = {iter_i}] Loss: {loss:.3f}, Min Loss: {min_loss:.3f}")
                 # The loss is initially around 0.69 (ln2). When it gets to around
@@ -254,11 +248,20 @@ class TestLearnerGroupSyncUpdate(unittest.TestCase):
                 if min_loss < 0.57:
                     break
 
-                for res1, res2 in zip(results, results[1:]):
-                    self.assertEqual(
-                        res1[DEFAULT_MODULE_ID]["mean_weight"],
-                        res2[DEFAULT_MODULE_ID]["mean_weight"],
+                # Make sure the model weights are identical between the different
+                # Learners.
+                if config_overrides["num_learners"] > 1:
+                    w0 = ray.get(
+                        learner_group._workers[0].get_state.remote(
+                            components=COMPONENT_RL_MODULE
+                        )
                     )
+                    w1 = ray.get(
+                        learner_group._workers[1].get_state.remote(
+                            components=COMPONENT_RL_MODULE
+                        )
+                    )
+                    check(w0, w1)
 
             self.assertLess(min_loss, 0.57)
 
@@ -537,14 +540,12 @@ class TestLearnerGroupAsyncUpdate(unittest.TestCase):
 
     def test_async_update(self):
         """Test that async style updates converge to the same result as sync."""
-        fws = ["torch"]
         # async_update only needs to be tested for the most complex case.
         # so we'll only test it for multi-gpu-ddp.
         scaling_modes = ["multi-gpu-ddp", "remote-gpu"]
-        test_iterator = itertools.product(fws, scaling_modes)
 
-        for fw, scaling_mode in test_iterator:
-            print(f"Testing framework: {fw}, scaling mode: {scaling_mode}.")
+        for scaling_mode in scaling_modes:
+            print(f"Testing scaling mode: {scaling_mode}.")
             env = gym.make("CartPole-v1")
             config_overrides = REMOTE_CONFIGS[scaling_mode]
             config = BaseTestingAlgorithmConfig().update_from_dict(config_overrides)
@@ -561,7 +562,7 @@ class TestLearnerGroupAsyncUpdate(unittest.TestCase):
                 result_async = learner_group.update_from_batch(
                     batch=batch.as_multi_agent(), async_update=True
                 )
-            # ideally the the first async update will return nothing, and an easy
+            # Ideally the first async update will return nothing, and an easy
             # way to check that is if the time for an async update call is faster
             # than the time for a sync update call.
             self.assertLess(timer_async.mean, timer_sync.mean)
