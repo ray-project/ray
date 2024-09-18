@@ -1,3 +1,4 @@
+from contextlib import contextmanager
 from typing import TYPE_CHECKING, Any, Dict, List
 
 from ray.train import Checkpoint
@@ -96,3 +97,36 @@ class CheckpointCallback(Callback):
 
     def after_checkpoint_delete(self, checkpoint: Checkpoint):
         pass
+
+
+@DeveloperAPI
+class WorkerCallback(Callback):
+    """
+    Callbacks that are hooked to the worker event.
+
+    These callbacks are created on the train driver process and then
+    copied and passed to all the workers.
+    The execution of these callbacks happens on each of the workers,
+    not on the train driver process.
+    """
+
+    def after_init_train_context(self):
+        pass
+
+    def before_worker_shutdown(self):
+        pass
+
+
+@DeveloperAPI
+class TrainContextCallback(Callback):
+    """
+    Callbacks that are hooked to the train context event.
+
+    These callbacks are created on the train driver process and then
+    copied and passed to all the workers.
+    The execution of these callbacks happens on the train context of the workers.
+    """
+
+    @contextmanager
+    def on_report(self):
+        yield

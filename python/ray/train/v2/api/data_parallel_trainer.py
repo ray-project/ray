@@ -12,7 +12,12 @@ from ray.train.v2._internal.callbacks import (
     WorkingDirectorySetupCallback,
 )
 from ray.train.v2._internal.callbacks.datasets import DatasetsSetupCallback, GenDataset
-from ray.train.v2._internal.constants import _UNSUPPORTED, get_env_vars_to_propagate
+from ray.train.v2._internal.callbacks.metrics import WorkerMetricsCallback
+from ray.train.v2._internal.constants import (
+    _UNSUPPORTED,
+    METRICS_ENABLED_ENV_VAR,
+    get_env_vars_to_propagate,
+)
 from ray.train.v2._internal.execution.controller import TrainController
 from ray.train.v2._internal.execution.failure_handling import DefaultFailurePolicy
 from ray.train.v2._internal.execution.scaling_policy import create_scaling_policy
@@ -175,6 +180,10 @@ class DataParallelTrainer:
         if env_bool(RAY_CHDIR_TO_TRIAL_DIR, True):
             working_directory_setup_callback = WorkingDirectorySetupCallback()
             callbacks.append(working_directory_setup_callback)
+
+        if env_bool(METRICS_ENABLED_ENV_VAR, True):
+            callbacks.append(WorkerMetricsCallback())
+            # TODO (hpguo): Add controller metrics callback here.
 
         # TODO: Add support for user-defined callbacks
 

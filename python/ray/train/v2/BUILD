@@ -67,6 +67,15 @@ py_test(
 )
 
 py_test(
+    name = "test_metrics",
+    size = "small",
+    srcs = ["tests/test_metrics.py"],
+    tags = ["exclusive", "team:ml", "train_v2"],
+    deps = ["//:ray_lib", ":conftest"],
+    env = {"RAY_TRAIN_V2_ENABLED": "1"},
+)
+
+py_test(
     name = "test_persistence",
     size = "medium",
     srcs = ["tests/test_persistence.py"],

@@ -11,6 +11,10 @@ from ray.actor import ActorHandle
 from ray.data.iterator import DataIterator
 from ray.train import Checkpoint
 from ray.train._internal.session import _TrainingResult
+from ray.train.v2._internal.execution.callback import (
+    TrainContextCallback,
+    WorkerCallback,
+)
 from ray.train.v2._internal.execution.checkpoint.sync_actor import SynchronizationActor
 from ray.train.v2._internal.execution.context import (
     DistributedContext,
@@ -86,6 +90,9 @@ class Worker:
 
 
 class RayTrainWorker:
+    def __init__(self):
+        self._callbacks: List[WorkerCallback] = []
+
     def execute(self, fn: Callable[..., T], *fn_args, **fn_kwargs) -> T:
         return fn(*fn_args, **fn_kwargs)
 
@@ -132,15 +139,32 @@ class RayTrainWorker:
             running=running, error=error, training_result=training_result
         )
 
+    def shutdown(self):
+        """Shutdown the worker.
+
+        This method is not doing the real shutdown, but it is used by the worker
+        group to signal the worker to stop running the training function.
+        Any shutdown worker callbacks can hook on this method to implement the
+        corresponding shutdown logic. Note that the shutdown logic needs to be
+        thread-safe if it is running in a separate thread.
+        """
+        for callback in self._callbacks:
+            callback.before_worker_shutdown()
+
     def init_train_context(
         self,
         run_config: RunConfig,
         distributed_context: DistributedContext,
         synchronization_actor: SynchronizationActor,
         storage_context: StorageContext,
+        worker_callbacks: List[Union[WorkerCallback, TrainContextCallback]],
         dataset_shards: Dict[str, DataIterator] = None,
         checkpoint: Optional[Checkpoint] = None,
     ):
+        self._callbacks = [c for c in worker_callbacks if isinstance(c, WorkerCallback)]
+        context_callbacks_to_propagate = [
+            c for c in worker_callbacks if isinstance(c, TrainContextCallback)
+        ]
         context = TrainContext(
             run_config=run_config,
             distributed_context=distributed_context,
@@ -148,9 +172,13 @@ class RayTrainWorker:
                 synchronization_actor=synchronization_actor,
                 result_queue=queue.Queue(),
                 training_thread_runner=ThreadRunner(),
+                train_context_callbacks=context_callbacks_to_propagate,
             ),
             storage_context=storage_context,
             dataset_shards=dataset_shards or {},
             checkpoint=checkpoint,
         )
         set_train_context(context)
+
+        for callback in self._callbacks:
+            callback.after_init_train_context()

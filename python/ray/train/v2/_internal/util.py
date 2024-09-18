@@ -1,10 +1,22 @@
+import contextlib
 import functools
 import time
 from datetime import datetime
-from typing import Any, Callable, ContextManager, Dict, List, Optional, TypeVar, Union
+from typing import (
+    Any,
+    Callable,
+    ContextManager,
+    Dict,
+    Generator,
+    List,
+    Optional,
+    TypeVar,
+    Union,
+)
 
 import ray
 from ray.train._internal.utils import count_required_parameters
+from ray.train.v2._internal.execution.callback import Callback
 from ray.types import ObjectRef
 
 T = TypeVar("T")
@@ -130,3 +142,26 @@ def ray_get_safe(
     assert len(task_to_output) == len(object_refs)
     ordered_outputs = [task_to_output[task] for task in object_refs]
     return ordered_outputs if is_list else ordered_outputs[0]
+
+
+@contextlib.contextmanager
+def invoke_callbacks_context_managers(
+    callbacks: List[Callback],
+    method_name: str,
+) -> Generator[None, None, None]:
+    """
+    Utility to invoke a generator method on a list of callback instances and
+    yield sequentially, with context management using ExitStack.
+
+    Args:
+        callbacks: List of class instances (callbacks).
+        method_name: The name of the generator method to invoke on each callback.
+        *args: Any positional arguments to pass to the generator method.
+        **kwargs: Any keyword arguments to pass to the generator method.
+    """
+    with contextlib.ExitStack() as stack:
+        for callback in callbacks:
+            method = getattr(callback, method_name)
+            generator = method()
+            stack.enter_context(generator)
+        yield

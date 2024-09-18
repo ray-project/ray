@@ -2,7 +2,7 @@ import logging
 import threading
 from dataclasses import dataclass
 from queue import Queue
-from typing import TYPE_CHECKING, Any, Dict, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 import ray
 from ray.data.iterator import DataIterator
@@ -11,10 +11,11 @@ from ray.train._internal import session
 from ray.train._internal.session import _TrainingResult
 from ray.train.v2._internal.execution.checkpoint.sync_actor import SynchronizationActor
 from ray.train.v2._internal.execution.storage import StorageContext
-from ray.train.v2._internal.util import _copy_doc
+from ray.train.v2._internal.util import _copy_doc, invoke_callbacks_context_managers
 from ray.train.v2.api.config import RunConfig
 
 if TYPE_CHECKING:
+    from ray.train.v2._internal.execution.callback import TrainContextCallback
     from ray.train.v2._internal.execution.worker_group.thread_runner import ThreadRunner
 
 
@@ -48,6 +49,9 @@ class ExecutionContext:
 
     # The thread launcher that runs the user training loop.
     training_thread_runner: "ThreadRunner"
+
+    # The callbacks that are run in the worker train context.
+    train_context_callbacks: List["TrainContextCallback"]
 
 
 @dataclass
@@ -139,6 +143,9 @@ class TrainContext:
                 f"{list(self.dataset_shards.keys())}."
             )
 
+    def get_context_callbacks(self) -> List["TrainContextCallback"]:
+        return self.execution_context.train_context_callbacks
+
     def _sync_checkpoint_dir_name_across_ranks(
         self, checkpoint_dir_name: Optional[str] = None
     ) -> str:
@@ -197,7 +204,8 @@ class TrainContext:
         checkpoint: Optional[Checkpoint] = None,
         checkpoint_dir_name: Optional[str] = None,
     ):
-        """Upload checkpoint to remote storage and put a training
+        """
+        Upload checkpoint to remote storage and put a training
         result on the result queue of this worker process.
 
         Args:
@@ -207,17 +215,27 @@ class TrainContext:
                 in this iteration. Note: If not set, the checkpoint will
                 be stored in the default storage path. If set, make sure
                 this value is unique for each iteration.
+
+        TODO: the report function should be implemented in the worker instead
+        of in the train context. The train context should only keep the train
+        related information and not the worker related actions. This refactor
+        would also require the `TrainContextCallback` to be updated as well.
         """
-        # Step 1: sync the checkpoint dir name across ranks.
-        checkpoint_dir_name = self._sync_checkpoint_dir_name_across_ranks(
-            checkpoint_dir_name
-        )
-        # Step 2: save the checkpoint to remote storage.
-        training_result = self._save_checkpoint(
-            checkpoint_dir_name, metrics, checkpoint
-        )
-        # Step 3: Report the training result to the result queue.
-        self.get_result_queue().put(training_result)
+
+        with invoke_callbacks_context_managers(
+            self.get_context_callbacks(), "on_report"
+        ):
+
+            # Step 1: sync the checkpoint dir name across ranks.
+            checkpoint_dir_name = self._sync_checkpoint_dir_name_across_ranks(
+                checkpoint_dir_name
+            )
+            # Step 2: save the checkpoint to remote storage.
+            training_result = self._save_checkpoint(
+                checkpoint_dir_name, metrics, checkpoint
+            )
+            # Step 3: Report the training result to the result queue.
+            self.get_result_queue().put(training_result)
 
 
 # The global variable holding the current TrainContext

@@ -19,6 +19,8 @@ from ray.train.v2._internal.exceptions import (
 from ray.train.v2._internal.execution.callback import (
     Callback,
     ControllerCallback,
+    TrainContextCallback,
+    WorkerCallback,
     WorkerGroupCallback,
 )
 from ray.train.v2._internal.execution.checkpoint.checkpoint_handler import (
@@ -111,15 +113,21 @@ class TrainController:
         self._checkpoint_handler = CheckpointHandler(self._checkpoint_manager)
 
         # Group callbacks by the hooks they're subscribed to.
-        self._controller_hooks = [self._scaling_policy] + [
+        self._controller_callbacks = [self._scaling_policy] + [
             c for c in self._callbacks if isinstance(c, ControllerCallback)
         ]
-        worker_group_hooks = [self._checkpoint_handler] + [
-            c for c in self._callbacks if isinstance(c, WorkerGroupCallback)
+        # Group callbacks that will be propagated to the worker group,
+        # train worker and the train context.
+        worker_group_callbacks_to_propagate = [self._checkpoint_handler] + [
+            c
+            for c in self._callbacks
+            if isinstance(
+                c, (WorkerGroupCallback, WorkerCallback, TrainContextCallback)
+            )
         ]
 
         self._worker_group = self.worker_group_cls(
-            run_config=self._run_config, callbacks=worker_group_hooks
+            run_config=self._run_config, callbacks=worker_group_callbacks_to_propagate
         )
         self._state = TrainControllerState.INITIALIZING
 
@@ -133,7 +141,7 @@ class TrainController:
         self, decision: ScalingDecision, worker_group_status: WorkerGroupStatus
     ):
         """Executes scaling decisions."""
-        for callback in self._controller_hooks:
+        for callback in self._controller_callbacks:
             callback.before_controller_execute_scaling_decision(
                 decision, worker_group_status
             )
@@ -150,7 +158,7 @@ class TrainController:
         """Executes failure handling decisions (ex: restart, terminate)."""
         assert worker_group_status.errors
 
-        for callback in self._controller_hooks:
+        for callback in self._controller_callbacks:
             callback.before_controller_execute_failure_decision(
                 failure_decision, worker_group_status
             )
@@ -235,13 +243,13 @@ class TrainController:
         self._set_state(TrainControllerState.RUNNING)
 
     def _start(self):
-        for callback in self._controller_hooks:
+        for callback in self._controller_callbacks:
             callback.after_controller_start()
 
     def _shutdown(self):
         self._worker_group.shutdown()
 
-        for callback in self._controller_hooks:
+        for callback in self._controller_callbacks:
             callback.before_controller_shutdown()
 
     def get_worker_group(self) -> WorkerGroup:
@@ -254,7 +262,7 @@ class TrainController:
         previous_state = self._state
         self._state = state
 
-        for callback in self._controller_hooks:
+        for callback in self._controller_callbacks:
             callback.after_controller_state_update(previous_state, state)
 
     def _run_control_loop_iteration(self):

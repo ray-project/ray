@@ -3,7 +3,7 @@ import logging
 import os
 import traceback
 from dataclasses import dataclass
-from typing import Any, Callable, Dict, List, Optional, Type, TypeVar
+from typing import Any, Callable, Dict, List, Optional, Type, TypeVar, Union
 
 import ray
 from ray._private.ray_constants import env_float
@@ -26,7 +26,11 @@ from ray.train.v2._internal.exceptions import (
     WorkerHealthCheckFailedError,
     WorkerHealthCheckTimeoutError,
 )
-from ray.train.v2._internal.execution.callback import WorkerGroupCallback
+from ray.train.v2._internal.execution.callback import (
+    TrainContextCallback,
+    WorkerCallback,
+    WorkerGroupCallback,
+)
 from ray.train.v2._internal.execution.checkpoint.sync_actor import SynchronizationActor
 from ray.train.v2._internal.execution.context import DistributedContext, StorageContext
 from ray.train.v2._internal.execution.worker_group.worker import (
@@ -107,7 +111,9 @@ class WorkerGroup:
     def __init__(
         self,
         run_config: Optional[RunConfig] = None,
-        callbacks: Optional[List[WorkerGroupCallback]] = None,
+        callbacks: Optional[
+            List[Union[WorkerGroupCallback, WorkerCallback, TrainContextCallback]]
+        ] = None,
     ):
         self._run_config = run_config or RunConfig()
         self._storage_context = StorageContext(
@@ -115,7 +121,15 @@ class WorkerGroup:
             experiment_dir_name=self._run_config.name,
             storage_filesystem=self._run_config.storage_filesystem,
         )
-        self._callbacks = callbacks or []
+        callbacks = callbacks or []
+        # Group of callbacks that are specific to worker group itself.
+        self._callbacks = [c for c in callbacks if isinstance(c, WorkerGroupCallback)]
+        # Group of callbacks that will be propagated and called on the worker actors.
+        self._worker_callbacks_to_propagate = [
+            c
+            for c in callbacks
+            if isinstance(c, (WorkerCallback, TrainContextCallback))
+        ]
 
         # List of workers in this worker group.
         # These should always be in sorted order by world rank.
@@ -196,6 +210,7 @@ class WorkerGroup:
                 distributed_context=worker.distributed_context,
                 synchronization_actor=self._sync_actor,
                 storage_context=self._storage_context,
+                worker_callbacks=self._worker_callbacks_to_propagate,
                 **{
                     arg: arg_values[i] for arg, arg_values in train_context_args.items()
                 },
@@ -391,7 +406,7 @@ class WorkerGroup:
     def has_started(self) -> bool:
         return bool(self._workers)
 
-    def shutdown(self, patience_s: float = 0.0):
+    def shutdown(self, patience_s: float = 5.0):
         """Shutdown all the workers in this worker group.
 
         Args:
@@ -404,6 +419,10 @@ class WorkerGroup:
         if self._workers:
             for callback in self._callbacks:
                 callback.before_worker_group_shutdown(self)
+
+            # Run the worker shutdown logic on each of the workers. This should
+            # be a non-blocking call to realize forceful shutdown after patience_s.
+            _ = [w.actor.shutdown.remote() for w in self._workers]
 
         logger.debug(f"Shutting down {len(self._workers)} workers.")
         if patience_s <= 0:
