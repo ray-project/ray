@@ -73,16 +73,16 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
       periodical_runner_(main_service),
       is_started_(false),
       is_stopped_(false) {
-  // Init GCS table storage.
+  // Init GCS table storage. Note this is on main_service_, not kv_io_context_, to avoid
+  // congestion on the kv_io_context_.
   RAY_LOG(INFO) << "GCS storage type is " << storage_type_;
   switch (storage_type_) {
   case StorageType::IN_MEMORY:
-    gcs_table_storage_ =
-        std::make_shared<InMemoryGcsTableStorage>(kv_io_context_.GetIoService());
+    gcs_table_storage_ = std::make_shared<InMemoryGcsTableStorage>(main_service_);
     break;
   case StorageType::REDIS_PERSIST:
-    gcs_table_storage_ = std::make_shared<gcs::RedisGcsTableStorage>(
-        GetOrConnectRedis(kv_io_context_.GetIoService()));
+    gcs_table_storage_ =
+        std::make_shared<gcs::RedisGcsTableStorage>(GetOrConnectRedis(main_service_));
     break;
   default:
     RAY_LOG(FATAL) << "Unexpected storage type: " << storage_type_;
