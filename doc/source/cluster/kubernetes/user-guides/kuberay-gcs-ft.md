@@ -144,7 +144,7 @@ KEYS *
 # 1) "RAY864b004c-6305-42e3-ac46-adfa8eb6f752@INTERNAL_CONFIG"
 # 2) "RAY864b004c-6305-42e3-ac46-adfa8eb6f752@KV"
 # 3) "RAY864b004c-6305-42e3-ac46-adfa8eb6f752@NODE"
-# [Example output Before Ray 2.36.0]:
+# [Example output Before Ray 2.38.0]:
 # 2) "864b004c-6305-42e3-ac46-adfa8eb6f752"
 #
 
