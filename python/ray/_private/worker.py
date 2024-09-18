@@ -2638,6 +2638,9 @@ def get(
             the get takes longer than timeout to return.
         Exception: An exception is raised if the task that created the object
             or that created one of the objects raised an exception.
+            It's worth noting, if any actor is crashed, and if you do `ray.get`
+            on crashed/uncrashed actors together, an exception won't be raised
+            until uncrashed actors are finished.
     """
     worker = global_worker
     worker.check_connected()
