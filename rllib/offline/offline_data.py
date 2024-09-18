@@ -33,8 +33,8 @@ class OfflineData:
             self.default_read_method_kwargs | config.input_read_method_kwargs
         )
 
-        # If data should be materialized. 
-        self.materialize_data = False#config.materialize_data
+        # If data should be materialized.
+        self.materialize_data = False  # config.materialize_data
         # Flag to identify, if data has already been mapped with the `OfflinePreLearner`.
         self.data_is_mapped = False
 
@@ -77,7 +77,7 @@ class OfflineData:
             self.data = getattr(ray.data, self.data_read_method)(
                 self.path, **self.data_read_method_kwargs
             )
-            if True:#self.materialize_data:
+            if True:  # self.materialize_data:
                 self.data = self.data.materialize()
             stop_time = time.perf_counter()
             logger.debug(f"Time for loading dataset: {stop_time - start_time}s.")
@@ -119,10 +119,10 @@ class OfflineData:
         if not self.data_is_mapped:
             # Constructor `kwargs` for the `OfflinePreLearner`.
             fn_constructor_kwargs = {
-                    "config": self.config,
-                    "learner": self.learner_handles[0],
-                    "spaces": self.spaces[INPUT_ENV_SPACES],
-                }
+                "config": self.config,
+                "learner": self.learner_handles[0],
+                "spaces": self.spaces[INPUT_ENV_SPACES],
+            }
             # If we have multiple learners, add to the constructor `kwargs`.
             if num_shards > 1:
                 # Call here the learner to get an up-to-date module state.
@@ -142,7 +142,7 @@ class OfflineData:
                         "module_state": module_state,
                     }
                 )
-            
+
             self.data = self.data.map_batches(
                 self.prelearner_class,
                 fn_constructor_kwargs=fn_constructor_kwargs,
@@ -185,7 +185,9 @@ class OfflineData:
                     # Note, `equal` must be `True`, i.e. the batch size must
                     # be the same for all batches b/c otherwise remote learners
                     # could block each others.
-                    n=num_shards, equal=True, locality_hints=self.locality_hints
+                    n=num_shards,
+                    equal=True,
+                    locality_hints=self.locality_hints,
                 )
 
             # Otherwise, we return a simple batch `DataIterator`.

@@ -1067,7 +1067,9 @@ class Learner(Checkpointable):
 
             # Note, `_finalize_fn`  must return a dictionary.
             batch = batch["batch"]
-            logger.debug(f"===> [Learner {id(self)}]: batch {i} with {batch.env_steps()} rows.")
+            logger.debug(
+                f"===> [Learner {id(self)}]: batch {i} with {batch.env_steps()} rows."
+            )
             # Check the MultiAgentBatch, whether our RLModule contains all ModuleIDs
             # found in this batch. If not, throw an error.
             unknown_module_ids = set(batch.policy_batches.keys()) - set(
@@ -1093,7 +1095,9 @@ class Learner(Checkpointable):
             if num_iters and i == num_iters:
                 break
 
-        logger.info(f"===> [Learner {id(self)}] number of iterations run in this epoch: {i}")
+        logger.info(
+            f"===> [Learner {id(self)}] number of iterations run in this epoch: {i}"
+        )
         # Convert logged tensor metrics (logged during tensor-mode of MetricsLogger)
         # to actual (numpy) values.
         self.metrics.tensors_to_numpy(tensor_metrics)
