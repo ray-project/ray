@@ -333,33 +333,14 @@ using ExportEventDataPtr = std::variant<std::shared_ptr<rpc::ExportTaskEventData
                                         std::shared_ptr<rpc::ExportNodeData>,
                                         std::shared_ptr<rpc::ExportActorData>,
                                         std::shared_ptr<rpc::ExportDriverJobEventData>>;
-
-class RayExportEvent {
- public:
-  // RayExportEvent(ExportEventDataPtr event_data_ptr) : event_data_ptr_(event_data_ptr) {}
-  RayExportEvent() {};
-
-  ~RayExportEvent();
-
-  // void SendEvent();
-  void SendActorEvent(std::shared_ptr<rpc::ActorTableData> actor_table_data_ptr,
-                      rpc::ActorTableData::ActorState actor_state,
-                      ray::rpc::ActorDeathCause death_cause);
-                      
-
- private:
-  RayExportEvent(const RayExportEvent &event) = delete;
-
-  const RayExportEvent &operator=(const RayExportEvent &event) = delete;
-
-//  private:
-//   ExportEventDataPtr event_data_ptr_;
+struct MutableActorData {
+  rpc::ExportActorData::ActorState actor_state;
+  ray::rpc::ActorDeathCause death_cause;
 };
-
 struct ActorData {
   std::shared_ptr<rpc::ActorTableData> actor_table_data_ptr;
-  rpc::ActorTableData::ActorState actor_state;
-  ray::rpc::ActorDeathCause death_cause;
+  int64_t timestamp;
+  MutableActorData mutable_actor_data;
 };
 
 class RayEventLog final {
@@ -402,30 +383,16 @@ class RayEventLog final {
   void PeriodicFlush();
   void FlushExportEvents();
 
-  void AddActorDataToBuffer(const ActorData &actor_data);
-  void GetActorDataToWrite(std::vector<ActorData> *actor_data_to_write);
-  void PublishActorDataAsEvent(const ActorData &actor_data);
+  template<typename T>
+  void AddDataToBuffer(absl::Mutex *mutex, const T &data, boost::circular_buffer<T> *buffer);
+  
+  template<typename T>
+  void GetDataToWrite(absl::Mutex *mutex, std::vector<T> *data_to_write, boost::circular_buffer<T> *buffer);
 
-  rpc::ExportActorData::ActorState ConvertActorStateToExport(
-      rpc::ActorTableData::ActorState actor_state) const {
-    switch (actor_state) {
-    case rpc::ActorTableData::DEPENDENCIES_UNREADY:
-      return rpc::ExportActorData::DEPENDENCIES_UNREADY;
-    case rpc::ActorTableData::PENDING_CREATION:
-      return rpc::ExportActorData::PENDING_CREATION;
-    case rpc::ActorTableData::ALIVE:
-      return rpc::ExportActorData::ALIVE;
-    case rpc::ActorTableData::RESTARTING:
-      return rpc::ExportActorData::RESTARTING;
-    case rpc::ActorTableData::DEAD:
-      return rpc::ExportActorData::DEAD;
-    default:
-      // Unknown rpc::ActorTableData::ActorState value
-      RAY_LOG(FATAL) << "Invalid value for rpc::ActorTableData::ActorState"
-                     << rpc::ActorTableData::ActorState_Name(actor_state);
-      return rpc::ExportActorData::DEAD;
-    }
-  }
+  void FillExportEventID(rpc::ExportEvent *export_event);
+
+  void AddActorDataToBuffer(const ActorData &actor_data);
+  void PublishActorDataAsEvent(const ActorData &actor_data);
 
   /// Used to allow tests to flush export events when the
   /// namespace of the test is different than RayEventLog.
@@ -451,6 +418,16 @@ class RayEventLog final {
   FRIEND_TEST(GcsJobManagerTest, TestExportDriverJobEvents);
   FRIEND_TEST(GcsNodeManagerExportAPITest, TestExportEventRegisterNode);
   FRIEND_TEST(GcsNodeManagerExportAPITest, TestExportEventUnregisterNode);
+};
+
+class RayExportEvent {
+ public:
+  static void SendActorEvent(const std::shared_ptr<rpc::ActorTableData> actor_table_data_ptr,
+                      const MutableActorData &mutable_actor_data){
+    ActorData actor_data = {actor_table_data_ptr, current_sys_time_s(), mutable_actor_data};
+    ray::RayEventLog::Instance().AddActorDataToBuffer(actor_data);                   
+  }
+                      
 };
 
 }  // namespace ray
