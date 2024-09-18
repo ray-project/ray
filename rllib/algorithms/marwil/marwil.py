@@ -3,14 +3,11 @@ from typing import Callable, Optional, Type, Union
 from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
 from ray.rllib.algorithms.marwil.marwil_catalog import MARWILCatalog
-from ray.rllib.algorithms.marwil.marwil_offline_prelearner import (
-    MARWILOfflinePreLearner,
-)
-from ray.rllib.connectors.common.add_observations_from_episodes_to_batch import (
+from ray.rllib.connectors.learner import (
     AddObservationsFromEpisodesToBatch,
-)
-from ray.rllib.connectors.learner.add_next_observations_from_episodes_to_train_batch import (  # noqa
+    AddOneTsToEpisodesAndTruncate,
     AddNextObservationsFromEpisodesToTrainBatch,
+    GeneralAdvantageEstimation,
 )
 from ray.rllib.core.learner.learner import Learner
 from ray.rllib.core.rl_module.rl_module import RLModuleSpec
@@ -103,9 +100,6 @@ class MARWILConfig(AlgorithmConfig):
         self.grad_clip = None
 
         # Override some of AlgorithmConfig's default values with MARWIL-specific values.
-
-        # Define the `OfflinePreLearner` class for `MARWIL`.
-        self.prelearner_class = MARWILOfflinePreLearner
 
         # You should override input_ to point to an offline dataset
         # (see algorithm.py and algorithm_config.py).
@@ -263,7 +257,7 @@ class MARWILConfig(AlgorithmConfig):
             deprecation_warning(
                 old=r"MARWIL used to have off_policy_estimation_methods "
                 "is and wis by default. This has"
-                "changed to off_policy_estimation_methods: \{\}."
+                r"changed to off_policy_estimation_methods: \{\}."
                 "If you want to use an off-policy estimator, specify it in"
                 ".evaluation(off_policy_estimation_methods=...)",
                 error=False,
@@ -283,11 +277,25 @@ class MARWILConfig(AlgorithmConfig):
             device=device,
         )
 
+        # Before anything, add one ts to each episode (and record this in the loss
+        # mask, so that the computations at this extra ts are not used to compute
+        # the loss).
+        pipeline.prepend(AddOneTsToEpisodesAndTruncate())
+
         # Prepend the "add-NEXT_OBS-from-episodes-to-train-batch" connector piece (right
         # after the corresponding "add-OBS-..." default piece).
         pipeline.insert_after(
             AddObservationsFromEpisodesToBatch,
             AddNextObservationsFromEpisodesToTrainBatch(),
+        )
+
+        # At the end of the pipeline (when the batch is already completed), add the
+        # GAE connector, which performs a vf forward pass, then computes the GAE
+        # computations, and puts the results of this (advantages, value targets)
+        # directly back in the batch. This is then the batch used for
+        # `forward_train` and `compute_losses`.
+        pipeline.append(
+            GeneralAdvantageEstimation(gamma=self.gamma, lambda_=self.lambda_)
         )
 
         return pipeline
@@ -380,12 +388,12 @@ class MARWIL(Algorithm):
         """
         # Implement logic using RLModule and Learner API.
         # TODO (simon): Take care of sampler metrics: right
-        # now all rewards are `nan`, which possibly confuses
-        # the user that sth. is not right, although it is as
-        # we do not step the env.
+        #  now all rewards are `nan`, which possibly confuses
+        #  the user that sth. is not right, although it is as
+        #  we do not step the env.
         with self.metrics.log_time((TIMERS, OFFLINE_SAMPLING_TIMER)):
             # Sampling from offline data.
-            batch = self.offline_data.sample(
+            batch_or_iterator = self.offline_data.sample(
                 num_samples=self.config.train_batch_size_per_learner,
                 num_shards=self.config.num_learners,
                 return_iterator=self.config.num_learners > 1,
@@ -394,9 +402,9 @@ class MARWIL(Algorithm):
         with self.metrics.log_time((TIMERS, LEARNER_UPDATE_TIMER)):
             # Updating the policy.
             # TODO (simon, sven): Check, if we should execute directly s.th. like
-            # update_from_iterator.
-            learner_results = self.learner_group.update_from_batch(
-                batch,
+            #  `LearnerGroup.update_from_iterator()`.
+            learner_results = self.learner_group._update(
+                batch=batch_or_iterator,
                 minibatch_size=self.config.train_batch_size_per_learner,
                 num_iters=self.config.dataset_num_iters_per_learner,
             )

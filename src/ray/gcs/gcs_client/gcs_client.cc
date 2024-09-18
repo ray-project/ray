@@ -501,13 +501,22 @@ Status PythonGcsClient::GetAllNodeInfo(int64_t timeout_ms,
   return Status::RpcError(status.error_message(), status.error_code());
 }
 
-Status PythonGcsClient::GetAllJobInfo(int64_t timeout_ms,
-                                      std::vector<rpc::JobTableData> &result) {
+Status PythonGcsClient::GetAllJobInfo(
+    const std::optional<std::string> &job_or_submission_id,
+    bool skip_submission_job_info_field,
+    bool skip_is_running_tasks_field,
+    int64_t timeout_ms,
+    std::vector<rpc::JobTableData> &result) {
   grpc::ClientContext context;
   PrepareContext(context, timeout_ms);
 
   absl::ReaderMutexLock lock(&mutex_);
   rpc::GetAllJobInfoRequest request;
+  request.set_skip_submission_job_info_field(skip_submission_job_info_field);
+  request.set_skip_is_running_tasks_field(skip_is_running_tasks_field);
+  if (job_or_submission_id.has_value()) {
+    request.set_job_or_submission_id(job_or_submission_id.value());
+  }
   rpc::GetAllJobInfoReply reply;
 
   grpc::Status status = job_info_stub_->GetAllJobInfo(&context, request, &reply);

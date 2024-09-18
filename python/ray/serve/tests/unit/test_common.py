@@ -261,9 +261,15 @@ def test_running_replica_info():
     fake_h2 = FakeActorHandler("1")
     replica_id = ReplicaID("asdf123", deployment_id=DeploymentID(name="my_deployment"))
     assert fake_h1 != fake_h2
-    replica1 = RunningReplicaInfo(replica_id, "node_id", "some-az", fake_h1, 1, False)
-    replica2 = RunningReplicaInfo(replica_id, "node_id", "some-az", fake_h2, 1, False)
-    replica3 = RunningReplicaInfo(replica_id, "node_id", "some-az", fake_h2, 1, True)
+    replica1 = RunningReplicaInfo(
+        replica_id, "node_id", "node_ip", "some-az", fake_h1, 1, False
+    )
+    replica2 = RunningReplicaInfo(
+        replica_id, "node_id", "node_ip", "some-az", fake_h2, 1, False
+    )
+    replica3 = RunningReplicaInfo(
+        replica_id, "node_id", "node_ip", "some-az", fake_h2, 1, True
+    )
     assert replica1._hash == replica2._hash
     assert replica3._hash != replica1._hash
 

@@ -80,6 +80,7 @@ class IActorSubmitQueue {
   /// Mark a task has been executed on the receiver side.
   virtual void MarkSeqnoCompleted(uint64_t sequence_no,
                                   const TaskSpecification &task_spec) = 0;
+  virtual bool Empty() = 0;
 };
 }  // namespace core
 }  // namespace ray

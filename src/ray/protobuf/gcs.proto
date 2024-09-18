@@ -153,6 +153,8 @@ message ActorTableData {
   string repr_name = 31;
   // Whether the actor was on a preempted node
   bool preempted = 32;
+  // Number of times this actor is restarted due to lineage reconstructions.
+  uint64 num_restarts_due_to_lineage_reconstruction = 33;
 }
 
 message ErrorTableData {

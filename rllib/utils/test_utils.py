@@ -30,7 +30,7 @@ import yaml
 import ray
 from ray import air, tune
 from ray.air.constants import TRAINING_ITERATION
-from ray.air.integrations.wandb import WandbLoggerCallback
+from ray.air.integrations.wandb import WandbLoggerCallback, WANDB_ENV_VAR
 from ray.rllib.common import SupportedFileType
 from ray.rllib.env.wrappers.atari_wrappers import is_atari, wrap_deepmind
 from ray.rllib.train import load_experiments_from_file
@@ -114,6 +114,13 @@ def add_rllib_example_script_args(
         type=int,
         default=None,
         help="The number of (remote) EnvRunners to use for the experiment.",
+    )
+    parser.add_argument(
+        "--num-envs-per-env-runner",
+        type=int,
+        default=None,
+        help="The number of (vectorized) environments per EnvRunner. Note that "
+        "this is identical to the batch size for (inference) action computations.",
     )
     parser.add_argument(
         "--num-agents",
@@ -1391,15 +1398,19 @@ def run_rllib_example_script_experiment(
         # Define compute resources used automatically (only using the --num-gpus arg).
         # New stack.
         if config.enable_rl_module_and_learner:
+            # Do we have GPUs available in the cluster?
+            num_gpus = ray.cluster_resources().get("GPU", 0)
+            if args.num_gpus > 0 and num_gpus < args.num_gpus:
+                logger.warning(
+                    f"You are running your script with --num-gpus={args.num_gpus}, "
+                    f"but your cluster only has {num_gpus} GPUs! Will run "
+                    f"with {num_gpus} CPU Learners instead."
+                )
             # Define compute resources used.
             config.resources(num_gpus=0)
             config.learners(
                 num_learners=args.num_gpus,
-                num_gpus_per_learner=(
-                    1
-                    if torch and torch.cuda.is_available() and args.num_gpus > 0
-                    else 0
-                ),
+                num_gpus_per_learner=1 if num_gpus >= args.num_gpus > 0 else 0,
             )
             config.resources(num_gpus=0)
         # Old stack.
@@ -1431,10 +1442,10 @@ def run_rllib_example_script_experiment(
         for i in range(stop.get(TRAINING_ITERATION, args.stop_iters)):
             results = algo.train()
             if ENV_RUNNER_RESULTS in results:
-                print(
-                    f"iter={i} R={results[ENV_RUNNER_RESULTS][EPISODE_RETURN_MEAN]}",
-                    end="",
+                mean_return = results[ENV_RUNNER_RESULTS].get(
+                    EPISODE_RETURN_MEAN, np.nan
                 )
+                print(f"iter={i} R={mean_return}", end="")
             if EVALUATION_RESULTS in results:
                 Reval = results[EVALUATION_RESULTS][ENV_RUNNER_RESULTS][
                     EPISODE_RETURN_MEAN
@@ -1461,13 +1472,16 @@ def run_rllib_example_script_experiment(
 
     # Log results using WandB.
     tune_callbacks = tune_callbacks or []
-    if hasattr(args, "wandb_key") and args.wandb_key is not None:
+    if hasattr(args, "wandb_key") and (
+        args.wandb_key is not None or WANDB_ENV_VAR in os.environ
+    ):
+        wandb_key = args.wandb_key or os.environ[WANDB_ENV_VAR]
         project = args.wandb_project or (
             args.algo.lower() + "-" + re.sub("\\W+", "-", str(config.env).lower())
         )
         tune_callbacks.append(
             WandbLoggerCallback(
-                api_key=args.wandb_key,
+                api_key=wandb_key,
                 project=project,
                 upload_checkpoints=True,
                 **({"name": args.wandb_run_name} if args.wandb_run_name else {}),

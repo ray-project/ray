@@ -5,7 +5,7 @@ import random
 import sys
 import time
 import uuid
-from typing import Optional, Set, Union
+from typing import Optional, Set
 
 import pytest
 
@@ -21,6 +21,7 @@ from ray.serve._private.common import (
     RequestMetadata,
 )
 from ray.serve._private.constants import RAY_SERVE_QUEUE_LENGTH_CACHE_TIMEOUT_S
+from ray.serve._private.replica_result import ReplicaResult
 from ray.serve._private.replica_scheduler import (
     PendingRequest,
     PowerOfTwoChoicesReplicaScheduler,
@@ -118,9 +119,10 @@ class FakeReplicaWrapper(ReplicaWrapper):
             self.get_queue_len_was_cancelled = True
             raise
 
-    def send_request(
-        self, pr: PendingRequest
-    ) -> Union[ray.ObjectRef, ray.ObjectRefGenerator]:
+    def send_request(self, pr: PendingRequest) -> ReplicaResult:
+        raise NotImplementedError()
+
+    def send_request_with_rejection(self, pr: PendingRequest) -> ReplicaResult:
         raise NotImplementedError()
 
 

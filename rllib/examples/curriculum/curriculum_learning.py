@@ -218,7 +218,7 @@ if __name__ == "__main__":
             env_to_module_connector=lambda env: FlattenObservations(),
         )
         .training(
-            num_sgd_iter=6,
+            num_epochs=6,
             vf_loss_coeff=0.01,
             lr=0.0002,
         )
