@@ -444,6 +444,7 @@ class AlgorithmConfig(_Config):
         self.input_filesystem_kwargs = {}
         self.input_compress_columns = [Columns.OBS, Columns.NEXT_OBS]
         self.input_spaces_jsonable = True
+        self.materialize_data = True
         self.map_batches_kwargs = {}
         self.iter_batches_kwargs = {}
         self.prelearner_class = None
@@ -2426,6 +2427,7 @@ class AlgorithmConfig(_Config):
         input_filesystem: Optional[str] = NotProvided,
         input_filesystem_kwargs: Optional[Dict] = NotProvided,
         input_compress_columns: Optional[List[str]] = NotProvided,
+        materialize_data: Optional[bool] = NotProvided,
         map_batches_kwargs: Optional[Dict] = NotProvided,
         iter_batches_kwargs: Optional[Dict] = NotProvided,
         prelearner_class: Optional[Type] = NotProvided,
@@ -2511,6 +2513,11 @@ class AlgorithmConfig(_Config):
                 `MultiAgentEpisode` not supported, yet). Note,
                 `rllib.core.columns.Columns.OBS` will also try to decompress
                 `rllib.core.columns.Columns.NEXT_OBS`.
+            materialize_data: If the data should be materialized in memory. This boosts
+                performance extensively, but needs enough memory to avoid an OOM. Make
+                sure that your cluster has the resources available. For very large data
+                you might want to switch to streaming mode, i.e. `False`. The default
+                is `True`.
             map_batches_kwargs: `kwargs` for the `map_batches` method. These will be
                 passed into the `ray.data.Dataset.map_batches` method when sampling
                 without checking. If no arguments passed in the default arguments `{
@@ -2613,6 +2620,8 @@ class AlgorithmConfig(_Config):
             self.input_filesystem_kwargs = input_filesystem_kwargs
         if input_compress_columns is not NotProvided:
             self.input_compress_columns = input_compress_columns
+        if materialize_data is not NotProvided:
+            self.materialize_data = materialize_data
         if map_batches_kwargs is not NotProvided:
             self.map_batches_kwargs = map_batches_kwargs
         if iter_batches_kwargs is not NotProvided:

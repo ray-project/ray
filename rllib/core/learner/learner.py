@@ -1043,7 +1043,7 @@ class Learner(Checkpointable):
         **kwargs,
     ):
         self._check_is_built()
-        minibatch_size = minibatch_size or 32
+        minibatch_size = minibatch_size or 1
 
         # Call `before_gradient_based_update` to allow for non-gradient based
         # preparations-, logging-, and update logic to happen.
@@ -1056,8 +1056,9 @@ class Learner(Checkpointable):
             return {"batch": self._set_slicing_by_batch_id(batch, value=True)}
 
         i = 0
+        logger.debug(f"===> [Learner {id(self)}]: SLooping through batches ... ")
         for batch in iterator.iter_batches(
-            batch_size=minibatch_size,
+            batch_size=1,
             _finalize_fn=_finalize_fn,
             **kwargs,
         ):
@@ -1066,6 +1067,7 @@ class Learner(Checkpointable):
 
             # Note, `_finalize_fn`  must return a dictionary.
             batch = batch["batch"]
+            logger.debug(f"===> [Learner {id(self)}]: batch {i} with {batch.env_steps()} rows.")
             # Check the MultiAgentBatch, whether our RLModule contains all ModuleIDs
             # found in this batch. If not, throw an error.
             unknown_module_ids = set(batch.policy_batches.keys()) - set(
@@ -1091,7 +1093,7 @@ class Learner(Checkpointable):
             if num_iters and i == num_iters:
                 break
 
-        logger.info(f"[Learner] Iterations run in epoch: {i}")
+        logger.info(f"===> [Learner {id(self)}] number of iterations run in this epoch: {i}")
         # Convert logged tensor metrics (logged during tensor-mode of MetricsLogger)
         # to actual (numpy) values.
         self.metrics.tensors_to_numpy(tensor_metrics)
