@@ -11,7 +11,7 @@ else
 fi
 
 exclude_regex="(.*thirdparty/|.*redismodule.h|.*.java|.*.jsx?|.*.tsx?)"
-output="$(ci/lint/git-clang-format --commit "$base_commit" --diff --exclude "$exclude_regex")"
+output="$(ci/lint/git-clang-format --commit "$base_commit" --exclude "$exclude_regex")"
 if [ "$output" = "no modified files to format" ] || [ "$output" = "clang-format did not modify any files" ] ; then
   echo "clang-format passed."
   exit 0

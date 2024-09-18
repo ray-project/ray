@@ -388,9 +388,7 @@ class RayEventLog final {
   void FlushExportEvents();
 
   template <typename T>
-  void AddDataToBuffer(absl::Mutex *mutex,
-                       T &data,
-                       boost::circular_buffer<T> *buffer);
+  void AddDataToBuffer(absl::Mutex *mutex, T &data, boost::circular_buffer<T> *buffer);
 
   template <typename T>
   void GetDataToWrite(absl::Mutex *mutex,
@@ -446,8 +444,7 @@ class RayExportEvent {
 
   static void SendTaskEvent(
       const std::shared_ptr<rpc::ExportTaskEventData> task_event_data_ptr) {
-    TaskData task_data = {
-        task_event_data_ptr, current_sys_time_s()};
+    TaskData task_data = {task_event_data_ptr, current_sys_time_s()};
     ray::RayEventLog::Instance().AddTaskDataToBuffer(task_data);
   }
 };
