@@ -16,7 +16,7 @@ pendulum-appo-vtrace:
         lr: 0.0003
         train_batch_size: 100
         minibatch_buffer_size: 16
-        num_sgd_iter: 10
+        num_epochs: 10
         model:
             fcnet_hiddens: [256, 256]
         batch_mode: truncate_episodes

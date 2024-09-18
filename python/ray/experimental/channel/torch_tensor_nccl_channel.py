@@ -366,6 +366,7 @@ class _TorchTensorNcclChannel(ChannelInterface):
             self._meta_channel = metadata_type.create_channel(
                 self._writer,
                 self._reader_and_node_list,
+                False,
             )
 
     def ensure_registered_as_writer(self):

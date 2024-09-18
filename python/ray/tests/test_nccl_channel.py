@@ -69,9 +69,10 @@ class Worker:
         self.tensor_chan = typ.create_channel(
             ray.get_runtime_context().current_actor,
             reader_and_node_list,
+            read_by_adag_driver=False,
             _tensor_metadata_channel=tensor_metadata_channel,
             _tensor_schema_channel=tensor_schema_channel,
-        )
+            )
 
         return self.tensor_chan
 

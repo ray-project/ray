@@ -290,7 +290,7 @@ class TestTrajectoryViewAPI(unittest.TestCase):
             # Env setup.
             .environment(MultiAgentPendulum, env_config={"num_agents": num_agents})
             .env_runners(num_env_runners=2, rollout_fragment_length=21)
-            .training(num_sgd_iter=2, train_batch_size=168)
+            .training(num_epochs=2, train_batch_size=168)
             .framework("torch")
             .multi_agent(
                 policies={f"p{i}" for i in range(num_agents)},

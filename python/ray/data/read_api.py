@@ -598,6 +598,7 @@ def read_parquet(
     tensor_column_schema: Optional[Dict[str, Tuple[np.dtype, Tuple[int, ...]]]] = None,
     meta_provider: Optional[ParquetMetadataProvider] = None,
     partition_filter: Optional[PathPartitionFilter] = None,
+    partitioning: Optional[Partitioning] = Partitioning("hive"),
     shuffle: Union[Literal["files"], None] = None,
     include_paths: bool = False,
     file_extensions: Optional[List[str]] = None,
@@ -703,6 +704,8 @@ def read_parquet(
         partition_filter: A
             :class:`~ray.data.datasource.partitioning.PathPartitionFilter`. Use
             with a custom callback to read only selected partitions of a dataset.
+        partitioning: A :class:`~ray.data.datasource.partitioning.Partitioning` object
+            that describes how paths are organized. Defaults to HIVE partitioning.
         shuffle: If setting to "files", randomly shuffle input files order before read.
             Defaults to not shuffle with ``None``.
         arrow_parquet_args: Other parquet read options to pass to PyArrow. For the full
@@ -747,6 +750,7 @@ def read_parquet(
         schema=schema,
         meta_provider=meta_provider,
         partition_filter=partition_filter,
+        partitioning=partitioning,
         shuffle=shuffle,
         include_paths=include_paths,
         file_extensions=file_extensions,
@@ -2838,8 +2842,21 @@ def from_huggingface(
 
     if isinstance(dataset, datasets.IterableDataset):
         # For an IterableDataset, we can use a streaming implementation to read data.
-        return read_datasource(HuggingFaceDatasource(dataset=dataset))
+        return read_datasource(
+            HuggingFaceDatasource(dataset=dataset),
+            parallelism=parallelism,
+            concurrency=concurrency,
+            override_num_blocks=override_num_blocks,
+        )
     if isinstance(dataset, datasets.Dataset):
+        # For non-streaming Hugging Face Dataset, we don't support override_num_blocks
+        if override_num_blocks is not None:
+            raise ValueError(
+                "`override_num_blocks` parameter is not supported for "
+                "streaming Hugging Face Datasets. Please omit the parameter or "
+                "use non-streaming mode to read the dataset."
+            )
+
         # To get the resulting Arrow table from a Hugging Face Dataset after
         # applying transformations (e.g., train_test_split(), shard(), select()),
         # we create a copy of the Arrow table, which applies the indices

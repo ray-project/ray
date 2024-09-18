@@ -606,6 +606,10 @@ def test_serve_component_filter(is_replica_type_component):
     if is_replica_type_component:
         expected_json["deployment"] = "component"
         expected_json["replica"] = "component_id"
+        expected_json["component_name"] = "replica"
+    else:
+        expected_json["component_name"] = "component"
+        expected_json["component_id"] = "component_id"
 
     # Ensure message exists in the output.
     # Note that there is no "message" key in the record dict until it has been

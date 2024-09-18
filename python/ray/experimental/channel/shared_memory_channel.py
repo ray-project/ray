@@ -106,6 +106,7 @@ class SharedMemoryType(ChannelOutputType):
         self,
         writer: Optional["ray.actor.ActorHandle"],
         reader_and_node_list: List[Tuple["ray.actor.ActorHandle", str]],
+        read_by_adag_driver: bool,
     ) -> "Channel":
         """
         Instantiate a ChannelInterface class that can be used
@@ -115,11 +116,19 @@ class SharedMemoryType(ChannelOutputType):
             writer: The actor that may write to the channel. None signifies the driver.
             reader_and_node_list: A list of tuples, where each tuple contains a reader
                 actor handle and the node ID where the actor is located.
+        read_by_adag_driver: True if the channel will be read by an aDAG driver
+            (Ray driver or actor and task that creates an aDAG).
+
         Returns:
             A ChannelInterface that can be used to pass data
                 of this type.
         """
-        return CompositeChannel(writer, reader_and_node_list, self._num_shm_buffers)
+        return CompositeChannel(
+            writer,
+            reader_and_node_list,
+            self._num_shm_buffers,
+            read_by_adag_driver,
+        )
 
 
 @PublicAPI(stability="alpha")
@@ -613,6 +622,8 @@ class CompositeChannel(ChannelInterface):
         writer: The actor that may write to the channel. None signifies the driver.
         reader_and_node_list: A list of tuples, where each tuple contains a reader
             actor handle and the node ID where the actor is located.
+        read_by_adag_driver: True if the channel will be read by a driver (Ray driver or
+            actor and task that creates an aDAG.
     """
 
     def __init__(
@@ -620,6 +631,7 @@ class CompositeChannel(ChannelInterface):
         writer: Optional[ray.actor.ActorHandle],
         reader_and_node_list: List[Tuple["ray.actor.ActorHandle", str]],
         num_shm_buffers: int,
+        read_by_adag_driver: bool,
         _channel_dict: Optional[Dict[ray.ActorID, ChannelInterface]] = None,
         _channels: Optional[Set[ChannelInterface]] = None,
         _writer_registered: bool = False,
@@ -634,6 +646,7 @@ class CompositeChannel(ChannelInterface):
         self._channel_dict = _channel_dict or {}
         # The set of channels is a deduplicated version of the _channel_dict values.
         self._channels = _channels or set()
+        self._read_by_adag_driver = read_by_adag_driver
         if self._channels:
             # This CompositeChannel object is created by deserialization.
             # We don't need to create channels again.
@@ -673,11 +686,12 @@ class CompositeChannel(ChannelInterface):
 
     def _get_self_actor_id(self) -> str:
         """
-        Get the actor ID of the current process. If the current process is the driver,
+        Get the actor ID of the current process. If the current process is the
+        aDAG owner (e.g., driver or an actor/task that creates aDAG),
         use the actor ID of the DAGDriverProxyActor.
         """
         actor_id = ray.get_runtime_context().get_actor_id()
-        if actor_id is None:
+        if self._read_by_adag_driver:
             # The reader is the driver process.
             # Use the actor ID of the DAGDriverProxyActor.
             assert len(self._reader_and_node_list) == 1
@@ -704,6 +718,7 @@ class CompositeChannel(ChannelInterface):
             self._writer,
             self._reader_and_node_list,
             self._num_shm_buffers,
+            self._read_by_adag_driver,
             self._channel_dict,
             self._channels,
             self._writer_registered,

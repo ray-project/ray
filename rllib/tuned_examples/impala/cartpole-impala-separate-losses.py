@@ -23,7 +23,7 @@ config = (
         _separate_vf_optimizer=True,
         # Separate learning rate for the value function branch.
         _lr_vf=0.00075,
-        num_sgd_iter=6,
+        num_epochs=6,
         # `vf_loss_coeff` will be ignored anyways as we use separate loss terms.
         vf_loss_coeff=0.01,
         vtrace=True,
