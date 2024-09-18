@@ -385,7 +385,7 @@ class RayEventLog final {
 
   template <typename T>
   void AddDataToBuffer(absl::Mutex *mutex,
-                       const T &data,
+                       T &data,
                        boost::circular_buffer<T> *buffer);
 
   template <typename T>
@@ -395,7 +395,7 @@ class RayEventLog final {
 
   void FillExportEventID(rpc::ExportEvent *export_event);
 
-  void AddActorDataToBuffer(const ActorData &actor_data);
+  void AddActorDataToBuffer(ActorData &actor_data);
   void PublishActorDataAsEvent(const ActorData &actor_data);
 
   /// Used to allow tests to flush export events when the

@@ -510,14 +510,14 @@ void RayEventLog::StopPeriodicFlushThread() {
 
 template <typename T>
 void RayEventLog::AddDataToBuffer(absl::Mutex *mutex,
-                                  const T &data,
+                                  T &data,
                                   boost::circular_buffer<T> *buffer) {
   absl::MutexLock lock(mutex);
   if (buffer->full()) {
     // const auto &to_evict = actor_data_buffer_.front();
     std::cout << "DEBUG Dropping export event " << typeid(T).name() << "\n";
   }
-  buffer->push_back(data);
+  buffer->push_back(std::move(data));
 }
 
 template <typename T>
@@ -543,7 +543,7 @@ void RayEventLog::FillExportEventID(rpc::ExportEvent *export_event) {
   export_event->set_event_id(event_id);
 }
 
-void RayEventLog::AddActorDataToBuffer(const ActorData &actor_data) {
+void RayEventLog::AddActorDataToBuffer(ActorData &actor_data) {
   AddDataToBuffer(&actor_data_buffer_mutex_, actor_data, &actor_data_buffer_);
 }
 
