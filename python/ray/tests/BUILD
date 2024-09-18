@@ -691,7 +691,7 @@ py_test(
 )
 
 py_test(
-  name = "test_collections",
+  name = "test_collections_utils",
   size = "small",
   srcs = ["test_collections_utils.py"],
   tags = ["exclusive", "small_size_python_tests", "team:core"],
