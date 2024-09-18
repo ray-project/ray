@@ -2,7 +2,7 @@ import sys
 
 import pytest
 
-from ray._private.collections import split
+from ray._private.collections_utils import split
 
 
 def test_split():

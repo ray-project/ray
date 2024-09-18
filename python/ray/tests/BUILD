@@ -693,7 +693,7 @@ py_test(
 py_test(
   name = "test_collections",
   size = "small",
-  srcs = ["test_collections.py"],
+  srcs = ["test_collections_utils.py"],
   tags = ["exclusive", "small_size_python_tests", "team:core"],
   deps = ["//:ray_lib", ":conftest"]
 )

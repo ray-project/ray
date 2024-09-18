@@ -18,7 +18,7 @@ import ray.dashboard.optional_utils as dashboard_optional_utils
 import ray.dashboard.utils as dashboard_utils
 from ray import NodeID
 from ray._private import ray_constants
-from ray._private.collections import split
+from ray._private.collections_utils import split
 from ray._private.gcs_pubsub import GcsAioNodeInfoSubscriber
 from ray._private.ray_constants import (
     DEBUG_AUTOSCALING_ERROR,
