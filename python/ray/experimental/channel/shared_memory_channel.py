@@ -11,7 +11,6 @@ from ray.experimental.channel.common import (
     ChannelInterface,
     ChannelOutputType,
     ReaderRefInfo,
-    _ResizeChannel,
 )
 from ray.experimental.channel.intra_process_channel import IntraProcessChannel
 from ray.util.annotations import DeveloperAPI, PublicAPI
@@ -25,8 +24,6 @@ DEFAULT_MAX_BUFFER_SIZE = int(1e6)  # 100 mB
 # The min buffer size must be large enough to at least fit an instance of the
 # _ResizeChannel class along with any metadata.
 MIN_BUFFER_SIZE = int(1000)  # 1000 bytes
-# The default number of buffers per shared-memory channel.
-DEFAULT_NUM_SHM_BUFFERS = 1
 
 
 def _create_channel_ref(
@@ -78,6 +75,34 @@ def _get_self_actor() -> Optional["ray.actor.ActorHandle"]:
         return ray.get_runtime_context().current_actor
     except RuntimeError:
         return None
+
+
+# aDAG maintains 1 reader object reference (also called buffer) per node.
+# reader_ref: The object reference.
+# ref_owner_actor_id: The actor who created the object reference.
+# num_readers: The number of reader actors who reads this object reference.
+ReaderRefInfo = namedtuple(
+    "ReaderRefInfo", ["reader_ref", "ref_owner_actor_id", "num_reader_actors"]
+)
+
+
+class _ResizeChannel:
+    """
+    When a channel must be resized, the channel backing store must be resized on both
+    the writer and the reader nodes. The writer first resizes its own backing store. The
+    writer then uses an instance of this class as a sentinel value to tell the reader to
+    resize its own backing store. The class instance is sent through the channel.
+    """
+
+    def __init__(
+        self,
+        _node_id_to_reader_ref_info: Dict[str, ReaderRefInfo],
+    ):
+        """
+        Args:
+            _node_id_to_reader_ref_info: A node id to ReaderRefInfo.
+        """
+        self._node_id_to_reader_ref_info = _node_id_to_reader_ref_info
 
 
 class SharedMemoryType(ChannelOutputType):

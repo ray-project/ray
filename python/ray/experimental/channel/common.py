@@ -19,25 +19,6 @@ if TYPE_CHECKING:
     import torch
 
 
-class _ResizeChannel:
-    """
-    When a channel must be resized, the channel backing store must be resized on both
-    the writer and the reader nodes. The writer first resizes its own backing store. The
-    writer then uses an instance of this class as a sentinel value to tell the reader to
-    resize its own backing store. The class instance is sent through the channel.
-    """
-
-    def __init__(
-        self,
-        _node_id_to_reader_ref_info: Dict[str, ReaderRefInfo],
-    ):
-        """
-        Args:
-            _node_id_to_reader_ref_info: A node id to ReaderRefInfo.
-        """
-        self._node_id_to_reader_ref_info = _node_id_to_reader_ref_info
-
-
 # Holds the input arguments for an accelerated DAG node.
 @PublicAPI(stability="alpha")
 class RayDAGArgs(NamedTuple):
