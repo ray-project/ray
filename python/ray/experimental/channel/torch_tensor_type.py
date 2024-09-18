@@ -141,6 +141,7 @@ class TorchTensorType(ChannelOutputType):
             )
 
             if _non_tensor_data_channel is None and not self._direct_return:
+                # Create a CPU channel to send non-tensor data.
                 _non_tensor_data_channel = SharedMemoryType().create_channel(
                     writer, reader_and_node_list,
                     read_by_adag_driver,
@@ -149,6 +150,7 @@ class TorchTensorType(ChannelOutputType):
             return TorchTensorNcclChannel(
                 writer,
                 reader_and_node_list,
+                self,
                 tensor_data_channel,
                 _non_tensor_data_channel,
             )

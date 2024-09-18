@@ -44,6 +44,7 @@ class TorchTensorNcclChannel(ChannelInterface):
         self,
         writer: ray.actor.ActorHandle,
         reader_and_node_list: List[Tuple["ray.actor.ActorHandle", str]],
+        typ: "TorchTensorType",
         tensor_data_channel: "_TorchTensorNcclChannel",
         non_tensor_data_channel: "Channel",
     ):
@@ -72,9 +73,14 @@ class TorchTensorNcclChannel(ChannelInterface):
         """
         self._writer = writer
         self._reader_and_node_list = reader_and_node_list
+        self._typ = typ
 
         self._tensor_data_channel: _TorchTensorNcclChannel = tensor_data_channel
-        self._non_tensor_data_channel: Optional["Channel"] = non_tensor_data_channel
+        if self._typ.direct_return:
+            self._non_tensor_data_channel = None
+        else:
+            assert non_tensor_data_channel is not None
+            self._non_tensor_data_channel: Optional["Channel"] = non_tensor_data_channel
 
         # Used for serialization.
         self._worker = ray._private.worker.global_worker
@@ -90,6 +96,7 @@ class TorchTensorNcclChannel(ChannelInterface):
             (
                 None,
                 None,
+                self._typ,
                 self._tensor_data_channel,
                 self._non_tensor_data_channel,
             ),
@@ -159,19 +166,29 @@ class TorchTensorNcclChannel(ChannelInterface):
         data for subsequent messages.
         """
         if isinstance(value, ray.exceptions.RayTaskError):
-            # TODO(swang): Write exceptions to the tensor metadata or
-            # non-tensor data channel if it is available.
-            raise value
+            if self._typ.static_shape or self._typ.direct_return:
+                # Raise a fatal error to teardown the DAG.
+                # TODO(swang): Write exceptions to the tensor metadata or
+                # non-tensor data channel if it is available.
+                raise value
 
         if self._non_tensor_data_channel is None:
             # Handle the case where _direct_return=True. In this case, we check
             # that the task returned a CUDA torch.Tensor and just send it
             # directly without trying to serialize it first.
             import torch
+
             if not isinstance(value, torch.Tensor):
-                raise ValueError(f"Task annotated with _direct_return=True must return a CUDA torch.Tensor, instead found {value}")
-            if value.get_device() < 0:
-                raise ValueError(f"Task annotated with _direct_return=True must return a CUDA torch.Tensor, found a CPU tensor instead")
+                # TODO(swang): These errors are currently fatal for the DAG
+                # because there is no way for the receiver to receive the
+                # exception. This could be improved by sending the exception
+                # through the tensor_data_channel's CPU-based metadata channel,
+                # if one exists.
+                raise ValueError("Task annotated with _direct_return=True must "
+                        f"return a CUDA torch.Tensor, instead found value `{value}`")
+            elif value.get_device() < 0:
+                raise ValueError("Task annotated with _direct_return=True must "
+                        "return a CUDA torch.Tensor, instead found CPU tensor")
             self._tensor_data_channel.write([value], timeout=timeout)
         else:
             self._send_cpu_and_gpu_data(value, timeout)
@@ -370,6 +387,12 @@ class _TorchTensorNcclChannel(ChannelInterface):
             not send any metadata message to the reader.
         """
         ctx = ChannelContext.get_current()
+
+        # TODO(swang): Currently any exceptions thrown during this method are
+        # fatal for the DAG because there is no way for the receiver to receive
+        # the exception. This can be improved by sending the exception through
+        # the CPU-based non-tensor-data channel, if one exists. The tensor
+        # channel can send empty data alongside the exception to avoid hanging.
 
         # Get the shape and dtype of each tensor to send.
         metadata_list = []

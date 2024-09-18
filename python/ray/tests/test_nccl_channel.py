@@ -55,23 +55,23 @@ class Worker:
         typ: TorchTensorType,
         reader_and_node_list: List[Tuple[ray.actor.ActorHandle, str]],
         tensor_metadata_channel_key=None,
-        tensor_schema_channel_key=None,
+        non_tensor_data_channel_key=None,
     ):
         typ.register_custom_serializer()
 
         tensor_metadata_channel = None
         if tensor_metadata_channel_key is not None:
             tensor_metadata_channel = self.traced_channels[tensor_metadata_channel_key]
-        tensor_schema_channel = None
-        if tensor_schema_channel_key is not None:
-            tensor_schema_channel = self.traced_channels[tensor_schema_channel_key]
+        non_tensor_data_channel = None
+        if non_tensor_data_channel_key is not None:
+            non_tensor_data_channel = self.traced_channels[non_tensor_data_channel_key]
 
         self.tensor_chan = typ.create_channel(
             ray.get_runtime_context().current_actor,
             reader_and_node_list,
             read_by_adag_driver=False,
+            _non_tensor_data_channel=non_tensor_data_channel,
             _tensor_metadata_channel=tensor_metadata_channel,
-            _tensor_schema_channel=tensor_schema_channel,
             )
 
         return self.tensor_chan
@@ -251,12 +251,12 @@ def test_static_shape(ray_start_cluster):
     )
     chan_typ.set_nccl_group_id(nccl_id)
     sender.create_traced_channel.remote("tensor_metadata", [receiver])
-    sender.create_traced_channel.remote("tensor_schema", [receiver])
+    sender.create_traced_channel.remote("non_tensor_data", [receiver])
     chan_ref = sender.create_nccl_channel.remote(
         chan_typ,
         [receiver],
         "tensor_metadata",
-        "tensor_schema",
+        "non_tensor_data",
     )
     receiver_ready = receiver.set_nccl_channel.remote(chan_typ, chan_ref)
     ray.get([chan_ref, receiver_ready])
@@ -276,8 +276,8 @@ def test_static_shape(ray_start_cluster):
         sender.get_num_channel_ops.remote("tensor_metadata")
     )
     assert num_tensor_metadata_ops == 1
-    num_tensor_schema_ops = ray.get(sender.get_num_channel_ops.remote("tensor_schema"))
-    assert num_tensor_schema_ops == 3
+    num_non_tensor_data_ops = ray.get(sender.get_num_channel_ops.remote("non_tensor_data"))
+    assert num_non_tensor_data_ops == 3
 
     # Attempting to write tensors of the wrong shape or dtype will error.
     with pytest.raises(ValueError):
@@ -314,11 +314,9 @@ def test_static_shape(ray_start_cluster):
     ],
     indirect=True,
 )
-def test_static_tensor_schema(ray_start_cluster):
+def test_direct_return(ray_start_cluster):
     """
-    Test that when static_shape=True is passed, we only send metadata for the
-    first operation. Afterwards, we reuse the same shape and dtype for future
-    tensors. Sending a tensor of the wrong shape or dtype throws an error.
+    Test that when _direct_return=True is passed, we never send metadata.
     """
     # Barrier name should be barrier-{sender rank}-{receiver rank}.
     barrier = Barrier.options(name="barrier-0-1").remote()  # noqa
@@ -337,16 +335,16 @@ def test_static_tensor_schema(ray_start_cluster):
 
     chan_typ = TorchTensorType(
         transport="nccl",
-        _static_tensor_schema=True,
+        _direct_return=True,
     )
     chan_typ.set_nccl_group_id(nccl_id)
     sender.create_traced_channel.remote("tensor_metadata", [receiver])
-    sender.create_traced_channel.remote("tensor_schema", [receiver])
+    sender.create_traced_channel.remote("non_tensor_data", [receiver])
     chan_ref = sender.create_nccl_channel.remote(
         chan_typ,
         [receiver],
         "tensor_metadata",
-        "tensor_schema",
+        "non_tensor_data",
     )
     receiver_ready = receiver.set_nccl_channel.remote(chan_typ, chan_ref)
     ray.get([chan_ref, receiver_ready])
@@ -361,23 +359,18 @@ def test_static_tensor_schema(ray_start_cluster):
     values = []
     for i in range(1, 4):
         t = torch.ones(i * shape, dtype=dtype) * i
-        val = {
-            key: t,
-        }
-        sender.send_dict.remote(val)
-
-        values.append([(key, t[0], t.shape, t.dtype)])
-        refs.append(receiver.receive_dict.remote())
+        sender.send.remote(t)
+        values.append([(t[0], t.shape, t.dtype)])
+        refs.append(receiver.receive.remote())
     assert ray.get(refs) == values
 
-    # When static_tensor_schema=True, we should only send one non-tensor data
-    # op. After the first data is sent, we reuse it for all future sends.
+    # When _direct_return=True, we should never send non-tensor data.
     num_tensor_metadata_ops = ray.get(
         sender.get_num_channel_ops.remote("tensor_metadata")
     )
     assert num_tensor_metadata_ops == 3
-    num_tensor_schema_ops = ray.get(sender.get_num_channel_ops.remote("tensor_schema"))
-    assert num_tensor_schema_ops == 1
+    num_non_tensor_data_ops = ray.get(sender.get_num_channel_ops.remote("non_tensor_data"))
+    assert num_non_tensor_data_ops == 0
 
     # Attempting to write a different number of tensors will error.
     with pytest.raises(ValueError):
@@ -392,21 +385,11 @@ def test_static_tensor_schema(ray_start_cluster):
             )
         )
 
-    # NOTE(swang): Sending values with different non-tensor data, e.g., a list
-    # of tensors vs a dictionary of tensors, should throw an error.
-    # Unfortunately ray.cloudpickle serialization is not deterministic.
-    # Therefore, we cannot detect this case without throwing many false
-    # positives.
-    # with pytest.raises(ValueError):
-    #     sender.send.remote(4, shape, torch.float32)
-
     # The channel is still usable for valid tensors after errors occur.
-    val = {
-        key: torch.ones(shape, dtype=dtype),
-    }
-    sender.send_dict.remote(val)
-    assert ray.get(receiver.receive_dict.remote()) == [
-        (key, val[key][0], val[key].shape, val[key].dtype)
+    val = torch.ones(shape, dtype=dtype)
+    sender.send.remote(val)
+    assert ray.get(receiver.receive.remote()) == [
+        (val[0], val.shape, val.dtype)
     ]
 
 
@@ -421,10 +404,10 @@ def test_static_tensor_schema(ray_start_cluster):
     ],
     indirect=True,
 )
-def test_static_shape_and_tensor_schema(ray_start_cluster):
+def test_static_shape_and_direct_return(ray_start_cluster):
     """
-    Test that when static_shape=True and static_tensor_schema=True are
-    passed, we only send metadata and data for the first operation.
+    Test that when static_shape=True and direct_return=True are passed, we only
+    send metadata for the first operation.
     """
     # Barrier name should be barrier-{sender rank}-{receiver rank}.
     barrier = Barrier.options(name="barrier-0-1").remote()  # noqa
@@ -444,16 +427,16 @@ def test_static_shape_and_tensor_schema(ray_start_cluster):
     chan_typ = TorchTensorType(
         transport="nccl",
         _static_shape=True,
-        _static_tensor_schema=True,
+        _static_non_tensor_data=True,
     )
     chan_typ.set_nccl_group_id(nccl_id)
     sender.create_traced_channel.remote("tensor_metadata", [receiver])
-    sender.create_traced_channel.remote("tensor_schema", [receiver])
+    sender.create_traced_channel.remote("non_tensor_data", [receiver])
     chan_ref = sender.create_nccl_channel.remote(
         chan_typ,
         [receiver],
         "tensor_metadata",
-        "tensor_schema",
+        "non_tensor_data",
     )
     receiver_ready = receiver.set_nccl_channel.remote(chan_typ, chan_ref)
     ray.get([chan_ref, receiver_ready])
@@ -473,10 +456,9 @@ def test_static_shape_and_tensor_schema(ray_start_cluster):
         sender.get_num_channel_ops.remote("tensor_metadata")
     )
     assert num_tensor_metadata_ops == 1
-    # When static_tensor_schema=True, we should only send one non-tensor data
-    # op. After the first data is sent, we reuse it for all future sends.
-    num_tensor_schema_ops = ray.get(sender.get_num_channel_ops.remote("tensor_schema"))
-    assert num_tensor_schema_ops == 1
+    # When direct_return=True, we never send non-tensor data.
+    num_non_tensor_data_ops = ray.get(sender.get_num_channel_ops.remote("non_tensor_data"))
+    assert num_non_tensor_data_ops == 0
 
     # Attempting to write tensors of the wrong shape or dtype will error.
     with pytest.raises(ValueError):

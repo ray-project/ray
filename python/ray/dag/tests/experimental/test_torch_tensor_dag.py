@@ -601,6 +601,15 @@ def test_torch_tensor_nccl_static_shape(ray_start_regular):
         ref = compiled_dag.execute(i, shape=shape, dtype=dtype)
         assert ray.get(ref) == (i, shape, dtype)
 
+    # Error is thrown if we send the wrong shape. Currently the receiver cannot
+    # catch the exception so the DAG cannot be used again.
+    ref = compiled_dag.execute(i, shape=(20,), dtype=dtype)
+    with pytest.raises(RayChannelError):
+        ray.get(ref)
+
+    with pytest.raises(RayChannelError):
+        ref = compiled_dag.execute(i, shape=(21,), dtype=dtype)
+
     compiled_dag.teardown()
 
 
@@ -619,19 +628,28 @@ def test_torch_tensor_nccl_direct_return(ray_start_regular):
     receiver = actor_cls.remote()
 
     with InputNode() as inp:
-        dag = sender.send.bind(inp.shape, inp.dtype, inp.value)
+        dag = sender.send.bind(inp.shape, inp.dtype, inp.value, inp.send_tensor)
         dag = dag.with_type_hint(
             TorchTensorType(transport="nccl", _direct_return=True)
         )
-        dag = receiver.recv_dict.bind(dag)
+        dag = receiver.recv.bind(dag)
 
     compiled_dag = dag.experimental_compile()
 
     for i in range(3):
         shape = (10 * (i + 1),)
         dtype = torch.float16
-        ref = compiled_dag.execute(value=1, shape=shape, dtype=dtype)
-        assert ray.get(ref) == (0, shape, dtype)
+        ref = compiled_dag.execute(value=i, shape=shape, dtype=dtype, send_tensor=True)
+        assert ray.get(ref) == (i, shape, dtype)
+
+    # Error is thrown if we do not send a tensor. Currently the receiver cannot
+    # catch the exception so the DAG cannot be used again.
+    ref = compiled_dag.execute(value=i, shape=shape, dtype=dtype, send_tensor=False)
+    with pytest.raises(RayChannelError):
+        ray.get(ref)
+
+    with pytest.raises(RayChannelError):
+        ref = compiled_dag.execute(value=i, shape=shape, dtype=dtype, send_tensor=True)
 
     compiled_dag.teardown()
 
@@ -670,22 +688,24 @@ def test_torch_tensor_nccl_static_shape_and_direct_return(ray_start_regular):
         ref = compiled_dag.execute(value=i, shape=shape, dtype=dtype, send_tensor=True)
         assert ray.get(ref) == (i, shape, dtype)
 
-    # For direct_return=True tensors, the DAG will be torn down after any task
-    # throws an application-level exception, such as when the task returns
-    # something other than a torch.Tensor. Check that we can no longer submit
-    # to the DAG.
-    ref = compiled_dag.execute(value=1, shape=shape, dtype=dtype, send_tensor=False)
+    # Error is thrown if we do not send a tensor. Currently the receiver cannot
+    # catch the exception so the DAG cannot be used again.
+    ref = compiled_dag.execute(value=i, shape=shape, dtype=dtype, send_tensor=False)
     with pytest.raises(RayChannelError):
         ray.get(ref)
+
+    with pytest.raises(RayChannelError):
+        ref = compiled_dag.execute(value=i, shape=shape, dtype=dtype, send_tensor=True)
 
     compiled_dag.teardown()
 
 
 @pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
-def test_torch_tensor_exceptions(ray_start_regular):
+@pytest.mark.parametrize("static_shape", [False, True])
+@pytest.mark.parametrize("direct_return", [False, True])
+def test_torch_tensor_exceptions(ray_start_regular, static_shape, direct_return):
     """
-    Test nested torch.Tensor passed via NCCL. Its shape and dtype is
-    dynamically declared, and there may be multiple tensors.
+    Test exceptions being thrown by a NCCL sending task.
     """
     if not USE_GPU:
         pytest.skip("NCCL tests require GPUs")
@@ -703,16 +723,19 @@ def test_torch_tensor_exceptions(ray_start_regular):
         dag = sender.send_or_raise.bind(
             inp.shape, inp.dtype, inp.value, inp.raise_exception
         )
-        dag = dag.with_type_hint(TorchTensorType(transport="nccl"))
+        dag = dag.with_type_hint(TorchTensorType(
+            _static_shape=static_shape,
+            _direct_return=direct_return,
+            transport="nccl"))
         dag = receiver.recv.bind(dag)
 
     compiled_dag = dag.experimental_compile()
 
+    shape = (10,)
+    dtype = torch.float16
+
     for i in range(3):
         i += 1
-
-        shape = (10 * i,)
-        dtype = torch.float16
 
         ref = compiled_dag.execute(
             shape=shape,
@@ -730,21 +753,34 @@ def test_torch_tensor_exceptions(ray_start_regular):
         value=i,
         raise_exception=True,
     )
-    with pytest.raises(RayChannelError):
-        # TODO(swang): Ideally return the RuntimeError thrown by the
-        # application instead of a generic RayChannelError.
-        ray.get(ref)
+    if static_shape or direct_return:
+        with pytest.raises(RayChannelError):
+            # TODO(swang): Ideally return the RuntimeError thrown by the
+            # application instead of a generic RayChannelError.
+            ray.get(ref)
 
-    # If using dynamic shape or dtype is used and direct_return=False, then the
-    # DAG should still be usable after application-level exceptions.
-    ref = compiled_dag.execute(
-        shape=shape,
-        dtype=dtype,
-        value=i,
-        raise_exception=False,
-    )
-    result = ray.get(ref)
-    assert result == (i, shape, dtype)
+        with pytest.raises(RayChannelError):
+            # If using static_shape=True or direct_return=True, the DAG is not
+            # usable after application-level exceptions.
+            ref = compiled_dag.execute(
+                shape=shape,
+                dtype=dtype,
+                value=i,
+                raise_exception=False,
+            )
+    else:
+        with pytest.raises(RuntimeError):
+            ray.get(ref)
+
+        # DAG should still be usable after application-level exceptions.
+        ref = compiled_dag.execute(
+            shape=shape,
+            dtype=dtype,
+            value=i,
+            raise_exception=False,
+        )
+        result = ray.get(ref)
+        assert result == (i, shape, dtype)
 
     compiled_dag.teardown()
 

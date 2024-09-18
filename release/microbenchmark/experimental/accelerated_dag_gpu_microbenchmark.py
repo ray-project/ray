@@ -118,7 +118,7 @@ def exec_ray_dag(
     use_nccl=False,
     use_adag=True,
     static_shape=False,
-    static_tensor_schema=False,
+    direct_return=False,
 ):
     # Test torch.Tensor sent between actors.
     with InputNode() as inp:
@@ -128,7 +128,7 @@ def exec_ray_dag(
             dag = dag.with_type_hint(
                 TorchTensorType(
                     _static_shape=static_shape,
-                    _static_tensor_schema=static_tensor_schema,
+                    _direct_return=direct_return,
                     transport="nccl" if use_nccl else "auto",
                 )
             )
@@ -325,7 +325,7 @@ def exec_ray_dag_gpu_nccl(
     sender_hint,
     receiver_hint,
     static_shape: bool = False,
-    static_tensor_schema: bool = False,
+    direct_return: bool = False,
 ):
     time.sleep(1)
     sender = TorchTensorWorker.options(
@@ -337,12 +337,12 @@ def exec_ray_dag_gpu_nccl(
     return exec_ray_dag(
         "exec_ray_dag_gpu_nccl"
         + ("_static_shape" if static_shape else "")
-        + ("_static_tensor_schema" if static_tensor_schema else ""),
+        + ("_direct_return" if direct_return else ""),
         sender,
         receiver,
         use_nccl=True,
         static_shape=static_shape,
-        static_tensor_schema=static_tensor_schema,
+        direct_return=direct_return,
     )
 
 
@@ -410,16 +410,16 @@ def main(distributed):
     results += exec_ray_core_gpu(sender_hint, receiver_hint)
     results += exec_ray_dag_gpu_cpu_gpu(sender_hint, receiver_hint)
     results += exec_ray_dag_gpu_nccl(
-        sender_hint, receiver_hint, static_shape=True, static_tensor_schema=True
+        sender_hint, receiver_hint, static_shape=True, direct_return=True
     )
     results += exec_ray_dag_gpu_nccl(
-        sender_hint, receiver_hint, static_shape=False, static_tensor_schema=True
+        sender_hint, receiver_hint, static_shape=False, direct_return=True
     )
     results += exec_ray_dag_gpu_nccl(
-        sender_hint, receiver_hint, static_shape=True, static_tensor_schema=False
+        sender_hint, receiver_hint, static_shape=True, direct_return=False
     )
     results += exec_ray_dag_gpu_nccl(
-        sender_hint, receiver_hint, static_shape=False, static_tensor_schema=False
+        sender_hint, receiver_hint, static_shape=False, direct_return=False
     )
 
     return results
