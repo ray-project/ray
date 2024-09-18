@@ -1,5 +1,6 @@
 import os
 import logging
+from functools import partial
 from typing import Dict, List, Optional
 from concurrent.futures import ThreadPoolExecutor
 from ray._raylet import GcsClient, NewGcsClient, JobID
@@ -52,11 +53,12 @@ class NewGcsAioClient:
         loop=None,
         executor=None,
         nums_reconnect_retry: int = 5,
+        cluster_id: Optional[str] = None,
     ):
         # This must be consistent with GcsClient.__cinit__ in _raylet.pyx
         timeout_ms = ray._config.py_gcs_connect_timeout_s() * 1000
         self.inner = NewGcsClient.standalone(
-            str(address), cluster_id=None, timeout_ms=timeout_ms
+            str(address), cluster_id=cluster_id, timeout_ms=timeout_ms
         )
         # Forwarded Methods. Not using __getattr__ because we want one fewer layer of
         # indirection.
@@ -85,7 +87,8 @@ class AsyncProxy:
 
     def _function_to_async(self, func):
         async def wrapper(*args, **kwargs):
-            return await self.loop.run_in_executor(self.executor, func, *args, **kwargs)
+            partial_func = partial(func, *args, **kwargs)
+            return await self.loop.run_in_executor(self.executor, partial_func)
 
         return wrapper
 
@@ -107,6 +110,7 @@ class OldGcsAioClient:
         executor=None,
         address: Optional[str] = None,
         nums_reconnect_retry: int = 5,
+        cluster_id: Optional[str] = None,
     ):
         if loop is None:
             loop = ray._private.utils.get_or_create_event_loop()
@@ -116,16 +120,17 @@ class OldGcsAioClient:
                 thread_name_prefix="gcs_aio_client",
             )
 
-        self._gcs_client = GcsClient(
-            address,
-            nums_reconnect_retry,
-        )
+        self._gcs_client = GcsClient(address, nums_reconnect_retry, cluster_id)
         self._async_proxy = AsyncProxy(self._gcs_client, loop, executor)
         self._nums_reconnect_retry = nums_reconnect_retry
 
     @property
     def address(self):
         return self._gcs_client.address
+
+    @property
+    def cluster_id(self):
+        return self._gcs_client.cluster_id
 
     async def check_alive(
         self, node_ips: List[bytes], timeout: Optional[float] = None
@@ -200,9 +205,19 @@ class OldGcsAioClient:
         return await self._async_proxy.internal_kv_keys(prefix, namespace, timeout)
 
     async def get_all_job_info(
-        self, timeout: Optional[float] = None
+        self,
+        *,
+        job_or_submission_id: Optional[str] = None,
+        skip_submission_job_info_field: bool = False,
+        skip_is_running_tasks_field: bool = False,
+        timeout: Optional[float] = None,
     ) -> Dict[JobID, gcs_pb2.JobTableData]:
         """
         Return dict key: bytes of job_id; value: JobTableData pb message.
         """
-        return await self._async_proxy.get_all_job_info(timeout)
+        return await self._async_proxy.get_all_job_info(
+            job_or_submission_id=job_or_submission_id,
+            skip_submission_job_info_field=skip_submission_job_info_field,
+            skip_is_running_tasks_field=skip_is_running_tasks_field,
+            timeout=timeout,
+        )

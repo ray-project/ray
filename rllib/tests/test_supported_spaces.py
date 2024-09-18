@@ -74,8 +74,8 @@ class TestSupportedSpacesPPO(unittest.TestCase):
             .env_runners(num_env_runners=2, rollout_fragment_length=50)
             .training(
                 train_batch_size=100,
-                num_sgd_iter=1,
-                sgd_minibatch_size=50,
+                num_epochs=1,
+                minibatch_size=50,
                 model={
                     "fcnet_hiddens": [10],
                 },
@@ -103,8 +103,8 @@ class TestSupportedSpacesPPONoPreprocessorGPU(unittest.TestCase):
             .env_runners(num_env_runners=2, rollout_fragment_length=50)
             .training(
                 train_batch_size=100,
-                num_sgd_iter=1,
-                sgd_minibatch_size=50,
+                num_epochs=1,
+                minibatch_size=50,
                 model={
                     "fcnet_hiddens": [10],
                 },
