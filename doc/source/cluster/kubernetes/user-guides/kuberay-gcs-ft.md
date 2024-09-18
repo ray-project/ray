@@ -150,7 +150,7 @@ KEYS *
 
 # Step 6.5: Check the value of the key.
 HGETALL RAY864b004c-6305-42e3-ac46-adfa8eb6f752@NODE
-# Before Ray 2.36.0:
+# Before Ray 2.38.0:
 # HGETALL 864b004c-6305-42e3-ac46-adfa8eb6f752
 ```
 
