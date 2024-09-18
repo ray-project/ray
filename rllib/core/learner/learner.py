@@ -1444,7 +1444,7 @@ class Learner(Checkpointable):
         self.metrics.log_value(
             key=(ALL_MODULES, self.TOTAL_LOSS_KEY),
             value=sum(
-                self.metrics.peek((mid, self.TOTAL_LOSS_KEY))
+                self.metrics.peek((mid, self.TOTAL_LOSS_KEY), default=0.0)
                 for mid in self.module.keys()
             ),
             window=1,
