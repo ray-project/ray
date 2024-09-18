@@ -140,10 +140,10 @@ CoreWorkerProcessImpl::CoreWorkerProcessImpl(const CoreWorkerOptions &options)
         ray::rpc::Event_SourceType::Event_SourceType_CORE_WORKER,
         ray::rpc::ExportEvent_SourceType::ExportEvent_SourceType_EXPORT_TASK};
     ray::RayEventLog::Instance().Init(source_types,
-                 absl::flat_hash_map<std::string, std::string>(),
-                 options_.log_dir,
-                 RayConfig::instance().event_level(),
-                 RayConfig::instance().emit_event_to_log_file());
+                                      absl::flat_hash_map<std::string, std::string>(),
+                                      options_.log_dir,
+                                      RayConfig::instance().event_level(),
+                                      RayConfig::instance().emit_event_to_log_file());
     ray::RayEventLog::Instance().StartPeriodicFlushThread();
   }
 }

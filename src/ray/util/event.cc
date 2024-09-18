@@ -508,32 +508,33 @@ void RayEventLog::StopPeriodicFlushThread() {
   }
 }
 
-template<typename T>
-void RayEventLog::AddDataToBuffer(absl::Mutex *mutex, const T &data, boost::circular_buffer<T> *buffer){
+template <typename T>
+void RayEventLog::AddDataToBuffer(absl::Mutex *mutex,
+                                  const T &data,
+                                  boost::circular_buffer<T> *buffer) {
   absl::MutexLock lock(mutex);
   if (buffer->full()) {
     // const auto &to_evict = actor_data_buffer_.front();
     std::cout << "DEBUG Dropping export event " << typeid(T).name() << "\n";
-  } 
+  }
   buffer->push_back(data);
 }
 
-template<typename T>
-void RayEventLog::GetDataToWrite(absl::Mutex *mutex, std::vector<T> *data_to_write, boost::circular_buffer<T> *buffer){
+template <typename T>
+void RayEventLog::GetDataToWrite(absl::Mutex *mutex,
+                                 std::vector<T> *data_to_write,
+                                 boost::circular_buffer<T> *buffer) {
   absl::MutexLock lock(mutex);
   size_t batch_size = 1000;
-  size_t num_to_write = std::min(
-      static_cast<size_t>(batch_size),
-      static_cast<size_t>(buffer->size()));
-  data_to_write->insert(
-      data_to_write->end(),
-      std::make_move_iterator(buffer->begin()),
-      std::make_move_iterator(buffer->begin() + num_to_write));
-  buffer->erase(buffer->begin(),
-                           buffer->begin() + num_to_write);
+  size_t num_to_write =
+      std::min(static_cast<size_t>(batch_size), static_cast<size_t>(buffer->size()));
+  data_to_write->insert(data_to_write->end(),
+                        std::make_move_iterator(buffer->begin()),
+                        std::make_move_iterator(buffer->begin() + num_to_write));
+  buffer->erase(buffer->begin(), buffer->begin() + num_to_write);
 }
 
-void RayEventLog::FillExportEventID(rpc::ExportEvent *export_event){
+void RayEventLog::FillExportEventID(rpc::ExportEvent *export_event) {
   static const int kEventIDSize = 18;
   std::string event_id;
   std::string event_id_buffer = std::string(kEventIDSize, ' ');
@@ -542,11 +543,11 @@ void RayEventLog::FillExportEventID(rpc::ExportEvent *export_event){
   export_event->set_event_id(event_id);
 }
 
-void RayEventLog::AddActorDataToBuffer(const ActorData &actor_data){
-  AddDataToBuffer(&actor_data_buffer_mutex_, actor_data, &actor_data_buffer_);     
+void RayEventLog::AddActorDataToBuffer(const ActorData &actor_data) {
+  AddDataToBuffer(&actor_data_buffer_mutex_, actor_data, &actor_data_buffer_);
 }
 
-void RayEventLog::PublishActorDataAsEvent(const ActorData &actor_data){
+void RayEventLog::PublishActorDataAsEvent(const ActorData &actor_data) {
   std::shared_ptr<rpc::ExportActorData> export_actor_data_ptr =
       std::make_shared<rpc::ExportActorData>();
 
@@ -556,23 +557,27 @@ void RayEventLog::PublishActorDataAsEvent(const ActorData &actor_data){
   export_actor_data_ptr->set_is_detached(actor_data.actor_table_data_ptr->is_detached());
   export_actor_data_ptr->set_name(actor_data.actor_table_data_ptr->name());
   export_actor_data_ptr->set_pid(actor_data.actor_table_data_ptr->pid());
-  export_actor_data_ptr->set_ray_namespace(actor_data.actor_table_data_ptr->ray_namespace());
+  export_actor_data_ptr->set_ray_namespace(
+      actor_data.actor_table_data_ptr->ray_namespace());
   export_actor_data_ptr->set_serialized_runtime_env(
       actor_data.actor_table_data_ptr->serialized_runtime_env());
   export_actor_data_ptr->set_class_name(actor_data.actor_table_data_ptr->class_name());
-  export_actor_data_ptr->mutable_death_cause()->CopyFrom(actor_data.mutable_actor_data.death_cause);
+  export_actor_data_ptr->mutable_death_cause()->CopyFrom(
+      actor_data.mutable_actor_data.death_cause);
   export_actor_data_ptr->mutable_required_resources()->insert(
       actor_data.actor_table_data_ptr->required_resources().begin(),
       actor_data.actor_table_data_ptr->required_resources().end());
   export_actor_data_ptr->set_node_id(actor_data.actor_table_data_ptr->node_id());
-  export_actor_data_ptr->set_placement_group_id(actor_data.actor_table_data_ptr->placement_group_id());
+  export_actor_data_ptr->set_placement_group_id(
+      actor_data.actor_table_data_ptr->placement_group_id());
   export_actor_data_ptr->set_repr_name(actor_data.actor_table_data_ptr->repr_name());
 
   rpc::ExportEvent export_event;
   FillExportEventID(&export_event);
   export_event.set_timestamp(actor_data.timestamp);
   export_event.mutable_actor_event_data()->CopyFrom(*export_actor_data_ptr);
-  export_event.set_source_type(rpc::ExportEvent_SourceType::ExportEvent_SourceType_EXPORT_ACTOR);
+  export_event.set_source_type(
+      rpc::ExportEvent_SourceType::ExportEvent_SourceType_EXPORT_ACTOR);
 
   EventManager::Instance().PublishExportEvent(export_event);
 }

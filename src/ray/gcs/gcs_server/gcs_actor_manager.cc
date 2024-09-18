@@ -239,7 +239,9 @@ const rpc::ActorTableData &GcsActor::GetActorTableData() const {
   return *actor_table_data_;
 }
 
-rpc::ActorTableData *GcsActor::GetMutableActorTableData() { return actor_table_data_.get(); }
+rpc::ActorTableData *GcsActor::GetMutableActorTableData() {
+  return actor_table_data_.get();
+}
 
 void GcsActor::WriteActorExportEvent() const {
   /// Write actor_table_data_ as a export actor event if
@@ -248,7 +250,8 @@ void GcsActor::WriteActorExportEvent() const {
     return;
   }
   RayExportEvent::SendActorEvent(actor_table_data_,
-                    {ConvertActorStateToExport(actor_table_data_->state()), actor_table_data_->death_cause()});
+                                 {ConvertActorStateToExport(actor_table_data_->state()),
+                                  actor_table_data_->death_cause()});
 }
 
 rpc::TaskSpec *GcsActor::GetMutableTaskSpec() { return task_spec_.get(); }

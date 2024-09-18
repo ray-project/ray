@@ -49,7 +49,8 @@ class GcsActor {
       rpc::ActorTableData actor_table_data,
       std::shared_ptr<CounterMap<std::pair<rpc::ActorTableData::ActorState, std::string>>>
           counter)
-      : actor_table_data_(std::make_shared<rpc::ActorTableData>(actor_table_data)), counter_(counter) {
+      : actor_table_data_(std::make_shared<rpc::ActorTableData>(actor_table_data)),
+        counter_(counter) {
     RefreshMetrics();
   }
 
@@ -108,15 +109,15 @@ class GcsActor {
         rpc::SchedulingStrategy::SchedulingStrategyCase::
             kPlacementGroupSchedulingStrategy) {
       actor_table_data_->set_placement_group_id(task_spec.scheduling_strategy()
-                                                   .placement_group_scheduling_strategy()
-                                                   .placement_group_id());
+                                                    .placement_group_scheduling_strategy()
+                                                    .placement_group_id());
     }
 
     // Set required resources.
     auto resource_map =
         GetCreationTaskSpecification().GetRequiredResources().GetResourceMap();
     actor_table_data_->mutable_required_resources()->insert(resource_map.begin(),
-                                                           resource_map.end());
+                                                            resource_map.end());
 
     const auto &function_descriptor = task_spec.function_descriptor();
     switch (function_descriptor.function_descriptor_case()) {

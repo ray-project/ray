@@ -163,9 +163,9 @@ class EventManager final {
 
   void AddExportReporter(rpc::ExportEvent_SourceType source_type,
                          std::shared_ptr<LogEventReporter> reporter);
-  
+
   absl::flat_hash_map<rpc::ExportEvent_SourceType, std::shared_ptr<LogEventReporter>>
-    &GetExportLogReporterMap();
+      &GetExportLogReporterMap();
 
   void ClearReporters();
 
@@ -383,11 +383,15 @@ class RayEventLog final {
   void PeriodicFlush();
   void FlushExportEvents();
 
-  template<typename T>
-  void AddDataToBuffer(absl::Mutex *mutex, const T &data, boost::circular_buffer<T> *buffer);
-  
-  template<typename T>
-  void GetDataToWrite(absl::Mutex *mutex, std::vector<T> *data_to_write, boost::circular_buffer<T> *buffer);
+  template <typename T>
+  void AddDataToBuffer(absl::Mutex *mutex,
+                       const T &data,
+                       boost::circular_buffer<T> *buffer);
+
+  template <typename T>
+  void GetDataToWrite(absl::Mutex *mutex,
+                      std::vector<T> *data_to_write,
+                      boost::circular_buffer<T> *buffer);
 
   void FillExportEventID(rpc::ExportEvent *export_event);
 
@@ -422,12 +426,13 @@ class RayEventLog final {
 
 class RayExportEvent {
  public:
-  static void SendActorEvent(const std::shared_ptr<rpc::ActorTableData> actor_table_data_ptr,
-                      const MutableActorData &mutable_actor_data){
-    ActorData actor_data = {actor_table_data_ptr, current_sys_time_s(), mutable_actor_data};
-    ray::RayEventLog::Instance().AddActorDataToBuffer(actor_data);                   
+  static void SendActorEvent(
+      const std::shared_ptr<rpc::ActorTableData> actor_table_data_ptr,
+      const MutableActorData &mutable_actor_data) {
+    ActorData actor_data = {
+        actor_table_data_ptr, current_sys_time_s(), mutable_actor_data};
+    ray::RayEventLog::Instance().AddActorDataToBuffer(actor_data);
   }
-                      
 };
 
 }  // namespace ray

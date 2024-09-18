@@ -98,10 +98,10 @@ int main(int argc, char *argv[]) {
         ray::rpc::ExportEvent_SourceType_EXPORT_ACTOR,
         ray::rpc::ExportEvent_SourceType::ExportEvent_SourceType_EXPORT_DRIVER_JOB};
     ray::RayEventLog::Instance().Init(source_types,
-                      absl::flat_hash_map<std::string, std::string>(),
-                      log_dir,
-                      RayConfig::instance().event_level(),
-                      RayConfig::instance().emit_event_to_log_file());
+                                      absl::flat_hash_map<std::string, std::string>(),
+                                      log_dir,
+                                      RayConfig::instance().event_level(),
+                                      RayConfig::instance().emit_event_to_log_file());
     ray::RayEventLog::Instance().StartPeriodicFlushThread();
   }
 
