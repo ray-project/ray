@@ -352,7 +352,7 @@ def test_torch_tensor_custom_comm(ray_start_regular):
             "dtype": dtype,
             "value": i,
         }
-        ref = compiled_dag.execute(*kwargs)
+        ref = compiled_dag.execute(**kwargs)
         result = ray.get(ref)
         assert result == (i, shape, dtype)
 
@@ -430,7 +430,7 @@ def test_torch_tensor_custom_comm_invalid(ray_start_regular):
     with InputNode() as inp:
         dag = actor1.send.bind(inp.shape, inp.dtype, inp.value)
         dag = dag.with_type_hint(TorchTensorType(transport=nccl_group))
-        dag = actor2.recv.bind(dag)
+        dag = actor2.recv.options(num_returns=3).bind(dag)
         dag = actor2.send.bind(*dag)
         dag = dag.with_type_hint(TorchTensorType(transport="nccl"))
         dag = actor1.recv.bind(dag)
@@ -444,7 +444,7 @@ def test_torch_tensor_custom_comm_invalid(ray_start_regular):
     with InputNode() as inp:
         dag = actor1.send.bind(inp.shape, inp.dtype, inp.value)
         dag = dag.with_type_hint(TorchTensorType(transport="nccl"))
-        dag = actor2.recv.bind(dag)
+        dag = actor2.recv.options(num_returns=3).bind(dag)
         dag = actor2.send.bind(*dag)
         dag = dag.with_type_hint(TorchTensorType(transport=nccl_group))
         dag = actor1.recv.bind(dag)
@@ -460,7 +460,7 @@ def test_torch_tensor_custom_comm_invalid(ray_start_regular):
     with InputNode() as inp:
         dag = actor1.send.bind(inp.shape, inp.dtype, inp.value)
         dag = dag.with_type_hint(TorchTensorType(transport=nccl_group))
-        dag = actor2.recv.bind(dag)
+        dag = actor2.recv.options(num_returns=3).bind(dag)
         dag = actor2.send.bind(*dag)
         dag = dag.with_type_hint(TorchTensorType(transport=nccl_group2))
         dag = actor1.recv.bind(dag)
@@ -736,7 +736,9 @@ def test_torch_tensor_exceptions(ray_start_regular):
         value=i,
         raise_exception=True,
     )
-    with pytest.raises(RuntimeError):
+    with pytest.raises(RayChannelError):
+        # TODO(swang): Ideally return the RuntimeError thrown by the
+        # application instead of a generic RayChannelError.
         ray.get(ref)
 
     # If using dynamic shape or dtype is used and direct_return=False, then the

@@ -458,10 +458,10 @@ class Channel(ChannelInterface):
             data_metadata_pairs: List[
                 Tuple[ray._raylet.Buffer, bytes]
             ] = self._worker.core_worker.get_objects(
-                [self._reader_ref], self._worker.current_task_id, timeout_ms=timeout_ms
+                [self._local_reader_ref], self._worker.current_task_id, timeout_ms=timeout_ms
             )
             # TODO(swang): Check for _ResizeChannel message?
-            return (data_metadata_pairs, [self._reader_ref])
+            return (data_metadata_pairs, [self._local_reader_ref])
 
         start_time = time.monotonic()
         ret = self._worker.get_objects(
