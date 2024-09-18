@@ -49,7 +49,7 @@ class error_code;
 // Return the given status if it is not OK.
 #define RAY_RETURN_NOT_OK(s)           \
   do {                                 \
-    ::ray::Status _s = (s);            \
+    const ::ray::Status &_s = (s);     \
     if (RAY_PREDICT_FALSE(!_s.ok())) { \
       return _s;                       \
     }                                  \

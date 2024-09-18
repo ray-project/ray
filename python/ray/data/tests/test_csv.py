@@ -745,6 +745,57 @@ def test_csv_roundtrip(ray_start_regular_shared, fs, data_path):
         BlockAccessor.for_block(ray.get(block)).size_bytes() == meta.size_bytes
 
 
+def test_csv_read_filter_non_csv_file(ray_start_regular_shared, tmp_path):
+    df = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
+
+    # CSV file with .csv extension.
+    path1 = os.path.join(tmp_path, "test2.csv")
+    df.to_csv(path1, index=False)
+
+    # CSV file without .csv extension.
+    path2 = os.path.join(tmp_path, "test3")
+    df.to_csv(path2, index=False)
+
+    # Directory of CSV files.
+    ds = ray.data.read_csv(tmp_path)
+    actual_data = sorted(ds.to_pandas().itertuples(index=False))
+    expected_data = sorted(pd.concat([df, df]).itertuples(index=False))
+    assert actual_data == expected_data, (actual_data, expected_data)
+
+    # Non-CSV file in Parquet format.
+    table = pa.Table.from_pandas(df)
+    path3 = os.path.join(tmp_path, "test1.parquet")
+    pq.write_table(table, path3)
+
+    # Single non-CSV file.
+    error_message = "Failed to read CSV file"
+    with pytest.raises(ValueError, match=error_message):
+        ray.data.read_csv(path3).schema()
+
+    # Single non-CSV file with filter.
+    error_message = "No input files found to read"
+    with pytest.raises(ValueError, match=error_message):
+        ray.data.read_csv(path3, file_extensions=["csv"]).schema()
+
+    # Single CSV file without extension.
+    ds = ray.data.read_csv(path2)
+    assert ds.to_pandas().equals(df)
+
+    # Single CSV file without extension with filter.
+    error_message = "No input files found to read"
+    with pytest.raises(ValueError, match=error_message):
+        ray.data.read_csv(path2, file_extensions=["csv"]).schema()
+
+    # Directory of CSV and non-CSV files.
+    error_message = "Failed to read CSV file"
+    with pytest.raises(ValueError, match=error_message):
+        ray.data.read_csv(tmp_path).schema()
+
+    # Directory of CSV and non-CSV files with filter.
+    ds = ray.data.read_csv(tmp_path, file_extensions=["csv"])
+    assert ds.to_pandas().equals(df)
+
+
 # NOTE: The last test using the shared ray_start_regular_shared cluster must use the
 # shutdown_only fixture so the shared cluster is shut down, otherwise the below
 # test_write_datasink_ray_remote_args test, which uses a cluster_utils cluster, will
@@ -789,55 +840,6 @@ def test_csv_read_with_column_type_specified(shutdown_only, tmp_path):
     )
     expected_df = pd.DataFrame({"one": [1.0, 2.0, 30.0], "two": ["a", "b", "c"]})
     assert ds.to_pandas().equals(expected_df)
-
-
-def test_csv_read_filter_non_csv_file(shutdown_only, tmp_path):
-    df = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
-
-    # CSV file with .csv extension.
-    path1 = os.path.join(tmp_path, "test2.csv")
-    df.to_csv(path1, index=False)
-
-    # CSV file without .csv extension.
-    path2 = os.path.join(tmp_path, "test3")
-    df.to_csv(path2, index=False)
-
-    # Directory of CSV files.
-    ds = ray.data.read_csv(tmp_path)
-    assert ds.to_pandas().equals(pd.concat([df, df], ignore_index=True))
-
-    # Non-CSV file in Parquet format.
-    table = pa.Table.from_pandas(df)
-    path3 = os.path.join(tmp_path, "test1.parquet")
-    pq.write_table(table, path3)
-
-    # Single non-CSV file.
-    error_message = "Failed to read CSV file"
-    with pytest.raises(ValueError, match=error_message):
-        ray.data.read_csv(path3).schema()
-
-    # Single non-CSV file with filter.
-    error_message = "No input files found to read"
-    with pytest.raises(ValueError, match=error_message):
-        ray.data.read_csv(path3, file_extensions=["csv"]).schema()
-
-    # Single CSV file without extension.
-    ds = ray.data.read_csv(path2)
-    assert ds.to_pandas().equals(df)
-
-    # Single CSV file without extension with filter.
-    error_message = "No input files found to read"
-    with pytest.raises(ValueError, match=error_message):
-        ray.data.read_csv(path2, file_extensions=["csv"]).schema()
-
-    # Directory of CSV and non-CSV files.
-    error_message = "Failed to read CSV file"
-    with pytest.raises(ValueError, match=error_message):
-        ray.data.read_csv(tmp_path).schema()
-
-    # Directory of CSV and non-CSV files with filter.
-    ds = ray.data.read_csv(tmp_path, file_extensions=["csv"])
-    assert ds.to_pandas().equals(df)
 
 
 @pytest.mark.skipif(

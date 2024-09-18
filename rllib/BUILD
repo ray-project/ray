@@ -271,7 +271,7 @@ py_test(
     name = "learning_tests_multi_agent_stateless_cartpole_appo_multi_cpu",
     main = "tuned_examples/appo/multi_agent_stateless_cartpole_appo.py",
     tags = ["team:rllib", "exclusive", "learning_tests", "torch_only", "learning_tests_discrete", "learning_tests_pytorch_use_all_core"],
-    size = "large",
+    size = "enormous",
     srcs = ["tuned_examples/appo/multi_agent_stateless_cartpole_appo.py"],
     args = ["--as-test", "--enable-new-api-stack", "--num-gpus=2"]
 )
@@ -279,7 +279,7 @@ py_test(
     name = "learning_tests_multi_agent_stateless_cartpole_appo_multi_gpu",
     main = "tuned_examples/appo/multi_agent_stateless_cartpole_appo.py",
     tags = ["team:rllib", "exclusive", "learning_tests", "torch_only", "learning_tests_discrete", "learning_tests_pytorch_use_all_core", "multi_gpu"],
-    size = "large",
+    size = "enormous",
     srcs = ["tuned_examples/appo/multi_agent_stateless_cartpole_appo.py"],
     args = ["--as-test", "--enable-new-api-stack", "--num-gpus=2"]
 )
@@ -317,52 +317,6 @@ py_test(
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/appo/multi-agent-cartpole-w-100-policies-appo.py"],
     args = ["--dir=tuned_examples/appo"]
-)
-
-# Tests against crashing or hanging environments.
-# Single-agent: Crash only.
-#@OldAPIStack
-py_test(
-    name = "learning_tests_cartpole_crashing_appo_old_api_stack",
-    main = "tests/run_regression_tests.py",
-    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_discrete", "crashing_cartpole", "torch_only"],
-    size = "large",
-    srcs = ["tests/run_regression_tests.py"],
-    data = ["tuned_examples/appo/cartpole-crashing-recreate-workers-appo.py"],
-    args = ["--dir=tuned_examples/appo", "--num-cpus=6"]
-)
-# Single-agent: Crash and stall.
-#@OldAPIStack
-py_test(
-    name = "learning_tests_cartpole_crashing_and_stalling_appo_old_api_stack",
-    main = "tests/run_regression_tests.py",
-    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_discrete", "crashing_cartpole", "torch_only"],
-    size = "large",
-    srcs = ["tests/run_regression_tests.py"],
-    data = ["tuned_examples/appo/cartpole-crashing-and-stalling-recreate-workers-appo.py"],
-    args = ["--dir=tuned_examples/appo", "--num-cpus=6"]
-)
-# Multi-agent: Crash only.
-#@OldAPIStack
-py_test(
-    name = "learning_tests_multi_agent_cartpole_crashing_appo_old_api_stack",
-    main = "tests/run_regression_tests.py",
-    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_discrete", "crashing_cartpole", "torch_only"],
-    size = "large",
-    srcs = ["tests/run_regression_tests.py"],
-    data = ["tuned_examples/appo/multi-agent-cartpole-crashing-recreate-workers-appo.py"],
-    args = ["--dir=tuned_examples/appo", "--num-cpus=6"]
-)
-# Multi-agent: Crash and stall.
-#@OldAPIStack
-py_test(
-    name = "learning_tests_multi_agent_cartpole_crashing_and_stalling_appo_old_api_stack",
-    main = "tests/run_regression_tests.py",
-    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_discrete", "crashing_cartpole", "torch_only"],
-    size = "large",
-    srcs = ["tests/run_regression_tests.py"],
-    data = ["tuned_examples/appo/multi-agent-cartpole-crashing-and-stalling-recreate-workers-appo.py"],
-    args = ["--dir=tuned_examples/appo", "--num-cpus=6"]
 )
 
 # BC
@@ -1719,13 +1673,6 @@ py_test(
     srcs = ["core/learner/torch/tests/test_torch_learner_compile.py"]
 )
 
-py_test(
-    name = "test_bc_algorithm",
-    tags = ["team:rllib", "core"],
-    size = "medium",
-    srcs = ["core/testing/tests/test_bc_algorithm.py"]
-)
-
 # --------------------------------------------------------------------
 # Models and Distributions
 # rllib/models/
@@ -1865,6 +1812,17 @@ py_test(
     tags = ["team:rllib", "offline"],
     size = "small",
     srcs = ["offline/tests/test_offline_data.py"],
+    data = [
+        "tests/data/cartpole/cartpole-v1_large",
+        "tests/data/cartpole/large.json",
+    ],
+)
+
+py_test(
+    name = "test_offline_prelearner",
+    tags = ["team:rllib", "offline"],
+    size = "small",
+    srcs = ["offline/tests/test_offline_prelearner.py"],
     data = [
         "tests/data/cartpole/cartpole-v1_large",
         "tests/data/cartpole/large.json",
@@ -2968,6 +2926,41 @@ py_test(
     args = ["--as-test", "--evaluation-parallel-to-training", "--framework=torch", "--stop-reward=30.0", "--num-cpus=6", "--evaluation-num-env-runners=3", "--evaluation-duration=211", "--evaluation-duration-unit=timesteps"]
 )
 
+# subdirectory: fault_tolerance/
+# ....................................
+py_test(
+    name = "examples/fault_tolerance/crashing_cartpole_recreate_failed_env_runners_appo",
+    main = "examples/fault_tolerance/crashing_and_stalling_env.py",
+    tags = ["team:rllib", "exclusive", "examples"],
+    size = "large",
+    srcs = ["examples/fault_tolerance/crashing_and_stalling_env.py"],
+    args = ["--algo=APPO", "--enable-new-api-stack", "--as-test", "--stop-reward=450.0"]
+)
+py_test(
+    name = "examples/fault_tolerance/crashing_cartpole_restart_failed_envs_appo",
+    main = "examples/fault_tolerance/crashing_and_stalling_env.py",
+    tags = ["team:rllib", "exclusive", "examples"],
+    size = "large",
+    srcs = ["examples/fault_tolerance/crashing_and_stalling_env.py"],
+    args = ["--algo=APPO", "--enable-new-api-stack", "--as-test", "--restart-failed-envs", "--stop-reward=450.0"]
+)
+py_test(
+    name = "examples/fault_tolerance/crashing_and_stalling_cartpole_restart_failed_envs_ppo",
+    main = "examples/fault_tolerance/crashing_and_stalling_env.py",
+    tags = ["team:rllib", "exclusive", "examples"],
+    size = "large",
+    srcs = ["examples/fault_tolerance/crashing_and_stalling_env.py"],
+    args = ["--algo=PPO", "--enable-new-api-stack", "--as-test", "--restart-failed-envs", "--stall", "--stop-reward=450.0"]
+)
+py_test(
+    name = "examples/fault_tolerance/crashing_and_stalling_multi_agent_cartpole_restart_failed_envs_ppo",
+    main = "examples/fault_tolerance/crashing_and_stalling_env.py",
+    tags = ["team:rllib", "exclusive", "examples"],
+    size = "large",
+    srcs = ["examples/fault_tolerance/crashing_and_stalling_env.py"],
+    args = ["--algo=PPO", "--num-agents=2", "--enable-new-api-stack", "--as-test", "--restart-failed-envs", "--stop-reward=800.0"]
+)
+
 # subdirectory: gpus/
 # ....................................
 py_test(
@@ -3104,6 +3097,16 @@ py_test(
     srcs = ["examples/learners/separate_vf_lr_and_optimizer.py"],
     args = ["--enable-new-api-stack", "--as-test"]
 )
+
+py_test(
+    name = "examples/learners/ppo_with_torch_lr_schedulers",
+    main = "examples/learners/ppo_with_torch_lr_schedulers.py",
+    tags = ["team:rllib", "examples"],
+    size = "medium",
+    srcs = ["examples/learners/ppo_with_torch_lr_schedulers.py"],
+    args = ["--enable-new-api-stack", "--as-test"]
+)
+
 
 #@OldAPIStack @HybridAPIStack
 py_test(
@@ -3501,6 +3504,13 @@ py_test(
     srcs = ["examples/rl_modules/classes/mobilenet_rlm.py"],
 )
 
+py_test(
+    name = "examples/rl_modules/migrate_modelv2_to_new_api_stack_by_config",
+    main = "examples/rl_modules/migrate_modelv2_to_new_api_stack_by_config.py",
+    tags = ["team:rllib", "examples"],
+    size = "large",
+    srcs = ["examples/rl_modules/migrate_modelv2_to_new_api_stack_by_config.py"],
+)
 py_test(
     name = "examples/rl_modules/migrate_modelv2_to_new_api_stack_by_policy_checkpoint",
     main = "examples/rl_modules/migrate_modelv2_to_new_api_stack_by_policy_checkpoint.py",

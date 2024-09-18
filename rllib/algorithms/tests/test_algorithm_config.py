@@ -30,7 +30,7 @@ class TestAlgorithmConfig(unittest.TestCase):
         config = (
             AlgorithmConfig(algo_class=PPO)
             .environment("CartPole-v0")
-            .training(lr=0.12345, train_batch_size=3000)
+            .training(lr=0.12345, train_batch_size=3000, minibatch_size=300)
         )
         algo = config.build()
         self.assertTrue(algo.config.lr == 0.12345)

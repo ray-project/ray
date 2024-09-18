@@ -19,6 +19,7 @@
 #include <cstddef>
 #include <string>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 #include "absl/synchronization/mutex.h"
@@ -266,7 +267,7 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
   ///
   /// \param message The protobuf message.
   explicit TaskSpecification(std::shared_ptr<rpc::TaskSpec> message)
-      : MessageWrapper(message) {
+      : MessageWrapper(std::move(message)) {
     ComputeResources();
   }
 
@@ -432,6 +433,8 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
 
   std::vector<std::string> DynamicWorkerOptions() const;
 
+  std::vector<std::string> DynamicWorkerOptionsOrEmpty() const;
+
   // Methods specific to actor tasks.
 
   ActorID ActorId() const;
@@ -503,6 +506,7 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
   std::shared_ptr<ResourceSet> required_placement_resources_;
   /// Cached scheduling class of this task.
   SchedulingClass sched_cls_id_ = 0;
+  int runtime_env_hash_ = 0;
 
   /// Below static fields could be mutated in `ComputeResources` concurrently due to
   /// multi-threading, we need a mutex to protect it.
@@ -515,62 +519,10 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
   static int next_sched_id_ ABSL_GUARDED_BY(mutex_);
 };
 
-/// \class WorkerCacheKey
-///
-/// Class used to cache workers, keyed by runtime_env.
-class WorkerCacheKey {
- public:
-  /// Create a cache key with the given environment variable overrides and serialized
-  /// runtime_env.
-  ///
-  /// worker. \param serialized_runtime_env The JSON-serialized runtime env for this
-  /// worker. \param is_actor Whether the worker will be an actor. This is set when
-  ///         task type isolation between workers is enabled.
-  /// worker. \param is_gpu Whether the worker will be using GPUs. This is set when
-  ///         resource type isolation between workers is enabled.
-  /// worker. \param is_root_detached_actor Whether the worker will be running
-  ///         tasks or actors whose root ancestor is a detached actor. This is set
-  ///         to prevent worker reuse between tasks whose root is the driver process
-  ///         and tasks whose root is a detached actor.
-  WorkerCacheKey(std::string serialized_runtime_env,
-                 bool is_actor,
-                 bool is_gpu,
-                 bool is_root_detached_actor);
-
-  bool operator==(const WorkerCacheKey &k) const;
-
-  /// Check if this worker's environment is empty (the default).
-  ///
-  /// \return true if there are no environment variables set and the runtime env is the
-  /// empty string (protobuf default) or a JSON-serialized empty dict.
-  bool EnvIsEmpty() const;
-
-  /// Get the hash for this worker's environment.
-  ///
-  /// \return The hash of the serialized runtime_env.
-  std::size_t Hash() const;
-
-  /// Get the int-valued hash for this worker's environment, useful for portability in
-  /// flatbuffers.
-  ///
-  /// \return The hash truncated to an int.
-  int IntHash() const;
-
- private:
-  std::size_t CalculateHash() const;
-
-  /// The JSON-serialized runtime env for this worker.
-  const std::string serialized_runtime_env;
-  /// Whether the worker is for an actor.
-  const bool is_actor;
-  /// Whether the worker is to use a GPU.
-  const bool is_gpu;
-  /// Whether the worker is to run tasks or actors
-  /// whose root is a detached actor.
-  const bool is_root_detached_actor;
-  /// The hash of the worker's environment.  This is set to 0
-  /// for unspecified or empty environments.
-  const std::size_t hash_ = 0;
-};
+// Get a Hash for the runtime environment string.
+// "" and "{}" have the same hash.
+// Other than that, only compare literal strings. i.e. '{"a": 1, "b": 2}' and '{"b": 2,
+// "a": 1}' have different hashes.
+int CalculateRuntimeEnvHash(const std::string &serialized_runtime_env);
 
 }  // namespace ray

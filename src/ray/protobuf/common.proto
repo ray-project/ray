@@ -358,6 +358,16 @@ message ActorUnschedulableContext {
 // Note: ActorDiedErrorContext is used in the export API and state API so it is public.
 // Any modifications must be backward compatible.
 message ActorDiedErrorContext {
+  enum Reason {
+    UNSPECIFIED = 0;
+    WORKER_DIED = 1;
+    OWNER_DIED = 2;
+    NODE_DIED = 3;
+    RAY_KILL = 4;
+    OUT_OF_SCOPE = 5;
+    REF_DELETED = 6;
+  }
+
   string error_message = 1;
   // The id of owner of the actor.
   bytes owner_id = 2;
@@ -380,6 +390,7 @@ message ActorDiedErrorContext {
   bool never_started = 10;
   // The node death info, if node death is the cause of actor death.
   optional NodeDeathInfo node_death_info = 11;
+  Reason reason = 12;
 }
 
 // Context for task OOM.
