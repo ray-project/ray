@@ -473,8 +473,10 @@ void RayEventLog::Init_(
   SetEventLevel(event_level);
   SetEmitEventToLogFile(emit_event_to_log_file);
 
-  absl::MutexLock lock(&actor_data_buffer_mutex_);
+  absl::MutexLock actor_lock(&actor_data_buffer_mutex_);
   actor_data_buffer_.set_capacity(1000 * 1000);
+  absl::MutexLock task_lock(&task_data_buffer_mutex_);
+  task_data_buffer_.set_capacity(1000 * 1000);
 }
 void RayEventLog::StartPeriodicFlushThread() {
   stop_periodic_flush_flag_ = false;
@@ -494,6 +496,12 @@ void RayEventLog::FlushExportEvents() {
   GetDataToWrite(&actor_data_buffer_mutex_, &actor_data_to_write, &actor_data_buffer_);
   for (const auto &actor_data : actor_data_to_write) {
     PublishActorDataAsEvent(actor_data);
+  }
+
+  std::vector<TaskData> task_data_to_write;
+  GetDataToWrite(&task_data_buffer_mutex_, &task_data_to_write, &task_data_buffer_);
+  for (const auto &task_data : task_data_to_write) {
+    PublishTaskDataAsEvent(task_data);
   }
 }
 
@@ -578,6 +586,21 @@ void RayEventLog::PublishActorDataAsEvent(const ActorData &actor_data) {
   export_event.mutable_actor_event_data()->CopyFrom(*export_actor_data_ptr);
   export_event.set_source_type(
       rpc::ExportEvent_SourceType::ExportEvent_SourceType_EXPORT_ACTOR);
+
+  EventManager::Instance().PublishExportEvent(export_event);
+}
+
+void RayEventLog::AddTaskDataToBuffer(TaskData &task_data) {
+  AddDataToBuffer(&task_data_buffer_mutex_, task_data, &task_data_buffer_);
+}
+
+void RayEventLog::PublishTaskDataAsEvent(const TaskData &task_data) {
+  rpc::ExportEvent export_event;
+  FillExportEventID(&export_event);
+  export_event.set_timestamp(task_data.timestamp);
+  export_event.mutable_task_event_data()->CopyFrom(*task_data.task_event_data_ptr);
+  export_event.set_source_type(
+      rpc::ExportEvent_SourceType::ExportEvent_SourceType_EXPORT_TASK);
 
   EventManager::Instance().PublishExportEvent(export_event);
 }

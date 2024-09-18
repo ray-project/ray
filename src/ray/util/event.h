@@ -342,6 +342,10 @@ struct ActorData {
   int64_t timestamp;
   MutableActorData mutable_actor_data;
 };
+struct TaskData {
+  std::shared_ptr<rpc::ExportTaskEventData> task_event_data_ptr;
+  int64_t timestamp;
+};
 
 class RayEventLog final {
  public:
@@ -398,6 +402,9 @@ class RayEventLog final {
   void AddActorDataToBuffer(ActorData &actor_data);
   void PublishActorDataAsEvent(const ActorData &actor_data);
 
+  void AddTaskDataToBuffer(TaskData &task_data);
+  void PublishTaskDataAsEvent(const TaskData &task_data);
+
   /// Used to allow tests to flush export events when the
   /// namespace of the test is different than RayEventLog.
   friend void FlushExportEventsInTest(RayEventLog &obj) { obj.FlushExportEvents(); }
@@ -413,6 +420,9 @@ class RayEventLog final {
   absl::Mutex actor_data_buffer_mutex_;
   boost::circular_buffer<ActorData> actor_data_buffer_
       ABSL_GUARDED_BY(actor_data_buffer_mutex_);
+  absl::Mutex task_data_buffer_mutex_;
+  boost::circular_buffer<TaskData> task_data_buffer_
+      ABSL_GUARDED_BY(task_data_buffer_mutex_);
 
   friend class RayExportEvent;
 
@@ -432,6 +442,13 @@ class RayExportEvent {
     ActorData actor_data = {
         actor_table_data_ptr, current_sys_time_s(), mutable_actor_data};
     ray::RayEventLog::Instance().AddActorDataToBuffer(actor_data);
+  }
+
+  static void SendTaskEvent(
+      const std::shared_ptr<rpc::ExportTaskEventData> task_event_data_ptr) {
+    TaskData task_data = {
+        task_event_data_ptr, current_sys_time_s()};
+    ray::RayEventLog::Instance().AddTaskDataToBuffer(task_data);
   }
 };
 
