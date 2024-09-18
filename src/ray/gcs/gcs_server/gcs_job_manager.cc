@@ -71,7 +71,7 @@ void GcsJobManager::WriteDriverJobExportEvent(rpc::JobTableData job_data) const 
   export_runtime_env_config->mutable_log_files()->CopyFrom(
       job_data.config().runtime_env_info().runtime_env_config().log_files());
 
-  // RayExportEvent(export_driver_job_data_ptr).SendEvent();
+  RayExportEvent::SendDriverJobEvent(export_driver_job_data_ptr);
 }
 
 void GcsJobManager::HandleAddJob(rpc::AddJobRequest request,

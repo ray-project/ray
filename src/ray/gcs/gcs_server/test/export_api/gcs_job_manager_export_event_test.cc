@@ -100,11 +100,11 @@ TEST_F(GcsJobManagerTest, TestExportDriverJobEvents) {
   )");
   const std::vector<ray::SourceTypeVariant> source_types = {
       rpc::ExportEvent_SourceType::ExportEvent_SourceType_EXPORT_DRIVER_JOB};
-  // RayEventInit_(source_types,
-  //               absl::flat_hash_map<std::string, std::string>(),
-  //               log_dir_,
-  //               "warning",
-  //               false);
+  ray::RayEventLog::Instance().Init_(source_types,
+                absl::flat_hash_map<std::string, std::string>(),
+                log_dir_,
+                "warning",
+                false);
   gcs::GcsJobManager gcs_job_manager(gcs_table_storage_,
                                      gcs_publisher_,
                                      runtime_env_manager_,
@@ -128,6 +128,7 @@ TEST_F(GcsJobManagerTest, TestExportDriverJobEvents) {
         promise.set_value(true);
       });
   promise.get_future().get();
+  ray::RayEventLog::Instance().FlushExportEvents();
 
   std::vector<std::string> vc;
   Mocker::ReadContentFromFile(vc, log_dir_ + "/events/event_EXPORT_DRIVER_JOB.log");
@@ -147,6 +148,7 @@ TEST_F(GcsJobManagerTest, TestExportDriverJobEvents) {
         job_finished_promise.set_value(true);
       });
   job_finished_promise.get_future().get();
+  ray::RayEventLog::Instance().FlushExportEvents();
 
   vc.clear();
   Mocker::ReadContentFromFile(vc, log_dir_ + "/events/event_EXPORT_DRIVER_JOB.log");

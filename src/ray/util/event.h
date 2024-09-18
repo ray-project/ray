@@ -346,6 +346,14 @@ struct TaskData {
   std::shared_ptr<rpc::ExportTaskEventData> task_event_data_ptr;
   int64_t timestamp;
 };
+struct NodeData {
+  std::shared_ptr<rpc::ExportNodeData> node_event_data_ptr;
+  int64_t timestamp;
+};
+struct DriverJobData {
+  std::shared_ptr<rpc::ExportDriverJobEventData> driver_job_event_data_ptr;
+  int64_t timestamp;
+};
 
 class RayEventLog final {
  public:
@@ -403,6 +411,12 @@ class RayEventLog final {
   void AddTaskDataToBuffer(TaskData &task_data);
   void PublishTaskDataAsEvent(const TaskData &task_data);
 
+  void AddNodeDataToBuffer(NodeData &node_data);
+  void PublishNodeDataAsEvent(const NodeData &node_data);
+
+  void AddDriverJobDataToBuffer(DriverJobData &driver_job_data);
+  void PublishDriverJobDataAsEvent(const DriverJobData &driver_job_data);
+
   /// Used to allow tests to flush export events when the
   /// namespace of the test is different than RayEventLog.
   friend void FlushExportEventsInTest(RayEventLog &obj) { obj.FlushExportEvents(); }
@@ -421,6 +435,12 @@ class RayEventLog final {
   absl::Mutex task_data_buffer_mutex_;
   boost::circular_buffer<TaskData> task_data_buffer_
       ABSL_GUARDED_BY(task_data_buffer_mutex_);
+  absl::Mutex node_data_buffer_mutex_;
+  boost::circular_buffer<NodeData> node_data_buffer_
+      ABSL_GUARDED_BY(node_data_buffer_mutex_);
+  absl::Mutex driver_job_data_buffer_mutex_;
+  boost::circular_buffer<DriverJobData> driver_job_data_buffer_
+      ABSL_GUARDED_BY(driver_job_data_buffer_mutex_);
 
   friend class RayExportEvent;
 
@@ -446,6 +466,18 @@ class RayExportEvent {
       const std::shared_ptr<rpc::ExportTaskEventData> task_event_data_ptr) {
     TaskData task_data = {task_event_data_ptr, current_sys_time_s()};
     ray::RayEventLog::Instance().AddTaskDataToBuffer(task_data);
+  }
+
+  static void SendNodeEvent(
+      const std::shared_ptr<rpc::ExportNodeData> node_event_data_ptr) {
+    NodeData node_data = {node_event_data_ptr, current_sys_time_s()};
+    ray::RayEventLog::Instance().AddNodeDataToBuffer(node_data);
+  }
+
+  static void SendDriverJobEvent(
+      const std::shared_ptr<rpc::ExportDriverJobEventData> driver_job_event_data_ptr) {
+    DriverJobData driver_job_data = {driver_job_event_data_ptr, current_sys_time_s()};
+    ray::RayEventLog::Instance().AddDriverJobDataToBuffer(driver_job_data);
   }
 };
 

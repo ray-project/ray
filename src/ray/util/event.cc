@@ -477,6 +477,10 @@ void RayEventLog::Init_(
   actor_data_buffer_.set_capacity(1000 * 1000);
   absl::MutexLock task_lock(&task_data_buffer_mutex_);
   task_data_buffer_.set_capacity(1000 * 1000);
+  absl::MutexLock node_lock(&node_data_buffer_mutex_);
+  node_data_buffer_.set_capacity(1000 * 1000);
+  absl::MutexLock driver_job_lock(&driver_job_data_buffer_mutex_);
+  driver_job_data_buffer_.set_capacity(1000 * 1000);
 }
 void RayEventLog::StartPeriodicFlushThread() {
   stop_periodic_flush_flag_ = false;
@@ -502,6 +506,18 @@ void RayEventLog::FlushExportEvents() {
   GetDataToWrite(&task_data_buffer_mutex_, &task_data_to_write, &task_data_buffer_);
   for (const auto &task_data : task_data_to_write) {
     PublishTaskDataAsEvent(task_data);
+  }
+
+  std::vector<NodeData> node_data_to_write;
+  GetDataToWrite(&node_data_buffer_mutex_, &node_data_to_write, &node_data_buffer_);
+  for (const auto &node_data : node_data_to_write) {
+    PublishNodeDataAsEvent(node_data);
+  }
+
+  std::vector<DriverJobData> driver_job_data_to_write;
+  GetDataToWrite(&driver_job_data_buffer_mutex_, &driver_job_data_to_write, &driver_job_data_buffer_);
+  for (const auto &driver_job_data : driver_job_data_to_write) {
+    PublishDriverJobDataAsEvent(driver_job_data);
   }
 }
 
@@ -601,6 +617,36 @@ void RayEventLog::PublishTaskDataAsEvent(const TaskData &task_data) {
   export_event.mutable_task_event_data()->CopyFrom(*task_data.task_event_data_ptr);
   export_event.set_source_type(
       rpc::ExportEvent_SourceType::ExportEvent_SourceType_EXPORT_TASK);
+
+  EventManager::Instance().PublishExportEvent(export_event);
+}
+
+void RayEventLog::AddNodeDataToBuffer(NodeData &node_data) {
+  AddDataToBuffer(&node_data_buffer_mutex_, node_data, &node_data_buffer_);
+}
+
+void RayEventLog::PublishNodeDataAsEvent(const NodeData &node_data) {
+  rpc::ExportEvent export_event;
+  FillExportEventID(&export_event);
+  export_event.set_timestamp(node_data.timestamp);
+  export_event.mutable_node_event_data()->CopyFrom(*node_data.node_event_data_ptr);
+  export_event.set_source_type(
+      rpc::ExportEvent_SourceType::ExportEvent_SourceType_EXPORT_NODE);
+
+  EventManager::Instance().PublishExportEvent(export_event);
+}
+
+void RayEventLog::AddDriverJobDataToBuffer(DriverJobData &driver_job_data) {
+  AddDataToBuffer(&driver_job_data_buffer_mutex_, driver_job_data, &driver_job_data_buffer_);
+}
+
+void RayEventLog::PublishDriverJobDataAsEvent(const DriverJobData &driver_job_data) {
+  rpc::ExportEvent export_event;
+  FillExportEventID(&export_event);
+  export_event.set_timestamp(driver_job_data.timestamp);
+  export_event.mutable_driver_job_event_data()->CopyFrom(*driver_job_data.driver_job_event_data_ptr);
+  export_event.set_source_type(
+      rpc::ExportEvent_SourceType::ExportEvent_SourceType_EXPORT_DRIVER_JOB);
 
   EventManager::Instance().PublishExportEvent(export_event);
 }
