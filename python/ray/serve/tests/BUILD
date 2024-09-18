@@ -85,25 +85,7 @@ py_test_module_list(
     ],
 )
 
-# Test autoscaling with RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE set to 0
-py_test(
-    name = "test_autoscaling_policy_with_metr_disab",
-    size = "large",
-    srcs = ["test_autoscaling_policy.py"],
-    env = {"RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE": "0"},
-    main = "test_autoscaling_policy.py",
-    tags = [
-        "autoscaling",
-        "exclusive",
-        "team:serve",
-    ],
-    deps = [
-        ":common",
-        ":conftest",
-        "//python/ray/serve:serve_lib",
-    ],
-)
-
+# Medium tests, don't run on windows.
 py_test_module_list(
     size = "medium",
     files = [
@@ -146,6 +128,45 @@ py_test_module_list(
     ],
 )
 
+# Large tests requiring `test_config_files/`.
+py_test_module_list(
+    size = "large",
+    data = glob(["test_config_files/**/*"]),
+    files = [
+        "test_cli.py",
+        "test_cli_2.py",
+    ],
+    tags = [
+        "exclusive",
+        "team:serve",
+    ],
+    deps = [
+        ":common",
+        ":conftest",
+        "//python/ray/serve:serve_lib",
+    ],
+)
+
+# Large tests require `test_config_files/`, no windows.
+py_test_module_list(
+    size = "large",
+    data = glob(["test_config_files/**/*"]),
+    files = [
+        "test_standalone_2.py",
+    ],
+    tags = [
+        "exclusive",
+        "no_windows",
+        "team:serve",
+    ],
+    deps = [
+        ":common",
+        ":conftest",
+        "//python/ray/serve:serve_lib",
+    ],
+)
+
+# Enormous tests.
 py_test_module_list(
     size = "enormous",
     files = [
@@ -160,24 +181,6 @@ py_test_module_list(
         "exclusive",
         "team:serve",
         "use_all_core_windows",
-    ],
-    deps = [
-        ":common",
-        ":conftest",
-        "//python/ray/serve:serve_lib",
-    ],
-)
-
-py_test_module_list(
-    size = "large",
-    data = glob(["test_config_files/**/*"]),
-    files = [
-        "test_standalone_2.py",
-    ],
-    tags = [
-        "exclusive",
-        "no_windows",
-        "team:serve",
     ],
     deps = [
         ":common",
@@ -224,25 +227,6 @@ py_test_module_list(
     ],
 )
 
-# Tests requiring `test_config_files/`.
-py_test_module_list(
-    size = "large",
-    data = glob(["test_config_files/**/*"]),
-    files = [
-        "test_cli.py",
-        "test_cli_2.py",
-    ],
-    tags = [
-        "exclusive",
-        "team:serve",
-    ],
-    deps = [
-        ":common",
-        ":conftest",
-        "//python/ray/serve:serve_lib",
-    ],
-)
-
 # Runs test_api and test_failure with injected failures in the controller.
 py_test(
     name = "test_controller_crashes",
@@ -263,6 +247,7 @@ py_test(
     ],
 )
 
+# Serve HA.
 py_test(
     name = "test_serve_ha",
     size = "medium",
@@ -270,6 +255,27 @@ py_test(
     tags = [
         "exclusive",
         "ha_integration",
+        "team:serve",
+    ],
+    deps = [
+        ":common",
+        ":conftest",
+        "//python/ray/serve:serve_lib",
+    ],
+)
+
+# ----- TEST FEATURE FLAGS -----
+
+# Test autoscaling with metrics collected from replica instead of handle.
+py_test(
+    name = "test_autoscaling_policy_with_metr_disab",
+    size = "large",
+    srcs = ["test_autoscaling_policy.py"],
+    env = {"RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE": "0"},
+    main = "test_autoscaling_policy.py",
+    tags = [
+        "autoscaling",
+        "exclusive",
         "team:serve",
     ],
     deps = [
@@ -306,6 +312,7 @@ py_test_module_list(
     ],
 )
 
+# Tests autoscaling when queue len caching is disabled.
 py_test_module_list(
     size = "large",
     env = {"RAY_SERVE_ENABLE_QUEUE_LENGTH_CACHE": "0"},
@@ -370,46 +377,7 @@ py_test_module_list(
     ],
 )
 
-# Test compact scheduling
-py_test_module_list(
-    size = "large",
-    env = {"RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY": "1"},
-    files = [
-        "test_standalone.py",
-        "test_standalone_3.py",
-    ],
-    name_suffix = "_with_comp_sche",
-    tags = [
-        "exclusive",
-        "team:serve",
-    ],
-    deps = [
-        ":common",
-        ":conftest",
-        "//python/ray/serve:serve_lib",
-    ],
-)
-
-py_test_module_list(
-    size = "large",
-    data = glob(["test_config_files/**/*"]),
-    env = {"RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY": "1"},
-    files = [
-        "test_standalone_2.py",
-    ],
-    name_suffix = "_with_compact_scheduling",
-    tags = [
-        "exclusive",
-        "no_windows",
-        "team:serve",
-    ],
-    deps = [
-        ":common",
-        ":conftest",
-        "//python/ray/serve:serve_lib",
-    ],
-)
-
+# Medium tests with compact scheduling
 py_test_module_list(
     size = "medium",
     data = glob(["test_config_files/**/*"]),
@@ -434,3 +402,45 @@ py_test_module_list(
         "//python/ray/serve:serve_lib",
     ],
 )
+
+# Large tests with compact scheduling
+py_test_module_list(
+    size = "large",
+    env = {"RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY": "1"},
+    files = [
+        "test_standalone.py",
+        "test_standalone_3.py",
+    ],
+    name_suffix = "_with_comp_sche",
+    tags = [
+        "exclusive",
+        "team:serve",
+    ],
+    deps = [
+        ":common",
+        ":conftest",
+        "//python/ray/serve:serve_lib",
+    ],
+)
+
+# Large tests with compact scheduling, no windows
+py_test_module_list(
+    size = "large",
+    data = glob(["test_config_files/**/*"]),
+    env = {"RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY": "1"},
+    files = [
+        "test_standalone_2.py",
+    ],
+    name_suffix = "_with_compact_scheduling",
+    tags = [
+        "exclusive",
+        "no_windows",
+        "team:serve",
+    ],
+    deps = [
+        ":common",
+        ":conftest",
+        "//python/ray/serve:serve_lib",
+    ],
+)
+
