@@ -109,11 +109,7 @@ async def test_pg_removed_on_replica_graceful_shutdown(serve_instance):
     # new replica.
     h = serve.run(D.options(num_replicas=1).bind(), name="pg_test")
     assert len(get_all_live_placement_group_names()) == 1
-    new_unique_pgs = set(
-        new_unique_pgs=set(
-            await asyncio.gather(*[h.get_pg.remote() for _ in range(20)])
-        )
-    )
+    new_unique_pgs = set(await asyncio.gather(*[h.get_pg.remote() for _ in range(20)]))
     assert len(new_unique_pgs) == 1
     assert not new_unique_pgs.issubset(original_unique_pgs)
 
