@@ -451,26 +451,11 @@ class Channel(ChannelInterface):
             timeout_ms,
         )
 
-    def read(self, timeout: Optional[float] = None, deserialize: bool = True) -> Any:
+    def read(self, timeout: Optional[float] = None) -> Any:
         assert (
             timeout is None or timeout >= 0 or timeout == -1
         ), "Timeout must be non-negative or -1."
         self.ensure_registered_as_reader()
-
-        if not deserialize:
-            # Return raw data that can be deserialized using
-            # ray._private.worker.global_worker.
-            if timeout is None:
-                timeout_ms = -1
-            else:
-                timeout_ms = timeout * 1000
-            data_metadata_pairs: List[
-                Tuple[ray._raylet.Buffer, bytes]
-            ] = self._worker.core_worker.get_objects(
-                [self._local_reader_ref], self._worker.current_task_id, timeout_ms=timeout_ms
-            )
-            # TODO(swang): Check for _ResizeChannel message?
-            return (data_metadata_pairs, [self._local_reader_ref])
 
         start_time = time.monotonic()
         ret = self._worker.get_objects(
@@ -580,7 +565,7 @@ class BufferedSharedMemoryChannel(ChannelInterface):
         self._next_write_index += 1
         self._next_write_index %= self._num_shm_buffers
 
-    def read(self, timeout: Optional[float] = None, deserialize: bool = True) -> Any:
+    def read(self, timeout: Optional[float] = None) -> Any:
         """Read a value from a channel.
 
         If the next buffer is available, it returns immediately. If the next
@@ -590,7 +575,7 @@ class BufferedSharedMemoryChannel(ChannelInterface):
         """
         # A single channel is not supposed to read and write at the same time.
         assert self._next_write_index == 0
-        output = self._buffers[self._next_read_index].read(timeout, deserialize=deserialize)
+        output = self._buffers[self._next_read_index].read(timeout)
         self._next_read_index += 1
         self._next_read_index %= self._num_shm_buffers
         return output
@@ -736,10 +721,10 @@ class CompositeChannel(ChannelInterface):
         for channel in self._channels:
             channel.write(value, timeout)
 
-    def read(self, timeout: Optional[float] = None, deserialize: bool = True) -> Any:
+    def read(self, timeout: Optional[float] = None) -> Any:
         self.ensure_registered_as_reader()
         actor_id = self._get_self_actor_id()
-        return self._channel_dict[actor_id].read(timeout, deserialize)
+        return self._channel_dict[actor_id].read(timeout)
 
     def close(self) -> None:
         for channel in self._channels:

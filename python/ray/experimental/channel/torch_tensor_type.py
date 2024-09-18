@@ -22,7 +22,7 @@ class TorchTensorType(ChannelOutputType):
         self,
         transport: Optional[Union[str, GPUCommunicator]] = AUTO,
         _static_shape: bool = False,
-        _static_tensor_schema: bool = False,
+        _direct_return: Optional[bool] = False,
     ):
         """
         A type hint that can be used to annotate DAG nodes that return a
@@ -42,35 +42,27 @@ class TorchTensorType(ChannelOutputType):
             _static_shape: A hint indicating whether the shape(s) and dtype(s)
                 of tensor(s) contained in this value always remain the same
                 across different executions of the DAG.
-            _static_tensor_schema: A hint indicating whether the non-tensor
-                data contained in this value always remains the same across
-                different executions of the DAG. For example, if the value
-                always has the form `{"my_tensor": torch.Tensor(...)}`, then
-                this can be set to True, even if the size of the contained
-                tensor changes.
+            _direct_return: Whether the tensor is sent directly or inside of
+                other data. If a non-default `transport` is used, this allows
+                the sender and receiver to eliminate performance overhead from
+                an additional data transfer.
 
-        NOTE: Setting static_shape=True and/or static_tensor_schema=True can
-        improve performance if a non-default transport is used. However, if
-        either flag is set, then the user must ensure that the condition is
-        met. Also, for values containing multiple tensors, the
-        user must ensure that the (ray.cloudpickle) serialization order of the
-        value is deterministic. Otherwise, reads may return different values
-        from those written. For example, if returning a dictionary with
-        multiple tensors, use Python 3.6+ and ensure that the insertion order
-        is the same.
+        NOTE: Setting static_shape=True and _direct_return=True can improve
+        performance if a non-default transport is used. However, if either flag
+        is set, then the user must ensure that the condition is met.
 
         If using this type as an accelerated DAG annotation, an exception will
         be thrown in the following cases, and the DAG will be torn down. To
         continue execution, a new DAG must be created:
-        1. If static_shape=True, and the found tensors don't match the
+        1. If _static_shape=True, and the found tensors don't match the
            previous shape or dtype(s).
-        2. If static_tensor_schema=True, and a different number of tensors is
-           found.
+        2. If _direct_return=True, and the returned value is not a
+           torch.Tensor.
         """
         super().__init__()
 
         self._static_shape = _static_shape
-        self._static_tensor_schema = _static_tensor_schema
+        self._direct_return = _direct_return
 
         self._custom_nccl_group: Optional[GPUCommunicator] = None
         if isinstance(transport, GPUCommunicator):
@@ -90,9 +82,9 @@ class TorchTensorType(ChannelOutputType):
                 "TorchTensorType(_static_shape=True) has no effect when "
                 "`transport` is TorchTensorType.AUTO (default)."
             )
-        if self._static_tensor_schema and self.transport == self.AUTO:
+        if self._direct_return and self.transport == self.AUTO:
             logger.info(
-                "TorchTensorType(_static_tensor_schema=True) has no effect when "
+                "TorchTensorType(_direct_return=True) has no effect when "
                 "`transport` is TorchTensorType.AUTO (default)."
             )
 
@@ -101,8 +93,8 @@ class TorchTensorType(ChannelOutputType):
         return self._static_shape
 
     @property
-    def static_tensor_schema(self):
-        return self._static_tensor_schema
+    def direct_return(self):
+        return self._direct_return
 
     def register_custom_serializer(self) -> None:
         super().register_custom_serializer()
@@ -131,7 +123,7 @@ class TorchTensorType(ChannelOutputType):
         writer: Optional["ray.actor.ActorHandle"],
         reader_and_node_list: List[Tuple["ray.actor.ActorHandle", str]],
         read_by_adag_driver: bool,
-        _tensor_schema_channel: Optional["Channel"] = None,
+        _non_tensor_data_channel: Optional["Channel"] = None,
         _tensor_metadata_channel: Optional["Channel"] = None,
     ) -> type:
 
@@ -148,8 +140,8 @@ class TorchTensorType(ChannelOutputType):
                 _meta_channel=_tensor_metadata_channel,
             )
 
-            if _tensor_schema_channel is None:
-                _tensor_schema_channel = SharedMemoryType().create_channel(
+            if _non_tensor_data_channel is None and not self._direct_return:
+                _non_tensor_data_channel = SharedMemoryType().create_channel(
                     writer, reader_and_node_list
                     read_by_adag_driver,
                 )
@@ -158,8 +150,7 @@ class TorchTensorType(ChannelOutputType):
                 writer,
                 reader_and_node_list,
                 tensor_data_channel,
-                _tensor_schema_channel,
-                self.static_tensor_schema,
+                _non_tensor_data_channel,
             )
 
         # Data does not require NCCL. Transfer via host memory using a

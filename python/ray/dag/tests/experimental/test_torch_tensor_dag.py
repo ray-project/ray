@@ -53,12 +53,6 @@ class TorchTensorWorker:
             raise RuntimeError()
         return torch.ones(shape, dtype=dtype, device=self.device) * value
 
-    def send_dict(self, shape, dtype, value):
-        return {
-            i: torch.ones(shape, dtype=dtype, device=self.device) * i
-            for i in range(value)
-        }
-
     def recv(self, tensor):
         # Check that tensor got loaded to the correct device.
         assert tensor.device == self.device
@@ -611,7 +605,7 @@ def test_torch_tensor_nccl_static_shape(ray_start_regular):
 
 
 @pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
-def test_torch_tensor_nccl_static_tensor_schema(ray_start_regular):
+def test_torch_tensor_nccl_direct_return(ray_start_regular):
     if not USE_GPU:
         pytest.skip("NCCL tests require GPUs")
 
@@ -625,9 +619,9 @@ def test_torch_tensor_nccl_static_tensor_schema(ray_start_regular):
     receiver = actor_cls.remote()
 
     with InputNode() as inp:
-        dag = sender.send_dict.bind(inp.shape, inp.dtype, inp.value)
+        dag = sender.send.bind(inp.shape, inp.dtype, inp.value)
         dag = dag.with_type_hint(
-            TorchTensorType(transport="nccl", _static_tensor_schema=True)
+            TorchTensorType(transport="nccl", _direct_return=True)
         )
         dag = receiver.recv_dict.bind(dag)
 
@@ -637,13 +631,13 @@ def test_torch_tensor_nccl_static_tensor_schema(ray_start_regular):
         shape = (10 * (i + 1),)
         dtype = torch.float16
         ref = compiled_dag.execute(value=1, shape=shape, dtype=dtype)
-        assert ray.get(ref) == {0: (0, shape, dtype)}
+        assert ray.get(ref) == (0, shape, dtype)
 
     compiled_dag.teardown()
 
 
 @pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
-def test_torch_tensor_nccl_static_shape_and_tensor_schema(ray_start_regular):
+def test_torch_tensor_nccl_static_shape_and_direct_return(ray_start_regular):
     if not USE_GPU:
         pytest.skip("NCCL tests require GPUs")
 
@@ -662,7 +656,7 @@ def test_torch_tensor_nccl_static_shape_and_tensor_schema(ray_start_regular):
             TorchTensorType(
                 transport="nccl",
                 _static_shape=True,
-                _static_tensor_schema=True,
+                _direct_return=True,
             )
         )
         dag = receiver.recv.bind(dag)

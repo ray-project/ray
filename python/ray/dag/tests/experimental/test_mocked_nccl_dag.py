@@ -225,10 +225,9 @@ def test_p2p_static_shape_error(ray_start_cluster):
     ],
     indirect=True,
 )
-def test_p2p_static_tensor_schema(ray_start_cluster):
+def test_p2p_direct_return(ray_start_cluster):
     """
-    Test simple sender -> receiver pattern with static_tensor_schema=True
-    (non-tensor data remains fixed across DAG executions).
+    Test simple sender -> receiver pattern with _direct_return=True
     """
     # Barrier name should be barrier-{sender rank}-{receiver rank}.
     # Create a barrier in both directions because we don't know which rank will
@@ -245,7 +244,7 @@ def test_p2p_static_tensor_schema(ray_start_cluster):
     with InputNode() as inp:
         dag = sender.send_dict.bind(inp)
         dag = dag.with_type_hint(
-            TorchTensorType(transport="nccl", _static_tensor_schema=True)
+            TorchTensorType(transport="nccl", _direct_return=True)
         )
         dag = receiver.recv_dict.bind(dag)
 
@@ -282,10 +281,10 @@ def test_p2p_static_tensor_schema(ray_start_cluster):
     ],
     indirect=True,
 )
-def test_p2p_static_tensor_schema_error(ray_start_cluster):
+def test_p2p_direct_return_error(ray_start_cluster):
     """
-    Test that when static_tensor_schema=True, an error is thrown when a
-    different number of tensors is found.
+    Test that when _direct_return=True, an error is thrown when the value sent
+    is not a torch.Tensor.
     """
     # Barrier name should be barrier-{sender rank}-{receiver rank}.
     # Create a barrier in both directions because we don't know which rank will
@@ -300,48 +299,22 @@ def test_p2p_static_tensor_schema_error(ray_start_cluster):
 
     # Test torch.Tensor sent between actors.
     with InputNode() as inp:
-        dag = sender.send_dict.bind(inp)
+        dag = sender.send.bind(inp.shape, inp.dtype, inp.value, inp.send_as_dict)
         dag = dag.with_type_hint(
-            TorchTensorType(transport="nccl", _static_tensor_schema=True)
+            TorchTensorType(transport="nccl", _direct_return=True)
         )
-        dag = receiver.recv_dict.bind(dag)
+        dag = receiver.recv.bind(dag)
 
     compiled_dag = dag.experimental_compile()
 
     shape = 10
     dtype = torch.float16
-    # Test sending a dictionary that always contains keys inserted in the same
-    # order, but with different-sized and different-valued tensors.
-    # same keys.
-    for i in range(3):
-        tensor_shape = (shape * (i + 1),)
-        spec = [
-            ("a", i, tensor_shape, dtype),
-            ("b", i, tensor_shape, dtype),
-            ("c", i, tensor_shape, dtype),
-        ]
-        ref = compiled_dag.execute(spec)
-        assert ray.get(ref) == spec
 
-    # Test sending a dictionary with a different number of entries.
-    spec = [
-        ("a", 1, shape, dtype),
-        ("b", 1, shape, dtype),
-    ]
-    ref = compiled_dag.execute(spec)
+    ref = compiled_dag.execute(shape=shape, dtype=dtype, value=1, send_as_dict=True)
     with pytest.raises(OSError, match="Channel closed"):
         ray.get(ref)
 
-    # Sending correct shape still errors because the DAG has already been torn
-    # down after the previous error.
-    spec.append(("c", 1, shape, dtype))
-    with pytest.raises(OSError, match="Channel closed"):
-        ref = compiled_dag.execute(spec)
-
-    # TODO(swang): Ideally we would also check that sending a different value,
-    # e.g., changing the keys of the dictionary or sending a list instead of a
-    # dictionary, would also fail, but currently we don't have a reliable way
-    # to do this. Checking the serialized output produces many false positives.
+    ray.get(compiled_dag.execute(shape=shape, dtype=dtype, value=1, send_as_dict=True))
 
     ray.kill(barrier1)
     ray.kill(barrier2)
