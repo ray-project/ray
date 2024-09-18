@@ -130,4 +130,16 @@ void erase_if(std::list<T> &list, std::function<bool(const T &)> predicate) {
   }
 }
 
+// [T] -> (T -> U) -> [U]
+// Only supports && input.
+template <typename T, typename F>
+auto move_mapped(std::vector<T> &&vec, F transform) {
+  std::vector<decltype(transform(std::declval<T>()))> result;
+  result.reserve(vec.size());
+  for (T &elem : vec) {
+    result.emplace_back(transform(std::move(elem)));
+  }
+  return result;
+}
+
 }  // namespace ray
