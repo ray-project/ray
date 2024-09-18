@@ -242,28 +242,20 @@ def test_p2p_direct_return(ray_start_cluster):
 
     # Test torch.Tensor sent between actors.
     with InputNode() as inp:
-        dag = sender.send_dict.bind(inp)
+        dag = sender.send.bind(inp.shape, inp.dtype, inp.value)
         dag = dag.with_type_hint(
             TorchTensorType(transport="nccl", _direct_return=True)
         )
-        dag = receiver.recv_dict.bind(dag)
+        dag = receiver.recv.bind(dag)
 
     compiled_dag = dag.experimental_compile()
 
     shape = 10
     dtype = torch.float16
-    # Test sending a dictionary that always contains keys inserted in the same
-    # order, but with different-sized and different-valued tensors.
-    # same keys.
     for i in range(3):
-        tensor_shape = (shape * (i + 1),)
-        spec = [
-            ("a", i, tensor_shape, dtype),
-            ("b", i, tensor_shape, dtype),
-            ("c", i, tensor_shape, dtype),
-        ]
-        ref = compiled_dag.execute(spec)
-        assert ray.get(ref) == spec
+        ref = compiled_dag.execute(shape=shape, dtype=dtype, value=i)
+        shape *= 2
+        assert ray.get(ref) == (shape, dtype, i)
 
     ray.kill(barrier1)
     ray.kill(barrier2)
@@ -310,11 +302,14 @@ def test_p2p_direct_return_error(ray_start_cluster):
     shape = 10
     dtype = torch.float16
 
+    ref = compiled_dag.execute(shape=shape, dtype=dtype, value=1, send_as_dict=False)
+    assert ray.get(ref) == (shape, dtype, 1)
+
     ref = compiled_dag.execute(shape=shape, dtype=dtype, value=1, send_as_dict=True)
     with pytest.raises(OSError, match="Channel closed"):
         ray.get(ref)
 
-    ray.get(compiled_dag.execute(shape=shape, dtype=dtype, value=1, send_as_dict=True))
+    ray.get(compiled_dag.execute(shape=shape, dtype=dtype, value=1, send_as_dict=False))
 
     ray.kill(barrier1)
     ray.kill(barrier2)

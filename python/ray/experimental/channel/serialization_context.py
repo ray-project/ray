@@ -7,8 +7,10 @@ if TYPE_CHECKING:
 
 class _SerializationContext:
     def __init__(self):
-        self.use_external_transport: bool = False
-        # If use_external_transport is True, then these are
+        # If true, then tensors found in the data to serialize are extracted
+        # and the caller should send them through an external transport.
+        self._use_external_transport: bool = False
+        # If _use_external_transport is True, then these are
         # the tensors that should be sent or received
         # out-of-band, through the external transport.
         self._out_of_band_tensors: List["torch.Tensor"] = []
@@ -61,7 +63,7 @@ class _SerializationContext:
         self.channel_id_to_num_readers.pop(channel_id, None)
 
     def set_use_external_transport(self, use_external_transport: bool) -> None:
-        self.use_external_transport = use_external_transport
+        self._use_external_transport = use_external_transport
 
     def reset_out_of_band_tensors(
         self, tensors: List["torch.Tensor"]
@@ -80,7 +82,7 @@ class _SerializationContext:
         from ray.experimental.channel import ChannelContext
 
         ctx = ChannelContext.get_current()
-        if self.use_external_transport and tensor.device == ctx.torch_device:
+        if self._use_external_transport and tensor.device == ctx.torch_device:
             # External transport is enabled and we found a tensor that matches
             # our device.  Add the actual tensor to a buffer. The buffer of
             # tensors should later be popped by the caller and sent via

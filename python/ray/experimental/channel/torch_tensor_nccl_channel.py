@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, Any, List, Optional, Tuple, Union
 import ray
 import ray.util.serialization
 from ray.experimental.channel import ChannelContext
-from ray.experimental.channel.common import ChannelInterface, _ResizeChannel
+from ray.experimental.channel.common import ChannelInterface
 from ray.experimental.channel.gpu_communicator import GPUCommunicator
 from ray.experimental.channel.nccl_group import _NcclGroup
 from ray.experimental.channel.shared_memory_channel import SharedMemoryType
@@ -176,7 +176,7 @@ class TorchTensorNcclChannel(ChannelInterface):
         else:
             self._send_cpu_and_gpu_data(value, timeout)
 
-    def _recv_cpu_and_gpu_data(self, tensors: List[torch.Tensor], timeout: Optional[float] = None) -> Any:
+    def _recv_cpu_and_gpu_data(self, tensors: List["torch.Tensor"], timeout: Optional[float] = None) -> Any:
         """
         Helper method to receive data that contains a mix of CPU and GPU data.
 

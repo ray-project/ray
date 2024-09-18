@@ -1,7 +1,7 @@
 import io
 import logging
 import time
-from collections import defaultdict
+from collections import defaultdict, namedtuple
 from typing import Any, Dict, List, Optional, Set, Tuple, Union
 
 import ray
@@ -10,7 +10,6 @@ from ray._raylet import SerializedObject
 from ray.experimental.channel.common import (
     ChannelInterface,
     ChannelOutputType,
-    ReaderRefInfo,
 )
 from ray.experimental.channel.intra_process_channel import IntraProcessChannel
 from ray.util.annotations import DeveloperAPI, PublicAPI
@@ -24,6 +23,9 @@ DEFAULT_MAX_BUFFER_SIZE = int(1e6)  # 100 mB
 # The min buffer size must be large enough to at least fit an instance of the
 # _ResizeChannel class along with any metadata.
 MIN_BUFFER_SIZE = int(1000)  # 1000 bytes
+# For shared memory channels, the default number of buffers per channel to
+# allocate.
+DEFAULT_NUM_SHM_BUFFERS = 1
 
 
 def _create_channel_ref(

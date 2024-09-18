@@ -142,7 +142,7 @@ class TorchTensorType(ChannelOutputType):
 
             if _non_tensor_data_channel is None and not self._direct_return:
                 _non_tensor_data_channel = SharedMemoryType().create_channel(
-                    writer, reader_and_node_list
+                    writer, reader_and_node_list,
                     read_by_adag_driver,
                 )
 
