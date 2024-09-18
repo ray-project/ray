@@ -19,9 +19,9 @@
 
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
+#include "ray/common/asio/asio_util.h"
 #include "ray/gcs/redis_context.h"
 #include "ray/util/logging.h"
-
 namespace ray {
 
 namespace gcs {
