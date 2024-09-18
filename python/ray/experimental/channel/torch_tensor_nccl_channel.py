@@ -186,7 +186,7 @@ class TorchTensorNcclChannel(ChannelInterface):
                 # if one exists.
                 raise ValueError("Task annotated with _direct_return=True must "
                         f"return a CUDA torch.Tensor, instead found value `{value}`")
-            elif value.get_device() < 0:
+            elif not value.is_cuda:
                 raise ValueError("Task annotated with _direct_return=True must "
                         "return a CUDA torch.Tensor, instead found CPU tensor")
             self._tensor_data_channel.write([value], timeout=timeout)

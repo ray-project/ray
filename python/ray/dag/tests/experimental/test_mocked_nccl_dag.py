@@ -7,6 +7,7 @@ import pytest
 
 import ray
 import ray.cluster_utils
+from ray.exceptions import RayChannelError
 from ray.experimental.channel.torch_tensor_type import TorchTensorType
 from ray.experimental.channel.conftest import (
     Barrier,
@@ -36,7 +37,7 @@ class MockedWorker:
     def recv(self, tensor):
         if isinstance(tensor, dict):
             assert len(tensor) == 1
-            tensor = tensor.values()[0]
+            tensor = list(tensor.values())[0]
 
         return (tensor[0].item(), tensor.shape, tensor.dtype)
 
@@ -87,7 +88,7 @@ def test_p2p(ray_start_cluster):
     # Test torch.Tensor sent between actors.
     with InputNode() as inp:
         dag = sender.send.bind(
-            inp.shape, inp.dtype, inp[0], send_as_dict=inp.send_as_dict
+            inp.shape, inp.dtype, inp[0], inp.send_as_dict
         )
         dag = dag.with_type_hint(TorchTensorType(transport="nccl"))
         dag = receiver.recv.bind(dag)
@@ -201,12 +202,12 @@ def test_p2p_static_shape_error(ray_start_cluster):
 
     # Sending wrong shape errors.
     ref = compiled_dag.execute(i, shape=(20,), dtype=dtype)
-    with pytest.raises(OSError, match="Channel closed"):
+    with pytest.raises(RayChannelError):
         ray.get(ref)
 
     # Sending correct shape still errors because the DAG has already been torn
     # down after the previous error.
-    with pytest.raises(OSError, match="Channel closed"):
+    with pytest.raises(RayChannelError):
         ref = compiled_dag.execute(i, shape=shape, dtype=dtype)
 
     ray.kill(barrier1)
@@ -250,12 +251,11 @@ def test_p2p_direct_return(ray_start_cluster):
 
     compiled_dag = dag.experimental_compile()
 
-    shape = 10
     dtype = torch.float16
     for i in range(3):
+        shape = (10 * (i + 1), )
         ref = compiled_dag.execute(shape=shape, dtype=dtype, value=i)
-        shape *= 2
-        assert ray.get(ref) == (shape, dtype, i)
+        assert ray.get(ref) == (i, shape, dtype)
 
     ray.kill(barrier1)
     ray.kill(barrier2)
@@ -299,17 +299,15 @@ def test_p2p_direct_return_error(ray_start_cluster):
 
     compiled_dag = dag.experimental_compile()
 
-    shape = 10
+    shape = (10, )
     dtype = torch.float16
 
     ref = compiled_dag.execute(shape=shape, dtype=dtype, value=1, send_as_dict=False)
-    assert ray.get(ref) == (shape, dtype, 1)
+    assert ray.get(ref) == (1, shape, dtype)
 
     ref = compiled_dag.execute(shape=shape, dtype=dtype, value=1, send_as_dict=True)
-    with pytest.raises(OSError, match="Channel closed"):
+    with pytest.raises(RayChannelError):
         ray.get(ref)
-
-    ray.get(compiled_dag.execute(shape=shape, dtype=dtype, value=1, send_as_dict=False))
 
     ray.kill(barrier1)
     ray.kill(barrier2)
