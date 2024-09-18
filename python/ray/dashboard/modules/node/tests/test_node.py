@@ -247,6 +247,8 @@ def test_multi_node_churn(
             node_to_remove = worker_nodes.pop(node_index)
             cluster.remove_node(node_to_remove)
 
+    assert success
+
 
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))
