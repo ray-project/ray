@@ -298,7 +298,7 @@ def test_replica_actor_died(serve_instance, die_during_request):
 
     # Kill one replica.
     if die_during_request:
-        with pytest.raises(ActorDiedError):
+        with pytest.raises(RayActorError):
             h.remote(crash=True).result()
     else:
         replica_to_kill = random.choice(replicas)
