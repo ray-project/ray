@@ -730,7 +730,7 @@ class ApplicationState:
     def get_application_status_info(self) -> ApplicationStatusInfo:
         """Return the application status information"""
         return ApplicationStatusInfo(
-            status=self._status,
+            self._status,
             message=self._status_msg,
             deployment_timestamp=self._deployment_timestamp,
         )
