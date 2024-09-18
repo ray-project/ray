@@ -903,7 +903,9 @@ class DockerCommandRunner(CommandRunnerInterface):
             )
             available_memory_bytes = available_memory * 1024
             # Overestimate SHM size by 10%
-            shm_size = available_memory_bytes * DEFAULT_OBJECT_STORE_MEMORY_PROPORTION * 1.1
+            shm_size = (
+                available_memory_bytes * DEFAULT_OBJECT_STORE_MEMORY_PROPORTION * 1.1
+            )
             return run_options + [f"--shm-size='{shm_size}b'"]
         except Exception as e:
             logger.warning(f"Received error while trying to auto-compute SHM size {e}")

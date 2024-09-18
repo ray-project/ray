@@ -252,10 +252,15 @@ class ResourceSpec(
                 # Multiple by 0.95 to give a bit of wiggle-room.
                 # https://github.com/ray-project/ray/pull/23034/files
                 shm_avail = ray._private.utils.get_shared_memory_bytes() * 0.95
-                object_store_memory_cap = max(ray_constants.REQUIRE_SHM_SIZE_THRESHOLD, shm_avail)
+                object_store_memory_cap = max(
+                    ray_constants.REQUIRE_SHM_SIZE_THRESHOLD, shm_avail
+                )
 
             # Cap memory to avoid memory waste and perf issues on large nodes
-            if object_store_memory_cap and object_store_memory > object_store_memory_cap:
+            if (
+                object_store_memory_cap
+                and object_store_memory > object_store_memory_cap
+            ):
                 logger.debug(
                     "Warning: Capping object memory store to {}GB. ".format(
                         object_store_memory_cap // 1e9
