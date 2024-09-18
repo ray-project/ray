@@ -1172,12 +1172,16 @@ WorkerUnfitForTaskReason WorkerPool::WorkerFitsForTask(
   if (worker.GetWorkerType() != pop_worker_request.worker_type) {
     return WorkerUnfitForTaskReason::OTHERS;
   }
-  if (!IdMatches(pop_worker_request.job_id, worker.GetAssignedJobId())) {
-    return WorkerUnfitForTaskReason::ROOT_MISMATCH;
-  }
+
   if (!IdMatches(pop_worker_request.root_detached_actor_id,
                  worker.GetRootDetachedActorId())) {
     return WorkerUnfitForTaskReason::ROOT_MISMATCH;
+  }
+  // Only compare job id for actors not rooted to a detached actor.
+  if (pop_worker_request.root_detached_actor_id.IsNil()) {
+    if (!IdMatches(pop_worker_request.job_id, worker.GetAssignedJobId())) {
+      return WorkerUnfitForTaskReason::ROOT_MISMATCH;
+    }
   }
   // If the request asks for a is_gpu, and the worker is assigned a different is_gpu,
   // then skip it.
