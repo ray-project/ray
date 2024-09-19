@@ -450,9 +450,11 @@ void RayEventLog::Init_(
     const std::string &log_dir,
     const std::string &event_level,
     bool emit_event_to_log_file) {
-  MAX_EXPORT_EVENTS_BUFFER_SIZE = GetEnvVarAsInt("RAY_MAX_EXPORT_EVENTS_BUFFER_SIZE", 1000 * 1000);
-  EXPORT_EVENTS_BUFFER_WRITE_BATCH_SIZE = GetEnvVarAsInt("RAY_EXPORT_EVENTS_BUFFER_WRITE_BATCH_SIZE", 10 * 1000);
-  
+  MAX_EXPORT_EVENTS_BUFFER_SIZE =
+      GetEnvVarAsInt("RAY_MAX_EXPORT_EVENTS_BUFFER_SIZE", 1000 * 1000);
+  EXPORT_EVENTS_BUFFER_WRITE_BATCH_SIZE =
+      GetEnvVarAsInt("RAY_EXPORT_EVENTS_BUFFER_WRITE_BATCH_SIZE", 10 * 1000);
+
   for (const auto &source_type : source_types) {
     std::string source_type_name = "";
     auto event_dir = std::filesystem::path(log_dir) / std::filesystem::path("events");
@@ -526,12 +528,10 @@ void RayEventLog::AddDataToBuffer(absl::Mutex *mutex,
   absl::MutexLock lock(mutex);
   if (buffer->full()) {
     RAY_LOG_EVERY_N(WARNING, 100000)
-        << "Dropping export event " << typeid(T).name()
-        << " because the buffer is full."
+        << "Dropping export event " << typeid(T).name() << " because the buffer is full."
         << "Set a higher value for "
            "RAY_MAX_EXPORT_EVENTS_BUFFER_SIZE("
-        << MAX_EXPORT_EVENTS_BUFFER_SIZE
-        << ") to avoid this.";
+        << MAX_EXPORT_EVENTS_BUFFER_SIZE << ") to avoid this.";
   }
   buffer->push_back(std::move(data));
 }

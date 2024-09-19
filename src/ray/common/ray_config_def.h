@@ -904,9 +904,7 @@ RAY_CONFIG(bool, enable_export_api_write, false)
 
 /// Max number of export events for each event type that will be
 /// stored in buffer before being written to file.
-RAY_CONFIG(uint64_t,
-           max_export_events_buffer_size,
-           1000 * 1000)
+RAY_CONFIG(uint64_t, max_export_events_buffer_size, 1000 * 1000)
 
 /// Max number export events to write to file from buffer
 /// for each iteration.

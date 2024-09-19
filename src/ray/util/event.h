@@ -365,10 +365,11 @@ type being emitted.
    inexpensive or another background thread is used for this. Eg: Task export
    events directly take rpc::ExportTaskEventData.
 3. Main thread adds raw data to a buffer, and the background thread converts this data
-   to the export event proto and logs and flushes to file. This can be used 
-   when creating the proto object is expensive and there is no other background 
+   to the export event proto and logs and flushes to file. This can be used
+   when creating the proto object is expensive and there is no other background
    thread to do this. Eg: Actor export events take the raw data rpc::ActorTableData
-   and MutableActorData before converting to rpc::ExportActorData in the background thread.
+   and MutableActorData before converting to rpc::ExportActorData in the background
+thread.
 
 If the source type of any events require creating the event proto or flushing
 to file in the background thread, StartPeriodicFlushThread and StopPeriodicFlushThread
@@ -441,17 +442,17 @@ class RayEventLog final {
   RayEventLog() : periodic_flush_thread_() {}
   ~RayEventLog() { StopPeriodicFlushThread(); }
 
-  int GetEnvVarAsInt(const char* varName, int defaultValue) {
-      try {
-          const char* value = std::getenv(varName);
-          if (value) {
-              return std::stoi(value);
-          }
-          return defaultValue;
-      } catch (...) {
-        RAY_LOG(WARNING) << "Error getting value of env var " << varName; 
+  int GetEnvVarAsInt(const char *varName, int defaultValue) {
+    try {
+      const char *value = std::getenv(varName);
+      if (value) {
+        return std::stoi(value);
       }
       return defaultValue;
+    } catch (...) {
+      RAY_LOG(WARNING) << "Error getting value of env var " << varName;
+    }
+    return defaultValue;
   }
 
   std::thread periodic_flush_thread_;
