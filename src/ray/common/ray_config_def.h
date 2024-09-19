@@ -901,11 +901,3 @@ RAY_CONFIG(int, object_manager_rpc_threads_num, 0)
 
 // Write export API events to file if enabled
 RAY_CONFIG(bool, enable_export_api_write, false)
-
-/// Max number of export events for each event type that will be
-/// stored in buffer before being written to file.
-RAY_CONFIG(uint64_t, max_export_events_buffer_size, 1000 * 1000)
-
-/// Max number export events to write to file from buffer
-/// for each iteration.
-RAY_CONFIG(uint64_t, export_events_buffer_write_batch_size, 10 * 1000)
