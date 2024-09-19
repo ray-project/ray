@@ -122,6 +122,7 @@ class DataOrganizer:
         for worker in node_physical_stats.get("workers", []):
             worker = dict(worker)
             pid = worker["pid"]
+
             core_worker_stats = pid_to_worker_stats.get(pid)
             # Empty list means core worker stats is not available.
             worker["coreWorkerStats"] = [core_worker_stats] if core_worker_stats else []
