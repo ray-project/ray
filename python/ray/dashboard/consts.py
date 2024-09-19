@@ -92,7 +92,8 @@ PARENT_HEALTH_CHECK_BY_PIPE = env_bool(
 
 # If ON_LAG is > 0, the dashboard will record a flamegraph when the event loop lag is
 # > ON_LAG seconds. On that trigger, it records for DURATION seconds. A next record will
-# not be made until COOLDOWN seconds have passed after the last record finished.
+# not be made until COOLDOWN seconds have passed after the last record finished. Only
+# MAX_COUNT records are stored; the oldest is removed when a new one is added.
 # By default this feature is disabled by setting to 0.
 RAY_DASHBOARD_RECORD_FLAMEGRAPH_ON_LAG_S = env_integer(
     "RAY_DASHBOARD_RECORD_FLAMEGRAPH_ON_LAG_S", 0
@@ -102,4 +103,7 @@ RAY_DASHBOARD_RECORD_FLAMEGRAPH_DURATION_S = env_integer(
 )
 RAY_DASHBOARD_RECORD_FLAMEGRAPH_COOLDOWN_S = env_integer(
     "RAY_DASHBOARD_RECORD_FLAMEGRAPH_COOLDOWN_S", 3600
+)
+RAY_DASHBOARD_RECORD_FLAMEGRAPH_MAX_COUNT = env_integer(
+    "RAY_DASHBOARD_RECORD_FLAMEGRAPH_MAX_COUNT", 10
 )

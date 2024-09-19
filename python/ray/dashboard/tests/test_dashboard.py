@@ -1334,10 +1334,11 @@ async def test_dashboard_exports_metric_on_event_loop_lag(
 
 @pytest.fixture
 def enable_flamegraph_profiling(monkeypatch):
-    # If lag is > 1s, make a flamegraph for 2s, then sleep 3s and repeat.
+    # If lag is > 1s, make a flamegraph for 2s, then sleep 1s and repeat. Limit to 2.
     monkeypatch.setenv("RAY_DASHBOARD_RECORD_FLAMEGRAPH_ON_LAG_S", "1")
     monkeypatch.setenv("RAY_DASHBOARD_RECORD_FLAMEGRAPH_DURATION_S", "2")
-    monkeypatch.setenv("RAY_DASHBOARD_RECORD_FLAMEGRAPH_COOLDOWN_S", "3")
+    monkeypatch.setenv("RAY_DASHBOARD_RECORD_FLAMEGRAPH_COOLDOWN_S", "1")
+    monkeypatch.setenv("RAY_DASHBOARD_RECORD_FLAMEGRAPH_MAX_COUNT", "2")
 
 
 @pytest.mark.skipif(
@@ -1354,9 +1355,12 @@ async def test_dashboard_profiles_flamegraph_on_event_loop_lag(
     import aiohttp
 
     ray_context = ray_start_with_dashboard
+
+    await asyncio.sleep(1)  # Wait for the node to start.
+
     assert wait_until_server_available(ray_context["webui_url"]) is True
     webui_url = format_web_url(ray_context["webui_url"])
-    blocking_api = "/test/block_event_loop?seconds=1"
+    blocking_api = "/test/block_event_loop?seconds=1&busy_loop=True"
 
     async def call_api(api):
         async with aiohttp.ClientSession() as session:
@@ -1364,33 +1368,32 @@ async def test_dashboard_profiles_flamegraph_on_event_loop_lag(
                 resp.raise_for_status()
                 return await resp.text()
 
-    # Blocks the event loop for 1 second for 10 times.
-    tasks = [call_api(blocking_api) for _ in range(10)]
-    await asyncio.gather(*tasks)
+    async def generate_lag():
+        while True:
+            tasks = [call_api(blocking_api) for _ in range(5)]
+            await asyncio.gather(*tasks)
+            await asyncio.sleep(1)
 
-    # Fetch the logs from the dashboard. We first get the node ID, then logs.
-    node_id = ray.nodes()[0]["NodeID"]
+    asyncio.create_task(generate_lag())
 
-    async def all_svg_file():
-        """
-        The svg file is labelled "internal" because the API has no idea it's from
-        dashboard, but it's ok.
-        """
-        all_logs = json.loads(await call_api(f"/api/v0/logs?node_id={node_id}"))
-        return [
-            log
-            for log in all_logs["data"]["result"]["internal"]
-            if log.endswith(".svg")
-        ]
+    def all_svg_file():
+        log_dir = "/tmp/ray/session_latest/logs"
+        return [f for f in os.listdir(log_dir) if f.endswith(".svg")]
 
     # Can't use wait_for_condition because it's not async.
-    for i in range(10):
-        svg_files = await all_svg_file()
-        if svg_files:
-            print(f"Found {len(svg_files)} flamegraphs: {svg_files}.")
-            return
+    num_svg_files = 0
+    for i in range(60):
+        svg_files = all_svg_file()
+        num_svg_files = len(svg_files)
+        print(f"Found {len(svg_files)} flamegraphs: {svg_files}.")
+        # We expect 2 flamegraphs. However there can be 1 flamegraph in the middle of
+        # creation and is not removed yet.
+        assert (
+            num_svg_files <= 3
+        ), f"Expected at most 3 flamegraphs, got {num_svg_files}."
         await asyncio.sleep(1)
-    assert False, "Flamegraph was not generated in 10s."
+
+    assert num_svg_files <= 3, f"Expected at most 3 flamegraphs, got {num_svg_files}."
 
 
 if __name__ == "__main__":

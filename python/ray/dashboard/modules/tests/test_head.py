@@ -116,7 +116,14 @@ class TestHead(dashboard_utils.DashboardHeadModule):
         task that blocks the event loop for a specified number of seconds.
         """
         seconds = float(req.query.get("seconds", 0.0))
-        time.sleep(seconds)
+        busy_loop = req.query.get("busy_loop", False)
+        if busy_loop:
+            # Busy loop so if py-spy flamegraph can catch something.
+            start = time.time()
+            while time.time() - start < seconds:
+                time.sleep(0.0001)
+        else:
+            time.sleep(seconds)
 
         return dashboard_optional_utils.rest_response(
             success=True,

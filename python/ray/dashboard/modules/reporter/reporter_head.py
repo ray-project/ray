@@ -2,6 +2,7 @@ import asyncio
 import json
 import logging
 import os
+from collections import deque
 from typing import List, Optional, Tuple
 
 import aiohttp.web
@@ -26,6 +27,7 @@ from ray.dashboard.consts import (
     GCS_RPC_TIMEOUT_SECONDS,
     RAY_DASHBOARD_RECORD_FLAMEGRAPH_COOLDOWN_S,
     RAY_DASHBOARD_RECORD_FLAMEGRAPH_DURATION_S,
+    RAY_DASHBOARD_RECORD_FLAMEGRAPH_MAX_COUNT,
     RAY_DASHBOARD_RECORD_FLAMEGRAPH_ON_LAG_S,
 )
 from ray.dashboard.datacenter import DataSource
@@ -622,8 +624,11 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
             "Starting flamegraph profiling on "
             f"lag > {RAY_DASHBOARD_RECORD_FLAMEGRAPH_ON_LAG_S}s, "
             f"duration {RAY_DASHBOARD_RECORD_FLAMEGRAPH_DURATION_S}s, "
-            f"cooldown {RAY_DASHBOARD_RECORD_FLAMEGRAPH_COOLDOWN_S}s"
+            f"cooldown {RAY_DASHBOARD_RECORD_FLAMEGRAPH_COOLDOWN_S}s, "
+            f"max count {RAY_DASHBOARD_RECORD_FLAMEGRAPH_MAX_COUNT}"
         )
+
+        saved_filenames = deque([])
 
         async def make_flamegraph_and_wait():
             p = CpuProfilingManager(self._dashboard_head.log_dir)
@@ -641,6 +646,14 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
                     f"{RAY_DASHBOARD_RECORD_FLAMEGRAPH_DURATION_S}s. Profile data"
                     f" path: {output}"
                 )
+                filename = output
+                saved_filenames.append(filename)
+                while len(saved_filenames) > RAY_DASHBOARD_RECORD_FLAMEGRAPH_MAX_COUNT:
+                    logger.info(f"Removing old flamegraph: {saved_filenames[0]}")
+                    old_filename = saved_filenames.popleft()
+                    if old_filename:
+                        os.remove(old_filename)
+
             await asyncio.sleep(RAY_DASHBOARD_RECORD_FLAMEGRAPH_COOLDOWN_S)
             enable_monitor_loop_lag(on_lag)
 
