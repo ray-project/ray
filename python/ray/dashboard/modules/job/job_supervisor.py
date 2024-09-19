@@ -421,7 +421,7 @@ class JobSupervisor:
                         driver_exit_code=return_code,
                     )
                 else:
-                    log_tail = self._log_client.get_last_n_log_lines(self._job_id)
+                    log_tail = await self._log_client.get_last_n_log_lines(self._job_id)
                     if log_tail is not None and log_tail != "":
                         message = (
                             "Job entrypoint command "
