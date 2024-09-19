@@ -17,6 +17,12 @@ import ray
 from ray import cloudpickle
 from ray._private.utils import get_or_create_event_loop
 from ray.actor import ActorClass, ActorHandle
+from ray.anyscale.serve._private.tracing_utils import (
+    TraceContextManager,
+    extract_propagated_context,
+    set_span_attributes,
+    setup_tracing,
+)
 from ray.remote_function import RemoteFunction
 from ray.serve import metrics
 from ray.serve._private.common import (
@@ -301,6 +307,24 @@ class ReplicaActor:
     def _configure_logger_and_profilers(
         self, logging_config: Union[None, Dict, LoggingConfig]
     ):
+
+        # ===== Begin Anyscale proprietary code ======
+        try:
+            is_tracing_setup_successful = setup_tracing(
+                component_type=ServeComponentType.REPLICA,
+                component_name=self._component_name,
+                component_id=self._component_id,
+            )
+            if is_tracing_setup_successful:
+                logger.info("Successfully set up tracing for replica")
+
+        except Exception as e:
+            logger.warning(
+                f"Failed to set up tracing: {e}. "
+                "The replica will continue running, but traces will not be exported."
+            )
+        # ===== End Anyscale proprietary code ======
+
         if logging_config is None:
             logging_config = {}
         if isinstance(logging_config, dict):
@@ -342,6 +366,18 @@ class ReplicaActor:
         2) Records the access log message (if not disabled).
         3) Records per-request metrics via the metrics manager.
         """
+        trace_attributes = {
+            "request_id": request_metadata.request_id,
+            "replica_id": self._replica_id.unique_id,
+            "deployment": self._deployment_id.name,
+            "app": self._deployment_id.app_name,
+            "call_method": request_metadata.call_method,
+            "route": request_metadata.route,
+            "multiplexed_model_id": request_metadata.multiplexed_model_id,
+            "is_streaming": request_metadata.is_streaming,
+        }
+        set_span_attributes(trace_attributes)
+
         ray.serve.context._serve_request_context.set(
             ray.serve.context._RequestContext(
                 route=request_metadata.route,
@@ -468,7 +504,12 @@ class ReplicaActor:
     ) -> Tuple[bytes, Any]:
         """Entrypoint for `stream=False` calls."""
         request_metadata = pickle.loads(pickled_request_metadata)
-        with self._wrap_user_method_call(request_metadata):
+        trace_context = extract_propagated_context(request_metadata.tracing_context)
+        trace_manager = TraceContextManager(
+            trace_name="replica_handle_request",
+            trace_context=trace_context,
+        )
+        with trace_manager, self._wrap_user_method_call(request_metadata):
             return await self._user_callable_wrapper.call_user_method(
                 request_metadata, request_args, request_kwargs
             )
@@ -481,7 +522,12 @@ class ReplicaActor:
     ) -> AsyncGenerator[Any, None]:
         """Generator that is the entrypoint for all `stream=True` handle calls."""
         request_metadata = pickle.loads(pickled_request_metadata)
-        with self._wrap_user_method_call(request_metadata):
+        trace_context = extract_propagated_context(request_metadata.tracing_context)
+        trace_manager = TraceContextManager(
+            trace_name="replica_handle_request",
+            trace_context=trace_context,
+        )
+        with trace_manager, self._wrap_user_method_call(request_metadata):
             async for result in self._call_user_generator(
                 request_metadata,
                 request_args,
@@ -508,6 +554,11 @@ class ReplicaActor:
         user request handler (which must be a generator).
         """
         request_metadata = pickle.loads(pickled_request_metadata)
+        trace_context = extract_propagated_context(request_metadata.tracing_context)
+        trace_manager = TraceContextManager(
+            trace_name="replica_handle_request",
+            trace_context=trace_context,
+        )
         limit = self._deployment_config.max_ongoing_requests
         num_ongoing_requests = self.get_num_ongoing_requests()
         if num_ongoing_requests >= limit:
@@ -523,7 +574,7 @@ class ReplicaActor:
             )
             return
 
-        with self._wrap_user_method_call(request_metadata):
+        with trace_manager, self._wrap_user_method_call(request_metadata):
             yield pickle.dumps(
                 ReplicaQueueLengthInfo(
                     accepted=True,

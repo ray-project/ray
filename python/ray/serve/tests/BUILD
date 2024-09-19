@@ -26,7 +26,6 @@ py_test_module_list(
         "test_deployment_graph_handle_serde.py",
         "test_deployment_graph_ingress.py",
         "test_deployment_node.py",
-        "test_deployment_scheduler.py",
         "test_deployment_version.py",
         "test_expected_versions.py",
         "test_max_queued_requests.py",
@@ -50,11 +49,13 @@ py_test_module_list(
 # Medium tests.
 py_test_module_list(
     size = "medium",
+    env = {"ANYSCALE_TRACING_EXPORTER_IMPORT_PATH": ""},
     files = [
         "test_callback.py",
         "test_cancellation.py",
         "test_cluster.py",
         "test_controller_recovery.py",
+        "test_deployment_scheduler.py",
         "test_failure.py",
         "test_grpc.py",
         "test_handle.py",
@@ -169,6 +170,7 @@ py_test_module_list(
 # Enormous tests.
 py_test_module_list(
     size = "enormous",
+    env = {"ANYSCALE_TRACING_EXPORTER_IMPORT_PATH": ""},
     files = [
         "test_deploy_app.py",
         "test_metrics.py",
@@ -381,7 +383,7 @@ py_test_module_list(
 py_test_module_list(
     size = "medium",
     data = glob(["test_config_files/**/*"]),
-    env = {"RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY": "1"},
+    env = {"RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY": "0"},
     files = [
         "test_cluster.py",
         "test_controller_recovery.py",
@@ -406,7 +408,7 @@ py_test_module_list(
 # Large tests with compact scheduling
 py_test_module_list(
     size = "large",
-    env = {"RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY": "1"},
+    env = {"RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY": "0"},
     files = [
         "test_standalone.py",
         "test_standalone_3.py",
@@ -427,7 +429,7 @@ py_test_module_list(
 py_test_module_list(
     size = "large",
     data = glob(["test_config_files/**/*"]),
-    env = {"RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY": "1"},
+    env = {"RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY": "0"},
     files = [
         "test_standalone_2.py",
     ],
