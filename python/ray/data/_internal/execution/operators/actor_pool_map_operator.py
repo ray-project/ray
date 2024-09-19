@@ -640,13 +640,15 @@ class _ActorPool(AutoscalingActorPool):
 
     def _kill_running_actor(self, actor: ray.actor.ActorHandle):
         """Kill the provided actor and remove it from the pool."""
-        ray.kill(actor)
         del self._num_tasks_in_flight[actor]
+        del self._actor_locations[actor]
+        assert actor not in self._pending_actors
 
     def _kill_pending_actor(self, ready_ref: ray.ObjectRef):
         """Kill the provided pending actor and remove it from the pool."""
         actor = self._pending_actors.pop(ready_ref)
-        ray.kill(actor)
+        assert actor not in self._num_tasks_in_flight
+        assert actor not in self._actor_locations
 
     def _get_location(self, bundle: RefBundle) -> Optional[NodeIdStr]:
         """Ask Ray for the node id of the given bundle.
