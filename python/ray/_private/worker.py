@@ -560,13 +560,10 @@ class Worker:
         if not hasattr(self, "core_worker"):
             return None
         job_config = self.core_worker.get_job_config()
-        try:
-            logging_config = pickle.loads(job_config.serialized_py_logging_config)
-            assert logging_config is not None
-        except EOFError:
-            # If JobConfig's logging config is not set, serialized_py_logging_config
-            # will not be set, causing an EOFError to be raised when trying to unpickle.
-            logging_config = None
+        if job_config.serialized_py_logging_config == b"":
+            # py_logging_config is not set
+            return None
+        logging_config = pickle.loads(job_config.serialized_py_logging_config)
         return logging_config
 
     def set_debugger_port(self, port):
@@ -1923,7 +1920,7 @@ def custom_excepthook(type, value, tb):
 sys.excepthook = custom_excepthook
 
 
-def print_to_stdstream(data):
+def print_to_stdstream(data, ignore_prefix: bool):
     should_dedup = data.get("pid") not in ["autoscaler"]
 
     if data["is_err"]:
@@ -1940,7 +1937,6 @@ def print_to_stdstream(data):
         sink = sys.stdout
 
     # Ignore the prefix if the logging config is set.
-    ignore_prefix = global_worker.get_job_logging_config is not None
     for batch in batches:
         print_worker_logs(batch, sink, ignore_prefix)
 
@@ -2177,7 +2173,9 @@ def listen_error_messages(worker, threads_stopped):
             error_message = _internal_kv_get(ray_constants.DEBUG_AUTOSCALING_ERROR)
             if error_message is not None:
                 logger.warning(error_message.decode())
-
+        # If the job's logging config is set, don't add the prefix
+        # (task/actor's name and its PID) to the logs.
+        ignore_prefix = global_worker.get_job_logging_config is not None
         while True:
             # Exit if received a signal that the thread should stop.
             if threads_stopped.is_set():
@@ -2198,7 +2196,8 @@ def listen_error_messages(worker, threads_stopped):
                     "lines": [error_message],
                     "pid": "raylet",
                     "is_err": False,
-                }
+                },
+                ignore_prefix,
             )
     except (OSError, ConnectionError) as e:
         logger.error(f"listen_error_messages: {e}")
@@ -2476,9 +2475,16 @@ def connect(
         )
         worker.listener_thread.daemon = True
         worker.listener_thread.start()
+        # If the job's logging config is set, don't add the prefix
+        # (task/actor's name and its PID) to the logs.
+        ignore_prefix = global_worker.get_job_logging_config is not None
+        print_to_stdstream_with_ignore = functools.partial(
+            print_to_stdstream, ignore_prefix=ignore_prefix
+        )
+
         if log_to_driver:
             global_worker_stdstream_dispatcher.add_handler(
-                "ray_print_logs", print_to_stdstream
+                "ray_print_logs", print_to_stdstream_with_ignore
             )
             worker.logger_thread = threading.Thread(
                 target=worker.print_logs, name="ray_print_logs"
