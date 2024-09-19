@@ -128,7 +128,7 @@ if __name__ == "__main__":
             # `self.config.learner_config_dict['regularizer_coeff']`
             learner_config_dict={"regularizer_coeff": args.regularizer_coeff},
             # Some settings to make this example learn better.
-            num_sgd_iter=6,
+            num_epochs=6,
             vf_loss_coeff=0.01,
             # The learning rate, settable through the command line `--lr` arg.
             lr=args.lr,

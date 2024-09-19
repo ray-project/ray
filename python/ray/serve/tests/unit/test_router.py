@@ -2,7 +2,7 @@ import asyncio
 import random
 import sys
 from collections import defaultdict
-from typing import Dict, List, Optional, Set, Tuple, Union
+from typing import Callable, Dict, List, Optional, Set, Tuple
 from unittest.mock import Mock, patch
 
 import pytest
@@ -20,6 +20,7 @@ from ray.serve._private.common import (
 )
 from ray.serve._private.config import DeploymentConfig
 from ray.serve._private.constants import RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE
+from ray.serve._private.replica_result import ReplicaResult
 from ray.serve._private.replica_scheduler import (
     PendingRequest,
     ReplicaScheduler,
@@ -28,9 +29,33 @@ from ray.serve._private.replica_scheduler import (
 from ray.serve._private.replica_scheduler.pow_2_scheduler import ReplicaQueueLengthCache
 from ray.serve._private.router import QUEUED_REQUESTS_KEY, Router, RouterMetricsManager
 from ray.serve._private.test_utils import FakeCounter, FakeGauge, MockTimer
-from ray.serve._private.utils import FakeObjectRef, FakeObjectRefGen, get_random_string
+from ray.serve._private.utils import get_random_string
 from ray.serve.config import AutoscalingConfig
 from ray.serve.exceptions import BackPressureError
+
+
+class FakeReplicaResult(ReplicaResult):
+    def __init__(self, replica_id, is_generator_object: bool):
+        self._replica_id = replica_id
+        self._is_generator_object = is_generator_object
+
+    def get(self, timeout_s: Optional[float]):
+        raise NotImplementedError
+
+    async def get_async(self):
+        raise NotImplementedError
+
+    def __next__(self):
+        raise NotImplementedError
+
+    async def __anext__(self):
+        raise NotImplementedError
+
+    def add_callback(self, callback: Callable):
+        pass
+
+    def cancel(self):
+        raise NotImplementedError
 
 
 class FakeReplica(ReplicaWrapper):
@@ -55,21 +80,18 @@ class FakeReplica(ReplicaWrapper):
     def is_cross_language(self) -> bool:
         return self._is_cross_language
 
-    def send_request(
-        self, pr: PendingRequest
-    ) -> Union[FakeObjectRef, FakeObjectRefGen]:
-        obj_ref_or_gen = None
-        if pr.metadata.is_streaming:
-            obj_ref_or_gen = FakeObjectRefGen(self._replica_id)
-        else:
-            obj_ref_or_gen = FakeObjectRef(self._replica_id)
+    def get_queue_len(self, *, deadline_s: float) -> int:
+        raise NotImplementedError
 
-        return obj_ref_or_gen
+    def send_request(self, pr: PendingRequest) -> FakeReplicaResult:
+        if pr.metadata.is_streaming:
+            return FakeReplicaResult(self._replica_id, is_generator_object=True)
+        else:
+            return FakeReplicaResult(self._replica_id, is_generator_object=False)
 
     async def send_request_with_rejection(
-        self,
-        pr: PendingRequest,
-    ) -> Tuple[Optional[FakeObjectRefGen], ReplicaQueueLengthInfo]:
+        self, pr: PendingRequest
+    ) -> Tuple[Optional[FakeReplicaResult], ReplicaQueueLengthInfo]:
         if self._error:
             raise self._error
 
@@ -78,7 +100,10 @@ class FakeReplica(ReplicaWrapper):
             self._queue_len_info is not None
         ), "Must set queue_len_info to use `send_request_with_rejection`."
 
-        return FakeObjectRefGen(self._replica_id), self._queue_len_info
+        return (
+            FakeReplicaResult(self._replica_id, is_generator_object=True),
+            self._queue_len_info,
+        )
 
 
 class FakeReplicaScheduler(ReplicaScheduler):
@@ -89,6 +114,9 @@ class FakeReplicaScheduler(ReplicaScheduler):
         self._replica_to_return_on_retry: Optional[FakeReplica] = None
         self._replica_queue_len_cache = ReplicaQueueLengthCache()
         self._dropped_replicas: Set[ReplicaID] = set()
+
+    def create_replica_wrapper(self, replica_info: RunningReplicaInfo):
+        return FakeReplica(replica_info)
 
     @property
     def replica_queue_len_cache(self) -> ReplicaQueueLengthCache:
@@ -210,12 +238,13 @@ class TestAssignRequest:
             endpoint="",
             is_streaming=is_streaming,
         )
-        obj_ref = await router.assign_request(request_metadata)
+        replica_result = await router.assign_request(request_metadata)
         if is_streaming:
-            assert isinstance(obj_ref, FakeObjectRefGen)
+            assert replica_result._is_generator_object
+            assert replica_result._replica_id == r1_id
         else:
-            assert isinstance(obj_ref, FakeObjectRef)
-        assert obj_ref.replica_id == r1_id
+            assert not replica_result._is_generator_object
+            assert replica_result._replica_id == r1_id
 
     @pytest.mark.parametrize(
         "setup_router",
@@ -254,9 +283,9 @@ class TestAssignRequest:
             endpoint="",
             is_streaming=is_streaming,
         )
-        obj_ref_gen = await router.assign_request(request_metadata)
-        assert isinstance(obj_ref_gen, FakeObjectRefGen)
-        assert obj_ref_gen.replica_id == r1_id
+        replica_result = await router.assign_request(request_metadata)
+        assert replica_result._is_generator_object
+        assert replica_result._replica_id == r1_id
 
         if router._enable_queue_len_cache:
             assert fake_replica_scheduler.replica_queue_len_cache.get(r1_id) == 10
@@ -309,9 +338,9 @@ class TestAssignRequest:
             endpoint="",
             is_streaming=is_streaming,
         )
-        obj_ref = await router.assign_request(request_metadata)
-        assert isinstance(obj_ref, FakeObjectRefGen)
-        assert obj_ref.replica_id == r2_id
+        replica_result = await router.assign_request(request_metadata)
+        assert replica_result._is_generator_object
+        assert replica_result._replica_id == r2_id
 
         if router._enable_queue_len_cache:
             assert fake_replica_scheduler.replica_queue_len_cache.get(r1_id) == 10
@@ -338,9 +367,9 @@ class TestAssignRequest:
             internal_request_id="test-internal-request-1",
             endpoint="",
         )
-        obj_ref = await router.assign_request(request_metadata)
-        assert isinstance(obj_ref, FakeObjectRef)
-        assert obj_ref.replica_id == r1_id
+        replica_result = await router.assign_request(request_metadata)
+        assert not replica_result._is_generator_object
+        assert replica_result._replica_id == r1_id
 
     async def test_max_queued_requests_no_limit(
         self, setup_router: Tuple[Router, FakeReplicaScheduler]
@@ -374,8 +403,9 @@ class TestAssignRequest:
         fake_replica_scheduler.unblock_requests(100)
         assert all(
             [
-                isinstance(obj_ref, FakeObjectRef) and obj_ref.replica_id == r1_id
-                for obj_ref in await asyncio.gather(*assign_request_tasks)
+                not replica_result._is_generator_object
+                and replica_result._replica_id == r1_id
+                for replica_result in await asyncio.gather(*assign_request_tasks)
             ]
         )
 
@@ -416,9 +446,9 @@ class TestAssignRequest:
         fake_replica_scheduler.unblock_requests(1)
         done, pending = await asyncio.wait(assign_request_tasks, timeout=0.01)
         assert len(done) == 1
-        obj_ref = await done.pop()
-        assert isinstance(obj_ref, FakeObjectRef)
-        assert obj_ref.replica_id == r1_id
+        replica_result = await done.pop()
+        assert not replica_result._is_generator_object
+        assert replica_result._replica_id == r1_id
 
         # One more task should be allowed to be queued.
         assign_request_tasks = list(pending) + [
@@ -432,8 +462,9 @@ class TestAssignRequest:
         fake_replica_scheduler.unblock_requests(5)
         assert all(
             [
-                isinstance(obj_ref, FakeObjectRef) and obj_ref.replica_id == r1_id
-                for obj_ref in await asyncio.gather(*assign_request_tasks)
+                not replica_result._is_generator_object
+                and replica_result._replica_id == r1_id
+                for replica_result in await asyncio.gather(*assign_request_tasks)
             ]
         )
 
@@ -503,8 +534,9 @@ class TestAssignRequest:
         assert len(pending) == 5
         assert all(
             [
-                isinstance(obj_ref, FakeObjectRef) and obj_ref.replica_id == r1_id
-                for obj_ref in await asyncio.gather(*done)
+                not replica_result._is_generator_object
+                and replica_result._replica_id == r1_id
+                for replica_result in await asyncio.gather(*done)
             ]
         )
         assign_request_tasks = list(pending)
@@ -519,8 +551,9 @@ class TestAssignRequest:
         fake_replica_scheduler.unblock_requests(5)
         assert all(
             [
-                isinstance(obj_ref, FakeObjectRef) and obj_ref.replica_id == r1_id
-                for obj_ref in await asyncio.gather(*assign_request_tasks)
+                not replica_result._is_generator_object
+                and replica_result._replica_id == r1_id
+                for replica_result in await asyncio.gather(*assign_request_tasks)
             ]
         )
 
@@ -539,15 +572,22 @@ class TestAssignRequest:
     ):
         router, fake_replica_scheduler = setup_router
         d_id = DeploymentID(name="test")
-        r_id = ReplicaID(unique_id="r1", deployment_id=d_id)
+        r1_id = ReplicaID(unique_id="r1", deployment_id=d_id)
+        r2_id = ReplicaID(unique_id="r2", deployment_id=d_id)
 
         fake_replica_scheduler.set_replica_to_return(
-            FakeReplica(r_id, error=ActorDiedError())
+            FakeReplica(r1_id, error=ActorDiedError())
         )
-        with pytest.raises(ActorDiedError):
-            await router.assign_request(dummy_request_metadata())
-
-        assert r_id in fake_replica_scheduler.dropped_replicas
+        fake_replica_scheduler.set_replica_to_return_on_retry(
+            FakeReplica(
+                r2_id,
+                queue_len_info=ReplicaQueueLengthInfo(
+                    accepted=True, num_ongoing_requests=5
+                ),
+            )
+        )
+        await router.assign_request(dummy_request_metadata())
+        assert r1_id in fake_replica_scheduler.dropped_replicas
 
     @pytest.mark.parametrize(
         "setup_router",
@@ -577,8 +617,8 @@ class TestAssignRequest:
                 ),
             )
         )
-        fake_obj_ref = await router.assign_request(dummy_request_metadata())
-        assert fake_obj_ref.replica_id == r1_id
+        replica_result = await router.assign_request(dummy_request_metadata())
+        assert replica_result._replica_id == r1_id
         # Cache should have R1:5
         assert fake_replica_scheduler.replica_queue_len_cache.get(r1_id) == 5
         assert fake_replica_scheduler.replica_queue_len_cache.get(r2_id) is None
@@ -592,8 +632,8 @@ class TestAssignRequest:
                 ),
             )
         )
-        fake_obj_ref = await router.assign_request(dummy_request_metadata())
-        assert fake_obj_ref.replica_id == r2_id
+        replica_result = await router.assign_request(dummy_request_metadata())
+        assert replica_result._replica_id == r2_id
         # Cache should have R1:5, R2:10
         assert fake_replica_scheduler.replica_queue_len_cache.get(r1_id) == 5
         assert fake_replica_scheduler.replica_queue_len_cache.get(r2_id) == 10
@@ -606,17 +646,25 @@ class TestAssignRequest:
                 error=ActorUnavailableError(error_message="unavailable", actor_id=None),
             )
         )
-        with pytest.raises(ActorUnavailableError):
-            await router.assign_request(dummy_request_metadata())
-        # R1 should be REMOVED from cache, cache should now be R2:10
+        fake_replica_scheduler.set_replica_to_return_on_retry(
+            FakeReplica(
+                r2_id,
+                queue_len_info=ReplicaQueueLengthInfo(
+                    accepted=True, num_ongoing_requests=15
+                ),
+            )
+        )
+        await router.assign_request(dummy_request_metadata())
+        # R1 should be REMOVED from cache, cache should now be R2:15
         assert fake_replica_scheduler.replica_queue_len_cache.get(r1_id) is None
-        assert fake_replica_scheduler.replica_queue_len_cache.get(r2_id) == 10
+        assert fake_replica_scheduler.replica_queue_len_cache.get(r2_id) == 15
 
 
 def running_replica_info(replica_id: ReplicaID) -> RunningReplicaInfo:
     return RunningReplicaInfo(
         replica_id=replica_id,
         node_id="node_id",
+        node_ip="node_ip",
         availability_zone="some-az",
         actor_handle=Mock(),
         max_ongoing_requests=1,
@@ -727,9 +775,9 @@ class TestRouterMetricsManager:
 
         # Requests at r1 and r2 drop to 0
         for _ in range(1):
-            metrics_manager.dec_num_running_requests_for_replica(r1, None)
+            metrics_manager.dec_num_running_requests_for_replica(r1)
         for _ in range(2):
-            metrics_manager.dec_num_running_requests_for_replica(r2, None)
+            metrics_manager.dec_num_running_requests_for_replica(r2)
         assert metrics_manager.num_requests_sent_to_replicas[r1] == 0
         assert metrics_manager.num_requests_sent_to_replicas[r2] == 0
 

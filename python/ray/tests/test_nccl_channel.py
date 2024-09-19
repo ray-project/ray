@@ -43,6 +43,7 @@ class Worker:
         self.chan = typ.create_channel(
             ray.get_runtime_context().current_actor,
             reader_and_node_list,
+            False,
             _torch_tensor_allocator=lambda shape, dtype: torch.zeros(
                 shape, dtype=dtype
             ),

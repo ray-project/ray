@@ -541,10 +541,8 @@ TEST_F(ClusterTaskManagerTest, DispatchQueueNonBlockingTest) {
   pool_.TriggerCallbacks();
 
   // Push a worker that can only run task A.
-  const WorkerCacheKey env_A = {serialized_runtime_env_A, false, false, false};
-  const int runtime_env_hash_A = env_A.IntHash();
-  std::shared_ptr<MockWorker> worker_A =
-      std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234, runtime_env_hash_A);
+  std::shared_ptr<MockWorker> worker_A = std::make_shared<MockWorker>(
+      WorkerID::FromRandom(), 1234, CalculateRuntimeEnvHash(serialized_runtime_env_A));
   pool_.PushWorker(std::static_pointer_cast<WorkerInterface>(worker_A));
   pool_.TriggerCallbacks();
 

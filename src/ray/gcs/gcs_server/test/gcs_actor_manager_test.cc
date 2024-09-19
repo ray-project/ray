@@ -12,9 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include <chrono>
 #include <memory>
-#include <thread>
 
 // clang-format off
 #include "gtest/gtest.h"
@@ -26,7 +24,6 @@
 #include "mock/ray/gcs/gcs_server/gcs_kv_manager.h"
 #include "mock/ray/gcs/gcs_server/gcs_node_manager.h"
 #include "mock/ray/pubsub/publisher.h"
-#include "ray/util/event.h"
 // clang-format on
 
 namespace ray {
@@ -75,9 +72,9 @@ class MockWorkerClient : public rpc::CoreWorkerClientInterface {
  public:
   MockWorkerClient(instrumented_io_context &io_service) : io_service_(io_service) {}
 
-  void WaitForActorOutOfScope(
-      const rpc::WaitForActorOutOfScopeRequest &request,
-      const rpc::ClientCallback<rpc::WaitForActorOutOfScopeReply> &callback) override {
+  void WaitForActorRefDeleted(
+      const rpc::WaitForActorRefDeletedRequest &request,
+      const rpc::ClientCallback<rpc::WaitForActorRefDeletedReply> &callback) override {
     callbacks_.push_back(callback);
   }
 
@@ -93,12 +90,12 @@ class MockWorkerClient : public rpc::CoreWorkerClientInterface {
 
     // The created_actors_ of gcs actor manager will be modified in io_service thread.
     // In order to avoid multithreading reading and writing created_actors_, we also
-    // send the `WaitForActorOutOfScope` callback operation to io_service thread.
+    // send the `WaitForActorRefDeleted` callback operation to io_service thread.
     std::promise<bool> promise;
     io_service_.post(
         [this, status, &promise]() {
           auto callback = callbacks_.front();
-          auto reply = rpc::WaitForActorOutOfScopeReply();
+          auto reply = rpc::WaitForActorRefDeletedReply();
           callback(status, std::move(reply));
           promise.set_value(false);
         },
@@ -109,7 +106,7 @@ class MockWorkerClient : public rpc::CoreWorkerClientInterface {
     return true;
   }
 
-  std::list<rpc::ClientCallback<rpc::WaitForActorOutOfScopeReply>> callbacks_;
+  std::list<rpc::ClientCallback<rpc::WaitForActorRefDeletedReply>> callbacks_;
   std::vector<ActorID> killed_actors_;
   instrumented_io_context &io_service_;
 };
@@ -121,8 +118,7 @@ class GcsActorManagerTest : public ::testing::Test {
     RayConfig::instance().initialize(
         R"(
 {
-  "maximum_gcs_destroyed_actor_cached_count": 10,
-  "enable_export_api_write": true
+  "maximum_gcs_destroyed_actor_cached_count": 10
 }
   )");
     std::promise<bool> promise;
@@ -164,13 +160,11 @@ class GcsActorManagerTest : public ::testing::Test {
       auto job_id = JobID::FromInt(i);
       job_namespace_table_[job_id] = "";
     }
-    log_dir_ = "event_123";
   }
 
   virtual ~GcsActorManagerTest() {
     io_service_.stop();
     thread_io_service_->join();
-    std::filesystem::remove_all(log_dir_.c_str());
   }
 
   void WaitActorCreated(const ActorID &actor_id) {
@@ -292,13 +286,9 @@ class GcsActorManagerTest : public ::testing::Test {
   std::unique_ptr<gcs::GcsFunctionManager> function_manager_;
   std::unique_ptr<gcs::MockInternalKVInterface> kv_;
   PeriodicalRunner periodical_runner_;
-  std::string log_dir_;
 };
 
 TEST_F(GcsActorManagerTest, TestBasic) {
-  std::vector<SourceTypeVariant> source_types = {
-      rpc::ExportEvent_SourceType::ExportEvent_SourceType_EXPORT_ACTOR};
-  RayEventInit(source_types, absl::flat_hash_map<std::string, std::string>(), log_dir_);
   auto job_id = JobID::FromInt(1);
   auto registered_actor = RegisterActor(job_id);
   rpc::CreateActorRequest create_actor_request;
@@ -333,37 +323,6 @@ TEST_F(GcsActorManagerTest, TestBasic) {
   ASSERT_EQ(actor->GetState(), rpc::ActorTableData::DEAD);
   RAY_CHECK_EQ(gcs_actor_manager_->CountFor(rpc::ActorTableData::ALIVE, ""), 0);
   RAY_CHECK_EQ(gcs_actor_manager_->CountFor(rpc::ActorTableData::DEAD, ""), 1);
-
-  // Check correct export events are written for each of the 4 state transitions
-  int num_retry = 5;
-  int num_export_events = 4;
-  std::vector<std::string> expected_states = {
-      "DEPENDENCIES_UNREADY", "PENDING_CREATION", "ALIVE", "DEAD"};
-  std::vector<std::string> vc;
-  for (int i = 0; i < num_retry; i++) {
-    Mocker::ReadContentFromFile(vc, log_dir_ + "/events/event_EXPORT_ACTOR.log");
-    if ((int)vc.size() == num_export_events) {
-      for (int event_idx = 0; event_idx < num_export_events; event_idx++) {
-        json export_event_as_json = json::parse(vc[event_idx]);
-        json event_data = export_event_as_json["event_data"].get<json>();
-        ASSERT_EQ(event_data["state"], expected_states[event_idx]);
-        if (event_idx == num_export_events - 1) {
-          // Verify death cause for last actor DEAD event
-          ASSERT_EQ(
-              event_data["death_cause"]["actor_died_error_context"]["error_message"],
-              "The actor is dead because all references to the actor were removed.");
-        }
-      }
-      return;
-    } else {
-      // Sleep and retry
-      std::this_thread::sleep_for(std::chrono::seconds(1));
-      vc.clear();
-    }
-  }
-  Mocker::ReadContentFromFile(vc, log_dir_ + "/events/event_EXPORT_ACTOR.log");
-  ASSERT_TRUE(false) << "Export API only wrote " << (int)vc.size()
-                     << " lines, but expecting 4.\n";
 }
 
 TEST_F(GcsActorManagerTest, TestDeadCount) {
@@ -945,7 +904,7 @@ TEST_F(GcsActorManagerTest, TestDestroyActorBeforeActorCreationCompletes) {
   auto actor = mock_actor_scheduler_->actors.back();
   mock_actor_scheduler_->actors.clear();
 
-  // Simulate the reply of WaitForActorOutOfScope request to trigger actor destruction.
+  // Simulate the reply of WaitForActorRefDeleted request to trigger actor destruction.
   ASSERT_TRUE(worker_client_->Reply());
 
   // Check that the actor is in state `DEAD`.

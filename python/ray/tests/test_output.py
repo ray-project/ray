@@ -101,16 +101,18 @@ x = []
 
 for _ in range(10):
     x.append(ray.put(bytes(100 * 1024 * 1024)))
-"""
 
-    proc = run_string_as_driver_nonblocking(script, env={"RAY_verbose_spill_logs": "1"})
-    out_str = proc.stdout.read().decode("ascii") + proc.stderr.read().decode("ascii")
-    print(out_str)
+"""
+    stdout_str, stderr_str = run_string_as_driver_stdout_stderr(
+        script, env={"RAY_verbose_spill_logs": "1"}
+    )
+    out_str = stdout_str + stderr_str
     assert "Spilled " in out_str
 
-    proc = run_string_as_driver_nonblocking(script, env={"RAY_verbose_spill_logs": "0"})
-    out_str = proc.stdout.read().decode("ascii") + proc.stderr.read().decode("ascii")
-    print(out_str)
+    stdout_str, stderr_str = run_string_as_driver_stdout_stderr(
+        script, env={"RAY_verbose_spill_logs": "0"}
+    )
+    out_str = stdout_str + stderr_str
     assert "Spilled " not in out_str
 
 

@@ -129,8 +129,6 @@ std::string LogEventReporter::ExportEventToString(const rpc::ExportEvent &export
   j["source_type"] = ExportEvent_SourceType_Name(export_event.source_type());
   std::string event_data_as_string;
   google::protobuf::util::JsonPrintOptions options;
-  // Required so enum with value 0 is not omitted
-  options.always_print_primitive_fields = true;
   options.preserve_proto_field_names = true;
   // Required so enum with value 0 is not omitted
   options.always_print_primitive_fields = true;
@@ -145,6 +143,10 @@ std::string LogEventReporter::ExportEventToString(const rpc::ExportEvent &export
   } else if (export_event.has_actor_event_data()) {
     RAY_CHECK(google::protobuf::util::MessageToJsonString(
                   export_event.actor_event_data(), &event_data_as_string, options)
+                  .ok());
+  } else if (export_event.has_driver_job_event_data()) {
+    RAY_CHECK(google::protobuf::util::MessageToJsonString(
+                  export_event.driver_job_event_data(), &event_data_as_string, options)
                   .ok());
   } else {
     RAY_LOG(FATAL)
@@ -444,6 +446,13 @@ void RayExportEvent::SendEvent() {
     export_event.mutable_actor_event_data()->CopyFrom(*(*ptr_to_actor_event_data_ptr));
     export_event.set_source_type(
         rpc::ExportEvent_SourceType::ExportEvent_SourceType_EXPORT_ACTOR);
+  } else if (auto ptr_to_driver_job_event_data_ptr =
+                 std::get_if<std::shared_ptr<rpc::ExportDriverJobEventData>>(
+                     &event_data_ptr_)) {
+    export_event.mutable_driver_job_event_data()->CopyFrom(
+        *(*ptr_to_driver_job_event_data_ptr));
+    export_event.set_source_type(
+        rpc::ExportEvent_SourceType::ExportEvent_SourceType_EXPORT_DRIVER_JOB);
   } else {
     // This shouldn't be possible because event_data_ptr_ is typed as ExportEventDataPtr
     RAY_LOG(FATAL) << "Invalid event_data type.";

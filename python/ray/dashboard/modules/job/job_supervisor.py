@@ -12,6 +12,8 @@ from typing import Any, Dict, List, Optional
 import ray
 import ray._private.ray_constants as ray_constants
 from ray._private.gcs_utils import GcsAioClient
+from ray._private.ray_logging.filters import CoreContextFilter
+from ray._private.ray_logging.formatters import JSONFormatter, TextFormatter
 from ray._private.runtime_env.constants import RAY_JOB_CONFIG_JSON_ENV_VAR
 from ray.actor import ActorHandle
 from ray.dashboard.modules.job.common import (
@@ -102,8 +104,17 @@ class JobSupervisor:
             f"jobs/supervisor-{self._job_id}.log",
         )
         os.makedirs(os.path.dirname(supervisor_log_file_name), exist_ok=True)
-        self._logger.addHandler(logging.StreamHandler())
-        self._logger.addHandler(logging.FileHandler(supervisor_log_file_name))
+        self._logger.addFilter(CoreContextFilter())
+        stream_handler = logging.StreamHandler()
+        file_handler = logging.FileHandler(supervisor_log_file_name)
+        formatter = TextFormatter()
+        if ray_constants.env_bool(ray_constants.RAY_BACKEND_LOG_JSON_ENV_VAR, False):
+            formatter = JSONFormatter()
+        stream_handler.setFormatter(formatter)
+        file_handler.setFormatter(formatter)
+        self._logger.addHandler(stream_handler)
+        self._logger.addHandler(file_handler)
+        self._logger.propagate = False
 
     def _get_driver_runtime_env(
         self, resources_specified: bool = False
@@ -322,7 +333,7 @@ class JobSupervisor:
             f"{ray.worker.global_worker.node.node_ip_address}:"
             f"{ray.worker.global_worker.node.dashboard_agent_listen_port}"
         )
-        driver_node_id = ray.worker.global_worker.current_node_id.hex()
+        driver_node_id = ray.get_runtime_context().get_node_id()
 
         await self._job_info_client.put_status(
             self._job_id,
@@ -411,7 +422,7 @@ class JobSupervisor:
                         driver_exit_code=return_code,
                     )
                 else:
-                    log_tail = self._log_client.get_last_n_log_lines(self._job_id)
+                    log_tail = await self._log_client.get_last_n_log_lines(self._job_id)
                     if log_tail is not None and log_tail != "":
                         message = (
                             "Job entrypoint command "

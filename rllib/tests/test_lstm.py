@@ -173,77 +173,6 @@ class TestRNNSequencing(unittest.TestCase):
     def tearDown(self) -> None:
         ray.shutdown()
 
-    def test_simple_optimizer_sequencing(self):
-        ModelCatalog.register_custom_model("rnn", RNNSpyModel)
-        register_env("counter", lambda _: DebugCounterEnv())
-        config = (
-            PPOConfig()
-            .environment("counter")
-            .framework("tf")
-            .env_runners(num_env_runners=0, rollout_fragment_length=10)
-            .training(
-                train_batch_size=10,
-                sgd_minibatch_size=10,
-                num_sgd_iter=1,
-                model={
-                    "custom_model": "rnn",
-                    "max_seq_len": 4,
-                    "vf_share_layers": True,
-                },
-            )
-        )
-        # Force-set simple_optimizer (fully deprecated soon).
-        config.simple_optimizer = True
-        ppo = config.build()
-        ppo.train()
-        ppo.train()
-        ppo.stop()
-
-        batch0 = pickle.loads(
-            ray.experimental.internal_kv._internal_kv_get("rnn_spy_in_0")
-        )
-        self.assertEqual(
-            batch0["sequences"].tolist(),
-            [[[0], [1], [2], [3]], [[4], [5], [6], [7]], [[8], [9], [0], [0]]],
-        )
-        self.assertEqual(batch0[SampleBatch.SEQ_LENS].tolist(), [4, 4, 2])
-        self.assertEqual(batch0["state_in"][0][0].tolist(), [0, 0, 0])
-        self.assertEqual(batch0["state_in"][1][0].tolist(), [0, 0, 0])
-        self.assertGreater(abs(np.sum(batch0["state_in"][0][1])), 0)
-        self.assertGreater(abs(np.sum(batch0["state_in"][1][1])), 0)
-        self.assertTrue(
-            np.allclose(
-                batch0["state_in"][0].tolist()[1:], batch0["state_out"][0].tolist()[:-1]
-            )
-        )
-        self.assertTrue(
-            np.allclose(
-                batch0["state_in"][1].tolist()[1:], batch0["state_out"][1].tolist()[:-1]
-            )
-        )
-
-        batch1 = pickle.loads(
-            ray.experimental.internal_kv._internal_kv_get("rnn_spy_in_1")
-        )
-        self.assertEqual(
-            batch1["sequences"].tolist(),
-            [
-                [[10], [11], [12], [13]],
-                [[14], [0], [0], [0]],
-                [[0], [1], [2], [3]],
-                [[4], [0], [0], [0]],
-            ],
-        )
-        self.assertEqual(batch1[SampleBatch.SEQ_LENS].tolist(), [4, 1, 4, 1])
-        self.assertEqual(batch1["state_in"][0][2].tolist(), [0, 0, 0])
-        self.assertEqual(batch1["state_in"][1][2].tolist(), [0, 0, 0])
-        self.assertGreater(abs(np.sum(batch1["state_in"][0][0])), 0)
-        self.assertGreater(abs(np.sum(batch1["state_in"][1][0])), 0)
-        self.assertGreater(abs(np.sum(batch1["state_in"][0][1])), 0)
-        self.assertGreater(abs(np.sum(batch1["state_in"][1][1])), 0)
-        self.assertGreater(abs(np.sum(batch1["state_in"][0][3])), 0)
-        self.assertGreater(abs(np.sum(batch1["state_in"][1][3])), 0)
-
     def test_minibatch_sequencing(self):
         ModelCatalog.register_custom_model("rnn", RNNSpyModel)
         register_env("counter", lambda _: DebugCounterEnv())
@@ -254,14 +183,13 @@ class TestRNNSequencing(unittest.TestCase):
             .env_runners(num_env_runners=0, rollout_fragment_length=20)
             .training(
                 train_batch_size=20,
-                sgd_minibatch_size=10,
-                num_sgd_iter=1,
+                minibatch_size=10,
+                num_epochs=1,
                 model={
                     "custom_model": "rnn",
                     "max_seq_len": 4,
                     "vf_share_layers": True,
                 },
-                shuffle_sequences=False,  # for deterministic testing
             )
         )
         ppo = config.build()

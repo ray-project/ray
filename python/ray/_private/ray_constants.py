@@ -55,6 +55,8 @@ def env_set_by_user(key):
 # Whether event logging to driver is enabled. Set to 0 to disable.
 AUTOSCALER_EVENTS = env_integer("RAY_SCHEDULER_EVENTS", 1)
 
+RAY_LOG_TO_DRIVER = env_bool("RAY_LOG_TO_DRIVER", True)
+
 # Filter level under which events will be filtered out, i.e. not printing to driver
 RAY_LOG_TO_DRIVER_EVENT_LEVEL = os.environ.get("RAY_LOG_TO_DRIVER_EVENT_LEVEL", "INFO")
 
@@ -498,11 +500,12 @@ RAY_DEFAULT_LABEL_KEYS_PREFIX = "ray.io/"
 
 RAY_TPU_MAX_CONCURRENT_CONNECTIONS_ENV_VAR = "RAY_TPU_MAX_CONCURRENT_ACTIVE_CONNECTIONS"
 
-
 RAY_NODE_IP_FILENAME = "node_ip_address.json"
 
 PLACEMENT_GROUP_BUNDLE_RESOURCE_NAME = "bundle"
 
 RAY_LOGGING_CONFIG_ENCODING = os.environ.get("RAY_LOGGING_CONFIG_ENCODING")
+
+RAY_BACKEND_LOG_JSON_ENV_VAR = "RAY_BACKEND_LOG_JSON"
 
 RAY_ENABLE_EXPORT_API_WRITE = env_bool("RAY_enable_export_api_write", False)

@@ -16,7 +16,7 @@ from ray.rllib.core.columns import Columns
 from ray.rllib.core.rl_module.multi_rl_module import MultiRLModuleSpec
 from ray.rllib.env import INPUT_ENV_SPACES
 from ray.rllib.env.env_context import EnvContext
-from ray.rllib.env.env_runner import EnvRunner
+from ray.rllib.env.env_runner import EnvRunner, ENV_STEP_FAILURE
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
 from ray.rllib.env.multi_agent_episode import MultiAgentEpisode
 from ray.rllib.env.utils import _gym_env_creator
@@ -230,9 +230,10 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
             # leak).
             self._ongoing_episodes_for_metrics.clear()
 
-            # Reset the environment.
+            # Try resetting the environment.
             # TODO (simon): Check, if we need here the seed from the config.
-            obs, infos = self.env.reset()
+            obs, infos = self._try_env_reset()
+
             self._cached_to_module = None
 
             # Call `on_episode_start()` callbacks.
@@ -310,12 +311,21 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
             # are the ones stored permanently in the episode objects.
             actions = to_env.pop(Columns.ACTIONS)
             actions_for_env = to_env.pop(Columns.ACTIONS_FOR_ENV, actions)
-            # Step the environment.
+
+            # Try stepping the environment.
             # TODO (sven): [0] = actions is vectorized, but env is NOT a vector Env.
             #  Support vectorized multi-agent envs.
-            obs, rewards, terminateds, truncateds, infos = self.env.step(
-                actions_for_env[0]
-            )
+            results = self._try_env_step(actions_for_env[0])
+            # If any failure occurs during stepping -> Throw away all data collected
+            # thus far and restart sampling procedure.
+            if results == ENV_STEP_FAILURE:
+                return self._sample_timesteps(
+                    num_timesteps=num_timesteps,
+                    explore=explore,
+                    random_actions=random_actions,
+                    force_reset=True,
+                )
+            obs, rewards, terminateds, truncateds, infos = results
             ts += self._increase_sampled_metrics(self.num_envs, obs, self._episode)
 
             # TODO (sven): This simple approach to re-map `to_env` from a
@@ -376,7 +386,7 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
                 self._make_on_episode_callback("on_episode_created")
 
                 # Reset the environment.
-                obs, infos = self.env.reset()
+                obs, infos = self._try_env_reset()
                 # Add initial observations and infos.
                 self._episode.add_env_reset(observations=obs, infos=infos)
 
@@ -442,9 +452,9 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
             "agent_to_module_mapping_fn": self.config.policy_mapping_fn,
         }
 
-        # Reset the environment.
+        # Try resetting the environment.
         # TODO (simon): Check, if we need here the seed from the config.
-        obs, infos = self.env.reset()
+        obs, infos = self._try_env_reset()
         # Set initial obs and infos in the episodes.
         _episode.add_env_reset(observations=obs, infos=infos)
         self._make_on_episode_callback("on_episode_start", _episode)
@@ -507,12 +517,21 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
             # are the ones stored permanently in the episode objects.
             actions = to_env.pop(Columns.ACTIONS)
             actions_for_env = to_env.pop(Columns.ACTIONS_FOR_ENV, actions)
-            # Step the environment.
+
+            # Try stepping the environment.
             # TODO (sven): [0] = actions is vectorized, but env is NOT a vector Env.
             #  Support vectorized multi-agent envs.
-            obs, rewards, terminateds, truncateds, infos = self.env.step(
-                actions_for_env[0]
-            )
+            results = self._try_env_step(actions_for_env[0])
+            # If any failure occurs during stepping -> Throw away all data collected
+            # thus far and restart sampling procedure.
+            if results == ENV_STEP_FAILURE:
+                return self._sample_episodes(
+                    num_episodes=num_episodes,
+                    explore=explore,
+                    random_actions=random_actions,
+                )
+            obs, rewards, terminateds, truncateds, infos = results
+
             ts += self._increase_sampled_metrics(self.num_envs, obs, _episode)
 
             # TODO (sven): This simple approach to re-map `to_env` from a
@@ -587,8 +606,8 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
                 _episode = self._new_episode()
                 self._make_on_episode_callback("on_episode_created", _episode)
 
-                # Reset the environment.
-                obs, infos = self.env.reset()
+                # Try resetting the environment.
+                obs, infos = self._try_env_reset()
                 # Add initial observations and infos.
                 _episode.add_env_reset(observations=obs, infos=infos)
 
@@ -786,13 +805,8 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
         # Make sure, we have built our gym.vector.Env and RLModule properly.
         assert self.env and self.module
 
+    @override(EnvRunner)
     def make_env(self):
-        """Creates a MultiAgentEnv (is-a gymnasium env).
-
-        Note that users can change the EnvRunner's config (e.g. change
-        `self.config.env_config`) and then call this method to create new environments
-        with the updated configuration.
-        """
         # If an env already exists, try closing it first (to allow it to properly
         # cleanup).
         if self.env is not None:
@@ -803,6 +817,7 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
                     "Tried closing the existing env (multi-agent), but failed with "
                     f"error: {e.args[0]}"
                 )
+            del self.env
 
         env_ctx = self.config.env_config
         if not isinstance(env_ctx, EnvContext):
@@ -813,16 +828,22 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
                 remote=self.config.remote_worker_envs,
             )
 
+        # No env provided -> Error.
+        if not self.config.env:
+            raise ValueError(
+                "`config.env` is not provided! You should provide a valid environment "
+                "to your config through `config.environment([env descriptor e.g. "
+                "'CartPole-v1'])`."
+            )
         # Register env for the local context.
         # Note, `gym.register` has to be called on each worker.
-        if isinstance(self.config.env, str) and _global_registry.contains(
+        elif isinstance(self.config.env, str) and _global_registry.contains(
             ENV_CREATOR, self.config.env
         ):
             entry_point = partial(
                 _global_registry.get(ENV_CREATOR, self.config.env),
                 env_ctx,
             )
-
         else:
             entry_point = partial(
                 _gym_env_creator,
