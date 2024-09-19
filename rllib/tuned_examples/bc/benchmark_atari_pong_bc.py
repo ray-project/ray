@@ -21,6 +21,8 @@ from PIL import Image
 import tree
 from typing import Optional
 
+import pyarrow.fs
+
 from ray.data import TFXReadOptions
 from ray.rllib.algorithms.bc import BCConfig
 from ray.rllib.connectors.connector_v2 import ConnectorV2
@@ -143,6 +145,8 @@ args = parser.parse_args()
 # We only use the Atari game `Pong` here. Users can choose other Atari
 # games and set here the name. This will download `TfRecords` dataset from GCS.
 game = "Pong"
+
+filesystem = pyarrow.fs.GcsFileSystem(anonymous=True)
 # There are many run numbers, we choose the first one for demonstration. This
 # can be chosen by users. To use all data use a list of file paths (see
 # `num_shards`) and its usage further below.
@@ -196,7 +200,7 @@ config = (
     # configured. The read method needs at least as many blocks
     # as remote learners.
     .offline_data(
-        input_=["gs://rl_unplugged/atari/Pong"],  # destination_file_name,
+        input_=["rl_unplugged/atari/Pong"],  # destination_file_name,
         input_read_method="read_tfrecords",
         input_read_method_kwargs={
             # Note, `TFRecords` datasets in `rl_unplugged` are GZIP
@@ -210,6 +214,7 @@ config = (
                 # batch_size=2000,
             ),
         },
+        input_filesystem=filesystem,
         # `rl_unplugged`'s data schema is different from the one used
         # internally in `RLlib`. Define the schema here so it can be used
         # when transforming column data to episodes.

@@ -1810,7 +1810,7 @@ py_test(
 py_test(
     name = "test_offline_data",
     tags = ["team:rllib", "offline"],
-    size = "small",
+    size = "medium",
     srcs = ["offline/tests/test_offline_data.py"],
     data = [
         "tests/data/cartpole/cartpole-v1_large",
