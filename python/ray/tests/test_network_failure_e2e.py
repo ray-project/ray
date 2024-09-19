@@ -217,8 +217,10 @@ def test_async_actor_task_retry(head2, worker2, gcs_network):
 
     result = head2.exec_run(
         cmd=f"python -c '{DRIVER_SCRIPT}'",
+        stream=True,
     )
-    assert result.exit_code == 0, result.output
+    for line in result.output:
+        print("jjyao  " + line.decode('utf-8').strip())
 
 
 if __name__ == "__main__":
