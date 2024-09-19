@@ -125,7 +125,7 @@ def test_network_task_submit(head, worker, gcs_network):
     wait_for_condition(lambda: check_task_pending(2))
 
 
-head = gen_head_node(
+head2 = gen_head_node(
     {
         "RAY_grpc_keepalive_time_ms": "1000",
         "RAY_grpc_client_keepalive_time_ms": "1000",
@@ -137,7 +137,7 @@ head = gen_head_node(
     }
 )
 
-worker = gen_worker_node(
+worker2 = gen_worker_node(
     {
         "RAY_grpc_keepalive_time_ms": "1000",
         "RAY_grpc_client_keepalive_time_ms": "1000",
@@ -196,18 +196,18 @@ assert ray.get(async_actor.run.remote()) == "ok"
 """
 
 
-def test_async_actor_task_retry(head, worker, gcs_network):
+def test_async_actor_task_retry(head2, worker2, gcs_network):
     network = gcs_network
 
     def inject_transient_network_failure():
         try:
             sleep(10)
-            worker_ip = worker._container.attrs["NetworkSettings"]["Networks"][
+            worker_ip = worker2._container.attrs["NetworkSettings"]["Networks"][
                 network.name
             ]["IPAddress"]
             print(f"jjyao worker ip {worker_ip}")
-            network.disconnect(worker.name)
-            network.connect(worker.name, ipv4_address=worker_ip)
+            network.disconnect(worker2.name)
+            network.connect(worker2.name, ipv4_address=worker_ip)
             print("jjyao injection done")
         except Exception as e:
             print(f"jjyao injection failed {e}")
@@ -215,7 +215,7 @@ def test_async_actor_task_retry(head, worker, gcs_network):
     t = threading.Thread(target=inject_transient_network_failure, daemon=True)
     t.start()
 
-    result = head.exec_run(
+    result = head2.exec_run(
         cmd=f"python -c '{DRIVER_SCRIPT}'",
     )
     assert result.exit_code == 0, result.output
