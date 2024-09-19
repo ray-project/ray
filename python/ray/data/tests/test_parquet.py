@@ -25,6 +25,7 @@ from ray.data.block import BlockAccessor
 from ray.data.context import DataContext
 from ray.data.datasource import DefaultFileMetadataProvider, ParquetMetadataProvider
 from ray.data.datasource.parquet_meta_provider import PARALLELIZE_META_FETCH_THRESHOLD
+from ray.data.datasource.partitioning import Partitioning, PathPartitionFilter
 from ray.data.datasource.path_util import _unwrap_protocol
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.mock_http_server import *  # noqa
@@ -480,36 +481,24 @@ def test_parquet_read_partitioned(ray_start_regular_shared, fs, data_path):
     assert ds.schema() is not None
     input_files = ds.input_files()
     assert len(input_files) == 2, input_files
-    assert str(ds) == (
-        "Dataset(\n"
-        "   num_rows=6,\n"
-        "   schema={two: string, "
-        "one: dictionary<values=int32, indices=int32, ordered=0>}\n"
-        ")"
-    ), ds
-    assert repr(ds) == (
-        "Dataset(\n"
-        "   num_rows=6,\n"
-        "   schema={two: string, "
-        "one: dictionary<values=int32, indices=int32, ordered=0>}\n"
-        ")"
-    ), ds
+    assert str(ds) == "Dataset(num_rows=6, schema={two: string, one: string})", ds
+    assert repr(ds) == "Dataset(num_rows=6, schema={two: string, one: string})", ds
 
     # Forces a data read.
     values = [[s["one"], s["two"]] for s in ds.take()]
     assert sorted(values) == [
-        [1, "a"],
-        [1, "b"],
-        [1, "c"],
-        [3, "e"],
-        [3, "f"],
-        [3, "g"],
+        ["1", "a"],
+        ["1", "b"],
+        ["1", "c"],
+        ["3", "e"],
+        ["3", "f"],
+        ["3", "g"],
     ]
 
     # Test column selection.
     ds = ray.data.read_parquet(data_path, columns=["one"], filesystem=fs)
     values = [s["one"] for s in ds.take()]
-    assert sorted(values) == [1, 1, 1, 3, 3, 3]
+    assert sorted(values) == ["1", "1", "1", "3", "3", "3"]
 
 
 def test_parquet_read_partitioned_with_filter(ray_start_regular_shared, tmp_path):
@@ -528,7 +517,7 @@ def test_parquet_read_partitioned_with_filter(ray_start_regular_shared, tmp_path
     )
 
     values = [[s["one"], s["two"]] for s in ds.take()]
-    assert sorted(values) == [[1, "a"], [1, "a"]]
+    assert sorted(values) == [["1", "a"], ["1", "a"]]
     assert ds.count() == 2
 
     # 2 partitions, 1 empty partition, 2 block/read tasks, 1 empty block
@@ -538,7 +527,7 @@ def test_parquet_read_partitioned_with_filter(ray_start_regular_shared, tmp_path
     )
 
     values = [[s["one"], s["two"]] for s in ds.take()]
-    assert sorted(values) == [[1, "a"], [1, "a"]]
+    assert sorted(values) == [["1", "a"], ["1", "a"]]
     assert ds.count() == 2
 
 
@@ -575,7 +564,7 @@ def test_parquet_read_partitioned_with_columns(ray_start_regular_shared, fs, dat
         columns=["y", "z"],
         filesystem=fs,
     )
-    assert ds.columns() == ["y", "z"]
+    assert set(ds.columns()) == {"y", "z"}
     values = [[s["y"], s["z"]] for s in ds.take()]
     assert sorted(values) == [
         ["a", 0.1],
@@ -653,11 +642,8 @@ def test_parquet_read_partitioned_explicit(ray_start_regular_shared, tmp_path):
         use_legacy_dataset=False,
     )
 
-    schema = pa.schema([("one", pa.int32()), ("two", pa.string())])
-    partitioning = pa.dataset.partitioning(schema, flavor="hive")
-    ds = ray.data.read_parquet(
-        str(tmp_path), dataset_kwargs=dict(partitioning=partitioning)
-    )
+    partitioning = Partitioning("hive", field_types={"one": int})
+    ds = ray.data.read_parquet(str(tmp_path), partitioning=partitioning)
 
     # Test metadata-only parquet ops.
     assert ds.count() == 6
@@ -667,8 +653,8 @@ def test_parquet_read_partitioned_explicit(ray_start_regular_shared, tmp_path):
     assert ds.schema() is not None
     input_files = ds.input_files()
     assert len(input_files) == 2, input_files
-    assert str(ds) == "Dataset(num_rows=6, schema={two: string, one: int32})", ds
-    assert repr(ds) == "Dataset(num_rows=6, schema={two: string, one: int32})", ds
+    assert str(ds) == "Dataset(num_rows=6, schema={two: string, one: int64})", ds
+    assert repr(ds) == "Dataset(num_rows=6, schema={two: string, one: int64})", ds
 
     # Forces a data read.
     values = [[s["one"], s["two"]] for s in ds.take()]
@@ -718,7 +704,9 @@ def test_parquet_read_with_udf(ray_start_regular_shared, tmp_path):
     ds = ray.data.read_parquet(
         str(tmp_path),
         override_num_blocks=2,
-        filter=(pa.dataset.field("two") == "a"),
+        partition_filter=PathPartitionFilter.of(
+            lambda partitions: partitions["two"] == "a"
+        ),
         _block_udf=_block_udf,
     )
 
@@ -1207,6 +1195,13 @@ def test_invalid_shuffle_arg_raises_error(ray_start_regular_shared, shuffle):
 @pytest.mark.parametrize("shuffle", [None, "files"])
 def test_valid_shuffle_arg_does_not_raise_error(ray_start_regular_shared, shuffle):
     ray.data.read_parquet("example://iris.parquet", shuffle=shuffle)
+
+
+def test_partitioning_in_dataset_kwargs_raises_error(ray_start_regular_shared):
+    with pytest.raises(ValueError):
+        ray.data.read_parquet(
+            "example://iris.parquet", dataset_kwargs=dict(partitioning="hive")
+        )
 
 
 if __name__ == "__main__":

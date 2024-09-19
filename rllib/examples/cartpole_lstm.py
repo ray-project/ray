@@ -67,7 +67,7 @@ if __name__ == "__main__":
     )
 
     if args.run == "PPO":
-        config.training(num_sgd_iter=5, vf_loss_coeff=0.0001, train_batch_size=512)
+        config.training(num_epochs=5, vf_loss_coeff=0.0001, train_batch_size=512)
         config.model["vf_share_layers"] = True
     elif args.run == "IMPALA":
         config.env_runners(num_env_runners=2)
