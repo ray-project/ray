@@ -2,6 +2,7 @@ import logging
 from pathlib import Path
 import ray
 import time
+import types
 
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.core import COMPONENT_RL_MODULE
@@ -158,23 +159,24 @@ class OfflineData:
             if self.materialize_mapped_data:
                 self.data = self.data.materialize()
         # Build an iterator, if necessary.
-        if (
-            not return_iterator or (return_iterator and num_shards <= 1)
-        ) and not self.batch_iterator:
+        if (not self.batch_iterator and (not return_iterator or num_shards <= 1)) or (
+            return_iterator and isinstance(self.batch_iterator, types.GeneratorType)
+        ):
             # If no iterator should be returned, or if we want to return a single
             # batch iterator, we instantiate the batch iterator once, here.
             # TODO (simon, sven): The iterator depends on the `num_samples`, i.e.abs
             # sampling later with a different batch size would need a
             # reinstantiation of the iterator.
-            self.batch_iterator = iter(
-                self.data.iter_batches(
-                    # This is important. The batch size is now 1, because the data
-                    # is already run through the `OfflinePreLearner` and a single
-                    # instance is a single `MultiAgentBatch` of size `num_samples`.
-                    batch_size=1,
-                    **self.iter_batches_kwargs,
-                )
+            self.batch_iterator = self.data.iter_batches(
+                # This is important. The batch size is now 1, because the data
+                # is already run through the `OfflinePreLearner` and a single
+                # instance is a single `MultiAgentBatch` of size `num_samples`.
+                batch_size=1,
+                **self.iter_batches_kwargs,
             )
+
+            if not return_iterator:
+                self.batch_iterator = iter(self.batch_iterator)
 
         # Do we want to return an iterator or a single batch?
         if return_iterator:
