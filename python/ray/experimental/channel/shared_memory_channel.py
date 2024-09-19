@@ -7,6 +7,7 @@ from typing import Any, Dict, List, Optional, Set, Tuple, Union
 import ray
 import ray.exceptions
 from ray._raylet import SerializedObject
+from ray.experimental.channel import ChannelContext
 from ray.experimental.channel.common import ChannelInterface, ChannelOutputType
 from ray.experimental.channel.intra_process_channel import IntraProcessChannel
 from ray.experimental.channel.torch_tensor_type import TorchTensorType
@@ -162,6 +163,8 @@ class SharedMemoryType(ChannelOutputType):
             reader_and_node_list,
             self._num_shm_buffers,
             read_by_adag_driver,
+            typ=None,
+            torch_tensor_typ=self._contains_type,
         )
 
     def set_nccl_group_id(self, group_id: str) -> None:
@@ -184,6 +187,7 @@ class Channel(ChannelInterface):
         writer: Optional[ray.actor.ActorHandle],
         reader_and_node_list: List[Tuple["ray.actor.ActorHandle", str]],
         typ: Optional[Union[int, SharedMemoryType]] = None,
+        torch_tensor_typ: Optional[TorchTensorType] = None,
         _writer_node_id: Optional["ray.NodeID"] = None,
         _writer_ref: Optional["ray.ObjectRef"] = None,
         _node_id_to_reader_ref_info: Optional[Dict[str, ReaderRefInfo]] = None,
@@ -225,6 +229,7 @@ class Channel(ChannelInterface):
         self._writer = writer
         self._reader_and_node_list = reader_and_node_list
         self._typ = typ
+        self._torch_tensor_typ = torch_tensor_typ
 
         self._worker = ray._private.worker.global_worker
         self._worker.check_connected()
@@ -236,6 +241,9 @@ class Channel(ChannelInterface):
         self._node_id_to_reader_ref_info: Dict[str, ReaderRefInfo] = (
             _node_id_to_reader_ref_info or {}
         )
+        ctx = ChannelContext.get_current()
+        self.serialization_ctx = ctx.serialization_context
+        assert self.serialization_ctx is not None
 
         # Node ID -> a list of reader actors.
         self._node_id_to_readers: Dict[str, "ray.actor.ActorHandle"] = defaultdict(list)
@@ -380,6 +388,7 @@ class Channel(ChannelInterface):
         writer: ray.actor.ActorHandle,
         reader_and_node_list: List[Tuple["ray.actor.ActorHandle", str]],
         typ: int,
+        torch_tensor_typ: Optional[TorchTensorType],
         writer_node_id,
         writer_ref: "ray.ObjectRef",
         node_id_to_reader_ref_info: Dict[str, ReaderRefInfo],
@@ -390,6 +399,7 @@ class Channel(ChannelInterface):
             writer,
             reader_and_node_list,
             typ,
+            torch_tensor_typ,
             _writer_node_id=writer_node_id,
             _writer_ref=writer_ref,
             _node_id_to_reader_ref_info=node_id_to_reader_ref_info,
@@ -404,6 +414,7 @@ class Channel(ChannelInterface):
             self._writer,
             self._reader_and_node_list,
             self._typ,
+            self._torch_tensor_typ,
             self._writer_node_id,
             self._writer_ref,
             self._node_id_to_reader_ref_info,
@@ -463,6 +474,10 @@ class Channel(ChannelInterface):
         timeout_ms = int(timeout * 1000) if timeout is not None else -1
 
         if not isinstance(value, SerializedObject):
+            if self._torch_tensor_typ is not None:
+                self.serialization_ctx.set_target_device_type(
+                    self._torch_tensor_typ._device
+                )
             try:
                 serialized_value = self._worker.get_serialization_context().serialize(
                     value
@@ -476,6 +491,8 @@ class Channel(ChannelInterface):
                     f"{sio.getvalue()}"
                 )
                 raise TypeError(msg) from e
+            finally:
+                self.serialization_ctx.set_target_device_type(None)
         else:
             serialized_value = value
 
@@ -499,9 +516,7 @@ class Channel(ChannelInterface):
         self.ensure_registered_as_reader()
 
         start_time = time.monotonic()
-        ret = self._worker.get_objects(
-            [self._local_reader_ref], timeout=timeout, return_exceptions=True
-        )[0][0]
+        ret = self._read(timeout)
 
         if isinstance(ret, _ResizeChannel):
             self._node_id_to_reader_ref_info = ret._node_id_to_reader_ref_info
@@ -514,11 +529,14 @@ class Channel(ChannelInterface):
             if timeout is not None:
                 timeout -= time.monotonic() - start_time
                 timeout = max(timeout, 0)
-            ret = self._worker.get_objects(
-                [self._local_reader_ref], timeout=timeout, return_exceptions=True
-            )[0][0]
+            ret = self._read(timeout)
 
         return ret
+
+    def _read(self, timeout: Optional[float] = None) -> Any:
+        return self._worker.get_objects(
+            [self._local_reader_ref], timeout=timeout, return_exceptions=True
+        )[0][0]
 
     def close(self) -> None:
         """
@@ -565,12 +583,13 @@ class BufferedSharedMemoryChannel(ChannelInterface):
         reader_and_node_list: List[Tuple["ray.actor.ActorHandle", str]],
         num_shm_buffers: int,
         typ: Optional[Union[int, SharedMemoryType]] = None,
+        torch_tensor_typ: Optional[TorchTensorType] = None,
     ):
         self._num_shm_buffers = num_shm_buffers
         self._buffers = [
             # We use Channel directly as a buffer implementation as
             # channel only allows to have 1 shared memory buffer.
-            Channel(writer, reader_and_node_list, typ)
+            Channel(writer, reader_and_node_list, typ, torch_tensor_typ)
             for _ in range(num_shm_buffers)
         ]
         # The next index to write from self._buffers.
@@ -658,6 +677,8 @@ class CompositeChannel(ChannelInterface):
         reader_and_node_list: List[Tuple["ray.actor.ActorHandle", str]],
         num_shm_buffers: int,
         read_by_adag_driver: bool,
+        typ: Optional["ChannelOutputType"] = None,
+        torch_tensor_typ: Optional[TorchTensorType] = None,
         _channel_dict: Optional[Dict[ray.ActorID, ChannelInterface]] = None,
         _channels: Optional[Set[ChannelInterface]] = None,
         _writer_registered: bool = False,
@@ -673,6 +694,9 @@ class CompositeChannel(ChannelInterface):
         # The set of channels is a deduplicated version of the _channel_dict values.
         self._channels = _channels or set()
         self._read_by_adag_driver = read_by_adag_driver
+        self._typ = typ
+        self._torch_tensor_typ = torch_tensor_typ
+
         if self._channels:
             # This CompositeChannel object is created by deserialization.
             # We don't need to create channels again.
@@ -699,7 +723,11 @@ class CompositeChannel(ChannelInterface):
         # Create a shared memory channel for the writer and the remote readers.
         if len(remote_reader_and_node_list) != 0:
             remote_channel = BufferedSharedMemoryChannel(
-                self._writer, remote_reader_and_node_list, num_shm_buffers
+                self._writer,
+                remote_reader_and_node_list,
+                num_shm_buffers,
+                typ=typ,
+                torch_tensor_typ=torch_tensor_typ,
             )
             self._channels.add(remote_channel)
 
@@ -745,6 +773,8 @@ class CompositeChannel(ChannelInterface):
             self._reader_and_node_list,
             self._num_shm_buffers,
             self._read_by_adag_driver,
+            self._typ,
+            self._torch_tensor_typ,
             self._channel_dict,
             self._channels,
             self._writer_registered,

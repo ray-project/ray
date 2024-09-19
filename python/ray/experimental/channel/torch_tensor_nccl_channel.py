@@ -59,7 +59,6 @@ class NestedTorchTensorNcclChannel(ChannelInterface):
         """
         self._writer = writer
         self._reader_and_node_list = reader_and_node_list
-
         if _gpu_data_channel is not None or _cpu_data_channel is not None:
             # This path is used when the NestedTorchTensorNcclChannel is being
             # deserialized.
@@ -127,6 +126,9 @@ class NestedTorchTensorNcclChannel(ChannelInterface):
         self.serialization_ctx.reset_tensors([])
         # All tensors found in `value` will be transferred via NCCL.
         self.serialization_ctx.set_use_external_transport(True)
+        self.serialization_ctx.set_target_device_type(
+            self._gpu_data_channel.typ._device
+        )
 
         try:
             # Serialize the data. All tensors that match our current device
@@ -150,6 +152,7 @@ class NestedTorchTensorNcclChannel(ChannelInterface):
             # Reset the serialization method to now serialize torch.Tensors
             # normally.
             self.serialization_ctx.set_use_external_transport(False)
+            self.serialization_ctx.set_target_device_type(None)
 
         # Send the extracted tensors through a GPU-specific channel.
         self._gpu_data_channel.write(tensors_to_send)
@@ -258,6 +261,8 @@ class TorchTensorNcclChannel(ChannelInterface):
         ):
             self._reader_registered = True
 
+        # Channel to send CPU data such as cpu torch tensor
+        # or tensor metadata.
         self._meta_channel: Optional[Channel] = _meta_channel
         if (
             self._meta_channel is None
@@ -283,6 +288,10 @@ class TorchTensorNcclChannel(ChannelInterface):
             # Check that if there is no metadata channel, then we will only
             # pass tensors of static shape and dtype.
             assert self.has_static_type()
+
+    @property
+    def typ(self):
+        return self._typ
 
     def ensure_registered_as_writer(self):
         assert self._nccl_group is not None, "Actor is not part of a NCCL group"
