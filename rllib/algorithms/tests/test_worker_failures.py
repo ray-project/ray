@@ -452,8 +452,8 @@ class TestWorkerFailures(unittest.TestCase):
             .env_runners(env_runner_cls=ForwardHealthCheckToEnvWorker)
             .training(
                 train_batch_size=10,
-                sgd_minibatch_size=1,
-                num_sgd_iter=1,
+                minibatch_size=1,
+                num_epochs=1,
             )
         )
 
@@ -561,7 +561,7 @@ class TestWorkerFailures(unittest.TestCase):
             )
             .training(
                 train_batch_size_per_learner=32,
-                sgd_minibatch_size=32,
+                minibatch_size=32,
             )
             .environment(
                 env="fault_env",
@@ -620,7 +620,7 @@ class TestWorkerFailures(unittest.TestCase):
             )
             .training(
                 train_batch_size_per_learner=32,
-                sgd_minibatch_size=32,
+                minibatch_size=32,
             )
             .environment(
                 env="multi_agent_fault_env",
@@ -729,7 +729,7 @@ class TestWorkerFailures(unittest.TestCase):
             )
             .training(
                 train_batch_size_per_learner=32,
-                sgd_minibatch_size=32,
+                minibatch_size=32,
             )
             .environment(env="fault_env")
             .evaluation(

@@ -3,10 +3,9 @@ import dataclasses
 import logging
 import os
 import re
-import time
 import traceback
 from dataclasses import dataclass
-from typing import Any, Dict, Iterator, List, Optional, Tuple, Union
+from typing import Any, AsyncIterator, Dict, List, Optional, Tuple, Union
 
 from ray._private import ray_constants
 from ray._private.gcs_utils import GcsAioClient
@@ -60,7 +59,7 @@ def redact_url_password(url: str) -> str:
     return url
 
 
-def file_tail_iterator(path: str) -> Iterator[Optional[List[str]]]:
+async def file_tail_iterator(path: str) -> AsyncIterator[Optional[List[str]]]:
     """Yield lines from a file as it's written.
 
     Returns lines in batches of up to 10 lines or 20000 characters,
@@ -114,7 +113,7 @@ def file_tail_iterator(path: str) -> Iterator[Optional[List[str]]]:
                 chunk_char_count += len(curr_line)
             else:
                 # If EOF is reached sleep for 1s before continuing
-                time.sleep(1)
+                await asyncio.sleep(1)
 
 
 async def parse_and_validate_request(

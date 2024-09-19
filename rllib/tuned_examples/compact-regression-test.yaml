@@ -41,8 +41,8 @@ atari-ppo-tf:
         entropy_coeff: 0.01
         train_batch_size: 5000
         rollout_fragment_length: 100
-        sgd_minibatch_size: 500
-        num_sgd_iter: 10
+        minibatch_size: 500
+        num_epochs: 10
         num_env_runners: 10
         num_envs_per_env_runner: 5
         batch_mode: truncate_episodes
@@ -68,8 +68,8 @@ atari-ppo-torch:
         entropy_coeff: 0.01
         train_batch_size: 5000
         rollout_fragment_length: 100
-        sgd_minibatch_size: 500
-        num_sgd_iter: 10
+        minibatch_size: 500
+        num_epochs: 10
         num_env_runners: 10
         num_envs_per_env_runner: 5
         batch_mode: truncate_episodes

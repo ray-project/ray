@@ -117,7 +117,7 @@ if __name__ == "__main__":
             # `self.config.learner_config_dict['lr_vf']`
             learner_config_dict={"lr_vf": args.lr_vf},
             # Some settings to make this example learn better.
-            num_sgd_iter=6,
+            num_epochs=6,
             # Since we are using separate optimizers for the two NN components, the
             # value of `vf_loss_coeff` does not matter anymore. We set this to 1.0 here.
             vf_loss_coeff=1.0,

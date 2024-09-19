@@ -578,28 +578,3 @@ def get_component_file_name(
         suffix=suffix,
     )
     return file_name
-
-
-class FakeObjectRefOrGen:
-    def __init__(self, replica_id):
-        self._replica_id = replica_id
-
-    @property
-    def replica_id(self):
-        return self._replica_id
-
-
-class FakeObjectRef(FakeObjectRefOrGen):
-    def __await__(self):
-        raise NotImplementedError
-
-    def _on_completed(self, callback: Callable):
-        pass
-
-
-class FakeObjectRefGen(FakeObjectRefOrGen):
-    def __anext__(self):
-        raise NotImplementedError
-
-    def completed(self):
-        return FakeObjectRef(self._replica_id)

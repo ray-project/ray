@@ -49,7 +49,7 @@ class error_code;
 // Return the given status if it is not OK.
 #define RAY_RETURN_NOT_OK(s)           \
   do {                                 \
-    ::ray::Status _s = (s);            \
+    const ::ray::Status &_s = (s);     \
     if (RAY_PREDICT_FALSE(!_s.ok())) { \
       return _s;                       \
     }                                  \
@@ -129,7 +129,7 @@ class RAY_MUST_USE_RESULT RAY_EXPORT Status;
 class RAY_EXPORT Status {
  public:
   // Create a success status.
-  Status() : state_(NULL) {}
+  Status() : state_(nullptr) {}
   ~Status() { delete state_; }
 
   Status(StatusCode code, const std::string &msg, int rpc_code = -1);
@@ -265,7 +265,7 @@ class RAY_EXPORT Status {
   static StatusCode StringToCode(const std::string &str);
 
   // Returns true iff the status indicates success.
-  bool ok() const { return (state_ == NULL); }
+  bool ok() const { return (state_ == nullptr); }
 
   bool IsOutOfMemory() const { return code() == StatusCode::OutOfMemory; }
   bool IsOutOfDisk() const { return code() == StatusCode::OutOfDisk; }
@@ -337,7 +337,7 @@ class RAY_EXPORT Status {
     // If code is RpcError, this contains the RPC error code
     int rpc_code;
   };
-  // OK status has a `NULL` state_.  Otherwise, `state_` points to
+  // OK status has a `nullptr` state_.  Otherwise, `state_` points to
   // a `State` structure containing the error code and message(s)
   State *state_;
 
@@ -350,7 +350,7 @@ static inline std::ostream &operator<<(std::ostream &os, const Status &x) {
 }
 
 inline Status::Status(const Status &s)
-    : state_((s.state_ == NULL) ? NULL : new State(*s.state_)) {}
+    : state_((s.state_ == nullptr) ? nullptr : new State(*s.state_)) {}
 
 inline void Status::operator=(const Status &s) {
   // The following condition catches both aliasing (when this == &s),
