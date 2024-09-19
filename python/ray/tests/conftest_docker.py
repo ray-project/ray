@@ -3,6 +3,7 @@ import pytest
 from pytest_docker_tools import container, fetch, network, volume
 from pytest_docker_tools import wrappers
 import subprocess
+import docker
 from typing import List
 
 # If you need to debug tests using fixtures in this file,
@@ -65,7 +66,12 @@ class Container(wrappers.Container):
             print(content.decode())
 
 
-gcs_network = network(driver="bridge")
+ipam_config = docker.types.IPAMConfig(
+    pool_configs=[
+        docker.types.IPAMPool(subnet="192.168.52.0/24", gateway="192.168.52.254")
+    ]
+)
+gcs_network = network(driver="bridge", ipam=ipam_config)
 
 redis_image = fetch(repository="redis:latest")
 
