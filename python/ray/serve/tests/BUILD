@@ -35,6 +35,9 @@ py_test_module_list(
         "test_proxy_actor_wrapper.py",
         "test_util.py",
         "test_websockets.py",
+        "test_enable_task_events.py",
+        "test_kv_store.py",
+        "test_long_poll.py",
     ],
     tags = [
         "exclusive",
@@ -73,6 +76,7 @@ py_test_module_list(
         "test_request_timeout.py",
         "test_streaming_response.py",
         "test_target_capacity.py",
+        "test_regression.py",
     ],
     tags = [
         "exclusive",
@@ -172,10 +176,6 @@ py_test_module_list(
     files = [
         "test_deploy_app.py",
         "test_metrics.py",
-        "test_enable_task_events.py",
-        "test_kv_store.py",
-        "test_long_poll.py",
-        "test_regression.py",
     ],
     tags = [
         "exclusive",
@@ -443,4 +443,3 @@ py_test_module_list(
         "//python/ray/serve:serve_lib",
     ],
 )
-
