@@ -263,7 +263,7 @@ class TestCuriosity(unittest.TestCase):
                     "fcnet_hiddens": [256, 256],
                     "fcnet_activation": "relu",
                 },
-                num_sgd_iter=8,
+                num_epochs=8,
             )
         )
 

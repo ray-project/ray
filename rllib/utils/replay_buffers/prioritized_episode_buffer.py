@@ -310,6 +310,7 @@ class PrioritizedEpisodeReplayBuffer(EpisodeReplayBuffer):
         gamma: float = 0.99,
         include_infos: bool = False,
         include_extra_model_outputs: bool = False,
+        finalize: bool = False,
         **kwargs,
     ) -> SampleBatchType:
         """Samples from a buffer in a prioritized way.
@@ -491,6 +492,8 @@ class PrioritizedEpisodeReplayBuffer(EpisodeReplayBuffer):
                 len_lookback_buffer=0,
                 t_started=episode_ts,
             )
+            if finalize:
+                sampled_episode.finalize()
             sampled_episodes.append(sampled_episode)
 
             # Increment counter.
