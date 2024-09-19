@@ -23,15 +23,17 @@ class OfflineData:
     def __init__(self, config: AlgorithmConfig):
 
         self.config = config
-        self.is_multi_agent = config.is_multi_agent()
+        self.is_multi_agent = self.config.is_multi_agent()
         self.path = (
-            config.input_ if isinstance(config.input_, list) else Path(config.input_)
+            self.config.input_
+            if isinstance(config.input_, list)
+            else Path(config.input_)
         )
         # Use `read_parquet` as default data read method.
-        self.data_read_method = config.input_read_method
+        self.data_read_method = self.config.input_read_method
         # Override default arguments for the data read method.
         self.data_read_method_kwargs = (
-            self.default_read_method_kwargs | config.input_read_method_kwargs
+            self.default_read_method_kwargs | self.config.input_read_method_kwargs
         )
 
         # If data should be materialized.

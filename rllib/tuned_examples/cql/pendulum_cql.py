@@ -49,7 +49,10 @@ config = (
         # The `kwargs` for the `iter_batches` method. Due to the small
         # dataset we choose only a single batch to prefetch.
         iter_batches_kwargs={"prefetch_batches": 1},
-        prelearner_module_synch_period=20,
+        # The number of iterations to be run per learner when in multi-learner
+        # mode in a single RLlib training iteration. Leave this to `None` to
+        # run an entire epoch on the dataset during a single RLlib training
+        # iteration. For single-learner mode 1 is the only option.
         dataset_num_iters_per_learner=1 if args.num_gpus == 0 else None,
         # TODO (sven): Has this any influence in the connectors?
         actions_in_input_normalized=True,
