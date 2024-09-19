@@ -13,6 +13,7 @@ import pyarrow.parquet as pq
 import pytest
 
 import ray
+from ray._private.test_utils import wait_for_condition
 from ray.data._internal.execution.interfaces.ref_bundle import (
     _ref_bundles_iterator_to_block_refs_list,
 )
