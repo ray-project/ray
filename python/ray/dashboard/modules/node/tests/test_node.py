@@ -17,6 +17,7 @@ from ray._private.test_utils import (
     wait_until_server_available,
 )
 from ray.cluster_utils import Cluster
+from ray.dashboard.consts import RAY_DASHBOARD_STATS_UPDATING_INTERVAL
 from ray.dashboard.tests.conftest import *  # noqa
 
 logger = logging.getLogger(__name__)
