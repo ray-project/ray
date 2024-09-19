@@ -1,29 +1,18 @@
-import asyncio
 import json
 import os
-import signal
 import sys
-import tempfile
-import time
-import urllib.request
-from uuid import uuid4
 
 import pytest
 
-os.environ['RAY_enable_export_api_write'] = "true"
-
 import ray
 from ray._private.gcs_utils import GcsAioClient
-from ray._private.test_utils import (
-    async_wait_for_condition_async_predicate,
-)
-from ray.dashboard.modules.job.job_manager import (
-    JobManager,
-)
+from ray._private.test_utils import async_wait_for_condition_async_predicate
+from ray.dashboard.modules.job.job_manager import JobManager
 from ray.job_submission import JobStatus
 from ray.tests.conftest import call_ray_start  # noqa: F401
 
-import psutil
+os.environ["RAY_enable_export_api_write"] = "true"
+
 
 async def check_job_succeeded(job_manager, job_id):
     data = await job_manager.get_job_info(job_id)
@@ -36,6 +25,7 @@ async def check_job_succeeded(job_manager, job_id):
     else:
         assert data.driver_exit_code is None
     return status == JobStatus.SUCCEEDED
+
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
@@ -88,6 +78,7 @@ async def test_submission_job_export_events(call_ray_start, tmp_path):  # noqa: 
             assert data["source_type"] == "EXPORT_SUBMISSION_JOB"
             assert data["event_data"]["submission_job_id"] == submission_id
             assert data["event_data"]["status"] == expected_status
+
 
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))
