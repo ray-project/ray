@@ -54,6 +54,10 @@ from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 logger = logging.getLogger(__name__)
 
+# Keep tracking of every compiled dag created during the lifetime of
+# this process. It tracks them as weakref meaning when the compiled dag
+# is GC'ed, it is automatically removed from here. It is used to teardown
+# compiled dags at interpret shutdown time.
 _compiled_dag_queue = weakref.WeakValueDictionary()
 
 
@@ -1762,12 +1766,12 @@ class CompiledDAG:
                         self.wait_teardown()
                     return
 
-                logger.debug("Tearing down compiled DAG")
+                logger.info("Tearing down compiled DAG")
                 outer._dag_submitter.close()
                 outer._dag_output_fetcher.close()
 
                 for actor in outer.actor_refs:
-                    logger.debug(f"Cancelling compiled worker on actor: {actor}")
+                    logger.info(f"Cancelling compiled worker on actor: {actor}")
                 # Cancel all actor loops in parallel.
                 cancel_refs = [
                     actor.__ray_call__.remote(do_cancel_executable_tasks, tasks)
@@ -1788,9 +1792,9 @@ class CompiledDAG:
                     _destroy_nccl_group(outer._nccl_group_id)
 
                 if wait:
-                    logger.debug("Waiting for worker tasks to exit")
+                    logger.info("Waiting for worker tasks to exit")
                     self.wait_teardown()
-                    logger.debug("Teardown complete")
+                    logger.info("Teardown complete")
 
                 with self.in_teardown_lock:
                     self._teardown_done = True

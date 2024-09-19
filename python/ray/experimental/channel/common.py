@@ -359,14 +359,20 @@ class AwaitableBackgroundReader(ReaderInterface):
     def _run(self):
         results = []
         for c in self._input_channels:
-            try:
-                results.append(c.read(timeout=1))
-            except ray.exceptions.RayChannelTimeoutError:
-                # Interpreter exits. We should stop reading
-                # so that the thread can join.
-                if sys.is_finalizing():
+            while True:
+                try:
+                    results.append(c.read(timeout=1))
                     break
-                pass
+                except ray.exceptions.RayChannelTimeoutError:
+                    # Interpreter exits. We should stop reading
+                    # so that the thread can join.
+                    if sys.is_finalizing():
+                        break
+                    pass
+
+            if sys.is_finalizing():
+                break
+
         return results
 
     async def run(self):
