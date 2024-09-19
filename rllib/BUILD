@@ -57,6 +57,12 @@
 load("//bazel:python.bzl", "py_test_module_list")
 load("//bazel:python.bzl", "doctest")
 
+filegroup(
+  name = "cartpole-v1_large",
+  data = glob(["tests/data/cartpole/cartpole-v1_large/*.parquet"]),
+  visibility = ["//visibility:public"],
+)
+
 doctest(
     files = glob(
         ["**/*.py"],
@@ -112,10 +118,8 @@ doctest(
         ]
     ),
     tags = ["team:rllib"],
+    data = glob(["tests/data/cartpole/cartpole-v1_large/*.parquet"]),
     size = "enormous",
-    data = [
-        "tests/data/cartpole/cartpole-v1_large",
-    ]
 )
 
 # --------------------------------------------------------------------
