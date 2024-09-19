@@ -1,6 +1,6 @@
 import dataclasses
 import logging
-from typing import Any, Dict, Iterator, List, Optional, Union
+from typing import Any, AsyncIterator, Dict, List, Optional, Union
 
 import packaging.version
 
@@ -449,7 +449,7 @@ class JobSubmissionClient(SubmissionClient):
             self._raise_error(r)
 
     @PublicAPI(stability="stable")
-    async def tail_job_logs(self, job_id: str) -> Iterator[str]:
+    async def tail_job_logs(self, job_id: str) -> AsyncIterator[str]:
         """Get an iterator that follows the logs of a job.
 
         Example:
