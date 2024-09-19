@@ -1,3 +1,5 @@
+import msgpack
+import msgpack_numpy as m
 import pathlib
 import shutil
 import unittest
@@ -60,7 +62,7 @@ class TestOfflineEnvRunner(unittest.TestCase):
         )
 
         offline_env_runner = OfflineSingleAgentEnvRunner(config, worker_index=1)
-        # Sample 1ßß episodes.
+        # Sample 100 episodes.
         _ = offline_env_runner.sample(
             num_episodes=100,
             random_actions=True,
@@ -81,7 +83,14 @@ class TestOfflineEnvRunner(unittest.TestCase):
         # Assert the dataset has only 100 rows (each row containing an episode).
         self.assertEqual(offline_data.data.count(), 100)
         # Take a single row and ensure its a `SingleAgentEpisode` instance.
-        self.assertIsInstance(offline_data.data.take(1)[0]["item"], SingleAgentEpisode)
+        self.assertIsInstance(
+            SingleAgentEpisode.from_state(
+                msgpack.unpackb(
+                    offline_data.data.take(1)[0]["item"], object_hook=m.decode
+                )
+            ),
+            SingleAgentEpisode,
+        )
         # The batch contains now episodes (in a numpy.NDArray).
         episodes = offline_data.data.take_batch(100)["item"]
         # The batch should contain 100 episodes (not 100 env steps).

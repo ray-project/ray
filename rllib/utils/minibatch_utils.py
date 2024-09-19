@@ -9,19 +9,36 @@ from ray.rllib.utils.typing import EpisodeType
 
 @DeveloperAPI
 class MiniBatchIteratorBase:
-    """The base class for all minibatch iterators.
-
-    Args:
-        batch: The input multi-agent batch.
-        minibatch_size: The size of the minibatch for each module_id.
-        num_iters: The number of epochs to cover. If the input batch is smaller than
-            minibatch_size, then the iterator will cycle through the batch until it
-            has covered num_iters epochs.
-    """
+    """The base class for all minibatch iterators."""
 
     def __init__(
-        self, batch: MultiAgentBatch, minibatch_size: int, num_iters: int = 1
+        self,
+        batch: MultiAgentBatch,
+        *,
+        num_epochs: int = 1,
+        shuffle_batch_per_epoch: bool = True,
+        minibatch_size: int,
+        num_total_minibatches: int = 0,
     ) -> None:
+        """Initializes a MiniBatchIteratorBase instance.
+
+        Args:
+            batch: The input multi-agent batch.
+            num_epochs: The number of complete passes over the entire train batch. Each
+                pass might be further split into n minibatches (if `minibatch_size`
+                provided). The train batch is generated from the given `episodes`
+                through the Learner connector pipeline.
+            minibatch_size: The size of minibatches to use to further split the train
+                batch into per epoch. The train batch is generated from the given
+                `episodes` through the Learner connector pipeline.
+            num_total_minibatches: The total number of minibatches to loop through
+                (over all `num_epochs` epochs). It's only required to set this to != 0
+                in multi-agent + multi-GPU situations, in which the MultiAgentEpisodes
+                themselves are roughly sharded equally, however, they might contain
+                SingleAgentEpisodes with very lopsided length distributions. Thus,
+                without this fixed, pre-computed value, one Learner might go through a
+                different number of minibatche passes than others causing a deadlock.
+        """
         pass
 
 
@@ -29,55 +46,57 @@ class MiniBatchIteratorBase:
 class MiniBatchCyclicIterator(MiniBatchIteratorBase):
     """This implements a simple multi-agent minibatch iterator.
 
-
     This iterator will split the input multi-agent batch into minibatches where the
     size of batch for each module_id (aka policy_id) is equal to minibatch_size. If the
     input batch is smaller than minibatch_size, then the iterator will cycle through
-    the batch until it has covered num_iters epochs.
-
-    Args:
-        batch: The input multi-agent batch.
-        minibatch_size: The size of the minibatch for each module_id.
-        num_iters: The minimum number of epochs to cover. If the input batch is smaller
-            than minibatch_size, then the iterator will cycle through the batch until
-            it has covered at least num_iters epochs.
+    the batch until it has covered `num_epochs` epochs.
     """
 
     def __init__(
         self,
         batch: MultiAgentBatch,
+        *,
+        num_epochs: int = 1,
         minibatch_size: int,
-        num_iters: int = 1,
-        uses_new_env_runners: bool = False,
-        num_total_mini_batches: int = 0,
+        shuffle_batch_per_epoch: bool = True,
+        num_total_minibatches: int = 0,
+        _uses_new_env_runners: bool = False,
     ) -> None:
-        super().__init__(batch, minibatch_size, num_iters)
+        """Initializes a MiniBatchCyclicIterator instance."""
+        super().__init__(
+            batch,
+            num_epochs=num_epochs,
+            minibatch_size=minibatch_size,
+            shuffle_batch_per_epoch=shuffle_batch_per_epoch,
+        )
+
         self._batch = batch
         self._minibatch_size = minibatch_size
-        self._num_iters = num_iters
+        self._num_epochs = num_epochs
+        self._shuffle_batch_per_epoch = shuffle_batch_per_epoch
 
         # mapping from module_id to the start index of the batch
         self._start = {mid: 0 for mid in batch.policy_batches.keys()}
         # mapping from module_id to the number of epochs covered for each module_id
         self._num_covered_epochs = {mid: 0 for mid in batch.policy_batches.keys()}
 
-        self._uses_new_env_runners = uses_new_env_runners
+        self._uses_new_env_runners = _uses_new_env_runners
 
-        self._mini_batch_count = 0
-        self._num_total_mini_batches = num_total_mini_batches
+        self._minibatch_count = 0
+        self._num_total_minibatches = num_total_minibatches
 
     def __iter__(self):
         while (
             # Make sure each item in the total batch gets at least iterated over
-            # `self._num_iters` times.
+            # `self._num_epochs` times.
             (
-                self._num_total_mini_batches == 0
-                and min(self._num_covered_epochs.values()) < self._num_iters
+                self._num_total_minibatches == 0
+                and min(self._num_covered_epochs.values()) < self._num_epochs
             )
             # Make sure we reach at least the given minimum number of mini-batches.
             or (
-                self._num_total_mini_batches > 0
-                and self._mini_batch_count < self._num_total_mini_batches
+                self._num_total_minibatches > 0
+                and self._minibatch_count < self._num_total_minibatches
             )
         ):
             minibatch = {}
@@ -140,6 +159,11 @@ class MiniBatchCyclicIterator(MiniBatchIteratorBase):
                     n_steps -= len_sample
                     s = 0
                     self._num_covered_epochs[module_id] += 1
+                    # Shuffle the individual single-agent batch, if required.
+                    # This should happen once per minibatch iteration in order to make
+                    # each iteration go through a different set of minibatches.
+                    if self._shuffle_batch_per_epoch:
+                        module_batch.shuffle()
 
                 e = s + n_steps  # end
                 if e > s:
@@ -157,12 +181,12 @@ class MiniBatchCyclicIterator(MiniBatchIteratorBase):
             minibatch = MultiAgentBatch(minibatch, len(self._batch))
             yield minibatch
 
-            self._mini_batch_count += 1
+            self._minibatch_count += 1
 
 
 class MiniBatchDummyIterator(MiniBatchIteratorBase):
-    def __init__(self, batch: MultiAgentBatch, minibatch_size: int, num_iters: int = 1):
-        super().__init__(batch, minibatch_size, num_iters)
+    def __init__(self, batch: MultiAgentBatch, **kwargs):
+        super().__init__(batch, **kwargs)
         self._batch = batch
 
     def __iter__(self):
