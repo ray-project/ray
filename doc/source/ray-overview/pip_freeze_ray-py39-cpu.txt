@@ -130,7 +130,7 @@ python-dateutil==2.8.2
 python-dotenv==1.0.1
 pytz==2022.7.1
 PyYAML==6.0.1
-ray @ file:///home/ray/ray-3.0.0.dev0-cp39-cp39-manylinux2014_x86_64.whl#sha256=3ffd977059119b997d03fcf4914449c5109cef7f65cfcb84957b53ff741b004b
+ray @ file:///home/ray/ray-2.36.0-cp39-cp39-manylinux2014_x86_64.whl#sha256=3b5e0f02993583c27fb5f9729b5e00fa2091409c096874418d74f7dfe92a6261
 redis==3.5.3
 requests==2.31.0
 requests-oauthlib==2.0.0
@@ -149,7 +149,7 @@ starlette==0.36.3
 tabulate==0.9.0
 tensorboardX==2.6.2.2
 tifffile==2024.7.21
-tqdm @ file:///croot/tqdm_1716395931952/work
+tqdm @ file:///croot/tqdm_1724853939799/work
 typer==0.12.3
 typing_extensions==4.8.0
 uritemplate==3.0.1
