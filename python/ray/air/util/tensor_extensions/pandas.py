@@ -921,6 +921,8 @@ class TensorArray(
         """
         The number of bytes needed to store this object in memory.
         """
+        if self.is_variable_shaped:
+            return sum(t.nbytes for t in self._tensor) + self._tensor.nbytes
         return self._tensor.nbytes
 
     def isna(self) -> "TensorArray":
