@@ -90,7 +90,6 @@ TEST_F(GcsNodeManagerExportAPITest, TestExportEventRegisterNode) {
 
   node_manager.HandleRegisterNode(register_request, &register_reply, send_reply_callback);
   io_service_.poll();
-  ray::RayEventLog::Instance().FlushExportEvents();
 
   std::vector<std::string> vc;
   Mocker::ReadContentFromFile(vc, log_dir_ + "/events/event_EXPORT_NODE.log");
@@ -126,7 +125,6 @@ TEST_F(GcsNodeManagerExportAPITest, TestExportEventUnregisterNode) {
   node_manager.HandleUnregisterNode(
       unregister_request, &unregister_reply, send_reply_callback);
   io_service_.poll();
-  ray::RayEventLog::Instance().FlushExportEvents();
 
   std::vector<std::string> vc;
   Mocker::ReadContentFromFile(vc, log_dir_ + "/events/event_EXPORT_NODE.log");

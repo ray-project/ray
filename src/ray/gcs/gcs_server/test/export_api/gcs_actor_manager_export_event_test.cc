@@ -121,7 +121,8 @@ class GcsActorManagerTest : public ::testing::Test {
     RayConfig::instance().initialize(
         R"(
 {
-  "maximum_gcs_destroyed_actor_cached_count": 10
+  "maximum_gcs_destroyed_actor_cached_count": 10,
+  "enable_export_api_write": true
 }
   )");
     std::promise<bool> promise;

@@ -329,10 +329,6 @@ class RayEvent {
   std::ostringstream osstream_;
 };
 
-using ExportEventDataPtr = std::variant<std::shared_ptr<rpc::ExportTaskEventData>,
-                                        std::shared_ptr<rpc::ExportNodeData>,
-                                        std::shared_ptr<rpc::ExportActorData>,
-                                        std::shared_ptr<rpc::ExportDriverJobEventData>>;
 struct MutableActorData {
   rpc::ExportActorData::ActorState actor_state;
   ray::rpc::ActorDeathCause death_cause;
@@ -355,6 +351,29 @@ struct DriverJobData {
   int64_t timestamp;
 };
 
+/*
+The RayEventLog class is intended for logging events to a file, utilizing
+the EventManager in conjunction with the LogEventReporter. Events can be
+written to file in three ways, depending on the volume of events of that
+type being emitted.
+1. Directly written to file in the same thread as the function caller.
+   This should be used for events that are not expensive to write depending
+   on size or frequency. Eg: Export node and driver job events directly
+   call PublishNodeDataAsEvent and PublishDriverJobDataAsEvent in the main thread.
+2. Main thread creates proto object for the event, but event is logged and flushed
+   in a background thread. This can be used if creating the proto object is
+   inexpensive or another background thread is used for this. Eg: Task export
+   events directly take rpc::ExportTaskEventData.
+3. Main thread adds raw data to a buffer, and the background thread converts this data
+   to the export event proto and logs and flushes to file. This can be used 
+   when creating the proto object is expensive and there is no other background 
+   thread to do this. Eg: Actor export events take the raw data rpc::ActorTableData
+   and MutableActorData before converting to rpc::ExportActorData in the background thread.
+
+If the source type of any events require creating the event proto or flushing
+to file in the background thread, StartPeriodicFlushThread and StopPeriodicFlushThread
+should be called. Otherwise the background thread doesn't need to be started.
+*/
 class RayEventLog final {
  public:
   static RayEventLog &Instance();
@@ -411,10 +430,8 @@ class RayEventLog final {
   void AddTaskDataToBuffer(TaskData &task_data);
   void PublishTaskDataAsEvent(const TaskData &task_data);
 
-  void AddNodeDataToBuffer(NodeData &node_data);
   void PublishNodeDataAsEvent(const NodeData &node_data);
 
-  void AddDriverJobDataToBuffer(DriverJobData &driver_job_data);
   void PublishDriverJobDataAsEvent(const DriverJobData &driver_job_data);
 
   /// Used to allow tests to flush export events when the
@@ -423,6 +440,19 @@ class RayEventLog final {
 
   RayEventLog() : periodic_flush_thread_() {}
   ~RayEventLog() { StopPeriodicFlushThread(); }
+
+  int GetEnvVarAsInt(const char* varName, int defaultValue) {
+      try {
+          const char* value = std::getenv(varName);
+          if (value) {
+              return std::stoi(value);
+          }
+          return defaultValue;
+      } catch (...) {
+        RAY_LOG(WARNING) << "Error getting value of env var " << varName; 
+      }
+      return defaultValue;
+  }
 
   std::thread periodic_flush_thread_;
   bool stop_periodic_flush_flag_;
@@ -435,12 +465,9 @@ class RayEventLog final {
   absl::Mutex task_data_buffer_mutex_;
   boost::circular_buffer<TaskData> task_data_buffer_
       ABSL_GUARDED_BY(task_data_buffer_mutex_);
-  absl::Mutex node_data_buffer_mutex_;
-  boost::circular_buffer<NodeData> node_data_buffer_
-      ABSL_GUARDED_BY(node_data_buffer_mutex_);
-  absl::Mutex driver_job_data_buffer_mutex_;
-  boost::circular_buffer<DriverJobData> driver_job_data_buffer_
-      ABSL_GUARDED_BY(driver_job_data_buffer_mutex_);
+
+  int MAX_EXPORT_EVENTS_BUFFER_SIZE;
+  int EXPORT_EVENTS_BUFFER_WRITE_BATCH_SIZE;
 
   friend class RayExportEvent;
 
@@ -471,13 +498,13 @@ class RayExportEvent {
   static void SendNodeEvent(
       const std::shared_ptr<rpc::ExportNodeData> node_event_data_ptr) {
     NodeData node_data = {node_event_data_ptr, current_sys_time_s()};
-    ray::RayEventLog::Instance().AddNodeDataToBuffer(node_data);
+    ray::RayEventLog::Instance().PublishNodeDataAsEvent(node_data);
   }
 
   static void SendDriverJobEvent(
       const std::shared_ptr<rpc::ExportDriverJobEventData> driver_job_event_data_ptr) {
     DriverJobData driver_job_data = {driver_job_event_data_ptr, current_sys_time_s()};
-    ray::RayEventLog::Instance().AddDriverJobDataToBuffer(driver_job_data);
+    ray::RayEventLog::Instance().PublishDriverJobDataAsEvent(driver_job_data);
   }
 };
 

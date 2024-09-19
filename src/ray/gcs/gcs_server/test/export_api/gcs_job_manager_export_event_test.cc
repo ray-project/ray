@@ -128,7 +128,6 @@ TEST_F(GcsJobManagerTest, TestExportDriverJobEvents) {
         promise.set_value(true);
       });
   promise.get_future().get();
-  ray::RayEventLog::Instance().FlushExportEvents();
 
   std::vector<std::string> vc;
   Mocker::ReadContentFromFile(vc, log_dir_ + "/events/event_EXPORT_DRIVER_JOB.log");
@@ -148,7 +147,6 @@ TEST_F(GcsJobManagerTest, TestExportDriverJobEvents) {
         job_finished_promise.set_value(true);
       });
   job_finished_promise.get_future().get();
-  ray::RayEventLog::Instance().FlushExportEvents();
 
   vc.clear();
   Mocker::ReadContentFromFile(vc, log_dir_ + "/events/event_EXPORT_DRIVER_JOB.log");
