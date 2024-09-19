@@ -3,7 +3,10 @@ import logging
 from typing import Any, List, Optional
 
 import ray.dashboard.consts as dashboard_consts
-from ray._private.utils import get_or_create_event_loop, parse_pg_formatted_resources_to_original
+from ray._private.utils import (
+    get_or_create_event_loop,
+    parse_pg_formatted_resources_to_original,
+)
 from ray.dashboard.utils import (
     Dict,
     MutableNotificationDict,
@@ -264,8 +267,10 @@ class DataOrganizer:
         actor["gpus"] = actor_process_gpu_stats
         actor["processStats"] = actor_process_stats
         actor["mem"] = node_physical_stats.get("mem", [])
-        
-        required_resources = parse_pg_formatted_resources_to_original(actor["requiredResources"])
+
+        required_resources = parse_pg_formatted_resources_to_original(
+            actor["requiredResources"]
+        )
         actor["requiredResources"] = required_resources
 
         return actor
