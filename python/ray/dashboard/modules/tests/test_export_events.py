@@ -1,8 +1,11 @@
+# isort: skip_file
 import json
 import os
 import sys
 
 import pytest
+
+os.environ["RAY_enable_export_api_write"] = "true"
 
 import ray
 from ray._private.gcs_utils import GcsAioClient
@@ -10,8 +13,6 @@ from ray._private.test_utils import async_wait_for_condition_async_predicate
 from ray.dashboard.modules.job.job_manager import JobManager
 from ray.job_submission import JobStatus
 from ray.tests.conftest import call_ray_start  # noqa: F401
-
-os.environ["RAY_enable_export_api_write"] = "true"
 
 
 async def check_job_succeeded(job_manager, job_id):
