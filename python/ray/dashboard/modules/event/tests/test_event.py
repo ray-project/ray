@@ -43,9 +43,11 @@ logger = logging.getLogger(__name__)
 def _get_event(msg="empty message", job_id=None, source_type=None):
     return {
         "event_id": binary_to_hex(np.random.bytes(18)),
-        "source_type": random.choice(event_pb2.Event.SourceType.keys())
-        if source_type is None
-        else source_type,
+        "source_type": (
+            random.choice(event_pb2.Event.SourceType.keys())
+            if source_type is None
+            else source_type
+        ),
         "host_name": "po-dev.inc.alipay.net",
         "pid": random.randint(1, 65536),
         "label": "",
@@ -53,9 +55,11 @@ def _get_event(msg="empty message", job_id=None, source_type=None):
         "timestamp": time.time(),
         "severity": "INFO",
         "custom_fields": {
-            "job_id": ray.JobID.from_int(random.randint(1, 100)).hex()
-            if job_id is None
-            else job_id,
+            "job_id": (
+                ray.JobID.from_int(random.randint(1, 100)).hex()
+                if job_id is None
+                else job_id
+            ),
             "node_id": "",
             "task_id": "",
         },

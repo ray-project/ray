@@ -179,11 +179,15 @@ class JobSupervisor:
                 # Ray intentionally blocks SIGINT in all processes, so if the user wants
                 # to stop job through SIGINT, we need to unblock it in the child process
                 preexec_fn=(
-                    lambda: signal.pthread_sigmask(signal.SIG_UNBLOCK, {signal.SIGINT})
-                )
-                if sys.platform != "win32"
-                and os.environ.get("RAY_JOB_STOP_SIGNAL") == "SIGINT"
-                else None,
+                    (
+                        lambda: signal.pthread_sigmask(
+                            signal.SIG_UNBLOCK, {signal.SIGINT}
+                        )
+                    )
+                    if sys.platform != "win32"
+                    and os.environ.get("RAY_JOB_STOP_SIGNAL") == "SIGINT"
+                    else None
+                ),
             )
             parent_pid = os.getpid()
             child_pid = child_process.pid

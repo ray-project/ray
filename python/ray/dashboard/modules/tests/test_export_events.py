@@ -5,6 +5,9 @@ import sys
 
 import pytest
 
+# RAY_enable_export_api_write env var must be set before importing
+# `ray` so the correct value is set for RAY_ENABLE_EXPORT_API_WRITE
+# even outside a Ray driver.
 os.environ["RAY_enable_export_api_write"] = "true"
 
 import ray
