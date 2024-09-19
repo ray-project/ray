@@ -160,6 +160,7 @@ class Counter:
     self.count = 0
 
   def inc(self):
+    print("jjyao inc")
     self.count = self.count + 1
     return self.count
 
