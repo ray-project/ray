@@ -3,6 +3,7 @@ import json
 
 from time import sleep
 import pytest
+import threading
 from ray._private.test_utils import wait_for_condition
 from ray.tests.conftest_docker import *  # noqa
 from ray.tests.conftest_docker import gen_head_node, gen_worker_node
@@ -122,6 +123,102 @@ def test_network_task_submit(head, worker, gcs_network):
         return False
 
     wait_for_condition(lambda: check_task_pending(2))
+
+
+head = gen_head_node(
+    {
+        "RAY_grpc_keepalive_time_ms": "1000",
+        "RAY_grpc_client_keepalive_time_ms": "1000",
+        "RAY_grpc_client_keepalive_timeout_ms": "1000",
+        "RAY_health_check_initial_delay_ms": "1000",
+        "RAY_health_check_period_ms": "1000",
+        "RAY_health_check_timeout_ms": "100000",
+        "RAY_health_check_failure_threshold": "20",
+    }
+)
+
+worker = gen_worker_node(
+    {
+        "RAY_grpc_keepalive_time_ms": "1000",
+        "RAY_grpc_client_keepalive_time_ms": "1000",
+        "RAY_grpc_client_keepalive_timeout_ms": "1000",
+        "RAY_health_check_initial_delay_ms": "1000",
+        "RAY_health_check_period_ms": "1000",
+        "RAY_health_check_timeout_ms": "100000",
+        "RAY_health_check_failure_threshold": "20",
+    }
+)
+
+DRIVER_SCRIPT = """
+import asyncio
+import ray
+ray.init(namespace="test")
+
+@ray.remote(num_cpus=0.1, name="counter", lifetime="detached")
+class Counter:
+  def __init__(self):
+    self.count = 0
+
+  def inc(self):
+    self.count = self.count + 1
+    return self.count
+
+  @ray.method(max_task_retries=-1)
+  def get(self):
+    return self.count
+
+@ray.remote(num_cpus=0.1, max_task_retries=-1)
+class AsyncActor:
+  def __init__(self, counter):
+    self.counter = counter
+
+  async def run(self):
+    if ray.get(self.counter.inc.remote()) == 1:
+      print("jjyao first attempt")
+      # first attempt
+      while ray.get(self.counter.get.remote()) != 2:
+        await asyncio.sleep(1)
+      ray.get(self.counter.inc.remote())
+      print("jjyao first attempt finished")
+    else:
+      print("jjyao second attempt")
+      # retry
+      while ray.get(self.counter.get.remote()) != 3:
+        # Wait until first attempt finishes
+        await asyncio.sleep(1)
+      await asyncio.sleep(1)
+      print("jjyao second attempt finished")
+    return "ok"
+
+counter = Counter.remote()
+async_actor = AsyncActor.remote(counter)
+assert ray.get(async_actor.run.remote()) == "ok"
+"""
+
+
+def test_async_actor_task_retry(head, worker, gcs_network):
+    network = gcs_network
+
+    def inject_transient_network_failure():
+        try:
+            sleep(10)
+            worker_ip = worker._container.attrs["NetworkSettings"]["Networks"][
+                network.name
+            ]["IPAddress"]
+            print(f"jjyao worker ip {worker_ip}")
+            network.disconnect(worker.name)
+            network.connect(worker.name, ipv4_address=worker_ip)
+            print("jjyao injection done")
+        except Exception as e:
+            print(f"jjyao injection failed {e}")
+
+    t = threading.Thread(target=inject_transient_network_failure, daemon=True)
+    t.start()
+
+    result = head.exec_run(
+        cmd=f"python -c '{DRIVER_SCRIPT}'",
+    )
+    assert result.exit_code == 0, result.output
 
 
 if __name__ == "__main__":
