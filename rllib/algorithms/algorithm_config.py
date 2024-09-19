@@ -2571,18 +2571,20 @@ class AlgorithmConfig(_Config):
                 If your data does not fit into memory and your Learner connector pipeline
                 requires an RLModule or is stateful, set both
                 `materialize_data` and `materialize_mapped_data` to `False`.
-            materialize_mapped_data: If the data should be materialized after running it
-                through the learner connectors (i.e. after running the
-                `OfflinePreLearner`). This improves performance extensively, but should
-                only be applied, if the connectors do not depend on the `RLModule` or
-                keep a state (e.g. MARWIL computes the values with a module). In the
-                latter case the training batches become stale after some iterations and
-                learning degrades or diverges. Ensure that your cluster has enough
-                resources available to avoid an OOM. If set to `True` make sure that
-                `materialize_data` is set to `False` to avoid materializing two
-                datasets. The default is `True`. If your data does not fit into memory
-                set both configurations (i.e. `materialize_data` and
-                `materialize_mapped_data`) to `False`.
+            materialize_mapped_data: Whether the data should be materialized after
+                running it through the Learner connector pipeline (i.e. after running the
+                `OfflinePreLearner`). This improves performance, but should only be used
+                in case the (learner) connector pipeline does not require an RLModule
+                and the (learner) connector pipeline is stateless. For example, MARWIL's
+                Learner connector pipeline requires the RLModule for value function
+                predictions and training batches would become stale after some iterations
+                causing learning degradation or divergence. Also ensure that your cluster
+                has enough memory available to avoid an OOM. If set to `True` (True), make
+                sure that `materialize_data` is set to `False` to avoid materialization of two
+                datasets.
+                If your data does not fit into memory and your Learner connector pipeline
+                requires an RLModule or is stateful, set both
+                `materialize_data` and `materialize_mapped_data` to `False`.
             map_batches_kwargs: Keyword args for the `map_batches` method. These will be
                 passed into the `ray.data.Dataset.map_batches` method when sampling
                 without checking. If no arguments passed in the default arguments
