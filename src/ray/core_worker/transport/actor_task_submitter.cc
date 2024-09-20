@@ -164,7 +164,7 @@ Status ActorTaskSubmitter::SubmitActorCreationTask(TaskSpecification task_spec) 
 Status ActorTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
   auto task_id = task_spec.TaskId();
   auto actor_id = task_spec.ActorId();
-  RAY_LOG(INFO).WithField(task_id) << "Submitting task";
+  RAY_LOG(DEBUG).WithField(task_id) << "Submitting task";
   RAY_CHECK(task_spec.IsActorTask());
 
   bool task_queued = false;
@@ -600,9 +600,9 @@ void ActorTaskSubmitter::PushActorTask(ClientQueue &queue,
   const auto actor_id = task_spec.ActorId();
   const auto actor_counter = task_spec.ActorCounter();
   const auto num_queued = queue.inflight_task_callbacks.size();
-  RAY_LOG(INFO).WithField(task_id).WithField(actor_id)
+  RAY_LOG(DEBUG).WithField(task_id).WithField(actor_id)
       << "Pushing task to actor, actor counter " << actor_counter << " seq no "
-      << request->sequence_number() << " num queued " << num_queued << " " << task_spec.DebugString();
+      << request->sequence_number() << " num queued " << num_queued;
   if (num_queued >= next_queueing_warn_threshold_) {
     // TODO(ekl) add more debug info about the actor name, etc.
     warn_excess_queueing_(actor_id, num_queued);
@@ -722,7 +722,6 @@ void ActorTaskSubmitter::HandlePushTaskReply(const Status &status,
     // this first.
     resolver_.CancelDependencyResolution(task_id);
 
-    RAY_LOG(INFO) << "jjyao Retry " << task_id;
     will_retry = GetTaskFinisherWithoutMu().FailOrRetryPendingTask(
         task_id,
         error_info.error_type(),
