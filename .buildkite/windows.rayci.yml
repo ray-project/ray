@@ -95,6 +95,22 @@ steps:
         --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 3
     depends_on: windowsbuild
 
+  - label: ":ray-serve: serve: :windows: metrics tests"
+    tags: serve
+    job_env: WINDOWS
+    instance_type: windows
+    commands:
+      - bash ci/ray_ci/windows/install_tools.sh
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/serve/... serve
+        --build-name windowsbuild
+        --operating-system windows
+        --only-tags use_all_core_windows,serve_test_metrics
+        --except-tags no_windows
+        --test-env=CI="1"
+        --test-env=RAY_CI_POST_WHEEL_TESTS="1"
+        --test-env=USERPROFILE
+    depends_on: windowsbuild
+
   - label: ":ray-serve: serve: :windows: enormous tests"
     tags: serve
     job_env: WINDOWS
