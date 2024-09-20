@@ -122,6 +122,9 @@ class Actor:
     def get_events(self):
         return getattr(self, "__ray_adag_events", [])
 
+    def fail(self, x):
+        assert False
+
 
 @ray.remote
 class Collector:
@@ -181,7 +184,7 @@ def test_two_returns_first(ray_start_regular):
     compiled_dag = dag.experimental_compile()
     for _ in range(3):
         res = ray.get(compiled_dag.execute(1))
-        assert res == 1
+        assert res == [1, 2]
 
     compiled_dag.teardown()
 
@@ -195,7 +198,7 @@ def test_two_returns_second(ray_start_regular):
     compiled_dag = dag.experimental_compile()
     for _ in range(3):
         res = ray.get(compiled_dag.execute(1))
-        assert res == 2
+        assert res == [2, 1]
 
     compiled_dag.teardown()
 
@@ -1908,7 +1911,7 @@ class TestLeafNode:
         compiled_dag = dag.experimental_compile()
 
         ref = compiled_dag.execute(10)
-        assert ray.get(ref) == [20]
+        assert ray.get(ref) == [20, 10]
         compiled_dag.teardown()
 
     def test_leaf_node_two_actors(self, ray_start_regular):
@@ -1931,7 +1934,30 @@ class TestLeafNode:
         compiled_dag = dag.experimental_compile()
 
         ref = compiled_dag.execute(10)
-        assert ray.get(ref) == [120, 220]
+        assert ray.get(ref) == [120, 220, 10]
+        compiled_dag.teardown()
+
+    def test_leaf_node_raise_exception(self, ray_start_regular):
+        """
+        driver -> a.fail
+               |
+               -> a.inc -> driver
+
+        The upper branch (branch 1) is a leaf node, and `a.fail` will raise an
+        exception. The exception will be propagated to the driver.
+        """
+        a = Actor.remote(0)
+        with InputNode() as i:
+            input_data = a.read_input.bind(i)
+            a.fail.bind(input_data)  # branch1: leaf node -> assertion error
+            branch2 = a.inc.bind(input_data)
+            dag = MultiOutputNode([branch2])
+
+        compiled_dag = dag.experimental_compile()
+
+        ref = compiled_dag.execute(10)
+        with pytest.raises(AssertionError):
+            ray.get(ref)
         compiled_dag.teardown()
 
 

@@ -766,12 +766,11 @@ class CompiledDAG:
         assert self.output_task_idx is not None
         output_node = self.idx_to_task[self.output_task_idx].dag_node
         # Add an MultiOutputNode to the end of the DAG if it's not already there.
+        is_multi_output_node_declared = isinstance(output_node, MultiOutputNode)
         if not isinstance(output_node, MultiOutputNode):
             output_node = MultiOutputNode([output_node])
             self._add_node(output_node)
             self.output_task_idx = self.dag_node_to_idx[output_node]
-        else:
-            self._returns_list = True
 
         # TODO: Support no-input DAGs (use an empty object to signal).
         if self.input_task_idx is None:
@@ -917,6 +916,33 @@ class CompiledDAG:
                 if upstream_task.dag_node.type_hint.requires_nccl():
                     # Add all readers to the NCCL group.
                     nccl_actors.add(downstream_actor_handle)
+
+        # Collect all leaf nodes.
+        leaf_nodes: DAGNode = []
+        for idx, task in self.idx_to_task.items():
+            if not isinstance(task.dag_node, ClassMethodNode):
+                continue
+            if (
+                len(task.downstream_task_idxs) == 0
+                and not task.dag_node.is_adag_output_node
+            ):
+                leaf_nodes.append(task.dag_node)
+
+        # Add the leaf nodes to the MultiOutputNode to allow exceptions thrown by the
+        # leaf nodes to be propagated to the users. Then, add the MultiOutputNode to
+        # the downstream tasks of the leaf nodes.
+        output_node = self.idx_to_task[self.output_task_idx].dag_node
+        assert isinstance(output_node, MultiOutputNode)
+        output_node.update_bound_args(leaf_nodes)
+        for leaf_node in leaf_nodes:
+            leaf_task = self.idx_to_task[self.dag_node_to_idx[leaf_node]]
+            leaf_task.downstream_task_idxs[self.output_task_idx] = None
+
+        # If the user defines a MultiOutputNode or the output node has multiple input
+        # arguments, the output node should return a list of outputs.
+        self._returns_list = (
+            is_multi_output_node_declared or len(output_node.get_args()) > 1
+        )
 
         # If there were type hints indicating transport via NCCL, initialize
         # the NCCL group on the participating actors.
@@ -1333,11 +1359,6 @@ class CompiledDAG:
         assert [
             output_channel is not None for output_channel in self.dag_output_channels
         ]
-        # If no MultiOutputNode was specified during the DAG creation, there is only
-        # one output. Return a single output channel instead of a list of
-        # channels.
-        if not self._returns_list:
-            assert len(self.dag_output_channels) == 1
 
         # Driver should ray.put on input, ray.get/release on output
         self._monitor = self._monitor_failures()
