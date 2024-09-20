@@ -211,7 +211,6 @@ def test_async_actor_task_retry(head2, worker2, gcs_network):
             ]["IPAddress"]
             print(f"jjyao worker ip {worker_ip}")
             network.disconnect(worker2.name, force=True)
-            sleep(2)
             network.connect(worker2.name, ipv4_address=worker_ip)
             print("jjyao injection done")
         except Exception as e:
@@ -222,10 +221,8 @@ def test_async_actor_task_retry(head2, worker2, gcs_network):
 
     result = head2.exec_run(
         cmd=f"python -c '{DRIVER_SCRIPT}'",
-        stream=True,
     )
-    for line in result.output:
-        print("jjyao  " + line.decode('utf-8').strip())
+    assert result.exit_code == 0, result.output.decode('utf-8')
 
 
 if __name__ == "__main__":
