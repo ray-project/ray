@@ -1,10 +1,11 @@
 import collections
 import unittest
-from typing import Any, Optional
+from typing import Any, Optional, Tuple
 
 import pytest
 
 import ray
+from ray._private.test_utils import wait_for_condition
 from ray.actor import ActorHandle
 from ray.data._internal.compute import ActorPoolStrategy
 from ray.data._internal.execution.operators.actor_pool_map_operator import _ActorPool
