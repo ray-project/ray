@@ -2649,8 +2649,9 @@ def get(
     Raises:
         GetTimeoutError: A GetTimeoutError is raised if a timeout is set and
             the get takes longer than timeout to return.
-        Exception: An exception is raised if the task that created the object
-            or that created one of the objects raised an exception.
+        Exception: An exception is raised immediately if any task that created
+            the object or that created one of the objects raised an exception,
+            without waiting for the remaining ones to finish.
     """
     worker = global_worker
     worker.check_connected()
