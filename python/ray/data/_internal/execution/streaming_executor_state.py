@@ -264,7 +264,7 @@ class OpState:
             self.op._in_task_submission_backpressure
             or self.op._in_task_output_backpressure
         ):
-            desc += " 🚧"
+            desc += " [backpressured]"
 
         # Add operator suffix, which includes actor information,
         # directly after task details.
@@ -272,7 +272,7 @@ class OpState:
         if suffix:
             desc += f", {suffix}"
 
-        desc += f", Input Blocks: {queued}; "
+        desc += f", Queued Blocks: {queued}; "
         desc += f"Resources: {resource_manager.get_op_usage_str(self.op)}"
 
         return desc
