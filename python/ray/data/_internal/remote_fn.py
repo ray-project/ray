@@ -12,12 +12,20 @@ def cached_remote_fn(fn: Any, **ray_remote_args) -> Any:
     (ray imports ray.data in order to allow ``ray.data.read_foo()`` to work,
     which means ray.remote cannot be used top-level in ray.data).
 
-    Note: Dynamic arguments should not be passed in directly,
+    NOTE: Dynamic arguments should not be passed in directly,
     and should be set with ``options`` instead:
     ``cached_remote_fn(fn, **static_args).options(**dynamic_args)``.
     """
 
-    args_hash = hash(ray_remote_args)
+    # NOTE: Hash of the passed in arguments guarantees that we're caching
+    #       complete instantiation of the Ray's remote method
+    #
+    # To compute the hash of passed in arguments and make sure it's deterministic
+    #   - Sort all KV-pairs by the keys
+    #   - Convert sorted list into tuple
+    #   - Compute hash of the resulting tuple
+    arg_pairs = tuple(sorted(list(ray_remote_args.items()), key=lambda t: t[0]))
+    args_hash = hash(arg_pairs)
 
     if (fn, args_hash) not in CACHED_FUNCTIONS:
         default_ray_remote_args = {
@@ -31,8 +39,7 @@ def cached_remote_fn(fn: Any, **ray_remote_args) -> Any:
         ray_remote_args = {**default_ray_remote_args, **ray_remote_args}
         _add_system_error_to_retry_exceptions(ray_remote_args)
 
-        # NOTE: Hash of the passed in arguments guarantees that we're caching
-        #       complete instantiation of the Ray's remote method
+
         CACHED_FUNCTIONS[(fn, args_hash)] = ray.remote(**ray_remote_args)(fn)
 
     return CACHED_FUNCTIONS[(fn, args_hash)]
