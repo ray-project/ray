@@ -11,12 +11,27 @@ from ray.data._internal.memory_tracing import (
     trace_allocation,
     trace_deallocation,
 )
+from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.util import (
     _check_pyarrow_version,
     _split_list,
     iterate_with_retry,
 )
 from ray.data.tests.conftest import *  # noqa: F401, F403
+
+
+def test_cached_remote_fn():
+    def foo():
+        pass
+
+    cpu_only_foo = cached_remote_fn(foo, num_cpus=1)
+    cached_cpu_only_foo = cached_remote_fn(foo, num_cpus=1)
+
+    assert cpu_only_foo == cached_cpu_only_foo
+
+    gpu_only_foo = cached_remote_fn(foo, num_gpus=1)
+
+    assert cpu_only_foo != gpu_only_foo
 
 
 def test_check_pyarrow_version_bounds(unsupported_pyarrow_version):
