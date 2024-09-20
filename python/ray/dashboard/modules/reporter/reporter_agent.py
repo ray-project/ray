@@ -7,6 +7,7 @@ import socket
 import sys
 import traceback
 from collections import defaultdict
+from concurrent.futures import ThreadPoolExecutor
 from typing import List, Optional, Tuple, TypedDict, Union
 
 from opencensus.stats import stats as stats_module
@@ -20,7 +21,7 @@ import ray.dashboard.modules.reporter.reporter_consts as reporter_consts
 import ray.dashboard.utils as dashboard_utils
 from ray._private import utils
 from ray._private.metrics_agent import Gauge, MetricsAgent, Record
-from ray._private.ray_constants import DEBUG_AUTOSCALING_STATUS
+from ray._private.ray_constants import DEBUG_AUTOSCALING_STATUS, env_integer
 from ray._raylet import WorkerID
 from ray.core.generated import reporter_pb2, reporter_pb2_grpc
 from ray.dashboard import k8s_utils
@@ -46,6 +47,13 @@ ENABLE_K8S_DISK_USAGE = os.environ.get("RAY_DASHBOARD_ENABLE_K8S_DISK_USAGE") ==
 IN_CONTAINER = os.path.exists("/sys/fs/cgroup")
 # Using existence of /sys/fs/cgroup as the criterion is consistent with
 # Ray's existing resource logic, see e.g. ray._private.utils.get_num_cpus().
+
+# NOTE: Executor in this head is intentionally constrained to just 1 thread by
+#       default to limit its concurrency, therefore reducing potential for
+#       GIL contention
+RAY_DASHBOARD_REPORTER_AGENT_TPE_MAX_WORKERS = env_integer(
+    "RAY_DASHBOARD_REPORTER_AGENT_TPE_MAX_WORKERS", 1
+)
 
 
 def recursive_asdict(o):
@@ -391,6 +399,11 @@ class ReporterAgent(
                 REGISTRY.register(self._metrics_agent.proxy_exporter_collector)
         self._key = (
             f"{reporter_consts.REPORTER_PREFIX}" f"{self._dashboard_agent.node_id}"
+        )
+
+        self._executor = ThreadPoolExecutor(
+            max_workers=RAY_DASHBOARD_REPORTER_AGENT_TPE_MAX_WORKERS,
+            thread_name_prefix="reporter_agent_executor",
         )
 
     async def GetTraceback(self, request, context):
@@ -1223,9 +1236,9 @@ class ReporterAgent(
                 )
 
                 # NOTE: Stats collection is executed inside the thread-pool
-                #       executor (TPE) to avoid blocking the Dashboard's event-loop
+                #       executor (TPE) to avoid blocking the Agent's event-loop
                 json_payload = await loop.run_in_executor(
-                    self._dashboard_agent.thread_pool_executor,
+                    self._executor,
                     self._compose_stats_payload,
                     autoscaler_status_json_bytes,
                 )
