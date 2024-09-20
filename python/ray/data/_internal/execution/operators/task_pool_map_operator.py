@@ -63,9 +63,17 @@ class TaskPoolMapOperator(MapOperator):
         )
         self._concurrency = concurrency
 
+        # NOTE: Unlike static Ray remote args, dynamic arguments extracted from the blocks
+        #       themselves are going to be passed inside `fn.options(...)` invocation
+        ray_remote_static_args = {
+            **ray_remote_args,
+            "num_returns": "streaming",
+        }
+
+        self._map_task = cached_remote_fn(_map_task, **ray_remote_static_args)
+
     def _add_bundled_input(self, bundle: RefBundle):
         # Submit the task as a normal Ray task.
-        map_task = cached_remote_fn(_map_task, num_returns="streaming")
         ctx = TaskContext(
             task_idx=self._next_data_task_idx,
             target_max_block_size=self.actual_target_max_block_size,
@@ -82,7 +90,7 @@ class TaskPoolMapOperator(MapOperator):
                 2 * data_context._max_num_blocks_in_streaming_gen_buffer
             )
 
-        gen = map_task.options(**ray_remote_args).remote(
+        gen = self._map_task.options(**ray_remote_args).remote(
             self._map_transformer_ref,
             data_context,
             ctx,
