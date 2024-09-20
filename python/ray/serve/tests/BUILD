@@ -192,8 +192,6 @@ py_test_module_list(
         "test_deploy_app.py",
         "test_enable_task_events.py",
         "test_kv_store.py",
-        "test_long_pble_task_events.py",
-        "test_kv_store.py",
         "test_long_poll.py",
         "test_regression.py",
     ],
