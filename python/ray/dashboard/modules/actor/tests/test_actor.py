@@ -73,8 +73,8 @@ def test_actors(disable_aiohttp_cache, ray_start_with_dashboard):
     ).remote()
 
     ray.kill(dead_actor)
-    results_foo = [actor.do_task.remote() for actor in foo_actors]  # noqa
-    results_pg = pg_actor.do_task.remote()
+    [actor.do_task.remote() for actor in foo_actors]
+    pg_actor.do_task.remote()
     webui_url = ray_start_with_dashboard["webui_url"]
     assert wait_until_server_available(webui_url)
     webui_url = format_web_url(webui_url)
