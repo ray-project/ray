@@ -574,10 +574,8 @@ void GcsServer::InitKVManager() {
     RAY_LOG(FATAL) << "Unexpected storage type! " << storage_type_;
   }
 
-  ray::rpc::StoredConfig stored_config;
-  stored_config.set_config(config_.raylet_config_list);
-  kv_manager_ =
-      std::make_unique<GcsInternalKVManager>(std::move(instance), stored_config);
+  kv_manager_ = std::make_unique<GcsInternalKVManager>(std::move(instance),
+                                                       config_.raylet_config_list);
 }
 
 void GcsServer::InitKVService() {
