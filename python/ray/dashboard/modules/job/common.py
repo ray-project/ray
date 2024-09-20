@@ -205,7 +205,7 @@ class JobInfoStorageClient:
         passed if the caller is not modifying data in the KV store.
         """
         self._gcs_aio_client = gcs_aio_client
-        self._export_submission_job_event_logger = None
+        self._export_submission_job_event_logger: logging.Logger = None
         try:
             if ray_constants.RAY_ENABLE_EXPORT_API_WRITE and log_dir is not None:
                 self._export_submission_job_event_logger = get_export_event_logger(

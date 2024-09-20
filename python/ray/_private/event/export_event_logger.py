@@ -53,7 +53,7 @@ class ExportEventLoggerAdapter:
         event = ExportEvent()
         event.event_id = generate_event_id()
         event.timestamp = int(datetime.now().timestamp())
-        if type(event_data) is ExportSubmissionJobEventData:
+        if isinstance(event_data, ExportSubmissionJobEventData):
             event.submission_job_event_data.CopyFrom(event_data)
             event.source_type = ExportEvent.SourceType.EXPORT_SUBMISSION_JOB
         else:
@@ -97,8 +97,8 @@ class ExportEventLoggerAdapter:
         return json.dumps(event_json)
 
 
-def _build_export_event_file_logger(source: ExportEvent.SourceType, sink_dir: str):
-    logger = logging.getLogger("_ray_export_event_logger")
+def _build_export_event_file_logger(source: ExportEvent.SourceType, sink_dir: str) -> logging.Logger:
+    logger = logging.getLogger("_ray_export_event_logger_" + source)
     logger.setLevel(logging.INFO)
     dir_path = pathlib.Path(sink_dir) / "events"
     filepath = dir_path / f"event_{source}.log"
@@ -118,7 +118,7 @@ _export_event_logger_lock = threading.Lock()
 _export_event_logger = {}
 
 
-def get_export_event_logger(source: ExportEvent.SourceType, sink_dir: str):
+def get_export_event_logger(source: ExportEvent.SourceType, sink_dir: str) -> logging.Logger:
     """Get the export event logger of the current process.
 
     There's only one logger per export event source.
