@@ -142,16 +142,34 @@ parser = add_rllib_example_script_args()
 # and (if needed) use their values toset up `config` below.
 args = parser.parse_args()
 
+# RLUnplugged GCS bucket. This bucket contains for each set of environments
+# (e.g. Atari) a directory and for each environment within. For each
+# environment multiple runs were collected.
+rlunplugged_base_path = "rl_unplugged/atari"
+
 # We only use the Atari game `Pong` here. Users can choose other Atari
 # games and set here the name. This will download `TfRecords` dataset from GCS.
 game = "Pong"
 
+# Path to the directory with all runs from Atari Pong.
+rlunplugged_path = rlunplugged_base_path + f"/{game}"
+
+# Set up the GCS file system.
 filesystem = pyarrow.fs.GcsFileSystem(anonymous=True)
 # There are many run numbers, we choose the first one for demonstration. This
 # can be chosen by users. To use all data use a list of file paths (see
 # `num_shards`) and its usage further below.
 # run_number = 1
+
+# Get all file infos to calculate an optimal number of blocks for reading.
+all_file_infos = filesystem.get_file_info(pyarrow.fs.FileSelector(rlunplugged_path))
+# Get the total file size
+total_file_size_mb = sum(fi.size for fi in all_file_infos)
+# A block is defined to be 128MB.
+num_blocks = int(total_file_size_mb / 128) - 1
+
 # # num_shards = 1
+
 
 # # Make the temporary directory for the downloaded data.
 # tmp_path = "/tmp/atari"
@@ -207,7 +225,9 @@ config = (
             # compressed and Arrow needs to decompress them.
             "arrow_open_stream_args": {"compression": "gzip"},
             # Use enough reading blocks to scale well.
-            "override_num_blocks": 20,
+            "override_num_blocks": num_blocks,
+            # Read in parallel with these many actors.
+            "concurrency": 80,
             # TFX improves performance extensively. `tfx-bsl` needs to be
             # installed for this.
             "tfx_read_options": TFXReadOptions(
@@ -231,8 +251,8 @@ config = (
         # Increase the parallelism in transforming batches, such that while
         # training, new batches are transformed while others are used in updating.
         map_batches_kwargs={
-            "concurrency": 10,
-            "num_cpus": 10,
+            "concurrency": 40,
+            "num_cpus": 40,
         },  # max(args.num_gpus * 20, 20)},
         # When iterating over batches in the dataset, prefetch at least 20
         # batches per learner. Increase this for scaling out more.
@@ -264,7 +284,7 @@ config = (
 # TODO (simon): Change to use the `run_rllib_example` function as soon as tuned.
 algo = config.build()
 
-for i in range(10):
+for i in range(100):
     print(f"Iteration: {i + 1}")
     results = algo.train()
     print(results)
