@@ -16,7 +16,10 @@ def cached_remote_fn(fn: Any, **ray_remote_args) -> Any:
     and should be set with ``options`` instead:
     ``cached_remote_fn(fn, **static_args).options(**dynamic_args)``.
     """
-    if fn not in CACHED_FUNCTIONS:
+
+    args_hash = hash(ray_remote_args)
+
+    if (fn, args_hash) not in CACHED_FUNCTIONS:
         default_ray_remote_args = {
             # Use the default scheduling strategy for all tasks so that we will
             # not inherit a placement group from the caller, if there is one.
@@ -27,8 +30,12 @@ def cached_remote_fn(fn: Any, **ray_remote_args) -> Any:
         }
         ray_remote_args = {**default_ray_remote_args, **ray_remote_args}
         _add_system_error_to_retry_exceptions(ray_remote_args)
-        CACHED_FUNCTIONS[fn] = ray.remote(**ray_remote_args)(fn)
-    return CACHED_FUNCTIONS[fn]
+
+        # NOTE: Hash of the passed in arguments guarantees that we're caching
+        #       complete instantiation of the Ray's remote method
+        CACHED_FUNCTIONS[(fn, args_hash)] = ray.remote(**ray_remote_args)(fn)
+
+    return CACHED_FUNCTIONS[(fn, args_hash)]
 
 
 def _add_system_error_to_retry_exceptions(ray_remote_args) -> None:
