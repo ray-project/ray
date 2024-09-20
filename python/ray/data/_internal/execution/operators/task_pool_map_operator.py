@@ -63,8 +63,9 @@ class TaskPoolMapOperator(MapOperator):
         )
         self._concurrency = concurrency
 
-        # NOTE: Unlike static Ray remote args, dynamic arguments extracted from the blocks
-        #       themselves are going to be passed inside `fn.options(...)` invocation
+        # NOTE: Unlike static Ray remote args, dynamic arguments extracted from the
+        #       blocks themselves are going to be passed inside `fn.options(...)`
+        #       invocation
         ray_remote_static_args = {
             **ray_remote_args,
             "num_returns": "streaming",

@@ -24,7 +24,7 @@ def cached_remote_fn(fn: Any, **ray_remote_args) -> Any:
     #   - Sort all KV-pairs by the keys
     #   - Convert sorted list into tuple
     #   - Compute hash of the resulting tuple
-    arg_pairs = tuple(sorted(list(ray_remote_args.items()), key=lambda t: t[0]))
+    arg_pairs = tuple(sorted(ray_remote_args.items(), key=lambda t: t[0]))
     args_hash = hash(arg_pairs)
 
     if (fn, args_hash) not in CACHED_FUNCTIONS:
@@ -38,7 +38,6 @@ def cached_remote_fn(fn: Any, **ray_remote_args) -> Any:
         }
         ray_remote_args = {**default_ray_remote_args, **ray_remote_args}
         _add_system_error_to_retry_exceptions(ray_remote_args)
-
 
         CACHED_FUNCTIONS[(fn, args_hash)] = ray.remote(**ray_remote_args)(fn)
 
