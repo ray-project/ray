@@ -177,7 +177,7 @@ class _Bar:
         self.state = state
         self.pos_offset = pos_offset
         self.bar = real_tqdm.tqdm(
-            desc=state["desc"],
+            desc=state["desc"] + " " + str(state["pos"]),
             total=state["total"],
             unit=state["unit"],
             position=pos_offset + state["pos"],

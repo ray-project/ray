@@ -81,7 +81,7 @@ class ProgressBar:
         self._desc = self._truncate_name(name)
         self._progress = 0
         # Prepend a space to the unit for better formatting.
-        if unit and unit[0] != " ":
+        if unit[0] != " ":
             unit = " " + unit
 
         if enabled is None:

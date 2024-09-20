@@ -185,7 +185,6 @@ class OpState:
         self.outqueue: OpBufferQueue = OpBufferQueue()
         self.op = op
         self.progress_bar = None
-        self.header_bar = None
         self.num_completed_tasks = 0
         self.inputs_done_called = False
         # Tracks whether `input_done` is called for each input op.
@@ -232,8 +231,6 @@ class OpState:
             self.progress_bar.close()
             if isinstance(self.op, AllToAllOperator):
                 self.op.close_sub_progress_bars()
-            if self.header_bar:
-                self.header_bar.close()
 
     def num_queued(self) -> int:
         """Return the number of queued bundles across all inqueues."""
@@ -258,18 +255,16 @@ class OpState:
         if self.progress_bar:
             self.progress_bar.set_description(self.summary_str(resource_manager))
             self.progress_bar.refresh()
-            if self.header_bar:
-                self.header_bar.refresh()
 
     def summary_str(self, resource_manager: ResourceManager) -> str:
         queued = self.num_queued() + self.op.internal_queue_size()
         active = self.op.num_active_tasks()
-        desc = f"- {self.op.name} | ({active}"
+        desc = f"- {self.op.name}: Tasks: {active}"
         if (
             self.op._in_task_submission_backpressure
             or self.op._in_task_output_backpressure
         ):
-            desc += " [backpressured]"
+            desc += " 🚧"
 
         # Add operator suffix, which includes actor information,
         # directly after task details.
@@ -277,8 +272,8 @@ class OpState:
         if suffix:
             desc += f", {suffix}"
 
-        desc += f", {queued}"
-        desc += f", {resource_manager.get_op_usage_str(self.op)})"
+        desc += f", Input Blocks: {queued}; "
+        desc += f"Resources: {resource_manager.get_op_usage_str(self.op)}"
 
         return desc
 
@@ -380,37 +375,9 @@ def build_streaming_topology(
     # Note that the topology dict is in topological sort order. Index zero is reserved
     # for global progress information.
     i = 1
-    header_bar = None
-    max_op_name_len = 0
     for op_state in list(topology.values()):
         if not isinstance(op_state.op, InputDataBuffer):
-            if header_bar is None:
-                # At least one operator-level progress bar is initialized, so
-                # create a dummy progress bar which shows header information.
-                header_bar = ProgressBar(
-                    "",
-                    None,
-                    unit="",
-                    position=i,
-                    enabled=True,
-                )
-                op_state.header_bar = header_bar
-                op_state.header_bar.refresh()
-                i += 1
-
             i += op_state.initialize_progress_bars(i, options.verbose_progress)
-            max_op_name_len = max(max_op_name_len, len(op_state.op.name))
-
-    # Account for extra characters added by the progress bar.
-    max_op_name_len += len("- ")
-
-    # Pad the first column to align with the longest operator name.
-    # Center "Operator Name" within the first column.
-    header_description = (
-        f"{'Operator':^{max_op_name_len}} | "
-        f"(Tasks, Actors, Queued Blocks, CPU, GPU, Object Store)"
-    )
-    header_bar.set_description(header_description)
 
     return (topology, i)
 

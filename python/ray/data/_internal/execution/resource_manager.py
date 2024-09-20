@@ -213,12 +213,12 @@ class ResourceManager:
     def get_op_usage_str(self, op: PhysicalOperator) -> str:
         """Return a human-readable string representation of the resource usage of
         the given operator."""
-        usage_str = f"{self._op_running_usages[op].cpu:.1f}"
+        usage_str = f"{self._op_running_usages[op].cpu:.1f} CPU"
         if self._op_running_usages[op].gpu:
-            usage_str += f", {self._op_running_usages[op].gpu:.1f}"
-        else:
-            usage_str += ", 0.0"
-        usage_str += f", {self._op_running_usages[op].object_store_memory_str()}"
+            usage_str += f", {self._op_running_usages[op].gpu:.1f} GPU"
+        usage_str += (
+            f", {self._op_running_usages[op].object_store_memory_str()} object store"
+        )
         if self._debug:
             usage_str += (
                 f" (in={memory_string(self._mem_op_internal[op])},"

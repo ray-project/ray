@@ -384,7 +384,7 @@ class StreamingExecutor(Executor, threading.Thread):
                 pending_str = f"{pending_usage.cpu:.4g} CPU"
             else:
                 pending_str = f"{pending_usage.gpu:.4g} GPU"
-            resources_status += f" (Pending: {pending_str})"
+            resources_status += f" (⏳: {pending_str})"
         if self._global_info:
             self._global_info.set_description(resources_status)
 
