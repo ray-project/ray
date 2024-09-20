@@ -17,16 +17,6 @@ RAY_TRAIN_LOG_ENCODING = os.environ.get("RAY_TRAIN_LOG_ENCODING", "").upper()
 # Env. variable to specify the logging config path use defaults if not set
 RAY_TRAIN_LOGGING_CONFIG_PATH = os.environ.get("RAY_TRAIN_LOGGING_CONFIG_PATH")
 
-# To facilitate debugging, Ray Train writes debug logs to a file. However, if Ray Train
-# logs every scheduler loop, logging might impact performance. So, we add a "TRACE"
-# level where logs aren't written by default.
-#
-# Use the following code to log a message at the "TRACE" level:
-# ```
-# logger.log(logging.getLevelName("TRACE"), "Your message here.")
-# ````
-logging.addLevelName(logging.DEBUG - 1, "TRACE")
-
 
 class HiddenRecordFilter:
     """Filters out log records with the "hide" attribute set to True.
