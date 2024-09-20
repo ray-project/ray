@@ -97,7 +97,9 @@ class ExportEventLoggerAdapter:
         return json.dumps(event_json)
 
 
-def _build_export_event_file_logger(source: ExportEvent.SourceType, sink_dir: str) -> logging.Logger:
+def _build_export_event_file_logger(
+    source: ExportEvent.SourceType, sink_dir: str
+) -> logging.Logger:
     logger = logging.getLogger("_ray_export_event_logger_" + source)
     logger.setLevel(logging.INFO)
     dir_path = pathlib.Path(sink_dir) / "events"
@@ -118,7 +120,9 @@ _export_event_logger_lock = threading.Lock()
 _export_event_logger = {}
 
 
-def get_export_event_logger(source: ExportEvent.SourceType, sink_dir: str) -> logging.Logger:
+def get_export_event_logger(
+    source: ExportEvent.SourceType, sink_dir: str
+) -> logging.Logger:
     """Get the export event logger of the current process.
 
     There's only one logger per export event source.
