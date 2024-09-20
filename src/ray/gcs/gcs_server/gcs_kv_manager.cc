@@ -145,7 +145,7 @@ void GcsInternalKVManager::HandleGetInternalConfig(
     rpc::GetInternalConfigRequest request,
     rpc::GetInternalConfigReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
-  reply->set_config(stored_config_.config());
+  reply->set_config(raylet_config_list_);
   GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
   ++counts_[CountType::GET_INTERNAL_CONFIG_REQUEST];
 }
