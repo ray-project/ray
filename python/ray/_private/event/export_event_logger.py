@@ -7,7 +7,7 @@ import threading
 
 from typing import Union
 from datetime import datetime
-
+from ray._private import ray_constants
 from ray.core.generated.export_event_pb2 import ExportEvent
 from ray.core.generated.export_submission_job_event_pb2 import (
     ExportSubmissionJobEventData,
@@ -107,8 +107,11 @@ def _build_export_event_file_logger(
     dir_path.mkdir(exist_ok=True)
     filepath.touch(exist_ok=True)
     # Configure the logger.
+    # Default is 100 MB max file size
     handler = logging.handlers.RotatingFileHandler(
-        filepath, maxBytes=(100 * 1e6), backupCount=20  # 100 MB max file size
+        filepath,
+        maxBytes=(ray_constants.RAY_EXPORT_EVENT_MAX_FILE_SIZE_BYTES),
+        backupCount=ray_constants.RAY_EXPORT_EVENT_MAX_BACKUP_COUNT,
     )
     logger.addHandler(handler)
     logger.propagate = False
