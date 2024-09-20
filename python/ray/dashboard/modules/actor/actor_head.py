@@ -51,6 +51,7 @@ def actor_table_data_to_dict(message):
             "taskId",
             "parentTaskId",
             "sourceActorId",
+            "placementGroupId",
         },
         always_print_fields_with_no_presence=True,
     )
@@ -71,6 +72,7 @@ def actor_table_data_to_dict(message):
         "startTime",
         "endTime",
         "reprName",
+        "placementGroupId",
     }
     light_message = {k: v for (k, v) in orig_message.items() if k in fields}
     light_message["actorClass"] = orig_message["className"]
