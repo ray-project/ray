@@ -244,9 +244,9 @@ class ResourceSpec(
                     object_store_memory, ray_constants.MAC_DEGRADED_PERF_MMAP_SIZE_LIMIT
                 )
 
-            object_store_memory_cap: Optional[
-                int
-            ] = ray_constants.DEFAULT_OBJECT_STORE_MAX_MEMORY_BYTES
+            object_store_memory_cap = (
+                ray_constants.DEFAULT_OBJECT_STORE_MAX_MEMORY_BYTES
+            )
 
             # Cap by shm size by default to avoid low performance, but don't
             # go lower than REQUIRE_SHM_SIZE_THRESHOLD.
