@@ -141,6 +141,23 @@ void GcsInternalKVManager::HandleInternalKVKeys(
   }
 }
 
+void GcsInternalKVManager::HandleGetInternalConfig(
+    rpc::GetInternalConfigRequest request,
+    rpc::GetInternalConfigReply *reply,
+    rpc::SendReplyCallback send_reply_callback) {
+  reply->set_config(stored_config_.config());
+  GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
+  ++counts_[CountType::GET_INTERNAL_CONFIG_REQUEST];
+}
+
+std::string GcsInternalKVManager::DebugString() const {
+  std::ostringstream stream;
+  stream << "GcsInternalKVManager: "
+         << "\n- GetInternalConfig request count: "
+         << counts_[CountType::GET_INTERNAL_CONFIG_REQUEST];
+  return stream.str();
+}
+
 Status GcsInternalKVManager::ValidateKey(const std::string &key) const {
   constexpr std::string_view kNamespacePrefix = "@namespace_";
   if (absl::StartsWith(key, kNamespacePrefix)) {

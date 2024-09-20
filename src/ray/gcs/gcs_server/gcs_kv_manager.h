@@ -100,8 +100,10 @@ class InternalKVInterface {
 /// This implementation class of `InternalKVHandler`.
 class GcsInternalKVManager : public rpc::InternalKVHandler {
  public:
-  explicit GcsInternalKVManager(std::unique_ptr<InternalKVInterface> kv_instance)
-      : kv_instance_(std::move(kv_instance)) {}
+  // `stored_config` must outlive this class.
+  explicit GcsInternalKVManager(std::unique_ptr<InternalKVInterface> kv_instance,
+                                const rpc::StoredConfig &stored_config)
+      : kv_instance_(std::move(kv_instance)), stored_config_(stored_config) {}
 
   void HandleInternalKVGet(rpc::InternalKVGetRequest request,
                            rpc::InternalKVGetReply *reply,
@@ -127,10 +129,25 @@ class GcsInternalKVManager : public rpc::InternalKVHandler {
                             rpc::InternalKVKeysReply *reply,
                             rpc::SendReplyCallback send_reply_callback) override;
 
+  /// Handle get internal config.
+  void HandleGetInternalConfig(rpc::GetInternalConfigRequest request,
+                               rpc::GetInternalConfigReply *reply,
+                               rpc::SendReplyCallback send_reply_callback) override;
+
   InternalKVInterface &GetInstance() { return *kv_instance_; }
 
+  std::string DebugString() const;
+
  private:
+  // Debug info.
+  enum CountType {
+    GET_INTERNAL_CONFIG_REQUEST = 0,
+    CountType_MAX = 1,
+  };
+  uint64_t counts_[CountType::CountType_MAX] = {0};
+
   std::unique_ptr<InternalKVInterface> kv_instance_;
+  const rpc::StoredConfig &stored_config_;
   Status ValidateKey(const std::string &key) const;
 };
 
