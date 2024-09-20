@@ -152,6 +152,7 @@ worker2 = gen_worker_node(
 DRIVER_SCRIPT = """
 import asyncio
 import ray
+import sys
 ray.init(namespace="test")
 
 @ray.remote(num_cpus=0.1, name="counter", lifetime="detached")
@@ -160,7 +161,7 @@ class Counter:
     self.count = 0
 
   def inc(self):
-    print("jjyao inc")
+    print("jjyao inc", file=sys.stderr)
     self.count = self.count + 1
     return self.count
 
@@ -175,20 +176,22 @@ class AsyncActor:
 
   async def run(self):
     if ray.get(self.counter.inc.remote()) == 1:
-      print("jjyao first attempt")
+      print("jjyao first attempt", file=sys.stderr)
       # first attempt
       while ray.get(self.counter.get.remote()) != 2:
+        print("jjyao wait for second attempt", file=sys.stderr)
         await asyncio.sleep(1)
       ray.get(self.counter.inc.remote())
-      print("jjyao first attempt finished")
+      print("jjyao first attempt finished", file=sys.stderr)
     else:
-      print("jjyao second attempt")
+      print("jjyao second attempt", file=sys.stderr)
       # retry
       while ray.get(self.counter.get.remote()) != 3:
+        print("jjyao wait for first attempt", file=sys.stderr)
         # Wait until first attempt finishes
         await asyncio.sleep(1)
       await asyncio.sleep(1)
-      print("jjyao second attempt finished")
+      print("jjyao second attempt finished", file=sys.stderr)
     return "ok"
 
 counter = Counter.remote()
@@ -207,7 +210,8 @@ def test_async_actor_task_retry(head2, worker2, gcs_network):
                 network.name
             ]["IPAddress"]
             print(f"jjyao worker ip {worker_ip}")
-            network.disconnect(worker2.name)
+            network.disconnect(worker2.name, force=True)
+            sleep(2)
             network.connect(worker2.name, ipv4_address=worker_ip)
             print("jjyao injection done")
         except Exception as e:
