@@ -79,19 +79,20 @@ class TaskPoolMapOperator(MapOperator):
             task_idx=self._next_data_task_idx,
             target_max_block_size=self.actual_target_max_block_size,
         )
-        data_context = DataContext.get_current()
-        ray_remote_args = self._get_runtime_ray_remote_args(input_bundle=bundle)
-        ray_remote_args["name"] = self.name
 
+        dynamic_ray_remote_args = self._get_runtime_ray_remote_args(input_bundle=bundle)
+        dynamic_ray_remote_args["name"] = self.name
+
+        data_context = DataContext.get_current()
         if data_context._max_num_blocks_in_streaming_gen_buffer is not None:
             # The `_generator_backpressure_num_objects` parameter should be
             # `2 * _max_num_blocks_in_streaming_gen_buffer` because we yield
             # 2 objects for each block: the block and the block metadata.
-            ray_remote_args["_generator_backpressure_num_objects"] = (
+            dynamic_ray_remote_args["_generator_backpressure_num_objects"] = (
                 2 * data_context._max_num_blocks_in_streaming_gen_buffer
             )
 
-        gen = self._map_task.options(**ray_remote_args).remote(
+        gen = self._map_task.options(**dynamic_ray_remote_args).remote(
             self._map_transformer_ref,
             data_context,
             ctx,
