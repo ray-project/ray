@@ -118,12 +118,6 @@ class ProgressBar:
         ):
             return name
 
-        if log_once("ray_data_truncate_operator_name"):
-            logger.warning(
-                f"Truncating long operator name to {self.MAX_NAME_LENGTH} characters."
-                "To disable this behavior, set `ray.data.DataContext.get_current()."
-                "DEFAULT_ENABLE_PROGRESS_BAR_NAME_TRUNCATION = False`."
-            )
         op_names = name.split("->")
         if len(op_names) == 1:
             return op_names[0]
@@ -141,6 +135,13 @@ class ProgressBar:
                 + len(op_names[-1])
             ) > self.MAX_NAME_LENGTH:
                 truncated_op_names.append("...")
+                if log_once("ray_data_truncate_operator_name"):
+                    logger.warning(
+                        f"Truncating long operator name to {self.MAX_NAME_LENGTH} "
+                        "characters. To disable this behavior, set "
+                        "`ray.data.DataContext.get_current()."
+                        "DEFAULT_ENABLE_PROGRESS_BAR_NAME_TRUNCATION = False`."
+                    )
                 break
             truncated_op_names.append(op_name)
         truncated_op_names.append(op_names[-1])
@@ -198,6 +199,9 @@ class ProgressBar:
         if self._bar and name != self._desc:
             self._desc = name
             self._bar.set_description(self._desc)
+
+    def get_description(self) -> str:
+        return self._desc
 
     def refresh(self):
         if self._bar:

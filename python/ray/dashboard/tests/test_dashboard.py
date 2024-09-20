@@ -918,6 +918,7 @@ def test_dashboard_port_conflict(ray_start_with_dashboard):
         f"--temp-dir={temp_dir}",
         f"--log-dir={log_dir}",
         f"--gcs-address={address_info['gcs_address']}",
+        f"--cluster-id-hex={gcs_client.cluster_id.hex()}",
         f"--session-dir={session_dir}",
         "--node-ip-address=127.0.0.1",
     ]
@@ -1150,6 +1151,7 @@ def test_dashboard_module_load(tmpdir):
         http_port_retries=1,
         node_ip_address="127.0.0.1",
         gcs_address="127.0.0.1:6379",
+        cluster_id_hex=ray.ClusterID.from_random().hex(),
         grpc_port=0,
         log_dir=str(tmpdir),
         temp_dir=str(tmpdir),

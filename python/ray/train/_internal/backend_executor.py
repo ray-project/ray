@@ -565,7 +565,7 @@ class BackendExecutor:
                 datasets=datasets,
                 worker_group=self.worker_group,
                 start_time_ms=self._start_time_ms,
-                run_status=RunStatusEnum.STARTED,
+                run_status=RunStatusEnum.RUNNING,
             )
 
         # Run the training function asynchronously in its own thread.
@@ -663,14 +663,27 @@ class BackendExecutor:
         results = self.get_with_failure_handling(futures)
         return results
 
-    def report_final_run_status(self, errored=False):
-        """Report the final train run status and end time to TrainStateActor."""
+    def report_final_run_status(
+        self,
+        errored: bool = False,
+        failed_rank: Optional[int] = None,
+        stack_trace: Optional[str] = None,
+    ):
+        """Report the final train run status, error, and end time to TrainStateActor."""
         if self.state_tracking_enabled:
-            from ray.train._internal.state.schema import RunStatusEnum
+            from ray.train._internal.state.schema import (
+                MAX_ERROR_STACK_TRACE_LENGTH,
+                RunStatusEnum,
+            )
 
             if errored:
                 run_status = RunStatusEnum.ERRORED
-                status_detail = "Terminated due to an error in the training function."
+                status_detail = ""
+                if failed_rank is not None:
+                    status_detail += f"Rank {failed_rank} worker raised an error. \n"
+                if stack_trace is not None:
+                    # Keep only the last part of the stack trace if it's too long.
+                    status_detail += stack_trace[-MAX_ERROR_STACK_TRACE_LENGTH:]
             else:
                 run_status = RunStatusEnum.FINISHED
                 status_detail = ""

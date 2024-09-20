@@ -19,7 +19,7 @@ from ray.rllib.core.columns import Columns
 from ray.rllib.core.rl_module.rl_module import RLModuleSpec
 from ray.rllib.env import INPUT_ENV_SPACES
 from ray.rllib.env.env_context import EnvContext
-from ray.rllib.env.env_runner import EnvRunner
+from ray.rllib.env.env_runner import EnvRunner, ENV_STEP_FAILURE
 from ray.rllib.env.single_agent_episode import SingleAgentEpisode
 from ray.rllib.env.utils import _gym_env_creator
 from ray.rllib.utils.annotations import override
@@ -248,9 +248,9 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
             # leak).
             self._ongoing_episodes_for_metrics.clear()
 
-            # Reset the environment.
+            # Try resetting the environment.
             # TODO (simon): Check, if we need here the seed from the config.
-            obs, infos = self.env.reset()
+            obs, infos = self._try_env_reset()
             obs = unbatch(obs)
             self._cached_to_module = None
 
@@ -317,10 +317,16 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
             # are the ones stored permanently in the episode objects.
             actions = to_env.pop(Columns.ACTIONS)
             actions_for_env = to_env.pop(Columns.ACTIONS_FOR_ENV, actions)
-            # Step the environment.
-            obs, rewards, terminateds, truncateds, infos = self.env.step(
-                actions_for_env
-            )
+            # Try stepping the environment.
+            results = self._try_env_step(actions_for_env)
+            if results == ENV_STEP_FAILURE:
+                return self._sample_timesteps(
+                    num_timesteps=num_timesteps,
+                    explore=explore,
+                    random_actions=random_actions,
+                    force_reset=True,
+                )
+            obs, rewards, terminateds, truncateds, infos = results
             obs, actions = unbatch(obs), unbatch(actions)
 
             ts += self.num_envs
@@ -457,9 +463,9 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
             # `gymnasium-v1.0.0a2` PR is coming.
         _shared_data = {}
 
-        # Reset the environment.
+        # Try resetting the environment.
         # TODO (simon): Check, if we need here the seed from the config.
-        obs, infos = self.env.reset()
+        obs, infos = self._try_env_reset()
         for env_index in range(self.num_envs):
             episodes[env_index].add_env_reset(
                 observation=unbatch(obs)[env_index],
@@ -514,10 +520,15 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
             # are the ones stored permanently in the episode objects.
             actions = to_env.pop(Columns.ACTIONS)
             actions_for_env = to_env.pop(Columns.ACTIONS_FOR_ENV, actions)
-            # Step the environment.
-            obs, rewards, terminateds, truncateds, infos = self.env.step(
-                actions_for_env
-            )
+            # Try stepping the environment.
+            results = self._try_env_step(actions_for_env)
+            if results == ENV_STEP_FAILURE:
+                return self._sample_episodes(
+                    num_episodes=num_episodes,
+                    explore=explore,
+                    random_actions=random_actions,
+                )
+            obs, rewards, terminateds, truncateds, infos = results
             obs, actions = unbatch(obs), unbatch(actions)
             ts += self.num_envs
 
@@ -783,16 +794,22 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
                 remote=self.config.remote_worker_envs,
             )
 
+        # No env provided -> Error.
+        if not self.config.env:
+            raise ValueError(
+                "`config.env` is not provided! You should provide a valid environment "
+                "to your config through `config.environment([env descriptor e.g. "
+                "'CartPole-v1'])`."
+            )
         # Register env for the local context.
         # Note, `gym.register` has to be called on each worker.
-        if isinstance(self.config.env, str) and _global_registry.contains(
+        elif isinstance(self.config.env, str) and _global_registry.contains(
             ENV_CREATOR, self.config.env
         ):
             entry_point = partial(
                 _global_registry.get(ENV_CREATOR, self.config.env),
                 env_ctx,
             )
-
         else:
             entry_point = partial(
                 _gym_env_creator,

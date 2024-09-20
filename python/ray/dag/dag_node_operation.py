@@ -36,6 +36,9 @@ class _DAGNodeOperation:
         self.exec_task_idx = exec_task_idx
         self.type = operation_type
 
+    def __repr__(self):
+        return f"(Task idx: {self.exec_task_idx}, Type: {self.type})"
+
 
 @total_ordering
 class _DAGOperationGraphNode:
@@ -300,7 +303,7 @@ def _build_dag_node_operation_graph(
 
 def _generate_actor_to_execution_schedule(
     graph: Dict[int, Dict[_DAGNodeOperationType, _DAGOperationGraphNode]]
-):
+) -> Dict["ray.actor.ActorHandle", List[_DAGNodeOperation]]:
     """
     Generate an execution schedule for each actor. The schedule is a list of
     operations to be executed. The function uses a topological sort algorithm

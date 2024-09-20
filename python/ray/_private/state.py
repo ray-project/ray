@@ -181,7 +181,9 @@ class GlobalState:
         """
         self._check_connected()
 
-        job_table = self.global_state_accessor.get_job_table()
+        job_table = self.global_state_accessor.get_job_table(
+            skip_submission_job_info_field=True, skip_is_running_tasks_field=True
+        )
 
         results = []
         for i in range(len(job_table)):

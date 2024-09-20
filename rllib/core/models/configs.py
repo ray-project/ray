@@ -190,7 +190,7 @@ class _MLPConfig(ModelConfig):
             )
 
         # Infer `output_dims` automatically.
-        return (self.output_layer_dim or self.hidden_layer_dims[-1],)
+        return (int(self.output_layer_dim or self.hidden_layer_dims[-1]),)
 
     def _validate(self, framework: str = "torch"):
         """Makes sure that settings are valid."""

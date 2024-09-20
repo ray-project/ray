@@ -12,6 +12,7 @@ import ray.dashboard.optional_utils as dashboard_optional_utils
 import ray.dashboard.utils as dashboard_utils
 from ray._private.async_utils import enable_monitor_loop_lag
 from ray._private.ray_constants import env_integer
+from ray._private.utils import get_or_create_event_loop
 from ray.dashboard.consts import (
     AVAILABLE_COMPONENT_NAMES_FOR_METRICS,
     METRICS_INPUT_ROOT,
@@ -322,6 +323,12 @@ class MetricsHead(dashboard_utils.DashboardHeadModule):
         )
         self._dashboard_head.metrics.metrics_dashboard_mem_rss.labels(**labels).set(
             float(self._dashboard_proc.memory_full_info().rss) / 1.0e6
+        )
+
+        loop = get_or_create_event_loop()
+
+        self._dashboard_head.metrics.metrics_event_loop_tasks.labels(**labels).set(
+            len(asyncio.all_tasks(loop))
         )
 
         # Report the max lag since the last export, if any.

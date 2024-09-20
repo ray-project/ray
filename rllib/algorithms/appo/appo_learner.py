@@ -90,14 +90,14 @@ class APPOLearner(IMPALALearner):
             # TODO (avnish) Using steps trained here instead of sampled ... I'm not sure
             #  why the other implementation uses sampled.
             #  The difference in steps sampled/trained is pretty
-            #  much always going to be larger than self.config.num_sgd_iter *
+            #  much always going to be larger than self.config.num_epochs *
             #  self.config.minibatch_buffer_size unless the number of steps collected
             #  is really small. The thing is that the default rollout fragment length
-            #  is 50, so the minibatch buffer size * num_sgd_iter is going to be
+            #  is 50, so the minibatch buffer size * num_epochs is going to be
             #  have to be 50 to even meet the threshold of having delayed target
             #  updates.
             #  We should instead have the target / kl threshold update be based off
-            #  of the train_batch_size * some target update frequency * num_sgd_iter.
+            #  of the train_batch_size * some target update frequency * num_epochs.
 
             last_update_ts_key = (module_id, LAST_TARGET_UPDATE_TS)
             if timestep - self.metrics.peek(
@@ -128,7 +128,7 @@ class APPOLearner(IMPALALearner):
 
     @abc.abstractmethod
     def _update_module_kl_coeff(self, module_id: ModuleID, config: APPOConfig) -> None:
-        """Dynamically update the KL loss coefficients of each module with.
+        """Dynamically update the KL loss coefficients of each module.
 
         The update is completed using the mean KL divergence between the action
         distributions current policy and old policy of each module. That action

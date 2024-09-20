@@ -26,7 +26,7 @@ RAY_DASHBOARD_STATS_PURGING_INTERVAL = env_integer(
     "RAY_DASHBOARD_STATS_PURGING_INTERVAL", 60 * 10
 )
 RAY_DASHBOARD_STATS_UPDATING_INTERVAL = env_integer(
-    "RAY_DASHBOARD_STATS_UPDATING_INTERVAL", 2
+    "RAY_DASHBOARD_STATS_UPDATING_INTERVAL", 15
 )
 DASHBOARD_RPC_ADDRESS = "dashboard_rpc"
 DASHBOARD_RPC_PORT = env_integer("RAY_DASHBOARD_RPC_PORT", 0)
@@ -48,12 +48,6 @@ DEFAULT_JOB_ID = "ffff"
 # ray.dashboard.modules.snapshot.snapshot_head.RayActivityResponse.
 # Example: "your.module.ray_cluster_activity_hook".
 RAY_CLUSTER_ACTIVITY_HOOK = "RAY_CLUSTER_ACTIVITY_HOOK"
-
-# Works in the thread pool should not starve the main thread loop, so we default to 1.
-RAY_DASHBOARD_THREAD_POOL_MAX_WORKERS = env_integer(
-    "RAY_DASHBOARD_THREAD_POOL_MAX_WORKERS", 1
-)
-RAY_AGENT_THREAD_POOL_MAX_WORKERS = env_integer("RAY_AGENT_THREAD_POOL_MAX_WORKERS", 1)
 
 # The number of candidate agents
 CANDIDATE_AGENT_NUMBER = max(env_integer("CANDIDATE_AGENT_NUMBER", 1), 1)

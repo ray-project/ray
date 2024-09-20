@@ -3,6 +3,7 @@ import json
 import logging
 import os
 from collections import deque
+from concurrent.futures import ThreadPoolExecutor
 from typing import List, Optional, Tuple
 
 import aiohttp.web
@@ -18,6 +19,7 @@ from ray._private.ray_constants import (
     DEBUG_AUTOSCALING_STATUS_LEGACY,
     GLOBAL_GRPC_OPTIONS,
     KV_NAMESPACE_CLUSTER,
+    env_integer,
 )
 from ray._private.usage.usage_constants import CLUSTER_METADATA_KEY
 from ray._private.utils import get_or_create_event_loop, init_grpc_channel
@@ -53,6 +55,13 @@ SVG_STYLE = """<style>
     }
 </style>\n"""
 
+# NOTE: Executor in this head is intentionally constrained to just 1 thread by
+#       default to limit its concurrency, therefore reducing potential for
+#       GIL contention
+RAY_DASHBOARD_REPORTER_HEAD_TPE_MAX_WORKERS = env_integer(
+    "RAY_DASHBOARD_REPORTER_HEAD_TPE_MAX_WORKERS", 1
+)
+
 
 class ReportHead(dashboard_utils.DashboardHeadModule):
     def __init__(self, dashboard_head):
@@ -72,6 +81,11 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
         )
         self._gcs_aio_client = dashboard_head.gcs_aio_client
         self._state_api = None
+
+        self._executor = ThreadPoolExecutor(
+            max_workers=RAY_DASHBOARD_REPORTER_HEAD_TPE_MAX_WORKERS,
+            thread_name_prefix="reporter_head_executor",
+        )
 
     async def _update_stubs(self, change):
         if change.old:
@@ -680,7 +694,7 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
         # TODO(ryw): unify the StateAPIManager in reporter_head and state_head.
         self._state_api = StateAPIManager(
             self._state_api_data_source_client,
-            self._dashboard_head._thread_pool_executor,
+            self._executor,
         )
 
         # Need daemon True to avoid dashboard hangs at exit.
@@ -710,7 +724,7 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
                 # NOTE: Every iteration is executed inside the thread-pool executor
                 #       (TPE) to avoid blocking the Dashboard's event-loop
                 parsed_data = await loop.run_in_executor(
-                    self._dashboard_head._thread_pool_executor, json.loads, data
+                    self._executor, json.loads, data
                 )
 
                 node_id = key.split(":")[-1]

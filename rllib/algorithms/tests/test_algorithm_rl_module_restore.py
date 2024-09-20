@@ -54,7 +54,7 @@ class TestAlgorithmRLModuleRestore(unittest.TestCase):
             .env_runners(rollout_fragment_length=4)
             .learners(**scaling_config)
             .environment(MultiAgentCartPole, env_config={"num_agents": num_agents})
-            .training(num_sgd_iter=1, train_batch_size=8, sgd_minibatch_size=8)
+            .training(num_epochs=1, train_batch_size=8, minibatch_size=8)
             .multi_agent(policies=policies, policy_mapping_fn=policy_mapping_fn)
         )
         return config
@@ -190,7 +190,7 @@ class TestAlgorithmRLModuleRestore(unittest.TestCase):
             .env_runners(rollout_fragment_length=4)
             .learners(**scaling_config)
             .environment("CartPole-v1")
-            .training(num_sgd_iter=1, train_batch_size=8, sgd_minibatch_size=8)
+            .training(num_epochs=1, train_batch_size=8, minibatch_size=8)
         )
         env = gym.make("CartPole-v1")
         # create a multi_rl_module to load and save it to a checkpoint directory

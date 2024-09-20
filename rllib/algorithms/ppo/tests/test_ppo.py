@@ -126,7 +126,7 @@ class TestPPO(unittest.TestCase):
         config = (
             ppo.PPOConfig()
             .training(
-                num_sgd_iter=2,
+                num_epochs=2,
                 # Setup lr schedule for testing.
                 lr_schedule=[[0, 5e-5], [128, 0.0]],
                 # Set entropy_coeff to a faulty value to proof that it'll get
@@ -199,8 +199,8 @@ class TestPPO(unittest.TestCase):
                 entropy_coeff=100.0,
                 entropy_coeff_schedule=[[0, 0.1], [512, 0.0]],
                 train_batch_size=256,
-                sgd_minibatch_size=128,
-                num_sgd_iter=2,
+                minibatch_size=128,
+                num_epochs=2,
                 model=dict(
                     # Settings in case we use an LSTM.
                     lstm_cell_size=10,

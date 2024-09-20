@@ -68,6 +68,7 @@ class OutofOrderActorSubmitQueue : public IActorSubmitQueue {
   uint64_t GetSequenceNumber(const TaskSpecification &task_spec) const override;
   /// Mark a task has been executed on the receiver side.
   void MarkSeqnoCompleted(uint64_t position, const TaskSpecification &task_spec) override;
+  bool Empty() override;
 
  private:
   ActorID kActorId;

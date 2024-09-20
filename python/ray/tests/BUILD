@@ -447,6 +447,7 @@ py_test_module_list(
 py_test_module_list(
   files = [
     "test_actor.py",
+    "test_actor_lineage_reconstruction.py",
     "test_actor_retry1.py",
     "test_actor_retry2.py",
     "test_actor_failures.py",
@@ -687,6 +688,14 @@ py_test(
     srcs = ["test_pydantic_serialization.py", "pydantic_module.py"],
     tags = ["exclusive", "small_size_python_tests", "team:serve"],
     deps = ["//:ray_lib", ":conftest"],
+)
+
+py_test(
+  name = "test_collections_utils",
+  size = "small",
+  srcs = ["test_collections_utils.py"],
+  tags = ["exclusive", "small_size_python_tests", "team:core"],
+  deps = ["//:ray_lib", ":conftest"]
 )
 
 py_test(
