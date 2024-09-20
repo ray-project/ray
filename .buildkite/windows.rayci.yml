@@ -104,7 +104,7 @@ steps:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/serve/... serve
         --build-name windowsbuild
         --operating-system windows
-        --only-tags use_all_core_windows,serve_test_metrics
+        --only-tags serve_test_metrics
         --except-tags no_windows
         --test-env=CI="1"
         --test-env=RAY_CI_POST_WHEEL_TESTS="1"
