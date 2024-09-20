@@ -488,9 +488,7 @@ class _ActorPool(AutoscalingActorPool):
             already been killed.
         """
         if ready_ref not in self._pending_actors:
-            # We assume that there was a race between killing the actor and the actor
-            # ready future resolving. Since we can rely on ray.kill() eventually killing
-            # the actor, we can safely drop this reference.
+            # The actor has been removed from the pool before becoming running.
             return False
         actor = self._pending_actors.pop(ready_ref)
         self._num_tasks_in_flight[actor] = 0
@@ -585,7 +583,9 @@ class _ActorPool(AutoscalingActorPool):
     def _maybe_kill_pending_actor(self) -> bool:
         if self._pending_actors:
             # At least one pending actor, so kill first one.
-            self._remove_actor(next(iter(self._pending_actors.keys())))
+            ready_ref = next(iter(self._pending_actors.keys()))
+            self._remove_actor(self._pending_actors[ready_ref])
+            del self._pending_actors[ready_ref]
             return True
         # No pending actors, so indicate to the caller that no actors were killed.
         return False
@@ -619,9 +619,9 @@ class _ActorPool(AutoscalingActorPool):
         self._kill_all_running_actors()
 
     def _kill_all_pending_actors(self):
-        pending_actor_refs = list(self._pending_actors.keys())
-        for ref in pending_actor_refs:
-            self._remove_actor(ref)
+        for _, actor in self._pending_actors.items():
+            self._remove_actor(actor)
+        self._pending_actors.clear()
 
     def _kill_all_idle_actors(self):
         idle_actors = [
@@ -646,7 +646,6 @@ class _ActorPool(AutoscalingActorPool):
         for state_dict in [
             self._num_tasks_in_flight,
             self._actor_locations,
-            self._pending_actors,
         ]:
             if actor in state_dict:
                 del state_dict[actor]
