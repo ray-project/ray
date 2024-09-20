@@ -5,6 +5,7 @@ from typing import DefaultDict, Dict, List, Optional
 
 import grpc
 import pytest
+import pytest_asyncio
 import requests
 from fastapi import FastAPI
 
@@ -32,7 +33,7 @@ from ray.serve.tests.test_config_files.grpc_deployment import g, g2
 TEST_METRICS_EXPORT_PORT = 9999
 
 
-@pytest.fixture
+@pytest_asyncio.fixture
 def serve_start_shutdown():
     """Fixture provides a fresh Ray cluster to prevent metrics state sharing."""
     ray.init(
@@ -333,7 +334,7 @@ def test_proxy_metrics_not_found(serve_start_shutdown):
             verify_metrics,
             retry_interval_ms=1000,
             timeout=10,
-            expected_metrics=expected_metrics,
+            _expected_metrics=expected_metrics,
         )
     except RuntimeError:
         verify_metrics(expected_metrics, True)
@@ -434,7 +435,7 @@ def test_proxy_metrics_internal_error(serve_start_shutdown):
             verify_metrics,
             retry_interval_ms=1000,
             timeout=10,
-            expected_metrics=expected_metrics,
+            _expected_metrics=expected_metrics,
         )
     except RuntimeError:
         verify_metrics(expected_metrics, True)
