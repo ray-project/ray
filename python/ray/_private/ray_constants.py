@@ -71,6 +71,11 @@ AUTOSCALER_NAMESPACE = "__autoscaler"
 
 ID_SIZE = 28
 
+# The default maximum number of bytes to allocate to the object store unless
+# overridden by the user.
+DEFAULT_OBJECT_STORE_MAX_MEMORY_BYTES = env_integer(
+    "RAY_DEFAULT_OBJECT_STORE_MAX_MEMORY_BYTES", 200 * 10**9  # 200 GB
+)
 # The default proportion of available memory allocated to the object store
 DEFAULT_OBJECT_STORE_MEMORY_PROPORTION = env_float(
     "RAY_DEFAULT_OBJECT_STORE_MEMORY_PROPORTION", 0.3

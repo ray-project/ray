@@ -244,7 +244,9 @@ class ResourceSpec(
                     object_store_memory, ray_constants.MAC_DEGRADED_PERF_MMAP_SIZE_LIMIT
                 )
 
-            object_store_memory_cap: Optional[int] = None
+            object_store_memory_cap: Optional[
+                int
+            ] = ray_constants.DEFAULT_OBJECT_STORE_MAX_MEMORY_BYTES
 
             # Cap by shm size by default to avoid low performance, but don't
             # go lower than REQUIRE_SHM_SIZE_THRESHOLD.
@@ -252,9 +254,9 @@ class ResourceSpec(
                 # Multiple by 0.95 to give a bit of wiggle-room.
                 # https://github.com/ray-project/ray/pull/23034/files
                 shm_avail = ray._private.utils.get_shared_memory_bytes() * 0.95
-                object_store_memory_cap = max(
-                    ray_constants.REQUIRE_SHM_SIZE_THRESHOLD, shm_avail
-                )
+                shm_cap = max(ray_constants.REQUIRE_SHM_SIZE_THRESHOLD, shm_avail)
+
+                object_store_memory_cap = min(object_store_memory_cap, shm_cap)
 
             # Cap memory to avoid memory waste and perf issues on large nodes
             if (
