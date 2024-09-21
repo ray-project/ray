@@ -2493,6 +2493,36 @@ def test_multi_arg_exception_async(shutdown_only):
     compiled_dag.teardown()
 
 
+def test_signature_error(shutdown_only):
+    @ray.remote
+    class Worker:
+        def w(self, x):
+            return 1
+
+        def f(self, x, *, y):
+            pass
+
+        def g(self, x, y, z=1):
+            pass
+
+    worker = Worker.remote()
+    with pytest.raises(TypeError, match="The function `w`"):
+        with InputNode() as inp:
+            _ = worker.w.bind(inp, y=inp)
+
+    with pytest.raises(TypeError, match="The function `w`"):
+        with InputNode() as inp:
+            _ = worker.w.bind(inp, inp)
+
+    with pytest.raises(TypeError, match="The function `f`"):
+        with InputNode() as inp:
+            _ = worker.f.bind(inp)
+
+    with pytest.raises(TypeError, match="The function `g`"):
+        with InputNode() as inp:
+            _ = worker.g.bind(inp)
+
+
 if __name__ == "__main__":
     if os.environ.get("PARALLEL_CI"):
         sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))

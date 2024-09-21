@@ -1,6 +1,7 @@
 import inspect
 import logging
 from inspect import Parameter
+from typing import List
 
 from ray._private.inspect_util import is_cython
 
@@ -78,7 +79,7 @@ def extract_signature(func, ignore_first=False):
     return signature_parameters
 
 
-def flatten_args(signature_parameters: list, args, kwargs):
+def flatten_args(signature_parameters: List[Parameter], args, kwargs):
     """Validates the arguments against the signature and flattens them.
 
     The flat list representation is a serializable format for arguments.
