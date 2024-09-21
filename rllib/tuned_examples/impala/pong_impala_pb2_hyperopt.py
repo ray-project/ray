@@ -107,7 +107,6 @@ config = (
                 "conv_filters": [[16, 4, 2], [32, 4, 2], [64, 4, 2], [128, 4, 2]],
                 "conv_activation": "relu",
                 "post_fcnet_hiddens": [256],
-                "uses_new_env_runners": True,
             }
             if not args.use_tiny_cnn
             else {}

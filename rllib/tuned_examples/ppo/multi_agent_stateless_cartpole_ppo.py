@@ -43,7 +43,6 @@ config = (
     .rl_module(
         model_config_dict={
             "use_lstm": True,
-            "uses_new_env_runners": True,
             "max_seq_len": 20,
         },
     )

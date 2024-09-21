@@ -162,7 +162,6 @@ if __name__ == "__main__":
         .rl_module(
             model_config_dict={
                 "fcnet_hiddens": [512, 512],
-                "uses_new_env_runners": args.enable_new_api_stack,
             },
             rl_module_spec=MultiRLModuleSpec(
                 module_specs={
