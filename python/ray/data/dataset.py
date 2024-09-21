@@ -549,6 +549,13 @@ class Dataset:
             specified ``batch_size`` if ``batch_size`` doesn't evenly divide the
             block(s) sent to a given map task.
 
+            If ``batch_size`` is set and each input block is smaller than the
+            ``batch_size``, Ray Data will bundle up many blocks as the input for one
+            task, until their total size is equal to or greater than the given
+            ``batch_size``.
+            If ``batch_size`` is not set, the bundling will not be performed. Each task
+            will receive only one input block.
+
         .. seealso::
 
             :meth:`~Dataset.iter_batches`
@@ -4777,8 +4784,8 @@ class Dataset:
         futures, to bytes that can be stored and later deserialized, possibly on a
         different cluster.
 
-        Note that this will drop all computed data, and that everything is
-        recomputed from scratch after deserialization.
+        Note that this uses pickle and will drop all computed data, and that everything
+        is recomputed from scratch after deserialization.
 
         Use :py:meth:`Dataset.deserialize_lineage` to deserialize the serialized
         bytes returned from this method into a Dataset.
@@ -4866,8 +4873,8 @@ class Dataset:
         """
         Deserialize the provided lineage-serialized Dataset.
 
-        This assumes that the provided serialized bytes were serialized using
-        :py:meth:`Dataset.serialize_lineage`.
+        This uses pickle, and assumes that the provided serialized bytes were
+        serialized using :py:meth:`Dataset.serialize_lineage`.
 
         Examples:
 

@@ -2333,33 +2333,6 @@
   variations:
     - __suffix__: aws
 
-- name: serve_serve_micro_benchmark
-  group: Serve tests
-  working_dir: serve_tests
-
-  frequency: nightly
-  team: serve
-
-  cluster:
-    byod: {}
-    cluster_compute: compute_tpl_single_node.yaml
-    cloud_id: cld_wy5a6nhazplvu32526ams61d98
-
-  run:
-    timeout: 7200
-    long_running: false
-    script: python workloads/serve_micro_benchmark.py
-
-  alert: default
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_compute: compute_tpl_single_node_gce.yaml
-
 - name: serve_microbenchmarks
   group: Serve tests
   working_dir: serve_tests
@@ -3349,6 +3322,9 @@
   group: core-daily-test
   working_dir: nightly_tests
 
+  # TODO: https://github.com/ray-project/ray/issues/47596
+  stable: false
+
   frequency: nightly
   team: core
   env: aws_perf
@@ -4061,7 +4037,7 @@
     byod:
       type: gpu
       post_build_script: byod_install_mosaicml.sh
-    cluster_compute: single_node_benchmark_compute.yaml
+    cluster_compute: single_worker_node_0_head_node_benchmark_compute.yaml
 
   run:
     timeout: 1800
@@ -4960,7 +4936,7 @@
 
   run:
     timeout: 3000
-    script: python launch_and_verify_cluster.py aws/example-full.yaml --num-expected-nodes 2 --retries 20
+    script: python launch_and_verify_cluster.py aws/example-full.yaml --num-expected-nodes 2 --retries 20 --docker-override latest
 
 - name: gcp_cluster_launcher_minimal
   group: cluster-launcher-test

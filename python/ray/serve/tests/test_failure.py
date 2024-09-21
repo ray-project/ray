@@ -1,3 +1,4 @@
+import ctypes
 import os
 import random
 import sys
@@ -9,7 +10,7 @@ import requests
 import ray
 from ray import serve
 from ray._private.test_utils import SignalActor, wait_for_condition
-from ray.exceptions import ActorDiedError
+from ray.exceptions import RayActorError
 from ray.serve._private.common import DeploymentID
 from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME
 from ray.serve._private.test_utils import Counter, get_deployment_details, tlog
@@ -257,7 +258,11 @@ def test_no_available_replicas_does_not_block_proxy(serve_instance):
         assert ray.get(blocked_ref) == "hi"
 
 
-def test_replica_actor_died(serve_instance):
+@pytest.mark.skipif(
+    sys.platform == "win32", reason="ActorDiedError not raised properly on windows."
+)
+@pytest.mark.parametrize("die_during_request", [False, True])
+def test_replica_actor_died(serve_instance, die_during_request):
     """Test replica death paired with delayed handle notification.
 
     If a replica died, but controller hasn't health-checked it and
@@ -269,7 +274,10 @@ def test_replica_actor_died(serve_instance):
 
     @serve.deployment
     class Dummy:
-        def __call__(self):
+        def __call__(self, crash: bool = False):
+            if crash:
+                ctypes.string_at(0)
+
             return os.getpid()
 
         def check_health(self):
@@ -289,32 +297,23 @@ def test_replica_actor_died(serve_instance):
     tlog("Sent 10 warmup requests.")
 
     # Kill one replica.
-    replica_to_kill = random.choice(replicas)
-    tlog(f"Killing replica {replica_to_kill}")
-    ray.kill(ray.get_actor(replica_to_kill, namespace="serve"))
+    if die_during_request:
+        with pytest.raises(RayActorError):
+            h.remote(crash=True).result()
+    else:
+        replica_to_kill = random.choice(replicas)
+        tlog(f"Killing replica {replica_to_kill}")
+        ray.kill(ray.get_actor(replica_to_kill, namespace="serve"))
 
     # The controller just health checked both of them, so it should not
-    # be able to health check and notify the handle router in time
-    actor_died_error_encountered = False
+    # be able to health check and notify the handle router in time. Then
+    # we test that router can properly recognize that the replica has
+    # died and not send requests to that replica.
     pids_returned = set()
     for _ in range(10):
-        try:
-            pids_returned.add(h.remote().result())
-        except ActorDiedError:
-            if not actor_died_error_encountered:
-                tlog(
-                    "Received ActorDiedError for one request. This is expected, "
-                    "but should not happen again."
-                )
-                actor_died_error_encountered = True
-
-            else:
-                raise
+        pids_returned.add(h.remote().result())
 
     assert len(pids_returned) == 1
-    # We also sent some warmup requests beforehand which should have
-    # populated the queue len cache
-    assert actor_died_error_encountered
 
 
 if __name__ == "__main__":

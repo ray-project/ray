@@ -1,4 +1,5 @@
 import abc
+import logging
 from typing import Any, Dict, Tuple, TYPE_CHECKING
 
 import gymnasium as gym
@@ -13,7 +14,12 @@ from ray.util.annotations import PublicAPI
 if TYPE_CHECKING:
     from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 
+logger = logging.getLogger("ray.rllib")
+
 tf1, tf, _ = try_import_tf()
+
+ENV_RESET_FAILURE = "env_reset_failure"
+ENV_STEP_FAILURE = "env_step_failure"
 
 
 # TODO (sven): As soon as RolloutWorker is no longer supported, make this base class
@@ -44,6 +50,8 @@ class EnvRunner(FaultAwareApply, metaclass=abc.ABCMeta):
             **kwargs: Forward compatibility kwargs.
         """
         self.config = config.copy(copy_frozen=False)
+        self.env = None
+
         super().__init__(**kwargs)
 
         # This eager check is necessary for certain all-framework tests
@@ -65,6 +73,19 @@ class EnvRunner(FaultAwareApply, metaclass=abc.ABCMeta):
         Raises:
             AssertionError: If the EnvRunner Actor has NOT been properly initialized.
         """
+
+    # TODO: Make this an abstract method that must be implemented.
+    def make_env(self):
+        """Creates the RL environment for this EnvRunner and assigns it to `self.env`.
+
+        Note that users should be able to change the EnvRunner's config (e.g. change
+        `self.config.env_config`) and then call this method to create new environments
+        with the updated configuration.
+        It should also be called after a failure of an earlier env in order to clean up
+        the existing env (for example `close()` it), re-create a new one, and then
+        continue sampling with that new env.
+        """
+        pass
 
     @abc.abstractmethod
     def sample(self, **kwargs) -> Any:
@@ -99,6 +120,48 @@ class EnvRunner(FaultAwareApply, metaclass=abc.ABCMeta):
     def __del__(self) -> None:
         """If this Actor is deleted, clears all resources used by it."""
         pass
+
+    def _try_env_reset(self):
+        """Tries resetting the env and - if an error orrurs - handles it gracefully."""
+        # Try to reset.
+        try:
+            obs, infos = self.env.reset()
+            # Everything ok -> return.
+            return obs, infos
+        # Error.
+        except Exception as e:
+            # If user wants to simply restart the env -> recreate env and try again
+            # (calling this method recursively until success).
+            if self.config.restart_failed_sub_environments:
+                logger.exception(
+                    "Resetting the env resulted in an error! The original error "
+                    f"is: {e.args[0]}"
+                )
+                # Recreate the env and simply try again.
+                self.make_env()
+                return self._try_env_reset()
+            else:
+                raise e
+
+    def _try_env_step(self, actions):
+        """Tries stepping the env and - if an error orrurs - handles it gracefully."""
+        try:
+            results = self.env.step(actions)
+            return results
+        except Exception as e:
+            if self.config.restart_failed_sub_environments:
+                logger.exception(
+                    "Stepping the env resulted in an error! The original error "
+                    f"is: {e.args[0]}"
+                )
+                # Recreate the env.
+                self.make_env()
+                # And return that the stepping failed. The caller will then handle
+                # specific cleanup operations (for example discarding thus-far collected
+                # data and repeating the step attempt).
+                return ENV_STEP_FAILURE
+            else:
+                raise e
 
     def _convert_to_tensor(self, struct) -> TensorType:
         """Converts structs to a framework-specific tensor."""

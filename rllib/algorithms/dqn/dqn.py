@@ -725,6 +725,7 @@ class DQN(Algorithm):
                         n_step=self.config.n_step,
                         gamma=self.config.gamma,
                         beta=self.config.replay_buffer_config.get("beta"),
+                        sample_episodes=True,
                     )
 
                 # Perform an update on the buffer-sampled train batch.

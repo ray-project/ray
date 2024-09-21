@@ -48,7 +48,7 @@ curl -LO https://raw.githubusercontent.com/ray-project/kuberay/v1.0.0/ray-operat
 kubectl apply -f ray-cluster.external-redis.yaml
 ```
 
-### Step 4: Verify the Kubernetes cluster status 
+### Step 4: Verify the Kubernetes cluster status
 
 ```sh
 # Step 4.1: List all Pods in the `default` namespace.
@@ -136,12 +136,22 @@ export REDIS_POD=$(kubectl get pods --selector=app=redis -o custom-columns=POD:m
 kubectl exec -it $REDIS_POD -- redis-cli -a "5241590000000000"
 
 # Step 6.4: Check the keys in Redis.
+# Note: the schema changed in Ray 2.38.0. Previously we use a single HASH table,
+# now we use multiple HASH tables with a common prefix.
+
 KEYS *
 # [Example output]:
-# 1) "864b004c-6305-42e3-ac46-adfa8eb6f752"
+# 1) "RAY864b004c-6305-42e3-ac46-adfa8eb6f752@INTERNAL_CONFIG"
+# 2) "RAY864b004c-6305-42e3-ac46-adfa8eb6f752@KV"
+# 3) "RAY864b004c-6305-42e3-ac46-adfa8eb6f752@NODE"
+# [Example output Before Ray 2.38.0]:
+# 2) "864b004c-6305-42e3-ac46-adfa8eb6f752"
+#
 
 # Step 6.5: Check the value of the key.
-HGETALL 864b004c-6305-42e3-ac46-adfa8eb6f752
+HGETALL RAY864b004c-6305-42e3-ac46-adfa8eb6f752@NODE
+# Before Ray 2.38.0:
+# HGETALL 864b004c-6305-42e3-ac46-adfa8eb6f752
 ```
 
 In [ray-cluster.external-redis.yaml](https://github.com/ray-project/kuberay/blob/v1.0.0/ray-operator/config/samples/ray-cluster.external-redis.yaml), the `ray.io/external-storage-namespace` annotation isn't set for the RayCluster.

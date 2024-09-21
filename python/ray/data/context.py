@@ -84,6 +84,10 @@ DEFAULT_LOG_INTERNAL_STACK_TRACE_TO_STDOUT = env_bool(
     "RAY_DATA_LOG_INTERNAL_STACK_TRACE_TO_STDOUT", False
 )
 
+DEFAULT_RAY_DATA_RAISE_ORIGINAL_MAP_EXCEPTION = env_bool(
+    "RAY_DATA_RAISE_ORIGINAL_MAP_EXCEPTION", False
+)
+
 DEFAULT_USE_RAY_TQDM = bool(int(os.environ.get("RAY_TQDM", "1")))
 
 # Globally enable or disable all progress bars.
@@ -98,6 +102,8 @@ DEFAULT_ENABLE_PROGRESS_BAR_NAME_TRUNCATION = env_bool(
 DEFAULT_ENABLE_GET_OBJECT_LOCATIONS_FOR_METRICS = False
 
 
+# `write_file_retry_on_errors` is deprecated in favor of `retried_io_errors`. You
+# shouldn't need to modify `DEFAULT_WRITE_FILE_RETRY_ON_ERRORS`.
 DEFAULT_WRITE_FILE_RETRY_ON_ERRORS = (
     "AWS Error INTERNAL_FAILURE",
     "AWS Error NETWORK_CONNECTION",
@@ -110,6 +116,7 @@ DEFAULT_RETRIED_IO_ERRORS = (
     "AWS Error NETWORK_CONNECTION",
     "AWS Error SLOW_DOWN",
     "AWS Error UNKNOWN (HTTP status 503)",
+    "AWS Error SERVICE_UNAVAILABLE",
 )
 
 DEFAULT_WARN_ON_DRIVER_MEMORY_USAGE_BYTES = 2 * 1024 * 1024 * 1024
@@ -247,6 +254,8 @@ class DataContext:
         log_internal_stack_trace_to_stdout: Whether to include internal Ray Data/Ray
             Core code stack frames when logging to stdout. The full stack trace is
             always written to the Ray Data log file.
+        raise_original_map_exception: Whether to raise the original exception
+            encountered in map UDF instead of wrapping it in a `UserCodeException`.
         print_on_execution_start: If ``True``, print execution information when
             execution starts.
         s3_try_create_dir: If ``True``, try to create directories on S3 when a write
@@ -306,6 +315,7 @@ class DataContext:
     log_internal_stack_trace_to_stdout: bool = (
         DEFAULT_LOG_INTERNAL_STACK_TRACE_TO_STDOUT
     )
+    raise_original_map_exception: bool = DEFAULT_RAY_DATA_RAISE_ORIGINAL_MAP_EXCEPTION
     print_on_execution_start: bool = True
     s3_try_create_dir: bool = DEFAULT_S3_TRY_CREATE_DIR
     wait_for_min_actors_s: int = DEFAULT_WAIT_FOR_MIN_ACTORS_S

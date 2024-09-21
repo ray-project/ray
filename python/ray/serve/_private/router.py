@@ -9,8 +9,7 @@ from typing import Any, DefaultDict, Dict, List, Optional, Tuple, Union
 
 import ray
 from ray.actor import ActorHandle
-from ray.dag.py_obj_scanner import _PyObjScanner
-from ray.exceptions import ActorDiedError, ActorUnavailableError
+from ray.exceptions import ActorDiedError, ActorUnavailableError, RayError
 from ray.serve._private.common import (
     DeploymentHandleSource,
     DeploymentID,
@@ -30,12 +29,14 @@ from ray.serve._private.constants import (
 )
 from ray.serve._private.long_poll import LongPollClient, LongPollNamespace
 from ray.serve._private.metrics_utils import InMemoryMetricsStore, MetricsPusher
+from ray.serve._private.replica_result import ReplicaResult
 from ray.serve._private.replica_scheduler import (
     PendingRequest,
     PowerOfTwoChoicesReplicaScheduler,
     ReplicaScheduler,
 )
-from ray.serve._private.utils import FakeObjectRef, inside_ray_client_context
+from ray.serve._private.replica_scheduler.replica_wrapper import ActorReplicaWrapper
+from ray.serve._private.utils import inside_ray_client_context
 from ray.serve.config import AutoscalingConfig
 from ray.serve.exceptions import BackPressureError
 from ray.util import metrics
@@ -241,7 +242,7 @@ class RouterMetricsManager:
                 sum(self.num_requests_sent_to_replicas.values())
             )
 
-    def dec_num_running_requests_for_replica(self, replica_id: ReplicaID, *args):
+    def dec_num_running_requests_for_replica(self, replica_id: ReplicaID):
         with self._queries_lock:
             self.num_requests_sent_to_replicas[replica_id] -= 1
             self.num_running_requests_gauge.set(
@@ -354,6 +355,7 @@ class Router:
                 enable_strict_max_ongoing_requests
             )
 
+        replica_wrapper_cls = ActorReplicaWrapper
         if replica_scheduler is None:
             replica_scheduler = PowerOfTwoChoicesReplicaScheduler(
                 self._event_loop,
@@ -368,6 +370,7 @@ class Router:
                 else None,
                 self_availability_zone,
                 use_replica_queue_len_cache=enable_queue_len_cache,
+                create_replica_wrapper_func=lambda r: replica_wrapper_cls(r),
             )
 
         self._replica_scheduler: ReplicaScheduler = replica_scheduler
@@ -443,64 +446,86 @@ class Router:
     async def _resolve_deployment_responses(
         self, request_args: Tuple[Any], request_kwargs: Dict[str, Any]
     ) -> Tuple[Tuple[Any], Dict[str, Any]]:
-        """Replaces `DeploymentResponse` objects with their resolved object refs.
+        """Replaces top-level `DeploymentResponse` objects with resolved object refs.
 
-        Uses the `_PyObjScanner` to find and replace the objects. This
-        enables composition without explicitly calling `_to_object_ref`.
+        This enables composition without explicitly calling `_to_object_ref`.
         """
-        from ray.serve.handle import (
-            DeploymentResponse,
-            DeploymentResponseGenerator,
-            _DeploymentResponseBase,
+        from ray.serve.handle import DeploymentResponse, DeploymentResponseGenerator
+
+        generator_not_supported_message = (
+            "Streaming deployment handle results cannot be passed to "
+            "downstream handle calls. If you have a use case requiring "
+            "this feature, please file a feature request on GitHub."
         )
 
-        scanner = _PyObjScanner(
-            source_type=(_DeploymentResponseBase, ray.ObjectRef, ray.ObjectRefGenerator)
-        )
+        new_args = [None for _ in range(len(request_args))]
+        new_kwargs = {}
 
-        try:
-            responses = []
-            replacement_table = {}
-            objs = scanner.find_nodes((request_args, request_kwargs))
-            for obj in objs:
-                if isinstance(obj, DeploymentResponseGenerator):
-                    raise RuntimeError(
-                        "Streaming deployment handle results cannot be passed to "
-                        "downstream handle calls. If you have a use case requiring "
-                        "this feature, please file a feature request on GitHub."
-                    )
-                elif isinstance(obj, DeploymentResponse):
-                    responses.append(obj)
-                    if obj not in request_args and obj not in request_kwargs.values():
-                        logger.warning(
-                            "Passing `DeploymentResponse` objects in nested objects to "
-                            "downstream handle calls is deprecated and will not be "
-                            "supported in the future. Pass them as top-level "
-                            "args or kwargs instead."
-                        )
+        arg_tasks = []
+        response_indices = []
+        for i, obj in enumerate(request_args):
+            if isinstance(obj, DeploymentResponseGenerator):
+                raise RuntimeError(generator_not_supported_message)
+            elif isinstance(obj, DeploymentResponse):
+                # Launch async task to convert DeploymentResponse to an object ref, and
+                # keep track of the argument index in the original `request_args`
+                response_indices.append(i)
+                arg_tasks.append(asyncio.create_task(obj._to_object_ref()))
+            else:
+                new_args[i] = obj
 
-                # This is no-op replacing the object with itself. The purpose is to make
-                # sure both object refs and object ref generator are not getting pinned
-                # to memory by the scanner and cause memory leak.
-                # See: https://github.com/ray-project/ray/issues/43248
-                elif isinstance(obj, (ray.ObjectRef, ray.ObjectRefGenerator)):
-                    replacement_table[obj] = obj
+        kwarg_tasks = []
+        response_keys = []
+        for k, obj in request_kwargs.items():
+            if isinstance(obj, DeploymentResponseGenerator):
+                raise RuntimeError(generator_not_supported_message)
+            elif isinstance(obj, DeploymentResponse):
+                # Launch async task to convert DeploymentResponse to an object ref, and
+                # keep track of the corresponding key in the original `request_kwargs`
+                response_keys.append(k)
+                kwarg_tasks.append(asyncio.create_task(obj._to_object_ref()))
+            else:
+                new_kwargs[k] = obj
 
-            # Gather `DeploymentResponse` object refs concurrently.
-            if len(responses) > 0:
-                obj_refs = await asyncio.gather(
-                    *[r._to_object_ref() for r in responses]
-                )
-                replacement_table.update((zip(responses, obj_refs)))
+        # Gather `DeploymentResponse` object refs concurrently.
+        arg_obj_refs = await asyncio.gather(*arg_tasks)
+        kwarg_obj_refs = await asyncio.gather(*kwarg_tasks)
 
-            return scanner.replace_nodes(replacement_table)
-        finally:
-            # Make the scanner GC-able to avoid memory leaks.
-            scanner.clear()
+        # Update new args and new kwargs with resolved object refs
+        for index, obj_ref in zip(response_indices, arg_obj_refs):
+            new_args[index] = obj_ref
+        new_kwargs.update((zip(response_keys, kwarg_obj_refs)))
+
+        # Return new args and new kwargs
+        return new_args, new_kwargs
+
+    def _process_finished_request(
+        self, replica_id: ReplicaID, result: Union[Any, RayError]
+    ):
+        self._metrics_manager.dec_num_running_requests_for_replica(replica_id)
+        if isinstance(result, ActorDiedError):
+            # Replica has died but controller hasn't notified the router yet.
+            # Don't consider this replica for requests in the future, and retry
+            # scheduling request.
+            self._replica_scheduler.on_replica_actor_died(replica_id)
+            logger.warning(
+                f"{replica_id} will not be considered for future "
+                "requests because it has died."
+            )
+        elif isinstance(result, ActorUnavailableError):
+            # There are network issues, or replica has died but GCS is down so
+            # ActorUnavailableError will be raised until GCS recovers. For the
+            # time being, invalidate the cache entry so that we don't try to
+            # send requests to this replica without actively probing, and retry
+            # scheduling request.
+            self._replica_scheduler.on_replica_actor_unavailable(replica_id)
+            logger.warning(
+                f"Request failed because {replica_id} is temporarily unavailable."
+            )
 
     async def schedule_and_send_request(
         self, pr: PendingRequest
-    ) -> Tuple[Union[ray.ObjectRef, ray.ObjectRefGenerator], ReplicaID]:
+    ) -> Tuple[ReplicaResult, ReplicaID]:
         """Choose a replica for the request and send it.
 
         This will block indefinitely if no replicas are available to handle the
@@ -515,10 +540,10 @@ class Router:
             return replica.send_request(pr), replica.replica_id
 
         while True:
-            obj_ref_gen = None
+            replica_result = None
             try:
                 (
-                    obj_ref_gen,
+                    replica_result,
                     queue_len_info,
                 ) = await replica.send_request_with_rejection(pr)
                 if self._enable_queue_len_cache:
@@ -526,31 +551,32 @@ class Router:
                         replica.replica_id, queue_len_info.num_ongoing_requests
                     )
                 if queue_len_info.accepted:
-                    return obj_ref_gen, replica.replica_id
+                    return replica_result, replica.replica_id
             except asyncio.CancelledError:
                 # NOTE(edoakes): this is not strictly necessary because there are
                 # currently no `await` statements between getting the ref and returning,
                 # but I'm adding it defensively.
-                if obj_ref_gen is not None:
-                    ray.cancel(obj_ref_gen)
+                if replica_result is not None:
+                    replica_result.cancel()
 
                 raise
             except ActorDiedError:
                 # Replica has died but controller hasn't notified the router yet.
-                # Don't consider this replica for requests in the future.
+                # Don't consider this replica for requests in the future, and retry
+                # scheduling request.
                 self._replica_scheduler.on_replica_actor_died(replica.replica_id)
                 logger.warning(
                     f"{replica.replica_id} will not be considered for future "
                     "requests because it has died."
                 )
-                raise
             except ActorUnavailableError:
                 # There are network issues, or replica has died but GCS is down so
                 # ActorUnavailableError will be raised until GCS recovers. For the
                 # time being, invalidate the cache entry so that we don't try to
-                # send requests to this replica without actively probing.
+                # send requests to this replica without actively probing, and retry
+                # scheduling request.
                 self._replica_scheduler.on_replica_actor_unavailable(replica.replica_id)
-                raise
+                logger.warning(f"{replica.replica_id} is temporarily unavailable.")
 
             # If the replica rejects the request, retry the scheduling process. The
             # request will be placed on the front of the queue to avoid tail latencies.
@@ -565,7 +591,7 @@ class Router:
         request_meta: RequestMetadata,
         *request_args,
         **request_kwargs,
-    ) -> Union[ray.ObjectRef, ray.ObjectRefGenerator]:
+    ) -> ReplicaResult:
         """Assign a request to a replica and return the resulting object_ref."""
 
         with self._metrics_manager.wrap_request_assignment(request_meta):
@@ -594,14 +620,8 @@ class Router:
                     self._metrics_manager.inc_num_running_requests_for_replica(
                         replica_id
                     )
-                    callback = partial(
-                        self._metrics_manager.dec_num_running_requests_for_replica,
-                        replica_id,
-                    )
-                    if isinstance(ref, (ray.ObjectRef, FakeObjectRef)):
-                        ref._on_completed(callback)
-                    else:
-                        ref.completed()._on_completed(callback)
+                    callback = partial(self._process_finished_request, replica_id)
+                    ref.add_callback(callback)
 
                 return ref
             except asyncio.CancelledError:
@@ -609,7 +629,7 @@ class Router:
                 # there are currently no `await` statements between
                 # getting the ref and returning, but I'm adding it defensively.
                 if ref is not None:
-                    ray.cancel(ref)
+                    ref.cancel()
 
                 raise
 

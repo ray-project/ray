@@ -29,7 +29,8 @@ cdef extern from "ray/gcs/gcs_client/global_state_accessor.h" nogil:
         CGlobalStateAccessor(const CGcsClientOptions&)
         c_bool Connect()
         void Disconnect()
-        c_vector[c_string] GetAllJobInfo()
+        c_vector[c_string] GetAllJobInfo(
+          c_bool skip_submission_job_info_field, c_bool skip_is_running_tasks_field)
         CJobID GetNextJobID()
         c_vector[c_string] GetAllNodeInfo()
         c_vector[c_string] GetAllAvailableResources()
@@ -128,60 +129,8 @@ cdef extern from * namespace "ray::gcs" nogil:
 
 
 cdef extern from * namespace "ray::gcs" nogil:
-    """
-    #include <thread>
-    #include "ray/gcs/redis_client.h"
-    namespace ray {
-    namespace gcs {
-
-    class Cleanup {
-      public:
-        Cleanup(std::function<void()> f): f_(f) {}
-        ~Cleanup() { f_(); }
-      private:
-        std::function<void()> f_;
-    };
-
-    bool RedisDelKeySync(const std::string& host,
-                         int32_t port,
-                         const std::string& password,
-                         bool use_ssl,
-                         const std::string& key) {
-      RedisClientOptions options(host, port, password, use_ssl);
-      auto cli = std::make_unique<RedisClient>(options);
-
-      instrumented_io_context io_service;
-
-      auto thread = std::make_unique<std::thread>([&]() {
-        boost::asio::io_service::work work(io_service);
-        io_service.run();
-      });
-
-      Cleanup _([&](){
-        io_service.stop();
-        thread->join();
-      });
-
-      auto status = cli->Connect(io_service);
-      RAY_CHECK(status.ok()) << "Failed to connect to redis: " << status.ToString();
-
-      auto context = cli->GetPrimaryContext();
-      auto cmd = std::vector<std::string>{"DEL", key};
-      auto reply = context->RunArgvSync(cmd);
-      if(reply->ReadAsInteger() == 1) {
-        RAY_LOG(INFO) << "Successfully deleted " << key;
-        return true;
-      } else {
-        RAY_LOG(ERROR) << "Failed to delete " << key;
-        return false;
-      }
-    }
-
-    }
-    }
-    """
-    c_bool RedisDelKeySync(const c_string& host,
-                           c_int32_t port,
-                           const c_string& password,
-                           c_bool use_ssl,
-                           const c_string& key)
+    c_bool RedisDelKeyPrefixSync(const c_string& host,
+                                 c_int32_t port,
+                                 const c_string& password,
+                                 c_bool use_ssl,
+                                 const c_string& key_prefix)

@@ -185,7 +185,7 @@ if __name__ == "__main__":
             num_cpus_for_main_process=1,
         )
         .training(
-            num_sgd_iter=20,
+            num_epochs=20,
             model=dict(
                 **({"uses_new_env_runners": True} if args.enable_new_api_stack else {}),
             ),

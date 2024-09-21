@@ -626,6 +626,13 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
         self.weights_seq_no: Optional[int] = None
 
     @override(EnvRunner)
+    def make_env(self):
+        # Override this method, b/c it's abstract and must be overridden.
+        # However, we see no point in implementing it for the old API stack any longer
+        # (the RolloutWorker class will be deprecated soon).
+        raise NotImplementedError
+
+    @override(EnvRunner)
     def assert_healthy(self):
         is_healthy = self.policy_map and self.input_reader and self.output_writer
         assert is_healthy, (
@@ -1549,7 +1556,14 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
                 }
 
             for pid, w in weights.items():
-                self.policy_map[pid].set_weights(w)
+                if pid in self.policy_map:
+                    self.policy_map[pid].set_weights(w)
+                elif log_once("set_weights_on_non_existent_policy"):
+                    logger.warning(
+                        "`RolloutWorker.set_weights()` used with weights from "
+                        f"policyID={pid}, but this policy cannot be found on this "
+                        f"worker! Skipping ..."
+                    )
 
         self.weights_seq_no = weights_seq_no
 

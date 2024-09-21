@@ -128,6 +128,10 @@ config = (
     .training(
         model={"uses_new_env_runners": True},
         replay_buffer_config={"type": "EpisodeReplayBuffer"},
+        # Note, new API stack SAC uses its own learning rates specific to actor,
+        # critic, and alpha. `lr` therefore needs to be set to `None`. See `actor_lr`,
+        # `critic_lr`, and `alpha_lr` for the specific learning rates, respectively.
+        lr=None,
     )
 )
 # __enabling-new-api-stack-sa-sac-end__

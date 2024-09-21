@@ -434,7 +434,12 @@ class TestWorkerFailures(unittest.TestCase):
             )
             .env_runners(env_runner_cls=ForwardHealthCheckToEnvWorker)
             .reporting(min_sample_timesteps_per_iteration=1)
-            .training(replay_buffer_config={"type": "EpisodeReplayBuffer"})
+            .training(
+                replay_buffer_config={"type": "EpisodeReplayBuffer"},
+                # We need to set the base `lr` to `None` b/c SAC in the new stack
+                # has its own learning rates.
+                lr=None,
+            )
         )
 
     def test_multi_gpu(self):
@@ -447,8 +452,8 @@ class TestWorkerFailures(unittest.TestCase):
             .env_runners(env_runner_cls=ForwardHealthCheckToEnvWorker)
             .training(
                 train_batch_size=10,
-                sgd_minibatch_size=1,
-                num_sgd_iter=1,
+                minibatch_size=1,
+                num_epochs=1,
             )
         )
 
@@ -556,7 +561,7 @@ class TestWorkerFailures(unittest.TestCase):
             )
             .training(
                 train_batch_size_per_learner=32,
-                sgd_minibatch_size=32,
+                minibatch_size=32,
             )
             .environment(
                 env="fault_env",
@@ -615,7 +620,7 @@ class TestWorkerFailures(unittest.TestCase):
             )
             .training(
                 train_batch_size_per_learner=32,
-                sgd_minibatch_size=32,
+                minibatch_size=32,
             )
             .environment(
                 env="multi_agent_fault_env",
@@ -724,7 +729,7 @@ class TestWorkerFailures(unittest.TestCase):
             )
             .training(
                 train_batch_size_per_learner=32,
-                sgd_minibatch_size=32,
+                minibatch_size=32,
             )
             .environment(env="fault_env")
             .evaluation(
@@ -787,6 +792,9 @@ class TestWorkerFailures(unittest.TestCase):
             )
             .training(
                 replay_buffer_config={"type": "EpisodeReplayBuffer"},
+                # We need to set the base `lr` to `None` b/c new stack SAC has its
+                # specific learning rates for actor, critic, and alpha.
+                lr=None,
             )
             .env_runners(
                 env_runner_cls=ForwardHealthCheckToEnvWorker,

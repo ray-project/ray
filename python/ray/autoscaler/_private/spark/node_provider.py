@@ -202,6 +202,7 @@ class SparkNodeProvider(NodeProvider):
                     "object_store_memory_per_node": object_store_memory_per_node,
                     "worker_node_options": conf["worker_node_options"],
                     "collect_log_to_path": conf["collect_log_to_path"],
+                    "node_id": resources["NODE_ID_AS_RESOURCE"],
                 },
             )
 

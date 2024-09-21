@@ -323,7 +323,9 @@ class RayEvent {
 };
 
 using ExportEventDataPtr = std::variant<std::shared_ptr<rpc::ExportTaskEventData>,
-                                        std::shared_ptr<rpc::ExportNodeData>>;
+                                        std::shared_ptr<rpc::ExportNodeData>,
+                                        std::shared_ptr<rpc::ExportActorData>,
+                                        std::shared_ptr<rpc::ExportDriverJobEventData>>;
 class RayExportEvent {
  public:
   RayExportEvent(ExportEventDataPtr event_data_ptr) : event_data_ptr_(event_data_ptr) {}

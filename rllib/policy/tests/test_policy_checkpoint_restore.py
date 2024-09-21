@@ -10,7 +10,6 @@ from ray.rllib.algorithms.appo.appo import APPOConfig
 
 from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.policy import Policy
-from ray.rllib.utils.test_utils import framework_iterator
 
 
 def _do_checkpoint_twice_test(framework):
@@ -20,25 +19,24 @@ def _do_checkpoint_twice_test(framework):
         .env_runners(num_env_runners=0)
         .evaluation(evaluation_num_env_runners=0)
     )
-    for fw in framework_iterator(config, frameworks=[framework]):
-        algo1 = config.build(env="CartPole-v1")
-        algo2 = config.build(env="Pendulum-v1")
+    algo1 = config.build(env="CartPole-v1")
+    algo2 = config.build(env="Pendulum-v1")
 
-        algo1.train()
-        algo2.train()
+    algo1.train()
+    algo2.train()
 
-        policy1 = algo1.get_policy()
-        policy1.export_checkpoint("/tmp/test_policy_from_checkpoint_twice_p_1")
+    policy1 = algo1.get_policy()
+    policy1.export_checkpoint("/tmp/test_policy_from_checkpoint_twice_p_1")
 
-        policy2 = algo2.get_policy()
-        policy2.export_checkpoint("/tmp/test_policy_from_checkpoint_twice_p_2")
+    policy2 = algo2.get_policy()
+    policy2.export_checkpoint("/tmp/test_policy_from_checkpoint_twice_p_2")
 
-        algo1.stop()
-        algo2.stop()
+    algo1.stop()
+    algo2.stop()
 
-        # Create two policies from different checkpoints
-        Policy.from_checkpoint("/tmp/test_policy_from_checkpoint_twice_p_1")
-        Policy.from_checkpoint("/tmp/test_policy_from_checkpoint_twice_p_2")
+    # Create two policies from different checkpoints
+    Policy.from_checkpoint("/tmp/test_policy_from_checkpoint_twice_p_1")
+    Policy.from_checkpoint("/tmp/test_policy_from_checkpoint_twice_p_2")
 
 
 class TestPolicyFromCheckpoint(unittest.TestCase):
@@ -49,12 +47,6 @@ class TestPolicyFromCheckpoint(unittest.TestCase):
     @classmethod
     def tearDownClass(cls) -> None:
         ray.shutdown()
-
-    def test_policy_from_checkpoint_twice_tf(self):
-        return _do_checkpoint_twice_test("tf")
-
-    def test_policy_from_checkpoint_twice_tf2(self):
-        return _do_checkpoint_twice_test("tf2")
 
     def test_policy_from_checkpoint_twice_torch(self):
         return _do_checkpoint_twice_test("torch")

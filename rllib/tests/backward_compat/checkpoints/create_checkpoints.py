@@ -3,22 +3,20 @@
 # Checkpoints will be located in ~/ray_results/...
 
 from ray.rllib.algorithms.ppo import PPOConfig
-from ray.rllib.utils.test_utils import framework_iterator
 
 # Build a PPOConfig object.
 config = (
     PPOConfig()
     .environment("FrozenLake-v1")
     .training(
-        num_sgd_iter=2,
+        num_epochs=2,
         model=dict(
             fcnet_hiddens=[10],
         ),
     )
 )
 
-for fw in framework_iterator(config):
-    algo = config.build()
-    results = algo.train()
-    algo.save()
-    algo.stop()
+algo = config.build()
+results = algo.train()
+algo.save()
+algo.stop()
