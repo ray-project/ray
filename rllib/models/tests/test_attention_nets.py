@@ -68,9 +68,9 @@ class TestAttentionNets(unittest.TestCase):
                 "attention_use_n_prev_actions": 3,
                 "attention_use_n_prev_rewards": 2,
             },
-            "num_sgd_iter": 1,
+            "num_epochs": 1,
             "train_batch_size": 200,
-            "sgd_minibatch_size": 50,
+            "minibatch_size": 50,
             "rollout_fragment_length": 100,
             "num_env_runners": 1,
         }
@@ -88,7 +88,7 @@ class TestAttentionNets(unittest.TestCase):
                 "num_env_runners": 0,
                 "entropy_coeff": 0.001,
                 "vf_loss_coeff": 1e-5,
-                "num_sgd_iter": 5,
+                "num_epochs": 5,
                 "model": {
                     "custom_model": "attention_net",
                     "max_seq_len": 10,

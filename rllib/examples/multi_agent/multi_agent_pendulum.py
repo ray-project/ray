@@ -49,7 +49,7 @@ if __name__ == "__main__":
         .environment("env" if args.num_agents > 0 else "Pendulum-v1")
         .training(
             train_batch_size_per_learner=512,
-            mini_batch_size_per_learner=64,
+            minibatch_size=64,
             lambda_=0.1,
             gamma=0.95,
             lr=0.0003,

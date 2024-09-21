@@ -54,8 +54,8 @@ class TestAlgorithm(unittest.TestCase):
             .env_runners(num_cpus_per_env_runner=0.1)
             .training(
                 train_batch_size=100,
-                sgd_minibatch_size=50,
-                num_sgd_iter=1,
+                minibatch_size=50,
+                num_epochs=1,
             )
             .rl_module(
                 model_config_dict={
@@ -224,8 +224,8 @@ class TestAlgorithm(unittest.TestCase):
             .env_runners(num_cpus_per_env_runner=0.1)
             .training(
                 train_batch_size=100,
-                sgd_minibatch_size=50,
-                num_sgd_iter=1,
+                minibatch_size=50,
+                num_epochs=1,
                 model={
                     "fcnet_hiddens": [5],
                     "fcnet_activation": "linear",

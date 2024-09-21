@@ -60,7 +60,7 @@ class TestPreprocessors(unittest.TestCase):
             )
             # Speed things up a little.
             .env_runners(rollout_fragment_length=5)
-            .training(train_batch_size=100, sgd_minibatch_size=10, num_sgd_iter=1)
+            .training(train_batch_size=100, minibatch_size=10, num_epochs=1)
             .debugging(seed=42)
             # Set this to True to enforce no preprocessors being used.
             # Complex observations now arrive directly in the model as

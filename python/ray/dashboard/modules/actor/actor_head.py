@@ -1,9 +1,10 @@
+import abc
 import asyncio
 import logging
 import os
-import time
-from collections import deque
-from typing import Dict
+from collections import defaultdict, deque
+from concurrent.futures import ThreadPoolExecutor
+from typing import Any, Dict, Optional
 
 import aiohttp.web
 
@@ -11,7 +12,9 @@ import ray.dashboard.optional_utils as dashboard_optional_utils
 import ray.dashboard.utils as dashboard_utils
 from ray import ActorID
 from ray._private.gcs_pubsub import GcsAioActorSubscriber
+from ray._private.utils import get_or_create_event_loop
 from ray.core.generated import gcs_pb2, gcs_service_pb2, gcs_service_pb2_grpc
+from ray.dashboard.consts import GCS_RPC_TIMEOUT_SECONDS
 from ray.dashboard.datacenter import DataOrganizer, DataSource
 from ray.dashboard.modules.actor import actor_consts
 
@@ -20,6 +23,19 @@ routes = dashboard_optional_utils.DashboardHeadRouteTable
 
 MAX_ACTORS_TO_CACHE = int(os.environ.get("RAY_DASHBOARD_MAX_ACTORS_TO_CACHE", 1000))
 ACTOR_CLEANUP_FREQUENCY = 1  # seconds
+
+
+ACTOR_TABLE_STATE_COLUMNS = (
+    "state",
+    "address",
+    "numRestarts",
+    "timestamp",
+    "pid",
+    "exitDetail",
+    "startTime",
+    "endTime",
+    "reprName",
+)
 
 
 def actor_table_data_to_dict(message):
@@ -35,6 +51,7 @@ def actor_table_data_to_dict(message):
             "taskId",
             "parentTaskId",
             "sourceActorId",
+            "placementGroupId",
         },
         always_print_fields_with_no_presence=True,
     )
@@ -55,6 +72,7 @@ def actor_table_data_to_dict(message):
         "startTime",
         "endTime",
         "reprName",
+        "placementGroupId",
     }
     light_message = {k: v for (k, v) in orig_message.items() if k in fields}
     light_message["actorClass"] = orig_message["className"]
@@ -79,171 +97,215 @@ def actor_table_data_to_dict(message):
     return light_message
 
 
-class GetAllActorInfo:
+class GetAllActorInfoClient(abc.ABC):
     """
     Gets all actor info from GCS via gRPC ActorInfoGcsService.GetAllActorInfo.
     It makes the call via GcsAioClient or a direct gRPC stub, depends on the env var
     RAY_USE_OLD_GCS_CLIENT.
     """
 
-    def __new__(cls, *args, **kwargs):
+    @classmethod
+    def create(cls, *args, **kwargs):
         use_old_client = os.getenv("RAY_USE_OLD_GCS_CLIENT") == "1"
         if use_old_client:
             return GetAllActorInfoFromGrpc(*args, **kwargs)
         else:
             return GetAllActorInfoFromNewGcsClient(*args, **kwargs)
 
+    @abc.abstractmethod
+    def __call__(self, *, timeout_s: int, state: Optional[str] = None):
+        pass
 
-class GetAllActorInfoFromNewGcsClient:
+
+class GetAllActorInfoFromNewGcsClient(GetAllActorInfoClient):
     def __init__(self, dashboard_head):
         self.gcs_aio_client = dashboard_head.gcs_aio_client
 
-    async def __call__(self, timeout) -> Dict[ActorID, gcs_pb2.ActorTableData]:
-        return await self.gcs_aio_client.get_all_actor_info(timeout=timeout)
+    async def __call__(
+        self, *, timeout, state: Optional[str] = None
+    ) -> Dict[ActorID, gcs_pb2.ActorTableData]:
+        return await self.gcs_aio_client.get_all_actor_info(
+            timeout=timeout, actor_state_name=state
+        )
 
 
-class GetAllActorInfoFromGrpc:
+class GetAllActorInfoFromGrpc(GetAllActorInfoClient):
     def __init__(self, dashboard_head):
         gcs_channel = dashboard_head.aiogrpc_gcs_channel
         self._gcs_actor_info_stub = gcs_service_pb2_grpc.ActorInfoGcsServiceStub(
             gcs_channel
         )
 
-    async def __call__(self, timeout) -> Dict[ActorID, gcs_pb2.ActorTableData]:
+    async def __call__(
+        self, *, timeout, state: Optional[str] = None
+    ) -> Dict[ActorID, gcs_pb2.ActorTableData]:
         request = gcs_service_pb2.GetAllActorInfoRequest()
+
         reply = await self._gcs_actor_info_stub.GetAllActorInfo(
-            request, timeout=timeout
+            request,
+            timeout=timeout,
+            filters=gcs_service_pb2.GetAllActorInfoRequest.Filters(state=state)
+            if state
+            else None,
         )
+
         if reply.status.code != 0:
             raise Exception(f"Failed to GetAllActorInfo: {reply.status.message}")
-        actors = {}
-        for message in reply.actor_table_data:
-            actors[ActorID(message.actor_id)] = message
-        return actors
+
+        return {
+            ActorID(message.actor_id): message for message in reply.actor_table_data
+        }
 
 
 class ActorHead(dashboard_utils.DashboardHeadModule):
     def __init__(self, dashboard_head):
         super().__init__(dashboard_head)
 
-        self.get_all_actor_info = None
+        self._gcs_actor_channel_subscriber = None
+        self.get_all_actor_info_client = None
         # A queue of dead actors in order of when they died
         self.dead_actors_queue = deque()
 
-        # -- Internal states --
+        # -- Internal state --
         self.total_published_events = 0
-        self.subscriber_queue_size = 0
-        self.accumulative_event_processing_s = 0
+
+        self._loop = get_or_create_event_loop()
+        # NOTE: This executor is intentionally constrained to just 1 thread to
+        #       limit its concurrency, therefore reducing potential for GIL contention
+        self._executor = ThreadPoolExecutor(
+            max_workers=1, thread_name_prefix="actor_head_executor"
+        )
 
     async def _update_actors(self):
         """
         Processes actor info. First gets all actors from GCS, then subscribes to
         actor updates. For each actor update, updates DataSource.node_actors and
         DataSource.actors.
-
-        To prevent Time-of-check to time-of-use issue [1], the get-all-actor-info
-        happens after the subscription. That is, an update between get-all-actor-info
-        and the subscription is not missed.
-        # [1] https://en.wikipedia.org/wiki/Time-of-check_to_time-of-use
         """
-        # Receive actors from channel.
+
+        # To prevent Time-of-check to time-of-use issue [1], the get-all-actor-info
+        # happens after the subscription. That is, an update between get-all-actor-info
+        # and the subscription is not missed.
+        #
+        # [1] https://en.wikipedia.org/wiki/Time-of-check_to_time-of-use
         gcs_addr = self._dashboard_head.gcs_address
-        subscriber = GcsAioActorSubscriber(address=gcs_addr)
-        await subscriber.subscribe()
+        actor_channel_subscriber = GcsAioActorSubscriber(address=gcs_addr)
+        await actor_channel_subscriber.subscribe()
 
         # Get all actor info.
         while True:
             try:
                 logger.info("Getting all actor info from GCS.")
 
-                actors = await self.get_all_actor_info(timeout=5)
-                actor_dicts: Dict[str, dict] = {
-                    actor_id.hex(): actor_table_data_to_dict(actor_table_data)
-                    for actor_id, actor_table_data in actors.items()
-                }
-                # Update actors.
+                actor_dicts = await self._get_all_actors()
+                # Update actors
                 DataSource.actors.reset(actor_dicts)
+
                 # Update node actors and job actors.
-                node_actors = {}
-                for actor_id, actor_table_data in actor_dicts.items():
-                    node_id = actor_table_data["address"]["rayletId"]
+                node_actors = defaultdict(dict)
+                for actor_id_bytes, updated_actor_table in actor_dicts.items():
+                    node_id = updated_actor_table["address"]["rayletId"]
                     # Update only when node_id is not Nil.
                     if node_id != actor_consts.NIL_NODE_ID:
-                        node_actors.setdefault(node_id, {})[actor_id] = actor_table_data
+                        node_actors[node_id][actor_id_bytes] = updated_actor_table
+
+                # Update node's actor info
                 DataSource.node_actors.reset(node_actors)
-                logger.info("Received %d actor info from GCS.", len(actors))
-                break  # breaks the while True.
-            except Exception:
-                logger.exception("Error Getting all actor info from GCS.")
+
+                logger.info("Received %d actor info from GCS.", len(actor_dicts))
+
+                # Break, once all initial actors are successfully fetched
+                break
+            except Exception as e:
+                logger.exception("Error Getting all actor info from GCS", exc_info=e)
                 await asyncio.sleep(
                     actor_consts.RETRY_GET_ALL_ACTOR_INFO_INTERVAL_SECONDS
                 )
 
-        state_keys = (
-            "state",
-            "address",
-            "numRestarts",
-            "timestamp",
-            "pid",
-            "exitDetail",
-            "startTime",
-            "endTime",
-            "reprName",
-        )
-
-        def process_actor_data_from_pubsub(actor_id, actor_table_data):
-            actor_table_data = actor_table_data_to_dict(actor_table_data)
-            # If actor is not new registered but updated, we only update
-            # states related fields.
-            if actor_table_data["state"] != "DEPENDENCIES_UNREADY":
-                actors = DataSource.actors[actor_id]
-                for k in state_keys:
-                    if k in actor_table_data:
-                        actors[k] = actor_table_data[k]
-                actor_table_data = actors
-            actor_id = actor_table_data["actorId"]
-            node_id = actor_table_data["address"]["rayletId"]
-            if actor_table_data["state"] == "DEAD":
-                self.dead_actors_queue.append(actor_id)
-            # Update actors.
-            DataSource.actors[actor_id] = actor_table_data
-            # Update node actors (only when node_id is not Nil).
-            if node_id != actor_consts.NIL_NODE_ID:
-                node_actors = DataSource.node_actors.get(node_id, {})
-                node_actors[actor_id] = actor_table_data
-                DataSource.node_actors[node_id] = node_actors
-
+        # Pull incremental updates from the GCS channel
         while True:
             try:
-                published = await subscriber.poll(batch_size=200)
-                start = time.monotonic()
-                for actor_id, actor_table_data in published:
-                    if actor_id is not None:
-                        # Convert to lower case hex ID.
-                        actor_id = actor_id.hex()
-                        process_actor_data_from_pubsub(actor_id, actor_table_data)
-
-                # Yield so that we can give time for
-                # user-facing APIs to reply to the frontend.
-                elapsed = time.monotonic() - start
-                await asyncio.sleep(elapsed)
-
-                # Update the internal states for debugging.
-                self.accumulative_event_processing_s += elapsed
-                self.total_published_events += len(published)
-                self.subscriber_queue_size = subscriber.queue_size
-                logger.debug(
-                    f"Processing takes {elapsed}. Total process: " f"{len(published)}"
+                updated_actor_table_entries = await self._poll_updated_actor_table_data(
+                    actor_channel_subscriber
                 )
-                if self.accumulative_event_processing_s > 0:
-                    logger.debug(
-                        "Processing throughput: "
-                        f"{self.total_published_events / self.accumulative_event_processing_s}"  # noqa
-                        " / s"
-                    )
-                logger.debug(f"queue size: {self.subscriber_queue_size}")
-            except Exception:
-                logger.exception("Error processing actor info from GCS.")
+
+                for (
+                    actor_id,
+                    updated_actor_table,
+                ) in updated_actor_table_entries.items():
+                    self._process_updated_actor_table(actor_id, updated_actor_table)
+
+                self.total_published_events += len(updated_actor_table_entries)
+
+                # TODO emit metrics
+                logger.debug(
+                    f"Total events processed: {len(updated_actor_table_entries)}, "
+                    f"queue size: {actor_channel_subscriber.queue_size}"
+                )
+
+            except Exception as e:
+                logger.exception("Error processing actor info from GCS.", exc_info=e)
+
+    async def _poll_updated_actor_table_data(
+        self, actor_channel_subscriber: GcsAioActorSubscriber
+    ) -> Dict[str, Dict[str, Any]]:
+        # TODO make batch size configurable
+        batch = await actor_channel_subscriber.poll(batch_size=200)
+
+        # NOTE: We're offloading conversion to a TPE to make sure we're not
+        #       blocking the event-loop for prolonged period of time irrespective
+        #       of the batch size
+        def _convert_to_dict():
+            return {
+                actor_id_bytes.hex(): actor_table_data_to_dict(actor_table_data_message)
+                for actor_id_bytes, actor_table_data_message in batch
+                if actor_id_bytes is not None
+            }
+
+        return await self._loop.run_in_executor(self._executor, _convert_to_dict)
+
+    def _process_updated_actor_table(
+        self, actor_id: str, actor_table_data: Dict[str, Any]
+    ):
+        """NOTE: This method has to be executed on the event-loop, provided that it accesses
+        DataSource data structures (to follow its thread-safety model)"""
+
+        # If actor is not new registered but updated, we only update
+        # states related fields.
+        actor = DataSource.actors.get(actor_id)
+
+        if actor and actor_table_data["state"] != "DEPENDENCIES_UNREADY":
+            for k in ACTOR_TABLE_STATE_COLUMNS:
+                if k in actor_table_data:
+                    actor[k] = actor_table_data[k]
+            actor_table_data = actor
+
+        actor_id = actor_table_data["actorId"]
+        node_id = actor_table_data["address"]["rayletId"]
+
+        if actor_table_data["state"] == "DEAD":
+            self.dead_actors_queue.append(actor_id)
+
+        # Update actors.
+        DataSource.actors[actor_id] = actor_table_data
+        # Update node actors (only when node_id is not Nil).
+        if node_id != actor_consts.NIL_NODE_ID:
+            node_actors = DataSource.node_actors.get(node_id, {})
+            node_actors[actor_id] = actor_table_data
+            DataSource.node_actors[node_id] = node_actors
+
+    async def _get_all_actors(self) -> Dict[str, dict]:
+        actors = await self.get_all_actor_info_client(timeout=GCS_RPC_TIMEOUT_SECONDS)
+
+        # NOTE: We're offloading conversion to a TPE to make sure we're not
+        #       blocking the event-loop for prolonged period of time for large clusters
+        def _convert_to_dict():
+            return {
+                actor_id.hex(): actor_table_data_to_dict(actor_table_data)
+                for actor_id, actor_table_data in actors.items()
+            }
+
+        return await self._loop.run_in_executor(self._executor, _convert_to_dict)
 
     async def _cleanup_actors(self):
         while True:
@@ -267,23 +329,10 @@ class ActorHead(dashboard_utils.DashboardHeadModule):
             except Exception:
                 logger.exception("Error cleaning up actor info from GCS.")
 
-    def get_internal_states(self):
-        states = {
-            "total_published_events": self.total_published_events,
-            "total_dead_actors": len(self.dead_actors_queue),
-            "total_actors": len(DataSource.actors),
-            "queue_size": self.subscriber_queue_size,
-        }
-        if self.accumulative_event_processing_s > 0:
-            states["event_processing_per_s"] = (
-                self.total_published_events / self.accumulative_event_processing_s
-            )
-        return states
-
     @routes.get("/logical/actors")
     @dashboard_optional_utils.aiohttp_cache
     async def get_all_actors(self, req) -> aiohttp.web.Response:
-        actors = await DataOrganizer.get_all_actors()
+        actors = await DataOrganizer.get_actor_infos()
         return dashboard_optional_utils.rest_response(
             success=True,
             message="All actors fetched.",
@@ -298,13 +347,16 @@ class ActorHead(dashboard_utils.DashboardHeadModule):
     @dashboard_optional_utils.aiohttp_cache
     async def get_actor(self, req) -> aiohttp.web.Response:
         actor_id = req.match_info.get("actor_id")
-        actors = await DataOrganizer.get_all_actors()
+        actors = await DataOrganizer.get_actor_infos(actor_ids=[actor_id])
         return dashboard_optional_utils.rest_response(
             success=True, message="Actor details fetched.", detail=actors[actor_id]
         )
 
     async def run(self, server):
-        self.get_all_actor_info = GetAllActorInfo(self._dashboard_head)
+        self.get_all_actor_info_client = GetAllActorInfoClient.create(
+            self._dashboard_head
+        )
+
         await asyncio.gather(self._update_actors(), self._cleanup_actors())
 
     @staticmethod

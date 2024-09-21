@@ -29,7 +29,7 @@ config = (
     )
     .training(
         lr=0.0005 * ((args.num_gpus or 1) ** 0.5),
-        num_sgd_iter=6,
+        num_epochs=1,
         vf_loss_coeff=0.05,
         grad_clip=20.0,
     )

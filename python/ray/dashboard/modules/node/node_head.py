@@ -1,11 +1,13 @@
+import abc
 import asyncio
 import json
 import logging
 import os
 import time
 from collections import deque
+from concurrent.futures import ThreadPoolExecutor
 from itertools import chain
-from typing import AsyncGenerator, Dict, List, Tuple
+from typing import AsyncGenerator, Dict, Iterable, List, Optional
 
 import aiohttp.web
 import grpc
@@ -16,8 +18,13 @@ import ray.dashboard.optional_utils as dashboard_optional_utils
 import ray.dashboard.utils as dashboard_utils
 from ray import NodeID
 from ray._private import ray_constants
+from ray._private.collections_utils import split
 from ray._private.gcs_pubsub import GcsAioNodeInfoSubscriber
-from ray._private.ray_constants import DEBUG_AUTOSCALING_ERROR, DEBUG_AUTOSCALING_STATUS
+from ray._private.ray_constants import (
+    DEBUG_AUTOSCALING_ERROR,
+    DEBUG_AUTOSCALING_STATUS,
+    env_integer,
+)
 from ray._private.utils import get_or_create_event_loop
 from ray.autoscaler._private.util import (
     LoadMetricsSummary,
@@ -43,22 +50,18 @@ logger = logging.getLogger(__name__)
 routes = dashboard_optional_utils.DashboardHeadRouteTable
 
 
+# NOTE: Executor in this head is intentionally constrained to just 1 thread by
+#       default to limit its concurrency, therefore reducing potential for
+#       GIL contention
+RAY_DASHBOARD_NODE_HEAD_TPE_MAX_WORKERS = env_integer(
+    "RAY_DASHBOARD_NODE_HEAD_TPE_MAX_WORKERS", 1
+)
+
+
 def _gcs_node_info_to_dict(message: gcs_pb2.GcsNodeInfo) -> dict:
     return dashboard_utils.message_to_dict(
         message, {"nodeId"}, always_print_fields_with_no_presence=True
     )
-
-
-def _map_batch_node_info_to_dict(
-    messages: Dict[NodeID, gcs_pb2.GcsNodeInfo]
-) -> List[dict]:
-    return [_gcs_node_info_to_dict(message) for message in messages.values()]
-
-
-def _list_gcs_node_info_to_dict(
-    messages: List[Tuple[bytes, gcs_pb2.GcsNodeInfo]]
-) -> List[dict]:
-    return [_gcs_node_info_to_dict(node_info) for _, node_info in messages]
 
 
 def node_stats_to_dict(message):
@@ -88,38 +91,55 @@ def node_stats_to_dict(message):
         message.core_workers_stats.extend(core_workers_stats)
 
 
-class GetAllNodeInfo:
+class GetAllNodeInfoClient(abc.ABC):
     """
     Gets all node info from GCS via gRPC NodeInfoGcsService.GetAllNodeInfo.
     It makes the call via GcsAioClient or a direct gRPC stub, depending on the env var
     RAY_USE_OLD_GCS_CLIENT.
     """
 
-    def __new__(cls, *args, **kwargs):
+    @classmethod
+    def create(cls, *args, **kwargs):
         use_old_client = os.getenv("RAY_USE_OLD_GCS_CLIENT") == "1"
         if use_old_client:
             return GetAllNodeInfoFromGrpc(*args, **kwargs)
         else:
             return GetAllNodeInfoFromNewGcsClient(*args, **kwargs)
 
+    async def __call__(
+        self,
+        *,
+        timeout: Optional[int] = None,
+    ) -> Dict[NodeID, gcs_pb2.GcsNodeInfo]:
+        pass
 
-class GetAllNodeInfoFromNewGcsClient:
+
+class GetAllNodeInfoFromNewGcsClient(GetAllNodeInfoClient):
     def __init__(self, dashboard_head):
         self.gcs_aio_client = dashboard_head.gcs_aio_client
 
-    async def __call__(self, timeout) -> Dict[NodeID, gcs_pb2.GcsNodeInfo]:
+    async def __call__(
+        self,
+        *,
+        timeout: Optional[int] = None,
+    ) -> Dict[NodeID, gcs_pb2.GcsNodeInfo]:
         return await self.gcs_aio_client.get_all_node_info(timeout=timeout)
 
 
-class GetAllNodeInfoFromGrpc:
+class GetAllNodeInfoFromGrpc(GetAllNodeInfoClient):
     def __init__(self, dashboard_head):
         gcs_channel = dashboard_head.aiogrpc_gcs_channel
         self._gcs_node_info_stub = gcs_service_pb2_grpc.NodeInfoGcsServiceStub(
             gcs_channel
         )
 
-    async def __call__(self, timeout) -> Dict[NodeID, gcs_pb2.GcsNodeInfo]:
+    async def __call__(
+        self,
+        *,
+        timeout: Optional[int] = None,
+    ) -> Dict[NodeID, gcs_pb2.GcsNodeInfo]:
         request = gcs_service_pb2.GetAllNodeInfoRequest()
+
         reply = await self._gcs_node_info_stub.GetAllNodeInfo(request, timeout=timeout)
         if reply.status.code != 0:
             raise Exception(f"Failed to GetAllNodeInfo: {reply.status.message}")
@@ -132,9 +152,11 @@ class GetAllNodeInfoFromGrpc:
 class NodeHead(dashboard_utils.DashboardHeadModule):
     def __init__(self, dashboard_head):
         super().__init__(dashboard_head)
+
         self._stubs = {}
-        self.get_all_node_info = None
+        self._get_all_node_info_client: GetAllNodeInfoClient = None
         self._collect_memory_info = False
+
         DataSource.nodes.signal.append(self._update_stubs)
         # The time where the module is started.
         self._module_start_time = time.time()
@@ -145,6 +167,11 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
         self._dead_node_queue = deque()
         self._gcs_aio_client = dashboard_head.gcs_aio_client
         self._gcs_address = dashboard_head.gcs_address
+
+        self._executor = ThreadPoolExecutor(
+            max_workers=RAY_DASHBOARD_NODE_HEAD_TPE_MAX_WORKERS,
+            thread_name_prefix="node_head_executor",
+        )
 
     async def _update_stubs(self, change):
         if change.old:
@@ -186,27 +213,38 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
         # it happens after the subscription. That is, an update between
         # get-all-node-info and the subscription is not missed.
         # [1] https://en.wikipedia.org/wiki/Time-of-check_to_time-of-use
-        all_node_info = await self.get_all_node_info(timeout=None)
+        all_node_info = await self._get_all_node_info_client(timeout=None)
 
-        all_node_dicts = await get_or_create_event_loop().run_in_executor(
-            self._dashboard_head._thread_pool_executor,
-            _map_batch_node_info_to_dict,
-            all_node_info,
+        def _convert_to_dict(messages: Iterable[gcs_pb2.GcsNodeInfo]) -> List[dict]:
+            return [_gcs_node_info_to_dict(m) for m in messages]
+
+        all_node_infos = await get_or_create_event_loop().run_in_executor(
+            self._executor,
+            _convert_to_dict,
+            all_node_info.values(),
         )
-        for node in all_node_dicts:
+
+        for node in all_node_infos:
             yield node
 
         while True:
             try:
-                published = await subscriber.poll(
+                node_id_updated_info_tuples = await subscriber.poll(
                     batch_size=node_consts.RAY_DASHBOARD_NODE_SUBSCRIBER_POLL_SIZE
                 )
-                updated_dicts = await get_or_create_event_loop().run_in_executor(
-                    self._dashboard_head._thread_pool_executor,
-                    _list_gcs_node_info_to_dict,
-                    published,
+
+                if node_id_updated_info_tuples:
+                    _, updated_infos_proto = zip(*node_id_updated_info_tuples)
+                else:
+                    updated_infos_proto = []
+
+                updated_infos = await get_or_create_event_loop().run_in_executor(
+                    self._executor,
+                    _convert_to_dict,
+                    updated_infos_proto,
                 )
-                for node in updated_dicts:
+
+                for node in updated_infos:
                     yield node
             except Exception:
                 logger.exception("Failed handling updated nodes.")
@@ -397,66 +435,100 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
 
     @async_loop_forever(node_consts.NODE_STATS_UPDATE_INTERVAL_SECONDS)
     async def _update_node_stats(self):
-        # Copy self._stubs to avoid `dictionary changed size during iteration`.
-        get_node_stats_tasks = []
-        nodes = list(self._stubs.items())
-        TIMEOUT = node_consts.NODE_STATS_UPDATE_INTERVAL_SECONDS - 1
+        timeout = max(2, node_consts.NODE_STATS_UPDATE_INTERVAL_SECONDS - 1)
 
-        for node_id, stub in nodes:
+        # NOTE: We copy stubs to make sure
+        #       it doesn't change during the iteration (since its being updated
+        #       from another async task)
+        current_stub_node_id_tuples = list(self._stubs.items())
+
+        if current_stub_node_id_tuples:
+            node_ids, _ = zip(*current_stub_node_id_tuples)
+        else:
+            node_ids = []
+
+        get_node_stats_tasks = []
+
+        for i, (node_id, stub) in enumerate(current_stub_node_id_tuples):
             node_info = DataSource.nodes.get(node_id)
             if node_info["state"] != "ALIVE":
                 continue
+
             get_node_stats_tasks.append(
                 stub.GetNodeStats(
                     node_manager_pb2.GetNodeStatsRequest(
                         include_memory_info=self._collect_memory_info
                     ),
-                    timeout=min(2, TIMEOUT),
+                    timeout=timeout,
                 )
             )
 
-        replies = await asyncio.gather(
-            *get_node_stats_tasks,
-            return_exceptions=True,
-        )
+        responses = []
 
-        def postprocess(nodes, replies):
+        # NOTE: We're chunking up fetching of the stats to run in batches of no more
+        #       than 100 nodes at a time to avoid flooding the event-loop's queue
+        #       with potentially a large, uninterrupted sequence of tasks updating
+        #       the node stats for very large clusters.
+        for get_node_stats_tasks_chunk in split(get_node_stats_tasks, 100):
+            current_chunk_responses = await asyncio.gather(
+                *get_node_stats_tasks_chunk,
+                return_exceptions=True,
+            )
+
+            responses.extend(current_chunk_responses)
+
+            # We're doing short (25ms) yield after every chunk to make sure
+            #   - We're not overloading the event-loop with excessive # of tasks
+            #   - Allowing 10k nodes stats fetches be sent out performed in 2.5s
+            await asyncio.sleep(0.025)
+
+        def postprocess(node_id_response_tuples):
             """Pure function reorganizing the data into {node_id: stats}."""
             new_node_stats = {}
-            for node_info, reply in zip(nodes, replies):
-                node_id, _ = node_info
-                if isinstance(reply, asyncio.CancelledError):
+
+            for node_id, response in node_id_response_tuples:
+                if isinstance(response, asyncio.CancelledError):
                     pass
-                elif isinstance(reply, grpc.RpcError):
-                    if reply.code() == grpc.StatusCode.DEADLINE_EXCEEDED:
-                        logger.exception(
+                elif isinstance(response, grpc.RpcError):
+                    if response.code() == grpc.StatusCode.DEADLINE_EXCEEDED:
+                        message = (
                             f"Cannot reach the node, {node_id}, after timeout "
-                            f" {TIMEOUT}. This node may have been overloaded, "
+                            f" {timeout}. This node may have been overloaded, "
                             "terminated, or the network is slow."
                         )
-                    elif reply.code() == grpc.StatusCode.UNAVAILABLE:
-                        logger.exception(
+                    elif response.code() == grpc.StatusCode.UNAVAILABLE:
+                        message = (
                             f"Cannot reach the node, {node_id}. "
                             "The node may have been terminated."
                         )
                     else:
-                        logger.exception(f"Error updating node stats of {node_id}.")
-                        logger.exception(reply)
-                elif isinstance(reply, Exception):
-                    logger.exception(f"Error updating node stats of {node_id}.")
-                    logger.exception(reply)
+                        message = f"Error updating node stats of {node_id}."
+
+                    logger.error(message, exc_info=response)
+                elif isinstance(response, Exception):
+                    logger.error(
+                        f"Error updating node stats of {node_id}.", exc_info=response
+                    )
                 else:
-                    new_node_stats[node_id] = node_stats_to_dict(reply)
+                    new_node_stats[node_id] = node_stats_to_dict(response)
+
             return new_node_stats
 
+        # NOTE: Zip will silently truncate to shorter argument that potentially
+        #       could lead to subtle hard to catch issues, hence the assertion
+        assert len(node_ids) == len(responses)
+
         new_node_stats = await get_or_create_event_loop().run_in_executor(
-            self._dashboard_head._thread_pool_executor, postprocess, nodes, replies
+            self._executor, postprocess, zip(node_ids, responses)
         )
+
         for node_id, new_stat in new_node_stats.items():
             DataSource.node_stats[node_id] = new_stat
 
     async def run(self, server):
-        self.get_all_node_info = GetAllNodeInfo(self._dashboard_head)
+        self._get_all_node_info_client = GetAllNodeInfoClient.create(
+            self._dashboard_head
+        )
         await asyncio.gather(
             self._update_nodes(),
             self._update_node_stats(),

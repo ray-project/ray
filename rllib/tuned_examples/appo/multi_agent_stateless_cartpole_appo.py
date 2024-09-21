@@ -9,10 +9,7 @@ from ray.rllib.utils.metrics import (
 from ray.rllib.utils.test_utils import add_rllib_example_script_args
 from ray.tune.registry import register_env
 
-parser = add_rllib_example_script_args(
-    default_timesteps=2000000,
-    default_reward=350.0,
-)
+parser = add_rllib_example_script_args(default_timesteps=2000000)
 parser.set_defaults(
     enable_new_api_stack=True,
     num_agents=2,
@@ -39,7 +36,7 @@ config = (
     .training(
         train_batch_size_per_learner=600,
         lr=0.0005 * ((args.num_gpus or 1) ** 0.5),
-        num_sgd_iter=6,
+        num_epochs=1,
         vf_loss_coeff=0.05,
         grad_clip=20.0,
     )
