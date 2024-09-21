@@ -18,12 +18,11 @@ from ray.rllib.models import MODEL_DEFAULTS
 from ray.rllib.models.distributions import Distribution
 from ray.rllib.models.preprocessors import get_preprocessor, Preprocessor
 from ray.rllib.models.utils import get_filter_config
-from ray.rllib.utils.deprecation import deprecation_warning
+from ray.rllib.utils.deprecation import deprecation_warning, DEPRECATED_VALUE
 from ray.rllib.utils.error import UnsupportedSpaceException
 from ray.rllib.utils.spaces.simplex import Simplex
 from ray.rllib.utils.spaces.space_utils import flatten_space
 from ray.rllib.utils.spaces.space_utils import get_base_struct_from_space
-from ray.rllib.utils.typing import ViewRequirementsDict
 from ray.rllib.utils.annotations import (
     OverrideToImplementCustomLogic,
     OverrideToImplementCustomLogic_CallToSuperRecommended,
@@ -88,7 +87,8 @@ class Catalog:
         observation_space: gym.Space,
         action_space: gym.Space,
         model_config_dict: dict,
-        view_requirements: dict = None,
+        # deprecated args.
+        view_requirements=DEPRECATED_VALUE,
     ):
         """Initializes a Catalog with a default encoder config.
 
@@ -97,16 +97,15 @@ class Catalog:
             action_space: The action space of the environment.
             model_config_dict: The model config that specifies things like hidden
                 dimensions and activations functions to use in this Catalog.
-            view_requirements: The view requirements of Models to produce. This is
-                needed for a Model that encodes a complex temporal mix of
-                observations, actions or rewards.
         """
+        if view_requirements != DEPRECATED_VALUE:
+            deprecation_warning(old="Catalog(view_requirements=..)", error=True)
+
         self.observation_space = observation_space
         self.action_space = action_space
 
         # TODO (Artur): Make model defaults a dataclass
         self._model_config_dict = {**MODEL_DEFAULTS, **model_config_dict}
-        self._view_requirements = view_requirements
         self._latent_dims = None
 
         self._determine_components_hook()
@@ -133,7 +132,6 @@ class Catalog:
             observation_space=self.observation_space,
             action_space=self.action_space,
             model_config_dict=self._model_config_dict,
-            view_requirements=self._view_requirements,
         )
 
         # Create a function that can be called when framework is known to retrieve the
@@ -223,7 +221,6 @@ class Catalog:
         observation_space: gym.Space,
         model_config_dict: dict,
         action_space: gym.Space = None,
-        view_requirements=None,
     ) -> ModelConfig:
         """Returns an EncoderConfig for the given input_space and model_config_dict.
 
@@ -245,9 +242,6 @@ class Catalog:
             model_config_dict: The model config to use.
             action_space: The action space to use if actions are to be encoded. This
                 is commonly the case for LSTM models.
-            view_requirements: The view requirements to use if anything else than
-                observation_space or action_space is to be encoded. This signifies an
-                advanced use case.
 
         Returns:
             The encoder config.
@@ -287,7 +281,6 @@ class Catalog:
                 tokenizer_config=cls.get_tokenizer_config(
                     observation_space,
                     model_config_dict,
-                    view_requirements,
                 ),
             )
         elif use_attention:
@@ -387,7 +380,8 @@ class Catalog:
         cls,
         observation_space: gym.Space,
         model_config_dict: dict,
-        view_requirements: Optional[ViewRequirementsDict] = None,
+        # deprecated args.
+        view_requirements=DEPRECATED_VALUE,
     ) -> ModelConfig:
         """Returns a tokenizer config for the given space.
 
@@ -404,9 +398,10 @@ class Catalog:
         Args:
             observation_space: The observation space to use.
             model_config_dict: The model config to use.
-            view_requirements: The view requirements to use if anything else than
-                observation_space is to be encoded. This signifies an advanced use case.
         """
+        if view_requirements != DEPRECATED_VALUE:
+            deprecation_warning(old="Catalog(view_requirements=..)", error=True)
+
         return cls._get_encoder_config(
             observation_space=observation_space,
             # Use model_config_dict without flags that would end up in complex models
@@ -414,7 +409,6 @@ class Catalog:
                 **model_config_dict,
                 **{"use_lstm": False, "use_attention": False},
             },
-            view_requirements=view_requirements,
         )
 
     @classmethod

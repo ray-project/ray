@@ -191,8 +191,6 @@ class TestCatalog(unittest.TestCase):
                 # Action space does not matter for encoders
                 action_space=gym.spaces.Box(1, 1, (1,)),
                 model_config_dict=model_config_dict,
-                # TODO(Artur): Add view requirements when we need them
-                view_requirements=None,
             )
 
             model_config = catalog._get_encoder_config(

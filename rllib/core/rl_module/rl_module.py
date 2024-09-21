@@ -3,7 +3,6 @@ from dataclasses import dataclass, field
 from typing import Any, Collection, Dict, Optional, Type, TYPE_CHECKING, Union
 
 import gymnasium as gym
-import tree  # pip install dm_tree
 
 if TYPE_CHECKING:
     from ray.rllib.core.rl_module.multi_rl_module import (
@@ -21,9 +20,6 @@ from ray.rllib.core.models.specs.checker import (
     convert_to_canonical_format,
 )
 from ray.rllib.models.distributions import Distribution
-from ray.rllib.policy.policy import get_gym_space_from_struct_of_tensors
-from ray.rllib.policy.sample_batch import SampleBatch
-from ray.rllib.policy.view_requirement import ViewRequirement
 from ray.rllib.utils.annotations import (
     ExperimentalAPI,
     override,
@@ -32,14 +28,13 @@ from ray.rllib.utils.annotations import (
 )
 from ray.rllib.utils.checkpoints import Checkpointable
 from ray.rllib.utils.deprecation import Deprecated
-from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.serialization import (
     gym_space_from_dict,
     gym_space_to_dict,
     serialize_type,
     deserialize_type,
 )
-from ray.rllib.utils.typing import SampleBatchType, StateDict, ViewRequirementsDict
+from ray.rllib.utils.typing import SampleBatchType, StateDict
 from ray.util.annotations import PublicAPI
 
 
@@ -532,65 +527,6 @@ class RLModule(Checkpointable, abc.ABC):
             f"{type(initial_state)} instead."
         )
         return bool(initial_state)
-
-    @OverrideToImplementCustomLogic
-    def update_default_view_requirements(
-        self, defaults: ViewRequirementsDict
-    ) -> Dict[str, ViewRequirement]:
-        """Updates default view requirements with the view requirements of this module.
-
-        This method should be called with view requirements that already contain
-        information such as the given observation space, action space, etc.
-        This method may then add additional shifts or state columns to the view
-        requirements, or apply other changes.
-
-        Args:
-            defaults: The default view requirements to update.
-
-        Returns:
-            The updated view requirements.
-        """
-        if self.is_stateful():
-            # get the initial state in numpy format, infer the state from it, and create
-            # appropriate view requirements.
-            init_state = convert_to_numpy(self.get_initial_state())
-            init_state = tree.map_structure(lambda x: x[None], init_state)
-            space = get_gym_space_from_struct_of_tensors(init_state, batched_input=True)
-            max_seq_len = self.config.model_config_dict["max_seq_len"]
-            assert max_seq_len is not None
-            defaults[Columns.STATE_IN] = ViewRequirement(
-                data_col=Columns.STATE_OUT,
-                shift=-1,
-                used_for_compute_actions=True,
-                used_for_training=True,
-                batch_repeat_value=max_seq_len,
-                space=space,
-            )
-
-            if self.config.model_config_dict["lstm_use_prev_action"]:
-                defaults[SampleBatch.PREV_ACTIONS] = ViewRequirement(
-                    data_col=Columns.ACTIONS,
-                    shift=-1,
-                    used_for_compute_actions=True,
-                    used_for_training=True,
-                )
-
-            if self.config.model_config_dict["lstm_use_prev_reward"]:
-                defaults[SampleBatch.PREV_REWARDS] = ViewRequirement(
-                    data_col=Columns.REWARDS,
-                    shift=-1,
-                    used_for_compute_actions=True,
-                    used_for_training=True,
-                )
-
-            defaults[Columns.STATE_OUT] = ViewRequirement(
-                data_col=Columns.STATE_OUT,
-                used_for_compute_actions=False,
-                used_for_training=True,
-                space=space,
-            )
-
-        return defaults
 
     @OverrideToImplementCustomLogic_CallToSuperRecommended
     def output_specs_inference(self) -> SpecType:
