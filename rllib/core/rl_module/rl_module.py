@@ -222,13 +222,15 @@ class RLModuleConfig:
     model_config_dict: Dict[str, Any] = field(default_factory=dict)
     catalog_class: Type["Catalog"] = None
 
-    def get_catalog(self) -> "Catalog":
-        """Returns the catalog for this config."""
-        return self.catalog_class(
-            observation_space=self.observation_space,
-            action_space=self.action_space,
-            model_config_dict=self.model_config_dict,
-        )
+    def get_catalog(self) -> Optional["Catalog"]:
+        """Returns the catalog for this config, if a class is provided."""
+        if self.catalog_class is not None:
+            return self.catalog_class(
+                observation_space=self.observation_space,
+                action_space=self.action_space,
+                model_config_dict=self.model_config_dict,
+            )
+        return None
 
     def to_dict(self):
         """Returns a serialized representation of the config.
@@ -399,6 +401,12 @@ class RLModule(Checkpointable, abc.ABC):
 
     def __init__(self, config: RLModuleConfig):
         self.config = config
+        self.catalog = self.config.get_catalog()
+        self.action_dist_cls = None
+        if self.catalog:
+            self.action_dist_cls = self.catalog.get_action_dist_cls(
+                framework=self.framework
+            )
 
         # Make sure, `setup()` is only called once, no matter what. In some cases
         # of multiple inheritance (and with our __post_init__ functionality in place,

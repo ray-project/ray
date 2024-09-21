@@ -6,7 +6,10 @@ from packaging import version
 from ray.rllib.core.rl_module.apis import InferenceOnlyAPI
 from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.core.rl_module.torch.torch_compile_config import TorchCompileConfig
-from ray.rllib.models.torch.torch_distributions import TorchCategorical, TorchDistribution
+from ray.rllib.models.torch.torch_distributions import (
+    TorchCategorical,
+    TorchDistribution,
+)
 from ray.rllib.utils.annotations import override, OverrideToImplementCustomLogic
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.numpy import convert_to_numpy
