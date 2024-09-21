@@ -129,7 +129,9 @@ def _update_docker_status(
         )
         data: List[Dict[str, str]] = []
         for line in data_str:
-            data.append(json.loads(line))
+            line = line.strip()
+            if line:
+                data.append(json.loads(line))
     except Exception as e:
         print(f"Ran into error when fetching status: {e}")
         return None
