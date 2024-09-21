@@ -237,7 +237,6 @@ behavior (for example, sample an action from a distribution) inside the overridd
 :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule`.
 
 
-
 Custom Callbacks
 ----------------
 
@@ -300,6 +299,11 @@ Here is a 1:1 translation guide for those types of Callbacks methods:
             # `RLModule` or a `MultiRLModule` (in the multi-agent case).
             print(rl_module)
 
+    # Change similarly:
+    # on_episode_created()
+    # on_episode_step()
+    # on_episode_end()
+
 
 The following callback methods are no longer available on the new API stack:
 
@@ -322,12 +326,15 @@ ModelV2 to RLModule
 
 In case you are using a custom :py:class:`~ray.rllib.models.modelv2.ModelV2` class and would like to translate
 the entire NN architecture and possibly action distribution logic to the new API stack, take a look at
-the :ref:`RLModule <rlmodule-guide>` documentation first, then come back to this location here.
+the :ref:`RLModule documentation <rlmodule-guide>` first, then come back to this location here.
 
-There are different options for translating an existing, custom :py:class:`~ray.rllib.models.modelv2.ModelV2`
+Here are also helpful example scripts on `how to write a custom CNN-containing RLModule <https://github.com/ray-project/ray/blob/master/rllib/examples/rl_modules/custom_cnn_rl_module.py>`__
+and `how to write a custom LSTM-containing RLModule <https://github.com/ray-project/ray/blob/master/rllib/examples/rl_modules/custom_lstm_rl_module.py>`__.
+
+Also, there are different options for translating an existing, custom :py:class:`~ray.rllib.models.modelv2.ModelV2` (old API stack)
 to the new API stack's :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule`:
 
-1) You lift your ModelV2 code and drop it into a new, custom RLModule class.
+1) You lift your ModelV2 code and drop it into a new, custom RLModule class (see the :ref:`RLModule documentation <rlmodule-guide>` for details).
 1) You use an Algorithm checkpoint or a Policy checkpoint that you have from an old API stack training run and use this with the `new stack RLModule convenience wrapper <https://github.com/ray-project/ray/blob/master/rllib/examples/rl_modules/migrate_modelv2_to_new_api_stack_by_policy_checkpoint.py>`__.
 1) You have an :py:class:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig` object from an old API stack training run and use this with the `new stack RLModule convenience wrapper <https://github.com/ray-project/ray/blob/master/rllib/examples/rl_modules/migrate_modelv2_to_new_api_stack_by_config.py>`__.
 
@@ -335,10 +342,22 @@ to the new API stack's :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule`:
 Custom Loss Functions and/or Policies
 -------------------------------------
 
+In case you are using one or more custom loss functions and/or custom (PyTorch) optimizers to train your models, instead of doing these
+customizations inside the old stack's Policy class, you need to move these logics into the new API stack's
+:py:class:`~ray.rllib.core.learner.learner.Learner` class.
 
+:ref:`See here for more details on how to write a custom Learner <learner-guide>`.
+
+Note that the Policy class is no longer supported in the new API stack. This class used to hold a
+neural network (now moved into :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule`),
+a (old stack) connector (now moved into :py:class:`~ray.rllib.connector.connector_v2.ConnectorV2`),
+and one or more optimizers and losses (now moved into :py:class:`~ray.rllib.core.learner.learner.Learner`).
+
+The RLModule API is much more flexible than the old stack's Policy API and provides a cleaner separation-of-concerns experience (things
+related to action inference run on the EnvRunners, things related to updating run on the Learner workers).
 
 
 Custom (old-stack) Connectors
 -----------------------------
 
-
+If you are using custom (old API stack) connectors,

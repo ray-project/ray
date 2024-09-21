@@ -10,6 +10,7 @@
     :class: inline-figure
     :width: 16
 
+.. _learner-guide:
 
 Learner (Alpha)
 ===============
