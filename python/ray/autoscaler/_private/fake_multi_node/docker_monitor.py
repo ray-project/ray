@@ -65,7 +65,7 @@ def _update_docker_compose(
                 if container_dir == "/cluster/node" and not os.path.exists(host_dir):
                     os.makedirs(host_dir, 0o755, exist_ok=True)
 
-        subprocess.check_output(
+        subprocess.check_call(
             ["docker", "compose", "-f", docker_compose_path, "-p", project_name]
             + cmd
             + [
@@ -132,6 +132,7 @@ def _update_docker_status(
             data.append(json.loads(line))
     except Exception as e:
         print(f"Ran into error when fetching status: {e}")
+        print(f"docker compose ps output: {data_str}")
         return None
 
     status = {}
