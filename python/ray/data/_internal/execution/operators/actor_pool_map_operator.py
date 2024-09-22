@@ -16,7 +16,6 @@ from ray.data._internal.execution.interfaces import (
 )
 from ray.data._internal.execution.operators.map_operator import MapOperator, _map_task
 from ray.data._internal.execution.operators.map_transformer import MapTransformer
-from ray.data._internal.execution.util import locality_string
 from ray.data._internal.remote_fn import _add_system_error_to_retry_exceptions
 from ray.data.block import Block, BlockMetadata
 from ray.data.context import DataContext
@@ -270,17 +269,7 @@ class ActorPoolMapOperator(MapOperator):
             )
 
     def progress_str(self) -> str:
-        base = f"Actors: {self._actor_pool.num_running_actors()}"
-        pending = self._actor_pool.num_pending_actors()
-        if pending:
-            base += f" (Pending: {pending})"
-        if self._actor_locality_enabled:
-            base += " " + locality_string(
-                self._actor_pool._locality_hits, self._actor_pool._locality_misses
-            )
-        else:
-            base += " [locality off]"
-        return base
+        return ""
 
     def base_resource_usage(self) -> ExecutionResources:
         min_workers = self._actor_pool.min_size()
@@ -303,6 +292,20 @@ class ActorPoolMapOperator(MapOperator):
             cpu=self._ray_remote_args.get("num_cpus", 0) * num_pending_workers,
             gpu=self._ray_remote_args.get("num_gpus", 0) * num_pending_workers,
         )
+
+    def num_active_actors(self) -> int:
+        """Return the number of active actors.
+
+        This method is used to display active actor info in the progress bar.
+        """
+        return self._actor_pool.num_running_actors()
+
+    def num_pending_actors(self) -> int:
+        """Return the number of pending actors.
+
+        This method is used to display pending actor info in the progress bar.
+        """
+        return self._actor_pool.num_pending_actors()
 
     def incremental_resource_usage(self) -> ExecutionResources:
         # Submitting tasks to existing actors doesn't require additional

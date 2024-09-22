@@ -26,11 +26,15 @@ from ray.data._internal.execution.interfaces.physical_operator import (
     OpTask,
     Waitable,
 )
+from ray.data._internal.execution.operators.actor_pool_map_operator import (
+    ActorPoolMapOperator,
+)
 from ray.data._internal.execution.operators.base_physical_operator import (
     AllToAllOperator,
 )
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.execution.resource_manager import ResourceManager
+from ray.data._internal.execution.util import locality_string
 from ray.data._internal.progress_bar import ProgressBar
 from ray.data.context import DataContext
 
@@ -257,7 +261,7 @@ class OpState:
             self.progress_bar.refresh()
 
     def summary_str(self, resource_manager: ResourceManager) -> str:
-        queued = self.num_queued() + self.op.internal_queue_size()
+        # Active tasks
         active = self.op.num_active_tasks()
         desc = f"- {self.op.name}: Tasks: {active}"
         if (
@@ -266,14 +270,31 @@ class OpState:
         ):
             desc += " [backpressured]"
 
-        # Add operator suffix, which includes actor information,
-        # directly after task details.
+        # Active/pending actors
+        active = self.op.num_active_actors()
+        pending = self.op.num_pending_actors()
+        if active or pending:
+            assert isinstance(self.op, ActorPoolMapOperator)
+            actor_str = f"; Actors: {active}"
+            if pending > 0:
+                actor_str += f", [pending: {pending}]"
+            if self.op._actor_locality_enabled:
+                actor_str += " " + locality_string(
+                    self._actor_pool._locality_hits, self._actor_pool._locality_misses
+                )
+            else:
+                actor_str += " [locality off]"
+            desc += actor_str
+
+        # Queued blocks
+        queued = self.num_queued() + self.op.internal_queue_size()
+        desc += f"; Queued blocks: {queued}"
+        desc += f"; Resources: {resource_manager.get_op_usage_str(self.op)}"
+
+        # Any additional operator specific information.
         suffix = self.op.progress_str()
         if suffix:
-            desc += f", {suffix}"
-
-        desc += f", Queued Blocks: {queued}; "
-        desc += f"Resources: {resource_manager.get_op_usage_str(self.op)}"
+            desc += f"; {suffix}"
 
         return desc
 
