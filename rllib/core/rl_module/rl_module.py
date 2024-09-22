@@ -401,9 +401,17 @@ class RLModule(Checkpointable, abc.ABC):
 
     def __init__(self, config: RLModuleConfig):
         self.config = config
-        self.catalog = self.config.get_catalog()
+
+        # TODO (sven): Deprecate Catalog and replace with utility functions to create
+        #  primitive components based on obs- and action spaces.
+        self.catalog = None
+        try:
+            self.catalog = self.config.get_catalog()
+        except Exception:
+            pass
+
         self.action_dist_cls = None
-        if self.catalog:
+        if self.catalog is not None:
             self.action_dist_cls = self.catalog.get_action_dist_cls(
                 framework=self.framework
             )
