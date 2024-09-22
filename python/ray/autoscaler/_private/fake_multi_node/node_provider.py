@@ -467,7 +467,7 @@ class FakeMultiNodeDockerProvider(FakeMultiNodeProvider):
         if not self.in_docker_container:
             # Create private key
             if not os.path.exists(self._private_key_path):
-                subprocess.check_output(
+                subprocess.check_call(
                     f'ssh-keygen -b 2048 -t rsa -q -N "" '
                     f"-f {self._private_key_path}",
                     shell=True,
@@ -475,7 +475,7 @@ class FakeMultiNodeDockerProvider(FakeMultiNodeProvider):
 
             # Create public key
             if not os.path.exists(self._public_key_path):
-                subprocess.check_output(
+                subprocess.check_call(
                     f"ssh-keygen -y "
                     f"-f {self._private_key_path} "
                     f"> {self._public_key_path}",
