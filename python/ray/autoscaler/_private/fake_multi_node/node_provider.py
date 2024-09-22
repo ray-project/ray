@@ -41,7 +41,6 @@ FAKE_DOCKER_DEFAULT_OBJECT_MANAGER_PORT = 18076
 FAKE_DOCKER_DEFAULT_CLIENT_PORT = 10002
 
 DOCKER_COMPOSE_SKELETON = {
-    "version": "3.9",
     "services": {},
     "networks": {"ray_local": {}},
 }
