@@ -450,12 +450,19 @@ class SACConfig(AlgorithmConfig):
                 "`EpisodeReplayBuffer`."
             )
 
-        if self.enable_rl_module_and_learner and self.lr is not None:
+        if self.enable_rl_module_and_learner:
+            if self.lr is not None:
+                raise ValueError(
+                    "Basic learning rate parameter `lr` is not `None`. For SAC "
+                    "use the specific learning rate parameters `actor_lr`, `critic_lr` "
+                    "and `alpha_lr`, for the actor, critic, and the hyperparameter "
+                    "`alpha`, respectively."
+                )
+        elif self.lr is None:
             raise ValueError(
-                "Basic learning rate parameter `lr` is not `None`. For SAC "
-                "use the specific learning rate parameters `actor_lr`, `critic_lr` "
-                "and `alpha_lr`, for the actor, critic, and the hyperparameter "
-                "`alpha`, respectively."
+                "Learning rate parameter `lr` must not be `None` on the old API stack! "
+                "Set the learning rate to a specific value through "
+                "`config.training(lr=...)`."
             )
 
     @override(AlgorithmConfig)
