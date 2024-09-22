@@ -26,13 +26,15 @@ from ray.data._internal.execution.interfaces.physical_operator import (
     OpTask,
     Waitable,
 )
-from ray.data._internal.execution.operators.actor_pool_map_operator import ActorPoolMapOperator
-from ray.data._internal.execution.util import locality_string
+from ray.data._internal.execution.operators.actor_pool_map_operator import (
+    ActorPoolMapOperator,
+)
 from ray.data._internal.execution.operators.base_physical_operator import (
     AllToAllOperator,
 )
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.execution.resource_manager import ResourceManager
+from ray.data._internal.execution.util import locality_string
 from ray.data._internal.progress_bar import ProgressBar
 from ray.data.context import DataContext
 
