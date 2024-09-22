@@ -191,13 +191,31 @@ async_actor = AsyncActor.remote(counter)
 assert ray.get(async_actor.run.remote()) == "ok"
 """
 
+CHECK_ASYNC_ACTOR_RUN_IS_CALLED_SCRIPT = """
+import sys
+import ray
+ray.init(namespace="test")
+
+counter = ray.get_actor("counter")
+if ray.get(counter.get.remote()) == 1:
+  # AsyncActor.run is called.
+  sys.exit(0)
+else:
+  sys.exit(1)
+"""
+
 
 def test_async_actor_task_retry(head2, worker2, gcs_network):
     network = gcs_network
 
     def inject_transient_network_failure():
         try:
-            sleep(10)
+            wait_for_condition(
+                lambda: head2.exec_run(
+                    cmd=f"python -c '{CHECK_ASYNC_ACTOR_RUN_IS_CALLED_SCRIPT}'"
+                ).exit_code
+                == 0
+            )
             worker_ip = worker2._container.attrs["NetworkSettings"]["Networks"][
                 network.name
             ]["IPAddress"]
