@@ -335,6 +335,20 @@ py_test(
 )
 
 # CQL
+# Pendulum
+py_test(
+    name = "learning_tests_pendulum_cql",
+    main = "tuned_examples/cql/pendulum_cql.py",
+    tags = ["team:rllib", "exclusive", "learning_tests", "torch_only", "learning_tests_cartpole", "learning_tests_discrete", "learning_tests_pytorch_use_all_core"],
+    size = "large",
+    srcs = ["tuned_examples/cql/pendulum_cql.py"],
+    # Include the zipped json data file as well.
+    data = [
+        "tests/data/pendulum/pendulum-v1_enormous",
+    ],
+    args = ["--as-test", "--enable-new-api-stack"]
+)
+
 #@OldAPIStack
 py_test(
     name = "learning_tests_pendulum_cql_old_api_stack",
@@ -348,19 +362,6 @@ py_test(
         "tests/data/pendulum/enormous.zip",
     ],
     args = ["--dir=tuned_examples/cql"]
-)
-
-py_test(
-    name = "learning_tests_pendulum_cql",
-    main = "tuned_examples/cql/pendulum_cql.py",
-    tags = ["team:rllib", "exclusive", "learning_tests", "torch_only", "learning_tests_cartpole", "learning_tests_discrete", "learning_tests_pytorch_use_all_core"],
-    size = "large",
-    srcs = ["tuned_examples/cql/pendulum_cql.py"],
-    # Include the zipped json data file as well.
-    data = [
-        "tests/data/pendulum/pendulum-v1_enormous",
-    ],
-    args = ["--as-test", "--enable-new-api-stack"]
 )
 
 # DQN
@@ -1053,9 +1054,8 @@ py_test(
 )
 
 # CQL
-# @OldAPIStack
 py_test(
-    name = "test_cql_old_api_stack",
+    name = "test_cql",
     tags = ["team:rllib", "algorithms_dir"],
     size = "large",
     data = ["tests/data/pendulum/small.json"],

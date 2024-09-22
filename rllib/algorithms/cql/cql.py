@@ -88,13 +88,18 @@ class CQLConfig(SACConfig):
         # Note, the new stack defines learning rates for each component.
         # The base learning rate `lr` has to be set to `None`, if using
         # the new stack.
-        self.actor_lr = 1e-4,
+        self.actor_lr = 1e-4
         self.critic_lr = 1e-3
         self.alpha_lr = 1e-3
         self.lr = None
 
         # Changes to Algorithm's/SACConfig's default:
 
+        # `.api_stack()`
+        self.api_stack(
+            enable_rl_module_and_learner=False,
+            enable_env_runner_and_connector_v2=False,
+        )
         # .reporting()
         self.min_sample_timesteps_per_iteration = 0
         self.min_train_timesteps_per_iteration = 100
