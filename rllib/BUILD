@@ -349,21 +349,6 @@ py_test(
     args = ["--as-test", "--enable-new-api-stack"]
 )
 
-#@OldAPIStack
-py_test(
-    name = "learning_tests_pendulum_cql_old_api_stack",
-    main = "tests/run_regression_tests.py",
-    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_continuous", "learning_tests_with_ray_data", "torch_only"],
-    size = "large",
-    srcs = ["tests/run_regression_tests.py"],
-    # Include the zipped json data file as well.
-    data = [
-        "tuned_examples/cql/pendulum-cql.yaml",
-        "tests/data/pendulum/enormous.zip",
-    ],
-    args = ["--dir=tuned_examples/cql"]
-)
-
 # DQN
 # CartPole
 py_test(

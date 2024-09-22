@@ -33,12 +33,19 @@ class SACConfig(AlgorithmConfig):
 
     .. testcode::
 
-        config = SACConfig().training(gamma=0.9, lr=0.01, train_batch_size=32)
-        config = config.resources(num_gpus=0)
-        config = config.env_runners(num_env_runners=1)
-
-        # Build a Algorithm object from the config and run 1 training iteration.
-        algo = config.build(env="CartPole-v1")
+        config = (
+            SACConfig()
+            .environment("CartPole-v1")
+            .env_runners(num_env_runners=1)
+            .training(
+                gamma=0.9,
+                actor_lr=0.001,
+                critic_lr=0.002,
+                train_batch_size_per_learner=32,
+            )
+        )
+        # Build the SAC algo object from the config and run 1 training iteration.
+        algo = config.build()
         algo.train()
     """
 
@@ -458,12 +465,6 @@ class SACConfig(AlgorithmConfig):
                     "and `alpha_lr`, for the actor, critic, and the hyperparameter "
                     "`alpha`, respectively."
                 )
-        elif self.lr is None:
-            raise ValueError(
-                "Learning rate parameter `lr` must not be `None` on the old API stack! "
-                "Set the learning rate to a specific value through "
-                "`config.training(lr=...)`."
-            )
 
     @override(AlgorithmConfig)
     def get_rollout_fragment_length(self, worker_index: int = 0) -> int:
