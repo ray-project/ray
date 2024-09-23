@@ -546,6 +546,7 @@ class JobManager:
                 metadata or {},
                 self._gcs_address,
                 self._cluster_id_hex,
+                self._logs_dir,
             )
             supervisor.run.remote(
                 _start_signal_actor=_start_signal_actor,
