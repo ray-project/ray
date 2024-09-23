@@ -130,7 +130,7 @@ python-dateutil==2.8.2
 python-dotenv==1.0.1
 pytz==2022.7.1
 PyYAML==6.0.1
-ray @ file:///home/ray/ray-3.0.0.dev0-cp39-cp39-manylinux2014_x86_64.whl#sha256=fd87f7d1f486ccaab6c375f7bde12f6c408f589fd9a1d5f1193314e52834f96d
+ray @ file:///home/ray/ray-3.0.0.dev0-cp39-cp39-manylinux2014_x86_64.whl#sha256=326fac225c7a832dd518075a8efdb2eaf87a315eabbd702fbe085e6857488ebb
 redis==3.5.3
 requests==2.31.0
 requests-oauthlib==2.0.0
