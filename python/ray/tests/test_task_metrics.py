@@ -202,6 +202,41 @@ ray.get(w)
     proc.kill()
 
 
+def test_task_fetch_args(ray_start_cluster):
+    cluster = ray_start_cluster
+    cluster.add_node(
+        resources={"head": 1},
+        _system_config={
+            "metrics_report_interval_ms": 100,
+            "testing_asio_delay_us": "ObjectManagerService.grpc_server.Pull=5000000000:5000000000",  # noqa: E501
+        },
+    )
+    info = ray.init(address=cluster.address)
+    cluster.add_node(resources={"worker": 1})
+    cluster.wait_for_nodes()
+
+    @ray.remote(resources={"worker": 1})
+    def task1():
+        return [1] * 1024 * 1024
+
+    @ray.remote(resources={"head": 1})
+    def task2(obj):
+        pass
+
+    o1 = task1.remote()
+    o2 = task2.remote(o1)
+
+    wait_for_condition(
+        lambda: tasks_by_state(info).get("PENDING_ARGS_FETCH", 0.0) == 1.0
+    )
+
+    ray.cancel(o2)
+
+    wait_for_condition(
+        lambda: tasks_by_state(info).get("PENDING_ARGS_FETCH", 0.0) == 0.0
+    )
+
+
 def test_task_wait_on_deps(shutdown_only):
     info = ray.init(num_cpus=2, **METRIC_CONFIG)
 
