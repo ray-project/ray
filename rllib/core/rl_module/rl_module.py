@@ -236,18 +236,82 @@ class RLModuleSpec:
             else (self.model_config or {})
         )
 
-    @Deprecated(
-        new="RLModule(*, observation_space=.., action_space=.., ....)",
-        error=False,
-    )
-    def get_rl_module_config(self):
-        return RLModuleConfig(
-            observation_space=self.observation_space,
-            action_space=self.action_space,
-            inference_only=self.inference_only,
-            learner_only=self.learner_only,
-            model_config_dict=self._get_model_config(),
-            catalog_class=self.catalog_class,
+
+@ExperimentalAPI
+@dataclass
+class RLModuleConfig:
+    """A utility config class to make it constructing RLModules easier.
+
+    Args:
+        observation_space: The observation space of the RLModule. This may differ
+            from the observation space of the environment. For example, a discrete
+            observation space of an environment, would usually correspond to a
+            one-hot encoded observation space of the RLModule because of preprocessing.
+        action_space: The action space of the RLModule.
+        inference_only: Whether the RLModule should be configured in its inference-only
+            state, in which those components not needed for action computing (for
+            example a value function or a target network) might be missing.
+            Note that `inference_only=True` AND `learner_only=True` is not allowed.
+        learner_only: Whether this RLModule should only be built on Learner workers, but
+            NOT on EnvRunners. Useful for RLModules inside a MultiRLModule that are only
+            used for training, for example a shared value function in a multi-agent
+            setup or a world model in a curiosity-learning setup.
+            Note that `inference_only=True` AND `learner_only=True` is not allowed.
+        model_config_dict: The model config dict to use.
+        catalog_class: The Catalog class to use.
+    """
+
+    observation_space: gym.Space = None
+    action_space: gym.Space = None
+    inference_only: bool = False
+    learner_only: bool = False
+    model_config_dict: Dict[str, Any] = field(default_factory=dict)
+    catalog_class: Type["Catalog"] = None
+
+    def get_catalog(self) -> Optional["Catalog"]:
+        """Returns the catalog for this config, if a class is provided."""
+        if self.catalog_class is not None:
+            return self.catalog_class(
+                observation_space=self.observation_space,
+                action_space=self.action_space,
+                model_config_dict=self.model_config_dict,
+            )
+        return None
+
+    def to_dict(self):
+        """Returns a serialized representation of the config.
+
+        NOTE: This should be JSON-able. Users can test this by calling
+            json.dumps(config.to_dict()).
+
+        """
+        catalog_class_path = (
+            serialize_type(self.catalog_class) if self.catalog_class else ""
+        )
+        return {
+            "observation_space": gym_space_to_dict(self.observation_space),
+            "action_space": gym_space_to_dict(self.action_space),
+            "inference_only": self.inference_only,
+            "learner_only": self.learner_only,
+            "model_config_dict": self.model_config_dict,
+            "catalog_class_path": catalog_class_path,
+        }
+
+    @classmethod
+    def from_dict(cls, d: Dict[str, Any]):
+        """Creates a config from a serialized representation."""
+        catalog_class = (
+            None
+            if d["catalog_class_path"] == ""
+            else deserialize_type(d["catalog_class_path"])
+        )
+        return cls(
+            observation_space=gym_space_from_dict(d["observation_space"]),
+            action_space=gym_space_from_dict(d["action_space"]),
+            inference_only=d["inference_only"],
+            learner_only=d["learner_only"],
+            model_config_dict=d["model_config_dict"],
+            catalog_class=catalog_class,
         )
 
 
@@ -396,50 +460,13 @@ class RLModule(Checkpointable, abc.ABC):
         #  primitive components based on obs- and action spaces.
         self.catalog = None
 
-        # Deprecated
-        self.config = config
-        if self.config != DEPRECATED_VALUE:
-            deprecation_warning(
-                old="RLModule(config=[RLModuleConfig])",
-                new="RLModule(observation_space=.., action_space=.., inference_only=..,"
-                " learner_only=.., model_config=..)",
-                error=False,
-            )
-            self.observation_space = self.config.observation_space
-            self.action_space = self.config.action_space
-            self.inference_only = self.config.inference_only
-            self.learner_only = self.config.learner_only
-            self.model_config = self.config.model_config_dict
-            try:
-                self.catalog = self.config.get_catalog()
-            except Exception:
-                pass
-        else:
-            self.observation_space = observation_space
-            self.action_space = action_space
-            self.inference_only = inference_only
-            self.learner_only = learner_only
-            self.model_config = model_config
-            try:
-                self.catalog = catalog_class(
-                    observation_space=self.observation_space,
-                    action_space=self.action_space,
-                    model_config_dict=self.model_config,
-                )
-            except Exception:
-                pass
-
-        # TODO (sven): Deprecate this. We keep it here for now in case users
-        #  still have custom models (or subclasses of RLlib default models)
-        #  into which they pass in a `config` argument.
-        self.config = RLModuleConfig(
-            observation_space=self.observation_space,
-            action_space=self.action_space,
-            inference_only=self.inference_only,
-            learner_only=self.learner_only,
-            model_config_dict=self.model_config,
-            catalog_class=catalog_class,
-        )
+        # TODO (sven): Deprecate Catalog and replace with utility functions to create
+        #  primitive components based on obs- and action spaces.
+        self.catalog = None
+        try:
+            self.catalog = self.config.get_catalog()
+        except Exception:
+            pass
 
         self.action_dist_cls = None
         if self.catalog is not None:
@@ -447,7 +474,9 @@ class RLModule(Checkpointable, abc.ABC):
                 framework=self.framework
             )
 
-        # Make sure, `setup()` is only called once, no matter what.
+        # Make sure, `setup()` is only called once, no matter what. In some cases
+        # of multiple inheritance (and with our __post_init__ functionality in place,
+        # this might get called twice.
         if hasattr(self, "_is_setup") and self._is_setup:
             raise RuntimeError(
                 "`RLModule.setup()` called twice within your RLModule implementation "

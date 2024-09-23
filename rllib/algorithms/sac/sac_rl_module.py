@@ -20,7 +20,7 @@ from ray.rllib.utils.typing import NetworkType
 from ray.util.annotations import DeveloperAPI
 
 
-@ExperimentalAPI
+@DeveloperAPI(stability="alpha")
 class SACRLModule(RLModule, InferenceOnlyAPI, TargetNetworkAPI):
     """`RLModule` for the Soft-Actor-Critic (SAC) algorithm.
 
@@ -75,7 +75,7 @@ class SACRLModule(RLModule, InferenceOnlyAPI, TargetNetworkAPI):
         # Build heads.
         self.pi = self.catalog.build_pi_head(framework=self.framework)
 
-        if not self.inference_only or self.framework != "torch":
+        if not self.config.inference_only or self.framework != "torch":
             self.qf = self.catalog.build_qf_head(framework=self.framework)
             # If necessary build also a twin Q heads.
             if self.twin_q:
