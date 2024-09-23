@@ -14,3 +14,11 @@ steps:
         --build-name runtimebuild
     depends_on: runtimebuild
     job_env: forge
+  
+  - label: "safetensors client tests"
+    instance_type: medium
+    commands:
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/anyscale/safetensors/... serve
+        --build-name runtimebuild
+    depends_on: runtimebuild
+    job_env: forge
