@@ -139,6 +139,37 @@ class TorchRLModule(nn.Module, RLModule):
         # RLModule.
         self.load_state_dict(convert_to_torch_tensor(state), strict=False)
 
+    @OverrideToImplementCustomLogic
+    @override(RLModule)
+    def get_inference_action_dist_cls(self) -> Type[TorchDistribution]:
+        if self.action_dist_cls is not None:
+            return self.action_dist_cls
+        elif isinstance(self.config.action_space, gym.spaces.Discrete):
+            return TorchCategorical
+        elif isinstance(self.config.action_space, gym.spaces.Box):
+            return TorchDiagGaussian
+        else:
+            raise ValueError(
+                f"Default action distribution for action space "
+                f"{self.config.action_space} not supported! Either set the "
+                f"`self.action_dist_cls` property in your RLModule's `setup()` method "
+                f"to a subclass of `ray.rllib.models.torch.torch_distributions."
+                f"TorchDistribution` or - if you need different distributions for "
+                f"inference and training - override the three methods: "
+                f"`get_inference_action_dist_cls`, `get_exploration_action_dist_cls`, "
+                f"and `get_train_action_dist_cls` in your RLModule."
+            )
+
+    @OverrideToImplementCustomLogic
+    @override(RLModule)
+    def get_exploration_action_dist_cls(self) -> Type[TorchDistribution]:
+        return self.get_inference_action_dist_cls()
+
+    @OverrideToImplementCustomLogic
+    @override(RLModule)
+    def get_train_action_dist_cls(self) -> Type[TorchDistribution]:
+        return self.get_inference_action_dist_cls()
+
 
 class TorchDDPRLModule(RLModule, nn.parallel.DistributedDataParallel):
     def __init__(self, *args, **kwargs) -> None:

@@ -1,6 +1,6 @@
 import abc
 from abc import abstractmethod
-from typing import Dict
+from typing import Any, Dict
 
 from ray.rllib.core import Columns
 from ray.rllib.core.models.base import ENCODER_OUT
@@ -89,6 +89,23 @@ class AutoregressiveActionsRLM(RLModule, ValueFunctionAPI, abc.ABC):
             output_layer_activation="linear",
         )
         self.vf = vf_config.build(framework=self.framework)
+
+    @override(RLModule)
+    def output_specs_inference(self) -> SpecDict:
+        return [Columns.ACTIONS]
+
+    @override(RLModule)
+    def output_specs_exploration(self) -> SpecDict:
+        return [Columns.ACTION_DIST_INPUTS, Columns.ACTIONS, Columns.ACTION_LOGP]
+
+    @override(RLModule)
+    def output_specs_train(self) -> SpecDict:
+        return [
+            Columns.ACTION_DIST_INPUTS,
+            Columns.ACTIONS,
+            Columns.ACTION_LOGP,
+            Columns.VF_PREDS,
+        ]
 
     @abstractmethod
     def pi(self, batch: Dict[str, TensorType]) -> Dict[str, TensorType]:
