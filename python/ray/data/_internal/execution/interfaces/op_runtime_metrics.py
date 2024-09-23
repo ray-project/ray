@@ -13,7 +13,11 @@ if TYPE_CHECKING:
 
 
 # A metadata key used to mark a dataclass field as a metric.
-_IS_FIELD_METRIC_KEY = "__is_field_metric__"
+_IS_FIELD_METRIC_KEY = "__is_metric"
+# Metadata keys used to store information about a metric.
+_METRIC_FIELD_DESCRIPTION_KEY = "__metric_description"
+_METRIC_FIELD_METRICS_GROUP_KEY = "__metric_metrics_group"
+_METRIC_FIELD_IS_MAP_ONLY_KEY = "__metric_is_map_only"
 
 _METRICS: List["Metric"] = []
 
@@ -40,19 +44,18 @@ class Metric:
 def metricfield(
     *,
     description: str,
-    metrics_group: str = None,
+    metrics_group: str,
     map_only: bool = False,
     **field_kwargs,
 ):
     """A dataclass field that represents a metric."""
-    if "metadata" in field_kwargs:
-        raise ValueError("You can't use 'metadata' with 'metricfield'.")
+    metadata = field_kwargs.get("metadata", {})
 
-    metadata = {"map_only": map_only, _IS_FIELD_METRIC_KEY: True}
-    if description is not None:
-        metadata["description"] = description
-    if metrics_group is not None:
-        metadata["metrics_group"] = metrics_group
+    metadata[_IS_FIELD_METRIC_KEY] = True
+
+    metadata[_METRIC_FIELD_DESCRIPTION_KEY] = description
+    metadata[_METRIC_FIELD_METRICS_GROUP_KEY] = metrics_group
+    metadata[_METRIC_FIELD_IS_MAP_ONLY_KEY] = map_only
 
     return field(metadata=metadata, **field_kwargs)
 
@@ -99,9 +102,9 @@ class OpRuntimesMetricsMeta(type):
             if isinstance(value, Field) and value.metadata.get(_IS_FIELD_METRIC_KEY):
                 metric = Metric(
                     name=name,
-                    description=value.metadata.get("description"),
-                    metrics_group=value.metadata.get("metrics_group"),
-                    map_only=value.metadata.get("map_only", False),
+                    description=value.metadata[_METRIC_FIELD_DESCRIPTION_KEY],
+                    metrics_group=value.metadata[_METRIC_FIELD_METRICS_GROUP_KEY],
+                    map_only=value.metadata[_METRIC_FIELD_IS_MAP_ONLY_KEY],
                 )
                 _METRICS.append(metric)
 
