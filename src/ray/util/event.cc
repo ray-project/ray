@@ -491,7 +491,7 @@ void RayEventLog::StartPeriodicFlushThread() {
 void RayEventLog::PeriodicFlush() {
   std::unique_lock<std::mutex> lock(periodic_flush_mtx_);
   while (!stop_periodic_flush_flag_) {
-    periodic_flush_cv_.wait_for(lock, std::chrono::seconds(5));
+    periodic_flush_cv_.wait_for(lock, std::chrono::seconds(1));
     FlushExportEvents();
   }
 }
