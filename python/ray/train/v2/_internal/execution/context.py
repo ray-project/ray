@@ -23,6 +23,16 @@ logger = logging.getLogger(__file__)
 
 
 @dataclass(frozen=True)
+class TrainRunContext:
+    """Holds the metadata and context for the current training run."""
+
+    # The run configuration name for the current training run.
+    run_name: str
+
+    # TODO: Add more fields that are shared across all workers and controllers.
+
+
+@dataclass(frozen=True)
 class DistributedContext:
     world_rank: int
     world_size: int

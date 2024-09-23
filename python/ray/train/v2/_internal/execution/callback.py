@@ -34,6 +34,10 @@ class WorkerGroupCallback(Callback):
         """
         return {}
 
+    @contextmanager
+    def on_worker_group_start(self):
+        yield
+
     def after_worker_group_start(self, worker_group: "WorkerGroup"):
         """Called after the worker group actors are initialized.
         All workers should be ready to execute tasks."""
@@ -41,6 +45,10 @@ class WorkerGroupCallback(Callback):
 
     def after_worker_group_training_start(self, worker_group: "WorkerGroup"):
         pass
+
+    @contextmanager
+    def on_worker_group_shutdown(self):
+        yield
 
     def before_worker_group_shutdown(self, worker_group: "WorkerGroup"):
         """Called before the worker group is shut down.

@@ -141,4 +141,4 @@ class RunConfig(RunConfigV1):
                 raise NotImplementedError(_UNSUPPORTED_MESSAGE.format(param))
 
         if not self.name:
-            self.name = f"ray_train_results-{date_str()}"
+            self.name = f"ray_train_run-{date_str()}"

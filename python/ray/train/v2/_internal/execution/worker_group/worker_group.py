@@ -40,6 +40,7 @@ from ray.train.v2._internal.execution.worker_group.worker import (
 )
 from ray.train.v2._internal.util import (
     bundle_to_remote_args,
+    invoke_callbacks_context_managers,
     ray_get_safe,
     time_monotonic,
 )
@@ -238,83 +239,92 @@ class WorkerGroup:
             WorkerGroupStartupFailedError: If the worker group fails to start
                 due to actors dying/failing during initialization.
         """
-        if self._workers:
-            raise ValueError("Workers already started.")
+        # TODO: Review the order of `on_xyz_start` and `after_xyz_start` callbacks.
+        # The current execution order is as follows:`on_worker_group_start` callbacks
+        # are triggered before the `after_worker_group_start` callbacks.
+        with invoke_callbacks_context_managers(
+            self._callbacks, "on_worker_group_start"
+        ):
+            if self._workers:
+                raise ValueError("Workers already started.")
 
-        remote_actor_cls = ray.remote(**bundle_to_remote_args(resources_per_worker))(
-            self._worker_cls
-        )
-        pg = placement_group([resources_per_worker] * num_workers)
+            remote_actor_cls = ray.remote(
+                **bundle_to_remote_args(resources_per_worker)
+            )(self._worker_cls)
+            pg = placement_group([resources_per_worker] * num_workers)
 
-        logger.info(f"Starting worker group of size {num_workers}.")
+            logger.info(f"Starting worker group of size {num_workers}.")
 
-        # Wait for the placement group to be ready before proceeding
-        # to create actors.
-        # This could hang if the resources are not available, so we should
-        # time out if this hangs for a while to try again with a different size.
-        # For example, the controller may try to set a worker group size
-        # based on stale information about cluster resources.
-        try:
-            ray.get(pg.ready(), timeout=self._worker_group_start_timeout_s)
-        except GetTimeoutError as timeout_exc:
-            remove_placement_group(pg)
-            raise WorkerGroupStartupTimeoutError(
-                num_workers=num_workers
-            ) from timeout_exc
+            # Wait for the placement group to be ready before proceeding
+            # to create actors.
+            # This could hang if the resources are not available, so we should
+            # time out if this hangs for a while to try again with a different size.
+            # For example, the controller may try to set a worker group size
+            # based on stale information about cluster resources.
+            try:
+                ray.get(pg.ready(), timeout=self._worker_group_start_timeout_s)
+            except GetTimeoutError as timeout_exc:
+                remove_placement_group(pg)
+                raise WorkerGroupStartupTimeoutError(
+                    num_workers=num_workers
+                ) from timeout_exc
 
-        self._pg = pg
+            self._pg = pg
 
-        # Initialize the synchronization actor on the driver node
-        self._sync_actor = SynchronizationActor.options(
-            scheduling_strategy=NodeAffinitySchedulingStrategy(
-                node_id=ray.get_runtime_context().get_node_id(),
-                soft=False,
-            )
-        ).remote(
-            timeout_s=self._report_barrier_timeout_s,
-            warn_interval_s=self._report_barrier_warn_interval_s,
-        )
-
-        self._workers = self._create_workers(num_workers, remote_actor_cls)
-
-        # All the ray.get calls in this try block can possibly error if the
-        # worker actors die during initialization.
-        # To prevent the driver from crashing, catch all `RayActorError`s and
-        # raise a specially handled error to the controller.
-        try:
-            train_context_args = {"checkpoint": [checkpoint] * len(self._workers)}
-            for callable in self._callbacks:
-                args = callable.before_init_train_context(self)
-                for arg, arg_values in args.items():
-                    assert len(arg_values) == num_workers, (
-                        f"Callback {callable} returned {arg} with "
-                        f"{len(arg_values)} values, expected {num_workers}."
-                    )
-                    assert (
-                        arg not in train_context_args
-                    ), f"Callback {callable} returned {arg} which is already set."
-                    train_context_args[arg] = arg_values
-
-            self._init_train_context_on_workers(train_context_args)
-
-            for callback in self._callbacks:
-                callback.after_worker_group_start(self)
-
-            # Launch the training function on each worker.
-            # This task should start a worker thread and return immediately.
-            ray_get_safe(
-                [worker.actor.run_train_fn.remote(train_fn) for worker in self._workers]
+            # Initialize the synchronization actor on the driver node
+            self._sync_actor = SynchronizationActor.options(
+                scheduling_strategy=NodeAffinitySchedulingStrategy(
+                    node_id=ray.get_runtime_context().get_node_id(),
+                    soft=False,
+                )
+            ).remote(
+                timeout_s=self._report_barrier_timeout_s,
+                warn_interval_s=self._report_barrier_warn_interval_s,
             )
 
-            for callback in self._callbacks:
-                callback.after_worker_group_training_start(self)
-        except RayActorError as actor_error:
-            self.shutdown()
+            self._workers = self._create_workers(num_workers, remote_actor_cls)
 
-            error_msg = "At least one of the worker actors failed to initialize."
-            raise WorkerGroupStartupFailedError(error_msg) from actor_error
+            # All the ray.get calls in this try block can possibly error if the
+            # worker actors die during initialization.
+            # To prevent the driver from crashing, catch all `RayActorError`s and
+            # raise a specially handled error to the controller.
+            try:
+                train_context_args = {"checkpoint": [checkpoint] * len(self._workers)}
+                for callable in self._callbacks:
+                    args = callable.before_init_train_context(self)
+                    for arg, arg_values in args.items():
+                        assert len(arg_values) == num_workers, (
+                            f"Callback {callable} returned {arg} with "
+                            f"{len(arg_values)} values, expected {num_workers}."
+                        )
+                        assert (
+                            arg not in train_context_args
+                        ), f"Callback {callable} returned {arg} which is already set."
+                        train_context_args[arg] = arg_values
 
-        self._latest_start_time = time_monotonic()
+                self._init_train_context_on_workers(train_context_args)
+
+                for callback in self._callbacks:
+                    callback.after_worker_group_start(self)
+
+                # Launch the training function on each worker.
+                # This task should start a worker thread and return immediately.
+                ray_get_safe(
+                    [
+                        worker.actor.run_train_fn.remote(train_fn)
+                        for worker in self._workers
+                    ]
+                )
+
+                for callback in self._callbacks:
+                    callback.after_worker_group_training_start(self)
+            except RayActorError as actor_error:
+                self.shutdown()
+
+                error_msg = "At least one of the worker actors failed to initialize."
+                raise WorkerGroupStartupFailedError(error_msg) from actor_error
+
+            self._latest_start_time = time_monotonic()
 
     @classmethod
     def _sort_workers_by_node_id_and_gpu_id(
@@ -416,37 +426,42 @@ class WorkerGroup:
                 this is less than or equal to 0, immediately force kill all
                 workers.
         """
-        if self._workers:
-            for callback in self._callbacks:
-                callback.before_worker_group_shutdown(self)
+        with invoke_callbacks_context_managers(
+            self._callbacks, "on_worker_group_shutdown"
+        ):
+            if self._workers:
+                for callback in self._callbacks:
+                    callback.before_worker_group_shutdown(self)
 
-            # Run the worker shutdown logic on each of the workers. This should
-            # be a non-blocking call to realize forceful shutdown after patience_s.
-            _ = [w.actor.shutdown.remote() for w in self._workers]
+                # Run the worker shutdown logic on each of the workers. This should
+                # be a non-blocking call to realize forceful shutdown after patience_s.
+                _ = [w.actor.shutdown.remote() for w in self._workers]
 
-        logger.debug(f"Shutting down {len(self._workers)} workers.")
-        if patience_s <= 0:
-            for worker in self._workers:
-                ray.kill(worker.actor)
-        else:
-            done_refs = [w.actor.__ray_terminate__.remote() for w in self._workers]
-            # Wait for actors to die gracefully.
-            _, not_done = ray.wait(done_refs, timeout=patience_s)
-            if not_done:
-                logger.debug("Graceful termination failed. Falling back to force kill.")
-                # If all actors are not able to die gracefully, then kill them.
+            logger.debug(f"Shutting down {len(self._workers)} workers.")
+            if patience_s <= 0:
                 for worker in self._workers:
                     ray.kill(worker.actor)
+            else:
+                done_refs = [w.actor.__ray_terminate__.remote() for w in self._workers]
+                # Wait for actors to die gracefully.
+                _, not_done = ray.wait(done_refs, timeout=patience_s)
+                if not_done:
+                    logger.debug(
+                        "Graceful termination failed. Falling back to force kill."
+                    )
+                    # If all actors are not able to die gracefully, then kill them.
+                    for worker in self._workers:
+                        ray.kill(worker.actor)
 
-        if self._pg:
-            remove_placement_group(self._pg)
+            if self._pg:
+                remove_placement_group(self._pg)
 
-        if self._sync_actor:
-            ray.kill(self._sync_actor)
+            if self._sync_actor:
+                ray.kill(self._sync_actor)
 
-        self._clear_state()
+            self._clear_state()
 
-        logger.debug("Worker group shutdown successful.")
+            logger.debug("Worker group shutdown successful.")
 
     def _clear_state(self):
         self._workers = []
