@@ -3,7 +3,7 @@ This file holds framework-agnostic components for PPO's RLModules.
 """
 
 import abc
-from typing import List, Type
+from typing import List
 
 from ray.rllib.core.models.configs import RecurrentEncoderConfig
 from ray.rllib.core.models.specs.specs_dict import SpecDict
@@ -16,8 +16,9 @@ from ray.rllib.utils.annotations import (
 from ray.util.annotations import DeveloperAPI
 
 
-@ExperimentalAPI
+@DeveloperAPI(stability="alpha")
 class PPORLModule(RLModule, InferenceOnlyAPI, ValueFunctionAPI, abc.ABC):
+    @override(RLModule)
     def setup(self):
         # __sphinx_doc_begin__
         # If we have a stateful model, states for the critic need to be collected
@@ -32,15 +33,13 @@ class PPORLModule(RLModule, InferenceOnlyAPI, ValueFunctionAPI, abc.ABC):
             self.inference_only = False
         # If this is an `inference_only` Module, we'll have to pass this information
         # to the encoder config as well.
-        if self.inference_only and self.framework == "torch":
+        if self.config.inference_only and self.framework == "torch":
             self.catalog.actor_critic_encoder_config.inference_only = True
 
         # Build models from catalog.
-        self.encoder = catalog.build_actor_critic_encoder(framework=self.framework)
-        self.pi = catalog.build_pi_head(framework=self.framework)
-        self.vf = catalog.build_vf_head(framework=self.framework)
-
-        self.action_dist_cls = catalog.get_action_dist_cls(framework=self.framework)
+        self.encoder = self.catalog.build_actor_critic_encoder(framework=self.framework)
+        self.pi = self.catalog.build_pi_head(framework=self.framework)
+        self.vf = self.catalog.build_vf_head(framework=self.framework)
         # __sphinx_doc_end__
 
     @override(RLModule)
@@ -77,6 +76,7 @@ class PPORLModule(RLModule, InferenceOnlyAPI, ValueFunctionAPI, abc.ABC):
             Columns.ACTION_DIST_INPUTS,
         ]
 
+    @OverrideToImplementCustomLogic_CallToSuperRecommended
     @override(InferenceOnlyAPI)
     def get_non_inference_attributes(self) -> List[str]:
         """Return attributes, which are NOT inference-only (only used for training)."""
