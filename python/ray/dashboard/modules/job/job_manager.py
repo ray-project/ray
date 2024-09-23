@@ -70,7 +70,8 @@ class JobManager:
 
     def __init__(self, gcs_aio_client: GcsAioClient, logs_dir: str):
         self._gcs_aio_client = gcs_aio_client
-        self._job_info_client = JobInfoStorageClient(gcs_aio_client)
+        self._logs_dir = logs_dir
+        self._job_info_client = JobInfoStorageClient(gcs_aio_client, logs_dir)
         self._gcs_address = gcs_aio_client.address
         self._cluster_id_hex = gcs_aio_client.cluster_id.hex()
         self._log_client = JobLogStorageClient()
@@ -548,6 +549,7 @@ class JobManager:
                 metadata or {},
                 self._gcs_address,
                 self._cluster_id_hex,
+                self._logs_dir,
             )
             supervisor.run.remote(
                 _start_signal_actor=_start_signal_actor,
