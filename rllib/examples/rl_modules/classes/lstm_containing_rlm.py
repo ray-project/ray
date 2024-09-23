@@ -5,7 +5,6 @@ import numpy as np
 from ray.rllib.core.columns import Columns
 from ray.rllib.core.rl_module.apis.value_function_api import ValueFunctionAPI
 from ray.rllib.core.rl_module.torch import TorchRLModule
-from ray.rllib.models.torch.torch_distributions import TorchCategorical
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.typing import TensorType
@@ -140,21 +139,6 @@ class LSTMContainingRLModule(TorchRLModule, ValueFunctionAPI):
             Columns.ACTION_DIST_INPUTS: logits,
             Columns.VF_PREDS: values,
         }
-
-    # TODO (sven): We still need to define the distibution to use here, even though,
-    #  we have a pretty standard action space (Discrete), which should simply always map
-    #  to a categorical dist. by default.
-    @override(TorchRLModule)
-    def get_inference_action_dist_cls(self):
-        return TorchCategorical
-
-    @override(TorchRLModule)
-    def get_exploration_action_dist_cls(self):
-        return TorchCategorical
-
-    @override(TorchRLModule)
-    def get_train_action_dist_cls(self):
-        return TorchCategorical
 
     # We implement this RLModule as a ValueFunctionAPI RLModule, so it can be used
     # by value-based methods like PPO or IMPALA.

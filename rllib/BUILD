@@ -3446,10 +3446,8 @@ py_test(
     srcs = ["examples/rl_modules/custom_lstm_rl_module.py"],
     args = ["--as-test", "--enable-new-api-stack"],
 )
-
-#@OldAPIStack @HybridAPIStack
 py_test(
-    name = "examples/rl_modules/classes/mobilenet_rlm_hybrid_api_stack",
+    name = "examples/rl_modules/classes/mobilenet_rlm",
     main = "examples/rl_modules/classes/mobilenet_rlm.py",
     tags = ["team:rllib", "examples", "no_main"],
     size = "small",
