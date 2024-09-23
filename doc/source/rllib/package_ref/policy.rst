@@ -228,20 +228,6 @@ Base Policy
 
 .. --------------------------------------------
 
-Connectors
---------------------
-
-Base Policy
-~~~~~~~~~~~~~~~~~~~~
-.. autosummary::
-    :nosignatures:
-    :toctree: doc/
-
-    ~policy.Policy.reset_connectors
-    ~policy.Policy.restore_connectors
-    ~policy.Policy.get_connector_metrics
-
-.. --------------------------------------------
 
 Recurrent Policies
 --------------------
