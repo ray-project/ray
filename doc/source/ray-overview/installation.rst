@@ -431,7 +431,7 @@ We publish the dependencies that are installed in our ``ray`` Docker images for 
     .. tab-item:: ray (Python 3.9)
         :sync: ray (Python 3.9)
 
-        Ray version: nightly (`679989c <https://github.com/ray-project/ray/commit/679989c00774c7fa0b94db711ce8eedda2190765>`_)
+        Ray version: 2.36.1 (`999f766 <https://github.com/ray-project/ray/commit/999f7668b65dbd208817b3671b441fd97fca755c>`_)
 
         .. literalinclude:: ./pip_freeze_ray-py39-cpu.txt
 
