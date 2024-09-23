@@ -488,9 +488,7 @@ class _ActorPool(AutoscalingActorPool):
             already been killed.
         """
         if ready_ref not in self._pending_actors:
-            # We assume that there was a race between killing the actor and the actor
-            # ready future resolving. Since we can rely on ray.kill() eventually killing
-            # the actor, we can safely drop this reference.
+            # The actor has been removed from the pool before becoming running.
             return False
         actor = self._pending_actors.pop(ready_ref)
         self._num_tasks_in_flight[actor] = 0
@@ -548,7 +546,7 @@ class _ActorPool(AutoscalingActorPool):
 
         self._num_tasks_in_flight[actor] -= 1
         if self._should_kill_idle_actors and self._num_tasks_in_flight[actor] == 0:
-            self._kill_running_actor(actor)
+            self._remove_actor(actor)
 
     def get_pending_actor_refs(self) -> List[ray.ObjectRef]:
         return list(self._pending_actors.keys())
@@ -585,7 +583,9 @@ class _ActorPool(AutoscalingActorPool):
     def _maybe_kill_pending_actor(self) -> bool:
         if self._pending_actors:
             # At least one pending actor, so kill first one.
-            self._kill_pending_actor(next(iter(self._pending_actors.keys())))
+            ready_ref = next(iter(self._pending_actors.keys()))
+            self._remove_actor(self._pending_actors[ready_ref])
+            del self._pending_actors[ready_ref]
             return True
         # No pending actors, so indicate to the caller that no actors were killed.
         return False
@@ -594,7 +594,7 @@ class _ActorPool(AutoscalingActorPool):
         for actor, tasks_in_flight in self._num_tasks_in_flight.items():
             if tasks_in_flight == 0:
                 # At least one idle actor, so kill first one found.
-                self._kill_running_actor(actor)
+                self._remove_actor(actor)
                 return True
         # No idle actors, so indicate to the caller that no actors were killed.
         return False
@@ -619,9 +619,9 @@ class _ActorPool(AutoscalingActorPool):
         self._kill_all_running_actors()
 
     def _kill_all_pending_actors(self):
-        pending_actor_refs = list(self._pending_actors.keys())
-        for ref in pending_actor_refs:
-            self._kill_pending_actor(ref)
+        for _, actor in self._pending_actors.items():
+            self._remove_actor(actor)
+        self._pending_actors.clear()
 
     def _kill_all_idle_actors(self):
         idle_actors = [
@@ -630,23 +630,25 @@ class _ActorPool(AutoscalingActorPool):
             if tasks_in_flight == 0
         ]
         for actor in idle_actors:
-            self._kill_running_actor(actor)
+            self._remove_actor(actor)
         self._should_kill_idle_actors = True
 
     def _kill_all_running_actors(self):
         actors = list(self._num_tasks_in_flight.keys())
         for actor in actors:
-            self._kill_running_actor(actor)
+            self._remove_actor(actor)
 
-    def _kill_running_actor(self, actor: ray.actor.ActorHandle):
-        """Kill the provided actor and remove it from the pool."""
-        ray.kill(actor)
-        del self._num_tasks_in_flight[actor]
-
-    def _kill_pending_actor(self, ready_ref: ray.ObjectRef):
-        """Kill the provided pending actor and remove it from the pool."""
-        actor = self._pending_actors.pop(ready_ref)
-        ray.kill(actor)
+    def _remove_actor(self, actor: ray.actor.ActorHandle):
+        """Remove the given actor from the pool."""
+        # NOTE: we remove references to the actor and let ref counting
+        # garbage collect the actor, instead of using ray.kill.
+        # Because otherwise the actor cannot be restarted upon lineage reconstruction.
+        for state_dict in [
+            self._num_tasks_in_flight,
+            self._actor_locations,
+        ]:
+            if actor in state_dict:
+                del state_dict[actor]
 
     def _get_location(self, bundle: RefBundle) -> Optional[NodeIdStr]:
         """Ask Ray for the node id of the given bundle.
