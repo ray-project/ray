@@ -363,14 +363,9 @@ class StreamingExecutor(Executor, threading.Thread):
         pending_usage = self._resource_manager.get_global_pending_usage()
         limits = self._resource_manager.get_global_limits()
         resources_status = (
-            "Active & requested resources: "
-            f"{running_usage.cpu:.4g} of {limits.cpu:.4g} available CPU, "
-            f"{running_usage.gpu:.4g} of {limits.gpu:.4g} available GPU, "
-            f"{running_usage.object_store_memory_str()} of "
-            f"{limits.object_store_memory_str()} available object_store_memory "
-            "(pending: "
-            f"{pending_usage.cpu:.4g} CPU, "
-            f"{pending_usage.gpu:.4g} GPU)"
+            # TODO(scottjlee): Add dataset name/ID to progress bar output.
+            "Running Dataset. Active & requested resources: "
+            f"{running_usage.cpu:.4g}/{limits.cpu:.4g} CPU, "
         )
         if running_usage.gpu > 0:
             resources_status += f"{running_usage.gpu:.4g}/{limits.gpu:.4g} GPU, "
