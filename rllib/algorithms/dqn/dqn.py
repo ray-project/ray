@@ -92,11 +92,10 @@ class DQNConfig(AlgorithmConfig):
         config = DQNConfig()
 
         replay_config = {
-                "type": "MultiAgentPrioritizedReplayBuffer",
+                "type": "MultiAgentPrioritizedEpisodeReplayBuffer",
                 "capacity": 60000,
-                "prioritized_replay_alpha": 0.5,
-                "prioritized_replay_beta": 0.5,
-                "prioritized_replay_eps": 3e-6,
+                "alpha": 0.5,
+                "beta": 0.5,
             }
 
         config = config.training(replay_buffer_config=replay_config)
