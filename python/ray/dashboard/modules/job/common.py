@@ -197,19 +197,28 @@ class JobInfoStorageClient:
     JOB_DATA_KEY_PREFIX = f"{ray_constants.RAY_INTERNAL_NAMESPACE_PREFIX}job_info_"
     JOB_DATA_KEY = f"{JOB_DATA_KEY_PREFIX}{{job_id}}"
 
-    def __init__(self, gcs_aio_client: GcsAioClient, log_dir: Optional[str] = None):
+    def __init__(
+        self,
+        gcs_aio_client: GcsAioClient,
+        export_event_log_dir_root: Optional[str] = None,
+    ):
         """
         Initialize the JobInfoStorageClient which manages data in the internal KV store.
         Export Submission Job events are written when the KV store is updated if
-        the feature flag is on and a log_dir is passed. log_dir doesn't need to be
-        passed if the caller is not modifying data in the KV store.
+        the feature flag is on and a export_event_log_dir_root is passed.
+        export_event_log_dir_root doesn't need to be passed if the caller
+        is not modifying data in the KV store.
         """
         self._gcs_aio_client = gcs_aio_client
         self._export_submission_job_event_logger: logging.Logger = None
         try:
-            if ray_constants.RAY_ENABLE_EXPORT_API_WRITE and log_dir is not None:
+            if (
+                ray_constants.RAY_ENABLE_EXPORT_API_WRITE
+                and export_event_log_dir_root is not None
+            ):
                 self._export_submission_job_event_logger = get_export_event_logger(
-                    ExportEvent.SourceType.EXPORT_SUBMISSION_JOB, log_dir
+                    ExportEvent.SourceType.EXPORT_SUBMISSION_JOB,
+                    export_event_log_dir_root,
                 )
         except Exception:
             logger.exception(
