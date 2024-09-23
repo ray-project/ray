@@ -111,14 +111,18 @@ class DQNConfig(AlgorithmConfig):
         from ray.rllib.algorithms.dqn.dqn import DQNConfig
         from ray import air
         from ray import tune
-        config = DQNConfig()
-        config = config.training(
-            num_atoms=tune.grid_search([1,]))
-        config = config.environment(env="CartPole-v1")
+
+        config = (
+            DQNConfig()
+            .training(
+                num_atoms=tune.grid_search([1,])
+            )
+            .environment("CartPole-v1")
+        )
         tune.Tuner(
             "DQN",
             run_config=air.RunConfig(stop={"training_iteration":1}),
-            param_space=config.to_dict()
+            param_space=config,
         ).fit()
 
     .. testoutput::

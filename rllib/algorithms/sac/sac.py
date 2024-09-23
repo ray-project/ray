@@ -35,7 +35,7 @@ class SACConfig(AlgorithmConfig):
 
         config = (
             SACConfig()
-            .environment("CartPole-v1")
+            .environment("Pendulum-v1")
             .env_runners(num_env_runners=1)
             .training(
                 gamma=0.9,

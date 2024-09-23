@@ -918,42 +918,6 @@ py_test(
 )
 
 py_test(
-    name = "test_algorithm_checkpoint_restore_ppo",
-    main = "algorithms/tests/test_algorithm_checkpoint_restore.py",
-    tags = ["team:rllib", "algorithms_dir", "algorithms_dir_generic"],
-    size = "large",
-    srcs = ["algorithms/tests/test_algorithm_checkpoint_restore.py"],
-    args = ["TestCheckpointRestorePPO"]
-)
-
-py_test(
-    name = "test_algorithm_checkpoint_restore_ppo_gpu",
-    main = "algorithms/tests/test_algorithm_checkpoint_restore.py",
-    tags = ["team:rllib", "algorithms_dir", "algorithms_dir_generic", "gpu"],
-    size = "large",
-    srcs = ["algorithms/tests/test_algorithm_checkpoint_restore.py"],
-    args = ["TestCheckpointRestorePPO"]
-)
-
-py_test(
-    name = "test_algorithm_checkpoint_restore_off_policy",
-    main = "algorithms/tests/test_algorithm_checkpoint_restore.py",
-    tags = ["team:rllib", "algorithms_dir", "algorithms_dir_generic"],
-    size = "large",
-    srcs = ["algorithms/tests/test_algorithm_checkpoint_restore.py"],
-    args = ["TestCheckpointRestoreOffPolicy"]
-)
-
-py_test(
-    name = "test_algorithm_checkpoint_restore_off_policy_gpu",
-    main = "algorithms/tests/test_algorithm_checkpoint_restore.py",
-    tags = ["team:rllib", "algorithms_dir", "algorithms_dir_generic", "gpu"],
-    size = "large",
-    srcs = ["algorithms/tests/test_algorithm_checkpoint_restore.py"],
-    args = ["TestCheckpointRestoreOffPolicy"]
-)
-
-py_test(
     name = "test_callbacks_on_algorithm",
     tags = ["team:rllib", "algorithms_dir", "algorithms_dir_generic"],
     size = "large",
@@ -1172,16 +1136,6 @@ py_test(
     srcs = ["utils/tests/run_memory_leak_tests.py"],
     data = ["tuned_examples/appo/memory-leak-test-appo.yaml"],
     args = ["--dir=tuned_examples/appo"]
-)
-# @OldAPIStack
-py_test(
-    name = "test_memory_leak_dqn_old_api_stack",
-    tags = ["team:rllib", "memory_leak_tests"],
-    main = "utils/tests/run_memory_leak_tests.py",
-    size = "large",
-    srcs = ["utils/tests/run_memory_leak_tests.py"],
-    data = ["tuned_examples/dqn/memory-leak-test-dqn.yaml"],
-    args = ["--dir=tuned_examples/dqn"]
 )
 # @OldAPIStack
 py_test(
@@ -2056,14 +2010,6 @@ py_test(
 # --------------------------------------------------------------------
 
 py_test(
-    name = "tests/backward_compat/test_backward_compat",
-    tags = ["team:rllib", "tests_dir"],
-    size = "medium",
-    srcs = ["tests/backward_compat/test_backward_compat.py"],
-    data = glob(["tests/backward_compat/checkpoints/**"]),
-)
-
-py_test(
     name = "tests/test_catalog",
     tags = ["team:rllib", "tests_dir"],
     size = "medium",
@@ -2254,15 +2200,6 @@ py_test(
  )
 
 py_test(
-    name="tests/test_supported_spaces_dqn",
-    main="tests/test_supported_spaces.py",
-    tags=["team:rllib", "tests_dir"],
-    size="large",
-    srcs=["tests/test_supported_spaces.py"],
-    args=["TestSupportedSpacesDQN"]
-)
-
-py_test(
      name = "tests/test_supported_spaces_ppo_no_preprocessor_gpu",
      main = "tests/test_supported_spaces.py",
      tags = ["team:rllib", "gpu", "no_cpu"],
@@ -2270,15 +2207,6 @@ py_test(
      srcs = ["tests/test_supported_spaces.py"],
      args = ["TestSupportedSpacesPPONoPreprocessorGPU"]
  )
-
-py_test(
-    name = "tests/test_supported_spaces_off_policy",
-    main = "tests/test_supported_spaces.py",
-    tags = ["team:rllib", "tests_dir", "exclusive"],
-    size = "medium",
-    srcs = ["tests/test_supported_spaces.py"],
-    args = ["TestSupportedSpacesOffPolicy"]
-)
 
 py_test(
     name = "tests/test_timesteps",

@@ -86,7 +86,10 @@ if __name__ == "__main__":
     # Construct two independent Algorithm configs
     ppo_config = (
         PPOConfig()
-        .api_stack(enable_rl_module_and_learner=False)
+        .api_stack(
+            enable_rl_module_and_learner=False,
+            enable_env_runner_and_connector_v2=False,
+        )
         .environment("multi_agent_cartpole")
         .framework(args.framework)
         # disable filters, otherwise we would need to synchronize those
@@ -103,6 +106,10 @@ if __name__ == "__main__":
 
     dqn_config = (
         DQNConfig()
+        .api_stack(
+            enable_rl_module_and_learner=False,
+            enable_env_runner_and_connector_v2=False,
+        )
         .environment("multi_agent_cartpole")
         .framework(args.framework)
         # disable filters, otherwise we would need to synchronize those

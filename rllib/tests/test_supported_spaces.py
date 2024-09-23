@@ -3,10 +3,8 @@ import unittest
 
 import ray
 from ray.rllib.algorithms.appo import APPOConfig
-from ray.rllib.algorithms.dqn import DQNConfig
 from ray.rllib.algorithms.impala import IMPALAConfig
 from ray.rllib.algorithms.ppo import PPOConfig
-from ray.rllib.algorithms.sac import SACConfig
 from ray.rllib.utils.test_utils import check_supported_spaces
 
 
@@ -124,45 +122,6 @@ class TestSupportedSpacesPPONoPreprocessorGPU(unittest.TestCase):
             check_bounds=True,
             frameworks=["torch", "tf"],
             use_gpu=True,
-        )
-
-
-class TestSupportedSpacesDQN(unittest.TestCase):
-    @classmethod
-    def setUpClass(cls) -> None:
-        ray.init()
-
-    @classmethod
-    def tearDownClass(cls) -> None:
-        ray.shutdown()
-
-    def test_dqn(self):
-        config = (
-            DQNConfig()
-            .reporting(min_sample_timesteps_per_iteration=1)
-            .training(
-                replay_buffer_config={
-                    "capacity": 1000,
-                }
-            )
-        )
-        check_supported_spaces("DQN", config, frameworks=["tf2", "torch", "tf"])
-
-
-class TestSupportedSpacesOffPolicy(unittest.TestCase):
-    @classmethod
-    def setUpClass(cls) -> None:
-        ray.init(num_cpus=4)
-
-    @classmethod
-    def tearDownClass(cls) -> None:
-        ray.shutdown()
-
-    def test_sac(self):
-        check_supported_spaces(
-            "SAC",
-            SACConfig().training(replay_buffer_config={"capacity": 1000}),
-            check_bounds=True,
         )
 
 
