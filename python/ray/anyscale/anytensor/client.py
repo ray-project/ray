@@ -30,9 +30,9 @@ class AnytensorClient:
             logger.info("Caching files in local directory: %s", self._local_cache_dir)
 
     def _get_http_downloader_for_uri(
-        self, uri: str
+        self, uri: str, *, region: Optional[str]
     ) -> Tuple[HTTPSafetensorDownloader, str]:
-        uri_info = parse_uri_info(uri)
+        uri_info = parse_uri_info(uri, region=region)
 
         local_cache_dir = None
         if self._local_cache_dir:
@@ -74,7 +74,7 @@ class AnytensorClient:
             A PyTorch state_dict.
         """
         device = device or torch.get_default_device()
-        http_downloader, url = self._get_http_downloader_for_uri(uri)
+        http_downloader, url = self._get_http_downloader_for_uri(uri, region=region)
         state_dict, _ = http_downloader.restore_state_dict_from_http(
             url, None, device=device
         )
@@ -102,7 +102,7 @@ class AnytensorClient:
         Returns:
             None
         """
-        http_downloader, url = self._get_http_downloader_for_uri(uri)
+        http_downloader, url = self._get_http_downloader_for_uri(uri, region=region)
         http_downloader.restore_state_dict_from_http(
             url,
             state_dict,
