@@ -45,7 +45,9 @@ TUNE_CHECKPOINT_ID = "_current_checkpoint_id"
 _DEPRECATED_VALUE = "DEPRECATED"
 
 # Default structured logging config file path used by Ray Train
-DEFAULT_RAY_TRAIN_LOG_CONFIG_PATH = (Path(__file__).parent / "logging.yaml").as_posix()
+DEFAULT_RAY_TRAIN_LOG_CONFIG_PATH = (
+    Path(__file__).parent / "_internal/logging.yaml"
+).as_posix()
 
 # JSON Encoding format for Ray Train structured logging
 RAY_TRAIN_JSON_LOG_ENCODING_FORMAT = "JSON"
