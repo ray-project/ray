@@ -344,6 +344,7 @@ class AlgorithmConfig(_Config):
         self.num_gpus_per_env_runner = 0
         self.custom_resources_per_env_runner = {}
         self.validate_env_runners_after_construction = True
+        self.max_requests_in_flight_per_env_runner = 2
         self.sample_timeout_s = 60.0
         self.create_env_on_local_worker = False
         self._env_to_module_connector = None
@@ -411,8 +412,7 @@ class AlgorithmConfig(_Config):
         self._learner_connector = None
         self.add_default_connectors_to_learner_pipeline = True
         self.learner_config_dict = {}
-        self.optimizer = {}
-        self.max_requests_in_flight_per_sampler_worker = 2
+        self.optimizer = {}  # @OldAPIStack
         self._learner_class = None
 
         # `self.callbacks()`
@@ -1662,6 +1662,7 @@ class AlgorithmConfig(_Config):
         custom_resources_per_env_runner: Optional[dict] = NotProvided,
         validate_env_runners_after_construction: Optional[bool] = NotProvided,
         sample_timeout_s: Optional[float] = NotProvided,
+        max_requests_in_flight_per_env_runner: Optional[int] = NotProvided,
         env_to_module_connector: Optional[
             Callable[[EnvType], Union["ConnectorV2", List["ConnectorV2"]]]
         ] = NotProvided,
@@ -1725,6 +1726,17 @@ class AlgorithmConfig(_Config):
                 synchronously in turn with their update step (e.g. PPO or DQN). Not
                 relevant for any algos that sample asynchronously, such as APPO or
                 IMPALA.
+            max_requests_in_flight_per_env_runner: Max number of inflight requests
+                to each EnvRunner worker. See the FaultTolerantActorManager class for
+                more details.
+                Tuning these values is important when running experiments with
+                large sample batches, where there is the risk that the object store may
+                fill up, causing spilling of objects to disk. This can cause any
+                asynchronous requests to become very slow, making your experiment run
+                slow as well. You can inspect the object store during your experiment
+                via a call to ray memory on your headnode, and by using the ray
+                dashboard. If you're seeing that the object store is filling up,
+                turn down the number of remote requests in flight or enable compression.
             sample_collector: For the old API stack only. The SampleCollector class to
                 be used to collect and retrieve environment-, model-, and sampler data.
                 Override the SampleCollector base class to implement your own
@@ -1891,6 +1903,10 @@ class AlgorithmConfig(_Config):
 
         if sample_timeout_s is not NotProvided:
             self.sample_timeout_s = sample_timeout_s
+        if max_requests_in_flight_per_env_runner is not NotProvided:
+            self.max_requests_in_flight_per_env_runner = (
+                max_requests_in_flight_per_env_runner
+            )
         if sample_collector is not NotProvided:
             self.sample_collector = sample_collector
         if create_env_on_local_worker is not NotProvided:
@@ -2081,7 +2097,6 @@ class AlgorithmConfig(_Config):
         shuffle_batch_per_epoch: Optional[bool] = NotProvided,
         model: Optional[dict] = NotProvided,
         optimizer: Optional[dict] = NotProvided,
-        max_requests_in_flight_per_sampler_worker: Optional[int] = NotProvided,
         learner_class: Optional[Type["Learner"]] = NotProvided,
         learner_connector: Optional[
             Callable[["RLModule"], Union["ConnectorV2", List["ConnectorV2"]]]
@@ -2090,6 +2105,7 @@ class AlgorithmConfig(_Config):
         learner_config_dict: Optional[Dict[str, Any]] = NotProvided,
         # Deprecated args.
         num_sgd_iter=DEPRECATED_VALUE,
+        max_requests_in_flight_per_sampler_worker=DEPRECATED_VALUE,
     ) -> "AlgorithmConfig":
         """Sets the training related configuration.
 
@@ -2153,18 +2169,6 @@ class AlgorithmConfig(_Config):
                 TODO: Provide ModelConfig objects instead of dicts.
             optimizer: Arguments to pass to the policy optimizer. This setting is not
                 used when `enable_rl_module_and_learner=True`.
-            max_requests_in_flight_per_sampler_worker: Max number of inflight requests
-                to each sampling worker. See the FaultTolerantActorManager class for
-                more details.
-                Tuning these values is important when running experimens with
-                large sample batches, where there is the risk that the object store may
-                fill up, causing spilling of objects to disk. This can cause any
-                asynchronous requests to become very slow, making your experiment run
-                slow as well. You can inspect the object store during your experiment
-                via a call to ray memory on your headnode, and by using the ray
-                dashboard. If you're seeing that the object store is filling up,
-                turn down the number of remote requests in flight, or enable compression
-                in your experiment of timesteps.
             learner_class: The `Learner` class to use for (distributed) updating of the
                 RLModule. Only used when `enable_rl_module_and_learner=True`.
             learner_connector: A callable taking an env observation space and an env
@@ -2201,6 +2205,19 @@ class AlgorithmConfig(_Config):
                 error=False,
             )
             num_epochs = num_sgd_iter
+        if max_requests_in_flight_per_sampler_worker != DEPRECATED_VALUE:
+            deprecation_warning(
+                old="AlgorithmConfig.training("
+                "max_requests_in_flight_per_sampler_worker=...)",
+                new="AlgorithmConfig.env_runners("
+                "max_requests_in_flight_per_env_runner=...)",
+                error=False,
+            )
+            self.env_runners(
+                max_requests_in_flight_per_env_runner=(
+                    max_requests_in_flight_per_sampler_worker
+                ),
+            )
 
         if gamma is not NotProvided:
             self.gamma = gamma
@@ -2244,10 +2261,6 @@ class AlgorithmConfig(_Config):
 
         if optimizer is not NotProvided:
             self.optimizer = merge_dicts(self.optimizer, optimizer)
-        if max_requests_in_flight_per_sampler_worker is not NotProvided:
-            self.max_requests_in_flight_per_sampler_worker = (
-                max_requests_in_flight_per_sampler_worker
-            )
         if learner_class is not NotProvided:
             self._learner_class = learner_class
         if learner_connector is not NotProvided:
