@@ -114,6 +114,49 @@ void GcsJobManager::HandleAddJob(rpc::AddJobRequest request,
   }
 }
 
+void GcsJobManager::HandleDeleteJob(rpc::DeleteJobRequest request,
+                                    rpc::DeleteJobReply *reply,
+                                    rpc::SendReplyCallback send_reply_callback) {
+  const JobID job_id = JobID::FromBinary(request.job_id());
+  auto del_job_callback = [job_id, reply, send_reply_callback](const Status &status) {
+    if (!status.ok()) {
+      RAY_LOG(ERROR) << "Failed to delete job, job_id = " << job_id
+                     << ", status = " << status;
+    } else {
+      reply->set_result(rpc::DeleteResult::SUCCESS);
+    }
+    GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
+  };
+  auto get_job_callback = [this, job_id, reply, send_reply_callback, del_job_callback](
+                              const Status &status,
+                              const std::optional<JobTableData> &job_item) {
+    if (!status.ok()) {
+      RAY_LOG(WARNING) << "Failed to get job info, job id = " << job_id
+                       << ", status = " << status;
+      GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
+    } else if (!job_item) {
+      RAY_LOG(DEBUG) << "Could not find job. job id = " << job_id;
+      reply->set_result(rpc::DeleteResult::NOT_FOUND);
+      GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
+    } else if (job_item->is_dead()) {
+      Status del_status =
+          this->gcs_table_storage_->JobTable().Delete(job_id, del_job_callback);
+      if (!del_status.ok()) {
+        del_job_callback(del_status);
+      }
+    } else {
+      RAY_LOG(DEBUG) << "Job is running, cannot be deleted. job_id = " << job_id;
+      reply->set_result(rpc::DeleteResult::IS_RUNNING);
+      GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
+    }
+  };
+
+  Status get_status = gcs_table_storage_->JobTable().Get(job_id, get_job_callback);
+  if (!get_status.ok()) {
+    get_job_callback(get_status, std::nullopt);
+  }
+}
+
 void GcsJobManager::MarkJobAsFinished(rpc::JobTableData job_table_data,
                                       std::function<void(Status)> done_callback) {
   const JobID job_id = JobID::FromBinary(job_table_data.job_id());
