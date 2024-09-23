@@ -40,8 +40,6 @@ class ModelV2ToRLModule(TorchRLModule, ValueFunctionAPI):
 
     @override(TorchRLModule)
     def setup(self):
-        super().setup()
-
         # Try extracting the policy ID from this RLModule's config dict.
         policy_id = self.config.model_config_dict.get("policy_id", DEFAULT_POLICY_ID)
 
@@ -113,7 +111,7 @@ class ModelV2ToRLModule(TorchRLModule, ValueFunctionAPI):
         self._model_v2 = policy.model
 
         # Translate the action dist classes from the old API stack to the new.
-        self._action_dist_class = self._translate_dist_class(policy.dist_class)
+        self.action_dist_class = self._translate_dist_class(policy.dist_class)
 
         # Erase the torch policy from memory, so it can be garbage collected.
         del policy
@@ -129,7 +127,7 @@ class ModelV2ToRLModule(TorchRLModule, ValueFunctionAPI):
     @override(TorchRLModule)
     def _forward_train(self, batch: Dict[str, Any], **kwargs) -> Dict[str, Any]:
         out = self._forward_pass(batch, inference=False)
-        out[Columns.ACTION_LOGP] = self._action_dist_class(
+        out[Columns.ACTION_LOGP] = self.get_train_action_dist_cls()(
             out[Columns.ACTION_DIST_INPUTS]
         ).logp(batch[Columns.ACTIONS])
         out[Columns.VF_PREDS] = self._model_v2.value_function()
@@ -189,18 +187,6 @@ class ModelV2ToRLModule(TorchRLModule, ValueFunctionAPI):
         if Columns.STATE_IN in batch and Columns.SEQ_LENS in batch:
             v_preds = torch.reshape(v_preds, [len(batch[Columns.SEQ_LENS]), -1])
         return v_preds
-
-    @override(TorchRLModule)
-    def get_inference_action_dist_cls(self):
-        return self._action_dist_class
-
-    @override(TorchRLModule)
-    def get_exploration_action_dist_cls(self):
-        return self._action_dist_class
-
-    @override(TorchRLModule)
-    def get_train_action_dist_cls(self):
-        return self._action_dist_class
 
     @override(TorchRLModule)
     def get_initial_state(self):
