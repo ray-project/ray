@@ -267,12 +267,12 @@ class _StatsActor:
         self, metrics_group: str, tag_keys: Tuple[str, ...]
     ) -> Dict[str, Gauge]:
         metrics = {}
-        for field in fields(OpRuntimeMetrics):
-            if not field.metadata.get("metrics_group") == metrics_group:
+        for metric in OpRuntimeMetrics.get_metrics():
+            if not metric.metrics_group == metrics_group:
                 continue
-            metric_name = f"data_{field.name}"
-            metric_description = field.metadata.get("description")
-            metrics[field.name] = Gauge(
+            metric_name = f"data_{metric.name}"
+            metric_description = metric.description
+            metrics[metric.name] = Gauge(
                 metric_name,
                 description=metric_description,
                 tag_keys=tag_keys,

@@ -1,6 +1,7 @@
+import functools
 import time
-from dataclasses import dataclass, field, fields
-from typing import TYPE_CHECKING, Any, Dict, Optional
+from dataclasses import Field, dataclass, field, fields
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Protocol, TypedDict
 
 import ray
 from ray.data._internal.execution.interfaces.ref_bundle import RefBundle
@@ -12,6 +13,75 @@ if TYPE_CHECKING:
     )
 
 
+# A metadata key used to mark a dataclass field as a metric.
+_IS_FIELD_METRIC_KEY = "__is_field_metric__"
+
+_METRICS: List["Metric"] = []
+
+
+@dataclass(frozen=True)
+class Metric:
+    """Metadata for a metric.
+
+    Args:
+        name: The name of the metric.
+        description: A human-readable description of the metric, also used as the chart
+            description on the Ray Data dashboard.
+        metrics_group: The group of the metric, used to organize metrics into groups in
+            'StatsActor' and on the Ray Data dashboard.
+        map_only: Whether the metric is only measured for 'MapOperators'.
+    """
+    name: str
+    description: str
+    metrics_group: str
+    map_only: bool = False
+
+
+def metricfield(
+    *,
+    description: str,
+    metrics_group: str = None,
+    map_only: bool = False,
+    **field_kwargs,
+):
+    """A dataclass field that represents a metric."""
+    if "metadata" in field_kwargs:
+        raise ValueError("You can't use 'metadata' with 'metricfield'.")
+
+    metadata = {"map_only": map_only, _IS_FIELD_METRIC_KEY: True}
+    if description is not None:
+        metadata["description"] = description
+    if metrics_group is not None:
+        metadata["metrics_group"] = metrics_group
+
+    return field(
+        metadata=metadata,
+        **field_kwargs
+    )
+
+
+def metricproperty(
+    *,
+    description: str,
+    metrics_group: str,
+    map_only: bool = False,
+):
+    """A property that represents a metric."""
+    def wrap(func):
+        metric = Metric(
+            name=func.__name__,
+            description=description,
+            metrics_group=metrics_group,
+            map_only=map_only,
+        )
+
+        _METRICS.append(metric)
+
+        return property(func)
+
+    return wrap
+
+
 @dataclass
 class RunningTaskInfo:
     inputs: RefBundle
@@ -19,259 +89,209 @@ class RunningTaskInfo:
     bytes_outputs: int
 
 
+class OpRuntimesMetricsMeta(type):
+    def __init__(cls, name, bases, dict):
+        super().__init__(name, bases, dict)
+
+        # Iterate over the attributes and methods of 'OpRuntimeMetrics'.
+        for name, value in dict.items():
+            # If an attribute is a dataclass field and has _IS_FIELD_METRIC_KEY in its
+            # metadata, then create a metric from the field metadata and add it to the
+            # list of metrics. See also the 'metricfield' function.
+            if isinstance(value, Field) and value.metadata.get(_IS_FIELD_METRIC_KEY):
+                metric = Metric(
+                    name=name,
+                    description=value.metadata.get("description"),
+                    metrics_group=value.metadata.get("metrics_group"),
+                    map_only=value.metadata.get("map_only", False),
+                )
+                _METRICS.append(metric)
+
+
 @dataclass
-class OpRuntimeMetrics:
-    """Runtime metrics for a PhysicalOperator.
+class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
+    """Runtime metrics for a 'PhysicalOperator'.
 
     Metrics are updated dynamically during the execution of the Dataset.
     This class can be used for either observablity or scheduling purposes.
 
     DO NOT modify the fields of this class directly. Instead, use the provided
     callback methods.
-
-    Metric metadata attributes:
-    - description (required): A human-readable description of the metric, also used as
-        the chart description on the Ray Data dashboard.
-    - metrics_group (required): The group of the metric, used to organize metrics
-        into groups in StatsActor and on the Ray Data dashboard.
-    - map_only (optional): Whether the metric is only measured for MapOperators.
     """
 
     # TODO(hchen): Fields tagged with "map_only" currently only work for MapOperator.
     # We should make them work for all operators by unifying the task execution code.
 
     # === Inputs-related metrics ===
-    num_inputs_received: int = field(
+    num_inputs_received: int = metricfield(
         default=0,
-        metadata={
-            "description": "Number of input blocks received by operator.",
-            "metrics_group": "inputs",
-        },
+        description="Number of input blocks received by operator.",
+        metrics_group="inputs",
     )
-    bytes_inputs_received: int = field(
+    bytes_inputs_received: int = metricfield(
         default=0,
-        metadata={
-            "description": "Byte size of input blocks received by operator.",
-            "metrics_group": "inputs",
-        },
+        description="Byte size of input blocks received by operator.",
+        metrics_group="inputs",
     )
-    num_task_inputs_processed: int = field(
+    num_task_inputs_processed: int = metricfield(
         default=0,
-        metadata={
-            "description": (
-                "Number of input blocks that operator's tasks "
-                "have finished processing."
-            ),
-            "metrics_group": "inputs",
-            "map_only": True,
-        },
+        description=(
+            "Number of input blocks that operator's tasks have finished processing."
+        ),
+        metrics_group="inputs",
+        map_only=True,
     )
-    bytes_task_inputs_processed: int = field(
+    bytes_task_inputs_processed: int = metricfield(
         default=0,
-        metadata={
-            "description": (
-                "Byte size of input blocks that operator's tasks "
-                "have finished processing."
-            ),
-            "metrics_group": "inputs",
-            "map_only": True,
-        },
+        description=(
+            "Byte size of input blocks that operator's tasks have finished processing."
+        ),
+        metrics_group="inputs",
+        map_only=True,
     )
-    bytes_inputs_of_submitted_tasks: int = field(
+    bytes_inputs_of_submitted_tasks: int = metricfield(
         default=0,
-        metadata={
-            "description": "Byte size of input blocks passed to submitted tasks.",
-            "metrics_group": "inputs",
-            "map_only": True,
-        },
+        description="Byte size of input blocks passed to submitted tasks.",
+        metrics_group="inputs",
+        map_only=True,
     )
 
     # === Outputs-related metrics ===
-    num_task_outputs_generated: int = field(
+    num_task_outputs_generated: int = metricfield(
         default=0,
-        metadata={
-            "description": "Number of output blocks generated by tasks.",
-            "metrics_group": "outputs",
-            "map_only": True,
-        },
+        description="Number of output blocks generated by tasks.",
+        metrics_group="outputs",
+        map_only=True,
     )
-    bytes_task_outputs_generated: int = field(
+    bytes_task_outputs_generated: int = metricfield(
         default=0,
-        metadata={
-            "description": "Byte size of output blocks generated by tasks.",
-            "metrics_group": "outputs",
-            "map_only": True,
-        },
+        description="Byte size of output blocks generated by tasks.",
+        metrics_group="outputs",
+        map_only=True,
     )
-    rows_task_outputs_generated: int = field(
+    rows_task_outputs_generated: int = metricfield(
         default=0,
-        metadata={
-            "description": ("Number of output rows generated by tasks."),
-            "metrics_group": "outputs",
-            "map_only": True,
-        },
+        description=("Number of output rows generated by tasks."),
+        metrics_group="outputs",
+        map_only=True,
     )
-    num_outputs_taken: int = field(
+    num_outputs_taken: int = metricfield(
         default=0,
-        metadata={
-            "description": (
-                "Number of output blocks that are already "
-                "taken by downstream operators."
-            ),
-            "metrics_group": "outputs",
-        },
+        description=(
+            "Number of output blocks that are already taken by downstream operators."
+        ),
+        metrics_group="outputs",
     )
-    bytes_outputs_taken: int = field(
+    bytes_outputs_taken: int = metricfield(
         default=0,
-        metadata={
-            "description": (
-                "Byte size of output blocks that are already "
-                "taken by downstream operators."
-            ),
-            "metrics_group": "outputs",
-        },
+        description=(
+            "Byte size of output blocks that are already taken by downstream operators."
+        ),
+        metrics_group="outputs",
     )
-    num_outputs_of_finished_tasks: int = field(
+    num_outputs_of_finished_tasks: int = metricfield(
         default=0,
-        metadata={
-            "description": (
-                "Number of generated output blocks that are from finished tasks."
-            ),
-            "metrics_group": "outputs",
-            "map_only": True,
-        },
+        description="Number of generated output blocks that are from finished tasks.",
+        metrics_group="outputs",
+        map_only=True,
     )
-    bytes_outputs_of_finished_tasks: int = field(
+    bytes_outputs_of_finished_tasks: int = metricfield(
         default=0,
-        metadata={
-            "description": (
-                "Byte size of generated output blocks that are from finished tasks."
-            ),
-            "metrics_group": "outputs",
-            "map_only": True,
-        },
+        description="Byte size of generated output blocks that are from finished tasks."
+        metrics_group="outputs",
+        map_only=True,
     )
 
     # === Tasks-related metrics ===
-    num_tasks_submitted: int = field(
+    num_tasks_submitted: int = metricfield(
         default=0,
-        metadata={
-            "description": "Number of submitted tasks.",
-            "metrics_group": "tasks",
-            "map_only": True,
-        },
+        description="Number of submitted tasks.",
+        metrics_group="tasks",
+        map_only=True,
     )
-    num_tasks_running: int = field(
+    num_tasks_running: int = metricfield(
         default=0,
-        metadata={
-            "description": "Number of running tasks.",
-            "metrics_group": "tasks",
-            "map_only": True,
-        },
+        description="Number of running tasks.",
+        metrics_group="tasks",
+        map_only=True,
     )
-    num_tasks_have_outputs: int = field(
+    num_tasks_have_outputs: int = metricfield(
         default=0,
-        metadata={
-            "description": "Number of tasks that already have output.",
-            "metrics_group": "tasks",
-            "map_only": True,
-        },
+        description="Number of tasks that already have output.",
+        metrics_group="tasks",
+        map_only=True,
     )
-    num_tasks_finished: int = field(
+    num_tasks_finished: int = metricfield(
         default=0,
-        metadata={
-            "description": "Number of finished tasks.",
-            "metrics_group": "tasks",
-            "map_only": True,
-        },
+        description="Number of finished tasks.",
+        metrics_group="tasks",
+        map_only=True,
     )
-    num_tasks_failed: int = field(
+    num_tasks_failed: int = metricfield(
         default=0,
-        metadata={
-            "description": "Number of failed tasks.",
-            "metrics_group": "tasks",
-            "map_only": True,
-        },
+        description="Number of failed tasks.",
+        metrics_group="tasks",
+        map_only=True,
     )
-    block_generation_time: float = field(
+    block_generation_time: float = metricfield(
         default=0,
-        metadata={
-            "description": "Time spent generating blocks in tasks.",
-            "metrics_group": "tasks",
-            "map_only": True,
-        },
+        description="Time spent generating blocks in tasks.",
+        metrics_group="tasks",
+        map_only=True,
     )
-    task_submission_backpressure_time: float = field(
+    task_submission_backpressure_time: float = metricfield(
         default=0,
-        metadata={
-            "description": "Time spent in task submission backpressure.",
-            "metrics_group": "tasks",
-        },
+        description="Time spent in task submission backpressure.",
+        metrics_group="tasks",
     )
 
     # === Object store memory metrics ===
-    obj_store_mem_internal_inqueue_blocks: int = field(
+    obj_store_mem_internal_inqueue_blocks: int = metricfield(
         default=0,
-        metadata={
-            "description": "Number of blocks in operator's internal input queue.",
-            "metrics_group": "object_store_memory",
-        },
+        description="Number of blocks in operator's internal input queue.",
+        metrics_group="object_store_memory",
     )
-    obj_store_mem_internal_inqueue: int = field(
+    obj_store_mem_internal_inqueue: int = metricfield(
         default=0,
-        metadata={
-            "description": (
-                "Byte size of input blocks in the operator's internal input queue."
-            ),
-            "metrics_group": "object_store_memory",
-        },
+        description=(
+            "Byte size of input blocks in the operator's internal input queue."
+        ),
+        metrics_group="object_store_memory",
     )
-    obj_store_mem_internal_outqueue_blocks: int = field(
+    obj_store_mem_internal_outqueue_blocks: int = metricfield(
         default=0,
-        metadata={
-            "description": "Number of blocks in the operator's internal output queue.",
-            "metrics_group": "object_store_memory",
-        },
+        description="Number of blocks in the operator's internal output queue.",
+        metrics_group="object_store_memory",
     )
-    obj_store_mem_internal_outqueue: int = field(
+    obj_store_mem_internal_outqueue: int = metricfield(
         default=0,
-        metadata={
-            "description": (
-                "Byte size of output blocks in the operator's internal output queue."
-            ),
-            "metrics_group": "object_store_memory",
-        },
+        description=(
+            "Byte size of output blocks in the operator's internal output queue."
+        ),
+        metrics_group="object_store_memory",
     )
-    obj_store_mem_pending_task_inputs: int = field(
+    obj_store_mem_pending_task_inputs: int = metricfield(
         default=0,
-        metadata={
-            "description": "Byte size of input blocks used by pending tasks.",
-            "metrics_group": "object_store_memory",
-            "map_only": True,
-        },
+        description="Byte size of input blocks used by pending tasks.",
+        metrics_group="object_store_memory",
+        map_only=True,
     )
-    obj_store_mem_freed: int = field(
+    obj_store_mem_freed: int = metricfield(
         default=0,
-        metadata={
-            "description": "Byte size of freed memory in object store.",
-            "metrics_group": "object_store_memory",
-            "map_only": True,
-        },
+        description="Byte size of freed memory in object store.",
+        metrics_group="object_store_memory",
+        map_only=True,
     )
-    obj_store_mem_spilled: int = field(
+    obj_store_mem_spilled: int = metricfield(
         default=0,
-        metadata={
-            "description": "Byte size of spilled memory in object store.",
-            "metrics_group": "object_store_memory",
-            "map_only": True,
-        },
+        description="Byte size of spilled memory in object store.",
+        metrics_group="object_store_memory",
+        map_only=True,
     )
-    obj_store_mem_used: int = field(
+    obj_store_mem_used: int = metricfield(
         default=0,
-        metadata={
-            "description": "Byte size of used memory in object store.",
-            "metrics_group": "object_store_memory",
-        },
+        description="Byte size of used memory in object store.",
+        metrics_group="object_store_memory",
     )
 
     # === Miscellaneous metrics ===
@@ -292,14 +312,18 @@ class OpRuntimeMetrics:
         """Return a dict of extra metrics."""
         return self._extra_metrics
 
+    @classmethod
+    def get_metrics(self) -> List[Metric]:
+        return list(_METRICS)
+
     def as_dict(self):
         """Return a dict representation of the metrics."""
         result = []
-        for f in fields(self):
-            if not self._is_map and f.metadata.get("map_only", False):
+        for metric in self.get_metrics():
+            if not self._is_map and metric.map_only:
                 continue
-            value = getattr(self, f.name)
-            result.append((f.name, value))
+            value = getattr(self, metric.name)
+            result.append((metric.name, value))
 
         # TODO: record resource usage in OpRuntimeMetrics,
         # avoid calling self._op.current_processor_usage()
@@ -313,12 +337,7 @@ class OpRuntimeMetrics:
         result.extend(self._extra_metrics.items())
         return dict(result)
 
-    @classmethod
-    def get_metric_keys(cls):
-        """Return a list of metric keys."""
-        return [f.name for f in fields(cls)] + ["cpu_usage", "gpu_usage"]
-
-    @property
+    @metricproperty
     def average_num_outputs_per_task(self) -> Optional[float]:
         """Average number of output blocks per task, or None if no task has finished."""
         if self.num_tasks_finished == 0:
@@ -326,7 +345,7 @@ class OpRuntimeMetrics:
         else:
             return self.num_outputs_of_finished_tasks / self.num_tasks_finished
 
-    @property
+    @metricproperty
     def average_bytes_per_output(self) -> Optional[float]:
         """Average size in bytes of output blocks."""
         if self.num_task_outputs_generated == 0:
@@ -334,7 +353,7 @@ class OpRuntimeMetrics:
         else:
             return self.bytes_task_outputs_generated / self.num_task_outputs_generated
 
-    @property
+    @metricproperty
     def obj_store_mem_pending_task_outputs(self) -> Optional[float]:
         """Estimated size in bytes of output blocks in Ray generator buffers.
 
@@ -359,7 +378,7 @@ class OpRuntimeMetrics:
 
         return num_tasks_running * per_task_output
 
-    @property
+    @metricproperty
     def obj_store_mem_max_pending_output_per_task(self) -> Optional[float]:
         """Estimated size in bytes of output blocks in a task's generator buffer."""
         context = ray.data.DataContext.get_current()
@@ -377,7 +396,7 @@ class OpRuntimeMetrics:
             )
         return bytes_per_output * num_pending_outputs
 
-    @property
+    @metricproperty
     def average_bytes_inputs_per_task(self) -> Optional[float]:
         """Average size in bytes of ref bundles passed to tasks, or ``None`` if no
         tasks have been submitted."""
@@ -386,7 +405,7 @@ class OpRuntimeMetrics:
         else:
             return self.bytes_inputs_of_submitted_tasks / self.num_tasks_submitted
 
-    @property
+    @metricproperty
     def average_bytes_outputs_per_task(self) -> Optional[float]:
         """Average size in bytes of output blocks per task,
         or None if no task has finished."""
@@ -395,7 +414,7 @@ class OpRuntimeMetrics:
         else:
             return self.bytes_outputs_of_finished_tasks / self.num_tasks_finished
 
-    @property
+    @metricproperty
     def average_bytes_change_per_task(self) -> Optional[float]:
         """Average size difference in bytes of input ref bundles and output ref
         bundles per task."""
