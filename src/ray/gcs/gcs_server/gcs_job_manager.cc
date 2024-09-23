@@ -15,9 +15,16 @@
 #include "ray/gcs/gcs_server/gcs_job_manager.h"
 
 #include "ray/gcs/pb_util.h"
+#include "ray/stats/metric.h"
 
 namespace ray {
 namespace gcs {
+
+namespace {
+// Job state string used for metrics upload.
+constexpr const char *const kRunningJobState = "RUNNING";
+constexpr const char *const kFinishedJobState = "FINISHED";
+}  // namespace
 
 void GcsJobManager::Initialize(const GcsInitData &gcs_init_data) {
   for (auto &pair : gcs_init_data.Jobs()) {
@@ -82,7 +89,7 @@ void GcsJobManager::HandleAddJob(rpc::AddJobRequest request,
   auto time = current_sys_time_ms();
   mutable_job_table_data.set_start_time(time);
   mutable_job_table_data.set_timestamp(time);
-  JobID job_id = JobID::FromBinary(mutable_job_table_data.job_id());
+  const JobID job_id = JobID::FromBinary(mutable_job_table_data.job_id());
   RAY_LOG(INFO) << "Adding job, job id = " << job_id
                 << ", driver pid = " << mutable_job_table_data.driver_pid();
 
@@ -92,7 +99,8 @@ void GcsJobManager::HandleAddJob(rpc::AddJobRequest request,
       RAY_LOG(ERROR) << "Failed to add job, job id = " << job_id
                      << ", driver pid = " << mutable_job_table_data.driver_pid();
     } else {
-      RAY_CHECK_OK(gcs_publisher_->PublishJob(job_id, mutable_job_table_data, nullptr));
+      RAY_CHECK_OK(
+          gcs_publisher_->PublishJob(job_id, mutable_job_table_data, /*done=*/nullptr));
       if (mutable_job_table_data.config().has_runtime_env_info()) {
         runtime_env_manager_.AddURIReference(
             job_id.Hex(), mutable_job_table_data.config().runtime_env_info());
@@ -111,6 +119,11 @@ void GcsJobManager::HandleAddJob(rpc::AddJobRequest request,
       gcs_table_storage_->JobTable().Put(job_id, mutable_job_table_data, on_done);
   if (!status.ok()) {
     on_done(status);
+  } else {
+    const bool insert_suc = running_job_ids_.insert(job_id).second;
+    RAY_CHECK(insert_suc) << job_id.Hex() << " already inserted.";
+    ray::stats::STATS_jobs.Record(running_job_ids_.size(),
+                                  {{"State", kRunningJobState}, {"JobId", job_id.Hex()}});
   }
 }
 
@@ -139,6 +152,12 @@ void GcsJobManager::MarkJobAsFinished(rpc::JobTableData job_table_data,
   Status status = gcs_table_storage_->JobTable().Put(job_id, job_table_data, on_done);
   if (!status.ok()) {
     on_done(status);
+  } else {
+    auto iter = running_job_ids_.find(job_id);
+    RAY_CHECK(iter != running_job_ids_.end());
+    running_job_ids_.erase(iter);
+    ray::stats::STATS_jobs.Record(
+        running_job_ids_.size(), {{"State", kFinishedJobState}, {"JobId", job_id.Hex()}});
   }
 }
 

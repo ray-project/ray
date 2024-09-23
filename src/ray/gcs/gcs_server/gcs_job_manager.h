@@ -14,6 +14,13 @@
 
 #pragma once
 
+#include <functional>
+#include <memory>
+#include <string>
+#include <vector>
+
+#include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "ray/common/runtime_env_manager.h"
 #include "ray/gcs/gcs_server/gcs_function_manager.h"
 #include "ray/gcs/gcs_server/gcs_init_data.h"
@@ -89,6 +96,14 @@ class GcsJobManager : public rpc::JobInfoHandler {
   void WriteDriverJobExportEvent(rpc::JobTableData job_data) const;
 
  private:
+  void ClearJobInfos(const rpc::JobTableData &job_data);
+
+  void MarkJobAsFinished(rpc::JobTableData job_table_data,
+                         std::function<void(Status)> done_callback);
+
+  // Job ids, which are running.
+  absl::flat_hash_set<JobID> running_job_ids_;
+
   std::shared_ptr<GcsTableStorage> gcs_table_storage_;
   std::shared_ptr<GcsPublisher> gcs_publisher_;
 
@@ -104,11 +119,6 @@ class GcsJobManager : public rpc::JobInfoHandler {
 
   /// The cached core worker clients which are used to communicate with workers.
   rpc::CoreWorkerClientPool core_worker_clients_;
-
-  void ClearJobInfos(const rpc::JobTableData &job_data);
-
-  void MarkJobAsFinished(rpc::JobTableData job_table_data,
-                         std::function<void(Status)> done_callback);
 };
 
 }  // namespace gcs

@@ -48,6 +48,9 @@ DECLARE_stats(tasks);
 /// Actor stats, broken down by state.
 DECLARE_stats(actors);
 
+/// Job stats, broken down by state.
+DECLARE_stats(jobs);
+
 /// Placement group stats, broken down by state.
 DECLARE_stats(placement_groups);
 
