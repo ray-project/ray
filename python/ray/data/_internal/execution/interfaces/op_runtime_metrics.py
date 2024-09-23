@@ -31,6 +31,7 @@ class Metric:
             'StatsActor' and on the Ray Data dashboard.
         map_only: Whether the metric is only measured for 'MapOperators'.
     """
+
     name: str
     description: str
     metrics_group: str
@@ -54,10 +55,7 @@ def metricfield(
     if metrics_group is not None:
         metadata["metrics_group"] = metrics_group
 
-    return field(
-        metadata=metadata,
-        **field_kwargs
-    )
+    return field(metadata=metadata, **field_kwargs)
 
 
 def metricproperty(
@@ -67,6 +65,7 @@ def metricproperty(
     map_only: bool = False,
 ):
     """A property that represents a metric."""
+
     def wrap(func):
         metric = Metric(
             name=func.__name__,
@@ -197,7 +196,7 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
     )
     bytes_outputs_of_finished_tasks: int = metricfield(
         default=0,
-        description="Byte size of generated output blocks that are from finished tasks."
+        description="Byte size of generated output blocks that are from finished tasks.",
         metrics_group="outputs",
         map_only=True,
     )
