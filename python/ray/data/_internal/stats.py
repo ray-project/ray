@@ -12,7 +12,10 @@ import numpy as np
 import ray
 from ray.actor import ActorHandle
 from ray.data._internal.block_list import BlockList
-from ray.data._internal.execution.interfaces.op_runtime_metrics import OpRuntimeMetrics
+from ray.data._internal.execution.interfaces.op_runtime_metrics import (
+    MetricsGroup,
+    OpRuntimeMetrics,
+)
 from ray.data._internal.util import capfirst
 from ray.data.block import BlockMetadata
 from ray.data.context import DataContext
@@ -209,7 +212,7 @@ class _StatsActor:
         # Inputs-related metrics
         self.execution_metrics_inputs = (
             self._create_prometheus_metrics_for_execution_metrics(
-                metrics_group="inputs",
+                metrics_group=MetricsGroup.INPUTS,
                 tag_keys=op_tags_keys,
             )
         )
@@ -217,7 +220,7 @@ class _StatsActor:
         # Outputs-related metrics
         self.execution_metrics_outputs = (
             self._create_prometheus_metrics_for_execution_metrics(
-                metrics_group="outputs",
+                metrics_group=MetricsGroup.OUTPUTS,
                 tag_keys=op_tags_keys,
             )
         )
@@ -225,7 +228,7 @@ class _StatsActor:
         # Task-related metrics
         self.execution_metrics_tasks = (
             self._create_prometheus_metrics_for_execution_metrics(
-                metrics_group="tasks",
+                metrics_group=MetricsGroup.TASKS,
                 tag_keys=op_tags_keys,
             )
         )
@@ -233,7 +236,7 @@ class _StatsActor:
         # Object store memory-related metrics
         self.execution_metrics_obj_store_memory = (
             self._create_prometheus_metrics_for_execution_metrics(
-                metrics_group="object_store_memory",
+                metrics_group=MetricsGroup.OBJECT_STORE_MEMORY,
                 tag_keys=op_tags_keys,
             )
         )
@@ -241,7 +244,7 @@ class _StatsActor:
         # Miscellaneous metrics
         self.execution_metrics_misc = (
             self._create_prometheus_metrics_for_execution_metrics(
-                metrics_group="misc",
+                metrics_group=MetricsGroup.MISC,
                 tag_keys=op_tags_keys,
             )
         )
@@ -264,7 +267,7 @@ class _StatsActor:
         )
 
     def _create_prometheus_metrics_for_execution_metrics(
-        self, metrics_group: str, tag_keys: Tuple[str, ...]
+        self, metrics_group: MetricsGroup, tag_keys: Tuple[str, ...]
     ) -> Dict[str, Gauge]:
         metrics = {}
         for metric in OpRuntimeMetrics.get_metrics():
