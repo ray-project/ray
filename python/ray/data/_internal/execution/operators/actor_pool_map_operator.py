@@ -16,6 +16,7 @@ from ray.data._internal.execution.interfaces import (
 )
 from ray.data._internal.execution.operators.map_operator import MapOperator, _map_task
 from ray.data._internal.execution.operators.map_transformer import MapTransformer
+from ray.data._internal.execution.util import locality_string
 from ray.data._internal.remote_fn import _add_system_error_to_retry_exceptions
 from ray.data.block import Block, BlockMetadata
 from ray.data.context import DataContext
@@ -269,7 +270,11 @@ class ActorPoolMapOperator(MapOperator):
             )
 
     def progress_str(self) -> str:
-        return ""
+        if self._actor_locality_enabled:
+            return locality_string(
+                self._actor_pool._locality_hits, self._actor_pool._locality_misses
+            )
+        return "[locality off]"
 
     def base_resource_usage(self) -> ExecutionResources:
         min_workers = self._actor_pool.min_size()

@@ -26,15 +26,11 @@ from ray.data._internal.execution.interfaces.physical_operator import (
     OpTask,
     Waitable,
 )
-from ray.data._internal.execution.operators.actor_pool_map_operator import (
-    ActorPoolMapOperator,
-)
 from ray.data._internal.execution.operators.base_physical_operator import (
     AllToAllOperator,
 )
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.execution.resource_manager import ResourceManager
-from ray.data._internal.execution.util import locality_string
 from ray.data._internal.progress_bar import ProgressBar
 from ray.data.context import DataContext
 
@@ -274,16 +270,9 @@ class OpState:
         active = self.op.num_active_actors()
         pending = self.op.num_pending_actors()
         if active or pending:
-            assert isinstance(self.op, ActorPoolMapOperator)
             actor_str = f"; Actors: {active}"
             if pending > 0:
                 actor_str += f", (pending: {pending})"
-            if self.op._actor_locality_enabled:
-                actor_str += " " + locality_string(
-                    self._actor_pool._locality_hits, self._actor_pool._locality_misses
-                )
-            else:
-                actor_str += " [locality off]"
             desc += actor_str
 
         # Queued blocks
