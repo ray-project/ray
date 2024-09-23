@@ -270,17 +270,11 @@ class ActorPoolMapOperator(MapOperator):
             )
 
     def progress_str(self) -> str:
-        base = f"{self._actor_pool.num_running_actors()} actors"
-        pending = self._actor_pool.num_pending_actors()
-        if pending:
-            base += f" ({pending} pending)"
         if self._actor_locality_enabled:
-            base += " " + locality_string(
+            return locality_string(
                 self._actor_pool._locality_hits, self._actor_pool._locality_misses
             )
-        else:
-            base += " [locality off]"
-        return base
+        return "[locality off]"
 
     def base_resource_usage(self) -> ExecutionResources:
         min_workers = self._actor_pool.min_size()
@@ -303,6 +297,20 @@ class ActorPoolMapOperator(MapOperator):
             cpu=self._ray_remote_args.get("num_cpus", 0) * num_pending_workers,
             gpu=self._ray_remote_args.get("num_gpus", 0) * num_pending_workers,
         )
+
+    def num_active_actors(self) -> int:
+        """Return the number of active actors.
+
+        This method is used to display active actor info in the progress bar.
+        """
+        return self._actor_pool.num_running_actors()
+
+    def num_pending_actors(self) -> int:
+        """Return the number of pending actors.
+
+        This method is used to display pending actor info in the progress bar.
+        """
+        return self._actor_pool.num_pending_actors()
 
     def incremental_resource_usage(self) -> ExecutionResources:
         # Submitting tasks to existing actors doesn't require additional
