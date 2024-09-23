@@ -91,6 +91,7 @@ class ResourceManager:
         # Pending task outputs.
         mem_op_internal = op.metrics.obj_store_mem_pending_task_outputs or 0
         # Op's internal output buffers.
+        print(mem_op_internal, op.metrics.obj_store_mem_internal_outqueue)
         mem_op_internal += op.metrics.obj_store_mem_internal_outqueue
 
         # Op's external output buffer.

@@ -337,7 +337,11 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
         result.extend(self._extra_metrics.items())
         return dict(result)
 
-    @metricproperty
+    @metricproperty(
+        description="Average number of blocks generated per task.",
+        metrics_group="outputs",
+        map_only=True,
+    )
     def average_num_outputs_per_task(self) -> Optional[float]:
         """Average number of output blocks per task, or None if no task has finished."""
         if self.num_tasks_finished == 0:
@@ -345,7 +349,11 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
         else:
             return self.num_outputs_of_finished_tasks / self.num_tasks_finished
 
-    @metricproperty
+    @metricproperty(
+        description="Average size of task output in bytes.",
+        metrics_group="outputs",
+        map_only=True,
+    )
     def average_bytes_per_output(self) -> Optional[float]:
         """Average size in bytes of output blocks."""
         if self.num_task_outputs_generated == 0:
@@ -353,7 +361,7 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
         else:
             return self.bytes_task_outputs_generated / self.num_task_outputs_generated
 
-    @metricproperty
+    @property
     def obj_store_mem_pending_task_outputs(self) -> Optional[float]:
         """Estimated size in bytes of output blocks in Ray generator buffers.
 
@@ -378,7 +386,7 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
 
         return num_tasks_running * per_task_output
 
-    @metricproperty
+    @property
     def obj_store_mem_max_pending_output_per_task(self) -> Optional[float]:
         """Estimated size in bytes of output blocks in a task's generator buffer."""
         context = ray.data.DataContext.get_current()
@@ -396,7 +404,11 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
             )
         return bytes_per_output * num_pending_outputs
 
-    @metricproperty
+    @metricproperty(
+        description="Average size of task inputs in bytes.",
+        metrics_group="inputs",
+        map_only=True,
+    )
     def average_bytes_inputs_per_task(self) -> Optional[float]:
         """Average size in bytes of ref bundles passed to tasks, or ``None`` if no
         tasks have been submitted."""
@@ -405,7 +417,11 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
         else:
             return self.bytes_inputs_of_submitted_tasks / self.num_tasks_submitted
 
-    @metricproperty
+    @metricproperty(
+        description="Average total output size of task in bytes.",
+        metrics_group="outputs",
+        map_only=True,
+    )
     def average_bytes_outputs_per_task(self) -> Optional[float]:
         """Average size in bytes of output blocks per task,
         or None if no task has finished."""
@@ -413,18 +429,6 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
             return None
         else:
             return self.bytes_outputs_of_finished_tasks / self.num_tasks_finished
-
-    @metricproperty
-    def average_bytes_change_per_task(self) -> Optional[float]:
-        """Average size difference in bytes of input ref bundles and output ref
-        bundles per task."""
-        if (
-            self.average_bytes_inputs_per_task is None
-            or self.average_bytes_outputs_per_task is None
-        ):
-            return None
-
-        return self.average_bytes_outputs_per_task - self.average_bytes_inputs_per_task
 
     def on_input_received(self, input: RefBundle):
         """Callback when the operator receives a new input."""
