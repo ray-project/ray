@@ -66,9 +66,7 @@ def metric_field(
     metadata[_METRIC_FIELD_METRICS_GROUP_KEY] = metrics_group
     metadata[_METRIC_FIELD_IS_MAP_ONLY_KEY] = map_only
 
-    f = field(metadata=metadata, **field_kwargs)
-    print(f.name)
-    return f
+    return field(metadata=metadata, **field_kwargs)
 
 
 def metric_property(
