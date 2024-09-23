@@ -195,7 +195,9 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
     )
     bytes_outputs_of_finished_tasks: int = metricfield(
         default=0,
-        description="Byte size of generated output blocks that are from finished tasks.",
+        description=(
+            "Byte size of generated output blocks that are from finished tasks."
+        ),
         metrics_group="outputs",
         map_only=True,
     )
