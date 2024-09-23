@@ -7,16 +7,13 @@ import unittest
 import ray
 from ray.tune.registry import register_env
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
-from ray.rllib.algorithms.dqn.dqn import DQNConfig
-from ray.rllib.algorithms.dqn.dqn_tf_policy import DQNTFPolicy
 from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.env.multi_agent_env import (
     make_multi_agent,
     MultiAgentEnv,
     MultiAgentEnvWrapper,
 )
-from ray.rllib.evaluation.episode import Episode
-from ray.rllib.evaluation.rollout_worker import get_global_worker, RolloutWorker
+from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.evaluation.tests.test_rollout_worker import MockPolicy
 from ray.rllib.examples._old_api_stack.policy.random_policy import RandomPolicy
 from ray.rllib.examples.envs.classes.multi_agent import MultiAgentCartPole
