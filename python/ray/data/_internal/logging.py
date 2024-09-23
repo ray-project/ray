@@ -12,10 +12,10 @@ DEFAULT_CONFIG_PATH = os.path.abspath(
 )
 
 # Env. variable to specify the encoding of the file logs when using the default config.
-RAY_DATA_LOG_ENCODING = os.environ.get("RAY_DATA_LOG_ENCODING", "").upper()
+RAY_DATA_LOG_ENCODING = "RAY_DATA_LOG_ENCODING"
 
 # Env. variable to specify the logging config path use defaults if not set
-RAY_DATA_LOGGING_CONFIG_PATH = os.environ.get("RAY_DATA_LOGGING_CONFIG_PATH")
+RAY_DATA_LOGGING_CONFIG_PATH = "RAY_DATA_LOGGING_CONFIG_PATH"
 
 # To facilitate debugging, Ray Data writes debug logs to a file. However, if Ray Data
 # logs every scheduler loop, logging might impact performance. So, we add a "TRACE"
@@ -108,11 +108,15 @@ def configure_logging() -> None:
             config = yaml.safe_load(file)
         return config
 
-    if RAY_DATA_LOGGING_CONFIG_PATH is not None:
-        config = _load_logging_config(RAY_DATA_LOGGING_CONFIG_PATH)
+    # Dynamically load env vars
+    config_path = os.environ.get("RAY_DATA_LOGGING_CONFIG_PATH")
+    log_encoding = os.environ.get("RAY_DATA_LOG_ENCODING")
+
+    if config_path is not None:
+        config = _load_logging_config(config_path)
     else:
         config = _load_logging_config(DEFAULT_CONFIG_PATH)
-        if RAY_DATA_LOG_ENCODING == "JSON":
+        if log_encoding is not None and log_encoding.upper() == "JSON":
             for logger in config["loggers"].values():
                 logger["handlers"].remove("file")
                 logger["handlers"].append("file_json")
@@ -121,7 +125,7 @@ def configure_logging() -> None:
 
     # After configuring logger, warn if RAY_DATA_LOGGING_CONFIG_PATH is used with
     # RAY_DATA_LOG_ENCODING, because they are not both supported together.
-    if RAY_DATA_LOGGING_CONFIG_PATH is not None and RAY_DATA_LOG_ENCODING is not None:
+    if config_path is not None and log_encoding is not None:
         logger = logging.getLogger("ray.data")
         logger.warning(
             "Using `RAY_DATA_LOG_ENCODING` is not supported with "
