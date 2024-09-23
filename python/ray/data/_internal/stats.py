@@ -3,7 +3,7 @@ import logging
 import threading
 import time
 from contextlib import contextmanager
-from dataclasses import dataclass, fields
+from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Set, Tuple, Union
 from uuid import uuid4
 
