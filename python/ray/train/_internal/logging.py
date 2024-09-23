@@ -6,16 +6,17 @@ from typing import Optional
 import yaml
 
 import ray
-
-DEFAULT_CONFIG_PATH = os.path.abspath(
-    os.path.join(os.path.dirname(__file__), "logging.yaml")
+from ray.train.constants import (
+    DEFAULT_RAY_TRAIN_LOG_CONFIG_PATH,
+    RAY_TRAIN_JSON_LOG_ENCODING_FORMAT,
+    RAY_TRAIN_LOG_CONFIG_PATH_ENV,
+    RAY_TRAIN_LOG_ENCODING_ENV,
 )
 
 # Env. variable to specify the encoding of the file logs when using the default config.
-RAY_TRAIN_LOG_ENCODING = os.environ.get("RAY_TRAIN_LOG_ENCODING", "").upper()
-
+RAY_TRAIN_LOG_ENCODING = os.environ.get(RAY_TRAIN_LOG_ENCODING_ENV, "").upper()
 # Env. variable to specify the logging config path use defaults if not set
-RAY_TRAIN_LOGGING_CONFIG_PATH = os.environ.get("RAY_TRAIN_LOGGING_CONFIG_PATH")
+RAY_TRAIN_LOG_CONFIG_PATH = os.environ.get(RAY_TRAIN_LOG_CONFIG_PATH_ENV)
 
 
 class HiddenRecordFilter:
@@ -59,8 +60,8 @@ class SessionFileHandler(logging.Handler):
     def emit(self, record):
         if self._handler is None:
             self._try_create_handler()
-        if self._handler is not None:
-            self._handler.emit(record)
+        assert self._handler is not None
+        self._handler.emit(record)
 
     def setFormatter(self, fmt: logging.Formatter) -> None:
         if self._handler is not None:
@@ -98,11 +99,11 @@ def configure_logging() -> None:
             config = yaml.safe_load(file)
         return config
 
-    if RAY_TRAIN_LOGGING_CONFIG_PATH is not None:
-        config = _load_logging_config(RAY_TRAIN_LOGGING_CONFIG_PATH)
+    if RAY_TRAIN_LOG_CONFIG_PATH is not None:
+        config = _load_logging_config(RAY_TRAIN_LOG_CONFIG_PATH)
     else:
-        config = _load_logging_config(DEFAULT_CONFIG_PATH)
-        if RAY_TRAIN_LOG_ENCODING == "JSON":
+        config = _load_logging_config(DEFAULT_RAY_TRAIN_LOG_CONFIG_PATH)
+        if RAY_TRAIN_LOG_ENCODING == RAY_TRAIN_JSON_LOG_ENCODING_FORMAT:
             for logger in config["loggers"].values():
                 logger["handlers"].remove("file")
                 logger["handlers"].append("file_json")
@@ -111,11 +112,11 @@ def configure_logging() -> None:
 
     # After configuring logger, warn if RAY_TRAIN_LOGGING_CONFIG_PATH is used with
     # RAY_TRAIN_LOG_ENCODING, because they are not both supported together.
-    if RAY_TRAIN_LOGGING_CONFIG_PATH is not None and RAY_TRAIN_LOG_ENCODING is not None:
+    if RAY_TRAIN_LOG_CONFIG_PATH is not None and RAY_TRAIN_LOG_ENCODING is not None:
         logger = logging.getLogger("ray.train")
         logger.warning(
-            "Using `RAY_TRAIN_LOG_ENCODING` is not supported with "
-            + "`RAY_TRAIN_LOGGING_CONFIG_PATH`"
+            f"Using {RAY_TRAIN_LOG_ENCODING_ENV} is not supported with "
+            f"{RAY_TRAIN_LOG_CONFIG_PATH_ENV}."
         )
 
 
