@@ -268,8 +268,7 @@ def test_gpu_workers_not_reused(shutdown_only):
     ds = ray.data.range(5, override_num_blocks=total_blocks)
 
     def _get_worker_id(_):
-        worker = ray._private.worker.global_worker
-        return {"worker_id": worker.core_worker.get_worker_id().hex()}
+        return {"worker_id": ray.get_runtime_context().get_worker_id()}
 
     unique_worker_ids = ds.map(_get_worker_id, num_gpus=1).unique("worker_id")
 
