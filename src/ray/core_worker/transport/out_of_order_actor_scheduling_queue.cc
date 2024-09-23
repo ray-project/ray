@@ -25,7 +25,8 @@ OutOfOrderActorSchedulingQueue::OutOfOrderActorSchedulingQueue(
     bool is_asyncio,
     int fiber_max_concurrency,
     const std::vector<ConcurrencyGroup> &concurrency_groups)
-    : main_thread_id_(boost::this_thread::get_id()),
+    : io_service_(main_io_service),
+      main_thread_id_(boost::this_thread::get_id()),
       waiter_(waiter),
       pool_manager_(pool_manager),
       fiber_state_manager_(fiber_state_manager),
@@ -60,6 +61,10 @@ size_t OutOfOrderActorSchedulingQueue::Size() const {
   return 0;
 }
 
+void OutOfOrderActorSchedulingQueue::ScheduleRequests() {
+  RAY_CHECK(false) << "ScheduleRequests() not implemented for actor queues";
+}
+
 void OutOfOrderActorSchedulingQueue::Add(
     int64_t seq_no,
     int64_t client_processed_up_to,
@@ -69,31 +74,54 @@ void OutOfOrderActorSchedulingQueue::Add(
     const std::string &concurrency_group_name,
     const ray::FunctionDescriptor &function_descriptor,
     TaskID task_id,
+    uint64_t attempt_number,
     const std::vector<rpc::ObjectReference> &dependencies) {
   RAY_CHECK(boost::this_thread::get_id() == main_thread_id_);
   auto request = InboundRequest(std::move(accept_request),
                                 std::move(reject_request),
                                 std::move(send_reply_callback),
                                 task_id,
-                                dependencies.size() > 0,
+                                attempt_number,
+                                dependencies,
                                 concurrency_group_name,
                                 function_descriptor);
+  bool run_request = true;
+  std::optional<InboundRequest> request_to_cancel;
   {
     absl::MutexLock lock(&mu_);
-    pending_task_id_to_is_canceled.emplace(task_id, false);
+    if (pending_task_id_to_is_canceled.contains(task_id)) {
+      // There is a previous attempt of the same task running,
+      // queue the current attempt.
+      run_request = false;
+
+      if (queued_actor_tasks_.contains(task_id)) {
+        // There is already an attempt of the same task queued,
+        // keep the one with larger attempt number and cancel the other one.
+        RAY_CHECK_NE(queued_actor_tasks_[task_id].AttemptNumber(),
+                     request.AttemptNumber());
+        if (queued_actor_tasks_[task_id].AttemptNumber() > request.AttemptNumber()) {
+          // This can happen if the PushTaskRequest arrives out of order.
+          request_to_cancel = request;
+        } else {
+          request_to_cancel = queued_actor_tasks_[task_id];
+          queued_actor_tasks_[task_id] = request;
+        }
+      } else {
+        queued_actor_tasks_[task_id] = request;
+      }
+    } else {
+      pending_task_id_to_is_canceled.emplace(task_id, false);
+      run_request = true;
+    }
   }
 
-  if (dependencies.size() > 0) {
-    waiter_.Wait(dependencies, [this, request = std::move(request)]() mutable {
-      RAY_CHECK(boost::this_thread::get_id() == main_thread_id_);
-      request.MarkDependenciesSatisfied();
-      pending_actor_tasks_.push_back(std::move(request));
-      ScheduleRequests();
-    });
-  } else {
-    request.MarkDependenciesSatisfied();
-    pending_actor_tasks_.push_back(std::move(request));
-    ScheduleRequests();
+  if (run_request) {
+    RunRequest(std::move(request));
+  }
+
+  if (request_to_cancel.has_value()) {
+    request_to_cancel->Cancel(Status::SchedulingCancelled(
+        "In favor of the same task with larger attempt number"));
   }
 }
 
@@ -109,32 +137,43 @@ bool OutOfOrderActorSchedulingQueue::CancelTaskIfFound(TaskID task_id) {
   }
 }
 
-/// Schedules as many requests as possible in sequence.
-void OutOfOrderActorSchedulingQueue::ScheduleRequests() {
-  while (!pending_actor_tasks_.empty()) {
-    auto request = pending_actor_tasks_.front();
-    const auto task_id = request.TaskID();
-    if (is_asyncio_) {
-      // Process async actor task.
-      auto fiber = fiber_state_manager_->GetExecutor(request.ConcurrencyGroupName(),
-                                                     request.FunctionDescriptor());
-      fiber->EnqueueFiber([this, request, task_id]() mutable {
+void OutOfOrderActorSchedulingQueue::RunRequestWithSatisfiedDependencies(
+    InboundRequest &request) {
+  RAY_CHECK(request.CanExecute());
+  const auto task_id = request.TaskID();
+  if (is_asyncio_) {
+    // Process async actor task.
+    auto fiber = fiber_state_manager_->GetExecutor(request.ConcurrencyGroupName(),
+                                                   request.FunctionDescriptor());
+    fiber->EnqueueFiber([this, request, task_id]() mutable {
+      AcceptRequestOrRejectIfCanceled(task_id, request);
+    });
+  } else {
+    // Process actor tasks.
+    RAY_CHECK(pool_manager_ != nullptr);
+    auto pool = pool_manager_->GetExecutor(request.ConcurrencyGroupName(),
+                                           request.FunctionDescriptor());
+    if (pool == nullptr) {
+      AcceptRequestOrRejectIfCanceled(task_id, request);
+    } else {
+      pool->Post([this, request, task_id]() mutable {
         AcceptRequestOrRejectIfCanceled(task_id, request);
       });
-    } else {
-      // Process actor tasks.
-      RAY_CHECK(pool_manager_ != nullptr);
-      auto pool = pool_manager_->GetExecutor(request.ConcurrencyGroupName(),
-                                             request.FunctionDescriptor());
-      if (pool == nullptr) {
-        AcceptRequestOrRejectIfCanceled(task_id, request);
-      } else {
-        pool->Post([this, request, task_id]() mutable {
-          AcceptRequestOrRejectIfCanceled(task_id, request);
-        });
-      }
     }
-    pending_actor_tasks_.pop_front();
+  }
+}
+
+void OutOfOrderActorSchedulingQueue::RunRequest(InboundRequest request) {
+  if (!request.PendingDependencies().empty()) {
+    waiter_.Wait(request.PendingDependencies(),
+                 [this, request = std::move(request)]() mutable {
+                   RAY_CHECK_EQ(boost::this_thread::get_id(), main_thread_id_);
+                   request.MarkDependenciesSatisfied();
+                   RunRequestWithSatisfiedDependencies(request);
+                 });
+  } else {
+    request.MarkDependenciesSatisfied();
+    RunRequestWithSatisfiedDependencies(request);
   }
 }
 
@@ -157,8 +196,24 @@ void OutOfOrderActorSchedulingQueue::AcceptRequestOrRejectIfCanceled(
     request.Accept();
   }
 
-  absl::MutexLock lock(&mu_);
-  pending_task_id_to_is_canceled.erase(task_id);
+  std::optional<InboundRequest> request_to_run;
+  {
+    absl::MutexLock lock(&mu_);
+    if (queued_actor_tasks_.contains(task_id)) {
+      request_to_run = queued_actor_tasks_[task_id];
+      queued_actor_tasks_.erase(task_id);
+    } else {
+      pending_task_id_to_is_canceled.erase(task_id);
+    }
+  }
+
+  if (request_to_run.has_value()) {
+    io_service_.post(
+        [this, request = std::move(*request_to_run)]() mutable {
+          RunRequest(std::move(request));
+        },
+        "OutOfOrderActorSchedulingQueue.RunRequest");
+  }
 }
 
 }  // namespace core
