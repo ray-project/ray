@@ -286,12 +286,8 @@ fi
     echo ": \${ANYSCALE_PY_VERSION_CODE:=${PY_VERSION_CODE}}"
     echo ": \${ANYSCALE_RAY_VERSION:=${RAY_VERSION}}"
     echo ": \${ANYSCALE_RAY_COMMIT:=${FULL_COMMIT}}"
-    echo "export ANYSCALE_PY_VERSION_CODE ANYSCALE_RAY_VERSION ANYSCALE_RAY_COMMIT"
-
-    if [[ "${RAY_RELEASE_BUILD:-}" == "true" ]]; then
-        echo ": \${ANYSCALE_PRESTART_DATA_PATH:=${ANYSCALE_PRESTART_DATA_PATH}}"
-        echo "export ANYSCALE_PRESTART_DATA_PATH"
-    fi
+    echo ": \${ANYSCALE_RAY_MINIMIZED:=${USE_MINIMIZED_BASE}}"
+    echo "export ANYSCALE_PY_VERSION_CODE ANYSCALE_RAY_VERSION ANYSCALE_RAY_COMMIT ANYSCALE_RAY_MINIMIZED"
 } > "${CONTEXT_TMP}/version-envs.sh"
 
 # We place in the oss site package.
