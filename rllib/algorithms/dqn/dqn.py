@@ -89,22 +89,21 @@ class DQNConfig(AlgorithmConfig):
     .. testcode::
 
         from ray.rllib.algorithms.dqn.dqn import DQNConfig
-        config = DQNConfig()
 
-        replay_config = {
-                "type": "MultiAgentPrioritizedEpisodeReplayBuffer",
+        config = (
+            DQNConfig()
+            .environment("CartPole-v1")
+            .training(replay_buffer_config={
+                "type": "PrioritizedEpisodeReplayBuffer",
                 "capacity": 60000,
                 "alpha": 0.5,
                 "beta": 0.5,
-            }
-
-        config = config.training(replay_buffer_config=replay_config)
-        config = config.resources(num_gpus=0)
-        config = config.env_runners(num_env_runners=1)
-        config = config.environment("CartPole-v1")
-        algo = DQN(config=config)
+            })
+            .env_runners(num_env_runners=1)
+        )
+        algo = config.build()
         algo.train()
-        del algo
+        algo.stop()
 
     .. testcode::
 
@@ -114,10 +113,10 @@ class DQNConfig(AlgorithmConfig):
 
         config = (
             DQNConfig()
+            .environment("CartPole-v1")
             .training(
                 num_atoms=tune.grid_search([1,])
             )
-            .environment("CartPole-v1")
         )
         tune.Tuner(
             "DQN",

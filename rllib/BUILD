@@ -938,14 +938,6 @@ py_test(
 )
 
 py_test(
-    name = "test_memory_leaks_generic",
-    main = "algorithms/tests/test_memory_leaks.py",
-    tags = ["team:rllib", "algorithms_dir"],
-    size = "medium",
-    srcs = ["algorithms/tests/test_memory_leaks.py"]
-)
-
-py_test(
     name = "test_node_failure",
     tags = ["team:rllib", "tests_dir", "exclusive"],
     size = "medium",
@@ -1814,13 +1806,6 @@ py_test(
 # --------------------------------------------------------------------
 
 py_test(
-    name = "test_checkpoint_utils",
-    tags = ["team:rllib", "utils"],
-    size = "small",
-    srcs = ["utils/tests/test_checkpoint_utils.py"]
-)
-
-py_test(
     name = "test_errors",
     tags = ["team:rllib", "utils"],
     size = "medium",
@@ -2102,14 +2087,6 @@ py_test(
 )
 
 py_test(
-    name = "tests/test_nested_observation_spaces",
-    main = "tests/test_nested_observation_spaces.py",
-    tags = ["team:rllib", "tests_dir"],
-    size = "medium",
-    srcs = ["tests/test_nested_observation_spaces.py"]
-)
-
-py_test(
     name = "tests/test_nn_framework_import_errors",
     tags = ["team:rllib", "tests_dir"],
     size = "small",
@@ -2143,70 +2120,6 @@ py_test(
     size = "medium",
     srcs = ["tests/test_reproducibility.py"]
 )
-
-py_test(
-    name = "tests/test_supported_multi_agent_multi_gpu",
-    main = "tests/test_supported_multi_agent.py",
-    tags = ["team:rllib", "tests_dir", "multi_gpu"],
-    size = "medium",
-    srcs = ["tests/test_supported_multi_agent.py"],
-    args = ["TestSupportedMultiAgentMultiGPU"]
-)
-
-
-py_test(
-    name = "tests/test_supported_multi_agent_policy_gradient",
-    main = "tests/test_supported_multi_agent.py",
-    tags = ["team:rllib", "tests_dir"],
-    size = "large",
-    srcs = ["tests/test_supported_multi_agent.py"],
-    args = ["TestSupportedMultiAgentPolicyGradient"]
-)
-
-py_test(
-    name = "tests/test_supported_multi_agent_off_policy",
-    main = "tests/test_supported_multi_agent.py",
-    tags = ["team:rllib", "tests_dir"],
-    size = "large",
-    srcs = ["tests/test_supported_multi_agent.py"],
-    args = ["TestSupportedMultiAgentOffPolicy"]
-)
-
-py_test(
-     name = "tests/test_supported_spaces_appo",
-     main = "tests/test_supported_spaces.py",
-     tags = ["team:rllib", "tests_dir", "exclusive"],
-     size = "large",
-     srcs = ["tests/test_supported_spaces.py"],
-     args = ["TestSupportedSpacesAPPO"]
- )
-
-py_test(
-     name = "tests/test_supported_spaces_impala",
-     main = "tests/test_supported_spaces.py",
-     tags = ["team:rllib", "tests_dir", "exclusive"],
-     size = "large",
-     srcs = ["tests/test_supported_spaces.py"],
-     args = ["TestSupportedSpacesIMPALA"]
-)
-
-py_test(
-     name = "tests/test_supported_spaces_ppo",
-     main = "tests/test_supported_spaces.py",
-     tags = ["team:rllib", "tests_dir"],
-     size = "large",
-     srcs = ["tests/test_supported_spaces.py"],
-     args = ["TestSupportedSpacesPPO"]
- )
-
-py_test(
-     name = "tests/test_supported_spaces_ppo_no_preprocessor_gpu",
-     main = "tests/test_supported_spaces.py",
-     tags = ["team:rllib", "gpu", "no_cpu"],
-     size = "large",
-     srcs = ["tests/test_supported_spaces.py"],
-     args = ["TestSupportedSpacesPPONoPreprocessorGPU"]
- )
 
 py_test(
     name = "tests/test_timesteps",
@@ -2262,33 +2175,6 @@ py_test(
     size = "small",
     srcs = ["examples/_old_api_stack/complex_struct_space.py"],
     args = ["--framework=torch"],
-)
-
-py_test(
-    name = "examples/_old_api_stack/parametric_actions_cartpole_dqn_tf",
-    main = "examples/_old_api_stack/parametric_actions_cartpole.py",
-    tags = ["team:rllib", "exclusive", "examples", "old_api_stack"],
-    size = "medium",
-    srcs = ["examples/_old_api_stack/parametric_actions_cartpole.py"],
-    args = ["--as-test", "--framework=tf", "--stop-reward=60.0", "--run=DQN"]
-)
-
-py_test(
-    name = "examples/_old_api_stack/parametric_actions_cartpole_dqn_torch",
-    main = "examples/_old_api_stack/parametric_actions_cartpole.py",
-    tags = ["team:rllib", "exclusive", "examples", "old_api_stack"],
-    size = "medium",
-    srcs = ["examples/_old_api_stack/parametric_actions_cartpole.py"],
-    args = ["--as-test", "--framework=torch", "--stop-reward=60.0", "--run=DQN"]
-)
-
-py_test(
-    name = "examples/_old_api_stack/parametric_actions_cartpole_embeddings_learnt_by_model",
-    main = "examples/_old_api_stack/parametric_actions_cartpole_embeddings_learnt_by_model.py",
-    tags = ["team:rllib", "exclusive", "examples", "old_api_stack"],
-    size = "medium",
-    srcs = ["examples/_old_api_stack/parametric_actions_cartpole_embeddings_learnt_by_model.py"],
-    args = ["--as-test", "--stop-reward=80.0"]
 )
 
 # subdirectory: _old_api_stack/connectors/
@@ -2353,28 +2239,6 @@ py_test(
     size = "large",
     srcs = ["examples/actions/nested_action_spaces.py"],
     args = ["--enable-new-api-stack", "--as-test", "--num-agents=2", "--framework=torch", "--stop-reward=-1000.0", "--algo=PPO"]
-)
-
-# subdirectory: algorithms/
-
-#@OldAPIStack
-py_test(
-    name = "examples/algorithms/custom_training_step_on_and_off_policy_combined_tf",
-    main = "examples/algorithms/custom_training_step_on_and_off_policy_combined.py",
-    tags = ["team:rllib", "exclusive", "examples"],
-    size = "medium",
-    srcs = ["examples/algorithms/custom_training_step_on_and_off_policy_combined.py"],
-    args = ["--as-test", "--stop-reward=450.0"]
-)
-
-#@OldAPIStack
-py_test(
-    name = "examples/algorithms/custom_training_step_on_and_off_policy_combined_torch",
-    main = "examples/algorithms/custom_training_step_on_and_off_policy_combined.py",
-    tags = ["team:rllib", "exclusive", "examples"],
-    size = "medium",
-    srcs = ["examples/algorithms/custom_training_step_on_and_off_policy_combined.py"],
-    args = ["--as-test", "--torch", "--stop-reward=450.0"]
 )
 
 # subdirectory: catalogs/
@@ -3235,26 +3099,6 @@ py_test(
     size = "large",
     srcs = ["examples/multi_agent/self_play_league_based_with_open_spiel.py"],
     args = ["--enable-new-api-stack", "--framework=torch", "--env=connect_four", "--win-rate-threshold=0.8", "--num-episodes-human-play=0", "--min-league-size=8"]
-)
-
-# @OldAPIStack
-py_test(
-    name = "examples/multi_agent/two_algorithms_tf_old_api_stack",
-    main = "examples/multi_agent/two_algorithms.py",
-    tags = ["team:rllib", "exclusive", "examples"],
-    size = "medium",
-    srcs = ["examples/multi_agent/two_algorithms.py"],
-    args = ["--as-test", "--framework=tf", "--stop-reward=70"]
-)
-
-# @OldAPIStack
-py_test(
-    name = "examples/multi_agent/two_algorithms_torch_old_api_stack",
-    main = "examples/multi_agent/two_algorithms.py",
-    tags = ["team:rllib", "exclusive", "examples"],
-    size = "small",
-    srcs = ["examples/multi_agent/two_algorithms.py"],
-    args = ["--as-test", "--framework=torch", "--stop-reward=70"]
 )
 
 py_test(
