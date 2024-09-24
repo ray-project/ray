@@ -18,6 +18,7 @@
 
 #include <boost/asio.hpp>
 #include <boost/asio/ip/host_name.hpp>
+#include <boost/circular_buffer.hpp>
 #include <cmath>
 #include <cstring>
 #include <iomanip>
@@ -35,6 +36,7 @@
 #include "spdlog/spdlog.h"
 #include "src/ray/protobuf/event.pb.h"
 #include "src/ray/protobuf/export_api/export_event.pb.h"
+#include "src/ray/protobuf/gcs.pb.h"
 
 using json = nlohmann::json;
 
@@ -134,6 +136,8 @@ class LogEventReporter : public BaseEventReporter {
   std::string file_name_;
 
   std::shared_ptr<spdlog::logger> log_sink_;
+
+  friend class RayEventLog;
 };
 
 // store the reporters, add reporters and clean reporters
@@ -159,6 +163,9 @@ class EventManager final {
 
   void AddExportReporter(rpc::ExportEvent_SourceType source_type,
                          std::shared_ptr<LogEventReporter> reporter);
+
+  absl::flat_hash_map<rpc::ExportEvent_SourceType, std::shared_ptr<LogEventReporter>>
+      &GetExportLogReporterMap();
 
   void ClearReporters();
 
@@ -322,56 +329,184 @@ class RayEvent {
   std::ostringstream osstream_;
 };
 
-using ExportEventDataPtr = std::variant<std::shared_ptr<rpc::ExportTaskEventData>,
-                                        std::shared_ptr<rpc::ExportNodeData>,
-                                        std::shared_ptr<rpc::ExportActorData>,
-                                        std::shared_ptr<rpc::ExportDriverJobEventData>>;
-class RayExportEvent {
- public:
-  RayExportEvent(ExportEventDataPtr event_data_ptr) : event_data_ptr_(event_data_ptr) {}
-
-  ~RayExportEvent();
-
-  void SendEvent();
-
- private:
-  RayExportEvent(const RayExportEvent &event) = delete;
-
-  const RayExportEvent &operator=(const RayExportEvent &event) = delete;
-
- private:
-  ExportEventDataPtr event_data_ptr_;
+struct MutableActorData {
+  rpc::ExportActorData::ActorState actor_state;
+  ray::rpc::ActorDeathCause death_cause;
+};
+struct ActorData {
+  std::shared_ptr<rpc::ActorTableData> actor_table_data_ptr;
+  int64_t timestamp;
+  MutableActorData mutable_actor_data;
+};
+struct TaskData {
+  std::shared_ptr<rpc::ExportTaskEventData> task_event_data_ptr;
+  int64_t timestamp;
+};
+struct NodeData {
+  std::shared_ptr<rpc::ExportNodeData> node_event_data_ptr;
+  int64_t timestamp;
+};
+struct DriverJobData {
+  std::shared_ptr<rpc::ExportDriverJobEventData> driver_job_event_data_ptr;
+  int64_t timestamp;
 };
 
-/// Ray Event initialization.
-///
-/// This function should be called when the main thread starts.
-/// Redundant calls in other thread don't take effect.
-/// \param source_types List of source types the current process can create events for. If
-/// there are multiple rpc::Event_SourceType source_types, the last one will be used as
-/// the source type for the RAY_EVENT macro.
-/// \param custom_fields The global custom fields. These are only set for
-/// rpc::Event_SourceType events.
-/// \param log_dir The log directory to generate event subdirectory.
-/// \param event_level The input event level. It should be one of "info","warning",
-/// "error" and "fatal". You can also use capital letters for the options above.
-/// \param emit_event_to_log_file if True, it will emit the event to the process log file
-/// (e.g., gcs_server.out). Otherwise, event will only be recorded to the event log file.
-/// \return void.
-void RayEventInit(const std::vector<SourceTypeVariant> source_types,
-                  const absl::flat_hash_map<std::string, std::string> &custom_fields,
-                  const std::string &log_dir,
-                  const std::string &event_level = "warning",
-                  bool emit_event_to_log_file = false);
+/*
+The RayEventLog class is intended for logging events to a file, utilizing
+the EventManager in conjunction with the LogEventReporter. Events can be
+written to file in three ways, depending on the volume of events of that
+type being emitted.
+1. Directly written to file in the same thread as the function caller.
+   This should be used for events that are not expensive to write depending
+   on size or frequency. Eg: Export node and driver job events directly
+   call PublishNodeDataAsEvent and PublishDriverJobDataAsEvent in the main thread.
+2. Main thread creates proto object for the event, but event is logged and flushed
+   in a background thread. This can be used if creating the proto object is
+   inexpensive or another background thread is used for this. Eg: Task export
+   events directly take rpc::ExportTaskEventData.
+3. Main thread adds raw data to a buffer, and the background thread converts this data
+   to the export event proto and logs and flushes to file. This can be used
+   when creating the proto object is expensive and there is no other background
+   thread to do this. Eg: Actor export events take the raw data rpc::ActorTableData
+   and MutableActorData before converting to rpc::ExportActorData in the background
+thread.
 
-/// Logic called by RayEventInit. This function can be called multiple times,
-/// and has been separated out so RayEventInit can be called multiple times in
-/// tests.
-/// **Note**: This should only be called from tests.
-void RayEventInit_(const std::vector<SourceTypeVariant> source_types,
-                   const absl::flat_hash_map<std::string, std::string> &custom_fields,
-                   const std::string &log_dir,
-                   const std::string &event_level,
-                   bool emit_event_to_log_file);
+If the source type of any events require creating the event proto or flushing
+to file in the background thread, StartPeriodicFlushThread and StopPeriodicFlushThread
+should be called. Otherwise the background thread doesn't need to be started.
+*/
+class RayEventLog final {
+ public:
+  static RayEventLog &Instance();
+  /// Ray Event initialization.
+  ///
+  /// This function should be called when the main thread starts.
+  /// Redundant calls in other thread don't take effect.
+  /// \param source_types List of source types the current process can create events for.
+  /// If there are multiple rpc::Event_SourceType source_types, the last one will be used
+  /// as the source type for the RAY_EVENT macro.
+  /// \param custom_fields The global custom fields. These are only set for
+  /// rpc::Event_SourceType events.
+  /// \param log_dir The log directory to generate event subdirectory.
+  /// \param event_level The input event level. It should be one of "info","warning",
+  /// "error" and "fatal". You can also use capital letters for the options above.
+  /// \param emit_event_to_log_file if True, it will emit the event to the process logfile
+  /// file (e.g., gcs_server.out). Otherwise, event will only be recorded to the event log
+  /// file.
+  /// \return void.
+  void Init(const std::vector<SourceTypeVariant> source_types,
+            const absl::flat_hash_map<std::string, std::string> &custom_fields,
+            const std::string &log_dir,
+            const std::string &event_level = "warning",
+            bool emit_event_to_log_file = false);
+  void StartPeriodicFlushThread();
+  void StopPeriodicFlushThread();
+
+ private:
+  /// Logic called by RayEventInit. This function can be called multiple times,
+  /// and has been separated out so RayEventInit can be called multiple times in
+  /// tests.
+  /// **Note**: This should only be called from tests.
+  void Init_(const std::vector<SourceTypeVariant> source_types,
+             const absl::flat_hash_map<std::string, std::string> &custom_fields,
+             const std::string &log_dir,
+             const std::string &event_level,
+             bool emit_event_to_log_file);
+  void PeriodicFlush();
+  void FlushExportEvents();
+
+  template <typename T>
+  void AddDataToBuffer(absl::Mutex *mutex, T &data, boost::circular_buffer<T> *buffer);
+
+  template <typename T>
+  void GetDataToWrite(absl::Mutex *mutex,
+                      std::vector<T> *data_to_write,
+                      boost::circular_buffer<T> *buffer);
+
+  void FillExportEventID(rpc::ExportEvent *export_event);
+
+  void AddActorDataToBuffer(ActorData &actor_data);
+  void PublishActorDataAsEvent(const ActorData &actor_data);
+
+  void AddTaskDataToBuffer(TaskData &task_data);
+  void PublishTaskDataAsEvent(const TaskData &task_data);
+
+  void PublishNodeDataAsEvent(const NodeData &node_data);
+
+  void PublishDriverJobDataAsEvent(const DriverJobData &driver_job_data);
+
+  /// Used to allow tests to flush export events when the
+  /// namespace of the test is different than RayEventLog.
+  friend void FlushExportEventsInTest(RayEventLog &obj) { obj.FlushExportEvents(); }
+
+  RayEventLog() : periodic_flush_thread_() {}
+  ~RayEventLog() { StopPeriodicFlushThread(); }
+
+  int GetEnvVarAsInt(const char *varName, int defaultValue) {
+    try {
+      const char *value = std::getenv(varName);
+      if (value) {
+        return std::stoi(value);
+      }
+      return defaultValue;
+    } catch (...) {
+      RAY_LOG(WARNING) << "Error getting value of env var " << varName;
+    }
+    return defaultValue;
+  }
+
+  std::thread periodic_flush_thread_;
+  bool stop_periodic_flush_flag_;
+  std::mutex periodic_flush_mtx_;
+  std::condition_variable periodic_flush_cv_;
+
+  absl::Mutex actor_data_buffer_mutex_;
+  boost::circular_buffer<ActorData> actor_data_buffer_
+      ABSL_GUARDED_BY(actor_data_buffer_mutex_);
+  absl::Mutex task_data_buffer_mutex_;
+  boost::circular_buffer<TaskData> task_data_buffer_
+      ABSL_GUARDED_BY(task_data_buffer_mutex_);
+
+  int MAX_EXPORT_EVENTS_BUFFER_SIZE;
+  int EXPORT_EVENTS_BUFFER_WRITE_BATCH_SIZE;
+
+  friend class RayExportEvent;
+
+  FRIEND_TEST(EventTest, TestExportEvent);
+  FRIEND_TEST(EventTest, TestRayEventInit);
+  FRIEND_TEST(GcsActorManagerTest, TestActorExportEvents);
+  FRIEND_TEST(GcsJobManagerTest, TestExportDriverJobEvents);
+  FRIEND_TEST(GcsNodeManagerExportAPITest, TestExportEventRegisterNode);
+  FRIEND_TEST(GcsNodeManagerExportAPITest, TestExportEventUnregisterNode);
+};
+
+class RayExportEvent {
+ public:
+  static void SendActorEvent(
+      const std::shared_ptr<rpc::ActorTableData> actor_table_data_ptr,
+      const MutableActorData &mutable_actor_data) {
+    ActorData actor_data = {
+        actor_table_data_ptr, current_sys_time_s(), mutable_actor_data};
+    ray::RayEventLog::Instance().AddActorDataToBuffer(actor_data);
+  }
+
+  static void SendTaskEvent(
+      const std::shared_ptr<rpc::ExportTaskEventData> task_event_data_ptr) {
+    TaskData task_data = {task_event_data_ptr, current_sys_time_s()};
+    ray::RayEventLog::Instance().AddTaskDataToBuffer(task_data);
+  }
+
+  static void SendNodeEvent(
+      const std::shared_ptr<rpc::ExportNodeData> node_event_data_ptr) {
+    NodeData node_data = {node_event_data_ptr, current_sys_time_s()};
+    ray::RayEventLog::Instance().PublishNodeDataAsEvent(node_data);
+  }
+
+  static void SendDriverJobEvent(
+      const std::shared_ptr<rpc::ExportDriverJobEventData> driver_job_event_data_ptr) {
+    DriverJobData driver_job_data = {driver_job_event_data_ptr, current_sys_time_s()};
+    ray::RayEventLog::Instance().PublishDriverJobDataAsEvent(driver_job_data);
+  }
+};
 
 }  // namespace ray
