@@ -110,6 +110,8 @@ class LogEventReporter : public BaseEventReporter {
 
   virtual void ReportExportEvent(const rpc::ExportEvent &export_event) override;
 
+  virtual void Flush();
+
  private:
   virtual std::string replaceLineFeed(std::string message);
 
@@ -120,8 +122,6 @@ class LogEventReporter : public BaseEventReporter {
   virtual void Init() override {}
 
   virtual void Close() override {}
-
-  virtual void Flush();
 
   virtual std::string GetReporterKey() override { return "log.event.reporter"; }
 
@@ -159,6 +159,9 @@ class EventManager final {
 
   void AddExportReporter(rpc::ExportEvent_SourceType source_type,
                          std::shared_ptr<LogEventReporter> reporter);
+
+  absl::flat_hash_map<rpc::ExportEvent_SourceType, std::shared_ptr<LogEventReporter>>
+    &GetExportLogReporterMap();
 
   void ClearReporters();
 
@@ -373,5 +376,7 @@ void RayEventInit_(const std::vector<SourceTypeVariant> source_types,
                    const std::string &log_dir,
                    const std::string &event_level,
                    bool emit_event_to_log_file);
+
+void FlushExportEvents();
 
 }  // namespace ray
