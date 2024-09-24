@@ -9,7 +9,7 @@ from ray.rllib.utils.checkpoints import convert_to_msgpack_checkpoint
 
 
 # Base config used for both pickle-based checkpoint and msgpack-based one.
-config = PPOConfig().environment("CartPole-v1")
+config = PPOConfig().environment("CartPole-v1").env_runners(num_env_runners=0)
 # Build algorithm object.
 algo1 = config.build()
 
