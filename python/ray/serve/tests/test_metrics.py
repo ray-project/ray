@@ -5,7 +5,6 @@ from typing import DefaultDict, Dict, List, Optional
 
 import grpc
 import pytest
-import pytest_asyncio
 import requests
 from fastapi import FastAPI
 
@@ -33,9 +32,16 @@ from ray.serve.tests.test_config_files.grpc_deployment import g, g2
 TEST_METRICS_EXPORT_PORT = 9999
 
 
-@pytest_asyncio.fixture
+@pytest.fixture
 def serve_start_shutdown():
     """Fixture provides a fresh Ray cluster to prevent metrics state sharing."""
+    # Clean up metrics
+    prometheus_base_url = f"http://127.0.0.1:{TEST_METRICS_EXPORT_PORT}"
+    delete_all_series_url = f'{prometheus_base_url}/api/v1/admin/tsdb/delete_series?match[]={{__name__=~".*"}}'
+    clean_tombstones_url = f"{prometheus_base_url}/api/v1/admin/tsdb/clean_tombstones"
+    assert requests.post(delete_all_series_url).status_code == 204
+    assert requests.post(clean_tombstones_url) == 204
+
     ray.init(
         _metrics_export_port=TEST_METRICS_EXPORT_PORT,
         _system_config={
