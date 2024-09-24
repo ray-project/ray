@@ -17,15 +17,15 @@ RLlib classes and code to RLlib's new API stack.
 .. note::
 
     Even though the new API stack still rudimentary supports `TensorFlow <https://tensorflow.org>`__,
-    RLlib will soon move to `PyTorch <https://pytorch.org>`__ as the only supported deep learning
+    RLlib is moving to `PyTorch <https://pytorch.org>`__ as the only supported deep learning
     framework (dropping TensorFlow support entirely).
-    Note, though, the RLlib continues to be designed in a framework-agnostic fashion.
+    Note, though, that RLlib continues to be designed in a framework-agnostic fashion.
 
 
 Change your AlgorithmConfig
 ---------------------------
 
-The new API stack is disabled by default for all RLlib algorithms. To activate it, use the `api_stack()` method
+The new API stack is turned off by default for all RLlib algorithms. To activate it, use the `api_stack()` method
 in your `AlgorithmConfig` object like so:
 
 .. testcode::
@@ -57,10 +57,9 @@ AlgorithmConfig.framework()
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Even though the new API stack still rudimentary supports `TensorFlow <https://tensorflow.org>`__,
-RLlib will soon move to `PyTorch <https://pytorch.org>`__ as the only supported deep learning
-framework.
+RLlib is moving to `PyTorch <https://pytorch.org>`__ as the only supported deep learning framework.
 
-The following framework-related settings will thus be deprecated when using the new API stack:
+The following framework-related settings are thus being deprecated when using the new API stack:
 
 .. testcode::
 
@@ -93,8 +92,8 @@ RLModule on one or more GPUs on the Learner side, do the following:
 .. hint::
 
     The `num_learners` setting determines how many remote :py:class:`~ray.rllib.core.learner.learner.Learner`
-    workers there will be in your Algorithm's :py:class:`~ray.rllib.core.learner.learner_group.LearnerGroup`.
-    If you set this to 0, your LearnerGroup will only contain a **local** Learner that runs on the main
+    workers there are in your Algorithm's :py:class:`~ray.rllib.core.learner.learner_group.LearnerGroup`.
+    If you set this to 0, your LearnerGroup only contains a **local** Learner that runs on the main
     process (and shares the compute resources with that process, usually 1 CPU).
     For asynchronous algorithms like IMPALA or APPO, this setting should therefore always be >0.
 
@@ -148,8 +147,8 @@ to increase the learning rate as follows:
 `lr = [original_lr] * ([num_learners] ** 0.5)`
 
 
-Neural Network Config
-.....................
+Neural Network Configuration
+............................
 
 The old stack's `config.training(model=...)` is no longer supported on the new API stack.
 Instead, use the new :py:meth:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig.rl_module`
@@ -187,7 +186,7 @@ For example, to create a learning rate schedule that starts with a value of 1e-5
     )
 
 
-In the above example, the value after 500k timesteps will roughly be `5e-5` (linear interpolation).
+In the preceding example, the value after 500k timesteps is roughly `5e-5` (linear interpolation).
 
 Another example: To create a entropy coefficient schedule that starts with a value of 0.05, then increases over 1M timesteps to 0.1 and
 then suddenly drops to 0 (after the 1Mth timestep), do:
@@ -211,7 +210,7 @@ Note that this only covers learning rate schedules, but not any other coefficien
 AlgorithmConfig.learners()
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-This method is not used on the old API stack (b/c the old stack doesn't use Learner workers).
+This method isn't used on the old API stack (b/c the old stack doesn't use Learner workers).
 
 It allows you to specify ..
 
@@ -357,7 +356,7 @@ Here is a 1:1 translation guide for those types of Callbacks methods:
 
 The following callback methods are no longer available on the new API stack:
 
-**`on_sub_environment_created()`**: The new API stack uses Farama's gymnasium vector Envs leaving no control for RLlib
+**`on_sub_environment_created()`**: The new API stack uses `Farama's gymnasium <https://farama.org>`__ vector Envs leaving no control for RLlib
 to call a callback on each individual env-index's creation.
 
 **`on_create_policy()`**: This method is only called on :py:class:`~ray.rllib.evaluation.rollout_worker.RolloutWorker`
@@ -366,7 +365,7 @@ and thus no longer available on the new API stack.
 **`on_postprocess_trajectory()`**: This method is no longer triggered and called on the new API stack,
 since trajectory processing is handled entirely through :py:class:`~ray.rllib.connectors.connector_v2.ConnectorV2`
 pipelines now.
-The :py:class:`~ray.rllib.connectors.connector_v2.ConnectorV2` documentation is work in progress and will be linked to from here shortly.
+The :py:class:`~ray.rllib.connectors.connector_v2.ConnectorV2` documentation is work in progress and linked from here shortly.
 
 
 .. _rllib-modelv2-to-rlmodule:
@@ -393,7 +392,7 @@ Custom Loss Functions and/or Policies
 -------------------------------------
 
 In case you are using one or more custom loss functions and/or custom (PyTorch) optimizers to train your models, instead of doing these
-customizations inside the old stack's Policy class, you need to move these logics into the new API stack's
+customizations inside the old stack's Policy class, you need to move these logic into the new API stack's
 :py:class:`~ray.rllib.core.learner.learner.Learner` class.
 
 :ref:`See here for more details on how to write a custom Learner <learner-guide>`.
@@ -416,12 +415,12 @@ and multi-node + multi-GPU training on the `Anyscale <https://anyscale.com>`__ p
 Custom (old-stack) Connectors
 -----------------------------
 
-If you are using custom (old API stack) connectors, you will have to lift your logic into the
+If you are using custom (old API stack) connectors, you have to lift your logic into the
 new :py:class:`~ray.rllib.connectors.connector_v2.ConnectorV2` API.
 Translate your agent connectors into env-to-module ConnectorV2 pieces and your
 action connectors into module-to-env ConnectorV2 pieces.
 
-The :py:class:`~ray.rllib.connectors.connector_v2.ConnectorV2` documentation is work in progress and will be linked to from here shortly.
+The :py:class:`~ray.rllib.connectors.connector_v2.ConnectorV2` documentation is work in progress and linked from here shortly.
 
 In the meantime, take a look at some examples on how to write ConnectorV2 pieces for the
 different pipelines:
