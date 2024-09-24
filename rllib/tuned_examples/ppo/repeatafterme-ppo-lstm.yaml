@@ -17,7 +17,7 @@ repeat-after-me-ppo-w-lstm:
         lr: 0.0003
         num_env_runners: 0
         num_envs_per_env_runner: 20
-        num_sgd_iter: 5
+        num_epochs: 5
         entropy_coeff: 0.00001
         model:
             use_lstm: true

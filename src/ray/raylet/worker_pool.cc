@@ -356,7 +356,6 @@ WorkerPool::BuildProcessCommandArgs(const Language &language,
     worker_command_args.push_back("--worker-launch-time-ms=" +
                                   std::to_string(current_sys_time_ms()));
     worker_command_args.push_back("--node-id=" + node_id_.Hex());
-    // TODO(jjyao) This should be renamed to worker cache key hash
     worker_command_args.push_back("--runtime-env-hash=" +
                                   std::to_string(runtime_env_hash));
   } else if (language == Language::CPP) {
@@ -1162,6 +1161,55 @@ void WorkerPool::KillIdleWorker(std::shared_ptr<WorkerInterface> idle_worker,
       });
 }
 
+WorkerUnfitForTaskReason WorkerPool::WorkerFitsForTask(
+    const WorkerInterface &worker, const TaskSpecification &task_spec) const {
+  if (worker.IsDead()) {
+    return WorkerUnfitForTaskReason::OTHERS;
+  }
+  if (worker.GetLanguage() != task_spec.GetLanguage()) {
+    return WorkerUnfitForTaskReason::OTHERS;
+  }
+  // Don't allow worker reuse across jobs or root detached actors. Reuse worker with
+  // unassigned job_id and root detached actor id is OK.
+  JobID job_id = worker.GetAssignedJobId();
+  if (!job_id.IsNil() && job_id != task_spec.JobId()) {
+    return WorkerUnfitForTaskReason::ROOT_MISMATCH;
+  }
+  ActorID root_detached_actor_id = worker.GetRootDetachedActorId();
+  if (!root_detached_actor_id.IsNil() &&
+      root_detached_actor_id != task_spec.RootDetachedActorId()) {
+    return WorkerUnfitForTaskReason::ROOT_MISMATCH;
+  }
+  auto is_gpu = worker.GetIsGpu();
+  if (is_gpu.has_value()) {
+    bool task_is_gpu =
+        task_spec.GetRequiredResources().Get(scheduling::ResourceID::GPU()) > 0;
+    if (is_gpu.value() != task_is_gpu) {
+      return WorkerUnfitForTaskReason::OTHERS;
+    }
+  }
+  auto is_actor_worker = worker.GetIsActorWorker();
+  if (is_actor_worker.has_value() &&
+      is_actor_worker.value() != task_spec.IsActorCreationTask()) {
+    return WorkerUnfitForTaskReason::OTHERS;
+  }
+  // TODO(clarng): consider re-using worker that has runtime envionrment
+  // if the task doesn't require one.
+  if (worker.GetRuntimeEnvHash() != task_spec.GetRuntimeEnvHash()) {
+    return WorkerUnfitForTaskReason::RUNTIME_ENV_MISMATCH;
+  }
+  // Skip if the dynamic_options doesn't match.
+  if (LookupWorkerDynamicOptions(worker.GetStartupToken()) !=
+      task_spec.DynamicWorkerOptionsOrEmpty()) {
+    return WorkerUnfitForTaskReason::DYNAMIC_OPTIONS_MISMATCH;
+  }
+  // These workers are exiting. So skip them.
+  if (pending_exit_idle_workers_.contains(worker.WorkerId())) {
+    return WorkerUnfitForTaskReason::OTHERS;
+  }
+  return WorkerUnfitForTaskReason::NONE;
+}
+
 void WorkerPool::PopWorker(const TaskSpecification &task_spec,
                            const PopWorkerCallback &callback) {
   RAY_LOG(DEBUG) << "Pop worker for task " << task_spec.TaskId() << " task name "
@@ -1171,19 +1219,18 @@ void WorkerPool::PopWorker(const TaskSpecification &task_spec,
   std::shared_ptr<WorkerInterface> worker = nullptr;
   auto start_worker_process_fn = [this](const TaskSpecification &task_spec,
                                         State &state,
-                                        const std::vector<std::string> &dynamic_options,
-                                        bool dedicated,
                                         const std::string &serialized_runtime_env_context,
                                         const PopWorkerCallback &callback) {
     PopWorkerStatus status = PopWorkerStatus::OK;
-    auto [proc, startup_token] = StartWorkerProcess(task_spec.GetLanguage(),
-                                                    rpc::WorkerType::WORKER,
-                                                    task_spec.JobId(),
-                                                    &status,
-                                                    dynamic_options,
-                                                    task_spec.GetRuntimeEnvHash(),
-                                                    serialized_runtime_env_context,
-                                                    task_spec.RuntimeEnvInfo());
+    auto [proc, startup_token] =
+        StartWorkerProcess(task_spec.GetLanguage(),
+                           rpc::WorkerType::WORKER,
+                           task_spec.JobId(),
+                           &status,
+                           task_spec.DynamicWorkerOptionsOrEmpty(),
+                           task_spec.GetRuntimeEnvHash(),
+                           serialized_runtime_env_context,
+                           task_spec.RuntimeEnvInfo());
     if (status == PopWorkerStatus::OK) {
       RAY_CHECK(proc.IsValid());
       WarnAboutSize();
@@ -1204,70 +1251,42 @@ void WorkerPool::PopWorker(const TaskSpecification &task_spec,
   // Code path of actor task.
   RAY_CHECK(!task_spec.IsActorTask()) << "Direct call shouldn't reach here.";
 
-  bool is_actor_creation = task_spec.IsActorCreationTask();
-  std::vector<std::string> dynamic_options{};
-  if (is_actor_creation && !task_spec.DynamicWorkerOptions().empty()) {
-    dynamic_options = task_spec.DynamicWorkerOptions();
-  }
+  absl::flat_hash_map<WorkerUnfitForTaskReason, size_t> skip_reason_count;
 
-  int64_t skip_cached_worker_job_mismatch = 0;
-  int64_t skip_cached_worker_dynamic_options_mismatch = 0;
-  int64_t skip_cached_worker_runtime_env_mismatch = 0;
-
-  const int runtime_env_hash = task_spec.GetRuntimeEnvHash();
-  for (auto it = idle_of_all_languages_.rbegin(); it != idle_of_all_languages_.rend();
-       it++) {
-    if (task_spec.GetLanguage() != it->first->GetLanguage() || it->first->IsDead()) {
-      continue;
+  auto worker_fits_for_task_fn =
+      [this, &task_spec, &skip_reason_count](
+          const std::pair<std::shared_ptr<WorkerInterface>, int64_t> &pair) -> bool {
+    const auto &worker = pair.first;
+    WorkerUnfitForTaskReason reason = WorkerFitsForTask(*worker, task_spec);
+    if (reason == WorkerUnfitForTaskReason::NONE) {
+      return true;
     }
-
-    // Don't allow worker reuse across jobs. Reuse worker with unassigned job_id is OK.
-    if (!it->first->GetAssignedJobId().IsNil() &&
-        it->first->GetAssignedJobId() != task_spec.JobId()) {
-      skip_cached_worker_job_mismatch++;
-      stats::NumCachedWorkersSkippedJobMismatch.Record(1);
-      continue;
-    }
-
-    // Skip if the dynamic_options doesn't match.
-    if (LookupWorkerDynamicOptions(it->first->GetStartupToken()) != dynamic_options) {
-      skip_cached_worker_dynamic_options_mismatch++;
+    skip_reason_count[reason]++;
+    if (reason == WorkerUnfitForTaskReason::DYNAMIC_OPTIONS_MISMATCH) {
       stats::NumCachedWorkersSkippedDynamicOptionsMismatch.Record(1);
-      continue;
-    }
-
-    // These workers are exiting. So skip them.
-    if (pending_exit_idle_workers_.count(it->first->WorkerId())) {
-      continue;
-    }
-
-    // Skip if the runtime env doesn't match.
-    // TODO(clarng): consider re-using worker that has runtime envionrment
-    // if the task doesn't require one.
-    if (runtime_env_hash != it->first->GetRuntimeEnvHash()) {
-      skip_cached_worker_runtime_env_mismatch++;
+    } else if (reason == WorkerUnfitForTaskReason::RUNTIME_ENV_MISMATCH) {
       stats::NumCachedWorkersSkippedRuntimeEnvironmentMismatch.Record(1);
-      continue;
+    } else if (reason == WorkerUnfitForTaskReason::ROOT_MISMATCH) {
+      stats::NumCachedWorkersSkippedJobMismatch.Record(1);
     }
+    return false;
+  };
 
-    state.idle.erase(it->first);
+  auto good_worker_it = std::find_if(idle_of_all_languages_.rbegin(),
+                                     idle_of_all_languages_.rend(),
+                                     worker_fits_for_task_fn);
+  if (good_worker_it != idle_of_all_languages_.rend()) {
+    state.idle.erase(good_worker_it->first);
     // We can't erase a reverse_iterator.
-    auto lit = it.base();
+    auto lit = good_worker_it.base();
     lit--;
     worker = std::move(lit->first);
     idle_of_all_languages_.erase(lit);
-    break;
   }
 
   if (worker == nullptr) {
-    // There are no more cached workers available to execute this task.
-    // Start a new worker process.
-    RAY_LOG(DEBUG) << "No cached worker, cached workers skipped due to mismatch job "
-                   << skip_cached_worker_job_mismatch
-                   << " due to mismatch dynamic options "
-                   << skip_cached_worker_dynamic_options_mismatch
-                   << " due to mismatch runtime environment "
-                   << skip_cached_worker_runtime_env_mismatch;
+    RAY_LOG(DEBUG) << "No cached worker, cached workers skipped due to "
+                   << debug_string(skip_reason_count);
     if (task_spec.HasRuntimeEnv()) {
       // create runtime env.
       RAY_LOG(DEBUG) << "GetOrCreateRuntimeEnv for task " << task_spec.TaskId();
@@ -1275,22 +1294,13 @@ void WorkerPool::PopWorker(const TaskSpecification &task_spec,
           task_spec.SerializedRuntimeEnv(),
           task_spec.RuntimeEnvConfig(),
           task_spec.JobId(),
-          [this,
-           start_worker_process_fn,
-           callback,
-           &state,
-           task_spec,
-           dynamic_options,
-           is_actor_creation](bool successful,
-                              const std::string &serialized_runtime_env_context,
-                              const std::string &setup_error_message) {
+          [this, start_worker_process_fn, callback, &state, task_spec](
+              bool successful,
+              const std::string &serialized_runtime_env_context,
+              const std::string &setup_error_message) {
             if (successful) {
-              start_worker_process_fn(task_spec,
-                                      state,
-                                      dynamic_options,
-                                      is_actor_creation,
-                                      serialized_runtime_env_context,
-                                      callback);
+              start_worker_process_fn(
+                  task_spec, state, serialized_runtime_env_context, callback);
             } else {
               process_failed_runtime_env_setup_failed_++;
               callback(nullptr,
@@ -1302,8 +1312,7 @@ void WorkerPool::PopWorker(const TaskSpecification &task_spec,
             }
           });
     } else {
-      start_worker_process_fn(
-          task_spec, state, dynamic_options, is_actor_creation, "", callback);
+      start_worker_process_fn(task_spec, state, "", callback);
     }
   }
 
@@ -1353,11 +1362,7 @@ void WorkerPool::PrestartWorkers(const TaskSpecification &task_spec,
 }
 
 void WorkerPool::PrestartDefaultCpuWorkers(ray::Language language, int64_t num_needed) {
-  // default workers uses 1 cpu and doesn't support actor.
-  static const WorkerCacheKey kDefaultCpuWorkerCacheKey{/*serialized_runtime_env*/ "",
-                                                        /*is_actor*/ false,
-                                                        /*is_gpu*/ false,
-                                                        /*is_root_detached_actor*/ false};
+  // default workers don't use runtime env.
   RAY_LOG(DEBUG) << "PrestartDefaultCpuWorkers " << num_needed;
   for (int i = 0; i < num_needed; i++) {
     PopWorkerStatus status;
@@ -1366,7 +1371,7 @@ void WorkerPool::PrestartDefaultCpuWorkers(ray::Language language, int64_t num_n
                        JobID::Nil(),
                        &status,
                        /*dynamic_options*/ {},
-                       kDefaultCpuWorkerCacheKey.IntHash());
+                       CalculateRuntimeEnvHash("{}"));
   }
 }
 

@@ -208,7 +208,7 @@ def parse_uri(pkg_uri: str) -> Tuple[Protocol, str]:
         else:
             package_name = f"{protocol.value}_{uri.netloc}{uri.path}"
 
-            disallowed_chars = ["/", ":", "@", "+"]
+            disallowed_chars = ["/", ":", "@", "+", " "]
             for disallowed_char in disallowed_chars:
                 package_name = package_name.replace(disallowed_char, "_")
 

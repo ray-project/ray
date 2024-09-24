@@ -125,7 +125,20 @@ R = TypeVar("R")
 DAGNode = TypeVar("DAGNode")
 
 
-class RemoteFunctionNoArgs(Generic[R]):
+# Only used for type annotations as a placeholder
+Undefined: Any = object()
+
+
+# TypeVar for self-referential generics in `RemoteFunction[N]`.
+RF = TypeVar("RF", bound="HasOptions")
+
+
+class HasOptions(Protocol):
+    def options(self: RF, **task_options) -> RF:
+        ...
+
+
+class RemoteFunctionNoArgs(HasOptions, Generic[R]):
     def __init__(self, function: Callable[[], R]) -> None:
         pass
 
@@ -140,7 +153,7 @@ class RemoteFunctionNoArgs(Generic[R]):
         ...
 
 
-class RemoteFunction0(Generic[R, T0]):
+class RemoteFunction0(HasOptions, Generic[R, T0]):
     def __init__(self, function: Callable[[T0], R]) -> None:
         pass
 
@@ -157,7 +170,7 @@ class RemoteFunction0(Generic[R, T0]):
         ...
 
 
-class RemoteFunction1(Generic[R, T0, T1]):
+class RemoteFunction1(HasOptions, Generic[R, T0, T1]):
     def __init__(self, function: Callable[[T0, T1], R]) -> None:
         pass
 
@@ -176,7 +189,7 @@ class RemoteFunction1(Generic[R, T0, T1]):
         ...
 
 
-class RemoteFunction2(Generic[R, T0, T1, T2]):
+class RemoteFunction2(HasOptions, Generic[R, T0, T1, T2]):
     def __init__(self, function: Callable[[T0, T1, T2], R]) -> None:
         pass
 
@@ -197,7 +210,7 @@ class RemoteFunction2(Generic[R, T0, T1, T2]):
         ...
 
 
-class RemoteFunction3(Generic[R, T0, T1, T2, T3]):
+class RemoteFunction3(HasOptions, Generic[R, T0, T1, T2, T3]):
     def __init__(self, function: Callable[[T0, T1, T2, T3], R]) -> None:
         pass
 
@@ -220,7 +233,7 @@ class RemoteFunction3(Generic[R, T0, T1, T2, T3]):
         ...
 
 
-class RemoteFunction4(Generic[R, T0, T1, T2, T3, T4]):
+class RemoteFunction4(HasOptions, Generic[R, T0, T1, T2, T3, T4]):
     def __init__(self, function: Callable[[T0, T1, T2, T3, T4], R]) -> None:
         pass
 
@@ -245,7 +258,7 @@ class RemoteFunction4(Generic[R, T0, T1, T2, T3, T4]):
         ...
 
 
-class RemoteFunction5(Generic[R, T0, T1, T2, T3, T4, T5]):
+class RemoteFunction5(HasOptions, Generic[R, T0, T1, T2, T3, T4, T5]):
     def __init__(self, function: Callable[[T0, T1, T2, T3, T4, T5], R]) -> None:
         pass
 
@@ -272,7 +285,7 @@ class RemoteFunction5(Generic[R, T0, T1, T2, T3, T4, T5]):
         ...
 
 
-class RemoteFunction6(Generic[R, T0, T1, T2, T3, T4, T5, T6]):
+class RemoteFunction6(HasOptions, Generic[R, T0, T1, T2, T3, T4, T5, T6]):
     def __init__(self, function: Callable[[T0, T1, T2, T3, T4, T5, T6], R]) -> None:
         pass
 
@@ -301,7 +314,7 @@ class RemoteFunction6(Generic[R, T0, T1, T2, T3, T4, T5, T6]):
         ...
 
 
-class RemoteFunction7(Generic[R, T0, T1, T2, T3, T4, T5, T6, T7]):
+class RemoteFunction7(HasOptions, Generic[R, T0, T1, T2, T3, T4, T5, T6, T7]):
     def __init__(self, function: Callable[[T0, T1, T2, T3, T4, T5, T6, T7], R]) -> None:
         pass
 
@@ -332,7 +345,7 @@ class RemoteFunction7(Generic[R, T0, T1, T2, T3, T4, T5, T6, T7]):
         ...
 
 
-class RemoteFunction8(Generic[R, T0, T1, T2, T3, T4, T5, T6, T7, T8]):
+class RemoteFunction8(HasOptions, Generic[R, T0, T1, T2, T3, T4, T5, T6, T7, T8]):
     def __init__(
         self, function: Callable[[T0, T1, T2, T3, T4, T5, T6, T7, T8], R]
     ) -> None:
@@ -367,7 +380,7 @@ class RemoteFunction8(Generic[R, T0, T1, T2, T3, T4, T5, T6, T7, T8]):
         ...
 
 
-class RemoteFunction9(Generic[R, T0, T1, T2, T3, T4, T5, T6, T7, T8, T9]):
+class RemoteFunction9(HasOptions, Generic[R, T0, T1, T2, T3, T4, T5, T6, T7, T8, T9]):
     def __init__(
         self, function: Callable[[T0, T1, T2, T3, T4, T5, T6, T7, T8, T9], R]
     ) -> None:
@@ -2572,6 +2585,13 @@ def get(object_refs: "ObjectRef[R]", *, timeout: Optional[float] = None) -> R:
 
 
 @overload
+def get(
+    object_refs: Sequence[CompiledDAGRef], *, timeout: Optional[float] = None
+) -> List[Any]:
+    ...
+
+
+@overload
 def get(object_refs: CompiledDAGRef, *, timeout: Optional[float] = None) -> Any:
     ...
 
@@ -2579,7 +2599,12 @@ def get(object_refs: CompiledDAGRef, *, timeout: Optional[float] = None) -> Any:
 @PublicAPI
 @client_mode_hook
 def get(
-    object_refs: Union["ObjectRef[Any]", Sequence["ObjectRef[Any]"], CompiledDAGRef],
+    object_refs: Union[
+        "ObjectRef[Any]",
+        Sequence["ObjectRef[Any]"],
+        CompiledDAGRef,
+        Sequence[CompiledDAGRef],
+    ],
     *,
     timeout: Optional[float] = None,
 ) -> Union[Any, List[Any]]:
@@ -2624,8 +2649,9 @@ def get(
     Raises:
         GetTimeoutError: A GetTimeoutError is raised if a timeout is set and
             the get takes longer than timeout to return.
-        Exception: An exception is raised if the task that created the object
-            or that created one of the objects raised an exception.
+        Exception: An exception is raised immediately if any task that created
+            the object or that created one of the objects raised an exception,
+            without waiting for the remaining ones to finish.
     """
     worker = global_worker
     worker.check_connected()
@@ -2649,6 +2675,21 @@ def get(
 
         if isinstance(object_refs, CompiledDAGRef):
             return object_refs.get(timeout=timeout)
+
+        if isinstance(object_refs, list):
+            all_compiled_dag_refs = True
+            any_compiled_dag_refs = False
+            for object_ref in object_refs:
+                is_dag_ref = isinstance(object_ref, CompiledDAGRef)
+                all_compiled_dag_refs = all_compiled_dag_refs and is_dag_ref
+                any_compiled_dag_refs = any_compiled_dag_refs or is_dag_ref
+            if all_compiled_dag_refs:
+                return [object_ref.get(timeout=timeout) for object_ref in object_refs]
+            elif any_compiled_dag_refs:
+                raise ValueError(
+                    "Invalid type of object refs. 'object_refs' must be a list of "
+                    "CompiledDAGRefs if there is any CompiledDAGRef within it. "
+                )
 
         is_individual_id = isinstance(object_refs, ray.ObjectRef)
         if is_individual_id:
@@ -3144,10 +3185,6 @@ class RemoteDecorator(Protocol):
     @overload
     def __call__(self, __t: type) -> Any:
         ...
-
-
-# Only used for type annotations as a placeholder
-Undefined: Any = object()
 
 
 @overload

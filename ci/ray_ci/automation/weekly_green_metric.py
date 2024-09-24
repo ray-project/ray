@@ -34,7 +34,7 @@ def main(production: bool, check: bool) -> None:
     blockers = TestStateMachine.get_release_blockers()
 
     if production:
-        logger.info(f"Found {blockers.totalCount} release blockers")
+        logger.info(f"Found {len(blockers)} release blockers")
         blocker_teams = [
             TestStateMachine.get_issue_owner(blocker) for blocker in blockers
         ]

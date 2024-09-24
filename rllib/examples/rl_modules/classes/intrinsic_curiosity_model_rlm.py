@@ -1,11 +1,10 @@
 from typing import Any, Dict, TYPE_CHECKING
 
+import tree  # pip install dm_tree
+
 from ray.rllib.core.columns import Columns
+from ray.rllib.core.rl_module.apis import SelfSupervisedLossAPI
 from ray.rllib.core.rl_module.torch import TorchRLModule
-from ray.rllib.examples.learners.classes.curiosity_torch_learner_utils import (  # noqa
-    ICM_MODULE_ID,
-)
-from ray.rllib.models.torch.torch_distributions import TorchCategorical
 from ray.rllib.models.utils import get_activation_fn
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
@@ -19,7 +18,7 @@ if TYPE_CHECKING:
 torch, nn = try_import_torch()
 
 
-class IntrinsicCuriosityModel(TorchRLModule):
+class IntrinsicCuriosityModel(TorchRLModule, SelfSupervisedLossAPI):
     """An intrinsic curiosity model (ICM) as TorchRLModule for better exploration.
 
     For more details, see:
@@ -152,15 +151,12 @@ class IntrinsicCuriosityModel(TorchRLModule):
     def _forward_train(self, batch, **kwargs):
         # Push both observations through feature net to get feature vectors (phis).
         # We cat/batch them here for efficiency reasons (save one forward pass).
-        phis = self._feature_net(
-            torch.cat(
-                [
-                    batch[Columns.OBS],
-                    batch[Columns.NEXT_OBS],
-                ],
-                dim=0,
-            )
+        obs = tree.map_structure(
+            lambda obs, next_obs: torch.cat([obs, next_obs], dim=0),
+            batch[Columns.OBS],
+            batch[Columns.NEXT_OBS],
         )
+        phis = self._feature_net(obs)
         # Split again to yield 2 individual phi tensors.
         phi, next_phi = torch.chunk(phis, 2)
 
@@ -194,12 +190,9 @@ class IntrinsicCuriosityModel(TorchRLModule):
 
         return output
 
-    @override(TorchRLModule)
-    def get_train_action_dist_cls(self):
-        return TorchCategorical
-
-    @staticmethod
-    def compute_loss_for_module(
+    @override(SelfSupervisedLossAPI)
+    def compute_self_supervised_loss(
+        self,
         *,
         learner: "TorchLearner",
         module_id: ModuleID,
@@ -207,7 +200,7 @@ class IntrinsicCuriosityModel(TorchRLModule):
         batch: Dict[str, Any],
         fwd_out: Dict[str, Any],
     ) -> Dict[str, Any]:
-        module = learner.module[module_id]
+        module = learner.module[module_id].unwrapped()
 
         # Forward net loss.
         forward_loss = torch.mean(fwd_out[Columns.INTRINSIC_REWARDS])
@@ -226,8 +219,9 @@ class IntrinsicCuriosityModel(TorchRLModule):
 
         # Calculate the ICM loss.
         total_loss = (
-            1.0 - config.curiosity_beta
-        ) * inverse_loss + config.curiosity_beta * forward_loss
+            config.learner_config_dict["forward_loss_weight"] * forward_loss
+            + (1.0 - config.learner_config_dict["forward_loss_weight"]) * inverse_loss
+        )
 
         learner.metrics.log_dict(
             {
