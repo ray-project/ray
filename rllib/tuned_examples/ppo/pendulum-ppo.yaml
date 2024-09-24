@@ -16,7 +16,7 @@ pendulum-ppo:
         lambda: 0.1
         gamma: 0.95
         lr: 0.0003
-        sgd_minibatch_size: 64
+        minibatch_size: 64
         observation_filter: MeanStdFilter
         model:
             fcnet_activation: relu

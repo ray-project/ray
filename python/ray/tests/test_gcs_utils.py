@@ -295,9 +295,12 @@ def test_redis_cleanup(redis_replicas, shutdown_only):
     else:
         cli = redis.Redis(host, int(port))
 
-    assert set(cli.keys()) == {b"c1", b"c2"}
+    table_names = ["KV", "INTERNAL_CONFIG", "WORKERS", "JobCounter", "NODE", "JOB"]
+    c1_keys = [f"RAYc1@{name}".encode() for name in table_names]
+    c2_keys = [f"RAYc2@{name}".encode() for name in table_names]
+    assert set(cli.keys()) == set(c1_keys + c2_keys)
     gcs_utils.cleanup_redis_storage(host, int(port), "", False, "c1")
-    assert set(cli.keys()) == {b"c2"}
+    assert set(cli.keys()) == set(c2_keys)
     gcs_utils.cleanup_redis_storage(host, int(port), "", False, "c2")
     assert len(cli.keys()) == 0
 

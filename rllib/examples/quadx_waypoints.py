@@ -104,7 +104,7 @@ if __name__ == "__main__":
             }
         )
         config.training(
-            sgd_minibatch_size=128,
+            minibatch_size=128,
             train_batch_size_per_learner=10000,
         )
     # If IMPALA set additional arguments.

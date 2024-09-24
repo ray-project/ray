@@ -24,7 +24,7 @@ class MARWILCatalog(Catalog):
     for the policy and value function. See implementations of MARWILRLModule for
     more details.
 
-    ny custom ActorCriticEncoder can be built by overriding the
+    Any custom ActorCriticEncoder can be built by overriding the
     build_actor_critic_encoder() method. Alternatively, the ActorCriticEncoderConfig
     at MARWILCatalog.actor_critic_encoder_config can be overridden to build a custom
     ActorCriticEncoder during RLModule runtime.

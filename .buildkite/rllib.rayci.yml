@@ -96,7 +96,9 @@ steps:
 
   - label: ":brain: rllib: data tests"
     if: build.branch != "master"
-    tags: data
+    tags:
+      - data
+      - rllib
     instance_type: large
     commands:
       # learning tests pytorch
@@ -105,14 +107,6 @@ steps:
         --only-tags learning_tests_with_ray_data
         --except-tags multi_gpu,gpu,tf_only,tf2_only
         --test-arg --framework=torch
-
-      # learning tests tF2
-      - bazel run //ci/ray_ci:test_in_docker -- //rllib/... rllib 
-        --parallelism-per-worker 3
-        --only-tags learning_tests_with_ray_data
-        --except-tags multi_gpu,gpu,torch_only
-        --test-arg --framework=tf2
-        --skip-ray-installation # reuse the same docker image as the previous run
 
       # rllib unittests
       - bazel run //ci/ray_ci:test_in_docker -- //rllib/... rllib 
