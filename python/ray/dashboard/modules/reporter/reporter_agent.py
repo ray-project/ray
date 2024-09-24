@@ -422,8 +422,11 @@ class ReporterAgent(
         success, output = await p.cpu_profile(
             pid, format=format, duration=duration, native=native
         )
-        profile_data = open(output, "rb").read()
-        return reporter_pb2.CpuProfilingReply(output=profile_data, success=success)
+        if success:
+            with open(output, "rb") as f:
+                profile_data = f.read()
+                return reporter_pb2.CpuProfilingReply(output=profile_data, success=True)
+        return reporter_pb2.CpuProfilingReply(output=output, success=False)
 
     async def MemoryProfiling(self, request, context):
         pid = request.pid
