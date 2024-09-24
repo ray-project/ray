@@ -574,7 +574,7 @@ def test_export_event_logger(tmp_path):
     )
     logger.send_event(event_data)
 
-    event_dir = tmp_path / "events"
+    event_dir = tmp_path / "export_events"
     assert event_dir.exists()
     event_file = event_dir / "event_EXPORT_SUBMISSION_JOB.log"
     assert event_file.exists()
