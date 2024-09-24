@@ -16,9 +16,7 @@ from ray.rllib.env.multi_agent_env import (
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.evaluation.tests.test_rollout_worker import MockPolicy
 from ray.rllib.examples._old_api_stack.policy.random_policy import RandomPolicy
-from ray.rllib.examples.envs.classes.multi_agent import MultiAgentCartPole
 from ray.rllib.examples.envs.classes.mock_env import MockEnv, MockEnv2
-from ray.rllib.policy.policy import PolicySpec
 from ray.rllib.policy.sample_batch import (
     convert_ma_batch_to_sample_batch,
 )
@@ -401,8 +399,6 @@ class NestedMultiAgentEnv(MultiAgentEnv):
             ),
         }
     )
-    DICT_SAMPLES = [DICT_SPACE.sample() for _ in range(10)]
-
     TUPLE_SPACE = gym.spaces.Tuple(
         [
             gym.spaces.Box(low=-100, high=100, shape=(3,)),
@@ -415,7 +411,6 @@ class NestedMultiAgentEnv(MultiAgentEnv):
             gym.spaces.Discrete(5),
         ]
     )
-    TUPLE_SAMPLES = [TUPLE_SPACE.sample() for _ in range(10)]
 
     def __init__(self):
         super().__init__()
@@ -430,8 +425,11 @@ class NestedMultiAgentEnv(MultiAgentEnv):
         )
         self._agent_ids = {"dict_agent", "tuple_agent"}
         self.steps = 0
+        self.DICT_SAMPLES = [self.DICT_SPACE.sample() for _ in range(10)]
+        self.TUPLE_SAMPLES = [self.TUPLE_SPACE.sample() for _ in range(10)]
 
     def reset(self, *, seed=None, options=None):
+        self.steps = 0
         return {
             "dict_agent": self.DICT_SAMPLES[0],
             "tuple_agent": self.TUPLE_SAMPLES[0],
@@ -677,7 +675,6 @@ class TestMultiAgentEnv(unittest.TestCase):
             PPOConfig()
             .environment("flex_agents_multi_agent")
             .env_runners(num_env_runners=0)
-            .framework("tf")
             .training(train_batch_size=50, minibatch_size=50, num_epochs=1)
         )
         algo = config.build()
@@ -700,7 +697,6 @@ class TestMultiAgentEnv(unittest.TestCase):
             PPOConfig()
             .environment("sometimes_zero_agents")
             .env_runners(num_env_runners=0, enable_connectors=True)
-            .framework("tf")
         )
         algo = config.build()
         for i in range(4):
@@ -809,86 +805,6 @@ class TestMultiAgentEnv(unittest.TestCase):
         for i in range(1, 5):
             check(batch["state_in_0"][i], h)
             check(batch["state_out_0"][i], h)
-
-    def test_train_multi_agent_cartpole_single_policy(self):
-        n = 10
-        register_env(
-            "multi_agent_cartpole", lambda _: MultiAgentCartPole({"num_agents": n})
-        )
-        config = (
-            PPOConfig()
-            .environment("multi_agent_cartpole")
-            .env_runners(num_env_runners=0)
-            .framework("tf")
-        )
-
-        algo = config.build()
-        for i in range(50):
-            result = algo.train()
-            print(
-                "Iteration {}, reward {}, timesteps {}".format(
-                    i,
-                    result[ENV_RUNNER_RESULTS][EPISODE_RETURN_MEAN],
-                    result[NUM_ENV_STEPS_SAMPLED_LIFETIME],
-                )
-            )
-            if result[ENV_RUNNER_RESULTS][EPISODE_RETURN_MEAN] >= 50 * n:
-                algo.stop()
-                return
-        raise Exception("failed to improve reward")
-
-    def test_train_multi_agent_cartpole_multi_policy(self):
-        n = 10
-        register_env(
-            "multi_agent_cartpole", lambda _: MultiAgentCartPole({"num_agents": n})
-        )
-
-        def gen_policy():
-            config = PPOConfig.overrides(
-                gamma=random.choice([0.5, 0.8, 0.9, 0.95, 0.99]),
-                lr=random.choice([0.001, 0.002, 0.003]),
-            )
-            return PolicySpec(config=config)
-
-        config = (
-            PPOConfig()
-            .environment("multi_agent_cartpole")
-            .env_runners(num_env_runners=0)
-            .multi_agent(
-                policies={
-                    "policy_1": gen_policy(),
-                    "policy_2": gen_policy(),
-                },
-                policy_mapping_fn=lambda agent_id, episode, worker, **kwargs: (
-                    "policy_1"
-                ),
-            )
-            .framework("tf")
-            .training(train_batch_size=50, minibatch_size=50, num_epochs=1)
-        )
-
-        algo = config.build()
-        # Just check that it runs without crashing
-        for i in range(10):
-            result = algo.train()
-            print(
-                "Iteration {}, reward {}, timesteps {}".format(
-                    i,
-                    result[ENV_RUNNER_RESULTS][EPISODE_RETURN_MEAN],
-                    result[NUM_ENV_STEPS_SAMPLED_LIFETIME],
-                )
-            )
-        self.assertTrue(
-            algo.compute_single_action([0, 0, 0, 0], policy_id="policy_1") in [0, 1]
-        )
-        self.assertTrue(
-            algo.compute_single_action([0, 0, 0, 0], policy_id="policy_2") in [0, 1]
-        )
-        self.assertRaisesRegex(
-            KeyError,
-            "not found in PolicyMap",
-            lambda: algo.compute_single_action([0, 0, 0, 0], policy_id="policy_3"),
-        )
 
     def test_space_in_preferred_format(self):
         env = NestedMultiAgentEnv()

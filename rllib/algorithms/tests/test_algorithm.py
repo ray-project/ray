@@ -452,7 +452,7 @@ class TestAlgorithm(unittest.TestCase):
         # configured exact number of episodes per evaluation.
         config = (
             dqn.DQNConfig()
-            .environment(env="CartPole-v1")
+            .environment("CartPole-v1")
             .evaluation(
                 evaluation_interval=2,
                 evaluation_duration=2,
