@@ -84,6 +84,25 @@ class BCConfig(MARWILConfig):
                 "Use `torch` instead."
             )
 
+    @override(AlgorithmConfig)
+    def build_learner_connector(
+        self,
+        input_observation_space,
+        input_action_space,
+        device=None,
+    ):
+        pipeline = super().build_learner_connector(
+            input_observation_space=input_observation_space,
+            input_action_space=input_action_space,
+            device=device,
+        )
+
+        # Remove unneeded connectors from the MARWIL connector pipeline.
+        pipeline.remove("AddOneTsToEpisodesAndTruncate")
+        pipeline.remove("GeneralAdvantageEstimation")
+
+        return pipeline
+
     @override(MARWILConfig)
     def validate(self) -> None:
         # Call super's validation method.

@@ -1,5 +1,5 @@
 from abc import abstractmethod
-from typing import Any, Dict, Type
+from typing import Any, Dict
 
 from ray.rllib.core import Columns
 from ray.rllib.core.models.base import ENCODER_OUT
@@ -7,7 +7,6 @@ from ray.rllib.core.models.configs import MLPHeadConfig
 from ray.rllib.core.models.specs.specs_dict import SpecDict
 from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.core.rl_module.torch.torch_rl_module import TorchRLModule
-from ray.rllib.models.distributions import Distribution
 from ray.rllib.utils.annotations import (
     override,
     OverrideToImplementCustomLogic_CallToSuperRecommended,
@@ -52,10 +51,6 @@ class AutoregressiveActionsRLM(RLModule):
         self.encoder = self.config.get_catalog().build_encoder(framework=self.framework)
 
         # Build the prior and posterior heads.
-        # Note, the action space is a Tuple space.
-        self.action_dist_cls = self.config.get_catalog().get_action_dist_cls(
-            self.framework
-        )
         # Note further, we neet to know the required input dimensions for
         # the partial distributions.
         self.required_output_dims = self.action_dist_cls.required_input_dim(
@@ -100,18 +95,6 @@ class AutoregressiveActionsRLM(RLModule):
             output_layer_activation="linear",
         )
         self.vf = vf_config.build(framework=self.framework)
-
-    @override(RLModule)
-    def get_train_action_dist_cls(self) -> Type[Distribution]:
-        return self.action_dist_cls
-
-    @override(RLModule)
-    def get_exploration_action_dist_cls(self) -> Type[Distribution]:
-        return self.action_dist_cls
-
-    @override(RLModule)
-    def get_inference_action_dist_cls(self) -> Type[Distribution]:
-        return self.action_dist_cls
 
     @override(RLModule)
     def output_specs_inference(self) -> SpecDict:

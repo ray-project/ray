@@ -957,6 +957,21 @@ ray_cc_test(
 )
 
 ray_cc_test(
+    name = "task_event_buffer_export_event_test",
+    size = "small",
+    srcs = ["src/ray/core_worker/test/task_event_buffer_export_event_test.cc"],
+    tags = [
+        "team:core",
+        "no_windows"
+    ],
+    deps = [
+        ":core_worker_lib",
+        ":ray_mock",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+ray_cc_test(
     name = "actor_creator_test",
     size = "small",
     srcs = ["src/ray/core_worker/test/actor_creator_test.cc"],
@@ -2510,6 +2525,7 @@ filegroup(
         "//src/ray/protobuf:runtime_env_agent_py_proto",
         "//src/ray/protobuf:runtime_env_common_py_proto",
         "//src/ray/protobuf:usage_py_proto",
+        "//src/ray/protobuf:export_event_py_proto",
     ],
 )
 
@@ -2603,6 +2619,9 @@ genrule(
         # of experimental.
         autoscale_files=(`ls python/ray/core/generated/instance_manager_pb2*.py`)
         sed -i -E 's/from ..experimental/from ./' "$${autoscale_files[@]}"
+        # Help the generated export api files to have the correct module
+        export_api_files=(`ls python/ray/core/generated/export*_pb2*.py`)
+        sed -i -E 's/from ..export_api/from ./' "$${export_api_files[@]}"
         echo "$${PWD}" > $@
     """,
     local = 1,

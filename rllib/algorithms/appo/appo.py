@@ -98,22 +98,19 @@ class APPOConfig(IMPALAConfig):
         self.use_kl_loss = False
         self.kl_coeff = 1.0
         self.kl_target = 0.01
+        # TODO (sven): Activate once v-trace sequences in non-RNN batch are solved.
+        #  If we switch this on right now, the shuffling would destroy the rollout
+        #  sequences (non-zero-padded!) needed in the batch for v-trace.
+        # self.shuffle_batch_per_epoch = True
 
         # Override some of IMPALAConfig's default values with APPO-specific values.
         self.num_env_runners = 2
         self.min_time_s_per_iteration = 10
-        self.num_gpus = 0
-        self.num_multi_gpu_tower_stacks = 1
-        self.minibatch_buffer_size = 1
-        self.num_sgd_iter = 1
         self.target_network_update_freq = 1
-        self.replay_proportion = 0.0
-        self.replay_buffer_num_slots = 100
         self.learner_queue_size = 16
         self.learner_queue_timeout = 300
         self.max_sample_requests_in_flight_per_worker = 2
         self.broadcast_interval = 1
-
         self.grad_clip = 40.0
         # Note: Only when using enable_rl_module_and_learner=True can the clipping mode
         # be configured by the user. On the old API stack, RLlib will always clip by
@@ -139,6 +136,12 @@ class APPOConfig(IMPALAConfig):
             "type": "StochasticSampling",
             # Add constructor kwargs here (if any).
         }
+
+        self.num_gpus = 0  # @OldAPIStack
+        self.num_multi_gpu_tower_stacks = 1  # @OldAPIStack
+        self.minibatch_buffer_size = 1  # @OldAPIStack
+        self.replay_proportion = 0.0  # @OldAPIStack
+        self.replay_buffer_num_slots = 100  # @OldAPIStack
 
         # __sphinx_doc_end__
         # fmt: on
@@ -185,13 +188,10 @@ class APPOConfig(IMPALAConfig):
             target_network_update_freq: The frequency to update the target policy and
                 tune the kl loss coefficients that are used during training. After
                 setting this parameter, the algorithm waits for at least
-                `target_network_update_freq * minibatch_size * num_sgd_iter` number of
-                samples to be trained on by the learner group before updating the target
-                networks and tuned the kl loss coefficients that are used during
-                training.
-                NOTE: This parameter is only applicable when using the Learner API
-                (enable_rl_module_and_learner=True).
-
+                `target_network_update_freq` number of environment samples to be trained
+                on before updating the target networks and tune the kl loss
+                coefficients. NOTE: This parameter is only applicable when using the
+                Learner API (enable_rl_module_and_learner=True).
 
         Returns:
             This updated AlgorithmConfig object.
@@ -292,7 +292,7 @@ class APPO(IMPALA):
 
         # Update the target network and the KL coefficient for the APPO-loss.
         # The target network update frequency is calculated automatically by the product
-        # of `num_sgd_iter` setting (usually 1 for APPO) and `minibatch_buffer_size`.
+        # of `num_epochs` setting (usually 1 for APPO) and `minibatch_buffer_size`.
         if self.config.enable_rl_module_and_learner:
             if NUM_TARGET_UPDATES in train_results:
                 self._counters[NUM_TARGET_UPDATES] += train_results[NUM_TARGET_UPDATES]
@@ -309,7 +309,7 @@ class APPO(IMPALA):
                 )
             ]
             target_update_freq = (
-                self.config.num_sgd_iter * self.config.minibatch_buffer_size
+                self.config.num_epochs * self.config.minibatch_buffer_size
             )
             if cur_ts - last_update > target_update_freq:
                 self._counters[NUM_TARGET_UPDATES] += 1

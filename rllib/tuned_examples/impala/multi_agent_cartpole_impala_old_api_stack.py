@@ -25,7 +25,7 @@ config = (
         policy_mapping_fn=(lambda agent_id, episode, worker, **kwargs: f"p{agent_id}"),
     )
     .training(
-        num_sgd_iter=1,
+        num_epochs=1,
         vf_loss_coeff=0.005,
         vtrace=True,
         model={

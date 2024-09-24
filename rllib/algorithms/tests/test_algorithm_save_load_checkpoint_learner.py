@@ -10,7 +10,7 @@ from ray.rllib.utils.test_utils import check
 
 
 algorithms_and_configs = {
-    "PPO": (PPOConfig().training(train_batch_size=2, sgd_minibatch_size=2))
+    "PPO": (PPOConfig().training(train_batch_size=2, minibatch_size=2))
 }
 
 

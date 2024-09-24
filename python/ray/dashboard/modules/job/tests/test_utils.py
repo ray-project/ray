@@ -12,6 +12,17 @@ from ray.dashboard.modules.job.utils import (
 )
 
 
+# Polyfill anext() function for Python 3.9 compatibility
+# May raise StopAsyncIteration.
+async def anext_polyfill(iterator):
+    return await iterator.__anext__()
+
+
+# Use the built-in anext() for Python 3.10+, otherwise use our polyfilled function
+if sys.version_info < (3, 10):
+    anext = anext_polyfill
+
+
 @pytest.fixture
 def tmp():
     with NamedTemporaryFile() as f:
@@ -80,32 +91,36 @@ class TestParseAndValidateRequest:
 
 
 class TestIterLine:
-    def test_invalid_type(self):
+    @pytest.mark.asyncio
+    async def test_invalid_type(self):
         with pytest.raises(TypeError, match="path must be a string"):
-            next(file_tail_iterator(1))
+            await anext(file_tail_iterator(1))
 
-    def test_file_not_created(self, tmp):
+    @pytest.mark.asyncio
+    async def test_file_not_created(self, tmp):
         it = file_tail_iterator(tmp)
-        assert next(it) is None
+        assert await anext(it) is None
         f = open(tmp, "w")
         f.write("hi\n")
         f.flush()
-        assert next(it) is not None
+        assert await anext(it) is not None
 
-    def test_wait_for_newline(self, tmp):
+    @pytest.mark.asyncio
+    async def test_wait_for_newline(self, tmp):
         it = file_tail_iterator(tmp)
-        assert next(it) is None
+        assert await anext(it) is None
 
         f = open(tmp, "w")
         f.write("no_newline_yet")
-        assert next(it) is None
+        assert await anext(it) is None
         f.write("\n")
         f.flush()
-        assert next(it) == ["no_newline_yet\n"]
+        assert await anext(it) == ["no_newline_yet\n"]
 
-    def test_multiple_lines(self, tmp):
+    @pytest.mark.asyncio
+    async def test_multiple_lines(self, tmp):
         it = file_tail_iterator(tmp)
-        assert next(it) is None
+        assert await anext(it) is None
 
         f = open(tmp, "w")
 
@@ -114,13 +129,14 @@ class TestIterLine:
             s = f"{i}\n"
             f.write(s)
             f.flush()
-            assert next(it) == [s]
+            assert await anext(it) == [s]
 
-        assert next(it) is None
+        assert await anext(it) is None
 
-    def test_batching(self, tmp):
+    @pytest.mark.asyncio
+    async def test_batching(self, tmp):
         it = file_tail_iterator(tmp)
-        assert next(it) is None
+        assert await anext(it) is None
 
         f = open(tmp, "w")
 
@@ -131,13 +147,14 @@ class TestIterLine:
                 f.write(f"{i}\n")
             f.flush()
 
-            assert next(it) == [f"{i}\n" for i in range(10)]
+            assert await anext(it) == [f"{i}\n" for i in range(10)]
 
-        assert next(it) is None
+        assert await anext(it) is None
 
-    def test_max_line_batching(self, tmp):
+    @pytest.mark.asyncio
+    async def test_max_line_batching(self, tmp):
         it = file_tail_iterator(tmp)
-        assert next(it) is None
+        assert await anext(it) is None
 
         f = open(tmp, "w")
 
@@ -148,17 +165,18 @@ class TestIterLine:
                 f.write(f"{i}\n")
             f.flush()
 
-            assert next(it) == [f"{i}\n" for i in range(10)]
-            assert next(it) == [f"{i}\n" for i in range(10, 20)]
-            assert next(it) == [f"{i}\n" for i in range(20, 30)]
-            assert next(it) == [f"{i}\n" for i in range(30, 40)]
-            assert next(it) == [f"{i}\n" for i in range(40, 50)]
+            assert await anext(it) == [f"{i}\n" for i in range(10)]
+            assert await anext(it) == [f"{i}\n" for i in range(10, 20)]
+            assert await anext(it) == [f"{i}\n" for i in range(20, 30)]
+            assert await anext(it) == [f"{i}\n" for i in range(30, 40)]
+            assert await anext(it) == [f"{i}\n" for i in range(40, 50)]
 
-        assert next(it) is None
+        assert await anext(it) is None
 
-    def test_max_char_batching(self, tmp):
+    @pytest.mark.asyncio
+    async def test_max_char_batching(self, tmp):
         it = file_tail_iterator(tmp)
-        assert next(it) is None
+        assert await anext(it) is None
 
         f = open(tmp, "w")
 
@@ -170,31 +188,32 @@ class TestIterLine:
         f.flush()
 
         # First line will come in a batch of its own
-        assert next(it) == [f"{'1234567890' * 6000}\n"]
+        assert await anext(it) == [f"{'1234567890' * 6000}\n"]
         # Other 4 lines will be batched together
         assert (
-            next(it)
+            await anext(it)
             == [
                 f"{'1234567890' * 500}\n",
             ]
             * 4
         )
-        assert next(it) is None
+        assert await anext(it) is None
 
-    def test_delete_file(self):
+    @pytest.mark.asyncio
+    async def test_delete_file(self):
         with NamedTemporaryFile() as tmp:
             it = file_tail_iterator(tmp.name)
             f = open(tmp.name, "w")
 
-            assert next(it) is None
+            assert await anext(it) is None
 
             f.write("hi\n")
             f.flush()
 
-            assert next(it) == ["hi\n"]
+            assert await anext(it) == ["hi\n"]
 
         # Calls should continue returning None after file deleted.
-        assert next(it) is None
+        assert await anext(it) is None
 
 
 if __name__ == "__main__":
