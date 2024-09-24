@@ -10,8 +10,10 @@ from typing import Any, AsyncIterator, Dict, Optional, Union
 
 import ray
 import ray._private.ray_constants as ray_constants
+from ray._private.async_utils import async_call_with_retry
 from ray._private.event.event_logger import get_event_logger
 from ray._private.gcs_utils import GcsAioClient
+from ray._private.ray_constants import env_integer
 from ray._private.utils import run_background_task
 from ray.actor import ActorHandle
 from ray.core.generated.event_pb2 import Event
@@ -39,6 +41,15 @@ from ray.util.scheduling_strategies import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+# Configures max number of retries for network transport failures, before
+# `JobSupervisor` actor will be deemed unreachable
+RAY_JOB_SUPERVISOR_PING_MAX_RETRIES = env_integer(
+    "RAY_JOB_SUPERVISOR_PING_MAX_RETRIES", 3
+)
+# Configures timeout threshold for `JobSupervisor` actor to respond back to `JobManager`
+RAY_JOB_SUPERVISOR_PING_TIMEOUT_S = env_integer("RAY_JOB_SUPERVISOR_PING_TIMEOUT_S", 5)
 
 
 def generate_job_id() -> str:
@@ -236,7 +247,7 @@ class JobManager:
                         is_alive = False
                         continue
 
-                await job_supervisor.ping.remote()
+                await self._ping_with_retries(job_supervisor)
 
                 await asyncio.sleep(self.JOB_MONITOR_LOOP_PERIOD_S)
             except Exception as e:
@@ -278,8 +289,9 @@ class JobManager:
                     )
                 else:
                     logger.warning(
-                        f"Job supervisor for job {job_id} failed unexpectedly: {e}."
+                        f"Failed to reach Job supervisor for job {job_id}: {e}."
                     )
+
                     job_error_message = f"Unexpected error occurred: {e}"
                     job_status = JobStatus.FAILED
                     await self._job_info_client.put_status(
@@ -309,6 +321,24 @@ class JobManager:
         # Kill the actor defensively to avoid leaking actors in unexpected error cases.
         if job_supervisor is not None:
             ray.kill(job_supervisor, no_restart=True)
+
+    @staticmethod
+    async def _ping_with_retries(job_supervisor: ActorHandle):
+        async def _ping():
+            # NOTE: We add a timeout to make our pings aren't hanging forever
+            await asyncio.wait_for(
+                job_supervisor.ping.remote(), RAY_JOB_SUPERVISOR_PING_TIMEOUT_S
+            )
+
+        return async_call_with_retry(
+            _ping,
+            exception_classes=(ray.exceptions.RpcError, asyncio.TimeoutError),
+            max_attempts=RAY_JOB_SUPERVISOR_PING_MAX_RETRIES + 1,
+            max_backoff_s=2,
+            on_exception=lambda e: logger.warning(
+                f"Encountered failure pinging '{job_supervisor}'", exc_info=e
+            ),
+        )
 
     def _handle_supervisor_startup(self, job_id: str, result: Optional[Exception]):
         """Handle the result of starting a job supervisor actor.
