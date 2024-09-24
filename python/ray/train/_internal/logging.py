@@ -60,8 +60,8 @@ class SessionFileHandler(logging.Handler):
     def emit(self, record):
         if self._handler is None:
             self._try_create_handler()
-        assert self._handler is not None
-        self._handler.emit(record)
+        if self._handler is not None:
+            self._handler.emit(record)
 
     def setFormatter(self, fmt: logging.Formatter) -> None:
         if self._handler is not None:

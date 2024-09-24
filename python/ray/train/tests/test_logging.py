@@ -9,7 +9,6 @@ import yaml
 import ray
 from ray.tests.conftest import *  # noqa
 from ray.train._internal.logging import configure_logging, get_log_directory
-from ray.train.constants import RAY_TRAIN_LOG_CONFIG_PATH_ENV
 
 
 @pytest.fixture(name="configure_logging")
@@ -22,7 +21,7 @@ def configure_logging_fixture():
 
 @pytest.fixture(name="reset_logging")
 def reset_logging_fixture():
-    from ray.data._internal.logging import reset_logging
+    from ray.train._internal.logging import reset_logging
 
     yield
     reset_logging()
@@ -30,11 +29,10 @@ def reset_logging_fixture():
 
 def test_messages_logged_to_file(configure_logging, reset_logging, shutdown_only):
     ray.init()
-    logger = logging.getLogger("ray.data.spam")
+    logger = logging.getLogger("ray.train.spam")
 
     logger.debug("ham")
-
-    log_path = os.path.join(get_log_directory(), "ray-data.log")
+    log_path = os.path.join(get_log_directory(), "ray-train.log")
     with open(log_path) as file:
         log_contents = file.read()
     assert "ham" in log_contents
@@ -96,13 +94,15 @@ def test_message_format(configure_logging, reset_logging, shutdown_only):
 
 def test_custom_config(reset_logging, monkeypatch, tmp_path):
     config_path = tmp_path / "logging.yaml"
-    monkeypatch.setenv(RAY_TRAIN_LOG_CONFIG_PATH_ENV, config_path)
+    monkeypatch.setattr(
+        ray.train._internal.logging, "RAY_TRAIN_LOG_CONFIG_PATH", config_path
+    )
 
     handlers = {
         "console": {"class": "logging.StreamHandler", "stream": "ext://sys.stdout"}
     }
     loggers = {
-        "ray.data": {
+        "ray.train": {
             "level": "CRITICAL",
             "handlers": ["console"],
         },
@@ -118,7 +118,7 @@ def test_custom_config(reset_logging, monkeypatch, tmp_path):
 
     configure_logging()
 
-    logger = logging.getLogger("ray.data")
+    logger = logging.getLogger("ray.train")
 
     assert logger.getEffectiveLevel() == logging.CRITICAL
     assert len(logger.handlers) == 1
