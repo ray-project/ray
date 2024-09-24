@@ -303,7 +303,8 @@ void GcsJobManager::HandleGetAllJobInfo(rpc::GetAllJobInfoRequest request,
           num_finished_tasks->fetch_add(job_count) + job_count;
       try_send_reply(updated_finished_tasks);
     } else {
-      for (const auto &data : reply->job_info_list()) {
+      for (size_t i = 0; i < reply->job_info_list_size(); i++) {
+        const auto &data = reply->job_info_list(i);
         auto job_id = JobID::FromBinary(data.job_id());
         WorkerID worker_id = WorkerID::FromBinary(data.driver_address().worker_id());
 
