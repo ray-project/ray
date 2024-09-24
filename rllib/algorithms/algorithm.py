@@ -3305,7 +3305,7 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
         # Add config to state so complete Algorithm can be reproduced w/o it.
         state = {
             "algorithm_class": type(self),
-            "config": self.config,
+            "config": self.config.get_state(),
         }
 
         if hasattr(self, "env_runner_group"):

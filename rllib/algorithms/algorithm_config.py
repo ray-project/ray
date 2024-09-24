@@ -787,6 +787,7 @@ class AlgorithmConfig(_Config):
         state["class"] = type(self)
         state.pop("algo_class")
         state.pop("_is_frozen")
+        state = {k: v for k, v in state.items() if v != DEPRECATED_VALUE}
 
         # Convert `policies` (PolicySpecs?) into dict.
         # Convert policies dict such that each policy ID maps to a old-style.
@@ -800,6 +801,8 @@ class AlgorithmConfig(_Config):
                 else:
                     policies_dict[policy_id] = policy_spec
             state["policies"] = policies_dict
+
+        # state = self._serialize_dict(state)
 
         return state
 

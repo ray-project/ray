@@ -712,6 +712,7 @@ def convert_to_msgpack_checkpoint(
         this is the same as `msgpack_checkpoint_dir`.
     """
     from ray.rllib.algorithms import Algorithm
+    from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
     from ray.rllib.core.rl_module import validate_module_id
 
     # Try to import msgpack and msgpack_numpy.
@@ -725,7 +726,10 @@ def convert_to_msgpack_checkpoint(
     # Serialize the algorithm class.
     state["algorithm_class"] = serialize_type(state["algorithm_class"])
     # Serialize the algorithm's config object.
-    state["config"] = state["config"].serialize()
+    if not isinstance(state["config"], dict):
+        state["config"] = state["config"].serialize()
+    else:
+        state["config"] = AlgorithmConfig._serialize_dict(state["config"])
 
     # Extract policy states from worker state (Policies get their own
     # checkpoint sub-dirs).
