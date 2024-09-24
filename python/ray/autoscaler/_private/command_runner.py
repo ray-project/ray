@@ -11,6 +11,7 @@ from typing import Dict, List
 
 import click
 
+from ray._private.ray_constants import DEFAULT_OBJECT_STORE_MAX_MEMORY_BYTES
 from ray.autoscaler._private.cli_logger import cf, cli_logger
 from ray.autoscaler._private.constants import (
     AUTOSCALER_NODE_SSH_INTERVAL_S,
@@ -903,8 +904,9 @@ class DockerCommandRunner(CommandRunnerInterface):
             )
             available_memory_bytes = available_memory * 1024
             # Overestimate SHM size by 10%
-            shm_size = (
-                available_memory_bytes * DEFAULT_OBJECT_STORE_MEMORY_PROPORTION * 1.1
+            shm_size = min(
+                (available_memory_bytes * DEFAULT_OBJECT_STORE_MEMORY_PROPORTION * 1.1),
+                DEFAULT_OBJECT_STORE_MAX_MEMORY_BYTES,
             )
             return run_options + [f"--shm-size='{shm_size}b'"]
         except Exception as e:
