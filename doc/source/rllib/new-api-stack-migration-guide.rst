@@ -3,7 +3,7 @@
 .. include:: /_includes/rllib/new_api_stack.rst
 
 
-.. _new-api-stack-migration-guide:
+.. _rllib-new-api-stack-migration-guide:
 
 
 New API Stack Migration Guide
@@ -37,7 +37,8 @@ in your `AlgorithmConfig` object like so:
         # Switch both the new API stack flags to True (both False by default).
         # This enables the use of
         # a) RLModule (replaces ModelV2) and Learner (replaces Policy)
-        # b) the correct EnvRunner (single-agent vs multi-agent) and ConnectorV2 pipelines.
+        # b) the correct EnvRunner (replaces RolloutWorker) and
+        #    ConnectorV2 pipelines (replaces old stack Connectors).
         .api_stack(
             enable_rl_module_and_learner=True,
             enable_env_runner_and_connector_v2=True,
@@ -89,7 +90,16 @@ RLModule on one or more GPUs on the Learner side, do the following:
         num_gpus_per_learner=1,
     )
 
+.. hint::
+
+    The `num_learners` setting determines how many remote :py:class:`~ray.rllib.core.learner.learner.Learner`
+    workers there will be in your Algorithm's :py:class:`~ray.rllib.core.learner.learner_group.LearnerGroup`.
+    If you set this to 0, your LearnerGroup will only contain a **local** Learner that runs on the main
+    process (and shares the compute resources with that process, usually 1 CPU).
+    For asynchronous algorithms like IMPALA or APPO, this setting should therefore always be >0.
+
 `See here for an example on how to train with fractional GPUs <https://github.com/ray-project/ray/blob/master/rllib/examples/gpus/fractional_gpus_per_learner.py>`__.
+Also note that for fractional GPUs, you should always set `num_learners` to 0 or 1
 
 If you don't have GPUs available, but want to learn with more than one
 :py:class:`~ray.rllib.core.learner.learner.Learner` in a multi-**CPU** fashion, you can do:
@@ -150,7 +160,7 @@ or specify (and configure) a custom :py:class:`~ray.rllib.core.rl_module.rl_modu
 the use of the `config.rl_module()` method.
 
 If you have an old stack `ModelV2` and would like to migrate the whole NN logic over to the
-new stack, :ref:`see here for more details on how to do so <ModelV2 to RLModule>`.
+new stack, :ref:`see here for more details on how to do so <rllib-modelv2-to-rlmodule>`.
 
 
 Learning Rate- and Coefficient Schedules
@@ -192,6 +202,11 @@ then suddenly drops to 0 (after the 1Mth timestep), do:
         ]
     )
 
+In case you need to configure a more complex learning rate scheduling behavior or chain different schedulers
+into a pipeline, you can use the still experimental `_torch_lr_schedule_classes` config property.
+`See this example script here for how to do this <https://github.com/ray-project/ray/blob/master/rllib/examples/learners/ppo_with_torch_lr_schedulers.py>`__.
+Note that this only covers learning rate schedules, but not any other coefficients.
+
 
 AlgorithmConfig.learners()
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -203,7 +218,7 @@ It allows you to specify ..
 1) the number of `Learner` workers through `.learners(num_learners=...)`.
 1) the resources per learner; use `.learners(num_gpus_per_learner=1)` for GPU training and `.learners(num_gpus_per_learner=0)` for CPU training.
 1) the custom Learner class you want to use (`example on how to do this here <https://github.com/ray-project/ray/blob/master/rllib/examples/learners/custom_loss_fn_simple.py>`__)
-1) a config dict you would like to pass to your custom learner: `.learners(learner_config_dict={...})`
+1) a config dict you would like to set for your custom learner: `.learners(learner_config_dict={...})`. Note that every `Learner` has access to the entire `AlgorithmConfig` object through `self.config`, but setting the `learner_config_dict` is a convenient way to avoid having to create an entirely new `AlgorithmConfig` subclass only to support a few extra settings for your custom `Learner` class.
 
 
 AlgorithmConfig.env_runners()
@@ -211,7 +226,8 @@ AlgorithmConfig.env_runners()
 
 .. testcode::
 
-    # RolloutWorkers have been re-written to EnvRunners:
+    # RolloutWorkers have been replace by EnvRunners. EnvRunners are more efficient and offer
+    # a more separation-of-concerns design and cleaner code.
     config.env_runners(
         num_env_runners=2,  # use this instead of `num_workers`
     )
@@ -229,12 +245,19 @@ AlgorithmConfig.env_runners()
         sampler_perf_stats_ema_coef=None,
     )
 
+.. hint::
+
+    If you want to IDE-debug what's going on inside your `EnvRunners`, set `num_env_runners=0`
+    and make sure you are running your experiment locally and not through Ray Tune.
+    In order to do this with any of RLlib's `example <https://github.com/ray-project/ray/tree/master/rllib/examples>`__
+    or `tuned_example <https://github.com/ray-project/ray/tree/master/rllib/tuned_examples>`__ scripts,
+    simply set the command line args: `--no-tune --num-env-runners=0`.
 
 In case you were using the `observation_filter` setting, perform the following translations:
 
 .. testcode::
 
-    # For `observation_filter="NoFilter"`, do not set anything in particular, this is the default.
+    # For `observation_filter="NoFilter"`, do not set anything in particular. This is the default.
 
     # For `observation_filter="MeanStdFilter"`, do:
     from ray.rllib.connectors.env_to_module import MeanStdFilter
@@ -247,11 +270,11 @@ In case you were using the `observation_filter` setting, perform the following t
 AlgorithmConfig.exploration()
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Only the `explore` setting remains. It determines, whether the :py:meth:`~ray.rllib.core.rl_module.rl_module.RLModule._forward_exploration` (in case `explore=True`)
+Only the `explore` setting remains supported on the new stack.
+It determines, whether the :py:meth:`~ray.rllib.core.rl_module.rl_module.RLModule._forward_exploration` (in case `explore=True`)
 or the :py:meth:`~ray.rllib.core.rl_module.rl_module.RLModule._forward_inference` (in case `explore=False`) method
 is called on your :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule`
 inside the :py:class:`~ray.rllib.env.env_runner.EnvRunner`.
-
 
 .. testcode::
 
@@ -346,7 +369,7 @@ pipelines now.
 The :py:class:`~ray.rllib.connectors.connector_v2.ConnectorV2` documentation is work in progress and will be linked to from here shortly.
 
 
-.. _modelv2-to-rlmodule:
+.. _rllib-modelv2-to-rlmodule:
 
 ModelV2 to RLModule
 -------------------

@@ -11,7 +11,7 @@ RLlib's New API Stack
 
     This section describes in detail what the new API stack is and why you should migrate to it
     (in case you have old API stack custom code).
-    :ref:`See here for a comprehensive migration guide<new-api-stack-migration-guide>`.
+    :ref:`See here for a comprehensive migration guide <rllib-new-api-stack-migration-guide>`.
 
 
 Overview
@@ -63,14 +63,13 @@ The following select algorithms and setups are available.
      - Yes
 
 
-Over the next few months, the RLlib Team will continue to document, test, benchmark, bug-fix, and
-further polish these new APIs as well as rollout more and more algorithms (with a focus on offline RL)
-that you can run in the new stack.
+Over the next few months, the RLlib Team continues to document, test, benchmark, bug-fix, and
+further polish these new APIs as well as rollout more algorithms
+that you can run in the new stack (with a focus on offline RL).
 
-Keep in mind that due to its alpha nature, when using the new stack, you might run into
-issues and encounter instabilities.
-Also, rest assured that you are able to continue using your custom classes and setups
-on the old API stack for the foreseeable future (beyond Ray 3.0).
+Also know that you are able to continue using your custom classes and setups
+on the old API stack for the foreseeable future (beyond Ray 3.0), however, we do recommend you
+to migrate to the new stack :ref:`using the migration guide here <rllib-new-api-stack-migration-guide>`
 
 
 What is the New API Stack?
@@ -151,6 +150,6 @@ This table compares features and design choices between the new and old API stac
 How to Use the New API Stack?
 -----------------------------
 
-:ref:`See here for our complete and comprehensive migration guide<new-api-stack-migration-guide>`
+:ref:`See here for our complete and comprehensive migration guide <rllib-new-api-stack-migration-guide>`
 describing in detail which steps you have to take and which changes you have to apply to your
 custom RLlib classes in order to migrate from the old- to the new stack.
