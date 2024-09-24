@@ -247,11 +247,14 @@ void GcsJobManager::HandleGetAllJobInfo(rpc::GetAllJobInfoRequest request,
     // entrypoint script calls ray.init() multiple times).
     std::unordered_map<std::string, std::vector<int>> job_data_key_to_indices;
 
-    // Create a shared counter for the number of jobs processed
-    std::shared_ptr<int> num_processed_jobs = std::make_shared<int>(0);
+    // Create a shared counter for the number of jobs processed.
+    // This is written in internal_kv_'s thread and read in the main thread.
+    std::shared_ptr<std::atomic<size_t>> num_processed_jobs =
+        std::make_shared<std::atomic<size_t>>(0);
 
     // Create a shared boolean flag for the internal KV callback completion
-    std::shared_ptr<bool> kv_callback_done = std::make_shared<bool>(false);
+    std::shared_ptr<std::atomic<bool>> kv_callback_done =
+        std::make_shared<std::atomic<bool>>(false);
 
     // Function to send the reply once all jobs have been processed and KV callback
     // completed
