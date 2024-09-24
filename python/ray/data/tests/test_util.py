@@ -11,7 +11,7 @@ from ray.data._internal.memory_tracing import (
     trace_allocation,
     trace_deallocation,
 )
-from ray.data._internal.remote_fn import cached_remote_fn, _make_hashable
+from ray.data._internal.remote_fn import _make_hashable, cached_remote_fn
 from ray.data._internal.util import (
     _check_pyarrow_version,
     _split_list,
@@ -49,25 +49,26 @@ def test_make_hashable():
 
     hashable_args = _make_hashable(valid_args)
 
-    assert hash(hashable_args) == hash((
-        ('dict', ((0, 0), (1.2, 1.2))),
-        ('float', 1.2),
-        ('int', 0),
-        ('list', (0, 1, 2, 3, 4, 5, 6, 7, 8, 9)),
-        ('str', 'foo'),
-        ('tuple', (0, 1, 2)),
-    ))
+    assert hash(hashable_args) == hash(
+        (
+            ("dict", ((0, 0), (1.2, 1.2))),
+            ("float", 1.2),
+            ("int", 0),
+            ("list", (0, 1, 2, 3, 4, 5, 6, 7, 8, 9)),
+            ("str", "foo"),
+            ("tuple", (0, 1, 2)),
+        )
+    )
 
     # Invalid case # 1: can't mix up key types
-    invalid_args = {
-        0: 1,
-        "bar": "baz"
-    }
+    invalid_args = {0: 1, "bar": "baz"}
 
     with pytest.raises(TypeError) as exc_info:
         _make_hashable(invalid_args)
 
-    assert str(exc_info.value) == "'<' not supported between instances of 'str' and 'int'"
+    assert (
+        str(exc_info.value) == "'<' not supported between instances of 'str' and 'int'"
+    )
 
     # Invalid case # 2: can't use anything but dict, list, tuple or primitive types
     class Foo:
@@ -80,7 +81,10 @@ def test_make_hashable():
     with pytest.raises(ValueError) as exc_info:
         _make_hashable(invalid_args)
 
-    assert str(exc_info.value) == "Type <class 'test_util.test_make_hashable.<locals>.Foo'> is not hashable"
+    assert (
+        str(exc_info.value)
+        == "Type <class 'test_util.test_make_hashable.<locals>.Foo'> is not hashable"
+    )
 
 
 def test_check_pyarrow_version_bounds(unsupported_pyarrow_version):
