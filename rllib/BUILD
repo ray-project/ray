@@ -1032,7 +1032,7 @@ py_test(
     name = "test_vtrace_old_api_stack",
     tags = ["team:rllib", "algorithms_dir"],
     size = "small",
-    srcs = ["algorithms/impala/tests/test_vtrace.py"]
+    srcs = ["algorithms/impala/tests/test_vtrace_old_api_stack.py"]
 )
 py_test(
     name = "test_vtrace_v2",
@@ -1079,12 +1079,11 @@ py_test(
 
 # PPO
 py_test(
-    name = "test_ppo_with_env_runner",
+    name = "test_ppo",
     tags = ["team:rllib", "algorithms_dir"],
     size = "medium",
-    srcs = ["algorithms/ppo/tests/test_ppo_with_env_runner.py"]
+    srcs = ["algorithms/ppo/tests/test_ppo.py"]
 )
-
 py_test(
     name = "test_ppo_rl_module",
     tags = ["team:rllib", "algorithms_dir"],
@@ -1102,7 +1101,7 @@ py_test(
     name = "test_ppo_old_api_stack",
     tags = ["team:rllib", "algorithms_dir"],
     size = "large",
-    srcs = ["algorithms/ppo/tests/test_ppo.py"]
+    srcs = ["algorithms/ppo/tests/test_ppo_old_api_stack.py"]
 )
 
 # SAC
