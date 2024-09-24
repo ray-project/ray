@@ -135,6 +135,47 @@ def _dir_travel(
         excludes.pop()
 
 
+def _hash_single(
+    filepath: Path,
+    relative_path: Path,
+    logger: Optional[logging.Logger] = default_logger,
+) -> bytes:
+    """Helper function to create hash of a single file or directory."""
+
+    BUF_SIZE = 4096 * 1024
+
+    sha1 = hashlib.sha1()
+    sha1.update(str(filepath.relative_to(relative_path)).encode())
+    if not filepath.is_dir():
+        try:
+            f = filepath.open("rb")
+        except Exception as e:
+            logger.debug(
+                f"Skipping contents of file {filepath} when calculating package hash "
+                f"because the file could not be opened: {e}"
+            )
+        else:
+            try:
+                data = f.read(BUF_SIZE)
+                while len(data) != 0:
+                    sha1.update(data)
+                    data = f.read(BUF_SIZE)
+            finally:
+                f.close()
+
+    return sha1.digest()
+
+
+def _hash_file(
+    filepath: Path,
+    relative_path: Path,
+    logger: Optional[logging.Logger] = default_logger,
+) -> bytes:
+    """Helper function to create hash of a single file."""
+    file_hash = _hash_single(filepath, relative_path, logger=logger)
+    return _xor_bytes(file_hash, b"0" * 8)
+
+
 def _hash_directory(
     root: Path,
     relative_path: Path,
@@ -147,30 +188,11 @@ def _hash_directory(
     hash(file_name, file_content) to create a hash value.
     """
     hash_val = b"0" * 8
-    BUF_SIZE = 4096 * 1024
 
     def handler(path: Path):
-        sha1 = hashlib.sha1()
-        sha1.update(str(path.relative_to(relative_path)).encode())
-        if not path.is_dir():
-            try:
-                f = path.open("rb")
-            except Exception as e:
-                logger.debug(
-                    f"Skipping contents of file {path} when calculating package hash "
-                    f"because the file could not be opened: {e}"
-                )
-            else:
-                try:
-                    data = f.read(BUF_SIZE)
-                    while len(data) != 0:
-                        sha1.update(data)
-                        data = f.read(BUF_SIZE)
-                finally:
-                    f.close()
-
+        file_hash = _hash_single(path, relative_path, logger=logger)
         nonlocal hash_val
-        hash_val = _xor_bytes(hash_val, sha1.digest())
+        hash_val = _xor_bytes(hash_val, file_hash)
 
     excludes = [] if excludes is None else [excludes]
     _dir_travel(root, excludes, handler, logger=logger)
@@ -378,16 +400,16 @@ def _get_local_path(base_directory: str, pkg_uri: str) -> str:
     return os.path.join(base_directory, pkg_name)
 
 
-def _zip_directory(
-    directory: str,
+def _zip_files(
+    filepath: str,
     excludes: List[str],
     output_path: str,
     include_parent_dir: bool = False,
     logger: Optional[logging.Logger] = default_logger,
 ) -> None:
-    """Zip the target directory and write it to the output_path.
+    """Zip the target file or directory and write it to the output_path.
 
-    directory: The directory to zip.
+    filepath: The file or directory to zip.
     excludes (List(str)): The directories or file to be excluded.
     output_path: The output path for the zip file.
     include_parent_dir: If true, includes the top-level directory as a
@@ -396,7 +418,10 @@ def _zip_directory(
     pkg_file = Path(output_path).absolute()
     with ZipFile(pkg_file, "w", strict_timestamps=False) as zip_handler:
         # Put all files in the directory into the zip file.
-        dir_path = Path(directory).absolute()
+        file_path = Path(filepath).absolute()
+        dir_path = file_path
+        if file_path.is_file():
+            dir_path = file_path.parent
 
         def handler(path: Path):
             # Pack this path if it's an empty directory or it's a file.
@@ -415,8 +440,8 @@ def _zip_directory(
                     to_path = dir_path.name / to_path
                 zip_handler.write(path, to_path)
 
-        excludes = [_get_excludes(dir_path, excludes)]
-        _dir_travel(dir_path, excludes, handler, logger=logger)
+        excludes = [_get_excludes(file_path, excludes)]
+        _dir_travel(file_path, excludes, handler, logger=logger)
 
 
 def package_exists(pkg_uri: str) -> bool:
@@ -449,6 +474,38 @@ def get_uri_for_package(package: Path) -> str:
         return "{protocol}://{pkg_name}.zip".format(
             protocol=Protocol.GCS.value, pkg_name=RAY_PKG_PREFIX + hash_val
         )
+
+
+def get_uri_for_file(file: str) -> str:
+    """Get a content-addressable URI from a file's content.
+
+    This function will generate the name of the package by the file.
+    The final package name is: _ray_pkg_<HASH_VAL>.zip of this package.
+    e.g., _ray_pkg_029f88d5ecc55e1e4d64fc6e388fd103.zip
+
+    Examples:
+
+        >>> get_uri_for_file("/my_file.py")  # doctest: +SKIP
+        _ray_pkg_af2734982a741.zip
+
+    Args:
+        file: The file.
+
+    Returns:
+        URI (str)
+
+    Raises:
+        ValueError if the file doesn't exist.
+    """
+    filepath = Path(file).absolute()
+    if not filepath.exists() or not filepath.is_file():
+        raise ValueError(f"File {filepath} must be an existing file")
+
+    hash_val = _hash_file(filepath, filepath.parent)
+
+    return "{protocol}://{pkg_name}.zip".format(
+        protocol=Protocol.GCS.value, pkg_name=RAY_PKG_PREFIX + hash_val.hex()
+    )
 
 
 def get_uri_for_directory(directory: str, excludes: Optional[List[str]] = None) -> str:
@@ -529,10 +586,10 @@ def create_package(
 
     if not target_path.exists():
         logger.info(f"Creating a file package for local directory '{directory}'.")
-        _zip_directory(
+        _zip_files(
             directory,
             excludes,
-            target_path,
+            str(target_path),
             include_parent_dir=include_parent_dir,
             logger=logger,
         )
