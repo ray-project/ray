@@ -68,7 +68,7 @@ async def test_submission_job_export_events(call_ray_start, tmp_path):  # noqa: 
     )
 
     # Verify export events are written
-    event_dir = f"{tmp_path}/events"
+    event_dir = f"{tmp_path}/export_events"
     assert os.path.isdir(event_dir)
     event_file = f"{event_dir}/event_EXPORT_SUBMISSION_JOB.log"
     assert os.path.isfile(event_file)
