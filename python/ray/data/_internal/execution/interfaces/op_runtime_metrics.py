@@ -20,7 +20,7 @@ _METRIC_FIELD_DESCRIPTION_KEY = "__metric_description"
 _METRIC_FIELD_METRICS_GROUP_KEY = "__metric_metrics_group"
 _METRIC_FIELD_IS_MAP_ONLY_KEY = "__metric_is_map_only"
 
-_METRICS: List["Metric"] = []
+_METRICS: List["MetricDefinition"] = []
 
 
 class MetricsGroup(Enum):
@@ -32,7 +32,7 @@ class MetricsGroup(Enum):
 
 
 @dataclass(frozen=True)
-class Metric:
+class MetricDefinition:
     """Metadata for a metric.
 
     Args:
@@ -47,6 +47,8 @@ class Metric:
     name: str
     description: str
     metrics_group: str
+    # TODO: Let's refactor this parameter so it isn't tightly coupled with a specific
+    # operator type (MapOperator).
     map_only: bool = False
 
 
@@ -78,7 +80,7 @@ def metric_property(
     """A property that represents a metric."""
 
     def wrap(func):
-        metric = Metric(
+        metric = MetricDefinition(
             name=func.__name__,
             description=description,
             metrics_group=metrics_group,
@@ -111,7 +113,7 @@ class OpRuntimesMetricsMeta(type):
             # metadata, then create a metric from the field metadata and add it to the
             # list of metrics. See also the 'metric_field' function.
             if isinstance(value, Field) and value.metadata.get(_IS_FIELD_METRIC_KEY):
-                metric = Metric(
+                metric = MetricDefinition(
                     name=name,
                     description=value.metadata[_METRIC_FIELD_DESCRIPTION_KEY],
                     metrics_group=value.metadata[_METRIC_FIELD_METRICS_GROUP_KEY],
@@ -327,7 +329,7 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
         return self._extra_metrics
 
     @classmethod
-    def get_metrics(self) -> List[Metric]:
+    def get_metrics(self) -> List[MetricDefinition]:
         return list(_METRICS)
 
     def as_dict(self):
