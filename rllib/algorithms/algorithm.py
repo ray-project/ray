@@ -3446,7 +3446,8 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
 
         with open(checkpoint_info["state_file"], "rb") as f:
             if msgpack is not None:
-                state = msgpack.load(f)
+                data = f.read()
+                state = msgpack.unpackb(data, raw=False)
             else:
                 state = pickle.load(f)
 

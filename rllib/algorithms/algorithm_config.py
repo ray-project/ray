@@ -4570,6 +4570,10 @@ class AlgorithmConfig(_Config):
     @staticmethod
     def _serialize_dict(config):
         # Serialize classes to classpaths:
+        if "callbacks_class" in config:
+            config["callbacks"] = config.pop("callbacks_class")
+        if "class" in config:
+            config["class"] = serialize_type(config["class"])
         config["callbacks"] = serialize_type(config["callbacks"])
         config["sample_collector"] = serialize_type(config["sample_collector"])
         if isinstance(config["env"], type):
