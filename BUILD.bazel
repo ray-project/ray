@@ -2055,6 +2055,7 @@ ray_cc_library(
         ":ray_common",
         "//src/ray/util",
         "@boost//:asio",
+        "@zstd//:libzstd",
     ],
 )
 

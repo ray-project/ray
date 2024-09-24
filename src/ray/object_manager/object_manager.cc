@@ -19,6 +19,7 @@
 #include "ray/common/common_protocol.h"
 #include "ray/stats/metric_defs.h"
 #include "ray/util/util.h"
+#include "zstd.h"
 
 namespace asio = boost::asio;
 
@@ -505,6 +506,22 @@ void ObjectManager::PushObjectInternal(const ObjectID &object_id,
       });
 }
 
+std::string CompressZstd(const std::string &data) {
+  // Compress the data.
+  const size_t max_size = ZSTD_compressBound(data.size());
+  std::string buffer(max_size, 0);
+  size_t actual_size =
+      ZSTD_compress(buffer.data(), max_size, data.data(), data.size(), 1);
+
+  if (ZSTD_isError(actual_size)) {
+    RAY_LOG(ERROR) << "ZSTD_compress error: " << ZSTD_getErrorName(actual_size);
+    return std::string();
+  }
+
+  buffer.resize(actual_size);
+  return buffer;
+}
+
 void ObjectManager::SendObjectChunk(const UniqueID &push_id,
                                     const ObjectID &object_id,
                                     const NodeID &node_id,
@@ -533,7 +550,8 @@ void ObjectManager::SendObjectChunk(const UniqueID &push_id,
     on_complete(Status::IOError("Failed to read spilled object"));
     return;
   }
-  push_request.set_data(std::move(optional_chunk.value()));
+
+  push_request.set_data(CompressZstd(optional_chunk.value()));
   if (from_disk) {
     num_bytes_pushed_from_disk_ += push_request.data().length();
   } else {
@@ -558,6 +576,19 @@ void ObjectManager::SendObjectChunk(const UniqueID &push_id,
   rpc_client->Push(push_request, callback);
 }
 
+std::string DecompressZstd(const std::string &data) {
+  const size_t size = ZSTD_getFrameContentSize(data.data(), data.size());
+  std::string buffer(size, '\0');
+  auto res = ZSTD_decompress(buffer.data(), size, data.data(), data.size());
+
+  if (ZSTD_isError(res)) {
+    RAY_LOG(ERROR) << "ZSTD_decompress error: " << ZSTD_getErrorName(res);
+    return std::string();
+  }
+
+  return buffer;
+}
+
 /// Implementation of ObjectManagerServiceHandler
 void ObjectManager::HandlePush(rpc::PushRequest request,
                                rpc::PushReply *reply,
@@ -572,8 +603,13 @@ void ObjectManager::HandlePush(rpc::PushRequest request,
   const rpc::Address &owner_address = request.owner_address();
   const std::string &data = request.data();
 
-  bool success = ReceiveObjectChunk(
-      node_id, object_id, owner_address, data_size, metadata_size, chunk_index, data);
+  bool success = ReceiveObjectChunk(node_id,
+                                    object_id,
+                                    owner_address,
+                                    data_size,
+                                    metadata_size,
+                                    chunk_index,
+                                    DecompressZstd(data));
   num_chunks_received_total_++;
   if (!success) {
     num_chunks_received_total_failed_++;
