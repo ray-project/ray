@@ -1,4 +1,4 @@
-from typing import Any
+from typing import Any, Dict, List
 
 import ray
 
@@ -24,8 +24,8 @@ def cached_remote_fn(fn: Any, **ray_remote_args) -> Any:
     #   - Sort all KV-pairs by the keys
     #   - Convert sorted list into tuple
     #   - Compute hash of the resulting tuple
-    arg_pairs = tuple(sorted(ray_remote_args.items(), key=lambda t: t[0]))
-    args_hash = hash(arg_pairs)
+    hashable_args = _make_hashable(ray_remote_args)
+    args_hash = hash(hashable_args)
 
     if (fn, args_hash) not in CACHED_FUNCTIONS:
         default_ray_remote_args = {
@@ -42,6 +42,18 @@ def cached_remote_fn(fn: Any, **ray_remote_args) -> Any:
         CACHED_FUNCTIONS[(fn, args_hash)] = ray.remote(**ray_remote_args)(fn)
 
     return CACHED_FUNCTIONS[(fn, args_hash)]
+
+
+def _make_hashable(obj):
+    if isinstance(obj, (List, tuple)):
+        return tuple([_make_hashable(o) for o in obj])
+    elif isinstance(obj, Dict):
+        converted = [(_make_hashable(k), _make_hashable(v)) for k, v in obj.items()]
+        return tuple(sorted(converted, key=lambda t: t[0]))
+    elif isinstance(obj, (bool, int, float, str, bytes, type(None))):
+        return obj
+    else:
+        raise ValueError(f"Type {type(obj)} is not hashable")
 
 
 def _add_system_error_to_retry_exceptions(ray_remote_args) -> None:
