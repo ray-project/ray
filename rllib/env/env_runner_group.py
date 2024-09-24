@@ -179,7 +179,7 @@ class EnvRunnerGroup:
         # Starting remote workers from ID 1 to avoid conflicts.
         self._worker_manager = FaultTolerantActorManager(
             max_remote_requests_in_flight_per_actor=(
-                config["max_requests_in_flight_per_sampler_worker"]
+                config["max_requests_in_flight_per_env_runner"]
             ),
             init_id=1,
         )
