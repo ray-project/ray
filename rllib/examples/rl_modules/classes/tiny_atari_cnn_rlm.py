@@ -2,14 +2,12 @@ from typing import Any, Dict
 
 from ray.rllib.core.columns import Columns
 from ray.rllib.core.rl_module.apis.value_function_api import ValueFunctionAPI
-from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.core.rl_module.torch import TorchRLModule
 from ray.rllib.models.torch.misc import (
     normc_initializer,
     same_padding,
     valid_padding,
 )
-from ray.rllib.models.torch.torch_distributions import TorchCategorical
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.typing import TensorType
@@ -163,21 +161,3 @@ class TinyAtariCNN(TorchRLModule, ValueFunctionAPI):
             torch.squeeze(features, dim=[-1, -2]),
             torch.squeeze(logits, dim=[-1, -2]),
         )
-
-    # TODO (sven): In order for this RLModule to work with PPO, we must define
-    #  our own `get_..._action_dist_cls()` methods. This would become more obvious,
-    #  if we simply subclassed the `PPOTorchRLModule` directly here (which we didn't do
-    #  for simplicity and to keep some generality). We might even get rid of algo-
-    #  specific RLModule subclasses altogether in the future and replace them
-    #  by mere algo-specific APIs (w/o any actual implementations).
-    @override(RLModule)
-    def get_train_action_dist_cls(self):
-        return TorchCategorical
-
-    @override(RLModule)
-    def get_exploration_action_dist_cls(self):
-        return TorchCategorical
-
-    @override(RLModule)
-    def get_inference_action_dist_cls(self):
-        return TorchCategorical
