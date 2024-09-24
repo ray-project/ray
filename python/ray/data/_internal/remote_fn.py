@@ -1,4 +1,4 @@
-from typing import Any, Dict, List
+from typing import Any, Dict, Hashable, List
 
 import ray
 
@@ -50,7 +50,7 @@ def _make_hashable(obj):
     elif isinstance(obj, Dict):
         converted = [(_make_hashable(k), _make_hashable(v)) for k, v in obj.items()]
         return tuple(sorted(converted, key=lambda t: t[0]))
-    elif isinstance(obj, (bool, int, float, str, bytes, type(None))):
+    elif isinstance(obj, Hashable):
         return obj
     else:
         raise ValueError(f"Type {type(obj)} is not hashable")

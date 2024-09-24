@@ -2,6 +2,7 @@ from typing import Any, Dict, Optional
 
 import numpy as np
 import pytest
+from typing_extensions import Hashable
 
 import ray
 from ray.data._internal.datasource.parquet_datasource import ParquetDatasource
@@ -45,6 +46,7 @@ def test_make_hashable():
         },
         "list": list(range(10)),
         "tuple": tuple(range(3)),
+        "type": Hashable,
     }
 
     hashable_args = _make_hashable(valid_args)
@@ -57,6 +59,7 @@ def test_make_hashable():
             ("list", (0, 1, 2, 3, 4, 5, 6, 7, 8, 9)),
             ("str", "foo"),
             ("tuple", (0, 1, 2)),
+            ("type", Hashable),
         )
     )
 
@@ -68,22 +71,6 @@ def test_make_hashable():
 
     assert (
         str(exc_info.value) == "'<' not supported between instances of 'str' and 'int'"
-    )
-
-    # Invalid case # 2: can't use anything but dict, list, tuple or primitive types
-    class Foo:
-        bar: 0
-
-    invalid_args = {
-        0: Foo(),
-    }
-
-    with pytest.raises(ValueError) as exc_info:
-        _make_hashable(invalid_args)
-
-    assert (
-        str(exc_info.value)
-        == "Type <class 'test_util.test_make_hashable.<locals>.Foo'> is not hashable"
     )
 
 
