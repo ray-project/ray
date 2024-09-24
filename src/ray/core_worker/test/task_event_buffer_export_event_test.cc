@@ -138,11 +138,8 @@ TEST_F(TaskEventTestWriteExport, TestWriteTaskExportEvents) {
 
   std::vector<SourceTypeVariant> source_types = {
       rpc::ExportEvent_SourceType::ExportEvent_SourceType_EXPORT_TASK};
-  RayEventInit_(source_types,
-                absl::flat_hash_map<std::string, std::string>(),
-                log_dir_,
-                "warning",
-                false);
+  ray::RayEventLog::Instance().Init(
+      source_types, absl::flat_hash_map<std::string, std::string>(), log_dir_);
 
   std::vector<std::unique_ptr<TaskEvent>> task_events;
   for (const auto &task_id : task_ids) {
@@ -168,6 +165,8 @@ TEST_F(TaskEventTestWriteExport, TestWriteTaskExportEvents) {
   std::vector<std::string> vc;
   for (int i = 0; i * batch_size < max_export_events_on_buffer; i++) {
     task_event_buffer_->FlushEvents(true);
+    // ray::RayEventLog::Instance().FlushExportEvents();
+    FlushExportEventsInTest(ray::RayEventLog::Instance());
     ReadContentFromFile(
         vc, log_dir_ + "/events/event_EXPORT_TASK_" + std::to_string(getpid()) + ".log");
     EXPECT_EQ((int)vc.size(), (i + 1) * batch_size);

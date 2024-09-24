@@ -225,6 +225,11 @@ void EventManager::AddExportReporter(rpc::ExportEvent_SourceType source_type,
   export_log_reporter_map_.emplace(source_type, reporter);
 }
 
+absl::flat_hash_map<rpc::ExportEvent_SourceType, std::shared_ptr<LogEventReporter>>
+    &EventManager::GetExportLogReporterMap() {
+  return export_log_reporter_map_;
+}
+
 void EventManager::ClearReporters() {
   reporter_map_.clear();
   export_log_reporter_map_.clear();
@@ -464,11 +469,38 @@ void RayExportEvent::SendEvent() {
 
 static absl::once_flag init_once_;
 
-void RayEventInit_(const std::vector<SourceTypeVariant> source_types,
-                   const absl::flat_hash_map<std::string, std::string> &custom_fields,
-                   const std::string &log_dir,
-                   const std::string &event_level,
-                   bool emit_event_to_log_file) {
+///
+/// RayEventLog
+///
+
+RayEventLog &RayEventLog::Instance() {
+  static RayEventLog instance_;
+  return instance_;
+}
+
+void RayEventLog::Init(const std::vector<SourceTypeVariant> source_types,
+                       const absl::flat_hash_map<std::string, std::string> &custom_fields,
+                       const std::string &log_dir,
+                       const std::string &event_level,
+                       bool emit_event_to_log_file) {
+  absl::call_once(
+      init_once_,
+      [this,
+       &source_types,
+       &custom_fields,
+       &log_dir,
+       &event_level,
+       emit_event_to_log_file]() {
+        Init_(source_types, custom_fields, log_dir, event_level, emit_event_to_log_file);
+      });
+}
+
+void RayEventLog::Init_(
+    const std::vector<SourceTypeVariant> source_types,
+    const absl::flat_hash_map<std::string, std::string> &custom_fields,
+    const std::string &log_dir,
+    const std::string &event_level,
+    bool emit_event_to_log_file) {
   for (const auto &source_type : source_types) {
     std::string source_type_name = "";
     auto event_dir = std::filesystem::path(log_dir) / std::filesystem::path("events");
@@ -485,7 +517,8 @@ void RayEventInit_(const std::vector<SourceTypeVariant> source_types,
       source_type_name = ExportEvent_SourceType_Name(*export_event_source_type_ptr);
       ray::EventManager::Instance().AddExportReporter(
           *export_event_source_type_ptr,
-          std::make_shared<ray::LogEventReporter>(source_type, event_dir.string()));
+          std::make_shared<ray::LogEventReporter>(
+              source_type, event_dir.string(), false));
     }
     RAY_LOG(INFO) << "Ray Event initialized for " << source_type_name;
   }
@@ -493,17 +526,36 @@ void RayEventInit_(const std::vector<SourceTypeVariant> source_types,
   SetEmitEventToLogFile(emit_event_to_log_file);
 }
 
-void RayEventInit(const std::vector<SourceTypeVariant> source_types,
-                  const absl::flat_hash_map<std::string, std::string> &custom_fields,
-                  const std::string &log_dir,
-                  const std::string &event_level,
-                  bool emit_event_to_log_file) {
-  absl::call_once(
-      init_once_,
-      [&source_types, &custom_fields, &log_dir, &event_level, emit_event_to_log_file]() {
-        RayEventInit_(
-            source_types, custom_fields, log_dir, event_level, emit_event_to_log_file);
-      });
+void RayEventLog::StartPeriodicFlushThread() {
+  stop_periodic_flush_flag_ = false;
+  periodic_flush_thread_ = std::thread(&RayEventLog::PeriodicFlush, this);
+}
+
+void RayEventLog::PeriodicFlush() {
+  std::unique_lock<std::mutex> lock(periodic_flush_mtx_);
+  while (!stop_periodic_flush_flag_) {
+    periodic_flush_cv_.wait_for(lock, std::chrono::seconds(5));
+    FlushExportEvents();
+  }
+}
+
+void RayEventLog::FlushExportEvents() {
+  absl::flat_hash_map<rpc::ExportEvent_SourceType, std::shared_ptr<LogEventReporter>>
+      &export_log_reporter_map = ray::EventManager::Instance().GetExportLogReporterMap();
+  for (const auto &element : export_log_reporter_map) {
+    (element.second)->Flush();
+  }
+}
+
+void RayEventLog::StopPeriodicFlushThread() {
+  if (periodic_flush_thread_.joinable()) {
+    {
+      std::lock_guard<std::mutex> lock(periodic_flush_mtx_);
+      stop_periodic_flush_flag_ = true;
+    }
+    periodic_flush_cv_.notify_one();
+    periodic_flush_thread_.join();
+  }
 }
 
 }  // namespace ray

@@ -472,7 +472,7 @@ TEST_F(EventTest, TestWithField) {
 
 TEST_F(EventTest, TestExportEvent) {
   std::vector<SourceTypeVariant> source_types = {rpc::ExportEvent_SourceType::ExportEvent_SourceType_EXPORT_TASK, rpc::Event_SourceType::Event_SourceType_RAYLET};
-  RayEventInit_(source_types, absl::flat_hash_map<std::string, std::string>(), log_dir, "warning", false);
+  ray::RayEventLog::Instance().Init_(source_types, absl::flat_hash_map<std::string, std::string>(), log_dir, "warning", false);
 
   std::shared_ptr<rpc::ExportTaskEventData> task_event_ptr = std::make_shared<rpc::ExportTaskEventData>();
   task_event_ptr->set_task_id("task_id0");
@@ -491,6 +491,7 @@ TEST_F(EventTest, TestExportEvent) {
   RAY_EVENT(WARNING, "label") << "test warning";
 
   std::vector<std::string> vc;
+  ray::RayEventLog::Instance().FlushExportEvents();
   ReadContentFromFile(vc, log_dir + "/events/event_EXPORT_TASK_" + std::to_string(getpid()) + ".log");
 
   EXPECT_EQ((int)vc.size(), 1);
@@ -559,7 +560,7 @@ TEST_F(EventTest, TestRayEventInit) {
   custom_fields.emplace("job_id", "job 1");
   custom_fields.emplace("task_id", "task 1");
   const std::vector<SourceTypeVariant> source_types = {rpc::Event_SourceType::Event_SourceType_RAYLET};
-  RayEventInit_(source_types, custom_fields, log_dir, "warning", false);
+  ray::RayEventLog::Instance().Init_(source_types, custom_fields, log_dir, "warning", false);
 
   RAY_EVENT(FATAL, "label") << "test error event";
 
