@@ -471,11 +471,12 @@ class TestAlgorithm(unittest.TestCase):
         algo.stop()
 
         # Eval results are not available at step 0.
-        # But step 3 should still have it, even though no eval was
-        # run during that step.
         self.assertTrue(EVALUATION_RESULTS not in r0)
+        # But step 3 should still have it, even though no eval was
+        # run during that step (b/c the new API stack always attaches eval
+        # results, after the very first evaluation).
         self.assertTrue(EVALUATION_RESULTS in r1)
-        self.assertTrue(EVALUATION_RESULTS not in r2)
+        self.assertTrue(EVALUATION_RESULTS in r2)
         self.assertTrue(EVALUATION_RESULTS in r3)
 
     def test_evaluation_wo_evaluation_env_runner_group(self):
