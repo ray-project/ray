@@ -41,6 +41,9 @@ Status NormalTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
 
     bool keep_executing = true;
     {
+      RAY_LOG(INFO) << "[SubmitTask]begin sleep....";
+      std::this_thread::sleep_for(std::chrono::milliseconds(20000));
+      RAY_LOG(INFO) << "[SubmitTask]end sleep...";
       absl::MutexLock lock(&mu_);
       if (cancelled_tasks_.find(task_spec.TaskId()) != cancelled_tasks_.end()) {
         cancelled_tasks_.erase(task_spec.TaskId());
@@ -711,10 +714,15 @@ Status NormalTaskSubmitter::CancelTask(TaskSpecification task_spec,
   std::shared_ptr<rpc::CoreWorkerClientInterface> client = nullptr;
   {
     absl::MutexLock lock(&mu_);
-    if (cancelled_tasks_.find(task_spec.TaskId()) != cancelled_tasks_.end() ||
-        !task_finisher_->MarkTaskCanceled(task_spec.TaskId())) {
+    if (cancelled_tasks_.find(task_spec.TaskId()) != cancelled_tasks_.end()) {
       return Status::OK();
     }
+  }
+  if (!task_finisher_->MarkTaskCanceled(task_spec.TaskId())) {
+    return Status::OK();
+  }
+  {
+    absl::ReleasableMutexLock lock(&mu_);
 
     auto &scheduling_key_entry = scheduling_key_entries_[scheduling_key];
     auto &scheduling_tasks = scheduling_key_entry.task_queue;
@@ -728,6 +736,7 @@ Status NormalTaskSubmitter::CancelTask(TaskSpecification task_spec,
           if (scheduling_tasks.empty()) {
             CancelWorkerLeaseIfNeeded(scheduling_key);
           }
+          lock.Release();
           RAY_UNUSED(task_finisher_->FailPendingTask(task_spec.TaskId(),
                                                      rpc::ErrorType::TASK_CANCELLED));
           return Status::OK();
