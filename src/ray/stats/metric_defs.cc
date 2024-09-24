@@ -67,14 +67,20 @@ DEFINE_stats(actors,
              (),
              ray::stats::GAUGE);
 
-/// Track job by state, including RUNNING, FINISHED.
-DEFINE_stats(jobs,
-             "Current number of jobs currently in a particular state.",
-             // State: latest state for the particular job.
-             // JobId: ID in hex format for this job.
-             ("State", "JobId"),
+/// Job related stats.
+DEFINE_stats(running_jobs,
+             "Number of jobs currently running.",
+             /*tags=*/(),
              /*buckets=*/(),
              ray::stats::GAUGE);
+
+DEFINE_stats(finished_jobs,
+             "New finished jobs number.",
+             // TODO(hjiang): Consider adding task completion status, for example, failed,
+             // completed in tags.
+             /*tags=*/(),
+             /*buckets=*/(),
+             ray::stats::COUNT);
 
 /// Logical resource usage reported by raylets.
 DEFINE_stats(resources,

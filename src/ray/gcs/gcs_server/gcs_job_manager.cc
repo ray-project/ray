@@ -20,19 +20,16 @@
 namespace ray {
 namespace gcs {
 
-namespace {
-// Job state string used for metrics upload.
-constexpr const char *const kRunningJobState = "RUNNING";
-constexpr const char *const kFinishedJobState = "FINISHED";
-}  // namespace
-
 void GcsJobManager::Initialize(const GcsInitData &gcs_init_data) {
-  for (auto &pair : gcs_init_data.Jobs()) {
-    const auto &job_id = pair.first;
-    const auto &job_table_data = pair.second;
+  for (const auto &[job_id, job_table_data] : gcs_init_data.Jobs()) {
     cached_job_configs_[job_id] =
         std::make_shared<rpc::JobConfig>(job_table_data.config());
     function_manager_.AddJobReference(job_id);
+
+    // Recover [running_job_ids_] from storage.
+    if (!job_table_data.is_dead()) {
+      running_job_ids_.insert(job_id);
+    }
   }
 }
 
@@ -122,8 +119,6 @@ void GcsJobManager::HandleAddJob(rpc::AddJobRequest request,
   } else {
     const bool insert_suc = running_job_ids_.insert(job_id).second;
     RAY_CHECK(insert_suc) << job_id.Hex() << " already inserted.";
-    ray::stats::STATS_jobs.Record(running_job_ids_.size(),
-                                  {{"State", kRunningJobState}, {"JobId", job_id.Hex()}});
   }
 }
 
@@ -156,8 +151,6 @@ void GcsJobManager::MarkJobAsFinished(rpc::JobTableData job_table_data,
     auto iter = running_job_ids_.find(job_id);
     RAY_CHECK(iter != running_job_ids_.end());
     running_job_ids_.erase(iter);
-    ray::stats::STATS_jobs.Record(
-        running_job_ids_.size(), {{"State", kFinishedJobState}, {"JobId", job_id.Hex()}});
   }
 }
 
@@ -184,6 +177,8 @@ void GcsJobManager::HandleMarkJobFinished(rpc::MarkJobFinishedRequest request,
       });
   if (!status.ok()) {
     send_reply(status);
+  } else {
+    ++new_finished_jobs_;
   }
 }
 
@@ -438,6 +433,12 @@ void GcsJobManager::OnNodeDead(const NodeID &node_id) {
 
   // make all jobs in current node to finished
   RAY_CHECK_OK(gcs_table_storage_->JobTable().GetAll(on_done));
+}
+
+void GcsJobManager::RecordMetrics() {
+  ray::stats::STATS_running_jobs.Record(running_job_ids_.size());
+  ray::stats::STATS_finished_jobs.Record(new_finished_jobs_);
+  new_finished_jobs_ = 0;
 }
 
 }  // namespace gcs

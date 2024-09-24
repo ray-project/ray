@@ -14,6 +14,7 @@
 
 #pragma once
 
+#include <cstdint>
 #include <functional>
 #include <memory>
 #include <string>
@@ -95,6 +96,11 @@ class GcsJobManager : public rpc::JobInfoHandler {
 
   void WriteDriverJobExportEvent(rpc::JobTableData job_data) const;
 
+  /// Record metrics.
+  /// For job manager, (1) running jobs count gauge and (2) new finished jobs (whether
+  /// succeed or fail) will be reported periodically.
+  void RecordMetrics();
+
  private:
   void ClearJobInfos(const rpc::JobTableData &job_data);
 
@@ -103,6 +109,10 @@ class GcsJobManager : public rpc::JobInfoHandler {
 
   // Job ids, which are running.
   absl::flat_hash_set<JobID> running_job_ids_;
+
+  // Used to report metrics, which indicates the number of jobs finished between two
+  // metrics reporting events.
+  int32_t new_finished_jobs_ = 0;
 
   std::shared_ptr<GcsTableStorage> gcs_table_storage_;
   std::shared_ptr<GcsPublisher> gcs_publisher_;
