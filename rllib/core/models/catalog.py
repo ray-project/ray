@@ -439,6 +439,9 @@ class Catalog:
         Returns:
             The distribution class for the given action space.
         """
+        # If no framework provided, return no action distribution class (None).
+        if framework is None:
+            return None
         # This method is structured in two steps:
         # Firstly, construct a dictionary containing the available distribution classes.
         # Secondly, return the correct distribution class for the given action space.

@@ -134,7 +134,9 @@ Status PlasmaObjectHeader::WriteAcquire(
   RAY_CHECK(sem.header_sem);
 
   RAY_RETURN_NOT_OK(TryToAcquireSemaphore(sem.object_sem, timeout_point));
-  RAY_RETURN_NOT_OK(TryToAcquireSemaphore(sem.header_sem, timeout_point));
+  // Header is locked only for a short time, so we don't have to apply the
+  // same `timeout_point`.
+  RAY_RETURN_NOT_OK(TryToAcquireSemaphore(sem.header_sem));
 
   RAY_CHECK_EQ(num_read_acquires_remaining, 0UL);
   RAY_CHECK_EQ(num_read_releases_remaining, 0UL);
@@ -150,6 +152,8 @@ Status PlasmaObjectHeader::WriteAcquire(
 }
 
 Status PlasmaObjectHeader::WriteRelease(Semaphores &sem) {
+  // Header is locked only for a short time, so we don't have to apply the
+  // same `timeout_point`.
   RAY_RETURN_NOT_OK(TryToAcquireSemaphore(sem.header_sem));
 
   is_sealed = true;
@@ -169,7 +173,9 @@ Status PlasmaObjectHeader::ReadAcquire(
     const std::unique_ptr<std::chrono::steady_clock::time_point> &timeout_point) {
   RAY_CHECK(sem.header_sem);
 
-  RAY_RETURN_NOT_OK(TryToAcquireSemaphore(sem.header_sem, timeout_point));
+  // Header is locked only for a short time, so we don't have to apply the
+  // same `timeout_point`.
+  RAY_RETURN_NOT_OK(TryToAcquireSemaphore(sem.header_sem));
 
   // TODO(jhumphri): Wouldn't a futex be better here than polling?
   // Wait for the requested version (or a more recent one) to be sealed.
@@ -181,6 +187,8 @@ Status PlasmaObjectHeader::ReadAcquire(
       return Status::ChannelTimeoutError(absl::StrCat(
           "Timed out waiting for object available to read. ObjectID: ", object_id.Hex()));
     }
+    // Unlike other header, this is used for busy waiting, so we need to apply
+    // timeout_point.
     RAY_RETURN_NOT_OK(TryToAcquireSemaphore(sem.header_sem, timeout_point));
   }
 

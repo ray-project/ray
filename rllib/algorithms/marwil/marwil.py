@@ -257,7 +257,7 @@ class MARWILConfig(AlgorithmConfig):
             deprecation_warning(
                 old=r"MARWIL used to have off_policy_estimation_methods "
                 "is and wis by default. This has"
-                "changed to off_policy_estimation_methods: \{\}."
+                r"changed to off_policy_estimation_methods: \{\}."
                 "If you want to use an off-policy estimator, specify it in"
                 ".evaluation(off_policy_estimation_methods=...)",
                 error=False,
@@ -388,12 +388,12 @@ class MARWIL(Algorithm):
         """
         # Implement logic using RLModule and Learner API.
         # TODO (simon): Take care of sampler metrics: right
-        # now all rewards are `nan`, which possibly confuses
-        # the user that sth. is not right, although it is as
-        # we do not step the env.
+        #  now all rewards are `nan`, which possibly confuses
+        #  the user that sth. is not right, although it is as
+        #  we do not step the env.
         with self.metrics.log_time((TIMERS, OFFLINE_SAMPLING_TIMER)):
             # Sampling from offline data.
-            batch = self.offline_data.sample(
+            batch_or_iterator = self.offline_data.sample(
                 num_samples=self.config.train_batch_size_per_learner,
                 num_shards=self.config.num_learners,
                 return_iterator=self.config.num_learners > 1,
@@ -402,9 +402,9 @@ class MARWIL(Algorithm):
         with self.metrics.log_time((TIMERS, LEARNER_UPDATE_TIMER)):
             # Updating the policy.
             # TODO (simon, sven): Check, if we should execute directly s.th. like
-            # update_from_iterator.
-            learner_results = self.learner_group.update_from_batch(
-                batch,
+            #  `LearnerGroup.update_from_iterator()`.
+            learner_results = self.learner_group._update(
+                batch=batch_or_iterator,
                 minibatch_size=self.config.train_batch_size_per_learner,
                 num_iters=self.config.dataset_num_iters_per_learner,
             )

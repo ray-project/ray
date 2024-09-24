@@ -95,7 +95,7 @@ if __name__ == "__main__":
         .training(
             model={"vf_share_layers": True},
             vf_loss_coeff=0.01,
-            num_sgd_iter=6,
+            num_epochs=6,
         )
         # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
         .resources(num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0")))

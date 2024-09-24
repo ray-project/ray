@@ -17,15 +17,16 @@ from ray.rllib.core.columns import Columns
 from ray.rllib.core.models.specs.specs_dict import SpecDict
 from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.policy.eager_tf_policy import _convert_to_tf
-from ray.rllib.utils.annotations import ExperimentalAPI, override
+from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.numpy import one_hot
+from ray.util.annotations import DeveloperAPI
 
 
 _, tf, _ = try_import_tf()
 
 
-@ExperimentalAPI
+@DeveloperAPI(stability="alpha")
 class DreamerV3RLModule(RLModule, abc.ABC):
     @override(RLModule)
     def setup(self):

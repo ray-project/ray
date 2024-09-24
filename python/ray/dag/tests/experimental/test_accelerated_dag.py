@@ -114,6 +114,11 @@ class Actor:
     def return_two_from_three(self, x):
         return x, x + 1, x + 2
 
+    @ray.method(num_returns=2)
+    def return_two_but_raise_exception(self, x):
+        raise RuntimeError
+        return 1, 2
+
     def get_events(self):
         return getattr(self, "__ray_adag_events", [])
 
@@ -2122,6 +2127,7 @@ def test_driver_and_actor_as_readers(ray_start_cluster):
         dag.experimental_compile()
 
 
+@pytest.mark.skip("Currently buffer size is set to 1 because of regression.")
 @pytest.mark.parametrize("temporary_change_timeout", [1], indirect=True)
 def test_buffered_inputs(shutdown_only, temporary_change_timeout):
     ray.init()
@@ -2446,6 +2452,45 @@ def test_torch_tensor_type(shutdown_only):
     replica = Replica.remote()
     ref = replica.call.remote(5)
     assert torch.equal(ray.get(ref), torch.tensor([5, 5, 5, 5, 5]))
+
+
+def test_multi_arg_exception(shutdown_only):
+    a = Actor.remote(0)
+    with InputNode() as i:
+        o1, o2 = a.return_two_but_raise_exception.bind(i)
+        dag = MultiOutputNode([o1, o2])
+
+    compiled_dag = dag.experimental_compile()
+    for _ in range(3):
+        x, y = compiled_dag.execute(1)
+        with pytest.raises(RuntimeError):
+            ray.get(x)
+        with pytest.raises(RuntimeError):
+            ray.get(y)
+
+    compiled_dag.teardown()
+
+
+def test_multi_arg_exception_async(shutdown_only):
+    a = Actor.remote(0)
+    with InputNode() as i:
+        o1, o2 = a.return_two_but_raise_exception.bind(i)
+        dag = MultiOutputNode([o1, o2])
+
+    compiled_dag = dag.experimental_compile(enable_asyncio=True)
+
+    async def main():
+        for _ in range(3):
+            x, y = await compiled_dag.execute_async(1)
+            with pytest.raises(RuntimeError):
+                await x
+            with pytest.raises(RuntimeError):
+                await y
+
+    loop = get_or_create_event_loop()
+    loop.run_until_complete(main())
+
+    compiled_dag.teardown()
 
 
 if __name__ == "__main__":

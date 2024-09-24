@@ -49,9 +49,9 @@ class TestLSTMs(unittest.TestCase):
                     "lstm_use_prev_action": True,
                     "lstm_use_prev_reward": True,
                 },
-                num_sgd_iter=1,
+                num_epochs=1,
                 train_batch_size=200,
-                sgd_minibatch_size=50,
+                minibatch_size=50,
             )
             .env_runners(
                 rollout_fragment_length=100,
