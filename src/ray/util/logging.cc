@@ -301,7 +301,7 @@ void RayLog::InitLogFormat() {
   log_format_json_ = false;
   log_format_pattern_ = kLogFormatTextPattern;
 
-  const char *var_value = std::getenv("RAY_BACKEND_LOG_JSON");
+  const char *var_value = std::getenv("RAY_BACKEND_LOG_JSON1");
   if (var_value != nullptr) {
     std::string data = var_value;
     if (data == "1") {
