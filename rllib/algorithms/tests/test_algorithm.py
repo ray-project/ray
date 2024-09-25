@@ -33,7 +33,7 @@ from ray.tune import register_env
 class TestAlgorithm(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        ray.init()
+        ray.init(local_mode=True)
         register_env("multi_cart", lambda cfg: MultiAgentCartPole(cfg))
 
     @classmethod
