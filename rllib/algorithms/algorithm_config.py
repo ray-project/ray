@@ -451,6 +451,8 @@ class AlgorithmConfig(_Config):
         self.input_filesystem_kwargs = {}
         self.input_compress_columns = [Columns.OBS, Columns.NEXT_OBS]
         self.input_spaces_jsonable = True
+        self.materialize_data = False
+        self.materialize_mapped_data = True
         self.map_batches_kwargs = {}
         self.iter_batches_kwargs = {}
         self.prelearner_class = None
@@ -633,12 +635,7 @@ class AlgorithmConfig(_Config):
             policies_dict = {}
             for policy_id, policy_spec in config.pop("policies").items():
                 if isinstance(policy_spec, PolicySpec):
-                    policies_dict[policy_id] = (
-                        policy_spec.policy_class,
-                        policy_spec.observation_space,
-                        policy_spec.action_space,
-                        policy_spec.config,
-                    )
+                    policies_dict[policy_id] = policy_spec.get_state()
                 else:
                     policies_dict[policy_id] = policy_spec
             config["policies"] = policies_dict
@@ -780,6 +777,56 @@ class AlgorithmConfig(_Config):
         self.evaluation(**eval_call)
 
         return self
+
+    def get_state(self) -> Dict[str, Any]:
+        """Returns a dict state that can be pickled.
+
+        Returns:
+            A dictionary containing all attributes of the instance.
+        """
+
+        state = self.__dict__.copy()
+        state["class"] = type(self)
+        state.pop("algo_class")
+        state.pop("_is_frozen")
+        state = {k: v for k, v in state.items() if v != DEPRECATED_VALUE}
+
+        # Convert `policies` (PolicySpecs?) into dict.
+        # Convert policies dict such that each policy ID maps to a old-style.
+        # 4-tuple: class, obs-, and action space, config.
+        # TODO (simon, sven): Remove when deprecating old stack.
+        if "policies" in state and isinstance(state["policies"], dict):
+            policies_dict = {}
+            for policy_id, policy_spec in state.pop("policies").items():
+                if isinstance(policy_spec, PolicySpec):
+                    policies_dict[policy_id] = policy_spec.get_state()
+                else:
+                    policies_dict[policy_id] = policy_spec
+            state["policies"] = policies_dict
+
+        # state = self._serialize_dict(state)
+
+        return state
+
+    @classmethod
+    def from_state(cls, state: Dict[str, Any]) -> "AlgorithmConfig":
+        """Returns an instance constructed from the state.
+
+        Args:
+            cls: An `AlgorithmConfig` class.
+            state: A dictionary containing the state of an `AlgorithmConfig`.
+                See `AlgorithmConfig.get_state` for creating a state.
+
+        Returns:
+            An `AlgorithmConfig` instance with attributes from the `state`.
+        """
+
+        ctor = state["class"]
+        config = ctor()
+
+        config.__dict__.update(state)
+
+        return config
 
     # TODO(sven): We might want to have a `deserialize` method as well. Right now,
     #  simply using the from_dict() API works in this same (deserializing) manner,
@@ -2467,6 +2514,8 @@ class AlgorithmConfig(_Config):
         input_filesystem: Optional[str] = NotProvided,
         input_filesystem_kwargs: Optional[Dict] = NotProvided,
         input_compress_columns: Optional[List[str]] = NotProvided,
+        materialize_data: Optional[bool] = NotProvided,
+        materialize_mapped_data: Optional[bool] = NotProvided,
         map_batches_kwargs: Optional[Dict] = NotProvided,
         iter_batches_kwargs: Optional[Dict] = NotProvided,
         prelearner_class: Optional[Type] = NotProvided,
@@ -2556,6 +2605,31 @@ class AlgorithmConfig(_Config):
                 `MultiAgentEpisode` not supported, yet). Note,
                 `rllib.core.columns.Columns.OBS` will also try to decompress
                 `rllib.core.columns.Columns.NEXT_OBS`.
+            materialize_data: Whether the raw data should be materialized in memory.
+                This boosts performance, but requires enough memory to avoid an OOM, so
+                make sure that your cluster has the resources available. For very large
+                data you might want to switch to streaming mode by setting this to
+                `False` (default). If your algorithm does not need the RLModule in the
+                Learner connector pipeline or all (learner) connectors are stateless
+                you should consider setting `materialize_mapped_data` to `True`
+                instead (and set `materialize_data` to `False`). If your data does not
+                fit into memory and your Learner connector pipeline requires an RLModule
+                or is stateful, set both `materialize_data` and
+                `materialize_mapped_data` to `False`.
+            materialize_mapped_data: Whether the data should be materialized after
+                running it through the Learner connector pipeline (i.e. after running
+                the `OfflinePreLearner`). This improves performance, but should only be
+                used in case the (learner) connector pipeline does not require an
+                RLModule and the (learner) connector pipeline is stateless. For example,
+                MARWIL's Learner connector pipeline requires the RLModule for value
+                function predictions and training batches would become stale after some
+                iterations causing learning degradation or divergence. Also ensure that
+                your cluster has enough memory available to avoid an OOM. If set to
+                `True` (True), make sure that `materialize_data` is set to `False` to
+                avoid materialization of two datasets. If your data does not fit into
+                memory and your Learner connector pipeline requires an RLModule or is
+                stateful, set both `materialize_data` and `materialize_mapped_data` to
+                `False`.
             map_batches_kwargs: Keyword args for the `map_batches` method. These will be
                 passed into the `ray.data.Dataset.map_batches` method when sampling
                 without checking. If no arguments passed in the default arguments
@@ -2658,6 +2732,10 @@ class AlgorithmConfig(_Config):
             self.input_filesystem_kwargs = input_filesystem_kwargs
         if input_compress_columns is not NotProvided:
             self.input_compress_columns = input_compress_columns
+        if materialize_data is not NotProvided:
+            self.materialize_data = materialize_data
+        if materialize_mapped_data is not NotProvided:
+            self.materialize_mapped_data = materialize_mapped_data
         if map_batches_kwargs is not NotProvided:
             self.map_batches_kwargs = map_batches_kwargs
         if iter_batches_kwargs is not NotProvided:
@@ -4525,6 +4603,10 @@ class AlgorithmConfig(_Config):
     @staticmethod
     def _serialize_dict(config):
         # Serialize classes to classpaths:
+        if "callbacks_class" in config:
+            config["callbacks"] = config.pop("callbacks_class")
+        if "class" in config:
+            config["class"] = serialize_type(config["class"])
         config["callbacks"] = serialize_type(config["callbacks"])
         config["sample_collector"] = serialize_type(config["sample_collector"])
         if isinstance(config["env"], type):

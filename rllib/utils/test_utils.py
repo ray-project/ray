@@ -205,6 +205,12 @@ def add_rllib_example_script_args(
         "parallel.",
     )
     parser.add_argument(
+        "--max-concurrent-trials",
+        type=int,
+        default=None,
+        help="How many (tune.Tuner) trials to run concurrently.",
+    )
+    parser.add_argument(
         "--verbose",
         type=int,
         default=2,
@@ -1523,6 +1529,7 @@ def run_rllib_example_script_experiment(
         ),
         tune_config=tune.TuneConfig(
             num_samples=args.num_samples,
+            max_concurrent_trials=args.max_concurrent_trials,
             scheduler=scheduler,
         ),
     ).fit()
