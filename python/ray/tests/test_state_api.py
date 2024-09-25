@@ -1924,8 +1924,7 @@ def test_cli_apis_sanity_check(ray_start_cluster):
     wait_for_condition(
         lambda: verify_output(
             ray_list, ["runtime-envs"], ["Stats:", "Table:", "RUNTIME_ENV"]
-        ),
-        timeout=20
+        )
     )
 
     # Test get node by id
