@@ -44,7 +44,7 @@ Push the vLLM image to your Artifact registry:
 ```sh
 docker push LOCATION-docker.pkg.dev/PROJECT-ID/REPOSITORY/IMAGE
 ```
-## Step 3: Create a Kubernetes Secret for Hugging Face credentials
+## Step 4: Create a Kubernetes Secret for Hugging Face credentials
 
 This example uses meta-llama/Meta-Llama-3-70B, a gated Hugging Face model that requires access to be granted before use. Create a Hugging Face account, if you don't already have one, and follow the steps on the [model page](https://huggingface.co/meta-llama/Meta-Llama-3-70B) to request access to the model. Save your Hugging Face token for the following steps.
 
@@ -61,7 +61,7 @@ kubectl create secret generic hf-secret \
   --dry-run=client -o yaml | kubectl apply -f -
 ```
 
-## Step 4: Install the RayService CR
+## Step 5: Install the RayService CR
 
 Create a file named vllm-ray-serve-tpu.yaml with the following contents:
 ```sh
@@ -169,7 +169,7 @@ Create the RayService CR:
 kubectl apply -f vllm-ray-serve-tpu.yaml
 ```
 
-## Step 5: View the Serve deployment in the Ray Dashboard
+## Step 6: View the Serve deployment in the Ray Dashboard
 
 Verify that you deployed the RayService CR and it's running:
 
@@ -185,7 +185,7 @@ Port-forward the Ray Dashboard from the Ray Serve service. To view the dashboard
 kubectl port-forward svc/vllm-tpu-serve-svc 8265:8265 2>&1 >/dev/null &
 ```
 
-## Step 6: Send prompts to the model server
+## Step 7: Send prompts to the model server
 
 Port-forward the model endpoint from Ray head:
 ```sh
