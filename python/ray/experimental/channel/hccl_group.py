@@ -1,21 +1,23 @@
 import logging
 import os
+from typing import Optional
+
 import torch
+import torch.distributed as dist
+import torch_npu  # The torch_npu for communicate
+
 import ray
 from ray.exceptions import RayChannelError
+from ray.experimental.channel.gpu_communicator import (
+    GPUCommunicator,
+    TorchTensorAllocator,
+)
 
 # Set ASCEND_RT_VISIBLE_DEVICES environment variable to ensure all NPUs are visible
 # This enables NPU to NPU communication across devices.
 # Explaination: Since currently the worker can only see the GPU/NPU asign to
 # that worker, the NPU needs to see all NPUs to enable the communication channel.
-os.environ['ASCEND_RT_VISIBLE_DEVICES'] = "0,1,2,3,4,5,6,7"
-import torch.distributed as dist
-import torch_npu #The torch_npu for communicate
-from ray.experimental.channel.gpu_communicator import (
-    GPUCommunicator,
-    TorchTensorAllocator,
-)
-from typing import TYPE_CHECKING, List, Optional, Tuple
+os.environ["ASCEND_RT_VISIBLE_DEVICES"] = "0,1,2,3,4,5,6,7"
 
 logger = logging.getLogger(__name__)
 
@@ -23,13 +25,21 @@ logger = logging.getLogger(__name__)
 class _HcclGroup(GPUCommunicator):
     """
     Represents an actor's HCCL communicator using NPUs.
-    
-    This is the default HCCL communicator to be used in aDAG if a custom communicator is not provided.
+
+    This is the default HCCL communicator to be used in aDAG if a
+    custom communicator is not provided.
 
     This class is not thread-safe.
     """
 
-    def __init__(self, world_size: int, comm_id: int, rank: int, actor_handles: list, cuda_stream: Optional[int]):
+    def __init__(
+        self,
+        world_size: int,
+        comm_id: int,
+        rank: int,
+        actor_handles: list,
+        cuda_stream: Optional[int],
+    ):
         # TODO(zhilong): Change cuda_stream to more general name like "stream".
         """
         Initialize an HCCL communicator that can be used to communicate p2p with
@@ -61,13 +71,18 @@ class _HcclGroup(GPUCommunicator):
 
         Args:
             rank: The rank of the current process.
-            world_size: The total number of processes participating in the communication.
+            world_size: The total number of processes participating
+                in the communication.
         """
-        os.environ['MASTER_ADDR'] = '127.0.0.1'  # Set master address for HCCL communication
-        os.environ['MASTER_PORT'] = '29500'  # Set port for communication
-        os.environ['HCCL_WHITELIST_DISABLE'] = '1'  # Disable HCCL whitelist
+        os.environ[
+            "MASTER_ADDR"
+        ] = "127.0.0.1"  # Set master address for HCCL communication
+        os.environ["MASTER_PORT"] = "29500"  # Set port for communication
+        os.environ["HCCL_WHITELIST_DISABLE"] = "1"  # Disable HCCL whitelist
         torch_npu.npu.set_device(rank)  # Set the NPU device according to the rank
-        self.ctx = dist.init_process_group(backend='hccl', world_size=world_size, rank=rank)
+        self.ctx = dist.init_process_group(
+            backend="hccl", world_size=world_size, rank=rank
+        )
 
     def initialize(self, rank: int) -> None:
         pass  # No additional initialization needed for HCCL group
@@ -132,7 +147,13 @@ class _HcclGroup(GPUCommunicator):
         dist.send(tensor, dst=peer_rank)
         logger.info(f"finishe send to dist {peer_rank}")
 
-    def recv(self, shape: tuple, dtype: "torch.dtype", peer_rank: int,allocator=Optional[TorchTensorAllocator]) -> "torch.Tensor":
+    def recv(
+        self,
+        shape: tuple,
+        dtype: "torch.dtype",
+        peer_rank: int,
+        allocator=Optional[TorchTensorAllocator],
+    ) -> "torch.Tensor":
         """
         Receive a tensor from a peer using HCCL.
 

@@ -25,6 +25,7 @@ from ray.tests.conftest import *  # noqa
 from ray.experimental.channel.torch_tensor_type import (
     TorchTensorType,
 )
+from ray.air._internal.device_manager.npu import NPU_TORCH_PACKAGE_AVAILABLE
 
 
 logger = logging.getLogger(__name__)
@@ -35,7 +36,6 @@ if sys.platform != "linux" and sys.platform != "darwin":
 USE_GPU = bool(os.environ.get("RAY_PYTEST_USE_GPU", 0))
 
 USE_GPU = bool(os.environ.get("RAY_PYTEST_USE_NPU", 0))
-
 
 
 @ray.remote
@@ -888,22 +888,27 @@ def test_torch_tensor_exceptions(ray_start_regular):
 
     compiled_dag.teardown()
 
-from ray.air._internal.device_manager.npu import NPU_TORCH_PACKAGE_AVAILABLE
 
-NPU_DEVICES= "0,1,2,3,4,5,6,7"
+NPU_DEVICES = "0,1,2,3,4,5,6,7"
+
+
 @ray.remote(resources={"NPU": 1})
 class TorchTensorWorkerNPU:
     def __init__(self, rank):
-        import torch
-        os.environ['ASCEND_RT_VISIBLE_DEVICES'] = NPU_DEVICES
+        import torch  # noqa: F401
+
+        os.environ["ASCEND_RT_VISIBLE_DEVICES"] = NPU_DEVICES
         import torch_npu
+
         self.rank = rank
         torch_npu.npu.set_device(rank)
 
     def send(self, shape, dtype, value: int):
         import torch
-        os.environ['ASCEND_RT_VISIBLE_DEVICES'] = NPU_DEVICES
-        import torch_npu 
+
+        os.environ["ASCEND_RT_VISIBLE_DEVICES"] = NPU_DEVICES
+        import torch_npu
+
         # May need to import twice to keep the context,
         # otherwise it will lose the ctx.
         # Different from nccl with cupy, NPU channel relies on torch,
@@ -918,6 +923,7 @@ class TorchTensorWorkerNPU:
         tensor = tensor.cpu()
         return (tensor[0].item(), tensor.shape, tensor.dtype)
 
+
 @pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
 def test_torch_tensor_npu_communication(ray_start_regular):
     if not NPU_TORCH_PACKAGE_AVAILABLE:
@@ -925,7 +931,7 @@ def test_torch_tensor_npu_communication(ray_start_regular):
 
     assert (
         sum(node["Resources"].get("NPU", 0) for node in ray.nodes()) > 1
-    ), "This test requires at least 2 GPUs"
+    ), "This test requires at least 2 NPUs"
 
     # Initialize actor class with NPU support
     actor_cls = TorchTensorWorkerNPU
@@ -938,11 +944,13 @@ def test_torch_tensor_npu_communication(ray_start_regular):
     # Define the DAG with NPU actors
     with InputNode() as inp:
         dag = sender.send.bind(shape, dtype, inp)
-        dag = dag.with_type_hint(TorchTensorType(shape, dtype, transport="nccl", _direct_return=True))
+        dag = dag.with_type_hint(
+            TorchTensorType(shape, dtype, transport="nccl", _direct_return=True)
+        )
         dag = receiver.recv.bind(dag)
 
     compiled_dag = dag.experimental_compile()
-    
+
     # Test tensor sending and receiving on NPUs
     for i in range(3):
         ref = compiled_dag.execute(i)
@@ -950,6 +958,7 @@ def test_torch_tensor_npu_communication(ray_start_regular):
         assert result == (i, shape, dtype)
 
     compiled_dag.teardown()
+
 
 if __name__ == "__main__":
     if os.environ.get("PARALLEL_CI"):
