@@ -934,7 +934,7 @@ py_test(
     name = "test_callbacks_old_api_stack",
     tags = ["team:rllib", "algorithms_dir", "algorithms_dir_generic"],
     size = "medium",
-    srcs = ["algorithms/tests/test_callbacks_old_stack.py"]
+    srcs = ["algorithms/tests/test_callbacks_old_api_stack.py"]
 )
 
 py_test(
