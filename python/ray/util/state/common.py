@@ -1667,8 +1667,7 @@ def remove_ansi_escape_codes(text: str) -> str:
     return re.sub(r"\x1b[^m]*m", "", text)
 
 
-def dict_to_state(d: Dict, state_resource: StateResource) -> StateSchema:
-
+def dict_to_state(d: Dict, state_source: StateResource) -> StateSchema:
     """Convert a dict to a state schema.
 
     Args:
@@ -1679,7 +1678,6 @@ def dict_to_state(d: Dict, state_resource: StateResource) -> StateSchema:
         A state schema.
     """
     try:
-        return resource_to_schema(state_resource)(**d)
-
+        return resource_to_schema(state_source)(**d)
     except Exception as e:
         raise RayStateApiException(f"Failed to convert {d} to StateSchema: {e}") from e
