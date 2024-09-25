@@ -108,7 +108,6 @@ from ray.util.state.common import (
     ClusterEventState,
     StateSchema,
     state_column,
-    dict_to_state,
 )
 from ray.dashboard.utils import ray_address_to_api_server_url
 from ray.util.state.exception import DataSourceUnavailable, RayStateApiException
@@ -1925,7 +1924,8 @@ def test_cli_apis_sanity_check(ray_start_cluster):
     wait_for_condition(
         lambda: verify_output(
             ray_list, ["runtime-envs"], ["Stats:", "Table:", "RUNTIME_ENV"]
-        )
+        ),
+        timeout=20
     )
 
     # Test get node by id
