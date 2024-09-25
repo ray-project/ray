@@ -166,10 +166,12 @@ kubectl get rayservice
 # vllm-tpu-serve-svc   Running          2
 ```
 
-Port-forward the Ray Dashboard from the Ray Serve service. To view the dashboard, open http://localhost:8265/ on your local machine.
+Port-forward the Ray Dashboard from the Ray Head service. To view the dashboard, open http://localhost:8265/ on your local machine.
 ```sh
-kubectl port-forward svc/vllm-tpu-serve-svc 8265:8265 2>&1 >/dev/null &
+kubectl port-forward svc/vllm-tpu-head-svc 8265:8265 2>&1 >/dev/null &
 ```
+
+![serve-deployment-dashboard](../images/serve-multi-host-dashboard.png)
 
 ## Step 7: Send prompts to the model server
 
@@ -183,7 +185,7 @@ Send a text prompt to the Llama model:
 curl -X POST http://localhost:8000/v1/generate -H "Content-Type: application/json" -d '{"prompt": "What are the top 5 most popular programming languages? Be brief.", "max_tokens": 1024}'
 ```
 
-Output should resemble the following:
+We can then view the output of the provided prompt:
 ```sh
 {"prompt": "What are the top 5 most popular programming languages? Be brief.", "text": " The answer is based on the Tiobe Index, which is a programming language popularity index that has been ranking programming languages since 2001.\n\n1.  **Java**: 14.63% of the index.\n2.  **Python**: 11.52% of the index.\n3.  **C**: 7.94% of the index.\n4.  **C++**: 7.17% of the index.\n5.  **JavaScript**: 6.86% of the index.\n\nThe Tiobe Index is based on searches on search engines like Google, as well as on forums and other online platforms. It does not necessarily reflect the actual usage of programming languages in the industry, but it is a good indicator of their popularity and usage in the programming community.
 ...}
