@@ -1,97 +1,41 @@
-generated_protofiles = custom_target(
-    'generated_protofiles',
-    input: ['runtime_env_common.proto', 'common.proto'],
-    output: ['runtime_env_common.pb.cc', 'runtime_env_common.pb.h', 'common.pb.cc', 'common.pb.h'],
+source_proto_files = ['runtime_env_common.proto', 'common.proto']
+output_proto_files = []
+
+foreach proto_file : source_proto_files
+    base_name = proto_file.split('.')[-2]
+    output_proto_files += [
+        base_name + '.pb.cc',
+        base_name + '.pb.h',
+        #base_name + '.pb2.py',
+    ]
+endforeach
+
+generated_proto_files = custom_target(
+    'generated_proto_files',
+    input: source_proto_files,
+    output: output_proto_files,
     command: [
           protoc,
           '--proto_path=../',
-          '--cpp_out=../',
+          '--cpp_out=@MESON_BUILD_ROOT@',
+          #'--python_out=../',
           '@INPUT@',
     ],
-    install: true,
-    install_dir: get_option('includedir'),
+    build_by_default: true
 )
 
-#custom_target(
-#    'runtime_env_common_proto_cc',
-#    input: ['runtime_env_common.proto'],
-#    output: ['@BASENAME@.pb.cc'],
-#    command: [
-#        protoc,
-#        '--proto_path=@CURRENT_SOURCE_DIR@',
-#        '--cpp_out=@CURRENT_SOURCE_DIR@',
-#        '@INPUT@',
-#    ],
-#    install: true,
-#    install_dir: get_option('includedir'),
-#)
+header_dep = declare_dependency(
+    sources: generated_proto_files
+)
 
-
-#runtime_env_common_proto_cc = custom_target(
-#    'runtime_env_common_proto_cc',
-#    input: ['runtime_env_common.proto'],
-#    output: ['@BASENAME@.pb.cc'],
-#    command: [
-#        protoc,
-#        '--proto_path=@CURRENT_SOURCE_DIR@',
-#        '--cpp_out=@CURRENT_SOURCE_DIR@',
-#        '@INPUT@',
-#    ],
-#    install: true,
-#    install_dir: get_option('includedir'),
-#)
-#
-#runtime_env_common_proto_h = custom_target(
-#    'runtime_env_common_proto_h',
-#    input: ['runtime_env_common.proto'],
-#    output: ['@BASENAME@.pb.h'],
-#    command: [
-#      protoc,
-#      '--proto_path=@CURRENT_SOURCE_DIR@',
-#      '--cpp_out=@CURRENT_SOURCE_DIR@',
-#      '@INPUT@',
-#  ],
-#install: true,
-#    install_dir: get_option('includedir'),
-#)
-
-#common_proto_cc = custom_target(
-#    'common_proto_cc',
-#    input: ['common.proto'],
-#    output: ['@BASENAME@.pb.cc'],
-#    command: [
-#        protoc,
-#        '--proto_path=@CURRENT_SOURCE_DIR@',
-#        '--cpp_out=@OUTDIR@',
-#        '@INPUT@',
-#    ],
-#    #dependencies: [runtime_env_common_proto_cc, runtime_env_common_proto_h]
-#)
-#
-#common_proto_h = custom_target(
-#    'common_proto_h',
-#    input: ['common.proto'],
-#    output: ['@BASENAME@.pb.h'],
-#    command: [
-#        protoc,
-#        '--proto_path=@CURRENT_SOURCE_DIR@',
-#        '--cpp_out=@OUTDIR@',
-#        '@INPUT@',
-#    ],
-#    #dependencies: [runtime_env_common_proto_cc, runtime_env_common_proto_h]
-#)
-#
-#common_cc_proto = static_library(
-#    'common_cc_proto',
-#    runtime_env_common_proto_cc, common_proto_cc,
-##    dependencies: [
-##        runtime_env_common_proto_cc,
-##        runtime_env_common_proto_h,
-##        common_proto_cc,
-##        common_proto_h
-##    ],
-#    cpp_args: '-std=gnu++17'
-#)
+common_cc_proto = static_library(
+    'common_cc_proto',
+    generated_proto_files,
+    dependencies: [
+        header_dep
+    ],
+    cpp_args: '-std=gnu++17'
+)
 
 
 #libdistanceproto = library(meson.project_name(), distance_pb_cc,
