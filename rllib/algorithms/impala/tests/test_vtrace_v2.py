@@ -8,7 +8,7 @@ from ray.rllib.algorithms.impala.tf.vtrace_tf_v2 import (
     make_time_major,
 )
 from ray.rllib.algorithms.impala.torch.vtrace_torch_v2 import vtrace_torch
-from ray.rllib.algorithms.impala.tests.test_vtrace import (
+from ray.rllib.algorithms.impala.tests.test_vtrace_old_api_stack import (
     _ground_truth_vtrace_calculation,
 )
 from ray.rllib.utils.torch_utils import convert_to_torch_tensor

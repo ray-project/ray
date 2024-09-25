@@ -425,7 +425,7 @@ class TestAlgorithm(unittest.TestCase):
         )
 
         algo = config.build()
-        # Given evaluation_interval=2, r0, r2, r4 should not contain
+        # Given evaluation_interval=2, r0, r2 should not contain
         # evaluation metrics, while r1, r3 should.
         r0 = algo.train()
         print(r0)
@@ -437,6 +437,7 @@ class TestAlgorithm(unittest.TestCase):
         print(r3)
         algo.stop()
 
+        # No eval results yet in first iteration (eval has not run yet).
         self.assertFalse(EVALUATION_RESULTS in r0)
         self.assertTrue(EVALUATION_RESULTS in r1)
         self.assertFalse(EVALUATION_RESULTS in r2)

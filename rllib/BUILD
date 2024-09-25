@@ -1020,12 +1020,17 @@ py_test(
 )
 
 # IMPALA
-# @OldAPIStack
 py_test(
-    name = "test_impala_old_api_stack",
+    name = "test_impala",
     tags = ["team:rllib", "algorithms_dir"],
     size = "large",
     srcs = ["algorithms/impala/tests/test_impala.py"]
+)
+py_test(
+    name = "test_vtrace_v2",
+    tags = ["team:rllib", "algorithms_dir"],
+    size = "small",
+    srcs = ["algorithms/impala/tests/test_vtrace_v2.py"]
 )
 # @OldAPIStack
 py_test(
@@ -1033,12 +1038,6 @@ py_test(
     tags = ["team:rllib", "algorithms_dir"],
     size = "small",
     srcs = ["algorithms/impala/tests/test_vtrace_old_api_stack.py"]
-)
-py_test(
-    name = "test_vtrace_v2",
-    tags = ["team:rllib", "algorithms_dir"],
-    size = "small",
-    srcs = ["algorithms/impala/tests/test_vtrace_v2.py"]
 )
 
 # MARWIL
