@@ -75,7 +75,7 @@ DEFINE_stats(running_jobs,
              ray::stats::GAUGE);
 
 DEFINE_stats(finished_jobs,
-             "New finished jobs number.",
+             "Number of jobs finished.",
              // TODO(hjiang): Consider adding task completion status, for example, failed,
              // completed in tags.
              /*tags=*/(),

@@ -117,8 +117,9 @@ void GcsJobManager::HandleAddJob(rpc::AddJobRequest request,
   if (!status.ok()) {
     on_done(status);
   } else {
-    const bool insert_suc = running_job_ids_.insert(job_id).second;
-    RAY_CHECK(insert_suc) << job_id.Hex() << " already inserted.";
+    // Intentionally not checking return value, since the function could be invoked for
+    // multiple times and requires idempotency (i.e. due to retry).
+    running_job_ids_.insert(job_id);
   }
 }
 
@@ -178,7 +179,7 @@ void GcsJobManager::HandleMarkJobFinished(rpc::MarkJobFinishedRequest request,
   if (!status.ok()) {
     send_reply(status);
   } else {
-    ++new_finished_jobs_;
+    ++finished_jobs_count_;
   }
 }
 
@@ -437,8 +438,7 @@ void GcsJobManager::OnNodeDead(const NodeID &node_id) {
 
 void GcsJobManager::RecordMetrics() {
   ray::stats::STATS_running_jobs.Record(running_job_ids_.size());
-  ray::stats::STATS_finished_jobs.Record(new_finished_jobs_);
-  new_finished_jobs_ = 0;
+  ray::stats::STATS_finished_jobs.Record(finished_jobs_count_);
 }
 
 }  // namespace gcs

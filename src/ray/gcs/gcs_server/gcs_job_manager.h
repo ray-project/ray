@@ -107,12 +107,11 @@ class GcsJobManager : public rpc::JobInfoHandler {
   void MarkJobAsFinished(rpc::JobTableData job_table_data,
                          std::function<void(Status)> done_callback);
 
-  // Job ids, which are running.
+  // Running Job IDs, used to report metrics.
   absl::flat_hash_set<JobID> running_job_ids_;
 
-  // Used to report metrics, which indicates the number of jobs finished between two
-  // metrics reporting events.
-  int32_t new_finished_jobs_ = 0;
+  // Number of finished jobs since start of this GCS Server, used to report metrics.
+  int64_t finished_jobs_count_ = 0;
 
   std::shared_ptr<GcsTableStorage> gcs_table_storage_;
   std::shared_ptr<GcsPublisher> gcs_publisher_;
