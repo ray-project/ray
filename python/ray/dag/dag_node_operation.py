@@ -467,10 +467,10 @@ def _generate_actor_to_execution_schedule(
         nodes = _select_next_nodes(actor_to_candidates, graph)
         if nodes is None:
             break
+        # Filter out the visited nodes.
+        nodes = [node for node in nodes if node not in visited_nodes]
         # Add the selected nodes to the execution schedule.
         for node in nodes:
-            if node in visited_nodes:
-                continue
             actor_to_execution_schedule[node.actor_handle].append(node.operation)
             visited_nodes.add(node)
         # Update the in-degree of the downstream nodes.
@@ -485,10 +485,9 @@ def _generate_actor_to_execution_schedule(
                         actor_to_candidates[out_node.actor_handle._actor_id],
                         out_node,
                     )
-        # All the selected nodes should be ready after updating the in-degrees.
-        for node in nodes:
-            assert node.is_ready, f"Expected {node} to be ready"
     assert len(visited_nodes) == len(graph) * 3, "Expected all nodes to be visited"
+    for node in visited_nodes:
+        assert node.is_ready, f"Expected {node} to be ready"
     for _, candidates in actor_to_candidates.items():
         assert len(candidates) == 0, "Expected all candidates to be empty"
 
