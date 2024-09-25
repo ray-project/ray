@@ -227,6 +227,9 @@ Status ActorTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
         },
         "ActorTaskSubmitter::SubmitTask");
   } else {
+    // Post to the event loop to maintain the async nature of
+    // SubmitTask and avoid issues like
+    // https://github.com/ray-project/ray/issues/47606.
     io_service_.post(
         [this, task_spec, task_id]() {
           // Do not hold the lock while calling into task_finisher_.
