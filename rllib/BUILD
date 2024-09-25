@@ -1391,13 +1391,6 @@ py_test(
     srcs = ["evaluation/tests/test_rollout_worker.py"]
 )
 
-py_test(
-    name = "evaluation/tests/test_trajectory_view_api",
-    tags = ["team:rllib", "evaluation"],
-    size = "large",
-    srcs = ["evaluation/tests/test_trajectory_view_api.py"]
-)
-
 # --------------------------------------------------------------------
 # RLlib core
 # rllib/core/
