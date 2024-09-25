@@ -18,6 +18,7 @@ from ray.serve._private.common import (
 )
 from ray.serve._private.constants import SERVE_LOGGER_NAME
 from ray.serve._private.default_impl import create_cluster_node_info_cache
+from ray.serve._private.replica_result import ReplicaResult
 from ray.serve._private.router import Router
 from ray.serve._private.usage import ServeUsageTag
 from ray.serve._private.utils import (
@@ -326,6 +327,7 @@ class _DeploymentResponseBase:
         self._object_ref_or_gen = None
         self.__lazy_object_ref_or_gen_asyncio_lock = None
         self._object_ref_or_gen_sync_lock = threading.Lock()
+        self._replica_result: Optional[ReplicaResult] = None
 
     @property
     def _object_ref_or_gen_asyncio_lock(self) -> asyncio.Lock:
@@ -335,90 +337,36 @@ class _DeploymentResponseBase:
 
         return self.__lazy_object_ref_or_gen_asyncio_lock
 
-    def _should_resolve_gen_to_obj_ref(
-        self, obj_ref_or_gen: Union[ray.ObjectRef, ray.ObjectRefGenerator]
-    ) -> bool:
-        """Check if the ref is a generator that needs to be resolved to its first ref.
+    def _fetch_future_result_sync(
+        self, _timeout_s: Optional[float] = None
+    ) -> ReplicaResult:
+        """Synchronously fetch the result of the `_object_ref_future`.
 
-        This is an edge case to handle the routing code path with replica rejection.
-        In that case, the output of `router.assign_request` is *always* a generator,
-        so if this is a unary response we need to resolve it to its first (and only)
-        output ObjectRef.
+        Wrap the result in a ReplicaResult and store it in _result.
         """
-        return isinstance(obj_ref_or_gen, ray.ObjectRefGenerator) and isinstance(
-            self, DeploymentResponse
-        )
 
-    async def _to_object_ref_or_gen(
-        self,
-        _record_telemetry: bool = True,
-    ) -> Union[ray.ObjectRef, ObjectRefGenerator]:
-        # Record telemetry for using the developer API to convert to an object
-        # ref. Recorded here because all of the other codepaths go through this.
-        # `_record_telemetry` is used to filter other API calls that go through
-        # this path as well as calls from the proxy.
-        if _record_telemetry:
-            ServeUsageTag.DEPLOYMENT_HANDLE_TO_OBJECT_REF_API_USED.record("1")
+        if self._replica_result is None:
+            try:
+                self._replica_result = self._object_ref_future.result(
+                    timeout=_timeout_s
+                )
+            except concurrent.futures.TimeoutError:
+                raise TimeoutError("Timed out resolving to ObjectRef.") from None
 
-        # NOTE(edoakes): this section needs to be guarded with a lock and the resulting
-        # object ref or generator cached in order to avoid calling `__anext__()` to
-        # resolve to the underlying object ref more than once.
-        #
-        # See: https://github.com/ray-project/ray/issues/43879.
-        async with self._object_ref_or_gen_asyncio_lock:
-            if self._object_ref_or_gen is None:
-                # Use `asyncio.wrap_future` so `self._object_ref_future` can be awaited
-                # safely from any asyncio loop.
-                obj_ref_or_gen = await asyncio.wrap_future(self._object_ref_future)
-                if self._should_resolve_gen_to_obj_ref(obj_ref_or_gen):
-                    obj_ref_or_gen = await obj_ref_or_gen.__anext__()
+        return self._replica_result
 
-                self._object_ref_or_gen = obj_ref_or_gen
+    async def _fetch_future_result_async(self) -> ReplicaResult:
+        """Asynchronously fetch the result of the `_object_ref_future`.
 
-            return self._object_ref_or_gen
+        Wrap the result in a ReplicaResult and store it in _result.
+        """
 
-    def _to_object_ref_or_gen_sync(
-        self,
-        _record_telemetry: bool = True,
-        _timeout_s: Optional[float] = None,
-        _allow_running_in_asyncio_loop: bool = False,
-    ) -> Union[ray.ObjectRef, ObjectRefGenerator]:
-        if not _allow_running_in_asyncio_loop and is_running_in_asyncio_loop():
-            raise RuntimeError(
-                "Sync methods should not be called from within an `asyncio` event "
-                "loop. Use `await response` or `await response._to_object_ref()` "
-                "instead."
-            )
+        if self._replica_result is None:
+            # Use `asyncio.wrap_future` so `self._object_ref_future` can be awaited
+            # safely from any asyncio loop.
+            self._replica_result = await asyncio.wrap_future(self._object_ref_future)
 
-        if _record_telemetry:
-            ServeUsageTag.DEPLOYMENT_HANDLE_TO_OBJECT_REF_API_USED.record("1")
-
-        start_time_s = time.time()
-        # NOTE(edoakes): this section needs to be guarded with a lock and the resulting
-        # object ref or generator cached in order to avoid calling `__next__()` to
-        # resolve to the underlying object ref more than once.
-        #
-        # See: https://github.com/ray-project/ray/issues/43879.
-        with self._object_ref_or_gen_sync_lock:
-            if self._object_ref_or_gen is None:
-                try:
-                    obj_ref_or_gen = self._object_ref_future.result(timeout=_timeout_s)
-                except concurrent.futures.TimeoutError:
-                    raise TimeoutError("Timed out resolving to ObjectRef.") from None
-
-                if self._should_resolve_gen_to_obj_ref(obj_ref_or_gen):
-                    obj_ref_or_gen = obj_ref_or_gen._next_sync(
-                        timeout_s=calculate_remaining_timeout(
-                            timeout_s=_timeout_s,
-                            start_time_s=start_time_s,
-                            curr_time_s=time.time(),
-                        )
-                    )
-                    if obj_ref_or_gen.is_nil():
-                        raise TimeoutError("Timed out resolving to ObjectRef.")
-                self._object_ref_or_gen = obj_ref_or_gen
-
-        return self._object_ref_or_gen
+        return self._replica_result
 
     def cancel(self):
         """Attempt to cancel the `DeploymentHandle` call.
@@ -447,7 +395,8 @@ class _DeploymentResponseBase:
         if not self._object_ref_future.done():
             self._object_ref_future.cancel()
         elif self._object_ref_future.exception() is None:
-            ray.cancel(self._object_ref_future.result())
+            self._fetch_future_result_sync()
+            self._replica_result.cancel()
 
     @DeveloperAPI
     def cancelled(self) -> bool:
@@ -531,10 +480,8 @@ class DeploymentResponse(_DeploymentResponseBase):
 
     def __await__(self):
         """Yields the final result of the deployment handle call."""
-        obj_ref = yield from self._to_object_ref_or_gen(
-            _record_telemetry=False
-        ).__await__()
-        result = yield from obj_ref.__await__()
+        replica_result = yield from self._fetch_future_result_async().__await__()
+        result = yield from replica_result.get_async().__await__()
         return result
 
     def __reduce__(self):
@@ -554,17 +501,24 @@ class DeploymentResponse(_DeploymentResponseBase):
         If `timeout_s` is provided and the result is not available before the timeout,
         a `TimeoutError` is raised.
         """
+
+        if is_running_in_asyncio_loop():
+            raise RuntimeError(
+                "Sync methods should not be called from within an `asyncio` event "
+                "loop. Use `await response` or `await response._to_object_ref()` "
+                "instead."
+            )
+
         start_time_s = time.time()
-        obj_ref = self._to_object_ref_sync(
-            _record_telemetry=False, _timeout_s=timeout_s
-        )
+        replica_result = self._fetch_future_result_sync(timeout_s)
+
         remaining_timeout_s = calculate_remaining_timeout(
             timeout_s=timeout_s, start_time_s=start_time_s, curr_time_s=time.time()
         )
-        return ray.get(obj_ref, timeout=remaining_timeout_s)
+        return replica_result.get(remaining_timeout_s)
 
     @DeveloperAPI
-    async def _to_object_ref(self, _record_telemetry: bool = True) -> ray.ObjectRef:
+    async def _to_object_ref(self) -> ray.ObjectRef:
         """Advanced API to convert the response to a Ray `ObjectRef`.
 
         This is used to pass the output of a `DeploymentHandle` call to a Ray task or
@@ -574,12 +528,15 @@ class DeploymentResponse(_DeploymentResponseBase):
         assigned to a replica actor. If there are many requests in flight and all
         replicas' queues are full, this may be a slow operation.
         """
-        return await self._to_object_ref_or_gen(_record_telemetry=_record_telemetry)
+
+        ServeUsageTag.DEPLOYMENT_HANDLE_TO_OBJECT_REF_API_USED.record("1")
+
+        replica_result = await self._fetch_future_result_async()
+        return await replica_result.resolve_gen_to_ref_if_necessary_async()
 
     @DeveloperAPI
     def _to_object_ref_sync(
         self,
-        _record_telemetry: bool = True,
         _timeout_s: Optional[float] = None,
         _allow_running_in_asyncio_loop: bool = False,
     ) -> ray.ObjectRef:
@@ -595,11 +552,27 @@ class DeploymentResponse(_DeploymentResponseBase):
         From inside a deployment, `_to_object_ref` should be used instead to avoid
         blocking the asyncio event loop.
         """
-        return self._to_object_ref_or_gen_sync(
-            _record_telemetry=_record_telemetry,
-            _timeout_s=_timeout_s,
-            _allow_running_in_asyncio_loop=_allow_running_in_asyncio_loop,
+
+        ServeUsageTag.DEPLOYMENT_HANDLE_TO_OBJECT_REF_API_USED.record("1")
+
+        if not _allow_running_in_asyncio_loop and is_running_in_asyncio_loop():
+            raise RuntimeError(
+                "Sync methods should not be called from within an `asyncio` event "
+                "loop. Use `await response` or `await response._to_object_ref()` "
+                "instead."
+            )
+
+        # First, fetch the result of the future
+        start_time_s = time.time()
+        replica_result = self._fetch_future_result_sync(_timeout_s)
+
+        # Then, if necessary, resolve generator to ref
+        remaining_timeout_s = calculate_remaining_timeout(
+            timeout_s=_timeout_s,
+            start_time_s=start_time_s,
+            curr_time_s=time.time(),
         )
+        return replica_result.resolve_gen_to_ref_if_necessary_sync(remaining_timeout_s)
 
 
 @PublicAPI(stability="beta")
@@ -662,7 +635,6 @@ class DeploymentResponseGenerator(_DeploymentResponseBase):
         object_ref_future: concurrent.futures.Future,
     ):
         super().__init__(object_ref_future)
-        self._obj_ref_gen: Optional[ObjectRefGenerator] = None
 
     def __await__(self):
         raise TypeError(
@@ -674,38 +646,40 @@ class DeploymentResponseGenerator(_DeploymentResponseBase):
         return self
 
     async def __anext__(self) -> Any:
-        if self._obj_ref_gen is None:
-            self._obj_ref_gen = await self._to_object_ref_gen(_record_telemetry=False)
-
-        next_obj_ref = await self._obj_ref_gen.__anext__()
-        return await next_obj_ref
+        replica_result = await self._fetch_future_result_async()
+        return await replica_result.__anext__()
 
     def __iter__(self) -> Iterator[Any]:
         return self
 
     def __next__(self) -> Any:
-        if self._obj_ref_gen is None:
-            self._obj_ref_gen = self._to_object_ref_gen_sync(_record_telemetry=False)
+        if is_running_in_asyncio_loop():
+            raise RuntimeError(
+                "Sync methods should not be called from within an `asyncio` event "
+                "loop. Use `await response` or `await response._to_object_ref()` "
+                "instead."
+            )
 
-        next_obj_ref = self._obj_ref_gen.__next__()
-        return ray.get(next_obj_ref)
+        replica_result = self._fetch_future_result_sync()
+        return replica_result.__next__()
 
     @DeveloperAPI
-    async def _to_object_ref_gen(
-        self, _record_telemetry: bool = True
-    ) -> ObjectRefGenerator:
+    async def _to_object_ref_gen(self) -> ObjectRefGenerator:
         """Advanced API to convert the generator to a Ray `ObjectRefGenerator`.
 
         This method is `async def` because it will block until the handle call has been
         assigned to a replica actor. If there are many requests in flight and all
         replicas' queues are full, this may be a slow operation.
         """
-        return await self._to_object_ref_or_gen(_record_telemetry=_record_telemetry)
+
+        ServeUsageTag.DEPLOYMENT_HANDLE_TO_OBJECT_REF_API_USED.record("1")
+
+        replica_result = await self._fetch_future_result_async()
+        return replica_result.obj_ref_gen
 
     @DeveloperAPI
     def _to_object_ref_gen_sync(
         self,
-        _record_telemetry: bool = True,
         _timeout_s: Optional[float] = None,
         _allow_running_in_asyncio_loop: bool = False,
     ) -> ObjectRefGenerator:
@@ -718,11 +692,18 @@ class DeploymentResponseGenerator(_DeploymentResponseBase):
         From inside a deployment, `_to_object_ref_gen` should be used instead to avoid
         blocking the asyncio event loop.
         """
-        return self._to_object_ref_or_gen_sync(
-            _record_telemetry=_record_telemetry,
-            _timeout_s=_timeout_s,
-            _allow_running_in_asyncio_loop=_allow_running_in_asyncio_loop,
-        )
+
+        ServeUsageTag.DEPLOYMENT_HANDLE_TO_OBJECT_REF_API_USED.record("1")
+
+        if not _allow_running_in_asyncio_loop and is_running_in_asyncio_loop():
+            raise RuntimeError(
+                "Sync methods should not be called from within an `asyncio` event "
+                "loop. Use `await response` or `await response._to_object_ref()` "
+                "instead."
+            )
+
+        replica_result = self._fetch_future_result_sync(_timeout_s)
+        return replica_result.obj_ref_gen
 
 
 @PublicAPI(stability="beta")

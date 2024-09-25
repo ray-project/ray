@@ -1,14 +1,17 @@
 import collections
-import time
 import unittest
+from typing import Any, Optional, Tuple
 
 import pytest
 
 import ray
+from ray._private.test_utils import wait_for_condition
+from ray.actor import ActorHandle
 from ray.data._internal.compute import ActorPoolStrategy
 from ray.data._internal.execution.operators.actor_pool_map_operator import _ActorPool
 from ray.data._internal.execution.util import make_ref_bundles
 from ray.tests.conftest import *  # noqa
+from ray.types import ObjectRef
 
 
 @ray.remote
@@ -22,17 +25,19 @@ class PoolWorker:
 
 class TestActorPool(unittest.TestCase):
     def setup_class(self):
-        self._last_created_actor_and_ready_ref = (None, None)
+        self._last_created_actor_and_ready_ref: Optional[
+            Tuple[ActorHandle, ObjectRef[Any]]
+        ] = None
         self._actor_node_id = "node1"
         ray.init(num_cpus=4)
 
     def teardown_class(self):
         ray.shutdown()
 
-    def _create_actor_fn(self):
+    def _create_actor_fn(self) -> Tuple[ActorHandle, ObjectRef[Any]]:
         actor = PoolWorker.remote(self._actor_node_id)
         ready_ref = actor.get_location.remote()
-        self._last_created_actor_and_ready_ref = (actor, ready_ref)
+        self._last_created_actor_and_ready_ref = actor, ready_ref
         return actor, ready_ref
 
     def _create_actor_pool(
@@ -51,20 +56,32 @@ class TestActorPool(unittest.TestCase):
         )
         return pool
 
-    def _add_pending_actor(self, pool: _ActorPool, node_id="node1"):
+    def _add_pending_actor(
+        self, pool: _ActorPool, node_id="node1"
+    ) -> Tuple[ActorHandle, ObjectRef[Any]]:
         self._actor_node_id = node_id
         assert pool.scale_up(1) == 1
+        assert self._last_created_actor_and_ready_ref is not None
         actor, ready_ref = self._last_created_actor_and_ready_ref
+        self._last_created_actor_and_ready_ref = None
         return actor, ready_ref
 
     def _wait_for_actor_ready(self, pool: _ActorPool, ready_ref):
         ray.get(ready_ref)
         pool.pending_to_running(ready_ref)
 
-    def _add_ready_actor(self, pool: _ActorPool, node_id="node1"):
+    def _add_ready_actor(self, pool: _ActorPool, node_id="node1") -> ActorHandle:
         actor, ready_ref = self._add_pending_actor(pool, node_id)
         self._wait_for_actor_ready(pool, ready_ref)
         return actor
+
+    def _wait_for_actor_dead(self, actor_id: str):
+        def _check_actor_dead():
+            nonlocal actor_id
+            actor_info = ray.state.actors(actor_id)
+            return actor_info["State"] == "DEAD"
+
+        wait_for_condition(_check_actor_dead)
 
     def test_basic_config(self):
         pool = self._create_actor_pool(
@@ -217,11 +234,10 @@ class TestActorPool(unittest.TestCase):
         assert killed
         # Check that actor is not in pool.
         assert pool.get_pending_actor_refs() == []
-        # Check that actor was killed.
-        # Wait a second to let actor killing happen.
-        time.sleep(1)
-        with pytest.raises(ray.exceptions.RayActorError):
-            ray.get(actor.get_location.remote())
+        # Check that actor is dead.
+        actor_id = actor._actor_id.hex()
+        del actor
+        self._wait_for_actor_dead(actor_id)
         # Check that the per-state pool sizes are as expected.
         assert pool.current_size() == 0
         assert pool.num_pending_actors() == 0
@@ -240,11 +256,10 @@ class TestActorPool(unittest.TestCase):
         assert killed
         # Check that actor is not in pool.
         assert pool.pick_actor() is None
-        # Check that actor was killed.
-        # Wait a second to let actor killing happen.
-        time.sleep(1)
-        with pytest.raises(ray.exceptions.RayActorError):
-            ray.get(actor.get_location.remote())
+        # Check that actor is dead.
+        actor_id = actor._actor_id.hex()
+        del actor
+        self._wait_for_actor_dead(actor_id)
         # Check that the per-state pool sizes are as expected.
         assert pool.current_size() == 0
         assert pool.num_pending_actors() == 0
@@ -283,11 +298,10 @@ class TestActorPool(unittest.TestCase):
         pool.return_actor(idle_actor)
         # Check that the pending actor is not in pool.
         assert pool.get_pending_actor_refs() == []
-        # Check that actor was killed.
-        # Wait a second to let actor killing happen.
-        time.sleep(1)
-        with pytest.raises(ray.exceptions.RayActorError):
-            ray.get(pending_actor.get_location.remote())
+        # Check that actor is dead.
+        actor_id = pending_actor._actor_id.hex()
+        del pending_actor
+        self._wait_for_actor_dead(actor_id)
         # Check that the per-state pool sizes are as expected.
         assert pool.current_size() == 1
         assert pool.num_pending_actors() == 0
@@ -307,11 +321,10 @@ class TestActorPool(unittest.TestCase):
         # Check that actor is no longer in the pool as pending, to protect against
         # ready/killed races.
         assert not pool.pending_to_running(ready_ref)
-        # Check that actor was killed.
-        # Wait a few seconds to let actor killing happen.
-        time.sleep(1)
-        with pytest.raises(ray.exceptions.RayActorError):
-            ray.get(actor.get_location.remote())
+        # Check that actor is dead.
+        actor_id = actor._actor_id.hex()
+        del actor
+        self._wait_for_actor_dead(actor_id)
         # Check that the per-state pool sizes are as expected.
         assert pool.current_size() == 0
         assert pool.num_pending_actors() == 0
@@ -328,11 +341,10 @@ class TestActorPool(unittest.TestCase):
         pool.kill_all_inactive_actors()
         # Check that actor is not in pool.
         assert pool.pick_actor() is None
-        # Check that actor was killed.
-        # Wait a few seconds to let actor killing happen.
-        time.sleep(1)
-        with pytest.raises(ray.exceptions.RayActorError):
-            ray.get(actor.get_location.remote())
+        # Check that actor is dead.
+        actor_id = actor._actor_id.hex()
+        del actor
+        self._wait_for_actor_dead(actor_id)
         # Check that the per-state pool sizes are as expected.
         assert pool.current_size() == 0
         assert pool.num_pending_actors() == 0
@@ -369,11 +381,10 @@ class TestActorPool(unittest.TestCase):
             pool.return_actor(actor)
         # Check that actor is not in pool.
         assert pool.pick_actor() is None
-        # Check that actor was killed.
-        # Wait a few seconds to let actor killing happen.
-        time.sleep(1)
-        with pytest.raises(ray.exceptions.RayActorError):
-            ray.get(actor.get_location.remote())
+        # Check that actor is dead.
+        actor_id = actor._actor_id.hex()
+        del actor
+        self._wait_for_actor_dead(actor_id)
         # Check that the per-state pool sizes are as expected.
         assert pool.current_size() == 0
         assert pool.num_pending_actors() == 0
@@ -418,11 +429,10 @@ class TestActorPool(unittest.TestCase):
             pool.return_actor(actor1)
         # Check that actor is not in pool.
         assert pool.pick_actor() is None
-        # Check that actor was killed.
-        # Wait a few seconds to let actor killing happen.
-        time.sleep(1)
-        with pytest.raises(ray.exceptions.RayActorError):
-            ray.get(actor1.get_location.remote())
+        # Check that actor is dead.
+        actor_id = actor1._actor_id.hex()
+        del actor1
+        self._wait_for_actor_dead(actor_id)
         # Check that the per-state pool sizes are as expected.
         assert pool.current_size() == 0
         assert pool.num_pending_actors() == 0
@@ -442,13 +452,15 @@ class TestActorPool(unittest.TestCase):
         pool.kill_all_actors()
         # Check that the pool is empty.
         assert pool.pick_actor() is None
-        # Check that both actors were killed.
-        # Wait a few seconds to let actor killing happen.
-        time.sleep(1)
-        with pytest.raises(ray.exceptions.RayActorError):
-            ray.get(idle_actor.get_location.remote())
-        with pytest.raises(ray.exceptions.RayActorError):
-            ray.get(active_actor.get_location.remote())
+
+        # Check that both actors are dead
+        actor_id = active_actor._actor_id.hex()
+        del active_actor
+        self._wait_for_actor_dead(actor_id)
+        actor_id = idle_actor._actor_id.hex()
+        del idle_actor
+        self._wait_for_actor_dead(actor_id)
+
         # Check that the per-state pool sizes are as expected.
         assert pool.current_size() == 0
         assert pool.num_pending_actors() == 0

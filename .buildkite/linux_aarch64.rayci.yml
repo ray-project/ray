@@ -26,6 +26,7 @@ steps:
           - "3.9"
           - "3.10"
           - "3.11"
+          - "3.12"
         cuda:
           - "11.7.1-cudnn8"
           - "11.8.0-cudnn8"
@@ -47,6 +48,7 @@ steps:
       - "3.9"
       - "3.10"
       - "3.11"
+      - "3.12"
     instance_type: builder-arm64
     env:
       PYTHON_VERSION: "{{matrix}}"
@@ -91,6 +93,7 @@ steps:
       - "3.9"
       - "3.10"
       - "3.11"
+      - "3.12"
 
   - label: ":ray: core: wheel-aarch64 tests"
     tags: linux_wheels

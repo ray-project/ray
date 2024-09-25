@@ -22,7 +22,7 @@ from ray.rllib.utils.typing import (
 )
 
 if TYPE_CHECKING:
-    from ray.rllib.core.learner.learner import ParamDict
+    from ray.rllib.core.learner.learner import ParamDict, ParamList
     from ray.rllib.policy.torch_policy import TorchPolicy
     from ray.rllib.policy.torch_policy_v2 import TorchPolicyV2
 
@@ -106,7 +106,7 @@ def clip_gradients(
     *,
     grad_clip: Optional[float] = None,
     grad_clip_by: str = "value",
-) -> Optional[float]:
+) -> TensorType:
     """Performs gradient clipping on a grad-dict based on a clip value and clip mode.
 
     Changes the provided gradient dict in place.
@@ -147,34 +147,12 @@ def clip_gradients(
         assert (
             grad_clip_by == "global_norm"
         ), f"`grad_clip_by` ({grad_clip_by}) must be one of [value|norm|global_norm]!"
-
-        grads = [g for g in gradients_dict.values() if g is not None]
-        norm_type = 2.0
-        if len(grads) == 0:
-            return torch.tensor(0.0)
-        device = grads[0].device
-
-        total_norm = torch.norm(
-            torch.stack(
-                [
-                    torch.norm(g.detach(), norm_type)
-                    # Note, we want to avoid overflow in the norm computation, this does
-                    # not affect the gradients themselves as we clamp by multiplying and
-                    # not by overriding tensor values.
-                    .nan_to_num(neginf=-10e8, posinf=10e8).to(device)
-                    for g in grads
-                ]
-            ),
-            norm_type,
-        ).nan_to_num(neginf=-10e8, posinf=10e8)
-        if torch.logical_or(total_norm.isnan(), total_norm.isinf()):
-            raise RuntimeError(
-                f"The total norm of order {norm_type} for gradients from "
-                "`parameters` is non-finite, so it cannot be clipped. "
-            )
+        gradients_list = list(gradients_dict.values())
+        total_norm = compute_global_norm(gradients_list)
         # We do want the coefficient to be in between 0.0 and 1.0, therefore
         # if the global_norm is smaller than the clip value, we use the clip value
         # as normalization constant.
+        device = gradients_list[0].device
         clip_coef = grad_clip / torch.maximum(
             torch.tensor(grad_clip).to(device), total_norm + 1e-6
         )
@@ -182,9 +160,51 @@ def clip_gradients(
         # 1, but doing so avoids a `if clip_coef < 1:` conditional which can require a
         # CPU <=> device synchronization when the gradients do not reside in CPU memory.
         clip_coef_clamped = torch.clamp(clip_coef, max=1.0)
-        for g in grads:
-            g.detach().mul_(clip_coef_clamped.to(g.device))
+        for g in gradients_list:
+            if g is not None:
+                g.detach().mul_(clip_coef_clamped.to(g.device))
         return total_norm
+
+
+@PublicAPI
+def compute_global_norm(gradients_list: "ParamList") -> TensorType:
+    """Computes the global norm for a gradients dict.
+
+    Args:
+        gradients_list: The gradients list containing parameters.
+
+    Returns:
+        Returns the global norm of all tensors in `gradients_list`.
+    """
+    # Define the norm type to be L2.
+    norm_type = 2.0
+    # If we have no grads, return zero.
+    if len(gradients_list) == 0:
+        return torch.tensor(0.0)
+    device = gradients_list[0].device
+
+    # Compute the global norm.
+    total_norm = torch.norm(
+        torch.stack(
+            [
+                torch.norm(g.detach(), norm_type)
+                # Note, we want to avoid overflow in the norm computation, this does
+                # not affect the gradients themselves as we clamp by multiplying and
+                # not by overriding tensor values.
+                .nan_to_num(neginf=-10e8, posinf=10e8).to(device)
+                for g in gradients_list
+                if g is not None
+            ]
+        ),
+        norm_type,
+    ).nan_to_num(neginf=-10e8, posinf=10e8)
+    if torch.logical_or(total_norm.isnan(), total_norm.isinf()):
+        raise RuntimeError(
+            f"The total norm of order {norm_type} for gradients from "
+            "`parameters` is non-finite, so it cannot be clipped. "
+        )
+    # Return the global norm.
+    return total_norm
 
 
 @PublicAPI

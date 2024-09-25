@@ -1,4 +1,5 @@
 from ray.rllib.algorithms.ppo import PPOConfig
+from ray.rllib.connectors.env_to_module import MeanStdFilter
 from ray.rllib.utils.test_utils import add_rllib_example_script_args
 
 parser = add_rllib_example_script_args(default_timesteps=400000, default_reward=-300)
@@ -9,23 +10,19 @@ args = parser.parse_args()
 
 config = (
     PPOConfig()
-    # Enable new API stack and use EnvRunner.
-    .api_stack(
-        enable_rl_module_and_learner=True,
-        enable_env_runner_and_connector_v2=True,
-    )
+    .environment("Pendulum-v1")
     .env_runners(
         num_env_runners=2,
         num_envs_per_env_runner=20,
+        env_to_module_connector=lambda env: MeanStdFilter(),
     )
-    .environment("Pendulum-v1")
     .training(
-        train_batch_size_per_learner=512,
+        train_batch_size_per_learner=1024,
+        minibatch_size=128,
+        lr=0.0002 * (args.num_gpus or 1) ** 0.5,
         gamma=0.95,
-        lr=0.0003,
-        lambda_=0.1,
-        vf_clip_param=10.0,
-        sgd_minibatch_size=64,
+        lambda_=0.5,
+        # num_epochs=8,
     )
     .rl_module(
         model_config_dict={

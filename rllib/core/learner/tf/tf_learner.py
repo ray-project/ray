@@ -348,3 +348,8 @@ class TfLearner(Learner):
         from ray.rllib.utils.tf_utils import clip_gradients
 
         return clip_gradients
+
+    @staticmethod
+    @override(Learner)
+    def _get_global_norm_function() -> Callable:
+        return tf.linalg.global_norm

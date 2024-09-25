@@ -669,9 +669,6 @@ class CompiledDAG:
         # Mapping from the actor handle to the node ID that the actor is on.
         self.actor_to_node_id: Dict["ray.actor.ActorHandle", str] = {}
 
-        # Type hints specified by the user for DAG (intermediate) outputs.
-        self._type_hints = []
-
         # This is set to true when type hint of `transport="nccl"`` is used
         self._use_default_nccl_group = False
         # This is set to the specified custom nccl group
@@ -744,7 +741,6 @@ class CompiledDAG:
 
         self.input_task_idx, self.output_task_idx = None, None
         self.actor_task_count.clear()
-        self._type_hints.clear()
 
         nccl_actors: Set["ray.actor.ActorHandle"] = set()
 
@@ -949,9 +945,6 @@ class CompiledDAG:
                 if upstream_task.dag_node.type_hint.requires_nccl():
                     # Add all readers to the NCCL group.
                     nccl_actors.add(downstream_actor_handle)
-
-            if dag_node.type_hint is not None:
-                self._type_hints.append(dag_node.type_hint)
 
         # If there were type hints indicating transport via NCCL, initialize
         # the NCCL group on the participating actors.
