@@ -409,7 +409,7 @@ def _zip_files(
 ) -> None:
     """Zip the target file or directory and write it to the output_path.
 
-    filepath: The file or directory to zip.
+    path_str: The file or directory to zip.
     excludes (List(str)): The directories or file to be excluded.
     output_path: The output path for the zip file.
     include_parent_dir: If true, includes the top-level directory as a
@@ -572,7 +572,7 @@ def upload_package_to_gcs(pkg_uri: str, pkg_bytes: bytes) -> None:
 
 
 def create_package(
-    directory: str,
+    module_path: str,
     target_path: Path,
     include_parent_dir: bool = False,
     excludes: Optional[List[str]] = None,
@@ -585,9 +585,9 @@ def create_package(
         logger = default_logger
 
     if not target_path.exists():
-        logger.info(f"Creating a file package for local directory '{directory}'.")
+        logger.info(f"Creating a file package for local module '{module_path}'.")
         _zip_files(
-            directory,
+            module_path,
             excludes,
             str(target_path),
             include_parent_dir=include_parent_dir,
@@ -598,7 +598,7 @@ def create_package(
 def upload_package_if_needed(
     pkg_uri: str,
     base_directory: str,
-    directory: str,
+    module_path: str,
     include_parent_dir: bool = False,
     excludes: Optional[List[str]] = None,
     logger: Optional[logging.Logger] = default_logger,
@@ -613,7 +613,7 @@ def upload_package_if_needed(
     Args:
         pkg_uri: URI of the package to upload.
         base_directory: Directory where package files are stored.
-        directory: Directory to be uploaded.
+        module_path: The module to be uploaded, either a single .py file or a directory.
         include_parent_dir: If true, includes the top-level directory as a
             directory inside the zip file.
         excludes: List specifying files to exclude.
@@ -643,7 +643,7 @@ def upload_package_if_needed(
         f"{time.time_ns()}_{os.getpid()}_{package_file.name}"
     )
     create_package(
-        directory,
+        module_path,
         package_file,
         include_parent_dir=include_parent_dir,
         excludes=excludes,
