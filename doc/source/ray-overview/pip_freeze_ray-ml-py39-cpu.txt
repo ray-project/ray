@@ -376,7 +376,7 @@ PyYAML==6.0.1
 pyzmq==26.0.3
 qpd==0.4.4
 querystring-parser==1.2.4
-ray @ file:///home/ray/ray-3.0.0.dev0-cp39-cp39-manylinux2014_x86_64.whl#sha256=6b27652fe4f52b6a7a362c2df5ac8a57af530101c9687a010fa5f160e6f10e4d
+ray @ file:///home/ray/ray-3.0.0.dev0-cp39-cp39-manylinux2014_x86_64.whl#sha256=5d1e3379c141110a198d1405999bd3937976d0d003ba039a69c970407a05872c
 recsim==0.2.4
 redis==3.5.3
 referencing==0.35.1
@@ -442,7 +442,7 @@ tensorflow-probability==0.23.0
 tensorstore==0.1.63
 termcolor==2.4.0
 terminado==0.18.1
-textual==0.79.1
+textual==0.80.0
 tf-slim==1.1.0
 tf2onnx==1.15.1
 threadpoolctl==3.1.0
