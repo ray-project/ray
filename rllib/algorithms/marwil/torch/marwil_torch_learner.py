@@ -60,8 +60,7 @@ class MARWILTorchLearner(MARWILLearner, TorchLearner):
         else:
             # cumulative_rewards = batch[Columns.ADVANTAGES]
             value_fn_out = fwd_out[Columns.VF_PREDS]
-            # advantages = cumulative_rewards - value_fn_out
-            advantages = batch[Columns.ADVANTAGES]
+            advantages = batch[Columns.VALUE_TARGETS] - value_fn_out
             advantages_squared_mean = possibly_masked_mean(torch.pow(advantages, 2.0))
 
             # Compute the value loss.
