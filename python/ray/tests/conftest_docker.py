@@ -102,6 +102,8 @@ def gen_head_node(envs):
             # ip:port is treated as a different raylet.
             "--node-manager-port",
             "9379",
+            "--dashboard-host",
+            "0.0.0.0",
         ],
         volumes={"{head_node_vol.name}": {"bind": "/tmp", "mode": "rw"}},
         environment=envs,

@@ -152,6 +152,8 @@ worker2 = gen_worker_node(
 DRIVER_SCRIPT = """
 import asyncio
 import ray
+from ray.util.state import list_tasks
+
 ray.init(namespace="test")
 
 @ray.remote(num_cpus=0.1, name="counter", lifetime="detached")
@@ -173,22 +175,28 @@ class AsyncActor:
     self.counter = counter
 
   async def run(self):
-    if ray.get(self.counter.inc.remote()) == 1:
+    count = await self.counter.get.remote()
+    if count == 0:
       # first attempt
-      while ray.get(self.counter.get.remote()) != 2:
+      await self.counter.inc.remote()
+      while len(list_tasks(
+            filters=[("name", "=", "AsyncActor.run")])) != 2:
+        # wait for second attempt to be made
         await asyncio.sleep(1)
-      ray.get(self.counter.inc.remote())
+      # wait until the second attempt reaches the actor
+      await asyncio.sleep(2)
+      await self.counter.inc.remote()
+      return "first"
     else:
-      # retry
-      while ray.get(self.counter.get.remote()) != 3:
-        # Wait until first attempt finishes
-        await asyncio.sleep(1)
-      await asyncio.sleep(1)
-    return "ok"
+      # second attempt
+      # make sure second attempt only runs
+      # after first attempt finishes
+      assert count == 2
+      return "second"
 
 counter = Counter.remote()
 async_actor = AsyncActor.remote(counter)
-assert ray.get(async_actor.run.remote()) == "ok"
+assert ray.get(async_actor.run.remote()) == "second"
 """
 
 CHECK_ASYNC_ACTOR_RUN_IS_CALLED_SCRIPT = """

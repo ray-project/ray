@@ -223,6 +223,8 @@ void RaySyncer::Connect(const std::string &node_id,
             [this, channel](const std::string &node_id, bool restart) {
               sync_reactors_.erase(node_id);
               if (restart) {
+                RAY_LOG(INFO) << "Connection is broken. Will reconnect to node: "
+                              << NodeID::FromBinary(node_id);
                 execute_after(
                     io_context_,
                     [this, node_id, channel]() {
@@ -246,7 +248,7 @@ void RaySyncer::Connect(RaySyncerBidiReactor *reactor) {
   boost::asio::dispatch(
       io_context_.get_executor(), std::packaged_task<void()>([this, reactor]() {
         RAY_CHECK(sync_reactors_.find(reactor->GetRemoteNodeID()) == sync_reactors_.end())
-            << reactor->GetRemoteNodeID();
+            << NodeID::FromBinary(reactor->GetRemoteNodeID());
         sync_reactors_[reactor->GetRemoteNodeID()] = reactor;
         // Send the view for new connections.
         for (const auto &[_, messages] : node_state_->GetClusterView()) {
