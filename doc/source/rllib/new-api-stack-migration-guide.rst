@@ -237,7 +237,7 @@ AlgorithmConfig.env_runners()
         create_env_on_local_worker=False,
         sample_collector=None,
         enable_connectors=True,
-        remote_worker_envs=False
+        remote_worker_envs=False,
         remote_env_batch_wait_ms=0,
         preprocessor_pref="deepmind",
         enable_tf1_exec_eagerly=False,
