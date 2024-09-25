@@ -90,7 +90,7 @@ spec:
         spec:
           containers:
           - name: ray-head
-            image: <SOURCE_IMAGE>
+            image: <SOURCE_IMAGE> # Replace with your Artifact Registry image.
             imagePullPolicy: IfNotPresent
             ports:
             - containerPort: 6379
@@ -125,39 +125,25 @@ spec:
         spec:
           containers:
             - name: ray-worker
-              image: <SOURCE_IMAGE>
+              image: <SOURCE_IMAGE> # Replace with your Artifact Registry image.
               imagePullPolicy: IfNotPresent
               resources:
                 limits:
                   cpu: "100"
                   google.com/tpu: "4"
-                  memory: 200G
+                  ephemeral-storage: 150Gi
+                  memory: 100G
                 requests:
                   cpu: "100"
                   google.com/tpu: "4"
-                  memory: 200G
+                  ephemeral-storage: 150Gi
+                  memory: 100G
               env:
                 - name: HUGGING_FACE_HUB_TOKEN
                   valueFrom:
                     secretKeyRef:
                       name: hf-secret
                       key: hf_api_token
-              volumeMounts:
-                - mountPath: /data
-                  name: ephemeral-volume
-          volumes:
-            - name: ephemeral-volume
-              ephemeral:
-                volumeClaimTemplate:
-                  metadata:
-                    labels:
-                      type: ephemeral
-                  spec:
-                    accessModes: ["ReadWriteOnce"]
-                    storageClassName: "premium-rwo"
-                    resources:
-                      requests:
-                        storage: 200Gi
           nodeSelector:
             cloud.google.com/gke-tpu-accelerator: tpu-v4-podslice
             cloud.google.com/gke-tpu-topology: 2x2x2
