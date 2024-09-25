@@ -122,9 +122,6 @@ class Actor:
     def get_events(self):
         return getattr(self, "__ray_adag_events", [])
 
-    def fail(self, x):
-        assert False
-
 
 @ray.remote
 class Collector:
