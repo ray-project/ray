@@ -1,6 +1,8 @@
 from weakref import ReferenceType
-from typing import Any, Dict, List, Union, Tuple, Optional
-import torch
+from typing import Any, Dict, List, Union, Tuple, Optional, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    import torch
 
 import ray
 from ray.dag import (
@@ -91,7 +93,9 @@ class CollectiveGroup:
             raise ValueError("Expected a NCCL group")
         return nccl_group
 
-    def method(self, tensor: torch.Tensor):
+    def method(self, tensor: "torch.Tensor"):
+        import torch
+
         assert isinstance(tensor, torch.Tensor), "Expected a torch tensor"
         nccl_group = self.get_nccl_group()
         assert isinstance(
