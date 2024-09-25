@@ -1,39 +1,20 @@
+current_dir = meson.current_source_dir()
+
 source_proto_files = ['runtime_env_common.proto', 'common.proto']
-output_proto_files = []
+source_proto_file_paths = []
 
 foreach proto_file : source_proto_files
-    base_name = proto_file.split('.')[-2]
-    output_proto_files += [
-        base_name + '.pb.cc',
-        base_name + '.pb.h',
-        #base_name + '.pb2.py',
+    source_proto_file_paths += [
+        current_dir / proto_file
     ]
 endforeach
 
-generated_proto_files = custom_target(
-    'generated_proto_files',
-    input: source_proto_files,
-    output: output_proto_files,
-    command: [
-          protoc,
-          '--proto_path=../',
-          '--cpp_out=@MESON_BUILD_ROOT@',
-          #'--python_out=../',
-          '@INPUT@',
-    ],
-    build_by_default: true
-)
-
-header_dep = declare_dependency(
-    sources: generated_proto_files
-)
+run_command(protoc, '--proto_path=' + meson.source_root(), '--cpp_out=' + meson.source_root(), source_proto_file_paths, check: true)
 
 common_cc_proto = static_library(
     'common_cc_proto',
-    generated_proto_files,
-    dependencies: [
-        header_dep
-    ],
+    ['common.pb.cc'],
+    include_directories: ['../../../'],
     cpp_args: '-std=gnu++17'
 )
 
