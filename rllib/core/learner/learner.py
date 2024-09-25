@@ -1095,7 +1095,6 @@ class Learner(Checkpointable):
             )
 
         self._check_is_built()
-        # minibatch_size = minibatch_size or 32
 
         # Call `before_gradient_based_update` to allow for non-gradient based
         # preparations-, logging-, and update logic to happen.
