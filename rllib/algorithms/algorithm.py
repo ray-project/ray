@@ -12,6 +12,7 @@ import numpy as np
 import os
 from packaging import version
 import pathlib
+import pyarrow.fs
 import re
 import tempfile
 import time
@@ -305,6 +306,7 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
     def from_checkpoint(
         cls,
         path: Optional[Union[str, Checkpoint]] = None,
+        filesystem: Optional["pyarrow.fs.FileSystem"] = None,
         *,
         # @OldAPIStack
         policy_ids: Optional[Collection[PolicyID]] = None,
@@ -324,6 +326,8 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
         Args:
             path: The path (str) to the checkpoint directory to use
                 or an AIR Checkpoint instance to restore from.
+            filesystem: PyArrow FileSystem to use to access data at the `path`. If not
+                specified, this is inferred from the URI scheme of `path`.
             policy_ids: Optional list of PolicyIDs to recover. This allows users to
                 restore an Algorithm with only a subset of the originally present
                 Policies.
@@ -371,7 +375,7 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
             )
         # New API stack -> Use Checkpointable's default implementation.
         elif checkpoint_info["checkpoint_version"] >= version.Version("2.0"):
-            return super().from_checkpoint(path, **kwargs)
+            return super().from_checkpoint(path, filesystem=filesystem, **kwargs)
 
         # This is a msgpack checkpoint.
         if checkpoint_info["format"] == "msgpack":

@@ -41,7 +41,7 @@ class TestCheckpointUtils(unittest.TestCase):
             self.assertTrue(info["type"] == "Algorithm")
             self.assertTrue(str(info["checkpoint_version"]) == "0.1")
             self.assertTrue(info["checkpoint_dir"] == checkpoint_dir)
-            self.assertTrue(info["state_file"] == algo_state_file)
+            self.assertTrue(info["state_file"] == Path(algo_state_file).name)
             self.assertTrue(info["policy_ids"] is None)
 
     def test_get_checkpoint_info_v1_1(self):
