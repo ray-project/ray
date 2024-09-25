@@ -106,6 +106,8 @@ class ArrowTensorType(pa.ExtensionType):
     https://arrow.apache.org/docs/python/extending_types.html#defining-extension-types-user-defined-types
     """
 
+    OFFSET_DTYPE = np.int64
+
     def __init__(self, shape: Tuple[int, ...], dtype: pa.DataType):
         """
         Construct the Arrow extension type for array of fixed-shaped tensors.
@@ -326,8 +328,6 @@ class ArrowTensorArray(_ArrowTensorScalarIndexingMixin, pa.ExtensionArray):
     https://arrow.apache.org/docs/python/extending_types.html#custom-extension-array-class
     """
 
-    OFFSET_DTYPE = np.int64
-
     @classmethod
     def from_numpy(
         cls,
@@ -420,7 +420,7 @@ class ArrowTensorArray(_ArrowTensorScalarIndexingMixin, pa.ExtensionArray):
 
         # Offset buffer.
         offset_buffer = pa.py_buffer(
-            cls.OFFSET_DTYPE([i * num_items_per_element for i in range(outer_len + 1)])
+            ArrowTensorType.OFFSET_DTYPE([i * num_items_per_element for i in range(outer_len + 1)])
         )
 
         storage = pa.Array.from_buffers(
@@ -479,7 +479,7 @@ class ArrowTensorArray(_ArrowTensorScalarIndexingMixin, pa.ExtensionArray):
             # Getting a single tensor element of the array.
             offset_buffer = buffers[1]
             offset_array = np.ndarray(
-                (len(self),), buffer=offset_buffer, dtype=self.OFFSET_DTYPE
+                (len(self),), buffer=offset_buffer, dtype=ArrowTensorType.OFFSET_DTYPE
             )
             # Offset into array to reach logical index.
             index_offset = offset_array[index]
@@ -730,8 +730,6 @@ class ArrowVariableShapedTensorArray(
     See Arrow docs for customizing extension arrays:
     https://arrow.apache.org/docs/python/extending_types.html#custom-extension-array-class
     """
-
-    OFFSET_DTYPE = np.int64
 
     @classmethod
     def from_numpy(
