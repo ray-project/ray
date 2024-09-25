@@ -8,7 +8,7 @@ from ray.exceptions import RayChannelError
 # This enables NPU to NPU communication across devices.
 # Explaination: Since currently the worker can only see the GPU/NPU asign to
 # that worker, the NPU needs to see all NPUs to enable the communication channel.
-os.environ['ASCEND_RT_VISIBLE_DEVICES'] = "1,2,3,4,5,6,7,8"
+os.environ['ASCEND_RT_VISIBLE_DEVICES'] = "0,1,2,3,4,5,6,7"
 import torch.distributed as dist
 import torch_npu #The torch_npu for communicate
 from ray.experimental.channel.gpu_communicator import (
