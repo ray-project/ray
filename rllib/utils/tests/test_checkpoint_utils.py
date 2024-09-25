@@ -137,7 +137,10 @@ class TestCheckpointUtils(unittest.TestCase):
             pickle_w["policy_states"]["default_policy"]["policy_spec"]["config"]
         )
         check(pickle_w["policy_states"], msgpack_w["policy_states"])
-        check(pickle_state["config"].serialize(), msgpack_state["config"].serialize())
+        check(
+            AlgorithmConfig._serialize_dict(pickle_state["config"]),
+            AlgorithmConfig._serialize_dict(msgpack_state["config"]),
+        )
 
         algo1.stop()
         algo2.stop()
@@ -219,9 +222,9 @@ class TestCheckpointUtils(unittest.TestCase):
         # handle comparing types/classes.
         # The only exception is the `policies` field as it might have gotten
         # regenerated from a set, thus the order of PIDs might be different.
-        p = pickle_state["config"].serialize()
+        p = AlgorithmConfig._serialize_dict(pickle_state["config"])
         p_pols = p.pop("policies")
-        m = msgpack_state["config"].serialize()
+        m = AlgorithmConfig._serialize_dict(msgpack_state["config"])
         m_pols = m.pop("policies")
         check(p, m)
         # Compare sets of policyIDs here.
