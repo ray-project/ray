@@ -11,16 +11,19 @@ schema={
    }
 """
 
-from google.cloud import storage
+# from google.cloud import storage
 import gymnasium as gym
 import io
 import numpy as np
-from pathlib import Path
+
+# from pathlib import Path
 from PIL import Image
 import tree
 from typing import Optional
 
-from ray.data.datasource.tfrecords_datasource import TFXReadOptions
+import pyarrow.fs
+
+from ray.data import TFXReadOptions
 from ray.rllib.algorithms.bc import BCConfig
 from ray.rllib.connectors.connector_v2 import ConnectorV2
 from ray.rllib.core.columns import Columns
@@ -139,37 +142,58 @@ parser = add_rllib_example_script_args()
 # and (if needed) use their values toset up `config` below.
 args = parser.parse_args()
 
+# RLUnplugged GCS bucket. This bucket contains for each set of environments
+# (e.g. Atari) a directory and for each environment within. For each
+# environment multiple runs were collected.
+rlunplugged_base_path = "rl_unplugged/atari"
+
 # We only use the Atari game `Pong` here. Users can choose other Atari
 # games and set here the name. This will download `TfRecords` dataset from GCS.
 game = "Pong"
+
+# Path to the directory with all runs from Atari Pong.
+rlunplugged_path = rlunplugged_base_path + f"/{game}"
+
+# Set up the GCS file system.
+filesystem = pyarrow.fs.GcsFileSystem(anonymous=True)
 # There are many run numbers, we choose the first one for demonstration. This
 # can be chosen by users. To use all data use a list of file paths (see
 # `num_shards`) and its usage further below.
-run_number = 1
-# num_shards = 1
+# run_number = 1
 
-# Make the temporary directory for the downloaded data.
-tmp_path = "/tmp/atari"
-Path(tmp_path).joinpath(game).mkdir(exist_ok=True, parents=True)
-destination_file_name = f"{tmp_path}/{game}/run_{run_number}-00000-of-00001"
+# Get all file infos to calculate an optimal number of blocks for reading.
+all_file_infos = filesystem.get_file_info(pyarrow.fs.FileSelector(rlunplugged_path))
+# Get the total file size
+total_file_size_mb = sum(fi.size for fi in all_file_infos)
+# A block is defined to be 128MB.
+num_blocks = int(total_file_size_mb / 128) - 1
 
-# If the file is not downloaded, yet, download it here.
-if not Path(destination_file_name).exists():
-    # Define the bucket and source file.
-    bucket_name = "rl_unplugged"
-    source_blob_name = f"atari/{game}/run_{run_number}-00000-of-00100"
+# # num_shards = 1
 
-    # Download the data from the bucket.
-    storage_client = storage.Client.create_anonymous_client()
-    bucket = storage_client.bucket(bucket_name)
-    blob = bucket.blob(source_blob_name)
-    blob.download_to_filename(destination_file_name)
+
+# # Make the temporary directory for the downloaded data.
+# tmp_path = "/tmp/atari"
+# Path(tmp_path).joinpath(game).mkdir(exist_ok=True, parents=True)
+# destination_file_name = f"{tmp_path}/{game}/run_{run_number}-00000-of-00001"
+
+# # If the file is not downloaded, yet, download it here.
+# if not Path(destination_file_name).exists():
+#     # Define the bucket and source file.
+#     bucket_name = "rl_unplugged"
+#     source_blob_name = f"atari/{game}/run_{run_number}-00000-of-00100"
+
+#     # Download the data from the bucket.
+#     storage_client = storage.Client.create_anonymous_client()
+#     bucket = storage_client.bucket(bucket_name)
+#     blob = bucket.blob(source_blob_name)
+#     blob.download_to_filename(destination_file_name)
 
 # Define the config for Behavior Cloning.
 config = (
     BCConfig()
     .environment(
         env="WrappedALE/Pong-v5",
+        # TODO (sven): Does this have any influence in connectors?
         clip_rewards=True,
     )
     # Use the new API stack that makes directly use of `ray.data`.
@@ -186,7 +210,7 @@ config = (
     )
     .learners(
         num_learners=args.num_gpus if args.num_gpus > 1 else 0,
-        num_gpus_per_learner=1,
+        num_gpus_per_learner=0,
     )
     # Note, the `input_` argument is the major argument for the
     # new offline API. Via the `input_read_method_kwargs` the
@@ -194,20 +218,23 @@ config = (
     # configured. The read method needs at least as many blocks
     # as remote learners.
     .offline_data(
-        input_=destination_file_name,
+        input_=["rl_unplugged/atari/Pong"],  # destination_file_name,
         input_read_method="read_tfrecords",
         input_read_method_kwargs={
             # Note, `TFRecords` datasets in `rl_unplugged` are GZIP
             # compressed and Arrow needs to decompress them.
             "arrow_open_stream_args": {"compression": "gzip"},
             # Use enough reading blocks to scale well.
-            "override_num_blocks": 20,
+            "override_num_blocks": num_blocks,
+            # Read in parallel with these many actors.
+            "concurrency": 80,
             # TFX improves performance extensively. `tfx-bsl` needs to be
             # installed for this.
             "tfx_read_options": TFXReadOptions(
-                batch_size=2000,
+                # batch_size=2000,
             ),
         },
+        input_filesystem=filesystem,
         # `rl_unplugged`'s data schema is different from the one used
         # internally in `RLlib`. Define the schema here so it can be used
         # when transforming column data to episodes.
@@ -219,21 +246,27 @@ config = (
             Columns.NEXT_OBS: "o_tp1",
             Columns.TERMINATEDS: "d_t",
         },
+        materialize_data=False,
+        materialize_mapped_data=False,
         # Increase the parallelism in transforming batches, such that while
         # training, new batches are transformed while others are used in updating.
-        map_batches_kwargs={"concurrency": max(args.num_gpus * 20, 20)},
+        map_batches_kwargs={
+            "concurrency": 40,
+            "num_cpus": 40,
+        },  # max(args.num_gpus * 20, 20)},
         # When iterating over batches in the dataset, prefetch at least 20
         # batches per learner. Increase this for scaling out more.
         iter_batches_kwargs={
-            "prefetch_batches": max(args.num_gpus * 20, 20),
+            "prefetch_batches": 4,  # max(args.num_gpus * 20, 20),
             "local_shuffle_buffer_size": None,
         },
+        dataset_num_iters_per_learner=1,
     )
     .training(
         # To increase learning speed with multiple learners,
         # increase the learning rate correspondingly.
         lr=0.0008 * max(1, args.num_gpus**0.5),
-        train_batch_size_per_learner=2000,
+        train_batch_size_per_learner=1024,
         # Use the defined learner connector above, to decode observations.
         learner_connector=_make_learner_connector,
     )
@@ -251,7 +284,7 @@ config = (
 # TODO (simon): Change to use the `run_rllib_example` function as soon as tuned.
 algo = config.build()
 
-for i in range(10):
+for i in range(100):
     print(f"Iteration: {i + 1}")
     results = algo.train()
     print(results)
