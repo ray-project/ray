@@ -894,6 +894,15 @@ NPU_DEVICES = "0,1,2,3,4,5,6,7"
 
 @ray.remote(resources={"NPU": 1})
 class TorchTensorWorkerNPU:
+    # NOTE(zhilong): To run NPU test, we need to change
+    # "from ray.experimental.channel.nccl_group import _NcclGroup"
+    # to "from ray.experimental.channel.hccl_group import _HcclGroup"
+    # in "python/ray/experimental/channel/torch_tensor_nccl_channel.py"
+    # and also disable All GPU device check.
+
+    # TODO(zhilong): Refactor the aDAG channel so it support different
+    # XPUs.
+
     def __init__(self, rank):
         import torch  # noqa: F401
 
