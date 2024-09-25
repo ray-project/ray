@@ -23,7 +23,7 @@ The following select algorithms and setups are available.
 
 .. list-table::
    :header-rows: 1
-   :widths: 40 40 40
+   :widths: 25 25 25 25 25 25
 
    * - Feature/Algo (on new API stack)
      - **APPO**

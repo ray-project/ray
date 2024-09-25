@@ -102,7 +102,7 @@ def _build_export_event_file_logger(
 ) -> logging.Logger:
     logger = logging.getLogger("_ray_export_event_logger_" + source)
     logger.setLevel(logging.INFO)
-    dir_path = pathlib.Path(sink_dir) / "events"
+    dir_path = pathlib.Path(sink_dir) / "export_events"
     filepath = dir_path / f"event_{source}.log"
     dir_path.mkdir(exist_ok=True)
     filepath.touch(exist_ok=True)
