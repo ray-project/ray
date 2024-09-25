@@ -106,7 +106,7 @@ class ActionMaskingTorchRLModule(ActionMaskingRLModule, PPOTorchRLModule):
         # to the batch to access them in `_forward_train`.
         batch["action_mask"] = action_mask
         # Call the super's method to compute values for GAE.
-        return super().compute_values(batch, embeddings)
+        return super().compute_values(batch)
 
     def _preprocess_batch(
         self, batch: Dict[str, TensorType], **kwargs
