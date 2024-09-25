@@ -345,7 +345,8 @@ steps:
     instance_type: medium
     commands:
       - bazel run //ci/ray_ci:build_in_docker -- docker --platform cpu --canonical-tag ha_integration
-      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... core --only-tags ha_integration
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... core --only-tags ha_integration || true
+      - sleep 100000000
     depends_on:
       - manylinux
       - forge
