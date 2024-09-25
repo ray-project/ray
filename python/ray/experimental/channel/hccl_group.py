@@ -74,11 +74,13 @@ class _HcclGroup(GPUCommunicator):
             world_size: The total number of processes participating
                 in the communication.
         """
-        os.environ[
-            "MASTER_ADDR"
-        ] = "127.0.0.1"  # Set master address for HCCL communication
-        os.environ["MASTER_PORT"] = "29500"  # Set port for communication
-        os.environ["HCCL_WHITELIST_DISABLE"] = "1"  # Disable HCCL whitelist
+        # Set environment variables if not already set
+        os.environ["MASTER_ADDR"] = os.environ.get("MASTER_ADDR", "127.0.0.1")
+        os.environ["MASTER_PORT"] = os.environ.get("MASTER_PORT", "29500")
+        os.environ["HCCL_WHITELIST_DISABLE"] = os.environ.get(
+            "HCCL_WHITELIST_DISABLE", "1"
+        )
+
         torch_npu.npu.set_device(rank)  # Set the NPU device according to the rank
         self.ctx = dist.init_process_group(
             backend="hccl", world_size=world_size, rank=rank
