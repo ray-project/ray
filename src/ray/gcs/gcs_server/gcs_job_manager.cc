@@ -273,8 +273,16 @@ void GcsJobManager::HandleGetAllJobInfo(rpc::GetAllJobInfoRequest request,
       i++;
     }
 
-    // Jobs are filtered. Now, optionally populate is_running_tasks and job_info. A
-    // `asyncio.gather` is needed but we are in C++; so we use atomic counters.
+    // Jobs are filtered. Now, optionally populate is_running_tasks and job_info. We
+    // do async calls to:
+    //
+    // - N outbound RPCs, one to each jobs' core workers on GcsServer::main_service_.
+    // - One InternalKV MultiGet call on GcsServer::kv_service_.
+    //
+    // And then we wait all by examining an atomic num_finished_tasks counter and then
+    // reply. The wait counter is written from 2 different thread, which requires an
+    // atomic read-and-increment. Each thread performs read-and-increment, and check
+    // the atomic readout to ensure try_send_reply is executed exactly once.
 
     // Atomic counter of pending async tasks before sending the reply.
     // Once it reaches total_tasks, the reply is sent.
@@ -284,10 +292,6 @@ void GcsJobManager::HandleGetAllJobInfo(rpc::GetAllJobInfoRequest request,
     // N tasks for N jobs; and 1 task for the MultiKVGet. If either is skipped the counter
     // still increments.
     const size_t total_tasks = reply->job_info_list_size() + 1;
-
-    // Those async tasks need to atomically read-and-increment the counter, so this
-    // callback can't capture the atomic variable directly. Instead, it asks for an
-    // regular variable argument coming from the read-and-increment caller.
     auto try_send_reply =
         [reply, send_reply_callback, total_tasks](size_t finished_tasks) {
           if (finished_tasks == total_tasks) {
