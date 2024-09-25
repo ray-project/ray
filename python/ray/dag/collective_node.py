@@ -1,5 +1,6 @@
 from weakref import ReferenceType
-from typing import Any, Dict, List, Union, Tuple, Optional, TYPE_CHECKING
+from typing import Any, Dict, List, Union, Tuple, Optional
+import torch
 
 import ray
 from ray.dag import (
@@ -13,13 +14,10 @@ from ray.dag.constants import (
 )
 from ray.dag.format_utils import get_dag_node_str
 from ray.util.annotations import DeveloperAPI
-from ray.util.collective.nccl_types import ReduceOp
+from ray.util.collective.nccl_types import CollectiveOp, ReduceOp
 from ray.experimental.channel import ChannelContext
 from ray.experimental.channel.torch_tensor_nccl_channel import _init_nccl_group
 from ray.experimental.channel.torch_tensor_type import GPUCommunicator, TorchTensorType
-
-if TYPE_CHECKING:
-    import torch
 
 
 class CollectiveGroup:
@@ -28,7 +26,7 @@ class CollectiveGroup:
     def __init__(
         self,
         input_nodes: List[DAGNode],
-        op: ReduceOp,  # [TODO] General collective ops.
+        op: CollectiveOp,
         transport: Union[str, GPUCommunicator] = TorchTensorType.NCCL,
     ):
         self._input_nodes: List[DAGNode] = input_nodes
@@ -46,6 +44,9 @@ class CollectiveGroup:
             raise ValueError("Expected unique actor handles for a collective group")
 
         self._op = op
+        assert isinstance(
+            self._op, ReduceOp
+        ), "Other collective ops are not implemented"
         self._type_hint = TorchTensorType(transport=transport, _direct_return=True)
         if isinstance(transport, GPUCommunicator):
             assert set(transport.get_actor_handles()) == set(
@@ -90,10 +91,15 @@ class CollectiveGroup:
             raise ValueError("Expected a NCCL group")
         return nccl_group
 
-    def method(self, tensor: "torch.Tensor"):
+    def method(self, tensor: torch.Tensor):
+        assert isinstance(tensor, torch.Tensor), "Expected a torch tensor"
         nccl_group = self.get_nccl_group()
-        nccl_group.allreduce(tensor, self._op)
-        return tensor
+        assert isinstance(
+            self._op, ReduceOp
+        ), "Other collective ops are not yet implemented"
+        tensor_copy = tensor.clone()
+        nccl_group.allreduce(tensor_copy, self._op)
+        return tensor_copy
 
 
 @DeveloperAPI

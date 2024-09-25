@@ -378,7 +378,7 @@ def test_torch_tensor_custom_comm(ray_start_regular):
             self,
             tensor: "torch.Tensor",
             op: ReduceOp,
-        ):
+        ) -> None:
             raise NotImplementedError
 
         def destroy(self) -> None:
@@ -471,7 +471,7 @@ def test_torch_tensor_custom_comm_invalid(ray_start_regular):
             self,
             tensor: "torch.Tensor",
             op: ReduceOp,
-        ):
+        ) -> None:
             raise NotImplementedError
 
         def destroy(self) -> None:
@@ -539,11 +539,8 @@ def test_torch_tensor_custom_comm_inited(ray_start_regular):
     ), "This test requires at least 2 GPUs"
     runtime_env = {
         "env_vars": {
-            # [NOTE] Local test only.
-            # "MASTER_ADDR": socket.gethostbyname(socket.gethostname()),
-            # "MASTER_PORT": "8888",
-            "MASTER_ADDR": "127.0.0.1",
-            "MASTER_PORT": "13667",
+            "MASTER_ADDR": socket.gethostbyname(socket.gethostname()),
+            "MASTER_PORT": "8888",
         }
     }
     actor_cls = TorchTensorWorker.options(
@@ -614,7 +611,7 @@ def test_torch_tensor_custom_comm_inited(ray_start_regular):
             self,
             tensor: "torch.Tensor",
             op: ReduceOp,
-        ):
+        ) -> None:
             raise NotImplementedError
 
         def destroy(self) -> None:
@@ -1000,65 +997,6 @@ def test_torch_tensor_nccl_all_reduce_get_partial(ray_start_regular):
     compiled_dag.teardown()
 
 
-# @pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
-# def test_torch_tensor_nccl_all_reduce_wrong_shape(ray_start_regular):
-#     """
-#     Test a dag containing all-reduce errors when given tensors of wrong shapes.
-#     """
-#     if not USE_GPU:
-#         pytest.skip("NCCL tests require GPUs")
-
-#     assert (
-#         sum(node["Resources"].get("GPU", 0) for node in ray.nodes()) > 1
-#     ), "This test requires at least 2 GPUs"
-
-#     actor_cls = TorchTensorWorker.options(num_cpus=0, num_gpus=1)
-
-#     num_workers = 2
-#     workers = [actor_cls.remote() for _ in range(num_workers)]
-
-#     dtype = torch.float16
-
-#     with InputNode() as inp:
-#         computes = [
-#             worker.compute_with_tuple_args.bind(inp, i)
-#             for i, worker in enumerate(workers)
-#         ]
-#         collectives = collective.allreduce.bind(computes, ReduceOp.SUM)
-#         recvs = [
-#             worker.recv.bind(collective)
-#             for worker, collective in zip(workers, collectives)
-#         ]
-#         dag = MultiOutputNode(recvs)
-
-#     compiled_dag = dag.experimental_compile()
-
-#     ref = compiled_dag.execute([((20,), dtype, idx + 1) for idx in range(num_workers)])
-#     reduced_val = (1 + num_workers) * num_workers / 2
-#     assert ray.get(ref) == [(reduced_val, (20,), dtype) for _ in range(num_workers)]
-
-#     ref = compiled_dag.execute(
-#         [((10 + idx,), dtype, idx + 1) for idx in range(num_workers)]
-#     )
-#     # The shapes mismatch but no errors are thrown.
-#     # [TODO] Throw error when shapes mismatch. Make sure it does not hang.
-#     with pytest.raises(RayChannelError):
-#         ray.get(ref)
-
-#     # The DAG will be torn down after any task throws an application-level
-#     # exception, such as when the task returns torch.Tensors of the wrong
-#     # shape or dtype. Check that we can no longer submit to the DAG.
-#     ref = compiled_dag.execute([((20,), dtype, 1) for _ in workers])
-#     with pytest.raises(RayChannelError):
-#         ref = compiled_dag.execute([((20,), dtype, 1) for _ in workers])
-
-#     compiled_dag.teardown()
-
-#     # [TODO:andy] Check if this requires time.sleep to avoid some issue with
-#     # following tests.
-#     # time.sleep(3)
-
-
 @pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
 def test_torch_tensor_nccl_all_reduce_custom_comm(ray_start_regular):
     """
@@ -1175,7 +1113,7 @@ def test_torch_tensor_nccl_all_reduce_custom_comm(ray_start_regular):
 @pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
 def test_torch_tensor_nccl_all_reduce_custom_comm_wrong_actors(ray_start_regular):
     """
-    Test an error is thrown when all-reduce is bound to a wrong set of actors.
+    Test an error is thrown when an all-reduce binds to a wrong set of actors.
     """
     if not USE_GPU:
         pytest.skip("NCCL tests require GPUs")
@@ -1273,8 +1211,8 @@ def test_torch_tensor_nccl_all_reduce_custom_comm_wrong_actors(ray_start_regular
 @pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
 def test_torch_tensor_nccl_all_reduce_duplicate_actors(ray_start_regular):
     """
-    Test an error is thrown when two input nodes from the same actor
-    is bound to an all-reduce.
+    Test an error is thrown when two input nodes from the same actor bind to
+    an all-reduce.
     """
     if not USE_GPU:
         pytest.skip("NCCL tests require GPUs")
@@ -1307,8 +1245,8 @@ def test_torch_tensor_nccl_all_reduce_duplicate_actors(ray_start_regular):
 @pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
 def test_torch_tensor_nccl_comm_deduplicate_collectives(ray_start_regular):
     """
-    Test communicators are deduplicated when all-reduce
-    is called on the same group of actors more than once.
+    Test communicators are deduplicated when all-reduce is called on the same
+    group of actors more than once.
     """
     if not USE_GPU:
         pytest.skip("NCCL tests require GPUs")
@@ -1374,8 +1312,8 @@ def test_torch_tensor_nccl_comm_deduplicate_collectives(ray_start_regular):
 @pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
 def test_torch_tensor_nccl_comm_deduplicate_collective_and_p2p(ray_start_regular):
     """
-    Test communicators are deduplicated when the collective and the p2p send/recv
-    are on the same set of actors.
+    Test communicators are deduplicated when the collective and the P2P are
+    on the same set of actors.
     """
     if not USE_GPU:
         pytest.skip("NCCL tests require GPUs")
@@ -1396,7 +1334,7 @@ def test_torch_tensor_nccl_comm_deduplicate_collective_and_p2p(ray_start_regular
         ]
         collectives = collective.allreduce.bind(computes)
         recvs = [
-            # Each of the 2 workers recvs from the other.
+            # Each of the 2 workers receives from the other.
             workers[0].recv.bind(
                 collectives[1].with_type_hint(TorchTensorType(transport="nccl"))
             ),
@@ -1428,7 +1366,7 @@ def test_torch_tensor_nccl_comm_deduplicate_collective_and_p2p(ray_start_regular
     nccl_actors = nccl_group.get_actor_handles()
     # The NCCL group should contain both workers.
     assert set(nccl_actors) == set(workers)
-    # The nccl_group for all-reduce should be the same as the p2p send/recv nccl_group.
+    # The NCCL group for all-reduce should be the same as the P2P NCCL group.
     assert nccl_group_id == compiled_dag._nccl_group_id
 
     # Sanity check: the compiled dag can execute.
@@ -1464,9 +1402,8 @@ def test_torch_tensor_nccl_comm_deduplicate_collective_and_p2p(ray_start_regular
                 assert nccl_group_id is not None
                 nccl_group_ids.add(nccl_group_id)
 
-    # Both workers participated in the all-reduce;
-    # one of them is the sender and the other is the receiver in p2p.
-    # So only 1 NCCL group should be created.
+    # Both workers participated in the all-reduce. They are also the sender and
+    # receiver in P2P. So only 1 NCCL group should be created.
     assert len(nccl_group_ids) == 1
     nccl_group_id = list(nccl_group_ids)[0]
     ctx = ChannelContext.get_current()
@@ -1475,7 +1412,7 @@ def test_torch_tensor_nccl_comm_deduplicate_collective_and_p2p(ray_start_regular
     # The NCCL group should contain both workers.
     assert set(nccl_actors) == set(workers)
 
-    # The nccl_group for all-reduce should be the same as the p2p send/recv nccl_group.
+    # The NCCL group for all-reduce should be the same as the P2P NCCL group.
     assert nccl_group_id == compiled_dag._nccl_group_id
 
     # Sanity check: the compiled dag can execute.
@@ -1514,7 +1451,7 @@ def test_torch_tensor_nccl_all_reduce_diff_comms(ray_start_regular):
         ]
         collectives = [collective.allreduce.bind([compute]) for compute in computes]
         recvs = [
-            # Note: There are 2 all-reduces, each on 1 actor.
+            # Note: There are two all-reduces, each on one actor.
             # collective[0] is the only CollectiveOutputNode for each all-reduce.
             worker.recv.bind(collective[0])
             for worker, collective in zip(workers, collectives)
@@ -1759,6 +1696,17 @@ def test_torch_tensor_nccl_deduplicate_custom_comm(ray_start_regular):
 def test_torch_tensor_nccl_all_reduce_scheduling(ray_start_regular):
     """
     Test that scheduling avoids deadlocks when allreduce is used.
+
+    inp --> x(0) --> +-----------+
+        |            | allreduce |
+        --> y(1) --> +-----------+
+        |
+        --> t(0) --> recv(1)
+
+    In the above graph, x, y, t are tensors, and the numbers inside parentheses
+    identify the actors. If actor 1 launches allreduce with tensor y while actor 0
+    starts sending t, then actor 1 waits for actor 0 to join allreduce while
+    actor 1 waits for actor 0 to recv t.
     """
     if not USE_GPU:
         pytest.skip("NCCL tests require GPUs")
@@ -1798,11 +1746,56 @@ def test_torch_tensor_nccl_all_reduce_scheduling(ray_start_regular):
     assert torch.equal(result[1], expected_tensor_value)
     assert result[2] == (value, shape, dtype)
 
+    compiled_dag.teardown()
+
+
+@pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
+def test_torch_tensor_nccl_all_reduce_scheduling_one_ready_group(ray_start_regular):
+    """
+    Test that scheduling picks the allreduce group that is ready instead of a group
+    that is not.
+    """
+    if not USE_GPU:
+        pytest.skip("NCCL tests require GPUs")
+
+    assert (
+        sum(node["Resources"].get("GPU", 0) for node in ray.nodes()) > 1
+    ), "This test requires at least 2 GPUs"
+
+    actor_cls = TorchTensorWorker.options(num_cpus=0, num_gpus=1)
+
+    num_workers = 2
+    workers = [actor_cls.remote() for _ in range(num_workers)]
+
+    shape = (10,)
+    dtype = torch.float16
+    with InputNode() as inp:  # (task_idx, exec_task_idx): (0,)
+        x = workers[0].send.bind(shape, dtype, inp)  # (1, 0)
+        y = workers[1].send.bind(shape, dtype, inp)  # (2, 0)
+        _ = workers[0].send.bind(shape, dtype, inp)  # (3, 1)
+
+        allreduce_1 = collective.allreduce.bind([x])
+        z = allreduce_1[0]  # (4, 2)
+
+        allreduce_2 = collective.allreduce.bind([y, z])  # (5, 1) (6, 3)
+        recv_0 = workers[0].recv.bind(allreduce_2[0])
+        recv_1 = workers[1].recv.bind(allreduce_2[1])
+        dag = MultiOutputNode([recv_0, recv_1])
+
+    compiled_dag = dag.experimental_compile()
+
+    value = 10
+    ref = compiled_dag.execute(value)
+    result = ray.get(ref)
+    assert result == [(value * 2, shape, dtype) for _ in workers]
+
+    compiled_dag.teardown()
+
 
 # @pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
-# def test_torch_tensor_nccl_all_reduce_scheduling_one_ready(ray_start_regular):
+# def test_torch_tensor_nccl_all_reduce_wrong_shape(ray_start_regular):
 #     """
-#     Test that scheduling avoids deadlocks when allreduce is used.
+#     Test a dag containing all-reduce errors when given tensors of wrong shapes.
 #     """
 #     if not USE_GPU:
 #         pytest.skip("NCCL tests require GPUs")
@@ -1816,27 +1809,48 @@ def test_torch_tensor_nccl_all_reduce_scheduling(ray_start_regular):
 #     num_workers = 2
 #     workers = [actor_cls.remote() for _ in range(num_workers)]
 
-#     shape = (10,)
 #     dtype = torch.float16
-#     with InputNode() as inp:  # (task_idx, exec_task_idx): (0,)
-#         x = workers[0].send.bind(shape, dtype, inp)  # (1, 0)
-#         y = workers[1].send.bind(shape, dtype, inp)  # (2, 0)
-#         t = workers[0].send.bind(shape, dtype, inp)  # (3, 1)
 
-#         allreduce_1 = collective.allreduce.bind([x])
-#         z = allreduce_1[0]  # (4, 2)
-
-#         allreduce_2 = collective.allreduce.bind([y, z])  # (5, 1) (6, 3)
-#         recv_0 = workers[0].recv.bind(allreduce_2[0])
-#         recv_1 = workers[1].recv.bind(allreduce_2[1])
-#         dag = MultiOutputNode([recv_0, recv_1])
+#     with InputNode() as inp:
+#         computes = [
+#             worker.compute_with_tuple_args.bind(inp, i)
+#             for i, worker in enumerate(workers)
+#         ]
+#         collectives = collective.allreduce.bind(computes, ReduceOp.SUM)
+#         recvs = [
+#             worker.recv.bind(collective)
+#             for worker, collective in zip(workers, collectives)
+#         ]
+#         dag = MultiOutputNode(recvs)
 
 #     compiled_dag = dag.experimental_compile()
 
-#     value = 10
-#     ref = compiled_dag.execute(value)
-#     result = ray.get(ref)
-#     assert result == [(value * 2, shape, dtype) for _ in workers]
+#     ref = compiled_dag.execute(
+#         [((20,), dtype, idx + 1) for idx in range(num_workers)]
+#     )
+#     reduced_val = (1 + num_workers) * num_workers / 2
+#     assert ray.get(ref) == [(reduced_val, (20,), dtype) for _ in range(num_workers)]
+
+#     ref = compiled_dag.execute(
+#         [((10 + idx,), dtype, idx + 1) for idx in range(num_workers)]
+#     )
+#     # The shapes mismatch but no errors are thrown.
+#     # [TODO] Throw error when shapes mismatch. Make sure it does not hang.
+#     with pytest.raises(RayChannelError):
+#         ray.get(ref)
+
+#     # The DAG will be torn down after any task throws an application-level
+#     # exception, such as when the task returns torch.Tensors of the wrong
+#     # shape or dtype. Check that we can no longer submit to the DAG.
+#     ref = compiled_dag.execute([((20,), dtype, 1) for _ in workers])
+#     with pytest.raises(RayChannelError):
+#         ref = compiled_dag.execute([((20,), dtype, 1) for _ in workers])
+
+#     compiled_dag.teardown()
+
+#     # [TODO:andy] Check if this requires time.sleep to avoid some issue with
+#     # following tests.
+#     # time.sleep(3)
 
 
 if __name__ == "__main__":

@@ -25,23 +25,29 @@ class AllReduceWrapper:
         op: ReduceOp = ReduceOp.SUM,
         transport: Union[str, GPUCommunicator] = TorchTensorType.NCCL,
     ) -> List[CollectiveOutputNode]:
-        # [TODO] Polish.
         """
-        Binds tensors extracted from the given DAGNodes to an all-reduce operation.
+        Bind input nodes with a collective operation. The collective operation is
+        directly applied to the torch tensors from the input nodes. The output nodes
+        are the results of the collective operation in the same torch tensors.
+
         Requirements:
-        1. Each given input node must be resolved to a tensor during execution.
-        2. Each tensor must be on a different actor.
-        3. All tensors must have the same numel (from `torch.Tensor.numel()`).
-        4. If a custom `GPUCommunicator` is provided,
-           its actors (from `GPUCommunicator.get_actor_handles()`) must match
-           the actors of the input nodes (i.e., the actors of the tensors).
+        1. Each input node returns a torch tensor.
+        2. Each input node is from a different actor.
+        3. If a custom transport is specified, its actor set matches the actor set
+           of the input nodes.
+        4. All tensors have the same shape.
+
+        Requirements 1-3 are checked in the `CollectiveGroup` constructor.
+        Requirement 4 is not checked yet.
+
         Args:
-            input_nodes: A list of DAGNodes.
-            op: The reduce operation, which can be SUM (default), PRODUCT, MIN, or MAX.
-            comm: GPU communicator to be used during the execution of all-reduce.
-                If None (default), a `_NCCLGroup` will be used.
+            input_nodes: A list of DAG nodes.
+            op: The collective operation.
+            transport: GPU communicator for the collective operation. If not
+                specified, the default NCCL is used.
+
         Returns:
-            A list of output nodes of the all-reduce operation.
+            A list of collective output nodes.
         """
         collective_group = CollectiveGroup(input_nodes, op, transport)
         collective_output_nodes: List[CollectiveOutputNode] = []
@@ -52,7 +58,7 @@ class AllReduceWrapper:
             ] = input_node._get_actor_handle()
             assert actor_handle
             collective_output_node = CollectiveOutputNode(
-                method_name="allreduce",  # [TODO] From op.
+                method_name=f"allreduce.{op}",
                 method_args=(input_node,),
                 method_kwargs=dict(),
                 method_options=dict(),
