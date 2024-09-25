@@ -17,6 +17,8 @@ import requests
 
 import ray
 from ray._private.event.event_logger import filter_event_by_level, get_event_logger
+from ray._private.event.export_event_logger import get_export_event_logger
+from ray._private.protobuf_compat import message_to_dict
 from ray._private.test_utils import (
     format_web_url,
     wait_for_condition,
@@ -24,7 +26,11 @@ from ray._private.test_utils import (
 )
 from ray._private.utils import binary_to_hex
 from ray.cluster_utils import AutoscalingCluster
-from ray.core.generated import event_pb2
+from ray.core.generated import (
+    event_pb2,
+    export_event_pb2,
+    export_submission_job_event_pb2,
+)
 from ray.dashboard.modules.event import event_consts
 from ray.dashboard.modules.event.event_utils import monitor_events
 from ray.dashboard.tests.conftest import *  # noqa
@@ -37,9 +43,11 @@ logger = logging.getLogger(__name__)
 def _get_event(msg="empty message", job_id=None, source_type=None):
     return {
         "event_id": binary_to_hex(np.random.bytes(18)),
-        "source_type": random.choice(event_pb2.Event.SourceType.keys())
-        if source_type is None
-        else source_type,
+        "source_type": (
+            random.choice(event_pb2.Event.SourceType.keys())
+            if source_type is None
+            else source_type
+        ),
         "host_name": "po-dev.inc.alipay.net",
         "pid": random.randint(1, 65536),
         "label": "",
@@ -47,9 +55,11 @@ def _get_event(msg="empty message", job_id=None, source_type=None):
         "timestamp": time.time(),
         "severity": "INFO",
         "custom_fields": {
-            "job_id": ray.JobID.from_int(random.randint(1, 100)).hex()
-            if job_id is None
-            else job_id,
+            "job_id": (
+                ray.JobID.from_int(random.randint(1, 100)).hex()
+                if job_id is None
+                else job_id
+            ),
             "node_id": "",
             "task_id": "",
         },
@@ -543,6 +553,45 @@ def test_cluster_events_retention(monkeypatch, shutdown_only):
 
         wait_for_condition(verify)
         pprint(list_cluster_events())
+
+
+def test_export_event_logger(tmp_path):
+    """
+    Unit test a mock export event of type ExportSubmissionJobEventData
+    is correctly written to file. This doesn't events are correctly generated.
+    """
+    logger = get_export_event_logger(
+        export_event_pb2.ExportEvent.SourceType.EXPORT_SUBMISSION_JOB, str(tmp_path)
+    )
+    ExportSubmissionJobEventData = (
+        export_submission_job_event_pb2.ExportSubmissionJobEventData
+    )
+    event_data = ExportSubmissionJobEventData(
+        submission_job_id="submission_job_id0",
+        status=ExportSubmissionJobEventData.JobStatus.RUNNING,
+        entrypoint="ls",
+        metadata={},
+    )
+    logger.send_event(event_data)
+
+    event_dir = tmp_path / "export_events"
+    assert event_dir.exists()
+    event_file = event_dir / "event_EXPORT_SUBMISSION_JOB.log"
+    assert event_file.exists()
+
+    with event_file.open() as f:
+        lines = f.readlines()
+        assert len(lines) == 1
+
+        line = lines[0]
+        data = json.loads(line)
+        assert data["source_type"] == "EXPORT_SUBMISSION_JOB"
+        assert data["event_data"] == message_to_dict(
+            event_data,
+            always_print_fields_with_no_presence=True,
+            preserving_proto_field_name=True,
+            use_integers_for_enums=False,
+        )
 
 
 if __name__ == "__main__":

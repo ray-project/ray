@@ -267,6 +267,12 @@ class DependencyManager : public TaskDependencyManagerInterface {
         waiting_task_counter_map.Decrement(task_key);
       }
     }
+
+    ~TaskDependencies() {
+      if (num_missing_dependencies > 0) {
+        waiting_task_counter_map.Decrement(task_key);
+      }
+    }
   };
 
   /// Stop tracking this object, if it is no longer needed by any worker or
