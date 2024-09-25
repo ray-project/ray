@@ -1,5 +1,4 @@
 """APIs exposed under the namespace ray.util.collective."""
-
 import logging
 import os
 from typing import List
