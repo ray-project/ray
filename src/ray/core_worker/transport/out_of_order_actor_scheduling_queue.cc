@@ -165,12 +165,13 @@ void OutOfOrderActorSchedulingQueue::RunRequestWithSatisfiedDependencies(
 
 void OutOfOrderActorSchedulingQueue::RunRequest(InboundRequest request) {
   if (!request.PendingDependencies().empty()) {
-    waiter_.Wait(request.PendingDependencies(),
-                 [this, request = std::move(request)]() mutable {
-                   RAY_CHECK_EQ(boost::this_thread::get_id(), main_thread_id_);
-                   request.MarkDependenciesSatisfied();
-                   RunRequestWithSatisfiedDependencies(request);
-                 });
+    // Make a copy since request is going to be moved.
+    auto dependencies = request.PendingDependencies();
+    waiter_.Wait(dependencies, [this, request = std::move(request)]() mutable {
+      RAY_CHECK_EQ(boost::this_thread::get_id(), main_thread_id_);
+      request.MarkDependenciesSatisfied();
+      RunRequestWithSatisfiedDependencies(request);
+    });
   } else {
     request.MarkDependenciesSatisfied();
     RunRequestWithSatisfiedDependencies(request);
