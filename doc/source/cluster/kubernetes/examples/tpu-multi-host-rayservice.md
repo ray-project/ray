@@ -78,7 +78,7 @@ spec:
         - name: VLLMDeployment
           num_replicas: 1
         runtime_env:
-          working_dir: "https://github.com/ryanaoleary/kubernetes-engine-samples/archive/refs/heads/multihost-example.zip"
+          working_dir: "https://github.com/GoogleCloudPlatform/kubernetes-engine-samples/archive/main.zip"
         env_vars:
           MODEL_ID: "meta-llama/Meta-Llama-3-70B"
           TPU_CHIPS: 8
