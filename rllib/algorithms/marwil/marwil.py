@@ -126,6 +126,18 @@ class MARWILConfig(AlgorithmConfig):
             "type": "StochasticSampling",
             # Add constructor kwargs here (if any).
         }
+
+        # Materialize only the data in raw format, but not the mapped data b/c
+        # MARWIL uses a connector to calculate values and therefore the module
+        # needs to be updated frequently. This updating would not work if we
+        # map the data once at the beginning.
+        # TODO (simon, sven): The module is only updated when the OfflinePreLearner
+        #   gets reinitiated, i.e. when the iterator gets reinitiated. This happens
+        #   frequently enough with a small dataset, but with a big one this does not
+        #   update often enough. We might need to put model weigths every couple of
+        #   iterations into the object storage (maybe also connector states).
+        self.materialize_data = True
+        self.materialize_mapped_data = False
         # __sphinx_doc_end__
         # fmt: on
         self._set_off_policy_estimation_methods = False
@@ -257,7 +269,7 @@ class MARWILConfig(AlgorithmConfig):
             deprecation_warning(
                 old=r"MARWIL used to have off_policy_estimation_methods "
                 "is and wis by default. This has"
-                "changed to off_policy_estimation_methods: \{\}."
+                r"changed to off_policy_estimation_methods: \{\}."
                 "If you want to use an off-policy estimator, specify it in"
                 ".evaluation(off_policy_estimation_methods=...)",
                 error=False,
@@ -388,12 +400,12 @@ class MARWIL(Algorithm):
         """
         # Implement logic using RLModule and Learner API.
         # TODO (simon): Take care of sampler metrics: right
-        # now all rewards are `nan`, which possibly confuses
-        # the user that sth. is not right, although it is as
-        # we do not step the env.
+        #  now all rewards are `nan`, which possibly confuses
+        #  the user that sth. is not right, although it is as
+        #  we do not step the env.
         with self.metrics.log_time((TIMERS, OFFLINE_SAMPLING_TIMER)):
             # Sampling from offline data.
-            batch = self.offline_data.sample(
+            batch_or_iterator = self.offline_data.sample(
                 num_samples=self.config.train_batch_size_per_learner,
                 num_shards=self.config.num_learners,
                 return_iterator=self.config.num_learners > 1,
@@ -402,9 +414,9 @@ class MARWIL(Algorithm):
         with self.metrics.log_time((TIMERS, LEARNER_UPDATE_TIMER)):
             # Updating the policy.
             # TODO (simon, sven): Check, if we should execute directly s.th. like
-            # update_from_iterator.
-            learner_results = self.learner_group.update_from_batch(
-                batch,
+            #  `LearnerGroup.update_from_iterator()`.
+            learner_results = self.learner_group._update(
+                batch=batch_or_iterator,
                 minibatch_size=self.config.train_batch_size_per_learner,
                 num_iters=self.config.dataset_num_iters_per_learner,
             )

@@ -151,7 +151,7 @@ if __name__ == "__main__":
         get_trainable_cls(args.algo)
         .get_default_config()
         .training(
-            num_sgd_iter=6,
+            num_epochs=6,
             lr=0.0003,
             vf_loss_coeff=0.01,
         )

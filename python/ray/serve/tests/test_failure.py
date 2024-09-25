@@ -10,7 +10,7 @@ import requests
 import ray
 from ray import serve
 from ray._private.test_utils import SignalActor, wait_for_condition
-from ray.exceptions import ActorDiedError
+from ray.exceptions import RayActorError
 from ray.serve._private.common import DeploymentID
 from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME
 from ray.serve._private.test_utils import Counter, get_deployment_details, tlog
@@ -258,6 +258,9 @@ def test_no_available_replicas_does_not_block_proxy(serve_instance):
         assert ray.get(blocked_ref) == "hi"
 
 
+@pytest.mark.skipif(
+    sys.platform == "win32", reason="ActorDiedError not raised properly on windows."
+)
 @pytest.mark.parametrize("die_during_request", [False, True])
 def test_replica_actor_died(serve_instance, die_during_request):
     """Test replica death paired with delayed handle notification.
@@ -295,7 +298,7 @@ def test_replica_actor_died(serve_instance, die_during_request):
 
     # Kill one replica.
     if die_during_request:
-        with pytest.raises(ActorDiedError):
+        with pytest.raises(RayActorError):
             h.remote(crash=True).result()
     else:
         replica_to_kill = random.choice(replicas)

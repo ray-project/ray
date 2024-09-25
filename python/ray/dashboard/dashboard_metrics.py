@@ -75,6 +75,14 @@ try:
                 namespace="ray",
                 registry=self.registry,
             )
+            self.metrics_event_loop_tasks = Gauge(
+                "dashboard_event_loop_tasks",
+                "Number of tasks currently pending in the event loop's queue.",
+                tuple(COMPONENT_METRICS_TAG_KEYS),
+                unit="tasks",
+                namespace="ray",
+                registry=self.registry,
+            )
             self.metrics_event_loop_lag = Gauge(
                 "dashboard_event_loop_lag",
                 "Event loop lag in seconds.",

@@ -65,7 +65,7 @@ if __name__ == "__main__":
 
     if args.run == "PPO":
         # Simplify to run this example script faster.
-        config.training(sgd_minibatch_size=10, num_sgd_iter=5)
+        config.training(minibatch_size=10, num_epochs=5)
 
     stop = {TRAINING_ITERATION: args.stop_iters}
 

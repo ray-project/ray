@@ -106,8 +106,8 @@ class TestCallbacks(unittest.TestCase):
             .callbacks(EpisodeAndSampleCallbacks)
             .training(
                 train_batch_size=50,  # <- rollout_fragment_length=50
-                sgd_minibatch_size=50,
-                num_sgd_iter=1,
+                minibatch_size=50,
+                num_epochs=1,
             )
         )
 
@@ -158,8 +158,8 @@ class TestCallbacks(unittest.TestCase):
             .callbacks(EpisodeAndSampleCallbacks)
             .training(
                 train_batch_size=50,  # <- rollout_fragment_length=50
-                sgd_minibatch_size=50,
-                num_sgd_iter=1,
+                minibatch_size=50,
+                num_epochs=1,
             )
         )
 

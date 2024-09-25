@@ -14,5 +14,5 @@ config = (
         num_env_runners=4,
         num_envs_per_env_runner=5,
     )
-    .training(train_batch_size=500, sgd_minibatch_size=256, num_sgd_iter=5)
+    .training(train_batch_size=500, minibatch_size=256, num_epochs=5)
 )

@@ -688,3 +688,6 @@ class MultiRLModuleConfig:
                 for module_id, module_spec in d["modules"].items()
             },
         )
+
+    def get_catalog(self) -> None:
+        return None
