@@ -19,6 +19,18 @@ package ray.serve;
 
 option java_package = "io.ray.serve.generated";
 
+message ASGIRequest {
+  bytes pickled_request_metadata = 1;
+  bytes request_args = 2;
+  bytes request_kwargs = 3;
+}
+
 message ASGIResponse {
-  bytes msg = 1;
+  bytes serialized_message = 1;
+}
+
+service ASGIService {
+  rpc HandleRequest(ASGIRequest) returns (ASGIResponse);
+  rpc HandleRequestStreaming(ASGIRequest) returns (stream ASGIResponse);
+  rpc HandleRequestWithRejection(ASGIRequest) returns (stream ASGIResponse);
 }

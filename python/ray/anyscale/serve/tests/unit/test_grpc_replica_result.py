@@ -20,7 +20,9 @@ class FakegRPCUnaryCall:
             raise RuntimeError("Tried to fetch from a different loop!")
 
         yield
-        return serve_proprietary_pb2.ASGIResponse(msg=cloudpickle.dumps(self._item))
+        return serve_proprietary_pb2.ASGIResponse(
+            serialized_message=cloudpickle.dumps(self._item)
+        )
 
 
 class FakegRPCStreamCall:
@@ -47,7 +49,7 @@ class FakegRPCStreamCall:
             await self._loop.run_in_executor(None, self._event.wait)
 
         return serve_proprietary_pb2.ASGIResponse(
-            msg=cloudpickle.dumps(self._items.pop(0))
+            serialized_message=cloudpickle.dumps(self._items.pop(0))
         )
 
 

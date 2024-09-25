@@ -337,6 +337,7 @@ class Router:
         _prefer_local_node_routing: bool = False,
         enable_queue_len_cache: bool = RAY_SERVE_ENABLE_QUEUE_LENGTH_CACHE,
         enable_strict_max_ongoing_requests: bool = RAY_SERVE_ENABLE_STRICT_MAX_ONGOING_REQUESTS,  # noqa: E501
+        by_reference: bool = True,
         *,
         replica_scheduler: Optional[ReplicaScheduler] = None,
     ):
@@ -345,6 +346,13 @@ class Router:
         The scheduling behavior is delegated to a ReplicaScheduler; this is a thin
         wrapper that adds metrics and logging.
         """
+        # ===== Begin Anyscale proprietary code ======
+        from ray.anyscale.serve._private.replica_scheduler.replica_wrapper import (
+            gRPCReplicaWrapper,
+        )
+
+        self._by_reference = by_reference
+        # ===== End Anyscale proprietary code ======
 
         self._event_loop = event_loop
         self.deployment_id = deployment_id
@@ -360,7 +368,9 @@ class Router:
                 enable_strict_max_ongoing_requests
             )
 
-        replica_wrapper_cls = ActorReplicaWrapper
+        create_replica_wrapper = (
+            lambda r: ActorReplicaWrapper(r) if by_reference else gRPCReplicaWrapper(r)
+        )
         if replica_scheduler is None:
             replica_scheduler = PowerOfTwoChoicesReplicaScheduler(
                 self._event_loop,
@@ -375,7 +385,7 @@ class Router:
                 else None,
                 self_availability_zone,
                 use_replica_queue_len_cache=enable_queue_len_cache,
-                create_replica_wrapper_func=lambda r: replica_wrapper_cls(r),
+                create_replica_wrapper_func=create_replica_wrapper,
             )
 
         self._replica_scheduler: ReplicaScheduler = replica_scheduler

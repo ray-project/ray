@@ -104,7 +104,7 @@ class gRPCReplicaResult(ReplicaResult):
         grpc_response: serve_proprietary_pb2.ASGIResponse = self._fut.result(
             timeout=timeout_s
         )
-        return cloudpickle.loads(grpc_response.msg)
+        return cloudpickle.loads(grpc_response.serialized_message)
 
     async def get_async(self):
         if self._fut is None:
@@ -118,7 +118,7 @@ class gRPCReplicaResult(ReplicaResult):
         grpc_response: serve_proprietary_pb2.ASGIResponse = await asyncio.wrap_future(
             self._fut
         )
-        return cloudpickle.loads(grpc_response.msg)
+        return cloudpickle.loads(grpc_response.serialized_message)
 
     def __next__(self):
         if is_running_in_asyncio_loop():
@@ -130,7 +130,7 @@ class gRPCReplicaResult(ReplicaResult):
         fut = run_coroutine_threadsafe(self._get_internal(), loop=self._grpc_call_loop)
         try:
             grpc_response: serve_proprietary_pb2.ASGIResponse = fut.result()
-            return cloudpickle.loads(grpc_response.msg)
+            return cloudpickle.loads(grpc_response.serialized_message)
         except StopAsyncIteration:
             # We need to raise the synchronous version, StopIteration
             raise StopIteration
@@ -152,9 +152,9 @@ class gRPCReplicaResult(ReplicaResult):
         # expecting a pickled dictionary, so we return result directly
         # without deserializing. Otherwise, we deserialize the result.
         if ray.serve.context._serve_request_context.get().is_http_request:
-            return grpc_response.msg
+            return grpc_response.serialized_message
         else:
-            return cloudpickle.loads(grpc_response.msg)
+            return cloudpickle.loads(grpc_response.serialized_message)
 
     def add_callback(self, callback: Callable):
         self._call.add_done_callback(callback)
