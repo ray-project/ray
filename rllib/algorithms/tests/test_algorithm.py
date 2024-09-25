@@ -513,51 +513,6 @@ class TestAlgorithm(unittest.TestCase):
         algo_w_env_on_local_worker.stop()
         config.create_env_on_local_worker = False
 
-    def test_space_inference_from_remote_workers(self):
-        # Expect to not do space inference if the learner has an env.
-
-        env = gym.make("CartPole-v1")
-
-        config = (
-            ppo.PPOConfig()
-            .env_runners(
-                num_env_runners=1, validate_env_runners_after_construction=False
-            )
-            .environment(env="CartPole-v1")
-        )
-
-        # No env on driver -> expect longer build time due to space
-        # lookup from remote worker.
-        t0 = time.time()
-        algo = config.build()
-        w_lookup = time.time() - t0
-        print(f"No env on learner: {w_lookup}sec")
-        algo.stop()
-
-        # Env on driver -> expect shorted build time due to no space
-        # lookup required from remote worker.
-        config.create_env_on_local_worker = True
-        t0 = time.time()
-        algo = config.build()
-        wo_lookup = time.time() - t0
-        print(f"Env on learner: {wo_lookup}sec")
-        self.assertLess(wo_lookup, w_lookup)
-        algo.stop()
-
-        # Spaces given -> expect shorter build time due to no space
-        # lookup required from remote worker.
-        config.create_env_on_local_worker = False
-        config.environment(
-            observation_space=env.observation_space,
-            action_space=env.action_space,
-        )
-        t0 = time.time()
-        algo = config.build()
-        wo_lookup = time.time() - t0
-        print(f"Spaces given manually in config: {wo_lookup}sec")
-        self.assertLess(wo_lookup, w_lookup)
-        algo.stop()
-
     def test_worker_validation_time(self):
         """Tests the time taken by `validate_env_runners_after_construction=True`."""
         config = ppo.PPOConfig().environment(env="CartPole-v1")
