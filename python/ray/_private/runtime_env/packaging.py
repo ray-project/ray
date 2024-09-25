@@ -401,7 +401,7 @@ def _get_local_path(base_directory: str, pkg_uri: str) -> str:
 
 
 def _zip_files(
-    filepath: str,
+    path_str: str,
     excludes: List[str],
     output_path: str,
     include_parent_dir: bool = False,
@@ -418,7 +418,7 @@ def _zip_files(
     pkg_file = Path(output_path).absolute()
     with ZipFile(pkg_file, "w", strict_timestamps=False) as zip_handler:
         # Put all files in the directory into the zip file.
-        file_path = Path(filepath).absolute()
+        file_path = Path(path_str).absolute()
         dir_path = file_path
         if file_path.is_file():
             dir_path = file_path.parent

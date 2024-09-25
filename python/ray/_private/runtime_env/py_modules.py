@@ -82,7 +82,8 @@ def upload_py_modules_if_needed(
                 # users, we can add this support on demand.
                 if len(module.__path__) > 1:
                     raise ValueError(
-                        "py_modules only supports modules whose __path__ has length 1."
+                        "py_modules only supports modules whose __path__"
+                        " has length 1 or those who are single-file."
                     )
                 [module_path] = module.__path__
         else:
@@ -145,7 +146,7 @@ def upload_py_modules_if_needed(
                     upload_fn(module_path, excludes=None, is_file=True)
             else:
                 raise ValueError(
-                    "py_modules entry must be a python script, "
+                    "py_modules entry must be a .py file, "
                     "a directory, or a .whl file; "
                     f"got {module_path}"
                 )
