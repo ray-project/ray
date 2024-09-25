@@ -440,7 +440,7 @@ class TestAlgorithm(unittest.TestCase):
         # No eval results yet in first iteration (eval has not run yet).
         self.assertFalse(EVALUATION_RESULTS in r0)
         self.assertTrue(EVALUATION_RESULTS in r1)
-        self.assertFalse(EVALUATION_RESULTS in r2)
+        self.assertTrue(EVALUATION_RESULTS in r2)
         self.assertTrue(EVALUATION_RESULTS in r3)
         self.assertTrue(ENV_RUNNER_RESULTS in r1[EVALUATION_RESULTS])
         self.assertTrue(
