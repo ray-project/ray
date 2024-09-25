@@ -20,6 +20,7 @@ from ray_release.reporter.db import DBReporter
 from ray_release.reporter.ray_test_db import RayTestDBReporter
 from ray_release.reporter.log import LogReporter
 from ray_release.result import Result
+from ray_release.anyscale_util import LAST_LOGS_LENGTH
 
 
 @click.command()
@@ -89,6 +90,12 @@ from ray_release.result import Result
     type=str,
     help="Root of the test definition files. Default is the root of the repo.",
 )
+@click.option(
+    "--log-streaming-limit",
+    default=LAST_LOGS_LENGTH,
+    type=int,
+    help="Limit of log streaming in number of lines. Set to -1 to stream all logs.",
+)
 def main(
     test_name: str,
     test_collection_file: Tuple[str],
@@ -100,6 +107,7 @@ def main(
     global_config: str = "oss_config.yaml",
     no_terminate: bool = False,
     test_definition_root: Optional[str] = None,
+    log_streaming_limit: int = LAST_LOGS_LENGTH,
 ):
     global_config_file = os.path.join(
         os.path.dirname(__file__), "..", "configs", global_config
@@ -157,6 +165,7 @@ def main(
             cluster_env_id=cluster_env_id,
             no_terminate=no_terminate,
             test_definition_root=test_definition_root,
+            log_streaming_limit=log_streaming_limit,
         )
         return_code = result.return_code
     except ReleaseTestError as e:
