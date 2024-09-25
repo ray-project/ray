@@ -1,15 +1,21 @@
 import logging
-from typing import TYPE_CHECKING, List, Optional, Tuple
 import os
-
+import torch
 import ray
 from ray.exceptions import RayChannelError
-from ray.experimental.channel.gpu_communicator import GPUCommunicator,
 
-
-if TYPE_CHECKING:
-    import torch
-
+# Set ASCEND_RT_VISIBLE_DEVICES environment variable to ensure all NPUs are visible
+# This enables NPU to NPU communication across devices.
+# Explaination: Since currently the worker can only see the GPU/NPU asign to
+# that worker, the NPU needs to see all NPUs to enable the communication channel.
+os.environ['ASCEND_RT_VISIBLE_DEVICES'] = "1,2,3,4,5,6,7,8"
+import torch.distributed as dist
+import torch_npu #The torch_npu for communicate
+from ray.experimental.channel.gpu_communicator import (
+    GPUCommunicator,
+    TorchTensorAllocator,
+)
+from typing import TYPE_CHECKING, List, Optional, Tuple
 
 logger = logging.getLogger(__name__)
 
@@ -23,14 +29,8 @@ class _HcclGroup(GPUCommunicator):
     This class is not thread-safe.
     """
 
-    def __init__(
-        self,
-        world_size: int,
-        comm_id: int,
-        rank: Optional[int],
-        actor_handles: List["ray.actor.ActorHandle"],
-        device_id: Optional[int],
-    ):
+    def __init__(self, world_size: int, comm_id: int, rank: int, actor_handles: list, cuda_stream: Optional[int]):
+        # TODO(zhilong): Change cuda_stream to more general name like "stream".
         """
         Initialize an HCCL communicator that can be used to communicate p2p with
         other NPU actors.
@@ -44,52 +44,52 @@ class _HcclGroup(GPUCommunicator):
             rank: The rank of this actor. If None, then the caller is not a
                 participant of the HCCL group.
             actor_handles: A list of actor handles, in rank order.
-            device_id: The NPU device id to use for HCCL operations.
+            cuda_stream: Not used here but to keep same agrs with nccl_group.
         """
         self._world_size = world_size
-        self._rank: Optional[int] = rank
+        self._comm_id = comm_id
+        self._rank = rank
         self._actor_handles = actor_handles
-        self._device_id = device_id
-
-        if rank is not None:
-            assert ray.get_gpu_ids(), "HCCL actor has no NPUs assigned"
-            assert device_id is not None, "HCCL actor must specify device_id"
-
-            expected_rank = self.get_rank(ray.get_runtime_context().current_actor)
-            assert (
-                rank == expected_rank
-            ), f"HCCL actor's rank {rank} does not match expected rank {expected_rank}"
-
-            import torch
-            import torch_npu
-            import torch.distributed as dist
-
-            # Initialize HCCL process group
-            os.environ['MASTER_ADDR'] = '127.0.0.1'
-            os.environ['MASTER_PORT'] = '29500'
-            os.environ['HCCL_WHITELIST_DISABLE'] = '1'
-            torch_npu.npu.set_device(device_id)
-            dist.init_process_group(backend='hccl', world_size=world_size, rank=rank)
-
-            self._comm = dist
-        else:
-            self._comm = None
-
         self._closed = False
+        # Initialize distributed HCCL communication if rank is provided
+        if rank is not None:
+            self._init_dist_hccl(rank, world_size)
+
+    def _init_dist_hccl(self, rank, world_size):
+        """
+        Initialize the HCCL communication group on NPUs.
+
+        Args:
+            rank: The rank of the current process.
+            world_size: The total number of processes participating in the communication.
+        """
+        os.environ['MASTER_ADDR'] = '127.0.0.1'  # Set master address for HCCL communication
+        os.environ['MASTER_PORT'] = '29500'  # Set port for communication
+        os.environ['HCCL_WHITELIST_DISABLE'] = '1'  # Disable HCCL whitelist
+        torch_npu.npu.set_device(rank)  # Set the NPU device according to the rank
+        self.ctx = dist.init_process_group(backend='hccl', world_size=world_size, rank=rank)
 
     def initialize(self, rank: int) -> None:
-        # No additional initialization is needed.
-        pass
+        pass  # No additional initialization needed for HCCL group
 
-    def get_actor_handles(self) -> List["ray.actor.ActorHandle"]:
+    def get_actor_handles(self) -> list:
+        """
+        Return the list of actor handles.
+
+        Returns:
+            list: Actor handles in rank order.
+        """
         return self._actor_handles
 
-    def get_rank(self, actor: ray.actor.ActorHandle) -> int:
+    def get_rank(self, actor: "ray.actor.ActorHandle") -> int:
         """
         Return the given actor's rank in the HCCL communicator.
 
         Args:
             actor: The actor handle to look up.
+
+        Returns:
+            int: The rank of the actor.
         """
         actor_ids = [a._ray_actor_id for a in self._actor_handles]
         try:
@@ -98,71 +98,70 @@ class _HcclGroup(GPUCommunicator):
             raise ValueError("Actor is not in the HCCL group.")
         return rank
 
-    def get_self_rank(self) -> Optional[int]:
+    def get_self_rank(self) -> int:
         """
         Return this actor's rank.
+
+        Returns:
+            int: The rank of this actor in the HCCL group.
         """
         return self._rank
 
     def get_world_size(self) -> int:
         """
         Return the number of ranks in the HCCL communicator.
+
+        Returns:
+            int: The world size of the HCCL group.
         """
         return self._world_size
 
-    def send(self, value: "torch.Tensor", peer_rank: int) -> None:
+    def send(self, tensor: "torch.Tensor", peer_rank: int) -> None:
         """
-        Send a torch.Tensor to a peer.
+        Send a tensor to a peer using HCCL.
 
         Args:
-            value: The torch.Tensor to send. It should already be on this
-                actor's NPU device.
-            peer_rank: The rank of the actor to send to.
+            tensor: The tensor to be sent.
+            peer_rank: The rank of the peer to send the tensor to.
         """
         if self._closed:
             raise RayChannelError("HCCL group has been destroyed.")
-        
-        self._comm.send(tensor=value, dst=peer_rank)
+        logger.info(f"start to send to:{peer_rank},self._rank : {self._rank} ")
+        if self._closed:
+            raise RuntimeError("HCCL group has been destroyed.")
+        dist.send(tensor, dst=peer_rank)
+        logger.info(f"finishe send to dist {peer_rank}")
 
-    def recv(
-        self,
-        shape: Tuple[int],
-        dtype: "torch.dtype",
-        peer_rank: int,
-        allocator: Optional[Callable[[Tuple[int], "torch.dtype"], "torch.Tensor"]] = None,
-    ) -> "torch.Tensor":
+    def recv(self, shape: tuple, dtype: "torch.dtype", peer_rank: int,allocator=Optional[TorchTensorAllocator]) -> "torch.Tensor":
         """
-        Receive a torch.Tensor from a peer.
+        Receive a tensor from a peer using HCCL.
 
         Args:
             shape: The shape of the tensor to receive.
-            dtype: The dtype of the tensor to receive.
-            peer_rank: The rank of the actor to receive from.
-            allocator: A function to allocate the tensor to receive into.
+            dtype: The data type of the tensor.
+            peer_rank: The rank of the peer to receive the tensor from.
+            allocator: Optional allocator to allocate memory for the tensor.
+
+        Returns:
+            torch.Tensor: The received tensor.
         """
         if self._closed:
-            raise RayChannelError("HCCL group has been destroyed.")
-        assert allocator is not None, "HCCL group requires a tensor allocator"
-
-        # Allocate the receive buffer
-        buf = allocator(shape, dtype)
-        self._comm.recv(tensor=buf, src=peer_rank)
-        return buf
+            raise RuntimeError("HCCL group has been destroyed.")
+        torch_npu.npu.set_device(f"npu:{self._rank}")
+        tensor = torch.zeros(*shape, dtype=dtype).to(f"npu:{self._rank}")
+        dist.recv(tensor, src=peer_rank)
+        return tensor
 
     def destroy(self) -> None:
         """
-        Destroy the HCCL group.
+        Destroy the HCCL group and clean up resources.
         """
         if self._closed:
             return
-
         self._closed = True
-
-        if self._comm is not None:
+        dist.destroy_process_group()
+        if self._rank is not None:
             logger.info(
-                "Destructing HCCL group on actor: "
+                "Destructing NCCL group on actor: "
                 f"{ray.get_runtime_context().current_actor}"
             )
-            # Clean up the HCCL process group
-            self._comm.destroy_process_group()
-
