@@ -135,12 +135,16 @@ def _dir_travel(
         excludes.pop()
 
 
-def _hash_single(
+def _hash_file_content_or_directory_name(
     filepath: Path,
     relative_path: Path,
     logger: Optional[logging.Logger] = default_logger,
 ) -> bytes:
-    """Helper function to create hash of a single file or directory."""
+    """Helper function to create hash of a single file or directory.
+
+    This function will hash the path of the file or directory,
+    and if it's a file, it'll hash its content too.
+    """
 
     BUF_SIZE = 4096 * 1024
 
@@ -171,8 +175,13 @@ def _hash_file(
     relative_path: Path,
     logger: Optional[logging.Logger] = default_logger,
 ) -> bytes:
-    """Helper function to create hash of a single file."""
-    file_hash = _hash_single(filepath, relative_path, logger=logger)
+    """Helper function to create hash of a single file.
+
+    It'll hash the path of the file and its content to create a hash value.
+    """
+    file_hash = _hash_file_content_or_directory_name(
+        filepath, relative_path, logger=logger
+    )
     return _xor_bytes(file_hash, b"0" * 8)
 
 
@@ -190,7 +199,9 @@ def _hash_directory(
     hash_val = b"0" * 8
 
     def handler(path: Path):
-        file_hash = _hash_single(path, relative_path, logger=logger)
+        file_hash = _hash_file_content_or_directory_name(
+            path, relative_path, logger=logger
+        )
         nonlocal hash_val
         hash_val = _xor_bytes(hash_val, file_hash)
 
