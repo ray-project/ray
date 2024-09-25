@@ -486,17 +486,6 @@ class DAGNode(DAGNodeBase):
 
         return replaced_inputs
 
-    def update_bound_args(self, new_args: List[Any]):
-        """
-        Update the new args to the bound args of the node.
-        This is only used to add leaf nodes to the MultiOutputNode.
-        """
-        from ray.dag.output_node import MultiOutputNode
-
-        assert isinstance(self, MultiOutputNode)
-        assert isinstance(new_args, list)
-        self._bound_args.extend(new_args)
-
     def _execute_impl(
         self, *args, **kwargs
     ) -> Union[ray.ObjectRef, "ray.actor.ActorHandle"]:
