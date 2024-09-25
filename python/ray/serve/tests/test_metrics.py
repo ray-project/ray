@@ -32,19 +32,24 @@ from ray.serve.tests.test_config_files.grpc_deployment import g, g2
 TEST_METRICS_EXPORT_PORT = 9999
 
 
-@pytest.fixture
-def serve_start_shutdown():
-    """Fixture provides a fresh Ray cluster to prevent metrics state sharing."""
-    # Clean up metrics
+def clean_up_metrics():
     prometheus_base_url = f"http://127.0.0.1:{TEST_METRICS_EXPORT_PORT}"
+    health_check_url = f"{prometheus_base_url}/-/healthy"
+    readiness_url = f"{prometheus_base_url}/-/ready"
     delete_all_series_url = (
         f"{prometheus_base_url}/api/v1/admin/tsdb"
         '/delete_series?match[]={__name__=~".*"}'
     )
     clean_tombstones_url = f"{prometheus_base_url}/api/v1/admin/tsdb/clean_tombstones"
-    assert requests.post(delete_all_series_url).status_code == 204
-    assert requests.post(clean_tombstones_url) == 204
+    assert requests.get(health_check_url).status_code == 200
+    assert requests.get(readiness_url).status_code == 200
+    assert requests.post(delete_all_series_url).status_code == 200
+    assert requests.post(clean_tombstones_url).status_code == 200
 
+
+@pytest.fixture
+def serve_start_shutdown():
+    """Fixture provides a fresh Ray cluster to prevent metrics state sharing."""
     ray.init(
         _metrics_export_port=TEST_METRICS_EXPORT_PORT,
         _system_config={
@@ -63,6 +68,8 @@ def serve_start_shutdown():
             grpc_servicer_functions=grpc_servicer_functions,
         ),
     )
+
+    clean_up_metrics()
     serve.shutdown()
     ray.shutdown()
     ray._private.utils.reset_ray_address()
