@@ -616,7 +616,7 @@ class ArrowTensorArray(_ArrowTensorScalarIndexingMixin, pa.ExtensionArray):
         if ArrowTensorType._need_variable_shaped_tensor_array(arrs_types):
             new_arrs = []
             for a in arrs:
-                if isinstance(a.type, ArrowTensorType):
+                if isinstance(a.type, (ArrowTensorType, ArrowTensorTypeV2)):
                     a = a.to_variable_shaped_tensor_array()
                 assert isinstance(a.type, ArrowVariableShapedTensorType)
                 new_arrs.append(a)

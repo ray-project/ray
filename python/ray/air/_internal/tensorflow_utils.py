@@ -5,6 +5,7 @@ import pyarrow
 import tensorflow as tf
 
 from ray.air.util.data_batch_conversion import _unwrap_ndarray_object_type_if_needed
+from ray.air.util.tensor_extensions.arrow import ArrowTensorTypeV2, ArrowVariableShapedTensorType
 
 if TYPE_CHECKING:
     from ray.data._internal.pandas_block import PandasBlockSchema
@@ -98,7 +99,7 @@ def get_type_spec(
 
     def get_shape(dtype: Union[np.dtype, pa.DataType]) -> Tuple[int, ...]:
         shape = (None,)
-        if isinstance(dtype, ArrowTensorType):
+        if isinstance(dtype, (ArrowTensorType, ArrowTensorTypeV2, ArrowVariableShapedTensorType)):
             dtype = dtype.to_pandas_dtype()
         if isinstance(dtype, TensorDtype):
             shape += dtype.element_shape

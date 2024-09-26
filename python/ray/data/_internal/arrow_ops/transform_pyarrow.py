@@ -123,7 +123,7 @@ def unify_schemas(
         if ArrowTensorType._need_variable_shaped_tensor_array(tensor_array_types):
             if isinstance(tensor_array_types[0], ArrowVariableShapedTensorType):
                 new_type = tensor_array_types[0]
-            elif isinstance(tensor_array_types[0], ArrowTensorType):
+            elif isinstance(tensor_array_types[0], (ArrowTensorType, ArrowTensorTypeV2)):
                 new_type = ArrowVariableShapedTensorType(
                     dtype=tensor_array_types[0].scalar_type,
                     ndim=len(tensor_array_types[0].shape),
@@ -169,7 +169,7 @@ def _concatenate_chunked_arrays(arrs: "pyarrow.ChunkedArray") -> "pyarrow.Chunke
     """
     Concatenate provided chunked arrays into a single chunked array.
     """
-    from ray.data.extensions import ArrowTensorType, ArrowVariableShapedTensorType
+    from ray.data.extensions import ArrowTensorType, ArrowTensorTypeV2, ArrowVariableShapedTensorType
 
     # Single flat list of chunks across all chunked arrays.
     chunks = []
@@ -178,7 +178,7 @@ def _concatenate_chunked_arrays(arrs: "pyarrow.ChunkedArray") -> "pyarrow.Chunke
         if type_ is None:
             type_ = arr.type
         else:
-            if isinstance(type_, (ArrowTensorType, ArrowVariableShapedTensorType)):
+            if isinstance(type_, (ArrowTensorType, ArrowTensorTypeV2, ArrowVariableShapedTensorType)):
                 raise ValueError(
                     "_concatenate_chunked_arrays should only be used on non-tensor "
                     f"extension types, but got a chunked array of type {type_}."
@@ -238,7 +238,7 @@ def concat(blocks: List["pyarrow.Table"]) -> "pyarrow.Table":
                 col_chunked_arrays.append(block.column(col_name))
             if isinstance(
                 schema.field(col_name).type,
-                (ArrowTensorType, ArrowVariableShapedTensorType),
+                (ArrowTensorType, ArrowTensorTypeV2, ArrowVariableShapedTensorType),
             ):
                 # For our tensor extension types, manually construct a chunked array
                 # containing chunks from all blocks. This is to handle
