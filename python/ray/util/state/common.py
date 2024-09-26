@@ -787,6 +787,8 @@ class ObjectState(StateSchema):
     #:   to the remote worker + queueing time from the execution side.
     #: - RUNNING: The task that is running.
     task_status: TypeTaskStatus = state_column(filterable=True)
+    #: The number of times the task has been executed (including the current execution)
+    attempt_number: int = state_column(filterable=True)
     #: The reference type of the object.
     #: See :ref:`Debugging with Ray Memory <debug-with-ray-memory>` for more details.
     #:
@@ -1374,6 +1376,9 @@ class ObjectSummaryPerKey:
     #: State name to the count dict. State name is equivalent to
     #: ObjectState.
     task_state_counts: Dict[TypeTaskStatus, int] = field(default_factory=dict)
+    #: Attempt number to the count dict. The attempt number include the current
+    #: execution
+    task_attempt_number_counts: Dict[str, int] = field(default_factory=dict)
     #: Ref count type to the count dict. State name is equivalent to
     #: ObjectState.
     ref_type_counts: Dict[TypeReferenceType, int] = field(default_factory=dict)
@@ -1422,6 +1427,11 @@ class ObjectSummaries:
             if task_state not in object_summary.task_state_counts:
                 object_summary.task_state_counts[task_state] = 0
             object_summary.task_state_counts[task_state] += 1
+
+            attempt_number = str(object["attempt_number"])
+            if attempt_number not in object_summary.task_attempt_number_counts:
+                object_summary.task_attempt_number_counts[attempt_number] = 0
+            object_summary.task_attempt_number_counts[attempt_number] += 1
 
             ref_type = object["reference_type"]
             if ref_type not in object_summary.ref_type_counts:
@@ -1657,7 +1667,7 @@ def remove_ansi_escape_codes(text: str) -> str:
     return re.sub(r"\x1b[^m]*m", "", text)
 
 
-def dict_to_state(d: Dict, state_schema: StateSchema) -> StateSchema:
+def dict_to_state(d: Dict, state_source: StateResource) -> StateSchema:
     """Convert a dict to a state schema.
 
     Args:
@@ -1668,6 +1678,6 @@ def dict_to_state(d: Dict, state_schema: StateSchema) -> StateSchema:
         A state schema.
     """
     try:
-        return resource_to_schema(state_schema)(**d)
+        return resource_to_schema(state_source)(**d)
     except Exception as e:
         raise RayStateApiException(f"Failed to convert {d} to StateSchema: {e}") from e
