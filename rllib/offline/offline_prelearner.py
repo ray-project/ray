@@ -1,4 +1,5 @@
 import gymnasium as gym
+import logging
 import numpy as np
 import random
 from typing import Any, Dict, List, Optional, Union, Tuple, TYPE_CHECKING
@@ -45,6 +46,8 @@ SCHEMA = {
     "dones": "dones",
     "unroll_id": "unroll_id",
 }
+
+logger = logging.getLogger(__name__)
 
 
 @ExperimentalAPI

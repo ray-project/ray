@@ -887,7 +887,6 @@ class RecurrentEncoderConfig(ModelConfig):
     - Zero or one tokenizers
     - N LSTM/GRU layers stacked on top of each other and feeding
     their outputs as inputs to the respective next layer.
-    - One linear output layer
 
     This makes for the following flow of tensors:
 
@@ -900,8 +899,6 @@ class RecurrentEncoderConfig(ModelConfig):
     (...)
     |
     LSTM layer n
-    |
-    Linear output layer
     |
     Outputs
 

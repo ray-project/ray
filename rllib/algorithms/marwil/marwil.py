@@ -126,6 +126,18 @@ class MARWILConfig(AlgorithmConfig):
             "type": "StochasticSampling",
             # Add constructor kwargs here (if any).
         }
+
+        # Materialize only the data in raw format, but not the mapped data b/c
+        # MARWIL uses a connector to calculate values and therefore the module
+        # needs to be updated frequently. This updating would not work if we
+        # map the data once at the beginning.
+        # TODO (simon, sven): The module is only updated when the OfflinePreLearner
+        #   gets reinitiated, i.e. when the iterator gets reinitiated. This happens
+        #   frequently enough with a small dataset, but with a big one this does not
+        #   update often enough. We might need to put model weigths every couple of
+        #   iterations into the object storage (maybe also connector states).
+        self.materialize_data = True
+        self.materialize_mapped_data = False
         # __sphinx_doc_end__
         # fmt: on
         self._set_off_policy_estimation_methods = False
