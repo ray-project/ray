@@ -2,7 +2,7 @@ import gymnasium as gym
 import numpy as np
 import unittest
 
-from typing import List, Optional, Tuple
+from typing import Optional, Tuple
 
 import ray
 from ray.rllib.env.multi_agent_env import MultiAgentEnv

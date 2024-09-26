@@ -4,7 +4,6 @@ import gymnasium as gym
 
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
 from ray.rllib.utils.annotations import PublicAPI
-from ray.rllib.utils.typing import MultiAgentDict
 
 
 @PublicAPI

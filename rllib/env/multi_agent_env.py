@@ -34,6 +34,7 @@ class MultiAgentEnv(gym.Env):
 
     Agents are identified by AgentIDs (string).
     """
+
     # Optional mappings from AgentID to individual agents' spaces.
     # Set this to an "exhaustive" dictionary, mapping all possible AgentIDs to
     # individual agents' spaces. Alternatively, override
@@ -255,7 +256,8 @@ class MultiAgentEnv(gym.Env):
     def get_agent_ids(self) -> Set[AgentID]:
         if not isinstance(self._agent_ids, set):
             self._agent_ids = set(self._agent_ids)
-        return self._agent_ids
+        # Make this backward compatible as much as possible.
+        return self._agent_ids if self._agent_ids else set(self.agents)
 
     @OldAPIStack
     def to_base_env(
@@ -390,10 +392,9 @@ def make_multi_agent(
             self.observation_spaces = {
                 i: self.envs[i].observation_space for i in range(num)
             }
-            self.action_spaces = {
-                i: self.envs[i].action_space for i in range(num)
-            }
+            self.action_spaces = {i: self.envs[i].action_space for i in range(num)}
             self.agents = list(range(num))
+            self.possible_agents = self.agents.copy()
 
         @override(MultiAgentEnv)
         def reset(self, *, seed: Optional[int] = None, options: Optional[dict] = None):

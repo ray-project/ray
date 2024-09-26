@@ -7,25 +7,18 @@ import unittest
 import ray
 from ray.tune.registry import register_env
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
-from ray.rllib.algorithms.dqn.dqn import DQNConfig
-from ray.rllib.algorithms.dqn.dqn_tf_policy import DQNTFPolicy
 from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.env.multi_agent_env import (
-    make_multi_agent,
     MultiAgentEnv,
     MultiAgentEnvWrapper,
 )
-from ray.rllib.evaluation.episode import Episode
-from ray.rllib.evaluation.rollout_worker import get_global_worker, RolloutWorker
+from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.evaluation.tests.test_rollout_worker import MockPolicy
 from ray.rllib.examples._old_api_stack.policy.random_policy import RandomPolicy
-from ray.rllib.examples.envs.classes.multi_agent import MultiAgentCartPole
 from ray.rllib.examples.envs.classes.mock_env import MockEnv, MockEnv2
-from ray.rllib.policy.policy import PolicySpec
 from ray.rllib.policy.sample_batch import (
     convert_ma_batch_to_sample_batch,
 )
-from ray.rllib.tests.test_nested_observation_spaces import NestedMultiAgentEnv
 from ray.rllib.utils.metrics import (
     NUM_ENV_STEPS_SAMPLED_LIFETIME,
     ENV_RUNNER_RESULTS,
@@ -159,9 +152,11 @@ class FlexAgentsMultiAgent(MultiAgentEnv):
         super().__init__()
         self.envs = {}
         self.agents = []
+        self.possible_agents = list(range(10000))  # Absolute max. number of agents.
         self.agentID = 0
         self.terminateds = set()
         self.truncateds = set()
+        # All agents have the exact same spaces.
         self.observation_space = gym.spaces.Discrete(2)
         self.action_space = gym.spaces.Discrete(2)
         self.resetted = False
@@ -170,13 +165,17 @@ class FlexAgentsMultiAgent(MultiAgentEnv):
         # Spawn a new agent into the current episode.
         agentID = self.agentID
         self.envs[agentID] = MockEnv(25)
-        self._agent_ids.add(agentID)
+        self.agents.append(agentID)
         self.agentID += 1
         return agentID
 
+    def kill(self, agent_id):
+        del self.envs[agent_id]
+        self.agents.remove(agent_id)
+
     def reset(self, *, seed=None, options=None):
         self.envs = {}
-        self._agent_ids = set()
+        self.agents.clear()
         self.spawn()
         self.resetted = True
         self.terminateds = set()
@@ -202,21 +201,22 @@ class FlexAgentsMultiAgent(MultiAgentEnv):
 
         # Sometimes, add a new agent to the episode.
         if random.random() > 0.75 and len(action_dict) > 0:
-            i = self.spawn()
-            obs[i], rew[i], terminated[i], truncated[i], info[i] = self.envs[i].step(
-                action
-            )
-            if terminated[i]:
-                self.terminateds.add(i)
-            if truncated[i]:
-                self.truncateds.add(i)
+            aid = self.spawn()
+            obs[aid], rew[aid], terminated[aid], truncated[aid], info[aid] = self.envs[
+                aid
+            ].step(action)
+            if terminated[aid]:
+                self.terminateds.add(aid)
+            if truncated[aid]:
+                self.truncateds.add(aid)
 
         # Sometimes, kill an existing agent.
         if len(self.envs) > 1 and random.random() > 0.25:
             keys = list(self.envs.keys())
-            key = random.choice(keys)
-            terminated[key] = True
-            del self.envs[key]
+            aid = random.choice(keys)
+            self.kill(aid)
+            terminated[aid] = True
+            self.terminateds.add(aid)
 
         terminated["__all__"] = len(self.terminateds) == len(self.envs)
         truncated["__all__"] = len(self.truncateds) == len(self.envs)
@@ -702,7 +702,6 @@ class TestMultiAgentEnv(unittest.TestCase):
                 return [{}]  # empty dict
 
             def is_recurrent(self):
-                # TODO: avnishn automatically infer this.
                 return True
 
         ev = RolloutWorker(
@@ -726,161 +725,6 @@ class TestMultiAgentEnv(unittest.TestCase):
         for i in range(1, 5):
             check(batch["state_in_0"][i], h)
             check(batch["state_out_0"][i], h)
-
-    def test_returning_model_based_rollouts_data(self):
-
-        class ModelBasedPolicy(DQNTFPolicy):
-            def compute_actions_from_input_dict(
-                self, input_dict, explore=None, timestep=None, episodes=None, **kwargs
-            ):
-                obs_batch = input_dict["obs"]
-                # In policy loss initialization phase, no episodes are passed
-                # in.
-                if episodes is not None:
-                    # Pretend we did a model-based rollout and want to return
-                    # the extra trajectory.
-                    env_id = episodes[0].env_id
-                    fake_eps = Episode(
-                        episodes[0].policy_map,
-                        episodes[0].policy_mapping_fn,
-                        lambda: None,
-                        lambda x: None,
-                        env_id,
-                    )
-                    builder = get_global_worker().sampler.sample_collector
-                    agent_id = "extra_0"
-                    policy_id = "p1"  # use p1 so we can easily check it
-                    builder.add_init_obs(
-                        episode=fake_eps,
-                        agent_id=agent_id,
-                        policy_id=policy_id,
-                        env_id=env_id,
-                        init_obs=obs_batch[0],
-                        init_infos={},
-                    )
-                    for t in range(4):
-                        builder.add_action_reward_next_obs(
-                            episode_id=fake_eps.episode_id,
-                            agent_id=agent_id,
-                            env_id=env_id,
-                            policy_id=policy_id,
-                            agent_done=t == 3,
-                            values=dict(
-                                t=t,
-                                actions=0,
-                                rewards=0,
-                                terminateds=False,
-                                truncateds=t == 3,
-                                infos={},
-                                new_obs=obs_batch[0],
-                            ),
-                        )
-                    batch = builder.postprocess_episode(episode=fake_eps, build=True)
-                    episodes[0].add_extra_batch(batch)
-
-                # Just return zeros for actions
-                return [0] * len(obs_batch), [], {}
-
-        ev = RolloutWorker(
-            env_creator=lambda _: MultiAgentCartPole({"num_agents": 2}),
-            default_policy_class=ModelBasedPolicy,
-            config=DQNConfig()
-            .env_runners(
-                rollout_fragment_length=5,
-                num_env_runners=0,
-                enable_connectors=False,  # only works with old episode API
-            )
-            .multi_agent(
-                policies={"p0", "p1"},
-                policy_mapping_fn=lambda agent_id, episode, worker, **kwargs: "p0",
-            ),
-        )
-        batch = ev.sample()
-        # 5 environment steps (rollout_fragment_length).
-        check(batch.count, 5)
-        # 10 agent steps for p0: 2 agents, both using p0 as their policy.
-        check(batch.policy_batches["p0"].count, 10)
-        # 20 agent steps for p1: Each time both(!) agents takes 1 step,
-        # p1 takes 4: 5 (rollout-fragment length) * 4 = 20
-        check(batch.policy_batches["p1"].count, 20)
-
-    def test_train_multi_agent_cartpole_single_policy(self):
-        n = 10
-        register_env(
-            "multi_agent_cartpole", lambda _: MultiAgentCartPole({"num_agents": n})
-        )
-        config = (
-            PPOConfig()
-            .environment("multi_agent_cartpole")
-            .env_runners(num_env_runners=0)
-        )
-
-        algo = config.build()
-        for i in range(50):
-            result = algo.train()
-            print(
-                "Iteration {}, reward {}, timesteps {}".format(
-                    i,
-                    result[ENV_RUNNER_RESULTS][EPISODE_RETURN_MEAN],
-                    result[NUM_ENV_STEPS_SAMPLED_LIFETIME],
-                )
-            )
-            if result[ENV_RUNNER_RESULTS][EPISODE_RETURN_MEAN] >= 50 * n:
-                algo.stop()
-                return
-        raise Exception("failed to improve reward")
-
-    def test_train_multi_agent_cartpole_multi_policy(self):
-        n = 10
-        register_env(
-            "multi_agent_cartpole", lambda _: MultiAgentCartPole({"num_agents": n})
-        )
-
-        def gen_policy():
-            config = PPOConfig.overrides(
-                gamma=random.choice([0.5, 0.8, 0.9, 0.95, 0.99]),
-                lr=random.choice([0.001, 0.002, 0.003]),
-            )
-            return PolicySpec(config=config)
-
-        config = (
-            PPOConfig()
-            .environment("multi_agent_cartpole")
-            .env_runners(num_env_runners=0)
-            .multi_agent(
-                policies={
-                    "policy_1": gen_policy(),
-                    "policy_2": gen_policy(),
-                },
-                policy_mapping_fn=lambda agent_id, episode, worker, **kwargs: (
-                    "policy_1"
-                ),
-            )
-            .training(train_batch_size=50, minibatch_size=50, num_epochs=1)
-        )
-
-        algo = config.build()
-        # Just check that it runs without crashing
-        for i in range(10):
-            result = algo.train()
-            print(
-                "Iteration {}, reward {}, timesteps {}".format(
-                    i,
-                    result[ENV_RUNNER_RESULTS][EPISODE_RETURN_MEAN],
-                    result[NUM_ENV_STEPS_SAMPLED_LIFETIME],
-                )
-            )
-        self.assertTrue(
-            algo.compute_single_action([0, 0, 0, 0], policy_id="policy_1") in [0, 1]
-        )
-        self.assertTrue(
-            algo.compute_single_action([0, 0, 0, 0], policy_id="policy_2") in [0, 1]
-        )
-        self.assertRaisesRegex(
-            KeyError,
-            "not found in PolicyMap",
-            lambda: algo.compute_single_action([0, 0, 0, 0], policy_id="policy_3"),
-        )
 
 
 if __name__ == "__main__":

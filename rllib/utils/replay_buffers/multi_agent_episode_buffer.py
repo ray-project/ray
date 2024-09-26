@@ -479,14 +479,15 @@ class MultiAgentEpisodeReplayBuffer(EpisodeReplayBuffer):
 
     @override(EpisodeReplayBuffer)
     def get_added_timesteps(self, module_id: Optional[ModuleID] = None) -> int:
-        """Returns number of timesteps that have been added in buffer's lifetime for a module.
+        """Returns the number of timesteps added in buffer's lifetime for given module.
 
         Args:
-            module_id: The ID of the module to query. If not provided, the number of
-
+            module_id: The ID of the module to query. If not provided, the total number
+                of timesteps ever added.
 
         Returns:
-            The number of timesteps added for the module or all modules.
+            The number of timesteps added for `module_id` (or all modules if `module_id`
+            is None).
         """
         return (
             self._num_module_timesteps_added[module_id]

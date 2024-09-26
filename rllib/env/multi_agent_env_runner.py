@@ -14,7 +14,6 @@ from ray.rllib.core import (
 )
 from ray.rllib.core.columns import Columns
 from ray.rllib.core.rl_module.multi_rl_module import MultiRLModuleSpec
-from ray.rllib.env import INPUT_ENV_SPACES
 from ray.rllib.env.env_context import EnvContext
 from ray.rllib.env.env_runner import EnvRunner, ENV_STEP_FAILURE
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
@@ -258,10 +257,12 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
             if random_actions:
                 # Only act (randomly) for those agents that had an observation.
                 to_env = {
-                    Columns.ACTIONS: [{
-                        self.env.get_action_space(aid).sample()
-                        for aid in self._episode.get_agents_to_act()
-                    }]
+                    Columns.ACTIONS: [
+                        {
+                            self.env.get_action_space(aid).sample()
+                            for aid in self._episode.get_agents_to_act()
+                        }
+                    ]
                 }
             # Compute an action using the RLModule.
             else:
@@ -457,10 +458,12 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
             if random_actions:
                 # Only act (randomly) for those agents that had an observation.
                 to_env = {
-                    Columns.ACTIONS: [{
-                        self.env.get_action_space(aid).sample()
-                        for aid in self._episode.get_agents_to_act()
-                    }]
+                    Columns.ACTIONS: [
+                        {
+                            self.env.get_action_space(aid).sample()
+                            for aid in self._episode.get_agents_to_act()
+                        }
+                    ]
                 }
             # Compute an action using the RLModule.
             else:
@@ -602,10 +605,9 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
 
     @override(EnvRunner)
     def get_spaces(self):
+        # Return the already agent-to-module translated spaces from our connector
+        # pipeline.
         return {
-            INPUT_ENV_SPACES: (self.env.observation_space, self.env.action_space),
-            # Use the already agent-to-module translated spaces from our connector
-            # pipeline.
             **{
                 mid: (o, self._env_to_module.action_space[mid])
                 for mid, o in self._env_to_module.observation_space.spaces.items()

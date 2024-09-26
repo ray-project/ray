@@ -1,6 +1,5 @@
 """Common pre-checks for all RLlib experiments."""
 import logging
-from copy import copy
 from typing import TYPE_CHECKING, Set
 
 import gymnasium as gym
@@ -77,9 +76,7 @@ def check_multiagent_environments(env: "MultiAgentEnv") -> None:
     _check_if_element_multi_agent_dict(env, done, "step, done")
     _check_if_element_multi_agent_dict(env, truncated, "step, truncated")
     _check_if_element_multi_agent_dict(env, info, "step, info", allow_common=True)
-    _check_reward(
-        {"dummy_env_id": reward}, base_env=True, agent_ids=env.agents
-    )
+    _check_reward({"dummy_env_id": reward}, base_env=True, agent_ids=env.agents)
     _check_done_and_truncated(
         {"dummy_env_id": done},
         {"dummy_env_id": truncated},
