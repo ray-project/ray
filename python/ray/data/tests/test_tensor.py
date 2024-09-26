@@ -26,7 +26,9 @@ from ray.tests.conftest import *  # noqa
 
 # https://github.com/ray-project/ray/issues/33695
 @pytest.mark.parametrize("tensor_format", ["v1", "v2"])
-def test_large_tensor_creation(ray_start_regular_shared, restore_data_context, tensor_format):
+def test_large_tensor_creation(
+    ray_start_regular_shared, restore_data_context, tensor_format
+):
     """Tests that large tensor read task creation can complete successfully without
     hanging."""
 
@@ -321,7 +323,9 @@ def test_tensors_sort(ray_start_regular_shared, restore_data_context, tensor_for
 
 
 @pytest.mark.parametrize("tensor_format", ["v1", "v2"])
-def test_tensors_inferred_from_map(ray_start_regular_shared, restore_data_context, tensor_format):
+def test_tensors_inferred_from_map(
+    ray_start_regular_shared, restore_data_context, tensor_format
+):
     DataContext.get_current().should_use_tensor_v2 = tensor_format == "v2"
 
     # Test map.
@@ -542,7 +546,9 @@ def test_tensor_array_boolean_slice_pandas_roundtrip(init_with_pandas, test_data
 
 
 @pytest.mark.parametrize("tensor_format", ["v1", "v2"])
-def test_tensors_in_tables_from_pandas(ray_start_regular_shared, restore_data_context, tensor_format):
+def test_tensors_in_tables_from_pandas(
+    ray_start_regular_shared, restore_data_context, tensor_format
+):
     DataContext.get_current().should_use_tensor_v2 = tensor_format == "v2"
 
     outer_dim = 3
@@ -561,7 +567,9 @@ def test_tensors_in_tables_from_pandas(ray_start_regular_shared, restore_data_co
 
 
 @pytest.mark.parametrize("tensor_format", ["v1", "v2"])
-def test_tensors_in_tables_from_pandas_variable_shaped(ray_start_regular_shared, restore_data_context, tensor_format):
+def test_tensors_in_tables_from_pandas_variable_shaped(
+    ray_start_regular_shared, restore_data_context, tensor_format
+):
     DataContext.get_current().should_use_tensor_v2 = tensor_format == "v2"
 
     shapes = [(2, 2), (3, 3), (4, 4)]
@@ -634,7 +642,9 @@ def test_tensors_in_tables_pandas_roundtrip_variable_shaped(
 
 
 @pytest.mark.parametrize("tensor_format", ["v1", "v2"])
-def test_tensors_in_tables_parquet_roundtrip(ray_start_regular_shared, tmp_path, restore_data_context, tensor_format):
+def test_tensors_in_tables_parquet_roundtrip(
+    ray_start_regular_shared, tmp_path, restore_data_context, tensor_format
+):
     DataContext.get_current().should_use_tensor_v2 = tensor_format == "v2"
 
     outer_dim = 3
@@ -678,8 +688,13 @@ def test_tensors_in_tables_parquet_roundtrip_variable_shaped(
 
 
 @pytest.mark.parametrize("tensor_format", ["v1", "v2"])
-def test_tensors_in_tables_parquet_with_schema(ray_start_regular_shared, tmp_path, restore_data_context, tensor_format,
-                                               tensor_type=ArrowTensorType):
+def test_tensors_in_tables_parquet_with_schema(
+    ray_start_regular_shared,
+    tmp_path,
+    restore_data_context,
+    tensor_format,
+    tensor_type=ArrowTensorType,
+):
     DataContext.get_current().should_use_tensor_v2 = tensor_format == "v2"
 
     outer_dim = 3
@@ -849,7 +864,8 @@ def test_tensors_in_tables_parquet_bytes_manual_serde_udf(
         raise ValueError(f"Unexpected tensor format: {tensor_format}")
 
     assert isinstance(
-        ds.schema().base_schema.field_by_name(tensor_col_name).type, expected_tensor_type
+        ds.schema().base_schema.field_by_name(tensor_col_name).type,
+        expected_tensor_type,
     )
 
     values = [[s["one"], s["two"]] for s in ds.take()]
@@ -895,7 +911,8 @@ def test_tensors_in_tables_parquet_bytes_manual_serde_col_schema(
         raise ValueError(f"Unexpected tensor format: {tensor_format}")
 
     assert isinstance(
-        ds.schema().base_schema.field_by_name(tensor_col_name).type, expected_tensor_type
+        ds.schema().base_schema.field_by_name(tensor_col_name).type,
+        expected_tensor_type,
     )
 
     values = [[s["one"], s["two"]] for s in ds.take()]
@@ -942,7 +959,7 @@ def test_tensors_in_tables_iter_batches(
     ray_start_regular_shared,
     enable_automatic_tensor_extension_cast,
     restore_data_context,
-    tensor_format
+    tensor_format,
 ):
     DataContext.get_current().should_use_tensor_v2 = tensor_format == "v2"
 

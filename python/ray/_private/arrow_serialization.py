@@ -273,7 +273,10 @@ def _array_payload_to_array(payload: "PicklableArrayPayload") -> "pyarrow.Array"
         assert len(children) == 3, len(children)
         offsets, keys, items = children
         return pa.MapArray.from_arrays(offsets, keys, items)
-    elif isinstance(payload.type, (ArrowTensorType, ArrowTensorTypeV2, ArrowVariableShapedTensorType)):
+    elif isinstance(
+        payload.type,
+        (ArrowTensorType, ArrowTensorTypeV2, ArrowVariableShapedTensorType),
+    ):
         # Dedicated path for reconstructing an ArrowTensorArray or
         # ArrowVariableShapedTensorArray, both of which can't be reconstructed by the
         # Array.from_buffers() API.
@@ -332,7 +335,9 @@ def _array_to_array_payload(a: "pyarrow.Array") -> "PicklableArrayPayload":
         return _dictionary_array_to_array_payload(a)
     elif pa.types.is_map(a.type):
         return _map_array_to_array_payload(a)
-    elif isinstance(a.type, (ArrowTensorType, ArrowTensorTypeV2, ArrowVariableShapedTensorType)):
+    elif isinstance(
+        a.type, (ArrowTensorType, ArrowTensorTypeV2, ArrowVariableShapedTensorType)
+    ):
         return _tensor_array_to_array_payload(a)
     elif isinstance(a.type, pa.ExtensionType):
         return _extension_array_to_array_payload(a)

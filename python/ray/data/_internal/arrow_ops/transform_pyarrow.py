@@ -90,7 +90,11 @@ def unify_schemas(
                 cols_with_null_list.add(col_name)
             all_columns.add(col_name)
 
-    arrow_tensor_types = (ArrowVariableShapedTensorType, ArrowTensorType, ArrowTensorTypeV2)
+    arrow_tensor_types = (
+        ArrowVariableShapedTensorType,
+        ArrowTensorType,
+        ArrowTensorTypeV2,
+    )
     columns_with_objects = set()
     columns_with_tensor_array = set()
     for col_name in all_columns:
@@ -123,7 +127,9 @@ def unify_schemas(
         if ArrowTensorType._need_variable_shaped_tensor_array(tensor_array_types):
             if isinstance(tensor_array_types[0], ArrowVariableShapedTensorType):
                 new_type = tensor_array_types[0]
-            elif isinstance(tensor_array_types[0], (ArrowTensorType, ArrowTensorTypeV2)):
+            elif isinstance(
+                tensor_array_types[0], (ArrowTensorType, ArrowTensorTypeV2)
+            ):
                 new_type = ArrowVariableShapedTensorType(
                     dtype=tensor_array_types[0].scalar_type,
                     ndim=len(tensor_array_types[0].shape),
@@ -169,7 +175,11 @@ def _concatenate_chunked_arrays(arrs: "pyarrow.ChunkedArray") -> "pyarrow.Chunke
     """
     Concatenate provided chunked arrays into a single chunked array.
     """
-    from ray.data.extensions import ArrowTensorType, ArrowTensorTypeV2, ArrowVariableShapedTensorType
+    from ray.data.extensions import (
+        ArrowTensorType,
+        ArrowTensorTypeV2,
+        ArrowVariableShapedTensorType,
+    )
 
     # Single flat list of chunks across all chunked arrays.
     chunks = []
@@ -178,7 +188,10 @@ def _concatenate_chunked_arrays(arrs: "pyarrow.ChunkedArray") -> "pyarrow.Chunke
         if type_ is None:
             type_ = arr.type
         else:
-            if isinstance(type_, (ArrowTensorType, ArrowTensorTypeV2, ArrowVariableShapedTensorType)):
+            if isinstance(
+                type_,
+                (ArrowTensorType, ArrowTensorTypeV2, ArrowVariableShapedTensorType),
+            ):
                 raise ValueError(
                     "_concatenate_chunked_arrays should only be used on non-tensor "
                     f"extension types, but got a chunked array of type {type_}."

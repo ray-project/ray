@@ -95,8 +95,8 @@ class ArrowRow(TableRow):
     def __getitem__(self, key: Union[str, List[str]]) -> Any:
         from ray.data.extensions import (
             ArrowTensorType,
-            ArrowVariableShapedTensorType,
             ArrowTensorTypeV2,
+            ArrowVariableShapedTensorType,
         )
 
         def get_item(keys: List[str]) -> Any:

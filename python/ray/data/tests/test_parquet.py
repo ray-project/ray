@@ -11,7 +11,7 @@ import pytest
 from pytest_lazyfixture import lazy_fixture
 
 import ray
-from ray.air.util.tensor_extensions.arrow import (ArrowTensorType, ArrowTensorTypeV2)
+from ray.air.util.tensor_extensions.arrow import ArrowTensorType, ArrowTensorTypeV2
 from ray.data._internal.datasource.parquet_bulk_datasource import ParquetBulkDatasource
 from ray.data._internal.datasource.parquet_datasource import (
     NUM_CPUS_FOR_META_FETCH_TASK,
@@ -1228,11 +1228,13 @@ def test_tensors_in_tables_parquet(
     id_vals = list(range(num_rows))
     group_vals = [i % num_groups for i in id_vals]
 
-    df = pd.DataFrame({
-        id_col_name: id_vals,
-        group_col_name: group_vals,
-        tensor_col_name: [a.tobytes() for a in arr]
-    })
+    df = pd.DataFrame(
+        {
+            id_col_name: id_vals,
+            group_col_name: group_vals,
+            tensor_col_name: [a.tobytes() for a in arr],
+        }
+    )
 
     #
     # Test #1: Verify writing tensors as ArrowTensorType (v1)
@@ -1246,7 +1248,7 @@ def test_tensors_in_tables_parquet(
     ds = ray.data.read_parquet(
         tensor_v1_path,
         tensor_column_schema={tensor_col_name: (arr.dtype, inner_shape)},
-        override_num_blocks=10
+        override_num_blocks=10,
     )
 
     assert isinstance(
@@ -1265,7 +1267,6 @@ def test_tensors_in_tables_parquet(
 
     _assert_equal(ds.take_all(), expected_tuples)
 
-
     #
     # Test #2: Verify writing tensors as ArrowTensorTypeV2
     #
@@ -1280,7 +1281,7 @@ def test_tensors_in_tables_parquet(
     ds = ray.data.read_parquet(
         tensor_v2_path,
         tensor_column_schema={tensor_col_name: (arr.dtype, inner_shape)},
-        override_num_blocks=10
+        override_num_blocks=10,
     )
 
     assert isinstance(

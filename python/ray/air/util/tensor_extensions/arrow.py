@@ -106,7 +106,9 @@ class _BaseArrowTensorType(pa.ExtensionType, abc.ABC):
     https://arrow.apache.org/docs/python/extending_types.html#defining-extension-types-user-defined-types
     """
 
-    def __init__(self, shape: Tuple[int, ...], tensor_dtype: pa.DataType, ext_type_id: str):
+    def __init__(
+        self, shape: Tuple[int, ...], tensor_dtype: pa.DataType, ext_type_id: str
+    ):
         self._shape = shape
 
         super().__init__(tensor_dtype, ext_type_id)
@@ -188,7 +190,9 @@ class _BaseArrowTensorType(pa.ExtensionType, abc.ABC):
     def _need_variable_shaped_tensor_array(
         cls,
         array_types: Sequence[
-            Union["ArrowTensorType", "ArrowTensorTypeV2", "ArrowVariableShapedTensorType"]
+            Union[
+                "ArrowTensorType", "ArrowTensorTypeV2", "ArrowVariableShapedTensorType"
+            ]
         ],
     ) -> bool:
         """
@@ -452,6 +456,7 @@ class ArrowTensorArray(_ArrowTensorScalarIndexingMixin, pa.ExtensionArray):
         )
 
         from ray.data import DataContext
+
         should_use_tensor_v2 = DataContext.get_current().should_use_tensor_v2
 
         if should_use_tensor_v2:
@@ -461,7 +466,9 @@ class ArrowTensorArray(_ArrowTensorScalarIndexingMixin, pa.ExtensionArray):
 
         # Create Offset buffer
         offset_buffer = pa.py_buffer(
-            pa_type_.OFFSET_DTYPE([i * num_items_per_element for i in range(outer_len + 1)])
+            pa_type_.OFFSET_DTYPE(
+                [i * num_items_per_element for i in range(outer_len + 1)]
+            )
         )
 
         storage = pa.Array.from_buffers(
