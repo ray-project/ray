@@ -91,7 +91,7 @@ class MARWILConfig(AlgorithmConfig):
 
         from pathlib import Path
         from ray.rllib.algorithms.marwil import MARWILConfig
-        from ray import tune
+        from ray import train, tune
 
         # Get the base path (to ray/rllib)
         base_path = Path(__file__).parents[2]
@@ -127,8 +127,11 @@ class MARWILConfig(AlgorithmConfig):
         tuner = tune.Tuner(
             "MARWIL",
             param_space=config,
+            run_config=train.RunConfig(
+                stop={"training_iteration": 1},
+            ),
         )
-        # Run th experiment.
+        # Run the experiment.
         tuner.fit()
     """
 
