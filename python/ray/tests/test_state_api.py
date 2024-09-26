@@ -2227,11 +2227,13 @@ def test_list_get_jobs(shutdown_only):
     )
 
     def verify():
-        job_data = list_jobs()[0]
+        job_data = list_jobs(detail=True)[0]
         print(job_data)
         job_id_from_api = job_data["submission_id"]
         assert job_data["status"] == "SUCCEEDED"
         assert job_id == job_id_from_api
+        assert job_data["start_time"] > 0
+        assert job_data["end_time"] > 0
         return True
 
     wait_for_condition(verify)
@@ -2252,10 +2254,11 @@ ray.get(f.remote())
     run_string_as_driver(script)
 
     def verify():
-        jobs = list_jobs(filters=[("type", "=", "DRIVER")])
+        jobs = list_jobs(filters=[("type", "=", "DRIVER")], detail=True)
         assert len(jobs) == 2, "1 test driver + 1 script run above"
         for driver_job in jobs:
             assert driver_job["driver_info"] is not None
+            assert driver_job["start_time"] > 0
 
         sub_jobs = list_jobs(filters=[("type", "=", "SUBMISSION")])
         assert len(sub_jobs) == 1

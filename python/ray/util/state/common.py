@@ -282,7 +282,7 @@ class StateSchema(ABC):
     @classmethod
     def columns(cls) -> Set[str]:
         """Return a set of all columns."""
-        return set(cls.list_columns())
+        return set(cls.list_columns(detail=True))
 
     @classmethod
     def filterable_columns(cls) -> Set[str]:
@@ -556,7 +556,7 @@ class JobState(StateSchema, JobDetails if JobDetails is not None else object):
         return state
 
     @classmethod
-    def list_columns(cls, detail: bool = False) -> List[str]:
+    def list_columns(cls, detail: bool = True) -> List[str]:
         if not detail:
             return [
                 "job_id",
@@ -568,7 +568,7 @@ class JobState(StateSchema, JobDetails if JobDetails is not None else object):
                 "error_type",
                 "driver_info",
             ]
-        if isinstance(JobDetails, object):
+        if JobDetails is None:
             # We don't have pydantic in the dashboard. This is because
             # we call this method at module import time, so we need to
             # check if the class is a pydantic model.
