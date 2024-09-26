@@ -10,8 +10,7 @@ RLlib's New API Stack
 .. hint::
 
     This section describes in detail what the new API stack is and why you should migrate to it
-    (in case you have old API stack custom code).
-    :ref:`See here for a comprehensive migration guide <rllib-new-api-stack-migration-guide>`.
+    (in case you have old API stack custom code). :ref:`See here for a comprehensive migration guide <rllib-new-api-stack-migration-guide>`.
 
 
 Overview
