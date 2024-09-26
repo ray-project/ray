@@ -28,6 +28,7 @@ import ray
 import ray.cloudpickle as pickle
 from ray._private.thirdparty.tabulate.tabulate import tabulate
 from ray._private.usage import usage_lib
+from ray.air.util.tensor_extensions.arrow import ArrowTensorTypeV2
 from ray.air.util.tensor_extensions.utils import _create_possibly_ragged_ndarray
 from ray.data._internal.aggregate import Max, Mean, Min, Std, Sum
 from ray.data._internal.compute import ComputeStrategy
@@ -5195,12 +5196,19 @@ class Schema:
         arrow_types = []
         for dtype in self.base_schema.types:
             if isinstance(dtype, TensorDtype):
+
+                if DataContext.should_use_tensor_v2:
+                    pa_tensor_type_class = ArrowTensorTypeV2
+                else:
+                    pa_tensor_type_class = ArrowTensorType
+
                 # Manually convert our Pandas tensor extension type to Arrow.
                 arrow_types.append(
-                    ArrowTensorType(
+                    pa_tensor_type_class(
                         shape=dtype._shape, dtype=pa.from_numpy_dtype(dtype._dtype)
                     )
                 )
+
             else:
                 try:
                     arrow_types.append(pa.from_numpy_dtype(dtype))
