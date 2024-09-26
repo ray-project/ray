@@ -2184,6 +2184,7 @@ class AlgorithmConfig(_Config):
         learner_config_dict: Optional[Dict[str, Any]] = NotProvided,
         # Deprecated args.
         num_sgd_iter=DEPRECATED_VALUE,
+        max_requests_in_flight_per_sampler_worker=DEPRECATED_VALUE,
     ) -> "AlgorithmConfig":
         """Sets the training related configuration.
 
@@ -2283,6 +2284,19 @@ class AlgorithmConfig(_Config):
                 error=False,
             )
             num_epochs = num_sgd_iter
+        if max_requests_in_flight_per_sampler_worker != DEPRECATED_VALUE:
+            deprecation_warning(
+                old="AlgorithmConfig.training("
+                "max_requests_in_flight_per_sampler_worker=...)",
+                new="AlgorithmConfig.env_runners("
+                "max_requests_in_flight_per_env_runner=...)",
+                error=False,
+            )
+            self.env_runners(
+                max_requests_in_flight_per_env_runner=(
+                    max_requests_in_flight_per_sampler_worker
+                ),
+            )
 
         if gamma is not NotProvided:
             self.gamma = gamma
@@ -3401,7 +3415,7 @@ class AlgorithmConfig(_Config):
         *,
         _torch_grad_scaler_class: Optional[Type] = NotProvided,
         _torch_lr_scheduler_classes: Optional[
-            Union[List[Type], Dict[ModuleID, Type]]
+            Union[List[Type], Dict[ModuleID, List[Type]]]
         ] = NotProvided,
         _tf_policy_handles_more_than_one_loss: Optional[bool] = NotProvided,
         _disable_preprocessor_api: Optional[bool] = NotProvided,
@@ -3430,8 +3444,9 @@ class AlgorithmConfig(_Config):
                 classes or a dictionary mapping module IDs to such a list of respective
                 scheduler classes. Multiple scheduler classes can be applied in sequence
                 and will be stepped in the same sequence as defined here. Note, most
-                learning rate schedulers need arguments to be configured, i.e. you need
-                to partially initialize the schedulers in the list(s).
+                learning rate schedulers need arguments to be configured, that is, you
+                might have to partially initialize the schedulers in the list(s) using
+                `functools.partial`.
             _tf_policy_handles_more_than_one_loss: Experimental flag.
                 If True, TFPolicy handles more than one loss or optimizer.
                 Set this to True, if you would like to return more than
