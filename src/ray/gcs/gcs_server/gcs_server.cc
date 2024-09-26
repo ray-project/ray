@@ -272,6 +272,9 @@ void GcsServer::Stop() {
     task_io_context_.Stop();
     pubsub_io_context_.Stop();
 
+    ray_syncer_.reset();
+    pubsub_handler_.reset();
+
     // Shutdown the rpc server
     rpc_server_.Shutdown();
 
