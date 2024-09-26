@@ -74,6 +74,8 @@ DEFAULT_MIN_PARALLELISM = 200
 
 DEFAULT_ENABLE_TENSOR_EXTENSION_CASTING = True
 
+DEFAULT_SHOULD_USE_TENSOR_V2 = env_bool("RAY_DATA_SHOULD_USE_TENSOR_V2", False)
+
 DEFAULT_AUTO_LOG_STATS = False
 
 DEFAULT_VERBOSE_STATS_LOG = False
@@ -286,6 +288,7 @@ class DataContext:
     min_parallelism: int = DEFAULT_MIN_PARALLELISM
     read_op_min_num_blocks: int = DEFAULT_READ_OP_MIN_NUM_BLOCKS
     enable_tensor_extension_casting: bool = DEFAULT_ENABLE_TENSOR_EXTENSION_CASTING
+    should_use_tensor_v2: bool = DEFAULT_SHOULD_USE_TENSOR_V2
     enable_auto_log_stats: bool = DEFAULT_AUTO_LOG_STATS
     verbose_stats_logs: bool = DEFAULT_VERBOSE_STATS_LOG
     trace_allocations: bool = DEFAULT_TRACE_ALLOCATIONS
