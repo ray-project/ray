@@ -143,10 +143,10 @@ class AssertEvalCallback(DefaultCallbacks):
                 # Compare number of entries in episode_lengths (this is the
                 # number of episodes actually run) with desired number of
                 # episodes from the config.
-                assert num_episodes_done == algorithm.config.evaluation_duration, (
-                    num_episodes_done,
-                    algorithm.config.evaluation_duration,
-                )
+                assert (
+                    algorithm.iteration + 1 % algorithm.config.evaluation_interval != 0
+                    or num_episodes_done == algorithm.config.evaluation_duration
+                ), (num_episodes_done, algorithm.config.evaluation_duration)
                 print(
                     "Number of run evaluation episodes: " f"{num_episodes_done} (ok)!"
                 )

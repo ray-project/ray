@@ -471,10 +471,17 @@ TEST_F(EventTest, TestWithField) {
 }
 
 TEST_F(EventTest, TestExportEvent) {
-  std::vector<SourceTypeVariant> source_types = {rpc::ExportEvent_SourceType::ExportEvent_SourceType_EXPORT_TASK, rpc::Event_SourceType::Event_SourceType_RAYLET};
-  RayEventInit_(source_types, absl::flat_hash_map<std::string, std::string>(), log_dir, "warning", false);
+  std::vector<SourceTypeVariant> source_types = {
+      rpc::ExportEvent_SourceType::ExportEvent_SourceType_EXPORT_TASK,
+      rpc::Event_SourceType::Event_SourceType_RAYLET};
+  RayEventInit_(source_types,
+                absl::flat_hash_map<std::string, std::string>(),
+                log_dir,
+                "warning",
+                false);
 
-  std::shared_ptr<rpc::ExportTaskEventData> task_event_ptr = std::make_shared<rpc::ExportTaskEventData>();
+  std::shared_ptr<rpc::ExportTaskEventData> task_event_ptr =
+      std::make_shared<rpc::ExportTaskEventData>();
   task_event_ptr->set_task_id("task_id0");
   task_event_ptr->set_attempt_number(1);
   task_event_ptr->set_job_id("job_id0");
@@ -482,7 +489,9 @@ TEST_F(EventTest, TestExportEvent) {
   std::string export_event_data_str;
   google::protobuf::util::JsonPrintOptions options;
   options.preserve_proto_field_names = true;
-  RAY_CHECK(google::protobuf::util::MessageToJsonString(*task_event_ptr, &export_event_data_str, options).ok());
+  RAY_CHECK(google::protobuf::util::MessageToJsonString(
+                *task_event_ptr, &export_event_data_str, options)
+                .ok());
   json event_data_as_json = json::parse(export_event_data_str);
 
   RayExportEvent(task_event_ptr).SendEvent();
@@ -491,7 +500,9 @@ TEST_F(EventTest, TestExportEvent) {
   RAY_EVENT(WARNING, "label") << "test warning";
 
   std::vector<std::string> vc;
-  ReadContentFromFile(vc, log_dir + "/events/event_EXPORT_TASK_" + std::to_string(getpid()) + ".log");
+  ReadContentFromFile(
+      vc,
+      log_dir + "/export_events/event_EXPORT_TASK_" + std::to_string(getpid()) + ".log");
 
   EXPECT_EQ((int)vc.size(), 1);
 
@@ -558,7 +569,8 @@ TEST_F(EventTest, TestRayEventInit) {
   custom_fields.emplace("node_id", "node 1");
   custom_fields.emplace("job_id", "job 1");
   custom_fields.emplace("task_id", "task 1");
-  const std::vector<SourceTypeVariant> source_types = {rpc::Event_SourceType::Event_SourceType_RAYLET};
+  const std::vector<SourceTypeVariant> source_types = {
+      rpc::Event_SourceType::Event_SourceType_RAYLET};
   RayEventInit_(source_types, custom_fields, log_dir, "warning", false);
 
   RAY_EVENT(FATAL, "label") << "test error event";

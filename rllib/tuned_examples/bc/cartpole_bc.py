@@ -51,25 +51,28 @@ config = (
         input_=[data_path.as_posix()],
         # Define the number of reading blocks, these should be larger than 1
         # and aligned with the data size.
-        input_read_method_kwargs={"override_num_blocks": max(args.num_gpus, 2)},
+        input_read_method_kwargs={"override_num_blocks": max(args.num_gpus * 2, 2)},
         # Concurrency defines the number of processes that run the
         # `map_batches` transformations. This should be aligned with the
         # 'prefetch_batches' argument in 'iter_batches_kwargs'.
-        map_batches_kwargs={"concurrency": max(2, args.num_gpus * 2)},
+        map_batches_kwargs={"concurrency": 2, "num_cpus": 2},
         # This data set is small so do not prefetch too many batches and use no
         # local shuffle.
         iter_batches_kwargs={
-            "prefetch_batches": max(1, args.num_gpus * 2),
+            "prefetch_batches": 1,
             "local_shuffle_buffer_size": None,
         },
-        prelearner_module_synch_period=20,
+        # The number of iterations to be run per learner when in multi-learner
+        # mode in a single RLlib training iteration. Leave this to `None` to
+        # run an entire epoch on the dataset during a single RLlib training
+        # iteration. For single-learner mode 1 is the only option.
         dataset_num_iters_per_learner=1 if args.num_gpus == 0 else None,
     )
     .training(
         # To increase learning speed with multiple learners,
         # increase the learning rate correspondingly.
         lr=0.0008 * max(1, args.num_gpus**0.5),
-        train_batch_size_per_learner=256,
+        train_batch_size_per_learner=1024,
     )
 )
 
