@@ -344,6 +344,7 @@ class AlgorithmConfig(_Config):
         self.num_gpus_per_env_runner = 0
         self.custom_resources_per_env_runner = {}
         self.validate_env_runners_after_construction = True
+        self.max_requests_in_flight_per_env_runner = 2
         self.sample_timeout_s = 60.0
         self.create_env_on_local_worker = False
         self._env_to_module_connector = None
@@ -411,8 +412,7 @@ class AlgorithmConfig(_Config):
         self._learner_connector = None
         self.add_default_connectors_to_learner_pipeline = True
         self.learner_config_dict = {}
-        self.optimizer = {}
-        self.max_requests_in_flight_per_sampler_worker = 2
+        self.optimizer = {}  # @OldAPIStack
         self._learner_class = None
 
         # `self.callbacks()`
@@ -451,6 +451,8 @@ class AlgorithmConfig(_Config):
         self.input_filesystem_kwargs = {}
         self.input_compress_columns = [Columns.OBS, Columns.NEXT_OBS]
         self.input_spaces_jsonable = True
+        self.materialize_data = False
+        self.materialize_mapped_data = True
         self.map_batches_kwargs = {}
         self.iter_batches_kwargs = {}
         self.prelearner_class = None
@@ -633,12 +635,7 @@ class AlgorithmConfig(_Config):
             policies_dict = {}
             for policy_id, policy_spec in config.pop("policies").items():
                 if isinstance(policy_spec, PolicySpec):
-                    policies_dict[policy_id] = (
-                        policy_spec.policy_class,
-                        policy_spec.observation_space,
-                        policy_spec.action_space,
-                        policy_spec.config,
-                    )
+                    policies_dict[policy_id] = policy_spec.get_state()
                 else:
                     policies_dict[policy_id] = policy_spec
             config["policies"] = policies_dict
@@ -780,6 +777,56 @@ class AlgorithmConfig(_Config):
         self.evaluation(**eval_call)
 
         return self
+
+    def get_state(self) -> Dict[str, Any]:
+        """Returns a dict state that can be pickled.
+
+        Returns:
+            A dictionary containing all attributes of the instance.
+        """
+
+        state = self.__dict__.copy()
+        state["class"] = type(self)
+        state.pop("algo_class")
+        state.pop("_is_frozen")
+        state = {k: v for k, v in state.items() if v != DEPRECATED_VALUE}
+
+        # Convert `policies` (PolicySpecs?) into dict.
+        # Convert policies dict such that each policy ID maps to a old-style.
+        # 4-tuple: class, obs-, and action space, config.
+        # TODO (simon, sven): Remove when deprecating old stack.
+        if "policies" in state and isinstance(state["policies"], dict):
+            policies_dict = {}
+            for policy_id, policy_spec in state.pop("policies").items():
+                if isinstance(policy_spec, PolicySpec):
+                    policies_dict[policy_id] = policy_spec.get_state()
+                else:
+                    policies_dict[policy_id] = policy_spec
+            state["policies"] = policies_dict
+
+        # state = self._serialize_dict(state)
+
+        return state
+
+    @classmethod
+    def from_state(cls, state: Dict[str, Any]) -> "AlgorithmConfig":
+        """Returns an instance constructed from the state.
+
+        Args:
+            cls: An `AlgorithmConfig` class.
+            state: A dictionary containing the state of an `AlgorithmConfig`.
+                See `AlgorithmConfig.get_state` for creating a state.
+
+        Returns:
+            An `AlgorithmConfig` instance with attributes from the `state`.
+        """
+
+        ctor = state["class"]
+        config = ctor()
+
+        config.__dict__.update(state)
+
+        return config
 
     # TODO(sven): We might want to have a `deserialize` method as well. Right now,
     #  simply using the from_dict() API works in this same (deserializing) manner,
@@ -1662,6 +1709,7 @@ class AlgorithmConfig(_Config):
         custom_resources_per_env_runner: Optional[dict] = NotProvided,
         validate_env_runners_after_construction: Optional[bool] = NotProvided,
         sample_timeout_s: Optional[float] = NotProvided,
+        max_requests_in_flight_per_env_runner: Optional[int] = NotProvided,
         env_to_module_connector: Optional[
             Callable[[EnvType], Union["ConnectorV2", List["ConnectorV2"]]]
         ] = NotProvided,
@@ -1722,9 +1770,20 @@ class AlgorithmConfig(_Config):
             sample_timeout_s: The timeout in seconds for calling `sample()` on remote
                 EnvRunner workers. Results (episode list) from workers that take longer
                 than this time are discarded. Only used by algorithms that sample
-                synchronously in turn with their update step (e.g. PPO or DQN). Not
+                synchronously in turn with their update step (e.g., PPO or DQN). Not
                 relevant for any algos that sample asynchronously, such as APPO or
                 IMPALA.
+            max_requests_in_flight_per_env_runner: Max number of inflight requests
+                to each EnvRunner worker. See the FaultTolerantActorManager class for
+                more details.
+                Tuning these values is important when running experiments with
+                large sample batches, where there is the risk that the object store may
+                fill up, causing spilling of objects to disk. This can cause any
+                asynchronous requests to become very slow, making your experiment run
+                slowly as well. You can inspect the object store during your experiment
+                via a call to Ray memory on your head node, and by using the Ray
+                dashboard. If you're seeing that the object store is filling up,
+                turn down the number of remote requests in flight or enable compression.
             sample_collector: For the old API stack only. The SampleCollector class to
                 be used to collect and retrieve environment-, model-, and sampler data.
                 Override the SampleCollector base class to implement your own
@@ -1891,6 +1950,10 @@ class AlgorithmConfig(_Config):
 
         if sample_timeout_s is not NotProvided:
             self.sample_timeout_s = sample_timeout_s
+        if max_requests_in_flight_per_env_runner is not NotProvided:
+            self.max_requests_in_flight_per_env_runner = (
+                max_requests_in_flight_per_env_runner
+            )
         if sample_collector is not NotProvided:
             self.sample_collector = sample_collector
         if create_env_on_local_worker is not NotProvided:
@@ -2081,7 +2144,6 @@ class AlgorithmConfig(_Config):
         shuffle_batch_per_epoch: Optional[bool] = NotProvided,
         model: Optional[dict] = NotProvided,
         optimizer: Optional[dict] = NotProvided,
-        max_requests_in_flight_per_sampler_worker: Optional[int] = NotProvided,
         learner_class: Optional[Type["Learner"]] = NotProvided,
         learner_connector: Optional[
             Callable[["RLModule"], Union["ConnectorV2", List["ConnectorV2"]]]
@@ -2090,6 +2152,7 @@ class AlgorithmConfig(_Config):
         learner_config_dict: Optional[Dict[str, Any]] = NotProvided,
         # Deprecated args.
         num_sgd_iter=DEPRECATED_VALUE,
+        max_requests_in_flight_per_sampler_worker=DEPRECATED_VALUE,
     ) -> "AlgorithmConfig":
         """Sets the training related configuration.
 
@@ -2153,18 +2216,6 @@ class AlgorithmConfig(_Config):
                 TODO: Provide ModelConfig objects instead of dicts.
             optimizer: Arguments to pass to the policy optimizer. This setting is not
                 used when `enable_rl_module_and_learner=True`.
-            max_requests_in_flight_per_sampler_worker: Max number of inflight requests
-                to each sampling worker. See the FaultTolerantActorManager class for
-                more details.
-                Tuning these values is important when running experimens with
-                large sample batches, where there is the risk that the object store may
-                fill up, causing spilling of objects to disk. This can cause any
-                asynchronous requests to become very slow, making your experiment run
-                slow as well. You can inspect the object store during your experiment
-                via a call to ray memory on your headnode, and by using the ray
-                dashboard. If you're seeing that the object store is filling up,
-                turn down the number of remote requests in flight, or enable compression
-                in your experiment of timesteps.
             learner_class: The `Learner` class to use for (distributed) updating of the
                 RLModule. Only used when `enable_rl_module_and_learner=True`.
             learner_connector: A callable taking an env observation space and an env
@@ -2201,6 +2252,19 @@ class AlgorithmConfig(_Config):
                 error=False,
             )
             num_epochs = num_sgd_iter
+        if max_requests_in_flight_per_sampler_worker != DEPRECATED_VALUE:
+            deprecation_warning(
+                old="AlgorithmConfig.training("
+                "max_requests_in_flight_per_sampler_worker=...)",
+                new="AlgorithmConfig.env_runners("
+                "max_requests_in_flight_per_env_runner=...)",
+                error=False,
+            )
+            self.env_runners(
+                max_requests_in_flight_per_env_runner=(
+                    max_requests_in_flight_per_sampler_worker
+                ),
+            )
 
         if gamma is not NotProvided:
             self.gamma = gamma
@@ -2244,10 +2308,6 @@ class AlgorithmConfig(_Config):
 
         if optimizer is not NotProvided:
             self.optimizer = merge_dicts(self.optimizer, optimizer)
-        if max_requests_in_flight_per_sampler_worker is not NotProvided:
-            self.max_requests_in_flight_per_sampler_worker = (
-                max_requests_in_flight_per_sampler_worker
-            )
         if learner_class is not NotProvided:
             self._learner_class = learner_class
         if learner_connector is not NotProvided:
@@ -2467,6 +2527,8 @@ class AlgorithmConfig(_Config):
         input_filesystem: Optional[str] = NotProvided,
         input_filesystem_kwargs: Optional[Dict] = NotProvided,
         input_compress_columns: Optional[List[str]] = NotProvided,
+        materialize_data: Optional[bool] = NotProvided,
+        materialize_mapped_data: Optional[bool] = NotProvided,
         map_batches_kwargs: Optional[Dict] = NotProvided,
         iter_batches_kwargs: Optional[Dict] = NotProvided,
         prelearner_class: Optional[Type] = NotProvided,
@@ -2556,6 +2618,31 @@ class AlgorithmConfig(_Config):
                 `MultiAgentEpisode` not supported, yet). Note,
                 `rllib.core.columns.Columns.OBS` will also try to decompress
                 `rllib.core.columns.Columns.NEXT_OBS`.
+            materialize_data: Whether the raw data should be materialized in memory.
+                This boosts performance, but requires enough memory to avoid an OOM, so
+                make sure that your cluster has the resources available. For very large
+                data you might want to switch to streaming mode by setting this to
+                `False` (default). If your algorithm does not need the RLModule in the
+                Learner connector pipeline or all (learner) connectors are stateless
+                you should consider setting `materialize_mapped_data` to `True`
+                instead (and set `materialize_data` to `False`). If your data does not
+                fit into memory and your Learner connector pipeline requires an RLModule
+                or is stateful, set both `materialize_data` and
+                `materialize_mapped_data` to `False`.
+            materialize_mapped_data: Whether the data should be materialized after
+                running it through the Learner connector pipeline (i.e. after running
+                the `OfflinePreLearner`). This improves performance, but should only be
+                used in case the (learner) connector pipeline does not require an
+                RLModule and the (learner) connector pipeline is stateless. For example,
+                MARWIL's Learner connector pipeline requires the RLModule for value
+                function predictions and training batches would become stale after some
+                iterations causing learning degradation or divergence. Also ensure that
+                your cluster has enough memory available to avoid an OOM. If set to
+                `True` (True), make sure that `materialize_data` is set to `False` to
+                avoid materialization of two datasets. If your data does not fit into
+                memory and your Learner connector pipeline requires an RLModule or is
+                stateful, set both `materialize_data` and `materialize_mapped_data` to
+                `False`.
             map_batches_kwargs: Keyword args for the `map_batches` method. These will be
                 passed into the `ray.data.Dataset.map_batches` method when sampling
                 without checking. If no arguments passed in the default arguments
@@ -2658,6 +2745,10 @@ class AlgorithmConfig(_Config):
             self.input_filesystem_kwargs = input_filesystem_kwargs
         if input_compress_columns is not NotProvided:
             self.input_compress_columns = input_compress_columns
+        if materialize_data is not NotProvided:
+            self.materialize_data = materialize_data
+        if materialize_mapped_data is not NotProvided:
+            self.materialize_mapped_data = materialize_mapped_data
         if map_batches_kwargs is not NotProvided:
             self.map_batches_kwargs = map_batches_kwargs
         if iter_batches_kwargs is not NotProvided:
@@ -3288,7 +3379,7 @@ class AlgorithmConfig(_Config):
         *,
         _torch_grad_scaler_class: Optional[Type] = NotProvided,
         _torch_lr_scheduler_classes: Optional[
-            Union[List[Type], Dict[ModuleID, Type]]
+            Union[List[Type], Dict[ModuleID, List[Type]]]
         ] = NotProvided,
         _tf_policy_handles_more_than_one_loss: Optional[bool] = NotProvided,
         _disable_preprocessor_api: Optional[bool] = NotProvided,
@@ -3317,10 +3408,11 @@ class AlgorithmConfig(_Config):
                 classes or a dictionary mapping module IDs to such a list of respective
                 scheduler classes. Multiple scheduler classes can be applied in sequence
                 and will be stepped in the same sequence as defined here. Note, most
-                learning rate schedulers need arguments to be configured, i.e. you need
-                to partially initialize the schedulers in the list(s).
+                learning rate schedulers need arguments to be configured, that is, you
+                might have to partially initialize the schedulers in the list(s) using
+                `functools.partial`.
             _tf_policy_handles_more_than_one_loss: Experimental flag.
-                If True, TFPolicy will handle more than one loss/optimizer.
+                If True, TFPolicy handles more than one loss or optimizer.
                 Set this to True, if you would like to return more than
                 one loss term from your `loss_fn` and an equal number of optimizers
                 from your `optimizer_fn`. In the future, the default for this will be
@@ -4525,6 +4617,10 @@ class AlgorithmConfig(_Config):
     @staticmethod
     def _serialize_dict(config):
         # Serialize classes to classpaths:
+        if "callbacks_class" in config:
+            config["callbacks"] = config.pop("callbacks_class")
+        if "class" in config:
+            config["class"] = serialize_type(config["class"])
         config["callbacks"] = serialize_type(config["callbacks"])
         config["sample_collector"] = serialize_type(config["sample_collector"])
         if isinstance(config["env"], type):
