@@ -521,7 +521,7 @@ class ArrowTensorArray(_ArrowTensorScalarIndexingMixin, pa.ExtensionArray):
             # Getting a single tensor element of the array.
             offset_buffer = buffers[1]
             offset_array = np.ndarray(
-                (len(self),), buffer=offset_buffer, dtype=ArrowTensorType.OFFSET_DTYPE
+                (len(self),), buffer=offset_buffer, dtype=self.type.OFFSET_DTYPE
             )
             # Offset into array to reach logical index.
             index_offset = offset_array[index]
