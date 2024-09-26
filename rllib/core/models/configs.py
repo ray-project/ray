@@ -160,6 +160,13 @@ class _MLPConfig(ModelConfig):
             "_" are allowed.
         output_layer_bias_initializer_config: Configuration to pass into the
             initializer defined in `output_layer_bias_initializer`.
+        clip_log_std: If the log std should be clipped by `log_std_clip_param`.
+            This only applies to policy heads. Value heads are never clipped and
+            therefore the default is `False`.
+        log_std_clip_param: The clipping parameter for the log std, if clipping should
+            be applied - i.e. `clip_log_std=True`. This only applies to policy heads,
+            value heads are never clipped. The default value is 20, i.e. log stds are
+            clipped in between -20 and 20.
     """
 
     hidden_layer_dims: Union[List[int], Tuple[int]] = (256, 256)
@@ -181,8 +188,10 @@ class _MLPConfig(ModelConfig):
     output_layer_bias_initializer: Optional[Union[str, Callable]] = None
     output_layer_bias_initializer_config: Optional[Dict] = None
 
+    # Optional clipping of log standard deviation.
+    clip_log_std: bool = False
     # Optional clip parameter for the log standard deviation.
-    log_std_clip_param: float = float("inf")
+    log_std_clip_param: float = 20.0
 
     @property
     def output_dims(self):

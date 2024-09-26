@@ -116,6 +116,7 @@ class MARWILCatalog(Catalog):
             hidden_layer_activation=self.pi_and_vf_activation,
             output_layer_dim=required_output_dim,
             output_layer_activation="linear",
+            clip_log_std=True,
             log_std_clip_param=self._model_config_dict["log_std_clip_param"],
         )
 

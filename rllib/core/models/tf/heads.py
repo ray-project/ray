@@ -123,6 +123,9 @@ class TfMLPHead(TfModel):
             output_bias_initializer=config.output_layer_bias_initializer,
             output_bias_initializer_config=config.output_layer_bias_initializer_config,
         )
+        # If log standard deviations should be clipped. This should be only true for
+        # policy heads. Value heads should never be clipped.
+        self.clip_log_std = config.clip_log_std
         # The clipping parameter for the log standard deviation.
         self.log_std_clip_param = tf.constant([config.log_std_clip_param])
 
@@ -139,7 +142,7 @@ class TfMLPHead(TfModel):
     def _forward(self, inputs: tf.Tensor, **kwargs) -> tf.Tensor:
         # Only clip the log standard deviations, if the user wants to clip. This
         # avoids also clipping value heads.
-        if tf.math.isfinite(self.log_std_clip_param):
+        if self.clip_log_std:
             # Forward pass.
             means, log_stds = tf.split(self.net(inputs), num_or_size_splits=2, axis=-1)
             # Clip the log standard deviations.
@@ -192,6 +195,9 @@ class TfFreeLogStdMLPHead(TfModel):
             dtype=tf.float32,
             trainable=True,
         )
+        # If log standard deviations should be clipped. This should be only true for
+        # policy heads. Value heads should never be clipped.
+        self.clip_log_std = config.clip_log_std
         # The clipping parameter for the log standard deviation.
         self.log_std_clip_param = tf.constant([config.log_std_clip_param])
 
@@ -208,11 +214,15 @@ class TfFreeLogStdMLPHead(TfModel):
     def _forward(self, inputs: tf.Tensor, **kwargs) -> tf.Tensor:
         # Compute the mean first, then append the log_std.
         mean = self.net(inputs)
-        # Clip log standard deviations to stabilize training. Note, the
-        # default clip value is `inf`, i.e. no clipping.
-        log_std = tf.clip_by_value(
-            self.log_std, -self.log_std_clip_param, self.log_std_clip_param
-        )
+        # If log standard deviation should be clipped.
+        if self.clip_log_std:
+            # Clip log standard deviations to stabilize training. Note, the
+            # default clip value is `inf`, i.e. no clipping.
+            log_std = tf.clip_by_value(
+                self.log_std, -self.log_std_clip_param, self.log_std_clip_param
+            )
+        else:
+            log_std = self.log_std
         log_std_out = tf.tile(tf.expand_dims(log_std, 0), [tf.shape(inputs)[0], 1])
         logits_out = tf.concat([mean, log_std_out], axis=1)
         return logits_out

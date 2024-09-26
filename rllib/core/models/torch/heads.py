@@ -121,6 +121,9 @@ class TorchMLPHead(TorchModel):
             output_bias_initializer=config.output_layer_bias_initializer,
             output_bias_initializer_config=config.output_layer_bias_initializer_config,
         )
+        # If log standard deviations should be clipped. This should be only true for
+        # policy heads. Value heads should never be clipped.
+        self.clip_log_std = config.clip_log_std
         # The clipping parameter for the log standard deviation.
         self.log_std_clip_param = torch.Tensor([config.log_std_clip_param])
 
@@ -137,7 +140,7 @@ class TorchMLPHead(TorchModel):
     def _forward(self, inputs: torch.Tensor, **kwargs) -> torch.Tensor:
         # Only clip the log standard deviations, if the user wants to clip. This
         # avoids also clipping value heads.
-        if torch.isfinite(self.log_std_clip_param):
+        if self.clip_log_std:
             # Forward pass.
             means, log_stds = torch.chunk(self.net(inputs), chunks=2, dim=-1)
             # Clip the log standard deviations.
@@ -187,6 +190,9 @@ class TorchFreeLogStdMLPHead(TorchModel):
         self.log_std = torch.nn.Parameter(
             torch.as_tensor([0.0] * self._half_output_dim)
         )
+        # If log standard deviations should be clipped. This should be only true for
+        # policy heads. Value heads should never be clipped.
+        self.clip_log_std = config.clip_log_std
         # The clipping parameter for the log standard deviation.
         self.log_std_clip_param = torch.Tensor([config.log_std_clip_param])
 
@@ -204,11 +210,15 @@ class TorchFreeLogStdMLPHead(TorchModel):
         # Compute the mean first, then append the log_std.
         mean = self.net(inputs)
 
-        # Clip the log standard deviation to avoid running into too small
-        # deviations that factually collapses the policy.
-        log_std = torch.clamp(
-            self.log_std, -self.log_std_clip_param, self.log_std_clip_param
-        )
+        # If log standard deviation should be clipped.
+        if self.clip_log_std:
+            # Clip the log standard deviation to avoid running into too small
+            # deviations that factually collapses the policy.
+            log_std = torch.clamp(
+                self.log_std, -self.log_std_clip_param, self.log_std_clip_param
+            )
+        else:
+            log_std = self.log_std
 
         return torch.cat([mean, log_std.unsqueeze(0).repeat([len(mean), 1])], axis=1)
 
