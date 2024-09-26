@@ -181,7 +181,6 @@ class TfGRUEncoder(TfModel, Encoder):
     This encoder has...
     - Zero or one tokenizers.
     - One or more GRU layers.
-    - One linear output layer.
     """
 
     def __init__(self, config: RecurrentEncoderConfig) -> None:
@@ -313,7 +312,6 @@ class TfLSTMEncoder(TfModel, Encoder):
     This encoder has...
     - Zero or one tokenizers.
     - One or more LSTM layers.
-    - One linear output layer.
     """
 
     def __init__(self, config: RecurrentEncoderConfig) -> None:

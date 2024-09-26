@@ -191,7 +191,10 @@ class TestMARWIL(unittest.TestCase):
             .unwrapped()
             .forward_train({k: v for k, v in batch[DEFAULT_MODULE_ID].items()})
         )
-        advantages = batch[DEFAULT_MODULE_ID][Columns.ADVANTAGES].detach().cpu().numpy()
+        advantages = (
+            batch[DEFAULT_MODULE_ID][Columns.VALUE_TARGETS].detach().cpu().numpy()
+            - fwd_out["vf_preds"].detach().cpu().numpy()
+        )
         advantages_squared = possibly_masked_mean(np.square(advantages))
         c_2 = 100.0 + 1e-8 * (advantages_squared - 100.0)
         c = np.sqrt(c_2)
