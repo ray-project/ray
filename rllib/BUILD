@@ -945,6 +945,13 @@ py_test(
 )
 
 py_test(
+    name = "test_node_failure",
+    tags = ["team:rllib", "tests_dir", "exclusive"],
+    size = "medium",
+    srcs = ["tests/test_node_failure.py"],
+)
+
+py_test(
     name = "test_registry",
     tags = ["team:rllib", "algorithms_dir", "algorithms_dir_generic"],
     size = "small",
@@ -988,7 +995,7 @@ py_test(
     name = "test_bc",
     tags = ["team:rllib", "algorithms_dir"],
     size = "medium",
-    # Include the offline data files.
+    # Include the parquet data files.
     data = ["tests/data/cartpole/cartpole-v1_large"],
     srcs = ["algorithms/bc/tests/test_bc.py"]
 )
@@ -1053,7 +1060,7 @@ py_test(
     name = "test_marwil",
     tags = ["team:rllib", "algorithms_dir"],
     size = "large",
-    # Include the offline data files.
+    # Include the parquet data folder.
     data = [
         "tests/data/cartpole/cartpole-v1_large",
         "tests/data/pendulum/pendulum-v1_large",
