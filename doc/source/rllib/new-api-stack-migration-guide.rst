@@ -213,16 +213,10 @@ This method isn't used on the old API stack because the old stack doesn't use Le
 
 It allows you to specify:
 
-#. the number of `Learner` workers through `.learners(num_learners=...)`.
-#. the resources per learner; use `.learners(num_gpus_per_learner=1)` for GPU training
-   and `.learners(num_gpus_per_learner=0)` for CPU training.
-#. the custom Learner class you want to use (`example on how to do this here <https://github.com/ray-project/ray/blob/master/rllib/examples/learners/custom_loss_fn_simple.py>`__)
-#. a config dict you would like to set for your custom learner:
-   `.learners(learner_config_dict={...})`. Note that every `Learner` has access to the
-   entire `AlgorithmConfig` object through `self.config`, but setting the
-   `learner_config_dict` is a convenient way to avoid having to create an entirely new
-   `AlgorithmConfig` subclass only to support a few extra settings for your custom
-   `Learner` class.
+1) the number of `Learner` workers through `.learners(num_learners=...)`.
+1) the resources per learner; use `.learners(num_gpus_per_learner=1)` for GPU training and `.learners(num_gpus_per_learner=0)` for CPU training.
+1) the custom Learner class you want to use (`example on how to do this here <https://github.com/ray-project/ray/blob/master/rllib/examples/learners/custom_loss_fn_simple.py>`__)
+1) a config dict you would like to set for your custom learner: `.learners(learner_config_dict={...})`. Note that every `Learner` has access to the entire `AlgorithmConfig` object through `self.config`, but setting the `learner_config_dict` is a convenient way to avoid having to create an entirely new `AlgorithmConfig` subclass only to support a few extra settings for your custom `Learner` class.
 
 
 AlgorithmConfig.env_runners()
@@ -386,11 +380,9 @@ and `how to write a custom LSTM-containing RL Module <https://github.com/ray-pro
 There are various options for translating an existing, custom :py:class:`~ray.rllib.models.modelv2.ModelV2` from the old API stack,
 to the new API stack's :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule`:
 
-#. Move your ModelV2 code to a new, custom `RLModule` class. See :ref:`RL Modules <rlmodule-guide>` for details).
-#. Use an Algorithm checkpoint or a Policy checkpoint that you have from an old API stack
-   training run and use this checkpoint with the `new stack RL Module convenience wrapper <https://github.com/ray-project/ray/blob/master/rllib/examples/rl_modules/migrate_modelv2_to_new_api_stack_by_policy_checkpoint.py>`__.
-#. Use an existing :py:class:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig`
-   object from an old API stack training run, with the `new stack RL Module convenience wrapper <https://github.com/ray-project/ray/blob/master/rllib/examples/rl_modules/migrate_modelv2_to_new_api_stack_by_config.py>`__.
+1) Move your ModelV2 code to a new, custom `RLModule` class. See :ref:`RL Modules <rlmodule-guide>` for details).
+1) Use an Algorithm checkpoint or a Policy checkpoint that you have from an old API stack training run and use this checkpoint with the `new stack RL Module convenience wrapper <https://github.com/ray-project/ray/blob/master/rllib/examples/rl_modules/migrate_modelv2_to_new_api_stack_by_policy_checkpoint.py>`__.
+1) Use an existing :py:class:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig` object from an old API stack training run, with the `new stack RL Module convenience wrapper <https://github.com/ray-project/ray/blob/master/rllib/examples/rl_modules/migrate_modelv2_to_new_api_stack_by_config.py>`__.
 
 
 Custom loss functions and policies
@@ -431,7 +423,7 @@ The :py:class:`~ray.rllib.connectors.connector_v2.ConnectorV2` documentation is 
 The following are some examples on how to write ConnectorV2 pieces for the
 different pipelines:
 
-#. `Observation frame-stacking <https://github.com/ray-project/ray/blob/master/rllib/examples/connectors/frame_stacking.py>`__.
-#. `Add the most recent action and reward to the RL Module's input <https://github.com/ray-project/ray/blob/master/rllib/examples/connectors/prev_actions_prev_rewards.py>`__.
-#. `Mean-std filtering on all observations <https://github.com/ray-project/ray/blob/master/rllib/examples/connectors/mean_std_filtering.py>`__.
-#. `Flatten any complex observation space to a 1D space <https://github.com/ray-project/ray/blob/master/rllib/examples/connectors/flatten_observations_dict_space.py>`__.
+1) `Observation frame-stacking <https://github.com/ray-project/ray/blob/master/rllib/examples/connectors/frame_stacking.py>`__.
+1) `Add the most recent action and reward to the RL Module's input <https://github.com/ray-project/ray/blob/master/rllib/examples/connectors/prev_actions_prev_rewards.py>`__.
+1) `Mean-std filtering on all observations <https://github.com/ray-project/ray/blob/master/rllib/examples/connectors/mean_std_filtering.py>`__.
+1) `Flatten any complex observation space to a 1D space <https://github.com/ray-project/ray/blob/master/rllib/examples/connectors/flatten_observations_dict_space.py>`__.
