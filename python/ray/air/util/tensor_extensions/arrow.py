@@ -1020,6 +1020,7 @@ try:
     # Registration needs an extension type instance, but then works for any instance of
     # the same subclass regardless of parametrization of the type.
     pa.register_extension_type(ArrowTensorType((0,), pa.int64()))
+    pa.register_extension_type(ArrowTensorTypeV2((0,), pa.int64()))
     pa.register_extension_type(ArrowVariableShapedTensorType(pa.int64(), 0))
 except pa.ArrowKeyError:
     # Extension types are already registered.
