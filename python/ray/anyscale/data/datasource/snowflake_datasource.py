@@ -6,9 +6,9 @@ from typing import TYPE_CHECKING, Any, Callable, Dict, Iterable, List, Optional
 import numpy as np
 
 from ray.data._internal.output_buffer import BlockOutputBuffer
-from ray.data._internal.util import _check_import
+from ray.data._internal.util import _check_import, call_with_retry
 from ray.data.block import Block, BlockMetadata
-from ray.data.context import DatasetContext
+from ray.data.context import DataContext
 from ray.data.datasource import Datasource, ReadTask
 
 if TYPE_CHECKING:
@@ -68,11 +68,9 @@ class SnowflakeDatasource(Datasource):
         tasks = []
         for result_batches_split in np.array_split(self.result_batches, parallelism):
             read_fn = _create_read_fn(result_batches_split)
-
             num_rows = sum(b.rowcount for b in result_batches_split)
             size_bytes = estimated_size_bytes_per_row * num_rows
             metadata = BlockMetadata(num_rows, size_bytes, schema, None, None)
-
             tasks.append(ReadTask(read_fn, metadata))
 
         return tasks
@@ -82,7 +80,7 @@ def _create_read_fn(
     result_batches_split: List["ResultBatch"],
 ) -> Callable[[], Iterable[Block]]:
     def read_fn() -> Iterable[Block]:
-        ctx = DatasetContext.get_current()
+        ctx = DataContext.get_current()
         output_buffer = BlockOutputBuffer(
             target_max_block_size=ctx.target_max_block_size
         )
@@ -97,4 +95,7 @@ def _create_read_fn(
         if output_buffer.has_next():
             yield output_buffer.next()
 
-    return read_fn
+    return lambda: call_with_retry(
+        read_fn,
+        description="read Snowflake batch",
+    )

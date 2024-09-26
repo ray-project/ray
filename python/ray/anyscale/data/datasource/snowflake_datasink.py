@@ -1,9 +1,9 @@
 from typing import Any, Dict, Iterable, Optional, Tuple
 
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
-from ray.data._internal.util import _check_import
+from ray.data._internal.util import _check_import, call_with_retry
 from ray.data.block import Block, BlockAccessor
-from ray.data.context import DatasetContext
+from ray.data.context import DataContext
 from ray.data.datasource import Datasink
 
 
@@ -14,7 +14,7 @@ class SnowflakeDatasink(Datasink):
         self._table = table
         self._connection_parameters = connection_parameters
 
-    def write(self, blocks: Iterable[Block], ctx: DatasetContext) -> Any:
+    def write(self, blocks: Iterable[Block], ctx: DataContext) -> Any:
         from snowflake.connector import connect
         from snowflake.connector.pandas_tools import write_pandas
 
@@ -31,13 +31,16 @@ class SnowflakeDatasink(Datasink):
 
         df = BlockAccessor.for_block(block).to_pandas()
         with connect(**self._connection_parameters) as connection:
-            write_pandas(
-                connection,
-                df,
-                table,
-                database=database,
-                schema=schema,
-                auto_create_table=True,
+            call_with_retry(
+                lambda: write_pandas(
+                    connection,
+                    df,
+                    table,
+                    database=database,
+                    schema=schema,
+                    auto_create_table=True,
+                ),
+                description="write block to Snowflake",
             )
 
         return "ok"
