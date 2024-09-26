@@ -5,7 +5,7 @@ Two learning rate schedules are applied in sequence to the learning rate of the
 optimizer. In this way even more complex learning rate schedules can be assembled.
 
 This example shows:
-    - how to configure multiple learning rate schedulers (as a chained pipeline) in
+    - how to configure multiple learning rate schedulers, as a chained pipeline, in
     PyTorch using partial initialization with `functools.partial`.
 
 

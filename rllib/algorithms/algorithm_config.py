@@ -1770,7 +1770,7 @@ class AlgorithmConfig(_Config):
             sample_timeout_s: The timeout in seconds for calling `sample()` on remote
                 EnvRunner workers. Results (episode list) from workers that take longer
                 than this time are discarded. Only used by algorithms that sample
-                synchronously in turn with their update step (e.g. PPO or DQN). Not
+                synchronously in turn with their update step (e.g., PPO or DQN). Not
                 relevant for any algos that sample asynchronously, such as APPO or
                 IMPALA.
             max_requests_in_flight_per_env_runner: Max number of inflight requests
@@ -1780,8 +1780,8 @@ class AlgorithmConfig(_Config):
                 large sample batches, where there is the risk that the object store may
                 fill up, causing spilling of objects to disk. This can cause any
                 asynchronous requests to become very slow, making your experiment run
-                slow as well. You can inspect the object store during your experiment
-                via a call to ray memory on your headnode, and by using the ray
+                slowly as well. You can inspect the object store during your experiment
+                via a call to Ray memory on your head node, and by using the Ray
                 dashboard. If you're seeing that the object store is filling up,
                 turn down the number of remote requests in flight or enable compression.
             sample_collector: For the old API stack only. The SampleCollector class to
@@ -3408,11 +3408,11 @@ class AlgorithmConfig(_Config):
                 classes or a dictionary mapping module IDs to such a list of respective
                 scheduler classes. Multiple scheduler classes can be applied in sequence
                 and will be stepped in the same sequence as defined here. Note, most
-                learning rate schedulers need arguments to be configured, i.e. you might
+                learning rate schedulers need arguments to be configured, that is, you might
                 have to partially initialize the schedulers in the list(s) using
                 `functools.partial`.
             _tf_policy_handles_more_than_one_loss: Experimental flag.
-                If True, TFPolicy will handle more than one loss/optimizer.
+                If True, TFPolicy handles more than one loss or optimizer.
                 Set this to True, if you would like to return more than
                 one loss term from your `loss_fn` and an equal number of optimizers
                 from your `optimizer_fn`. In the future, the default for this will be
