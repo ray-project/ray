@@ -459,7 +459,10 @@ class SACConfig(AlgorithmConfig):
                 isinstance(self.replay_buffer_config["type"], str)
                 and "Episode" in self.replay_buffer_config["type"]
             )
-            or issubclass(self.replay_buffer_config["type"], EpisodeReplayBuffer)
+            or (
+                isinstance(self.replay_buffer_config["type"], type)
+                and issubclass(self.replay_buffer_config["type"], EpisodeReplayBuffer)
+            )
         ):
             raise ValueError(
                 "When using the old API stack the replay buffer must not be of type "
