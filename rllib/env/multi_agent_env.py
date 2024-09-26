@@ -11,6 +11,7 @@ from ray.rllib.utils.annotations import (
     override,
     PublicAPI,
 )
+from ray.rllib.utils.deprecation import Deprecated
 from ray.rllib.utils.typing import (
     AgentID,
     EnvCreator,
@@ -31,39 +32,47 @@ logger = logging.getLogger(__name__)
 class MultiAgentEnv(gym.Env):
     """An environment that hosts multiple independent agents.
 
-    Agents are identified by (string) agent ids. Note that these "agents" here
-    are not to be confused with RLlib Algorithms, which are also sometimes
-    referred to as "agents" or "RL agents".
-
-    The preferred format for action- and observation space is a mapping from agent
-    ids to their individual spaces. If that is not provided, the respective methods'
-    observation_space_contains(), action_space_contains(),
-    action_space_sample() and observation_space_sample() have to be overwritten.
+    Agents are identified by AgentIDs (string).
     """
+    # Optional mappings from AgentID to individual agents' spaces.
+    # Set this to an "exhaustive" dictionary, mapping all possible AgentIDs to
+    # individual agents' spaces. Alternatively, override
+    # `get_observation_space(agent_id=...)` and `get_action_space(agent_id=...)`, which
+    # is the API that RLlib uses to get individual spaces and whose default
+    # implementation is to simply look up `agent_id` in these dicts.
+    observation_spaces: Optional[Dict[AgentID, gym.Space]] = None
+    action_spaces: Optional[Dict[AgentID, gym.Space]] = None
+
+    # All agents currently active in the environment. This attribute may change during
+    # the lifetime of the env or even during an individual episode.
+    agents: List[AgentID] = []
+    # All agents that may appear in the environment, ever.
+    # This attribute should not be changed during the lifetime of this env.
+    possible_agents: List[AgentID] = []
+
+    # @OldAPIStack
+    observation_space: Optional[gym.Space] = None
+    action_space: Optional[gym.Space] = None
 
     def __init__(self):
         super().__init__()
 
-        if not hasattr(self, "observation_space"):
-            self.observation_space = None
-        if not hasattr(self, "action_space"):
-            self.action_space = None
+        # @OldAPIStack
         if not hasattr(self, "_agent_ids"):
             self._agent_ids = set()
 
-        # Do the action and observation spaces map from agent ids to spaces
-        # for the individual agents?
-        if not hasattr(self, "_action_space_in_preferred_format"):
-            self._action_space_in_preferred_format = None
-        if not hasattr(self, "_obs_space_in_preferred_format"):
-            self._obs_space_in_preferred_format = None
+        # If these important attributes are not set, try to infer them.
+        if not self.agents:
+            self.agents = list(self._agent_ids)
+        if not self.possible_agents:
+            self.possible_agents = self.agents.copy()
 
     def reset(
         self,
         *,
         seed: Optional[int] = None,
         options: Optional[dict] = None,
-    ) -> Tuple[MultiAgentDict, MultiAgentDict]:
+    ) -> Tuple[MultiAgentDict, MultiAgentDict]:  # type: ignore
         """Resets the env and returns observations from ready agents.
 
         Args:
@@ -145,21 +154,45 @@ class MultiAgentEnv(gym.Env):
         """
         raise NotImplementedError
 
-    def get_agent_ids(self) -> Set[AgentID]:
-        """Returns a set of agent ids in the environment.
-
-        Returns:
-            Set of agent ids.
-        """
-        if not isinstance(self._agent_ids, set):
-            self._agent_ids = set(self._agent_ids)
-        return self._agent_ids
-
     def render(self) -> None:
         """Tries to render the environment."""
 
         # By default, do nothing.
         pass
+
+    def get_observation_space(self, agent_id: AgentID) -> gym.Space:
+        if self.observation_spaces is not None:
+            return self.observation_spaces[agent_id]
+
+        # @OldAPIStack behavior.
+        if (
+            isinstance(self.observation_space, gym.spaces.Dict)
+            and agent_id in self.observation_space.spaces
+        ):
+            return self.observation_space[agent_id]
+        else:
+            return self.observation_space
+
+    def get_action_space(self, agent_id: AgentID) -> gym.Space:
+        if self.action_spaces is not None:
+            return self.action_spaces[agent_id]
+
+        # @OldAPIStack behavior.
+        if (
+            isinstance(self.action_space, gym.spaces.Dict)
+            and agent_id in self.action_space.spaces
+        ):
+            return self.action_space[agent_id]
+        else:
+            return self.action_space
+
+    @property
+    def num_agents(self) -> int:
+        return len(self.agents)
+
+    @property
+    def max_num_agents(self) -> int:
+        return len(self.possible_agents)
 
     # fmt: off
     # __grouping_doc_begin__
@@ -216,6 +249,13 @@ class MultiAgentEnv(gym.Env):
 
     # __grouping_doc_end__
     # fmt: on
+
+    @OldAPIStack
+    @Deprecated(new="MultiAgentEnv.possible_agents", error=False)
+    def get_agent_ids(self) -> Set[AgentID]:
+        if not isinstance(self._agent_ids, set):
+            self._agent_ids = set(self._agent_ids)
+        return self._agent_ids
 
     @OldAPIStack
     def to_base_env(
@@ -276,22 +316,6 @@ class MultiAgentEnv(gym.Env):
 
         return env
 
-    def _check_if_obs_space_maps_agent_id_to_sub_space(self) -> bool:
-        """Checks if obs space maps from agent ids to spaces of individual agents."""
-        return (
-            hasattr(self, "observation_space")
-            and isinstance(self.observation_space, gym.spaces.Dict)
-            and set(self.observation_space.spaces.keys()) == self.get_agent_ids()
-        )
-
-    def _check_if_action_space_maps_agent_id_to_sub_space(self) -> bool:
-        """Checks if action space maps from agent ids to spaces of individual agents."""
-        return (
-            hasattr(self, "action_space")
-            and isinstance(self.action_space, gym.spaces.Dict)
-            and set(self.action_space.keys()) == self.get_agent_ids()
-        )
-
 
 @PublicAPI
 def make_multi_agent(
@@ -347,12 +371,13 @@ def make_multi_agent(
 
     class MultiEnv(MultiAgentEnv):
         def __init__(self, config: EnvContext = None):
-            MultiAgentEnv.__init__(self)
-            # Note(jungong) : explicitly check for None here, because config
+            super().__init__()
+
+            # Note: Explicitly check for None here, because config
             # can have an empty dict but meaningful data fields (worker_index,
             # vector_index) etc.
-            # TODO(jungong) : clean this up, so we are not mixing up dict fields
-            # with data fields.
+            # TODO (sven): Clean this up, so we are not mixing up dict fields
+            #  with data fields.
             if config is None:
                 config = {}
             num = config.pop("num_agents", 1)
@@ -362,15 +387,13 @@ def make_multi_agent(
                 self.envs = [env_name_or_creator(config) for _ in range(num)]
             self.terminateds = set()
             self.truncateds = set()
-            self.observation_space = gym.spaces.Dict(
-                {i: self.envs[i].observation_space for i in range(num)}
-            )
-            self._obs_space_in_preferred_format = True
-            self.action_space = gym.spaces.Dict(
-                {i: self.envs[i].action_space for i in range(num)}
-            )
-            self._action_space_in_preferred_format = True
-            self._agent_ids = set(range(num))
+            self.observation_spaces = {
+                i: self.envs[i].observation_space for i in range(num)
+            }
+            self.action_spaces = {
+                i: self.envs[i].action_space for i in range(num)
+            }
+            self.agents = list(range(num))
 
         @override(MultiAgentEnv)
         def reset(self, *, seed: Optional[int] = None, options: Optional[dict] = None):
@@ -624,22 +647,6 @@ class MultiAgentEnvWrapper(BaseEnv):
     @override(BaseEnv)
     def action_space(self) -> gym.Space:
         return self.envs[0].action_space
-
-    @override(BaseEnv)
-    def observation_space_contains(self, x: MultiEnvDict) -> bool:
-        return all(self.envs[0].observation_space_contains(val) for val in x.values())
-
-    @override(BaseEnv)
-    def action_space_contains(self, x: MultiEnvDict) -> bool:
-        return all(self.envs[0].action_space_contains(val) for val in x.values())
-
-    @override(BaseEnv)
-    def observation_space_sample(self, agent_ids: list = None) -> MultiEnvDict:
-        return {0: self.envs[0].observation_space_sample(agent_ids)}
-
-    @override(BaseEnv)
-    def action_space_sample(self, agent_ids: list = None) -> MultiEnvDict:
-        return {0: self.envs[0].action_space_sample(agent_ids)}
 
     @override(BaseEnv)
     def get_agent_ids(self) -> Set[AgentID]:

@@ -157,9 +157,6 @@ class FaultInjectEnv(gym.Env):
 
         return self.env.step(action)
 
-    def action_space_sample(self):
-        return self.env.action_space.sample()
-
 
 class ForwardHealthCheckToEnvWorker(SingleAgentEnvRunner):
     """Configuring EnvRunner to error in specific condition is hard.

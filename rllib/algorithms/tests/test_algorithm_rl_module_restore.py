@@ -69,8 +69,8 @@ class TestAlgorithmRLModuleRestore(unittest.TestCase):
         for i in range(NUM_AGENTS):
             module_specs[f"policy_{i}"] = RLModuleSpec(
                 module_class=module_class,
-                observation_space=env.observation_space[0],
-                action_space=env.action_space[0],
+                observation_space=env.get_observation_space(0),
+                action_space=env.get_action_space(0),
                 # If we want to use this externally created module in the algorithm,
                 # we need to provide the same config as the algorithm.
                 model_config_dict=config.model_config
@@ -112,8 +112,8 @@ class TestAlgorithmRLModuleRestore(unittest.TestCase):
         for i in range(NUM_AGENTS):
             module_specs[f"policy_{i}"] = RLModuleSpec(
                 module_class=module_class,
-                observation_space=env.observation_space[0],
-                action_space=env.action_space[0],
+                observation_space=env.get_observation_space(0),
+                action_space=env.get_action_space(0),
                 # If we want to use this externally created module in the algorithm,
                 # we need to provide the same config as the algorithm.
                 model_config_dict=config.model_config
@@ -128,8 +128,8 @@ class TestAlgorithmRLModuleRestore(unittest.TestCase):
         # create a RLModule to load and override the "policy_1" module with
         module_to_swap_in = RLModuleSpec(
             module_class=module_class,
-            observation_space=env.observation_space[0],
-            action_space=env.action_space[0],
+            observation_space=env.get_observation_space(0),
+            action_space=env.get_action_space(0),
             # Note, we need to pass in the default model config for the algorithm
             # to be able to use this module later.
             model_config_dict=config.model_config | {"fcnet_hiddens": [64]},
@@ -143,8 +143,8 @@ class TestAlgorithmRLModuleRestore(unittest.TestCase):
         # and the module_to_swap_in_checkpoint
         module_specs["policy_1"] = RLModuleSpec(
             module_class=module_class,
-            observation_space=env.observation_space[0],
-            action_space=env.action_space[0],
+            observation_space=env.get_observation_space(0),
+            action_space=env.get_action_space(0),
             model_config_dict={"fcnet_hiddens": [64]},
             catalog_class=PPOCatalog,
             load_state_path=module_to_swap_in_path,
@@ -252,8 +252,8 @@ class TestAlgorithmRLModuleRestore(unittest.TestCase):
         for i in range(num_agents):
             module_specs[f"policy_{i}"] = RLModuleSpec(
                 module_class=module_class,
-                observation_space=env.observation_space[0],
-                action_space=env.action_space[0],
+                observation_space=env.get_observation_space(0),
+                action_space=env.get_action_space(0),
                 # Note, we need to pass in the default model config for the
                 # algorithm to be able to use this module later.
                 model_config_dict=config.model_config
@@ -268,8 +268,8 @@ class TestAlgorithmRLModuleRestore(unittest.TestCase):
         # create a RLModule to load and override the "policy_1" module with
         module_to_swap_in = RLModuleSpec(
             module_class=module_class,
-            observation_space=env.observation_space[0],
-            action_space=env.action_space[0],
+            observation_space=env.get_observation_space(0),
+            action_space=env.get_action_space(0),
             # Note, we need to pass in the default model config for the algorithm
             # to be able to use this module later.
             model_config_dict=config.model_config | {"fcnet_hiddens": [64]},
@@ -283,8 +283,8 @@ class TestAlgorithmRLModuleRestore(unittest.TestCase):
         # and the module_to_swap_in_checkpoint
         module_specs["policy_1"] = RLModuleSpec(
             module_class=module_class,
-            observation_space=env.observation_space[0],
-            action_space=env.action_space[0],
+            observation_space=env.get_observation_space(0),
+            action_space=env.get_action_space(0),
             model_config_dict={"fcnet_hiddens": [64]},
             catalog_class=PPOCatalog,
             load_state_path=module_to_swap_in_path,

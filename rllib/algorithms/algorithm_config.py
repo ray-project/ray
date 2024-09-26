@@ -4911,29 +4911,27 @@ class AlgorithmConfig(_Config):
 
             # Infer observation space.
             if policy_spec.observation_space is None:
+                env_unwrapped = env.unwrapped if hasattr(env, "unwrapped") else env
                 if spaces is not None and pid in spaces:
                     obs_space = spaces[pid][0]
-                elif env_obs_space is not None:
-                    env_unwrapped = env.unwrapped if hasattr(env, "unwrapped") else env
+                elif isinstance(env_unwrapped, MultiAgentEnv):
                     # Multi-agent case AND different agents have different spaces:
-                    # Need to reverse map spaces (for the different agents) to certain
+                    # Need to reverse-map spaces (for the different agents) to certain
                     # policy IDs.
-                    if (
-                        isinstance(env_unwrapped, MultiAgentEnv)
-                        and hasattr(env_unwrapped, "_obs_space_in_preferred_format")
-                        and env_unwrapped._obs_space_in_preferred_format
-                    ):
+                    if env_unwrapped.observation_space is None or isinstance(env_unwrapped.observation_space, gym.spaces.Dict):
                         obs_space = None
                         mapping_fn = self.policy_mapping_fn
-                        one_obs_space = next(iter(env_obs_space.values()))
-                        # If all obs spaces are the same anyways, just use the first
+                        one_obs_space = env_unwrapped.get_observation_space(
+                            env_unwrapped.possible_agents[0]
+                        )
+                        # If all obs spaces are the same, just use the first
                         # single-agent space.
-                        if all(s == one_obs_space for s in env_obs_space.values()):
+                        if all(env_unwrapped.get_observation_space(aid) == one_obs_space for aid in env_unwrapped.possible_agents):
                             obs_space = one_obs_space
                         # Otherwise, we have to compare the ModuleID with all possible
                         # AgentIDs and find the agent ID that matches.
                         elif mapping_fn:
-                            for aid in env_unwrapped.get_agent_ids():
+                            for aid in env_unwrapped.possible_agents:
                                 # Match: Assign spaces for this agentID to the PolicyID.
                                 if mapping_fn(aid, None, worker=None) == pid:
                                     # Make sure, different agents that map to the same
@@ -4952,6 +4950,10 @@ class AlgorithmConfig(_Config):
                     # Otherwise, just use env's obs space as-is.
                     else:
                         obs_space = env_obs_space
+
+                # Just use env's obs space as-is.
+                elif env_obs_space is not None:
+                    obs_space = env_obs_space
                 # Space given directly in config.
                 elif self.observation_space:
                     obs_space = self.observation_space
@@ -4976,8 +4978,7 @@ class AlgorithmConfig(_Config):
                     # policy IDs.
                     if (
                         isinstance(env_unwrapped, MultiAgentEnv)
-                        and hasattr(env_unwrapped, "_action_space_in_preferred_format")
-                        and env_unwrapped._action_space_in_preferred_format
+                        and env_unwrapped.action_space is None
                     ):
                         act_space = None
                         mapping_fn = self.policy_mapping_fn
@@ -4989,7 +4990,7 @@ class AlgorithmConfig(_Config):
                         # Otherwise, we have to compare the ModuleID with all possible
                         # AgentIDs and find the agent ID that matches.
                         elif mapping_fn:
-                            for aid in env_unwrapped.get_agent_ids():
+                            for aid in env_unwrapped.possible_agents:
                                 # Match: Assign spaces for this AgentID to the PolicyID.
                                 if mapping_fn(aid, None, worker=None) == pid:
                                     # Make sure, different agents that map to the same

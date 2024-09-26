@@ -256,22 +256,12 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
         while ts < num_timesteps:
             # Act randomly.
             if random_actions:
-                # Note, to get sampled actions from all agents' action
-                # spaces we need to call `MultiAgentEnv.action_space_sample()`.
-                if self.env.unwrapped._action_space_in_preferred_format:
-                    actions = self.env.action_space.sample()
-                # Otherwise, `action_space_sample()` needs to be implemented.
-                else:
-                    actions = self.env.action_space_sample()
-                # Remove all actions for agents that had no observation.
+                # Only act (randomly) for those agents that had an observation.
                 to_env = {
-                    Columns.ACTIONS: [
-                        {
-                            agent_id: agent_action
-                            for agent_id, agent_action in actions.items()
-                            if agent_id in self._episode.get_agents_to_act()
-                        }
-                    ]
+                    Columns.ACTIONS: [{
+                        self.env.get_action_space(aid).sample()
+                        for aid in self._episode.get_agents_to_act()
+                    }]
                 }
             # Compute an action using the RLModule.
             else:
@@ -465,20 +455,12 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
         while eps < num_episodes:
             # Act randomly.
             if random_actions:
-                # Note, to get sampled actions from all agents' action
-                # spaces we need to call `MultiAgentEnv.action_space_sample()`.
-                if self.env.unwrapped._action_space_in_preferred_format:
-                    actions = self.env.action_space.sample()
-                # Otherwise, `action_space_sample()` needs to be implemented.
-                else:
-                    actions = self.env.action_space_sample()
-                # Remove all actions for agents that had no observation.
+                # Only act (randomly) for those agents that had an observation.
                 to_env = {
-                    Columns.ACTIONS: {
-                        agent_id: agent_action
-                        for agent_id, agent_action in actions.items()
-                        if agent_id in _episode.get_agents_to_act()
-                    },
+                    Columns.ACTIONS: [{
+                        self.env.get_action_space(aid).sample()
+                        for aid in self._episode.get_agents_to_act()
+                    }]
                 }
             # Compute an action using the RLModule.
             else:

@@ -128,23 +128,9 @@ class PettingZooEnv(MultiAgentEnv):
         self.observation_space = gym.spaces.Dict(
             {aid: self.env.observation_space(aid) for aid in self._agent_ids}
         )
-        self._obs_space_in_preferred_format = True
         self.action_space = gym.spaces.Dict(
             {aid: self.env.action_space(aid) for aid in self._agent_ids}
         )
-        self._action_space_in_preferred_format = True
-
-    def observation_space_sample(self, agent_ids: list = None) -> MultiAgentDict:
-        sample = self.observation_space.sample()
-        if agent_ids is None:
-            return sample
-        return {aid: sample[aid] for aid in agent_ids}
-
-    def action_space_sample(self, agent_ids: list = None) -> MultiAgentDict:
-        sample = self.action_space.sample()
-        if agent_ids is None:
-            return sample
-        return {aid: sample[aid] for aid in agent_ids}
 
     def reset(self, *, seed: Optional[int] = None, options: Optional[dict] = None):
         info = self.env.reset(seed=seed, options=options)
@@ -204,11 +190,9 @@ class ParallelPettingZooEnv(MultiAgentEnv):
         self.observation_space = gym.spaces.Dict(
             {aid: self.par_env.observation_space(aid) for aid in self._agent_ids}
         )
-        self._obs_space_in_preferred_format = True
         self.action_space = gym.spaces.Dict(
             {aid: self.par_env.action_space(aid) for aid in self._agent_ids}
         )
-        self._action_space_in_preferred_format = True
 
     def reset(self, *, seed: Optional[int] = None, options: Optional[dict] = None):
         obs, info = self.par_env.reset(seed=seed, options=options)
