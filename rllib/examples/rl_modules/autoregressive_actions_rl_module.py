@@ -102,7 +102,7 @@ if __name__ == "__main__":
     # exceeds 150 in evaluation.
     stop = {
         f"{NUM_ENV_STEPS_SAMPLED_LIFETIME}": 100000,
-        f"{EVALUATION_RESULTS}/{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": 0.012,
+        f"{EVALUATION_RESULTS}/{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": -0.012,
     }
 
     # Run the example (with Tune).
