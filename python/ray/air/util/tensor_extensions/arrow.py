@@ -189,7 +189,7 @@ class _BaseArrowTensorType(pa.ExtensionType, abc.ABC):
     def _need_variable_shaped_tensor_array(
         cls,
         array_types: Sequence[
-            Union["ArrowTensorType", "ArrowVariableShapedTensorType"]
+            Union["ArrowTensorType", "ArrowTensorTypeV2", "ArrowVariableShapedTensorType"]
         ],
     ) -> bool:
         """
@@ -214,7 +214,7 @@ class _BaseArrowTensorType(pa.ExtensionType, abc.ABC):
             # short-circuit since we require a variable-shaped representation.
             if isinstance(arr_type, ArrowVariableShapedTensorType):
                 return True
-            if not isinstance(arr_type, ArrowTensorType):
+            if not isinstance(arr_type, (ArrowTensorType, ArrowTensorTypeV2)):
                 raise ValueError(
                     "All provided array types must be an instance of either "
                     "ArrowTensorType or ArrowVariableShapedTensorType, but "
