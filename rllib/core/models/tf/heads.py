@@ -123,6 +123,8 @@ class TfMLPHead(TfModel):
             output_bias_initializer=config.output_layer_bias_initializer,
             output_bias_initializer_config=config.output_layer_bias_initializer_config,
         )
+        # The clipping parameter for the log standard deviation.
+        self.log_std_clip_param = tf.constant([config.log_std_clip_param])
 
     @override(Model)
     def get_input_specs(self) -> Optional[Spec]:
@@ -135,7 +137,19 @@ class TfMLPHead(TfModel):
     @override(Model)
     @auto_fold_unfold_time("input_specs")
     def _forward(self, inputs: tf.Tensor, **kwargs) -> tf.Tensor:
-        return self.net(inputs)
+        # Only clip the log standard deviations, if the user wants to clip. This
+        # avoids also clipping value heads.
+        if tf.math.isfinite(self.log_std_clip_param):
+            # Forward pass.
+            means, log_stds = tf.split(self.net(inputs), num_or_size_splits=2, axis=-1)
+            # Clip the log standard deviations.
+            log_stds = tf.clip_by_value(
+                log_stds, -self.log_std_clip_param, self.log_std_clip_param
+            )
+            return tf.keras.concatenate([means, log_stds], axis=-1)
+        # Otherwise just return the logits.
+        else:
+            return self.net(inputs)
 
 
 class TfFreeLogStdMLPHead(TfModel):
@@ -178,6 +192,8 @@ class TfFreeLogStdMLPHead(TfModel):
             dtype=tf.float32,
             trainable=True,
         )
+        # The clipping parameter for the log standard deviation.
+        self.log_std_clip_param = tf.constant([config.log_std_clip_param])
 
     @override(Model)
     def get_input_specs(self) -> Optional[Spec]:
@@ -192,7 +208,12 @@ class TfFreeLogStdMLPHead(TfModel):
     def _forward(self, inputs: tf.Tensor, **kwargs) -> tf.Tensor:
         # Compute the mean first, then append the log_std.
         mean = self.net(inputs)
-        log_std_out = tf.tile(tf.expand_dims(self.log_std, 0), [tf.shape(inputs)[0], 1])
+        # Clip log standard deviations to stabilize training. Note, the
+        # default clip value is `inf`, i.e. no clipping.
+        log_std = tf.clip_by_value(
+            self.log_std, -self.log_std_clip_param, self.log_std_clip_param
+        )
+        log_std_out = tf.tile(tf.expand_dims(log_std, 0), [tf.shape(inputs)[0], 1])
         logits_out = tf.concat([mean, log_std_out], axis=1)
         return logits_out
 

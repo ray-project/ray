@@ -190,6 +190,12 @@ MODEL_DEFAULTS: ModelConfigDict = {
     # outputs floating bias variables instead of state-dependent. This only
     # has an effect is using the default fully connected net.
     "free_log_std": False,
+    # Whether to clip the log standard deviation when using a Gaussian (or any
+    # other continuous control distribution). This can stabilize training and avoid
+    # very small or large log standard deviations leading to numerical instabilities
+    # which can turn network outputs to `nan`. The default is infinity, i.e. no
+    # clipping.
+    "log_std_clip_param": float("inf"),
     # Whether to skip the final linear layer used to resize the hidden layer
     # outputs to size `num_outputs`. If True, then the last hidden layer
     # should already match num_outputs.

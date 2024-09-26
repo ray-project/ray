@@ -181,6 +181,9 @@ class _MLPConfig(ModelConfig):
     output_layer_bias_initializer: Optional[Union[str, Callable]] = None
     output_layer_bias_initializer_config: Optional[Dict] = None
 
+    # Optional clip parameter for the log standard deviation.
+    log_std_clip_param: float = float("inf")
+
     @property
     def output_dims(self):
         if self.output_layer_dim is None and not self.hidden_layer_dims:
@@ -204,6 +207,11 @@ class _MLPConfig(ModelConfig):
                 f"`output_dims` ({self.output_dims}) of _MLPConfig must be "
                 "1D, e.g. `[32]`! This is an inferred value, hence other settings might"
                 " be wrong."
+            )
+        if self.log_std_clip_param is None:
+            raise ValueError(
+                "`log_std_clip_param` of _MLPConfig must be a float value, but is "
+                "`None`."
             )
 
         # Call these already here to catch errors early on.

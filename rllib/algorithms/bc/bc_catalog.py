@@ -95,6 +95,7 @@ class BCCatalog(Catalog):
             hidden_layer_activation=self.pi_head_activation,
             output_layer_dim=required_output_dim,
             output_layer_activation="linear",
+            log_std_clip_param=self._model_config_dict["log_std_clip_param"],
         )
 
         return self.pi_head_config.build(framework=framework)
