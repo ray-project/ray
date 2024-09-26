@@ -3,6 +3,7 @@ from typing import TYPE_CHECKING, List, Union
 from packaging.version import parse as parse_version
 
 from ray._private.utils import _get_pyarrow_version
+from ray.air.util.tensor_extensions.arrow import ArrowTensorTypeV2
 
 try:
     import pyarrow
@@ -89,7 +90,7 @@ def unify_schemas(
                 cols_with_null_list.add(col_name)
             all_columns.add(col_name)
 
-    arrow_tensor_types = (ArrowVariableShapedTensorType, ArrowTensorType)
+    arrow_tensor_types = (ArrowVariableShapedTensorType, ArrowTensorType, ArrowTensorTypeV2)
     columns_with_objects = set()
     columns_with_tensor_array = set()
     for col_name in all_columns:
