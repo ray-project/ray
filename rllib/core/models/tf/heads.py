@@ -149,7 +149,7 @@ class TfMLPHead(TfModel):
             log_stds = tf.clip_by_value(
                 log_stds, -self.log_std_clip_param, self.log_std_clip_param
             )
-            return tf.keras.concatenate([means, log_stds], axis=-1)
+            return tf.concat([means, log_stds], axis=-1)
         # Otherwise just return the logits.
         else:
             return self.net(inputs)
