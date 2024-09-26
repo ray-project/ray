@@ -2184,6 +2184,7 @@ class AlgorithmConfig(_Config):
         learner_config_dict: Optional[Dict[str, Any]] = NotProvided,
         # Deprecated args.
         num_sgd_iter=DEPRECATED_VALUE,
+        max_requests_in_flight_per_sampler_worker=DEPRECATED_VALUE,
     ) -> "AlgorithmConfig":
         """Sets the training related configuration.
 
@@ -2283,6 +2284,19 @@ class AlgorithmConfig(_Config):
                 error=False,
             )
             num_epochs = num_sgd_iter
+        if max_requests_in_flight_per_sampler_worker != DEPRECATED_VALUE:
+            deprecation_warning(
+                old="AlgorithmConfig.training("
+                "max_requests_in_flight_per_sampler_worker=...)",
+                new="AlgorithmConfig.env_runners("
+                "max_requests_in_flight_per_env_runner=...)",
+                error=False,
+            )
+            self.env_runners(
+                max_requests_in_flight_per_env_runner=(
+                    max_requests_in_flight_per_sampler_worker
+                ),
+            )
 
         if gamma is not NotProvided:
             self.gamma = gamma
@@ -3436,7 +3450,7 @@ class AlgorithmConfig(_Config):
                 https://pytorch.org/docs/stable/optim.html#how-to-adjust-learning-rate)
                 classes or a dictionary mapping module IDs to such a list of respective
                 scheduler classes. Multiple scheduler classes can be applied in sequence
-                and are stepped in the same sequence as defined here. Note, most
+                and will be stepped in the same sequence as defined here. Note, most
                 learning rate schedulers need arguments to be configured, that is, you
                 might have to partially initialize the schedulers in the list(s) using
                 `functools.partial`.
