@@ -138,7 +138,7 @@ class IMPALAConfig(AlgorithmConfig):
         self.replay_buffer_num_slots = 0  # @OldAPIstack
         self.learner_queue_size = 3
         self.learner_queue_timeout = 300  # @OldAPIstack
-        self.max_requests_in_flight_per_sampler_worker = 2
+        self.max_requests_in_flight_per_env_runner = 2
         self.max_requests_in_flight_per_aggregator_worker = 2
         self.timeout_s_sampler_manager = 0.0
         self.timeout_s_aggregator_manager = 0.0
