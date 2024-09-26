@@ -35,15 +35,13 @@ def test_correct_python_version():
 
 
 class MockBaseModel:
+    model_fields = {}
+
     def __init__(self, *args, **kwargs):
         pass
 
     def __init_subclass__(self, *args, **kwargs):
         pass
-
-    @property
-    def __fields__():
-        return {}
 
 
 def _make_mock_pydantic_modules(pydantic_version: str) -> Dict:
