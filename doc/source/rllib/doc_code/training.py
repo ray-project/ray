@@ -38,9 +38,14 @@ algo = (
     .api_stack(
         enable_rl_module_and_learner=False, enable_env_runner_and_connector_v2=False
     )
-    .environment("CartPole-v1")
     .framework("torch")
+    .environment("CartPole-v1")
     .env_runners(num_env_runners=0)
+    .training(
+        replay_buffer_config={
+            "type": "MultiAgentPrioritizedReplayBuffer",
+        }
+    )
 ).build()
 # <ray.rllib.algorithms.ppo.PPO object at 0x7fd020186384>
 
@@ -108,8 +113,13 @@ algo = (
     .api_stack(
         enable_rl_module_and_learner=False, enable_env_runner_and_connector_v2=False
     )
-    .environment("CartPole-v1")
     .framework("torch")
+    .environment("CartPole-v1")
+    .training(
+        replay_buffer_config={
+            "type": "MultiAgentPrioritizedReplayBuffer",
+        }
+    )
 ).build()
 model = algo.get_policy().model
 # <ray.rllib.models.catalog.FullyConnectedNetwork_as_DistributionalQModel ...>

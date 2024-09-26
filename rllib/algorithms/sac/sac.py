@@ -75,6 +75,8 @@ class SACConfig(AlgorithmConfig):
         self.initial_alpha = 1.0
         self.target_entropy = "auto"
         self.n_step = 1
+
+        # Replay buffer configuration.
         self.replay_buffer_config = {
             "type": "PrioritizedEpisodeReplayBuffer",
             # Size of the replay buffer. Note that if async_updates is set,
@@ -84,6 +86,7 @@ class SACConfig(AlgorithmConfig):
             # Beta parameter for sampling from prioritized replay buffer.
             "beta": 0.4,
         }
+
         self.store_buffer_in_checkpoints = False
         self.training_intensity = None
         self.optimization = {
@@ -458,7 +461,10 @@ class SACConfig(AlgorithmConfig):
                 isinstance(self.replay_buffer_config["type"], str)
                 and "Episode" in self.replay_buffer_config["type"]
             )
-            or issubclass(self.replay_buffer_config["type"], EpisodeReplayBuffer)
+            or (
+                isinstance(self.replay_buffer_config["type"], type)
+                and issubclass(self.replay_buffer_config["type"], EpisodeReplayBuffer)
+            )
         ):
             raise ValueError(
                 "When using the old API stack the replay buffer must not be of type "
@@ -479,6 +485,14 @@ class SACConfig(AlgorithmConfig):
                     "and `alpha_lr`, for the actor, critic, and the hyperparameter "
                     "`alpha`, respectively and set `config.lr` to None."
                 )
+            # Warn about new API stack on by default.
+            logger.warning(
+                "You are running SAC on the new API stack! This is the new default "
+                "behavior for this algorithm. If you don't want to use the new API "
+                "stack, set `config.api_stack(enable_rl_module_and_learner=False, "
+                "enable_env_runner_and_connector_v2=False)`. For a detailed "
+                "migration guide, see here: https://docs.ray.io/en/master/rllib/new-api-stack-migration-guide.html"  # noqa
+            )
 
     @override(AlgorithmConfig)
     def get_rollout_fragment_length(self, worker_index: int = 0) -> int:
