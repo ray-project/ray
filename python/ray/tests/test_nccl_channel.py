@@ -14,7 +14,7 @@ from ray.experimental.channel.conftest import (
     start_nccl_mock,
 )
 from ray.experimental.channel.torch_tensor_type import TorchTensorType
-from ray.experimental.channel.torch_tensor_nccl_channel import (
+from ray.experimental.channel.torch_tensor_communicator_channel import (
     _init_nccl_group,
 )
 from ray._private.test_utils import get_actor_node_id

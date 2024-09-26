@@ -34,7 +34,7 @@ from ray.experimental.channel.shared_memory_channel import (
     SharedMemoryType,
 )
 
-from ray.experimental.channel.torch_tensor_nccl_channel import (
+from ray.experimental.channel.torch_tensor_communicator_channel import (
     _init_nccl_group,
     _destroy_nccl_group,
 )

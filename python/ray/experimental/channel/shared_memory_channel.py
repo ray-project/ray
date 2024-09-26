@@ -141,7 +141,7 @@ class SharedMemoryType(ChannelOutputType):
                 self._contains_type, TorchTensorType
             ), "_contains_type must be of type TorchTensorType"
 
-            from ray.experimental.channel.torch_tensor_nccl_channel import (
+            from ray.experimental.channel.torch_tensor_communicator_channel import (
                 NestedTorchTensorNcclChannel,
             )
 
@@ -153,7 +153,7 @@ class SharedMemoryType(ChannelOutputType):
                 return NestedTorchTensorNcclChannel(
                     writer,
                     reader_and_node_list,
-                    gpu_data_typ=self._contains_type,
+                    communicator_data_channel=self._contains_type,
                     cpu_data_typ=cpu_data_typ,
                 )
 

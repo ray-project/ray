@@ -25,6 +25,8 @@ TENSOR_METADATA_SIZE_BYTES = 100_000
 class TorchTensorType(ChannelOutputType):
     AUTO = "auto"
     NCCL = "nccl"
+    HCCL = "hccl"  # Add HCCL support for NPU
+    COMMUNICATOR_TYPES = [NCCL, HCCL]  # List of supported communicators
 
     def __init__(
         self,
@@ -75,18 +77,22 @@ class TorchTensorType(ChannelOutputType):
         self._dtype = _dtype
         self._direct_return = _direct_return
 
-        self._custom_nccl_group: Optional[GPUCommunicator] = None
+        self._custom_communicator_group: Optional[GPUCommunicator] = None
         if isinstance(transport, GPUCommunicator):
-            self._custom_nccl_group = transport
-            transport = self.NCCL
+            self._custom_communicator_group = transport
+            for xccl in self.COMMUNICATOR_TYPES:
+                if xccl in str(type(transport)).lower():
+                    transport = xccl
+                    break
 
-        if transport not in [self.AUTO, self.NCCL]:
+        # Check if the transport is one of the supported communicator types
+        if transport not in [self.AUTO] + self.COMMUNICATOR_TYPES:
             raise ValueError(
-                "`transport` must be TorchTensorType.AUTO or TorchTensorType.NCCL"
+                f"`transport` must be TorchTensorType.AUTO, or one of {self.COMMUNICATOR_TYPES}"
             )
         self.transport = transport
 
-        self._nccl_group_id: Optional[str] = None
+        self._communicator_group_id: Optional[str] = None
 
         if self._direct_return and self.transport == self.AUTO:
             logger.info(
@@ -128,8 +134,8 @@ class TorchTensorType(ChannelOutputType):
         _torch_tensor_allocator: Optional["TorchTensorAllocator"] = None,
     ) -> type:
 
-        if self.requires_nccl():
-            from ray.experimental.channel.torch_tensor_nccl_channel import (
+        if self.requires_communicator():
+            from ray.experimental.channel.torch_tensor_communicator_channel import (
                 TorchTensorNcclChannel,
             )
 
@@ -176,18 +182,19 @@ class TorchTensorType(ChannelOutputType):
 
         return Channel(writer, reader_and_node_list, buffer_size_bytes)
 
-    def requires_nccl(self) -> bool:
-        return self.transport == self.NCCL
+    def requires_communicator(self) -> bool:
+        # Check for communicator requirement (either NCCL or HCCL)
+        return self.transport in self.COMMUNICATOR_TYPES
 
-    def get_custom_nccl_group(self) -> Optional[GPUCommunicator]:
+    def get_custom_communicator_group(self) -> Optional[GPUCommunicator]:
         """
         Return the custom NCCL group if one is specified.
         """
-        return self._custom_nccl_group
+        return self._custom_communicator_group
 
-    def set_nccl_group_id(self, group_id: str) -> None:
-        self._nccl_group_id = group_id
+    def set_communicator_group_id(self, group_id: str) -> None:
+        self._communicator_group_id = group_id
 
     @property
-    def nccl_group_id(self) -> str:
-        return self._nccl_group_id
+    def communicator_group_id(self) -> str:
+        return self._communicator_group_id

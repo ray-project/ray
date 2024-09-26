@@ -18,7 +18,7 @@ from ray.experimental.channel.shared_memory_channel import (
     Channel,
     CompositeChannel,
 )
-from ray.experimental.channel.torch_tensor_nccl_channel import TorchTensorNcclChannel
+from ray.experimental.channel.torch_tensor_communicator_channel import TorchTensorNcclChannel
 
 __all__ = [
     "AwaitableBackgroundReader",
