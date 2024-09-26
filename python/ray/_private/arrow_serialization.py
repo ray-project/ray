@@ -254,6 +254,7 @@ def _array_payload_to_array(payload: "PicklableArrayPayload") -> "pyarrow.Array"
     import pyarrow as pa
     from ray.air.util.tensor_extensions.arrow import (
         ArrowTensorType,
+        ArrowTensorTypeV2,
         ArrowVariableShapedTensorType,
     )
 
@@ -270,9 +271,7 @@ def _array_payload_to_array(payload: "PicklableArrayPayload") -> "pyarrow.Array"
         assert len(children) == 3, len(children)
         offsets, keys, items = children
         return pa.MapArray.from_arrays(offsets, keys, items)
-    elif isinstance(payload.type, ArrowTensorType) or isinstance(
-        payload.type, ArrowVariableShapedTensorType
-    ):
+    elif isinstance(payload.type, (ArrowTensorType, ArrowTensorTypeV2, ArrowVariableShapedTensorType)):
         # Dedicated path for reconstructing an ArrowTensorArray or
         # ArrowVariableShapedTensorArray, both of which can't be reconstructed by the
         # Array.from_buffers() API.
