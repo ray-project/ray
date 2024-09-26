@@ -4,20 +4,20 @@
 .. _rllib-new-api-stack-guide:
 
 
-RLlib's New API Stack
+RLlib's new API stack
 =====================
 
 .. hint::
 
-    This section describes in detail what the new API stack is and why you should migrate to it
-    (in case you have old API stack custom code).
-    :ref:`See here for a comprehensive migration guide <rllib-new-api-stack-migration-guide>`.
+    This section describes the new API stack and why you should migrate to it
+    if you have old API stack custom code.
+   See the :ref:`migration guide <rllib-new-api-stack-migration-guide>` for details.
 
 
 Overview
 --------
 
-Starting in Ray 2.10, you can opt-in to the alpha version of a "new API stack", a fundamental overhaul from the ground
+Starting in Ray 2.10, you can opt-in to the alpha version of the "new API stack", a fundamental overhaul from the ground
 up with respect to architecture, design principles, code base, and user facing APIs.
 The following select algorithms and setups are available.
 
@@ -65,14 +65,14 @@ The following select algorithms and setups are available.
 
 Over the next few months, the RLlib Team continues to document, test, benchmark, bug-fix, and
 further polish these new APIs as well as rollout more algorithms
-that you can run in the new stack (with a focus on offline RL).
+that you can run in the new stack, with a focus on offline RL.
 
-Also know that you are able to continue using your custom classes and setups
-on the old API stack for the foreseeable future (beyond Ray 3.0), however, we do recommend you
-to migrate to the new stack :ref:`using the migration guide here <rllib-new-api-stack-migration-guide>`
+You can continue using custom classes and setups
+on the old API stack for the foreseeable future, beyond Ray 3.0. However, you should
+migrate to the new stack with the :ref:`migration guide <rllib-new-api-stack-migration-guide>`
 
 
-What is the New API Stack?
+New API stack
 --------------------------
 
 The new API stack is the result of re-writing RLlib's core APIs from scratch and reducing
@@ -99,17 +99,17 @@ The :py:class:`~ray.rllib.algorithm.algorithm_config.AlgorithmConfig` and :py:cl
 Who should use the new API stack?
 ---------------------------------
 
-We recommend to cut over your code from old- to new API stack as soon as possible, as the
-classes and APIs have reached sufficient stability at this point and we only expect very minor changes
+Migrate your code from the old to new API stack as soon as possible.
+The classes and APIs are sufficiently stable. The Ray team expects very minor changes.
 from here on.
 
-See here for a comprehensive migration guide allowing you to step-by-step translate your code from
-old- to new API stack in no time.
+See the :ref:`New API stack migration guide <rllib-new-api-stack-migration-guide>` for a comprehensive migration guide with step-by-step instructions on translating your code from the
+old to new API stack.
 
-Also, the following section, lists more compelling reasons to migrate to the new stack.
+A comparison of the old to new API stack provides additional motivation for migrating to the new stack.
 
 
-Comparison to the Old API Stack
+Comparison to the old API stack
 -------------------------------
 
 This table compares features and design choices between the new and old API stack:
@@ -123,7 +123,7 @@ This table compares features and design choices between the new and old API stac
      - **Old API Stack**
    * - Multi-GPU and multi-node/multi-GPU
      - Yes
-     - Yes & No
+     - Yes and No
    * - Support for shared (multi-agent) model components (e.g., communication channels, shared value functions, etc.)
      - Yes
      - No
@@ -150,6 +150,6 @@ This table compares features and design choices between the new and old API stac
 How to Use the New API Stack?
 -----------------------------
 
-:ref:`See here for our complete and comprehensive migration guide <rllib-new-api-stack-migration-guide>`
-describing in detail which steps you have to take and which changes you have to apply to your
-custom RLlib classes in order to migrate from the old- to the new stack.
+See :ref:`New API stack migration guide <rllib-new-api-stack-migration-guide>` for a complete and comprehensive migration guide
+with detailed steps and changes to apply to your
+custom RLlib classes to migrate from the old to the new stack.

@@ -6,26 +6,26 @@
 .. _rllib-new-api-stack-migration-guide:
 
 
-New API Stack Migration Guide
+New API stack migration guide
 =============================
 
-This page explains - step by step - how to convert and translate your existing old API stack
+This page explains, step by step, how to convert and translate your existing old API stack
 RLlib classes and code to RLlib's new API stack.
-:ref:`Read here on what the new API stack is and why you should migrate to it soon <rllib-new-api-stack-guide>`.
+:ref:`Why you should migrate to the new API stack <rllib-new-api-stack-guide>`.
 
 
 .. note::
 
-    Even though the new API stack still rudimentary supports `TensorFlow <https://tensorflow.org>`__,
-    RLlib is moving to `PyTorch <https://pytorch.org>`__ as the only supported deep learning
-    framework (dropping TensorFlow support entirely).
-    Note, though, that RLlib continues to be designed in a framework-agnostic fashion.
+    Even though the new API stack still provides rudimentary support for `TensorFlow <https://tensorflow.org>`__,
+    RLlib supports a single deep learning framework, the `PyTorch <https://pytorch.org>`__ 
+    framework, dropping TensorFlow support entirely.
+    Note, though, that the Ray team continues to  design RLlib to be framework-agnostic.
 
 
 Change your AlgorithmConfig
 ---------------------------
 
-The new API stack is turned off by default for all RLlib algorithms. To activate it, use the `api_stack()` method
+RLlib turns off the new API stack by default for all RLlib algorithms. To activate it, use the `api_stack()` method
 in your `AlgorithmConfig` object like so:
 
 .. testcode::
@@ -35,10 +35,10 @@ in your `AlgorithmConfig` object like so:
     config = (
         PPOConfig()
         # Switch both the new API stack flags to True (both False by default).
-        # This enables the use of
-        # a) RLModule (replaces ModelV2) and Learner (replaces Policy)
-        # b) the correct EnvRunner (replaces RolloutWorker) and
-        #    ConnectorV2 pipelines (replaces old stack Connectors).
+        # This action enables the use of
+        # a) RLModule (replaces ModelV2) and Learner (replaces Policy).
+        # b) the correct EnvRunner, which replaces RolloutWorker, and
+        #    ConnectorV2 pipelines, which replaces the old stack Connectors.
         .api_stack(
             enable_rl_module_and_learner=True,
             enable_env_runner_and_connector_v2=True,
@@ -48,22 +48,21 @@ in your `AlgorithmConfig` object like so:
 
 Note that there are a few other differences between configuring an old API stack algorithm
 and its new stack counterpart.
-Go through the following sections and make sure you are either translating the respective
-settings. Settings no longer supported or needed in the new API stack should be
-dropped altogether.
+Go through the following sections and make sure you're translating the respective
+settings. Remove settings that the new stack doesn't support or need.
 
 
 AlgorithmConfig.framework()
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Even though the new API stack still rudimentary supports `TensorFlow <https://tensorflow.org>`__,
-RLlib is moving to `PyTorch <https://pytorch.org>`__ as the only supported deep learning framework.
+Even though the new API stack still provides rudimentary support for `TensorFlow <https://tensorflow.org>`__,
+RLlib supports a single deep learning framework, the `PyTorch <https://pytorch.org>`__ framework.
 
-The following framework-related settings are thus being deprecated when using the new API stack:
+The new API stack deprecates the following framework-related settings:
 
 .. testcode::
 
-    # Make sure your framework is always set to "torch" ...
+    # Make sure you always set the framework to "torch"...
     config.framework("torch")
 
     # ... and drop all tf-specific settings.
@@ -78,7 +77,7 @@ The following framework-related settings are thus being deprecated when using th
 AlgorithmConfig.resources()
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-The `num_gpus` and `_fake_gpus` settings have been deprecated. In order to place your
+The `num_gpus` and `_fake_gpus` settings have been deprecated. To place your
 RLModule on one or more GPUs on the Learner side, do the following:
 
 .. testcode::
@@ -98,10 +97,10 @@ RLModule on one or more GPUs on the Learner side, do the following:
     For asynchronous algorithms like IMPALA or APPO, this setting should therefore always be >0.
 
 `See here for an example on how to train with fractional GPUs <https://github.com/ray-project/ray/blob/master/rllib/examples/gpus/fractional_gpus_per_learner.py>`__.
-Also note that for fractional GPUs, you should always set `num_learners` to 0 or 1
+Also note that for fractional GPUs, you should always set `num_learners` to 0 or 1.
 
-If you don't have GPUs available, but want to learn with more than one
-:py:class:`~ray.rllib.core.learner.learner.Learner` in a multi-**CPU** fashion, you can do:
+If GPUs aren't available, but you want to learn with more than one
+:py:class:`~ray.rllib.core.learner.learner.Learner` in a multi-**CPU** fashion, you can do the following:
 
 .. testcode::
 
@@ -121,14 +120,14 @@ The setting `num_cpus_for_local_worker` has been renamed to `num_cpus_for_main_p
 AlgorithmConfig.training()
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Train Batch Size
+Train batch size
 ................
 
 Due to the new API stack's :py:class:`~ray.rllib.core.learner.learner.Learner` worker
-architecture (training may be distributed over n
-:py:class:`~ray.rllib.core.learner.learner.Learner` workers), the train batch size is
-now provided per individual :py:class:`~ray.rllib.core.learner.learner.Learner`.
-The `train_batch_size` setting should no longer be used:
+architecture, training may be distributed over n
+:py:class:`~ray.rllib.core.learner.learner.Learner` workers, so RLlib provides the train batch size
+per individual :py:class:`~ray.rllib.core.learner.learner.Learner`.
+You should no longer use the `train_batch_size` setting:
 
 
 .. testcode::
@@ -137,8 +136,8 @@ The `train_batch_size` setting should no longer be used:
         train_batch_size_per_learner=512,
     )
 
-This way, you won't need to change this setting, even when increasing the number of
-:py:class:`~ray.rllib.core.learner.learner.Learner` (through `config.learners(num_learners=...)`).
+You don't need to change this setting, even when increasing the number of
+:py:class:`~ray.rllib.core.learner.learner.Learner`, through `config.learners(num_learners=...)`.
 
 Note that a good rule of thumb for scaling on the learner axis is to keep the
 `train_batch_size_per_learner` value constant with a growing number of Learners and
@@ -147,34 +146,34 @@ to increase the learning rate as follows:
 `lr = [original_lr] * ([num_learners] ** 0.5)`
 
 
-Neural Network Configuration
+Neural network configuration
 ............................
 
 The old stack's `config.training(model=...)` is no longer supported on the new API stack.
 Instead, use the new :py:meth:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig.rl_module`
 method to configure RLlib's default :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule`
-or specify (and configure) a custom :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule`.
+or specify and configure a custom :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule`.
 
-:ref:`See here for more a general guide on the RLModule API <rlmodule-guide>`, also explaining
+See :ref:`RLModules API <rlmodule-guide>`, a general guide that also explains
 the use of the `config.rl_module()` method.
 
-If you have an old stack `ModelV2` and would like to migrate the whole NN logic over to the
-new stack, :ref:`see here for more details on how to do so <rllib-modelv2-to-rlmodule>`.
+If you have an old stack `ModelV2` and want to migrate the entire NN logic to the
+new stack, see :ref:`ModelV2 to RLModule <rllib-modelv2-to-rlmodule>` for migration instructions.
 
 
-Learning Rate- and Coefficient Schedules
+Learning rate- and coefficient schedules
 ........................................
 
-If you are using schedules for your learning rate or other coefficients (for example the
-`entropy_coeff` setting in PPO), provide scheduling information directly in the respective setting.
-There is no specific, separate setting anymore for scheduling behavior.
+If you're using schedules for learning rate or other coefficients, for example, the
+`entropy_coeff` setting in PPO, provide scheduling information directly in the respective setting.
+Scheduling behavior doesn't require a specific, separate setting anymore.
 
 When defining a schedule, provide a list of 2-tuples, where the first item is the global timestep
 (*num_env_steps_sampled_lifetime* in the reported metrics) and the second item is the value that should
-be reached at that timestep. Always start the first 2-tuple with timestep 0. Note that values between
-two provided timesteps are linearly interpolated.
+be reached at that timestep. Always start the first 2-tuple with timestep 0. Note that RLlib linearly interpolates values between
+two provided timesteps.
 
-For example, to create a learning rate schedule that starts with a value of 1e-5, then increases over 1M timesteps to 1e-4 and stays constant after that, do:
+For example, to create a learning rate schedule that starts with a value of 1e-5, then increases over 1M timesteps to 1e-4 and stays constant after that, do the following:
 
 .. testcode::
 
@@ -186,10 +185,10 @@ For example, to create a learning rate schedule that starts with a value of 1e-5
     )
 
 
-In the preceding example, the value after 500k timesteps is roughly `5e-5` (linear interpolation).
+In the preceding example, the value after 500k timesteps is roughly `5e-5` from linear interpolation.
 
-Another example: To create a entropy coefficient schedule that starts with a value of 0.05, then increases over 1M timesteps to 0.1 and
-then suddenly drops to 0 (after the 1Mth timestep), do:
+Another example is to create an entropy coefficient schedule that starts with a value of 0.05, then increases over 1M timesteps to 0.1 and
+then suddenly drops to 0, after the 1Mth timestep, do the following:
 
 .. testcode::
 
@@ -202,17 +201,17 @@ then suddenly drops to 0 (after the 1Mth timestep), do:
     )
 
 In case you need to configure a more complex learning rate scheduling behavior or chain different schedulers
-into a pipeline, you can use the still experimental `_torch_lr_schedule_classes` config property.
-`See this example script here for how to do this <https://github.com/ray-project/ray/blob/master/rllib/examples/learners/ppo_with_torch_lr_schedulers.py>`__.
-Note that this only covers learning rate schedules, but not any other coefficients.
+into a pipeline, you can use the experimental `_torch_lr_schedule_classes` config property.
+See `this example script <https://github.com/ray-project/ray/blob/master/rllib/examples/learners/ppo_with_torch_lr_schedulers.py>`__  for more details.
+Note that this example only covers learning rate schedules, but not any other coefficients.
 
 
 AlgorithmConfig.learners()
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-This method isn't used on the old API stack (b/c the old stack doesn't use Learner workers).
+This method isn't used on the old API stack because the old stack doesn't use Learner workers.
 
-It allows you to specify ..
+It allows you to specify:
 
 1) the number of `Learner` workers through `.learners(num_learners=...)`.
 1) the resources per learner; use `.learners(num_gpus_per_learner=1)` for GPU training and `.learners(num_gpus_per_learner=0)` for CPU training.
@@ -256,9 +255,9 @@ In case you were using the `observation_filter` setting, perform the following t
 
 .. testcode::
 
-    # For `observation_filter="NoFilter"`, do not set anything in particular. This is the default.
+    # For `observation_filter="NoFilter"`, don't set anything in particular. This is the default.
 
-    # For `observation_filter="MeanStdFilter"`, do:
+    # For `observation_filter="MeanStdFilter"`, do the following:
     from ray.rllib.connectors.env_to_module import MeanStdFilter
 
     config.env_runners(
@@ -269,10 +268,10 @@ In case you were using the `observation_filter` setting, perform the following t
 AlgorithmConfig.exploration()
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Only the `explore` setting remains supported on the new stack.
-It determines, whether the :py:meth:`~ray.rllib.core.rl_module.rl_module.RLModule._forward_exploration` (in case `explore=True`)
-or the :py:meth:`~ray.rllib.core.rl_module.rl_module.RLModule._forward_inference` (in case `explore=False`) method
-is called on your :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule`
+The new stack only supports the `explore` setting.
+It determines whether the :py:meth:`~ray.rllib.core.rl_module.rl_module.RLModule._forward_exploration`, in the case `explore=True`,
+or the :py:meth:`~ray.rllib.core.rl_module.rl_module.RLModule._forward_inference`, in the case `explore=False`, is the method
+your :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` calls
 inside the :py:class:`~ray.rllib.env.env_runner.EnvRunner`.
 
 .. testcode::
@@ -281,26 +280,26 @@ inside the :py:class:`~ray.rllib.env.env_runner.EnvRunner`.
 
 
 The `exploration_config` setting is deprecated and no longer used. Instead, determine the exact exploratory
-behavior (for example, sample an action from a distribution) inside the overridden
+behavior, for example, sample an action from a distribution, inside the overridden
 :py:meth:`~ray.rllib.core.rl_module.rl_module.RLModule._forward_exploration` method of your
 :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule`.
 
 
-Custom Callbacks
+Custom callbacks
 ----------------
 
-If you are using custom callbacks on the old API stack, you are subclassing the :py:class`~ray.rllib.algorithms.callbacks.DefaultCallbacks` class.
-You can continue doing so on the new API stack and also pass your custom subclass to your config like so:
+If you're using custom callbacks on the old API stack, you're subclassing the :py:class`~ray.rllib.algorithms.callbacks.DefaultCallbacks` class.
+You can continue this approach with the new API stack and also pass your custom subclass to your config like the following:
 
 .. testcode::
 
     # config.callbacks(YourCallbacksClass)
 
-However, if you are overriding those methods triggered on the EnvRunner side (`on_episode_start/stop/step/etc..`),
+However, if you're overriding those methods that the EnvRunner side triggered, for example,`on_episode_start/stop/step/etc...`,
 you might have to do a small amount of translation, because the
-arguments passed into many of these methods may have changed.
+EnvRunner may have changed the arguments that RLlib passes to many of these methods.
 
-Here is a 1:1 translation guide for those types of Callbacks methods:
+The following is a one-to-one translation guide for these types of Callbacks methods:
 
 .. testcode::
 
@@ -318,17 +317,17 @@ Here is a 1:1 translation guide for those types of Callbacks methods:
             env_index,
             rl_module,
 
-            # Old API stack args; you should no longer use/access these inside your method code.
+            # Old API stack args; don't use or access these inside your method code.
             worker=None,
             base_env=None,
             policies=None,
             **kwargs,
         ):
-            # The `SingleAgentEpisode` or `MultiAgentEpisode` that has just been started.
-            # See here for more details: https://docs.ray.io/en/latest/rllib/single-agent-episode.html
+            # The `SingleAgentEpisode` or `MultiAgentEpisode` that RLlib has just started.
+            # See https://docs.ray.io/en/latest/rllib/single-agent-episode.html for more details: 
             print(episode)
 
-            # The `EnvRunner` class where the episode in question is being collected.
+            # The `EnvRunner` class that collects the episode in question.
             # This used to be a `RolloutWorker`, now on the new stack, this is either a
             # `SingleAgentEnvRunner` or a `MultiAgentEnvRunner` holding the gymnasium Env,
             # the RLModule, and the 2 connector pipelines (env-to-module and module-to-env).
