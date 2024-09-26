@@ -1,507 +1,349 @@
-current_dir = meson.current_source_dir()
+current_dir = fs.relative_to(meson.current_source_dir(), meson.source_root())
+current_dir_offset = fs.relative_to(meson.source_root(), meson.current_source_dir())
 
-source_proto_files = ['runtime_env_common.proto', 'common.proto']
-source_proto_file_paths = []
+# === Begin of `setup` scope ===
+# === 1. .proto -> .pb.cc, .pb.h ===
+native_source_proto_files = [
+    'autoscaler.proto',
+    'usage.proto',
+    'serve.proto',
+    'runtime_env_agent.proto',
+    'pubsub.proto',
+    'ray_client.proto',
+    'agent_manager.proto',
+    'job_agent.proto',
+    'export_submission_job_event_proto',
+    'export_api/export_driver_job_event.proto',
+    'export_api/export_actor_data.proto',
+    'export_api/export_node_data.proto',
+    'export_api/export_runtime_env.proto',
+    'export_api/export_task_event.proto',
+    'export_api/export_event.proto',
+    'event.proto',
+    'serialization.proto',
+    'core_worker.proto',
+    'object_manager.proto',
+    'test_service.proto',
+    'common.proto',
+    'dependency.proto',
+    'experimental/instance_manager.proto',
+    'gcs.proto',
+    'gcs_service.proto',
+    'logging.proto',
+    'node_manager.proto',
+    'ray_syncer.proto',
+    'reporter.proto', # @TODO: Deps: @io_opencensus_proto//opencensus/proto/metrics/v1:metrics_proto
+    'runtime_env_common.proto',
+]
 
-foreach proto_file : source_proto_files
-    source_proto_file_paths += [
+native_source_proto_file_paths = []
+
+foreach proto_file : native_source_proto_files
+    native_source_proto_file_paths += [
         current_dir / proto_file
     ]
 endforeach
 
-run_command(protoc, '--proto_path=' + meson.source_root(), '--cpp_out=' + meson.source_root(), source_proto_file_paths, check: true)
+#  @TODO: try extra -IPATH, --proto_path=PATH? may resolve current overcomplication
+run_command(
+    protoc,
+    '--proto_path=' + current_dir_offset,
+    '--cpp_out=' + current_dir_offset,
+    native_source_proto_file_paths,
+    check: true
+)
+# === End of `setup` scope ===
 
+
+# === Being of `compile` scope ===
 common_cc_proto = static_library(
     'common_cc_proto',
     ['common.pb.cc'],
-    include_directories: ['../../../'],
-    cpp_args: '-std=gnu++17'
+    include_directories: [current_dir_offset]
 )
 
+instance_manager_cc_proto = static_library(
+    'instance_manager_cc_proto',
+    ['experimental/instance_manager.pb.cc'],
+    include_directories: [current_dir_offset]
+)
 
-#libdistanceproto = library(meson.project_name(), distance_pb_cc,
-#                           dependencies: [protobuf],
-#                           install: true,
-#)
+ray_syncer_cc_proto = static_library(
+    'ray_syncer_cc_proto',
+    ['ray_syncer.pb.cc'],
+    include_directories: [current_dir_offset]
+)
 
-#cc_proto_library(
-#    name = "common_cc_proto",
-#    deps = [":common_proto"],
-#)
+runtime_env_common_cc_proto = static_library(
+    'runtime_env_common_cc_proto',
+    ['runtime_env_common.pb.cc'],
+    include_directories: [current_dir_offset]
+)
 
-#package(default_visibility = ["//visibility:public"])
-#
-#load("@rules_proto//proto:defs.bzl", "proto_library")
-#load("@rules_cc//cc:defs.bzl", "cc_binary", "cc_library", "cc_proto_library", "cc_test")
-#load("@rules_proto_grpc//python:defs.bzl", "python_grpc_compile")
-#
-#proto_library(
-#    name = "common_proto",
-#    srcs = ["common.proto"],
-#    visibility = ["//java:__subpackages__"],
-#    deps = [
-#    ":runtime_env_common_proto",
-#    ],
-#)
-#
-#cc_proto_library(
-#    name = "common_cc_proto",
-#    deps = [":common_proto"],
-#)
-#
+gcs_cc_proto = static_library(
+    'gcs_cc_proto',
+    ['gcs.pb.cc'],
+    include_directories: [current_dir_offset]
+)
+
+logging_cc_proto = static_library(
+    'logging_cc_proto',
+    ['logging.pb.cc'],
+    include_directories: [current_dir_offset]
+)
+
+node_manager_cc_proto = static_library(
+    'node_manager_cc_proto',
+    ['node_manager.pb.cc'],
+    include_directories: [current_dir_offset]
+)
+
+reporter_cc_proto = static_library(
+    'reporter_cc_proto',
+    ['reporter.pb.cc'],
+    include_directories: [current_dir_offset]
+)
+
+gcs_service_cc_proto = static_library(
+    'gcs_service_cc_proto',
+    ['gcs_service.pb.cc'],
+    include_directories: [current_dir_offset]
+)
+
+test_service_cc_proto = static_library(
+    'test_service_cc_proto',
+    ['test_service.pb.cc'],
+    include_directories: [current_dir_offset]
+)
+
+object_manager_cc_proto = static_library(
+    'object_manager_cc_proto',
+    ['object_manager.pb.cc'],
+    include_directories: [current_dir_offset]
+)
+
+core_worker_cc_proto = static_library(
+    'core_worker_cc_proto', # Original: `worker_cc_proto`
+    ['core_worker.pb.cc'],
+    include_directories: [current_dir_offset]
+)
+
+serialization_cc_proto = static_library(
+    'serialization_cc_proto',
+    ['serialization.pb.cc'],
+    include_directories: [current_dir_offset]
+)
+
+event_cc_proto = static_library(
+    'event_cc_proto',
+    ['event.pb.cc'],
+    include_directories: [current_dir_offset]
+)
+
+export_event_cc_proto = static_library(
+    'export_event_cc_proto',
+    ['export_api/export_event.pb.cc'],
+    include_directories: [current_dir_offset]
+)
+
+export_task_event_cc_proto = static_library(
+    'export_task_event_cc_proto',
+    ['export_api/export_task_event.pb.cc'],
+    include_directories: [current_dir_offset]
+)
+
+export_runtime_env_cc_proto = static_library(
+    'export_runtime_env_cc_proto',
+    ['export_api/export_runtime_env.pb.cc'],
+    include_directories: [current_dir_offset]
+)
+
+export_node_event_cc_proto = static_library(
+    'export_node_event_cc_proto',
+    ['export_api/export_node_event.pb.cc'],
+    include_directories: [current_dir_offset]
+)
+
+export_actor_event_cc_proto = static_library(
+    'export_actor_event_cc_proto',
+    ['export_api/export_actor_event.pb.cc'],
+    include_directories: [current_dir_offset]
+)
+
+export_driver_job_event_cc_proto = static_library(
+    'export_driver_job_event_cc_proto',
+    ['export_api/export_driver_job_event.pb.cc'],
+    include_directories: [current_dir_offset]
+)
+
+export_submission_job_event_cc_proto = static_library(
+    'export_submission_job_event_cc_proto',
+    ['export_api/export_submission_job_event.pb.cc'],
+    include_directories: [current_dir_offset]
+)
+
+agent_manager_cc_proto = static_library(
+    'agent_manager_cc_proto',
+    ['agent_manager.pb.cc'],
+    include_directories: [current_dir_offset]
+)
+
+pubsub_cc_proto = static_library(
+    'pubsub_cc_proto',
+    ['pubsub.pb.cc'],
+    include_directories: [current_dir_offset]
+)
+
+runtime_env_agent_cc_proto = static_library(
+    'runtime_env_agent_cc_proto',
+    ['runtime_env_agent.pb.cc'],
+    include_directories: [current_dir_offset]
+)
+
+usage_cc_proto = static_library(
+    'usage_cc_proto',
+    ['usage.pb.cc'],
+    include_directories: [current_dir_offset]
+)
+
+autoscaler_cc_proto = static_library(
+    'autoscaler_cc_proto',
+    ['autoscaler.pb.cc'],
+    include_directories: [current_dir_offset]
+)
+# === 2. .proto -> .pb2.py ===
+
+# === End of `compile` scope ===
+
+
+
 #python_grpc_compile(
 #    name = "common_py_proto",
 #    deps = [":common_proto"],
 #)
-#
-#proto_library(
-#    name = "gcs_proto",
-#    srcs = ["gcs.proto"],
-#    visibility = ["//java:__subpackages__"],
-#    deps = [
-#    ":common_proto",
-#    ":runtime_env_common_proto",
-#    ],
-#)
-#
-#proto_library(
-#    name = "instance_manager_proto",
-#    srcs = ["experimental/instance_manager.proto"],
-#)
-#
+
 #python_grpc_compile(
 #    name = "instance_manager_py_proto",
 #    deps = [":instance_manager_proto"],
 #)
-#
-#cc_proto_library(
-#    name = "instance_manager_cc_proto",
-#    deps = [":instance_manager_proto"],
-#)
-#
-#proto_library(
-#    name = "ray_syncer_proto",
-#    srcs = ["ray_syncer.proto"],
-#)
-#
-#cc_proto_library(
-#    name = "ray_syncer_cc_proto",
-#    deps = [":ray_syncer_proto"],
-#)
-#
-#cc_proto_library(
-#    name = "runtime_env_common_cc_proto",
-#    deps = [":runtime_env_common_proto"],
-#)
-#
+
 #python_grpc_compile(
 #    name = "runtime_env_common_py_proto",
 #    deps = [":runtime_env_common_proto"],
 #)
-#
-#cc_proto_library(
-#    name = "gcs_cc_proto",
-#    deps = [":gcs_proto"],
-#)
-#
+
 #python_grpc_compile(
 #    name = "gcs_py_proto",
 #    deps = [":gcs_proto"],
 #)
-#
-## Function and class dependencies.
-#proto_library(
-#    name = "dependency_proto",
-#    srcs = ["dependency.proto"],
-#)
-#
+
 #python_grpc_compile(
 #    name = "dependency_py_proto",
 #    deps = [":dependency_proto"],
 #)
-#
-## Text logging.
-#proto_library(
-#    name = "logging_proto",
-#    srcs = ["logging.proto"],
-#)
-#
-#cc_proto_library(
-#    name = "logging_cc_proto",
-#    deps = [":logging_proto"],
-#)
-#
+
 #python_grpc_compile(
 #    name = "logging_py_proto",
 #    deps = [":logging_proto"],
 #)
-#
-#proto_library(
-#    name = "node_manager_proto",
-#    srcs = ["node_manager.proto"],
-#    deps = [
-#    ":autoscaler_proto",
-#    ":common_proto",
-#    ":gcs_proto",
-#    ],
-#)
-#
-#cc_proto_library(
-#    name = "node_manager_cc_proto",
-#    deps = [":node_manager_proto"],
-#)
-#
+
 #python_grpc_compile(
 #    name = "node_manager_py_proto",
 #    deps = [":node_manager_proto"],
 #)
-#
-#proto_library(
-#    name = "reporter_proto",
-#    srcs = ["reporter.proto"],
-#    deps = [
-#    ":common_proto",
-#    "@io_opencensus_proto//opencensus/proto/metrics/v1:metrics_proto",
-#    ],
-#)
-#
-#cc_proto_library(
-#    name = "reporter_cc_proto",
-#    deps = [":reporter_proto"],
-#)
-#
+
 #python_grpc_compile(
 #    name = "reporter_py_proto",
 #    deps = [":reporter_proto"],
 #)
-#
-#proto_library(
-#    name = "gcs_service_proto",
-#    srcs = ["gcs_service.proto"],
-#    deps = [
-#    ":common_proto",
-#    ":gcs_proto",
-#    ":pubsub_proto",
-#    ],
-#)
-#
-#cc_proto_library(
-#    name = "gcs_service_cc_proto",
-#    deps = [":gcs_service_proto"],
-#)
-#
+
 #python_grpc_compile(
 #    name = "gcs_service_py_proto",
 #    deps = [":gcs_service_proto"],
 #)
 #
-#proto_library(
-#    name = "test_service_proto",
-#    srcs = ["test_service.proto"],
-#    deps = [
-#    ":common_proto",
-#    ":gcs_proto",
-#    ],
-#)
-#
-#cc_proto_library(
-#    name = "test_service_cc_proto",
-#    deps = [":test_service_proto"],
-#)
-#
+
 #python_grpc_compile(
 #    name = "test_service_py_proto",
 #    deps = [":test_service_proto"],
 #)
-#
-#proto_library(
-#    name = "object_manager_proto",
-#    srcs = ["object_manager.proto"],
-#    deps = [":common_proto"],
-#)
-#
-#cc_proto_library(
-#    name = "object_manager_cc_proto",
-#    deps = [":object_manager_proto"],
-#)
-#
-#proto_library(
-#    name = "core_worker_proto",
-#    srcs = ["core_worker.proto"],
-#    deps = [
-#    ":common_proto",
-#    ":gcs_service_proto",
-#    ":pubsub_proto",
-#    ],
-#)
-#
+
 #python_grpc_compile(
 #    name = "core_worker_py_proto",
 #    deps = [":core_worker_proto"],
 #)
-#
-#cc_proto_library(
-#    name = "worker_cc_proto",
-#    deps = ["core_worker_proto"],
-#)
-#
-#proto_library(
-#    name = "serialization_proto",
-#    srcs = ["serialization.proto"],
-#)
-#
-#cc_proto_library(
-#    name = "serialization_cc_proto",
-#    deps = ["serialization_proto"],
-#)
-#
-#proto_library(
-#    name = "event_proto",
-#    srcs = ["event.proto"],
-#)
-#
-#cc_proto_library(
-#    name = "event_cc_proto",
-#    deps = [":event_proto"],
-#)
-#
+
 #python_grpc_compile(
 #    name = "event_py_proto",
 #    deps = [":event_proto"],
 #)
-#
-#proto_library(
-#    name = "export_event_proto",
-#    srcs = ["export_api/export_event.proto"],
-#    deps = [
-#    ":export_task_event_proto",
-#    ":export_node_event_proto",
-#    ":export_actor_event_proto",
-#    ":export_driver_job_event_proto",
-#    ":export_submission_job_event_proto"
-#    ],
-#)
-#
-#cc_proto_library(
-#    name = "export_event_cc_proto",
-#    deps = [":export_event_proto"],
-#)
-#
+
 #python_grpc_compile(
 #    name = "export_event_py_proto",
 #    deps = [":export_event_proto"],
 #)
-#
-#proto_library(
-#    name = "export_task_event_proto",
-#    srcs = ["export_api/export_task_event.proto"],
-#    deps = [":common_proto", ":export_runtime_env_proto"],
-#)
-#
-#cc_proto_library(
-#    name = "export_task_event_cc_proto",
-#    deps = [":export_task_event_proto"],
-#)
-#
+
 #python_grpc_compile(
 #    name = "export_task_event_py_proto",
 #    deps = [":export_task_event_proto"],
 #)
-#
-#proto_library(
-#    name = "export_runtime_env_proto",
-#    srcs = ["export_api/export_runtime_env.proto"],
-#)
-#
-#cc_proto_library(
-#    name = "export_runtime_env_cc_proto",
-#    deps = [":export_runtime_env_proto"],
-#)
-#
+
 #python_grpc_compile(
 #    name = "export_runtime_env_py_proto",
 #    deps = [":export_runtime_env_proto"],
 #)
-#
-#proto_library(
-#    name = "export_node_event_proto",
-#    srcs = ["export_api/export_node_data.proto"],
-#)
-#
-#cc_proto_library(
-#    name = "export_node_event_cc_proto",
-#    deps = [":export_node_event_proto"],
-#)
-#
+
 #python_grpc_compile(
 #    name = "export_node_event_py_proto",
 #    deps = [":export_node_event_proto"],
 #)
-#
-#proto_library(
-#    name = "export_actor_event_proto",
-#    srcs = ["export_api/export_actor_data.proto"],
-#    deps = [":common_proto"],
-#)
-#
-#cc_proto_library(
-#    name = "export_actor_event_cc_proto",
-#    deps = [":export_actor_event_proto"],
-#)
-#
+
 #python_grpc_compile(
 #    name = "export_actor_event_py_proto",
 #    deps = [":export_actor_event_proto"],
 #)
-#
-#proto_library(
-#    name = "export_driver_job_event_proto",
-#    srcs = ["export_api/export_driver_job_event.proto"],
-#    deps = [":common_proto", ":export_runtime_env_proto"],
-#)
-#
-#cc_proto_library(
-#    name = "export_driver_job_event_cc_proto",
-#    deps = [":export_driver_job_event_proto"],
-#)
-#
+
 #python_grpc_compile(
 #    name = "export_driver_job_event_py_proto",
 #    deps = [":export_driver_job_event_proto"],
 #)
-#
-#proto_library(
-#    name = "export_submission_job_event_proto",
-#    srcs = ["export_api/export_submission_job_event.proto"],
-#)
-#
-#cc_proto_library(
-#    name = "export_submission_job_event_cc_proto",
-#    deps = [":export_submission_job_event_proto"],
-#)
-#
+
 #python_grpc_compile(
 #    name = "export_submission_job_event_py_proto",
 #    deps = [":export_submission_job_event_proto"],
 #)
-#
-## Job agent.
-#proto_library(
-#    name = "job_agent_proto",
-#    srcs = ["job_agent.proto"],
-#    deps = [":agent_manager_proto"],
-#)
-#
+
 #python_grpc_compile(
 #    name = "job_agent_py_proto",
 #    deps = [":job_agent_proto"],
 #)
-#
-## Agent manager gRPC lib.
-#proto_library(
-#    name = "agent_manager_proto",
-#    srcs = ["agent_manager.proto"],
-#    deps = [],
-#)
-#
+
 #python_grpc_compile(
 #    name = "agent_manager_py_proto",
 #    deps = [":agent_manager_proto"],
 #)
-#
-#cc_proto_library(
-#    name = "agent_manager_cc_proto",
-#    deps = [":agent_manager_proto"],
-#)
-#
-## Ray Client gRPC lib
-#proto_library(
-#    name = "ray_client_proto",
-#    srcs = ["ray_client.proto"],
-#    deps = [":common_proto"],
-#)
-#
+
 #python_grpc_compile(
 #    name = "ray_client_py_proto",
 #    deps = [":ray_client_proto"],
 #)
-#
-## Pubsub
-#proto_library(
-#    name = "pubsub_proto",
-#    srcs = ["pubsub.proto"],
-#    deps = [
-#    ":common_proto",
-#    ":dependency_proto",
-#    ":gcs_proto",
-#    ":logging_proto",
-#    ":reporter_proto",
-#    ],
-#)
-#
-#cc_proto_library(
-#    name = "pubsub_cc_proto",
-#    deps = [":pubsub_proto"],
-#)
-#
-## runtime env agent gRPC lib.
-#proto_library(
-#    name = "runtime_env_agent_proto",
-#    srcs = ["runtime_env_agent.proto"],
-#    deps = [
-#    ":agent_manager_proto",
-#    ":common_proto",
-#    ":runtime_env_common_proto",
-#    ],
-#)
-#
+
 #python_grpc_compile(
 #    name = "runtime_env_agent_py_proto",
 #    deps = [":runtime_env_agent_proto"],
 #)
-#
-#cc_proto_library(
-#    name = "runtime_env_agent_cc_proto",
-#    deps = [":runtime_env_agent_proto"],
-#)
-#
-#proto_library(
-#    name = "serve_proto",
-#    srcs = ["serve.proto"],
-#    visibility = ["//java:__subpackages__"],
-#)
-#
+
 #python_grpc_compile(
 #    name = "serve_py_proto",
 #    deps = [":serve_proto"],
 #)
-#
-#proto_library(
-#    name = "usage_proto",
-#    srcs = ["usage.proto"],
-#)
-#
+
 #python_grpc_compile(
 #    name = "usage_py_proto",
 #    deps = [":usage_proto"],
 #)
-#
-#cc_proto_library(
-#    name = "usage_cc_proto",
-#    deps = [":usage_proto"],
-#)
-#
-#proto_library(
-#    name = "autoscaler_proto",
-#    srcs = ["autoscaler.proto"],
-#)
-#
+
 #python_grpc_compile(
 #    name = "autoscaler_py_proto",
-#    deps = [":autoscaler_proto"],
-#)
-#
-#cc_proto_library(
-#    name = "autoscaler_cc_proto",
 #    deps = [":autoscaler_proto"],
 #)

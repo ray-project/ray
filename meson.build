@@ -7,18 +7,12 @@ project(
 )
 
 # === Begin of imports ===
-#generated = custom_target(
-#    'generate_protobuf_' + lib_name,
-#    output: ['@0@.pb.cc'.format(f.split('.')[0]), '@0@.pb.h'.format(f.split('.')[0])],
-#    command: gen.process(proto_files),
-#    depends: proto_files
-#)
+fs = import('fs')
+py = import('python').find_installation(pure: false)
 # === End of imports ===
 
 
 # === Begin of dependencies ===
-py = import('python').find_installation(pure: false)
-
 absl = dependency('absl', modules: [
     #'absl::raw_logging_internal', # https://github.com/ray-project/ray/issues/8588, https://github.com/ray-project/ray/issues/17212
 
@@ -179,11 +173,6 @@ msgpack = dependency('msgpack')
 
 protobuf = dependency('protobuf', modules: ['protobuf::libprotobuf'])
 protoc = find_program('protoc', required: true)
-protoc_gen = generator(
-    protoc,
-    output : ['@BASENAME@@EXT@', '@BASENAME@.pb.h'],
-    arguments : ['--cpp_out=@OUTPUT_DIR@', '@INPUT@']
-)
 # === End of dependencies ===
 
 
