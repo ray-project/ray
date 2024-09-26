@@ -274,22 +274,6 @@ void GcsNodeManager::HandleGetAllNodeInfo(rpc::GetAllNodeInfoRequest request,
   ++counts_[CountType::GET_ALL_NODE_INFO_REQUEST];
 }
 
-void GcsNodeManager::HandleGetInternalConfig(rpc::GetInternalConfigRequest request,
-                                             rpc::GetInternalConfigReply *reply,
-                                             rpc::SendReplyCallback send_reply_callback) {
-  auto get_system_config = [reply, send_reply_callback](
-                               const ray::Status &status,
-                               const std::optional<rpc::StoredConfig> &config) {
-    if (config.has_value()) {
-      reply->set_config(config->config());
-    }
-    GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
-  };
-  RAY_CHECK_OK(
-      gcs_table_storage_->InternalConfigTable().Get(UniqueID::Nil(), get_system_config));
-  ++counts_[CountType::GET_INTERNAL_CONFIG_REQUEST];
-}
-
 absl::optional<std::shared_ptr<rpc::GcsNodeInfo>> GcsNodeManager::GetAliveNode(
     const ray::NodeID &node_id) const {
   auto iter = alive_nodes_.find(node_id);
@@ -496,9 +480,7 @@ std::string GcsNodeManager::DebugString() const {
          << counts_[CountType::REGISTER_NODE_REQUEST]
          << "\n- DrainNode request count: " << counts_[CountType::DRAIN_NODE_REQUEST]
          << "\n- GetAllNodeInfo request count: "
-         << counts_[CountType::GET_ALL_NODE_INFO_REQUEST]
-         << "\n- GetInternalConfig request count: "
-         << counts_[CountType::GET_INTERNAL_CONFIG_REQUEST];
+         << counts_[CountType::GET_ALL_NODE_INFO_REQUEST];
   return stream.str();
 }
 

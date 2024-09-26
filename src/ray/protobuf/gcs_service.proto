@@ -259,13 +259,6 @@ message CheckAliveReply {
   repeated bool raylet_alive = 3;
 }
 
-message GetInternalConfigRequest {}
-
-message GetInternalConfigReply {
-  GcsStatus status = 1;
-  string config = 2;
-}
-
 message DeleteResourcesReply {
   GcsStatus status = 1;
 }
@@ -750,8 +743,6 @@ service NodeInfoGcsService {
   rpc DrainNode(DrainNodeRequest) returns (DrainNodeReply);
   // Get information of all nodes from GCS Service.
   rpc GetAllNodeInfo(GetAllNodeInfoRequest) returns (GetAllNodeInfoReply);
-  // Get cluster internal config.
-  rpc GetInternalConfig(GetInternalConfigRequest) returns (GetInternalConfigReply);
   // Check alive.
   rpc CheckAlive(CheckAliveRequest) returns (CheckAliveReply);
 }

@@ -20,7 +20,7 @@
 namespace ray {
 
 PeriodicalRunner::PeriodicalRunner(instrumented_io_context &io_service)
-    : io_service_(io_service), mutex_(), stopped_(std::make_shared<bool>(false)) {}
+    : io_service_(io_service) {}
 
 PeriodicalRunner::~PeriodicalRunner() {
   RAY_LOG(DEBUG) << "PeriodicalRunner is destructed";
@@ -29,7 +29,7 @@ PeriodicalRunner::~PeriodicalRunner() {
 
 void PeriodicalRunner::Clear() {
   absl::MutexLock lock(&mutex_);
-  *stopped_ = true;
+  stopped_ = true;
   for (const auto &timer : timers_) {
     timer->cancel();
   }
@@ -38,8 +38,8 @@ void PeriodicalRunner::Clear() {
 
 void PeriodicalRunner::RunFnPeriodically(std::function<void()> fn,
                                          uint64_t period_ms,
-                                         const std::string name) {
-  *stopped_ = false;
+                                         const std::string &name) {
+  stopped_ = false;
   if (period_ms > 0) {
     auto timer = std::make_shared<boost::asio::deadline_timer>(io_service_);
     {
@@ -47,13 +47,8 @@ void PeriodicalRunner::RunFnPeriodically(std::function<void()> fn,
       timers_.push_back(timer);
     }
     io_service_.post(
-        [this,
-         stopped = stopped_,
-         fn = std::move(fn),
-         period_ms,
-         name,
-         timer = std::move(timer)]() {
-          if (*stopped) {
+        [this, fn = std::move(fn), period_ms, name, timer = std::move(timer)]() {
+          if (this->stopped_) {
             return;
           }
           if (RayConfig::instance().event_stats()) {
@@ -74,28 +69,27 @@ void PeriodicalRunner::DoRunFnPeriodically(
   fn();
   absl::MutexLock lock(&mutex_);
   timer->expires_from_now(period);
-  timer->async_wait(
-      [this, stopped = stopped_, fn = std::move(fn), period, timer = std::move(timer)](
-          const boost::system::error_code &error) {
-        if (*stopped) {
-          return;
-        }
-        if (error == boost::asio::error::operation_aborted) {
-          // `operation_aborted` is set when `timer` is canceled or destroyed.
-          // The Monitor lifetime may be short than the object who use it. (e.g.
-          // gcs_server)
-          return;
-        }
-        RAY_CHECK(!error) << error.message();
-        DoRunFnPeriodically(fn, period, timer);
-      });
+  timer->async_wait([this, fn, period, timer = std::move(timer)](
+                        const boost::system::error_code &error) {
+    if (stopped_) {
+      return;
+    }
+    if (error == boost::asio::error::operation_aborted) {
+      // `operation_aborted` is set when `timer` is canceled or destroyed.
+      // The Monitor lifetime may be short than the object who use it. (e.g.
+      // gcs_server)
+      return;
+    }
+    RAY_CHECK(!error) << error.message();
+    DoRunFnPeriodically(fn, period, timer);
+  });
 }
 
 void PeriodicalRunner::DoRunFnPeriodicallyInstrumented(
     const std::function<void()> &fn,
     boost::posix_time::milliseconds period,
     std::shared_ptr<boost::asio::deadline_timer> timer,
-    const std::string name) {
+    const std::string &name) {
   fn();
   absl::MutexLock lock(&mutex_);
   timer->expires_from_now(period);
@@ -104,24 +98,17 @@ void PeriodicalRunner::DoRunFnPeriodicallyInstrumented(
   // event loop.
   auto stats_handle = io_service_.stats().RecordStart(name, period.total_nanoseconds());
   timer->async_wait([this,
-                     fn = std::move(fn),
-                     stopped = stopped_,
+                     fn,
                      period,
                      timer = std::move(timer),
                      stats_handle = std::move(stats_handle),
                      name](const boost::system::error_code &error) {
-    if (*stopped) {
+    if (this->stopped_) {
       return;
     }
     io_service_.stats().RecordExecution(
-        [this,
-         stopped = stopped_,
-         fn = std::move(fn),
-         error,
-         period,
-         timer = std::move(timer),
-         name]() {
-          if (*stopped) {
+        [this, fn, error, period, timer, name]() {
+          if (this->stopped_) {
             return;
           }
           if (error == boost::asio::error::operation_aborted) {
@@ -133,7 +120,7 @@ void PeriodicalRunner::DoRunFnPeriodicallyInstrumented(
           RAY_CHECK(!error) << error.message();
           DoRunFnPeriodicallyInstrumented(fn, period, timer, name);
         },
-        std::move(stats_handle));
+        stats_handle);
   });
 }
 

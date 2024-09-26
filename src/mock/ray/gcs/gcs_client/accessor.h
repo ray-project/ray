@@ -175,10 +175,6 @@ class MockNodeInfoAccessor : public NodeInfoAccessor {
               (override));
   MOCK_METHOD(bool, IsRemoved, (const NodeID &node_id), (const, override));
   MOCK_METHOD(void, AsyncResubscribe, (), (override));
-  MOCK_METHOD(Status,
-              AsyncGetInternalConfig,
-              (const OptionalItemCallback<std::string> &callback),
-              (override));
 };
 
 }  // namespace gcs

@@ -456,13 +456,6 @@ class NodeInfoAccessor {
   /// server.
   virtual void AsyncResubscribe();
 
-  /// Get the internal config string from GCS.
-  ///
-  /// \param callback Processes a map of config options
-  /// \return Status
-  virtual Status AsyncGetInternalConfig(
-      const OptionalItemCallback<std::string> &callback);
-
   /// Add a node to accessor cache.
   virtual void HandleNotification(rpc::GcsNodeInfo &&node_info);
 

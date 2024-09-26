@@ -326,10 +326,6 @@ class NodeInfoGcsServiceHandler {
   virtual void HandleGetAllNodeInfo(GetAllNodeInfoRequest request,
                                     GetAllNodeInfoReply *reply,
                                     SendReplyCallback send_reply_callback) = 0;
-
-  virtual void HandleGetInternalConfig(GetInternalConfigRequest request,
-                                       GetInternalConfigReply *reply,
-                                       SendReplyCallback send_reply_callback) = 0;
 };
 
 /// The `GrpcService` for `NodeInfoGcsService`.
@@ -360,7 +356,6 @@ class NodeInfoGrpcService : public GrpcService {
     NODE_INFO_SERVICE_RPC_HANDLER(UnregisterNode);
     NODE_INFO_SERVICE_RPC_HANDLER(DrainNode);
     NODE_INFO_SERVICE_RPC_HANDLER(GetAllNodeInfo);
-    NODE_INFO_SERVICE_RPC_HANDLER(GetInternalConfig);
     NODE_INFO_SERVICE_RPC_HANDLER(CheckAlive);
   }
 

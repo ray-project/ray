@@ -467,10 +467,6 @@ message WorkerDeltaData {
   bytes worker_id = 2;
 }
 
-message StoredConfig {
-  string config = 1;
-}
-
 message PubSubMessage {
   bytes id = 1;
   bytes data = 2;

@@ -17,6 +17,8 @@
 #include <limits.h>
 #include <stdint.h>
 
+#include <string_view>
+
 /// Default value for enable_task_events within core.
 constexpr bool kDefaultTaskEventEnabled = true;
 
@@ -83,6 +85,12 @@ constexpr char kNodeCloudInstanceTypeNameEnv[] = "RAY_CLOUD_INSTANCE_TYPE_NAME";
 /**********************************/
 /* ENV labels for autoscaler ends */
 /**********************************/
+
+// Please keep this in sync with the definition in ray_constants.py.
+constexpr char kRayInternalNamespacePrefix[] = "_ray_internal_";
+
+constexpr char kRayInternalConfigNamespace[] = "_ray_internal_internal_config";
+constexpr char kRayInternalConfigKey[] = "config";
 
 /// Key for the placement group's bundle placement constraint.
 /// Used by FormatPlacementGroupLabelName()
