@@ -425,8 +425,8 @@ class ArrowTensorArray(_ArrowTensorScalarIndexingMixin, pa.ExtensionArray):
         if not arr.flags.c_contiguous:
             # We only natively support C-contiguous ndarrays.
             arr = np.ascontiguousarray(arr)
-        pa_dtype = pa.from_numpy_dtype(arr.dtype)
-        if pa.types.is_string(pa_dtype):
+        scalar_dtype = pa.from_numpy_dtype(arr.dtype)
+        if pa.types.is_string(scalar_dtype):
             if arr.dtype.byteorder == ">" or (
                 arr.dtype.byteorder == "=" and sys.byteorder == "big"
             ):
@@ -434,14 +434,14 @@ class ArrowTensorArray(_ArrowTensorScalarIndexingMixin, pa.ExtensionArray):
                     "Only little-endian string tensors are supported, "
                     f"but got: {arr.dtype}",
                 )
-            pa_dtype = pa.binary(arr.dtype.itemsize)
+            scalar_dtype = pa.binary(arr.dtype.itemsize)
         outer_len = arr.shape[0]
         element_shape = arr.shape[1:]
         total_num_items = arr.size
         num_items_per_element = np.prod(element_shape) if element_shape else 1
 
         # Data buffer.
-        if pa.types.is_boolean(pa_dtype):
+        if pa.types.is_boolean(scalar_dtype):
             # NumPy doesn't represent boolean arrays as bit-packed, so we manually
             # bit-pack the booleans before handing the buffer off to Arrow.
             # NOTE: Arrow expects LSB bit-packed ordering.
@@ -449,26 +449,28 @@ class ArrowTensorArray(_ArrowTensorScalarIndexingMixin, pa.ExtensionArray):
             arr = np.packbits(arr, bitorder="little")
         data_buffer = pa.py_buffer(arr)
         data_array = pa.Array.from_buffers(
-            pa_dtype, total_num_items, [None, data_buffer]
+            scalar_dtype, total_num_items, [None, data_buffer]
         )
 
-        if DataContext.get_current().should_use_tensor_v2:
-            offset_dtype = ArrowTensorTypeV2.OFFSET_DTYPE
+        should_use_tensor_v2 = DataContext.get_current().should_use_tensor_v2
+
+        if should_use_tensor_v2:
+            type_ = ArrowTensorType(element_shape, scalar_dtype)
         else:
-            offset_dtype = ArrowTensorType.OFFSET_DTYPE
+            type_ = ArrowTensorType(element_shape, scalar_dtype)
 
         # Create Offset buffer
         offset_buffer = pa.py_buffer(
-            offset_dtype([i * num_items_per_element for i in range(outer_len + 1)])
+            type_.OFFSET_DTYPE([i * num_items_per_element for i in range(outer_len + 1)])
         )
 
         storage = pa.Array.from_buffers(
-            pa.large_list(pa_dtype),
+            pa.large_list(scalar_dtype),
             outer_len,
             [None, offset_buffer],
             children=[data_array],
         )
-        type_ = ArrowTensorType(element_shape, pa_dtype)
+
         return pa.ExtensionArray.from_storage(type_, storage)
 
     def _to_numpy(self, index: Optional[int] = None, zero_copy_only: bool = False):
