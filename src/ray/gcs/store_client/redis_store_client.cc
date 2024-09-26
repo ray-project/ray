@@ -25,6 +25,7 @@
 #include "ray/gcs/redis_context.h"
 #include "ray/util/container_util.h"
 #include "ray/util/logging.h"
+
 namespace ray {
 namespace gcs {
 
