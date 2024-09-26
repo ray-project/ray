@@ -194,7 +194,9 @@ class TorchFreeLogStdMLPHead(TorchModel):
         # policy heads. Value heads should never be clipped.
         self.clip_log_std = config.clip_log_std
         # The clipping parameter for the log standard deviation.
-        self.log_std_clip_param = torch.Tensor([config.log_std_clip_param])
+        self.log_std_clip_param = torch.Tensor(
+            [config.log_std_clip_param], device=self.log_std.device
+        )
 
     @override(Model)
     def get_input_specs(self) -> Optional[Spec]:
