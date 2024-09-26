@@ -211,7 +211,7 @@ class DQNConfig(AlgorithmConfig):
         # fmt: on
         # __sphinx_doc_end__
 
-        # Deprecated.
+        # Deprecated
         self.buffer_size = DEPRECATED_VALUE
         self.prioritized_replay = DEPRECATED_VALUE
         self.learning_starts = DEPRECATED_VALUE

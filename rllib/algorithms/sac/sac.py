@@ -113,6 +113,7 @@ class SACConfig(AlgorithmConfig):
         }
         self.train_batch_size_per_learner = 256
         self.train_batch_size = 256  # @OldAPIstack
+
         # Number of timesteps to collect from rollout workers before we start
         # sampling from replay buffers for learning. Whether we count this in agent
         # steps  or environment steps depends on config.multi_agent(count_steps_by=..).
