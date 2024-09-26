@@ -108,7 +108,6 @@ class _BaseArrowTensorType(pa.ExtensionType, abc.ABC):
 
     def __init__(self, shape: Tuple[int, ...], tensor_dtype: pa.DataType, ext_type_id: str):
         self._shape = shape
-        self.tensor_dtype = tensor_dtype
 
         super().__init__(tensor_dtype, ext_type_id)
 
@@ -466,7 +465,7 @@ class ArrowTensorArray(_ArrowTensorScalarIndexingMixin, pa.ExtensionArray):
         )
 
         storage = pa.Array.from_buffers(
-            pa_type_.tensor_dtype,
+            pa_type_.storage_type,
             outer_len,
             [None, offset_buffer],
             children=[data_array],
