@@ -535,12 +535,6 @@ class GcsRpcClient {
                              internal_kv_grpc_client_,
                              /*method_timeout_ms*/ -1, )
 
-  /// Get internal config of the node from the GCS Service.
-  VOID_GCS_RPC_CLIENT_METHOD(InternalKVGcsService,
-                             GetInternalConfig,
-                             internal_kv_grpc_client_,
-                             /*method_timeout_ms*/ -1, )
-
   /// Operations for pubsub
   VOID_GCS_RPC_CLIENT_METHOD(InternalPubSubGcsService,
                              GcsPublish,

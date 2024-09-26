@@ -259,13 +259,6 @@ message CheckAliveReply {
   repeated bool raylet_alive = 3;
 }
 
-message GetInternalConfigRequest {}
-
-message GetInternalConfigReply {
-  GcsStatus status = 1;
-  string config = 2;
-}
-
 message DeleteResourcesReply {
   GcsStatus status = 1;
 }
@@ -602,7 +595,6 @@ service InternalKVGcsService {
   rpc InternalKVDel(InternalKVDelRequest) returns (InternalKVDelReply);
   rpc InternalKVExists(InternalKVExistsRequest) returns (InternalKVExistsReply);
   rpc InternalKVKeys(InternalKVKeysRequest) returns (InternalKVKeysReply);
-  rpc GetInternalConfig(GetInternalConfigRequest) returns (GetInternalConfigReply);
 }
 
 message PinRuntimeEnvURIRequest {

@@ -370,30 +370,16 @@ std::unique_ptr<std::string> GlobalStateAccessor::GetPlacementGroupByName(
 std::unique_ptr<std::string> GlobalStateAccessor::GetInternalKV(const std::string &ns,
                                                                 const std::string &key) {
   absl::ReaderMutexLock lock(&mutex_);
-  std::string value;
+  auto value = std::make_unique<std::string>();
 
-  Status status = gcs_client_->InternalKV().Get(ns, key, GetGcsTimeoutMs(), value);
-  return status.ok() ? std::make_unique<std::string>(value) : nullptr;
+  Status status = gcs_client_->InternalKV().Get(ns, key, GetGcsTimeoutMs(), *value);
+  return status.ok() ? std::move(value) : nullptr;
 }
 
 std::string GlobalStateAccessor::GetSystemConfig() {
-  std::promise<std::string> promise;
-  {
-    absl::ReaderMutexLock lock(&mutex_);
-    RAY_CHECK_OK(gcs_client_->InternalKV().AsyncGetInternalConfig(
-        [&promise](const Status &status,
-                   const std::optional<std::string> &stored_raylet_config) {
-          RAY_CHECK_OK(status);
-          promise.set_value(*stored_raylet_config);
-        }));
-  }
-  auto future = promise.get_future();
-  if (future.wait_for(std::chrono::seconds(
-          RayConfig::instance().gcs_server_request_timeout_seconds())) !=
-      std::future_status::ready) {
-    RAY_LOG(FATAL) << "Failed to get system config within the timeout setting.";
-  }
-  return future.get();
+  auto config_ptr = GetInternalKV(kRayInternalConfigNamespace, kRayInternalConfigKey);
+  RAY_CHECK(config_ptr != nullptr) << "Failed to get system config from GCS.";
+  return std::move(*config_ptr.release());
 }
 
 ray::Status GlobalStateAccessor::GetAliveNodes(std::vector<rpc::GcsNodeInfo> &nodes) {

@@ -82,24 +82,18 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
     RAY_LOG(FATAL) << "Unexpected storage type: " << storage_type_;
   }
 
-  auto on_done = [this](const ray::Status &status) {
-    RAY_CHECK(status.ok()) << "Failed to put internal config";
-    this->main_service_.stop();
-  };
-
-  ray::rpc::StoredConfig stored_config;
-  stored_config.set_config(config_.raylet_config_list);
-  RAY_CHECK_OK(gcs_table_storage_->InternalConfigTable().Put(
-      ray::UniqueID::Nil(), stored_config, on_done));
-  // Here we need to make sure the Put of internal config is happening in sync
-  // way. But since the storage API is async, we need to run the main_service_
-  // to block current thread.
-  // This will run async operations from InternalConfigTable().Put() above
-  // inline.
-  main_service_.run();
-  // Reset the main service to the initial status otherwise, the signal handler
-  // will be called.
-  main_service_.restart();
+  // Sync write to internal kv for the internal config.
+  InitKVManager();
+  std::promise<bool> put_internal_config_promise;
+  kv_manager_->GetInstance().Put(kRayInternalConfigNamespace,
+                                 kRayInternalConfigKey,
+                                 config_.raylet_config_list,
+                                 true,
+                                 [&put_internal_config_promise](bool new_entry_added) {
+                                   put_internal_config_promise.set_value(new_entry_added);
+                                 });
+  bool new_entry_added = put_internal_config_promise.get_future().get();
+  RAY_LOG(DEBUG) << "Put intenral config. Overwritten? " << (!new_entry_added);
 
   // Init GCS publisher instance.
   std::unique_ptr<pubsub::Publisher> inner_publisher;
@@ -575,8 +569,7 @@ void GcsServer::InitKVManager() {
     RAY_LOG(FATAL) << "Unexpected storage type! " << storage_type_;
   }
 
-  kv_manager_ = std::make_unique<GcsInternalKVManager>(std::move(instance),
-                                                       config_.raylet_config_list);
+  kv_manager_ = std::make_unique<GcsInternalKVManager>(std::move(instance));
 }
 
 void GcsServer::InitKVService() {

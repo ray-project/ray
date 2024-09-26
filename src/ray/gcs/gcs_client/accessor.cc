@@ -1399,21 +1399,6 @@ Status InternalKVAccessor::Exists(const std::string &ns,
   return ret_promise.get_future().get();
 }
 
-Status InternalKVAccessor::AsyncGetInternalConfig(
-    const OptionalItemCallback<std::string> &callback) {
-  rpc::GetInternalConfigRequest request;
-  client_impl_->GetGcsRpcClient().GetInternalConfig(
-      request, [callback](const Status &status, rpc::GetInternalConfigReply &&reply) {
-        if (status.ok()) {
-          RAY_LOG(DEBUG) << "Fetched internal config: " << reply.config();
-        } else {
-          RAY_LOG(ERROR) << "Failed to get internal config: " << status.message();
-        }
-        callback(status, reply.config());
-      });
-  return Status::OK();
-}
-
 RuntimeEnvAccessor::RuntimeEnvAccessor(GcsClient *client_impl)
     : client_impl_(client_impl) {}
 

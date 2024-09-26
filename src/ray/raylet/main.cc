@@ -269,8 +269,11 @@ int main(int argc, char *argv[]) {
         "shutdown_raylet_gracefully_internal");
   };
 
-  RAY_CHECK_OK(gcs_client->InternalKV().AsyncGetInternalConfig(
-      [&](::ray::Status status, const std::optional<std::string> &stored_raylet_config) {
+  RAY_CHECK_OK(gcs_client->InternalKV().AsyncInternalKVGet(
+      kRayInternalConfigNamespace,
+      kRayInternalConfigKey,
+      /*timeout_ms=*/-1,
+      [&](::ray::Status status, std::optional<std::string> &&stored_raylet_config) {
         RAY_CHECK_OK(status);
         RAY_CHECK(stored_raylet_config.has_value());
         RayConfig::instance().initialize(*stored_raylet_config);

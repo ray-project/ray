@@ -833,18 +833,6 @@ TEST_F(GcsAutoscalerStateManagerTest, TestIdleTime) {
   }
 }
 
-TEST_F(GcsAutoscalerStateManagerTest, TestGcsKvManagerInternalConfig) {
-  // This is really a test for GcsKvManager. However gcs_kv_manager_test.cc is a larger
-  // misnomer - it does not test that class at all; it only tests StoreClientInternalKV.
-  // We temporarily put this test here.
-  rpc::GetInternalConfigRequest request;
-  rpc::GetInternalConfigReply reply;
-  auto send_reply_callback =
-      [](ray::Status status, std::function<void()> f1, std::function<void()> f2) {};
-  kv_manager_->HandleGetInternalConfig(request, &reply, send_reply_callback);
-  EXPECT_EQ(reply.config(), kRayletConfig);
-}
-
 }  // namespace gcs
 }  // namespace ray
 

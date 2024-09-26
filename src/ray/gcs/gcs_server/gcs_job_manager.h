@@ -14,6 +14,7 @@
 
 #pragma once
 
+#include "ray/common/constants.h"
 #include "ray/common/runtime_env_manager.h"
 #include "ray/gcs/gcs_server/gcs_function_manager.h"
 #include "ray/gcs/gcs_server/gcs_init_data.h"
@@ -27,11 +28,9 @@
 namespace ray {
 namespace gcs {
 
-// Please keep this in sync with the definition in ray_constants.py.
-const std::string kRayInternalNamespacePrefix = "_ray_internal_";
-
 // Please keep these in sync with the definition in dashboard/modules/job/common.py.
-const std::string kJobDataKeyPrefix = kRayInternalNamespacePrefix + "job_info_";
+const std::string kJobDataKeyPrefix =
+    absl::StrCat(kRayInternalNamespacePrefix, "job_info_");
 inline std::string JobDataKey(const std::string &submission_id) {
   return kJobDataKeyPrefix + submission_id;
 }

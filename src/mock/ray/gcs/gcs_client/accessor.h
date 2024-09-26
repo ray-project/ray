@@ -344,10 +344,6 @@ class MockInternalKVAccessor : public InternalKVAccessor {
                const int64_t timeout_ms,
                const OptionalItemCallback<int> &callback),
               (override));
-  MOCK_METHOD(Status,
-              AsyncGetInternalConfig,
-              (const OptionalItemCallback<std::string> &callback),
-              (override));
 };
 
 }  // namespace gcs
