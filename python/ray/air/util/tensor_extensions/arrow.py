@@ -233,8 +233,12 @@ class _BaseArrowTensorType(pa.ExtensionType, abc.ABC):
 
 @PublicAPI(stability="beta")
 class ArrowTensorType(_BaseArrowTensorType):
+    """Arrow ExtensionType (v1) for tensors.
 
-    # TODO elaborate
+    NOTE: This type does *NOT* support tensors larger than 4Gb (due to
+          overflow of int32 offsets utilized inside Pyarrow `ListType`)
+    """
+
     OFFSET_DTYPE = np.int32
 
     def __init__(self, shape: Tuple[int, ...], dtype: pa.DataType):
@@ -256,8 +260,8 @@ class ArrowTensorType(_BaseArrowTensorType):
 
 @PublicAPI(stability="alpha")
 class ArrowTensorTypeV2(_BaseArrowTensorType):
+    """Arrow ExtensionType (v2) for tensors (supporting tensors > 4Gb)."""
 
-    # TODO elaborate
     OFFSET_DTYPE = np.int64
 
     def __init__(self, shape: Tuple[int, ...], dtype: pa.DataType):

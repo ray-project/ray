@@ -1212,7 +1212,7 @@ def test_tensors_in_tables_parquet(
     Arrow Array types
     """
 
-    num_rows = 100
+    num_rows = 10_000
     num_groups = 10
 
     inner_shape = (2, 2, 2)
