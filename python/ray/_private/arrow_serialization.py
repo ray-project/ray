@@ -8,6 +8,8 @@ import os
 import sys
 from typing import List, Tuple, Optional, TYPE_CHECKING
 
+from ray.air.util.tensor_extensions.arrow import ArrowTensorTypeV2
+
 if TYPE_CHECKING:
     import pyarrow
     from ray.data.extensions import ArrowTensorArray
@@ -330,9 +332,7 @@ def _array_to_array_payload(a: "pyarrow.Array") -> "PicklableArrayPayload":
         return _dictionary_array_to_array_payload(a)
     elif pa.types.is_map(a.type):
         return _map_array_to_array_payload(a)
-    elif isinstance(a.type, ArrowTensorType) or isinstance(
-        a.type, ArrowVariableShapedTensorType
-    ):
+    elif isinstance(a.type, (ArrowTensorType, ArrowTensorTypeV2, ArrowVariableShapedTensorType)):
         return _tensor_array_to_array_payload(a)
     elif isinstance(a.type, pa.ExtensionType):
         return _extension_array_to_array_payload(a)
