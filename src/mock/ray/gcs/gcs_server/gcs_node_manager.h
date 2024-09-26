@@ -37,12 +37,6 @@ class MockGcsNodeManager : public GcsNodeManager {
                rpc::GetAllNodeInfoReply *reply,
                rpc::SendReplyCallback send_reply_callback),
               (override));
-  MOCK_METHOD(void,
-              HandleGetInternalConfig,
-              (rpc::GetInternalConfigRequest request,
-               rpc::GetInternalConfigReply *reply,
-               rpc::SendReplyCallback send_reply_callback),
-              (override));
   MOCK_METHOD(void, DrainNode, (const NodeID &node_id), (override));
 };
 

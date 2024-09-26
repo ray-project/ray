@@ -269,7 +269,7 @@ int main(int argc, char *argv[]) {
         "shutdown_raylet_gracefully_internal");
   };
 
-  RAY_CHECK_OK(gcs_client->Nodes().AsyncGetInternalConfig(
+  RAY_CHECK_OK(gcs_client->InternalKV().AsyncGetInternalConfig(
       [&](::ray::Status status, const std::optional<std::string> &stored_raylet_config) {
         RAY_CHECK_OK(status);
         RAY_CHECK(stored_raylet_config.has_value());

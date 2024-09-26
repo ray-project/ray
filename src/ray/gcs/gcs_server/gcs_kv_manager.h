@@ -14,6 +14,7 @@
 
 #pragma once
 #include <memory>
+#include <string_view>
 
 #include "absl/container/btree_map.h"
 #include "absl/synchronization/mutex.h"
@@ -100,8 +101,10 @@ class InternalKVInterface {
 /// This implementation class of `InternalKVHandler`.
 class GcsInternalKVManager : public rpc::InternalKVHandler {
  public:
-  explicit GcsInternalKVManager(std::unique_ptr<InternalKVInterface> kv_instance)
-      : kv_instance_(std::move(kv_instance)) {}
+  // `raylet_config_list` must outlive this class.
+  explicit GcsInternalKVManager(std::unique_ptr<InternalKVInterface> kv_instance,
+                                std::string_view raylet_config_list)
+      : kv_instance_(std::move(kv_instance)), raylet_config_list_(raylet_config_list) {}
 
   void HandleInternalKVGet(rpc::InternalKVGetRequest request,
                            rpc::InternalKVGetReply *reply,
@@ -127,10 +130,25 @@ class GcsInternalKVManager : public rpc::InternalKVHandler {
                             rpc::InternalKVKeysReply *reply,
                             rpc::SendReplyCallback send_reply_callback) override;
 
+  /// Handle get internal config.
+  void HandleGetInternalConfig(rpc::GetInternalConfigRequest request,
+                               rpc::GetInternalConfigReply *reply,
+                               rpc::SendReplyCallback send_reply_callback) override;
+
   InternalKVInterface &GetInstance() { return *kv_instance_; }
 
+  std::string DebugString() const;
+
  private:
+  // Debug info.
+  enum CountType {
+    GET_INTERNAL_CONFIG_REQUEST = 0,
+    CountType_MAX = 1,
+  };
+  uint64_t counts_[CountType::CountType_MAX] = {0};
+
   std::unique_ptr<InternalKVInterface> kv_instance_;
+  const std::string_view raylet_config_list_;
   Status ValidateKey(const std::string &key) const;
 };
 
