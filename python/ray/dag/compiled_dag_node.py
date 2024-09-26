@@ -751,13 +751,13 @@ class CompiledDAG:
             InputNode,
             MultiOutputNode,
         )
-        from ray.dag.collective_node import CollectiveGroup
+        from ray.dag.collective_node import _CollectiveGroup
 
         self.input_task_idx, self.output_task_idx = None, None
         self.actor_task_count.clear()
 
         nccl_actors: Set["ray.actor.ActorHandle"] = set()
-        nccl_collective_groups: Set[CollectiveGroup] = set()
+        nccl_collective_groups: Set[_CollectiveGroup] = set()
 
         # Find the input node to the DAG.
         for idx, task in self.idx_to_task.items():

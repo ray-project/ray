@@ -2,7 +2,7 @@ import logging
 from typing import List, Optional, Union
 
 import ray
-from ray.dag.collective_node import CollectiveGroup, CollectiveOutputNode
+from ray.dag.collective_node import CollectiveOutputNode, _CollectiveGroup
 from ray.dag.constants import (
     BIND_INDEX_KEY,
     COLLECTIVE_GROUP_KEY,
@@ -49,7 +49,7 @@ class AllReduceWrapper:
         Returns:
             A list of collective output nodes.
         """
-        collective_group = CollectiveGroup(input_nodes, op, transport)
+        collective_group = _CollectiveGroup(input_nodes, op, transport)
         collective_output_nodes: List[CollectiveOutputNode] = []
 
         for input_node in input_nodes:

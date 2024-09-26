@@ -22,7 +22,7 @@ from ray.experimental.channel.torch_tensor_nccl_channel import _init_nccl_group
 from ray.experimental.channel.torch_tensor_type import GPUCommunicator, TorchTensorType
 
 
-class CollectiveGroup:
+class _CollectiveGroup:
     """Represent metadata for a NCCL collective method."""
 
     def __init__(
@@ -141,7 +141,7 @@ class CollectiveOutputNode(DAGNode):
         ), "Expected a single input node"
         self._input_node = method_args[0]
         # Parse the collective group.
-        self._collective_group: CollectiveGroup = other_args_to_resolve.get(
+        self._collective_group: _CollectiveGroup = other_args_to_resolve.get(
             COLLECTIVE_GROUP_KEY, None
         )
         assert self._collective_group is not None, "Expected a collective group"
@@ -163,7 +163,7 @@ class CollectiveOutputNode(DAGNode):
         new_options: Dict[str, Any],
         new_other_args_to_resolve: Dict[str, Any],
     ):
-        return CollectiveGroup(
+        return _CollectiveGroup(
             self._method_name,
             new_args,
             new_kwargs,
@@ -193,5 +193,5 @@ class CollectiveOutputNode(DAGNode):
         return self._parent_class_node
 
     @property
-    def collective_group(self) -> CollectiveGroup:
+    def collective_group(self) -> _CollectiveGroup:
         return self._collective_group

@@ -390,10 +390,10 @@ def _build_dag_node_operation_graph(
                 graph[downstream_task_idx][_DAGNodeOperationType.READ],
             )
 
-    from ray.dag.collective_node import CollectiveGroup
+    from ray.dag.collective_node import _CollectiveGroup
 
     # Set collective group nodes for all the NCCL compute nodes.
-    collective_group_to_task_idxs: Dict[CollectiveGroup, Set[int]] = defaultdict(set)
+    collective_group_to_task_idxs: Dict[_CollectiveGroup, Set[int]] = defaultdict(set)
     for task_idx, task in idx_to_task.items():
         if isinstance(task.dag_node, CollectiveOutputNode):
             collective_group = task.dag_node.collective_group
