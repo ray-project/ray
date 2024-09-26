@@ -15,11 +15,9 @@ from ray.rllib.core.rl_module.rl_module import RLModuleSpec
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils import deep_update
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.deprecation import (
-    DEPRECATED_VALUE,
-    deprecation_warning,
-)
+from ray.rllib.utils.deprecation import DEPRECATED_VALUE, deprecation_warning
 from ray.rllib.utils.framework import try_import_tf, try_import_tfp
+from ray.rllib.utils.replay_buffers.episode_replay_buffer import EpisodeReplayBuffer
 from ray.rllib.utils.typing import LearningRateOrSchedule, RLModuleSpecType, ResultDict
 
 tf1, tf, tfv = try_import_tf()
@@ -427,7 +425,6 @@ class SACConfig(AlgorithmConfig):
 
         # Validate that we use the corresponding `EpisodeReplayBuffer` when using
         # episodes.
-        # TODO (sven, simon): Implement the multi-agent case for replay buffers.
         if (
             self.enable_env_runner_and_connector_v2
             and self.replay_buffer_config["type"]
@@ -456,6 +453,23 @@ class SACConfig(AlgorithmConfig):
                 "When using the new `EnvRunner API` the replay buffer must be of type "
                 "`EpisodeReplayBuffer`."
             )
+        elif not self.enable_env_runner_and_connector_v2 and (
+            (
+                isinstance(self.replay_buffer_config["type"], str)
+                and "Episode" in self.replay_buffer_config["type"]
+            )
+            or issubclass(self.replay_buffer_config["type"], EpisodeReplayBuffer)
+        ):
+            raise ValueError(
+                "When using the old API stack the replay buffer must not be of type "
+                "`EpisodeReplayBuffer`! We suggest you use the following config to run "
+                "SAC on the old API stack: `config.training(replay_buffer_config={"
+                "'type': 'MultiAgentPrioritizedReplayBuffer', "
+                "'prioritized_replay_alpha': [alpha], "
+                "'prioritized_replay_beta': [beta], "
+                "'prioritized_replay_eps': [eps], "
+                "})`."
+            )
 
         if self.enable_rl_module_and_learner:
             if self.lr is not None:
@@ -463,7 +477,7 @@ class SACConfig(AlgorithmConfig):
                     "Basic learning rate parameter `lr` is not `None`. For SAC "
                     "use the specific learning rate parameters `actor_lr`, `critic_lr` "
                     "and `alpha_lr`, for the actor, critic, and the hyperparameter "
-                    "`alpha`, respectively."
+                    "`alpha`, respectively and set `config.lr` to None."
                 )
 
     @override(AlgorithmConfig)
