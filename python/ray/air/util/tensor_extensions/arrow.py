@@ -14,7 +14,6 @@ from ray.air.util.tensor_extensions.utils import (
     _is_ndarray_variable_shaped_tensor,
     create_ragged_ndarray,
 )
-from ray.data import DataContext
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
 PYARROW_VERSION = _get_pyarrow_version()
@@ -453,6 +452,7 @@ class ArrowTensorArray(_ArrowTensorScalarIndexingMixin, pa.ExtensionArray):
             scalar_dtype, total_num_items, [None, data_buffer]
         )
 
+        from ray.data import DataContext
         should_use_tensor_v2 = DataContext.get_current().should_use_tensor_v2
 
         if should_use_tensor_v2:
