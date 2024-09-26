@@ -1673,7 +1673,7 @@ def dict_to_state(d: Dict, state_resource: StateResource) -> StateSchema:
 
     Args:
         d: a dict to convert.
-        state_schema: a schema to convert to.
+        state_resource: the state resource to convert to.
 
     Returns:
         A state schema.
