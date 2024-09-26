@@ -109,6 +109,7 @@ class _BaseArrowTensorType(pa.ExtensionType, abc.ABC):
 
     def __init__(self, shape: Tuple[int, ...], tensor_dtype: pa.DataType, ext_type_id: str):
         self._shape = shape
+        self.tensor_dtype = tensor_dtype
 
         super().__init__(tensor_dtype, ext_type_id)
 
@@ -455,23 +456,23 @@ class ArrowTensorArray(_ArrowTensorScalarIndexingMixin, pa.ExtensionArray):
         should_use_tensor_v2 = DataContext.get_current().should_use_tensor_v2
 
         if should_use_tensor_v2:
-            type_ = ArrowTensorType(element_shape, scalar_dtype)
+            pa_type_ = ArrowTensorTypeV2(element_shape, scalar_dtype)
         else:
-            type_ = ArrowTensorType(element_shape, scalar_dtype)
+            pa_type_ = ArrowTensorType(element_shape, scalar_dtype)
 
         # Create Offset buffer
         offset_buffer = pa.py_buffer(
-            type_.OFFSET_DTYPE([i * num_items_per_element for i in range(outer_len + 1)])
+            pa_type_.OFFSET_DTYPE([i * num_items_per_element for i in range(outer_len + 1)])
         )
 
         storage = pa.Array.from_buffers(
-            pa.large_list(scalar_dtype),
+            pa_type_.tensor_dtype,
             outer_len,
             [None, offset_buffer],
             children=[data_array],
         )
 
-        return pa.ExtensionArray.from_storage(type_, storage)
+        return pa.ExtensionArray.from_storage(pa_type_, storage)
 
     def _to_numpy(self, index: Optional[int] = None, zero_copy_only: bool = False):
         """
