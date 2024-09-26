@@ -678,7 +678,8 @@ def test_tensors_in_tables_parquet_roundtrip_variable_shaped(
 
 
 @pytest.mark.parametrize("tensor_format", ["v1", "v2"])
-def test_tensors_in_tables_parquet_with_schema(ray_start_regular_shared, tmp_path, restore_data_context, tensor_format):
+def test_tensors_in_tables_parquet_with_schema(ray_start_regular_shared, tmp_path, restore_data_context, tensor_format,
+                                               tensor_type=ArrowTensorType):
     DataContext.get_current().should_use_tensor_v2 = tensor_format == "v2"
 
     outer_dim = 3
@@ -691,7 +692,7 @@ def test_tensors_in_tables_parquet_with_schema(ray_start_regular_shared, tmp_pat
     ds.write_parquet(str(tmp_path))
 
     if tensor_format == "v1":
-        tensor_type_class = ArrowTensorType
+        tensor_type_class = tensor_type
     elif tensor_format == "v2":
         tensor_type_class = ArrowTensorTypeV2
     else:
@@ -840,8 +841,15 @@ def test_tensors_in_tables_parquet_bytes_manual_serde_udf(
 
     ds = ray.data.read_parquet(str(tmp_path), _block_udf=np_deser_udf)
 
+    if tensor_format == "v1":
+        expected_tensor_type = ArrowTensorType
+    elif tensor_format == "v2":
+        expected_tensor_type = ArrowTensorTypeV2
+    else:
+        raise ValueError(f"Unexpected tensor format: {tensor_format}")
+
     assert isinstance(
-        ds.schema().base_schema.field_by_name(tensor_col_name).type, ArrowTensorType
+        ds.schema().base_schema.field_by_name(tensor_col_name).type, expected_tensor_type
     )
 
     values = [[s["one"], s["two"]] for s in ds.take()]
@@ -879,8 +887,15 @@ def test_tensors_in_tables_parquet_bytes_manual_serde_col_schema(
         _block_udf=_block_udf,
     )
 
+    if tensor_format == "v1":
+        expected_tensor_type = ArrowTensorType
+    elif tensor_format == "v2":
+        expected_tensor_type = ArrowTensorTypeV2
+    else:
+        raise ValueError(f"Unexpected tensor format: {tensor_format}")
+
     assert isinstance(
-        ds.schema().base_schema.field_by_name(tensor_col_name).type, ArrowTensorType
+        ds.schema().base_schema.field_by_name(tensor_col_name).type, expected_tensor_type
     )
 
     values = [[s["one"], s["two"]] for s in ds.take()]
