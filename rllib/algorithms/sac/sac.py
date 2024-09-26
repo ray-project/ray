@@ -75,6 +75,8 @@ class SACConfig(AlgorithmConfig):
         self.initial_alpha = 1.0
         self.target_entropy = "auto"
         self.n_step = 1
+
+        # Replay buffer configuration.
         self.replay_buffer_config = {
             "type": "PrioritizedEpisodeReplayBuffer",
             # Size of the replay buffer. Note that if async_updates is set,
@@ -84,6 +86,7 @@ class SACConfig(AlgorithmConfig):
             # Beta parameter for sampling from prioritized replay buffer.
             "beta": 0.4,
         }
+
         self.store_buffer_in_checkpoints = False
         self.training_intensity = None
         self.optimization = {
@@ -113,7 +116,6 @@ class SACConfig(AlgorithmConfig):
         }
         self.train_batch_size_per_learner = 256
         self.train_batch_size = 256  # @OldAPIstack
-
         # Number of timesteps to collect from rollout workers before we start
         # sampling from replay buffers for learning. Whether we count this in agent
         # steps  or environment steps depends on config.multi_agent(count_steps_by=..).
