@@ -1102,13 +1102,6 @@ py_test(
     size = "large",
     srcs = ["algorithms/ppo/tests/test_ppo_old_api_stack.py"]
 )
-# @OldAPIStack
-py_test(
-    name = "test_ppo_old_api_stack",
-    tags = ["team:rllib", "algorithms_dir"],
-    size = "large",
-    srcs = ["algorithms/ppo/tests/test_ppo_old_api_stack.py"]
-)
 
 # SAC
 py_test(
