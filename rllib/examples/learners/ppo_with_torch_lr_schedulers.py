@@ -5,9 +5,9 @@ Two learning rate schedules are applied in sequence to the learning rate of the
 optimizer. In this way even more complex learning rate schedules can be assembled.
 
 This example shows:
-    - how to partially initialize multiple learning rate schedulers in PyTorch.
-    - how to chain these schedulers together and pass the chain into RLlib's
-        configuration.
+    - how to configure multiple learning rate schedulers, as a chained pipeline, in
+    PyTorch using partial initialization with `functools.partial`.
+
 
 How to run this script
 ----------------------
@@ -29,29 +29,24 @@ For logging to your WandB account, use:
 `--wandb-key=[your WandB API key] --wandb-project=[some project name]
 --wandb-run-name=[optional: WandB run name (within the defined project)]`
 
+
 Results to expect
 -----------------
 You should expect to observe decent learning behavior from your console output:
 
 With `--lr-const-factor=0.1`, `--lr-const-iters=10, and `--lr-exp_decay=0.3`.
-+-----------------------------+------------+----------------------+--------+
-| Trial name                  | status     | loc                  |   iter |
-|                             |            |                      |        |
-|-----------------------------+------------+----------------------+--------+
-| PPO_CartPole-v1_7fc44_00000 | TERMINATED | 192.168.1.178:225070 |     50 |
-+-----------------------------+------------+----------------------+--------+
-+------------------+------------------------+------------------------+
-|   total time (s) |   num_env_steps_sample |   num_episodes_lifetim |
-|                  |             d_lifetime |                      e |
-+------------------+------------------------+------------------------+
-|          59.6542 |                 200000 |                   9952 |
-+------------------+------------------------+------------------------+
-+------------------------+
-|   num_env_steps_traine |
-|             d_lifetime |
-+------------------------|
-|                 210047 |
-+------------------------+
++-----------------------------+------------+--------+------------------+
+| Trial name                  | status     |   iter |   total time (s) |
+|                             |            |        |                  |
+|-----------------------------+------------+--------+------------------+
+| PPO_CartPole-v1_7fc44_00000 | TERMINATED |     50 |          59.6542 |
++-----------------------------+------------+--------+------------------+
++------------------------+------------------------+------------------------+
+|    episode_return_mean |  num_episodes_lifetime |   num_env_steps_traine |
+|                        |                        |             d_lifetime |
++------------------------+------------------------+------------------------|
+|                  451.2 |                   9952 |                 210047 |
++------------------------+------------------------+------------------------+
 """
 import functools
 
