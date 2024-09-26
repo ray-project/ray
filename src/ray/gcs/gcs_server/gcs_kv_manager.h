@@ -95,15 +95,14 @@ class InternalKVInterface {
                     const std::string &prefix,
                     std::function<void(std::vector<std::string>)> callback) = 0;
 
-  virtual ~InternalKVInterface(){};
+  virtual ~InternalKVInterface() = default;
 };
 
 /// This implementation class of `InternalKVHandler`.
 class GcsInternalKVManager : public rpc::InternalKVHandler {
  public:
-  // `raylet_config_list` must outlive this class.
   explicit GcsInternalKVManager(std::unique_ptr<InternalKVInterface> kv_instance,
-                                std::string_view raylet_config_list)
+                                const std::string &raylet_config_list)
       : kv_instance_(std::move(kv_instance)), raylet_config_list_(raylet_config_list) {}
 
   void HandleInternalKVGet(rpc::InternalKVGetRequest request,
@@ -137,18 +136,9 @@ class GcsInternalKVManager : public rpc::InternalKVHandler {
 
   InternalKVInterface &GetInstance() { return *kv_instance_; }
 
-  std::string DebugString() const;
-
  private:
-  // Debug info.
-  enum CountType {
-    GET_INTERNAL_CONFIG_REQUEST = 0,
-    CountType_MAX = 1,
-  };
-  uint64_t counts_[CountType::CountType_MAX] = {0};
-
   std::unique_ptr<InternalKVInterface> kv_instance_;
-  const std::string_view raylet_config_list_;
+  const std::string raylet_config_list_;
   Status ValidateKey(const std::string &key) const;
 };
 
