@@ -56,7 +56,9 @@ class PeriodicalRunner {
   mutable absl::Mutex mutex_;
   std::vector<std::shared_ptr<boost::asio::deadline_timer>> timers_
       ABSL_GUARDED_BY(mutex_);
-  std::atomic<bool> stopped_ = false;
+  // `stopped_` is copied to the timer callback, and may outlive `this`.
+  std::shared_ptr<std::atomic<bool>> stopped_ =
+      std::make_shared<std::atomic<bool>>(false);
 };
 
 }  // namespace ray
