@@ -335,21 +335,7 @@ py_test(
 )
 
 # CQL
-#@OldAPIStack
-py_test(
-    name = "learning_tests_pendulum_cql_old_api_stack",
-    main = "tests/run_regression_tests.py",
-    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_continuous", "learning_tests_with_ray_data", "torch_only"],
-    size = "large",
-    srcs = ["tests/run_regression_tests.py"],
-    # Include the zipped json data file as well.
-    data = [
-        "tuned_examples/cql/pendulum-cql.yaml",
-        "tests/data/pendulum/enormous.zip",
-    ],
-    args = ["--dir=tuned_examples/cql"]
-)
-
+# Pendulum
 py_test(
     name = "learning_tests_pendulum_cql",
     main = "tuned_examples/cql/pendulum_cql.py",
@@ -879,17 +865,6 @@ py_test(
     args = ["--enable-new-api-stack", "--num-agents=2", "--num-gpus=2"]
 )
 
-#@OldAPIStack
-py_test(
-    name = "learning_tests_cartpole_sac_old_api_stack",
-    main = "tests/run_regression_tests.py",
-    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_discrete"],
-    size = "large",
-    srcs = ["tests/run_regression_tests.py"],
-    data = ["tuned_examples/sac/cartpole-sac.yaml"],
-    args = ["--dir=tuned_examples/sac"]
-)
-
 # --------------------------------------------------------------------
 # Algorithms (Compilation, Losses, simple functionality tests)
 # rllib/algorithms/
@@ -943,42 +918,6 @@ py_test(
 )
 
 py_test(
-    name = "test_algorithm_checkpoint_restore_ppo",
-    main = "algorithms/tests/test_algorithm_checkpoint_restore.py",
-    tags = ["team:rllib", "algorithms_dir", "algorithms_dir_generic"],
-    size = "large",
-    srcs = ["algorithms/tests/test_algorithm_checkpoint_restore.py"],
-    args = ["TestCheckpointRestorePPO"]
-)
-
-py_test(
-    name = "test_algorithm_checkpoint_restore_ppo_gpu",
-    main = "algorithms/tests/test_algorithm_checkpoint_restore.py",
-    tags = ["team:rllib", "algorithms_dir", "algorithms_dir_generic", "gpu"],
-    size = "large",
-    srcs = ["algorithms/tests/test_algorithm_checkpoint_restore.py"],
-    args = ["TestCheckpointRestorePPO"]
-)
-
-py_test(
-    name = "test_algorithm_checkpoint_restore_off_policy",
-    main = "algorithms/tests/test_algorithm_checkpoint_restore.py",
-    tags = ["team:rllib", "algorithms_dir", "algorithms_dir_generic"],
-    size = "large",
-    srcs = ["algorithms/tests/test_algorithm_checkpoint_restore.py"],
-    args = ["TestCheckpointRestoreOffPolicy"]
-)
-
-py_test(
-    name = "test_algorithm_checkpoint_restore_off_policy_gpu",
-    main = "algorithms/tests/test_algorithm_checkpoint_restore.py",
-    tags = ["team:rllib", "algorithms_dir", "algorithms_dir_generic", "gpu"],
-    size = "large",
-    srcs = ["algorithms/tests/test_algorithm_checkpoint_restore.py"],
-    args = ["TestCheckpointRestoreOffPolicy"]
-)
-
-py_test(
     name = "test_callbacks_on_algorithm",
     tags = ["team:rllib", "algorithms_dir", "algorithms_dir_generic"],
     size = "large",
@@ -990,19 +929,12 @@ py_test(
     size = "medium",
     srcs = ["algorithms/tests/test_callbacks_on_env_runner.py"]
 )
+# @OldAPIStack
 py_test(
-    name = "test_callbacks_old_stack",
+    name = "test_callbacks_old_api_stack",
     tags = ["team:rllib", "algorithms_dir", "algorithms_dir_generic"],
     size = "medium",
-    srcs = ["algorithms/tests/test_callbacks_old_stack.py"]
-)
-
-py_test(
-    name = "test_memory_leaks_generic",
-    main = "algorithms/tests/test_memory_leaks.py",
-    tags = ["team:rllib", "algorithms_dir"],
-    size = "medium",
-    srcs = ["algorithms/tests/test_memory_leaks.py"]
+    srcs = ["algorithms/tests/test_callbacks_old_api_stack.py"]
 )
 
 py_test(
@@ -1029,6 +961,7 @@ py_test(
 # Specific Algorithms
 
 # APPO
+# @OldAPIStack
 py_test(
     name = "test_appo",
     tags = ["team:rllib", "algorithms_dir"],
@@ -1044,20 +977,21 @@ py_test(
 
 # BC
 py_test(
-    name = "test_bc_old_api_stack",
-    tags = ["team:rllib", "algorithms_dir"],
-    size = "medium",
-    # Include the json data file.
-    data = ["tests/data/cartpole/large.json"],
-    srcs = ["algorithms/bc/tests/test_bc_old_api_stack.py"]
-)
-py_test(
     name = "test_bc",
     tags = ["team:rllib", "algorithms_dir"],
     size = "medium",
     # Include the parquet data files.
     data = ["tests/data/cartpole/cartpole-v1_large"],
     srcs = ["algorithms/bc/tests/test_bc.py"]
+)
+# @OldAPIStack
+py_test(
+    name = "test_bc_old_api_stack",
+    tags = ["team:rllib", "algorithms_dir"],
+    size = "medium",
+    # Include the json data file.
+    data = ["tests/data/cartpole/large.json"],
+    srcs = ["algorithms/bc/tests/test_bc_old_api_stack.py"]
 )
 
 # CQL
@@ -1076,12 +1010,6 @@ py_test(
     size = "large",
     srcs = ["algorithms/dqn/tests/test_dqn.py"]
 )
-py_test(
-    name = "test_repro_dqn",
-    tags = ["team:rllib", "algorithms_dir", "gpu"],
-    size = "large",
-    srcs = ["algorithms/dqn/tests/test_repro_dqn.py"]
-)
 
 # DreamerV3
 py_test(
@@ -1099,19 +1027,42 @@ py_test(
     srcs = ["algorithms/impala/tests/test_impala.py"]
 )
 py_test(
-    name = "test_vtrace",
-    tags = ["team:rllib", "algorithms_dir"],
-    size = "small",
-    srcs = ["algorithms/impala/tests/test_vtrace.py"]
-)
-py_test(
     name = "test_vtrace_v2",
     tags = ["team:rllib", "algorithms_dir"],
     size = "small",
     srcs = ["algorithms/impala/tests/test_vtrace_v2.py"]
 )
+# @OldAPIStack
+py_test(
+    name = "test_vtrace_old_api_stack",
+    tags = ["team:rllib", "algorithms_dir"],
+    size = "small",
+    srcs = ["algorithms/impala/tests/test_vtrace_old_api_stack.py"]
+)
 
 # MARWIL
+py_test(
+    name = "test_marwil",
+    tags = ["team:rllib", "algorithms_dir"],
+    size = "large",
+    # Include the parquet data folder.
+    data = [
+        "tests/data/cartpole/cartpole-v1_large",
+        "tests/data/pendulum/pendulum-v1_large",
+    ],
+    srcs = ["algorithms/marwil/tests/test_marwil.py"]
+)
+py_test(
+    name = "test_marwil_rl_module",
+    tags = ["team:rllib", "algorithms_dir"],
+    size = "large",
+    # Include the json data file.
+    data = [
+        "tests/data/cartpole/large.json",
+    ],
+    srcs = ["algorithms/marwil/tests/test_marwil_rl_module.py"]
+)
+# @OldAPIStack
 py_test(
     name = "test_marwil_old_api_stack",
     tags = ["team:rllib", "algorithms_dir"],
@@ -1124,40 +1075,12 @@ py_test(
     ],
     srcs = ["algorithms/marwil/tests/test_marwil_old_api_stack.py"]
 )
-py_test(
-    name = "test_marwil_rl_module",
-    tags = ["team:rllib", "algorithms_dir"],
-    size = "large",
-    # Include the json data file.
-    data = [
-        "tests/data/cartpole/large.json",
-    ],
-    srcs = ["algorithms/marwil/tests/test_marwil_rl_module.py"]
-)
-py_test(
-    name = "test_marwil",
-    tags = ["team:rllib", "algorithms_dir"],
-    size = "large",
-    # Include the parquet data folder.
-    data = [
-        "tests/data/cartpole/cartpole-v1_large",
-        "tests/data/pendulum/pendulum-v1_large",
-    ],
-    srcs = ["algorithms/marwil/tests/test_marwil.py"]
-)
 
 # PPO
 py_test(
-    name = "test_ppo_with_env_runner",
-    tags = ["team:rllib", "algorithms_dir"],
-    size = "medium",
-    srcs = ["algorithms/ppo/tests/test_ppo_with_env_runner.py"]
-)
-
-py_test(
     name = "test_ppo",
     tags = ["team:rllib", "algorithms_dir"],
-    size = "large",
+    size = "medium",
     srcs = ["algorithms/ppo/tests/test_ppo.py"]
 )
 py_test(
@@ -1172,11 +1095,12 @@ py_test(
     size = "large",
     srcs = ["algorithms/ppo/tests/test_ppo_learner.py"]
 )
+# @OldAPIStack
 py_test(
-    name = "test_repro_ppo",
-    tags = ["team:rllib", "algorithms_dir", "gpu"],
+    name = "test_ppo_old_api_stack",
+    tags = ["team:rllib", "algorithms_dir"],
     size = "large",
-    srcs = ["algorithms/ppo/tests/test_repro_ppo.py"]
+    srcs = ["algorithms/ppo/tests/test_ppo_old_api_stack.py"]
 )
 
 # SAC
@@ -1185,14 +1109,6 @@ py_test(
     tags = ["team:rllib", "algorithms_dir"],
     size = "large",
     srcs = ["algorithms/sac/tests/test_sac.py"]
-)
-
-# RNNSAC
-py_test(
-    name = "test_rnnsac",
-    tags = ["team:rllib", "algorithms_dir"],
-    size = "small",
-    srcs = ["algorithms/sac/tests/test_rnnsac.py"]
 )
 
 # --------------------------------------------------------------------
@@ -1213,16 +1129,6 @@ py_test(
 )
 # @OldAPIStack
 py_test(
-    name = "test_memory_leak_dqn_old_api_stack",
-    tags = ["team:rllib", "memory_leak_tests"],
-    main = "utils/tests/run_memory_leak_tests.py",
-    size = "large",
-    srcs = ["utils/tests/run_memory_leak_tests.py"],
-    data = ["tuned_examples/dqn/memory-leak-test-dqn.yaml"],
-    args = ["--dir=tuned_examples/dqn"]
-)
-# @OldAPIStack
-py_test(
     name = "test_memory_leak_impala_old_api_stack",
     tags = ["team:rllib", "memory_leak_tests"],
     main = "utils/tests/run_memory_leak_tests.py",
@@ -1240,16 +1146,6 @@ py_test(
     srcs = ["utils/tests/run_memory_leak_tests.py"],
     data = ["tuned_examples/ppo/memory-leak-test-ppo.yaml"],
     args = ["--dir=tuned_examples/ppo"]
-)
-# @OldAPIStack
-py_test(
-    name = "test_memory_leak_sac_old_api_stack",
-    tags = ["team:rllib", "memory_leak_tests"],
-    main = "utils/tests/run_memory_leak_tests.py",
-    size = "large",
-    srcs = ["utils/tests/run_memory_leak_tests.py"],
-    data = ["tuned_examples/sac/memory-leak-test-sac.yaml"],
-    args = ["--dir=tuned_examples/sac"]
 )
 
 
@@ -1493,13 +1389,6 @@ py_test(
     tags = ["team:rllib", "evaluation", "exclusive"],
     size = "large",
     srcs = ["evaluation/tests/test_rollout_worker.py"]
-)
-
-py_test(
-    name = "evaluation/tests/test_trajectory_view_api",
-    tags = ["team:rllib", "evaluation"],
-    size = "large",
-    srcs = ["evaluation/tests/test_trajectory_view_api.py"]
 )
 
 # --------------------------------------------------------------------
@@ -1908,13 +1797,6 @@ py_test(
 # --------------------------------------------------------------------
 
 py_test(
-    name = "test_checkpoint_utils",
-    tags = ["team:rllib", "utils"],
-    size = "small",
-    srcs = ["utils/tests/test_checkpoint_utils.py"]
-)
-
-py_test(
     name = "test_errors",
     tags = ["team:rllib", "utils"],
     size = "medium",
@@ -2104,14 +1986,6 @@ py_test(
 # --------------------------------------------------------------------
 
 py_test(
-    name = "tests/backward_compat/test_backward_compat",
-    tags = ["team:rllib", "tests_dir"],
-    size = "medium",
-    srcs = ["tests/backward_compat/test_backward_compat.py"],
-    data = glob(["tests/backward_compat/checkpoints/**"]),
-)
-
-py_test(
     name = "tests/test_catalog",
     tags = ["team:rllib", "tests_dir"],
     size = "medium",
@@ -2204,14 +2078,6 @@ py_test(
 )
 
 py_test(
-    name = "tests/test_nested_observation_spaces",
-    main = "tests/test_nested_observation_spaces.py",
-    tags = ["team:rllib", "tests_dir"],
-    size = "medium",
-    srcs = ["tests/test_nested_observation_spaces.py"]
-)
-
-py_test(
     name = "tests/test_nn_framework_import_errors",
     tags = ["team:rllib", "tests_dir"],
     size = "small",
@@ -2244,88 +2110,6 @@ py_test(
     tags = ["team:rllib", "tests_dir"],
     size = "medium",
     srcs = ["tests/test_reproducibility.py"]
-)
-
-py_test(
-    name = "tests/test_supported_multi_agent_multi_gpu",
-    main = "tests/test_supported_multi_agent.py",
-    tags = ["team:rllib", "tests_dir", "multi_gpu"],
-    size = "medium",
-    srcs = ["tests/test_supported_multi_agent.py"],
-    args = ["TestSupportedMultiAgentMultiGPU"]
-)
-
-
-py_test(
-    name = "tests/test_supported_multi_agent_policy_gradient",
-    main = "tests/test_supported_multi_agent.py",
-    tags = ["team:rllib", "tests_dir"],
-    size = "large",
-    srcs = ["tests/test_supported_multi_agent.py"],
-    args = ["TestSupportedMultiAgentPolicyGradient"]
-)
-
-py_test(
-    name = "tests/test_supported_multi_agent_off_policy",
-    main = "tests/test_supported_multi_agent.py",
-    tags = ["team:rllib", "tests_dir"],
-    size = "large",
-    srcs = ["tests/test_supported_multi_agent.py"],
-    args = ["TestSupportedMultiAgentOffPolicy"]
-)
-
-py_test(
-     name = "tests/test_supported_spaces_appo",
-     main = "tests/test_supported_spaces.py",
-     tags = ["team:rllib", "tests_dir", "exclusive"],
-     size = "large",
-     srcs = ["tests/test_supported_spaces.py"],
-     args = ["TestSupportedSpacesAPPO"]
- )
-
-py_test(
-     name = "tests/test_supported_spaces_impala",
-     main = "tests/test_supported_spaces.py",
-     tags = ["team:rllib", "tests_dir", "exclusive"],
-     size = "large",
-     srcs = ["tests/test_supported_spaces.py"],
-     args = ["TestSupportedSpacesIMPALA"]
-)
-
-py_test(
-     name = "tests/test_supported_spaces_ppo",
-     main = "tests/test_supported_spaces.py",
-     tags = ["team:rllib", "tests_dir"],
-     size = "large",
-     srcs = ["tests/test_supported_spaces.py"],
-     args = ["TestSupportedSpacesPPO"]
- )
-
-py_test(
-    name="tests/test_supported_spaces_dqn",
-    main="tests/test_supported_spaces.py",
-    tags=["team:rllib", "tests_dir"],
-    size="large",
-    srcs=["tests/test_supported_spaces.py"],
-    args=["TestSupportedSpacesDQN"]
-)
-
-py_test(
-     name = "tests/test_supported_spaces_ppo_no_preprocessor_gpu",
-     main = "tests/test_supported_spaces.py",
-     tags = ["team:rllib", "gpu", "no_cpu"],
-     size = "large",
-     srcs = ["tests/test_supported_spaces.py"],
-     args = ["TestSupportedSpacesPPONoPreprocessorGPU"]
- )
-
-py_test(
-    name = "tests/test_supported_spaces_off_policy",
-    main = "tests/test_supported_spaces.py",
-    tags = ["team:rllib", "tests_dir", "exclusive"],
-    size = "medium",
-    srcs = ["tests/test_supported_spaces.py"],
-    args = ["TestSupportedSpacesOffPolicy"]
 )
 
 py_test(
@@ -2382,33 +2166,6 @@ py_test(
     size = "small",
     srcs = ["examples/_old_api_stack/complex_struct_space.py"],
     args = ["--framework=torch"],
-)
-
-py_test(
-    name = "examples/_old_api_stack/parametric_actions_cartpole_dqn_tf",
-    main = "examples/_old_api_stack/parametric_actions_cartpole.py",
-    tags = ["team:rllib", "exclusive", "examples", "old_api_stack"],
-    size = "medium",
-    srcs = ["examples/_old_api_stack/parametric_actions_cartpole.py"],
-    args = ["--as-test", "--framework=tf", "--stop-reward=60.0", "--run=DQN"]
-)
-
-py_test(
-    name = "examples/_old_api_stack/parametric_actions_cartpole_dqn_torch",
-    main = "examples/_old_api_stack/parametric_actions_cartpole.py",
-    tags = ["team:rllib", "exclusive", "examples", "old_api_stack"],
-    size = "medium",
-    srcs = ["examples/_old_api_stack/parametric_actions_cartpole.py"],
-    args = ["--as-test", "--framework=torch", "--stop-reward=60.0", "--run=DQN"]
-)
-
-py_test(
-    name = "examples/_old_api_stack/parametric_actions_cartpole_embeddings_learnt_by_model",
-    main = "examples/_old_api_stack/parametric_actions_cartpole_embeddings_learnt_by_model.py",
-    tags = ["team:rllib", "exclusive", "examples", "old_api_stack"],
-    size = "medium",
-    srcs = ["examples/_old_api_stack/parametric_actions_cartpole_embeddings_learnt_by_model.py"],
-    args = ["--as-test", "--stop-reward=80.0"]
 )
 
 # subdirectory: _old_api_stack/connectors/
@@ -2473,28 +2230,6 @@ py_test(
     size = "large",
     srcs = ["examples/actions/nested_action_spaces.py"],
     args = ["--enable-new-api-stack", "--as-test", "--num-agents=2", "--framework=torch", "--stop-reward=-1000.0", "--algo=PPO"]
-)
-
-# subdirectory: algorithms/
-
-#@OldAPIStack
-py_test(
-    name = "examples/algorithms/custom_training_step_on_and_off_policy_combined_tf",
-    main = "examples/algorithms/custom_training_step_on_and_off_policy_combined.py",
-    tags = ["team:rllib", "exclusive", "examples"],
-    size = "medium",
-    srcs = ["examples/algorithms/custom_training_step_on_and_off_policy_combined.py"],
-    args = ["--as-test", "--stop-reward=450.0"]
-)
-
-#@OldAPIStack
-py_test(
-    name = "examples/algorithms/custom_training_step_on_and_off_policy_combined_torch",
-    main = "examples/algorithms/custom_training_step_on_and_off_policy_combined.py",
-    tags = ["team:rllib", "exclusive", "examples"],
-    size = "medium",
-    srcs = ["examples/algorithms/custom_training_step_on_and_off_policy_combined.py"],
-    args = ["--as-test", "--torch", "--stop-reward=450.0"]
 )
 
 # subdirectory: catalogs/
@@ -3355,26 +3090,6 @@ py_test(
     size = "large",
     srcs = ["examples/multi_agent/self_play_league_based_with_open_spiel.py"],
     args = ["--enable-new-api-stack", "--framework=torch", "--env=connect_four", "--win-rate-threshold=0.8", "--num-episodes-human-play=0", "--min-league-size=8"]
-)
-
-# @OldAPIStack
-py_test(
-    name = "examples/multi_agent/two_algorithms_tf_old_api_stack",
-    main = "examples/multi_agent/two_algorithms.py",
-    tags = ["team:rllib", "exclusive", "examples"],
-    size = "medium",
-    srcs = ["examples/multi_agent/two_algorithms.py"],
-    args = ["--as-test", "--framework=tf", "--stop-reward=70"]
-)
-
-# @OldAPIStack
-py_test(
-    name = "examples/multi_agent/two_algorithms_torch_old_api_stack",
-    main = "examples/multi_agent/two_algorithms.py",
-    tags = ["team:rllib", "exclusive", "examples"],
-    size = "small",
-    srcs = ["examples/multi_agent/two_algorithms.py"],
-    args = ["--as-test", "--framework=torch", "--stop-reward=70"]
 )
 
 py_test(
