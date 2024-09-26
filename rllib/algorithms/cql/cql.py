@@ -107,12 +107,6 @@ class CQLConfig(SACConfig):
         }
 
         # Changes to Algorithm's/SACConfig's default:
-
-        # `.api_stack()`
-        self.api_stack(
-            enable_rl_module_and_learner=False,
-            enable_env_runner_and_connector_v2=False,
-        )
         # .reporting()
         self.min_sample_timesteps_per_iteration = 0
         self.min_train_timesteps_per_iteration = 100
