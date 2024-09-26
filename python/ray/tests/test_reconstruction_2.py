@@ -354,17 +354,23 @@ def test_memory_util(config, ray_start_cluster):
         print(info)
         info = info.split("\n")
         reconstructing_waiting = [
-            line
-            for line in info
-            if "Attempt #2" in line and WAITING_FOR_DEPENDENCIES in line
+            fields
+            for fields in [[part.strip() for part in line.split("|")] for line in info]
+            if len(fields) == 9
+            and fields[4] == WAITING_FOR_DEPENDENCIES
+            and fields[5] == "2"
         ]
         reconstructing_scheduled = [
-            line
-            for line in info
-            if "Attempt #2" in line and WAITING_FOR_EXECUTION in line
+            fields
+            for fields in [[part.strip() for part in line.split("|")] for line in info]
+            if len(fields) == 9
+            and fields[4] == WAITING_FOR_EXECUTION
+            and fields[5] == "2"
         ]
         reconstructing_finished = [
-            line for line in info if "Attempt #2" in line and FINISHED in line
+            fields
+            for fields in [[part.strip() for part in line.split("|")] for line in info]
+            if len(fields) == 9 and fields[4] == FINISHED and fields[5] == "2"
         ]
         return (
             len(reconstructing_waiting),
