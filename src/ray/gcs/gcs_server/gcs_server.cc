@@ -88,7 +88,7 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
     RAY_LOG(FATAL) << "Unexpected storage type: " << storage_type_;
   }
 
-  // Sync write to internal kv for the internal config.
+  // Sync write to internal kv for the internal config. It happens in kv_io_context_.
   InitKVManager();
   std::promise<bool> put_internal_config_promise;
   kv_manager_->GetInstance().Put(kRayInternalConfigNamespace,
@@ -552,6 +552,10 @@ void GcsServer::InitUsageStatsClient() {
 }
 
 void GcsServer::InitKVManager() {
+  if (kv_manager_ != nullptr) {
+    // It may already be inited in ctor
+    return;
+  }
   // TODO (yic): Use a factory with configs
   std::unique_ptr<InternalKVInterface> instance;
   switch (storage_type_) {
