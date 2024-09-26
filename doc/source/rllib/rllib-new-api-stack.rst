@@ -101,7 +101,6 @@ Who should use the new API stack?
 
 Migrate your code from the old to new API stack as soon as possible.
 The classes and APIs are sufficiently stable. The Ray team expects very minor changes.
-from here on.
 
 See the :ref:`New API stack migration guide <rllib-new-api-stack-migration-guide>` for a comprehensive migration guide with step-by-step instructions on translating your code from the
 old to new API stack.

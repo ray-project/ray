@@ -169,8 +169,8 @@ If you're using schedules for learning rate or other coefficients, for example, 
 Scheduling behavior doesn't require a specific, separate setting anymore.
 
 When defining a schedule, provide a list of 2-tuples, where the first item is the global timestep
-(*num_env_steps_sampled_lifetime* in the reported metrics) and the second item is the value that should
-be reached at that timestep. Always start the first 2-tuple with timestep 0. Note that RLlib linearly interpolates values between
+(*num_env_steps_sampled_lifetime* in the reported metrics) and the second item is the value that the learning rate should reach at that timestep.
+Always start the first 2-tuple with timestep 0. Note that RLlib linearly interpolates values between
 two provided timesteps.
 
 For example, to create a learning rate schedule that starts with a value of 1e-5, then increases over 1M timesteps to 1e-4 and stays constant after that, do the following:
@@ -328,23 +328,23 @@ The following is a one-to-one translation guide for these types of Callbacks met
             print(episode)
 
             # The `EnvRunner` class that collects the episode in question.
-            # This used to be a `RolloutWorker`, now on the new stack, this is either a
+            # This class used to be a `RolloutWorker`. On the new stack, this class is either a
             # `SingleAgentEnvRunner` or a `MultiAgentEnvRunner` holding the gymnasium Env,
-            # the RLModule, and the 2 connector pipelines (env-to-module and module-to-env).
+            # the RLModule, and the 2 connector pipelines, env-to-module and module-to-env.
             print(env_runner)
 
-            # The MetricsLogger object on the EnvRunner (documentation is wip).
+            # The MetricsLogger object on the EnvRunner (documentation is a WIP).
             print(metrics_logger.peek("episode_return_mean", default=0.0))
 
-            # The gymnasium env used for sample collection. Note that this may be a
+            # The gymnasium env that sample collection uses. Note that this env may be a
             # gymnasium.vector.VectorEnv.
             print(env)
 
-            # The env index (in case of a vector env) that handles the `episode`.
+            # The env index, in case of a vector env, that handles the `episode`.
             print(env_index)
 
-            # The RLModule used on this EnvRunner. Note that this may be a "plain" (single-agent)
-            # `RLModule` or a `MultiRLModule` (in the multi-agent case).
+            # The RL Module that this EnvRunner uses. Note that this module may be a "plain", single-agent
+            # `RLModule`, or a `MultiRLModule` in the multi-agent case.
             print(rl_module)
 
     # Change similarly:
@@ -358,13 +358,11 @@ The following callback methods are no longer available on the new API stack:
 **`on_sub_environment_created()`**: The new API stack uses `Farama's gymnasium <https://farama.org>`__ vector Envs leaving no control for RLlib
 to call a callback on each individual env-index's creation.
 
-**`on_create_policy()`**: This method is only called on :py:class:`~ray.rllib.evaluation.rollout_worker.RolloutWorker`
-and thus no longer available on the new API stack.
+**`on_create_policy()`**: This method is no longer available on the new API stack because only :py:class:`~ray.rllib.evaluation.rollout_worker.RolloutWorker` calls it.
 
-**`on_postprocess_trajectory()`**: This method is no longer triggered and called on the new API stack,
-since trajectory processing is handled entirely through :py:class:`~ray.rllib.connectors.connector_v2.ConnectorV2`
-pipelines now.
-The :py:class:`~ray.rllib.connectors.connector_v2.ConnectorV2` documentation is work in progress and linked from here shortly.
+**`on_postprocess_trajectory()`**: The new API stack no longer triggers and calls this method,
+because :py:class:`~ray.rllib.connectors.connector_v2.ConnectorV2` pipelines handle trajectory processing entirely.
+The documention for :py:class:`~ray.rllib.connectors.connector_v2.ConnectorV2` documentation is under development.
 
 
 .. _rllib-modelv2-to-rlmodule:
@@ -372,59 +370,60 @@ The :py:class:`~ray.rllib.connectors.connector_v2.ConnectorV2` documentation is 
 ModelV2 to RLModule
 -------------------
 
-In case you are using a custom :py:class:`~ray.rllib.models.modelv2.ModelV2` class and would like to translate
-the entire NN architecture and possibly action distribution logic to the new API stack, take a look at
-the :ref:`RLModule documentation <rlmodule-guide>` first, then come back to this location here.
+If you're using a custom :py:class:`~ray.rllib.models.modelv2.ModelV2` class and want to translate
+the entire NN architecture and possibly action distribution logic to the new API stack, see
+:ref:`RL Modules <rlmodule-guide>` in addition to this section.
 
-Here are also helpful example scripts on `how to write a custom CNN-containing RLModule <https://github.com/ray-project/ray/blob/master/rllib/examples/rl_modules/custom_cnn_rl_module.py>`__
-and `how to write a custom LSTM-containing RLModule <https://github.com/ray-project/ray/blob/master/rllib/examples/rl_modules/custom_lstm_rl_module.py>`__.
+See these example scripts on `how to write a custom CNN-containing RL Module <https://github.com/ray-project/ray/blob/master/rllib/examples/rl_modules/custom_cnn_rl_module.py>`__
+and `how to write a custom LSTM-containing RL Module <https://github.com/ray-project/ray/blob/master/rllib/examples/rl_modules/custom_lstm_rl_module.py>`__.
 
-Also, there are different options for translating an existing, custom :py:class:`~ray.rllib.models.modelv2.ModelV2` (old API stack)
+There are various options for translating an existing, custom :py:class:`~ray.rllib.models.modelv2.ModelV2` from the old API stack,
 to the new API stack's :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule`:
 
-1) You lift your ModelV2 code and drop it into a new, custom RLModule class (see the :ref:`RLModule documentation <rlmodule-guide>` for details).
-1) You use an Algorithm checkpoint or a Policy checkpoint that you have from an old API stack training run and use this with the `new stack RLModule convenience wrapper <https://github.com/ray-project/ray/blob/master/rllib/examples/rl_modules/migrate_modelv2_to_new_api_stack_by_policy_checkpoint.py>`__.
-1) You have an :py:class:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig` object from an old API stack training run and use this with the `new stack RLModule convenience wrapper <https://github.com/ray-project/ray/blob/master/rllib/examples/rl_modules/migrate_modelv2_to_new_api_stack_by_config.py>`__.
+1) Move your ModelV2 code to a new, custom `RLModule` class. See :ref:`RL Modules <rlmodule-guide>` for details).
+1) Use an Algorithm checkpoint or a Policy checkpoint that you have from an old API stack training run and use this checkpoint with the `new stack RL Module convenience wrapper <https://github.com/ray-project/ray/blob/master/rllib/examples/rl_modules/migrate_modelv2_to_new_api_stack_by_policy_checkpoint.py>`__.
+1) Use an existing :py:class:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig` object from an old API stack training run, with the `new stack RL Module convenience wrapper <https://github.com/ray-project/ray/blob/master/rllib/examples/rl_modules/migrate_modelv2_to_new_api_stack_by_config.py>`__.
 
 
-Custom Loss Functions and/or Policies
+Custom loss functions and policies
 -------------------------------------
 
-In case you are using one or more custom loss functions and/or custom (PyTorch) optimizers to train your models, instead of doing these
-customizations inside the old stack's Policy class, you need to move these logic into the new API stack's
+If you're using one or more custom loss functions or custom (PyTorch) optimizers to train your models, instead of doing these
+customizations inside the old stack's Policy class, you need to move the logic into the new API stack's
 :py:class:`~ray.rllib.core.learner.learner.Learner` class.
 
-:ref:`See here for more details on how to write a custom Learner <learner-guide>`.
+See :ref:`Learner <learner-guide>` for details on how to write a custom Learner .
 
-Here are also helpful example scripts on `how to write a simple custom loss function <https://github.com/ray-project/ray/blob/master/rllib/examples/learners/custom_loss_fn_simple.py>`__
-and `how to write a custom Learner with 2 optimizers and different learning rates for each <https://github.com/ray-project/ray/blob/master/rllib/examples/learners/separate_vf_lr_and_optimizer.py>`__.
+The following example scripts show how to write:
+- `a simple custom loss function <https://github.com/ray-project/ray/blob/master/rllib/examples/learners/custom_loss_fn_simple.py>`__
+- `a custom Learner with 2 optimizers and different learning rates for each <https://github.com/ray-project/ray/blob/master/rllib/examples/learners/separate_vf_lr_and_optimizer.py>`__.
 
-Note that the Policy class is no longer supported in the new API stack. This class used to hold a
-neural network (now moved into :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule`),
-a (old stack) connector (now moved into :py:class:`~ray.rllib.connector.connector_v2.ConnectorV2`),
-and one or more optimizers and losses (now moved into :py:class:`~ray.rllib.core.learner.learner.Learner`).
+Note that the new API stack doesn't support the Policy class. In the old stack, this class holds a
+neural network, which is the :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` in the new API stack,
+an old stack connector, which is the :py:class:`~ray.rllib.connector.connector_v2.ConnectorV2` in the new API stack,
+and one or more optimizers and losses, which are the :py:class:`~ray.rllib.core.learner.learner.Learner` class in the new API stack.
 
-The RLModule API is much more flexible than the old stack's Policy API and
-provides a cleaner separation-of-concerns experience (things related to action
-inference run on the EnvRunners, things related to updating run on the Learner workers)
-as well as superior scalability allowing training in a multi-GPU setup in any Ray cluster
-and multi-node + multi-GPU training on the `Anyscale <https://anyscale.com>`__ platform.
+The RL Module API is much more flexible than the old stack's Policy API and
+provides a cleaner separation-of-concerns experience. Things related to action
+inference run on the EnvRunners, and things related to updating run on the Learner workers
+It also provides superior scalability, allowing training in a multi-GPU setup in any Ray cluster
+and multi-node with multi-GPU training on the `Anyscale <https://anyscale.com>`__ platform.
 
 
-Custom (old-stack) Connectors
+Custom connectors (old-stack) 
 -----------------------------
 
-If you are using custom (old API stack) connectors, you have to lift your logic into the
+If you're using custom connectors from the old API stack, move your logic into the
 new :py:class:`~ray.rllib.connectors.connector_v2.ConnectorV2` API.
 Translate your agent connectors into env-to-module ConnectorV2 pieces and your
 action connectors into module-to-env ConnectorV2 pieces.
 
-The :py:class:`~ray.rllib.connectors.connector_v2.ConnectorV2` documentation is work in progress and linked from here shortly.
+The :py:class:`~ray.rllib.connectors.connector_v2.ConnectorV2` documentation is under development.
 
-In the meantime, take a look at some examples on how to write ConnectorV2 pieces for the
+The following are some examples on how to write ConnectorV2 pieces for the
 different pipelines:
 
-1) `Example on how to perform observation frame-stacking <https://github.com/ray-project/ray/blob/master/rllib/examples/connectors/frame_stacking.py>`__.
-1) `Example on how to add the most recent action and reward to the RLModule's input <https://github.com/ray-project/ray/blob/master/rllib/examples/connectors/prev_actions_prev_rewards.py>`__.
-1) `Example on how to do mean-std filtering on all observations <https://github.com/ray-project/ray/blob/master/rllib/examples/connectors/mean_std_filtering.py>`__.
-1) `Example on how to flatten any complex observation space to a 1D space <https://github.com/ray-project/ray/blob/master/rllib/examples/connectors/flatten_observations_dict_space.py>`__.
+1) `Observation frame-stacking <https://github.com/ray-project/ray/blob/master/rllib/examples/connectors/frame_stacking.py>`__.
+1) `Add the most recent action and reward to the RL Module's input <https://github.com/ray-project/ray/blob/master/rllib/examples/connectors/prev_actions_prev_rewards.py>`__.
+1) `Mean-std filtering on all observations <https://github.com/ray-project/ray/blob/master/rllib/examples/connectors/mean_std_filtering.py>`__.
+1) `Flatten any complex observation space to a 1D space <https://github.com/ray-project/ray/blob/master/rllib/examples/connectors/flatten_observations_dict_space.py>`__.
