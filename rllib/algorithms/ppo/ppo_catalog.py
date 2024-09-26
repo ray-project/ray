@@ -12,21 +12,29 @@ from ray.rllib.utils import override
 from ray.rllib.utils.annotations import OverrideToImplementCustomLogic
 
 
-def _check_if_diag_gaussian(action_distribution_cls, framework):
+def _check_if_diag_gaussian(action_distribution_cls, framework, no_error=False):
     if framework == "torch":
         from ray.rllib.models.torch.torch_distributions import TorchDiagGaussian
 
-        assert issubclass(action_distribution_cls, TorchDiagGaussian), (
-            f"free_log_std is only supported for DiagGaussian action distributions. "
-            f"Found action distribution: {action_distribution_cls}."
-        )
+        is_diag_gaussian = issubclass(action_distribution_cls, TorchDiagGaussian)
+        if no_error:
+            return is_diag_gaussian
+        else:
+            assert is_diag_gaussian, (
+                f"free_log_std is only supported for DiagGaussian action "
+                f"distributions. Found action distribution: {action_distribution_cls}."
+            )
     elif framework == "tf2":
         from ray.rllib.models.tf.tf_distributions import TfDiagGaussian
 
-        assert issubclass(action_distribution_cls, TfDiagGaussian), (
-            "free_log_std is only supported for DiagGaussian action distributions. "
-            "Found action distribution: {}.".format(action_distribution_cls)
-        )
+        is_diag_gaussian = issubclass(action_distribution_cls, TfDiagGaussian)
+        if no_error:
+            return is_diag_gaussian
+        else:
+            assert is_diag_gaussian, (
+                "free_log_std is only supported for DiagGaussian action distributions. "
+                "Found action distribution: {}.".format(action_distribution_cls)
+            )
     else:
         raise ValueError(f"Framework {framework} not supported for free_log_std.")
 
@@ -148,6 +156,13 @@ class PPOCatalog(Catalog):
             _check_if_diag_gaussian(
                 action_distribution_cls=action_distribution_cls, framework=framework
             )
+            is_diag_gaussian = True
+        else:
+            is_diag_gaussian = _check_if_diag_gaussian(
+                action_distribution_cls=action_distribution_cls,
+                framework=framework,
+                no_error=True,
+            )
         required_output_dim = action_distribution_cls.required_input_dim(
             space=self.action_space, model_config=self._model_config_dict
         )
@@ -164,7 +179,7 @@ class PPOCatalog(Catalog):
             hidden_layer_activation=self.pi_and_vf_head_activation,
             output_layer_dim=required_output_dim,
             output_layer_activation="linear",
-            clip_log_std=True,
+            clip_log_std=is_diag_gaussian,
             log_std_clip_param=self._model_config_dict["log_std_clip_param"],
         )
 
