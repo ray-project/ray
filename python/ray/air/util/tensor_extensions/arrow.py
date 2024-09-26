@@ -452,9 +452,14 @@ class ArrowTensorArray(_ArrowTensorScalarIndexingMixin, pa.ExtensionArray):
             pa_dtype, total_num_items, [None, data_buffer]
         )
 
-        # Offset buffer.
+        if DataContext.get_current().should_use_tensor_v2:
+            offset_dtype = ArrowTensorTypeV2.OFFSET_DTYPE
+        else:
+            offset_dtype = ArrowTensorType.OFFSET_DTYPE
+
+        # Create Offset buffer
         offset_buffer = pa.py_buffer(
-            ArrowTensorType.OFFSET_DTYPE([i * num_items_per_element for i in range(outer_len + 1)])
+            offset_dtype([i * num_items_per_element for i in range(outer_len + 1)])
         )
 
         storage = pa.Array.from_buffers(
