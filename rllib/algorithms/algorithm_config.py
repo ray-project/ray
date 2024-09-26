@@ -3408,8 +3408,8 @@ class AlgorithmConfig(_Config):
                 classes or a dictionary mapping module IDs to such a list of respective
                 scheduler classes. Multiple scheduler classes can be applied in sequence
                 and will be stepped in the same sequence as defined here. Note, most
-                learning rate schedulers need arguments to be configured, that is, you might
-                have to partially initialize the schedulers in the list(s) using
+                learning rate schedulers need arguments to be configured, that is, you
+                might have to partially initialize the schedulers in the list(s) using
                 `functools.partial`.
             _tf_policy_handles_more_than_one_loss: Experimental flag.
                 If True, TFPolicy handles more than one loss or optimizer.
