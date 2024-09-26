@@ -38,7 +38,6 @@ algo = (
     .api_stack(
         enable_rl_module_and_learner=False, enable_env_runner_and_connector_v2=False
     )
-    .framework("torch")
     .environment("CartPole-v1")
     .env_runners(num_env_runners=0)
     .training(
@@ -113,7 +112,6 @@ algo = (
     .api_stack(
         enable_rl_module_and_learner=False, enable_env_runner_and_connector_v2=False
     )
-    .framework("torch")
     .environment("CartPole-v1")
     .training(
         replay_buffer_config={

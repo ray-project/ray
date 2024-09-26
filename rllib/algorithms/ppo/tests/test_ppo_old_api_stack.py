@@ -144,6 +144,7 @@ class TestPPO(unittest.TestCase):
                 num_env_runners=1,
                 # Test with compression.
                 compress_observations=True,
+                enable_connectors=True,
             )
             .callbacks(MyCallbacks)
             .evaluation(
