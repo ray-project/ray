@@ -119,7 +119,10 @@ def train_ppo_agent_from_checkpointed_module(
     """
     config = (
         PPOConfig()
-        .api_stack(enable_rl_module_and_learner=True)
+        .api_stack(
+            enable_rl_module_and_learner=True,
+            enable_env_runner_and_connector_v2=True,
+        )
         .rl_module(rl_module_spec=module_spec_from_ckpt)
         .environment(GYM_ENV_NAME)
         .training(

@@ -2774,6 +2774,9 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
             and self.config.enable_env_runner_and_connector_v2
         ):
             self.restore_from_path(checkpoint_dir)
+
+            # Call the `on_checkpoint_loaded` callback.
+            self.callbacks.on_checkpoint_loaded(algorithm=self)
             return
 
         # Checkpoint is provided as a local directory.
@@ -2781,20 +2784,6 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
         checkpoint_info = get_checkpoint_info(checkpoint_dir)
         checkpoint_data = Algorithm._checkpoint_info_to_algorithm_state(checkpoint_info)
         self.__setstate__(checkpoint_data)
-        if self.config.enable_rl_module_and_learner:
-            # We restore the LearnerGroup from a "learner" subdir. Note that this is not
-            # in line with the new Checkpointable API, but makes this case backward
-            # compatible. The new Checkpointable API is only strictly applied anyways
-            # to the new API stack.
-            learner_group_state_dir = os.path.join(checkpoint_dir, "learner")
-            self.learner_group.restore_from_path(learner_group_state_dir)
-            # Make also sure, all (training) EnvRunners get the just loaded weights, but
-            # only the inference-only ones.
-            self.env_runner_group.sync_weights(
-                from_worker_or_learner_group=self.learner_group,
-                inference_only=True,
-            )
-
         # Call the `on_checkpoint_loaded` callback.
         self.callbacks.on_checkpoint_loaded(algorithm=self)
 

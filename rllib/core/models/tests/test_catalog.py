@@ -387,12 +387,9 @@ class TestCatalog(unittest.TestCase):
         )
 
         algo = config.build(env="CartPole-v0")
-        self.assertEqual(
-            algo.get_policy("default_policy").model.config.catalog_class, MyCatalog
-        )
+        self.assertEqual(type(algo.get_module("default_policy").catalog), MyCatalog)
 
         # Test if we can pass custom catalog to algorithm config and train with it.
-
         config = (
             PPOConfig()
             .rl_module(
