@@ -45,7 +45,6 @@ class GcsAutoscalerStateManagerTest : public ::testing::Test {
   GcsAutoscalerStateManagerTest() {}
 
  protected:
-  static constexpr char kRayletConfig[] = R"({"raylet_config":"this is a config"})";
   instrumented_io_context io_service_;
   std::shared_ptr<GcsServerMocker::MockRayletClient> raylet_client_;
   std::shared_ptr<rpc::NodeManagerClientPool> client_pool_;
@@ -66,8 +65,7 @@ class GcsAutoscalerStateManagerTest : public ::testing::Test {
     cluster_resource_manager_ = std::make_unique<ClusterResourceManager>(io_service_);
     gcs_node_manager_ = std::make_shared<MockGcsNodeManager>();
     kv_manager_ = std::make_unique<GcsInternalKVManager>(
-        std::make_unique<StoreClientInternalKV>(std::make_unique<MockStoreClient>()),
-        kRayletConfig);
+        std::make_unique<StoreClientInternalKV>(std::make_unique<MockStoreClient>()));
     function_manager_ = std::make_unique<GcsFunctionManager>(kv_manager_->GetInstance());
     runtime_env_manager_ = std::make_unique<RuntimeEnvManager>(
         [](const std::string &, std::function<void(bool)>) {});

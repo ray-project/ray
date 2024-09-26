@@ -32,7 +32,6 @@ using rpc::GcsNodeInfo;
 using rpc::JobTableData;
 using rpc::PlacementGroupTableData;
 using rpc::ResourceUsageBatchData;
-using rpc::StoredConfig;
 using rpc::TaskSpec;
 using rpc::WorkerTableData;
 

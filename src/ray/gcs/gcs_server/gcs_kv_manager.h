@@ -14,7 +14,6 @@
 
 #pragma once
 #include <memory>
-#include <string_view>
 
 #include "absl/container/btree_map.h"
 #include "absl/synchronization/mutex.h"
@@ -101,7 +100,6 @@ class InternalKVInterface {
 /// This implementation class of `InternalKVHandler`.
 class GcsInternalKVManager : public rpc::InternalKVHandler {
  public:
-  // `raylet_config_list` must outlive this class.
   explicit GcsInternalKVManager(std::unique_ptr<InternalKVInterface> kv_instance)
       : kv_instance_(std::move(kv_instance)) {}
 
@@ -130,8 +128,6 @@ class GcsInternalKVManager : public rpc::InternalKVHandler {
                             rpc::SendReplyCallback send_reply_callback) override;
 
   InternalKVInterface &GetInstance() { return *kv_instance_; }
-
-  std::string DebugString() const;
 
  private:
   std::unique_ptr<InternalKVInterface> kv_instance_;

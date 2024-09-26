@@ -932,13 +932,6 @@ class InternalKVAccessor {
                         const int64_t timeout_ms,
                         bool &exists);
 
-  /// Get the internal config string from GCS.
-  ///
-  /// \param callback Processes a map of config options
-  /// \return Status
-  virtual Status AsyncGetInternalConfig(
-      const OptionalItemCallback<std::string> &callback);
-
  private:
   GcsClient *client_impl_;
 };
