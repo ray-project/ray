@@ -282,7 +282,7 @@ class StateSchema(ABC):
     @classmethod
     def columns(cls) -> Set[str]:
         """Return a set of all columns."""
-        return set(cls.list_columns())
+        return set(cls.list_columns(detail=True))
 
     @classmethod
     def filterable_columns(cls) -> Set[str]:
@@ -556,7 +556,7 @@ class JobState(StateSchema, JobDetails if JobDetails is not None else object):
         return state
 
     @classmethod
-    def list_columns(cls, detail: bool = False) -> List[str]:
+    def list_columns(cls, detail: bool = True) -> List[str]:
         if not detail:
             return [
                 "job_id",
@@ -568,7 +568,7 @@ class JobState(StateSchema, JobDetails if JobDetails is not None else object):
                 "error_type",
                 "driver_info",
             ]
-        if isinstance(JobDetails, object):
+        if JobDetails is None:
             # We don't have pydantic in the dashboard. This is because
             # we call this method at module import time, so we need to
             # check if the class is a pydantic model.
@@ -577,9 +577,9 @@ class JobState(StateSchema, JobDetails if JobDetails is not None else object):
         # TODO(aguo): Once we only support pydantic 2, we can remove this if check.
         # In pydantic 2.0, `__fields__` has been renamed to `model_fields`.
         return (
-            JobDetails.model_fields
+            list(JobDetails.model_fields.keys())
             if hasattr(JobDetails, "model_fields")
-            else JobDetails.__fields__
+            else list(JobDetails.__fields__.keys())
         )
 
     def asdict(self):
