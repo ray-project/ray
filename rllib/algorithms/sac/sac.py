@@ -485,14 +485,21 @@ class SACConfig(AlgorithmConfig):
                     "and `alpha_lr`, for the actor, critic, and the hyperparameter "
                     "`alpha`, respectively and set `config.lr` to None."
                 )
-            # Warn about new API stack on by default.
-            logger.warning(
-                "You are running SAC on the new API stack! This is the new default "
-                "behavior for this algorithm. If you don't want to use the new API "
-                "stack, set `config.api_stack(enable_rl_module_and_learner=False, "
-                "enable_env_runner_and_connector_v2=False)`. For a detailed "
-                "migration guide, see here: https://docs.ray.io/en/master/rllib/new-api-stack-migration-guide.html"  # noqa
-            )
+            elif not self.enable_env_runner_and_connector_v2:
+                raise ValueError(
+                    "Hybrid API stack (`enable_rl_module_and_learner=True` and "
+                    "`enable_env_runner_and_connector_v2=False`) no longer supported "
+                    "for SAC! Set both to True (recommended new API stack) or both to "
+                    "False (old API stack)."
+                )
+            else:
+                logger.warning(
+                    "You are running SAC on the new API stack! This is the new default "
+                    "behavior for this algorithm. If you don't want to use the new API "
+                    "stack, set `config.api_stack(enable_rl_module_and_learner=False, "
+                    "enable_env_runner_and_connector_v2=False)`. For a detailed "
+                    "migration guide, see here: https://docs.ray.io/en/master/rllib/new-api-stack-migration-guide.html"  # noqa
+                )
 
     @override(AlgorithmConfig)
     def get_rollout_fragment_length(self, worker_index: int = 0) -> int:
