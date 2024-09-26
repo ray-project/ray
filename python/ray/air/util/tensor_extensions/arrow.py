@@ -1,3 +1,4 @@
+import abc
 import itertools
 import json
 import logging
@@ -13,6 +14,7 @@ from ray.air.util.tensor_extensions.utils import (
     _is_ndarray_variable_shaped_tensor,
     create_ragged_ndarray,
 )
+from ray.data import DataContext
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
 PYARROW_VERSION = _get_pyarrow_version()
@@ -94,8 +96,7 @@ def convert_list_to_pyarrow_array(
         raise ArrowConversionError(str(enclosing_dict)) from e
 
 
-@PublicAPI(stability="beta")
-class ArrowTensorType(pa.ExtensionType):
+class _BaseArrowTensorType(pa.ExtensionType, abc.ABC):
     """
     Arrow ExtensionType for an array of fixed-shaped, homogeneous-typed
     tensors.
@@ -106,18 +107,10 @@ class ArrowTensorType(pa.ExtensionType):
     https://arrow.apache.org/docs/python/extending_types.html#defining-extension-types-user-defined-types
     """
 
-    OFFSET_DTYPE = np.int64
-
-    def __init__(self, shape: Tuple[int, ...], dtype: pa.DataType):
-        """
-        Construct the Arrow extension type for array of fixed-shaped tensors.
-
-        Args:
-            shape: Shape of contained tensors.
-            dtype: pyarrow dtype of tensor elements.
-        """
+    def __init__(self, shape: Tuple[int, ...], tensor_dtype: pa.DataType, ext_type_id: str):
         self._shape = shape
-        super().__init__(pa.large_list(dtype), "ray.data.arrow_tensor")
+
+        super().__init__(tensor_dtype, ext_type_id)
 
     @property
     def shape(self):
@@ -140,7 +133,7 @@ class ArrowTensorType(pa.ExtensionType):
         """
         from ray.air.util.tensor_extensions.pandas import TensorDtype
 
-        return TensorDtype(self._shape, self.storage_type.value_type.to_pandas_dtype())
+        return TensorDtype(self._shape, self.scalar_type.to_pandas_dtype())
 
     def __reduce__(self):
         return self.__arrow_ext_deserialize__, (
@@ -150,11 +143,6 @@ class ArrowTensorType(pa.ExtensionType):
 
     def __arrow_ext_serialize__(self):
         return json.dumps(self._shape).encode()
-
-    @classmethod
-    def __arrow_ext_deserialize__(cls, storage_type, serialized):
-        shape = tuple(json.loads(serialized))
-        return cls(shape, storage_type.value_type)
 
     def __arrow_ext_class__(self):
         """
@@ -238,6 +226,52 @@ class ArrowTensorType(pa.ExtensionType):
                 return True
             shape = arr_type.shape
         return False
+
+
+@PublicAPI(stability="beta")
+class ArrowTensorType(_BaseArrowTensorType):
+
+    # TODO elaborate
+    OFFSET_DTYPE = np.int32
+
+    def __init__(self, shape: Tuple[int, ...], dtype: pa.DataType):
+        """
+        Construct the Arrow extension type for array of fixed-shaped tensors.
+
+        Args:
+            shape: Shape of contained tensors.
+            dtype: pyarrow dtype of tensor elements.
+        """
+
+        super().__init__(shape, pa.list_(dtype), "ray.data.arrow_tensor")
+
+    @classmethod
+    def __arrow_ext_deserialize__(cls, storage_type, serialized):
+        shape = tuple(json.loads(serialized))
+        return cls(shape, storage_type.value_type)
+
+
+@PublicAPI(stability="alpha")
+class ArrowTensorTypeV2(_BaseArrowTensorType):
+
+    # TODO elaborate
+    OFFSET_DTYPE = np.int64
+
+    def __init__(self, shape: Tuple[int, ...], dtype: pa.DataType):
+        """
+        Construct the Arrow extension type for array of fixed-shaped tensors.
+
+        Args:
+            shape: Shape of contained tensors.
+            dtype: pyarrow dtype of tensor elements.
+        """
+
+        super().__init__(shape, pa.large_list(dtype), "ray.data.arrow_tensor_v2")
+
+    @classmethod
+    def __arrow_ext_deserialize__(cls, storage_type, serialized):
+        shape = tuple(json.loads(serialized))
+        return cls(shape, storage_type.value_type)
 
 
 if _arrow_extension_scalars_are_subclassable():
