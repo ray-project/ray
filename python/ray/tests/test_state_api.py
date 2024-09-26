@@ -174,6 +174,9 @@ def verify_schema(state, result_dict: dict, detail: bool = False):
     for k in result_dict:
         assert k in state_fields_columns
 
+    # Make the field values can be converted without error as well
+    state(**result_dict)
+
 
 def generate_actor_data(id, state=ActorTableData.ActorState.ALIVE, class_name="class"):
     return ActorTableData(
@@ -747,12 +750,14 @@ async def test_api_manager_list_cluster_events(state_api_manager):
                 "severity": "DEBUG",
                 "message": "a",
                 "event_id": event_id_1,
+                "source_type": "GCS",
             },
             event_id_2: {
                 "timestamp": 10,
                 "severity": "INFO",
                 "message": "b",
                 "event_id": event_id_2,
+                "source_type": "GCS",
             },
         }
     }
