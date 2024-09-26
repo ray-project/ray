@@ -41,6 +41,10 @@ class MockBaseModel:
     def __init_subclass__(self, *args, **kwargs):
         pass
 
+    @property
+    def __fields__():
+        return {}
+
 
 def _make_mock_pydantic_modules(pydantic_version: str) -> Dict:
     """Make a mock for the `pydantic` module.

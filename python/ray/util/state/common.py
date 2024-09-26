@@ -577,9 +577,9 @@ class JobState(StateSchema, JobDetails if JobDetails is not None else object):
         # TODO(aguo): Once we only support pydantic 2, we can remove this if check.
         # In pydantic 2.0, `__fields__` has been renamed to `model_fields`.
         return (
-            JobDetails.model_fields
+            list(JobDetails.model_fields.keys())
             if hasattr(JobDetails, "model_fields")
-            else JobDetails.__fields__
+            else list(JobDetails.__fields__.keys())
         )
 
     def asdict(self):
