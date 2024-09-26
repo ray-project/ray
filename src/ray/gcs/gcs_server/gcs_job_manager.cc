@@ -292,28 +292,64 @@ void GcsJobManager::HandleGetAllJobInfo(rpc::GetAllJobInfoRequest request,
         job_api_data_keys.push_back(job_data_key);
         job_data_key_to_indices[job_data_key].push_back(i);
       }
+      i++;
+    }
 
-      if (!request.skip_is_running_tasks_field()) {
-        JobID job_id = data.first;
-        WorkerID worker_id =
-            WorkerID::FromBinary(data.second.driver_address().worker_id());
+    // Jobs are filtered. Now, optionally populate is_running_tasks and job_info. We
+    // do async calls to:
+    //
+    // - N outbound RPCs, one to each jobs' core workers on GcsServer::main_service_.
+    // - One InternalKV MultiGet call on GcsServer::kv_service_.
+    //
+    // And then we wait all by examining an atomic num_finished_tasks counter and then
+    // reply. The wait counter is written from 2 different thread, which requires an
+    // atomic read-and-increment. Each thread performs read-and-increment, and check
+    // the atomic readout to ensure try_send_reply is executed exactly once.
 
-        // If job is not dead, get is_running_tasks from the core worker for the driver.
-        if (data.second.is_dead()) {
+    // Atomic counter of pending async tasks before sending the reply.
+    // Once it reaches total_tasks, the reply is sent.
+    std::shared_ptr<std::atomic<size_t>> num_finished_tasks =
+        std::make_shared<std::atomic<size_t>>(0);
+
+    // N tasks for N jobs; and 1 task for the MultiKVGet. If either is skipped the counter
+    // still increments.
+    const size_t total_tasks = reply->job_info_list_size() + 1;
+    auto try_send_reply =
+        [reply, send_reply_callback, total_tasks](size_t finished_tasks) {
+          if (finished_tasks == total_tasks) {
+            RAY_LOG(DEBUG) << "Finished getting all job info.";
+            GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
+          }
+        };
+
+    if (request.skip_is_running_tasks_field()) {
+      // Skipping RPCs to workers, just mark all job tasks as done.
+      const size_t job_count = reply->job_info_list_size();
+      size_t updated_finished_tasks =
+          num_finished_tasks->fetch_add(job_count) + job_count;
+      try_send_reply(updated_finished_tasks);
+    } else {
+      for (int i = 0; i < reply->job_info_list_size(); i++) {
+        const auto &data = reply->job_info_list(i);
+        auto job_id = JobID::FromBinary(data.job_id());
+        WorkerID worker_id = WorkerID::FromBinary(data.driver_address().worker_id());
+
+        // If job is dead, no need to get.
+        if (data.is_dead()) {
           reply->mutable_job_info_list(i)->set_is_running_tasks(false);
           core_worker_clients_.Disconnect(worker_id);
-          (*num_processed_jobs)++;
-          try_send_reply();
+          size_t updated_finished_tasks = num_finished_tasks->fetch_add(1) + 1;
+          try_send_reply(updated_finished_tasks);
         } else {
           // Get is_running_tasks from the core worker for the driver.
-          auto client = core_worker_clients_.GetOrConnect(data.second.driver_address());
+          auto client = core_worker_clients_.GetOrConnect(data.driver_address());
           auto request = std::make_unique<rpc::NumPendingTasksRequest>();
           constexpr int64_t kNumPendingTasksRequestTimeoutMs = 1000;
           RAY_LOG(DEBUG) << "Send NumPendingTasksRequest to worker " << worker_id
                          << ", timeout " << kNumPendingTasksRequestTimeoutMs << " ms.";
           client->NumPendingTasks(
               std::move(request),
-              [job_id, worker_id, reply, i, num_processed_jobs, try_send_reply](
+              [job_id, worker_id, reply, i, num_finished_tasks, try_send_reply](
                   const Status &status,
                   const rpc::NumPendingTasksReply &num_pending_tasks_reply) {
                 RAY_LOG(DEBUG).WithField(worker_id)
@@ -327,25 +363,25 @@ void GcsJobManager::HandleGetAllJobInfo(rpc::GetAllJobInfoRequest request,
                   bool is_running_tasks = num_pending_tasks_reply.num_pending_tasks() > 0;
                   reply->mutable_job_info_list(i)->set_is_running_tasks(is_running_tasks);
                 }
-                (*num_processed_jobs)++;
-                try_send_reply();
+                size_t updated_finished_tasks = num_finished_tasks->fetch_add(1) + 1;
+                try_send_reply(updated_finished_tasks);
               },
               kNumPendingTasksRequestTimeoutMs);
         }
-      } else {
-        (*num_processed_jobs)++;
-        try_send_reply();
       }
-      i++;
     }
 
-    if (!request.skip_submission_job_info_field()) {
+    if (request.skip_submission_job_info_field()) {
+      // Skipping MultiKVGet, just mark the counter.
+      size_t updated_finished_tasks = num_finished_tasks->fetch_add(1) + 1;
+      try_send_reply(updated_finished_tasks);
+    } else {
       // Load the JobInfo for jobs submitted via the Ray Job API.
       auto kv_multi_get_callback =
           [reply,
            send_reply_callback,
            job_data_key_to_indices,
-           kv_callback_done,
+           num_finished_tasks,
            try_send_reply](std::unordered_map<std::string, std::string> &&result) {
             for (const auto &data : result) {
               const std::string &job_data_key = data.first;
@@ -368,13 +404,10 @@ void GcsJobManager::HandleGetAllJobInfo(rpc::GetAllJobInfoRequest request,
                 }
               }
             }
-            *kv_callback_done = true;
-            try_send_reply();
+            size_t updated_finished_tasks = num_finished_tasks->fetch_add(1) + 1;
+            try_send_reply(updated_finished_tasks);
           };
       internal_kv_.MultiGet("job", job_api_data_keys, kv_multi_get_callback);
-    } else {
-      *kv_callback_done = true;
-      try_send_reply();
     }
   };
   Status status = gcs_table_storage_->JobTable().GetAll(on_done);
