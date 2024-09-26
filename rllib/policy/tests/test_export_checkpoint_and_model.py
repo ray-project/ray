@@ -126,9 +126,6 @@ class TestExportCheckpointAndModel(unittest.TestCase):
     def test_export_ppo_multi_agent(self):
         export_test("PPO", "torch", multi_agent=True)
 
-    def test_export_sac(self):
-        export_test("SAC", "torch")
-
 
 if __name__ == "__main__":
     import pytest

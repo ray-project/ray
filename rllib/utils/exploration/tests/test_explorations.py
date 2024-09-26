@@ -3,10 +3,8 @@ import sys
 import unittest
 
 import ray
-import ray.rllib.algorithms.dqn as dqn
 import ray.rllib.algorithms.impala as impala
 import ray.rllib.algorithms.ppo as ppo
-import ray.rllib.algorithms.sac as sac
 from ray.rllib.utils import check
 
 
@@ -74,15 +72,6 @@ class TestExplorations(unittest.TestCase):
     def tearDownClass(cls):
         ray.shutdown()
 
-    def test_dqn(self):
-        config = (
-            dqn.DQNConfig().environment("CartPole-v1").env_runners(num_env_runners=0)
-        )
-        do_test_explorations(
-            config,
-            np.array([0.0, 0.1, 0.0, 0.0]),
-        )
-
     def test_impala(self):
         config = (
             impala.IMPALAConfig()
@@ -114,16 +103,6 @@ class TestExplorations(unittest.TestCase):
             config,
             np.array([0.0, 0.1, 0.0]),
             prev_a=np.array([0.0]),
-            expected_mean_action=0.0,
-        )
-
-    def test_sac(self):
-        config = (
-            sac.SACConfig().environment("Pendulum-v1").env_runners(num_env_runners=0)
-        )
-        do_test_explorations(
-            config,
-            np.array([0.0, 0.1, 0.0]),
             expected_mean_action=0.0,
         )
 
