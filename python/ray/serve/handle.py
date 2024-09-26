@@ -5,6 +5,7 @@ import threading
 import time
 import warnings
 from dataclasses import dataclass
+from functools import partial
 from typing import Any, AsyncIterator, Dict, Iterator, Optional, Tuple, Union
 
 import ray
@@ -329,6 +330,12 @@ class _DeploymentResponseBase:
         self._object_ref_or_gen_sync_lock = threading.Lock()
         self._replica_result: Optional[ReplicaResult] = None
 
+        _request_context = ray.serve.context._serve_request_context.get()
+        self._request_id: str = _request_context.request_id
+
+        if self._request_id:
+            ray.serve.context._add_in_flight_request(self._request_id, self)
+
     @property
     def _object_ref_or_gen_asyncio_lock(self) -> asyncio.Lock:
         """Lazy `asyncio.Lock` object."""
@@ -350,6 +357,11 @@ class _DeploymentResponseBase:
                 self._replica_result = self._object_ref_future.result(
                     timeout=_timeout_s
                 )
+                self._replica_result.add_done_callback(
+                    lambda *args: ray.serve.context._remove_in_flight_request(
+                        self._request_id, self
+                    )
+                )
             except concurrent.futures.TimeoutError:
                 raise TimeoutError("Timed out resolving to ObjectRef.") from None
 
@@ -365,6 +377,11 @@ class _DeploymentResponseBase:
             # Use `asyncio.wrap_future` so `self._object_ref_future` can be awaited
             # safely from any asyncio loop.
             self._replica_result = await asyncio.wrap_future(self._object_ref_future)
+            self._replica_result.add_done_callback(
+                lambda *args: ray.serve.context._remove_in_flight_request(
+                    self._request_id, self
+                )
+            )
 
         return self._replica_result
 
@@ -816,3 +833,5 @@ class DeploymentHandle(_DeploymentHandleBase):
             response_cls = DeploymentResponse
 
         return response_cls(future)
+
+        return resp
