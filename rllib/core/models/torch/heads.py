@@ -147,7 +147,7 @@ class TorchMLPHead(TorchModel):
             means, log_stds = torch.chunk(self.net(inputs), chunks=2, dim=-1)
             # Clip the log standard deviations.
             log_stds = torch.clamp(
-                log_stds, -self.log_std_clip_param, self.log_std_clip_param
+                log_stds, -self.log_std_clip_param_const, self.log_std_clip_param_const
             )
             return torch.cat((means, log_stds), dim=-1)
         # Otherwise just return the logits.
@@ -199,6 +199,8 @@ class TorchFreeLogStdMLPHead(TorchModel):
         self.log_std_clip_param = torch.Tensor(
             [config.log_std_clip_param], device=self.log_std.device
         )
+        # Register a buffer to handle device mapping.
+        self.register_buffer("log_std_clip_param_const", self.log_std_clip_param)
 
     @override(Model)
     def get_input_specs(self) -> Optional[Spec]:
@@ -219,7 +221,7 @@ class TorchFreeLogStdMLPHead(TorchModel):
             # Clip the log standard deviation to avoid running into too small
             # deviations that factually collapses the policy.
             log_std = torch.clamp(
-                self.log_std, -self.log_std_clip_param, self.log_std_clip_param
+                self.log_std, -self.log_std_clip_param_const, self.log_std_clip_param_const
             )
         else:
             log_std = self.log_std
