@@ -5,36 +5,38 @@ from typing import Any, Collection, Dict, Optional, Type, TYPE_CHECKING, Union
 
 import gymnasium as gym
 
-from ray.rllib.core import DEFAULT_MODULE_ID
-from ray.rllib.core.columns import Columns
-from ray.rllib.core.models.specs.typing import SpecType
-from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
-from ray.rllib.models.distributions import Distribution
-from ray.rllib.utils.annotations import (
-    override,
-    OverrideToImplementCustomLogic,
-)
-from ray.rllib.utils.checkpoints import Checkpointable
-from ray.rllib.utils.deprecation import (
-    Deprecated,
-    DEPRECATED_VALUE,
-    deprecation_warning,
-)
-from ray.rllib.utils.serialization import (
-    gym_space_from_dict,
-    gym_space_to_dict,
-    serialize_type,
-    deserialize_type,
-)
-from ray.rllib.utils.typing import StateDict
-from ray.util.annotations import PublicAPI
-
 if TYPE_CHECKING:
     from ray.rllib.core.rl_module.multi_rl_module import (
         MultiRLModule,
         MultiRLModuleSpec,
     )
     from ray.rllib.core.models.catalog import Catalog
+
+from ray.rllib.core import DEFAULT_MODULE_ID
+from ray.rllib.core.columns import Columns
+from ray.rllib.core.models.specs.typing import SpecType
+from ray.rllib.core.models.specs.checker import (
+    check_input_specs,
+    check_output_specs,
+    convert_to_canonical_format,
+)
+from ray.rllib.models.distributions import Distribution
+from ray.rllib.utils.annotations import (
+    ExperimentalAPI,
+    override,
+    OverrideToImplementCustomLogic,
+    OverrideToImplementCustomLogic_CallToSuperRecommended,
+)
+from ray.rllib.utils.checkpoints import Checkpointable
+from ray.rllib.utils.deprecation import Deprecated
+from ray.rllib.utils.serialization import (
+    gym_space_from_dict,
+    gym_space_to_dict,
+    serialize_type,
+    deserialize_type,
+)
+from ray.rllib.utils.typing import SampleBatchType, StateDict
+from ray.util.annotations import PublicAPI
 
 
 @PublicAPI(stability="alpha")
@@ -548,22 +550,41 @@ class RLModule(Checkpointable, abc.ABC):
     def _forward(self, batch: Dict[str, Any], **kwargs) -> Dict[str, Any]:
         """Generic forward pass method, used in all phases of training and evaluation.
 
-        If you need a more nuanced distinction between forward passes in the different
-        phases of training and evaluation, override the following methods instead:
-        For distinct action computation logic w/o exploration, override the
-        `self._forward_inference()` method.
-        For distinct action computation logic with exploration, override the
-        `self._forward_exploration()` method.
-        For distinct forward pass logic before loss computation, override the
-        `self._forward_train()` method.
-
-        Args:
-            batch: The input batch.
-            **kwargs: Additional keyword arguments.
-
-        Returns:
-            The output of the forward pass.
+        By default, RLlib assumes that the module is non-recurrent if the initial
+        state is an empty dict and recurrent otherwise.
+        This behavior can be overridden by implementing this method.
         """
+        initial_state = self.get_initial_state()
+        assert isinstance(initial_state, dict), (
+            "The initial state of an RLModule must be a dict, but is "
+            f"{type(initial_state)} instead."
+        )
+        return bool(initial_state)
+
+    @OverrideToImplementCustomLogic_CallToSuperRecommended
+    def output_specs_inference(self) -> SpecType:
+        """Returns the output specs of the `forward_inference()` method.
+
+        Override this method to customize the output specs of the inference call.
+        The default implementation requires the `forward_inference()` method to return
+        a dict that has `action_dist` key and its value is an instance of
+        `Distribution`.
+        """
+        return [Columns.ACTION_DIST_INPUTS]
+
+    @OverrideToImplementCustomLogic_CallToSuperRecommended
+    def output_specs_exploration(self) -> SpecType:
+        """Returns the output specs of the `forward_exploration()` method.
+
+        Override this method to customize the output specs of the exploration call.
+        The default implementation requires the `forward_exploration()` method to return
+        a dict that has `action_dist` key and its value is an instance of
+        `Distribution`.
+        """
+        return [Columns.ACTION_DIST_INPUTS]
+
+    def output_specs_train(self) -> SpecType:
+        """Returns the output specs of the forward_train method."""
         return {}
 
     def forward_inference(self, batch: Dict[str, Any], **kwargs) -> Dict[str, Any]:
