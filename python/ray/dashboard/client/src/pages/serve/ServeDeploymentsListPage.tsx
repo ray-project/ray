@@ -47,6 +47,7 @@ export const ServeDeploymentsListPage = () => {
     proxies,
     serveApplications,
     serveDeployments,
+    publicUrl,
   } = useServeDeployments();
 
   if (error) {
@@ -132,6 +133,7 @@ export const ServeDeploymentsListPage = () => {
                     <ServeApplicationRows
                       key={`${application.name}`}
                       application={application}
+                      publicUrl={publicUrl}
                       startExpanded
                     />
                   ))}
