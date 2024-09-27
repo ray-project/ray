@@ -403,12 +403,6 @@ class GcsRpcClient {
                              node_info_grpc_client_,
                              /*method_timeout_ms*/ -1, )
 
-  /// Get internal config of the node from the GCS Service.
-  VOID_GCS_RPC_CLIENT_METHOD(NodeInfoGcsService,
-                             GetInternalConfig,
-                             node_info_grpc_client_,
-                             /*method_timeout_ms*/ -1, )
-
   /// Get available resources of all nodes from the GCS Service.
   VOID_GCS_RPC_CLIENT_METHOD(NodeResourceInfoGcsService,
                              GetAllAvailableResources,
@@ -538,6 +532,12 @@ class GcsRpcClient {
                              /*method_timeout_ms*/ -1, )
   VOID_GCS_RPC_CLIENT_METHOD(InternalKVGcsService,
                              InternalKVKeys,
+                             internal_kv_grpc_client_,
+                             /*method_timeout_ms*/ -1, )
+
+  /// Get internal config of the node from the GCS Service.
+  VOID_GCS_RPC_CLIENT_METHOD(InternalKVGcsService,
+                             GetInternalConfig,
                              internal_kv_grpc_client_,
                              /*method_timeout_ms*/ -1, )
 
