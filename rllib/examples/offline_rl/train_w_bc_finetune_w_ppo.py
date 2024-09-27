@@ -104,8 +104,12 @@ parser.set_defaults(
 
 
 class MyBCModel(TorchRLModule):
+    """A very simple BC-usable model that only computes action logits."""
+
     @override(TorchRLModule)
     def setup(self):
+        # Create an encoder trunk.
+        # Observations are directly passed through it and feature vectors are output.
         self._encoder = MLPEncoderConfig(
             input_dims=[4],  # CartPole
             hidden_layer_dims=[256, 256],
@@ -113,6 +117,8 @@ class MyBCModel(TorchRLModule):
             output_layer_dim=None,
         ).build(framework="torch")
 
+        # The policy head sitting on top of the encoder. Feature vectors come in as
+        # input and action logits are output.
         self._pi = MLPHeadConfig(
             input_dims=[256],  # from encoder
             hidden_layer_dims=[256],  # pi head
@@ -135,19 +141,26 @@ class MyBCModel(TorchRLModule):
 
 
 class MyPPOModel(MyBCModel, ValueFunctionAPI):
+    """Subclass of our simple BC model, but implementing the ValueFunctionAPI.
+
+    Implementing the `compute_values` method makes this RLModule usable by algos
+    like PPO, which require this.
+    """
+
     @override(MyBCModel)
     def setup(self):
+        # Call super setup to create encoder trunk and policy head.
         super().setup()
+        # Create the new value function head and zero-initialize it to not cause too
+        # much disruption.
         self._vf = MLPHeadConfig(
             input_dims=[256],  # from encoder
             hidden_layer_dims=[256],  # pi head
             hidden_layer_activation="relu",
-            # Zero-initialize value function to not cause too much disruption.
             hidden_layer_weights_initializer=nn.init.zeros_,
             hidden_layer_bias_initializer=nn.init.zeros_,
-            output_layer_dim=1,  # value node
+            output_layer_dim=1,  # 1=value node
             output_layer_activation="linear",
-            # Zero-initialize value function to not cause too much disruption.
             output_layer_weights_initializer=nn.init.zeros_,
             output_layer_bias_initializer=nn.init.zeros_,
         ).build(framework="torch")
@@ -164,7 +177,9 @@ class MyPPOModel(MyBCModel, ValueFunctionAPI):
 
     @override(ValueFunctionAPI)
     def compute_values(self, batch):
+        # Compute features ...
         features = self._encoder(batch)[ENCODER_OUT]
+        # then values using our value head.
         return self._vf(features).squeeze(-1)
 
 
@@ -208,18 +223,15 @@ if __name__ == "__main__":
             # run an entire epoch on the dataset during a single RLlib training
             # iteration. For single-learner mode 1 is the only option.
             dataset_num_iters_per_learner=1 if args.num_gpus == 0 else None,
-        )
-        .training(
+        ).training(
             train_batch_size_per_learner=1024,
             # To increase learning speed with multiple learners,
             # increase the learning rate correspondingly.
             lr=0.0008 * max(1, args.num_gpus**0.5),
         )
-        .rl_module(
-            rl_module_spec=RLModuleSpec(
-                module_class=MyBCModel,
-            )
-        )
+        # Plug in our simple custom BC model from above.
+        .rl_module(rl_module_spec=RLModuleSpec(module_class=MyBCModel))
+        # Run evaluation to observe how good our BC policy already is.
         .evaluation(
             evaluation_interval=3,
             evaluation_num_env_runners=1,
@@ -228,9 +240,9 @@ if __name__ == "__main__":
         )
     )
 
+    # Run the BC experiment and stop at R=250.0
     metric_key = f"{EVALUATION_RESULTS}/{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}"
     stop = {metric_key: 250.0}
-
     results = run_rllib_example_script_experiment(base_config, args, stop=stop)
 
     # Extract the RLModule checkpoint.
@@ -243,6 +255,7 @@ if __name__ == "__main__":
         / "default_policy"
     )
 
+    # Create a new PPO config.
     base_config = (
         PPOConfig()
         .api_stack(
@@ -256,6 +269,10 @@ if __name__ == "__main__":
             num_epochs=6,
             vf_loss_coeff=0.01,
         )
+        # Plug in our simple custom PPO model from above. Note that the checkpoint
+        # for the BC model is loadable into the PPO model, b/c the BC model is a subset
+        # of the PPO model (all weights/biases in the BC model are also found in the PPO
+        # model; the PPO model only has an additional value function branch).
         .rl_module(
             rl_module_spec=RLModuleSpec(
                 module_class=MyPPOModel,
@@ -270,7 +287,7 @@ if __name__ == "__main__":
     R = eval_results[ENV_RUNNER_RESULTS][EPISODE_RETURN_MEAN]
     assert R >= 200.0, f"Initial PPO performance bad! R={R} (expected 200.0+)."
     print(f"PPO return after initialization: {R}")
-
+    # Check, whether training 2 times causes catastrophic forgetting.
     ppo.train()
     train_results = ppo.train()
     R = train_results[ENV_RUNNER_RESULTS][EPISODE_RETURN_MEAN]
