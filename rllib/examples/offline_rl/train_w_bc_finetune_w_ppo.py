@@ -189,15 +189,19 @@ if __name__ == "__main__":
     assert args.env == "CartPole-v1", "This example works only with --env=CartPole-v1!"
 
     # Define the data paths for our CartPole large dataset.
-    data_path = "tests/data/cartpole/cartpole-v1_large"
     base_path = Path(__file__).parents[2]
-    print(f"base_path={base_path}")
-    data_path = "local://" / base_path / data_path
+    assert base_path.is_dir(), base_path
+    data_path = base_path / "tests/data/cartpole/cartpole-v1_large"
+    assert data_path.is_dir(), data_path
     print(f"data_path={data_path}")
 
     # Define the BC config.
     base_config = (
         BCConfig()
+        .api_stack(
+            enable_rl_module_and_learner=True,
+            enable_env_runner_and_connector_v2=True,
+        )
         # Note, the `input_` argument is the major argument for the
         # new offline API. Via the `input_read_method_kwargs` the
         # arguments for the `ray.data.Dataset` read method can be
@@ -223,7 +227,8 @@ if __name__ == "__main__":
             # run an entire epoch on the dataset during a single RLlib training
             # iteration. For single-learner mode 1 is the only option.
             dataset_num_iters_per_learner=1 if args.num_gpus == 0 else None,
-        ).training(
+        )
+        .training(
             train_batch_size_per_learner=1024,
             # To increase learning speed with multiple learners,
             # increase the learning rate correspondingly.
