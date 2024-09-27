@@ -2950,15 +2950,6 @@ py_test(
     args = ["--framework=tf2", "--config=multi-gpu-ddp"]
 )
 
-#@OldAPIStack @HybridAPIStack
-py_test(
-    name = "examples/learners/train_w_bc_finetune_w_ppo",
-    main = "examples/learners/train_w_bc_finetune_w_ppo.py",
-    tags = ["team:rllib", "examples", "exclusive"],
-    size = "medium",
-    srcs = ["examples/learners/train_w_bc_finetune_w_ppo.py"],
-)
-
 # subdirectory: multi_agent/
 # ....................................
 py_test(
@@ -3110,6 +3101,15 @@ py_test(
 
 # subdirectory: offline_rl/
 # ....................................
+
+py_test(
+    name = "examples/offline_rl/train_w_bc_finetune_w_ppo",
+    main = "examples/offline_rl/train_w_bc_finetune_w_ppo.py",
+    tags = ["team:rllib", "examples", "exclusive"],
+    size = "medium",
+    srcs = ["examples/offline_rl/train_w_bc_finetune_w_ppo.py"],
+    args = ["--enable-new-api-stack", "--as-test", "--framework=torch"]
+)
 
 # @HybridAPIStack
 # py_test(
