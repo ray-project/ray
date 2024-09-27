@@ -9,7 +9,7 @@ formatters:
 
 filters:
   console_filter:
-    class: ray.train._internal.logging.HiddenRecordFilter
+    (): ray.train._internal.logging.HiddenRecordFilter
   core_context_filter:
     class: ray._private.ray_logging.filters.CoreContextFilter
 
