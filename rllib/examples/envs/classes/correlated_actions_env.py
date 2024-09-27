@@ -13,7 +13,9 @@ class AutoRegressiveActionEnv(gym.Env):
 
     It gets 0 reward for matching a2 to the random obs times action a1. In all
     other cases the negative deviance between the desired action a2 and its
-    actual counterpart serves as reward.
+    actual counterpart serves as reward. The reward is constructed in such a
+    way that actions need to be correlated to succeed. It is not possible
+    for the network to learn each action head separately.
 
     One way to effectively learn this is through correlated action
     distributions, e.g., in examples/rl_modules/autoregressive_action_rlm.py
