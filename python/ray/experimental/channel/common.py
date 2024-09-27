@@ -102,23 +102,23 @@ class ChannelOutputType:
         """
         raise NotImplementedError
 
-    def requires_nccl(self) -> bool:
+    def requires_communicator(self) -> bool:
         if self._contains_type is not None:
-            if self._contains_type.requires_nccl():
+            if self._contains_type.requires_communicator():
                 return True
 
-        # By default, channels do not require NCCL.
+        # By default, channels do not require communicator.
         return False
 
-    def get_custom_nccl_group(self) -> Optional[GPUCommunicator]:
+    def get_custom_communicator_group(self) -> Optional[GPUCommunicator]:
         """
-        Return the custom NCCL group if one is specified.
+        Return the custom communicator group if one is specified.
         """
         if self._contains_type is not None:
-            return self._contains_type.get_custom_nccl_group()
+            return self._contains_type.get_custom_communicator_group()
         return None
 
-    def set_nccl_group_id(self, group_id: str) -> None:
+    def set_communicator_group_id(self, group_id: str) -> None:
         raise NotImplementedError
 
 
@@ -129,8 +129,8 @@ class ChannelContext:
     _torch_device: Optional["torch.device"] = None
 
     def __init__(self):
-        # Used for the torch.Tensor NCCL transport.
-        self.nccl_groups: Dict[str, "GPUCommunicator"] = {}
+        # Used for the torch.Tensor communicator(i.e.NCCL) transport.
+        self.communicator_groups: Dict[str, "GPUCommunicator"] = {}
 
     @staticmethod
     def get_current() -> "ChannelContext":

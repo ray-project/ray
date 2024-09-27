@@ -477,9 +477,9 @@ def _do_check_has_device(self) -> bool:
 
 def _do_get_unique_communicator_id(self) -> str:
     if 'NPU' in ray.cluster_resources():
-        import numpy as np
+        import uuid
         # NPU doesn't have get_unique_id
-        return np.random.randint(8)
+        return uuid.uuid4()
     else:
         from cupy.cuda import nccl
         return nccl.get_unique_id()
