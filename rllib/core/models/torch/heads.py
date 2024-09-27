@@ -221,7 +221,9 @@ class TorchFreeLogStdMLPHead(TorchModel):
             # Clip the log standard deviation to avoid running into too small
             # deviations that factually collapses the policy.
             log_std = torch.clamp(
-                self.log_std, -self.log_std_clip_param_const, self.log_std_clip_param_const
+                self.log_std,
+                -self.log_std_clip_param_const,
+                self.log_std_clip_param_const,
             )
         else:
             log_std = self.log_std
