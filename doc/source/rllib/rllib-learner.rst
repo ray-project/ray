@@ -243,10 +243,13 @@ Updates
             results = learner_group.update_from_batch(
                 batch=DUMMY_BATCH, async_update=True, timesteps=TIMESTEPS
             )
-            # `results` is an already reduced dict, which is the result of
-            # reducing over the individual async `update_from_batch(..., async_update=True)`
-            # calls.
-            assert isinstance(results, dict), results
+            # `results` is a list of n items (where n is the number of async results collected).
+            assert isinstance(results, list), results
+            # Each item in that list is another list of m items (where m is the number of Learner
+            # workers).
+            assert isinstance(results[0], list), results
+            # Each item in the inner list is a result dict from the Learner worker.
+            assert isinstance(results[0][0], dict), results
 
         When updating a :py:class:`~ray.rllib.core.learner.learner_group.LearnerGroup` you can perform blocking or async updates on batches of data.
         Async updates are necessary for implementing async algorithms such as APPO/IMPALA.

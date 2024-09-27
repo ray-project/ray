@@ -857,6 +857,7 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
                     env_steps_sampled=self.metrics.peek(
                         NUM_ENV_STEPS_SAMPLED_LIFETIME, default=0
                     ),
+                    rl_module_state=rl_module_state,
                 )
 
             if self.offline_data:
