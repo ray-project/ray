@@ -882,8 +882,13 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
 
     def _new_episode(self):
         return MultiAgentEpisode(
-            observation_space=self.env.observation_space,
-            action_space=self.env.action_space,
+            observation_space={
+                aid: self.env.get_observation_space(aid)
+                for aid in self.env.possible_agents
+            },
+            action_space={
+                aid: self.env.get_action_space(aid) for aid in self.env.possible_agents
+            },
             agent_to_module_mapping_fn=self.config.policy_mapping_fn,
         )
 

@@ -58,6 +58,7 @@ class MultiAgentPrioritizedEpisodeReplayBuffer(
     sampled timestep indices).
 
     .. testcode::
+
         import gymnasium as gym
 
         from ray.rllib.env.multi_agent_episode import MultiAgentEpisode
@@ -72,7 +73,7 @@ class MultiAgentPrioritizedEpisodeReplayBuffer(
 
         # Set up the loop variables
         agent_ids = env.agents
-        agent_ids.add("__all__")
+        agent_ids.append("__all__")
         terminateds = {aid: False for aid in agent_ids}
         truncateds = {aid: False for aid in agent_ids}
         num_timesteps = 10000
