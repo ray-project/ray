@@ -431,14 +431,6 @@ class MARWIL(Algorithm):
     def training_step(self) -> ResultDict:
         if self.config.enable_env_runner_and_connector_v2:
             return self._training_step_new_api_stack()
-        elif self.config.enable_rl_module_and_learner:
-            raise ValueError(
-                "`enable_rl_module_and_learner=True`. Hybrid stack is not "
-                "supported for MARWIL. Either use the old stack with "
-                "`ModelV2` or the new stack with `RLModule`. You can enable "
-                "the new stack by setting both, `enable_rl_module_and_learner` "
-                "and `enable_env_runner_and_connector_v2` to `True`."
-            )
         else:
             return self._training_step_old_api_stack()
 
