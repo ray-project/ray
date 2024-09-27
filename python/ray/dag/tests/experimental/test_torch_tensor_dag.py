@@ -21,8 +21,8 @@ from ray.air._internal import torch_utils
 from ray.dag import InputNode, MultiOutputNode
 from ray.exceptions import RayChannelError
 from ray.experimental.channel.torch_tensor_type import TorchTensorType
+from ray.experimental.util.types import ReduceOp
 from ray.tests.conftest import *  # noqa
-from ray.util.collective.nccl_types import ReduceOp
 
 logger = logging.getLogger(__name__)
 

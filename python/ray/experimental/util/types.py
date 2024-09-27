@@ -1,11 +1,14 @@
 from enum import Enum
 
+from ray.util.annotations import DeveloperAPI
 
-class CollectiveOp(Enum):
+
+class _CollectiveOp(Enum):
     pass
 
 
-class ReduceOp(CollectiveOp):
+@DeveloperAPI
+class ReduceOp(_CollectiveOp):
     SUM = 0
     PRODUCT = 1
     MAX = 2

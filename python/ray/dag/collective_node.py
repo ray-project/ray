@@ -16,10 +16,10 @@ from ray.dag.constants import (
 )
 from ray.dag.format_utils import get_dag_node_str
 from ray.util.annotations import DeveloperAPI
-from ray.util.collective.nccl_types import CollectiveOp, ReduceOp
 from ray.experimental.channel import ChannelContext
 from ray.experimental.channel.torch_tensor_nccl_channel import _init_nccl_group
 from ray.experimental.channel.torch_tensor_type import GPUCommunicator, TorchTensorType
+from ray.experimental.util.types import _CollectiveOp, ReduceOp
 
 
 class _CollectiveGroup:
@@ -28,7 +28,7 @@ class _CollectiveGroup:
     def __init__(
         self,
         input_nodes: List[DAGNode],
-        op: CollectiveOp,
+        op: _CollectiveOp,
         transport: Union[str, GPUCommunicator] = TorchTensorType.NCCL,
     ):
         self._input_nodes: List[DAGNode] = input_nodes
