@@ -38,7 +38,7 @@ class GcsTaskManagerTest : public ::testing::Test {
   }
 
   virtual void SetUp() {
-    io_context_ = std::make_unique<InstrumentedIoContextWithThread>("GcsTaskManagerTest");
+    io_context_ = std::make_unique<InstrumentedIOContextWithThread>("GcsTaskManagerTest");
     task_manager = std::make_unique<GcsTaskManager>(io_context_->GetIoService());
   }
 
@@ -282,7 +282,7 @@ class GcsTaskManagerTest : public ::testing::Test {
   }
 
   std::unique_ptr<GcsTaskManager> task_manager = nullptr;
-  std::unique_ptr<InstrumentedIoContextWithThread> io_context_ = nullptr;
+  std::unique_ptr<InstrumentedIOContextWithThread> io_context_ = nullptr;
 };
 
 class GcsTaskManagerMemoryLimitedTest : public GcsTaskManagerTest {

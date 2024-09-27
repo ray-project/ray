@@ -47,41 +47,92 @@ from ray.tune.logger import Logger
 class MARWILConfig(AlgorithmConfig):
     """Defines a configuration class from which a MARWIL Algorithm can be built.
 
+    .. testcode::
 
-    Example:
-        >>> from ray.rllib.algorithms.marwil import MARWILConfig
-        >>> # Run this from the ray directory root.
-        >>> config = MARWILConfig()  # doctest: +SKIP
-        >>> config = config.training(beta=1.0, lr=0.00001, gamma=0.99)  # doctest: +SKIP
-        >>> config = config.offline_data(  # doctest: +SKIP
-        ...     input_=["./rllib/tests/data/cartpole/large.json"])
-        >>> print(config.to_dict()) # doctest: +SKIP
-        ...
-        >>> # Build an Algorithm object from the config and run 1 training iteration.
-        >>> algo = config.build()  # doctest: +SKIP
-        >>> algo.train() # doctest: +SKIP
+        from pathlib import Path
+        from ray.rllib.algorithms.marwil import MARWILConfig
 
-    Example:
-        >>> from ray.rllib.algorithms.marwil import MARWILConfig
-        >>> from ray import tune
-        >>> config = MARWILConfig()
-        >>> # Print out some default values.
-        >>> print(config.beta)  # doctest: +SKIP
-        >>> # Update the config object.
-        >>> config.training(lr=tune.grid_search(  # doctest: +SKIP
-        ...     [0.001, 0.0001]), beta=0.75)
-        >>> # Set the config object's data path.
-        >>> # Run this from the ray directory root.
-        >>> config.offline_data( # doctest: +SKIP
-        ...     input_=["./rllib/tests/data/cartpole/large.json"])
-        >>> # Set the config object's env, used for evaluation.
-        >>> config.environment(env="CartPole-v1")  # doctest: +SKIP
-        >>> # Use to_dict() to get the old-style python config dict
-        >>> # when running with tune.
-        >>> tune.Tuner(  # doctest: +SKIP
-        ...     "MARWIL",
-        ...     param_space=config.to_dict(),
-        ... ).fit()
+        # Get the base path (to ray/rllib)
+        base_path = Path(__file__).parents[2]
+        # Get the path to the data in rllib folder.
+        data_path = base_path / "tests/data/cartpole/cartpole-v1_large"
+
+        config = MARWILConfig()
+        # Enable the new API stack.
+        config.api_stack(
+            enable_rl_module_and_learner=True,
+            enable_env_runner_and_connector_v2=True,
+        )
+        # Define the environment for which to learn a policy
+        # from offline data.
+        config.environment("CartPole-v1")
+        # Set the training parameters.
+        config.training(
+            beta=1.0,
+            lr=1e-5,
+            gamma=0.99,
+            # We must define a train batch size for each
+            # learner (here 1 local learner).
+            train_batch_size_per_learner=2000,
+        )
+        # Define the data source for offline data.
+        config.offline_data(
+            input_=[data_path.as_posix()],
+            # Run exactly one update per training iteration.
+            dataset_num_iters_per_learner=1,
+        )
+
+        # Build an `Algorithm` object from the config and run 1 training
+        # iteration.
+        algo = config.build()
+        algo.train()
+
+    .. testcode::
+
+        from pathlib import Path
+        from ray.rllib.algorithms.marwil import MARWILConfig
+        from ray import train, tune
+
+        # Get the base path (to ray/rllib)
+        base_path = Path(__file__).parents[2]
+        # Get the path to the data in rllib folder.
+        data_path = base_path / "tests/data/cartpole/cartpole-v1_large"
+
+        config = MARWILConfig()
+        # Enable the new API stack.
+        config.api_stack(
+            enable_rl_module_and_learner=True,
+            enable_env_runner_and_connector_v2=True,
+        )
+        # Print out some default values
+        print(f"beta: {config.beta}")
+        # Update the config object.
+        config.training(
+            lr=tune.grid_search([1e-3, 1e-4]),
+            beta=0.75,
+            # We must define a train batch size for each
+            # learner (here 1 local learner).
+            train_batch_size_per_learner=2000,
+        )
+        # Set the config's data path.
+        config.offline_data(
+            input_=[data_path.as_posix()],
+            # Set the number of updates to be run per learner
+            # per training step.
+            dataset_num_iters_per_learner=1,
+        )
+        # Set the config's environment for evalaution.
+        config.environment(env="CartPole-v1")
+        # Set up a tuner to run the experiment.
+        tuner = tune.Tuner(
+            "MARWIL",
+            param_space=config,
+            run_config=train.RunConfig(
+                stop={"training_iteration": 1},
+            ),
+        )
+        # Run the experiment.
+        tuner.fit()
     """
 
     def __init__(self, algo_class=None):
@@ -126,6 +177,18 @@ class MARWILConfig(AlgorithmConfig):
             "type": "StochasticSampling",
             # Add constructor kwargs here (if any).
         }
+
+        # Materialize only the data in raw format, but not the mapped data b/c
+        # MARWIL uses a connector to calculate values and therefore the module
+        # needs to be updated frequently. This updating would not work if we
+        # map the data once at the beginning.
+        # TODO (simon, sven): The module is only updated when the OfflinePreLearner
+        #   gets reinitiated, i.e. when the iterator gets reinitiated. This happens
+        #   frequently enough with a small dataset, but with a big one this does not
+        #   update often enough. We might need to put model weigths every couple of
+        #   iterations into the object storage (maybe also connector states).
+        self.materialize_data = True
+        self.materialize_mapped_data = False
         # __sphinx_doc_end__
         # fmt: on
         self._set_off_policy_estimation_methods = False
@@ -150,11 +213,12 @@ class MARWILConfig(AlgorithmConfig):
                 see bc.py algorithm in this same directory.
             bc_logstd_coeff: A coefficient to encourage higher action distribution
                 entropy for exploration.
+            moving_average_sqd_adv_norm_update_rate: The rate for updating the
+                squared moving average advantage norm (c^2). A higher rate leads
+                to faster updates of this moving avergage.
             moving_average_sqd_adv_norm_start: Starting value for the
                 squared moving average advantage norm (c^2).
             vf_coeff: Balancing value estimation loss and policy optimization loss.
-                moving_average_sqd_adv_norm_update_rate: Update rate for the
-                squared moving average advantage norm (c^2).
             grad_clip: If specified, clip the global norm of gradients by this amount.
 
         Returns:
@@ -446,6 +510,11 @@ class MARWIL(Algorithm):
         return self.metrics.reduce()
 
     def _training_step_old_api_stack(self) -> ResultDict:
+        """Implements training step for the old stack.
+
+        Note, there is no hybrid stack anymore. If you need to use `RLModule`s,
+        use the new api stack.
+        """
         # Collect SampleBatches from sample workers.
         with self._timers[SAMPLE_TIMER]:
             train_batch = synchronous_parallel_sample(worker_set=self.env_runner_group)

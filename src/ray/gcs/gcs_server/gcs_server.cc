@@ -276,6 +276,9 @@ void GcsServer::Stop() {
     kv_io_context_.Stop();
     pubsub_io_context_.Stop();
 
+    ray_syncer_.reset();
+    pubsub_handler_.reset();
+
     // Shutdown the rpc server
     rpc_server_.Shutdown();
 
@@ -574,7 +577,8 @@ void GcsServer::InitKVManager() {
     RAY_LOG(FATAL) << "Unexpected storage type! " << storage_type_;
   }
 
-  kv_manager_ = std::make_unique<GcsInternalKVManager>(std::move(instance));
+  kv_manager_ = std::make_unique<GcsInternalKVManager>(std::move(instance),
+                                                       config_.raylet_config_list);
 }
 
 void GcsServer::InitKVService() {

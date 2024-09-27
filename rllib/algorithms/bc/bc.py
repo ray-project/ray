@@ -2,7 +2,6 @@ from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.algorithms.bc.bc_catalog import BCCatalog
 from ray.rllib.algorithms.marwil.marwil import MARWIL, MARWILConfig
 from ray.rllib.core.rl_module.rl_module import RLModuleSpec
-from ray.rllib.offline.offline_prelearner import OfflinePreLearner
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.typing import ResultDict, RLModuleSpecType
 
@@ -61,11 +60,10 @@ class BCConfig(MARWILConfig):
         # not important for behavioral cloning.
         self.postprocess_inputs = False
 
-        # Set the offline prelearner to the default one. Note, MARWIL's
-        # specified offline prelearner requests a value function that
-        # BC does not have. Furthermore, MARWIL's prelearner calculates
-        # advantages unneeded for BC.
-        self.prelearner_class = OfflinePreLearner
+        # Materialize only the mapped data. This is optimal as long
+        # as no connector in the connector pipeline holds a state.
+        self.materialize_data = False
+        self.materialize_mapped_data = True
         # __sphinx_doc_end__
         # fmt: on
 

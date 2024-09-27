@@ -50,6 +50,7 @@ config = (
     .offline_data(
         input_=[data_path],
         input_read_method_kwargs={"override_num_blocks": max(args.num_gpus, 1)},
+        dataset_num_iters_per_learner=1 if args.num_gpus == 0 else None,
     )
     .training(
         # To increase learning speed with multiple learners,
