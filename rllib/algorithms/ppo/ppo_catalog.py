@@ -180,7 +180,7 @@ class PPOCatalog(Catalog):
             output_layer_dim=required_output_dim,
             output_layer_activation="linear",
             clip_log_std=is_diag_gaussian,
-            log_std_clip_param=self._model_config_dict["log_std_clip_param"],
+            log_std_clip_param=self._model_config_dict.get("log_std_clip_param", 20),
         )
 
         return self.pi_head_config.build(framework=framework)
