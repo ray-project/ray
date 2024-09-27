@@ -12,6 +12,7 @@ import numpy as np
 import os
 from packaging import version
 import pathlib
+import pyarrow.fs
 import re
 import tempfile
 import time
@@ -305,6 +306,7 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
     def from_checkpoint(
         cls,
         path: Optional[Union[str, Checkpoint]] = None,
+        filesystem: Optional["pyarrow.fs.FileSystem"] = None,
         *,
         # @OldAPIStack
         policy_ids: Optional[Collection[PolicyID]] = None,
@@ -324,6 +326,8 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
         Args:
             path: The path (str) to the checkpoint directory to use
                 or an AIR Checkpoint instance to restore from.
+            filesystem: PyArrow FileSystem to use to access data at the `path`. If not
+                specified, this is inferred from the URI scheme of `path`.
             policy_ids: Optional list of PolicyIDs to recover. This allows users to
                 restore an Algorithm with only a subset of the originally present
                 Policies.
@@ -371,7 +375,7 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
             )
         # New API stack -> Use Checkpointable's default implementation.
         elif checkpoint_info["checkpoint_version"] >= version.Version("2.0"):
-            return super().from_checkpoint(path, **kwargs)
+            return super().from_checkpoint(path, filesystem=filesystem, **kwargs)
 
         # This is a msgpack checkpoint.
         if checkpoint_info["format"] == "msgpack":
@@ -455,7 +459,7 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
                 object. If unspecified, a default logger is created.
             **kwargs: Arguments passed to the Trainable base class.
         """
-        config = config or self.get_default_config()
+        config = config  # or self.get_default_config()
 
         # Translate possible dict into an AlgorithmConfig object, as well as,
         # resolving generic config objects into specific ones (e.g. passing
@@ -466,15 +470,22 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
             # `self.get_default_config()` also returned a dict ->
             # Last resort: Create core AlgorithmConfig from merged dicts.
             if isinstance(default_config, dict):
-                config = AlgorithmConfig.from_dict(
-                    config_dict=self.merge_algorithm_configs(
-                        default_config, config, True
+                if "class" in config:
+                    AlgorithmConfig.from_state(config)
+                else:
+                    config = AlgorithmConfig.from_dict(
+                        config_dict=self.merge_algorithm_configs(
+                            default_config, config, True
+                        )
                     )
-                )
+
             # Default config is an AlgorithmConfig -> update its properties
             # from the given config dict.
             else:
-                config = default_config.update_from_dict(config)
+                if isinstance(config, dict) and "class" in config:
+                    config = default_config.from_state(config)
+                else:
+                    config = default_config.update_from_dict(config)
         else:
             default_config = self.get_default_config()
             # Given AlgorithmConfig is not of the same type as the default config:
@@ -482,6 +493,8 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
             # generic AlgorithmConfig() object.
             if not isinstance(config, type(default_config)):
                 config = default_config.update_from_dict(config.to_dict())
+            else:
+                config = default_config.from_state(config.get_state())
 
         # In case this algo is using a generic config (with no algo_class set), set it
         # here.
@@ -2899,7 +2912,7 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
     @override(Checkpointable)
     def get_ctor_args_and_kwargs(self) -> Tuple[Tuple, Dict[str, Any]]:
         return (
-            (self.config,),  # *args,
+            (self.config.get_state(),),  # *args,
             {},  # **kwargs
         )
 
@@ -3296,7 +3309,7 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
         # Add config to state so complete Algorithm can be reproduced w/o it.
         state = {
             "algorithm_class": type(self),
-            "config": self.config,
+            "config": self.config.get_state(),
         }
 
         if hasattr(self, "env_runner_group"):
@@ -3437,7 +3450,8 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
 
         with open(checkpoint_info["state_file"], "rb") as f:
             if msgpack is not None:
-                state = msgpack.load(f)
+                data = f.read()
+                state = msgpack.unpackb(data, raw=False)
             else:
                 state = pickle.load(f)
 

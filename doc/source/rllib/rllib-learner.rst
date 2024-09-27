@@ -10,6 +10,7 @@
     :class: inline-figure
     :width: 16
 
+.. _learner-guide:
 
 Learner (Alpha)
 ===============
@@ -319,12 +320,12 @@ Getting and setting state
 
 
 .. testcode::
-	:hide:
+    :hide:
 
-	import tempfile
+    import tempfile
 
-	LEARNER_CKPT_DIR = str(tempfile.TemporaryDirectory())
-	LEARNER_GROUP_CKPT_DIR = str(tempfile.TemporaryDirectory())
+    LEARNER_CKPT_DIR = tempfile.mkdtemp()
+    LEARNER_GROUP_CKPT_DIR = tempfile.mkdtemp()
 
 
 Checkpointing
