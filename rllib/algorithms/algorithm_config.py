@@ -716,7 +716,7 @@ class AlgorithmConfig(_Config):
             if key == TRIAL_INFO:
                 continue
 
-            if key in ["_enable_new_api_stack", "enable_rl_module_and_learner"]:
+            if key in ["_enable_new_api_stack"]:
                 # We've dealt with this above.
                 continue
             # Set our multi-agent settings.
@@ -3436,9 +3436,8 @@ class AlgorithmConfig(_Config):
             deprecation_warning(
                 old="config.experimental(_enable_new_api_stack=...)",
                 new="config.api_stack(enable_rl_module_and_learner=...)",
-                error=False,
+                error=True,
             )
-            self.api_stack(enable_rl_module_and_learner=_enable_new_api_stack)
 
         if _tf_policy_handles_more_than_one_loss is not NotProvided:
             self._tf_policy_handles_more_than_one_loss = (
@@ -5064,9 +5063,8 @@ class AlgorithmConfig(_Config):
         deprecation_warning(
             old="AlgorithmConfig._enable_new_api_stack",
             new="AlgorithmConfig.enable_rl_module_and_learner",
-            error=False,
+            error=True,
         )
-        self.enable_rl_module_and_learner = value
 
     @property
     @Deprecated(new="AlgorithmConfig.enable_env_runner_and_connector_v2", error=True)

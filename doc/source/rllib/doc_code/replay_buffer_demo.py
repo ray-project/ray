@@ -15,13 +15,31 @@ from ray.rllib.algorithms.dqn.dqn import DQNConfig
 
 
 # __sphinx_doc_replay_buffer_type_specification__begin__
-config = DQNConfig().training(replay_buffer_config={"type": ReplayBuffer})
+config = (
+    DQNConfig()
+    .api_stack(
+        enable_env_runner_and_connector_v2=False, enable_rl_module_and_learner=False
+    )
+    .training(replay_buffer_config={"type": ReplayBuffer})
+)
 
-another_config = DQNConfig().training(replay_buffer_config={"type": "ReplayBuffer"})
+another_config = (
+    DQNConfig()
+    .api_stack(
+        enable_env_runner_and_connector_v2=False, enable_rl_module_and_learner=False
+    )
+    .training(replay_buffer_config={"type": "ReplayBuffer"})
+)
 
 
-yet_another_config = DQNConfig().training(
-    replay_buffer_config={"type": "ray.rllib.utils.replay_buffers.ReplayBuffer"}
+yet_another_config = (
+    DQNConfig()
+    .api_stack(
+        enable_env_runner_and_connector_v2=False, enable_rl_module_and_learner=False
+    )
+    .training(
+        replay_buffer_config={"type": "ray.rllib.utils.replay_buffers.ReplayBuffer"}
+    )
 )
 
 validate_buffer_config(config)
@@ -75,13 +93,16 @@ class LessSampledReplayBuffer(ReplayBuffer):
 
 config = (
     DQNConfig()
-    .training(replay_buffer_config={"type": LessSampledReplayBuffer})
+    .api_stack(
+        enable_env_runner_and_connector_v2=False, enable_rl_module_and_learner=False
+    )
     .environment(env="CartPole-v1")
+    .training(replay_buffer_config={"type": LessSampledReplayBuffer})
 )
 
 tune.Tuner(
     "DQN",
-    param_space=config.to_dict(),
+    param_space=config,
     run_config=air.RunConfig(
         stop={"training_iteration": 1},
     ),
@@ -127,6 +148,9 @@ assert len(less_sampled_buffer._storage) == 0
 # __sphinx_doc_replay_buffer_advanced_usage_underlying_buffers__begin__
 config = (
     DQNConfig()
+    .api_stack(
+        enable_env_runner_and_connector_v2=False, enable_rl_module_and_learner=False
+    )
     .training(
         replay_buffer_config={
             "type": "MultiAgentReplayBuffer",
