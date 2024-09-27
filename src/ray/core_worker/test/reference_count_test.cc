@@ -828,7 +828,7 @@ TEST(MemoryStoreIntegrationTest, TestSimple) {
       rpc::Address(), publisher.get(), subscriber.get(), [](const NodeID &node_id) {
         return true;
       }));
-  CoreWorkerMemoryStore store(rc);
+  CoreWorkerMemoryStore store(nullptr, rc);
 
   // Tests putting an object with no references is ignored.
   RAY_CHECK(store.Put(buffer, id2));

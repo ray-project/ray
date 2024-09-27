@@ -148,17 +148,29 @@ std::shared_ptr<RayObject> GetRequest::Get(const ObjectID &object_id) const {
 }
 
 CoreWorkerMemoryStore::CoreWorkerMemoryStore(
+    instrumented_io_context *io_context,
     std::shared_ptr<ReferenceCounter> counter,
     std::shared_ptr<raylet::RayletClient> raylet_client,
     std::function<Status()> check_signals,
     std::function<void(const RayObject &)> unhandled_exception_handler,
     std::function<std::shared_ptr<ray::RayObject>(
         const ray::RayObject &object, const ObjectID &object_id)> object_allocator)
-    : ref_counter_(std::move(counter)),
+    : owned_io_context_with_thread_(
+          io_context == nullptr ? std::make_unique<InstrumentedIOContextWithThread>(
+                                      "TestOnly.CoreWorkerMemoryStore")
+                                : nullptr),
+      io_context_(io_context == nullptr ? owned_io_context_with_thread_->GetIoService()
+                                        : *io_context),
+      ref_counter_(std::move(counter)),
       raylet_client_(raylet_client),
       check_signals_(check_signals),
       unhandled_exception_handler_(unhandled_exception_handler),
-      object_allocator_(std::move(object_allocator)) {}
+      object_allocator_(std::move(object_allocator)) {
+  if (owned_io_context_with_thread_) {
+    RAY_LOG(WARNING) << "io_context not provided to CoreWorkerMemoryStore! This should "
+                        "only happen in cpp tests.";
+  }
+}
 
 void CoreWorkerMemoryStore::GetAsync(
     const ObjectID &object_id, std::function<void(std::shared_ptr<RayObject>)> callback) {
@@ -177,7 +189,8 @@ void CoreWorkerMemoryStore::GetAsync(
   }
   // It's important for performance to run the callback outside the lock.
   if (ptr != nullptr) {
-    callback(ptr);
+    io_context_.post([callback, ptr]() { callback(ptr); },
+                     "CoreWorkerMemoryStore.GetAsync");
   }
 }
 
@@ -256,9 +269,13 @@ bool CoreWorkerMemoryStore::Put(const RayObject &object, const ObjectID &object_
   }
 
   // It's important for performance to run the callbacks outside the lock.
-  for (const auto &cb : async_callbacks) {
-    cb(object_entry);
-  }
+  io_context_.post(
+      [async_callbacks, object_entry]() {
+        for (const auto &cb : async_callbacks) {
+          cb(object_entry);
+        }
+      },
+      "CoreWorkerMemoryStore.Put.async_callbacks");
 
   return true;
 }

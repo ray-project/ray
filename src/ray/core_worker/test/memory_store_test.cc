@@ -41,7 +41,9 @@ TEST(TestMemoryStore, TestReportUnhandledErrors) {
 
   std::shared_ptr<CoreWorkerMemoryStore> provider =
       std::make_shared<CoreWorkerMemoryStore>(
-          nullptr, nullptr, nullptr, [&](const RayObject &obj) { unhandled_count++; });
+          nullptr, nullptr, nullptr, nullptr, [&](const RayObject &obj) {
+            unhandled_count++;
+          });
   RayObject obj1(rpc::ErrorType::TASK_EXECUTION_EXCEPTION);
   RayObject obj2(rpc::ErrorType::TASK_EXECUTION_EXCEPTION);
   auto id1 = ObjectID::FromRandom();
@@ -79,7 +81,8 @@ TEST(TestMemoryStore, TestReportUnhandledErrors) {
 TEST(TestMemoryStore, TestMemoryStoreStats) {
   /// Simple validation for test memory store stats.
   std::shared_ptr<CoreWorkerMemoryStore> provider =
-      std::make_shared<CoreWorkerMemoryStore>(nullptr, nullptr, nullptr, nullptr);
+      std::make_shared<CoreWorkerMemoryStore>(
+          nullptr, nullptr, nullptr, nullptr, nullptr);
 
   // Iterate through the memory store and compare the values that are obtained by
   // GetMemoryStoreStatisticalData.
@@ -192,7 +195,7 @@ TEST(TestMemoryStore, TestObjectAllocator) {
   };
   std::shared_ptr<CoreWorkerMemoryStore> memory_store =
       std::make_shared<CoreWorkerMemoryStore>(
-          nullptr, nullptr, nullptr, nullptr, std::move(my_object_allocator));
+          nullptr, nullptr, nullptr, nullptr, nullptr, std::move(my_object_allocator));
   const int32_t max_rounds = 1000;
   const std::string hello = "hello";
   for (auto i = 0; i < max_rounds; ++i) {
