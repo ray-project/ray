@@ -375,6 +375,90 @@ class RoundRobinMultiAgent(MultiAgentEnv):
         return obs, rew, terminated, truncated, info
 
 
+class NestedMultiAgentEnv(MultiAgentEnv):
+    DICT_SPACE = gym.spaces.Dict(
+        {
+            "sensors": gym.spaces.Dict(
+                {
+                    "position": gym.spaces.Box(low=-100, high=100, shape=(3,)),
+                    "velocity": gym.spaces.Box(low=-1, high=1, shape=(3,)),
+                    "front_cam": gym.spaces.Tuple(
+                        (
+                            gym.spaces.Box(low=0, high=1, shape=(10, 10, 3)),
+                            gym.spaces.Box(low=0, high=1, shape=(10, 10, 3)),
+                        )
+                    ),
+                    "rear_cam": gym.spaces.Box(low=0, high=1, shape=(10, 10, 3)),
+                }
+            ),
+            "inner_state": gym.spaces.Dict(
+                {
+                    "charge": gym.spaces.Discrete(100),
+                    "job_status": gym.spaces.Dict(
+                        {
+                            "task": gym.spaces.Discrete(5),
+                            "progress": gym.spaces.Box(low=0, high=100, shape=()),
+                        }
+                    ),
+                }
+            ),
+        }
+    )
+    TUPLE_SPACE = gym.spaces.Tuple(
+        [
+            gym.spaces.Box(low=-100, high=100, shape=(3,)),
+            gym.spaces.Tuple(
+                (
+                    gym.spaces.Box(low=0, high=1, shape=(10, 10, 3)),
+                    gym.spaces.Box(low=0, high=1, shape=(10, 10, 3)),
+                )
+            ),
+            gym.spaces.Discrete(5),
+        ]
+    )
+
+    def __init__(self):
+        super().__init__()
+        self.observation_space = gym.spaces.Dict(
+            {"dict_agent": self.DICT_SPACE, "tuple_agent": self.TUPLE_SPACE}
+        )
+        self.action_space = gym.spaces.Dict(
+            {
+                "dict_agent": gym.spaces.Discrete(1),
+                "tuple_agent": gym.spaces.Discrete(1),
+            }
+        )
+        self._agent_ids = {"dict_agent", "tuple_agent"}
+        self.steps = 0
+        self.DICT_SAMPLES = [self.DICT_SPACE.sample() for _ in range(10)]
+        self.TUPLE_SAMPLES = [self.TUPLE_SPACE.sample() for _ in range(10)]
+
+    def reset(self, *, seed=None, options=None):
+        self.steps = 0
+        return {
+            "dict_agent": self.DICT_SAMPLES[0],
+            "tuple_agent": self.TUPLE_SAMPLES[0],
+        }, {}
+
+    def step(self, actions):
+        self.steps += 1
+        obs = {
+            "dict_agent": self.DICT_SAMPLES[self.steps],
+            "tuple_agent": self.TUPLE_SAMPLES[self.steps],
+        }
+        rew = {
+            "dict_agent": 0,
+            "tuple_agent": 0,
+        }
+        terminateds = {"__all__": self.steps >= 5}
+        truncateds = {"__all__": self.steps >= 5}
+        infos = {
+            "dict_agent": {},
+            "tuple_agent": {},
+        }
+        return obs, rew, terminateds, truncateds, infos
+
+
 class TestMultiAgentEnv(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
