@@ -4952,7 +4952,10 @@ class AlgorithmConfig(_Config):
                         and env_unwrapped.possible_agents
                         else env_unwrapped.get_agent_ids()
                     )
-                    one_obs_space = env_unwrapped.get_observation_space(aids[0])
+                    if len(aids) == 0:
+                        one_obs_space = env_unwrapped.observation_space
+                    else:
+                        one_obs_space = env_unwrapped.get_observation_space(aids[0])
                     # If all obs spaces are the same, just use the first space.
                     if all(
                         env_unwrapped.get_observation_space(aid) == one_obs_space
@@ -5012,7 +5015,10 @@ class AlgorithmConfig(_Config):
                         and env_unwrapped.possible_agents
                         else env_unwrapped.get_agent_ids()
                     )
-                    one_act_space = env_unwrapped.get_action_space(aids[0])
+                    if len(aids) == 0:
+                        one_act_space = env_unwrapped.action_space
+                    else:
+                        one_act_space = env_unwrapped.get_action_space(aids[0])
                     # If all obs spaces are the same, just use the first space.
                     if all(
                         env_unwrapped.get_action_space(aid) == one_act_space

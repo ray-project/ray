@@ -254,6 +254,8 @@ class MultiAgentEnv(gym.Env):
     @OldAPIStack
     @Deprecated(new="MultiAgentEnv.possible_agents", error=False)
     def get_agent_ids(self) -> Set[AgentID]:
+        if not hasattr(self, "_agent_ids"):
+            self._agent_ids = set()
         if not isinstance(self._agent_ids, set):
             self._agent_ids = set(self._agent_ids)
         # Make this backward compatible as much as possible.
