@@ -9,7 +9,7 @@ formatters:
 
 filters:
   console_filter:
-    (): ray.train._internal.logging.HiddenRecordFilter
+    class: ray.train._internal.logging.HiddenRecordFilter
   core_context_filter:
     class: ray._private.ray_logging.filters.CoreContextFilter
 
@@ -31,10 +31,6 @@ handlers:
 
 loggers:
   ray.train:
-    level: DEBUG
-    handlers: [file, console]
-    propagate: False
-  ray.air.util.tensor_extensions:
     level: DEBUG
     handlers: [file, console]
     propagate: False
