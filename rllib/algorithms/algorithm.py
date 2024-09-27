@@ -857,6 +857,7 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
                     env_steps_sampled=self.metrics.peek(
                         NUM_ENV_STEPS_SAMPLED_LIFETIME, default=0
                     ),
+                    rl_module_state=rl_module_state,
                 )
 
             if self.offline_data:
@@ -1003,7 +1004,7 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
                 self._remote_worker_ids_for_metrics(),
                 timeout_seconds=self.config.metrics_episode_collection_timeout_s,
             )
-            results = self._compile_iteration_results_old_and_hybrid_api_stacks(
+            results = self._compile_iteration_results_old_api_stack(
                 episodes_this_iter=episodes_this_iter,
                 step_ctx=train_iter_ctx,
                 iteration_results={**train_results, **eval_results},
@@ -1708,7 +1709,7 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
         if not self.config.enable_env_runner_and_connector_v2:
             raise NotImplementedError(
                 "The `Algorithm.training_step()` default implementation no longer "
-                "supports the old or hybrid API stacks! If you would like to continue "
+                "supports the old API stack! If you would like to continue "
                 "using these "
                 "old APIs with this default `training_step`, simply subclass "
                 "`Algorithm` and override its `training_step` method (copy/paste the "
@@ -2404,12 +2405,12 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
                 Callable[[PolicyID, Optional[SampleBatchType]], bool],
             ]
         ] = None,
-        add_to_learners: bool = True,
         add_to_env_runners: bool = True,
         add_to_eval_env_runners: bool = True,
         module_spec: Optional[RLModuleSpec] = None,
         # Deprecated arg.
         evaluation_workers=DEPRECATED_VALUE,
+        add_to_learners=DEPRECATED_VALUE,
     ) -> Optional[Policy]:
         """Adds a new policy to this Algorithm.
 
@@ -2442,9 +2443,6 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
                 If None, will keep the existing setup in place. Policies,
                 whose IDs are not in the list (or for which the callable
                 returns False) will not be updated.
-            add_to_learners: Whether to add the new RLModule to the LearnerGroup
-                (with its n Learners). This setting is only valid on the hybrid-API
-                stack (with Learners, but w/o EnvRunners).
             add_to_env_runners: Whether to add the new RLModule to the EnvRunnerGroup
                 (with its m EnvRunners plus the local one).
             add_to_eval_env_runners: Whether to add the new RLModule to the eval
@@ -2469,6 +2467,12 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
             deprecation_warning(
                 old="Algorithm.add_policy(evaluation_workers=...)",
                 new="Algorithm.add_policy(add_to_eval_env_runners=...)",
+                error=True,
+            )
+        if add_to_learners != DEPRECATED_VALUE:
+            deprecation_warning(
+                old="Algorithm.add_policy(add_to_learners=..)",
+                help="Hybrid API stack no longer supported by RLlib!",
                 error=True,
             )
 
@@ -2544,11 +2548,11 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
                 Callable[[PolicyID, Optional[SampleBatchType]], bool],
             ]
         ] = None,
-        remove_from_learners: bool = True,
         remove_from_env_runners: bool = True,
         remove_from_eval_env_runners: bool = True,
         # Deprecated args.
         evaluation_workers=DEPRECATED_VALUE,
+        remove_from_learners=DEPRECATED_VALUE,
     ) -> None:
         """Removes a policy from this Algorithm.
 
@@ -2564,9 +2568,6 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
                 If None, will keep the existing setup in place. Policies,
                 whose IDs are not in the list (or for which the callable
                 returns False) will not be updated.
-            remove_from_learners: Whether to remove the Policy from the LearnerGroup
-                (with its n Learners). Only valid on the hybrid API stack (w/ Learners,
-                but w/o EnvRunners).
             remove_from_env_runners: Whether to remove the Policy from the
                 EnvRunnerGroup (with its m EnvRunners plus the local one).
             remove_from_eval_env_runners: Whether to remove the RLModule from the eval
@@ -2579,6 +2580,12 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
                 error=False,
             )
             remove_from_eval_env_runners = evaluation_workers
+        if remove_from_learners != DEPRECATED_VALUE:
+            deprecation_warning(
+                old="Algorithm.remove_policy(remove_from_learners=..)",
+                help="Hybrid API stack no longer supported by RLlib!",
+                error=True,
+            )
 
         def fn(worker):
             worker.remove_policy(
@@ -2768,6 +2775,9 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
             and self.config.enable_env_runner_and_connector_v2
         ):
             self.restore_from_path(checkpoint_dir)
+
+            # Call the `on_checkpoint_loaded` callback.
+            self.callbacks.on_checkpoint_loaded(algorithm=self)
             return
 
         # Checkpoint is provided as a local directory.
@@ -2775,20 +2785,6 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
         checkpoint_info = get_checkpoint_info(checkpoint_dir)
         checkpoint_data = Algorithm._checkpoint_info_to_algorithm_state(checkpoint_info)
         self.__setstate__(checkpoint_data)
-        if self.config.enable_rl_module_and_learner:
-            # We restore the LearnerGroup from a "learner" subdir. Note that this is not
-            # in line with the new Checkpointable API, but makes this case backward
-            # compatible. The new Checkpointable API is only strictly applied anyways
-            # to the new API stack.
-            learner_group_state_dir = os.path.join(checkpoint_dir, "learner")
-            self.learner_group.restore_from_path(learner_group_state_dir)
-            # Make also sure, all (training) EnvRunners get the just loaded weights, but
-            # only the inference-only ones.
-            self.env_runner_group.sync_weights(
-                from_worker_or_learner_group=self.learner_group,
-                inference_only=True,
-            )
-
         # Call the `on_checkpoint_loaded` callback.
         self.callbacks.on_checkpoint_loaded(algorithm=self)
 
@@ -3901,7 +3897,7 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
         )
 
     @OldAPIStack
-    def _compile_iteration_results_old_and_hybrid_api_stacks(
+    def _compile_iteration_results_old_api_stack(
         self, *, episodes_this_iter, step_ctx, iteration_results
     ):
         # Results to be returned.

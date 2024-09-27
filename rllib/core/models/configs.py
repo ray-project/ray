@@ -976,12 +976,8 @@ class RecurrentEncoderConfig(ModelConfig):
             underscore "_" are allowed.
         hidden_bias_initializer_config: Configuration to pass into the initializer
             defined in `hidden_bias_initializer`.
-        view_requirements_dict: The view requirements to use if anything else than
-            observation_space or action_space is to be encoded. This signifies an
-            advanced use case.
         tokenizer_config: A ModelConfig to build tokenizers for observations,
-            actions and other spaces that might be present in the
-            view_requirements_dict.
+            actions and other spaces.
     """
 
     recurrent_layer_type: str = "lstm"

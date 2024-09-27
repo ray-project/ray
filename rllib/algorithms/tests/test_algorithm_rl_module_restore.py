@@ -36,7 +36,7 @@ class TestAlgorithmRLModuleRestore(unittest.TestCase):
 
     @staticmethod
     def get_ppo_config(num_agents=NUM_AGENTS):
-        def policy_mapping_fn(agent_id, episode, worker, **kwargs):
+        def policy_mapping_fn(agent_id, episode, **kwargs):
             # policy_id is policy_i where i is the agent id
             pol_id = f"policy_{agent_id}"
             return pol_id
@@ -50,7 +50,10 @@ class TestAlgorithmRLModuleRestore(unittest.TestCase):
 
         config = (
             PPOConfig()
-            .api_stack(enable_rl_module_and_learner=True)
+            .api_stack(
+                enable_rl_module_and_learner=True,
+                enable_env_runner_and_connector_v2=True,
+            )
             .env_runners(rollout_fragment_length=4)
             .learners(**scaling_config)
             .environment(MultiAgentCartPole, env_config={"num_agents": num_agents})
@@ -186,7 +189,10 @@ class TestAlgorithmRLModuleRestore(unittest.TestCase):
 
         config = (
             PPOConfig()
-            .api_stack(enable_rl_module_and_learner=True)
+            .api_stack(
+                enable_rl_module_and_learner=True,
+                enable_env_runner_and_connector_v2=True,
+            )
             .env_runners(rollout_fragment_length=4)
             .learners(**scaling_config)
             .environment("CartPole-v1")
