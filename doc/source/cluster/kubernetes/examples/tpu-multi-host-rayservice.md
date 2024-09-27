@@ -34,12 +34,17 @@ Build the TPU image:
 docker build -f Dockerfile.tpu -t vllm-tpu .
 ```
 
+Set environment variables to be used for your Docker image:
+```sh
+export TAG="latest"
+export PROJECT_ID=$(gcloud config get project)
+export VLLM_IMAGE=us-central1-docker.pkg.dev/$PROJECT_ID/vllm-tpu/vllm-tpu:$TAG
+```
+
 Tag the image with your Artifact Registry name:
 ```sh
-export VLLM_IMAGE=us-central1-docker.pkg.dev/PROJECT-ID/vllm-tpu/vllm-tpu:TAG
 docker tag vllm-tpu $VLLM_IMAGE
 ```
-Replace TAG with your desired tag. If you don't specify a tag, Docker applies the default latest tag.
 
 Push the vLLM image to your Artifact registry:
 ```sh
