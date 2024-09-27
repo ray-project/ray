@@ -4,8 +4,8 @@ import copy
 import pytest
 
 import ray
-
 from ray.tests.conftest import pytest_runtest_makereport  # noqa
+
 
 @pytest.fixture
 def restore_data_context(request):
