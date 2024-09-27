@@ -13,11 +13,6 @@ from ray.tune.registry import get_trainable_cls
 
 torch, _ = try_import_torch()
 
-# Keep a set of all RLlib algos that support the RLModule API.
-# For these algos we need to disable the RLModule API in the config for the purpose of
-# this test. This test is made for the ModelV2 API which is not the same as RLModule.
-RLMODULE_SUPPORTED_ALGOS = {"APPO", "IMPALA", "PPO"}
-
 
 def export_test(
     alg_name,
@@ -26,8 +21,6 @@ def export_test(
 ):
     cls = get_trainable_cls(alg_name)
     config = cls.get_default_config()
-    if alg_name in RLMODULE_SUPPORTED_ALGOS:
-        config = config.api_stack(enable_rl_module_and_learner=False)
     config.framework(framework)
     # Switch on saving native DL-framework (tf, torch) model files.
     config.checkpointing(export_native_model_files=True)

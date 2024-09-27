@@ -150,7 +150,6 @@ class DQNRainbowCatalog(Catalog):
         observation_space: gym.Space,
         model_config_dict: dict,
         action_space: gym.Space = None,
-        view_requirements=None,
     ) -> ModelConfig:
         """Returns the encoder config.
 
@@ -235,7 +234,6 @@ class DQNRainbowCatalog(Catalog):
             observation_space=observation_space,
             action_space=action_space,
             model_config_dict=model_config_dict,
-            view_requirements=view_requirements,
         )
 
     def _get_head_config(self, output_layer_dim: int):

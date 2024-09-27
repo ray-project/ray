@@ -155,7 +155,6 @@ if __name__ == "__main__":
                 "vf_share_layers": True,
                 "fcnet_weights_initializer": nn.init.xavier_uniform_,
                 "fcnet_bias_initializer": functools.partial(nn.init.constant_, 0.0),
-                "uses_new_env_runners": True,
             }
         )
     )

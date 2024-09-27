@@ -27,7 +27,10 @@ def save_test(alg_name, framework="tf", multi_agent=False):
     )
 
     if alg_name in RLMODULE_SUPPORTED_ALGOS:
-        config = config.api_stack(enable_rl_module_and_learner=False)
+        config.api_stack(
+            enable_rl_module_and_learner=True,
+            enable_env_runner_and_connector_v2=True,
+        )
 
     if "DDPG" in alg_name or "SAC" in alg_name:
         config.environment("Pendulum-v1")

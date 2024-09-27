@@ -4396,6 +4396,16 @@ class AlgorithmConfig(_Config):
             # `enable_rl_module_and_learner=True`.
             return
 
+        # Disabled hybrid API stack. Now, both `enable_rl_module_and_learner` and
+        # `enable_env_runner_and_connector_v2` must be True or both False.
+        if not self.enable_env_runner_and_connector_v2:
+            raise ValueError(
+                "Setting `enable_rl_module_and_learner` to True and "
+                "`enable_env_runner_and_connector_v2` to False ('hybrid API stack'"
+                ") is not longer supported! Set both to True (new API stack) or both "
+                "to False (old API stack), instead."
+            )
+
         # New API stack (RLModule, Learner APIs) only works with connectors.
         if not self.enable_connectors:
             raise ValueError(
@@ -4415,11 +4425,7 @@ class AlgorithmConfig(_Config):
         # new API stack AND this is a single-agent setup (multi-agent does not use
         # gym.vector.Env yet and therefore the reset call is still made manually,
         # allowing for the callback to be fired).
-        if (
-            self.enable_env_runner_and_connector_v2
-            and not self.is_multi_agent()
-            and self.callbacks_class is not DefaultCallbacks
-        ):
+        if not self.is_multi_agent() and self.callbacks_class is not DefaultCallbacks:
             default_src = inspect.getsource(DefaultCallbacks.on_episode_created)
             try:
                 user_src = inspect.getsource(self.callbacks_class.on_episode_created)

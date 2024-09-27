@@ -191,8 +191,6 @@ class TestCatalog(unittest.TestCase):
                 # Action space does not matter for encoders
                 action_space=gym.spaces.Box(1, 1, (1,)),
                 model_config_dict=model_config_dict,
-                # TODO(Artur): Add view requirements when we need them
-                view_requirements=None,
             )
 
             model_config = catalog._get_encoder_config(
@@ -378,7 +376,10 @@ class TestCatalog(unittest.TestCase):
 
         config = (
             PPOConfig()
-            .api_stack(enable_rl_module_and_learner=True)
+            .api_stack(
+                enable_rl_module_and_learner=True,
+                enable_env_runner_and_connector_v2=True,
+            )
             .rl_module(
                 rl_module_spec=RLModuleSpec(catalog_class=MyCatalog),
             )
@@ -386,12 +387,9 @@ class TestCatalog(unittest.TestCase):
         )
 
         algo = config.build(env="CartPole-v0")
-        self.assertEqual(
-            algo.get_policy("default_policy").model.config.catalog_class, MyCatalog
-        )
+        self.assertEqual(type(algo.get_module("default_policy").catalog), MyCatalog)
 
         # Test if we can pass custom catalog to algorithm config and train with it.
-
         config = (
             PPOConfig()
             .rl_module(
