@@ -142,15 +142,15 @@ class SharedMemoryType(ChannelOutputType):
             ), "_contains_type must be of type TorchTensorType"
 
             from ray.experimental.channel.torch_tensor_communicator_channel import (
-                NestedTorchTensorNcclChannel,
+                NestedTorchTensorCommunicatorChannel,
             )
 
-            if self._contains_type.requires_nccl():
+            if self._contains_type.requires_communicator():
                 cpu_data_typ = SharedMemoryType(
                     buffer_size_bytes=self.buffer_size_bytes,
                     num_shm_buffers=1,
                 )
-                return NestedTorchTensorNcclChannel(
+                return NestedTorchTensorCommunicatorChannel(
                     writer,
                     reader_and_node_list,
                     communicator_data_channel=self._contains_type,
@@ -164,12 +164,12 @@ class SharedMemoryType(ChannelOutputType):
             read_by_adag_driver,
         )
 
-    def set_nccl_group_id(self, group_id: str) -> None:
-        assert self.requires_nccl()
+    def set_communicator_group_id(self, group_id: str) -> None:
+        assert self.requires_communicator()
 
         # Shared memory channels don't need NCCL but they can
         # contain objects that use NCCL.
-        self._contains_type.set_nccl_group_id(group_id)
+        self._contains_type.set_communicator_group_id(group_id)
 
 
 @PublicAPI(stability="alpha")
