@@ -160,13 +160,12 @@ class _MLPConfig(ModelConfig):
             "_" are allowed.
         output_layer_bias_initializer_config: Configuration to pass into the
             initializer defined in `output_layer_bias_initializer`.
-        clip_log_std: If the log std should be clipped by `log_std_clip_param`.
-            This only applies to policy heads. Value heads are never clipped and
-            therefore the default is `False`.
+        clip_log_std: If log std should be clipped by `log_std_clip_param`. This applies
+            only to the action distribution parameters that encode the log standard
+            deviation of a `DiagGaussian` distribution.
         log_std_clip_param: The clipping parameter for the log std, if clipping should
-            be applied - i.e. `clip_log_std=True`. This only applies to policy heads,
-            value heads are never clipped. The default value is 20, i.e. log stds are
-            clipped in between -20 and 20.
+            be applied - i.e. `clip_log_std=True`. The default value is 20, i.e. log
+            stds are clipped in between -20 and 20.
     """
 
     hidden_layer_dims: Union[List[int], Tuple[int]] = (256, 256)
