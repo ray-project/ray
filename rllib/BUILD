@@ -334,7 +334,7 @@ py_test(
     tags = ["team:rllib", "exclusive", "learning_tests", "torch_only", "learning_tests_discrete", "learning_tests_pytorch_use_all_core"],
     size = "medium",
     srcs = ["tuned_examples/bc/cartpole_bc.py"],
-    # Include the zipped json data file as well.
+    # Include the offline data files.
     data = [
         "tests/data/cartpole/cartpole-v1_large",
     ],
@@ -557,7 +557,7 @@ py_test(
     tags = ["team:rllib", "exclusive", "learning_tests", "torch_only", "learning_tests_discrete", "learning_tests_pytorch_use_all_core"],
     size = "large",
     srcs = ["tuned_examples/marwil/cartpole_marwil.py"],
-    # Include the zipped json data file as well.
+    # Include the offline data files.
     data = [
         "tests/data/cartpole/cartpole-v1_large",
     ],
@@ -987,7 +987,7 @@ py_test(
     name = "test_bc",
     tags = ["team:rllib", "algorithms_dir"],
     size = "medium",
-    # Include the parquet data files.
+    # Include the offline data files.
     data = ["tests/data/cartpole/cartpole-v1_large"],
     srcs = ["algorithms/bc/tests/test_bc.py"]
 )
@@ -1052,7 +1052,7 @@ py_test(
     name = "test_marwil",
     tags = ["team:rllib", "algorithms_dir"],
     size = "large",
-    # Include the parquet data folder.
+    # Include the offline data files.
     data = [
         "tests/data/cartpole/cartpole-v1_large",
         "tests/data/pendulum/pendulum-v1_large",
@@ -1708,6 +1708,7 @@ py_test(
     tags = ["team:rllib", "offline"],
     size = "medium",
     srcs = ["offline/tests/test_offline_data.py"],
+    # Include the offline data files.
     data = [
         "tests/data/cartpole/cartpole-v1_large",
         "tests/data/cartpole/large.json",
@@ -1719,6 +1720,7 @@ py_test(
     tags = ["team:rllib", "offline"],
     size = "small",
     srcs = ["offline/tests/test_offline_prelearner.py"],
+    # Include the offline data files.
     data = [
         "tests/data/cartpole/cartpole-v1_large",
         "tests/data/cartpole/large.json",
@@ -3109,6 +3111,8 @@ py_test(
     size = "medium",
     srcs = ["examples/offline_rl/train_w_bc_finetune_w_ppo.py"],
     args = ["--enable-new-api-stack", "--as-test", "--framework=torch"]
+    # Include the offline data files.
+    data = ["tests/data/cartpole/cartpole-v1_large"],
 )
 
 # @HybridAPIStack
