@@ -331,14 +331,15 @@ void ObjectManager::HandleSendFinished(const ObjectID &object_id,
       << " of object, chunk " << chunk_index << ", status: " << status.ToString();
   if (!status.ok()) {
     // TODO(rkn): What do we want to do if the send failed?
-    RAY_LOG(DEBUG) << "Failed to send a push request for an object " << object_id
-                   << " to " << node_id << ". Chunk index: " << chunk_index;
+    RAY_LOG(DEBUG).WithField(object_id).WithField(node_id)
+        << "Failed to send a push request for an object to node. Chunk index: "
+        << chunk_index;
   }
 }
 
 void ObjectManager::Push(const ObjectID &object_id, const NodeID &node_id) {
   RAY_LOG(DEBUG).WithField(object_id)
-      << "Push on " << self_node_id_ << " to " << node_id << " of object";
+      << "Push object on " << self_node_id_ << " to " << node_id << " of object";
   if (local_objects_.count(object_id) != 0) {
     return PushLocalObject(object_id, node_id);
   }
