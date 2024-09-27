@@ -626,7 +626,7 @@ TEST_P(ActorTaskSubmitterTest, TestActorRestartOutOfOrderGcs) {
   task = CreateActorTaskHelper(actor_id, worker_id, 4);
   EXPECT_CALL(*task_finisher_, FailOrRetryPendingTask(task.TaskId(), _, _, _, _, _))
       .Times(1);
-  ASSERT_TRUE(CheckSubmitTask(task));
+  ASSERT_FALSE(CheckSubmitTask(task));
 }
 
 TEST_P(ActorTaskSubmitterTest, TestActorRestartFailInflightTasks) {

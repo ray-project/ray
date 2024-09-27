@@ -227,38 +227,30 @@ Status ActorTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
         },
         "ActorTaskSubmitter::SubmitTask");
   } else {
-    // Post to the event loop to maintain the async nature of
-    // SubmitTask and avoid issues like
-    // https://github.com/ray-project/ray/issues/47606.
-    io_service_.post(
-        [this, task_spec, task_id]() {
-          // Do not hold the lock while calling into task_finisher_.
-          task_finisher_.MarkTaskCanceled(task_id);
-          rpc::ErrorType error_type;
-          rpc::RayErrorInfo error_info;
-          {
-            absl::MutexLock lock(&mu_);
-            const auto queue_it = client_queues_.find(task_spec.ActorId());
-            const auto &death_cause = queue_it->second.death_cause;
-            error_info = GetErrorInfoFromActorDeathCause(death_cause);
-            error_type = error_info.error_type();
-          }
-          auto status = Status::IOError("cancelling task of dead actor");
-          // No need to increment the number of completed tasks since the actor is
-          // dead.
-          bool fail_immediately =
-              error_info.has_actor_died_error() &&
-              error_info.actor_died_error().has_oom_context() &&
-              error_info.actor_died_error().oom_context().fail_immediately();
-          GetTaskFinisherWithoutMu().FailOrRetryPendingTask(
-              task_id,
-              error_type,
-              &status,
-              &error_info,
-              /*mark_task_object_failed*/ true,
-              fail_immediately);
-        },
-        "ActorTaskSubmitter::SubmitTask");
+    // Do not hold the lock while calling into task_finisher_.
+    task_finisher_.MarkTaskCanceled(task_id);
+    rpc::ErrorType error_type;
+    rpc::RayErrorInfo error_info;
+    {
+      absl::MutexLock lock(&mu_);
+      const auto queue_it = client_queues_.find(task_spec.ActorId());
+      const auto &death_cause = queue_it->second.death_cause;
+      error_info = GetErrorInfoFromActorDeathCause(death_cause);
+      error_type = error_info.error_type();
+    }
+    auto status = Status::IOError("cancelling task of dead actor");
+    // No need to increment the number of completed tasks since the actor is
+    // dead.
+    bool fail_immediately =
+        error_info.has_actor_died_error() &&
+        error_info.actor_died_error().has_oom_context() &&
+        error_info.actor_died_error().oom_context().fail_immediately();
+    GetTaskFinisherWithoutMu().FailOrRetryPendingTask(task_id,
+                                                      error_type,
+                                                      &status,
+                                                      &error_info,
+                                                      /*mark_task_object_failed*/ true,
+                                                      fail_immediately);
   }
 
   // If the task submission subsequently fails, then the client will receive

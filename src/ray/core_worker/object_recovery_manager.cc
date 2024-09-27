@@ -168,10 +168,10 @@ void ObjectRecoveryManager::ReconstructObject(const ObjectID &object_id) {
   // object.
   const auto task_id = object_id.TaskId();
   std::vector<ObjectID> task_deps;
+  reference_counter_->UpdateObjectPendingCreation(object_id, true);
   auto resubmitted = task_resubmitter_->ResubmitTask(task_id, &task_deps);
 
   if (resubmitted) {
-    reference_counter_->UpdateObjectPendingCreation(object_id, true);
     // Try to recover the task's dependencies.
     for (const auto &dep : task_deps) {
       auto recovered = RecoverObject(dep);
@@ -189,6 +189,7 @@ void ObjectRecoveryManager::ReconstructObject(const ObjectID &object_id) {
   } else {
     RAY_LOG(INFO) << "Failed to reconstruct object " << object_id
                   << " because lineage has already been deleted";
+    reference_counter_->UpdateObjectPendingCreation(object_id, false);
     recovery_failure_callback_(
         object_id,
         rpc::ErrorType::OBJECT_UNRECONSTRUCTABLE_MAX_ATTEMPTS_EXCEEDED,
