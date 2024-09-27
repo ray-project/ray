@@ -24,6 +24,7 @@ from ray.serve._private.common import (
     ReplicaState,
 )
 from ray.serve._private.constants import (
+    CONTROL_LOOP_INTERVAL_S,
     RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE,
     SERVE_DEFAULT_APP_NAME,
     SERVE_NAMESPACE,
@@ -1496,6 +1497,80 @@ def test_autoscaling_status_changes(serve_instance):
     )
 
     print("Statuses are as expected.")
+
+
+@pytest.mark.parametrize("scaling_function", ["min", "max", "mean", "last"])
+def test_autoscaling_decision_functions(serve_instance_with_signal, scaling_function):
+    client, signal = serve_instance_with_signal
+
+    # Control loop interval is too small to accurately target, so we compute over multiple cycles
+    interval = CONTROL_LOOP_INTERVAL_S * 15
+    decision_history = [1, 9, 2]
+    scaling_delay = interval * len(decision_history)
+    app_config = {
+        "import_path": "ray.serve.tests.test_config_files.get_signal.app",
+        "deployments": [
+            {
+                "name": "A",
+                "autoscaling_config": {
+                    "metrics_interval_s": 0.05,
+                    "min_replicas": 0,
+                    "max_replicas": 100,
+                    "initial_replicas": 1,
+                    "look_back_period_s": 0.2,
+                    "downscale_delay_s": scaling_delay,
+                    "upscale_delay_s": scaling_delay,
+                    "target_ongoing_requests": 1.0,
+                    "scaling_function": scaling_function,
+                },
+                "graceful_shutdown_timeout_s": 1,
+                "max_ongoing_requests": 1000,
+            }
+        ],
+    }
+
+    # Wait for downscaling from 1 to 0 to sync with CONTROL_LOOP_INTERVAL_S
+    client.deploy_apps(ServeDeploySchema(**{"applications": [app_config]}))
+    wait_for_condition(
+        check_deployment_status,
+        name="A",
+        expected_status=DeploymentStatus.HEALTHY,
+        retry_interval_ms=5,
+    )
+    h = serve.get_app_handle(SERVE_DEFAULT_APP_NAME)
+    print("Waiting for downscaling signal to align with control loop.")
+    wait_for_condition(
+        check_deployment_status,
+        name="A",
+        expected_status=DeploymentStatus.DOWNSCALING,
+        retry_interval_ms=5,
+        timeout=scaling_delay + 1,
+    )
+    print("Downscaling detected.")
+
+    for replica_count in decision_history:
+        ray.get(signal.send.remote(clear=True))
+        [h.remote() for _ in range(replica_count)]
+        time.sleep(interval)
+
+    # Check that the scaling function is working as expected
+    if scaling_function == "min":
+        expected_replicas = min(decision_history)
+    elif scaling_function == "max":
+        expected_replicas = max(decision_history)
+    elif scaling_function == "mean":
+        expected_replicas = round(sum(decision_history) / len(decision_history))
+    elif scaling_function == "last":
+        expected_replicas = decision_history[-1]
+
+    print("Expected replicas: ", expected_replicas)
+    wait_for_condition(
+        check_num_replicas_eq, name="A", target=expected_replicas, timeout=scaling_delay
+    )
+
+    # Release signal so we don't get an ugly error message from the
+    # replica when the signal actor goes out of scope and gets killed
+    ray.get(signal.send.remote())
 
 
 if __name__ == "__main__":

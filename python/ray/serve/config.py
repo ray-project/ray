@@ -71,6 +71,17 @@ class AutoscalingConfig(BaseModel):
     # How long to wait before scaling up replicas
     upscale_delay_s: NonNegativeFloat = 30.0
 
+    # This function determines how scaling decisions are made based on the calculated replica counts.
+    # Replica counts are calculated many times over the upscale/downscale delay period.
+    scaling_function: str = "last"
+    _scaling_functions = {
+        "last": staticmethod(lambda history: history[-1]),
+        "mean": staticmethod(lambda history: round(sum(history) / len(history))),
+        "max": staticmethod(max),
+        "min": staticmethod(min),
+    }
+    _scaling_function = _scaling_functions[scaling_function]
+
     # Cloudpickled policy definition.
     _serialized_policy_def: bytes = PrivateAttr(default=b"")
 
@@ -100,6 +111,15 @@ class AutoscalingConfig(BaseModel):
                 )
 
         return max_replicas
+
+    @validator("scaling_function", always=True)
+    def scaling_function_valid(cls, scaling_function: str):
+        if scaling_function not in cls._scaling_functions:
+            raise ValueError(
+                f"scaling_function must be one of {list(cls._scaling_functions.keys())}"
+            )
+        cls._scaling_function = cls._scaling_functions[scaling_function]
+        return scaling_function
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -152,6 +172,9 @@ class AutoscalingConfig(BaseModel):
 
     def get_target_ongoing_requests(self) -> PositiveFloat:
         return self.target_ongoing_requests
+
+    def decide_num_replicas(self, history: List[int]) -> PositiveInt:
+        return round(self._scaling_function(history))
 
 
 # Keep in sync with ServeDeploymentMode in dashboard/client/src/type/serve.ts
