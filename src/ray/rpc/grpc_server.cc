@@ -151,7 +151,7 @@ void GrpcServer::Run() {
       buffer_size = 32;
     }
 
-    for (int j = 0; j < buffer_size; j++) {
+    for (size_t j = 0; j < buffer_size; j++) {
       // Create pending `ServerCall` ready to accept incoming requests
       entry->CreateCall();
     }
