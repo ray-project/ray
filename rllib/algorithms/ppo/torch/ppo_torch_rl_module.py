@@ -30,14 +30,32 @@ class PPOTorchRLModule(TorchRLModule, PPORLModule):
         return output
 
     @override(RLModule)
-    def _forward_train(self, batch: Dict[str, Any], **kwargs) -> Dict[str, Any]:
-        """Train forward pass (keep embeddings for possible shared value func. call)."""
+    def _forward_exploration(self, batch: Dict[str, Any], **kwargs) -> Dict[str, Any]:
+        return self._forward_inference(batch)
+
+    @override(RLModule)
+    def _forward_train(self, batch: Dict[str, Any]) -> Dict[str, Any]:
+        if self.config.inference_only:
+            raise RuntimeError(
+                "Trying to train a module that is not a learner module. Set the "
+                "flag `inference_only=False` when building the module."
+            )
         output = {}
+
+        # Shared encoder.
         encoder_outs = self.encoder(batch)
-        output[Columns.EMBEDDINGS] = encoder_outs[ENCODER_OUT][CRITIC]
         if Columns.STATE_OUT in encoder_outs:
             output[Columns.STATE_OUT] = encoder_outs[Columns.STATE_OUT]
-        output[Columns.ACTION_DIST_INPUTS] = self.pi(encoder_outs[ENCODER_OUT][ACTOR])
+
+        # Value head.
+        vf_out = self.vf(encoder_outs[ENCODER_OUT][CRITIC])
+        # Squeeze out last dim (value function node).
+        output[Columns.VF_PREDS] = vf_out.squeeze(-1)
+
+        # Policy head.
+        action_logits = self.pi(encoder_outs[ENCODER_OUT][ACTOR])
+        output[Columns.ACTION_DIST_INPUTS] = action_logits
+
         return output
 
     @override(ValueFunctionAPI)
