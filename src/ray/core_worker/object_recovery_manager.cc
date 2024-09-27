@@ -192,8 +192,8 @@ void ObjectRecoveryManager::ReconstructObject(const ObjectID &object_id) {
       }
     }
   } else {
-    RAY_LOG(INFO).WithField(object_id)
-        << "Failed to reconstruct object because lineage has already been deleted";
+    RAY_LOG(INFO) << "Failed to reconstruct object " << object_id
+                  << " because lineage has already been deleted";
     reference_counter_->UpdateObjectPendingCreation(object_id, false);
     recovery_failure_callback_(
         object_id,
