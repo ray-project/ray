@@ -67,7 +67,7 @@ class TaskPoolMapOperator(MapOperator):
         #       blocks themselves are going to be passed inside `fn.options(...)`
         #       invocation
         ray_remote_static_args = {
-            **(ray_remote_args or {}),
+            **(self._ray_remote_args or {}),
             "num_returns": "streaming",
         }
 
