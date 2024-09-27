@@ -11,7 +11,7 @@ from ray.air.util.tensor_extensions.arrow import (
     ArrowTensorArray,
     ArrowTensorType,
     ArrowVariableShapedTensorArray,
-    ArrowVariableShapedTensorType, ArrowConversionError,
+    ArrowVariableShapedTensorType, ArrowConversionError, ArrowTensorTypeV2,
 )
 from ray.air.util.tensor_extensions.pandas import TensorArray, TensorDtype
 from ray.air.util.tensor_extensions.utils import create_ragged_ndarray
@@ -700,7 +700,14 @@ def test_arrow_tensor_array_concat(a1, a2, restore_data_context, tensor_format):
     ta = ArrowTensorArray._concat_same_type([ta1, ta2])
     assert len(ta) == a1.shape[0] + a2.shape[0]
     if a1.shape[1:] == a2.shape[1:]:
-        assert isinstance(ta.type, ArrowTensorType)
+        if tensor_format == "v1":
+            tensor_type_class = ArrowTensorType
+        elif tensor_format == "v2":
+            tensor_type_class = ArrowTensorTypeV2
+        else:
+            raise ValueError(f"unexpected format: {tensor_format}")
+
+        assert isinstance(ta.type, tensor_type_class)
         assert ta.type.storage_type == ta1.type.storage_type
         assert ta.type.storage_type == ta2.type.storage_type
         assert ta.type.shape == a1.shape[1:]
