@@ -45,13 +45,13 @@ std::shared_ptr<boost::asio::deadline_timer> execute_after(
  * The constructor takes a thread name and starts the thread.
  * The destructor stops the io_service and joins the thread.
  */
-class InstrumentedIoContextWithThread {
+class InstrumentedIOContextWithThread {
  public:
   /**
    * Constructor.
    * @param thread_name The name of the thread.
    */
-  explicit InstrumentedIoContextWithThread(const std::string &thread_name)
+  explicit InstrumentedIOContextWithThread(const std::string &thread_name)
       : io_service_(), work_(io_service_) {
     io_thread_ = std::thread([this, thread_name] {
       SetThreadName(thread_name);
@@ -59,14 +59,14 @@ class InstrumentedIoContextWithThread {
     });
   }
 
-  ~InstrumentedIoContextWithThread() { Stop(); }
+  ~InstrumentedIOContextWithThread() { Stop(); }
 
   // Non-movable and non-copyable.
-  InstrumentedIoContextWithThread(const InstrumentedIoContextWithThread &) = delete;
-  InstrumentedIoContextWithThread &operator=(const InstrumentedIoContextWithThread &) =
+  InstrumentedIOContextWithThread(const InstrumentedIOContextWithThread &) = delete;
+  InstrumentedIOContextWithThread &operator=(const InstrumentedIOContextWithThread &) =
       delete;
-  InstrumentedIoContextWithThread(InstrumentedIoContextWithThread &&) = delete;
-  InstrumentedIoContextWithThread &operator=(InstrumentedIoContextWithThread &&) = delete;
+  InstrumentedIOContextWithThread(InstrumentedIOContextWithThread &&) = delete;
+  InstrumentedIOContextWithThread &operator=(InstrumentedIOContextWithThread &&) = delete;
 
   instrumented_io_context &GetIoService() { return io_service_; }
 

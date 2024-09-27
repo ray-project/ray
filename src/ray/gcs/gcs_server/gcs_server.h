@@ -213,13 +213,13 @@ class GcsServer {
   /// The main io service to drive event posted from grpc threads.
   instrumented_io_context &main_service_;
   /// The io service used by Pubsub, for isolation from other workload.
-  InstrumentedIoContextWithThread pubsub_io_context_;
+  InstrumentedIOContextWithThread pubsub_io_context_;
   // The io service used by internal KV service, table storage and the StoreClient.
-  InstrumentedIoContextWithThread kv_io_context_;
+  InstrumentedIOContextWithThread kv_io_context_;
   // The io service used by task manager.
-  InstrumentedIoContextWithThread task_io_context_;
+  InstrumentedIOContextWithThread task_io_context_;
   // The io service used by ray syncer.
-  InstrumentedIoContextWithThread ray_syncer_io_context_;
+  InstrumentedIOContextWithThread ray_syncer_io_context_;
   /// The grpc server
   rpc::GrpcServer rpc_server_;
   /// The `ClientCallManager` object that is shared by all `NodeManagerWorkerClient`s.

@@ -719,7 +719,7 @@ std::unordered_map<std::string, std::string> PythonGetNodeLabels(
 }
 
 Status ConnectOnSingletonIoContext(GcsClient &gcs_client, int64_t timeout_ms) {
-  static InstrumentedIoContextWithThread io_context("gcs_client_io_service");
+  static InstrumentedIOContextWithThread io_context("gcs_client_io_service");
   instrumented_io_context &io_service = io_context.GetIoService();
   return gcs_client.Connect(io_service, timeout_ms);
 }
