@@ -948,11 +948,11 @@ void ReferenceCounter::PopAndClearLocalBorrowers(
   ReferenceTableToProto(borrowed_refs, proto);
 
   for (const auto &borrowed_id : borrowed_ids) {
-    RAY_LOG(DEBUG).WithField(borrowed_id) << "Remove local reference to borrowed object ";
+    RAY_LOG(DEBUG).WithField(borrowed_id) << "Remove local reference to borrowed object.";
     auto it = object_id_refs_.find(borrowed_id);
     if (it == object_id_refs_.end()) {
       RAY_LOG(WARNING).WithField(borrowed_id)
-          << "Tried to decrease ref count for nonexistent object ID: ";
+          << "Tried to decrease ref count for nonexistent object.";
       continue;
     }
     if (it->second.local_ref_count == 0) {
@@ -974,8 +974,7 @@ bool ReferenceCounter::GetAndClearLocalBorrowersInternal(
     bool for_ref_removed,
     bool deduct_local_ref,
     ReferenceProtoTable *borrowed_refs) {
-  RAY_LOG(DEBUG).WithField(object_id)
-      << "Pop " << object_id << " for_ref_removed " << for_ref_removed;
+  RAY_LOG(DEBUG).WithField(object_id) << "Pop object for_ref_removed " << for_ref_removed;
   auto it = object_id_refs_.find(object_id);
   if (it == object_id_refs_.end()) {
     return false;

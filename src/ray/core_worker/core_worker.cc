@@ -4745,8 +4745,8 @@ void ClusterSizeBasedLeaseRequestRateLimiter::OnNodeChanges(
     if (num_alive_nodes_ != 0) {
       num_alive_nodes_--;
     } else {
-      RAY_LOG(WARNING).WithField(NodeID::FromBinary(data.node_manager_address()))
-          << " change state to DEAD but num_alive_node is 0.";
+      RAY_LOG(WARNING) << "Node" << data.node_manager_address()
+                       << " change state to DEAD but num_alive_node is 0.";
     }
   } else {
     num_alive_nodes_++;
