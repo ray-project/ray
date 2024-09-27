@@ -60,7 +60,8 @@ class CoreWorkerMemoryStore {
           object_allocator = nullptr);
   ~CoreWorkerMemoryStore() = default;
 
-  /// Put an object with specified ID into object store.
+  /// Put an object with specified ID into object store. If there are pending GetAsync
+  /// requests, the callbacks are posted onto the io_context.
   ///
   /// \param[in] object The ray object.
   /// \param[in] object_id Object ID specified by user.

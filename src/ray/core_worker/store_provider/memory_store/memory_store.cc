@@ -211,7 +211,7 @@ std::shared_ptr<RayObject> CoreWorkerMemoryStore::GetIfExists(const ObjectID &ob
 
 bool CoreWorkerMemoryStore::Put(const RayObject &object, const ObjectID &object_id) {
   std::vector<std::function<void(std::shared_ptr<RayObject>)>> async_callbacks;
-  RAY_LOG(DEBUG) << "Putting object into memory store. objectid is " << object_id;
+  RAY_LOG(DEBUG).WithField(object_id) << "Putting object into memory store.";
   std::shared_ptr<RayObject> object_entry = nullptr;
   if (object_allocator_ != nullptr) {
     object_entry = object_allocator_(object, object_id);
