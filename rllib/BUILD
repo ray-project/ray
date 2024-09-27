@@ -2872,8 +2872,98 @@ py_test(
     main = "examples/learners/ppo_with_torch_lr_schedulers.py",
     tags = ["team:rllib", "examples"],
     size = "medium",
-    srcs = ["examples/learners/ppo_with_torch_lr_schedulers.py"],
-    args = ["--enable-new-api-stack", "--as-test"]
+    srcs = ["examples/learners/ppo_tuner.py"],
+    args = ["--framework=torch", "--config=local-cpu"]
+)
+
+#@OldAPIStack @HybridAPIStack
+py_test(
+    name = "examples/learners/ppo_tuner_local_cpu_tf2",
+    main = "examples/learners/ppo_tuner.py",
+    tags = ["team:rllib", "examples"],
+    size = "medium",
+    srcs = ["examples/learners/ppo_tuner.py"],
+    args = ["--framework=tf2", "--config=local-cpu"]
+)
+
+#@OldAPIStack @HybridAPIStack
+py_test(
+    name = "examples/learners/ppo_tuner_local_gpu_torch",
+    main = "examples/learners/ppo_tuner.py",
+    tags = ["team:rllib", "examples", "gpu"],
+    size = "medium",
+    srcs = ["examples/learners/ppo_tuner.py"],
+    args = ["--framework=torch", "--config=local-gpu"]
+)
+
+#@OldAPIStack @HybridAPIStack
+py_test(
+    name = "examples/learners/ppo_tuner_local_gpu_tf2",
+    main = "examples/learners/ppo_tuner.py",
+    tags = ["team:rllib", "examples", "gpu", "exclusive"],
+    size = "medium",
+    srcs = ["examples/learners/ppo_tuner.py"],
+    args = ["--framework=tf2", "--config=local-gpu"]
+)
+
+#@OldAPIStack @HybridAPIStack
+py_test(
+    name = "examples/learners/ppo_tuner_remote_cpu_torch",
+    main = "examples/learners/ppo_tuner.py",
+    tags = ["team:rllib", "examples"],
+    size = "medium",
+    srcs = ["examples/learners/ppo_tuner.py"],
+    args = ["--framework=torch", "--config=remote-cpu"]
+)
+
+#@OldAPIStack @HybridAPIStack
+py_test(
+    name = "examples/learners/ppo_tuner_remote_cpu_tf2",
+    main = "examples/learners/ppo_tuner.py",
+    tags = ["team:rllib", "examples"],
+    size = "medium",
+    srcs = ["examples/learners/ppo_tuner.py"],
+    args = ["--framework=tf2", "--config=remote-cpu"]
+)
+
+#@OldAPIStack @HybridAPIStack
+py_test(
+    name = "examples/learners/ppo_tuner_remote_gpu_torch",
+    main = "examples/learners/ppo_tuner.py",
+    tags = ["team:rllib", "examples", "gpu", "exclusive"],
+    size = "medium",
+    srcs = ["examples/learners/ppo_tuner.py"],
+    args = ["--framework=torch", "--config=remote-gpu"]
+)
+
+#@OldAPIStack @HybridAPIStack
+py_test(
+    name = "examples/learners/ppo_tuner_remote_gpu_tf2",
+    main = "examples/learners/ppo_tuner.py",
+    tags = ["team:rllib", "examples", "gpu", "exclusive"],
+    size = "medium",
+    srcs = ["examples/learners/ppo_tuner.py"],
+    args = ["--framework=tf2", "--config=remote-gpu"]
+)
+
+#@OldAPIStack @HybridAPIStack
+py_test(
+    name = "examples/learners/ppo_tuner_multi_gpu_torch",
+    main = "examples/learners/ppo_tuner.py",
+    tags = ["team:rllib", "examples", "multi_gpu", "exclusive"],
+    size = "medium",
+    srcs = ["examples/learners/ppo_tuner.py"],
+    args = ["--framework=torch", "--config=multi-gpu-ddp"]
+)
+
+#@OldAPIStack @HybridAPIStack
+py_test(
+    name = "examples/learners/ppo_tuner_multi_gpu_tf2",
+    main = "examples/learners/ppo_tuner.py",
+    tags = ["team:rllib", "examples", "multi_gpu", "exclusive"],
+    size = "medium",
+    srcs = ["examples/learners/ppo_tuner.py"],
+    args = ["--framework=tf2", "--config=multi-gpu-ddp"]
 )
 
 # subdirectory: multi_agent/

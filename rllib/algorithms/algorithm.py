@@ -817,19 +817,36 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
                     rl_module_ckpt_dirs=rl_module_ckpt_dirs,
                 )
 
-            # Sync the weights from the learner group to the EnvRunners.
-            rl_module_state = self.learner_group.get_state(
-                components=COMPONENT_LEARNER + "/" + COMPONENT_RL_MODULE,
-                inference_only=True,
-            )[COMPONENT_LEARNER][COMPONENT_RL_MODULE]
-            self.env_runner.set_state({COMPONENT_RL_MODULE: rl_module_state})
-            self.env_runner_group.sync_env_runner_states(
-                config=self.config,
-                env_steps_sampled=self.metrics.peek(
-                    NUM_ENV_STEPS_SAMPLED_LIFETIME, default=0
-                ),
-                rl_module_state=rl_module_state,
-            )
+            # Only when using RolloutWorkers: Update also the worker set's
+            # `is_policy_to_train`.
+            # Note that with the new EnvRunner API in combination with the new stack,
+            # this information only needs to be kept in the Learner and not on the
+            # EnvRunners anymore.
+            if not self.config.enable_env_runner_and_connector_v2:
+                policies_to_train = self.config.policies_to_train or set(
+                    self.config.policies
+                )
+                self.env_runner_group.foreach_worker(
+                    lambda w: w.set_is_policy_to_train(policies_to_train),
+                )
+                # Sync the weights from the learner group to the rollout workers.
+                self.env_runner.set_weights(self.learner_group.get_weights())
+                self.env_runner_group.sync_weights(inference_only=True)
+            # New stack/EnvRunner APIs: Use get/set_state.
+            else:
+                # Sync the weights from the learner group to the EnvRunners.
+                rl_module_state = self.learner_group.get_state(
+                    components=COMPONENT_LEARNER + "/" + COMPONENT_RL_MODULE,
+                    inference_only=True,
+                )[COMPONENT_LEARNER][COMPONENT_RL_MODULE]
+                self.env_runner.set_state({COMPONENT_RL_MODULE: rl_module_state})
+                self.env_runner_group.sync_env_runner_states(
+                    config=self.config,
+                    env_steps_sampled=self.metrics.peek(
+                        NUM_ENV_STEPS_SAMPLED_LIFETIME, default=0
+                    ),
+                    rl_module_state=rl_module_state,
+                )
 
             if self.offline_data:
                 # If the learners are remote we need to provide specific

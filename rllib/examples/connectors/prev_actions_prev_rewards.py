@@ -141,16 +141,15 @@ if __name__ == "__main__":
             vf_loss_coeff=0.01,
         )
         .rl_module(
-            model_config=DefaultModelConfig(
-                use_lstm=True,
-                max_seq_len=20,
-                fcnet_hiddens=[32],
-                fcnet_activation="linear",
-                fcnet_kernel_initializer=nn.init.xavier_uniform_,
-                fcnet_bias_initializer=nn.init.constant_,
-                fcnet_bias_initializer_kwargs={"val": 0.0},
-                vf_share_layers=True,
-            ),
+            model_config_dict={
+                "use_lstm": True,
+                "max_seq_len": 20,
+                "fcnet_hiddens": [32],
+                "fcnet_activation": "linear",
+                "vf_share_layers": True,
+                "fcnet_weights_initializer": nn.init.xavier_uniform_,
+                "fcnet_bias_initializer": functools.partial(nn.init.constant_, 0.0),
+            }
         )
     )
 

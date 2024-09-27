@@ -409,6 +409,30 @@ class TestAlgorithmConfig(unittest.TestCase):
             config, CustomRLModule2, passed_module_class=CustomRLModule2
         )
         self._assertEqualMARLSpecs(spec, expected)
+        ########################################
+        # This is an alternative way to ask the algorithm to assign a specific type of
+        # RLModule class to ALL module_ids.
+        config = (
+            SingleAgentAlgoConfig()
+            .api_stack(
+                enable_rl_module_and_learner=True,
+                enable_env_runner_and_connector_v2=True,
+            )
+            .rl_module(
+                rl_module_spec=MultiRLModuleSpec(
+                    module_specs=RLModuleSpec(module_class=CustomRLModule1)
+                ),
+            )
+        )
+
+        spec, expected = self._get_expected_marl_spec(config, CustomRLModule1)
+        self._assertEqualMARLSpecs(spec, expected)
+
+        # expected module should become the passed module if we pass it in.
+        spec, expected = self._get_expected_marl_spec(
+            config, CustomRLModule2, passed_module_class=CustomRLModule2
+        )
+        self._assertEqualMARLSpecs(spec, expected)
 
         ########################################
         # This is not only assigning a specific type of RLModule class to EACH
@@ -465,6 +489,30 @@ class TestAlgorithmConfig(unittest.TestCase):
             "Module_specs cannot be None",
             lambda: config.rl_module_spec,
         )
+
+        ########################################
+        # This is the case where we ask the algorithm to use its default
+        # MultiRLModuleSpec, and the MultiRLModuleSpec has defined its
+        # RLModuleSpecs.
+        config = MultiAgentAlgoConfig().api_stack(
+            enable_rl_module_and_learner=True,
+            enable_env_runner_and_connector_v2=True,
+        )
+
+        spec, expected = self._get_expected_marl_spec(
+            config,
+            DiscreteBCTorchModule,
+            expected_multi_rl_module_class=CustomMultiRLModule1,
+        )
+        self._assertEqualMARLSpecs(spec, expected)
+
+        spec, expected = self._get_expected_marl_spec(
+            config,
+            CustomRLModule1,
+            passed_module_class=CustomRLModule1,
+            expected_multi_rl_module_class=CustomMultiRLModule1,
+        )
+        self._assertEqualMARLSpecs(spec, expected)
 
 
 if __name__ == "__main__":
