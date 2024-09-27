@@ -272,12 +272,12 @@ config = (
         learner_connector=_make_learner_connector,
     )
     .rl_module(
-        model_config=DefaultModelConfig(
-            vf_share_layers=True,
-            conv_filters=[[16, 4, 2], [32, 4, 2], [64, 4, 2], [128, 4, 2]],
-            conv_activation="relu",
-            post_fcnet_hiddens=[256],
-        ),
+        model_config_dict={
+            "vf_share_layers": True,
+            "conv_filters": [[16, 4, 2], [32, 4, 2], [64, 4, 2], [128, 4, 2]],
+            "conv_activation": "relu",
+            "post_fcnet_hiddens": [256],
+        }
     )
 )
 

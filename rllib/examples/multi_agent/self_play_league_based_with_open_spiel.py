@@ -186,9 +186,6 @@ if __name__ == "__main__":
         )
         .training(
             num_epochs=20,
-            model=dict(
-                **({"uses_new_env_runners": True} if args.enable_new_api_stack else {}),
-            ),
         )
         .multi_agent(
             # Initial policy map: All PPO. This will be expanded
