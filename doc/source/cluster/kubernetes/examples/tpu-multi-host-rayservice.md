@@ -2,7 +2,7 @@
 
 # Serve a LLM on GKE with Multi-Host TPUs
 
-This guide showcases how to serve an LLM and run multi-host inference with vLLM and multi-host TPUs. A multi-host TPU slice is a node pool that contains two or more interconnected TPU VMs. Multi-host TPU slices enable users to run highly intensive workloads such as inference and training with large-scale AI models that don't fit on one VM host. For more information about TPUs, see [Use TPUs with KubeRay](kuberay-tpu). This example showcases serving and inference with Llama-3-70B.
+This guide showcases how to serve an LLM and run multi-host inference with vLLM and multi-host TPUs. A multi-host TPU slice is a node pool that contains two or more interconnected TPU VMs. Multi-host TPU slices enable users to run highly intensive workloads such as inference and training with large-scale AI models that don't fit on one VM host. For more information about TPUs, see [Use TPUs with KubeRay](kuberay-tpu). This example showcases serving and inference with Llama-3.1-70B using a 2x2x2 v4 TPU slice, or 8 TPU chips total.
 
 ## Step 1: Create a Kubernetes Cluster with TPUs and the Ray Operator Enabled
 
@@ -18,14 +18,14 @@ vLLM supports TPUs using PyTorch XLA, providing a [Dockerfile.tpu](https://githu
 
 Create a Docker repository to store the container images for this tutorial:
 ```sh
-gcloud artifacts repositories create REPOSITORY \
+gcloud artifacts repositories create vllm-tpu \
   --repository-format=docker \
   --location=us-central1
 ```
 
 Clone the vLLM repository:
 ```sh
-git https://github.com/vllm-project/vllm.git
+git clone https://github.com/vllm-project/vllm.git
 cd vllm
 ```
 
@@ -36,17 +36,18 @@ docker build -f Dockerfile.tpu -t vllm-tpu .
 
 Tag the image with your Artifact Registry name:
 ```sh
-docker tag SOURCE-IMAGE LOCATION-docker.pkg.dev/PROJECT-ID/REPOSITORY/IMAGE:TAG
+export VLLM_IMAGE=us-central1-docker.pkg.dev/PROJECT-ID/vllm-tpu/vllm-tpu:TAG
+docker tag vllm-tpu $VLLM_IMAGE
 ```
-Replace SOURCE-IMAGE with the local image name or image ID and TAG with the tag. If you don't specify a tag, Docker applies the default latest tag.
+Replace TAG with your desired tag. If you don't specify a tag, Docker applies the default latest tag.
 
 Push the vLLM image to your Artifact registry:
 ```sh
-docker push LOCATION-docker.pkg.dev/PROJECT-ID/REPOSITORY/IMAGE
+docker push $VLLM_IMAGE
 ```
 ## Step 4: Create a Kubernetes Secret for Hugging Face credentials
 
-This example uses meta-llama/Meta-Llama-3-70B, a gated Hugging Face model that requires access to be granted before use. Create a Hugging Face account, if you don't already have one, and follow the steps on the [model page](https://huggingface.co/meta-llama/Meta-Llama-3-70B) to request access to the model. Save your Hugging Face token for the following steps.
+This example uses meta-llama/Meta-Llama-3.1-70B, a gated Hugging Face model that requires access to be granted before use. Create a Hugging Face account, if you don't already have one, and follow the steps on the [model page](https://huggingface.co/meta-llama/Meta-Llama-3.1-70B) to request access to the model. Save your Hugging Face token for the following steps.
 
 Set HF_TOKEN environment variable:
 ```sh
@@ -63,7 +64,7 @@ kubectl create secret generic hf-secret \
 
 ## Step 5: Install the RayService CR
 
-Create a file named vllm-ray-serve-tpu.yaml with the following contents:
+To deploy our Serve application, we'll create a RayService CR with the following:
 ```sh
 apiVersion: ray.io/v1
 kind: RayService
@@ -80,7 +81,7 @@ spec:
         runtime_env:
           working_dir: "https://github.com/GoogleCloudPlatform/kubernetes-engine-samples/archive/main.zip"
         env_vars:
-          MODEL_ID: "meta-llama/Meta-Llama-3-70B"
+          MODEL_ID: "meta-llama/Meta-Llama-3.1-70B"
           TPU_CHIPS: 8
   rayClusterConfig:
     rayVersion: 2.34.0
@@ -90,7 +91,7 @@ spec:
         spec:
           containers:
           - name: ray-head
-            image: <SOURCE_IMAGE> # Replace with your Artifact Registry image.
+            image: $VLLM_IMAGE # Replace with your Artifact Registry image.
             imagePullPolicy: IfNotPresent
             ports:
             - containerPort: 6379
@@ -125,7 +126,7 @@ spec:
         spec:
           containers:
             - name: ray-worker
-              image: <SOURCE_IMAGE> # Replace with your Artifact Registry image.
+              image: $VLLM_IMAGE # Replace with your Artifact Registry image.
               imagePullPolicy: IfNotPresent
               resources:
                 limits:
@@ -148,12 +149,12 @@ spec:
             cloud.google.com/gke-tpu-accelerator: tpu-v4-podslice
             cloud.google.com/gke-tpu-topology: 2x2x2
 ```
-Replace `SOURCE-IMAGE` on the head and workers with the image name and tag pushed to Artifact Registry in the previous step.
 
 Create the RayService CR:
 ```sh
-kubectl apply -f vllm-ray-serve-tpu.yaml
+envsubst < https://raw.githubusercontent.com/GoogleCloudPlatform/kubernetes-engine-samples/master/ai-ml/gke-ray/rayserve/llm/llama-3.1-70b/ray-service-tpu.yaml | kubectl apply -f -
 ```
+The above instruction replaces the container images with the VLLM_IMAGE environment variables.
 
 ## Step 6: View the Serve deployment in the Ray Dashboard
 
