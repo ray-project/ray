@@ -133,7 +133,10 @@ void GrpcServer::Run() {
   RAY_CHECK(port_ > 0);
   RAY_LOG(INFO) << name_ << " server started, listening on port " << port_ << ".";
 
-  // Create calls for all the server call factories.
+  // Create calls for all the server call factories
+  //
+  // NOTE: That ServerCallFactory is created for every thread processing respective
+  //       CompletionQueue
   for (auto &entry : server_call_factories_) {
     // Derive target max inflight RPCs buffer based on `gcs_max_active_rpcs_per_handler`
     //
@@ -141,7 +144,7 @@ void GrpcServer::Run() {
     //       thread) buffer at 32, though it doesn't have any impact on concurrency
     //       (since we're recreating new instance of `ServerCall` as soon as one
     //       gets occupied therefore not serving as back-pressure mechanism)
-    int buffer_size;
+    size_t buffer_size;
     if (entry->GetMaxActiveRPCs() != -1) {
       buffer_size = std::max(1, int(entry->GetMaxActiveRPCs() / num_threads_));
     } else {
