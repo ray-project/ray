@@ -532,15 +532,7 @@ class PPO(Algorithm):
             # Standardize advantages.
             train_batch = standardize_fields(train_batch, ["advantages"])
 
-        # Perform a train step on the collected batch.
-        if self.config.enable_rl_module_and_learner:
-            train_results = self.learner_group.update_from_batch(
-                batch=train_batch,
-                minibatch_size=self.config.minibatch_size,
-                num_epochs=self.config.num_epochs,
-            )
-
-        elif self.config.simple_optimizer:
+        if self.config.simple_optimizer:
             train_results = train_one_step(self, train_batch)
         else:
             train_results = multi_gpu_train_one_step(self, train_batch)

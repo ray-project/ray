@@ -213,9 +213,6 @@ class TargetNetworkMixin:
         for target in self.target_models.values():
             target.load_state_dict(model_state_dict)
 
-            for target in self.target_models.values():
-                target.load_state_dict(model_state_dict)
-
     def set_weights(self, weights):
         # Makes sure that whenever we restore weights for this policy's
         # model, we sync the target network (from the main model)

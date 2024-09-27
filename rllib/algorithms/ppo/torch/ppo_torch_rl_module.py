@@ -30,15 +30,8 @@ class PPOTorchRLModule(TorchRLModule, PPORLModule):
         return output
 
     @override(RLModule)
-    def _forward_train(self, batch: Dict[str, Any], **kwargs) -> Dict[str, Any]:
-        """Train forward pass (keep embeddings for possible shared value func. call)."""
-        output = {}
-        encoder_outs = self.encoder(batch)
-        output[Columns.EMBEDDINGS] = encoder_outs[ENCODER_OUT][CRITIC]
-        if Columns.STATE_OUT in encoder_outs:
-            output[Columns.STATE_OUT] = encoder_outs[Columns.STATE_OUT]
-        output[Columns.ACTION_DIST_INPUTS] = self.pi(encoder_outs[ENCODER_OUT][ACTOR])
-        return output
+    def _forward_exploration(self, batch: Dict[str, Any], **kwargs) -> Dict[str, Any]:
+        return self._forward_inference(batch)
 
     @override(RLModule)
     def _forward_train(self, batch: Dict[str, Any]) -> Dict[str, Any]:

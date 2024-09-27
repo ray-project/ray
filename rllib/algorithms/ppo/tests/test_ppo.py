@@ -130,6 +130,52 @@ class TestPPO(unittest.TestCase):
                 # algo.evaluate()
                 algo.stop()
 
+    def test_ppo_free_log_std(self):
+        """Tests the free log std option works."""
+        config = (
+            ppo.PPOConfig()
+            .api_stack(
+                enable_rl_module_and_learner=True,
+                enable_env_runner_and_connector_v2=True,
+            )
+            .environment("Pendulum-v1")
+            .env_runners(
+                num_env_runners=1,
+            )
+            .rl_module(
+                model_config_dict={
+                    "fcnet_hiddens": [10],
+                    "fcnet_activation": "linear",
+                    "free_log_std": True,
+                    "vf_share_layers": True,
+                }
+            )
+            .training(
+                gamma=0.99,
+            )
+        )
+
+        algo = config.build()
+        module = algo.get_module(DEFAULT_MODULE_ID)
+
+        # Check the free log std var is created.
+        matching = [v for (n, v) in module.named_parameters() if "log_std" in n]
+        assert len(matching) == 1, matching
+        log_std_var = matching[0]
+
+        def get_value(log_std_var=log_std_var):
+            return log_std_var.detach().cpu().numpy()[0]
+
+        # Check the variable is initially zero.
+        init_std = get_value()
+        assert init_std == 0.0, init_std
+        algo.train()
+
+        # Check the variable is updated.
+        post_std = get_value()
+        assert post_std != 0.0, post_std
+        algo.stop()
+
 
 if __name__ == "__main__":
     import pytest
