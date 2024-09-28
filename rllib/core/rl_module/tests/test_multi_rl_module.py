@@ -1,7 +1,7 @@
 import tempfile
 import unittest
 
-from ray.rllib.core import DEFAULT_MODULE_ID
+from ray.rllib.core import COMPONENT_MULTI_RL_MODULE_SPEC, DEFAULT_MODULE_ID
 from ray.rllib.core.rl_module.rl_module import RLModuleSpec, RLModuleConfig
 from ray.rllib.core.rl_module.multi_rl_module import MultiRLModule, MultiRLModuleConfig
 from ray.rllib.core.testing.torch.bc_module import DiscreteBCTorchModule
@@ -71,7 +71,10 @@ class TestMultiRLModule(unittest.TestCase):
 
         state = module.get_state()
         self.assertIsInstance(state, dict)
-        self.assertEqual(set(state.keys()), set(module.keys()))
+        self.assertEqual(
+            set(state.keys()) - {COMPONENT_MULTI_RL_MODULE_SPEC},
+            set(module.keys()),
+        )
         self.assertEqual(
             set(state[DEFAULT_MODULE_ID].keys()),
             set(module[DEFAULT_MODULE_ID].get_state().keys()),
@@ -85,7 +88,7 @@ class TestMultiRLModule(unittest.TestCase):
             )
         ).as_multi_rl_module()
         state2 = module2.get_state()
-        check(state, state2, false=True)
+        check(state[DEFAULT_MODULE_ID], state2[DEFAULT_MODULE_ID], false=True)
 
         module2.set_state(state)
         state2_after = module2.get_state()
