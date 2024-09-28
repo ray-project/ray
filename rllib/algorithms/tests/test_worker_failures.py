@@ -673,26 +673,26 @@ class TestWorkerFailures(unittest.TestCase):
         self.assertEqual(algo.eval_env_runner_group.num_healthy_remote_workers(), 1)
         self.assertEqual(algo.eval_env_runner_group.num_remote_worker_restarts(), 1)
 
-        # Let's verify that our custom module exists on both recovered workers.
-        # TODO (sven): Reinstate once EnvRunners moved to new get/set_state APIs (from
-        #  get/set_weights).
-        # def has_test_module(w):
-        #    return "test_module" in w.module
+        # Let's verify that our custom module exists on all recovered workers.
+        def has_test_module(w):
+            return "test_module" in w.module
 
         # Rollout worker has test module.
-        # self.assertTrue(
-        #    all(algo.env_runner_group.foreach_worker(
-        #        has_test_module, local_worker=False
-        #    ))
-        # )
+        self.assertTrue(
+            all(
+                algo.env_runner_group.foreach_worker(
+                    has_test_module, local_env_runner=False
+                )
+            )
+        )
         # Eval worker has test module.
-        # self.assertTrue(
-        #    all(
-        #        algo.eval_env_runner_group.foreach_worker(
-        #            has_test_module, local_worker=False
-        #        )
-        #    )
-        # )
+        self.assertTrue(
+            all(
+                algo.eval_env_runner_group.foreach_worker(
+                    has_test_module, local_env_runner=False
+                )
+            )
+        )
 
     def test_eval_workers_failing_recover(self):
         # Counter that will survive restarts.

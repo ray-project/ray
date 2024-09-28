@@ -688,6 +688,7 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
         not_components: Optional[Union[str, Collection[str]]] = None,
         **kwargs,
     ) -> StateDict:
+        # Basic state dict.
         state = {
             WEIGHTS_SEQ_NO: self._weights_seq_no,
             NUM_ENV_STEPS_SAMPLED_LIFETIME: (
@@ -696,6 +697,7 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
             "agent_to_module_mapping_fn": self.config.policy_mapping_fn,
         }
 
+        # RLModule (MultiRLModule) component.
         if self._check_component(COMPONENT_RL_MODULE, components, not_components):
             state[COMPONENT_RL_MODULE] = self.module.get_state(
                 components=self._get_subcomponents(COMPONENT_RL_MODULE, components),
@@ -704,10 +706,12 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
                 ),
                 **kwargs,
             )
+        # Env-to-module connector.
         if self._check_component(
             COMPONENT_ENV_TO_MODULE_CONNECTOR, components, not_components
         ):
             state[COMPONENT_ENV_TO_MODULE_CONNECTOR] = self._env_to_module.get_state()
+        # Module-to-env connector.
         if self._check_component(
             COMPONENT_MODULE_TO_ENV_CONNECTOR, components, not_components
         ):
