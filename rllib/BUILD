@@ -1712,7 +1712,7 @@ py_test(
     data = [
         "tests/data/cartpole/cartpole-v1_large",
         "tests/data/cartpole/large.json",
-    ],
+    ]
 )
 
 py_test(
@@ -1724,7 +1724,7 @@ py_test(
     data = [
         "tests/data/cartpole/cartpole-v1_large",
         "tests/data/cartpole/large.json",
-    ],
+    ]
 )
 
 # --------------------------------------------------------------------
@@ -3110,9 +3110,9 @@ py_test(
     tags = ["team:rllib", "examples", "exclusive"],
     size = "medium",
     srcs = ["examples/offline_rl/train_w_bc_finetune_w_ppo.py"],
-    args = ["--enable-new-api-stack", "--as-test", "--framework=torch"]
+    args = ["--enable-new-api-stack", "--as-test", "--framework=torch"],
     # Include the offline data files.
-    data = ["tests/data/cartpole/cartpole-v1_large"],
+    data = ["tests/data/cartpole/cartpole-v1_large"]
 )
 
 # @HybridAPIStack
