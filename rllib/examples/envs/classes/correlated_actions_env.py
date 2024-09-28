@@ -1,6 +1,7 @@
 import gymnasium as gym
 from gymnasium.spaces import Box, Discrete, Tuple
 import numpy as np
+from typing import Any, Dict, Optional
 
 
 class AutoRegressiveActionEnv(gym.Env):
@@ -35,9 +36,11 @@ class AutoRegressiveActionEnv(gym.Env):
         # influencing the relationship)
         self.state = None
 
-    def reset(self, seed=None):
+    def reset(
+        self, seed: Optional[int] = None, options: Optional[Dict[str, Any]] = None
+    ):
         """Reset the environment to an initial state."""
-        super().reset(seed=seed)
+        super().reset(seed=seed, options=options)
 
         # Randomly initialize the state between -1 and 1
         self.state = np.random.uniform(-1, 1, size=(1,))
