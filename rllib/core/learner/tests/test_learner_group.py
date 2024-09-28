@@ -10,6 +10,7 @@ from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.algorithms.ppo.tests.test_ppo_learner import FAKE_BATCH
 from ray.rllib.core import (
     COMPONENT_LEARNER,
+    COMPONENT_MULTI_RL_MODULE_SPEC,
     COMPONENT_RL_MODULE,
     DEFAULT_MODULE_ID,
 )
@@ -469,14 +470,12 @@ class TestLearnerGroupSaveLoadState(unittest.TestCase):
 
             # Do a single update.
             learner_group.update_from_batch(batch.as_multi_agent())
+            weights_after_update = learner_group.get_state(
+                components=COMPONENT_LEARNER + "/" + COMPONENT_RL_MODULE
+            )[COMPONENT_LEARNER][COMPONENT_RL_MODULE]
+            weights_after_update.pop(COMPONENT_MULTI_RL_MODULE_SPEC)
             # Weights after the update must be different from original ones.
-            check(
-                initial_weights,
-                learner_group.get_state(
-                    components=COMPONENT_LEARNER + "/" + COMPONENT_RL_MODULE
-                )[COMPONENT_LEARNER][COMPONENT_RL_MODULE],
-                false=True,
-            )
+            check(initial_weights, weights_after_update, false=True)
 
             # Checkpoint the learner state after 1 update for later comparison.
             learner_after_1_update_checkpoint_dir = tempfile.TemporaryDirectory().name
@@ -497,18 +496,18 @@ class TestLearnerGroupSaveLoadState(unittest.TestCase):
             weights_after_2_updates_with_break = learner_group.get_state(
                 components=COMPONENT_LEARNER + "/" + COMPONENT_RL_MODULE
             )[COMPONENT_LEARNER][COMPONENT_RL_MODULE]
+            weights_after_2_updates_with_break.pop(COMPONENT_MULTI_RL_MODULE_SPEC)
             learner_group.shutdown()
             del learner_group
 
             # Construct a new learner group and load the initial state of the learner.
             learner_group = config.build_learner_group(env=env)
             learner_group.restore_from_path(initial_learner_checkpoint_dir)
-            check(
-                initial_weights,
-                learner_group.get_state(
-                    components=COMPONENT_LEARNER + "/" + COMPONENT_RL_MODULE
-                )[COMPONENT_LEARNER][COMPONENT_RL_MODULE],
-            )
+            weights_after_restore = learner_group.get_state(
+                components=COMPONENT_LEARNER + "/" + COMPONENT_RL_MODULE
+            )[COMPONENT_LEARNER][COMPONENT_RL_MODULE]
+            weights_after_restore.pop(COMPONENT_MULTI_RL_MODULE_SPEC)
+            check(initial_weights, weights_after_restore)
             # Perform 2 updates to get to the same state as the previous learners.
             learner_group.update_from_batch(batch.as_multi_agent())
             results_2nd_without_break = learner_group.update_from_batch(

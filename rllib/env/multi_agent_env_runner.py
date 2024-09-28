@@ -14,7 +14,6 @@ from ray.rllib.core import (
 )
 from ray.rllib.core.columns import Columns
 from ray.rllib.core.rl_module.multi_rl_module import MultiRLModuleSpec
-from ray.rllib.env import INPUT_ENV_SPACES
 from ray.rllib.env.env_context import EnvContext
 from ray.rllib.env.env_runner import EnvRunner, ENV_STEP_FAILURE
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
@@ -256,20 +255,12 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
         while ts < num_timesteps:
             # Act randomly.
             if random_actions:
-                # Note, to get sampled actions from all agents' action
-                # spaces we need to call `MultiAgentEnv.action_space_sample()`.
-                if self.env.unwrapped._action_space_in_preferred_format:
-                    actions = self.env.action_space.sample()
-                # Otherwise, `action_space_sample()` needs to be implemented.
-                else:
-                    actions = self.env.action_space_sample()
-                # Remove all actions for agents that had no observation.
+                # Only act (randomly) for those agents that had an observation.
                 to_env = {
                     Columns.ACTIONS: [
                         {
-                            agent_id: agent_action
-                            for agent_id, agent_action in actions.items()
-                            if agent_id in self._episode.get_agents_to_act()
+                            aid: self.env.get_action_space(aid).sample()
+                            for aid in self._episode.get_agents_to_act()
                         }
                     ]
                 }
@@ -465,20 +456,14 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
         while eps < num_episodes:
             # Act randomly.
             if random_actions:
-                # Note, to get sampled actions from all agents' action
-                # spaces we need to call `MultiAgentEnv.action_space_sample()`.
-                if self.env.unwrapped._action_space_in_preferred_format:
-                    actions = self.env.action_space.sample()
-                # Otherwise, `action_space_sample()` needs to be implemented.
-                else:
-                    actions = self.env.action_space_sample()
-                # Remove all actions for agents that had no observation.
+                # Only act (randomly) for those agents that had an observation.
                 to_env = {
-                    Columns.ACTIONS: {
-                        agent_id: agent_action
-                        for agent_id, agent_action in actions.items()
-                        if agent_id in _episode.get_agents_to_act()
-                    },
+                    Columns.ACTIONS: [
+                        {
+                            aid: self.env.get_action_space(aid).sample()
+                            for aid in self._episode.get_agents_to_act()
+                        }
+                    ]
                 }
             # Compute an action using the RLModule.
             else:
@@ -620,10 +605,9 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
 
     @override(EnvRunner)
     def get_spaces(self):
+        # Return the already agent-to-module translated spaces from our connector
+        # pipeline.
         return {
-            INPUT_ENV_SPACES: (self.env.observation_space, self.env.action_space),
-            # Use the already agent-to-module translated spaces from our connector
-            # pipeline.
             **{
                 mid: (o, self._env_to_module.action_space[mid])
                 for mid, o in self._env_to_module.observation_space.spaces.items()
@@ -704,6 +688,7 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
         not_components: Optional[Union[str, Collection[str]]] = None,
         **kwargs,
     ) -> StateDict:
+        # Basic state dict.
         state = {
             WEIGHTS_SEQ_NO: self._weights_seq_no,
             NUM_ENV_STEPS_SAMPLED_LIFETIME: (
@@ -712,6 +697,7 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
             "agent_to_module_mapping_fn": self.config.policy_mapping_fn,
         }
 
+        # RLModule (MultiRLModule) component.
         if self._check_component(COMPONENT_RL_MODULE, components, not_components):
             state[COMPONENT_RL_MODULE] = self.module.get_state(
                 components=self._get_subcomponents(COMPONENT_RL_MODULE, components),
@@ -720,10 +706,12 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
                 ),
                 **kwargs,
             )
+        # Env-to-module connector.
         if self._check_component(
             COMPONENT_ENV_TO_MODULE_CONNECTOR, components, not_components
         ):
             state[COMPONENT_ENV_TO_MODULE_CONNECTOR] = self._env_to_module.get_state()
+        # Module-to-env connector.
         if self._check_component(
             COMPONENT_MODULE_TO_ENV_CONNECTOR, components, not_components
         ):
@@ -898,8 +886,13 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
 
     def _new_episode(self):
         return MultiAgentEpisode(
-            observation_space=self.env.observation_space,
-            action_space=self.env.action_space,
+            observation_space={
+                aid: self.env.get_observation_space(aid)
+                for aid in self.env.possible_agents
+            },
+            action_space={
+                aid: self.env.get_action_space(aid) for aid in self.env.possible_agents
+            },
             agent_to_module_mapping_fn=self.config.policy_mapping_fn,
         )
 
