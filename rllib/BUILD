@@ -995,7 +995,7 @@ py_test(
     name = "test_bc",
     tags = ["team:rllib", "algorithms_dir"],
     size = "medium",
-    # Include the parquet data files.
+    # Include the offline data files.
     data = ["tests/data/cartpole/cartpole-v1_large"],
     srcs = ["algorithms/bc/tests/test_bc.py"]
 )
@@ -1060,7 +1060,7 @@ py_test(
     name = "test_marwil",
     tags = ["team:rllib", "algorithms_dir"],
     size = "large",
-    # Include the parquet data folder.
+    # Include the offline data files.
     data = [
         "tests/data/cartpole/cartpole-v1_large",
         "tests/data/pendulum/pendulum-v1_large",
@@ -1704,7 +1704,7 @@ py_test(
     data = [
         "tests/data/cartpole/cartpole-v1_large",
         "tests/data/cartpole/large.json",
-    ],
+    ]
 )
 
 py_test(
@@ -1712,10 +1712,11 @@ py_test(
     tags = ["team:rllib", "offline"],
     size = "small",
     srcs = ["offline/tests/test_offline_prelearner.py"],
+    # Include the offline data files.
     data = [
         "tests/data/cartpole/cartpole-v1_large",
         "tests/data/cartpole/large.json",
-    ],
+    ]
 )
 
 # --------------------------------------------------------------------
