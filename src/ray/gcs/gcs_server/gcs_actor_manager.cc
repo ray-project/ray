@@ -1363,8 +1363,8 @@ void GcsActorManager::RestartActor(const ActorID &actor_id,
   // could've been destroyed and dereigstered before restart.
   auto iter = registered_actors_.find(actor_id);
   if (iter == registered_actors_.end()) {
-    RAY_LOG(DEBUG) << "Actor is destroyed before restart, actor id = " << actor_id
-                   << ", job id = " << actor_id.JobId();
+    RAY_LOG(DEBUG).WithField(actor_id.JobId()).WithField(actor_id)
+        << "Actor is destroyed before restart";
     if (done_callback) {
       done_callback();
     }
