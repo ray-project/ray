@@ -69,7 +69,7 @@ class TestAlgorithmRLModuleRestore(unittest.TestCase):
         module_specs = {}
         for i in range(NUM_AGENTS):
             module_specs[f"policy_{i}"] = RLModuleSpec(
-                module_class=PPOTorchRLModule,
+                module_class=module_class,
                 observation_space=env.get_observation_space(0),
                 action_space=env.get_action_space(0),
                 # If we want to use this externally created module in the algorithm,
@@ -110,7 +110,7 @@ class TestAlgorithmRLModuleRestore(unittest.TestCase):
         module_specs = {}
         for i in range(NUM_AGENTS):
             module_specs[f"policy_{i}"] = RLModuleSpec(
-                module_class=PPOTorchRLModule,
+                module_class=module_class,
                 observation_space=env.get_observation_space(0),
                 action_space=env.get_action_space(0),
                 # If we want to use this externally created module in the algorithm,
@@ -125,7 +125,7 @@ class TestAlgorithmRLModuleRestore(unittest.TestCase):
 
         # create a RLModule to load and override the "policy_1" module with
         module_to_swap_in = RLModuleSpec(
-            module_class=PPOTorchRLModule,
+            module_class=module_class,
             observation_space=env.get_observation_space(0),
             action_space=env.get_action_space(0),
             # Note, we need to pass in the default model config for the algorithm
@@ -140,10 +140,10 @@ class TestAlgorithmRLModuleRestore(unittest.TestCase):
         # create a new MARL_spec with the checkpoint from the marl_checkpoint
         # and the module_to_swap_in_checkpoint
         module_specs["policy_1"] = RLModuleSpec(
-            module_class=PPOTorchRLModule,
+            module_class=module_class,
             observation_space=env.get_observation_space(0),
             action_space=env.get_action_space(0),
-            model_config=DefaultModelConfig(fcnet_hiddens=[64]),
+            model_config_dict={"fcnet_hiddens": [64]},
             catalog_class=PPOCatalog,
             load_state_path=module_to_swap_in_path,
         )
@@ -250,7 +250,7 @@ class TestAlgorithmRLModuleRestore(unittest.TestCase):
         module_specs = {}
         for i in range(num_agents):
             module_specs[f"policy_{i}"] = RLModuleSpec(
-                module_class=PPOTorchRLModule,
+                module_class=module_class,
                 observation_space=env.get_observation_space(0),
                 action_space=env.get_action_space(0),
                 # Note, we need to pass in the default model config for the
@@ -265,7 +265,7 @@ class TestAlgorithmRLModuleRestore(unittest.TestCase):
 
         # create a RLModule to load and override the "policy_1" module with
         module_to_swap_in = RLModuleSpec(
-            module_class=PPOTorchRLModule,
+            module_class=module_class,
             observation_space=env.get_observation_space(0),
             action_space=env.get_action_space(0),
             # Note, we need to pass in the default model config for the algorithm
@@ -280,10 +280,10 @@ class TestAlgorithmRLModuleRestore(unittest.TestCase):
         # create a new MARL_spec with the checkpoint from the marl_checkpoint
         # and the module_to_swap_in_checkpoint
         module_specs["policy_1"] = RLModuleSpec(
-            module_class=PPOTorchRLModule,
+            module_class=module_class,
             observation_space=env.get_observation_space(0),
             action_space=env.get_action_space(0),
-            model_config=DefaultModelConfig(fcnet_hiddens=[64]),
+            model_config_dict={"fcnet_hiddens": [64]},
             catalog_class=PPOCatalog,
             load_state_path=module_to_swap_in_path,
         )
