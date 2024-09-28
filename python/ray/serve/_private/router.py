@@ -9,6 +9,11 @@ from typing import Any, DefaultDict, Dict, List, Optional, Tuple, Union
 
 import ray
 from ray.actor import ActorHandle
+from ray.anyscale.serve._private.tracing_utils import (
+    create_propagated_context,
+    set_span_attributes,
+    tracing_decorator_factory,
+)
 from ray.exceptions import ActorDiedError, ActorUnavailableError, RayError
 from ray.serve._private.common import (
     DeploymentHandleSource,
@@ -332,6 +337,7 @@ class Router:
         _prefer_local_node_routing: bool = False,
         enable_queue_len_cache: bool = RAY_SERVE_ENABLE_QUEUE_LENGTH_CACHE,
         enable_strict_max_ongoing_requests: bool = RAY_SERVE_ENABLE_STRICT_MAX_ONGOING_REQUESTS,  # noqa: E501
+        by_reference: bool = True,
         *,
         replica_scheduler: Optional[ReplicaScheduler] = None,
     ):
@@ -340,6 +346,13 @@ class Router:
         The scheduling behavior is delegated to a ReplicaScheduler; this is a thin
         wrapper that adds metrics and logging.
         """
+        # ===== Begin Anyscale proprietary code ======
+        from ray.anyscale.serve._private.replica_scheduler.replica_wrapper import (
+            gRPCReplicaWrapper,
+        )
+
+        self._by_reference = by_reference
+        # ===== End Anyscale proprietary code ======
 
         self._event_loop = event_loop
         self.deployment_id = deployment_id
@@ -355,7 +368,9 @@ class Router:
                 enable_strict_max_ongoing_requests
             )
 
-        replica_wrapper_cls = ActorReplicaWrapper
+        create_replica_wrapper = (
+            lambda r: ActorReplicaWrapper(r) if by_reference else gRPCReplicaWrapper(r)
+        )
         if replica_scheduler is None:
             replica_scheduler = PowerOfTwoChoicesReplicaScheduler(
                 self._event_loop,
@@ -370,7 +385,7 @@ class Router:
                 else None,
                 self_availability_zone,
                 use_replica_queue_len_cache=enable_queue_len_cache,
-                create_replica_wrapper_func=lambda r: replica_wrapper_cls(r),
+                create_replica_wrapper_func=create_replica_wrapper,
             )
 
         self._replica_scheduler: ReplicaScheduler = replica_scheduler
@@ -586,6 +601,9 @@ class Router:
                 pr, is_retry=True
             )
 
+    @tracing_decorator_factory(
+        trace_name="proxy_route_to_replica",
+    )
     async def assign_request(
         self,
         request_meta: RequestMetadata,
@@ -593,6 +611,23 @@ class Router:
         **request_kwargs,
     ) -> ReplicaResult:
         """Assign a request to a replica and return the resulting object_ref."""
+
+        trace_attributes = {
+            "request_id": request_meta.request_id,
+            "deployment": self.deployment_id.name,
+            "app": self.deployment_id.app_name,
+            "call_method": request_meta.call_method,
+            "route": request_meta.route,
+            "multiplexed_model_id": request_meta.multiplexed_model_id,
+            "is_streaming": request_meta.is_streaming,
+            "is_http_request": request_meta.is_http_request,
+            "is_grpc_request": request_meta.is_grpc_request,
+        }
+        set_span_attributes(trace_attributes)
+        # Add context to request meta to link
+        # traces collected in the replica.
+        propagate_context = create_propagated_context()
+        request_meta.tracing_context = propagate_context
 
         with self._metrics_manager.wrap_request_assignment(request_meta):
             # Optimization: if there are currently zero replicas for a deployment,
