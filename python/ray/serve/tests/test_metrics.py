@@ -33,23 +33,12 @@ TEST_METRICS_EXPORT_PORT = 9999
 
 
 @pytest.fixture
-def clean_up_metrics():
-    prometheus_base_url = f"http://127.0.0.1:{TEST_METRICS_EXPORT_PORT}"
-    delete_all_series_url = (
-        f"{prometheus_base_url}/api/v1/admin/tsdb"
-        '/delete_series?match[]={__name__=~".*"}'
-    )
-    clean_tombstones_url = f"{prometheus_base_url}/api/v1/admin/tsdb/clean_tombstones"
-    requests.post(delete_all_series_url)
-    requests.post(clean_tombstones_url)
-    yield
-    requests.post(delete_all_series_url)
-    requests.post(clean_tombstones_url)
-
-
-@pytest.fixture
 def serve_start_shutdown():
     """Fixture provides a fresh Ray cluster to prevent metrics state sharing."""
+    while len(serve.status().proxies) > 0 or len(serve.status().applications) > 0:
+        serve.shutdown()
+    while ray.is_initialized():
+        ray.shutdown()
     ray.init(
         _metrics_export_port=TEST_METRICS_EXPORT_PORT,
         _system_config={
@@ -68,8 +57,10 @@ def serve_start_shutdown():
             grpc_servicer_functions=grpc_servicer_functions,
         ),
     )
-    serve.shutdown()
-    ray.shutdown()
+    while len(serve.status().proxies) > 0 or len(serve.status().applications) > 0:
+        serve.shutdown()
+    while ray.is_initialized():
+        ray.shutdown()
     ray._private.utils.reset_ray_address()
 
 
@@ -208,9 +199,7 @@ def get_metric_dictionaries(name: str, timeout: float = 20) -> List[Dict]:
     return metric_dicts
 
 
-def test_serve_metrics_for_successful_connection(
-    serve_start_shutdown, clean_up_metrics
-):
+def test_serve_metrics_for_successful_connection(serve_start_shutdown):
     @serve.deployment(name="metrics")
     async def f(request):
         return "hello"
@@ -275,7 +264,7 @@ def test_serve_metrics_for_successful_connection(
         verify_metrics(do_assert=True)
 
 
-def test_http_replica_gauge_metrics(serve_start_shutdown, clean_up_metrics):
+def test_http_replica_gauge_metrics(serve_start_shutdown):
     """Test http replica gauge metrics"""
     signal = SignalActor.remote()
 
@@ -308,7 +297,7 @@ def test_http_replica_gauge_metrics(serve_start_shutdown, clean_up_metrics):
     wait_for_condition(ensure_request_processing, timeout=5)
 
 
-def test_proxy_metrics_not_found(serve_start_shutdown, clean_up_metrics):
+def test_proxy_metrics_not_found(serve_start_shutdown):
     # NOTE: These metrics should be documented at
     # https://docs.ray.io/en/latest/serve/monitoring.html#metrics
     # Any updates here should be reflected there too.
@@ -400,7 +389,7 @@ def test_proxy_metrics_not_found(serve_start_shutdown, clean_up_metrics):
         verify_error_count(do_assert=True)
 
 
-def test_proxy_metrics_internal_error(serve_start_shutdown, clean_up_metrics):
+def test_proxy_metrics_internal_error(serve_start_shutdown):
     # NOTE: These metrics should be documented at
     # https://docs.ray.io/en/latest/serve/monitoring.html#metrics
     # Any updates here should be reflected there too.
@@ -495,7 +484,7 @@ def test_proxy_metrics_internal_error(serve_start_shutdown, clean_up_metrics):
         verify_error_count(do_assert=True)
 
 
-def test_proxy_metrics_fields_not_found(serve_start_shutdown, clean_up_metrics):
+def test_proxy_metrics_fields_not_found(serve_start_shutdown):
     """Tests the proxy metrics' fields' behavior for not found."""
 
     # Should generate 404 responses
@@ -539,7 +528,7 @@ def test_proxy_metrics_fields_not_found(serve_start_shutdown, clean_up_metrics):
     print("serve_num_grpc_error_requests working as expected.")
 
 
-def test_proxy_metrics_fields_internal_error(serve_start_shutdown, clean_up_metrics):
+def test_proxy_metrics_fields_internal_error(serve_start_shutdown):
     """Tests the proxy metrics' fields' behavior for internal error."""
 
     @serve.deployment()
@@ -600,7 +589,7 @@ def test_proxy_metrics_fields_internal_error(serve_start_shutdown, clean_up_metr
     print("serve_grpc_request_latency_ms_sum working as expected.")
 
 
-def test_replica_metrics_fields(serve_start_shutdown, clean_up_metrics):
+def test_replica_metrics_fields(serve_start_shutdown):
     """Test replica metrics fields"""
 
     @serve.deployment
@@ -739,9 +728,7 @@ class TestRequestContextMetrics:
         for key in expected_output:
             assert metric[key] == expected_output[key]
 
-    def test_request_context_pass_for_http_proxy(
-        self, serve_start_shutdown, clean_up_metrics
-    ):
+    def test_request_context_pass_for_http_proxy(self, serve_start_shutdown):
         """Test HTTP proxy passing request context"""
 
         @serve.deployment(graceful_shutdown_timeout_s=0.001)
@@ -835,9 +822,7 @@ class TestRequestContextMetrics:
             assert metrics_app_name["g"] == "app2", msg
             assert metrics_app_name["h"] == "app3", msg
 
-    def test_request_context_pass_for_grpc_proxy(
-        self, serve_start_shutdown, clean_up_metrics
-    ):
+    def test_request_context_pass_for_grpc_proxy(self, serve_start_shutdown):
         """Test gRPC proxy passing request context"""
 
         @serve.deployment(graceful_shutdown_timeout_s=0.001)
@@ -991,9 +976,7 @@ class TestRequestContextMetrics:
         assert requests_metrics_app_name["g1"] == "app"
         assert requests_metrics_app_name["g2"] == "app"
 
-    def test_customer_metrics_with_context(
-        self, serve_start_shutdown, clean_up_metrics
-    ):
+    def test_customer_metrics_with_context(self, serve_start_shutdown):
         @serve.deployment
         class Model:
             def __init__(self):
@@ -1085,9 +1068,7 @@ class TestRequestContextMetrics:
         self.verify_metrics(histogram_metrics[0], expected_metrics)
 
     @pytest.mark.parametrize("use_actor", [False, True])
-    def test_serve_metrics_outside_serve(
-        self, use_actor, serve_start_shutdown, clean_up_metrics
-    ):
+    def test_serve_metrics_outside_serve(self, use_actor, serve_start_shutdown):
         """Make sure ray.serve.metrics work in ray actor"""
         if use_actor:
 
@@ -1211,7 +1192,7 @@ class TestRequestContextMetrics:
         self.verify_metrics(histogram_metrics[0], expected_metrics)
 
 
-def test_multiplexed_metrics(serve_start_shutdown, clean_up_metrics):
+def test_multiplexed_metrics(serve_start_shutdown):
     """Tests multiplexed API corresponding metrics."""
 
     @serve.deployment
@@ -1286,7 +1267,7 @@ class CallActor:
 
 
 class TestHandleMetrics:
-    def test_queued_queries_basic(self, serve_start_shutdown, clean_up_metrics):
+    def test_queued_queries_basic(self, serve_start_shutdown):
         signal = SignalActor.options(name="signal123").remote()
         serve.run(WaitForSignal.options(max_ongoing_requests=1).bind(), name="app1")
 
@@ -1315,9 +1296,7 @@ class TestHandleMetrics:
             expected=0,
         )
 
-    def test_queued_queries_multiple_handles(
-        self, serve_start_shutdown, clean_up_metrics
-    ):
+    def test_queued_queries_multiple_handles(self, serve_start_shutdown):
         signal = SignalActor.options(name="signal123").remote()
         serve.run(WaitForSignal.options(max_ongoing_requests=1).bind(), name="app1")
 
@@ -1357,7 +1336,7 @@ class TestHandleMetrics:
             expected=0,
         )
 
-    def test_queued_queries_disconnected(self, serve_start_shutdown, clean_up_metrics):
+    def test_queued_queries_disconnected(self, serve_start_shutdown):
         """Check that disconnected queued queries are tracked correctly."""
 
         signal = SignalActor.remote()
@@ -1498,7 +1477,7 @@ class TestHandleMetrics:
         # Unblock hanging request.
         ray.get(signal.send.remote())
 
-    def test_running_requests_gauge(self, serve_start_shutdown, clean_up_metrics):
+    def test_running_requests_gauge(self, serve_start_shutdown):
         signal = SignalActor.options(name="signal123").remote()
         serve.run(
             Router.options(num_replicas=2, ray_actor_options={"num_cpus": 0}).bind(
@@ -1558,7 +1537,7 @@ class TestHandleMetrics:
         )
 
 
-def test_long_poll_host_sends_counted(serve_instance, clean_up_metrics):
+def test_long_poll_host_sends_counted(serve_instance):
     """Check that the transmissions by the long_poll are counted."""
 
     host = ray.remote(LongPollHost).remote(
@@ -1615,7 +1594,7 @@ def test_long_poll_host_sends_counted(serve_instance, clean_up_metrics):
     )
 
 
-def test_actor_summary(serve_instance, clean_up_metrics):
+def test_actor_summary(serve_instance):
     @serve.deployment
     def f():
         pass
