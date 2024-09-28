@@ -305,8 +305,8 @@ void GcsResourceManager::OnNodeAdd(const rpc::GcsNodeInfo &node) {
           scheduling_node_id, scheduling::ResourceID(entry.first), entry.second);
     }
   } else {
-    RAY_LOG(WARNING) << "The registered node " << node_id
-                     << " doesn't set the total resources.";
+    RAY_LOG(WARNING).WithField(node_id)
+        << "The registered node doesn't set the total resources.";
   }
 
   absl::flat_hash_map<std::string, std::string> labels(node.labels().begin(),
