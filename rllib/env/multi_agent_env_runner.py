@@ -259,7 +259,7 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
                 to_env = {
                     Columns.ACTIONS: [
                         {
-                            self.env.get_action_space(aid).sample()
+                            aid: self.env.get_action_space(aid).sample()
                             for aid in self._episode.get_agents_to_act()
                         }
                     ]
@@ -460,7 +460,7 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
                 to_env = {
                     Columns.ACTIONS: [
                         {
-                            self.env.get_action_space(aid).sample()
+                            aid: self.env.get_action_space(aid).sample()
                             for aid in self._episode.get_agents_to_act()
                         }
                     ]
