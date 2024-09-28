@@ -181,18 +181,18 @@ def test_simulate_pp_2workers_2batches_1f1b(
 
     tensor_cpu = torch.zeros(10, 10)
     tensor_cuda = tensor_cpu.to("cuda:0")
-    refs = compiled_dag.execute(tensor_cpu)
+    refs = compiled_dag.execute(tensor_cuda)
 
     if single_fetch:
         assert len(refs) == 2
         for ref in refs:
             tensor = ray.get(ref)
-            assert torch.equal(tensor, tensor_cuda)
+            assert torch.equal(tensor, tensor_cpu)
     else:
         tensors = ray.get(refs)
         assert len(tensors) == 2
         for tensor in tensors:
-            assert torch.equal(tensor, tensor_cuda)
+            assert torch.equal(tensor, tensor_cpu)
 
     compiled_dag.teardown()
 
@@ -356,18 +356,18 @@ def test_three_actors_with_nccl_2(ray_start_regular, single_fetch, monkeypatch):
 
     tensor_cpu = torch.zeros(10, 10)
     tensor_cuda = tensor_cpu.to("cuda:0")
-    refs = compiled_dag.execute(tensor_cpu)
+    refs = compiled_dag.execute(tensor_cuda)
 
     if single_fetch:
         assert len(refs) == 3
         for ref in refs:
             tensor = ray.get(ref)
-            assert torch.equal(tensor, tensor_cuda)
+            assert torch.equal(tensor, tensor_cpu)
     else:
         tensors = ray.get(refs)
         assert len(tensors) == 3
         for tensor in tensors:
-            assert torch.equal(tensor, tensor_cuda)
+            assert torch.equal(tensor, tensor_cpu)
 
     compiled_dag.teardown()
 
