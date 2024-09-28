@@ -8,7 +8,8 @@ from pathlib import Path
 
 import requests
 
-from ray.dashboard.consts import PROMETHEUS_CONFIG_INPUT_PATH
+from ray._private.ray_constants import PROMETHEUS_SERVICE_DISCOVERY_FILE
+from ray.dashboard.modules.metrics.templates import PROMETHEUS_YML_TEMPLATE
 
 # Configure basic logging
 logging.basicConfig(
@@ -74,16 +75,30 @@ def install_prometheus(file_path):
 
 def start_prometheus(prometheus_dir):
 
-    # Currently, Ray never modifies this config file, so we can just use the
-    # hardcoded path. (It just copies it to a more user-friendly location, in
-    # MetricsHead._create_default_prometheus_configs.)
-    # However, if in the future Ray ever modifies this file at runtime, we'll
-    # need to use the user-friendly location instead, and reload the config
-    # file after it's updated by Ray.
-    config_file = Path(PROMETHEUS_CONFIG_INPUT_PATH)
+    # The function assumes, to-be-prometheus-monitored ray cluster uses the default 
+    # config with "/tmp/ray" as the default root temporary directory.
 
-    if not config_file.exists():
-        raise FileNotFoundError(f"Prometheus config file not found: {config_file}")
+    # Currently, when ray starts, it will generate the prometheus config file with 
+    # the specified or default root temporary directory at runtime and save it under 
+    # the corresponding path under the root temporary directory as well (in
+    # MetricsHead._create_default_prometheus_configs)
+
+    # However, since this function can be called without an existing ray cluster, 
+    # here we directly use the default path when generating the config file
+
+    prometheus_config_local_path = os.path.join(
+        os.path.dirname(__file__), "prometheus.yml"
+    )
+
+    with open(prometheus_config_local_path) as f:
+        f.write(
+            PROMETHEUS_YML_TEMPLATE.format(
+                prom_metrics_service_discovery_file_path
+                =f"/tmp/ray/{PROMETHEUS_SERVICE_DISCOVERY_FILE}"
+            )
+        )
+    
+    config_file = Path(prometheus_config_local_path)
 
     prometheus_cmd = [
         f"{prometheus_dir}/prometheus",

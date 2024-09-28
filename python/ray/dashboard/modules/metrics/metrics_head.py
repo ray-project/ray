@@ -11,12 +11,14 @@ import ray
 import ray.dashboard.optional_utils as dashboard_optional_utils
 import ray.dashboard.utils as dashboard_utils
 from ray._private.async_utils import enable_monitor_loop_lag
-from ray._private.ray_constants import env_integer
+from ray._private.ray_constants import (
+    env_integer,
+    PROMETHEUS_SERVICE_DISCOVERY_FILE,
+    SESSION_LATEST
+)
 from ray._private.utils import get_or_create_event_loop
 from ray.dashboard.consts import (
     AVAILABLE_COMPONENT_NAMES_FOR_METRICS,
-    METRICS_INPUT_ROOT,
-    PROMETHEUS_CONFIG_INPUT_PATH,
 )
 from ray.dashboard.modules.metrics.grafana_dashboard_factory import (
     generate_data_grafana_dashboard,
@@ -24,11 +26,11 @@ from ray.dashboard.modules.metrics.grafana_dashboard_factory import (
     generate_serve_deployment_grafana_dashboard,
     generate_serve_grafana_dashboard,
 )
-from ray.dashboard.modules.metrics.grafana_dashboard_provisioning_template import (
-    DASHBOARD_PROVISIONING_TEMPLATE,
-)
-from ray.dashboard.modules.metrics.grafana_datasource_template import (
+from ray.dashboard.modules.metrics.templates import (
     GRAFANA_DATASOURCE_TEMPLATE,
+    GRAFANA_INI_TEMPLATE,
+    DASHBOARD_PROVISIONING_TEMPLATE,
+    PROMETHEUS_YML_TEMPLATE,
 )
 
 import psutil
@@ -54,7 +56,6 @@ GRAFANA_HOST_ENV_VAR = "RAY_GRAFANA_HOST"
 GRAFANA_HOST_DISABLED_VALUE = "DISABLED"
 GRAFANA_IFRAME_HOST_ENV_VAR = "RAY_GRAFANA_IFRAME_HOST"
 GRAFANA_DASHBOARD_OUTPUT_DIR_ENV_VAR = "RAY_METRICS_GRAFANA_DASHBOARD_OUTPUT_DIR"
-GRAFANA_CONFIG_INPUT_PATH = os.path.join(METRICS_INPUT_ROOT, "grafana")
 GRAFANA_HEALTHCHECK_PATH = "api/health"
 
 
@@ -75,13 +76,23 @@ class MetricsHead(dashboard_utils.DashboardHeadModule):
             PROMETHEUS_HOST_ENV_VAR, DEFAULT_PROMETHEUS_HOST
         )
         default_metrics_root = os.path.join(self._dashboard_head.session_dir, "metrics")
+        session_latest_metrics_root = os.path.join(
+            self._dashboard_head.temp_dir, 
+            SESSION_LATEST,
+            "metrics")
         self._metrics_root = os.environ.get(
             METRICS_OUTPUT_ROOT_ENV_VAR, default_metrics_root
         )
-        grafana_config_output_path = os.path.join(self._metrics_root, "grafana")
+        self._metrics_root_session_latest = os.environ.get(
+            METRICS_OUTPUT_ROOT_ENV_VAR, session_latest_metrics_root
+        )
+        self._grafana_config_output_path = os.path.join(self._metrics_root, "grafana")
+        self._grafana_session_latest_config_output_path = os.path.join(
+            self._metrics_root_session_latest, "grafana"
+        )
         self._grafana_dashboard_output_dir = os.environ.get(
             GRAFANA_DASHBOARD_OUTPUT_DIR_ENV_VAR,
-            os.path.join(grafana_config_output_path, "dashboards"),
+            os.path.join(self._grafana_config_output_path, "dashboards"),
         )
 
         self._prometheus_name = os.environ.get(
@@ -186,17 +197,37 @@ class MetricsHead(dashboard_utils.DashboardHeadModule):
         """
         Creates the grafana configurations that are by default provided by Ray.
         """
-        grafana_config_output_path = os.path.join(self._metrics_root, "grafana")
-
-        # Copy default grafana configurations
-        if os.path.exists(grafana_config_output_path):
-            shutil.rmtree(grafana_config_output_path)
-        os.makedirs(os.path.dirname(grafana_config_output_path), exist_ok=True)
-        shutil.copytree(GRAFANA_CONFIG_INPUT_PATH, grafana_config_output_path)
+        # Create grafana configuration folder
+        if os.path.exists(self._grafana_config_output_path):
+            shutil.rmtree(self._grafana_config_output_path)
+        os.makedirs(self._grafana_config_output_path, exist_ok=True)
+        
+        # Overwrite grafana's configuration file
+        grafana_provisioning_folder = os.path.join(
+            self._grafana_config_output_path, 
+            "provisioning"
+        )
+        grafana_provisioning_folder_with_latest_session = os.path.join(
+            self._grafana_session_latest_config_output_path,
+            "provisioning"
+        )
+        with open(
+            os.path.join(
+                self._grafana_config_output_path,
+                "grafana.ini",
+            ),
+            "w"
+        ) as f:
+            f.write(
+                GRAFANA_INI_TEMPLATE.format(
+                    grafana_provisioning_folder=grafana_provisioning_folder_with_latest_session
+                )
+            )
 
         # Overwrite grafana's dashboard provisioning directory based on env var
         dashboard_provisioning_path = os.path.join(
-            grafana_config_output_path, "provisioning", "dashboards"
+            grafana_provisioning_folder, 
+            "dashboards"
         )
         os.makedirs(
             dashboard_provisioning_path,
@@ -220,7 +251,8 @@ class MetricsHead(dashboard_utils.DashboardHeadModule):
             PROMETHEUS_HOST_ENV_VAR, DEFAULT_PROMETHEUS_HOST
         )
         data_sources_path = os.path.join(
-            grafana_config_output_path, "provisioning", "datasources"
+            grafana_provisioning_folder,
+            "datasources"
         )
         os.makedirs(
             data_sources_path,
@@ -297,14 +329,28 @@ class MetricsHead(dashboard_utils.DashboardHeadModule):
             self._metrics_root, "prometheus", "prometheus.yml"
         )
 
-        # Copy default prometheus configurations
+        # Generate the default prometheus configurations
         if os.path.exists(prometheus_config_output_path):
             os.remove(prometheus_config_output_path)
         os.makedirs(os.path.dirname(prometheus_config_output_path), exist_ok=True)
-        # Currently Ray directly copies this file without modifying it at runtime.
-        # If Ray ever modifies this file at runtime, please ensure start_prometheus
-        # in install_and_start_prometheus.py is updated to reload the config file.
-        shutil.copy(PROMETHEUS_CONFIG_INPUT_PATH, prometheus_config_output_path)
+        
+        # The code here is slightly different from how the prometheus config is 
+        # setup in the start_prometheus in install_and_start_prometheus.py.
+        # Here the config is generated considering the temporary root directory
+        # the user set when starting the ray cluster. In start_prometheus in 
+        # install_and_start_prometheus.py, it is assuming the temporty root directory
+        # to be the default "/tmp/ray"
+        prom_metrics_service_discovery_file_path = os.path.join(
+            self._dashboard_head.temp_dir,
+            PROMETHEUS_SERVICE_DISCOVERY_FILE
+        )
+        with open(prometheus_config_output_path, 'w') as f:
+            f.write(
+                PROMETHEUS_YML_TEMPLATE.format(
+                    prom_metrics_service_discovery_file_path
+                    =prom_metrics_service_discovery_file_path
+                )
+            )
 
     @dashboard_utils.async_loop_forever(METRICS_RECORD_INTERVAL_S)
     async def record_dashboard_metrics(self):

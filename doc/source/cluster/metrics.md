@@ -22,6 +22,12 @@ For a quick demo, you can run Prometheus locally on your machine. Follow the qui
 
 ### Quickstart: Running Prometheus locally
 
+```{admonition} Note
+:class: note
+If you need to change the root temporary directory by using "--temp-dir" in your ray 
+cluster setup, please follow the [manual steps](#optional-manual-running-prometheus-locally) to setup Prometheus locally
+```
+
 Run the following command to download and start Prometheus locally with a configuration that scrapes metrics from a local Ray Cluster.
 
 ```bash
@@ -76,7 +82,7 @@ tar xvfz prometheus-*.tar.gz
 cd prometheus-*
 ```
 
-Ray provides a Prometheus config that works out of the box. After running Ray, you can find the config at `/tmp/ray/session_latest/metrics/prometheus/prometheus.yml`.
+Ray provides a Prometheus config that works out of the box. After running Ray, you can find the config at `/tmp/ray/session_latest/metrics/prometheus/prometheus.yml`. If you specify the `--temp-dir={your_temp_path}` when starting the ray cluster, the config file will be at `{yout_temp_path}/session_latest/metrics/prometheus/prometheus.yml`
 
 ```yaml
 global:
@@ -88,13 +94,17 @@ scrape_configs:
 - job_name: 'ray'
   file_sd_configs:
   - files:
-    - '/tmp/ray/prom_metrics_service_discovery.json'
+    - '/tmp/ray/prom_metrics_service_discovery.json' # or '{your_temp_path}/prom_metrics_service_discovery.json' if --temp-dir is specified
 ```
 
 Next, start Prometheus:
 
 ```shell
+# With default settings
 ./prometheus --config.file=/tmp/ray/session_latest/metrics/prometheus/prometheus.yml
+
+# With specified --temp-dir
+./prometheus --config.file={your_temp_path}/session_latest/metrics/prometheus/prometheus.yml
 ```
 ```{admonition} Note
 :class: note
