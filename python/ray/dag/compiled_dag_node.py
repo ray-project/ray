@@ -625,6 +625,11 @@ class CompiledDAG:
         # order of inputs written to the DAG.
         self._dag_submission_lock = asyncio.Lock()
 
+        # Used to ensure that the future of each execution is
+        # only awaited once and to prevent the race condition between
+        # all CompiledDAGFutures for the same execution.
+        self._dag_execution_locks: List[asyncio.Lock] = []
+
         # idx -> CompiledTask.
         self.idx_to_task: Dict[int, "CompiledTask"] = {}
         # DAGNode -> idx.
@@ -707,6 +712,20 @@ class CompiledDAG:
         figure out the max number of in-flight requests to the DAG
         """
         self._max_finished_execution_index += 1
+
+    def get_execution_lock(self, execution_index: int) -> asyncio.Lock:
+        """Get the lock for the given execution index. This prevents the future
+        for each execution step from being awaited multiple times when awaiting
+        a CompiledDAGFuture.
+
+        Args:
+            execution_index: The execution index corresponding to the lock.
+
+        Returns:
+            The lock for the given execution index.
+        """
+        assert execution_index < len(self._dag_execution_locks)
+        return self._dag_execution_locks[execution_index]
 
     def get_id(self) -> str:
         """
@@ -2037,6 +2056,7 @@ class CompiledDAG:
             fut = CompiledDAGFuture(self, self._execution_index, fut)
 
         self._execution_index += 1
+        self._dag_execution_locks.append(asyncio.Lock())
         return fut
 
     def teardown(self):
