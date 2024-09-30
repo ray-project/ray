@@ -7,6 +7,7 @@ If you don't find an answer to your question here, please don't hesitate to conn
 
 # Contents
 
+- [Use the right version of Ray](#use-the-right-version-of-ray)
 - [Use ARM-based docker images for Apple M1 or M2 MacBooks](#docker-image-for-apple-macbooks)
 - [Upgrade KubeRay](#upgrade-kuberay)
 - [Worker init container](#worker-init-container)
