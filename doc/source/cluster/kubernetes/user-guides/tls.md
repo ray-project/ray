@@ -36,11 +36,11 @@ This [YouTube video](https://youtu.be/T4Df5_cojAs) is a good start.
 your CA private key in a Kubernetes Secret in your production environment.
 
 ```sh
-# Install v1.0.0 KubeRay operator
+# Install KubeRay operator
 # `ray-cluster.tls.yaml` will cover from Step 1 to Step 3
 
 # Download `ray-cluster.tls.yaml`
-curl -LO https://raw.githubusercontent.com/ray-project/kuberay/v1.0.0/ray-operator/config/samples/ray-cluster.tls.yaml
+curl -LO https://raw.githubusercontent.com/ray-project/kuberay/v1.2.2/ray-operator/config/samples/ray-cluster.tls.yaml
 
 # Create a RayCluster
 kubectl apply -f ray-cluster.tls.yaml
