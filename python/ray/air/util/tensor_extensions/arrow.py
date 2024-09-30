@@ -461,7 +461,7 @@ class ArrowTensorArray(_ArrowTensorScalarIndexingMixin, pa.ExtensionArray):
 
         from ray.data import DataContext
 
-        should_use_tensor_v2 = DataContext.get_current().should_use_tensor_v2
+        should_use_tensor_v2 = DataContext.get_current().use_arrow_tensor_v2
 
         if should_use_tensor_v2:
             pa_type_ = ArrowTensorTypeV2(element_shape, scalar_dtype)

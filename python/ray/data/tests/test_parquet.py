@@ -1271,7 +1271,7 @@ def test_tensors_in_tables_parquet(
     # Test #2: Verify writing tensors as ArrowTensorTypeV2
     #
 
-    DataContext.get_current().should_use_tensor_v2 = True
+    DataContext.get_current().use_arrow_tensor_v2 = True
 
     tensor_v2_path = f"{tmp_path}/tensor_v2"
 
