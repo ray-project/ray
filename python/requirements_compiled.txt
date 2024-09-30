@@ -1925,7 +1925,7 @@ responses==0.13.4
     #   -r /ray/ci/../python/requirements/ml/data-requirements.txt
     #   evaluate
     #   moto
-restrictedpython==7.1
+restrictedpython==7.3
     # via aim
 retry-decorator==1.1.1
     # via
