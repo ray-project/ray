@@ -35,8 +35,8 @@ from ray.experimental.channel.shared_memory_channel import (
 )
 
 from ray.experimental.channel.torch_tensor_communicator_channel import (
-    _init_nccl_group,
-    _destroy_nccl_group,
+    _init_communicator_group,
+    _destroy_communicator_group,
 )
 
 from ray.dag.dag_node_operation import (
@@ -670,13 +670,13 @@ class CompiledDAG:
         self.actor_to_node_id: Dict["ray.actor.ActorHandle", str] = {}
 
         # This is set to true when type hint of `transport="nccl"`` is used
-        self._use_default_nccl_group = False
+        self._use_default_communicator_group = False
         # This is set to the specified custom nccl group
         # if there exists a type hint of `transport=nccl_group`
-        self._custom_nccl_group: Optional[GPUCommunicator] = None
+        self._custom_communicator_group: Optional[GPUCommunicator] = None
         # Uniquely identifies the NCCL communicator that will be used within
         # this DAG, if any.
-        self._nccl_group_id: Optional[str] = None
+        self._communicator_group_id: Optional[str] = None
         # The index of the current execution. It is incremented each time
         # the DAG is executed.
         self._execution_index: int = 0
@@ -742,7 +742,7 @@ class CompiledDAG:
         self.input_task_idx, self.output_task_idx = None, None
         self.actor_task_count.clear()
 
-        nccl_actors: Set["ray.actor.ActorHandle"] = set()
+        communicator_actors: Set["ray.actor.ActorHandle"] = set()
 
         # Find the input node to the DAG.
         for idx, task in self.idx_to_task.items():
@@ -815,11 +815,11 @@ class CompiledDAG:
 
                 self.actor_task_count[actor_handle._actor_id] += 1
 
-                if dag_node.type_hint.requires_nccl():
+                if dag_node.type_hint.requires_communicator():
                     # Add all writers to the NCCL group.
-                    nccl_actors.add(actor_handle)
-                    custom_nccl_group = dag_node.type_hint.get_custom_nccl_group()
-                    mixed_nccl_group_error_message = (
+                    communicator_actors.add(actor_handle)
+                    custom_communicator_group = dag_node.type_hint.get_custom_communicator_group()
+                    mixed_communicator_group_error_message = (
                         "Accelerated DAGs do not support mixed usage of "
                         "type hints of default NCCL group "
                         '(i.e., TorchTensor(transport="nccl"))'
@@ -828,25 +828,25 @@ class CompiledDAG:
                         "Please check all the TorchTensor type hints and "
                         "make sure only one type of NCCL transport is specified."
                     )
-                    if custom_nccl_group is None:
-                        if self._custom_nccl_group is not None:
-                            raise ValueError(mixed_nccl_group_error_message)
-                        self._use_default_nccl_group = True
+                    if custom_communicator_group is None:
+                        if self._custom_communicator_group is not None:
+                            raise ValueError(mixed_communicator_group_error_message)
+                        self._use_default_communicator_group = True
                     else:
-                        if self._use_default_nccl_group:
-                            raise ValueError(mixed_nccl_group_error_message)
-                        if self._custom_nccl_group is not None:
-                            if self._custom_nccl_group != custom_nccl_group:
+                        if self._use_default_communicator_group:
+                            raise ValueError(mixed_communicator_group_error_message)
+                        if self._custom_communicator_group is not None:
+                            if self._custom_communicator_group != custom_communicator_group:
                                 raise ValueError(
                                     "Accelerated DAGs currently only support "
                                     "a single custom NCCL group, but multiple "
                                     "have been specified. Check all the "
-                                    "TorchTensor(transport=nccl_group) type hints "
+                                    "TorchTensor(transport=communicator_group) type hints "
                                     "to make sure only one NCCL group is used."
                                 )
-                        self._custom_nccl_group = custom_nccl_group
+                        self._custom_communicator_group = custom_communicator_group
             elif isinstance(dag_node, InputNode):
-                if dag_node.type_hint.requires_nccl():
+                if dag_node.type_hint.requires_communicator():
                     raise ValueError(
                         "DAG inputs cannot be transferred via NCCL because "
                         "the driver cannot participate in the NCCL group"
@@ -927,7 +927,7 @@ class CompiledDAG:
                         and downstream_actor_handle is not None
                         and downstream_actor_handle
                         == upstream_task.dag_node._get_actor_handle()
-                        and upstream_task.dag_node.type_hint.requires_nccl()
+                        and upstream_task.dag_node.type_hint.requires_communicator()
                     ):
                         raise ValueError(
                             "Compiled DAG does not support NCCL communication between "
@@ -942,17 +942,17 @@ class CompiledDAG:
                 upstream_task.downstream_task_idxs[task_idx] = downstream_actor_handle
                 task.arg_type_hints.append(upstream_task.dag_node.type_hint)
 
-                if upstream_task.dag_node.type_hint.requires_nccl():
+                if upstream_task.dag_node.type_hint.requires_communicator():
                     # Add all readers to the NCCL group.
-                    nccl_actors.add(downstream_actor_handle)
+                    communicator_actors.add(downstream_actor_handle)
 
         # If there were type hints indicating transport via NCCL, initialize
         # the NCCL group on the participating actors.
-        nccl_actors = list(nccl_actors)
-        if None in nccl_actors:
+        communicator_actors = list(communicator_actors)
+        if None in communicator_actors:
             raise ValueError("Driver cannot participate in the NCCL group.")
-        if nccl_actors and self._nccl_group_id is None:
-            self._nccl_group_id = _init_nccl_group(nccl_actors, self._custom_nccl_group)
+        if communicator_actors and self._communicator_group_id is None:
+            self._communicator_group_id = _init_communicator_group(communicator_actors, self._custom_communicator_group)
 
         if direct_input:
             self._input_num_positional_args = 1
@@ -1026,8 +1026,8 @@ class CompiledDAG:
 
             task = self.idx_to_task[cur_idx]
             type_hint = task.dag_node.type_hint
-            if type_hint.requires_nccl():
-                type_hint.set_nccl_group_id(self._nccl_group_id)
+            if type_hint.requires_communicator():
+                type_hint.set_communicator_group_id(self._communicator_group_id)
 
             if (
                 isinstance(task.dag_node, ClassMethodNode)
@@ -1426,25 +1426,25 @@ class CompiledDAG:
                 task_index = exec_task.task_idx
                 dag_node = self.idx_to_task[task_index].dag_node
                 actor_handle = dag_node._get_actor_handle()
-                requires_nccl = dag_node.type_hint.requires_nccl()
+                requires_communicator = dag_node.type_hint.requires_communicator()
 
                 read_node = _DAGOperationGraphNode(
                     _DAGNodeOperation(exec_task_idx, _DAGNodeOperationType.READ),
                     task_index,
                     actor_handle,
-                    requires_nccl,
+                    requires_communicator,
                 )
                 compute_node = _DAGOperationGraphNode(
                     _DAGNodeOperation(exec_task_idx, _DAGNodeOperationType.COMPUTE),
                     task_index,
                     actor_handle,
-                    requires_nccl,
+                    requires_communicator,
                 )
                 write_node = _DAGOperationGraphNode(
                     _DAGNodeOperation(exec_task_idx, _DAGNodeOperationType.WRITE),
                     task_index,
                     actor_handle,
-                    requires_nccl,
+                    requires_communicator,
                 )
                 actor_to_operation_nodes[actor_handle].append(
                     [read_node, compute_node, write_node]
@@ -1629,7 +1629,7 @@ class CompiledDAG:
             for downstream_idx in task.downstream_task_idxs:
                 # Add an edge from the writer to the reader.
                 _add_edge(graph, idx, downstream_idx)
-                if task.dag_node.type_hint.requires_nccl():
+                if task.dag_node.type_hint.requires_communicator():
                     if _is_same_actor(idx, downstream_idx):
                         actor_handle = self.idx_to_task[
                             idx
@@ -1755,8 +1755,8 @@ class CompiledDAG:
                         logger.exception("Error cancelling worker task")
                         pass
 
-                if outer._nccl_group_id is not None:
-                    _destroy_nccl_group(outer._nccl_group_id)
+                if outer._communicator_group_id is not None:
+                    _destroy_communicator_group(outer._communicator_group_id)
 
                 if wait:
                     logger.info("Waiting for worker tasks to exit")

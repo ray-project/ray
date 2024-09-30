@@ -35,14 +35,14 @@ def mock_init(self):
     pass
 
 
-def generate_dag_graph_nodes(local_idx, dag_idx, actor_handle, requires_nccl):
+def generate_dag_graph_nodes(local_idx, dag_idx, actor_handle, requires_communicator):
     graph_nodes = {}
     for op_type in _DAGNodeOperationType:
         graph_nodes[op_type] = _DAGOperationGraphNode(
             _DAGNodeOperation(local_idx, op_type),
             dag_idx,
             actor_handle,
-            requires_nccl,
+            requires_communicator,
         )
     return graph_nodes
 

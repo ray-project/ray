@@ -136,10 +136,10 @@ class TorchTensorType(ChannelOutputType):
 
         if self.requires_communicator():
             from ray.experimental.channel.torch_tensor_communicator_channel import (
-                TorchTensorNcclChannel,
+                TorchTensorCommunicatorChannel,
             )
 
-            return TorchTensorNcclChannel(
+            return TorchTensorCommunicatorChannel(
                 writer,
                 reader_and_node_list,
                 self,

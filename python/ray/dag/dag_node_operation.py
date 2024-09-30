@@ -47,7 +47,7 @@ class _DAGOperationGraphNode:
         operation: _DAGNodeOperation,
         task_idx: int,
         actor_handle: "ray.actor.ActorHandle",
-        requires_nccl: bool,
+        requires_communicator: bool,
     ):
         """
         _DAGOperationGraphNode represents a node in the DAG operation graph.
@@ -60,12 +60,12 @@ class _DAGOperationGraphNode:
             task_idx: A unique index which can be used to index into
                 `CompiledDAG.idx_to_task` to get the corresponding task.
             actor_handle: The actor handle to which this operation belongs.
-            requires_nccl: Whether this operation requires NCCL.
+            requires_communicator: Whether this operation requires communicator.
         """
         self.operation = operation
         self.task_idx = task_idx
         self.actor_handle = actor_handle
-        self.requires_nccl = requires_nccl
+        self.requires_communicator = requires_communicator
         # The in_edges and out_edges are sets of tuples. Each tuple contains
         # an integer `task_idx`, which can be used to index into `idx_to_task`
         # to get the corresponding task, and a `_DAGNodeOperationType`, which can
@@ -89,14 +89,14 @@ class _DAGOperationGraphNode:
             return self.operation.exec_task_idx < other.operation.exec_task_idx
         # If two nodes belong to different actors and one of them is an NCCL
         # write node, select the one that is not an NCCL write node.
-        is_nccl_write = (
-            self.operation.type == _DAGNodeOperationType.WRITE and self.requires_nccl
+        is_communicator_write = (
+            self.operation.type == _DAGNodeOperationType.WRITE and self.requires_communicator
         )
-        other_is_nccl_write = (
-            other.operation.type == _DAGNodeOperationType.WRITE and other.requires_nccl
+        other_is_communicator_write = (
+            other.operation.type == _DAGNodeOperationType.WRITE and other.requires_communicator
         )
-        if is_nccl_write != other_is_nccl_write:
-            return not is_nccl_write
+        if is_communicator_write != other_is_communicator_write:
+            return not is_communicator_write
         # If two nodes belong to different actors and both are either NCCL write
         # nodes or neither are NCCL write nodes, select the one with the smaller
         # `exec_task_idx`. If they have the same `exec_task_idx`, select the one
@@ -188,7 +188,7 @@ def _select_next_nodes(
 
     if not (
         top_priority_node.operation.type == _DAGNodeOperationType.WRITE
-        and top_priority_node.requires_nccl
+        and top_priority_node.requires_communicator
     ):
         assert len(next_nodes) == 1
         return next_nodes
