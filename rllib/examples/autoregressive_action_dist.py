@@ -104,7 +104,7 @@ def get_cli_args():
     parser.add_argument(
         "--stop-reward",
         type=float,
-        default=200.0,
+        default=-0.012,
         help="Reward at which we stop training.",
     )
     parser.add_argument(
