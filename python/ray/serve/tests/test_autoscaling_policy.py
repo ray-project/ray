@@ -1101,9 +1101,7 @@ app = g.bind()
     )
 
     # Step 7: Make sure original replica is still running (lightweight change)
-    pids = set()
-    for _ in range(15):
-        pids.add(int(ray.get(send_request.remote())))
+    pids = {int(pid) for pid in ray.get([send_request.remote() for _ in range(20)])}
     assert existing_pid in pids
 
 

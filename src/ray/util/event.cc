@@ -482,6 +482,7 @@ void RayEventInit_(const std::vector<SourceTypeVariant> source_types,
     } else if (auto export_event_source_type_ptr =
                    std::get_if<rpc::ExportEvent_SourceType>(&source_type)) {
       // For export events
+      event_dir = std::filesystem::path(log_dir) / std::filesystem::path("export_events");
       source_type_name = ExportEvent_SourceType_Name(*export_event_source_type_ptr);
       ray::EventManager::Instance().AddExportReporter(
           *export_event_source_type_ptr,

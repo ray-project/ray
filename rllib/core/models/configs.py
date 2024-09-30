@@ -887,7 +887,6 @@ class RecurrentEncoderConfig(ModelConfig):
     - Zero or one tokenizers
     - N LSTM/GRU layers stacked on top of each other and feeding
     their outputs as inputs to the respective next layer.
-    - One linear output layer
 
     This makes for the following flow of tensors:
 
@@ -900,8 +899,6 @@ class RecurrentEncoderConfig(ModelConfig):
     (...)
     |
     LSTM layer n
-    |
-    Linear output layer
     |
     Outputs
 
@@ -979,12 +976,8 @@ class RecurrentEncoderConfig(ModelConfig):
             underscore "_" are allowed.
         hidden_bias_initializer_config: Configuration to pass into the initializer
             defined in `hidden_bias_initializer`.
-        view_requirements_dict: The view requirements to use if anything else than
-            observation_space or action_space is to be encoded. This signifies an
-            advanced use case.
         tokenizer_config: A ModelConfig to build tokenizers for observations,
-            actions and other spaces that might be present in the
-            view_requirements_dict.
+            actions and other spaces.
     """
 
     recurrent_layer_type: str = "lstm"
