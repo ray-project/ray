@@ -95,7 +95,15 @@ def convert_list_to_pyarrow_array(
         raise ArrowConversionError(str(enclosing_dict)) from e
 
 
-class _BaseArrowTensorType(pa.ExtensionType, abc.ABC):
+@DeveloperAPI
+def get_arrow_extension_tensor_types():
+    """Returns list of extension types of Arrow Array holding
+    multidimensional tensors
+    """
+    return ArrowTensorType, ArrowTensorTypeV2, ArrowVariableShapedTensorType
+
+
+class _BaseFixedShapeArrowTensorType(pa.ExtensionType, abc.ABC):
     """
     Arrow ExtensionType for an array of fixed-shaped, homogeneous-typed
     tensors.
@@ -232,7 +240,7 @@ class _BaseArrowTensorType(pa.ExtensionType, abc.ABC):
 
 
 @PublicAPI(stability="beta")
-class ArrowTensorType(_BaseArrowTensorType):
+class ArrowTensorType(_BaseFixedShapeArrowTensorType):
     """Arrow ExtensionType (v1) for tensors.
 
     NOTE: This type does *NOT* support tensors larger than 4Gb (due to
@@ -259,7 +267,7 @@ class ArrowTensorType(_BaseArrowTensorType):
 
 
 @PublicAPI(stability="alpha")
-class ArrowTensorTypeV2(_BaseArrowTensorType):
+class ArrowTensorTypeV2(_BaseFixedShapeArrowTensorType):
     """Arrow ExtensionType (v2) for tensors (supporting tensors > 4Gb)."""
 
     OFFSET_DTYPE = np.int64

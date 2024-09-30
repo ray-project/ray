@@ -3,7 +3,7 @@ from typing import TYPE_CHECKING, List, Union
 from packaging.version import parse as parse_version
 
 from ray._private.utils import _get_pyarrow_version
-from ray.air.util.tensor_extensions.arrow import ArrowTensorTypeV2
+from ray.air.util.tensor_extensions.arrow import ArrowTensorTypeV2, get_arrow_extension_tensor_types
 
 try:
     import pyarrow
@@ -175,11 +175,9 @@ def _concatenate_chunked_arrays(arrs: "pyarrow.ChunkedArray") -> "pyarrow.Chunke
     """
     Concatenate provided chunked arrays into a single chunked array.
     """
-    from ray.data.extensions import (
-        ArrowTensorType,
-        ArrowTensorTypeV2,
-        ArrowVariableShapedTensorType,
-    )
+    from ray.data.extensions import get_arrow_extension_tensor_types
+
+    tensor_types = get_arrow_extension_tensor_types()
 
     # Single flat list of chunks across all chunked arrays.
     chunks = []
@@ -188,10 +186,7 @@ def _concatenate_chunked_arrays(arrs: "pyarrow.ChunkedArray") -> "pyarrow.Chunke
         if type_ is None:
             type_ = arr.type
         else:
-            if isinstance(
-                type_,
-                (ArrowTensorType, ArrowTensorTypeV2, ArrowVariableShapedTensorType),
-            ):
+            if isinstance(type_, tensor_types):
                 raise ValueError(
                     "_concatenate_chunked_arrays should only be used on non-tensor "
                     f"extension types, but got a chunked array of type {type_}."
@@ -214,9 +209,10 @@ def concat(blocks: List["pyarrow.Table"]) -> "pyarrow.Table":
         ArrowPythonObjectArray,
         ArrowPythonObjectType,
         ArrowTensorArray,
-        ArrowTensorType,
-        ArrowVariableShapedTensorType,
+        get_arrow_extension_tensor_types,
     )
+
+    tensor_types = get_arrow_extension_tensor_types()
 
     if not blocks:
         # Short-circuit on empty list of blocks.
@@ -249,10 +245,7 @@ def concat(blocks: List["pyarrow.Table"]) -> "pyarrow.Table":
             col_chunked_arrays = []
             for block in blocks:
                 col_chunked_arrays.append(block.column(col_name))
-            if isinstance(
-                schema.field(col_name).type,
-                (ArrowTensorType, ArrowTensorTypeV2, ArrowVariableShapedTensorType),
-            ):
+            if isinstance(schema.field(col_name).type, tensor_types):
                 # For our tensor extension types, manually construct a chunked array
                 # containing chunks from all blocks. This is to handle
                 # homogeneous-shaped block columns having different shapes across
