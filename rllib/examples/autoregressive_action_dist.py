@@ -147,7 +147,9 @@ if __name__ == "__main__":
     config = (
         get_trainable_cls(args.run)
         .get_default_config()
-        .environment(CorrelatedActionsEnv)
+        # Batch-norm models have not been migrated to the RL Module API yet.
+        .api_stack(enable_rl_module_and_learner=False)
+        .environment(AutoRegressiveActionEnv)
         .framework(args.framework)
         .training(gamma=0.5)
         # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
