@@ -1,10 +1,11 @@
 import abc
 from abc import abstractmethod
-from typing import Any, Dict
+from typing import Dict
 
 from ray.rllib.core import Columns
 from ray.rllib.core.models.base import ENCODER_OUT
 from ray.rllib.core.models.configs import MLPHeadConfig
+from ray.rllib.core.models.specs.specs_dict import SpecDict
 from ray.rllib.core.rl_module.apis.value_function_api import ValueFunctionAPI
 from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.core.rl_module.torch.torch_rl_module import TorchRLModule
@@ -233,10 +234,11 @@ class AutoregressiveActionsTorchRLM(TorchRLModule, AutoregressiveActionsRLM):
         return outs
 
     @override(ValueFunctionAPI)
-    def compute_values(self, batch: Dict[str, TensorType], embeddings=None):
-        # Encoder forward pass to get `embeddings`, if necessary.
-        if embeddings is None:
-            embeddings = self.encoder(batch)[ENCODER_OUT]
+    def compute_values(self, batch: Dict[str, TensorType]):
+
+        # Encoder forward pass.
+        encoder_outs = self.encoder(batch)[ENCODER_OUT]
+
         # Value head forward pass.
         vf_out = self.vf(embeddings)
         # Squeeze out last dimension (single node value head).
