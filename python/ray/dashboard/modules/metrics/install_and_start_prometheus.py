@@ -83,7 +83,7 @@ def start_prometheus(prometheus_dir):
     # MetricsHead._create_default_prometheus_configs)
 
     # However, since this function can be called without an existing ray cluster,
-    # here we directly leverage the default hard coded file in the package to start 
+    # here we directly leverage the default hard coded file in the package to start
     # prometheus
 
     config_file = Path(PROMETHEUS_CONFIG_INPUT_PATH)

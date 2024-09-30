@@ -3,9 +3,9 @@ import sys
 
 import pytest
 
+from ray.dashboard.consts import PROMETHEUS_CONFIG_INPUT_PATH
 from ray.dashboard.modules.metrics import install_and_start_prometheus
 from ray.dashboard.modules.metrics.templates import PROMETHEUS_YML_TEMPLATE
-from ray.dashboard.consts import PROMETHEUS_CONFIG_INPUT_PATH
 
 
 @pytest.mark.parametrize(
@@ -39,18 +39,17 @@ def test_e2e(capsys):
     pid = int(captured.out.split("kill ")[1].split("'")[0])
     subprocess.run(["kill", str(pid)])
 
+
 def test_prometheus_config_content():
-    # Test to make sure the content in the hardcoded file 
-    # (python/ray/dashboard/modules/metrics/export/prometheus/prometheus.yml) will 
-    # always be the same as the template (templates.py) used to generate prometheus 
+    # Test to make sure the content in the hardcoded file
+    # (python/ray/dashboard/modules/metrics/export/prometheus/prometheus.yml) will
+    # always be the same as the template (templates.py) used to generate prometheus
     # config file when ray startup
+    PROM_DISCOVERY_FILE_PATH = "/tmp/ray/prom_metrics_service_discovery.json"
     template_content = PROMETHEUS_YML_TEMPLATE.format(
-        prom_metrics_service_discovery_file_path=\
-        "/tmp/ray/prom_metrics_service_discovery.json"
+        prom_metrics_service_discovery_file_path=PROM_DISCOVERY_FILE_PATH
     )
-    with open(
-        PROMETHEUS_CONFIG_INPUT_PATH
-    ) as f:
+    with open(PROMETHEUS_CONFIG_INPUT_PATH) as f:
         assert f.read() == template_content
 
 

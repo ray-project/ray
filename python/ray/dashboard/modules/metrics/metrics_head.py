@@ -203,7 +203,7 @@ class MetricsHead(dashboard_utils.DashboardHeadModule):
         grafana_provisioning_folder = os.path.join(
             self._grafana_config_output_path, "provisioning"
         )
-        grafana_provisioning_folder_with_latest_session = os.path.join(
+        grafana_prov_folder_with_latest_session = os.path.join(
             self._grafana_session_latest_config_output_path, "provisioning"
         )
         with open(
@@ -215,8 +215,7 @@ class MetricsHead(dashboard_utils.DashboardHeadModule):
         ) as f:
             f.write(
                 GRAFANA_INI_TEMPLATE.format(
-                    grafana_provisioning_folder=\
-                        grafana_provisioning_folder_with_latest_session
+                    grafana_provisioning_folder=grafana_prov_folder_with_latest_session
                 )
             )
 
@@ -333,14 +332,13 @@ class MetricsHead(dashboard_utils.DashboardHeadModule):
         # install_and_start_prometheus.py, it is assuming the temporty root directory
         # to be the default "/tmp/ray" and leverage the hard coded file in the package
         # to load into prometheus
-        prom_metrics_service_discovery_file_path = os.path.join(
+        prom_discovery_file_path = os.path.join(
             self._dashboard_head.temp_dir, PROMETHEUS_SERVICE_DISCOVERY_FILE
         )
         with open(prometheus_config_output_path, "w") as f:
             f.write(
                 PROMETHEUS_YML_TEMPLATE.format(
-                    prom_metrics_service_discovery_file_path=\
-                        prom_metrics_service_discovery_file_path
+                    prom_metrics_service_discovery_file_path=prom_discovery_file_path
                 )
             )
 
