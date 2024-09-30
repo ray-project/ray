@@ -40,7 +40,6 @@ config = (
     .rl_module(
         model_config_dict={
             "fcnet_activation": "relu",
-            "uses_new_env_runners": True,
         },
     )
     .multi_agent(
