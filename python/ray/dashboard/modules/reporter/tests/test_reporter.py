@@ -338,6 +338,11 @@ def test_report_stats():
         print(record.gauge.name)
         print(record)
     assert len(records) == 36
+    # Verify IsHeadNode tag
+    for record in records:
+        if record.gauge.name.startswith("node_"):
+            assert "IsHeadNode" in record.tags
+            assert record.tags["IsHeadNode"] == "true"
     # Test stats without raylets
     STATS_TEMPLATE["raylet"] = {}
     records = agent._to_records(STATS_TEMPLATE, cluster_stats)
