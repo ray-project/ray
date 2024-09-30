@@ -8,8 +8,7 @@ from pathlib import Path
 
 import requests
 
-from ray._private.ray_constants import PROMETHEUS_SERVICE_DISCOVERY_FILE
-from ray.dashboard.modules.metrics.templates import PROMETHEUS_YML_TEMPLATE
+from ray.dashboard.consts import PROMETHEUS_CONFIG_INPUT_PATH
 
 # Configure basic logging
 logging.basicConfig(
@@ -84,20 +83,13 @@ def start_prometheus(prometheus_dir):
     # MetricsHead._create_default_prometheus_configs)
 
     # However, since this function can be called without an existing ray cluster,
-    # here we directly use the default path when generating the config file
+    # here we directly leverage the default hard coded file in the package to start 
+    # prometheus
 
-    prometheus_config_local_path = os.path.join(
-        os.path.dirname(__file__), "prometheus.yml"
-    )
+    config_file = Path(PROMETHEUS_CONFIG_INPUT_PATH)
 
-    with open(prometheus_config_local_path) as f:
-        f.write(
-            PROMETHEUS_YML_TEMPLATE.format(
-                prom_metrics_service_discovery_file_path=f"/tmp/ray/{PROMETHEUS_SERVICE_DISCOVERY_FILE}"
-            )
-        )
-
-    config_file = Path(prometheus_config_local_path)
+    if not config_file.exists():
+        raise FileNotFoundError(f"Prometheus config file not found: {config_file}")
 
     prometheus_cmd = [
         f"{prometheus_dir}/prometheus",

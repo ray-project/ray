@@ -215,7 +215,8 @@ class MetricsHead(dashboard_utils.DashboardHeadModule):
         ) as f:
             f.write(
                 GRAFANA_INI_TEMPLATE.format(
-                    grafana_provisioning_folder=grafana_provisioning_folder_with_latest_session
+                    grafana_provisioning_folder=\
+                        grafana_provisioning_folder_with_latest_session
                 )
             )
 
@@ -337,7 +338,8 @@ class MetricsHead(dashboard_utils.DashboardHeadModule):
         with open(prometheus_config_output_path, "w") as f:
             f.write(
                 PROMETHEUS_YML_TEMPLATE.format(
-                    prom_metrics_service_discovery_file_path=prom_metrics_service_discovery_file_path
+                    prom_metrics_service_discovery_file_path=\
+                        prom_metrics_service_discovery_file_path
                 )
             )
 

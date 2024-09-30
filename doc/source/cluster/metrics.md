@@ -25,7 +25,7 @@ For a quick demo, you can run Prometheus locally on your machine. Follow the qui
 ```{admonition} Note
 :class: note
 If you need to change the root temporary directory by using "--temp-dir" in your ray 
-cluster setup, please follow the [manual steps](#optional-manual-running-prometheus-locally) to setup Prometheus locally
+cluster setup, please follow the [manual steps](#optional-manual-running-prometheus-locally) to setup Prometheus locally.
 ```
 
 Run the following command to download and start Prometheus locally with a configuration that scrapes metrics from a local Ray Cluster.
@@ -94,7 +94,7 @@ scrape_configs:
 - job_name: 'ray'
   file_sd_configs:
   - files:
-    - '/tmp/ray/prom_metrics_service_discovery.json' # or '{your_temp_path}/prom_metrics_service_discovery.json' if --temp-dir is specified
+    - '/tmp/ray/prom_metrics_service_discovery.json' # or '${your_temp_path}/prom_metrics_service_discovery.json' if --temp-dir is specified
 ```
 
 Next, start Prometheus:

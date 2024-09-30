@@ -53,7 +53,8 @@ def test_metrics_folder_and_content(is_temp_dir_set, temp_dir_val):
         assert os.path.exists(f"{session_dir}/metrics/grafana/grafana.ini")
         with open(f"{session_dir}/metrics/grafana/grafana.ini", "r") as f:
             assert (
-                f"provisioning = {temp_dir}/{SESSION_LATEST}/metrics/grafana/provisioning"
+                "provisioning = " \
+                    f"{temp_dir}/{SESSION_LATEST}/metrics/grafana/provisioning"
                 in f.read()
             )
 

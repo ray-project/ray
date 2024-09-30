@@ -32,11 +32,12 @@ datasources:
     access: proxy
 """
 
-PROMETHEUS_YML_TEMPLATE = """
-# my global config
+PROMETHEUS_YML_TEMPLATE = """# my global config
 global:
-  scrape_interval: 10s # Set the scrape interval to every 10 seconds. Default is every 1 minute.
-  evaluation_interval: 10s # Evaluate rules every 10 seconds. The default is every 1 minute.
+  scrape_interval: 10s # Set the scrape interval to every 10 seconds. Default is every \
+1 minute.
+  evaluation_interval: 10s # Evaluate rules every 10 seconds. The default is every 1 \
+minute.
   # scrape_timeout is set to the global default (10s).
 
 scrape_configs:
