@@ -100,13 +100,8 @@ def do_test_log_likelihood(
                 in_training=False,
             )
 
-            # The expected logp computation logic is overfitted to the ModelV2
-            # stack and does not generalize to RLModule API.
-            if not config.enable_rl_module_and_learner:
-                expected_logp = _get_expected_logp(
-                    vars, obs_batch, a, layer_key, logp_func
-                )
-                check(logp, expected_logp[0], rtol=0.2)
+            expected_logp = _get_expected_logp(vars, obs_batch, a, layer_key, logp_func)
+            check(logp, expected_logp[0], rtol=0.2)
     # Test all available actions for their logp values.
     else:
         for a in [0, 1, 2, 3]:
@@ -120,8 +115,7 @@ def do_test_log_likelihood(
                 in_training=False,
             )
 
-            if not config.enable_rl_module_and_learner:
-                check(np.exp(logp), expected_prob, atol=0.2)
+            check(np.exp(logp), expected_prob, atol=0.2)
 
 
 class TestComputeLogLikelihood(unittest.TestCase):

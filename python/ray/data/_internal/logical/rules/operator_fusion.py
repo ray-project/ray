@@ -437,8 +437,11 @@ def _are_remote_args_compatible(prev_args, next_args):
     next_args = _canonicalize(next_args)
     remote_args = next_args.copy()
     for key in INHERITABLE_REMOTE_ARGS:
-        if key in prev_args:
+        # NOTE: We only carry over inheritable value in case
+        #       of it not being provided in the remote args
+        if key in prev_args and key not in remote_args:
             remote_args[key] = prev_args[key]
+
     if prev_args != remote_args:
         return False
     return True
