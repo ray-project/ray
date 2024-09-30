@@ -73,7 +73,15 @@ MODEL_DEFAULTS: ModelConfigDict = {
     "post_fcnet_bias_initializer": None,
     "post_fcnet_bias_initializer_config": None,
     "free_log_std": False,
+    # Whether to clip the log standard deviation when using a Gaussian (or any
+    # other continuous control distribution). This can stabilize training and avoid
+    # very small or large log standard deviations leading to numerical instabilities
+    # which can turn network outputs to `nan`. The default is to clamp the log std
+    # in between -20 and 20.
     "log_std_clip_param": 20.0,
+    # Whether to skip the final linear layer used to resize the hidden layer
+    # outputs to size `num_outputs`. If True, then the last hidden layer
+    # should already match num_outputs.
     "no_final_linear": False,
     "vf_share_layers": True,
     "use_lstm": False,
