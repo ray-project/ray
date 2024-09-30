@@ -19,13 +19,9 @@ from ray._private.ray_constants import SESSION_LATEST
 logger = logging.getLogger(__name__)
 
 
-
 @pytest.mark.parametrize(
-        "is_temp_dir_set, temp_dir_val",
-        [
-            (False, ""),
-            (True, "/tmp/test-temp-dir")
-        ])
+    "is_temp_dir_set, temp_dir_val", [(False, ""), (True, "/tmp/test-temp-dir")]
+)
 def test_metrics_folder_and_content(is_temp_dir_set, temp_dir_val):
     """
     Tests that the default dashboard files get created. It also verifies paths in the
@@ -33,16 +29,16 @@ def test_metrics_folder_and_content(is_temp_dir_set, temp_dir_val):
 
     It checks both the default case and the case where the _temp_dir is specified.
     """
-    with _ray_start(include_dashboard=True, 
-                    _temp_dir=temp_dir_val if is_temp_dir_set else None) as context:
+    with _ray_start(
+        include_dashboard=True, _temp_dir=temp_dir_val if is_temp_dir_set else None
+    ) as context:
         session_dir = context["session_dir"]
         temp_dir = temp_dir_val if is_temp_dir_set else "/tmp/ray"
         assert os.path.exists(
             f"{session_dir}/metrics/grafana/provisioning/dashboards/default.yml"
         )
         with open(
-            f"{session_dir}/metrics/grafana/provisioning/dashboards/default.yml",
-            "r"
+            f"{session_dir}/metrics/grafana/provisioning/dashboards/default.yml", "r"
         ) as f:
             assert f"path: {session_dir}/metrics/grafana/dashboards" in f.read()
 
@@ -53,20 +49,18 @@ def test_metrics_folder_and_content(is_temp_dir_set, temp_dir_val):
         assert os.path.exists(
             f"{session_dir}/metrics/grafana/provisioning/datasources/default.yml"
         )
-        
+
         assert os.path.exists(f"{session_dir}/metrics/grafana/grafana.ini")
-        with open(
-            f"{session_dir}/metrics/grafana/grafana.ini",
-            "r"
-        ) as f:
-            assert f"provisioning = {temp_dir}/{SESSION_LATEST}/metrics/grafana/provisioning" in f.read()
+        with open(f"{session_dir}/metrics/grafana/grafana.ini", "r") as f:
+            assert (
+                f"provisioning = {temp_dir}/{SESSION_LATEST}/metrics/grafana/provisioning"
+                in f.read()
+            )
 
         assert os.path.exists(f"{session_dir}/metrics/prometheus/prometheus.yml")
-        with open(
-            f"{session_dir}/metrics/prometheus/prometheus.yml",
-            "r"
-        ) as f:
+        with open(f"{session_dir}/metrics/prometheus/prometheus.yml", "r") as f:
             assert f"- '{temp_dir}/prom_metrics_service_discovery.json'" in f.read()
+
 
 @pytest.fixture
 def override_dashboard_dir():

@@ -75,15 +75,15 @@ def install_prometheus(file_path):
 
 def start_prometheus(prometheus_dir):
 
-    # The function assumes, to-be-prometheus-monitored ray cluster uses the default 
+    # The function assumes, to-be-prometheus-monitored ray cluster uses the default
     # config with "/tmp/ray" as the default root temporary directory.
 
-    # Currently, when ray starts, it will generate the prometheus config file with 
-    # the specified or default root temporary directory at runtime and save it under 
+    # Currently, when ray starts, it will generate the prometheus config file with
+    # the specified or default root temporary directory at runtime and save it under
     # the corresponding path under the root temporary directory as well (in
     # MetricsHead._create_default_prometheus_configs)
 
-    # However, since this function can be called without an existing ray cluster, 
+    # However, since this function can be called without an existing ray cluster,
     # here we directly use the default path when generating the config file
 
     prometheus_config_local_path = os.path.join(
@@ -93,11 +93,10 @@ def start_prometheus(prometheus_dir):
     with open(prometheus_config_local_path) as f:
         f.write(
             PROMETHEUS_YML_TEMPLATE.format(
-                prom_metrics_service_discovery_file_path
-                =f"/tmp/ray/{PROMETHEUS_SERVICE_DISCOVERY_FILE}"
+                prom_metrics_service_discovery_file_path=f"/tmp/ray/{PROMETHEUS_SERVICE_DISCOVERY_FILE}"
             )
         )
-    
+
     config_file = Path(prometheus_config_local_path)
 
     prometheus_cmd = [

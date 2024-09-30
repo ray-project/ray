@@ -12,14 +12,12 @@ import ray.dashboard.optional_utils as dashboard_optional_utils
 import ray.dashboard.utils as dashboard_utils
 from ray._private.async_utils import enable_monitor_loop_lag
 from ray._private.ray_constants import (
-    env_integer,
     PROMETHEUS_SERVICE_DISCOVERY_FILE,
-    SESSION_LATEST
+    SESSION_LATEST,
+    env_integer,
 )
 from ray._private.utils import get_or_create_event_loop
-from ray.dashboard.consts import (
-    AVAILABLE_COMPONENT_NAMES_FOR_METRICS,
-)
+from ray.dashboard.consts import AVAILABLE_COMPONENT_NAMES_FOR_METRICS
 from ray.dashboard.modules.metrics.grafana_dashboard_factory import (
     generate_data_grafana_dashboard,
     generate_default_grafana_dashboard,
@@ -27,9 +25,9 @@ from ray.dashboard.modules.metrics.grafana_dashboard_factory import (
     generate_serve_grafana_dashboard,
 )
 from ray.dashboard.modules.metrics.templates import (
+    DASHBOARD_PROVISIONING_TEMPLATE,
     GRAFANA_DATASOURCE_TEMPLATE,
     GRAFANA_INI_TEMPLATE,
-    DASHBOARD_PROVISIONING_TEMPLATE,
     PROMETHEUS_YML_TEMPLATE,
 )
 
@@ -77,9 +75,8 @@ class MetricsHead(dashboard_utils.DashboardHeadModule):
         )
         default_metrics_root = os.path.join(self._dashboard_head.session_dir, "metrics")
         session_latest_metrics_root = os.path.join(
-            self._dashboard_head.temp_dir, 
-            SESSION_LATEST,
-            "metrics")
+            self._dashboard_head.temp_dir, SESSION_LATEST, "metrics"
+        )
         self._metrics_root = os.environ.get(
             METRICS_OUTPUT_ROOT_ENV_VAR, default_metrics_root
         )
@@ -201,22 +198,20 @@ class MetricsHead(dashboard_utils.DashboardHeadModule):
         if os.path.exists(self._grafana_config_output_path):
             shutil.rmtree(self._grafana_config_output_path)
         os.makedirs(self._grafana_config_output_path, exist_ok=True)
-        
+
         # Overwrite grafana's configuration file
         grafana_provisioning_folder = os.path.join(
-            self._grafana_config_output_path, 
-            "provisioning"
+            self._grafana_config_output_path, "provisioning"
         )
         grafana_provisioning_folder_with_latest_session = os.path.join(
-            self._grafana_session_latest_config_output_path,
-            "provisioning"
+            self._grafana_session_latest_config_output_path, "provisioning"
         )
         with open(
             os.path.join(
                 self._grafana_config_output_path,
                 "grafana.ini",
             ),
-            "w"
+            "w",
         ) as f:
             f.write(
                 GRAFANA_INI_TEMPLATE.format(
@@ -226,8 +221,7 @@ class MetricsHead(dashboard_utils.DashboardHeadModule):
 
         # Overwrite grafana's dashboard provisioning directory based on env var
         dashboard_provisioning_path = os.path.join(
-            grafana_provisioning_folder, 
-            "dashboards"
+            grafana_provisioning_folder, "dashboards"
         )
         os.makedirs(
             dashboard_provisioning_path,
@@ -250,10 +244,7 @@ class MetricsHead(dashboard_utils.DashboardHeadModule):
         prometheus_host = os.environ.get(
             PROMETHEUS_HOST_ENV_VAR, DEFAULT_PROMETHEUS_HOST
         )
-        data_sources_path = os.path.join(
-            grafana_provisioning_folder,
-            "datasources"
-        )
+        data_sources_path = os.path.join(grafana_provisioning_folder, "datasources")
         os.makedirs(
             data_sources_path,
             exist_ok=True,
@@ -333,22 +324,20 @@ class MetricsHead(dashboard_utils.DashboardHeadModule):
         if os.path.exists(prometheus_config_output_path):
             os.remove(prometheus_config_output_path)
         os.makedirs(os.path.dirname(prometheus_config_output_path), exist_ok=True)
-        
-        # The code here is slightly different from how the prometheus config is 
+
+        # The code here is slightly different from how the prometheus config is
         # setup in the start_prometheus in install_and_start_prometheus.py.
         # Here the config is generated considering the temporary root directory
-        # the user set when starting the ray cluster. In start_prometheus in 
+        # the user set when starting the ray cluster. In start_prometheus in
         # install_and_start_prometheus.py, it is assuming the temporty root directory
         # to be the default "/tmp/ray"
         prom_metrics_service_discovery_file_path = os.path.join(
-            self._dashboard_head.temp_dir,
-            PROMETHEUS_SERVICE_DISCOVERY_FILE
+            self._dashboard_head.temp_dir, PROMETHEUS_SERVICE_DISCOVERY_FILE
         )
-        with open(prometheus_config_output_path, 'w') as f:
+        with open(prometheus_config_output_path, "w") as f:
             f.write(
                 PROMETHEUS_YML_TEMPLATE.format(
-                    prom_metrics_service_discovery_file_path
-                    =prom_metrics_service_discovery_file_path
+                    prom_metrics_service_discovery_file_path=prom_metrics_service_discovery_file_path
                 )
             )
 
