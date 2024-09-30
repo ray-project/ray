@@ -331,7 +331,8 @@ class MetricsHead(dashboard_utils.DashboardHeadModule):
         # Here the config is generated considering the temporary root directory
         # the user set when starting the ray cluster. In start_prometheus in
         # install_and_start_prometheus.py, it is assuming the temporty root directory
-        # to be the default "/tmp/ray"
+        # to be the default "/tmp/ray" and leverage the hard coded file in the package
+        # to load into prometheus
         prom_metrics_service_discovery_file_path = os.path.join(
             self._dashboard_head.temp_dir, PROMETHEUS_SERVICE_DISCOVERY_FILE
         )
