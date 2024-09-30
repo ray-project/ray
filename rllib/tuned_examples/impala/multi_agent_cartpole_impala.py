@@ -39,7 +39,6 @@ config = (
     .rl_module(
         model_config_dict={
             "vf_share_layers": True,
-            "uses_new_env_runners": True,
         },
     )
     .multi_agent(

@@ -5,7 +5,6 @@ import gymnasium as gym
 from gymnasium.spaces import Box, Discrete, MultiDiscrete, MultiBinary
 from gymnasium.spaces import Dict as GymDict
 from gymnasium.spaces import Tuple as GymTuple
-import inspect
 import json
 import logging
 import numpy as np
@@ -203,6 +202,12 @@ def add_rllib_example_script_args(
         default=1,
         help="How many (tune.Tuner.fit()) experiments to execute - if possible in "
         "parallel.",
+    )
+    parser.add_argument(
+        "--max-concurrent-trials",
+        type=int,
+        default=None,
+        help="How many (tune.Tuner) trials to run concurrently.",
     )
     parser.add_argument(
         "--verbose",
@@ -1357,7 +1362,11 @@ def run_rllib_example_script_experiment(
         args.as_test = True
 
     # Initialize Ray.
-    ray.init(num_cpus=args.num_cpus or None, local_mode=args.local_mode)
+    ray.init(
+        num_cpus=args.num_cpus or None,
+        local_mode=args.local_mode,
+        ignore_reinit_error=True,
+    )
 
     # Define one or more stopping criteria.
     if stop is None:
@@ -1523,6 +1532,7 @@ def run_rllib_example_script_experiment(
         ),
         tune_config=tune.TuneConfig(
             num_samples=args.num_samples,
+            max_concurrent_trials=args.max_concurrent_trials,
             scheduler=scheduler,
         ),
     ).fit()
@@ -1910,112 +1920,6 @@ def _get_mean_action_from_algorithm(alg: "Algorithm", obs: np.ndarray) -> np.nda
     for _ in range(5000):
         out.append(float(alg.compute_single_action(obs)))
     return np.mean(out)
-
-
-def test_ckpt_restore(
-    config: "AlgorithmConfig",
-    env_name: str,
-    tf2=False,
-    replay_buffer=False,
-    run_restored_algorithm=True,
-    eval_env_runner_group=False,
-):
-    """Test that after an algorithm is trained, its checkpoint can be restored.
-
-    Check the replay buffers of the algorithm to see if they have identical data.
-    Check the optimizer weights of the policy on the algorithm to see if they're
-    identical.
-
-    Args:
-        config: The config of the algorithm to be trained.
-        env_name: The name of the gymansium environment to be trained on.
-        tf2: Whether to test the algorithm with the tf2 framework or not.
-        object_store: Whether to test checkpointing with objects from the object store.
-        replay_buffer: Whether to test checkpointing with replay buffers.
-        run_restored_algorithm: Whether to run the restored algorithm after restoring.
-        eval_env_runner_group: Whether to also inspect the eval EnvRunnerGroup of the
-            Algorithm.
-
-    """
-    # config = algorithms_and_configs[algo_name].to_dict()
-    # If required, store replay buffer data in checkpoints as well.
-    if replay_buffer:
-        config["store_buffer_in_checkpoints"] = True
-
-    env = gym.make(env_name)
-    alg1 = config.environment(env_name).framework("torch").build()
-    alg2 = config.environment(env_name).build()
-
-    policy1 = alg1.get_policy()
-
-    res = alg1.train()
-    print("current status: " + str(res))
-
-    # Check optimizer state as well.
-    optim_state = policy1.get_state().get("_optimizer_variables")
-
-    checkpoint = alg1.save()
-
-    # Test if we can restore multiple times (at least twice, assuming failure
-    # would mainly stem from improperly reused variables)
-    for num_restores in range(2):
-        # Sync the models
-        alg2.restore(checkpoint)
-
-    # Compare optimizer state with re-loaded one.
-    if optim_state:
-        s2 = alg2.get_policy().get_state().get("_optimizer_variables")
-        # Tf -> Compare states 1:1.
-        # For torch, optimizers have state_dicts with keys=params,
-        # which are different for the two models (ignore these
-        # different keys, but compare all values nevertheless).
-        for i, s2_ in enumerate(s2):
-            check(
-                list(s2_["state"].values()),
-                list(optim_state[i]["state"].values()),
-            )
-
-    # Compare buffer content with restored one.
-    if replay_buffer:
-        data = alg1.local_replay_buffer.replay_buffers["default_policy"]._storage[
-            42 : 42 + 42
-        ]
-        new_data = alg2.local_replay_buffer.replay_buffers["default_policy"]._storage[
-            42 : 42 + 42
-        ]
-        check(data, new_data)
-
-    # Check, whether the eval EnvRunnerGroup has the same policies and
-    # `policy_mapping_fn`.
-    if eval_env_runner_group:
-        eval_mapping_src = inspect.getsource(alg1.eval_env_runner.policy_mapping_fn)
-        check(
-            eval_mapping_src,
-            inspect.getsource(alg2.eval_env_runner.policy_mapping_fn),
-        )
-        check(
-            eval_mapping_src,
-            inspect.getsource(alg2.env_runner.policy_mapping_fn),
-            false=True,
-        )
-
-    for _ in range(1):
-        obs = env.observation_space.sample()
-        a1 = _get_mean_action_from_algorithm(alg1, obs)
-        a2 = _get_mean_action_from_algorithm(alg2, obs)
-        print("Checking computed actions", alg1, obs, a1, a2)
-        if abs(a1 - a2) > 0.1:
-            raise AssertionError(
-                "algo={} [a1={} a2={}]".format(str(alg1.__class__), a1, a2)
-            )
-    # Stop algo 1.
-    alg1.stop()
-
-    if run_restored_algorithm:
-        # Check that algo 2 can still run.
-        print("Starting second run on Algo 2...")
-        alg2.train()
-    alg2.stop()
 
 
 def check_supported_spaces(

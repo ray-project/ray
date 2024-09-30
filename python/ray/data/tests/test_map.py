@@ -13,9 +13,11 @@ import pyarrow.parquet as pq
 import pytest
 
 import ray
+from ray._private.test_utils import wait_for_condition
 from ray.data._internal.execution.interfaces.ref_bundle import (
     _ref_bundles_iterator_to_block_refs_list,
 )
+from ray.data._internal.execution.operators.actor_pool_map_operator import _MapWorker
 from ray.data.context import DataContext
 from ray.data.exceptions import UserCodeException
 from ray.data.tests.conftest import *  # noqa
@@ -75,6 +77,19 @@ def test_basic_actors(shutdown_only):
             column_udf_class("id", lambda x: x),
             concurrency=(8, 4),
         )
+
+    # Make sure all actors are dead after dataset execution finishes.
+    def _all_actors_dead():
+        actor_table = ray.state.actors()
+        actors = {
+            id: actor_info
+            for actor_info in actor_table.values()
+            if actor_info["ActorClassName"] == _MapWorker.__name__
+        }
+        assert len(actors) > 0
+        return all(actor_info["State"] == "DEAD" for actor_info in actors.values())
+
+    wait_for_condition(_all_actors_dead)
 
 
 def test_callable_classes(shutdown_only):
@@ -239,6 +254,25 @@ def test_actor_task_failure(shutdown_only, restore_data_context):
             return x
 
     ds.map_batches(Mapper, concurrency=1).materialize()
+
+
+def test_gpu_workers_not_reused(shutdown_only):
+    """By default, in Ray Core if `num_gpus` is specified workers will not be reused
+    for tasks invocation.
+
+    For more context check out https://github.com/ray-project/ray/issues/29624"""
+
+    ray.init(num_gpus=1)
+
+    total_blocks = 5
+    ds = ray.data.range(5, override_num_blocks=total_blocks)
+
+    def _get_worker_id(_):
+        return {"worker_id": ray.get_runtime_context().get_worker_id()}
+
+    unique_worker_ids = ds.map(_get_worker_id, num_gpus=1).unique("worker_id")
+
+    assert len(unique_worker_ids) == total_blocks
 
 
 def test_concurrency(shutdown_only):
