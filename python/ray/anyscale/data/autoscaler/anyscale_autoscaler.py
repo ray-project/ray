@@ -397,9 +397,13 @@ class AnyscaleAutoscaler(Autoscaler):
         # in order to update the average cluster utilization.
         cpu_util, mem_util = self._get_cluster_cpu_and_mem_util()
 
-        if cpu_util is None or cpu_util < self._cluster_scaling_up_util_threshold:
-            return
-        if mem_util is None or mem_util < self._cluster_scaling_up_util_threshold:
+        has_low_cpu_util = (
+            cpu_util is not None and cpu_util < self._cluster_scaling_up_util_threshold
+        )
+        has_low_mem_util = (
+            mem_util is not None and mem_util < self._cluster_scaling_up_util_threshold
+        )
+        if has_low_cpu_util and has_low_mem_util:
             return
 
         # Limit the frequency of autoscaling requests.
