@@ -897,9 +897,6 @@ class TestRolloutWorker(unittest.TestCase):
             """A mock testing MultiAgentEnv that doesn't call super.__init__()."""
 
             def __init__(self):
-                # Intentinoally don't call super().__init__(),
-                # so this env doesn't have
-                # `self._[action|observation]_space_in_preferred_format`attributes.
                 self.observation_space = gym.spaces.Discrete(2)
                 self.action_space = gym.spaces.Discrete(2)
 

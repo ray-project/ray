@@ -16,11 +16,13 @@ from typing import (
     Union,
 )
 
-import tree  # pip install dm_tree
-
 import ray
 from ray import ObjectRef
-from ray.rllib.core import COMPONENT_LEARNER, COMPONENT_RL_MODULE
+from ray.rllib.core import (
+    COMPONENT_LEARNER,
+    COMPONENT_MULTI_RL_MODULE_SPEC,
+    COMPONENT_RL_MODULE,
+)
 from ray.rllib.core.learner.learner import Learner
 from ray.rllib.core.rl_module import validate_module_id
 from ray.rllib.core.rl_module.multi_rl_module import MultiRLModuleSpec
@@ -36,7 +38,6 @@ from ray.rllib.utils.actor_manager import (
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.checkpoints import Checkpointable
 from ray.rllib.utils.deprecation import Deprecated
-from ray.rllib.utils.metrics.metrics_logger import MetricsLogger
 from ray.rllib.utils.minibatch_utils import (
     ShardBatchIterator,
     ShardEpisodesIterator,
@@ -181,13 +182,6 @@ class LearnerGroup(Checkpointable):
             self._update_request_tags = Counter()
             self._update_request_tag = 0
             self._update_request_results = {}
-
-        # A special MetricsLogger object (not exposed to the user) for reducing
-        # the n results dicts returned by our n Learner workers in case we are on
-        # the old or hybrid API stack.
-        self._metrics_logger_old_and_hybrid_stack: Optional[MetricsLogger] = None
-        if not self.config.enable_env_runner_and_connector_v2:
-            self._metrics_logger_old_and_hybrid_stack = MetricsLogger()
 
     # TODO (sven): Replace this with call to `self.metrics.peek()`?
     #  Currently LearnerGroup does not have a metrics object.
@@ -582,24 +576,6 @@ class LearnerGroup(Checkpointable):
                     self._worker_manager.foreach_actor(partials)
                 )
 
-        # If we are on the hybrid API stacks (no EnvRunners), we need to emulate
-        # the old behavior of returning an already reduced dict (as if we had a
-        # reduce_fn).
-        if not self.config.enable_env_runner_and_connector_v2:
-            # If we are doing an ansync update, we operate on a list (different async
-            # requests that now have results ready) of lists (n Learner workers) here.
-            if async_update:
-                results = tree.flatten_up_to(
-                    [[None] * len(r) for r in results], results
-                )
-            self._metrics_logger_old_and_hybrid_stack.merge_and_log_n_dicts(results)
-            results = self._metrics_logger_old_and_hybrid_stack.reduce(
-                # We are returning to a client (Algorithm) that does NOT make any
-                # use of MetricsLogger (or Stats) -> Convert all values to non-Stats
-                # primitives.
-                return_stats_obj=False
-            )
-
         return results
 
     # TODO (sven): Move this into FaultTolerantActorManager?
@@ -729,14 +705,6 @@ class LearnerGroup(Checkpointable):
         Returns:
             The new MultiRLModuleSpec (after the change has been performed).
         """
-        # Remove all stats from the module from our metrics logger (hybrid API stack
-        # only), so we don't report results from this module again.
-        if (
-            not self.config.enable_env_runner_and_connector_v2
-            and module_id in self._metrics_logger_old_and_hybrid_stack.stats
-        ):
-            del self._metrics_logger_old_and_hybrid_stack.stats[module_id]
-
         results = self.foreach_learner(
             func=lambda _learner: _learner.remove_module(
                 module_id=module_id,
@@ -824,8 +792,10 @@ class LearnerGroup(Checkpointable):
                     list(module_ids),
                 )
             ]
-
-        return self.get_state(components)[COMPONENT_LEARNER][COMPONENT_RL_MODULE]
+        state = self.get_state(components)[COMPONENT_LEARNER][COMPONENT_RL_MODULE]
+        # Remove the MultiRLModuleSpec to just get the weights.
+        state.pop(COMPONENT_MULTI_RL_MODULE_SPEC, None)
+        return state
 
     def set_weights(self, weights) -> None:
         """Convenience method instead of self.set_state({'learner': {'rl_module': ..}}).

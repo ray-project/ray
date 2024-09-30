@@ -66,9 +66,6 @@ if __name__ == "__main__":
         .training(
             gamma=0.0,
             lr=0.0005,
-            model=(
-                {} if not args.enable_new_api_stack else {"uses_new_env_runners": True}
-            ),
         )
     )
 

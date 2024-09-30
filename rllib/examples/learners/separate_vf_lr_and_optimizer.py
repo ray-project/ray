@@ -129,7 +129,6 @@ if __name__ == "__main__":
                 # Another very important setting is this here. Make sure you use
                 # completely separate NNs for policy and value-functions.
                 "vf_share_layers": False,
-                "uses_new_env_runners": True,
             },
         )
     )

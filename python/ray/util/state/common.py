@@ -282,7 +282,7 @@ class StateSchema(ABC):
     @classmethod
     def columns(cls) -> Set[str]:
         """Return a set of all columns."""
-        return set(cls.list_columns())
+        return set(cls.list_columns(detail=True))
 
     @classmethod
     def filterable_columns(cls) -> Set[str]:
@@ -556,7 +556,7 @@ class JobState(StateSchema, JobDetails if JobDetails is not None else object):
         return state
 
     @classmethod
-    def list_columns(cls, detail: bool = False) -> List[str]:
+    def list_columns(cls, detail: bool = True) -> List[str]:
         if not detail:
             return [
                 "job_id",
@@ -568,7 +568,7 @@ class JobState(StateSchema, JobDetails if JobDetails is not None else object):
                 "error_type",
                 "driver_info",
             ]
-        if isinstance(JobDetails, object):
+        if JobDetails is None:
             # We don't have pydantic in the dashboard. This is because
             # we call this method at module import time, so we need to
             # check if the class is a pydantic model.
@@ -577,9 +577,9 @@ class JobState(StateSchema, JobDetails if JobDetails is not None else object):
         # TODO(aguo): Once we only support pydantic 2, we can remove this if check.
         # In pydantic 2.0, `__fields__` has been renamed to `model_fields`.
         return (
-            JobDetails.model_fields
+            list(JobDetails.model_fields.keys())
             if hasattr(JobDetails, "model_fields")
-            else JobDetails.__fields__
+            else list(JobDetails.__fields__.keys())
         )
 
     def asdict(self):
@@ -1667,17 +1667,19 @@ def remove_ansi_escape_codes(text: str) -> str:
     return re.sub(r"\x1b[^m]*m", "", text)
 
 
-def dict_to_state(d: Dict, state_source: StateResource) -> StateSchema:
+def dict_to_state(d: Dict, state_resource: StateResource) -> StateSchema:
+
     """Convert a dict to a state schema.
 
     Args:
         d: a dict to convert.
-        state_schema: a schema to convert to.
+        state_resource: the state resource to convert to.
 
     Returns:
         A state schema.
     """
     try:
-        return resource_to_schema(state_source)(**d)
+        return resource_to_schema(state_resource)(**d)
+
     except Exception as e:
         raise RayStateApiException(f"Failed to convert {d} to StateSchema: {e}") from e
