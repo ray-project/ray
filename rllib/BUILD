@@ -3265,6 +3265,56 @@ py_test(
 
 #@OldAPIStack
 py_test(
+    name = "examples/cartpole_lstm_impala_tf2",
+    main = "examples/cartpole_lstm.py",
+    tags = ["team:rllib", "exclusive", "examples"],
+    size = "medium",
+    srcs = ["examples/cartpole_lstm.py"],
+    args = ["--run=IMPALA", "--as-test", "--framework=tf2", "--stop-reward=28", "--num-cpus=4"]
+)
+
+#@OldAPIStack
+py_test(
+    name = "examples/cartpole_lstm_impala_torch",
+    main = "examples/cartpole_lstm.py",
+    tags = ["team:rllib", "exclusive", "examples"],
+    size = "medium",
+    srcs = ["examples/cartpole_lstm.py"],
+    args = ["--run=IMPALA", "--as-test", "--framework=torch", "--stop-reward=28", "--num-cpus=4"]
+)
+
+#@OldAPIStack
+py_test(
+    name = "examples/cartpole_lstm_ppo_tf2",
+    main = "examples/cartpole_lstm.py",
+    tags = ["team:rllib", "exclusive", "examples"],
+    size = "large",
+    srcs = ["examples/cartpole_lstm.py"],
+    args = ["--run=PPO", "--as-test", "--framework=tf2", "--stop-reward=28", "--num-cpus=4"]
+)
+
+#@OldAPIStack
+py_test(
+    name = "examples/cartpole_lstm_ppo_torch",
+    main = "examples/cartpole_lstm.py",
+    tags = ["team:rllib", "exclusive", "examples"],
+    size = "medium",
+    srcs = ["examples/cartpole_lstm.py"],
+    args = ["--run=PPO", "--as-test", "--framework=torch", "--stop-reward=28", "--num-cpus=4"]
+)
+
+#@OldAPIStack
+py_test(
+    name = "examples/cartpole_lstm_ppo_torch_with_prev_a_and_r",
+    main = "examples/cartpole_lstm.py",
+    tags = ["team:rllib", "exclusive", "examples"],
+    size = "medium",
+    srcs = ["examples/cartpole_lstm.py"],
+    args = ["--run=PPO", "--as-test", "--framework=torch", "--stop-reward=28", "--num-cpus=4", "--use-prev-action",  "--use-prev-reward"]
+)
+
+#@OldAPIStack
+py_test(
     name = "examples/centralized_critic_tf",
     main = "examples/centralized_critic.py",
     tags = ["team:rllib", "exclusive", "examples"],
