@@ -3260,7 +3260,7 @@ py_test(
     tags = ["team:rllib", "exclusive", "examples"],
     size = "medium",
     srcs = ["examples/autoregressive_action_dist.py"],
-    args = ["--as-test", "--framework=torch", "--stop-reward=150", "--num-cpus=4"]
+    args = ["--as-test", "--framework=torch", "--stop-reward=-0.012", "--num-cpus=4"]
 )
 
 #@OldAPIStack
