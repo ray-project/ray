@@ -35,7 +35,7 @@ batchScheduler:
 * Pass the `--set batchScheduler.enabled=true` flag when running on the command line:
 ```shell
 # Install the Helm chart with --enable-batch-scheduler flag set to true
-helm install kuberay-operator kuberay/kuberay-operator --version 1.0.0 --set batchScheduler.enabled=true
+helm install kuberay-operator kuberay/kuberay-operator --version 1.2.2 --set batchScheduler.enabled=true
 ```
 
 ### Step 4: Install a RayCluster with the Volcano scheduler
