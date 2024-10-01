@@ -2,8 +2,9 @@ project(
     'ray-meson',
     'c', 'cpp',
     default_options: [
-        'c_std=c17', 'cpp_std=c++20'
-    ]
+        'c_std=gnu17', 'cpp_std=gnu++20'
+    ],
+    meson_version: '>=1.3.0'
 )
 
 # === Begin of imports ===
@@ -13,7 +14,14 @@ py = import('python').find_installation(pure: false)
 
 
 # === Begin of dependencies ===
-absl = dependency('absl', modules: [
+# I don't want to bring the entire GTest, portions of which Ray requires even for non-test code.
+# Instead, I've vendored a few GTest headers it really uses and add them into search paths, used by all compiler invocations.
+add_project_arguments(
+    '-I' + meson.project_source_root() / '__eugo' / 'include',
+    language: ['c', 'cpp']
+)
+
+absl = dependency('absl', method: 'cmake', modules: [
     #'absl::raw_logging_internal', # https://github.com/ray-project/ray/issues/8588, https://github.com/ray-project/ray/issues/17212
 
     'absl::config', # @TODO+:not sure if it's really used
@@ -162,13 +170,14 @@ absl = dependency('absl', modules: [
 # - 'absl::variant', 'absl::bad_variant_access',
 
 # @TODO-:Add module-based approach like for `absl`?
-boost = dependency('boost')
+boost = dependency('boost', method: 'cmake')
 
-msgpack = dependency('msgpack-cxx')
+msgpack = dependency('msgpack-cxx', method: 'cmake')
 
 # @TODO+: reimplment asap
-#opencensus = dependency('opencensus')
-protoc = find_program('protoc', required: true)
+#opencensus = dependency('OpenCensus')
+
+protoc = find_program('protoc')
 
 # If not disabling `pkg-config` search, this causes the dependency cycle and infinite execution
 protobuf = dependency('protobuf', modules: ['protobuf::libprotobuf'], method: 'cmake')
@@ -191,7 +200,6 @@ grpc_common_lib = static_library(
     'grpc_common_lib',
     grpc_common_lib_sources,
     include_directories: ['src/'],
-    cpp_args: '-std=gnu++17',
     dependencies: [
         absl,
         boost,

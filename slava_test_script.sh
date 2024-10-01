@@ -7,4 +7,6 @@ set -euo pipefail
 # cmake --find-package -DNAME=opencensus -DCOMPILER_ID=clang -DLANGUAGE=CXX -DMODE=EXIST --debug-find
 # cmake --find-package -DNAME=OpenCensus -DCOMPILER_ID=clang -DLANGUAGE=CXX -DMODE=EXIST --debug-find
 
+export CXXFLAGS="${EUGO_CXXFLAGS} -std=gnu++20"
+
 meson setup --reconfigure eugo_build
