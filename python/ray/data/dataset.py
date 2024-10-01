@@ -2573,10 +2573,12 @@ class Dataset:
             schema is not known and fetch_if_missing is False.
         """
 
+        context = self._plan._context
+
         # First check if the schema is already known from materialized blocks.
         base_schema = self._plan.schema(fetch_if_missing=False)
         if base_schema is not None:
-            return Schema(base_schema)
+            return Schema(base_schema, data_context=context)
 
         # Lazily execute only the first block to minimize computation. We achieve this
         # by appending a Limit[1] operation to a copy of this Dataset, which we then
@@ -2584,7 +2586,7 @@ class Dataset:
         base_schema = self.limit(1)._plan.schema(fetch_if_missing=fetch_if_missing)
         if base_schema is not None:
             self._plan.cache_schema(base_schema)
-            return Schema(base_schema)
+            return Schema(base_schema, data_context=context)
         else:
             return None
 
@@ -5172,8 +5174,17 @@ class Schema:
         base_schema: The underlying Arrow or Pandas schema.
     """
 
-    def __init__(self, base_schema: Union["pyarrow.lib.Schema", "PandasBlockSchema"]):
+    def __init__(
+        self,
+        base_schema: Union["pyarrow.lib.Schema", "PandasBlockSchema"],
+        *,
+        data_context: Optional[DataContext] = None,
+    ):
         self.base_schema = base_schema
+
+        # Snapshot the current context, so that the config of Datasets is always
+        # determined by the config at the time it was created.
+        self._context = data_context or copy.deepcopy(DataContext.get_current())
 
     @property
     def names(self) -> List[str]:
@@ -5197,7 +5208,7 @@ class Schema:
         for dtype in self.base_schema.types:
             if isinstance(dtype, TensorDtype):
 
-                if DataContext.get_current().use_arrow_tensor_v2:
+                if self._context.use_arrow_tensor_v2:
                     pa_tensor_type_class = ArrowTensorTypeV2
                 else:
                     pa_tensor_type_class = ArrowTensorType
