@@ -41,5 +41,5 @@ __all__ = [
     "PythonObjectArray",
     "PythonObjectDtype",
     "object_extension_type_allowed",
-    "get_arrow_extension_tensor_types"
+    "get_arrow_extension_tensor_types",
 ]

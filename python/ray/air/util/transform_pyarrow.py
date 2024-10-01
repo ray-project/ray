@@ -20,7 +20,7 @@ def _concatenate_extension_column(ca: "pyarrow.ChunkedArray") -> "pyarrow.Array"
     """
     from ray.air.util.tensor_extensions.arrow import (
         ArrowTensorArray,
-        get_arrow_extension_tensor_types
+        get_arrow_extension_tensor_types,
     )
 
     if not _is_column_extension_type(ca):
