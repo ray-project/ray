@@ -22,11 +22,12 @@ common_proto = custom_target(
     'common_proto',
     output: ['common.pb.cc', 'common.pb.h'],
     input: 'common.proto',
-    command: [protoc, '--proto_path=..', '--cpp_out=' + meson.project_build_root(), '@INPUT@']
+    command: [protoc, '--proto_path=..', '--cpp_out=' + meson.project_build_root(), '@INPUT@'],
 )
 
 common_proto_dep = declare_dependency(
-    sources: common_proto
+    sources: common_proto,
+    dependencies: [runtime_env_common_proto_dep]
 )
 
 common_cc_proto = static_library(
@@ -79,7 +80,134 @@ ray_syncer_cc_proto = static_library(
 # === @end: ray_syncer.proto ===
 
 
+# === @begin: gcs.proto ===
+gcs_proto = custom_target(
+    'gcs_proto',
+    output: ['gcs.pb.cc', 'gcs.pb.h'],
+    input: 'gcs.proto',
+    command: [protoc, '--proto_path=..', '--cpp_out=' + meson.project_build_root(), '@INPUT@']
+)
 
+gcs_proto_dep = declare_dependency(
+    sources: gcs_proto,
+    dependencies: [common_proto_dep]
+)
+
+gcs_cc_proto = static_library(
+    'gcs_cc_proto',
+    dependencies: [gcs_proto_dep]
+)
+# === @end: gcs.proto ===
+
+
+# === @begin: logging.proto ===
+logging_proto = custom_target(
+    'logging_proto',
+    output: ['logging.pb.cc', 'logging.pb.h'],
+    input: 'logging.proto',
+    command: [protoc, '--proto_path=..', '--cpp_out=' + meson.project_build_root(), '@INPUT@'],
+)
+
+logging_proto_dep = declare_dependency(
+    sources: logging_proto
+)
+
+logging_cc_proto = static_library(
+    'logging_cc_proto',
+    dependencies: [logging_proto_dep]
+)
+# === @end: logging.proto ===
+
+
+# === @begin: node_manager.proto ===
+node_manager_proto = custom_target(
+    'node_manager_proto',
+    output: ['node_manager.pb.cc', 'node_manager.pb.h'],
+    input: 'node_manager.proto',
+    command: [protoc, '--proto_path=..', '--cpp_out=' + meson.project_build_root(), '@INPUT@']
+)
+
+node_manager_proto_dep = declare_dependency(
+    sources: node_manager_proto,
+    dependencies: [common_proto_dep, gcs_proto_dep, autoscaler_proto_dep]
+)
+
+node_manager_cc_proto = static_library(
+    'node_manager_cc_proto',
+    dependencies: [node_manager_proto_dep]
+)
+# === @end: node_manager.proto ===
+
+
+# @TODO+:
+# === @begin: reporter.proto ===
+#node_manager_proto = custom_target(
+#    'node_manager_proto',
+#    output: ['node_manager.pb.cc', 'node_manager.pb.h'],
+#    input: 'node_manager.proto',
+#    command: [protoc, '--proto_path=..', '--cpp_out=' + meson.project_build_root(), '@INPUT@'],
+#
+#    # Imports these .proto files, but not .cc and .h generated from that!
+#    # All the required code pieces will be included in generated sources for this .proto.
+#    #depend_files: ['common.proto', 'gcs.proto', 'autoscaler.proto']
+#)
+#
+#node_manager_proto_dep = declare_dependency(
+#    sources: node_manager_proto
+#)
+#
+#node_manager_cc_proto = static_library(
+#    'node_manager_cc_proto',
+#    dependencies: [node_manager_proto_dep]
+#)
+
+#reporter_cc_proto = static_library(
+#    'reporter_cc_proto',
+#    ['reporter.pb.cc'],
+#    include_directories: [current_dir_offset]
+#)
+
+# === @end: reporter.proto ===
+
+
+# === @begin: pubsub.proto ===
+pubsub_proto = custom_target(
+    'pubsub_proto',
+    output: ['pubsub.pb.cc', 'pubsub.pb.h'],
+    input: 'pubsub.proto',
+    command: [protoc, '--proto_path=..', '--cpp_out=' + meson.project_build_root(), '@INPUT@']
+)
+
+pubsub_proto_dep = declare_dependency(
+    sources: pubsub_proto,
+    dependencies: [common_proto_dep, gcs_proto_dep, logging_proto_dep]
+)
+
+pubsub_cc_proto = static_library(
+    'pubsub_cc_proto',
+    dependencies: [pubsub_proto_dep]
+)
+# === @end: pubsub.proto ===
+
+
+# === @begin: gcs_service.proto ===
+gcs_service_proto = custom_target(
+    'gcs_service_proto',
+    output: ['gcs_service.pb.cc', 'gcs_service.pb.h'],
+    input: 'gcs_service.proto',
+    command: [protoc, '--proto_path=..', '--cpp_out=' + meson.project_build_root(), '@INPUT@']
+)
+
+gcs_service_proto_dep = declare_dependency(
+    sources: gcs_service_proto,
+    dependencies: [common_proto_dep, gcs_proto_dep, pubsub_proto_dep]
+)
+
+gcs_service_cc_proto = static_library(
+    'gcs_service_cc_proto',
+    dependencies: [gcs_service_proto_dep]
+)
+# === @end: gcs_service.proto ===
 
 
 # === Begin of `setup` scope ===
@@ -97,13 +225,8 @@ native_source_proto_files = [
     'export_api/export_runtime_env.proto',
     'export_api/export_submission_job_event.proto',
     'export_api/export_task_event.proto',
-    'gcs.proto',
-    'gcs_service.proto',
     'job_agent.proto',
-    'logging.proto',
-    'node_manager.proto',
     'object_manager.proto',
-    'pubsub.proto',
     'ray_client.proto',
     'runtime_env_agent.proto',
     'serialization.proto',
@@ -112,40 +235,6 @@ native_source_proto_files = [
     'usage.proto',
 ]
 
-
-
-
-
-#
-#gcs_cc_proto = static_library(
-#    'gcs_cc_proto',
-#    ['gcs.pb.cc'],
-#    include_directories: [current_dir_offset]
-#)
-#
-#logging_cc_proto = static_library(
-#    'logging_cc_proto',
-#    ['logging.pb.cc'],
-#    include_directories: [current_dir_offset]
-#)
-#
-#node_manager_cc_proto = static_library(
-#    'node_manager_cc_proto',
-#    ['node_manager.pb.cc'],
-#    include_directories: [current_dir_offset]
-#)
-#
-#reporter_cc_proto = static_library(
-#    'reporter_cc_proto',
-#    ['reporter.pb.cc'],
-#    include_directories: [current_dir_offset]
-#)
-#
-#gcs_service_cc_proto = static_library(
-#    'gcs_service_cc_proto',
-#    ['gcs_service.pb.cc'],
-#    include_directories: [current_dir_offset]
-#)
 #
 #test_service_cc_proto = static_library(
 #    'test_service_cc_proto',
@@ -222,12 +311,6 @@ native_source_proto_files = [
 #agent_manager_cc_proto = static_library(
 #    'agent_manager_cc_proto',
 #    ['agent_manager.pb.cc'],
-#    include_directories: [current_dir_offset]
-#)
-#
-#pubsub_cc_proto = static_library(
-#    'pubsub_cc_proto',
-#    ['pubsub.pb.cc'],
 #    include_directories: [current_dir_offset]
 #)
 #
