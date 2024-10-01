@@ -164,15 +164,17 @@ absl = dependency('absl', modules: [
 # @TODO-:Add module-based approach like for `absl`?
 boost = dependency('boost')
 
-grpc = dependency('grpc')
-
-msgpack = dependency('msgpack')
+msgpack = dependency('msgpack-cxx')
 
 # @TODO+: reimplment asap
 #opencensus = dependency('opencensus')
-
-protobuf = dependency('protobuf', modules: ['protobuf::libprotobuf'])
 protoc = find_program('protoc', required: true)
+
+# If not disabling `pkg-config` search, this causes the dependency cycle and infinite execution
+protobuf = dependency('protobuf', modules: ['protobuf::libprotobuf'], method: 'cmake')
+
+# Depend on `protobuf`, so the same caveat applies
+grpc = dependency('gRPC', method: 'cmake')
 # === End of dependencies ===
 
 
