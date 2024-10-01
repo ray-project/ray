@@ -1,3 +1,8 @@
+# === @begin: experimental/ ===
+subdir('experimental')
+# === @end: experimental/ ===
+
+
 # === @begin: runtime_env_common.proto ===
 runtime_env_common_proto = custom_target(
     'runtime_env_common_proto',
@@ -35,11 +40,6 @@ common_cc_proto = static_library(
     dependencies: [common_proto_dep]
 )
 # === @end: common.proto ===
-
-
-# === @begin: experimental/ ===
-subdir('experimental')
-# === @end: experimental/ ===
 
 
 # === @begin: autoscaler.proto ===
@@ -210,14 +210,112 @@ gcs_service_cc_proto = static_library(
 # === @end: gcs_service.proto ===
 
 
+# === @begin: test_service.proto ===
+test_service_proto = custom_target(
+    'test_service_proto',
+    output: ['test_service.pb.cc', 'test_service.pb.h'],
+    input: 'test_service.proto',
+    command: [protoc, '--proto_path=..', '--cpp_out=' + meson.project_build_root(), '@INPUT@']
+)
+
+test_service_proto_dep = declare_dependency(
+    sources: test_service_proto
+)
+
+test_service_cc_proto = static_library(
+    'test_service_cc_proto',
+    dependencies: [test_service_proto_dep]
+)
+# === @end: test_service.proto ===
+
+
+# === @begin: object_manager.proto ===
+object_manager_proto = custom_target(
+    'object_manager_proto',
+    output: ['object_manager.pb.cc', 'object_manager.pb.h'],
+    input: 'object_manager.proto',
+    command: [protoc, '--proto_path=..', '--cpp_out=' + meson.project_build_root(), '@INPUT@']
+)
+
+object_manager_proto_dep = declare_dependency(
+    sources: object_manager_proto,
+    dependencies: [common_proto_dep]
+)
+
+object_manager_cc_proto = static_library(
+    'object_manager_cc_proto',
+    dependencies: [object_manager_proto_dep]
+)
+# === @end: object_manager.proto ===
+
+
+# === @begin: core_worker.proto ===
+core_worker_proto = custom_target(
+    'core_worker_proto',
+    output: ['core_worker.pb.cc', 'core_worker.pb.h'],
+    input: 'core_worker.proto',
+    command: [protoc, '--proto_path=..', '--cpp_out=' + meson.project_build_root(), '@INPUT@']
+)
+
+core_worker_proto_dep = declare_dependency(
+    sources: core_worker_proto,
+    dependencies: [common_proto_dep, pubsub_proto_dep]
+)
+
+core_worker_cc_proto = static_library(
+    'core_worker_cc_proto',
+    dependencies: [core_worker_proto_dep]
+)
+# === @end: core_worker.proto ===
+
+
+# === @begin: serialization.proto ===
+serialization_proto = custom_target(
+    'serialization_proto',
+    output: ['serialization.pb.cc', 'serialization.pb.h'],
+    input: 'serialization.proto',
+    command: [protoc, '--proto_path=..', '--cpp_out=' + meson.project_build_root(), '@INPUT@']
+)
+
+serialization_proto_dep = declare_dependency(
+    sources: serialization_proto
+)
+
+serialization_cc_proto = static_library(
+    'serialization_cc_proto',
+    dependencies: [serialization_proto_dep]
+)
+# === @end: serialization.proto ===
+
+
+# === @begin: event.proto ===
+event_proto = custom_target(
+    'event_proto',
+    output: ['event.pb.cc', 'event.pb.h'],
+    input: 'event.proto',
+    command: [protoc, '--proto_path=..', '--cpp_out=' + meson.project_build_root(), '@INPUT@']
+)
+
+event_proto_dep = declare_dependency(
+    sources: event_proto
+)
+
+event_cc_proto = static_library(
+    'event_cc_proto',
+    dependencies: [event_proto_dep]
+)
+# === @end: event.proto ===
+
+
+
+
+
 # === Begin of `setup` scope ===
 # === 1. .proto -> .pb.cc, .pb.h ===
 native_source_proto_files = [
     #'reporter.proto', # @TODO: Deps: @io_opencensus_proto//opencensus/proto/metrics/v1:metrics_proto
     'agent_manager.proto',
-    'core_worker.proto',
     'dependency.proto',
-    'event.proto',
     'export_api/export_actor_data.proto',
     'export_api/export_driver_job_event.proto',
     'export_api/export_event.proto',
@@ -226,45 +324,14 @@ native_source_proto_files = [
     'export_api/export_submission_job_event.proto',
     'export_api/export_task_event.proto',
     'job_agent.proto',
-    'object_manager.proto',
     'ray_client.proto',
     'runtime_env_agent.proto',
-    'serialization.proto',
     'serve.proto',
-    'test_service.proto',
     'usage.proto',
 ]
 
-#
-#test_service_cc_proto = static_library(
-#    'test_service_cc_proto',
-#    ['test_service.pb.cc'],
-#    include_directories: [current_dir_offset]
-#)
-#
-#object_manager_cc_proto = static_library(
-#    'object_manager_cc_proto',
-#    ['object_manager.pb.cc'],
-#    include_directories: [current_dir_offset]
-#)
-#
-#core_worker_cc_proto = static_library(
-#    'core_worker_cc_proto', # Original: `worker_cc_proto`
-#    ['core_worker.pb.cc'],
-#    include_directories: [current_dir_offset]
-#)
-#
-#serialization_cc_proto = static_library(
-#    'serialization_cc_proto',
-#    ['serialization.pb.cc'],
-#    include_directories: [current_dir_offset]
-#)
-#
-#event_cc_proto = static_library(
-#    'event_cc_proto',
-#    ['event.pb.cc'],
-#    include_directories: [current_dir_offset]
-#)
+
+
 #
 #export_event_cc_proto = static_library(
 #    'export_event_cc_proto',
