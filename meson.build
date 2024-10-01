@@ -21,6 +21,14 @@ add_project_arguments(
     language: ['c', 'cpp']
 )
 
+# Required to make generated protobuf headers visible to the files relying on them.
+# These generated headers are included using not their names but their paths starting from the repo root, so we have to
+# use `project_build_root` as they are generated dynamically.
+add_project_arguments(
+    '-I' + meson.project_build_root(),
+    language: ['c', 'cpp']
+)
+
 absl = dependency('absl', method: 'cmake', modules: [
     #'absl::raw_logging_internal', # https://github.com/ray-project/ray/issues/8588, https://github.com/ray-project/ray/issues/17212
 

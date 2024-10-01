@@ -1,16 +1,28 @@
-current_dir = fs.relative_to(meson.current_source_dir(), meson.project_source_root())
-current_dir_offset = fs.relative_to(meson.project_source_root(), meson.current_source_dir())
+# === @begin: runtime_env_common.proto ===
+runtime_env_common_proto = custom_target(
+    'runtime_env_common_proto',
+    output: ['runtime_env_common.pb.cc', 'runtime_env_common.pb.h'],
+    input: 'runtime_env_common.proto',
+    command: [protoc, '--proto_path=..', '--cpp_out=' + meson.project_build_root(), '@INPUT@']
+)
 
+runtime_env_common_proto_dep = declare_dependency(
+    sources: runtime_env_common_proto
+)
+
+runtime_env_common_cc_proto = static_library(
+    'runtime_env_common_cc_proto',
+    dependencies: [runtime_env_common_proto_dep]
+)
+# === @end: runtime_env_common.proto ===
+
+
+# === @begin: autoscaler.proto ===
 autoscaler_proto = custom_target(
     'autoscaler_proto',
     output: ['autoscaler.pb.cc', 'autoscaler.pb.h'],
     input: 'autoscaler.proto',
-    command: [
-        protoc,
-        '--proto_path=..',
-        '--cpp_out=' + meson.project_build_root(),
-        '@INPUT@',
-    ]
+    command: [protoc, '--proto_path=..', '--cpp_out=' + meson.project_build_root(), '@INPUT@']
 )
 
 autoscaler_proto_dep = declare_dependency(
@@ -19,23 +31,14 @@ autoscaler_proto_dep = declare_dependency(
 
 autoscaler_cc_proto = static_library(
     'autoscaler_cc_proto',
-    [],
-    dependencies: [autoscaler_proto_dep],
-    include_directories: [current_dir_offset]
+    dependencies: [autoscaler_proto_dep]
 )
+# === @end: autoscaler.proto ===
 
-#custom_target(
-#    protoc,
-#    '--proto_path=' + current_dir_offset,
-#    '--cpp_out=' + current_dir_offset,
-#    native_source_proto_file_paths,
-#    check: true
-#)
 
 # === Begin of `setup` scope ===
 # === 1. .proto -> .pb.cc, .pb.h ===
 #native_source_proto_files = [
-#    'autoscaler.proto',
 #    'usage.proto',
 #    'serve.proto',
 #    'runtime_env_agent.proto',
@@ -66,26 +69,10 @@ autoscaler_cc_proto = static_library(
 #    #'reporter.proto', # @TODO: Deps: @io_opencensus_proto//opencensus/proto/metrics/v1:metrics_proto
 #    'runtime_env_common.proto',
 #]
-#
-#native_source_proto_file_paths = []
-#
-#foreach proto_file : native_source_proto_files
-#    native_source_proto_file_paths += [
-#        current_dir / proto_file
-#    ]
-#endforeach
-#
-##  @TODO: try extra -IPATH, --proto_path=PATH? may resolve current overcomplication
-#run_command(
-#    protoc,
-#    '--proto_path=' + current_dir_offset,
-#    '--cpp_out=' + current_dir_offset,
-#    native_source_proto_file_paths,
-#    check: true
-#)
+
 ## === End of `setup` scope ===
-#
-#
+
+
 ## === Being of `compile` scope ===
 #common_cc_proto = static_library(
 #    'common_cc_proto',
@@ -105,11 +92,7 @@ autoscaler_cc_proto = static_library(
 #    include_directories: [current_dir_offset]
 #)
 #
-#runtime_env_common_cc_proto = static_library(
-#    'runtime_env_common_cc_proto',
-#    ['runtime_env_common.pb.cc'],
-#    include_directories: [current_dir_offset]
-#)
+
 #
 #gcs_cc_proto = static_library(
 #    'gcs_cc_proto',
