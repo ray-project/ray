@@ -17,6 +17,11 @@ py = import('python').find_installation(pure: false)
 # I don't want to bring the entire GTest, portions of which Ray requires even for non-test code.
 # Instead, I've vendored a few GTest headers it really uses and add them into search paths, used by all compiler invocations.
 add_project_arguments(
+    '-I' + meson.project_build_root() / '__eugo' / 'include',
+    language: ['c', 'cpp']
+)
+
+add_project_arguments(
     '-I' + meson.project_source_root() / '__eugo' / 'include',
     language: ['c', 'cpp']
 )
@@ -195,8 +200,12 @@ grpc = dependency('gRPC', method: 'cmake')
 # === End of dependencies ===
 
 
-# === Begin of rpc definitions ===
+# === @begin: __eugo/ ===
+subdir('__eugo/')
+# === @end: __eugo/ ===
 
+
+# === Begin of rpc definitions ===
 # GRPC common lib.
 grpc_common_lib_sources = files(
     'src/ray/rpc/common.cc',

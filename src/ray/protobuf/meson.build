@@ -139,45 +139,6 @@ node_manager_cc_proto = static_library(
 # === @end: node_manager.proto ===
 
 
-# === @begin: @opencensus/proto/resource/v1/resource.proto ===
-resource_proto = custom_target(
-    'resource_proto',
-    output: ['resource.pb.cc', 'resource.pb.h'],
-    input: meson.project_source_root() / '__eugo' / 'include' / 'opencensus-proto' / 'src' / 'opencensus' / 'proto' / 'resource' / 'v1' / 'resource.proto',
-    command: [
-        protoc,
-        '--proto_path=' + meson.project_source_root() / '__eugo' / 'include' / 'opencensus-proto' / 'src',
-        '--cpp_out=' + meson.project_build_root() / 'src' / 'ray' / 'protobuf',
-        '@INPUT@'
-    ],
-)
-
-resource_proto_dep = declare_dependency(
-    sources: resource_proto
-)
-# === @end: @opencensus/proto/resource/v1/resource.proto ===
-
-
-# === @begin: @opencensus/proto/metrics/v1/metrics.proto ===
-metrics_proto = custom_target(
-    'metrics_proto',
-    output: ['metrics.pb.cc', 'metrics.pb.h'],
-    input: meson.project_source_root() / '__eugo' / 'include' / 'opencensus-proto' / 'src' / 'opencensus' / 'proto' / 'metrics' / 'v1' / 'metrics.proto',
-    command: [
-        protoc,
-        '--proto_path=' + meson.project_source_root() / '__eugo' / 'include' / 'opencensus-proto' / 'src',
-        '--cpp_out=' + meson.project_build_root() / 'src' / 'ray' / 'protobuf',
-        '@INPUT@'
-    ],
-)
-
-metrics_proto_dep = declare_dependency(
-    sources: metrics_proto,
-    dependencies: [resource_proto_dep]
-)
-# === @end: @opencensus/proto/metrics/v1/metrics.proto ===
-
-
 # === @begin: reporter.proto ===
 reporter_proto = custom_target(
     'reporter_proto',
@@ -187,14 +148,14 @@ reporter_proto = custom_target(
         protoc,
         '--proto_path=..',
         '--cpp_out=' + meson.project_build_root(),
-        '-I' + meson.project_source_root() / '__eugo' / 'include' / 'opencensus-proto' / 'src',
+        '-I' + meson.project_source_root() / '__eugo' / 'include',
         '@INPUT@'
     ],
 )
 
 reporter_proto_dep = declare_dependency(
     sources: reporter_proto,
-    dependencies: [metrics_proto_dep]
+    dependencies: [opencensus_proto_metrics_v1_metrics_proto_dep]
 )
 
 reporter_cc_proto = static_library(
