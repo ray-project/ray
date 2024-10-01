@@ -5197,7 +5197,7 @@ class Schema:
         for dtype in self.base_schema.types:
             if isinstance(dtype, TensorDtype):
 
-                if self.context.use_arrow_tensor_v2:
+                if DataContext.get_current().use_arrow_tensor_v2:
                     pa_tensor_type_class = ArrowTensorTypeV2
                 else:
                     pa_tensor_type_class = ArrowTensorType
