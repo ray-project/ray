@@ -219,7 +219,7 @@ grpc_common_lib = static_library(
     install: false
 )
 
-subdir('src/ray/protobuf')
+subdir('src/')
 
 # Node manager gRPC lib.
 #node_manager_cc_grpc = cc_grpc_library(

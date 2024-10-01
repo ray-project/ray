@@ -1,5 +1,5 @@
 # === @begin: experimental/ ===
-subdir('experimental')
+subdir('experimental/')
 # === @end: experimental/ ===
 
 
@@ -307,6 +307,67 @@ event_cc_proto = static_library(
 # === @end: event.proto ===
 
 
+# === @begin: agent_manager.proto ===
+agent_manager_proto = custom_target(
+    'agent_manager_proto',
+    output: ['agent_manager.pb.cc', 'agent_manager.pb.h'],
+    input: 'agent_manager.proto',
+    command: [protoc, '--proto_path=..', '--cpp_out=' + meson.project_build_root(), '@INPUT@']
+)
+
+agent_manager_proto_dep = declare_dependency(
+    sources: agent_manager_proto
+)
+
+agent_manager_cc_proto = static_library(
+    'agent_manager_cc_proto',
+    dependencies: [agent_manager_proto_dep]
+)
+# === @end: agent_manager.proto ===
+
+
+# === @begin: runtime_env_agent.proto ===
+runtime_env_agent_proto = custom_target(
+    'runtime_env_agent_proto',
+    output: ['runtime_env_agent.pb.cc', 'runtime_env_agent.pb.h'],
+    input: 'runtime_env_agent.proto',
+    command: [protoc, '--proto_path=..', '--cpp_out=' + meson.project_build_root(), '@INPUT@']
+)
+
+runtime_env_agent_proto_dep = declare_dependency(
+    sources: runtime_env_agent_proto,
+    dependencies: [runtime_env_common_proto_dep, agent_manager_proto_dep]
+)
+
+runtime_env_agent_cc_proto = static_library(
+    'runtime_env_agent_cc_proto',
+    dependencies: [runtime_env_agent_proto_dep]
+)
+# === @end: runtime_env_agent.proto ===
+
+
+# === @begin: usage.proto ===
+usage_proto = custom_target(
+    'usage_proto',
+    output: ['usage.pb.cc', 'usage.pb.h'],
+    input: 'usage.proto',
+    command: [protoc, '--proto_path=..', '--cpp_out=' + meson.project_build_root(), '@INPUT@']
+)
+
+usage_proto_dep = declare_dependency(
+    sources: usage_proto
+)
+
+usage_cc_proto = static_library(
+    'usage_cc_proto',
+    dependencies: [usage_proto_dep]
+)
+# === @end: usage.proto ===
+
+
+# === @begin: export_api/ ===
+subdir('export_api/')
+# === @end: export_api/ ===
 
 
 
@@ -314,90 +375,12 @@ event_cc_proto = static_library(
 # === 1. .proto -> .pb.cc, .pb.h ===
 native_source_proto_files = [
     #'reporter.proto', # @TODO: Deps: @io_opencensus_proto//opencensus/proto/metrics/v1:metrics_proto
-    'agent_manager.proto',
     'dependency.proto',
-    'export_api/export_actor_data.proto',
-    'export_api/export_driver_job_event.proto',
-    'export_api/export_event.proto',
-    'export_api/export_node_data.proto',
-    'export_api/export_runtime_env.proto',
-    'export_api/export_submission_job_event.proto',
-    'export_api/export_task_event.proto',
     'job_agent.proto',
     'ray_client.proto',
-    'runtime_env_agent.proto',
-    'serve.proto',
-    'usage.proto',
+    'serve.proto'
 ]
 
-
-
-#
-#export_event_cc_proto = static_library(
-#    'export_event_cc_proto',
-#    ['export_api/export_event.pb.cc'],
-#    include_directories: [current_dir_offset]
-#)
-#
-#export_task_event_cc_proto = static_library(
-#    'export_task_event_cc_proto',
-#    ['export_api/export_task_event.pb.cc'],
-#    include_directories: [current_dir_offset]
-#)
-#
-#export_runtime_env_cc_proto = static_library(
-#    'export_runtime_env_cc_proto',
-#    ['export_api/export_runtime_env.pb.cc'],
-#    include_directories: [current_dir_offset]
-#)
-#
-#export_node_event_cc_proto = static_library(
-#    'export_node_event_cc_proto',
-#    ['export_api/export_node_event.pb.cc'],
-#    include_directories: [current_dir_offset]
-#)
-#
-#export_actor_event_cc_proto = static_library(
-#    'export_actor_event_cc_proto',
-#    ['export_api/export_actor_event.pb.cc'],
-#    include_directories: [current_dir_offset]
-#)
-#
-#export_driver_job_event_cc_proto = static_library(
-#    'export_driver_job_event_cc_proto',
-#    ['export_api/export_driver_job_event.pb.cc'],
-#    include_directories: [current_dir_offset]
-#)
-#
-#export_submission_job_event_cc_proto = static_library(
-#    'export_submission_job_event_cc_proto',
-#    ['export_api/export_submission_job_event.pb.cc'],
-#    include_directories: [current_dir_offset]
-#)
-#
-#agent_manager_cc_proto = static_library(
-#    'agent_manager_cc_proto',
-#    ['agent_manager.pb.cc'],
-#    include_directories: [current_dir_offset]
-#)
-#
-#runtime_env_agent_cc_proto = static_library(
-#    'runtime_env_agent_cc_proto',
-#    ['runtime_env_agent.pb.cc'],
-#    include_directories: [current_dir_offset]
-#)
-#
-#usage_cc_proto = static_library(
-#    'usage_cc_proto',
-#    ['usage.pb.cc'],
-#    include_directories: [current_dir_offset]
-#)
-#
-#autoscaler_cc_proto = static_library(
-#    'autoscaler_cc_proto',
-#    ['autoscaler.pb.cc'],
-#    include_directories: [current_dir_offset]
-#)
 # === 2. .proto -> .pb2.py ===
 
 # === End of `compile` scope ===
