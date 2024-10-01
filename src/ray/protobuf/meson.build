@@ -17,6 +17,30 @@ runtime_env_common_cc_proto = static_library(
 # === @end: runtime_env_common.proto ===
 
 
+# === @begin: common.proto ===
+common_proto = custom_target(
+    'common_proto',
+    output: ['common.pb.cc', 'common.pb.h'],
+    input: 'common.proto',
+    command: [protoc, '--proto_path=..', '--cpp_out=' + meson.project_build_root(), '@INPUT@']
+)
+
+common_proto_dep = declare_dependency(
+    sources: common_proto
+)
+
+common_cc_proto = static_library(
+    'common_cc_proto',
+    dependencies: [common_proto_dep]
+)
+# === @end: common.proto ===
+
+
+# === @begin: experimental/ ===
+subdir('experimental')
+# === @end: experimental/ ===
+
+
 # === @begin: autoscaler.proto ===
 autoscaler_proto = custom_target(
     'autoscaler_proto',
@@ -36,62 +60,61 @@ autoscaler_cc_proto = static_library(
 # === @end: autoscaler.proto ===
 
 
+# === @begin: ray_syncer.proto ===
+ray_syncer_proto = custom_target(
+    'ray_syncer_proto',
+    output: ['ray_syncer.pb.cc', 'ray_syncer.pb.h'],
+    input: 'ray_syncer.proto',
+    command: [protoc, '--proto_path=..', '--cpp_out=' + meson.project_build_root(), '@INPUT@']
+)
+
+ray_syncer_proto_dep = declare_dependency(
+    sources: ray_syncer_proto
+)
+
+ray_syncer_cc_proto = static_library(
+    'ray_syncer_cc_proto',
+    dependencies: [ray_syncer_proto_dep]
+)
+# === @end: ray_syncer.proto ===
+
+
+
+
+
 # === Begin of `setup` scope ===
 # === 1. .proto -> .pb.cc, .pb.h ===
-#native_source_proto_files = [
-#    'usage.proto',
-#    'serve.proto',
-#    'runtime_env_agent.proto',
-#    'pubsub.proto',
-#    'ray_client.proto',
-#    'agent_manager.proto',
-#    'job_agent.proto',
-#    'export_api/export_submission_job_event.proto',
-#    'export_api/export_driver_job_event.proto',
-#    'export_api/export_actor_data.proto',
-#    'export_api/export_node_data.proto',
-#    'export_api/export_runtime_env.proto',
-#    'export_api/export_task_event.proto',
-#    'export_api/export_event.proto',
-#    'event.proto',
-#    'serialization.proto',
-#    'core_worker.proto',
-#    'object_manager.proto',
-#    'test_service.proto',
-#    'common.proto',
-#    'dependency.proto',
-#    'experimental/instance_manager.proto',
-#    'gcs.proto',
-#    'gcs_service.proto',
-#    'logging.proto',
-#    'node_manager.proto',
-#    'ray_syncer.proto',
-#    #'reporter.proto', # @TODO: Deps: @io_opencensus_proto//opencensus/proto/metrics/v1:metrics_proto
-#    'runtime_env_common.proto',
-#]
-
-## === End of `setup` scope ===
+native_source_proto_files = [
+    #'reporter.proto', # @TODO: Deps: @io_opencensus_proto//opencensus/proto/metrics/v1:metrics_proto
+    'agent_manager.proto',
+    'core_worker.proto',
+    'dependency.proto',
+    'event.proto',
+    'export_api/export_actor_data.proto',
+    'export_api/export_driver_job_event.proto',
+    'export_api/export_event.proto',
+    'export_api/export_node_data.proto',
+    'export_api/export_runtime_env.proto',
+    'export_api/export_submission_job_event.proto',
+    'export_api/export_task_event.proto',
+    'gcs.proto',
+    'gcs_service.proto',
+    'job_agent.proto',
+    'logging.proto',
+    'node_manager.proto',
+    'object_manager.proto',
+    'pubsub.proto',
+    'ray_client.proto',
+    'runtime_env_agent.proto',
+    'serialization.proto',
+    'serve.proto',
+    'test_service.proto',
+    'usage.proto',
+]
 
 
-## === Being of `compile` scope ===
-#common_cc_proto = static_library(
-#    'common_cc_proto',
-#    ['common.pb.cc'],
-#    include_directories: [current_dir_offset]
-#)
-#
-#instance_manager_cc_proto = static_library(
-#    'instance_manager_cc_proto',
-#    ['experimental/instance_manager.pb.cc'],
-#    include_directories: [current_dir_offset]
-#)
-#
-#ray_syncer_cc_proto = static_library(
-#    'ray_syncer_cc_proto',
-#    ['ray_syncer.pb.cc'],
-#    include_directories: [current_dir_offset]
-#)
-#
+
+
 
 #
 #gcs_cc_proto = static_library(
