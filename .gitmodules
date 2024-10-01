@@ -1,4 +1,0 @@
-[submodule "opencensus-proto"]
-	path = __eugo/include/
-	commit = 1664cc961550be8f3058ddd29390350242f44f1f
-	url = https://github.com/census-instrumentation/opencensus-proto/

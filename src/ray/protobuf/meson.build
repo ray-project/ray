@@ -139,34 +139,68 @@ node_manager_cc_proto = static_library(
 # === @end: node_manager.proto ===
 
 
-# @TODO+:
+# === @begin: @opencensus/proto/resource/v1/resource.proto ===
+resource_proto = custom_target(
+    'resource_proto',
+    output: ['resource.pb.cc', 'resource.pb.h'],
+    input: meson.project_source_root() / '__eugo' / 'include' / 'opencensus-proto' / 'src' / 'opencensus' / 'proto' / 'resource' / 'v1' / 'resource.proto',
+    command: [
+        protoc,
+        '--proto_path=' + meson.project_source_root() / '__eugo' / 'include' / 'opencensus-proto' / 'src',
+        '--cpp_out=' + meson.project_build_root() / 'src' / 'ray' / 'protobuf',
+        '@INPUT@'
+    ],
+)
+
+resource_proto_dep = declare_dependency(
+    sources: resource_proto
+)
+# === @end: @opencensus/proto/resource/v1/resource.proto ===
+
+
+# === @begin: @opencensus/proto/metrics/v1/metrics.proto ===
+metrics_proto = custom_target(
+    'metrics_proto',
+    output: ['metrics.pb.cc', 'metrics.pb.h'],
+    input: meson.project_source_root() / '__eugo' / 'include' / 'opencensus-proto' / 'src' / 'opencensus' / 'proto' / 'metrics' / 'v1' / 'metrics.proto',
+    command: [
+        protoc,
+        '--proto_path=' + meson.project_source_root() / '__eugo' / 'include' / 'opencensus-proto' / 'src',
+        '--cpp_out=' + meson.project_build_root() / 'src' / 'ray' / 'protobuf',
+        '@INPUT@'
+    ],
+)
+
+metrics_proto_dep = declare_dependency(
+    sources: metrics_proto,
+    dependencies: [resource_proto_dep]
+)
+# === @end: @opencensus/proto/metrics/v1/metrics.proto ===
+
+
 # === @begin: reporter.proto ===
-#node_manager_proto = custom_target(
-#    'node_manager_proto',
-#    output: ['node_manager.pb.cc', 'node_manager.pb.h'],
-#    input: 'node_manager.proto',
-#    command: [protoc, '--proto_path=..', '--cpp_out=' + meson.project_build_root(), '@INPUT@'],
-#
-#    # Imports these .proto files, but not .cc and .h generated from that!
-#    # All the required code pieces will be included in generated sources for this .proto.
-#    #depend_files: ['common.proto', 'gcs.proto', 'autoscaler.proto']
-#)
-#
-#node_manager_proto_dep = declare_dependency(
-#    sources: node_manager_proto
-#)
-#
-#node_manager_cc_proto = static_library(
-#    'node_manager_cc_proto',
-#    dependencies: [node_manager_proto_dep]
-#)
+reporter_proto = custom_target(
+    'reporter_proto',
+    output: ['reporter.pb.cc', 'reporter.pb.h'],
+    input: 'reporter.proto',
+    command: [
+        protoc,
+        '--proto_path=..',
+        '--cpp_out=' + meson.project_build_root(),
+        '-I' + meson.project_source_root() / '__eugo' / 'include' / 'opencensus-proto' / 'src',
+        '@INPUT@'
+    ],
+)
 
-#reporter_cc_proto = static_library(
-#    'reporter_cc_proto',
-#    ['reporter.pb.cc'],
-#    include_directories: [current_dir_offset]
-#)
+reporter_proto_dep = declare_dependency(
+    sources: reporter_proto,
+    dependencies: [metrics_proto_dep]
+)
 
+reporter_cc_proto = static_library(
+    'reporter_cc_proto',
+    dependencies: [reporter_proto_dep]
+)
 # === @end: reporter.proto ===
 
 
@@ -374,7 +408,6 @@ subdir('export_api/')
 # === Begin of `setup` scope ===
 # === 1. .proto -> .pb.cc, .pb.h ===
 native_source_proto_files = [
-    #'reporter.proto', # @TODO: Deps: @io_opencensus_proto//opencensus/proto/metrics/v1:metrics_proto
     'dependency.proto',
     'job_agent.proto',
     'ray_client.proto',
