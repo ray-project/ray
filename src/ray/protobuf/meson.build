@@ -215,45 +215,38 @@ node_manager_proto_py = custom_target(
 # === @end: node_manager.proto ===
 
 
-## === @begin: reporter.proto ===
-#reporter_proto = custom_target(
-#    'reporter_proto',
-#    output: ['reporter.pb.cc', 'reporter.pb.h'],
-#    input: 'reporter.proto',
-#    command: [
-#        protoc,
-#        '--proto_path=..',
-#        '--cpp_out=' + meson.project_build_root(),
-#        '-I' + meson.project_source_root() / '__eugo' / 'include',
-#        '@INPUT@'
-#    ],
-#)
-#
-#reporter_proto_dep = declare_dependency(
-#    sources: reporter_proto,
-#    dependencies: [opencensus_proto_metrics_v1_metrics_proto_dep]
-#)
-#
-#reporter_cc_proto = static_library(
-#    'reporter_cc_proto',
-#    dependencies: [reporter_proto_dep]
-#)
-#
-#reporter_py_proto = custom_target(
-#    'reporter_py_proto',
-#    output: ['reporter_pb2.py', 'reporter_pb2_grpc.py'],
-#    input: 'reporter.proto',
-#    command: [
-#        'python3', '-m', 'grpc_tools.protoc',
-#        '--proto_path=..',
-#        '--python_out=' + meson.project_build_root(),
-#        '--grpc_python_out=' + meson.project_build_root(),
-#        '@INPUT@'
-#    ]
-#)
-## === @end: reporter.proto ===
-#
-#
+# === @begin: reporter.proto ===
+proto_basename = 'reporter'
+
+reporter_proto = f'@proto_basename@.proto'
+
+reporter_proto_cpp = custom_target(
+    f'@proto_basename@_proto_cpp',
+    input: reporter_proto,
+    command: [protoc_cpp_with_default_args, '-I@SOURCE_ROOT@/__eugo/include'],
+    output: [f'@proto_basename@.pb.cc', f'@proto_basename@.pb.h']
+)
+
+reporter_proto_cpp_dep = declare_dependency(
+    sources: reporter_proto_cpp,
+    dependencies: [opencensus_proto_metrics_v1_metrics_proto_dep]
+)
+
+reporter_proto_cpp_lib = static_library(
+    f'@proto_basename@_proto_cpp_lib',
+    dependencies: [protobuf, reporter_proto_cpp_dep]
+)
+
+reporter_proto_py = custom_target(
+    f'@proto_basename@_proto_py',
+    input: reporter_proto,
+    command: [protoc_py_with_default_args, '-I@SOURCE_ROOT@/__eugo/include'],
+    output: [f'@proto_basename@_pb2.py', f'@proto_basename@_pb2_grpc.py'],
+    build_by_default: true
+)
+# === @end: reporter.proto ===
+
+
 ## === @begin: pubsub.proto ===
 #pubsub_proto = custom_target(
 #    'pubsub_proto',
