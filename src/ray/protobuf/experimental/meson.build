@@ -1,30 +1,27 @@
 # === @begin: instance_manager.proto ===
-instance_manager_proto = custom_target(
-    'instance_manager_proto',
-    output: ['instance_manager.pb.cc', 'instance_manager.pb.h'],
-    input: 'instance_manager.proto',
-    command: [protoc_cpp, '--proto_path=..', '--cpp_out=' + meson.project_build_root(), '@INPUT@']
+proto_basename = 'instance_manager'
+instance_manager_proto = f'@proto_basename@.proto'
+
+instance_manager_proto_cpp = custom_target(
+    f'@proto_basename@_proto_cpp',
+    input: instance_manager_proto,
+    command: protoc_cpp_with_default_args,
+    output: [f'@proto_basename@.pb.cc', f'@proto_basename@.pb.h']
 )
 
-instance_manager_proto_dep = declare_dependency(
-    sources: instance_manager_proto
+instance_manager_proto_cpp_dep = declare_dependency(
+    sources: instance_manager_proto_cpp
 )
 
-instance_manager_cc_proto = static_library(
-    'instance_manager_cc_proto',
-    dependencies: [instance_manager_proto_dep]
+instance_manager_proto_cpp_lib = static_library(
+    f'@proto_basename@_proto_cpp_lib',
+    dependencies: [protobuf, instance_manager_proto_cpp_dep]
 )
 
-instance_manager_py_proto = custom_target(
-    'instance_manager_py_proto',
-    output: ['instance_manager_pb2.py', 'instance_manager_pb2_grpc.py'],
-    input: 'instance_manager.proto',
-    command: [
-        'python3', '-m', 'grpc_tools.protoc',
-        '--proto_path=..',
-        '--python_out=' + meson.project_build_root(),
-        '--grpc_python_out=' + meson.project_build_root(),
-        '@INPUT@'
-    ]
+instance_manager_proto_py = custom_target(
+    f'@proto_basename@_proto_py',
+    input: instance_manager_proto,
+    command: protoc_py_with_default_args,
+    output: [f'@proto_basename@_pb2.py', f'@proto_basename@_pb2_grpc.py']
 )
 # === @end: instance_manager.proto ===
