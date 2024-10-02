@@ -229,7 +229,7 @@ reporter_proto_cpp = custom_target(
 
 reporter_proto_cpp_dep = declare_dependency(
     sources: reporter_proto_cpp,
-    dependencies: [opencensus_proto_metrics_v1_metrics_proto_dep]
+    dependencies: [opencensus_metrics_proto_cpp_dep]
 )
 
 reporter_proto_cpp_lib = static_library(

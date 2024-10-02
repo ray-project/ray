@@ -1,28 +1,35 @@
 # === @begin: trace.proto ===
-opencensus_proto_trace_v1_trace_proto = custom_target(
-    'opencensus_proto_trace_v1_trace_proto',
-    input: 'trace.proto',
-    command: [protoc_cpp, '--proto_path=../__eugo/include', '--cpp_out=' + meson.project_build_root() / '__eugo' / 'include', '@INPUT@'],
-    output: ['trace.pb.cc', 'trace.pb.h']
+proto_basename = 'trace'
+
+opencensus_trace_proto = f'@proto_basename@.proto'
+
+opencensus_trace_proto_cpp = custom_target(
+    f'opencensus_@proto_basename@_proto_cpp',
+    input: opencensus_trace_proto,
+    command: opencensus_protoc_cpp_with_default_arguments,
+    output: [f'@proto_basename@.pb.cc', f'@proto_basename@.pb.h']
 )
 
-opencensus_proto_trace_v1_trace_proto_dep = declare_dependency(
-    sources: opencensus_proto_trace_v1_trace_proto,
-    dependencies: [protobuf, opencensus_proto_resource_v1_resource_proto_dep]
+opencensus_trace_proto_cpp_dep = declare_dependency(
+    sources: opencensus_trace_proto_cpp,
+    dependencies: [opencensus_resource_proto_cpp_dep]
 )
 # === @end: trace.proto ===
 
 
 # === @begin: trace_config.proto ===
-opencensus_proto_trace_v1_trace_config_proto = custom_target(
-    'opencensus_proto_trace_v1_trace_config_proto',
-    input: 'trace_config.proto',
-    command: [protoc_cpp, '--proto_path=../__eugo/include', '--cpp_out=' + meson.project_build_root() / '__eugo' / 'include', '@INPUT@'],
-    output: ['trace_config.pb.cc', 'trace_config.pb.h']
+proto_basename = 'trace_config'
+
+opencensus_trace_config_proto = f'@proto_basename@.proto'
+
+opencensus_trace_config_proto_cpp = custom_target(
+    f'opencensus_@proto_basename@_proto_cpp',
+    input: opencensus_trace_config_proto,
+    command: opencensus_protoc_cpp_with_default_arguments,
+    output: [f'@proto_basename@.pb.cc', f'@proto_basename@.pb.h']
 )
 
-opencensus_proto_trace_v1_trace_config_proto_dep = declare_dependency(
-    sources: opencensus_proto_trace_v1_trace_config_proto,
-    dependencies: [protobuf]
+opencensus_trace_config_proto_cpp_dep = declare_dependency(
+    sources: opencensus_trace_config_proto_cpp
 )
 # === @end: trace_config.proto ===

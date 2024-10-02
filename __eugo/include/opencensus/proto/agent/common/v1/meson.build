@@ -1,11 +1,16 @@
-opencensus_proto_agent_common_v1_common_proto = custom_target(
-    'opencensus_agent_proto_common_v1_common_proto',
-    output: ['common.pb.cc', 'common.pb.h'],
-    input: 'common.proto',
-    command: [protoc_cpp, '--proto_path=../__eugo/include', '--cpp_out=' + meson.project_build_root() / '__eugo' / 'include', '@INPUT@']
+# === @begin: common.proto ===
+proto_basename = 'common'
+
+opencensus_common_proto = f'@proto_basename@.proto'
+
+opencensus_common_proto_cpp = custom_target(
+    f'opencensus_@proto_basename@_proto_cpp',
+    input: opencensus_common_proto,
+    command: opencensus_protoc_cpp_with_default_arguments,
+    output: [f'@proto_basename@.pb.cc', f'@proto_basename@.pb.h']
 )
 
-opencensus_proto_agent_common_v1_common_proto_dep = declare_dependency(
-    sources: opencensus_proto_agent_common_v1_common_proto,
-    dependencies: [protobuf]
+opencensus_common_proto_cpp_dep = declare_dependency(
+    sources: opencensus_common_proto_cpp
 )
+# === @end: common.proto ===

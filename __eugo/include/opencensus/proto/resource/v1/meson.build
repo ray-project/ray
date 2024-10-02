@@ -1,11 +1,16 @@
-opencensus_proto_resource_v1_resource_proto = custom_target(
-    'opencensus_proto_resource_v1_resource_proto',
-    input: 'resource.proto',
-    command: [protoc_cpp, '--proto_path=../__eugo/include', '--cpp_out=' + meson.project_build_root() / '__eugo' / 'include', '@INPUT@'],
-    output: ['resource.pb.cc', 'resource.pb.h']
+# === @begin: resource.proto ===
+proto_basename = 'resource'
+
+opencensus_resource_proto = f'@proto_basename@.proto'
+
+opencensus_resource_proto_cpp = custom_target(
+    f'opencensus_@proto_basename@_proto_cpp',
+    input: opencensus_resource_proto,
+    command: opencensus_protoc_cpp_with_default_arguments,
+    output: [f'@proto_basename@.pb.cc', f'@proto_basename@.pb.h']
 )
 
-opencensus_proto_resource_v1_resource_proto_dep = declare_dependency(
-    sources: opencensus_proto_resource_v1_resource_proto,
-    dependencies: [protobuf]
+opencensus_resource_proto_cpp_dep = declare_dependency(
+    sources: opencensus_resource_proto_cpp
 )
+# === @end: resource.proto ===
