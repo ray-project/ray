@@ -5,6 +5,7 @@ subdir('experimental/')
 
 # === @begin: runtime_env_common.proto ===
 proto_basename = 'runtime_env_common'
+
 runtime_env_common_proto = f'@proto_basename@.proto'
 
 runtime_env_common_proto_cpp = custom_target(
@@ -34,6 +35,7 @@ runtime_env_common_proto_py = custom_target(
 
 # === @begin: common.proto ===
 proto_basename = 'common'
+
 common_proto = f'@proto_basename@.proto'
 
 common_proto_cpp = custom_target(
@@ -64,6 +66,7 @@ common_proto_py = custom_target(
 
 # === @begin: autoscaler.proto ===
 proto_basename = 'autoscaler'
+
 autoscaler_proto = f'@proto_basename@.proto'
 
 autoscaler_proto_cpp = custom_target(
@@ -91,58 +94,60 @@ autoscaler_proto_py = custom_target(
 # === @end: autoscaler.proto ===
 
 
-## === @begin: ray_syncer.proto ===
-#ray_syncer_proto = custom_target(
-#    'ray_syncer_proto',
-#    output: ['ray_syncer.pb.cc', 'ray_syncer.pb.h'],
-#    input: 'ray_syncer.proto',
-#    command: [protoc, '--proto_path=..', '--cpp_out=' + meson.project_build_root(), '@INPUT@']
-#)
-#
-#ray_syncer_proto_dep = declare_dependency(
-#    sources: ray_syncer_proto
-#)
-#
-#ray_syncer_cc_proto = static_library(
-#    'ray_syncer_cc_proto',
-#    dependencies: [ray_syncer_proto_dep]
-#)
-## === @end: ray_syncer.proto ===
-#
-#
-## === @begin: gcs.proto ===
-#gcs_proto = custom_target(
-#    'gcs_proto',
-#    output: ['gcs.pb.cc', 'gcs.pb.h'],
-#    input: 'gcs.proto',
-#    command: [protoc, '--proto_path=..', '--cpp_out=' + meson.project_build_root(), '@INPUT@']
-#)
-#
-#gcs_proto_dep = declare_dependency(
-#    sources: gcs_proto,
-#    dependencies: [common_proto_dep]
-#)
-#
-#gcs_cc_proto = static_library(
-#    'gcs_cc_proto',
-#    dependencies: [gcs_proto_dep]
-#)
-#
-#gcs_py_proto = custom_target(
-#    'gcs_py_proto',
-#    output: ['gcs_pb2.py', 'gcs_pb2_grpc.py'],
-#    input: 'gcs.proto',
-#    command: [
-#        'python3', '-m', 'grpc_tools.protoc',
-#        '--proto_path=..',
-#        '--python_out=' + meson.project_build_root(),
-#        '--grpc_python_out=' + meson.project_build_root(),
-#        '@INPUT@'
-#    ]
-#)
-## === @end: gcs.proto ===
-#
-#
+# === @begin: ray_syncer.proto ===
+proto_basename = 'ray_syncer'
+
+ray_syncer_proto = f'@proto_basename@.proto'
+
+ray_syncer_proto_cpp = custom_target(
+    f'@proto_basename@_proto_cpp',
+    input: ray_syncer_proto,
+    command: protoc_cpp_with_default_args,
+    output: [f'@proto_basename@.pb.cc', f'@proto_basename@.pb.h']
+)
+
+ray_syncer_proto_cpp_dep = declare_dependency(
+    sources: ray_syncer_proto_cpp
+)
+
+ray_syncer_proto_cpp_lib = static_library(
+    f'@proto_basename@_proto_cpp_lib',
+    dependencies: [protobuf, ray_syncer_proto_cpp_dep]
+)
+# === @end: ray_syncer.proto ===
+
+
+# === @begin: gcs.proto ===
+proto_basename = 'gcs'
+
+gcs_proto = f'@proto_basename@.proto'
+
+gcs_proto_cpp = custom_target(
+    f'@proto_basename@_proto_cpp',
+    input: gcs_proto,
+    command: protoc_cpp_with_default_args,
+    output: [f'@proto_basename@.pb.cc', f'@proto_basename@.pb.h']
+)
+
+gcs_proto_cpp_dep = declare_dependency(
+    sources: gcs_proto_cpp,
+    dependencies: [common_proto_cpp_dep]
+)
+
+gcs_proto_cpp_lib = static_library(
+    f'@proto_basename@_proto_cpp_lib',
+    dependencies: [protobuf, gcs_proto_cpp_dep]
+)
+
+gcs_proto_py = custom_target(
+    f'@proto_basename@_proto_py',
+    input: gcs_proto,
+    command: protoc_py_with_default_args,
+    output: [f'@proto_basename@_pb2.py', f'@proto_basename@_pb2_grpc.py']
+)
+# === @end: gcs.proto ===
+
+
 ## === @begin: logging.proto ===
 #logging_proto = custom_target(
 #    'logging_proto',

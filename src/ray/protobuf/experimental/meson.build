@@ -1,5 +1,6 @@
 # === @begin: instance_manager.proto ===
 proto_basename = 'instance_manager'
+
 instance_manager_proto = f'@proto_basename@.proto'
 
 instance_manager_proto_cpp = custom_target(
