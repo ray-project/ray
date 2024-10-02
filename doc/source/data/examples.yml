@@ -29,3 +29,6 @@ examples:
     frameworks:
       - xgboost
     link: ../train/examples/xgboost/xgboost_example
+  - title: How to One-Hot Encode Data
+    skill_level: beginner
+    link: examples/how_to_one_hot_encode
