@@ -88,7 +88,8 @@ class TorchTensorType(ChannelOutputType):
         # Check if the transport is one of the supported communicator types
         if transport not in [self.AUTO] + self.COMMUNICATOR_TYPES:
             raise ValueError(
-                f"`transport` must be TorchTensorType.AUTO, or one of {self.COMMUNICATOR_TYPES}"
+                f"`transport` must be TorchTensorType.AUTO, \
+                  or one of {self.COMMUNICATOR_TYPES}"
             )
         self.transport = transport
 
@@ -133,7 +134,6 @@ class TorchTensorType(ChannelOutputType):
         read_by_adag_driver,
         _torch_tensor_allocator: Optional["TorchTensorAllocator"] = None,
     ) -> type:
-
         if self.requires_communicator():
             from ray.experimental.channel.torch_tensor_communicator_channel import (
                 TorchTensorCommunicatorChannel,

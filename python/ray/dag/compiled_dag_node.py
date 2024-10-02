@@ -818,7 +818,9 @@ class CompiledDAG:
                 if dag_node.type_hint.requires_communicator():
                     # Add all writers to the NCCL group.
                     communicator_actors.add(actor_handle)
-                    custom_communicator_group = dag_node.type_hint.get_custom_communicator_group()
+                    custom_communicator_group = (
+                        dag_node.type_hint.get_custom_communicator_group()
+                    )
                     mixed_communicator_group_error_message = (
                         "Accelerated DAGs do not support mixed usage of "
                         "type hints of default NCCL group "
@@ -836,13 +838,17 @@ class CompiledDAG:
                         if self._use_default_communicator_group:
                             raise ValueError(mixed_communicator_group_error_message)
                         if self._custom_communicator_group is not None:
-                            if self._custom_communicator_group != custom_communicator_group:
+                            if (
+                                self._custom_communicator_group
+                                != custom_communicator_group
+                            ):
                                 raise ValueError(
                                     "Accelerated DAGs currently only support "
                                     "a single custom NCCL group, but multiple "
                                     "have been specified. Check all the "
-                                    "TorchTensor(transport=communicator_group) type hints "
-                                    "to make sure only one NCCL group is used."
+                                    "TorchTensor(transport=communicator_group) "
+                                    "type hints to make sure only one NCCL group "
+                                    " is used."
                                 )
                         self._custom_communicator_group = custom_communicator_group
             elif isinstance(dag_node, InputNode):
@@ -852,7 +858,7 @@ class CompiledDAG:
                         "the driver cannot participate in the NCCL group"
                     )
 
-            if type(dag_node.type_hint) == ChannelOutputType:
+            if type(dag_node.type_hint) is ChannelOutputType:
                 # No type hint specified by the user. Replace
                 # with the default type hint for this DAG.
                 dag_node.with_type_hint(self._default_type_hint)
@@ -952,7 +958,9 @@ class CompiledDAG:
         if None in communicator_actors:
             raise ValueError("Driver cannot participate in the NCCL group.")
         if communicator_actors and self._communicator_group_id is None:
-            self._communicator_group_id = _init_communicator_group(communicator_actors, self._custom_communicator_group)
+            self._communicator_group_id = _init_communicator_group(
+                communicator_actors, self._custom_communicator_group
+            )
 
         if direct_input:
             self._input_num_positional_args = 1

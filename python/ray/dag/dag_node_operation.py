@@ -90,10 +90,12 @@ class _DAGOperationGraphNode:
         # If two nodes belong to different actors and one of them is an NCCL
         # write node, select the one that is not an NCCL write node.
         is_communicator_write = (
-            self.operation.type == _DAGNodeOperationType.WRITE and self.requires_communicator
+            self.operation.type == _DAGNodeOperationType.WRITE
+            and self.requires_communicator
         )
         other_is_communicator_write = (
-            other.operation.type == _DAGNodeOperationType.WRITE and other.requires_communicator
+            other.operation.type == _DAGNodeOperationType.WRITE
+            and other.requires_communicator
         )
         if is_communicator_write != other_is_communicator_write:
             return not is_communicator_write

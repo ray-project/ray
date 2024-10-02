@@ -29,15 +29,16 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 RESOURCES = ray.cluster_resources()
-if 'NPU' in RESOURCES:
+if "NPU" in RESOURCES:
     try:
         from ray.experimental.channel.hccl_group import _HcclGroup as _CommunicatorGroup
-    except:
+    except Exception:
         logger.warning("Failed in import hccl_group, use nccl_group instead")
         from ray.experimental.channel.nccl_group import _NcclGroup as _CommunicatorGroup
 
 else:
     from ray.experimental.channel.nccl_group import _NcclGroup as _CommunicatorGroup
+
 
 class NestedTorchTensorCommunicatorChannel(ChannelInterface):
     def __init__(
@@ -75,16 +76,18 @@ class NestedTorchTensorCommunicatorChannel(ChannelInterface):
             assert (
                 writer is None
                 and reader_and_node_list is None
-                and _communicator_data_typ is None
+                and communicator_data_typ is None
                 and cpu_data_typ is None
             )
-            assert _communicator_data_channel is not None and _cpu_data_channel is not None
+            assert (
+                _communicator_data_channel is not None and _cpu_data_channel is not None
+            )
             self._communicator_data_channel = _communicator_data_channel
             self._cpu_data_channel = _cpu_data_channel
         else:
             # This path is used when the NestedTorchTensorNcclChannel is first
             # being created, by the writer of the channel.
-            self._communicator_data_channel: TorchTensorCommunicatorChannel  = (
+            self._communicator_data_channel: TorchTensorCommunicatorChannel = (
                 communicator_data_typ.create_channel(writer, reader_and_node_list)
             )
             self._cpu_data_channel: Optional["Channel"] = None
@@ -206,7 +209,8 @@ class TorchTensorCommunicatorChannel(ChannelInterface):
         _torch_tensor_allocator: Optional[TorchTensorAllocator] = None,
     ):
         """
-        Create a channel for torch.Tensors transferred via hardware commuincator, i.e. NCCL or HCCL.
+        Create a channel for torch.Tensors transferred via hardware commuincator,
+          i.e. NCCL or HCCL.
 
         Args:
             writer: The actor that may write to the channel. None signifies the driver.
@@ -242,9 +246,13 @@ class TorchTensorCommunicatorChannel(ChannelInterface):
         self._typ: "TorchTensorType" = typ
 
         ctx = ChannelContext.get_current()
-        assert self._typ.communicator_group_id is not None, "No Communicator group specified."
+        assert (
+            self._typ.communicator_group_id is not None
+        ), "No Communicator group specified."
         self._communicator_group_id: str = self._typ._communicator_group_id
-        self._communicator_group: "GPUCommunicator" = ctx.communicator_groups[self._typ.communicator_group_id]
+        self._communicator_group: "GPUCommunicator" = ctx.communicator_groups[
+            self._typ.communicator_group_id
+        ]
         assert (
             self._communicator_group is not None
         ), "ChannelContext.communicator_group_id is not initialized."
@@ -293,13 +301,17 @@ class TorchTensorCommunicatorChannel(ChannelInterface):
             assert self.has_static_type()
 
     def ensure_registered_as_writer(self):
-        assert self._communicator_group is not None, "Actor is not part of a Communicator group"
+        assert (
+            self._communicator_group is not None
+        ), "Actor is not part of a Communicator group"
         assert self._writer_registered
         ctx = ChannelContext.get_current()
         assert ctx.torch_device.type in ["cuda", "npu"]
 
     def ensure_registered_as_reader(self) -> bool:
-        assert self._communicator_group is not None, "Actor is not part of a Communicator group"
+        assert (
+            self._communicator_group is not None
+        ), "Actor is not part of a Communicator group"
         assert self._reader_registered
         ctx = ChannelContext.get_current()
         assert ctx.torch_device.type in ["cuda", "npu"]
@@ -451,7 +463,7 @@ def _do_init_communicator_group(
     if custom_communicator_group is not None:
         custom_communicator_group.initialize(rank)
         ctx.communicator_groups[group_id] = custom_communicator_group
-    elif torch.cuda.is_available(): #Only stream with cudda is avaliable.
+    elif torch.cuda.is_available():  # Only stream with cudda is avaliable.
         ctx.communicator_groups[group_id] = _CommunicatorGroup(
             world_size,
             comm_id,
@@ -484,21 +496,25 @@ def _do_check_has_device(self) -> bool:
 
 
 def _do_get_unique_communicator_id(self) -> str:
-    if 'NPU' in ray.cluster_resources():
+    if "NPU" in ray.cluster_resources():
         import uuid
+
         # NPU doesn't have get_unique_id
         return uuid.uuid4()
     else:
         from cupy.cuda import nccl
+
         return nccl.get_unique_id()
 
 
 def _get_ranks(
-    actors: List[ray.actor.ActorHandle], custom_communicator_group: Optional[GPUCommunicator]
+    actors: List[ray.actor.ActorHandle],
+    custom_communicator_group: Optional[GPUCommunicator],
 ) -> List[int]:
     """
-    Get ranks for the communicator group to use. If custom_communicator_group is specified,
-    return the ranks of the actors in the custom communicator group, in the same
+    Get ranks for the communicator group to use.
+    If custom_communicator_group is specified, return the
+    ranks of the actors in the custom communicator group, in the same
     order of the actors; otherwise, return list(range(len(actors))).
 
     Args:
@@ -531,8 +547,9 @@ def _init_communicator_group(
     custom_communicator_group: Optional[GPUCommunicator] = None,
 ) -> str:
     """
-    Initialize a communicator group with the given actors. If a custom communicator group is
-    provided, then it will be used; otherwise, a new communicator group will be created.
+    Initialize a communicator group with the given actors.
+      If a custom communicator group is provided, then it
+      will be used; otherwise, a new communicator group will be created.
 
     Args:
         actors: A list of actors that participate in the communicator group.
@@ -549,7 +566,6 @@ def _init_communicator_group(
                 f"Actor {actor} returns a tensor with a communicator transport but "
                 "does not have a GPU or NPU assigned by Ray."
             )
-
 
     actor_ids = {actor._ray_actor_id for actor in actors}
     assert len(actor_ids) == len(actors), "Actors must be unique"
@@ -588,7 +604,8 @@ def _init_communicator_group(
         ray.get(init_tasks, timeout=30)
     except ray.exceptions.GetTimeoutError:
         logger.warning(
-            "Communicator group creation not done after 30s. Communicator group creation may be hung."
+            "Communicator group creation not done after 30s. "
+            "Communicator group creation may be hung. "
         )
         ray.get(init_tasks)
 
@@ -629,7 +646,8 @@ def _destroy_communicator_group(group_id: str) -> None:
     _, unready = ray.wait(destroy_tasks, timeout=30, num_returns=len(destroy_tasks))
     if unready:
         logger.warning(
-            "Communicator group destruction not done after 30s. Communicator group destruction "
+            "Communicator group destruction not done after 30s. "
+            "Communicator group destruction "
             "may be hung."
         )
 
