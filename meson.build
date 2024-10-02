@@ -7,6 +7,7 @@ project(
     meson_version: '>=1.3.0'
 )
 
+
 # === Begin of imports ===
 fs = import('fs')
 py = import('python').find_installation(pure: false, modules: ['grpc_tools'])
@@ -225,10 +226,14 @@ grpc_common_lib_sources = files(
     'src/ray/rpc/server_call.cc',
 )
 
-grpc_common_lib = static_library(
+grpc_common_cpp_include_directories = include_directories(
+    'src/'
+)
+
+grpc_common_cpp_lib = static_library(
     'grpc_common_lib',
     grpc_common_lib_sources,
-    include_directories: ['src/'],
+    include_directories: grpc_common_cpp_include_directories,
     dependencies: [
         absl,
         boost,
@@ -239,6 +244,12 @@ grpc_common_lib = static_library(
     ],
     install: false
 )
+
+grpc_common_cpp_lib_dep = declare_dependency(
+    link_with: [grpc_common_cpp_lib],
+    include_directories: grpc_common_cpp_include_directories
+)
+
 
 subdir('src/')
 

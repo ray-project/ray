@@ -16,7 +16,12 @@ instance_manager_proto_cpp_dep = declare_dependency(
 
 instance_manager_proto_cpp_lib = static_library(
     f'@proto_basename@_proto_cpp_lib',
-    dependencies: [protobuf, instance_manager_proto_cpp_dep]
+    dependencies: [protobuf, instance_manager_proto_cpp_dep],
+    install: false
+)
+
+instance_manager_proto_cpp_lib_dep = declare_dependency(
+    link_with: [instance_manager_proto_cpp_lib]
 )
 
 instance_manager_proto_py = custom_target(

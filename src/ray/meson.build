@@ -1,1 +1,2 @@
 subdir('protobuf/')
+subdir('common/')
