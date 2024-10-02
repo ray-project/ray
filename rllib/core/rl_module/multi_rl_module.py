@@ -17,9 +17,9 @@ from typing import (
     ValuesView,
 )
 
+from ray.rllib.core import COMPONENT_MULTI_RL_MODULE_SPEC
 from ray.rllib.core.models.specs.typing import SpecType
 from ray.rllib.core.rl_module.rl_module import RLModule, RLModuleSpec
-
 from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.utils import force_list
 from ray.rllib.utils.annotations import (
@@ -207,21 +207,32 @@ class MultiRLModule(RLModule):
         del self.config.modules[module_id]
 
     def foreach_module(
-        self, func: Callable[[ModuleID, RLModule, Optional[Any]], T], **kwargs
-    ) -> List[T]:
+        self,
+        func: Callable[[ModuleID, RLModule, Optional[Any]], T],
+        *,
+        return_dict: bool = False,
+        **kwargs,
+    ) -> Union[List[T], Dict[ModuleID, T]]:
         """Calls the given function with each (module_id, module).
 
         Args:
             func: The function to call with each (module_id, module) tuple.
+            return_dict: Whether to return a dict mapping ModuleID to the individual
+                module's return values of calling `func`. If False (default), return
+                a list.
 
         Returns:
-            The lsit of return values of all calls to
-            `func([module_id, module, **kwargs])`.
+            The list of return values of all calls to
+            `func([module_id, module, **kwargs])` or a dict (if `return_dict=True`)
+            mapping ModuleIDs to the respective models' return values.
         """
-        return [
-            func(module_id, module.unwrapped(), **kwargs)
+        ret_dict = {
+            module_id: func(module_id, module.unwrapped(), **kwargs)
             for module_id, module in self._rl_modules.items()
-        ]
+        }
+        if return_dict:
+            return ret_dict
+        return list(ret_dict.values())
 
     def __contains__(self, item) -> bool:
         """Returns whether the given `item` (ModuleID) is present in self."""
@@ -286,11 +297,9 @@ class MultiRLModule(RLModule):
     ) -> Union[Dict[str, Any], Dict[ModuleID, Dict[str, Any]]]:
         """Runs the forward_train pass.
 
-        TODO(avnishn, kourosh): Review type hints for forward methods.
-
         Args:
             batch: The batch of multi-agent data (i.e. mapping from module ids to
-                SampleBaches).
+                individual modules' batches).
 
         Returns:
             The output of the forward_train pass the specified modules.
@@ -303,11 +312,9 @@ class MultiRLModule(RLModule):
     ) -> Union[Dict[str, Any], Dict[ModuleID, Dict[str, Any]]]:
         """Runs the forward_inference pass.
 
-        TODO(avnishn, kourosh): Review type hints for forward methods.
-
         Args:
             batch: The batch of multi-agent data (i.e. mapping from module ids to
-                SampleBaches).
+                individual modules' batches).
 
         Returns:
             The output of the forward_inference pass the specified modules.
@@ -320,11 +327,9 @@ class MultiRLModule(RLModule):
     ) -> Union[Dict[str, Any], Dict[ModuleID, Dict[str, Any]]]:
         """Runs the forward_exploration pass.
 
-        TODO(avnishn, kourosh): Review type hints for forward methods.
-
         Args:
             batch: The batch of multi-agent data (i.e. mapping from module ids to
-                SampleBaches).
+                individual modules' batches).
 
         Returns:
             The output of the forward_exploration pass the specified modules.
@@ -341,6 +346,17 @@ class MultiRLModule(RLModule):
         **kwargs,
     ) -> StateDict:
         state = {}
+
+        # We store the current RLModuleSpec as well as it might have changed over time
+        # (modules added/removed from `self`).
+        if self._check_component(
+            COMPONENT_MULTI_RL_MODULE_SPEC,
+            components,
+            not_components,
+        ):
+            state[COMPONENT_MULTI_RL_MODULE_SPEC] = MultiRLModuleSpec.from_module(
+                self
+            ).to_dict()
 
         for module_id, rl_module in self.get_checkpointable_components():
             if self._check_component(module_id, components, not_components):
@@ -365,7 +381,27 @@ class MultiRLModule(RLModule):
         Args:
             state: The state dict to set.
         """
+        # Check the given MultiRLModuleSpec and - if there are changes in the individual
+        # sub-modules - apply these to this MultiRLModule.
+        if COMPONENT_MULTI_RL_MODULE_SPEC in state:
+            multi_rl_module_spec = MultiRLModuleSpec.from_dict(
+                state[COMPONENT_MULTI_RL_MODULE_SPEC]
+            )
+            # Go through all of our current modules and check, whether they are listed
+            # in the given MultiRLModuleSpec. If not, erase them from `self`.
+            for module_id, module in self._rl_modules.items():
+                if module_id not in multi_rl_module_spec.module_specs:
+                    self.remove_module(module_id, raise_err_if_not_found=True)
+            # Go through all the modules in the given MultiRLModuleSpec and if
+            # they are not present in `self`, add them.
+            for module_id, module_spec in multi_rl_module_spec.module_specs.items():
+                if module_id not in self:
+                    self.add_module(module_id, module_spec.build(), override=False)
+
+        # Now, set the individual states
         for module_id, module_state in state.items():
+            if module_id == COMPONENT_MULTI_RL_MODULE_SPEC:
+                continue
             if module_id in self:
                 self._rl_modules[module_id].set_state(module_state)
 
@@ -677,3 +713,6 @@ class MultiRLModuleConfig:
                 for module_id, module_spec in d["modules"].items()
             },
         )
+
+    def get_catalog(self) -> None:
+        return None

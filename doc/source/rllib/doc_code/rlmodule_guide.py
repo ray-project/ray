@@ -12,7 +12,10 @@ from ray.rllib.algorithms.ppo import PPOConfig
 
 config = (
     PPOConfig()
-    .api_stack(enable_rl_module_and_learner=True)
+    .api_stack(
+        enable_rl_module_and_learner=True,
+        enable_env_runner_and_connector_v2=True,
+    )
     .framework("torch")
     .environment("CartPole-v1")
 )
@@ -80,7 +83,10 @@ from ray.rllib.core.testing.bc_algorithm import BCConfigTest
 
 config = (
     BCConfigTest()
-    .api_stack(enable_rl_module_and_learner=True)
+    .api_stack(
+        enable_rl_module_and_learner=True,
+        enable_env_runner_and_connector_v2=True,
+    )
     .environment("CartPole-v1")
     .rl_module(
         model_config_dict={"fcnet_hiddens": [32, 32]},
@@ -103,7 +109,10 @@ from ray.rllib.examples.envs.classes.multi_agent import MultiAgentCartPole
 
 config = (
     BCConfigTest()
-    .api_stack(enable_rl_module_and_learner=True)
+    .api_stack(
+        enable_rl_module_and_learner=True,
+        enable_env_runner_and_connector_v2=True,
+    )
     .environment(MultiAgentCartPole, env_config={"num_agents": 2})
     .rl_module(
         model_config_dict={"fcnet_hiddens": [32, 32]},
@@ -291,9 +300,14 @@ class BCTorchRLModuleWithSharedGlobalEncoder(TorchRLModule):
     """An RLModule with a shared encoder between agents for global observation."""
 
     def __init__(
-        self, encoder: nn.Module, local_dim: int, hidden_dim: int, action_dim: int
+        self,
+        encoder: nn.Module,
+        local_dim: int,
+        hidden_dim: int,
+        action_dim: int,
+        config=None,
     ) -> None:
-        super().__init__(config=None)
+        super().__init__(config=config)
 
         self.encoder = encoder
         self.policy_head = nn.Sequential(
@@ -341,6 +355,7 @@ class BCTorchMultiAgentModuleWithSharedEncoder(MultiRLModule):
         rl_modules = {}
         for module_id, module_spec in module_specs.items():
             rl_modules[module_id] = BCTorchRLModuleWithSharedGlobalEncoder(
+                config=module_specs[module_id].get_rl_module_config(),
                 encoder=shared_encoder,
                 local_dim=module_spec.observation_space["local"].shape[0],
                 hidden_dim=hidden_dim,
@@ -400,7 +415,10 @@ from ray.rllib.core.rl_module.rl_module import RLModule, RLModuleSpec
 config = (
     PPOConfig()
     # Enable the new API stack (RLModule and Learner APIs).
-    .api_stack(enable_rl_module_and_learner=True).environment("CartPole-v1")
+    .api_stack(
+        enable_rl_module_and_learner=True,
+        enable_env_runner_and_connector_v2=True,
+    ).environment("CartPole-v1")
 )
 env = gym.make("CartPole-v1")
 # Create an RL Module that we would like to checkpoint

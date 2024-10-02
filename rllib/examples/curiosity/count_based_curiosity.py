@@ -127,7 +127,7 @@ if __name__ == "__main__":
             learner_connector=(
                 None if args.no_curiosity else lambda *ags, **kw: CountBasedCuriosity()
             ),
-            num_sgd_iter=10,
+            num_epochs=10,
             vf_loss_coeff=0.01,
         )
         .rl_module(model_config_dict={"vf_share_layers": True})

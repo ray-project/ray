@@ -174,6 +174,9 @@ def verify_schema(state, result_dict: dict, detail: bool = False):
     for k in result_dict:
         assert k in state_fields_columns
 
+    # Make the field values can be converted without error as well
+    state(**result_dict)
+
 
 def generate_actor_data(id, state=ActorTableData.ActorState.ALIVE, class_name="class"):
     return ActorTableData(
@@ -747,12 +750,14 @@ async def test_api_manager_list_cluster_events(state_api_manager):
                 "severity": "DEBUG",
                 "message": "a",
                 "event_id": event_id_1,
+                "source_type": "GCS",
             },
             event_id_2: {
                 "timestamp": 10,
                 "severity": "INFO",
                 "message": "b",
                 "event_id": event_id_2,
+                "source_type": "GCS",
             },
         }
     }
@@ -1697,11 +1702,7 @@ async def test_state_data_source_client_limit_gcs_source(ray_start_cluster):
     """
     result = await client.get_all_worker_info(limit=2)
     assert len(result.worker_table_data) == 2
-    # Driver + 3 workers for actors + 2 prestarted task-only workers
-    # TODO(clarng): prestart worker on worker lease request doesn't
-    # work, otherwise it should have created the 2 prestarted task-only
-    # workers prior to https://github.com/ray-project/ray/pull/33623
-    assert result.total == 6
+    assert result.total == 4
 
 
 def test_humanify():
@@ -2231,11 +2232,13 @@ def test_list_get_jobs(shutdown_only):
     )
 
     def verify():
-        job_data = list_jobs()[0]
+        job_data = list_jobs(detail=True)[0]
         print(job_data)
         job_id_from_api = job_data["submission_id"]
         assert job_data["status"] == "SUCCEEDED"
         assert job_id == job_id_from_api
+        assert job_data["start_time"] > 0
+        assert job_data["end_time"] > 0
         return True
 
     wait_for_condition(verify)
@@ -2256,10 +2259,11 @@ ray.get(f.remote())
     run_string_as_driver(script)
 
     def verify():
-        jobs = list_jobs(filters=[("type", "=", "DRIVER")])
+        jobs = list_jobs(filters=[("type", "=", "DRIVER")], detail=True)
         assert len(jobs) == 2, "1 test driver + 1 script run above"
         for driver_job in jobs:
             assert driver_job["driver_info"] is not None
+            assert driver_job["start_time"] > 0
 
         sub_jobs = list_jobs(filters=[("type", "=", "SUBMISSION")])
         assert len(sub_jobs) == 1

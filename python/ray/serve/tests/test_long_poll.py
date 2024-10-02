@@ -231,6 +231,7 @@ def test_listen_for_change_java(serve_instance):
                 str(i), deployment_id=DeploymentID(name="deployment_name")
             ),
             node_id="node_id",
+            node_ip="node_ip",
             availability_zone="some-az",
             actor_handle=host,
             max_ongoing_requests=1,

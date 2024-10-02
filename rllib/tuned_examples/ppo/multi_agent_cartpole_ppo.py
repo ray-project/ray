@@ -34,11 +34,9 @@ config = (
         }
     )
     .training(
-        gamma=0.99,
         lr=0.0003,
-        num_sgd_iter=6,
+        num_epochs=6,
         vf_loss_coeff=0.01,
-        use_kl_loss=True,
     )
     .multi_agent(
         policy_mapping_fn=lambda aid, *arg, **kw: f"p{aid}",

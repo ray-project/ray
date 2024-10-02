@@ -1,7 +1,6 @@
 from abc import abstractmethod
-from typing import Any, Dict, List, Tuple, Type
+from typing import Any, Dict, List, Tuple
 
-from ray.rllib.algorithms.sac.sac_catalog import SACCatalog
 from ray.rllib.algorithms.sac.sac_learner import (
     ACTION_DIST_INPUTS_NEXT,
     QF_PREDS,
@@ -10,20 +9,19 @@ from ray.rllib.algorithms.sac.sac_learner import (
 from ray.rllib.core.learner.utils import make_target_network
 from ray.rllib.core.models.base import Encoder, Model
 from ray.rllib.core.models.specs.typing import SpecType
-from ray.rllib.core.rl_module.apis.target_network_api import TargetNetworkAPI
+from ray.rllib.core.rl_module.apis import InferenceOnlyAPI, TargetNetworkAPI
 from ray.rllib.core.rl_module.rl_module import RLModule
-from ray.rllib.models.distributions import Distribution
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import (
-    ExperimentalAPI,
     override,
     OverrideToImplementCustomLogic,
 )
 from ray.rllib.utils.typing import NetworkType
+from ray.util.annotations import DeveloperAPI
 
 
-@ExperimentalAPI
-class SACRLModule(RLModule, TargetNetworkAPI):
+@DeveloperAPI(stability="alpha")
+class SACRLModule(RLModule, InferenceOnlyAPI, TargetNetworkAPI):
     """`RLModule` for the Soft-Actor-Critic (SAC) algorithm.
 
     It consists of several architectures, each in turn composed of
@@ -56,41 +54,32 @@ class SACRLModule(RLModule, TargetNetworkAPI):
 
     @override(RLModule)
     def setup(self):
-        # Get the SAC catalog.
-        catalog: SACCatalog = self.config.get_catalog()
-
         # If a twin Q architecture should be used.
         self.twin_q = self.config.model_config_dict["twin_q"]
 
         # Build the encoder for the policy.
-        self.pi_encoder = catalog.build_encoder(framework=self.framework)
+        self.pi_encoder = self.catalog.build_encoder(framework=self.framework)
 
         if not self.config.inference_only or self.framework != "torch":
             # SAC needs a separate Q network encoder (besides the pi network).
             # This is because the Q network also takes the action as input
             # (concatenated with the observations).
-            self.qf_encoder = catalog.build_qf_encoder(framework=self.framework)
+            self.qf_encoder = self.catalog.build_qf_encoder(framework=self.framework)
 
             # If necessary, build also a twin Q encoders.
             if self.twin_q:
-                self.qf_twin_encoder = catalog.build_qf_encoder(
+                self.qf_twin_encoder = self.catalog.build_qf_encoder(
                     framework=self.framework
                 )
-            # Holds the parameter names to be removed or renamed when synching
-            # from the learner to the inference module.
-            self._inference_only_state_dict_keys = {}
 
         # Build heads.
-        self.pi = catalog.build_pi_head(framework=self.framework)
+        self.pi = self.catalog.build_pi_head(framework=self.framework)
 
         if not self.config.inference_only or self.framework != "torch":
-            self.qf = catalog.build_qf_head(framework=self.framework)
+            self.qf = self.catalog.build_qf_head(framework=self.framework)
             # If necessary build also a twin Q heads.
             if self.twin_q:
-                self.qf_twin = catalog.build_qf_head(framework=self.framework)
-
-        # Get the action distribution class.
-        self.action_dist_cls = catalog.get_action_dist_cls(framework=self.framework)
+                self.qf_twin = self.catalog.build_qf_head(framework=self.framework)
 
     @override(TargetNetworkAPI)
     def make_target_networks(self):
@@ -99,6 +88,18 @@ class SACRLModule(RLModule, TargetNetworkAPI):
         if self.twin_q:
             self.target_qf_twin_encoder = make_target_network(self.qf_twin_encoder)
             self.target_qf_twin = make_target_network(self.qf_twin)
+
+    @override(InferenceOnlyAPI)
+    def get_non_inference_attributes(self) -> List[str]:
+        ret = ["qf", "target_qf", "qf_encoder", "target_qf_encoder"]
+        if self.twin_q:
+            ret += [
+                "qf_twin",
+                "target_qf_twin",
+                "qf_twin_encoder",
+                "target_qf_twin_encoder",
+            ]
+        return ret
 
     @override(TargetNetworkAPI)
     def get_target_network_pairs(self) -> List[Tuple[NetworkType, NetworkType]]:
@@ -115,18 +116,6 @@ class SACRLModule(RLModule, TargetNetworkAPI):
             if self.twin_q
             else []
         )
-
-    @override(RLModule)
-    def get_exploration_action_dist_cls(self) -> Type[Distribution]:
-        return self.action_dist_cls
-
-    @override(RLModule)
-    def get_inference_action_dist_cls(self) -> Type[Distribution]:
-        return self.action_dist_cls
-
-    @override(RLModule)
-    def get_train_action_dist_cls(self) -> Type[Distribution]:
-        return self.action_dist_cls
 
     # TODO (simon): SAC does not support RNNs, yet.
     @override(RLModule)

@@ -155,7 +155,6 @@ if __name__ == "__main__":
                 "fcnet_weights_initializer": torch.nn.init.xavier_uniform_,
                 "fcnet_bias_initializer": torch.nn.init.constant_,
                 "fcnet_bias_initializer_config": {"val": 0.0},
-                "uses_new_env_runners": True,
             }
         )
         # In case you would like to run with a evaluation EnvRunners, make sure your
@@ -183,7 +182,7 @@ if __name__ == "__main__":
     # PPO specific settings.
     if args.algo == "PPO":
         base_config.training(
-            mini_batch_size_per_learner=64,
+            minibatch_size=64,
             lambda_=0.1,
             vf_clip_param=10.0,
         )

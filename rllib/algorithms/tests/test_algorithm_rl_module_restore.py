@@ -36,7 +36,7 @@ class TestAlgorithmRLModuleRestore(unittest.TestCase):
 
     @staticmethod
     def get_ppo_config(num_agents=NUM_AGENTS):
-        def policy_mapping_fn(agent_id, episode, worker, **kwargs):
+        def policy_mapping_fn(agent_id, episode, **kwargs):
             # policy_id is policy_i where i is the agent id
             pol_id = f"policy_{agent_id}"
             return pol_id
@@ -50,11 +50,14 @@ class TestAlgorithmRLModuleRestore(unittest.TestCase):
 
         config = (
             PPOConfig()
-            .api_stack(enable_rl_module_and_learner=True)
+            .api_stack(
+                enable_rl_module_and_learner=True,
+                enable_env_runner_and_connector_v2=True,
+            )
             .env_runners(rollout_fragment_length=4)
             .learners(**scaling_config)
             .environment(MultiAgentCartPole, env_config={"num_agents": num_agents})
-            .training(num_sgd_iter=1, train_batch_size=8, sgd_minibatch_size=8)
+            .training(num_epochs=1, train_batch_size=8, minibatch_size=8)
             .multi_agent(policies=policies, policy_mapping_fn=policy_mapping_fn)
         )
         return config
@@ -69,8 +72,8 @@ class TestAlgorithmRLModuleRestore(unittest.TestCase):
         for i in range(NUM_AGENTS):
             module_specs[f"policy_{i}"] = RLModuleSpec(
                 module_class=module_class,
-                observation_space=env.observation_space[0],
-                action_space=env.action_space[0],
+                observation_space=env.get_observation_space(0),
+                action_space=env.get_action_space(0),
                 # If we want to use this externally created module in the algorithm,
                 # we need to provide the same config as the algorithm.
                 model_config_dict=config.model_config
@@ -112,8 +115,8 @@ class TestAlgorithmRLModuleRestore(unittest.TestCase):
         for i in range(NUM_AGENTS):
             module_specs[f"policy_{i}"] = RLModuleSpec(
                 module_class=module_class,
-                observation_space=env.observation_space[0],
-                action_space=env.action_space[0],
+                observation_space=env.get_observation_space(0),
+                action_space=env.get_action_space(0),
                 # If we want to use this externally created module in the algorithm,
                 # we need to provide the same config as the algorithm.
                 model_config_dict=config.model_config
@@ -128,8 +131,8 @@ class TestAlgorithmRLModuleRestore(unittest.TestCase):
         # create a RLModule to load and override the "policy_1" module with
         module_to_swap_in = RLModuleSpec(
             module_class=module_class,
-            observation_space=env.observation_space[0],
-            action_space=env.action_space[0],
+            observation_space=env.get_observation_space(0),
+            action_space=env.get_action_space(0),
             # Note, we need to pass in the default model config for the algorithm
             # to be able to use this module later.
             model_config_dict=config.model_config | {"fcnet_hiddens": [64]},
@@ -143,8 +146,8 @@ class TestAlgorithmRLModuleRestore(unittest.TestCase):
         # and the module_to_swap_in_checkpoint
         module_specs["policy_1"] = RLModuleSpec(
             module_class=module_class,
-            observation_space=env.observation_space[0],
-            action_space=env.action_space[0],
+            observation_space=env.get_observation_space(0),
+            action_space=env.get_action_space(0),
             model_config_dict={"fcnet_hiddens": [64]},
             catalog_class=PPOCatalog,
             load_state_path=module_to_swap_in_path,
@@ -186,11 +189,14 @@ class TestAlgorithmRLModuleRestore(unittest.TestCase):
 
         config = (
             PPOConfig()
-            .api_stack(enable_rl_module_and_learner=True)
+            .api_stack(
+                enable_rl_module_and_learner=True,
+                enable_env_runner_and_connector_v2=True,
+            )
             .env_runners(rollout_fragment_length=4)
             .learners(**scaling_config)
             .environment("CartPole-v1")
-            .training(num_sgd_iter=1, train_batch_size=8, sgd_minibatch_size=8)
+            .training(num_epochs=1, train_batch_size=8, minibatch_size=8)
         )
         env = gym.make("CartPole-v1")
         # create a multi_rl_module to load and save it to a checkpoint directory
@@ -252,8 +258,8 @@ class TestAlgorithmRLModuleRestore(unittest.TestCase):
         for i in range(num_agents):
             module_specs[f"policy_{i}"] = RLModuleSpec(
                 module_class=module_class,
-                observation_space=env.observation_space[0],
-                action_space=env.action_space[0],
+                observation_space=env.get_observation_space(0),
+                action_space=env.get_action_space(0),
                 # Note, we need to pass in the default model config for the
                 # algorithm to be able to use this module later.
                 model_config_dict=config.model_config
@@ -268,8 +274,8 @@ class TestAlgorithmRLModuleRestore(unittest.TestCase):
         # create a RLModule to load and override the "policy_1" module with
         module_to_swap_in = RLModuleSpec(
             module_class=module_class,
-            observation_space=env.observation_space[0],
-            action_space=env.action_space[0],
+            observation_space=env.get_observation_space(0),
+            action_space=env.get_action_space(0),
             # Note, we need to pass in the default model config for the algorithm
             # to be able to use this module later.
             model_config_dict=config.model_config | {"fcnet_hiddens": [64]},
@@ -283,8 +289,8 @@ class TestAlgorithmRLModuleRestore(unittest.TestCase):
         # and the module_to_swap_in_checkpoint
         module_specs["policy_1"] = RLModuleSpec(
             module_class=module_class,
-            observation_space=env.observation_space[0],
-            action_space=env.action_space[0],
+            observation_space=env.get_observation_space(0),
+            action_space=env.get_action_space(0),
             model_config_dict={"fcnet_hiddens": [64]},
             catalog_class=PPOCatalog,
             load_state_path=module_to_swap_in_path,

@@ -93,19 +93,20 @@ class ActionMaskingTorchRLModule(ActionMaskingRLModule, PPOTorchRLModule):
     def _forward_train(
         self, batch: Dict[str, TensorType], **kwargs
     ) -> Dict[str, TensorType]:
-        # Preprocess the original batch to extract the action mask.
-        action_mask, batch = self._preprocess_batch(batch)
         # Run the forward pass.
         outs = super()._forward_train(batch, **kwargs)
         # Mask the action logits and return.
-        return self._mask_action_logits(outs, action_mask)
+        return self._mask_action_logits(outs, batch["action_mask"])
 
     @override(ValueFunctionAPI)
     def compute_values(self, batch: Dict[str, TensorType]):
         # Preprocess the batch to extract the `observations` to `Columns.OBS`.
-        _, batch = self._preprocess_batch(batch)
+        action_mask, batch = self._preprocess_batch(batch)
+        # NOTE: Because we manipulate the batch we need to add the `action_mask`
+        # to the batch to access them in `_forward_train`.
+        batch["action_mask"] = action_mask
         # Call the super's method to compute values for GAE.
-        return super()._compute_values(batch)
+        return super().compute_values(batch)
 
     def _preprocess_batch(
         self, batch: Dict[str, TensorType], **kwargs

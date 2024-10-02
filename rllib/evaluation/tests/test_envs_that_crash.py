@@ -60,7 +60,10 @@ class TestEnvsThatCrash(unittest.TestCase):
         """Expect some sub-envs on one worker to fail (and not recover), but ignore."""
         config = (
             PPOConfig()
-            .api_stack(enable_rl_module_and_learner=True)
+            .api_stack(
+                enable_rl_module_and_learner=True,
+                enable_env_runner_and_connector_v2=True,
+            )
             .env_runners(
                 num_env_runners=2,
                 num_envs_per_env_runner=3,
@@ -109,7 +112,7 @@ class TestEnvsThatCrash(unittest.TestCase):
                 recreate_failed_env_runners=True,
                 delay_between_env_runner_restarts_s=0,
             )
-            .training(train_batch_size=60, sgd_minibatch_size=60)
+            .training(train_batch_size=60, minibatch_size=60)
             .environment(
                 env=CartPoleCrashing,
                 env_config={

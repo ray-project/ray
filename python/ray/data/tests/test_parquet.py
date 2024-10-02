@@ -11,6 +11,7 @@ import pytest
 from pytest_lazyfixture import lazy_fixture
 
 import ray
+from ray.air.util.tensor_extensions.arrow import ArrowTensorType, ArrowTensorTypeV2
 from ray.data._internal.datasource.parquet_bulk_datasource import ParquetBulkDatasource
 from ray.data._internal.datasource.parquet_datasource import (
     NUM_CPUS_FOR_META_FETCH_TASK,
@@ -25,11 +26,25 @@ from ray.data.block import BlockAccessor
 from ray.data.context import DataContext
 from ray.data.datasource import DefaultFileMetadataProvider, ParquetMetadataProvider
 from ray.data.datasource.parquet_meta_provider import PARALLELIZE_META_FETCH_THRESHOLD
+from ray.data.datasource.partitioning import Partitioning, PathPartitionFilter
 from ray.data.datasource.path_util import _unwrap_protocol
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.mock_http_server import *  # noqa
 from ray.data.tests.test_util import ConcurrencyCounter  # noqa
 from ray.tests.conftest import *  # noqa
+
+
+def test_write_parquet_supports_gzip(ray_start_regular_shared, tmp_path):
+    ray.data.range(1).write_parquet(tmp_path, compression="gzip")
+
+    # Test that all written files are gzip compressed.
+    for filename in os.listdir(tmp_path):
+        file_metadata = pq.ParquetFile(tmp_path / filename).metadata
+        compression = file_metadata.row_group(0).column(0).compression
+        assert compression == "GZIP", compression
+
+    # Test that you can read the written files.
+    assert pq.read_table(tmp_path).to_pydict() == {"id": [0]}
 
 
 def test_include_paths(ray_start_regular_shared, tmp_path):
@@ -467,36 +482,24 @@ def test_parquet_read_partitioned(ray_start_regular_shared, fs, data_path):
     assert ds.schema() is not None
     input_files = ds.input_files()
     assert len(input_files) == 2, input_files
-    assert str(ds) == (
-        "Dataset(\n"
-        "   num_rows=6,\n"
-        "   schema={two: string, "
-        "one: dictionary<values=int32, indices=int32, ordered=0>}\n"
-        ")"
-    ), ds
-    assert repr(ds) == (
-        "Dataset(\n"
-        "   num_rows=6,\n"
-        "   schema={two: string, "
-        "one: dictionary<values=int32, indices=int32, ordered=0>}\n"
-        ")"
-    ), ds
+    assert str(ds) == "Dataset(num_rows=6, schema={two: string, one: string})", ds
+    assert repr(ds) == "Dataset(num_rows=6, schema={two: string, one: string})", ds
 
     # Forces a data read.
     values = [[s["one"], s["two"]] for s in ds.take()]
     assert sorted(values) == [
-        [1, "a"],
-        [1, "b"],
-        [1, "c"],
-        [3, "e"],
-        [3, "f"],
-        [3, "g"],
+        ["1", "a"],
+        ["1", "b"],
+        ["1", "c"],
+        ["3", "e"],
+        ["3", "f"],
+        ["3", "g"],
     ]
 
     # Test column selection.
     ds = ray.data.read_parquet(data_path, columns=["one"], filesystem=fs)
     values = [s["one"] for s in ds.take()]
-    assert sorted(values) == [1, 1, 1, 3, 3, 3]
+    assert sorted(values) == ["1", "1", "1", "3", "3", "3"]
 
 
 def test_parquet_read_partitioned_with_filter(ray_start_regular_shared, tmp_path):
@@ -515,7 +518,7 @@ def test_parquet_read_partitioned_with_filter(ray_start_regular_shared, tmp_path
     )
 
     values = [[s["one"], s["two"]] for s in ds.take()]
-    assert sorted(values) == [[1, "a"], [1, "a"]]
+    assert sorted(values) == [["1", "a"], ["1", "a"]]
     assert ds.count() == 2
 
     # 2 partitions, 1 empty partition, 2 block/read tasks, 1 empty block
@@ -525,7 +528,7 @@ def test_parquet_read_partitioned_with_filter(ray_start_regular_shared, tmp_path
     )
 
     values = [[s["one"], s["two"]] for s in ds.take()]
-    assert sorted(values) == [[1, "a"], [1, "a"]]
+    assert sorted(values) == [["1", "a"], ["1", "a"]]
     assert ds.count() == 2
 
 
@@ -562,7 +565,7 @@ def test_parquet_read_partitioned_with_columns(ray_start_regular_shared, fs, dat
         columns=["y", "z"],
         filesystem=fs,
     )
-    assert ds.columns() == ["y", "z"]
+    assert set(ds.columns()) == {"y", "z"}
     values = [[s["y"], s["z"]] for s in ds.take()]
     assert sorted(values) == [
         ["a", 0.1],
@@ -640,11 +643,8 @@ def test_parquet_read_partitioned_explicit(ray_start_regular_shared, tmp_path):
         use_legacy_dataset=False,
     )
 
-    schema = pa.schema([("one", pa.int32()), ("two", pa.string())])
-    partitioning = pa.dataset.partitioning(schema, flavor="hive")
-    ds = ray.data.read_parquet(
-        str(tmp_path), dataset_kwargs=dict(partitioning=partitioning)
-    )
+    partitioning = Partitioning("hive", field_types={"one": int})
+    ds = ray.data.read_parquet(str(tmp_path), partitioning=partitioning)
 
     # Test metadata-only parquet ops.
     assert ds.count() == 6
@@ -654,8 +654,8 @@ def test_parquet_read_partitioned_explicit(ray_start_regular_shared, tmp_path):
     assert ds.schema() is not None
     input_files = ds.input_files()
     assert len(input_files) == 2, input_files
-    assert str(ds) == "Dataset(num_rows=6, schema={two: string, one: int32})", ds
-    assert repr(ds) == "Dataset(num_rows=6, schema={two: string, one: int32})", ds
+    assert str(ds) == "Dataset(num_rows=6, schema={two: string, one: int64})", ds
+    assert repr(ds) == "Dataset(num_rows=6, schema={two: string, one: int64})", ds
 
     # Forces a data read.
     values = [[s["one"], s["two"]] for s in ds.take()]
@@ -705,7 +705,9 @@ def test_parquet_read_with_udf(ray_start_regular_shared, tmp_path):
     ds = ray.data.read_parquet(
         str(tmp_path),
         override_num_blocks=2,
-        filter=(pa.dataset.field("two") == "a"),
+        partition_filter=PathPartitionFilter.of(
+            lambda partitions: partitions["two"] == "a"
+        ),
         _block_udf=_block_udf,
     )
 
@@ -1019,22 +1021,27 @@ def test_parquet_write_create_dir(
     ],
 )
 def test_parquet_roundtrip(ray_start_regular_shared, fs, data_path):
-    df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
-    df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
-    ds = ray.data.from_pandas([df1, df2])
-    ds._set_uuid("data")
     path = os.path.join(data_path, "test_parquet_dir")
     if fs is None:
         os.mkdir(path)
     else:
         fs.create_dir(_unwrap_protocol(path))
+
+    df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
+    df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
+    ds = ray.data.from_pandas([df1, df2])
     ds.write_parquet(path, filesystem=fs)
-    ds2 = ray.data.read_parquet(path, override_num_blocks=2, filesystem=fs)
-    ds2df = ds2.to_pandas()
-    assert pd.concat([df1, df2], ignore_index=True).equals(ds2df)
+
+    ds2 = ray.data.read_parquet(path, filesystem=fs)
+
+    read_data = set(ds2.to_pandas().itertuples(index=False))
+    written_data = set(pd.concat([df1, df2]).itertuples(index=False))
+    assert read_data == written_data
+
     # Test metadata ops.
     for block, meta in ds2._plan.execute().blocks:
         BlockAccessor.for_block(ray.get(block)).size_bytes() == meta.size_bytes
+
     if fs is None:
         shutil.rmtree(path)
     else:
@@ -1189,6 +1196,99 @@ def test_invalid_shuffle_arg_raises_error(ray_start_regular_shared, shuffle):
 @pytest.mark.parametrize("shuffle", [None, "files"])
 def test_valid_shuffle_arg_does_not_raise_error(ray_start_regular_shared, shuffle):
     ray.data.read_parquet("example://iris.parquet", shuffle=shuffle)
+
+
+def test_partitioning_in_dataset_kwargs_raises_error(ray_start_regular_shared):
+    with pytest.raises(ValueError):
+        ray.data.read_parquet(
+            "example://iris.parquet", dataset_kwargs=dict(partitioning="hive")
+        )
+
+
+def test_tensors_in_tables_parquet(
+    ray_start_regular_shared, tmp_path, restore_data_context
+):
+    """This test verifies both V1 and V2 Tensor Type extensions of
+    Arrow Array types
+    """
+
+    num_rows = 10_000
+    num_groups = 10
+
+    inner_shape = (2, 2, 2)
+    shape = (num_rows,) + inner_shape
+    num_tensor_elem = np.prod(np.array(shape))
+
+    arr = np.arange(num_tensor_elem).reshape(shape)
+
+    id_col_name = "_id"
+    group_col_name = "group"
+    tensor_col_name = "tensor"
+
+    id_vals = list(range(num_rows))
+    group_vals = [i % num_groups for i in id_vals]
+
+    df = pd.DataFrame(
+        {
+            id_col_name: id_vals,
+            group_col_name: group_vals,
+            tensor_col_name: [a.tobytes() for a in arr],
+        }
+    )
+
+    #
+    # Test #1: Verify writing tensors as ArrowTensorType (v1)
+    #
+
+    tensor_v1_path = f"{tmp_path}/tensor_v1"
+
+    ds = ray.data.from_pandas([df])
+    ds.write_parquet(tensor_v1_path)
+
+    ds = ray.data.read_parquet(
+        tensor_v1_path,
+        tensor_column_schema={tensor_col_name: (arr.dtype, inner_shape)},
+        override_num_blocks=10,
+    )
+
+    assert isinstance(
+        ds.schema().base_schema.field_by_name(tensor_col_name).type, ArrowTensorType
+    )
+
+    expected_tuples = list(zip(id_vals, group_vals, arr))
+
+    def _assert_equal(rows, expected):
+        values = [[s[id_col_name], s[group_col_name], s[tensor_col_name]] for s in rows]
+
+        assert len(values) == len(expected)
+
+        for v, e in zip(sorted(values, key=lambda v: v[0]), expected):
+            np.testing.assert_equal(v, e)
+
+    _assert_equal(ds.take_all(), expected_tuples)
+
+    #
+    # Test #2: Verify writing tensors as ArrowTensorTypeV2
+    #
+
+    DataContext.get_current().use_arrow_tensor_v2 = True
+
+    tensor_v2_path = f"{tmp_path}/tensor_v2"
+
+    ds = ray.data.from_pandas([df])
+    ds.write_parquet(tensor_v2_path)
+
+    ds = ray.data.read_parquet(
+        tensor_v2_path,
+        tensor_column_schema={tensor_col_name: (arr.dtype, inner_shape)},
+        override_num_blocks=10,
+    )
+
+    assert isinstance(
+        ds.schema().base_schema.field_by_name(tensor_col_name).type, ArrowTensorTypeV2
+    )
+
+    _assert_equal(ds.take_all(), expected_tuples)
 
 
 if __name__ == "__main__":

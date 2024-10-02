@@ -289,6 +289,7 @@ if setup_spec.type == SetupType.RAY:
             + [
                 "grpcio >= 1.32.0; python_version < '3.10'",  # noqa:E501
                 "grpcio >= 1.42.0; python_version >= '3.10'",  # noqa:E501
+                "pyOpenSSL",
             ]
         )
     )
@@ -785,12 +786,12 @@ setuptools.setup(
         "ray distributed parallel machine-learning hyperparameter-tuning"
         "reinforcement-learning deep-learning serving python"
     ),
-    python_requires=">=3.8",
+    python_requires=">=3.9",
     classifiers=[
-        "Programming Language :: Python :: 3.8",
         "Programming Language :: Python :: 3.9",
         "Programming Language :: Python :: 3.10",
         "Programming Language :: Python :: 3.11",
+        "Programming Language :: Python :: 3.12",
     ],
     packages=setup_spec.get_packages(),
     cmdclass={"build_ext": build_ext},

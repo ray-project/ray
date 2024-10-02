@@ -73,7 +73,8 @@ bool NodeState::ConsumeSyncMessage(std::shared_ptr<const RaySyncMessage> message
   current = message;
   auto receiver = receivers_[message->message_type()];
   if (receiver != nullptr) {
-    RAY_LOG(DEBUG) << "Consume message from: " << NodeID::FromBinary(message->node_id());
+    RAY_LOG(DEBUG).WithField(NodeID::FromBinary(message->node_id()))
+        << "Consume message from node";
     receiver->ConsumeSyncMessage(message);
   }
   return true;

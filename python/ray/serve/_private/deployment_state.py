@@ -242,6 +242,7 @@ class ActorReplicaWrapper:
         self._last_health_check_time: float = 0.0
         self._consecutive_health_check_failures = 0
         self._initialization_latency_s: Optional[float] = None
+        self._port: Optional[int] = None
 
         # Populated in `on_scheduled` or `recover`.
         self._actor_handle: ActorHandle = None
@@ -674,9 +675,12 @@ class ActorReplicaWrapper:
                     # This should only update version if the replica is being recovered.
                     # If this is checking on a replica that is newly started, this
                     # should return a version that is identical to what's already stored
-                    _, self._version, self._initialization_latency_s = ray.get(
-                        self._ready_obj_ref
-                    )
+                    (
+                        _,
+                        self._version,
+                        self._initialization_latency_s,
+                        self._port,
+                    ) = ray.get(self._ready_obj_ref)
             except RayTaskError as e:
                 logger.exception(
                     f"Exception in {self._replica_id}, the replica will be stopped."
@@ -904,11 +908,13 @@ class DeploymentReplica:
         return RunningReplicaInfo(
             replica_id=self._replica_id,
             node_id=self.actor_node_id,
+            node_ip=self._actor.node_ip,
             availability_zone=cluster_node_info_cache.get_node_az(self.actor_node_id),
             actor_handle=self._actor.actor_handle,
             max_ongoing_requests=self._actor.max_ongoing_requests,
             is_cross_language=self._actor.is_cross_language,
             multiplexed_model_ids=self.multiplexed_model_ids,
+            port=self._actor._port,
         )
 
     def record_multiplexed_model_ids(self, multiplexed_model_ids: List[str]):

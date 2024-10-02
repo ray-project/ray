@@ -28,6 +28,7 @@ import ray
 import ray.cloudpickle as pickle
 from ray._private.thirdparty.tabulate.tabulate import tabulate
 from ray._private.usage import usage_lib
+from ray.air.util.tensor_extensions.arrow import ArrowTensorTypeV2
 from ray.air.util.tensor_extensions.utils import _create_possibly_ragged_ndarray
 from ray.data._internal.aggregate import Max, Mean, Min, Std, Sum
 from ray.data._internal.compute import ComputeStrategy
@@ -553,6 +554,13 @@ class Dataset:
             The size of the batches provided to ``fn`` might be smaller than the
             specified ``batch_size`` if ``batch_size`` doesn't evenly divide the
             block(s) sent to a given map task.
+
+            If ``batch_size`` is set and each input block is smaller than the
+            ``batch_size``, Ray Data will bundle up many blocks as the input for one
+            task, until their total size is equal to or greater than the given
+            ``batch_size``.
+            If ``batch_size`` is not set, the bundling will not be performed. Each task
+            will receive only one input block.
 
         .. seealso::
 
@@ -2575,10 +2583,12 @@ class Dataset:
             schema is not known and fetch_if_missing is False.
         """
 
+        context = self._plan._context
+
         # First check if the schema is already known from materialized blocks.
         base_schema = self._plan.schema(fetch_if_missing=False)
         if base_schema is not None:
-            return Schema(base_schema)
+            return Schema(base_schema, data_context=context)
 
         # Lazily execute only the first block to minimize computation. We achieve this
         # by appending a Limit[1] operation to a copy of this Dataset, which we then
@@ -2586,7 +2596,7 @@ class Dataset:
         base_schema = self.limit(1)._plan.schema(fetch_if_missing=fetch_if_missing)
         if base_schema is not None:
             self._plan.cache_schema(base_schema)
-            return Schema(base_schema)
+            return Schema(base_schema, data_context=context)
         else:
             return None
 
@@ -5174,8 +5184,17 @@ class Schema:
         base_schema: The underlying Arrow or Pandas schema.
     """
 
-    def __init__(self, base_schema: Union["pyarrow.lib.Schema", "PandasBlockSchema"]):
+    def __init__(
+        self,
+        base_schema: Union["pyarrow.lib.Schema", "PandasBlockSchema"],
+        *,
+        data_context: Optional[DataContext] = None,
+    ):
         self.base_schema = base_schema
+
+        # Snapshot the current context, so that the config of Datasets is always
+        # determined by the config at the time it was created.
+        self._context = data_context or copy.deepcopy(DataContext.get_current())
 
     @property
     def names(self) -> List[str]:
@@ -5198,12 +5217,19 @@ class Schema:
         arrow_types = []
         for dtype in self.base_schema.types:
             if isinstance(dtype, TensorDtype):
+
+                if self._context.use_arrow_tensor_v2:
+                    pa_tensor_type_class = ArrowTensorTypeV2
+                else:
+                    pa_tensor_type_class = ArrowTensorType
+
                 # Manually convert our Pandas tensor extension type to Arrow.
                 arrow_types.append(
-                    ArrowTensorType(
+                    pa_tensor_type_class(
                         shape=dtype._shape, dtype=pa.from_numpy_dtype(dtype._dtype)
                     )
                 )
+
             else:
                 try:
                     arrow_types.append(pa.from_numpy_dtype(dtype))

@@ -5,7 +5,6 @@ import gymnasium as gym
 from gymnasium.spaces import Box, Discrete, MultiDiscrete, MultiBinary
 from gymnasium.spaces import Dict as GymDict
 from gymnasium.spaces import Tuple as GymTuple
-import inspect
 import json
 import logging
 import numpy as np
@@ -30,7 +29,7 @@ import yaml
 import ray
 from ray import air, tune
 from ray.air.constants import TRAINING_ITERATION
-from ray.air.integrations.wandb import WandbLoggerCallback
+from ray.air.integrations.wandb import WandbLoggerCallback, WANDB_ENV_VAR
 from ray.rllib.common import SupportedFileType
 from ray.rllib.env.wrappers.atari_wrappers import is_atari, wrap_deepmind
 from ray.rllib.train import load_experiments_from_file
@@ -116,6 +115,13 @@ def add_rllib_example_script_args(
         help="The number of (remote) EnvRunners to use for the experiment.",
     )
     parser.add_argument(
+        "--num-envs-per-env-runner",
+        type=int,
+        default=None,
+        help="The number of (vectorized) environments per EnvRunner. Note that "
+        "this is identical to the batch size for (inference) action computations.",
+    )
+    parser.add_argument(
         "--num-agents",
         type=int,
         default=0,
@@ -196,6 +202,12 @@ def add_rllib_example_script_args(
         default=1,
         help="How many (tune.Tuner.fit()) experiments to execute - if possible in "
         "parallel.",
+    )
+    parser.add_argument(
+        "--max-concurrent-trials",
+        type=int,
+        default=None,
+        help="How many (tune.Tuner) trials to run concurrently.",
     )
     parser.add_argument(
         "--verbose",
@@ -1350,7 +1362,11 @@ def run_rllib_example_script_experiment(
         args.as_test = True
 
     # Initialize Ray.
-    ray.init(num_cpus=args.num_cpus or None, local_mode=args.local_mode)
+    ray.init(
+        num_cpus=args.num_cpus or None,
+        local_mode=args.local_mode,
+        ignore_reinit_error=True,
+    )
 
     # Define one or more stopping criteria.
     if stop is None:
@@ -1385,15 +1401,19 @@ def run_rllib_example_script_experiment(
         # Define compute resources used automatically (only using the --num-gpus arg).
         # New stack.
         if config.enable_rl_module_and_learner:
+            # Do we have GPUs available in the cluster?
+            num_gpus = ray.cluster_resources().get("GPU", 0)
+            if args.num_gpus > 0 and num_gpus < args.num_gpus:
+                logger.warning(
+                    f"You are running your script with --num-gpus={args.num_gpus}, "
+                    f"but your cluster only has {num_gpus} GPUs! Will run "
+                    f"with {num_gpus} CPU Learners instead."
+                )
             # Define compute resources used.
             config.resources(num_gpus=0)
             config.learners(
                 num_learners=args.num_gpus,
-                num_gpus_per_learner=(
-                    1
-                    if torch and torch.cuda.is_available() and args.num_gpus > 0
-                    else 0
-                ),
+                num_gpus_per_learner=1 if num_gpus >= args.num_gpus > 0 else 0,
             )
             config.resources(num_gpus=0)
         # Old stack.
@@ -1425,10 +1445,10 @@ def run_rllib_example_script_experiment(
         for i in range(stop.get(TRAINING_ITERATION, args.stop_iters)):
             results = algo.train()
             if ENV_RUNNER_RESULTS in results:
-                print(
-                    f"iter={i} R={results[ENV_RUNNER_RESULTS][EPISODE_RETURN_MEAN]}",
-                    end="",
+                mean_return = results[ENV_RUNNER_RESULTS].get(
+                    EPISODE_RETURN_MEAN, np.nan
                 )
+                print(f"iter={i} R={mean_return}", end="")
             if EVALUATION_RESULTS in results:
                 Reval = results[EVALUATION_RESULTS][ENV_RUNNER_RESULTS][
                     EPISODE_RETURN_MEAN
@@ -1455,13 +1475,16 @@ def run_rllib_example_script_experiment(
 
     # Log results using WandB.
     tune_callbacks = tune_callbacks or []
-    if hasattr(args, "wandb_key") and args.wandb_key is not None:
+    if hasattr(args, "wandb_key") and (
+        args.wandb_key is not None or WANDB_ENV_VAR in os.environ
+    ):
+        wandb_key = args.wandb_key or os.environ[WANDB_ENV_VAR]
         project = args.wandb_project or (
             args.algo.lower() + "-" + re.sub("\\W+", "-", str(config.env).lower())
         )
         tune_callbacks.append(
             WandbLoggerCallback(
-                api_key=args.wandb_key,
+                api_key=wandb_key,
                 project=project,
                 upload_checkpoints=True,
                 **({"name": args.wandb_run_name} if args.wandb_run_name else {}),
@@ -1509,6 +1532,7 @@ def run_rllib_example_script_experiment(
         ),
         tune_config=tune.TuneConfig(
             num_samples=args.num_samples,
+            max_concurrent_trials=args.max_concurrent_trials,
             scheduler=scheduler,
         ),
     ).fit()
@@ -1896,112 +1920,6 @@ def _get_mean_action_from_algorithm(alg: "Algorithm", obs: np.ndarray) -> np.nda
     for _ in range(5000):
         out.append(float(alg.compute_single_action(obs)))
     return np.mean(out)
-
-
-def test_ckpt_restore(
-    config: "AlgorithmConfig",
-    env_name: str,
-    tf2=False,
-    replay_buffer=False,
-    run_restored_algorithm=True,
-    eval_env_runner_group=False,
-):
-    """Test that after an algorithm is trained, its checkpoint can be restored.
-
-    Check the replay buffers of the algorithm to see if they have identical data.
-    Check the optimizer weights of the policy on the algorithm to see if they're
-    identical.
-
-    Args:
-        config: The config of the algorithm to be trained.
-        env_name: The name of the gymansium environment to be trained on.
-        tf2: Whether to test the algorithm with the tf2 framework or not.
-        object_store: Whether to test checkpointing with objects from the object store.
-        replay_buffer: Whether to test checkpointing with replay buffers.
-        run_restored_algorithm: Whether to run the restored algorithm after restoring.
-        eval_env_runner_group: Whether to also inspect the eval EnvRunnerGroup of the
-            Algorithm.
-
-    """
-    # config = algorithms_and_configs[algo_name].to_dict()
-    # If required, store replay buffer data in checkpoints as well.
-    if replay_buffer:
-        config["store_buffer_in_checkpoints"] = True
-
-    env = gym.make(env_name)
-    alg1 = config.environment(env_name).framework("torch").build()
-    alg2 = config.environment(env_name).build()
-
-    policy1 = alg1.get_policy()
-
-    res = alg1.train()
-    print("current status: " + str(res))
-
-    # Check optimizer state as well.
-    optim_state = policy1.get_state().get("_optimizer_variables")
-
-    checkpoint = alg1.save()
-
-    # Test if we can restore multiple times (at least twice, assuming failure
-    # would mainly stem from improperly reused variables)
-    for num_restores in range(2):
-        # Sync the models
-        alg2.restore(checkpoint)
-
-    # Compare optimizer state with re-loaded one.
-    if optim_state:
-        s2 = alg2.get_policy().get_state().get("_optimizer_variables")
-        # Tf -> Compare states 1:1.
-        # For torch, optimizers have state_dicts with keys=params,
-        # which are different for the two models (ignore these
-        # different keys, but compare all values nevertheless).
-        for i, s2_ in enumerate(s2):
-            check(
-                list(s2_["state"].values()),
-                list(optim_state[i]["state"].values()),
-            )
-
-    # Compare buffer content with restored one.
-    if replay_buffer:
-        data = alg1.local_replay_buffer.replay_buffers["default_policy"]._storage[
-            42 : 42 + 42
-        ]
-        new_data = alg2.local_replay_buffer.replay_buffers["default_policy"]._storage[
-            42 : 42 + 42
-        ]
-        check(data, new_data)
-
-    # Check, whether the eval EnvRunnerGroup has the same policies and
-    # `policy_mapping_fn`.
-    if eval_env_runner_group:
-        eval_mapping_src = inspect.getsource(alg1.eval_env_runner.policy_mapping_fn)
-        check(
-            eval_mapping_src,
-            inspect.getsource(alg2.eval_env_runner.policy_mapping_fn),
-        )
-        check(
-            eval_mapping_src,
-            inspect.getsource(alg2.env_runner.policy_mapping_fn),
-            false=True,
-        )
-
-    for _ in range(1):
-        obs = env.observation_space.sample()
-        a1 = _get_mean_action_from_algorithm(alg1, obs)
-        a2 = _get_mean_action_from_algorithm(alg2, obs)
-        print("Checking computed actions", alg1, obs, a1, a2)
-        if abs(a1 - a2) > 0.1:
-            raise AssertionError(
-                "algo={} [a1={} a2={}]".format(str(alg1.__class__), a1, a2)
-            )
-    # Stop algo 1.
-    alg1.stop()
-
-    if run_restored_algorithm:
-        # Check that algo 2 can still run.
-        print("Starting second run on Algo 2...")
-        alg2.train()
-    alg2.stop()
 
 
 def check_supported_spaces(

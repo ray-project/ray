@@ -282,15 +282,19 @@ class Gauge(Metric):
         super().__init__(name, description, tag_keys)
         self._metric = CythonGauge(self._name, self._description, self._tag_keys)
 
-    def set(self, value: Union[int, float], tags: Dict[str, str] = None):
+    def set(self, value: Optional[Union[int, float]], tags: Dict[str, str] = None):
         """Set the gauge to the given `value`.
 
         Tags passed in will take precedence over the metric's default tags.
 
         Args:
-            value(int, float): Value to set the gauge to.
+            value(int, float): Value to set the gauge to. If `None`, this method is a
+                no-op.
             tags(Dict[str, str]): Tags to set or override for this gauge.
         """
+        if value is None:
+            return
+
         if not isinstance(value, (int, float)):
             raise TypeError(f"value must be int or float, got {type(value)}.")
 
