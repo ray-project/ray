@@ -451,13 +451,21 @@ def _do_init_communicator_group(
     if custom_communicator_group is not None:
         custom_communicator_group.initialize(rank)
         ctx.communicator_groups[group_id] = custom_communicator_group
-    else:
+    elif torch.cuda.is_available(): #Only stream with cudda is avaliable.
         ctx.communicator_groups[group_id] = _CommunicatorGroup(
             world_size,
             comm_id,
             rank,
             actor_handles,
             torch.cuda.current_stream().cuda_stream,
+        )
+    else:
+        ctx.communicator_groups[group_id] = _CommunicatorGroup(
+            world_size,
+            comm_id,
+            rank,
+            actor_handles,
+            None,
         )
 
 
@@ -595,7 +603,7 @@ def _init_communicator_group(
             communicator_comm_id,
             rank=None,
             actor_handles=actors,
-            stream=None,  # Adjust based on whether stream is needed
+            cuda_stream=None,  # Adjust based on whether stream is needed
         )
     return group_id
 
