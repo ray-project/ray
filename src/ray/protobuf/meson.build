@@ -19,6 +19,19 @@ runtime_env_common_cc_proto = static_library(
     'runtime_env_common_cc_proto',
     dependencies: [runtime_env_common_proto_dep]
 )
+
+runtime_env_common_py_proto = custom_target(
+    'runtime_env_common_py_proto',
+    output: ['runtime_env_common_pb2.py', 'runtime_env_common_pb2_grpc.py'],
+    input: 'runtime_env_common.proto',
+    command: [
+        'python3', '-m', 'grpc_tools.protoc',
+        '--proto_path=..',
+        '--python_out=' + meson.project_build_root(),
+        '--grpc_python_out=' + meson.project_build_root(),
+        '@INPUT@'
+    ]
+)
 # === @end: runtime_env_common.proto ===
 
 
@@ -38,6 +51,19 @@ common_proto_dep = declare_dependency(
 common_cc_proto = static_library(
     'common_cc_proto',
     dependencies: [common_proto_dep]
+)
+
+common_py_proto = custom_target(
+    'common_py_proto',
+    output: ['common_pb2.py', 'common_pb2_grpc.py'],
+    input: 'common.proto',
+    command: [
+        'python3', '-m', 'grpc_tools.protoc',
+        '--proto_path=..',
+        '--python_out=' + meson.project_build_root(),
+        '--grpc_python_out=' + meson.project_build_root(),
+        '@INPUT@'
+    ]
 )
 # === @end: common.proto ===
 
@@ -97,6 +123,19 @@ gcs_cc_proto = static_library(
     'gcs_cc_proto',
     dependencies: [gcs_proto_dep]
 )
+
+gcs_py_proto = custom_target(
+    'gcs_py_proto',
+    output: ['gcs_pb2.py', 'gcs_pb2_grpc.py'],
+    input: 'gcs.proto',
+    command: [
+        'python3', '-m', 'grpc_tools.protoc',
+        '--proto_path=..',
+        '--python_out=' + meson.project_build_root(),
+        '--grpc_python_out=' + meson.project_build_root(),
+        '@INPUT@'
+    ]
+)
 # === @end: gcs.proto ===
 
 
@@ -115,6 +154,19 @@ logging_proto_dep = declare_dependency(
 logging_cc_proto = static_library(
     'logging_cc_proto',
     dependencies: [logging_proto_dep]
+)
+
+logging_py_proto = custom_target(
+    'logging_py_proto',
+    output: ['logging_pb2.py', 'logging_pb2_grpc.py'],
+    input: 'logging.proto',
+    command: [
+        'python3', '-m', 'grpc_tools.protoc',
+        '--proto_path=..',
+        '--python_out=' + meson.project_build_root(),
+        '--grpc_python_out=' + meson.project_build_root(),
+        '@INPUT@'
+    ]
 )
 # === @end: logging.proto ===
 
@@ -135,6 +187,19 @@ node_manager_proto_dep = declare_dependency(
 node_manager_cc_proto = static_library(
     'node_manager_cc_proto',
     dependencies: [node_manager_proto_dep]
+)
+
+node_manager_py_proto = custom_target(
+    'node_manager_py_proto',
+    output: ['node_manager_pb2.py', 'node_manager_pb2_grpc.py'],
+    input: 'node_manager.proto',
+    command: [
+        'python3', '-m', 'grpc_tools.protoc',
+        '--proto_path=..',
+        '--python_out=' + meson.project_build_root(),
+        '--grpc_python_out=' + meson.project_build_root(),
+        '@INPUT@'
+    ]
 )
 # === @end: node_manager.proto ===
 
@@ -161,6 +226,19 @@ reporter_proto_dep = declare_dependency(
 reporter_cc_proto = static_library(
     'reporter_cc_proto',
     dependencies: [reporter_proto_dep]
+)
+
+reporter_py_proto = custom_target(
+    'reporter_py_proto',
+    output: ['reporter_pb2.py', 'reporter_pb2_grpc.py'],
+    input: 'reporter.proto',
+    command: [
+        'python3', '-m', 'grpc_tools.protoc',
+        '--proto_path=..',
+        '--python_out=' + meson.project_build_root(),
+        '--grpc_python_out=' + meson.project_build_root(),
+        '@INPUT@'
+    ]
 )
 # === @end: reporter.proto ===
 
@@ -202,6 +280,19 @@ gcs_service_cc_proto = static_library(
     'gcs_service_cc_proto',
     dependencies: [gcs_service_proto_dep]
 )
+
+gcs_service_py_proto = custom_target(
+    'gcs_service_py_proto',
+    output: ['gcs_service_pb2.py', 'gcs_service_pb2_grpc.py'],
+    input: 'gcs_service.proto',
+    command: [
+        'python3', '-m', 'grpc_tools.protoc',
+        '--proto_path=..',
+        '--python_out=' + meson.project_build_root(),
+        '--grpc_python_out=' + meson.project_build_root(),
+        '@INPUT@'
+    ]
+)
 # === @end: gcs_service.proto ===
 
 
@@ -220,6 +311,19 @@ test_service_proto_dep = declare_dependency(
 test_service_cc_proto = static_library(
     'test_service_cc_proto',
     dependencies: [test_service_proto_dep]
+)
+
+test_service_py_proto = custom_target(
+    'test_service_py_proto',
+    output: ['test_service_pb2.py', 'test_service_pb2_grpc.py'],
+    input: 'test_service.proto',
+    command: [
+        'python3', '-m', 'grpc_tools.protoc',
+        '--proto_path=..',
+        '--python_out=' + meson.project_build_root(),
+        '--grpc_python_out=' + meson.project_build_root(),
+        '@INPUT@'
+    ]
 )
 # === @end: test_service.proto ===
 
@@ -261,6 +365,19 @@ core_worker_cc_proto = static_library(
     'core_worker_cc_proto',
     dependencies: [core_worker_proto_dep]
 )
+
+core_worker_py_proto = custom_target(
+    'core_worker_py_proto',
+    output: ['core_worker_pb2.py', 'core_worker_pb2_grpc.py'],
+    input: 'core_worker.proto',
+    command: [
+        'python3', '-m', 'grpc_tools.protoc',
+        '--proto_path=..',
+        '--python_out=' + meson.project_build_root(),
+        '--grpc_python_out=' + meson.project_build_root(),
+        '@INPUT@'
+    ]
+)
 # === @end: core_worker.proto ===
 
 
@@ -299,6 +416,19 @@ event_cc_proto = static_library(
     'event_cc_proto',
     dependencies: [event_proto_dep]
 )
+
+event_py_proto = custom_target(
+    'event_py_proto',
+    output: ['event_pb2.py', 'event_pb2_grpc.py'],
+    input: 'event.proto',
+    command: [
+        'python3', '-m', 'grpc_tools.protoc',
+        '--proto_path=..',
+        '--python_out=' + meson.project_build_root(),
+        '--grpc_python_out=' + meson.project_build_root(),
+        '@INPUT@'
+    ]
+)
 # === @end: event.proto ===
 
 
@@ -317,6 +447,19 @@ agent_manager_proto_dep = declare_dependency(
 agent_manager_cc_proto = static_library(
     'agent_manager_cc_proto',
     dependencies: [agent_manager_proto_dep]
+)
+
+agent_manager_py_proto = custom_target(
+    'agent_manager_py_proto',
+    output: ['agent_manager_pb2.py', 'agent_manager_pb2_grpc.py'],
+    input: 'agent_manager.proto',
+    command: [
+        'python3', '-m', 'grpc_tools.protoc',
+        '--proto_path=..',
+        '--python_out=' + meson.project_build_root(),
+        '--grpc_python_out=' + meson.project_build_root(),
+        '@INPUT@'
+    ]
 )
 # === @end: agent_manager.proto ===
 
@@ -337,6 +480,19 @@ runtime_env_agent_proto_dep = declare_dependency(
 runtime_env_agent_cc_proto = static_library(
     'runtime_env_agent_cc_proto',
     dependencies: [runtime_env_agent_proto_dep]
+)
+
+runtime_env_agent_py_proto = custom_target(
+    'runtime_env_agent_py_proto',
+    output: ['runtime_env_agent_pb2.py', 'runtime_env_agent_pb2_grpc.py'],
+    input: 'runtime_env_agent.proto',
+    command: [
+        'python3', '-m', 'grpc_tools.protoc',
+        '--proto_path=..',
+        '--python_out=' + meson.project_build_root(),
+        '--grpc_python_out=' + meson.project_build_root(),
+        '@INPUT@'
+    ]
 )
 # === @end: runtime_env_agent.proto ===
 
@@ -365,142 +521,69 @@ subdir('export_api/')
 # === @end: export_api/ ===
 
 
+# === @begin: dependency.proto ===
+dependency_py_proto = custom_target(
+    'dependency_py_proto',
+    output: ['dependency_pb2.py', 'dependency_pb2_grpc.py'],
+    input: 'dependency.proto',
+    command: [
+        'python3', '-m', 'grpc_tools.protoc',
+        '--proto_path=..',
+        '--python_out=' + meson.project_build_root(),
+        '--grpc_python_out=' + meson.project_build_root(),
+        '@INPUT@'
+    ]
+)
+# === @end: dependency.proto ===
 
-# === Begin of `setup` scope ===
-# === 1. .proto -> .pb.cc, .pb.h ===
-native_source_proto_files = [
-    'dependency.proto',
-    'job_agent.proto',
-    'ray_client.proto',
-    'serve.proto'
-]
 
-# === 2. .proto -> .pb2.py ===
+# === @begin: job_agent.proto ===
+job_agent_py_proto = custom_target(
+    'job_agent_py_proto',
+    output: ['job_agent_pb2.py', 'job_agent_pb2_grpc.py'],
+    input: 'job_agent.proto',
+    command: [
+        'python3', '-m', 'grpc_tools.protoc',
+        '--proto_path=..',
+        '--python_out=' + meson.project_build_root(),
+        '--grpc_python_out=' + meson.project_build_root(),
+        '@INPUT@'
+    ]
+)
+# === @end: job_agent.proto ===
 
-# === End of `compile` scope ===
+
+# === @begin: ray_client.proto ===
+ray_client_py_proto = custom_target(
+    'ray_client_py_proto',
+    output: ['ray_client_pb2.py', 'ray_client_pb2_grpc.py'],
+    input: 'ray_client.proto',
+    command: [
+        'python3', '-m', 'grpc_tools.protoc',
+        '--proto_path=..',
+        '--python_out=' + meson.project_build_root(),
+        '--grpc_python_out=' + meson.project_build_root(),
+        '@INPUT@'
+    ]
+)
+# === @end: ray_client.proto ===
 
 
+# === @begin: serve.proto ===
+serve_py_proto = custom_target(
+    'serve_py_proto',
+    output: ['serve_pb2.py', 'serve_pb2_grpc.py'],
+    input: 'serve.proto',
+    command: [
+        'python3', '-m', 'grpc_tools.protoc',
+        '--proto_path=..',
+        '--python_out=' + meson.project_build_root(),
+        '--grpc_python_out=' + meson.project_build_root(),
+        '@INPUT@'
+    ]
+)
+# === @end: serve.proto ===
 
-#python_grpc_compile(
-#    name = "common_py_proto",
-#    deps = [":common_proto"],
-#)
-
-#python_grpc_compile(
-#    name = "instance_manager_py_proto",
-#    deps = [":instance_manager_proto"],
-#)
-
-#python_grpc_compile(
-#    name = "runtime_env_common_py_proto",
-#    deps = [":runtime_env_common_proto"],
-#)
-
-#python_grpc_compile(
-#    name = "gcs_py_proto",
-#    deps = [":gcs_proto"],
-#)
-
-#python_grpc_compile(
-#    name = "dependency_py_proto",
-#    deps = [":dependency_proto"],
-#)
-
-#python_grpc_compile(
-#    name = "logging_py_proto",
-#    deps = [":logging_proto"],
-#)
-
-#python_grpc_compile(
-#    name = "node_manager_py_proto",
-#    deps = [":node_manager_proto"],
-#)
-
-#python_grpc_compile(
-#    name = "reporter_py_proto",
-#    deps = [":reporter_proto"],
-#)
-
-#python_grpc_compile(
-#    name = "gcs_service_py_proto",
-#    deps = [":gcs_service_proto"],
-#)
-#
-
-#python_grpc_compile(
-#    name = "test_service_py_proto",
-#    deps = [":test_service_proto"],
-#)
-
-#python_grpc_compile(
-#    name = "core_worker_py_proto",
-#    deps = [":core_worker_proto"],
-#)
-
-#python_grpc_compile(
-#    name = "event_py_proto",
-#    deps = [":event_proto"],
-#)
-
-#python_grpc_compile(
-#    name = "export_event_py_proto",
-#    deps = [":export_event_proto"],
-#)
-
-#python_grpc_compile(
-#    name = "export_task_event_py_proto",
-#    deps = [":export_task_event_proto"],
-#)
-
-#python_grpc_compile(
-#    name = "export_runtime_env_py_proto",
-#    deps = [":export_runtime_env_proto"],
-#)
-
-#python_grpc_compile(
-#    name = "export_node_event_py_proto",
-#    deps = [":export_node_event_proto"],
-#)
-
-#python_grpc_compile(
-#    name = "export_actor_event_py_proto",
-#    deps = [":export_actor_event_proto"],
-#)
-
-#python_grpc_compile(
-#    name = "export_driver_job_event_py_proto",
-#    deps = [":export_driver_job_event_proto"],
-#)
-
-#python_grpc_compile(
-#    name = "export_submission_job_event_py_proto",
-#    deps = [":export_submission_job_event_proto"],
-#)
-
-#python_grpc_compile(
-#    name = "job_agent_py_proto",
-#    deps = [":job_agent_proto"],
-#)
-
-#python_grpc_compile(
-#    name = "agent_manager_py_proto",
-#    deps = [":agent_manager_proto"],
-#)
-
-#python_grpc_compile(
-#    name = "ray_client_py_proto",
-#    deps = [":ray_client_proto"],
-#)
-
-#python_grpc_compile(
-#    name = "runtime_env_agent_py_proto",
-#    deps = [":runtime_env_agent_proto"],
-#)
-
-#python_grpc_compile(
-#    name = "serve_py_proto",
-#    deps = [":serve_proto"],
-#)
 
 #python_grpc_compile(
 #    name = "usage_py_proto",
