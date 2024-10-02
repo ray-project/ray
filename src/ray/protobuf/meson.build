@@ -205,6 +205,23 @@ node_manager_proto_cpp_lib = static_library(
     dependencies: [protobuf, node_manager_proto_cpp_dep]
 )
 
+node_manager_proto_cpp_grpc = custom_target(
+    f'@proto_basename@_proto_cpp_grpc',
+    input: node_manager_proto,
+    command: protoc_cpp_grpc_with_default_args,
+    output: [f'@proto_basename@.grpc.pb.cc', f'@proto_basename@.gprc.pb.h'],
+    build_by_default: true
+)
+
+node_manager_proto_cpp_grpc_dep = declare_dependency(
+    sources: node_manager_proto_cpp_grpc
+)
+
+node_manager_proto_cpp_grpc_lib = static_library(
+    f'@proto_basename@_proto_cpp_grpc_lib',
+    dependencies: [protobuf, grpc, node_manager_proto_cpp_grpc_dep, node_manager_proto_cpp_dep]
+)
+
 node_manager_proto_py = custom_target(
     f'@proto_basename@_proto_py',
     input: node_manager_proto,
