@@ -3,7 +3,7 @@ instance_manager_proto = custom_target(
     'instance_manager_proto',
     output: ['instance_manager.pb.cc', 'instance_manager.pb.h'],
     input: 'instance_manager.proto',
-    command: [protoc, '--proto_path=..', '--cpp_out=' + meson.project_build_root(), '@INPUT@']
+    command: [protoc_cpp, '--proto_path=..', '--cpp_out=' + meson.project_build_root(), '@INPUT@']
 )
 
 instance_manager_proto_dep = declare_dependency(

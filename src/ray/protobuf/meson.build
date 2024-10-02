@@ -1,121 +1,67 @@
-proto_files = {
-    'runtime_env_common.proto': [PROTOC_TARGET_PROTO, PROTOC_TARGET_CPP, PROTOC_TARGET_CPP_STATIC_LIBRARY, PROTOC_TARGET_PY, PROTOC_TARGET_GRPC_PY]
-}
-
-protoc_targets_proto = {}
-protoc_targets_cpp = {}
-protoc_targets_cpp_static_library = {}
-protoc_targets_py = {}
-protoc_targets_grpc_py = {}
-protoc_targets_grpc_cpp = {}
-protoc_targets_grpc_cpp_static_library = {}
-
-foreach proto_file, proto_file_targets : proto_files
-    proto_file_without_extension = fs.stem(proto_file)
-
-    if proto_file_targets.contains(PROTOC_TARGET_PROTO)
-        protoc_targets_proto += {proto_file: custom_target(
-            '@proto_file_without_extension@_proto',
-            output: ['@proto_file_without_extension@.pb.cc', '@proto_file_without_extension@.pb.h'],
-            input: proto_file,
-            command: [protoc, '--proto_path=..', '--cpp_out=@BUILD_ROOT@', '@INPUT@']
-        )}
-    endif
-
-    #runtime_env_common_proto_dep = declare_dependency(
-    #    sources: runtime_env_common_proto
-    #)
-    #
-    #runtime_env_common_cc_proto = static_library(
-    #    'runtime_env_common_cc_proto',
-    #    dependencies: [runtime_env_common_proto_dep]
-    #)
-    #
-    #runtime_env_common_py_proto = custom_target(
-    #    'runtime_env_common_py_proto',
-    #    output: ['runtime_env_common_pb2.py', 'runtime_env_common_pb2_grpc.py'],
-    #    input: 'runtime_env_common.proto',
-    #    command: [
-    #        'python3', '-m', 'grpc_tools.protoc',
-    #        '--proto_path=..',
-    #        '--python_out=' + meson.project_build_root(),
-    #        '--grpc_python_out=' + meson.project_build_root(),
-    #        '@INPUT@'
-    #    ]
-    #)
-endforeach
+# === @begin: experimental/ ===
+subdir('experimental/')
+# === @end: experimental/ ===
 
 
-## === @begin: experimental/ ===
-#subdir('experimental/')
-## === @end: experimental/ ===
-#
-#
-## === @begin: runtime_env_common.proto ===
-#runtime_env_common_proto = custom_target(
-#    'runtime_env_common_proto',
-#    output: ['runtime_env_common.pb.cc', 'runtime_env_common.pb.h'],
-#    input: 'runtime_env_common.proto',
-#    command: [protoc, '--proto_path=..', '--cpp_out=' + meson.project_build_root(), '@INPUT@']
-#)
-#
-#runtime_env_common_proto_dep = declare_dependency(
-#    sources: runtime_env_common_proto
-#)
-#
-#runtime_env_common_cc_proto = static_library(
-#    'runtime_env_common_cc_proto',
-#    dependencies: [runtime_env_common_proto_dep]
-#)
-#
-#runtime_env_common_py_proto = custom_target(
-#    'runtime_env_common_py_proto',
-#    output: ['runtime_env_common_pb2.py', 'runtime_env_common_pb2_grpc.py'],
-#    input: 'runtime_env_common.proto',
-#    command: [
-#        'python3', '-m', 'grpc_tools.protoc',
-#        '--proto_path=..',
-#        '--python_out=' + meson.project_build_root(),
-#        '--grpc_python_out=' + meson.project_build_root(),
-#        '@INPUT@'
-#    ]
-#)
-## === @end: runtime_env_common.proto ===
-#
-#
-## === @begin: common.proto ===
-#common_proto = custom_target(
-#    'common_proto',
-#    output: ['common.pb.cc', 'common.pb.h'],
-#    input: 'common.proto',
-#    command: [protoc, '--proto_path=..', '--cpp_out=' + meson.project_build_root(), '@INPUT@'],
-#)
-#
-#common_proto_dep = declare_dependency(
-#    sources: common_proto,
-#    dependencies: [runtime_env_common_proto_dep]
-#)
-#
-#common_cc_proto = static_library(
-#    'common_cc_proto',
-#    dependencies: [common_proto_dep]
-#)
-#
-#common_py_proto = custom_target(
-#    'common_py_proto',
-#    output: ['common_pb2.py', 'common_pb2_grpc.py'],
-#    input: 'common.proto',
-#    command: [
-#        'python3', '-m', 'grpc_tools.protoc',
-#        '--proto_path=..',
-#        '--python_out=' + meson.project_build_root(),
-#        '--grpc_python_out=' + meson.project_build_root(),
-#        '@INPUT@'
-#    ]
-#)
-## === @end: common.proto ===
-#
-#
+# === @begin: runtime_env_common.proto ===
+proto_basename = 'runtime_env_common'
+runtime_env_common_proto = f'@proto_basename@.proto'
+
+runtime_env_common_proto_cpp = custom_target(
+    f'@proto_basename@_proto_cpp',
+    output: [f'@proto_basename@.pb.cc', f'@proto_basename@.pb.h'],
+    input: runtime_env_common_proto,
+    command: protoc_cpp_with_default_args
+)
+
+runtime_env_common_proto_cpp_dep = declare_dependency(
+    sources: runtime_env_common_proto_cpp
+)
+
+runtime_env_common_proto_cpp_lib = static_library(
+    f'@proto_basename@_cpp_lib',
+    dependencies: [protobuf, runtime_env_common_proto_cpp_dep]
+)
+
+runtime_env_common_proto_py = custom_target(
+    f'@proto_basename@_proto_py',
+    output: [f'@proto_basename@_pb2.py', f'@proto_basename@_pb2_grpc.py'],
+    input: runtime_env_common_proto,
+    command: protoc_py_with_default_args
+)
+# === @end: runtime_env_common.proto ===
+
+
+# === @begin: common.proto ===
+proto_basename = 'common'
+common_proto = f'@proto_basename@.proto'
+
+common_proto_cpp = custom_target(
+    f'@proto_basename@_proto_cpp',
+    output: [f'@proto_basename@.pb.cc', f'@proto_basename@.pb.h'],
+    input: common_proto,
+    command: protoc_cpp_with_default_args
+)
+
+common_proto_cpp_dep = declare_dependency(
+    sources: common_proto_cpp,
+    dependencies: [runtime_env_common_proto_cpp_dep]
+)
+
+common_proto_cpp_lib = static_library(
+    f'@proto_basename@_cpp_lib',
+    dependencies: [common_proto_cpp_dep]
+)
+
+common_proto_py = custom_target(
+    f'@proto_basename@_py_proto',
+    output: [f'@proto_basename@_pb2.py', f'@proto_basename@_pb2_grpc.py'],
+    input: common_proto,
+    command: protoc_py_with_default_args
+)
+# === @end: common.proto ===
+
+
 ## === @begin: autoscaler.proto ===
 #autoscaler_proto = custom_target(
 #    'autoscaler_proto',

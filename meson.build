@@ -9,19 +9,8 @@ project(
 
 # === Begin of imports ===
 fs = import('fs')
-py = import('python').find_installation(pure: false)
+py = import('python').find_installation(pure: false, modules: ['grpc_tools'])
 # === End of imports ===
-
-
-# === @begin: Constants ===
-PROTOC_TARGET_PROTO = 'proto'
-PROTOC_TARGET_CPP = 'cpp'
-PROTOC_TARGET_CPP_STATIC_LIBRARY = 'cpp_static_library'
-PROTOC_TARGET_PY = 'py'
-PROTOC_TARGET_GRPC_PY = 'grpc_py'
-PROTOC_TARGET_GRPC_CPP = 'grpc_cpp'
-PROTOC_TARGET_GRPC_CPP_STATIC_LIBRARY = 'grpc_cpp_static_library'
-# === @end: Constants ===
 
 
 # === Begin of dependencies ===
@@ -29,10 +18,6 @@ PROTOC_TARGET_GRPC_CPP_STATIC_LIBRARY = 'grpc_cpp_static_library'
 # Instead, I've vendored a few GTest headers it really uses and add them into search paths, used by all compiler invocations.
 add_project_arguments(
     '-I' + meson.project_build_root() / '__eugo' / 'include',
-    language: ['c', 'cpp']
-)
-
-add_project_arguments(
     '-I' + meson.project_source_root() / '__eugo' / 'include',
     language: ['c', 'cpp']
 )
@@ -201,7 +186,10 @@ msgpack = dependency('msgpack-cxx', method: 'cmake')
 # @TODO+: reimplment asap
 #opencensus = dependency('OpenCensus')
 
-protoc = find_program('protoc')
+protoc_cpp = find_program('protoc')
+protoc_cpp_with_default_args = [protoc_cpp, '--proto_path=..', '--cpp_out=@BUILD_ROOT@', '@INPUT@']
+protoc_py = ['python3', '-m', 'grpc_tools.protoc']
+protoc_py_with_default_args = [protoc_py, '--proto_path=..', '--python_out=@BUILD_ROOT@', '--grpc_python_out=@BUILD_ROOT@', '@INPUT@']
 
 # If not disabling `pkg-config` search, this causes the dependency cycle and infinite execution
 protobuf = dependency('protobuf', modules: ['protobuf::libprotobuf'], method: 'cmake')

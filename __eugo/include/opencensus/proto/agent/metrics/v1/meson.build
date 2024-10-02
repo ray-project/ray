@@ -1,7 +1,7 @@
 opencensus_proto_agent_metrics_v1_metrics_service_proto = custom_target(
     'opencensus_proto_agent_metrics_v1_metrics_service_proto',
     input: 'metrics_service.proto',
-    command: [protoc, '--proto_path=../__eugo/include', '--cpp_out=' + meson.project_build_root() / '__eugo' / 'include', '@INPUT@'],
+    command: [protoc_cpp, '--proto_path=../__eugo/include', '--cpp_out=' + meson.project_build_root() / '__eugo' / 'include', '@INPUT@'],
     output: ['metrics_service.pb.cc', 'metrics_service.pb.h']
 )
 
