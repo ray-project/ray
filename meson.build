@@ -185,7 +185,7 @@ boost = dependency('boost', method: 'cmake')
 msgpack = dependency('msgpack-cxx', method: 'cmake')
 
 # @TODO+: reimplment asap
-#opencensus = dependency('OpenCensus')
+opencensus = dependency('OpenCensus', method: 'cmake')
 
 # If not disabling `pkg-config` search, this causes the dependency cycle and infinite execution
 protobuf = dependency('protobuf', modules: ['protobuf::libprotobuf'], method: 'cmake')
