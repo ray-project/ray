@@ -31,7 +31,7 @@ head = gen_head_node(
 )
 
 worker = gen_worker_node(
-    {
+    envs={
         "RAY_grpc_keepalive_time_ms": "1000",
         "RAY_grpc_client_keepalive_time_ms": "1000",
         "RAY_grpc_client_keepalive_timeout_ms": "1000",
@@ -39,7 +39,8 @@ worker = gen_worker_node(
         "RAY_health_check_period_ms": "1000",
         "RAY_health_check_timeout_ms": "1000",
         "RAY_health_check_failure_threshold": "2",
-    }
+    },
+    num_cpus=8,
 )
 
 
@@ -122,6 +123,71 @@ def test_network_task_submit(head, worker, gcs_network):
         return False
 
     wait_for_condition(lambda: check_task_pending(2))
+
+
+head2 = gen_head_node(
+    {
+        "RAY_grpc_keepalive_time_ms": "1000",
+        "RAY_grpc_client_keepalive_time_ms": "1000",
+        "RAY_grpc_client_keepalive_timeout_ms": "1000",
+        "RAY_health_check_initial_delay_ms": "1000",
+        "RAY_health_check_period_ms": "1000",
+        "RAY_health_check_timeout_ms": "100000",
+        "RAY_health_check_failure_threshold": "20",
+    }
+)
+
+worker2 = gen_worker_node(
+    envs={
+        "RAY_grpc_keepalive_time_ms": "1000",
+        "RAY_grpc_client_keepalive_time_ms": "1000",
+        "RAY_grpc_client_keepalive_timeout_ms": "1000",
+        "RAY_health_check_initial_delay_ms": "1000",
+        "RAY_health_check_period_ms": "1000",
+        "RAY_health_check_timeout_ms": "100000",
+        "RAY_health_check_failure_threshold": "20",
+    },
+    num_cpus=2,
+)
+
+
+def test_transient_network_error(head2, worker2, gcs_network):
+    network = gcs_network
+
+    check_two_nodes = """
+import sys
+import ray
+from ray._private.test_utils import wait_for_condition
+
+ray.init()
+wait_for_condition(lambda: len(ray.nodes()) == 2)
+"""
+    result = head2.exec_run(cmd=f"python -c '{check_two_nodes}'")
+    assert result.exit_code == 0, result.output.decode("utf-8")
+
+    # Simulate transient network error
+    worker_ip = worker2._container.attrs["NetworkSettings"]["Networks"][network.name][
+        "IPAddress"
+    ]
+    network.disconnect(worker2.name, force=True)
+    sleep(2)
+    network.connect(worker2.name, ipv4_address=worker_ip)
+
+    check_actor_scheduling = """
+import ray
+from ray._private.test_utils import wait_for_condition
+
+ray.init()
+
+@ray.remote(num_cpus=1)
+class Actor:
+    pass
+
+actor = Actor.remote()
+wait_for_condition(lambda: ray.available_resources()['CPU'] == 1.0)
+"""
+    result = head2.exec_run(cmd=f"python -c '{check_actor_scheduling}'")
+    assert result.exit_code == 0, result.output.decode("utf-8")
 
 
 if __name__ == "__main__":
