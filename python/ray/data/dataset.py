@@ -996,7 +996,7 @@ class Dataset:
             dropping rows.
 
         .. tip::
-            If you are using parquet and the filter is a simple predicate, you might
+            If you're using parquet and the filter is a simple predicate, you might
             be able to speed it up by using filter pushdown, see
             :ref:`Parquet row pruning <parquet_row_pruning>`.
 
