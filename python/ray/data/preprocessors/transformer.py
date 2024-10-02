@@ -4,10 +4,10 @@ import numpy as np
 import pandas as pd
 
 from ray.data.preprocessor import Preprocessor
-from ray.util.annotations import PublicAPI
+from ray.util.annotations import Deprecated
 
 
-@PublicAPI(stability="alpha")
+@Deprecated
 class PowerTransformer(Preprocessor):
     """Apply a `power transform <https://en.wikipedia.org/wiki/Power_transform>`_ to
     make your data more normally distributed.
@@ -41,6 +41,8 @@ class PowerTransformer(Preprocessor):
     _is_fittable = False
 
     def __init__(self, columns: List[str], power: float, method: str = "yeo-johnson"):
+        self._emit_deprecation_warning()
+
         self.columns = columns
         self.method = method
         self.power = power

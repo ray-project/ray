@@ -6,10 +6,10 @@ import pandas as pd
 from ray.data import Dataset
 from ray.data.preprocessor import Preprocessor
 from ray.data.preprocessors.utils import simple_hash, simple_split_tokenizer
-from ray.util.annotations import PublicAPI
+from ray.util.annotations import Deprecated
 
 
-@PublicAPI(stability="alpha")
+@Deprecated
 class HashingVectorizer(Preprocessor):
     """Count the frequency of tokens using the
     `hashing trick <https://en.wikipedia.org/wiki/Feature_hashing>`_.
@@ -110,6 +110,8 @@ class HashingVectorizer(Preprocessor):
         num_features: int,
         tokenization_fn: Optional[Callable[[str], List[str]]] = None,
     ):
+        self._emit_deprecation_warning()
+
         self.columns = columns
         # TODO(matt): Set default number of features.
         # This likely requires sparse matrix support to avoid explosion of columns.
@@ -142,7 +144,7 @@ class HashingVectorizer(Preprocessor):
         )
 
 
-@PublicAPI(stability="alpha")
+@Deprecated
 class CountVectorizer(Preprocessor):
     """Count the frequency of tokens in a column of strings.
 
@@ -211,6 +213,8 @@ class CountVectorizer(Preprocessor):
         tokenization_fn: Optional[Callable[[str], List[str]]] = None,
         max_features: Optional[int] = None,
     ):
+        self._emit_deprecation_warning()
+
         # TODO(matt): Add fit_transform to avoid recomputing tokenization step.
         self.columns = columns
         # TODO(matt): Add a more robust default tokenizer.

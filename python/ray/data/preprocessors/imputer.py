@@ -8,10 +8,10 @@ from pandas.api.types import is_categorical_dtype
 from ray.data import Dataset
 from ray.data._internal.aggregate import Mean
 from ray.data.preprocessor import Preprocessor
-from ray.util.annotations import PublicAPI
+from ray.util.annotations import Deprecated
 
 
-@PublicAPI(stability="alpha")
+@Deprecated
 class SimpleImputer(Preprocessor):
     """Replace missing values with imputed values.
 
@@ -88,6 +88,8 @@ class SimpleImputer(Preprocessor):
         strategy: str = "mean",
         fill_value: Optional[Union[str, Number]] = None,
     ):
+        self._emit_deprecation_warning()
+
         self.columns = columns
         self.strategy = strategy
         self.fill_value = fill_value

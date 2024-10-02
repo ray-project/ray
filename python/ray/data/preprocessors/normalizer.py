@@ -4,10 +4,10 @@ import numpy as np
 import pandas as pd
 
 from ray.data.preprocessor import Preprocessor
-from ray.util.annotations import PublicAPI
+from ray.util.annotations import Deprecated
 
 
-@PublicAPI(stability="alpha")
+@Deprecated
 class Normalizer(Preprocessor):
     r"""Scales each sample to have unit norm.
 
@@ -84,6 +84,8 @@ class Normalizer(Preprocessor):
     _is_fittable = False
 
     def __init__(self, columns: List[str], norm="l2"):
+        self._emit_deprecation_warning()
+
         self.columns = columns
         self.norm = norm
 

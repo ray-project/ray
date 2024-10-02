@@ -4,10 +4,10 @@ import pandas as pd
 
 from ray.data.preprocessor import Preprocessor
 from ray.data.preprocessors.utils import simple_split_tokenizer
-from ray.util.annotations import PublicAPI
+from ray.util.annotations import Deprecated
 
 
-@PublicAPI(stability="alpha")
+@Deprecated
 class Tokenizer(Preprocessor):
     """Replace each string with a list of tokens.
 
@@ -55,6 +55,8 @@ class Tokenizer(Preprocessor):
         columns: List[str],
         tokenization_fn: Optional[Callable[[str], List[str]]] = None,
     ):
+        self._emit_deprecation_warning()
+
         self.columns = columns
         # TODO(matt): Add a more robust default tokenizer.
         self.tokenization_fn = tokenization_fn or simple_split_tokenizer

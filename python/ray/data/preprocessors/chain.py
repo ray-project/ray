@@ -41,6 +41,10 @@ class Chain(Preprocessor):
         preprocessors: The preprocessors to sequentially compose.
     """
 
+    def __init__(self, *preprocessors: Preprocessor):
+        self._emit_deprecation_warning()
+        self.preprocessors = preprocessors
+
     def fit_status(self):
         fittable_count = 0
         fitted_count = 0
@@ -64,9 +68,6 @@ class Chain(Preprocessor):
                 return Preprocessor.FitStatus.NOT_FITTED
         else:
             return Preprocessor.FitStatus.NOT_FITTABLE
-
-    def __init__(self, *preprocessors: Preprocessor):
-        self.preprocessors = preprocessors
 
     def _fit(self, ds: Dataset) -> Preprocessor:
         for preprocessor in self.preprocessors[:-1]:

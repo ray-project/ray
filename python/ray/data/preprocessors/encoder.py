@@ -9,10 +9,10 @@ import pandas.api.types
 from ray.air.util.data_batch_conversion import BatchFormat
 from ray.data import Dataset
 from ray.data.preprocessor import Preprocessor, PreprocessorNotFittedException
-from ray.util.annotations import PublicAPI
+from ray.util.annotations import Deprecated
 
 
-@PublicAPI(stability="alpha")
+@Deprecated
 class OrdinalEncoder(Preprocessor):
     """Encode values within columns as ordered integer values.
 
@@ -84,6 +84,8 @@ class OrdinalEncoder(Preprocessor):
     """
 
     def __init__(self, columns: List[str], *, encode_lists: bool = True):
+        self._emit_deprecation_warning()
+
         # TODO: allow user to specify order of values within each column.
         self.columns = columns
         self.encode_lists = encode_lists
@@ -126,7 +128,7 @@ class OrdinalEncoder(Preprocessor):
         )
 
 
-@PublicAPI(stability="alpha")
+@Deprecated
 class OneHotEncoder(Preprocessor):
     """`One-hot encode <https://en.wikipedia.org/wiki/One-hot#Machine_learning_and_statistics>`_
     categorical data.
@@ -203,6 +205,8 @@ class OneHotEncoder(Preprocessor):
     def __init__(
         self, columns: List[str], *, max_categories: Optional[Dict[str, int]] = None
     ):
+        self._emit_deprecation_warning()
+
         # TODO: add `drop` parameter.
         self.columns = columns
         self.max_categories = max_categories
@@ -241,7 +245,7 @@ class OneHotEncoder(Preprocessor):
         )
 
 
-@PublicAPI(stability="alpha")
+@Deprecated
 class MultiHotEncoder(Preprocessor):
     """Multi-hot encode categorical data.
 
@@ -312,6 +316,8 @@ class MultiHotEncoder(Preprocessor):
     def __init__(
         self, columns: List[str], *, max_categories: Optional[Dict[str, int]] = None
     ):
+        self._emit_deprecation_warning()
+
         # TODO: add `drop` parameter.
         self.columns = columns
         self.max_categories = max_categories
@@ -349,7 +355,7 @@ class MultiHotEncoder(Preprocessor):
         )
 
 
-@PublicAPI(stability="alpha")
+@Deprecated
 class LabelEncoder(Preprocessor):
     """Encode labels as integer targets.
 
@@ -402,6 +408,7 @@ class LabelEncoder(Preprocessor):
     """
 
     def __init__(self, label_column: str):
+        self._emit_deprecation_warning()
         self.label_column = label_column
 
     def _fit(self, dataset: Dataset) -> Preprocessor:
@@ -464,7 +471,7 @@ class LabelEncoder(Preprocessor):
         return f"{self.__class__.__name__}(label_column={self.label_column!r})"
 
 
-@PublicAPI(stability="alpha")
+@Deprecated
 class Categorizer(Preprocessor):
     """Convert columns to ``pd.CategoricalDtype``.
 
@@ -514,6 +521,8 @@ class Categorizer(Preprocessor):
         columns: List[str],
         dtypes: Optional[Dict[str, pd.CategoricalDtype]] = None,
     ):
+        self._emit_deprecation_warning()
+
         if not dtypes:
             dtypes = {}
 

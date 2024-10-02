@@ -5,10 +5,10 @@ import pandas as pd
 
 from ray.data.preprocessor import Preprocessor
 from ray.data.preprocessors.utils import simple_hash
-from ray.util.annotations import PublicAPI
+from ray.util.annotations import Deprecated
 
 
-@PublicAPI(stability="alpha")
+@Deprecated
 class FeatureHasher(Preprocessor):
     """Apply the `hashing trick <https://en.wikipedia.org/wiki/Feature_hashing>`_ to a
     table that describes token frequencies.
@@ -76,6 +76,8 @@ class FeatureHasher(Preprocessor):
     _is_fittable = False
 
     def __init__(self, columns: List[str], num_features: int):
+        self._emit_deprecation_warning()
+
         self.columns = columns
         # TODO(matt): Set default number of features.
         # This likely requires sparse matrix support to avoid explosion of columns.

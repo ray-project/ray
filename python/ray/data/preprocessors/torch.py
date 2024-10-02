@@ -5,13 +5,13 @@ import numpy as np
 from ray.air.util.data_batch_conversion import BatchFormat
 from ray.air.util.tensor_extensions.utils import _create_possibly_ragged_ndarray
 from ray.data.preprocessor import Preprocessor
-from ray.util.annotations import PublicAPI
+from ray.util.annotations import Deprecated
 
 if TYPE_CHECKING:
     import torch
 
 
-@PublicAPI(stability="alpha")
+@Deprecated
 class TorchVisionPreprocessor(Preprocessor):
     """Apply a `TorchVision transform <https://pytorch.org/vision/stable/transforms.html>`_
     to image columns.
@@ -84,6 +84,8 @@ class TorchVisionPreprocessor(Preprocessor):
         output_columns: Optional[List[str]] = None,
         batched: bool = False,
     ):
+        self._emit_deprecation_warning()
+
         if not output_columns:
             output_columns = columns
         if len(columns) != len(output_columns):

@@ -6,7 +6,7 @@ import pandas as pd
 from ray.data import Dataset
 from ray.data._internal.aggregate import Max, Min
 from ray.data.preprocessor import Preprocessor
-from ray.util.annotations import PublicAPI
+from ray.util.annotations import Deprecated
 
 
 class _AbstractKBinsDiscretizer(Preprocessor):
@@ -17,6 +17,9 @@ class _AbstractKBinsDiscretizer(Preprocessor):
     Expects either ``self.stats_`` or ``self.bins`` to be set and
     contain {column:list_of_bin_intervals}.
     """
+
+    def __init__(self):
+        self._emit_deprecation_warning()
 
     def _transform_pandas(self, df: pd.DataFrame):
         def bin_values(s: pd.Series) -> pd.Series:
@@ -65,7 +68,7 @@ class _AbstractKBinsDiscretizer(Preprocessor):
         return f"{self.__class__.__name__}({attr_str})"
 
 
-@PublicAPI(stability="alpha")
+@Deprecated
 class CustomKBinsDiscretizer(_AbstractKBinsDiscretizer):
     """Bin values into discrete intervals using custom bin edges.
 
@@ -151,6 +154,8 @@ class CustomKBinsDiscretizer(_AbstractKBinsDiscretizer):
             Dict[str, Union[pd.CategoricalDtype, Type[np.integer]]]
         ] = None,
     ):
+        self._emit_deprecation_warning()
+
         self.columns = columns
         self.bins = bins
         self.right = right
@@ -163,7 +168,7 @@ class CustomKBinsDiscretizer(_AbstractKBinsDiscretizer):
     _is_fittable = False
 
 
-@PublicAPI(stability="alpha")
+@Deprecated
 class UniformKBinsDiscretizer(_AbstractKBinsDiscretizer):
     """Bin values into discrete intervals (bins) of uniform width.
 
@@ -246,6 +251,8 @@ class UniformKBinsDiscretizer(_AbstractKBinsDiscretizer):
             Dict[str, Union[pd.CategoricalDtype, Type[np.integer]]]
         ] = None,
     ):
+        self._emit_deprecation_warning()
+
         self.columns = columns
         self.bins = bins
         self.right = right

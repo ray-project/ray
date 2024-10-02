@@ -6,10 +6,10 @@ import pandas as pd
 from ray.data import Dataset
 from ray.data._internal.aggregate import AbsMax, Max, Mean, Min, Std
 from ray.data.preprocessor import Preprocessor
-from ray.util.annotations import PublicAPI
+from ray.util.annotations import Deprecated
 
 
-@PublicAPI(stability="alpha")
+@Deprecated
 class StandardScaler(Preprocessor):
     r"""Translate and scale each column by its mean and standard deviation,
     respectively.
@@ -65,6 +65,7 @@ class StandardScaler(Preprocessor):
     """
 
     def __init__(self, columns: List[str]):
+        self._emit_deprecation_warning()
         self.columns = columns
 
     def _fit(self, dataset: Dataset) -> Preprocessor:
@@ -94,7 +95,7 @@ class StandardScaler(Preprocessor):
         return f"{self.__class__.__name__}(columns={self.columns!r})"
 
 
-@PublicAPI(stability="alpha")
+@Deprecated
 class MinMaxScaler(Preprocessor):
     r"""Scale each column by its range.
 
@@ -149,6 +150,7 @@ class MinMaxScaler(Preprocessor):
     """
 
     def __init__(self, columns: List[str]):
+        self._emit_deprecation_warning()
         self.columns = columns
 
     def _fit(self, dataset: Dataset) -> Preprocessor:
@@ -178,7 +180,7 @@ class MinMaxScaler(Preprocessor):
         return f"{self.__class__.__name__}(columns={self.columns!r})"
 
 
-@PublicAPI(stability="alpha")
+@Deprecated
 class MaxAbsScaler(Preprocessor):
     r"""Scale each column by its absolute max value.
 
@@ -229,6 +231,7 @@ class MaxAbsScaler(Preprocessor):
     """
 
     def __init__(self, columns: List[str]):
+        self._emit_deprecation_warning()
         self.columns = columns
 
     def _fit(self, dataset: Dataset) -> Preprocessor:
@@ -256,7 +259,7 @@ class MaxAbsScaler(Preprocessor):
         return f"{self.__class__.__name__}(columns={self.columns!r})"
 
 
-@PublicAPI(stability="alpha")
+@Deprecated
 class RobustScaler(Preprocessor):
     r"""Scale and translate each column using quantiles.
 
@@ -313,6 +316,8 @@ class RobustScaler(Preprocessor):
     def __init__(
         self, columns: List[str], quantile_range: Tuple[float, float] = (0.25, 0.75)
     ):
+        self._emit_deprecation_warning()
+
         self.columns = columns
         self.quantile_range = quantile_range
 

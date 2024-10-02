@@ -7,7 +7,7 @@ from enum import Enum
 from typing import TYPE_CHECKING, Any, Dict, Union
 
 from ray.air.util.data_batch_conversion import BatchFormat
-from ray.util.annotations import DeveloperAPI, PublicAPI
+from ray.util.annotations import Deprecated, DeveloperAPI
 
 if TYPE_CHECKING:
     import numpy as np
@@ -17,14 +17,14 @@ if TYPE_CHECKING:
     from ray.data import Dataset
 
 
-@PublicAPI(stability="beta")
+@Deprecated
 class PreprocessorNotFittedException(RuntimeError):
     """Error raised when the preprocessor needs to be fitted first."""
 
     pass
 
 
-@PublicAPI(stability="beta")
+@Deprecated
 class Preprocessor(abc.ABC):
     """Implements an ML preprocessing operation.
 
@@ -316,3 +316,9 @@ class Preprocessor(abc.ABC):
     def deserialize(serialized: str) -> "Preprocessor":
         """Load the original preprocessor serialized via `self.serialize()`."""
         return pickle.loads(base64.b64decode(serialized))
+
+    def _emit_deprecation_warning(self):
+        warnings.warn(
+            "This method is deprecated and will be removed in 2025.",
+            DeprecationWarning,
+        )
