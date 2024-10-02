@@ -28,7 +28,8 @@ runtime_env_common_proto_py = custom_target(
     f'@proto_basename@_proto_py',
     input: runtime_env_common_proto,
     command: protoc_py_with_default_args,
-    output: [f'@proto_basename@_pb2.py', f'@proto_basename@_pb2_grpc.py']
+    output: [f'@proto_basename@_pb2.py', f'@proto_basename@_pb2_grpc.py'],
+    build_by_default: true
 )
 # === @end: runtime_env_common.proto ===
 
@@ -59,7 +60,8 @@ common_proto_py = custom_target(
     f'@proto_basename@_proto_py',
     input: common_proto,
     command: protoc_py_with_default_args,
-    output: [f'@proto_basename@_pb2.py', f'@proto_basename@_pb2_grpc.py']
+    output: [f'@proto_basename@_pb2.py', f'@proto_basename@_pb2_grpc.py'],
+    build_by_default: true
 )
 # === @end: common.proto ===
 
@@ -89,7 +91,8 @@ autoscaler_proto_py = custom_target(
     f'@proto_basename@_proto_py',
     input: autoscaler_proto,
     command: protoc_py_with_default_args,
-    output: [f'@proto_basename@_pb2.py', f'@proto_basename@_pb2_grpc.py']
+    output: [f'@proto_basename@_pb2.py', f'@proto_basename@_pb2_grpc.py'],
+    build_by_default: true
 )
 # === @end: autoscaler.proto ===
 
@@ -143,76 +146,75 @@ gcs_proto_py = custom_target(
     f'@proto_basename@_proto_py',
     input: gcs_proto,
     command: protoc_py_with_default_args,
-    output: [f'@proto_basename@_pb2.py', f'@proto_basename@_pb2_grpc.py']
+    output: [f'@proto_basename@_pb2.py', f'@proto_basename@_pb2_grpc.py'],
+    build_by_default: true
 )
 # === @end: gcs.proto ===
 
 
-## === @begin: logging.proto ===
-#logging_proto = custom_target(
-#    'logging_proto',
-#    output: ['logging.pb.cc', 'logging.pb.h'],
-#    input: 'logging.proto',
-#    command: [protoc, '--proto_path=..', '--cpp_out=' + meson.project_build_root(), '@INPUT@'],
-#)
-#
-#logging_proto_dep = declare_dependency(
-#    sources: logging_proto
-#)
-#
-#logging_cc_proto = static_library(
-#    'logging_cc_proto',
-#    dependencies: [logging_proto_dep]
-#)
-#
-#logging_py_proto = custom_target(
-#    'logging_py_proto',
-#    output: ['logging_pb2.py', 'logging_pb2_grpc.py'],
-#    input: 'logging.proto',
-#    command: [
-#        'python3', '-m', 'grpc_tools.protoc',
-#        '--proto_path=..',
-#        '--python_out=' + meson.project_build_root(),
-#        '--grpc_python_out=' + meson.project_build_root(),
-#        '@INPUT@'
-#    ]
-#)
-## === @end: logging.proto ===
-#
-#
-## === @begin: node_manager.proto ===
-#node_manager_proto = custom_target(
-#    'node_manager_proto',
-#    output: ['node_manager.pb.cc', 'node_manager.pb.h'],
-#    input: 'node_manager.proto',
-#    command: [protoc, '--proto_path=..', '--cpp_out=' + meson.project_build_root(), '@INPUT@']
-#)
-#
-#node_manager_proto_dep = declare_dependency(
-#    sources: node_manager_proto,
-#    dependencies: [common_proto_dep, gcs_proto_dep, autoscaler_proto_dep]
-#)
-#
-#node_manager_cc_proto = static_library(
-#    'node_manager_cc_proto',
-#    dependencies: [node_manager_proto_dep]
-#)
-#
-#node_manager_py_proto = custom_target(
-#    'node_manager_py_proto',
-#    output: ['node_manager_pb2.py', 'node_manager_pb2_grpc.py'],
-#    input: 'node_manager.proto',
-#    command: [
-#        'python3', '-m', 'grpc_tools.protoc',
-#        '--proto_path=..',
-#        '--python_out=' + meson.project_build_root(),
-#        '--grpc_python_out=' + meson.project_build_root(),
-#        '@INPUT@'
-#    ]
-#)
-## === @end: node_manager.proto ===
-#
-#
+# === @begin: logging.proto ===
+proto_basename = 'logging'
+
+logging_proto = f'@proto_basename@.proto'
+
+logging_proto_cpp = custom_target(
+    f'@proto_basename@_proto_cpp',
+    input: logging_proto,
+    command: protoc_cpp_with_default_args,
+    output: [f'@proto_basename@.pb.cc', f'@proto_basename@.pb.h']
+)
+
+logging_proto_cpp_dep = declare_dependency(
+    sources: logging_proto_cpp
+)
+
+logging_proto_cpp_lib = static_library(
+    f'@proto_basename@_proto_cpp_lib',
+    dependencies: [protobuf, logging_proto_cpp_dep]
+)
+
+logging_proto_py = custom_target(
+    f'@proto_basename@_proto_py',
+    input: logging_proto,
+    command: protoc_py_with_default_args,
+    output: [f'@proto_basename@_pb2.py', f'@proto_basename@_pb2_grpc.py'],
+    build_by_default: true
+)
+# === @end: logging.proto ===
+
+
+# === @begin: node_manager.proto ===
+proto_basename = 'node_manager'
+
+node_manager_proto = f'@proto_basename@.proto'
+
+node_manager_proto_cpp = custom_target(
+    f'@proto_basename@_proto_cpp',
+    input: node_manager_proto,
+    command: protoc_cpp_with_default_args,
+    output: [f'@proto_basename@.pb.cc', f'@proto_basename@.pb.h']
+)
+
+node_manager_proto_cpp_dep = declare_dependency(
+    sources: node_manager_proto_cpp,
+    dependencies: [common_proto_cpp_dep, gcs_proto_cpp_dep, autoscaler_proto_cpp_dep]
+)
+
+node_manager_proto_cpp_lib = static_library(
+    f'@proto_basename@_proto_cpp_lib',
+    dependencies: [protobuf, node_manager_proto_cpp_dep]
+)
+
+node_manager_proto_py = custom_target(
+    f'@proto_basename@_proto_py',
+    input: node_manager_proto,
+    command: protoc_py_with_default_args,
+    output: [f'@proto_basename@_pb2.py', f'@proto_basename@_pb2_grpc.py'],
+    build_by_default: true
+)
+# === @end: node_manager.proto ===
+
+
 ## === @begin: reporter.proto ===
 #reporter_proto = custom_target(
 #    'reporter_proto',

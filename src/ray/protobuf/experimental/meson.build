@@ -23,6 +23,7 @@ instance_manager_proto_py = custom_target(
     f'@proto_basename@_proto_py',
     input: instance_manager_proto,
     command: protoc_py_with_default_args,
-    output: [f'@proto_basename@_pb2.py', f'@proto_basename@_pb2_grpc.py']
+    output: [f'@proto_basename@_pb2.py', f'@proto_basename@_pb2_grpc.py'],
+    build_by_default: true
 )
 # === @end: instance_manager.proto ===
