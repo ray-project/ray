@@ -17,7 +17,7 @@ Please note that the YAML file in this example uses `serveConfigV2`, which is su
 
 ```sh
 # Step 3.1: Download `ray-service.text-summarizer.yaml`
-curl -LO https://raw.githubusercontent.com/ray-project/kuberay/v1.0.0/ray-operator/config/samples/ray-service.text-summarizer.yaml
+curl -LO https://raw.githubusercontent.com/ray-project/kuberay/v1.2.2/ray-operator/config/samples/ray-service.text-summarizer.yaml
 
 # Step 3.2: Create a RayService
 kubectl apply -f ray-service.text-summarizer.yaml

@@ -33,7 +33,6 @@ config = (
         model_config_dict={
             "vf_share_layers": True,
             "fcnet_hiddens": [512, 512],
-            "uses_new_env_runners": True,
         },
     )
 )
