@@ -354,6 +354,7 @@ ServerBidiReactor *RaySyncerService::StartSync(grpc::CallbackServerContext *cont
         const auto &node_id = reactor->GetRemoteNodeID();
         if (syncer_.sync_reactors_.contains(node_id) &&
             syncer_.sync_reactors_.at(node_id) != reactor) {
+          // There is a new connection to the node, no need to clean up.
           // This can happen when there is transient network error and the client
           // reconnects. The sequence of events are:
           // 1. Client reconnects, StartSync is called
