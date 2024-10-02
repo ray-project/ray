@@ -13,6 +13,17 @@ py = import('python').find_installation(pure: false)
 # === End of imports ===
 
 
+# === @begin: Constants ===
+PROTOC_TARGET_PROTO = 'proto'
+PROTOC_TARGET_CPP = 'cpp'
+PROTOC_TARGET_CPP_STATIC_LIBRARY = 'cpp_static_library'
+PROTOC_TARGET_PY = 'py'
+PROTOC_TARGET_GRPC_PY = 'grpc_py'
+PROTOC_TARGET_GRPC_CPP = 'grpc_cpp'
+PROTOC_TARGET_GRPC_CPP_STATIC_LIBRARY = 'grpc_cpp_static_library'
+# === @end: Constants ===
+
+
 # === Begin of dependencies ===
 # I don't want to bring the entire GTest, portions of which Ray requires even for non-test code.
 # Instead, I've vendored a few GTest headers it really uses and add them into search paths, used by all compiler invocations.
