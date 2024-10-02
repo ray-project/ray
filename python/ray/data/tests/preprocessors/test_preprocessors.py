@@ -34,6 +34,34 @@ from ray.data.preprocessors import (
 )
 
 
+@pytest.mark.parametrize(
+    "preprocessor_factory",
+    [
+        lambda: Categorizer(columns=["X"]),
+        lambda: CountVectorizer(columns=["X"]),
+        lambda: Chain(StandardScaler(columns=["X"]), MinMaxScaler(columns=["X"])),
+        lambda: FeatureHasher(columns=["X"], num_features=1),
+        lambda: HashingVectorizer(columns=["X"], num_features=1),
+        lambda: LabelEncoder(label_column="X"),
+        lambda: MaxAbsScaler(columns=["X"]),
+        lambda: MinMaxScaler(columns=["X"]),
+        lambda: MultiHotEncoder(columns=["X"]),
+        lambda: Normalizer(columns=["X"]),
+        lambda: OneHotEncoder(columns=["X"]),
+        lambda: OrdinalEncoder(columns=["X"]),
+        lambda: PowerTransformer(columns=["X"], power=1),
+        lambda: RobustScaler(columns=["X"]),
+        lambda: SimpleImputer(columns=["X"]),
+        lambda: StandardScaler(columns=["X"]),
+        lambda: Concatenator(),
+        lambda: Tokenizer(columns=["X"]),
+    ],
+)
+def test_preprocessor_emits_deprecation_warning(preprocessor_factory):
+    with pytest.warns(DeprecationWarning):
+        preprocessor_factory()
+
+
 @pytest.fixture
 def create_dummy_preprocessors():
     class DummyPreprocessorWithNothing(Preprocessor):
