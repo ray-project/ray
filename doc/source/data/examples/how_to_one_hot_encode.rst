@@ -6,11 +6,11 @@ How to One-hot Encode Data
 
     assert False
 
-.. #CVGA-start 
+.. CVGA-start 
 One-hot encoding is a technique used to convert categorical data into a numerical format 
 that ML algorithms can understand. This tutorial shows you how to use this technique 
 with Ray Data. 
-.. #CVGA-end
+.. CVGA-end
 
 Load the data
 -------------
