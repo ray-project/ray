@@ -995,6 +995,11 @@ class Dataset:
             :meth:`Dataset.map_batches` might be faster. You can implement filter by
             dropping rows.
 
+        .. tip::
+            If you're using parquet and the filter is a simple predicate, you might
+            be able to speed it up by using filter pushdown, see
+            :ref:`Parquet row pruning <parquet_row_pruning>`.
+
         Examples:
 
             >>> import ray
