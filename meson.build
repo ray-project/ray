@@ -185,7 +185,34 @@ boost = dependency('boost', method: 'cmake')
 msgpack = dependency('msgpack-cxx', method: 'cmake')
 
 # @TODO+: reimplment asap
-opencensus = dependency('OpenCensus', method: 'cmake')
+opencensus = dependency('OpenCensus', method: 'cmake', modules: [
+    'opencensus-cpp::common_hostname',
+    'opencensus-cpp::common_random',
+    'opencensus-cpp::common_stats_object',
+    'opencensus-cpp::common_string_vector_hash',
+    'opencensus-cpp::common_varint',
+    'opencensus-cpp::context',
+    'opencensus-cpp::exporters_stats_prometheus',
+    'opencensus-cpp::exporters_stats_prometheus_utils',
+    'opencensus-cpp::exporters_stats_stdout',
+    'opencensus-cpp::exporters_trace_stdout',
+    'opencensus-cpp::stats',
+    'opencensus-cpp::stats_test_utils',
+    'opencensus-cpp::stats_core',
+    'opencensus-cpp::stats_recording',
+    'opencensus-cpp::tags',
+    'opencensus-cpp::tags_context_util',
+    'opencensus-cpp::tags_grpc_tags_bin',
+    'opencensus-cpp::tags_with_tag_map',
+    'opencensus-cpp::trace',
+    'opencensus-cpp::trace_b3',
+    'opencensus-cpp::trace_cloud_trace_context',
+    'opencensus-cpp::trace_context_util',
+    'opencensus-cpp::trace_grpc_trace_bin',
+    'opencensus-cpp::trace_span_context',
+    'opencensus-cpp::trace_trace_context',
+    'opencensus-cpp::trace_with_span'
+])
 
 # If not disabling `pkg-config` search, this causes the dependency cycle and infinite execution
 protobuf = dependency('protobuf', modules: ['protobuf::libprotobuf'], method: 'cmake')
@@ -197,7 +224,16 @@ grpc = dependency('gRPC', method: 'cmake')
 
 # === @begin: External programs ===
 protoc_cpp = find_program('protoc')
-protoc_cpp_with_default_args = [protoc_cpp, '--proto_path=..', '--cpp_out=@BUILD_ROOT@', '@INPUT@']
+protoc_cpp_with_default_args = [
+    protoc_cpp,
+    '--proto_path=..',
+    '--cpp_out=@BUILD_ROOT@',
+    '@INPUT@'
+]
+proto_cpp_default_kwargs = {
+    'command': protoc_cpp_with_default_args,
+    'output': ['@BASENAME@.pb.h', '@BASENAME@.pb.cc']
+}
 
 protoc_grpc_cpp_plugin = find_program('grpc_cpp_plugin')
 protoc_cpp_grpc_with_default_args = [
@@ -209,7 +245,18 @@ protoc_cpp_grpc_with_default_args = [
 ]
 
 protoc_py = ['python3', '-m', 'grpc_tools.protoc']
-protoc_py_with_default_args = [protoc_py, '--proto_path=..', '--python_out=@BUILD_ROOT@', '--grpc_python_out=@BUILD_ROOT@', '@INPUT@']
+protoc_py_with_default_args = [
+    protoc_py,
+    '--proto_path=..',
+    '--python_out=@BUILD_ROOT@',
+    '--grpc_python_out=@BUILD_ROOT@',
+    '@INPUT@'
+]
+proto_py_default_kwargs = {
+    'command': protoc_py_with_default_args,
+    'output': ['@BASENAME@_pb2.py', '@BASENAME@_pb2_grpc.py'],
+    'build_by_default': true
+}
 # === @end: External programs ===
 
 
@@ -239,7 +286,7 @@ grpc_common_cpp_lib = static_library(
         boost,
         grpc,
         msgpack,
-        #opencensus,
+        opencensus,
         protobuf
     ],
     install: false

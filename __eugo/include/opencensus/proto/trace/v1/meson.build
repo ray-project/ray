@@ -1,13 +1,9 @@
 # === @begin: trace.proto ===
-proto_basename = 'trace'
-
-opencensus_trace_proto = f'@proto_basename@.proto'
+opencensus_trace_proto = 'trace.proto'
 
 opencensus_trace_proto_cpp = custom_target(
-    f'opencensus_@proto_basename@_proto_cpp',
     input: opencensus_trace_proto,
-    command: opencensus_protoc_cpp_with_default_arguments,
-    output: [f'@proto_basename@.pb.cc', f'@proto_basename@.pb.h']
+    kwargs: opencensus_proto_cpp_default_kwargs
 )
 
 opencensus_trace_proto_cpp_dep = declare_dependency(
@@ -18,15 +14,11 @@ opencensus_trace_proto_cpp_dep = declare_dependency(
 
 
 # === @begin: trace_config.proto ===
-proto_basename = 'trace_config'
-
-opencensus_trace_config_proto = f'@proto_basename@.proto'
+opencensus_trace_config_proto = 'trace_config.proto'
 
 opencensus_trace_config_proto_cpp = custom_target(
-    f'opencensus_@proto_basename@_proto_cpp',
     input: opencensus_trace_config_proto,
-    command: opencensus_protoc_cpp_with_default_arguments,
-    output: [f'@proto_basename@.pb.cc', f'@proto_basename@.pb.h']
+    kwargs: opencensus_proto_cpp_default_kwargs
 )
 
 opencensus_trace_config_proto_cpp_dep = declare_dependency(

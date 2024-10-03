@@ -5,6 +5,9 @@ opencensus_protoc_cpp_with_default_arguments = [
     '@INPUT@'
 ]
 
+opencensus_proto_cpp_default_kwargs = proto_cpp_default_kwargs + {'command': opencensus_protoc_cpp_with_default_arguments}
+
+
 # @Important: Order matters!
 subdir('resource/')
 subdir('stats/')
