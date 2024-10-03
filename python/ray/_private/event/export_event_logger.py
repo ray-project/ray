@@ -12,13 +12,16 @@ from ray.core.generated.export_event_pb2 import ExportEvent
 from ray.core.generated.export_submission_job_event_pb2 import (
     ExportSubmissionJobEventData,
 )
+from ray.core.generated.export_train_run_info_pb2 import (
+    ExportTrainRunInfo,
+)
 from ray._private.protobuf_compat import message_to_dict
 
 global_logger = logging.getLogger(__name__)
 
 # This contains the union of export event data types which emit events
 # using the python ExportEventLoggerAdapter
-ExportEventDataType = Union[ExportSubmissionJobEventData]
+ExportEventDataType = Union[ExportSubmissionJobEventData, ExportTrainRunInfo]
 
 
 def generate_event_id():
