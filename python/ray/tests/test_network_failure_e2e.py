@@ -184,12 +184,9 @@ class Actor:
     def ping(self):
         return 1
 
-print(ray.available_resources())
 actor = Actor.remote()
 ray.get(actor.ping.remote())
-print(ray.cluster_resources())
-print(ray.available_resources())
-wait_for_condition(lambda: ray.available_resources()['CPU'] == 1.0)
+wait_for_condition(lambda: ray.available_resources()["CPU"] == 1.0)
 """
     result = head2.exec_run(cmd=f"python -c '{check_actor_scheduling}'")
     assert result.exit_code == 0, result.output.decode("utf-8")
