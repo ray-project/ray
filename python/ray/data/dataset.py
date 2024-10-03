@@ -411,9 +411,8 @@ class Dataset:
 
         .. tip::
             For interactive development, to understand the format of the input to ``fn``,
-            you can call :meth:`~Dataset.take_batch` on the dataset to get a batch in the
+            call :meth:`~Dataset.take_batch` on the dataset to get a batch in the
             same format as will be passed to ``fn``.
-
         .. tip::
             If ``fn`` doesn't mutate its input, set ``zero_copy_batch=True`` to improve
             performance and decrease memory utilization.
