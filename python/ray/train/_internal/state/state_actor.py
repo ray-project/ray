@@ -3,10 +3,10 @@ import threading
 from typing import Dict, Optional
 
 import ray
-from ray.actor import ActorHandle
-from ray.train._internal.state.schema import TrainRunInfo
 from ray._private import ray_constants
 from ray._private.event.export_event_logger import get_export_event_logger
+from ray.actor import ActorHandle
+from ray.train._internal.state.schema import TrainRunInfo
 
 logger = logging.getLogger(__name__)
 
@@ -15,12 +15,11 @@ logger = logging.getLogger(__name__)
 class TrainStateActor:
     def __init__(self):
         from ray.core.generated.export_event_pb2 import ExportEvent
+
         self._run_infos: Dict[str, TrainRunInfo] = {}
         self._export_train_run_info_logger: logging.Logger = None
         try:
-            if (
-                ray_constants.RAY_ENABLE_EXPORT_API_WRITE
-            ):
+            if ray_constants.RAY_ENABLE_EXPORT_API_WRITE:
                 self._export_train_run_info_logger = get_export_event_logger(
                     ExportEvent.SourceType.EXPORT_TRAIN_RUN,
                     "/tmp/ray/session_latest/logs",
@@ -43,11 +42,10 @@ class TrainStateActor:
     def get_all_train_runs(self) -> Dict[str, TrainRunInfo]:
         # Retrieve all registered train runs
         return self._run_infos
-    
+
     def _write_train_run_export_event(self, run_info: TrainRunInfo) -> None:
-        from ray.core.generated.export_train_run_info_pb2 import (
-            ExportTrainRunInfo,
-        )
+        from ray.core.generated.export_train_run_info_pb2 import ExportTrainRunInfo
+
         if not self._export_train_run_info_logger:
             return
         export_run_info = ExportTrainRunInfo(
@@ -66,22 +64,23 @@ class TrainStateActor:
                     pid=worker.pid,
                     gpu_ids=worker.gpu_ids,
                     status=worker.status,
-                ) for worker in run_info.workers
+                )
+                for worker in run_info.workers
             ],
             datasets=[
                 ExportTrainRunInfo.TrainDatasetInfo(
                     name=dataset.name,
                     dataset_uuid=dataset.dataset_uuid,
                     dataset_name=dataset.dataset_name,
-                ) for dataset in run_info.datasets
+                )
+                for dataset in run_info.datasets
             ],
             run_status=run_info.run_status,
             status_detail=run_info.status_detail,
             start_time_ms=run_info.start_time_ms,
-            end_time_ms=run_info.end_time_ms
+            end_time_ms=run_info.end_time_ms,
         )
         self._export_train_run_info_logger.send_event(export_run_info)
-        
 
 
 TRAIN_STATE_ACTOR_NAME = "train_state_actor"
