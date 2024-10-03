@@ -35,8 +35,8 @@ JobInfoAccessor::JobInfoAccessor(GcsClient *client_impl) : client_impl_(client_i
 Status JobInfoAccessor::AsyncAdd(const std::shared_ptr<JobTableData> &data_ptr,
                                  const StatusCallback &callback) {
   JobID job_id = JobID::FromBinary(data_ptr->job_id());
-  RAY_LOG(DEBUG) << "Adding job, job id = " << job_id
-                 << ", driver pid = " << data_ptr->driver_pid();
+  RAY_LOG(DEBUG).WithField(job_id)
+      << "Adding job, driver pid = " << data_ptr->driver_pid();
   rpc::AddJobRequest request;
   request.mutable_data()->CopyFrom(*data_ptr);
   client_impl_->GetGcsRpcClient().AddJob(
@@ -45,16 +45,15 @@ Status JobInfoAccessor::AsyncAdd(const std::shared_ptr<JobTableData> &data_ptr,
         if (callback) {
           callback(status);
         }
-        RAY_LOG(DEBUG) << "Finished adding job, status = " << status
-                       << ", job id = " << job_id
-                       << ", driver pid = " << data_ptr->driver_pid();
+        RAY_LOG(DEBUG).WithField(job_id) << "Finished adding job, status = " << status
+                                         << ", driver pid = " << data_ptr->driver_pid();
       });
   return Status::OK();
 }
 
 Status JobInfoAccessor::AsyncMarkFinished(const JobID &job_id,
                                           const StatusCallback &callback) {
-  RAY_LOG(DEBUG) << "Marking job state, job id = " << job_id;
+  RAY_LOG(DEBUG).WithField(job_id) << "Marking job state";
   rpc::MarkJobFinishedRequest request;
   request.set_job_id(job_id.Binary());
   client_impl_->GetGcsRpcClient().MarkJobFinished(
@@ -63,8 +62,8 @@ Status JobInfoAccessor::AsyncMarkFinished(const JobID &job_id,
         if (callback) {
           callback(status);
         }
-        RAY_LOG(DEBUG) << "Finished marking job state, status = " << status
-                       << ", job id = " << job_id;
+        RAY_LOG(DEBUG).WithField(job_id)
+            << "Finished marking job state, status = " << status;
       });
   return Status::OK();
 }
@@ -169,8 +168,7 @@ ActorInfoAccessor::ActorInfoAccessor(GcsClient *client_impl)
 
 Status ActorInfoAccessor::AsyncGet(
     const ActorID &actor_id, const OptionalItemCallback<rpc::ActorTableData> &callback) {
-  RAY_LOG(DEBUG) << "Getting actor info, actor id = " << actor_id
-                 << ", job id = " << actor_id.JobId();
+  RAY_LOG(DEBUG).WithField(actor_id).WithField(actor_id.JobId()) << "Getting actor info";
   rpc::GetActorInfoRequest request;
   request.set_actor_id(actor_id.Binary());
   client_impl_->GetGcsRpcClient().GetActorInfo(
@@ -181,9 +179,8 @@ Status ActorInfoAccessor::AsyncGet(
         } else {
           callback(status, std::nullopt);
         }
-        RAY_LOG(DEBUG) << "Finished getting actor info, status = " << status
-                       << ", actor id = " << actor_id
-                       << ", job id = " << actor_id.JobId();
+        RAY_LOG(DEBUG).WithField(actor_id).WithField(actor_id.JobId())
+            << "Finished getting actor info, status = " << status;
       });
   return Status::OK();
 }
@@ -403,8 +400,8 @@ Status ActorInfoAccessor::AsyncSubscribe(
     const ActorID &actor_id,
     const SubscribeCallback<ActorID, rpc::ActorTableData> &subscribe,
     const StatusCallback &done) {
-  RAY_LOG(DEBUG) << "Subscribing update operations of actor, actor id = " << actor_id
-                 << ", job id = " << actor_id.JobId();
+  RAY_LOG(DEBUG).WithField(actor_id).WithField(actor_id.JobId())
+      << "Subscribing update operations of actor";
   RAY_CHECK(subscribe != nullptr) << "Failed to subscribe actor, actor id = " << actor_id;
 
   auto fetch_data_operation =
@@ -439,14 +436,14 @@ Status ActorInfoAccessor::AsyncSubscribe(
 }
 
 Status ActorInfoAccessor::AsyncUnsubscribe(const ActorID &actor_id) {
-  RAY_LOG(DEBUG) << "Cancelling subscription to an actor, actor id = " << actor_id
-                 << ", job id = " << actor_id.JobId();
+  RAY_LOG(DEBUG).WithField(actor_id).WithField(actor_id.JobId())
+      << "Cancelling subscription to an actor";
   auto status = client_impl_->GetGcsSubscriber().UnsubscribeActor(actor_id);
   absl::MutexLock lock(&mutex_);
   resubscribe_operations_.erase(actor_id);
   fetch_data_operations_.erase(actor_id);
-  RAY_LOG(DEBUG) << "Finished cancelling subscription to an actor, actor id = "
-                 << actor_id << ", job id = " << actor_id.JobId();
+  RAY_LOG(DEBUG).WithField(actor_id).WithField(actor_id.JobId())
+      << "Finished cancelling subscription to an actor";
   return status;
 }
 
@@ -479,8 +476,8 @@ NodeInfoAccessor::NodeInfoAccessor(GcsClient *client_impl) : client_impl_(client
 Status NodeInfoAccessor::RegisterSelf(const GcsNodeInfo &local_node_info,
                                       const StatusCallback &callback) {
   auto node_id = NodeID::FromBinary(local_node_info.node_id());
-  RAY_LOG(DEBUG) << "Registering node info, node id = " << node_id
-                 << ", address is = " << local_node_info.node_manager_address();
+  RAY_LOG(DEBUG).WithField(node_id)
+      << "Registering node info, address is = " << local_node_info.node_manager_address();
   RAY_CHECK(local_node_id_.IsNil()) << "This node is already connected.";
   RAY_CHECK(local_node_info.state() == GcsNodeInfo::ALIVE);
   rpc::RegisterNodeRequest request;
@@ -496,8 +493,8 @@ Status NodeInfoAccessor::RegisterSelf(const GcsNodeInfo &local_node_info,
         if (callback) {
           callback(status);
         }
-        RAY_LOG(DEBUG) << "Finished registering node info, status = " << status
-                       << ", node id = " << node_id;
+        RAY_LOG(DEBUG).WithField(node_id)
+            << "Finished registering node info, status = " << status;
       });
 
   return Status::OK();
@@ -510,7 +507,7 @@ void NodeInfoAccessor::UnregisterSelf(const rpc::NodeDeathInfo &node_death_info,
     return;
   }
   auto node_id = NodeID::FromBinary(local_node_info_.node_id());
-  RAY_LOG(INFO) << "Unregistering node, node id = " << node_id;
+  RAY_LOG(INFO).WithField(node_id) << "Unregistering node";
 
   rpc::UnregisterNodeRequest request;
   request.set_node_id(local_node_info_.node_id());
@@ -523,8 +520,8 @@ void NodeInfoAccessor::UnregisterSelf(const rpc::NodeDeathInfo &node_death_info,
           local_node_info_.set_state(GcsNodeInfo::DEAD);
           local_node_id_ = NodeID::Nil();
         }
-        RAY_LOG(INFO) << "Finished unregistering node info, status = " << status
-                      << ", node id = " << node_id;
+        RAY_LOG(INFO).WithField(node_id)
+            << "Finished unregistering node info, status = " << status;
         unregister_done_callback();
       });
 }
@@ -536,7 +533,7 @@ const GcsNodeInfo &NodeInfoAccessor::GetSelfInfo() const { return local_node_inf
 Status NodeInfoAccessor::AsyncRegister(const rpc::GcsNodeInfo &node_info,
                                        const StatusCallback &callback) {
   NodeID node_id = NodeID::FromBinary(node_info.node_id());
-  RAY_LOG(DEBUG) << "Registering node info, node id = " << node_id;
+  RAY_LOG(DEBUG).WithField(node_id) << "Registering node info";
   rpc::RegisterNodeRequest request;
   request.mutable_node_info()->CopyFrom(node_info);
   client_impl_->GetGcsRpcClient().RegisterNode(
@@ -544,8 +541,8 @@ Status NodeInfoAccessor::AsyncRegister(const rpc::GcsNodeInfo &node_info,
         if (callback) {
           callback(status);
         }
-        RAY_LOG(DEBUG) << "Finished registering node info, status = " << status
-                       << ", node id = " << node_id;
+        RAY_LOG(DEBUG).WithField(node_id)
+            << "Finished registering node info, status = " << status;
       });
   return Status::OK();
 }
@@ -599,7 +596,7 @@ Status NodeInfoAccessor::AsyncCheckAlive(const std::vector<std::string> &raylet_
 
 Status NodeInfoAccessor::AsyncDrainNode(const NodeID &node_id,
                                         const StatusCallback &callback) {
-  RAY_LOG(DEBUG) << "Draining node, node id = " << node_id;
+  RAY_LOG(DEBUG).WithField(node_id) << "Draining node";
   rpc::DrainNodeRequest request;
   auto draining_request = request.add_drain_node_data();
   draining_request->set_node_id(node_id.Binary());
@@ -608,8 +605,8 @@ Status NodeInfoAccessor::AsyncDrainNode(const NodeID &node_id,
         if (callback) {
           callback(status);
         }
-        RAY_LOG(DEBUG) << "Finished draining node, status = " << status
-                       << ", node id = " << node_id;
+        RAY_LOG(DEBUG).WithField(node_id)
+            << "Finished draining node, status = " << status;
       });
   return Status::OK();
 }
@@ -762,8 +759,8 @@ void NodeInfoAccessor::HandleNotification(GcsNodeInfo &&node_info) {
   }
 
   // Add the notification to our cache.
-  RAY_LOG(INFO) << "Received notification for node id = " << node_id
-                << ", IsAlive = " << is_alive;
+  RAY_LOG(INFO).WithField(node_id)
+      << "Received notification for node, IsAlive = " << is_alive;
 
   auto &node = node_cache_[node_id];
   if (is_alive) {
@@ -801,21 +798,6 @@ void NodeInfoAccessor::AsyncResubscribe() {
       fetch_node_data_operation_(fetch_all_done);
     }));
   }
-}
-
-Status NodeInfoAccessor::AsyncGetInternalConfig(
-    const OptionalItemCallback<std::string> &callback) {
-  rpc::GetInternalConfigRequest request;
-  client_impl_->GetGcsRpcClient().GetInternalConfig(
-      request, [callback](const Status &status, rpc::GetInternalConfigReply &&reply) {
-        if (status.ok()) {
-          RAY_LOG(DEBUG) << "Fetched internal config: " << reply.config();
-        } else {
-          RAY_LOG(ERROR) << "Failed to get internal config: " << status.message();
-        }
-        callback(status, reply.config());
-      });
-  return Status::OK();
 }
 
 NodeResourceInfoAccessor::NodeResourceInfoAccessor(GcsClient *client_impl)
@@ -1052,8 +1034,8 @@ Status WorkerInfoAccessor::AsyncUpdateWorkerNumPausedThreads(
   rpc::UpdateWorkerNumPausedThreadsRequest request;
   request.set_worker_id(worker_id.Binary());
   request.set_num_paused_threads_delta(num_paused_threads_delta);
-  RAY_LOG(DEBUG) << "Update the num paused threads on worker id = " << worker_id
-                 << " by delta = " << num_paused_threads_delta << ".";
+  RAY_LOG(DEBUG).WithField(worker_id)
+      << "Update the num paused threads by delta = " << num_paused_threads_delta << ".";
   client_impl_->GetGcsRpcClient().UpdateWorkerNumPausedThreads(
       request,
       [callback](const Status &status, rpc::UpdateWorkerNumPausedThreadsReply &&reply) {
@@ -1075,11 +1057,11 @@ Status PlacementGroupInfoAccessor::SyncCreatePlacementGroup(
   auto status = client_impl_->GetGcsRpcClient().SyncCreatePlacementGroup(
       request, &reply, GetGcsTimeoutMs());
   if (status.ok()) {
-    RAY_LOG(DEBUG) << "Finished registering placement group. placement group id = "
-                   << placement_group_spec.PlacementGroupId();
+    RAY_LOG(DEBUG).WithField(placement_group_spec.PlacementGroupId())
+        << "Finished registering placement group.";
   } else {
-    RAY_LOG(ERROR) << "Placement group id = " << placement_group_spec.PlacementGroupId()
-                   << " failed to be registered. " << status;
+    RAY_LOG(ERROR).WithField(placement_group_spec.PlacementGroupId())
+        << "Failed to be registered. " << status;
   }
   return status;
 }
@@ -1097,8 +1079,7 @@ Status PlacementGroupInfoAccessor::SyncRemovePlacementGroup(
 Status PlacementGroupInfoAccessor::AsyncGet(
     const PlacementGroupID &placement_group_id,
     const OptionalItemCallback<rpc::PlacementGroupTableData> &callback) {
-  RAY_LOG(DEBUG) << "Getting placement group info, placement group id = "
-                 << placement_group_id;
+  RAY_LOG(DEBUG).WithField(placement_group_id) << "Getting placement group info";
   rpc::GetPlacementGroupRequest request;
   request.set_placement_group_id(placement_group_id.Binary());
   client_impl_->GetGcsRpcClient().GetPlacementGroup(
@@ -1110,8 +1091,8 @@ Status PlacementGroupInfoAccessor::AsyncGet(
         } else {
           callback(status, std::nullopt);
         }
-        RAY_LOG(DEBUG) << "Finished getting placement group info, placement group id = "
-                       << placement_group_id;
+        RAY_LOG(DEBUG).WithField(placement_group_id)
+            << "Finished getting placement group info";
       });
   return Status::OK();
 }
@@ -1162,8 +1143,8 @@ Status PlacementGroupInfoAccessor::SyncWaitUntilReady(
   request.set_placement_group_id(placement_group_id.Binary());
   auto status = client_impl_->GetGcsRpcClient().SyncWaitPlacementGroupUntilReady(
       request, &reply, absl::ToInt64Milliseconds(absl::Seconds(timeout_seconds)));
-  RAY_LOG(DEBUG) << "Finished waiting placement group until ready, placement group id = "
-                 << placement_group_id;
+  RAY_LOG(DEBUG).WithField(placement_group_id)
+      << "Finished waiting placement group until ready";
   return status;
 }
 
@@ -1412,6 +1393,21 @@ Status InternalKVAccessor::Exists(const std::string &ns,
         ret_promise.set_value(status);
       }));
   return ret_promise.get_future().get();
+}
+
+Status InternalKVAccessor::AsyncGetInternalConfig(
+    const OptionalItemCallback<std::string> &callback) {
+  rpc::GetInternalConfigRequest request;
+  client_impl_->GetGcsRpcClient().GetInternalConfig(
+      request, [callback](const Status &status, rpc::GetInternalConfigReply &&reply) {
+        if (status.ok()) {
+          RAY_LOG(DEBUG) << "Fetched internal config: " << reply.config();
+        } else {
+          RAY_LOG(ERROR) << "Failed to get internal config: " << status.message();
+        }
+        callback(status, reply.config());
+      });
+  return Status::OK();
 }
 
 RuntimeEnvAccessor::RuntimeEnvAccessor(GcsClient *client_impl)

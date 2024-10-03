@@ -237,6 +237,10 @@ def test_tpu_resource_returns_tpu_command_runner(test_case):
             {"acceleratorConfig": {"type": "V5LITE_POD", "topology": "2x4"}},
             "TPU-v5litepod-8-head",
         ),
+        (
+            {"acceleratorConfig": {"type": "V6E", "topology": "2x4"}},
+            "TPU-v6e-8-head",
+        ),
     ],
 )
 def test_tpu_node_fillout(test_case):
@@ -316,6 +320,7 @@ def test_invalid_accelerator_configs(node_config):
         ({"acceleratorConfig": {"type": "V4", "topology": "2x2x8"}}, 32, False),
         ({"acceleratorConfig": {"type": "V4", "topology": "4x4x4"}}, 64, False),
         ({"acceleratorConfig": {"type": "V5LITE_POD", "topology": "2x4"}}, 8, True),
+        ({"acceleratorConfig": {"type": "V6E", "topology": "2x4"}}, 8, True),
     ],
 )
 def test_tpu_chip_calculation_single_host_logic(test_case):
@@ -367,6 +372,11 @@ def test_tpu_chip_calculation_single_host_logic(test_case):
             GCPNodeType.TPU,
             True,
         ),
+        (
+            {"acceleratorConfig": {"type": "V6E", "topology": "2x4"}},
+            GCPNodeType.TPU,
+            True,
+        ),
     ],
 )
 def test_get_node_type_and_has_tpu(test_case):
@@ -414,6 +424,7 @@ def test_tpu_pod_emits_warning(propagate_logs, caplog, accelerator_pod_tuple):
         ("v4-128", "V4", "4x4x4"),
         ("v4-256", "V4", "4x4x8"),
         ("v5litepod-8", "V5LITE_POD", "2x4"),
+        ("v6e-8", "V6E", "2x4"),
     ],
 )
 def test_tpu_accelerator_config_to_type(test_case):

@@ -519,16 +519,6 @@ class VectorEnvWrapper(BaseEnv):
         return self._action_space
 
     @override(BaseEnv)
-    def action_space_sample(self, agent_id: list = None) -> MultiEnvDict:
-        del agent_id
-        return {0: {_DUMMY_AGENT_ID: self._action_space.sample()}}
-
-    @override(BaseEnv)
-    def observation_space_sample(self, agent_id: list = None) -> MultiEnvDict:
-        del agent_id
-        return {0: {_DUMMY_AGENT_ID: self._observation_space.sample()}}
-
-    @override(BaseEnv)
     def get_agent_ids(self) -> Set[AgentID]:
         return {_DUMMY_AGENT_ID}
 

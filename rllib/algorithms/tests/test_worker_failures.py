@@ -8,6 +8,7 @@ import ray
 from ray.util.state import list_actors
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
+from ray.rllib.algorithms.impala import IMPALAConfig
 from ray.rllib.algorithms.sac.sac import SACConfig
 from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.connectors.env_to_module.flatten_observations import FlattenObservations
@@ -156,9 +157,6 @@ class FaultInjectEnv(gym.Env):
             time.sleep(self.config.get("step_delay"))
 
         return self.env.step(action)
-
-    def action_space_sample(self):
-        return self.env.action_space.sample()
 
 
 class ForwardHealthCheckToEnvWorker(SingleAgentEnvRunner):
@@ -410,36 +408,24 @@ class TestWorkerFailures(unittest.TestCase):
             .multi_agent(policies={"p0"}, policy_mapping_fn=lambda *a, **k: "p0"),
         )
 
-    # TODO (sven): Reinstate once IMPALA/APPO support EnvRunners.
-    # def test_async_samples(self):
-    #    self._do_test_fault_ignore(
-    #        IMPALAConfig()
-    #        .api_stack(
-    #            enable_rl_module_and_learner=True,
-    #            enable_env_runners_and_connector_v2=True,
-    #        )
-    #        .env_runners(env_runner_cls=ForwardHealthCheckToEnvWorker)
-    #        .resources(num_gpus=0)
-    #    )
-
-    def test_sync_replay(self):
+    def test_async_samples(self):
         self._do_test_failing_ignore(
-            SACConfig()
+            IMPALAConfig()
             .api_stack(
                 enable_rl_module_and_learner=True,
                 enable_env_runner_and_connector_v2=True,
             )
+            .env_runners(env_runner_cls=ForwardHealthCheckToEnvWorker)
+        )
+
+    def test_sync_replay(self):
+        self._do_test_failing_ignore(
+            SACConfig()
             .environment(
                 env_config={"action_space": gym.spaces.Box(0, 1, (2,), np.float32)}
             )
             .env_runners(env_runner_cls=ForwardHealthCheckToEnvWorker)
             .reporting(min_sample_timesteps_per_iteration=1)
-            .training(
-                replay_buffer_config={"type": "EpisodeReplayBuffer"},
-                # We need to set the base `lr` to `None` b/c SAC in the new stack
-                # has its own learning rates.
-                lr=None,
-            )
         )
 
     def test_multi_gpu(self):
@@ -525,8 +511,8 @@ class TestWorkerFailures(unittest.TestCase):
             )
             .evaluation(
                 evaluation_num_env_runners=1,
-                evaluation_parallel_to_training=True,
-                evaluation_duration="auto",
+                # evaluation_parallel_to_training=True,
+                # evaluation_duration="auto",
             )
             .training(model={"fcnet_hiddens": [4]})
         )
@@ -687,26 +673,26 @@ class TestWorkerFailures(unittest.TestCase):
         self.assertEqual(algo.eval_env_runner_group.num_healthy_remote_workers(), 1)
         self.assertEqual(algo.eval_env_runner_group.num_remote_worker_restarts(), 1)
 
-        # Let's verify that our custom module exists on both recovered workers.
-        # TODO (sven): Reinstate once EnvRunners moved to new get/set_state APIs (from
-        #  get/set_weights).
-        # def has_test_module(w):
-        #    return "test_module" in w.module
+        # Let's verify that our custom module exists on all recovered workers.
+        def has_test_module(w):
+            return "test_module" in w.module
 
         # Rollout worker has test module.
-        # self.assertTrue(
-        #    all(algo.env_runner_group.foreach_worker(
-        #        has_test_module, local_worker=False
-        #    ))
-        # )
+        self.assertTrue(
+            all(
+                algo.env_runner_group.foreach_worker(
+                    has_test_module, local_env_runner=False
+                )
+            )
+        )
         # Eval worker has test module.
-        # self.assertTrue(
-        #    all(
-        #        algo.eval_env_runner_group.foreach_worker(
-        #            has_test_module, local_worker=False
-        #        )
-        #    )
-        # )
+        self.assertTrue(
+            all(
+                algo.eval_env_runner_group.foreach_worker(
+                    has_test_module, local_env_runner=False
+                )
+            )
+        )
 
     def test_eval_workers_failing_recover(self):
         # Counter that will survive restarts.
@@ -786,16 +772,6 @@ class TestWorkerFailures(unittest.TestCase):
             # the execution of the algorithm b/c of a single heavily stalling worker.
             # Timeout data (batches or episodes) are discarded.
             SACConfig()
-            .api_stack(
-                enable_rl_module_and_learner=True,
-                enable_env_runner_and_connector_v2=True,
-            )
-            .training(
-                replay_buffer_config={"type": "EpisodeReplayBuffer"},
-                # We need to set the base `lr` to `None` b/c new stack SAC has its
-                # specific learning rates for actor, critic, and alpha.
-                lr=None,
-            )
             .env_runners(
                 env_runner_cls=ForwardHealthCheckToEnvWorker,
                 num_env_runners=3,
