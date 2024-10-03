@@ -23,9 +23,7 @@ class VPGTorchLearner(TorchLearner):
         # Prepend the returns-to-go connector piece to have that information
         # available in the train batch.
         if self.config.add_default_connectors_to_learner_pipeline:
-            self._learner_connector.prepend(
-                ComputeReturnsToGo(gamma=self.config.gamma)
-            )
+            self._learner_connector.prepend(ComputeReturnsToGo(gamma=self.config.gamma))
 
     @override(TorchLearner)
     def compute_loss_for_module(
