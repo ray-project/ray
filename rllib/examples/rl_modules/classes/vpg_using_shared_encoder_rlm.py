@@ -45,7 +45,7 @@ class VPGTorchRLModuleUsingSharedEncoder(TorchRLModule):
     def _common_forward(self, batch):
         # Features can be found in the batch under the "encoder_features" key.
         features = batch["encoder_features"]
-        logits = self.policy_head(features)
+        logits = self._pi_head(features)
         return {Columns.ACTION_DIST_INPUTS: logits}
 
 
