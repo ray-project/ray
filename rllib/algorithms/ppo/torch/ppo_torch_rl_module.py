@@ -19,40 +19,26 @@ class PPOTorchRLModule(TorchRLModule, PPORLModule):
     @override(RLModule)
     def _forward(self, batch: Dict[str, Any], **kwargs) -> Dict[str, Any]:
         """Default forward pass (used for inference and exploration)."""
-
+        output = {}
         # Encoder forward pass.
         encoder_outs = self.encoder(batch)
         # Stateful encoder?
-        state_out = None
         if Columns.STATE_OUT in encoder_outs:
-            state_out = encoder_outs[Columns.STATE_OUT]
-
+            output[Columns.STATE_OUT] = encoder_outs[Columns.STATE_OUT]
         # Pi head.
-        logits = self.pi(encoder_outs[ENCODER_OUT][ACTOR])
-
-        return {
-            Columns.ACTION_DIST_INPUTS: logits
-        } | {Columns.STATE_OUT: state_out} if state_out else {}
+        output[Columns.ACTION_DIST_INPUTS] = self.pi(encoder_outs[ENCODER_OUT][ACTOR])
+        return output
 
     @override(RLModule)
     def _forward_train(self, batch: Dict[str, Any], **kwargs) -> Dict[str, Any]:
-        """Train forward pass (keep features for possible shared value function call)."""
-
-        # Encoder forward pass.
+        """Train forward pass (keep features for possible shared value func. call)."""
+        output = {}
         encoder_outs = self.encoder(batch)
-        features = encoder_outs[ENCODER_OUT][CRITIC]
-        # Stateful encoder?
-        state_out = None
+        output[Columns.FEATURES] = encoder_outs[ENCODER_OUT][CRITIC]
         if Columns.STATE_OUT in encoder_outs:
-            state_out = encoder_outs[Columns.STATE_OUT]
-
-        # Pi head.
-        logits = self.pi(encoder_outs[ENCODER_OUT][ACTOR])
-
-        return {
-            Columns.ACTION_DIST_INPUTS: logits,
-            Columns.FEATURES: features,
-        } | {Columns.STATE_OUT: state_out} if state_out else {}
+            output[Columns.STATE_OUT] = encoder_outs[Columns.STATE_OUT]
+        output[Columns.ACTION_DIST_INPUTS] = self.pi(encoder_outs[ENCODER_OUT][ACTOR])
+        return output
 
     @override(ValueFunctionAPI)
     def compute_values(

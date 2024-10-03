@@ -188,8 +188,8 @@ class TorchDDPRLModule(RLModule, nn.parallel.DistributedDataParallel):
         self.config = self.unwrapped().config
 
     @override(RLModule)
-    def get_train_action_dist_cls(self, *args, **kwargs) -> Type[TorchDistribution]:
-        return self.unwrapped().get_train_action_dist_cls(*args, **kwargs)
+    def get_inference_action_dist_cls(self, *args, **kwargs) -> Type[TorchDistribution]:
+        return self.unwrapped().get_inference_action_dist_cls(*args, **kwargs)
 
     @override(RLModule)
     def get_exploration_action_dist_cls(
@@ -198,8 +198,8 @@ class TorchDDPRLModule(RLModule, nn.parallel.DistributedDataParallel):
         return self.unwrapped().get_exploration_action_dist_cls(*args, **kwargs)
 
     @override(RLModule)
-    def get_inference_action_dist_cls(self, *args, **kwargs) -> Type[TorchDistribution]:
-        return self.unwrapped().get_inference_action_dist_cls(*args, **kwargs)
+    def get_train_action_dist_cls(self, *args, **kwargs) -> Type[TorchDistribution]:
+        return self.unwrapped().get_train_action_dist_cls(*args, **kwargs)
 
     @override(RLModule)
     def get_initial_state(self) -> Any:

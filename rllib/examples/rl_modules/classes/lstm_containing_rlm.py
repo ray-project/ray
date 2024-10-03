@@ -135,7 +135,9 @@ class LSTMContainingRLModule(TorchRLModule, ValueFunctionAPI):
     # We implement this RLModule as a ValueFunctionAPI RLModule, so it can be used
     # by value-based methods like PPO or IMPALA.
     @override(ValueFunctionAPI)
-    def compute_values(self, batch: Dict[str, Any], features: Optional[Any] = None) -> TensorType:
+    def compute_values(
+        self, batch: Dict[str, Any], features: Optional[Any] = None
+    ) -> TensorType:
         if features is None:
             features, _ = self._compute_features_and_state_outs(batch)
         values = self._values(features).squeeze(-1)

@@ -111,7 +111,8 @@ class MultiRLModule(RLModule):
         """
         return {
             mid: self._rl_modules[mid]._forward(batch[mid], **kwargs)
-            for mid in batch.keys() if mid in self
+            for mid in batch.keys()
+            if mid in self
         }
 
     @override(RLModule)
@@ -128,7 +129,8 @@ class MultiRLModule(RLModule):
         """
         return {
             mid: self._rl_modules[mid]._forward_inference(batch[mid], **kwargs)
-            for mid in batch.keys() if mid in self
+            for mid in batch.keys()
+            if mid in self
         }
 
     @override(RLModule)
@@ -145,7 +147,8 @@ class MultiRLModule(RLModule):
         """
         return {
             mid: self._rl_modules[mid]._forward_exploration(batch[mid], **kwargs)
-            for mid in batch.keys() if mid in self
+            for mid in batch.keys()
+            if mid in self
         }
 
     @override(RLModule)
@@ -162,7 +165,8 @@ class MultiRLModule(RLModule):
         """
         return {
             mid: self._rl_modules[mid]._forward_train(batch[mid], **kwargs)
-            for mid in batch.keys() if mid in self
+            for mid in batch.keys()
+            if mid in self
         }
 
     @OverrideToImplementCustomLogic
