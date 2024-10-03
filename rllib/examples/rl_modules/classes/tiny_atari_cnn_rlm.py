@@ -1,4 +1,4 @@
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 from ray.rllib.core.columns import Columns
 from ray.rllib.core.rl_module.apis.value_function_api import ValueFunctionAPI
@@ -49,7 +49,6 @@ class TinyAtariCNN(TorchRLModule, ValueFunctionAPI):
 
     num_all_params = sum(int(np.prod(p.size())) for p in my_net.parameters())
     print(f"num params = {num_all_params}")
-
     """
 
     @override(TorchRLModule)
@@ -122,35 +121,37 @@ class TinyAtariCNN(TorchRLModule, ValueFunctionAPI):
         normc_initializer(0.01)(self._values.weight)
 
     @override(TorchRLModule)
-    def _forward_inference(self, batch, **kwargs):
+    def _forward(self, batch, **kwargs):
         # Compute the basic 1D feature tensor (inputs to policy- and value-heads).
         _, logits = self._compute_features_and_logits(batch)
-        # Return logits as ACTION_DIST_INPUTS (categorical distribution).
-        return {Columns.ACTION_DIST_INPUTS: logits}
-
-    @override(TorchRLModule)
-    def _forward_exploration(self, batch, **kwargs):
-        return self._forward_inference(batch, **kwargs)
+        # Return features and logits as ACTION_DIST_INPUTS (categorical distribution).
+        return {
+            Columns.ACTION_DIST_INPUTS: logits,
+        }
 
     @override(TorchRLModule)
     def _forward_train(self, batch, **kwargs):
         # Compute the basic 1D feature tensor (inputs to policy- and value-heads).
         features, logits = self._compute_features_and_logits(batch)
-        # Besides the action logits, we also have to return value predictions here
-        # (to be used inside the loss function).
-        values = self._values(features).squeeze(-1)
+        # Return features and logits as ACTION_DIST_INPUTS (categorical distribution).
         return {
             Columns.ACTION_DIST_INPUTS: logits,
-            Columns.VF_PREDS: values,
+            Columns.FEATURES: features,
         }
 
     # We implement this RLModule as a ValueFunctionAPI RLModule, so it can be used
     # by value-based methods like PPO or IMPALA.
     @override(ValueFunctionAPI)
-    def compute_values(self, batch: Dict[str, Any]) -> TensorType:
-        obs = batch[Columns.OBS]
-        features = self._base_cnn_stack(obs.permute(0, 3, 1, 2))
-        features = torch.squeeze(features, dim=[-1, -2])
+    def compute_values(
+        self,
+        batch: Dict[str, Any],
+        features: Optional[Any] = None,
+    ) -> TensorType:
+        # Features not provided -> We need to compute them first.
+        if features is None:
+            obs = batch[Columns.OBS]
+            features = self._base_cnn_stack(obs.permute(0, 3, 1, 2))
+            features = torch.squeeze(features, dim=[-1, -2])
         return self._values(features).squeeze(-1)
 
     def _compute_features_and_logits(self, batch):

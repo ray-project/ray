@@ -96,7 +96,7 @@ class PPOTorchLearner(PPOLearner, TorchLearner):
             vf_loss_clipped = torch.clamp(vf_loss, 0, config.vf_clip_param)
             mean_vf_loss = possibly_masked_mean(vf_loss_clipped)
             mean_vf_unclipped_loss = possibly_masked_mean(vf_loss)
-        # Ignore the value function.
+        # Ignore the value function -> Set all to 0.0.
         else:
             z = torch.tensor(0.0, device=surrogate_loss.device)
             value_fn_out = mean_vf_unclipped_loss = vf_loss_clipped = mean_vf_loss = z

@@ -1,4 +1,4 @@
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 import numpy as np
 
@@ -77,7 +77,7 @@ class LSTMContainingRLModule(TorchRLModule, ValueFunctionAPI):
         # Get the LSTM cell size from our RLModuleConfig's (self.config)
         # `model_config_dict` property:
         self._lstm_cell_size = self.config.model_config_dict.get("lstm_cell_size", 256)
-        self._lstm = nn.LSTM(in_size, self._lstm_cell_size, batch_first=False)
+        self._lstm = nn.LSTM(in_size, self._lstm_cell_size, batch_first=True)
         in_size = self._lstm_cell_size
 
         # Build a sequential stack.
@@ -94,7 +94,7 @@ class LSTMContainingRLModule(TorchRLModule, ValueFunctionAPI):
         self._fc_net = nn.Sequential(*layers)
 
         # Logits layer (no bias, no activation).
-        self._logits = nn.Linear(in_size, self.config.action_space.n)
+        self._pi_head = nn.Linear(in_size, self.config.action_space.n)
         # Single-node value layer.
         self._values = nn.Linear(in_size, 1)
 
@@ -106,70 +106,48 @@ class LSTMContainingRLModule(TorchRLModule, ValueFunctionAPI):
         }
 
     @override(TorchRLModule)
-    def _forward_inference(self, batch, **kwargs):
+    def _forward(self, batch, **kwargs):
         # Compute the basic 1D feature tensor (inputs to policy- and value-heads).
-        _, state_out, logits = self._compute_features_state_out_and_logits(batch)
+        features, state_outs = self._compute_features_and_state_outs(batch)
+        logits = self._pi_head(features)
 
         # Return logits as ACTION_DIST_INPUTS (categorical distribution).
         # Note that the default `GetActions` connector piece (in the EnvRunner) will
         # take care of argmax-"sampling" from the logits to yield the inference (greedy)
         # action.
         return {
-            Columns.STATE_OUT: state_out,
             Columns.ACTION_DIST_INPUTS: logits,
+            Columns.STATE_OUT: state_outs,
         }
 
     @override(TorchRLModule)
-    def _forward_exploration(self, batch, **kwargs):
-        # Exact same as `_forward_inference`.
-        # Note that the default `GetActions` connector piece (in the EnvRunner) will
-        # take care of stochastic sampling from the Categorical defined by the logits
-        # to yield the exploration action.
-        return self._forward_inference(batch, **kwargs)
-
-    @override(TorchRLModule)
     def _forward_train(self, batch, **kwargs):
-        # Compute the basic 1D feature tensor (inputs to policy- and value-heads).
-        features, state_out, logits = self._compute_features_state_out_and_logits(batch)
-        # Besides the action logits, we also have to return value predictions here
-        # (to be used inside the loss function).
-        values = self._values(features).squeeze(-1)
+        # Same logic as _forward, but also return features to be used by value function
+        # branch during training.
+        features, state_outs = self._compute_features_and_state_outs(batch)
+        logits = self._pi_head(features)
         return {
-            Columns.STATE_OUT: state_out,
             Columns.ACTION_DIST_INPUTS: logits,
-            Columns.VF_PREDS: values,
+            Columns.STATE_OUT: state_outs,
+            Columns.FEATURES: features,
         }
 
     # We implement this RLModule as a ValueFunctionAPI RLModule, so it can be used
     # by value-based methods like PPO or IMPALA.
     @override(ValueFunctionAPI)
-    def compute_values(self, batch: Dict[str, Any]) -> TensorType:
-        obs = batch[Columns.OBS]
-        state_in = batch[Columns.STATE_IN]
-        h, c = state_in["h"], state_in["c"]
-        # Unsqueeze the layer dim (we only have 1 LSTM layer.
-        features, _ = self._lstm(
-            obs.permute(1, 0, 2),  # we have to permute, b/c our LSTM is time-major
-            (h.unsqueeze(0), c.unsqueeze(0)),
-        )
-        # Make batch-major again.
-        features = features.permute(1, 0, 2)
-        # Push through our FC net.
-        features = self._fc_net(features)
-        return self._values(features).squeeze(-1)
+    def compute_values(self, batch: Dict[str, Any], features: Optional[Any] = None) -> TensorType:
+        if features is None:
+            features, _ = self._compute_features_and_state_outs(batch)
+        values = self._values(features).squeeze(-1)
+        return values
 
-    def _compute_features_state_out_and_logits(self, batch):
+    def _compute_features_and_state_outs(self, batch):
         obs = batch[Columns.OBS]
         state_in = batch[Columns.STATE_IN]
         h, c = state_in["h"], state_in["c"]
-        # Unsqueeze the layer dim (we only have 1 LSTM layer.
-        features, (h, c) = self._lstm(
-            obs.permute(1, 0, 2),  # we have to permute, b/c our LSTM is time-major
-            (h.unsqueeze(0), c.unsqueeze(0)),
-        )
-        # Make batch-major again.
-        features = features.permute(1, 0, 2)
+        # Unsqueeze the layer dim (we only have 1 LSTM layer).
+        features, (h, c) = self._lstm(obs, (h.unsqueeze(0), c.unsqueeze(0)))
         # Push through our FC net.
         features = self._fc_net(features)
-        logits = self._logits(features)
-        return features, {"h": h.squeeze(0), "c": c.squeeze(0)}, logits
+        # Squeeze the layer dim (we only have 1 LSTM layer).
+        return features, {"h": h.squeeze(0), "c": c.squeeze(0)}
