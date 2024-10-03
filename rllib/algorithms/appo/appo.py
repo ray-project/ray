@@ -240,7 +240,7 @@ class APPOConfig(IMPALAConfig):
             return APPOTorchLearner
         elif self.framework_str in ["tf2", "tf"]:
             raise ValueError(
-                f"TensorFlow is no longer supported on the new API stack! "
+                "TensorFlow is no longer supported on the new API stack! "
                 "Use `framework='torch'`."
             )
         else:
