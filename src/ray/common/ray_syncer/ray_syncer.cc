@@ -372,7 +372,7 @@ ServerBidiReactor *RaySyncerService::StartSync(grpc::CallbackServerContext *cont
   // Disconnect exiting connection if there is any.
   // This can happen when there is transient network error
   // and the client reconnects.
-  syncer_.Disconnect(reactor->GetRemoteNodeID());
+  // syncer_.Disconnect(reactor->GetRemoteNodeID());
   syncer_.Connect(reactor);
   return reactor;
 }
