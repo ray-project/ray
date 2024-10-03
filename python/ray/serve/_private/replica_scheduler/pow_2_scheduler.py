@@ -467,7 +467,7 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
                 await asyncio.sleep(self.backoff_sequence_s[backoff_index])
                 backoff_index = min(backoff_index + 1, len(self.backoff_sequence_s) - 1)
         finally:
-            if entered_backoff and self.num_scheduling_tasks_in_backoff > 0:
+            if entered_backoff:
                 self.num_scheduling_tasks_in_backoff -= 1
                 self.num_scheduling_tasks_in_backoff_gauge.set(
                     self.num_scheduling_tasks_in_backoff
