@@ -14,18 +14,37 @@
 
 #include "ray/util/container_util.h"
 
+#include <sstream>
+#include <tuple>
+
 #include "gtest/gtest.h"
 
 namespace ray {
 
+template <typename T>
+std::string debug_string_to_string(const T &t) {
+  std::ostringstream ss;
+  ss << debug_string(t);
+  return ss.str();
+}
+
 TEST(ContainerUtilTest, TestDebugString) {
-  ASSERT_EQ(debug_string(std::vector<int>{1, 2}), "[1, 2]");
-  ASSERT_EQ(debug_string(std::set<int>{1, 2}), "[1, 2]");
-  ASSERT_EQ(debug_string(std::unordered_set<int>{2}), "[2]");
-  ASSERT_EQ(debug_string(absl::flat_hash_set<int>{1}), "[1]");
-  ASSERT_EQ(debug_string(std::map<int, int>{{1, 2}, {3, 4}}), "[(1, 2), (3, 4)]");
-  ASSERT_EQ(debug_string(absl::flat_hash_map<int, int>{{3, 4}}), "[(3, 4)]");
-  ASSERT_EQ(debug_string(absl::flat_hash_map<int, int>{{1, 2}}), "[(1, 2)]");
+  ASSERT_EQ(debug_string_to_string(std::vector<int>{1, 2}), "[1, 2]");
+  ASSERT_EQ(debug_string_to_string(std::set<int>{1, 2}), "[1, 2]");
+  ASSERT_EQ(debug_string_to_string(std::unordered_set<int>{2}), "[2]");
+  ASSERT_EQ(debug_string_to_string(absl::flat_hash_set<int>{1}), "[1]");
+  ASSERT_EQ(debug_string_to_string(std::map<int, int>{{1, 2}, {3, 4}}),
+            "[(1, 2), (3, 4)]");
+  ASSERT_EQ(debug_string_to_string(absl::flat_hash_map<int, int>{{3, 4}}), "[(3, 4)]");
+  ASSERT_EQ(debug_string_to_string(absl::flat_hash_map<int, int>{{1, 2}}), "[(1, 2)]");
+
+  ASSERT_EQ(debug_string_to_string(std::tuple<>()), "()");
+  ASSERT_EQ(debug_string_to_string(std::tuple<int>(2)), "(2)");
+  ASSERT_EQ(debug_string_to_string(std::tuple<int, std::string>({2, "hello world"})),
+            "(2, hello world)");
+  ASSERT_EQ(debug_string_to_string(
+                std::tuple<int, std::string, bool>({2, "hello world", true})),
+            "(2, hello world, 1)");
 }
 
 TEST(ContainerUtilTest, TestMapFindOrDie) {

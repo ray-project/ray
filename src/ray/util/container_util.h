@@ -16,6 +16,7 @@
 
 #include <deque>
 #include <map>
+#include <ostream>
 #include <set>
 #include <sstream>
 #include <unordered_set>
@@ -27,57 +28,106 @@
 
 namespace ray {
 
+namespace detail {
+
 template <typename T>
-std::string debug_string(const T &obj) {
-  std::stringstream ss;
-  ss << obj;
-  return ss.str();
+std::ostream &_debug_string_impl(std::ostream &os, const T &obj) {
+  os << obj;
+  return os;
 }
 
 template <typename... Ts>
-std::string debug_string(const std::pair<Ts...> &pair) {
-  std::stringstream ss;
-  ss << "(" << debug_string(pair.first) << ", " << debug_string(pair.second) << ")";
-  return ss.str();
+std::ostream &_debug_string_impl(std::ostream &os, const std::pair<Ts...> &pair) {
+  os << "(";
+  _debug_string_impl(os, pair.first);
+  os << ", ";
+  _debug_string_impl(os, pair.second);
+  os << ")";
+  return os;
 }
 
 template <typename C>
-std::string _container_debug_string(const C &c) {
-  std::stringstream ss;
-  ss << "[";
+std::ostream &_container_debug_string_impl(std::ostream &os, const C &c) {
+  os << "[";
   for (auto it = c.begin(); it != c.end(); ++it) {
     if (it != c.begin()) {
-      ss << ", ";
+      os << ", ";
     }
-    ss << debug_string(*it);
+    _debug_string_impl(os, *it);
   }
-  ss << "]";
-  return ss.str();
+  os << "]";
+  return os;
 }
 
 template <typename... Ts>
-std::string debug_string(const std::vector<Ts...> &c) {
-  return _container_debug_string(c);
+std::ostream &_debug_string_impl(std::ostream &os, const std::tuple<Ts...> &tuple) {
+  os << "(";
+  std::apply(
+      [&os](const Ts &...args) {
+        size_t n = 0;
+        ((os << args << (++n != sizeof...(Ts) ? ", " : "")), ...);
+      },
+      tuple);
+
+  os << ")";
+  return os;
+}
+
+// This specialization is needed, or the compiler complains the lambda in std::apply
+// does not use capture &os.
+std::ostream &_debug_string_impl(std::ostream &os, const std::tuple<> &tuple) {
+  os << "()";
+  return os;
+}
+
+template <typename... Ts>
+std::ostream &_debug_string_impl(std::ostream &os, const std::vector<Ts...> &c) {
+  return _container_debug_string_impl(os, c);
 }
 template <typename... Ts>
-std::string debug_string(const std::set<Ts...> &c) {
-  return _container_debug_string(c);
+std::ostream &_debug_string_impl(std::ostream &os, const std::set<Ts...> &c) {
+  return _container_debug_string_impl(os, c);
 }
 template <typename... Ts>
-std::string debug_string(const std::unordered_set<Ts...> &c) {
-  return _container_debug_string(c);
+std::ostream &_debug_string_impl(std::ostream &os, const std::unordered_set<Ts...> &c) {
+  return _container_debug_string_impl(os, c);
 }
 template <typename... Ts>
-std::string debug_string(const absl::flat_hash_set<Ts...> &c) {
-  return _container_debug_string(c);
+std::ostream &_debug_string_impl(std::ostream &os, const absl::flat_hash_set<Ts...> &c) {
+  return _container_debug_string_impl(os, c);
 }
 template <typename... Ts>
-std::string debug_string(const std::map<Ts...> &c) {
-  return _container_debug_string(c);
+std::ostream &_debug_string_impl(std::ostream &os, const std::map<Ts...> &c) {
+  return _container_debug_string_impl(os, c);
 }
 template <typename... Ts>
-std::string debug_string(const absl::flat_hash_map<Ts...> &c) {
-  return _container_debug_string(c);
+std::ostream &_debug_string_impl(std::ostream &os, const absl::flat_hash_map<Ts...> &c) {
+  return _container_debug_string_impl(os, c);
+}
+
+}  // namespace detail
+
+/// Wrapper for `debug_string(const T&)`.
+template <typename T>
+class DebugStringWrapper {
+ public:
+  explicit DebugStringWrapper(const T &obj) : obj_(obj) {}
+
+  // Overload operator<< for std::ostream
+  friend std::ostream &operator<<(std::ostream &os,
+                                  const DebugStringWrapper<T> &wrapper) {
+    RAY_LOG(ERROR) << "operator<<";
+    return detail::_debug_string_impl(os, wrapper.obj_);
+  }
+
+ private:
+  const T &obj_;
+};
+
+// The actual interface.
+template <typename T>
+DebugStringWrapper<T> debug_string(const T &t) {
+  return DebugStringWrapper<T>(t);
 }
 
 template <typename C>
