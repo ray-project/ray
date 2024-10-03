@@ -1,11 +1,11 @@
 from ray.rllib.algorithms import Algorithm, AlgorithmConfig
-from ray.rllib.core import ALL_MODULES
 from ray.rllib.core.rl_module.rl_module import RLModuleSpec
 from ray.rllib.examples.learners.classes.vpg_learner import VPGTorchLearner
 from ray.rllib.examples.rl_modules.classes.vpg_rlm import VPGTorchRLModule
 from ray.rllib.execution.rollout_ops import synchronous_parallel_sample
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.metrics import (
+    ALL_MODULES,
     ENV_RUNNER_RESULTS,
     ENV_RUNNER_SAMPLING_TIMER,
     LEARNER_RESULTS,
@@ -18,6 +18,13 @@ from ray.rllib.utils.typing import ResultDict
 
 
 class VPGConfig(AlgorithmConfig):
+    """A simple VPG (vanilla policy gradient) algorithm w/o value function support.
+
+    Use for testing purposes only!
+
+    This Algorithm should use the VPGTorchLearner and VPGTorchRLModule
+    """
+
     # A test setting to activate metrics on mean weights.
     report_mean_weights: bool = True
 
@@ -38,19 +45,11 @@ class VPGConfig(AlgorithmConfig):
         if self.framework_str == "torch":
             spec = RLModuleSpec(
                 module_class=VPGTorchRLModule,
-                model_config={"hidden_dim": 64},
+                model_config_dict={"hidden_dim": 64},
             )
         else:
             raise ValueError(f"Unsupported framework: {self.framework_str}")
 
-        #if self.is_multi_agent():
-        #    # TODO (sven): Make this more multi-agent for example with policy ids
-        #    #  "p0" and "p1".
-        #    return MultiRLModuleSpec(
-        #        multi_rl_module_class=MultiRLModule,
-        #        module_specs={DEFAULT_MODULE_ID: spec},
-        #    )
-        #else:
         return spec
 
     @override(AlgorithmConfig)
@@ -64,7 +63,16 @@ class VPGConfig(AlgorithmConfig):
 class VPG(Algorithm):
     @override(Algorithm)
     def training_step(self) -> ResultDict:
+        """Override of the training_step method of `Algorithm`.
 
+        Runs the following steps per call:
+        - Sample B timesteps (B=train batch size). Note that we don't sample complete
+        episodes due to simplicity. For an actual VPG algo, due to the loss computation,
+        you should always sample only completed episodes.
+        - Send the collected episodes to the VPG LearnerGroup for model updating.
+        - Sync the weights from LearnerGroup to all EnvRunners.
+        """
+        # Sample.
         with self.metrics.log_time((TIMERS, ENV_RUNNER_SAMPLING_TIMER)):
             episodes, env_runner_results = synchronous_parallel_sample(
                 worker_set=self.env_runner_group,
@@ -75,6 +83,7 @@ class VPG(Algorithm):
             )
         self.metrics.merge_and_log_n_dicts(env_runner_results, key=ENV_RUNNER_RESULTS)
 
+        # Update model.
         with self.metrics.log_time((TIMERS, LEARNER_UPDATE_TIMER)):
             learner_results = self.learner_group.update_from_episodes(
                 episodes=episodes,
@@ -86,6 +95,7 @@ class VPG(Algorithm):
             )
         self.metrics.log_dict(learner_results, key=LEARNER_RESULTS)
 
+        # Sync weights.
         with self.metrics.log_time((TIMERS, SYNCH_WORKER_WEIGHTS_TIMER)):
             self.env_runner_group.sync_weights(
                 from_worker_or_learner_group=self.learner_group,
@@ -93,5 +103,5 @@ class VPG(Algorithm):
                 inference_only=True,
             )
 
+        # Reduce and return collected metrics.
         return self.metrics.reduce()
-

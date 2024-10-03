@@ -13,6 +13,7 @@ SHARED_ENCODER_ID = "shared_encoder"
 
 class VPGTorchRLModuleUsingSharedEncoder(TorchRLModule):
     """A VPG (vanilla pol. gradient)-style RLModule using a shared encoder."""
+
     @override(TorchRLModule)
     def setup(self):
         super().setup()
@@ -48,7 +49,54 @@ class VPGTorchRLModuleUsingSharedEncoder(TorchRLModule):
         return {Columns.ACTION_DIST_INPUTS: logits}
 
 
-class BCTorchMultiAgentModuleWithSharedEncoder(MultiRLModule):
+class VPGTorchMultiRLModuleWithSharedEncoder(MultiRLModule):
+    """A VPG (vanilla policy gradient)-style MultiRLModule with shared encoder.
+
+    This MultiRLModule needs to be configured appropriately as follows:
+
+    .. testcode::
+        :skipif: true
+
+        from ray.rllib.core.rl_module.multi_rl_module import MultiRLModuleSpec
+        from ray.rllib.core.rl_module.rl_module import RLModuleSpec
+
+        FEATURE_DIM = 64  # encoder output (feature) dim
+        HIDDEN_DIM = 64  # hidden dim for the policy nets
+
+        config.rl_module(
+            rl_module_spec=MultiRLModuleSpec(
+                module_specs={
+                    # Central/shared encoder net.
+                    SHARED_ENCODER_ID: RLModuleSpec(
+                        module_class=SharedTorchEncoder,
+                        model_config_dict={"feature_dim": FEATURE_DIM},
+                    ),
+                    # Arbitrary number of policy nets (w/o encoder sub-net).
+                    "p0": RLModuleSpec(
+                        module_class=VPGTorchRLModuleUsingSharedEncoder,
+                        model_config_dict={
+                            "feature_dim": FEATURE_DIM,
+                            "hidden_dim": HIDDEN_DIM,
+                        },
+                    ),
+                    "p1": RLModuleSpec(
+                        module_class=VPGTorchRLModuleUsingSharedEncoder,
+                        model_config_dict={
+                            "feature_dim": FEATURE_DIM,
+                            "hidden_dim": HIDDEN_DIM,
+                        },
+                    ),
+                },
+            ),
+        )
+
+    Also note that in order to learn properly, a special, multi-agent Learner that
+    accounts for the shared encoder must be setup. This Learner should have only a
+    single optimizer (for all submodules: encoder and all policy nets) in order to not
+    destabilize learning. The latter would happen if more than one optimizer would try
+    to optimize the same shared encoder submodule.
+    """
+
     @override(MultiRLModule)
     def setup(self):
         super().setup()
@@ -82,9 +130,9 @@ class BCTorchMultiAgentModuleWithSharedEncoder(MultiRLModule):
         return outputs
 
 
-
 class SharedTorchEncoder(TorchRLModule):
     """A shared encoder that can be used with VPGTorchRLModuleUsingSharedEncoder."""
+
     @override(TorchRLModule)
     def setup(self):
         super().setup()

@@ -11,6 +11,7 @@ class VPGTorchRLModule(TorchRLModule):
 
     Use this as a minimum, bare-bones example implementation of a custom TorchRLModule.
     """
+
     @override(TorchRLModule)
     def setup(self):
         input_dim = self.observation_space.shape[0]
