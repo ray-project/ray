@@ -36,7 +36,7 @@ FAKE_BATCH = {
 }
 
 
-class TestAPPOTfLearner(unittest.TestCase):
+class TestAPPOLearner(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         ray.init()

@@ -238,14 +238,15 @@ class APPOConfig(IMPALAConfig):
             )
 
             return APPOTorchLearner
-        elif self.framework_str == "tf2":
-            from ray.rllib.algorithms.appo.tf.appo_tf_learner import APPOTfLearner
-
-            return APPOTfLearner
+        elif self.framework_str in ["tf2", "tf"]:
+            raise ValueError(
+                f"TensorFlow is no longer supported on the new API stack! "
+                "Use `framework='torch'`."
+            )
         else:
             raise ValueError(
                 f"The framework {self.framework_str} is not supported. "
-                "Use either 'torch' or 'tf2'."
+                "Use `framework='torch'`."
             )
 
     @override(IMPALAConfig)
