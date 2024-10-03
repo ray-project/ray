@@ -93,7 +93,7 @@ class MultiRLModule(RLModule):
         """Generic forward pass method, used in all phases of training and evaluation.
 
         If you need a more nuanced distinction between forward passes in the different
-        phases of training and evaluation, override the following methods insted:
+        phases of training and evaluation, override the following methods instead:
         For distinct action computation logic w/o exploration, override the
         `self._forward_inference()` method.
         For distinct action computation logic with exploration, override the
