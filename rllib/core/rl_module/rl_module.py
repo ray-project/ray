@@ -522,7 +522,6 @@ class RLModule(Checkpointable, abc.ABC):
         raise NotImplementedError
 
     @OverrideToImplementCustomLogic
-    @abc.abstractmethod
     def _forward(self, batch: Dict[str, Any], **kwargs) -> Dict[str, Any]:
         """Generic forward pass method, used in all phases of training and evaluation.
 
@@ -542,6 +541,7 @@ class RLModule(Checkpointable, abc.ABC):
         Returns:
             The output of the forward pass.
         """
+        return {}
 
     @check_input_specs("_input_specs_inference")
     @check_output_specs("_output_specs_inference")

@@ -45,7 +45,7 @@ class PPOTorchLearner(PPOLearner, TorchLearner):
         # Possibly apply masking to some sub loss terms and to the total loss term
         # at the end. Masking could be used for RNN-based model (zero padded `batch`)
         # and for PPO's batched value function (and bootstrap value) computations,
-        # for which we add an additional (artificial) timestep to each episode to
+        # for which we add an (artificial) timestep to each episode to
         # simplify the actual computation.
         if Columns.LOSS_MASK in batch:
             mask = batch[Columns.LOSS_MASK]
