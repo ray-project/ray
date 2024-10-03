@@ -118,7 +118,7 @@ py_test(
 
 py_test(
     name = "torch_quick_start",
-    size = "small",
+    size = "medium",
     main = "examples/pytorch/torch_quick_start.py",
     srcs = ["examples/pytorch/torch_quick_start.py"],
     tags = ["team:ml", "exclusive"],

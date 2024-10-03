@@ -5,7 +5,6 @@ import tree  # pip install dm_tree
 from ray.rllib.core.columns import Columns
 from ray.rllib.core.rl_module.apis import SelfSupervisedLossAPI
 from ray.rllib.core.rl_module.torch import TorchRLModule
-from ray.rllib.models.torch.torch_distributions import TorchCategorical
 from ray.rllib.models.utils import get_activation_fn
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
@@ -190,10 +189,6 @@ class IntrinsicCuriosityModel(TorchRLModule, SelfSupervisedLossAPI):
         }
 
         return output
-
-    @override(TorchRLModule)
-    def get_train_action_dist_cls(self):
-        return TorchCategorical
 
     @override(SelfSupervisedLossAPI)
     def compute_self_supervised_loss(

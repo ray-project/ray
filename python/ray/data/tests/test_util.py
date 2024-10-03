@@ -2,6 +2,7 @@ from typing import Any, Dict, Optional
 
 import numpy as np
 import pytest
+from typing_extensions import Hashable
 
 import ray
 from ray.data._internal.datasource.parquet_datasource import ParquetDatasource
@@ -11,12 +12,66 @@ from ray.data._internal.memory_tracing import (
     trace_allocation,
     trace_deallocation,
 )
+from ray.data._internal.remote_fn import _make_hashable, cached_remote_fn
 from ray.data._internal.util import (
     _check_pyarrow_version,
     _split_list,
     iterate_with_retry,
 )
 from ray.data.tests.conftest import *  # noqa: F401, F403
+
+
+def test_cached_remote_fn():
+    def foo():
+        pass
+
+    cpu_only_foo = cached_remote_fn(foo, num_cpus=1)
+    cached_cpu_only_foo = cached_remote_fn(foo, num_cpus=1)
+
+    assert cpu_only_foo == cached_cpu_only_foo
+
+    gpu_only_foo = cached_remote_fn(foo, num_gpus=1)
+
+    assert cpu_only_foo != gpu_only_foo
+
+
+def test_make_hashable():
+    valid_args = {
+        "int": 0,
+        "float": 1.2,
+        "str": "foo",
+        "dict": {
+            0: 0,
+            1.2: 1.2,
+        },
+        "list": list(range(10)),
+        "tuple": tuple(range(3)),
+        "type": Hashable,
+    }
+
+    hashable_args = _make_hashable(valid_args)
+
+    assert hash(hashable_args) == hash(
+        (
+            ("dict", ((0, 0), (1.2, 1.2))),
+            ("float", 1.2),
+            ("int", 0),
+            ("list", (0, 1, 2, 3, 4, 5, 6, 7, 8, 9)),
+            ("str", "foo"),
+            ("tuple", (0, 1, 2)),
+            ("type", Hashable),
+        )
+    )
+
+    # Invalid case # 1: can't mix up key types
+    invalid_args = {0: 1, "bar": "baz"}
+
+    with pytest.raises(TypeError) as exc_info:
+        _make_hashable(invalid_args)
+
+    assert (
+        str(exc_info.value) == "'<' not supported between instances of 'str' and 'int'"
+    )
 
 
 def test_check_pyarrow_version_bounds(unsupported_pyarrow_version):

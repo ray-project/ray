@@ -127,7 +127,6 @@ if __name__ == "__main__":
                 "fcnet_hiddens": [32],
                 "fcnet_activation": "linear",
                 "vf_share_layers": True,
-                "uses_new_env_runners": True,
             },
         )
     )
@@ -155,7 +154,6 @@ if __name__ == "__main__":
         base_config.rl_module(
             model_config_dict={
                 "vf_share_layers": True,
-                "uses_new_env_runners": True,
             }
         )
 
