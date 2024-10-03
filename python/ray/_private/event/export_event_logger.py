@@ -59,6 +59,9 @@ class ExportEventLoggerAdapter:
         if isinstance(event_data, ExportSubmissionJobEventData):
             event.submission_job_event_data.CopyFrom(event_data)
             event.source_type = ExportEvent.SourceType.EXPORT_SUBMISSION_JOB
+        elif isinstance(event_data, ExportTrainRunInfo):
+            event.train_run_event_data.CopyFrom(event_data)
+            event.source_type = ExportEvent.SourceType.EXPORT_TRAIN_RUN
         else:
             raise TypeError(f"Invalid event_data type: {type(event_data)}")
         if event.source_type != self.source:

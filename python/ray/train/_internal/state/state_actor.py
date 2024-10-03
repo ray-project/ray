@@ -5,9 +5,8 @@ from typing import Dict, Optional
 import ray
 from ray.actor import ActorHandle
 from ray.train._internal.state.schema import TrainRunInfo
-from ray.core.generated.export_train_run_info_pb2 import (
-    ExportTrainRunInfo,
-)
+from ray._private import ray_constants
+from ray._private.event.export_event_logger import get_export_event_logger
 
 logger = logging.getLogger(__name__)
 
@@ -15,14 +14,15 @@ logger = logging.getLogger(__name__)
 @ray.remote(num_cpus=0)
 class TrainStateActor:
     def __init__(self):
+        from ray.core.generated.export_event_pb2 import ExportEvent
         self._run_infos: Dict[str, TrainRunInfo] = {}
-         self._export_train_run_info_logger: logging.Logger = None
+        self._export_train_run_info_logger: logging.Logger = None
         try:
             if (
                 ray_constants.RAY_ENABLE_EXPORT_API_WRITE
             ):
                 self._export_train_run_info_logger = get_export_event_logger(
-                    ExportEvent.SourceType.ExportTrainRunInfo,
+                    ExportEvent.SourceType.EXPORT_TRAIN_RUN,
                     "/tmp/ray/session_latest/logs",
                 )
         except Exception:
@@ -45,6 +45,9 @@ class TrainStateActor:
         return self._run_infos
     
     def _write_train_run_export_event(self, run_info: TrainRunInfo) -> None:
+        from ray.core.generated.export_train_run_info_pb2 import (
+            ExportTrainRunInfo,
+        )
         if not self._export_train_run_info_logger:
             return
         export_run_info = ExportTrainRunInfo(
@@ -62,9 +65,7 @@ class TrainStateActor:
                     node_ip=worker.node_ip,
                     pid=worker.pid,
                     gpu_ids=worker.gpu_ids,
-                    status=ExportTrainRunInfo.ActorStatus.DESCRIPTOR.values_by_name.get(
-                        worker.status.name
-                    ) if worker.status is not None else None,
+                    status=worker.status,
                 ) for worker in run_info.workers
             ],
             datasets=[
@@ -74,9 +75,7 @@ class TrainStateActor:
                     dataset_name=dataset.dataset_name,
                 ) for dataset in run_info.datasets
             ],
-            run_status=ExportTrainRunInfo.RunStatus.DESCRIPTOR.values_by_name.get(
-                run_info.run_status.name
-            ),
+            run_status=run_info.run_status,
             status_detail=run_info.status_detail,
             start_time_ms=run_info.start_time_ms,
             end_time_ms=run_info.end_time_ms
