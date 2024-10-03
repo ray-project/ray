@@ -538,30 +538,30 @@ TEST_F(SyncerTest, Test1To1) {
 
 TEST_F(SyncerTest, Reconnect) {
   // This test is to check reconnect works.
-  // Firstly
-  //    s1 -> s3
-  // Then,
-  //    s2 -> s3
-  // And we need to ensure s3 is connecting to s2
-
   auto &s1 = MakeServer("19990");
   auto &s2 = MakeServer("19991");
-  auto &s3 = MakeServer("19992");
 
-  s1.syncer->Connect(s3.syncer->GetLocalNodeID(), MakeChannel("19992"));
+  s1.syncer->Connect(s2.syncer->GetLocalNodeID(), MakeChannel("19991"));
 
   // Make sure the setup is correct
   ASSERT_TRUE(s1.WaitUntil(
       [&s1]() { return s1.syncer->sync_reactors_.size() == 1 && s1.snapshot_taken == 1; },
       5));
-
-  ASSERT_TRUE(s1.WaitUntil(
-      [&s3]() { return s3.syncer->sync_reactors_.size() == 1 && s3.snapshot_taken == 1; },
-      5));
-  s2.syncer->Connect(s3.syncer->GetLocalNodeID(), MakeChannel("19992"));
-
-  ASSERT_TRUE(s1.WaitUntil(
+  ASSERT_TRUE(s2.WaitUntil(
       [&s2]() { return s2.syncer->sync_reactors_.size() == 1 && s2.snapshot_taken == 1; },
+      5));
+
+  s1.syncer->Disconnect(s2.syncer->GetLocalNodeID());
+  s1.syncer->Connect(s2.syncer->GetLocalNodeID(), MakeChannel("19991"));
+  ASSERT_TRUE(s1.WaitUntil(
+      [&s1]() { return s1.syncer->sync_reactors_.size() == 1 && s1.snapshot_taken == 1; },
+      5));
+
+  s1.local_versions[0] = 1;
+  ASSERT_TRUE(s2.WaitUntil(
+      [&s2, node_id = s1.syncer->GetLocalNodeID()]() {
+        return s2.received_versions[node_id][0] == 1;
+      },
       5));
 }
 

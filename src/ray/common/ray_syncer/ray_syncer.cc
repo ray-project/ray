@@ -222,6 +222,11 @@ void RaySyncer::Connect(const std::string &node_id,
             /* cleanup_cb */
             [this, channel](RaySyncerBidiReactor *reactor, bool restart) {
               const std::string &node_id = reactor->GetRemoteNodeID();
+              if (sync_reactors_.contains(node_id) &&
+                  sync_reactors_.at(node_id) != reactor) {
+                // The client is already reconnected.
+                return;
+              }
               sync_reactors_.erase(node_id);
               if (restart) {
                 execute_after(
@@ -372,7 +377,7 @@ ServerBidiReactor *RaySyncerService::StartSync(grpc::CallbackServerContext *cont
   // Disconnect exiting connection if there is any.
   // This can happen when there is transient network error
   // and the client reconnects.
-  // syncer_.Disconnect(reactor->GetRemoteNodeID());
+  syncer_.Disconnect(reactor->GetRemoteNodeID());
   syncer_.Connect(reactor);
   return reactor;
 }
