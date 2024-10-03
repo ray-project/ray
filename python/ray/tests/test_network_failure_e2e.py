@@ -152,6 +152,8 @@ worker2 = gen_worker_node(
 
 
 def test_transient_network_error(head2, worker2, gcs_network):
+    # Test to make sure the head node and worker node
+    # connection can be recovered from transient network error.
     network = gcs_network
 
     check_two_nodes = """
@@ -173,6 +175,8 @@ wait_for_condition(lambda: len(ray.nodes()) == 2)
     sleep(2)
     network.connect(worker2.name, ipv4_address=worker_ip)
 
+    # Make sure the connection is recovered by scheduling
+    # an actor.
     check_actor_scheduling = """
 import ray
 from ray._private.test_utils import wait_for_condition
