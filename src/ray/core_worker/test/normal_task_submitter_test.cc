@@ -39,6 +39,14 @@ class DynamicRateLimiter : public LeaseRequestRateLimiter {
  public:
   size_t limit;
 };
+
+// Wait (and halt the thread) until object_id appears in memory_store.
+void WaitForObjectIdInMemoryStore(CoreWorkerMemoryStore &memory_store,
+                                  const ObjectID &object_id) {
+  std::promise<bool> p;
+  memory_store.GetAsync(object_id, [&p](auto) { p.set_value(true); });
+  ASSERT_TRUE(p.get_future().get());
+}
 }  // namespace
 
 // Used to prevent leases from timing out when not testing that logic. It would
@@ -53,7 +61,7 @@ TaskSpecification BuildTaskSpec(const std::unordered_map<std::string, double> &r
   TaskSpecBuilder builder;
   rpc::Address empty_address;
   rpc::JobConfig config;
-  builder.SetCommonTaskSpec(TaskID::Nil(),
+  builder.SetCommonTaskSpec(TaskID::FromRandom(JobID::Nil()),
                             "dummy_task",
                             Language::PYTHON,
                             function_descriptor,
@@ -1688,7 +1696,10 @@ void TestSchedulingKey(const std::shared_ptr<CoreWorkerMemoryStore> store,
   ASSERT_TRUE(submitter.SubmitTask(same1).ok());
   ASSERT_TRUE(submitter.SubmitTask(same2).ok());
   ASSERT_TRUE(submitter.SubmitTask(different).ok());
-  ASSERT_EQ(raylet_client->num_workers_requested, 2);
+
+  WaitForCondition(
+      [&raylet_client]() { return raylet_client->num_workers_returned == 2; },
+      /*timeout_ms=*/1000);
 
   // same1 is pushed.
   ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1000, NodeID::Nil()));
@@ -1733,7 +1744,8 @@ void TestSchedulingKey(const std::shared_ptr<CoreWorkerMemoryStore> store,
 }
 
 TEST(NormalTaskSubmitterTest, TestSchedulingKeys) {
-  auto store = std::make_shared<CoreWorkerMemoryStore>();
+  InstrumentedIOContextWithThread io_context("TestSchedulingKeys");
+  auto store = std::make_shared<CoreWorkerMemoryStore>(&io_context.GetIoService());
 
   std::unordered_map<std::string, double> resources1({{"a", 1.0}});
   std::unordered_map<std::string, double> resources2({{"b", 2.0}});
@@ -1815,10 +1827,11 @@ TEST(NormalTaskSubmitterTest, TestSchedulingKeys) {
 }
 
 TEST(NormalTaskSubmitterTest, TestBacklogReport) {
+  InstrumentedIOContextWithThread io_context("TestBacklogReport");
   rpc::Address address;
   auto raylet_client = std::make_shared<MockRayletClient>();
   auto worker_client = std::make_shared<MockWorkerClient>();
-  auto store = std::make_shared<CoreWorkerMemoryStore>();
+  auto store = std::make_shared<CoreWorkerMemoryStore>(&io_context.GetIoService());
   auto client_pool = std::make_shared<rpc::CoreWorkerClientPool>(
       [&](const rpc::Address &addr) { return worker_client; });
   auto task_finisher = std::make_shared<MockTaskFinisher>();
@@ -1876,6 +1889,7 @@ TEST(NormalTaskSubmitterTest, TestBacklogReport) {
   ASSERT_TRUE(submitter.SubmitTask(task4).ok());
   ASSERT_TRUE(submitter.SubmitTask(task4).ok());
 
+  std::this_thread::sleep_for(std::chrono::seconds(1));
   submitter.ReportWorkerBacklog();
   ASSERT_EQ(raylet_client->reported_backlogs.size(), 3);
   ASSERT_EQ(raylet_client->reported_backlogs[task1.GetSchedulingClass()], 0);
@@ -2088,6 +2102,7 @@ TEST(NormalTaskSubmitterTest, TestKillResolvingTask) {
   ASSERT_TRUE(submitter.CancelTask(task, true, false).ok());
   auto data = GenerateRandomObject();
   ASSERT_TRUE(store->Put(*data, obj1));
+  WaitForObjectIdInMemoryStore(*store, obj1);
   ASSERT_EQ(worker_client->kill_requests.size(), 0);
   ASSERT_EQ(worker_client->callbacks.size(), 0);
   ASSERT_EQ(raylet_client->num_workers_returned, 0);

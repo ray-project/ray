@@ -13,6 +13,7 @@
 // limitations under the License.
 
 #include <condition_variable>
+#include <utility>
 
 #include "ray/common/ray_config.h"
 #include "ray/core_worker/context.h"
@@ -162,11 +163,11 @@ CoreWorkerMemoryStore::CoreWorkerMemoryStore(
       io_context_(io_context == nullptr ? owned_io_context_with_thread_->GetIoService()
                                         : *io_context),
       ref_counter_(std::move(counter)),
-      raylet_client_(raylet_client),
-      check_signals_(check_signals),
-      unhandled_exception_handler_(unhandled_exception_handler),
+      raylet_client_(std::move(raylet_client)),
+      check_signals_(std::move(check_signals)),
+      unhandled_exception_handler_(std::move(unhandled_exception_handler)),
       object_allocator_(std::move(object_allocator)) {
-  if (owned_io_context_with_thread_) {
+  if (owned_io_context_with_thread_ != nullptr) {
     RAY_LOG(WARNING) << "io_context not provided to CoreWorkerMemoryStore! This should "
                         "only happen in cpp tests.";
   }
