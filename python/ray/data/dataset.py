@@ -862,6 +862,26 @@ class Dataset:
             **ray_remote_args,
         )
 
+    def rename_columns(
+        self,
+        mapper: Dict[str, str],
+        *,
+        compute: Union[str, ComputeStrategy] = None,
+        concurrency: Optional[Union[int, Tuple[int, int]]] = None,
+        **ray_remote_args,
+    ):
+        def rename_columns(batch: "pyarrow.Table") -> "pyarrow.Table":
+            return batch.rename_columns(mapper)
+
+        return self.map_batches(
+            rename_columns,
+            batch_format="pyarrow",
+            zero_copy_batch=True,
+            compute=compute,
+            concurrency=concurrency,
+            **ray_remote_args,
+        )
+
     @PublicAPI(api_group=BT_API_GROUP)
     def flat_map(
         self,
