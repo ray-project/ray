@@ -29,6 +29,7 @@ std::string debug_string_to_string(const T &t) {
 }
 
 TEST(ContainerUtilTest, TestDebugString) {
+  ASSERT_EQ(debug_string_to_string(static_cast<int>(2)), "2");
   ASSERT_EQ(debug_string_to_string(std::vector<int>{1, 2}), "[1, 2]");
   ASSERT_EQ(debug_string_to_string(std::set<int>{1, 2}), "[1, 2]");
   ASSERT_EQ(debug_string_to_string(std::unordered_set<int>{2}), "[2]");
@@ -38,6 +39,7 @@ TEST(ContainerUtilTest, TestDebugString) {
   ASSERT_EQ(debug_string_to_string(absl::flat_hash_map<int, int>{{3, 4}}), "[(3, 4)]");
   ASSERT_EQ(debug_string_to_string(absl::flat_hash_map<int, int>{{1, 2}}), "[(1, 2)]");
 
+  // Tuples
   ASSERT_EQ(debug_string_to_string(std::tuple<>()), "()");
   ASSERT_EQ(debug_string_to_string(std::tuple<int>(2)), "(2)");
   ASSERT_EQ(debug_string_to_string(std::tuple<int, std::string>({2, "hello world"})),
@@ -45,6 +47,36 @@ TEST(ContainerUtilTest, TestDebugString) {
   ASSERT_EQ(debug_string_to_string(
                 std::tuple<int, std::string, bool>({2, "hello world", true})),
             "(2, hello world, 1)");
+
+  // Pairs
+  ASSERT_EQ(debug_string_to_string(std::pair<int, int>{1, 2}), "(1, 2)");
+  ASSERT_EQ(debug_string_to_string(std::pair<std::string, int>{"key", 42}), "(key, 42)");
+  ASSERT_EQ(debug_string_to_string(std::pair<int, std::string>{3, "value"}),
+            "(3, value)");
+
+  // Composable: tuples of pairs of maps and vectors.
+  ASSERT_EQ(debug_string_to_string(
+                std::tuple<std::pair<int, std::vector<int>>, std::map<int, int>>{
+                    {1, {2, 3}}, {{4, 5}, {6, 7}}}),
+            "((1, [2, 3]), [(4, 5), (6, 7)])");
+
+  ASSERT_EQ(
+      debug_string_to_string(std::tuple<std::pair<std::string, std::vector<std::string>>,
+                                        std::map<std::string, std::string>>{
+          {"key", {"value1", "value2"}}, {{"key1", "value1"}, {"key2", "value2"}}}),
+      "((key, [value1, value2]), [(key1, value1), (key2, value2)])");
+
+  ASSERT_EQ(
+      debug_string_to_string(
+          std::tuple<std::pair<int, std::vector<int>>, std::map<int, std::vector<int>>>{
+              {1, {2, 3}}, {{4, {5, 6}}, {7, {8, 9}}}}),
+      "((1, [2, 3]), [(4, [5, 6]), (7, [8, 9])])");
+
+  ASSERT_EQ(
+      debug_string_to_string(std::tuple<std::pair<int, std::vector<int>>,
+                                        std::map<int, std::vector<std::pair<int, int>>>>{
+          {1, {2, 3}}, {{4, {{5, 6}, {7, 8}}}, {9, {{10, 11}, {12, 13}}}}}),
+      "((1, [2, 3]), [(4, [(5, 6), (7, 8)]), (9, [(10, 11), (12, 13)])])");
 }
 
 TEST(ContainerUtilTest, TestMapFindOrDie) {

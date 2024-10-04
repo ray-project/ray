@@ -19,6 +19,7 @@
 #include <ostream>
 #include <set>
 #include <sstream>
+#include <type_traits>
 #include <unordered_set>
 #include <vector>
 
@@ -28,84 +29,14 @@
 
 namespace ray {
 
-namespace detail {
-
 template <typename T>
-std::ostream &_debug_string_impl(std::ostream &os, const T &obj) {
-  os << obj;
-  return os;
-}
+class DebugStringWrapper;
 
-template <typename... Ts>
-std::ostream &_debug_string_impl(std::ostream &os, const std::pair<Ts...> &pair) {
-  os << "(";
-  _debug_string_impl(os, pair.first);
-  os << ", ";
-  _debug_string_impl(os, pair.second);
-  os << ")";
-  return os;
+// The actual interface.
+template <typename T>
+DebugStringWrapper<T> debug_string(const T &t) {
+  return DebugStringWrapper<T>(t);
 }
-
-template <typename C>
-std::ostream &_container_debug_string_impl(std::ostream &os, const C &c) {
-  os << "[";
-  for (auto it = c.begin(); it != c.end(); ++it) {
-    if (it != c.begin()) {
-      os << ", ";
-    }
-    _debug_string_impl(os, *it);
-  }
-  os << "]";
-  return os;
-}
-
-template <typename... Ts>
-std::ostream &_debug_string_impl(std::ostream &os, const std::tuple<Ts...> &tuple) {
-  os << "(";
-  std::apply(
-      [&os](const Ts &...args) {
-        size_t n = 0;
-        ((os << args << (++n != sizeof...(Ts) ? ", " : "")), ...);
-      },
-      tuple);
-
-  os << ")";
-  return os;
-}
-
-// This specialization is needed, or the compiler complains the lambda in std::apply
-// does not use capture &os.
-std::ostream &_debug_string_impl(std::ostream &os, const std::tuple<> &tuple) {
-  os << "()";
-  return os;
-}
-
-template <typename... Ts>
-std::ostream &_debug_string_impl(std::ostream &os, const std::vector<Ts...> &c) {
-  return _container_debug_string_impl(os, c);
-}
-template <typename... Ts>
-std::ostream &_debug_string_impl(std::ostream &os, const std::set<Ts...> &c) {
-  return _container_debug_string_impl(os, c);
-}
-template <typename... Ts>
-std::ostream &_debug_string_impl(std::ostream &os, const std::unordered_set<Ts...> &c) {
-  return _container_debug_string_impl(os, c);
-}
-template <typename... Ts>
-std::ostream &_debug_string_impl(std::ostream &os, const absl::flat_hash_set<Ts...> &c) {
-  return _container_debug_string_impl(os, c);
-}
-template <typename... Ts>
-std::ostream &_debug_string_impl(std::ostream &os, const std::map<Ts...> &c) {
-  return _container_debug_string_impl(os, c);
-}
-template <typename... Ts>
-std::ostream &_debug_string_impl(std::ostream &os, const absl::flat_hash_map<Ts...> &c) {
-  return _container_debug_string_impl(os, c);
-}
-
-}  // namespace detail
 
 /// Wrapper for `debug_string(const T&)`.
 template <typename T>
@@ -113,21 +44,78 @@ class DebugStringWrapper {
  public:
   explicit DebugStringWrapper(const T &obj) : obj_(obj) {}
 
-  // Overload operator<< for std::ostream
-  friend std::ostream &operator<<(std::ostream &os,
-                                  const DebugStringWrapper<T> &wrapper) {
-    RAY_LOG(ERROR) << "operator<<";
-    return detail::_debug_string_impl(os, wrapper.obj_);
+  // Only initialized for the blessed container types listed below with operator<<
+  // specializations.
+  std::ostream &_container_debug_string_impl(std::ostream &os) const {
+    os << "[";
+    for (auto it = obj_.begin(); it != obj_.end(); ++it) {
+      if (it != obj_.begin()) {
+        os << ", ";
+      }
+      os << debug_string(*it);
+    }
+    os << "]";
+    return os;
   }
 
- private:
+  // Public but OK, since it's const &.
   const T &obj_;
 };
 
-// The actual interface.
 template <typename T>
-DebugStringWrapper<T> debug_string(const T &t) {
-  return DebugStringWrapper<T>(t);
+std::ostream &operator<<(std::ostream &os, DebugStringWrapper<T> wrapper) {
+  return os << wrapper.obj_;
+}
+
+template <typename... Ts>
+std::ostream &operator<<(std::ostream &os, DebugStringWrapper<std::pair<Ts...>> pair) {
+  return os << "(" << debug_string(pair.obj_.first) << ", "
+            << debug_string(pair.obj_.second) << ")";
+}
+
+template <typename... Ts>
+std::ostream &operator<<(std::ostream &os, DebugStringWrapper<std::tuple<Ts...>> tuple) {
+  os << "(";
+  // This specialization is needed, or the compiler complains the lambda in std::apply
+  // does not use capture &os.
+  if constexpr (sizeof...(Ts) != 0) {
+    std::apply(
+        [&os](const Ts &...args) {
+          size_t n = 0;
+          ((os << debug_string(args) << (++n != sizeof...(Ts) ? ", " : "")), ...);
+        },
+        tuple.obj_);
+  }
+  os << ")";
+  return os;
+}
+
+template <typename... Ts>
+std::ostream &operator<<(std::ostream &os, DebugStringWrapper<std::vector<Ts...>> c) {
+  return c._container_debug_string_impl(os);
+}
+template <typename... Ts>
+std::ostream &operator<<(std::ostream &os, DebugStringWrapper<std::set<Ts...>> c) {
+  return c._container_debug_string_impl(os);
+}
+template <typename... Ts>
+std::ostream &operator<<(std::ostream &os,
+                         DebugStringWrapper<std::unordered_set<Ts...>> c) {
+  return c._container_debug_string_impl(os);
+}
+template <typename... Ts>
+std::ostream &operator<<(std::ostream &os,
+                         DebugStringWrapper<absl::flat_hash_set<Ts...>> c) {
+  return c._container_debug_string_impl(os);
+}
+template <typename... Ts>
+std::ostream &operator<<(std::ostream &os, DebugStringWrapper<std::map<Ts...>> c) {
+  return c._container_debug_string_impl(os);
+}
+template <typename... Ts>
+std::ostream &operator<<(std::ostream &os,
+                         DebugStringWrapper<absl::flat_hash_map<Ts...>> c) {
+  return c._container_debug_string_impl(os);
 }
 
 template <typename C>
