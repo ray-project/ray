@@ -322,6 +322,92 @@ def test_exception_chain(ray_start_regular):
         assert isinstance(ex, RayTaskError)
 
 
+def test_base_exception_task(ray_start_regular):
+    @ray.remote
+    def task():
+        raise BaseException("abc")
+
+    with pytest.raises(ray.exceptions.WorkerCrashedError):
+        ray.get(task.remote())
+
+
+def test_base_exception_actor(ray_start_regular):
+    @ray.remote
+    class Actor:
+        def f(self):
+            raise BaseException("abc")
+
+    with pytest.raises(ray.exceptions.ActorDiedError):
+        a = Actor.remote()
+        ray.get(a.f.remote())
+
+
+@pytest.mark.skipif(
+    sys.version_info < (3, 11),
+    reason="BaseExceptionGroup is only available in Python 3.11+",
+)
+def test_base_exception_group_task(ray_start_regular):
+    @ray.remote
+    def task():
+        raise BaseExceptionGroup("abc", [BaseException("def")])
+
+    with pytest.raises(ray.exceptions.WorkerCrashedError):
+        ray.get(task.remote())
+
+
+@pytest.mark.skipif(
+    sys.version_info < (3, 11),
+    reason="BaseExceptionGroup is only available in Python 3.11+",
+)
+def test_base_exception_group_actor(ray_start_regular):
+    @ray.remote
+    class Actor:
+        def f(self):
+            raise BaseExceptionGroup("abc", [BaseException("def")])
+
+    with pytest.raises(ray.exceptions.ActorDiedError):
+        a = Actor.remote()
+        ray.get(a.f.remote())
+
+
+@pytest.mark.skipif(
+    sys.version_info < (3, 11),
+    reason="ExceptionGroup is only available in Python 3.11+",
+)
+def test_exception_group(ray_start_regular):
+    exception_group = ExceptionGroup(
+        "test", [ValueError("This is an error"), TypeError("This is another error")]
+    )
+
+    @ray.remote
+    def task():
+        raise exception_group
+
+    @ray.remote
+    class Actor:
+        def f(self):
+            raise exception_group
+
+    try:
+        ray.get(task.remote())
+    except Exception as ex:
+        assert isinstance(ex, RayTaskError)
+        assert isinstance(ex, ExceptionGroup)
+        assert len(ex.exceptions) == 2
+        assert isinstance(ex.exceptions[0], ValueError)
+        assert isinstance(ex.exceptions[1], TypeError)
+
+    try:
+        a = Actor.remote()
+        ray.get(a.f.remote())
+    except Exception as ex:
+        assert isinstance(ex, RayTaskError)
+        assert isinstance(ex, ExceptionGroup)
+        assert len(ex.exceptions) == 2
+        assert isinstance(ex.exceptions[0], ValueError)
+        assert isinstance(ex.exceptions[1], TypeError)
+
+
 @pytest.mark.skip("This test does not work yet.")
 @pytest.mark.parametrize("ray_start_object_store_memory", [10**6], indirect=True)
 def test_put_error1(ray_start_object_store_memory, error_pubsub):
