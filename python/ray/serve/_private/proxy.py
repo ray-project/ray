@@ -1031,7 +1031,7 @@ class HTTPProxy(GenericProxy):
                             # Other 1xxx codes are specified as errors
                             is_error = status_code.startswith("1")
 
-                        status = ResponseStatus(code=status_code, mis_error=is_error)
+                        status = ResponseStatus(code=status_code, is_error=is_error)
                         response_generator.stop_checking_for_disconnect()
 
                     yield asgi_message
