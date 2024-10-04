@@ -81,6 +81,7 @@ import gymnasium as gym
 
 from ray.rllib.connectors.env_to_module.frame_stacking import FrameStackingEnvToModule
 from ray.rllib.connectors.learner.frame_stacking import FrameStackingLearner
+from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
 from ray.rllib.env.wrappers.atari_wrappers import wrap_atari_for_new_api_stack
 from ray.rllib.examples.envs.classes.multi_agent import make_multi_agent
 from ray.rllib.utils.test_utils import (
@@ -197,14 +198,12 @@ if __name__ == "__main__":
             grad_clip_by="global_norm",
         )
         .rl_module(
-            model_config_dict=dict(
-                {
-                    "vf_share_layers": True,
-                    "conv_filters": [[16, 4, 2], [32, 4, 2], [64, 4, 2], [128, 4, 2]],
-                    "conv_activation": "relu",
-                    "post_fcnet_hiddens": [256],
-                },
-            )
+            model_config=DefaultModelConfig(
+                vf_share_layers=True,
+                conv_filters=[[16, 4, 2], [32, 4, 2], [64, 4, 2], [128, 4, 2]],
+                conv_activation="relu",
+                post_fcnet_hiddens=[256],
+            ),
         )
     )
 

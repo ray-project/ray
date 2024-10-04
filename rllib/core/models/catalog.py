@@ -14,7 +14,6 @@ from ray.rllib.core.models.configs import (
     RecurrentEncoderConfig,
 )
 from ray.rllib.core.models.configs import ModelConfig
-from ray.rllib.models import MODEL_DEFAULTS
 from ray.rllib.models.distributions import Distribution
 from ray.rllib.models.preprocessors import get_preprocessor, Preprocessor
 from ray.rllib.models.utils import get_filter_config
@@ -104,8 +103,7 @@ class Catalog:
         self.observation_space = observation_space
         self.action_space = action_space
 
-        # TODO (Artur): Make model defaults a dataclass
-        self._model_config_dict = {**MODEL_DEFAULTS, **model_config_dict}
+        self._model_config_dict = model_config_dict
         self._latent_dims = None
 
         self._determine_components_hook()
@@ -246,20 +244,11 @@ class Catalog:
         Returns:
             The encoder config.
         """
-        # TODO (Artur): Make it so that we don't work with complete MODEL_DEFAULTS
-        model_config_dict = {**MODEL_DEFAULTS, **model_config_dict}
-
         activation = model_config_dict["fcnet_activation"]
         output_activation = model_config_dict["fcnet_activation"]
         fcnet_hiddens = model_config_dict["fcnet_hiddens"]
-        # TODO (sven): Move to a new ModelConfig object (dataclass) asap, instead of
-        #  "linking" into the old ModelConfig (dict)! This just causes confusion as to
-        #  which old keys now mean what for the new RLModules-based default models.
-        encoder_latent_dim = (
-            model_config_dict["encoder_latent_dim"] or fcnet_hiddens[-1]
-        )
+        encoder_latent_dim = fcnet_hiddens[-1]
         use_lstm = model_config_dict["use_lstm"]
-        use_attention = model_config_dict["use_attention"]
 
         if use_lstm:
             encoder_config = RecurrentEncoderConfig(
@@ -270,11 +259,11 @@ class Catalog:
                     "lstm_weights_initializer"
                 ],
                 hidden_weights_initializer_config=model_config_dict[
-                    "lstm_weights_initializer_config"
+                    "lstm_weights_initializer_kwargs"
                 ],
                 hidden_bias_initializer=model_config_dict["lstm_bias_initializer"],
                 hidden_bias_initializer_config=model_config_dict[
-                    "lstm_bias_initializer_config"
+                    "lstm_bias_initializer_kwargs"
                 ],
                 batch_major=not model_config_dict["_time_major"],
                 num_layers=1,
@@ -283,8 +272,6 @@ class Catalog:
                     model_config_dict,
                 ),
             )
-        elif use_attention:
-            raise NotImplementedError
         else:
             # TODO (Artur): Maybe check for original spaces here
             # input_space is a 1D Box
@@ -292,39 +279,37 @@ class Catalog:
                 # In order to guarantee backward compatability with old configs,
                 # we need to check if no latent dim was set and simply reuse the last
                 # fcnet hidden dim for that purpose.
-                if model_config_dict["encoder_latent_dim"]:
-                    hidden_layer_dims = model_config_dict["fcnet_hiddens"]
-                else:
-                    hidden_layer_dims = model_config_dict["fcnet_hiddens"][:-1]
+                hidden_layer_dims = model_config_dict["fcnet_hiddens"][:-1]
+                encoder_latent_dim = model_config_dict["fcnet_hiddens"][-1]
                 encoder_config = MLPEncoderConfig(
                     input_dims=observation_space.shape,
                     hidden_layer_dims=hidden_layer_dims,
                     hidden_layer_activation=activation,
                     hidden_layer_weights_initializer=model_config_dict[
-                        "fcnet_weights_initializer"
+                        "fcnet_kernel_initializer"
                     ],
                     hidden_layer_weights_initializer_config=model_config_dict[
-                        "fcnet_weights_initializer_config"
+                        "fcnet_kernel_initializer_kwargs"
                     ],
                     hidden_layer_bias_initializer=model_config_dict[
                         "fcnet_bias_initializer"
                     ],
                     hidden_layer_bias_initializer_config=model_config_dict[
-                        "fcnet_bias_initializer_config"
+                        "fcnet_bias_initializer_kwargs"
                     ],
                     output_layer_dim=encoder_latent_dim,
                     output_layer_activation=output_activation,
                     output_layer_weights_initializer=model_config_dict[
-                        "post_fcnet_weights_initializer"
+                        "fcnet_kernel_initializer"
                     ],
                     output_layer_weights_initializer_config=model_config_dict[
-                        "post_fcnet_weights_initializer_config"
+                        "fcnet_kernel_initializer_kwargs"
                     ],
                     output_layer_bias_initializer=model_config_dict[
-                        "post_fcnet_bias_initializer"
+                        "fcnet_bias_initializer"
                     ],
                     output_layer_bias_initializer_config=model_config_dict[
-                        "post_fcnet_bias_initializer_config"
+                        "fcnet_bias_initializer_kwargs"
                     ],
                 )
 
@@ -341,16 +326,13 @@ class Catalog:
                     input_dims=observation_space.shape,
                     cnn_filter_specifiers=model_config_dict["conv_filters"],
                     cnn_activation=model_config_dict["conv_activation"],
-                    cnn_use_layernorm=model_config_dict.get(
-                        "conv_use_layernorm", False
-                    ),
                     cnn_kernel_initializer=model_config_dict["conv_kernel_initializer"],
                     cnn_kernel_initializer_config=model_config_dict[
-                        "conv_kernel_initializer_config"
+                        "conv_kernel_initializer_kwargs"
                     ],
                     cnn_bias_initializer=model_config_dict["conv_bias_initializer"],
                     cnn_bias_initializer_config=model_config_dict[
-                        "conv_bias_initializer_config"
+                        "conv_bias_initializer_kwargs"
                     ],
                 )
             # input_space is a 2D Box
@@ -360,7 +342,7 @@ class Catalog:
                 # RLlib used to support 2D Box spaces by silently flattening them
                 raise ValueError(
                     f"No default encoder config for obs space={observation_space},"
-                    f" lstm={use_lstm} and attention={use_attention} found. 2D Box "
+                    f" lstm={use_lstm} found. 2D Box "
                     f"spaces are not supported. They should be either flattened to a "
                     f"1D Box space or enhanced to be a 3D box space."
                 )
@@ -369,7 +351,7 @@ class Catalog:
                 # NestedModelConfig
                 raise ValueError(
                     f"No default encoder config for obs space={observation_space},"
-                    f" lstm={use_lstm} and attention={use_attention} found."
+                    f" lstm={use_lstm} found."
                 )
 
         return encoder_config

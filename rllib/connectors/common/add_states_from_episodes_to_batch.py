@@ -395,7 +395,7 @@ class AddStatesFromEpisodesToBatch(ConnectorV2):
                 "You are using a stateful RLModule and are not providing a "
                 "'max_seq_len' key inside your model config dict. You can set this "
                 "dict and/or override keys in it via `config.rl_module("
-                "model_config_dict={'max_seq_len': [some int]})`."
+                "model_config={'max_seq_len': [some int]})`."
             )
         return mod.config.model_config_dict["max_seq_len"]
 

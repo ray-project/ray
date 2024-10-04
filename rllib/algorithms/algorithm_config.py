@@ -1,4 +1,5 @@
 import copy
+import dataclasses
 from enum import Enum
 import inspect
 import logging
@@ -25,6 +26,7 @@ from ray.rllib.algorithms.callbacks import DefaultCallbacks
 from ray.rllib.core import DEFAULT_MODULE_ID
 from ray.rllib.core.columns import Columns
 from ray.rllib.core.rl_module import validate_module_id
+from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
 from ray.rllib.core.rl_module.multi_rl_module import MultiRLModuleSpec
 from ray.rllib.core.rl_module.rl_module import RLModuleSpec
 from ray.rllib.env import INPUT_ENV_SPACES
@@ -545,7 +547,7 @@ class AlgorithmConfig(_Config):
         self.env_runner_restore_timeout_s = 1800
 
         # `self.rl_module()`
-        self._model_config_dict = {}
+        self._model_config = {}
         self._rl_module_spec = None
         # Helper to keep track of the original exploration config when dis-/enabling
         # rl modules.
@@ -1013,8 +1015,8 @@ class AlgorithmConfig(_Config):
             if self.is_multi_agent():
                 pipeline.append(
                     AgentToModuleMapping(
-                        module_specs=(
-                            self.rl_module_spec.module_specs
+                        rl_module_specs=(
+                            self.rl_module_spec.rl_module_specs
                             if isinstance(self.rl_module_spec, MultiRLModuleSpec)
                             else set(self.policies)
                         ),
@@ -1179,8 +1181,8 @@ class AlgorithmConfig(_Config):
             if self.is_multi_agent():
                 pipeline.append(
                     AgentToModuleMapping(
-                        module_specs=(
-                            self.rl_module_spec.module_specs
+                        rl_module_specs=(
+                            self.rl_module_spec.rl_module_specs
                             if isinstance(self.rl_module_spec, MultiRLModuleSpec)
                             else set(self.policies)
                         ),
@@ -3343,19 +3345,21 @@ class AlgorithmConfig(_Config):
     def rl_module(
         self,
         *,
-        model_config_dict: Optional[Dict[str, Any]] = NotProvided,
+        model_config: Optional[Union[Dict[str, Any], DefaultModelConfig]] = NotProvided,
         rl_module_spec: Optional[RLModuleSpecType] = NotProvided,
         algorithm_config_overrides_per_module: Optional[
             Dict[ModuleID, PartialAlgorithmConfigDict]
         ] = NotProvided,
         # Deprecated arg.
+        model_config_dict=DEPRECATED_VALUE,
         _enable_rl_module_api=DEPRECATED_VALUE,
     ) -> "AlgorithmConfig":
         """Sets the config's RLModule settings.
 
         Args:
-            model_config_dict: The default model config dictionary for `RLModule`s. This
-                will be used for any `RLModule` if not otherwise specified in the
+            model_config: The DefaultModelConfig object (or a config dictionary) passed
+                as `model_config` arg into each RLModule's constructor. This will be
+                used for all RLModules, if not otherwise specified through
                 `rl_module_spec`.
             rl_module_spec: The RLModule spec to use for this config. It can be either
                 a RLModuleSpec or a MultiRLModuleSpec. If the
@@ -3384,9 +3388,14 @@ class AlgorithmConfig(_Config):
                 new="AlgorithmConfig.api_stack(enable_rl_module_and_learner=..)",
                 error=True,
             )
+        if model_config_dict != DEPRECATED_VALUE:
+            deprecation_warning(
+                error=False,
+            )
+            model_config = model_config_dict
 
-        if model_config_dict is not NotProvided:
-            self._model_config_dict = model_config_dict
+        if model_config is not NotProvided:
+            self._model_config = model_config
         if rl_module_spec is not NotProvided:
             self._rl_module_spec = rl_module_spec
         if algorithm_config_overrides_per_module is not NotProvided:
@@ -3493,7 +3502,7 @@ class AlgorithmConfig(_Config):
 
         # `self._rl_module_spec` has been user defined (via call to `self.rl_module()`).
         if self._rl_module_spec is not None:
-            # Merge provided RL Module spec class with defaults
+            # Merge provided RL Module spec class with defaults.
             _check_rl_module_spec(self._rl_module_spec)
             # Merge given spec with default one (in case items are missing, such as
             # spaces, module class, etc.)
@@ -3804,7 +3813,7 @@ class AlgorithmConfig(_Config):
             if DEFAULT_MODULE_ID not in rl_module_spec:
                 error = True
             if inference_only:
-                for mid, spec in rl_module_spec.module_specs.items():
+                for mid, spec in rl_module_spec.rl_module_specs.items():
                     if mid != DEFAULT_MODULE_ID:
                         if not spec.learner_only:
                             error = True
@@ -3829,8 +3838,8 @@ class AlgorithmConfig(_Config):
             rl_module_spec.action_space = env.single_action_space
 
         # If module_config_dict is not defined, set to our generic one.
-        if rl_module_spec.model_config_dict is None:
-            rl_module_spec.model_config_dict = self.model_config
+        if rl_module_spec.model_config is None:
+            rl_module_spec.model_config = self.model_config
 
         if inference_only is not None:
             rl_module_spec.inference_only = inference_only
@@ -3899,7 +3908,7 @@ class AlgorithmConfig(_Config):
             single_agent_rl_module_spec.inference_only = inference_only
             # Now construct the proper MultiRLModuleSpec.
             multi_rl_module_spec = MultiRLModuleSpec(
-                module_specs={
+                rl_module_specs={
                     k: copy.deepcopy(single_agent_rl_module_spec)
                     for k in policy_dict.keys()
                 },
@@ -3917,9 +3926,9 @@ class AlgorithmConfig(_Config):
                 # The individual (single-agent) module specs are defined by the user
                 # in the currently setup MultiRLModuleSpec -> Use that
                 # RLModuleSpec.
-                if isinstance(current_rl_module_spec.module_specs, RLModuleSpec):
+                if isinstance(current_rl_module_spec.rl_module_specs, RLModuleSpec):
                     single_agent_spec = single_agent_rl_module_spec or (
-                        current_rl_module_spec.module_specs
+                        current_rl_module_spec.rl_module_specs
                     )
                     single_agent_spec.inference_only = inference_only
                     module_specs = {
@@ -3937,12 +3946,12 @@ class AlgorithmConfig(_Config):
                     single_agent_spec.inference_only = inference_only
                     module_specs = {
                         k: copy.deepcopy(
-                            current_rl_module_spec.module_specs.get(
+                            current_rl_module_spec.rl_module_specs.get(
                                 k, single_agent_spec
                             )
                         )
                         for k in (
-                            policy_dict | current_rl_module_spec.module_specs
+                            policy_dict | current_rl_module_spec.rl_module_specs
                         ).keys()
                     }
 
@@ -3951,7 +3960,7 @@ class AlgorithmConfig(_Config):
                 # and fill in the module_specs dict.
                 multi_rl_module_spec = current_rl_module_spec.__class__(
                     multi_rl_module_class=current_rl_module_spec.multi_rl_module_class,
-                    module_specs=module_specs,
+                    rl_module_specs=module_specs,
                     modules_to_load=current_rl_module_spec.modules_to_load,
                     load_state_path=current_rl_module_spec.load_state_path,
                 )
@@ -3968,11 +3977,11 @@ class AlgorithmConfig(_Config):
                     # But the currently setup multi-agent spec has a SingleAgentRLModule
                     # spec defined -> Use that to construct the individual RLModules
                     # within the MultiRLModuleSpec.
-                    if isinstance(current_rl_module_spec.module_specs, RLModuleSpec):
+                    if isinstance(current_rl_module_spec.rl_module_specs, RLModuleSpec):
                         # The individual module specs are not given, it is given as one
                         # RLModuleSpec to be re-used for all
                         single_agent_rl_module_spec = (
-                            current_rl_module_spec.module_specs
+                            current_rl_module_spec.rl_module_specs
                         )
                     # The currently setup multi-agent spec has NO
                     # RLModuleSpec in it -> Error (there is no way we can
@@ -3992,7 +4001,7 @@ class AlgorithmConfig(_Config):
                 # Now construct the proper MultiRLModuleSpec.
                 multi_rl_module_spec = current_rl_module_spec.__class__(
                     multi_rl_module_class=current_rl_module_spec.multi_rl_module_class,
-                    module_specs={
+                    rl_module_specs={
                         k: copy.deepcopy(single_agent_rl_module_spec)
                         for k in policy_dict.keys()
                     },
@@ -4002,10 +4011,10 @@ class AlgorithmConfig(_Config):
 
         # Fill in the missing values from the specs that we already have. By combining
         # PolicySpecs and the default RLModuleSpec.
-        for module_id in policy_dict | multi_rl_module_spec.module_specs:
+        for module_id in policy_dict | multi_rl_module_spec.rl_module_specs:
 
             # Remove/skip `learner_only=True` RLModules if `inference_only` is True.
-            module_spec = multi_rl_module_spec.module_specs[module_id]
+            module_spec = multi_rl_module_spec.rl_module_specs[module_id]
             if inference_only and module_spec.learner_only:
                 multi_rl_module_spec.remove_modules(module_id)
                 continue
@@ -4017,8 +4026,8 @@ class AlgorithmConfig(_Config):
             if module_spec.module_class is None:
                 if isinstance(default_rl_module_spec, RLModuleSpec):
                     module_spec.module_class = default_rl_module_spec.module_class
-                elif isinstance(default_rl_module_spec.module_specs, RLModuleSpec):
-                    module_class = default_rl_module_spec.module_specs.module_class
+                elif isinstance(default_rl_module_spec.rl_module_specs, RLModuleSpec):
+                    module_class = default_rl_module_spec.rl_module_specs.module_class
                     # This should be already checked in validate() but we check it
                     # again here just in case
                     if module_class is None:
@@ -4027,8 +4036,8 @@ class AlgorithmConfig(_Config):
                             "module_class under its RLModuleSpec."
                         )
                     module_spec.module_class = module_class
-                elif module_id in default_rl_module_spec.module_specs:
-                    module_spec.module_class = default_rl_module_spec.module_specs[
+                elif module_id in default_rl_module_spec.rl_module_specs:
+                    module_spec.module_class = default_rl_module_spec.rl_module_specs[
                         module_id
                     ].module_class
                 else:
@@ -4041,11 +4050,11 @@ class AlgorithmConfig(_Config):
             if module_spec.catalog_class is None:
                 if isinstance(default_rl_module_spec, RLModuleSpec):
                     module_spec.catalog_class = default_rl_module_spec.catalog_class
-                elif isinstance(default_rl_module_spec.module_specs, RLModuleSpec):
-                    catalog_class = default_rl_module_spec.module_specs.catalog_class
+                elif isinstance(default_rl_module_spec.rl_module_specs, RLModuleSpec):
+                    catalog_class = default_rl_module_spec.rl_module_specs.catalog_class
                     module_spec.catalog_class = catalog_class
-                elif module_id in default_rl_module_spec.module_specs:
-                    module_spec.catalog_class = default_rl_module_spec.module_specs[
+                elif module_id in default_rl_module_spec.rl_module_specs:
+                    module_spec.catalog_class = default_rl_module_spec.rl_module_specs[
                         module_id
                     ].catalog_class
                 else:
@@ -4064,13 +4073,13 @@ class AlgorithmConfig(_Config):
             # In case the `RLModuleSpec` does not have a model config dict, we use the
             # the one defined by the auto keys and the `model_config_dict` arguments in
             # `self.rl_module()`.
-            if module_spec.model_config_dict is None:
-                module_spec.model_config_dict = self.model_config
+            if module_spec.model_config is None:
+                module_spec.model_config = self.model_config
             # Otherwise we combine the two dictionaries where settings from the
             # `RLModuleSpec` have higher priority.
             else:
-                module_spec.model_config_dict = (
-                    self.model_config | module_spec.model_config_dict
+                module_spec.model_config = (
+                    self.model_config | module_spec._get_model_config()
                 )
 
         return multi_rl_module_spec
@@ -4173,14 +4182,18 @@ class AlgorithmConfig(_Config):
 
         This method combines the auto configuration `self _model_config_auto_includes`
         defined by an algorithm with the user-defined configuration in
-        `self._model_config_dict`.This configuration dictionary will be used to
+        `self._model_config`.This configuration dictionary will be used to
         configure the `RLModule` in the new stack and the `ModelV2` in the old
         stack.
 
         Returns:
             A dictionary with the model configuration.
         """
-        return self._model_config_auto_includes | self._model_config_dict
+        return self._model_config_auto_includes | (
+            self._model_config
+            if isinstance(self._model_config, dict)
+            else dataclasses.asdict(self._model_config)
+        )
 
     @property
     def _model_config_auto_includes(self) -> Dict[str, Any]:
@@ -4195,7 +4208,7 @@ class AlgorithmConfig(_Config):
             A dictionary with the automatically included properties/settings of this
             `AlgorithmConfig` object into `self.model_config`.
         """
-        return MODEL_DEFAULTS
+        return {}
 
     # -----------------------------------------------------------
     # Various validation methods for different types of settings.

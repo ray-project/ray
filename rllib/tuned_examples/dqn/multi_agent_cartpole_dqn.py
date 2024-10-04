@@ -1,4 +1,5 @@
 from ray.rllib.algorithms.dqn import DQNConfig
+from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
 from ray.rllib.examples.envs.classes.multi_agent import MultiAgentCartPole
 from ray.rllib.utils.metrics import (
     ENV_RUNNER_RESULTS,
@@ -45,14 +46,14 @@ config = (
         dueling=True,
     )
     .rl_module(
-        model_config_dict={
-            "fcnet_hiddens": [256],
-            "fcnet_activation": "tanh",
-            "epsilon": [(0, 1.0), (10000, 0.02)],
-            "fcnet_bias_initializer": "zeros_",
-            "post_fcnet_bias_initializer": "zeros_",
-            "post_fcnet_hiddens": [256],
-        },
+        model_config=DefaultModelConfig(
+            fcnet_hiddens=[256],
+            fcnet_activation="tanh",
+            epsilon=[(0, 1.0), (10000, 0.02)],
+            fcnet_bias_initializer="zeros_",
+            post_fcnet_bias_initializer="zeros_",
+            post_fcnet_hiddens=[256],
+        ),
     )
 )
 

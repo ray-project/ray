@@ -154,6 +154,7 @@ class Learner(Checkpointable):
                 PPOTorchRLModule
             )
             from ray.rllib.core import COMPONENT_RL_MODULE, DEFAULT_MODULE_ID
+            from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
             from ray.rllib.core.rl_module.rl_module import RLModuleSpec
 
             env = gym.make("CartPole-v1")
@@ -180,7 +181,7 @@ class Learner(Checkpointable):
                     module_class=PPOTorchRLModule,
                     observation_space=env.observation_space,
                     action_space=env.action_space,
-                    model_config_dict={"fcnet_hiddens": [64, 64]},
+                    model_config=DefaultModelConfig(fcnet_hiddens=[64, 64]),
                     catalog_class=PPOCatalog,
                 )
             )

@@ -73,6 +73,7 @@ Results to expect
 """
 from ray.tune.registry import register_env
 from ray.rllib.connectors.env_to_module import FlattenObservations
+from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
 from ray.rllib.examples.envs.classes.cartpole_with_dict_observation_space import (
     CartPoleWithDictObservationSpace,
 )
@@ -123,11 +124,11 @@ if __name__ == "__main__":
             lr=0.0003,
         )
         .rl_module(
-            model_config_dict={
-                "fcnet_hiddens": [32],
-                "fcnet_activation": "linear",
-                "vf_share_layers": True,
-            },
+            model_config=DefaultModelConfig(
+                fcnet_hiddens=[32],
+                fcnet_activation="linear",
+                vf_share_layers=True,
+            ),
         )
     )
 

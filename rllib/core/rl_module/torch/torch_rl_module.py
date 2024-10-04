@@ -49,10 +49,10 @@ class TorchRLModule(nn.Module, RLModule):
         nn.Module.__init__(self)
         RLModule.__init__(self, *args, **kwargs)
 
-        # If an inference-only class AND self.config.inference_only is True,
+        # If an inference-only class AND self.inference_only is True,
         # remove all attributes that are returned by
         # `self.get_non_inference_attributes()`.
-        if self.config.inference_only and isinstance(self, InferenceOnlyAPI):
+        if self.inference_only and isinstance(self, InferenceOnlyAPI):
             for attr in self.get_non_inference_attributes():
                 parts = attr.split(".")
                 if not hasattr(self, parts[0]):
@@ -104,7 +104,7 @@ class TorchRLModule(nn.Module, RLModule):
         # InferenceOnlyAPI).
         if (
             inference_only
-            and not self.config.inference_only
+            and not self.inference_only
             and isinstance(self, InferenceOnlyAPI)
         ):
             attr = self.get_non_inference_attributes()
@@ -130,14 +130,14 @@ class TorchRLModule(nn.Module, RLModule):
     def get_inference_action_dist_cls(self) -> Type[TorchDistribution]:
         if self.action_dist_cls is not None:
             return self.action_dist_cls
-        elif isinstance(self.config.action_space, gym.spaces.Discrete):
+        elif isinstance(self.action_space, gym.spaces.Discrete):
             return TorchCategorical
-        elif isinstance(self.config.action_space, gym.spaces.Box):
+        elif isinstance(self.action_space, gym.spaces.Box):
             return TorchDiagGaussian
         else:
             raise ValueError(
                 f"Default action distribution for action space "
-                f"{self.config.action_space} not supported! Either set the "
+                f"{self.action_space} not supported! Either set the "
                 f"`self.action_dist_cls` property in your RLModule's `setup()` method "
                 f"to a subclass of `ray.rllib.models.torch.torch_distributions."
                 f"TorchDistribution` or - if you need different distributions for "
