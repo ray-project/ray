@@ -22,6 +22,10 @@ protoc_cpp_grpc_with_default_args = [
     '--grpc_out=@BUILD_ROOT@',
     '@INPUT@'
 ]
+proto_cpp_grpc_default_kwargs = {
+    'command': protoc_cpp_grpc_with_default_args,
+    'output':  ['@BASENAME@.grpc.pb.cc', '@BASENAME@.gprc.pb.h']
+}
 # === @end: proto_grpc ===
 
 

@@ -146,15 +146,11 @@ gcs_proto_py = custom_target(
 
 
 # === @begin: logging.proto ===
-proto_basename = 'logging'
-
-logging_proto = f'@proto_basename@.proto'
+logging_proto = ['logging.proto']
 
 logging_proto_cpp = custom_target(
-    f'@proto_basename@_proto_cpp',
     input: logging_proto,
-    command: protoc_cpp_with_default_args,
-    output: [f'@proto_basename@.pb.cc', f'@proto_basename@.pb.h']
+    kwargs: proto_cpp_default_kwargs
 )
 
 logging_proto_cpp_dep = declare_dependency(
@@ -162,7 +158,7 @@ logging_proto_cpp_dep = declare_dependency(
 )
 
 logging_proto_cpp_lib = static_library(
-    f'@proto_basename@_proto_cpp_lib',
+    'logging_proto_cpp_lib',
     dependencies: [protobuf, logging_proto_cpp_dep],
     install: false
 )
@@ -172,25 +168,18 @@ logging_proto_cpp_lib_dep = declare_dependency(
 )
 
 logging_proto_py = custom_target(
-    f'@proto_basename@_proto_py',
     input: logging_proto,
-    command: protoc_py_with_default_args,
-    output: [f'@proto_basename@_pb2.py', f'@proto_basename@_pb2_grpc.py'],
-    build_by_default: true
+    kwargs: proto_py_default_kwargs
 )
 # === @end: logging.proto ===
 
 
 # === @begin: node_manager.proto ===
-proto_basename = 'node_manager'
-
-node_manager_proto = f'@proto_basename@.proto'
+node_manager_proto = ['node_manager.proto']
 
 node_manager_proto_cpp = custom_target(
-    f'@proto_basename@_proto_cpp',
     input: node_manager_proto,
-    command: protoc_cpp_with_default_args,
-    output: [f'@proto_basename@.pb.cc', f'@proto_basename@.pb.h']
+    kwargs: proto_cpp_default_kwargs
 )
 
 node_manager_proto_cpp_dep = declare_dependency(
@@ -199,7 +188,7 @@ node_manager_proto_cpp_dep = declare_dependency(
 )
 
 node_manager_proto_cpp_lib = static_library(
-    f'@proto_basename@_proto_cpp_lib',
+    'node_manager_proto_cpp_lib',
     dependencies: [protobuf, node_manager_proto_cpp_dep],
     install: false
 )
@@ -209,10 +198,8 @@ node_manager_proto_cpp_lib_dep = declare_dependency(
 )
 
 node_manager_proto_cpp_grpc = custom_target(
-    f'@proto_basename@_proto_cpp_grpc',
     input: node_manager_proto,
-    command: protoc_cpp_grpc_with_default_args,
-    output: [f'@proto_basename@.grpc.pb.cc', f'@proto_basename@.gprc.pb.h']
+    kwargs: proto_cpp_grpc_default_kwargs
 )
 
 node_manager_proto_cpp_grpc_dep = declare_dependency(
@@ -220,7 +207,7 @@ node_manager_proto_cpp_grpc_dep = declare_dependency(
 )
 
 node_manager_proto_cpp_grpc_lib = static_library(
-    f'@proto_basename@_proto_cpp_grpc_lib',
+    'node_manager_proto_cpp_grpc_lib',
     dependencies: [protobuf, grpc, node_manager_proto_cpp_grpc_dep, node_manager_proto_cpp_lib_dep],
     install: false
 )
@@ -230,25 +217,20 @@ node_manager_proto_cpp_grpc_lib_dep = declare_dependency(
 )
 
 node_manager_proto_py = custom_target(
-    f'@proto_basename@_proto_py',
     input: node_manager_proto,
-    command: protoc_py_with_default_args,
-    output: [f'@proto_basename@_pb2.py', f'@proto_basename@_pb2_grpc.py'],
-    build_by_default: true
+    kwargs: proto_py_default_kwargs
 )
 # === @end: node_manager.proto ===
 
 
 # === @begin: reporter.proto ===
-proto_basename = 'reporter'
-
-reporter_proto = f'@proto_basename@.proto'
+reporter_proto = 'reporter.proto'
 
 reporter_proto_cpp = custom_target(
-    f'@proto_basename@_proto_cpp',
     input: reporter_proto,
-    command: [protoc_cpp_with_default_args, '-I@SOURCE_ROOT@/__eugo/include'],
-    output: [f'@proto_basename@.pb.cc', f'@proto_basename@.pb.h']
+    kwargs: proto_cpp_default_kwargs + {
+        'command': [protoc_cpp_with_default_args, '-I@SOURCE_ROOT@/__eugo/include']
+    }
 )
 
 reporter_proto_cpp_dep = declare_dependency(
@@ -257,7 +239,7 @@ reporter_proto_cpp_dep = declare_dependency(
 )
 
 reporter_proto_cpp_lib = static_library(
-    f'@proto_basename@_proto_cpp_lib',
+    'reporter_proto_cpp_lib',
     dependencies: [protobuf, reporter_proto_cpp_dep],
     install: false
 )
@@ -267,25 +249,20 @@ reporter_proto_cpp_lib_dep = declare_dependency(
 )
 
 reporter_proto_py = custom_target(
-    f'@proto_basename@_proto_py',
     input: reporter_proto,
-    command: [protoc_py_with_default_args, '-I@SOURCE_ROOT@/__eugo/include'],
-    output: [f'@proto_basename@_pb2.py', f'@proto_basename@_pb2_grpc.py'],
-    build_by_default: true
+    kwargs: proto_py_default_kwargs + {
+        'command': [protoc_py_with_default_args, '-I@SOURCE_ROOT@/__eugo/include']
+    }
 )
 # === @end: reporter.proto ===
 
 
 # === @begin: pubsub.proto ===
-proto_basename = 'pubsub'
-
-pubsub_proto = f'@proto_basename@.proto'
+pubsub_proto = ['pubsub.proto']
 
 pubsub_proto_cpp = custom_target(
-    f'@proto_basename@_proto_cpp',
     input: pubsub_proto,
-    command: protoc_cpp_with_default_args,
-    output: [f'@proto_basename@.pb.cc', f'@proto_basename@.pb.h']
+    kwargs: proto_cpp_default_kwargs
 )
 
 pubsub_proto_cpp_dep = declare_dependency(
@@ -294,7 +271,7 @@ pubsub_proto_cpp_dep = declare_dependency(
 )
 
 pubsub_proto_cpp_lib = static_library(
-    f'@proto_basename@_proto_cpp_lib',
+    'pubsub_proto_cpp_lib',
     dependencies: [protobuf, pubsub_proto_cpp_dep],
     install: false
 )
@@ -306,15 +283,11 @@ pubsub_proto_cpp_lib_dep = declare_dependency(
 
 
 # === @begin: gcs_service.proto ===
-proto_basename = 'gcs_service'
-
-gcs_service_proto = f'@proto_basename@.proto'
+gcs_service_proto = ['gcs_service.proto']
 
 gcs_service_proto_cpp = custom_target(
-    f'@proto_basename@_proto_cpp',
     input: gcs_service_proto,
-    command: protoc_cpp_with_default_args,
-    output: [f'@proto_basename@.pb.cc', f'@proto_basename@.pb.h']
+    kwargs: proto_cpp_default_kwargs
 )
 
 gcs_service_proto_cpp_dep = declare_dependency(
@@ -323,7 +296,7 @@ gcs_service_proto_cpp_dep = declare_dependency(
 )
 
 gcs_service_proto_cpp_lib = static_library(
-    f'@proto_basename@_proto_cpp_lib',
+    'gcs_service_proto_cpp_lib',
     dependencies: [protobuf, gcs_service_proto_cpp_dep],
     install: false
 )
@@ -333,25 +306,18 @@ gcs_service_proto_cpp_lib_dep = declare_dependency(
 )
 
 gcs_service_proto_py = custom_target(
-    f'@proto_basename@_proto_py',
     input: gcs_service_proto,
-    command: protoc_py_with_default_args,
-    output: [f'@proto_basename@_pb2.py', f'@proto_basename@_pb2_grpc.py'],
-    build_by_default: true
+    kwargs: proto_py_default_kwargs
 )
 # === @end: gcs_service.proto ===
 
 
 # === @begin: test_service.proto ===
-proto_basename = 'test_service'
-
-test_service_proto = f'@proto_basename@.proto'
+test_service_proto = ['test_service.proto']
 
 test_service_proto_cpp = custom_target(
-    f'@proto_basename@_proto_cpp',
     input: test_service_proto,
-    command: protoc_cpp_with_default_args,
-    output: [f'@proto_basename@.pb.cc', f'@proto_basename@.pb.h']
+    kwargs: proto_cpp_default_kwargs
 )
 
 test_service_proto_cpp_dep = declare_dependency(
@@ -359,7 +325,7 @@ test_service_proto_cpp_dep = declare_dependency(
 )
 
 test_service_proto_cpp_lib = static_library(
-    f'@proto_basename@_proto_cpp_lib',
+    'test_service_proto_cpp_lib',
     dependencies: [protobuf, test_service_proto_cpp_dep],
     install: false
 )
@@ -369,11 +335,8 @@ test_service_proto_cpp_lib_dep = declare_dependency(
 )
 
 test_service_proto_py = custom_target(
-    f'@proto_basename@_proto_py',
     input: test_service_proto,
-    command: protoc_py_with_default_args,
-    output: [f'@proto_basename@_pb2.py', f'@proto_basename@_pb2_grpc.py'],
-    build_by_default: true
+    kwargs: proto_py_default_kwargs
 )
 # === @end: test_service.proto ===
 
