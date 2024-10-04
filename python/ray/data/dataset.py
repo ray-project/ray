@@ -866,10 +866,44 @@ class Dataset:
         self,
         mapper: Dict[str, str],
         *,
-        compute: Union[str, ComputeStrategy] = None,
         concurrency: Optional[Union[int, Tuple[int, int]]] = None,
         **ray_remote_args,
     ):
+        """Rename columns in the dataset.
+
+        Examples:
+
+            >>> import ray
+            >>> ds = ray.data.read_parquet("s3://anonymous@ray-example-data/iris.parquet")
+            >>> ds.schema()
+            Column        Type
+            ------        ----
+            sepal.length  double
+            sepal.width   double
+            petal.length  double
+            petal.width   doubles
+            variety       string
+            >>> ds.rename_columns({"variety": "category"}).schema()
+            Column        Type
+            ------        ----
+            sepal.length  double
+            sepal.width   double
+            petal.length  double
+            petal.width   double
+            category      string
+
+        Args:
+            mapper: A dictionary that maps old column names to new column names.
+            concurrency: The maximum number of Ray workers to use concurrently.
+            ray_remote_args: Additional resource requirements to request from
+                ray (e.g., num_gpus=1 to request GPUs for the map tasks).
+        """  # noqa: E501
+        if concurrency is not None and not isinstance(concurrency, int):
+            raise ValueError(
+                "Expected `concurrency` to be an integer or `None`, but got "
+                f"{concurrency}."
+            )
+
         def rename_columns(batch: "pyarrow.Table") -> "pyarrow.Table":
             return batch.rename_columns(mapper)
 
@@ -877,7 +911,6 @@ class Dataset:
             rename_columns,
             batch_format="pyarrow",
             zero_copy_batch=True,
-            compute=compute,
             concurrency=concurrency,
             **ray_remote_args,
         )
