@@ -17,7 +17,6 @@ if TYPE_CHECKING:
 AIR_TRAINERS = {
     "HorovodTrainer",
     "LightGBMTrainer",
-    "MosaicTrainer",
     "TensorflowTrainer",
     "TorchTrainer",
     "XGBoostTrainer",
