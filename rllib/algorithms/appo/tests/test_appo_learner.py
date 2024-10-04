@@ -5,9 +5,7 @@ import tree  # pip install dm_tree
 
 import ray
 import ray.rllib.algorithms.appo as appo
-from ray.rllib.algorithms.appo.tf.appo_tf_learner import (
-    LEARNER_RESULTS_CURR_KL_COEFF_KEY,
-)
+from ray.rllib.algorithms.appo.appo import LEARNER_RESULTS_CURR_KL_COEFF_KEY
 from ray.rllib.core import DEFAULT_MODULE_ID
 from ray.rllib.core.columns import Columns
 from ray.rllib.policy.sample_batch import SampleBatch
