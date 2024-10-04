@@ -3,7 +3,6 @@ import unittest
 
 import ray
 from ray.rllib.algorithms.callbacks import DefaultCallbacks, make_multi_callbacks
-import ray.rllib.algorithms.dqn as dqn
 from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.evaluation.episode import Episode
 from ray.rllib.examples.envs.classes.random_env import RandomEnv
@@ -94,7 +93,7 @@ class TestCallbacks(unittest.TestCase):
     def test_on_sub_environment_created(self):
 
         config = (
-            dqn.DQNConfig().environment("CartPole-v1")
+            PPOConfig().environment("CartPole-v1")
             # Create 4 sub-environments per remote worker.
             # Create 2 remote workers.
             .env_runners(num_envs_per_env_runner=4, num_env_runners=2)
@@ -126,7 +125,7 @@ class TestCallbacks(unittest.TestCase):
 
     def test_on_sub_environment_created_with_remote_envs(self):
         config = (
-            dqn.DQNConfig()
+            PPOConfig()
             .environment("CartPole-v1")
             .env_runners(
                 # Make each sub-environment a ray actor.
@@ -167,7 +166,7 @@ class TestCallbacks(unittest.TestCase):
         # 1000 steps sampled (2.5 episodes on each sub-environment) before training
         # starts.
         config = (
-            dqn.DQNConfig()
+            PPOConfig()
             .environment(
                 RandomEnv,
                 env_config={
@@ -179,25 +178,22 @@ class TestCallbacks(unittest.TestCase):
             .callbacks(OnEpisodeCreatedCallback)
         )
 
-        # Test with and without Connectors.
-        for connector in [True, False]:
-            config.env_runners(enable_connectors=connector)
-            algo = config.build()
-            algo.train()
-            # Two sub-environments share 1000 steps in the first training iteration
-            # (min_sample_timesteps_per_iteration = 1000).
-            # -> 1000 / 2 [sub-envs] = 500 [per sub-env]
-            # -> 1 episode = 200 timesteps
-            # -> 2.5 episodes per sub-env
-            # -> 3 episodes created [per sub-env] = 6 episodes total
-            self.assertEqual(
-                6,
-                algo.env_runner_group.foreach_worker(
-                    lambda w: w.callbacks._reset_counter,
-                    local_env_runner=False,
-                )[0],
-            )
-            algo.stop()
+        algo = config.build()
+        algo.train()
+        # Two sub-environments share 4000 steps in the first training iteration
+        # (train_batch_size=4000).
+        # -> 4000 / 2 [sub-envs] = 2000 [per sub-env]
+        # -> 1 episode = 200 timesteps
+        # -> 10 episodes per sub-env
+        # -> 11 episodes created [per sub-env] = 22 episodes total
+        self.assertEqual(
+            22,
+            algo.env_runner_group.foreach_worker(
+                lambda w: w.callbacks._reset_counter,
+                local_env_runner=False,
+            )[0],
+        )
+        algo.stop()
 
 
 if __name__ == "__main__":
