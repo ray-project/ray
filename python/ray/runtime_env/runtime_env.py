@@ -221,6 +221,10 @@ class RuntimeEnv(dict):
             pip={"packages":["tensorflow", "requests"], "pip_check": False,
             "pip_version": "==22.0.2;python_version=='3.8.11'"})
 
+        # Example for using image_uri
+        RuntimeEnv(
+            image_uri="anyscale/ray:2.30.0-py39")
+
     Args:
         py_modules: List of URIs (either in the GCS or external
             storage), each of which is a zip file that will be unpacked and
@@ -263,6 +267,9 @@ class RuntimeEnv(dict):
         config: config for runtime environment. Either
             a dict or a RuntimeEnvConfig. Field: (1) setup_timeout_seconds, the
             timeout of runtime environment creation,  timeout is in seconds.
+        image_uri: Require a given container image, The Ray worker process will run 
+            in a container with this image. Cannot be used together with other fields 
+            of runtime_env.
     """
 
     known_fields: Set[str] = {
