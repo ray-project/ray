@@ -223,6 +223,10 @@ worker3 = gen_worker_node(
 
 
 def test_async_actor_task_retry(head3, worker3, gcs_network):
+    # Test that if transient network error happens
+    # after an async actor task is submitted and being executed,
+    # a secon attempt will be submitted and executed after the
+    # first attempt finishes.
     network = gcs_network
 
     driver = """
@@ -280,6 +284,7 @@ import ray
 from ray._private.test_utils import wait_for_condition
 ray.init(namespace="test")
 
+wait_for_condition(lambda: ray.get_actor("counter") is not None)
 counter = ray.get_actor("counter")
 wait_for_condition(lambda: ray.get(counter.get.remote()) == 1)
 """
