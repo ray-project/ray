@@ -151,7 +151,9 @@ class RayTaskError(RayError):
     def make_dual_exception_instance(self) -> "RayTaskError":
         """Makes a object instance that inherits from both RayTaskError and the type of
         `self.cause`. Raises TypeError if the cause class can't be subclassed"""
-        if sys.version_info >= (3, 11) and isinstance(self.cause, ExceptionGroup):
+        if sys.version_info >= (3, 11) and isinstance(
+            self.cause, ExceptionGroup  # noqa: F821
+        ):
             return self._make_exceptiongroup_dual_exception_instance()
         return self._make_normal_dual_exception_instance()
 
