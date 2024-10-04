@@ -32,7 +32,7 @@ head = gen_head_node(
 )
 
 worker = gen_worker_node(
-    {
+    envs={
         "RAY_grpc_keepalive_time_ms": "1000",
         "RAY_grpc_client_keepalive_time_ms": "1000",
         "RAY_grpc_client_keepalive_timeout_ms": "1000",
@@ -40,7 +40,8 @@ worker = gen_worker_node(
         "RAY_health_check_period_ms": "1000",
         "RAY_health_check_timeout_ms": "1000",
         "RAY_health_check_failure_threshold": "2",
-    }
+    },
+    num_cpus=8,
 )
 
 
@@ -138,6 +139,64 @@ head2 = gen_head_node(
 )
 
 worker2 = gen_worker_node(
+    envs={
+        "RAY_grpc_keepalive_time_ms": "1000",
+        "RAY_grpc_client_keepalive_time_ms": "1000",
+        "RAY_grpc_client_keepalive_timeout_ms": "1000",
+        "RAY_health_check_initial_delay_ms": "1000",
+        "RAY_health_check_period_ms": "1000",
+        "RAY_health_check_timeout_ms": "100000",
+        "RAY_health_check_failure_threshold": "20",
+    },
+    num_cpus=2,
+)
+
+
+def test_transient_network_error(head2, worker2, gcs_network):
+    # Test to make sure the head node and worker node
+    # connection can be recovered from transient network error.
+    network = gcs_network
+
+    check_two_nodes = """
+import ray
+from ray._private.test_utils import wait_for_condition
+
+ray.init()
+wait_for_condition(lambda: len(ray.nodes()) == 2)
+"""
+    result = head2.exec_run(cmd=f"python -c '{check_two_nodes}'")
+    assert result.exit_code == 0, result.output.decode("utf-8")
+
+    # Simulate transient network error
+    worker_ip = worker2._container.attrs["NetworkSettings"]["Networks"][network.name][
+        "IPAddress"
+    ]
+    network.disconnect(worker2.name, force=True)
+    sleep(2)
+    network.connect(worker2.name, ipv4_address=worker_ip)
+
+    # Make sure the connection is recovered by scheduling
+    # an actor.
+    check_actor_scheduling = """
+import ray
+from ray._private.test_utils import wait_for_condition
+
+ray.init()
+
+@ray.remote(num_cpus=1)
+class Actor:
+    def ping(self):
+        return 1
+
+actor = Actor.remote()
+ray.get(actor.ping.remote())
+wait_for_condition(lambda: ray.available_resources()["CPU"] == 1.0)
+"""
+    result = head2.exec_run(cmd=f"python -c '{check_actor_scheduling}'")
+    assert result.exit_code == 0, result.output.decode("utf-8")
+
+
+head3 = gen_head_node(
     {
         "RAY_grpc_keepalive_time_ms": "1000",
         "RAY_grpc_client_keepalive_time_ms": "1000",
@@ -149,7 +208,24 @@ worker2 = gen_worker_node(
     }
 )
 
-DRIVER_SCRIPT = """
+worker3 = gen_worker_node(
+    envs={
+        "RAY_grpc_keepalive_time_ms": "1000",
+        "RAY_grpc_client_keepalive_time_ms": "1000",
+        "RAY_grpc_client_keepalive_timeout_ms": "1000",
+        "RAY_health_check_initial_delay_ms": "1000",
+        "RAY_health_check_period_ms": "1000",
+        "RAY_health_check_timeout_ms": "100000",
+        "RAY_health_check_failure_threshold": "20",
+    },
+    num_cpus=2,
+)
+
+
+def test_async_actor_task_retry(head3, worker3, gcs_network):
+    network = gcs_network
+
+    driver = """
 import asyncio
 import ray
 from ray.util.state import list_tasks
@@ -199,45 +275,36 @@ async_actor = AsyncActor.remote(counter)
 assert ray.get(async_actor.run.remote()) == "second"
 """
 
-CHECK_ASYNC_ACTOR_RUN_IS_CALLED_SCRIPT = """
-import sys
+    check_async_actor_run_is_called = """
 import ray
+from ray._private.test_utils import wait_for_condition
 ray.init(namespace="test")
 
 counter = ray.get_actor("counter")
-if ray.get(counter.get.remote()) == 1:
-  # AsyncActor.run is called.
-  sys.exit(0)
-else:
-  sys.exit(1)
+wait_for_condition(lambda: ray.get(counter.get.remote()) == 1)
 """
-
-
-def test_async_actor_task_retry(head2, worker2, gcs_network):
-    network = gcs_network
 
     def inject_transient_network_failure():
         try:
-            wait_for_condition(
-                lambda: head2.exec_run(
-                    cmd=f"python -c '{CHECK_ASYNC_ACTOR_RUN_IS_CALLED_SCRIPT}'"
-                ).exit_code
-                == 0
+            result = head3.exec_run(
+                cmd=f"python -c '{check_async_actor_run_is_called}'"
             )
-            worker_ip = worker2._container.attrs["NetworkSettings"]["Networks"][
+            assert result.exit_code == 0, result.output.decode("utf-8")
+
+            worker_ip = worker3._container.attrs["NetworkSettings"]["Networks"][
                 network.name
             ]["IPAddress"]
-            network.disconnect(worker2.name, force=True)
+            network.disconnect(worker3.name, force=True)
             sleep(2)
-            network.connect(worker2.name, ipv4_address=worker_ip)
+            network.connect(worker3.name, ipv4_address=worker_ip)
         except Exception as e:
             print(f"Network failure injection failed {e}")
 
     t = threading.Thread(target=inject_transient_network_failure, daemon=True)
     t.start()
 
-    result = head2.exec_run(
-        cmd=f"python -c '{DRIVER_SCRIPT}'",
+    result = head3.exec_run(
+        cmd=f"python -c '{driver}'",
     )
     assert result.exit_code == 0, result.output.decode("utf-8")
 

@@ -344,6 +344,7 @@ class AlgorithmConfig(_Config):
         self.num_gpus_per_env_runner = 0
         self.custom_resources_per_env_runner = {}
         self.validate_env_runners_after_construction = True
+        self.max_requests_in_flight_per_env_runner = 2
         self.sample_timeout_s = 60.0
         self.create_env_on_local_worker = False
         self._env_to_module_connector = None
@@ -411,8 +412,7 @@ class AlgorithmConfig(_Config):
         self._learner_connector = None
         self.add_default_connectors_to_learner_pipeline = True
         self.learner_config_dict = {}
-        self.optimizer = {}
-        self.max_requests_in_flight_per_sampler_worker = 2
+        self.optimizer = {}  # @OldAPIStack
         self._learner_class = None
 
         # `self.callbacks()`
@@ -716,7 +716,7 @@ class AlgorithmConfig(_Config):
             if key == TRIAL_INFO:
                 continue
 
-            if key in ["_enable_new_api_stack", "enable_rl_module_and_learner"]:
+            if key in ["_enable_new_api_stack"]:
                 # We've dealt with this above.
                 continue
             # Set our multi-agent settings.
@@ -982,12 +982,26 @@ class AlgorithmConfig(_Config):
                     f"pipeline)! Your function returned {val_}."
                 )
 
+        obs_space = getattr(env, "single_observation_space", env.observation_space)
+        if obs_space is None and self.is_multi_agent():
+            obs_space = gym.spaces.Dict(
+                {
+                    aid: env.get_observation_space(aid)
+                    for aid in env.unwrapped.possible_agents
+                }
+            )
+        act_space = getattr(env, "single_action_space", env.action_space)
+        if act_space is None and self.is_multi_agent():
+            act_space = gym.spaces.Dict(
+                {
+                    aid: env.get_action_space(aid)
+                    for aid in env.unwrapped.possible_agents
+                }
+            )
         pipeline = EnvToModulePipeline(
+            input_observation_space=obs_space,
+            input_action_space=act_space,
             connectors=custom_connectors,
-            input_observation_space=getattr(
-                env, "single_observation_space", env.observation_space
-            ),
-            input_action_space=getattr(env, "single_action_space", env.action_space),
         )
 
         if self.add_default_connectors_to_env_to_module_pipeline:
@@ -1048,12 +1062,26 @@ class AlgorithmConfig(_Config):
                     f"pipeline)! Your function returned {val_}."
                 )
 
+        obs_space = getattr(env, "single_observation_space", env.observation_space)
+        if obs_space is None and self.is_multi_agent():
+            obs_space = gym.spaces.Dict(
+                {
+                    aid: env.get_observation_space(aid)
+                    for aid in env.unwrapped.possible_agents
+                }
+            )
+        act_space = getattr(env, "single_action_space", env.action_space)
+        if act_space is None and self.is_multi_agent():
+            act_space = gym.spaces.Dict(
+                {
+                    aid: env.get_action_space(aid)
+                    for aid in env.unwrapped.possible_agents
+                }
+            )
         pipeline = ModuleToEnvPipeline(
+            input_observation_space=obs_space,
+            input_action_space=act_space,
             connectors=custom_connectors,
-            input_observation_space=getattr(
-                env, "single_observation_space", env.observation_space
-            ),
-            input_action_space=getattr(env, "single_action_space", env.action_space),
         )
 
         if self.add_default_connectors_to_module_to_env_pipeline:
@@ -1709,6 +1737,7 @@ class AlgorithmConfig(_Config):
         custom_resources_per_env_runner: Optional[dict] = NotProvided,
         validate_env_runners_after_construction: Optional[bool] = NotProvided,
         sample_timeout_s: Optional[float] = NotProvided,
+        max_requests_in_flight_per_env_runner: Optional[int] = NotProvided,
         env_to_module_connector: Optional[
             Callable[[EnvType], Union["ConnectorV2", List["ConnectorV2"]]]
         ] = NotProvided,
@@ -1769,9 +1798,20 @@ class AlgorithmConfig(_Config):
             sample_timeout_s: The timeout in seconds for calling `sample()` on remote
                 EnvRunner workers. Results (episode list) from workers that take longer
                 than this time are discarded. Only used by algorithms that sample
-                synchronously in turn with their update step (e.g. PPO or DQN). Not
+                synchronously in turn with their update step (e.g., PPO or DQN). Not
                 relevant for any algos that sample asynchronously, such as APPO or
                 IMPALA.
+            max_requests_in_flight_per_env_runner: Max number of inflight requests
+                to each EnvRunner worker. See the FaultTolerantActorManager class for
+                more details.
+                Tuning these values is important when running experiments with
+                large sample batches, where there is the risk that the object store may
+                fill up, causing spilling of objects to disk. This can cause any
+                asynchronous requests to become very slow, making your experiment run
+                slowly as well. You can inspect the object store during your experiment
+                via a call to Ray memory on your head node, and by using the Ray
+                dashboard. If you're seeing that the object store is filling up,
+                turn down the number of remote requests in flight or enable compression.
             sample_collector: For the old API stack only. The SampleCollector class to
                 be used to collect and retrieve environment-, model-, and sampler data.
                 Override the SampleCollector base class to implement your own
@@ -1938,6 +1978,10 @@ class AlgorithmConfig(_Config):
 
         if sample_timeout_s is not NotProvided:
             self.sample_timeout_s = sample_timeout_s
+        if max_requests_in_flight_per_env_runner is not NotProvided:
+            self.max_requests_in_flight_per_env_runner = (
+                max_requests_in_flight_per_env_runner
+            )
         if sample_collector is not NotProvided:
             self.sample_collector = sample_collector
         if create_env_on_local_worker is not NotProvided:
@@ -2128,7 +2172,6 @@ class AlgorithmConfig(_Config):
         shuffle_batch_per_epoch: Optional[bool] = NotProvided,
         model: Optional[dict] = NotProvided,
         optimizer: Optional[dict] = NotProvided,
-        max_requests_in_flight_per_sampler_worker: Optional[int] = NotProvided,
         learner_class: Optional[Type["Learner"]] = NotProvided,
         learner_connector: Optional[
             Callable[["RLModule"], Union["ConnectorV2", List["ConnectorV2"]]]
@@ -2137,6 +2180,7 @@ class AlgorithmConfig(_Config):
         learner_config_dict: Optional[Dict[str, Any]] = NotProvided,
         # Deprecated args.
         num_sgd_iter=DEPRECATED_VALUE,
+        max_requests_in_flight_per_sampler_worker=DEPRECATED_VALUE,
     ) -> "AlgorithmConfig":
         """Sets the training related configuration.
 
@@ -2200,18 +2244,6 @@ class AlgorithmConfig(_Config):
                 TODO: Provide ModelConfig objects instead of dicts.
             optimizer: Arguments to pass to the policy optimizer. This setting is not
                 used when `enable_rl_module_and_learner=True`.
-            max_requests_in_flight_per_sampler_worker: Max number of inflight requests
-                to each sampling worker. See the FaultTolerantActorManager class for
-                more details.
-                Tuning these values is important when running experimens with
-                large sample batches, where there is the risk that the object store may
-                fill up, causing spilling of objects to disk. This can cause any
-                asynchronous requests to become very slow, making your experiment run
-                slow as well. You can inspect the object store during your experiment
-                via a call to ray memory on your headnode, and by using the ray
-                dashboard. If you're seeing that the object store is filling up,
-                turn down the number of remote requests in flight, or enable compression
-                in your experiment of timesteps.
             learner_class: The `Learner` class to use for (distributed) updating of the
                 RLModule. Only used when `enable_rl_module_and_learner=True`.
             learner_connector: A callable taking an env observation space and an env
@@ -2248,6 +2280,19 @@ class AlgorithmConfig(_Config):
                 error=False,
             )
             num_epochs = num_sgd_iter
+        if max_requests_in_flight_per_sampler_worker != DEPRECATED_VALUE:
+            deprecation_warning(
+                old="AlgorithmConfig.training("
+                "max_requests_in_flight_per_sampler_worker=...)",
+                new="AlgorithmConfig.env_runners("
+                "max_requests_in_flight_per_env_runner=...)",
+                error=False,
+            )
+            self.env_runners(
+                max_requests_in_flight_per_env_runner=(
+                    max_requests_in_flight_per_sampler_worker
+                ),
+            )
 
         if gamma is not NotProvided:
             self.gamma = gamma
@@ -2291,10 +2336,6 @@ class AlgorithmConfig(_Config):
 
         if optimizer is not NotProvided:
             self.optimizer = merge_dicts(self.optimizer, optimizer)
-        if max_requests_in_flight_per_sampler_worker is not NotProvided:
-            self.max_requests_in_flight_per_sampler_worker = (
-                max_requests_in_flight_per_sampler_worker
-            )
         if learner_class is not NotProvided:
             self._learner_class = learner_class
         if learner_connector is not NotProvided:
@@ -3366,7 +3407,7 @@ class AlgorithmConfig(_Config):
         *,
         _torch_grad_scaler_class: Optional[Type] = NotProvided,
         _torch_lr_scheduler_classes: Optional[
-            Union[List[Type], Dict[ModuleID, Type]]
+            Union[List[Type], Dict[ModuleID, List[Type]]]
         ] = NotProvided,
         _tf_policy_handles_more_than_one_loss: Optional[bool] = NotProvided,
         _disable_preprocessor_api: Optional[bool] = NotProvided,
@@ -3395,10 +3436,11 @@ class AlgorithmConfig(_Config):
                 classes or a dictionary mapping module IDs to such a list of respective
                 scheduler classes. Multiple scheduler classes can be applied in sequence
                 and will be stepped in the same sequence as defined here. Note, most
-                learning rate schedulers need arguments to be configured, i.e. you need
-                to partially initialize the schedulers in the list(s).
+                learning rate schedulers need arguments to be configured, that is, you
+                might have to partially initialize the schedulers in the list(s) using
+                `functools.partial`.
             _tf_policy_handles_more_than_one_loss: Experimental flag.
-                If True, TFPolicy will handle more than one loss/optimizer.
+                If True, TFPolicy handles more than one loss or optimizer.
                 Set this to True, if you would like to return more than
                 one loss term from your `loss_fn` and an equal number of optimizers
                 from your `optimizer_fn`. In the future, the default for this will be
@@ -3422,9 +3464,8 @@ class AlgorithmConfig(_Config):
             deprecation_warning(
                 old="config.experimental(_enable_new_api_stack=...)",
                 new="config.api_stack(enable_rl_module_and_learner=...)",
-                error=False,
+                error=True,
             )
-            self.api_stack(enable_rl_module_and_learner=_enable_new_api_stack)
 
         if _tf_policy_handles_more_than_one_loss is not NotProvided:
             self._tf_policy_handles_more_than_one_loss = (
@@ -4383,6 +4424,16 @@ class AlgorithmConfig(_Config):
             # `enable_rl_module_and_learner=True`.
             return
 
+        # Disabled hybrid API stack. Now, both `enable_rl_module_and_learner` and
+        # `enable_env_runner_and_connector_v2` must be True or both False.
+        if not self.enable_env_runner_and_connector_v2:
+            raise ValueError(
+                "Setting `enable_rl_module_and_learner` to True and "
+                "`enable_env_runner_and_connector_v2` to False ('hybrid API stack'"
+                ") is not longer supported! Set both to True (new API stack) or both "
+                "to False (old API stack), instead."
+            )
+
         # New API stack (RLModule, Learner APIs) only works with connectors.
         if not self.enable_connectors:
             raise ValueError(
@@ -4402,11 +4453,7 @@ class AlgorithmConfig(_Config):
         # new API stack AND this is a single-agent setup (multi-agent does not use
         # gym.vector.Env yet and therefore the reset call is still made manually,
         # allowing for the callback to be fired).
-        if (
-            self.enable_env_runner_and_connector_v2
-            and not self.is_multi_agent()
-            and self.callbacks_class is not DefaultCallbacks
-        ):
+        if not self.is_multi_agent() and self.callbacks_class is not DefaultCallbacks:
             default_src = inspect.getsource(DefaultCallbacks.on_episode_created)
             try:
                 user_src = inspect.getsource(self.callbacks_class.on_episode_created)
@@ -4897,47 +4944,54 @@ class AlgorithmConfig(_Config):
 
             # Infer observation space.
             if policy_spec.observation_space is None:
+                env_unwrapped = env.unwrapped if hasattr(env, "unwrapped") else env
+                # Module's space is provided -> Use it as-is.
                 if spaces is not None and pid in spaces:
                     obs_space = spaces[pid][0]
-                elif env_obs_space is not None:
-                    env_unwrapped = env.unwrapped if hasattr(env, "unwrapped") else env
-                    # Multi-agent case AND different agents have different spaces:
-                    # Need to reverse map spaces (for the different agents) to certain
-                    # policy IDs.
-                    if (
-                        isinstance(env_unwrapped, MultiAgentEnv)
-                        and hasattr(env_unwrapped, "_obs_space_in_preferred_format")
-                        and env_unwrapped._obs_space_in_preferred_format
-                    ):
-                        obs_space = None
-                        mapping_fn = self.policy_mapping_fn
-                        one_obs_space = next(iter(env_obs_space.values()))
-                        # If all obs spaces are the same anyways, just use the first
-                        # single-agent space.
-                        if all(s == one_obs_space for s in env_obs_space.values()):
-                            obs_space = one_obs_space
-                        # Otherwise, we have to compare the ModuleID with all possible
-                        # AgentIDs and find the agent ID that matches.
-                        elif mapping_fn:
-                            for aid in env_unwrapped.get_agent_ids():
-                                # Match: Assign spaces for this agentID to the PolicyID.
-                                if mapping_fn(aid, None, worker=None) == pid:
-                                    # Make sure, different agents that map to the same
-                                    # policy don't have different spaces.
-                                    if (
-                                        obs_space is not None
-                                        and env_obs_space[aid] != obs_space
-                                    ):
-                                        raise ValueError(
-                                            "Two agents in your environment map to the "
-                                            "same policyID (as per your `policy_mapping"
-                                            "_fn`), however, these agents also have "
-                                            "different observation spaces!"
-                                        )
-                                    obs_space = env_obs_space[aid]
-                    # Otherwise, just use env's obs space as-is.
+                # MultiAgentEnv -> Check, whether agents have different spaces.
+                elif isinstance(env_unwrapped, MultiAgentEnv):
+                    obs_space = None
+                    mapping_fn = self.policy_mapping_fn
+                    aids = list(
+                        env_unwrapped.possible_agents
+                        if hasattr(env_unwrapped, "possible_agents")
+                        and env_unwrapped.possible_agents
+                        else env_unwrapped.get_agent_ids()
+                    )
+                    if len(aids) == 0:
+                        one_obs_space = env_unwrapped.observation_space
                     else:
-                        obs_space = env_obs_space
+                        one_obs_space = env_unwrapped.get_observation_space(aids[0])
+                    # If all obs spaces are the same, just use the first space.
+                    if all(
+                        env_unwrapped.get_observation_space(aid) == one_obs_space
+                        for aid in aids
+                    ):
+                        obs_space = one_obs_space
+                    # Need to reverse-map spaces (for the different agents) to certain
+                    # policy IDs. We have to compare the ModuleID with all possible
+                    # AgentIDs and find the agent ID that matches.
+                    elif mapping_fn:
+                        for aid in aids:
+                            # Match: Assign spaces for this agentID to the PolicyID.
+                            if mapping_fn(aid, None, worker=None) == pid:
+                                # Make sure, different agents that map to the same
+                                # policy don't have different spaces.
+                                if (
+                                    obs_space is not None
+                                    and env_unwrapped.get_observation_space(aid)
+                                    != obs_space
+                                ):
+                                    raise ValueError(
+                                        "Two agents in your environment map to the "
+                                        "same policyID (as per your `policy_mapping"
+                                        "_fn`), however, these agents also have "
+                                        "different observation spaces!"
+                                    )
+                                obs_space = env_unwrapped.get_observation_space(aid)
+                # Just use env's obs space as-is.
+                elif env_obs_space is not None:
+                    obs_space = env_obs_space
                 # Space given directly in config.
                 elif self.observation_space:
                     obs_space = self.observation_space
@@ -4953,47 +5007,53 @@ class AlgorithmConfig(_Config):
 
             # Infer action space.
             if policy_spec.action_space is None:
+                env_unwrapped = env.unwrapped if hasattr(env, "unwrapped") else env
+                # Module's space is provided -> Use it as-is.
                 if spaces is not None and pid in spaces:
                     act_space = spaces[pid][1]
-                elif env_act_space is not None:
-                    env_unwrapped = env.unwrapped if hasattr(env, "unwrapped") else env
-                    # Multi-agent case AND different agents have different spaces:
-                    # Need to reverse map spaces (for the different agents) to certain
-                    # policy IDs.
-                    if (
-                        isinstance(env_unwrapped, MultiAgentEnv)
-                        and hasattr(env_unwrapped, "_action_space_in_preferred_format")
-                        and env_unwrapped._action_space_in_preferred_format
-                    ):
-                        act_space = None
-                        mapping_fn = self.policy_mapping_fn
-                        one_act_space = next(iter(env_act_space.values()))
-                        # If all action spaces are the same anyways, just use the first
-                        # single-agent space.
-                        if all(s == one_act_space for s in env_act_space.values()):
-                            act_space = one_act_space
-                        # Otherwise, we have to compare the ModuleID with all possible
-                        # AgentIDs and find the agent ID that matches.
-                        elif mapping_fn:
-                            for aid in env_unwrapped.get_agent_ids():
-                                # Match: Assign spaces for this AgentID to the PolicyID.
-                                if mapping_fn(aid, None, worker=None) == pid:
-                                    # Make sure, different agents that map to the same
-                                    # policy don't have different spaces.
-                                    if (
-                                        act_space is not None
-                                        and env_act_space[aid] != act_space
-                                    ):
-                                        raise ValueError(
-                                            "Two agents in your environment map to the "
-                                            "same policyID (as per your `policy_mapping"
-                                            "_fn`), however, these agents also have "
-                                            "different action spaces!"
-                                        )
-                                    act_space = env_act_space[aid]
-                    # Otherwise, just use env's action space as-is.
+                # MultiAgentEnv -> Check, whether agents have different spaces.
+                elif isinstance(env_unwrapped, MultiAgentEnv):
+                    act_space = None
+                    mapping_fn = self.policy_mapping_fn
+                    aids = list(
+                        env_unwrapped.possible_agents
+                        if hasattr(env_unwrapped, "possible_agents")
+                        and env_unwrapped.possible_agents
+                        else env_unwrapped.get_agent_ids()
+                    )
+                    if len(aids) == 0:
+                        one_act_space = env_unwrapped.action_space
                     else:
-                        act_space = env_act_space
+                        one_act_space = env_unwrapped.get_action_space(aids[0])
+                    # If all obs spaces are the same, just use the first space.
+                    if all(
+                        env_unwrapped.get_action_space(aid) == one_act_space
+                        for aid in aids
+                    ):
+                        act_space = one_act_space
+                    # Need to reverse-map spaces (for the different agents) to certain
+                    # policy IDs. We have to compare the ModuleID with all possible
+                    # AgentIDs and find the agent ID that matches.
+                    elif mapping_fn:
+                        for aid in aids:
+                            # Match: Assign spaces for this AgentID to the PolicyID.
+                            if mapping_fn(aid, None, worker=None) == pid:
+                                # Make sure, different agents that map to the same
+                                # policy don't have different spaces.
+                                if (
+                                    act_space is not None
+                                    and env_unwrapped.get_action_space(aid) != act_space
+                                ):
+                                    raise ValueError(
+                                        "Two agents in your environment map to the "
+                                        "same policyID (as per your `policy_mapping"
+                                        "_fn`), however, these agents also have "
+                                        "different action spaces!"
+                                    )
+                                act_space = env_unwrapped.get_action_space(aid)
+                # Just use env's action space as-is.
+                elif env_act_space is not None:
+                    act_space = env_act_space
                 elif self.action_space:
                     act_space = self.action_space
                 else:
@@ -5050,9 +5110,8 @@ class AlgorithmConfig(_Config):
         deprecation_warning(
             old="AlgorithmConfig._enable_new_api_stack",
             new="AlgorithmConfig.enable_rl_module_and_learner",
-            error=False,
+            error=True,
         )
-        self.enable_rl_module_and_learner = value
 
     @property
     @Deprecated(new="AlgorithmConfig.enable_env_runner_and_connector_v2", error=True)

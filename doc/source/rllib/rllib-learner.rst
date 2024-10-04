@@ -10,6 +10,7 @@
     :class: inline-figure
     :width: 16
 
+.. _learner-guide:
 
 Learner (Alpha)
 ===============
@@ -56,7 +57,10 @@ arguments in the :py:class:`~ray.rllib.algorithms.algorithm_config.AlgorithmConf
 
     config = (
         PPOConfig()
-        .api_stack(enable_rl_module_and_learner=True)
+        .api_stack(
+            enable_rl_module_and_learner=True,
+            enable_env_runner_and_connector_v2=True,
+        )
         .learners(
             num_learners=0,  # Set this to greater than 1 to allow for DDP style updates.
             num_gpus_per_learner=0,  # Set this to 1 to enable GPU training.
@@ -74,7 +78,7 @@ arguments in the :py:class:`~ray.rllib.algorithms.algorithm_config.AlgorithmConf
 .. note::
 
     This features is in alpha. If you migrate to this algorithm, enable the feature by
-    via `AlgorithmConfig.api_stack(enable_rl_module_and_learner=True)`.
+    via `AlgorithmConfig.api_stack(enable_rl_module_and_learner=True, enable_env_runner_and_connector_v2=True)`.
 
     The following algorithms support :py:class:`~ray.rllib.core.learner.learner.Learner` out of the box. Implement
     an algorithm with a custom :py:class:`~ray.rllib.core.learner.learner.Learner` to leverage this API for other algorithms.
@@ -239,10 +243,13 @@ Updates
             results = learner_group.update_from_batch(
                 batch=DUMMY_BATCH, async_update=True, timesteps=TIMESTEPS
             )
-            # `results` is an already reduced dict, which is the result of
-            # reducing over the individual async `update_from_batch(..., async_update=True)`
-            # calls.
-            assert isinstance(results, dict), results
+            # `results` is a list of n items (where n is the number of async results collected).
+            assert isinstance(results, list), results
+            # Each item in that list is another list of m items (where m is the number of Learner
+            # workers).
+            assert isinstance(results[0], list), results
+            # Each item in the inner list is a result dict from the Learner worker.
+            assert isinstance(results[0][0], dict), results
 
         When updating a :py:class:`~ray.rllib.core.learner.learner_group.LearnerGroup` you can perform blocking or async updates on batches of data.
         Async updates are necessary for implementing async algorithms such as APPO/IMPALA.

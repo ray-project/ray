@@ -307,7 +307,7 @@ class TorchSquashedGaussian(TorchDistribution):
     @staticmethod
     @override(Distribution)
     def required_input_dim(space: gym.Space, **kwargs) -> int:
-        assert isinstance(space, gym.spaces.Box)
+        assert isinstance(space, gym.spaces.Box), space
         return int(np.prod(space.shape, dtype=np.int32) * 2)
 
     @classmethod
