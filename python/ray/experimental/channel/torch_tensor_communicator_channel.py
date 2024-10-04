@@ -1,5 +1,6 @@
 import io
 import logging
+import os
 import uuid
 from types import ModuleType
 from typing import TYPE_CHECKING, Any, List, Optional, Tuple, Union
@@ -28,8 +29,7 @@ if TYPE_CHECKING:
 # entry/init points.
 logger = logging.getLogger(__name__)
 
-RESOURCES = ray.cluster_resources()
-if "NPU" in RESOURCES:
+if os.getenv("ASCEND_RT_VISIBLE_DEVICES"):
     try:
         from ray.experimental.channel.hccl_group import _HcclGroup as _CommunicatorGroup
     except Exception:
