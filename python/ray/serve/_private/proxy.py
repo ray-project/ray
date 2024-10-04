@@ -913,7 +913,6 @@ class HTTPProxy(GenericProxy):
             "route": route_path,
             "app_name": app_name,
             "_internal_request_id": internal_request_id,
-            "is_http_request": True,
         }
         for key, value in proxy_request.headers:
             if key.decode() == SERVE_MULTIPLEXED_MODEL_ID:
@@ -1000,7 +999,7 @@ class HTTPProxy(GenericProxy):
                         status = ResponseStatus(
                             code=status_code,
                             # TODO(edoakes): we need a more nuanced check than this.
-                            is_error=status_code != "200",
+                            is_error=not status_code.startswith("2"),
                         )
                         expecting_trailers = asgi_message.get("trailers", False)
                     elif asgi_message["type"] == "websocket.accept":
@@ -1022,10 +1021,19 @@ class HTTPProxy(GenericProxy):
                         if not asgi_message.get("more_trailers", False):
                             response_generator.stop_checking_for_disconnect()
                     elif asgi_message["type"] == "websocket.disconnect":
+                        status_code = str(asgi_message["code"])
+                        
+                        # Check based on standard WebSocket status codes
+                        if status_code in ["1000", "1001"]:
+                            # Normal closure or going away, no error
+                            is_error = False  
+                        else:
+                            # Other 1xxx codes are specified as errors
+                            is_error = status_code.startswith("1")
+                        
                         status = ResponseStatus(
-                            code=str(asgi_message["code"]),
-                            # TODO(edoakes): we need a more nuanced check than this.
-                            is_error=False,
+                            code=status_code,
+                            is_error=is_error
                         )
                         response_generator.stop_checking_for_disconnect()
 
