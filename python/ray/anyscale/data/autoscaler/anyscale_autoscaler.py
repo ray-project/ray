@@ -174,7 +174,7 @@ class AnyscaleAutoscaler(Autoscaler):
         # Threshold of cluster utilization to trigger scaling up.
         self._cluster_scaling_up_util_threshold = cluster_scaling_up_util_threshold
         # TODO(hchen): Use proportion-based scaling up factors
-        # when https://github.com/anyscale/runtime/issues/577 is done.
+        # when https://github.com/anyscale/rayturbo/issues/577 is done.
         assert cluster_scaling_up_factor > 1
         self._cluster_scaling_up_factor = cluster_scaling_up_factor
         assert cluster_util_avg_window_s > 0
@@ -241,7 +241,7 @@ class AnyscaleAutoscaler(Autoscaler):
     @cached_property
     def _disable_actor_pool_scaling_down(self):
         # TODO(hchen): re-enable actor pool scaling down after fixing
-        # https://github.com/anyscale/runtime/issues/726
+        # https://github.com/anyscale/rayturbo/issues/726
         return env_bool("RAY_DATA_DISABLE_ACTOR_POOL_SCALING_DOWN", True)
 
     def _actor_pool_should_scale_down(
@@ -330,7 +330,7 @@ class AnyscaleAutoscaler(Autoscaler):
         resources.
         """
         # TODO(hchen): Use the new API to get cluster scaling config
-        # when https://github.com/anyscale/runtime/issues/577 is done.
+        # when https://github.com/anyscale/rayturbo/issues/577 is done.
 
         # Filter out the head node and GPU nodes.
         node_resources = [

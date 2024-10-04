@@ -143,8 +143,8 @@ ENV ANYSCALE_RAY_SITE_PKG_DIR=/home/ray/virtualenv/lib/python3.10/site-packages
 # Make sure the images are built on runtime's pipeline on a release branch.
 # This can also be configured with `--build-arg ANYSCALE_RAY_COMMIT=...`
 #
-# Example build: https://buildkite.com/anyscale/runtime/builds/1972
-# which has commit https://github.com/anyscale/runtime/commit/eb4c7109391229e9e9ca6b2dfca955c13dc45eb7
+# Example build: https://buildkite.com/anyscale/rayturbo/builds/1972
+# which has commit https://github.com/anyscale/rayturbo/commit/eb4c7109391229e9e9ca6b2dfca955c13dc45eb7
 # One can also overwrite both the values of ANYSCALE_RAY_COMMIT and ANYSCALE_PRESTART_DATA_PATH
 # env vars in Anyscale's custom image or cluster runtime.
 ARG ANYSCALE_RAY_COMMIT=eb4c7109391229e9e9ca6b2dfca955c13dc45eb7
