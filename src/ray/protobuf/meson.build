@@ -4,15 +4,11 @@ subdir('experimental/')
 
 
 # === @begin: runtime_env_common.proto ===
-proto_basename = 'runtime_env_common'
-
-runtime_env_common_proto = f'@proto_basename@.proto'
+runtime_env_common_proto = ['runtime_env_common.proto']
 
 runtime_env_common_proto_cpp = custom_target(
-    f'@proto_basename@_proto_cpp',
     input: runtime_env_common_proto,
-    command: protoc_cpp_with_default_args,
-    output: [f'@proto_basename@.pb.cc', f'@proto_basename@.pb.h']
+    kwargs: proto_cpp_default_kwargs
 )
 
 runtime_env_common_proto_cpp_dep = declare_dependency(
@@ -20,7 +16,7 @@ runtime_env_common_proto_cpp_dep = declare_dependency(
 )
 
 runtime_env_common_proto_cpp_lib = static_library(
-    f'@proto_basename@_proto_cpp_lib',
+    'runtime_env_common_proto_cpp_lib',
     dependencies: [protobuf, runtime_env_common_proto_cpp_dep],
     install: false
 )
@@ -30,25 +26,18 @@ runtime_env_common_proto_cpp_lib_dep = declare_dependency(
 )
 
 runtime_env_common_proto_py = custom_target(
-    f'@proto_basename@_proto_py',
     input: runtime_env_common_proto,
-    command: protoc_py_with_default_args,
-    output: [f'@proto_basename@_pb2.py', f'@proto_basename@_pb2_grpc.py'],
-    build_by_default: true
+    kwargs: proto_py_default_kwargs
 )
 # === @end: runtime_env_common.proto ===
 
 
 # === @begin: common.proto ===
-proto_basename = 'common'
-
-common_proto = f'@proto_basename@.proto'
+common_proto = ['common.proto']
 
 common_proto_cpp = custom_target(
-    f'@proto_basename@_proto_cpp',
     input: common_proto,
-    command: protoc_cpp_with_default_args,
-    output: [f'@proto_basename@.pb.cc', f'@proto_basename@.pb.h']
+    kwargs: proto_cpp_default_kwargs
 )
 
 common_proto_cpp_dep = declare_dependency(
@@ -57,7 +46,7 @@ common_proto_cpp_dep = declare_dependency(
 )
 
 common_proto_cpp_lib = static_library(
-    f'@proto_basename@_proto_cpp_lib',
+    'common_proto_cpp_lib',
     dependencies: [protobuf, common_proto_cpp_dep],
     install: false
 )
@@ -67,25 +56,18 @@ common_proto_cpp_lib_dep = declare_dependency(
 )
 
 common_proto_py = custom_target(
-    f'@proto_basename@_proto_py',
     input: common_proto,
-    command: protoc_py_with_default_args,
-    output: [f'@proto_basename@_pb2.py', f'@proto_basename@_pb2_grpc.py'],
-    build_by_default: true
+    kwargs: proto_py_default_kwargs
 )
 # === @end: common.proto ===
 
 
 # === @begin: autoscaler.proto ===
-proto_basename = 'autoscaler'
-
-autoscaler_proto = f'@proto_basename@.proto'
+autoscaler_proto = ['autoscaler.proto']
 
 autoscaler_proto_cpp = custom_target(
-    f'@proto_basename@_proto_cpp',
     input: autoscaler_proto,
-    command: protoc_cpp_with_default_args,
-    output: [f'@proto_basename@.pb.cc', f'@proto_basename@.pb.h']
+    kwargs: proto_cpp_default_kwargs
 )
 
 autoscaler_proto_cpp_dep = declare_dependency(
@@ -93,7 +75,7 @@ autoscaler_proto_cpp_dep = declare_dependency(
 )
 
 autoscaler_proto_cpp_lib = static_library(
-    f'@proto_basename@_proto_cpp_lib',
+    'autoscaler_proto_cpp_lib',
     dependencies: [protobuf, autoscaler_proto_cpp_dep],
     install: false
 )
@@ -103,25 +85,18 @@ autoscaler_proto_cpp_lib_dep = declare_dependency(
 )
 
 autoscaler_proto_py = custom_target(
-    f'@proto_basename@_proto_py',
     input: autoscaler_proto,
-    command: protoc_py_with_default_args,
-    output: [f'@proto_basename@_pb2.py', f'@proto_basename@_pb2_grpc.py'],
-    build_by_default: true
+    kwargs: proto_py_default_kwargs
 )
 # === @end: autoscaler.proto ===
 
 
 # === @begin: ray_syncer.proto ===
-proto_basename = 'ray_syncer'
-
-ray_syncer_proto = f'@proto_basename@.proto'
+ray_syncer_proto = ['ray_syncer.proto']
 
 ray_syncer_proto_cpp = custom_target(
-    f'@proto_basename@_proto_cpp',
     input: ray_syncer_proto,
-    command: protoc_cpp_with_default_args,
-    output: [f'@proto_basename@.pb.cc', f'@proto_basename@.pb.h']
+    kwargs: proto_cpp_default_kwargs
 )
 
 ray_syncer_proto_cpp_dep = declare_dependency(
@@ -129,7 +104,7 @@ ray_syncer_proto_cpp_dep = declare_dependency(
 )
 
 ray_syncer_proto_cpp_lib = static_library(
-    f'@proto_basename@_proto_cpp_lib',
+    'ray_syncer_proto_cpp_lib',
     dependencies: [protobuf, ray_syncer_proto_cpp_dep],
     install: false
 )
@@ -141,15 +116,11 @@ ray_syncer_proto_cpp_lib_dep = declare_dependency(
 
 
 # === @begin: gcs.proto ===
-proto_basename = 'gcs'
-
-gcs_proto = f'@proto_basename@.proto'
+gcs_proto = ['gcs.proto']
 
 gcs_proto_cpp = custom_target(
-    f'@proto_basename@_proto_cpp',
     input: gcs_proto,
-    command: protoc_cpp_with_default_args,
-    output: [f'@proto_basename@.pb.cc', f'@proto_basename@.pb.h']
+    kwargs: proto_cpp_default_kwargs
 )
 
 gcs_proto_cpp_dep = declare_dependency(
@@ -158,7 +129,7 @@ gcs_proto_cpp_dep = declare_dependency(
 )
 
 gcs_proto_cpp_lib = static_library(
-    f'@proto_basename@_proto_cpp_lib',
+    'gcs_proto_cpp_lib',
     dependencies: [protobuf, gcs_proto_cpp_dep],
     install: false
 )
@@ -168,11 +139,8 @@ gcs_proto_cpp_lib_dep = declare_dependency(
 )
 
 gcs_proto_py = custom_target(
-    f'@proto_basename@_proto_py',
     input: gcs_proto,
-    command: protoc_py_with_default_args,
-    output: [f'@proto_basename@_pb2.py', f'@proto_basename@_pb2_grpc.py'],
-    build_by_default: true
+    kwargs: proto_py_default_kwargs
 )
 # === @end: gcs.proto ===
 
