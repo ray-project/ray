@@ -934,8 +934,9 @@ class CompiledDAG:
             raise ValueError(
                 "Compiled DAG doesn't support leaf nodes that don't have "
                 "downstream nodes and are not output nodes. There are "
-                f"{len(leaf_nodes)} leaf nodes in the DAG. Please add them to "
-                f"the MultiOutputNode. These nodes are: {leaf_nodes}"
+                f"{len(leaf_nodes)} leaf nodes in the DAG. Please add the outputs of "
+                f"{[leaf_node.get_method_name() for leaf_node in leaf_nodes]} to the "
+                f"the MultiOutputNode."
             )
 
         # If there were type hints indicating transport via NCCL, initialize
