@@ -998,7 +998,6 @@ class HTTPProxy(GenericProxy):
                         status_code = str(asgi_message["status"])
                         status = ResponseStatus(
                             code=status_code,
-                            # TODO(edoakes): we need a more nuanced check than this.
                             is_error=not status_code.startswith("2"),
                         )
                         expecting_trailers = asgi_message.get("trailers", False)
