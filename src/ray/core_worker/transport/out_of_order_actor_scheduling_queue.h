@@ -96,7 +96,7 @@ class OutOfOrderActorSchedulingQueue : public SchedulingQueue {
   bool is_asyncio_ = false;
   /// Mutext to protect attributes used for thread safe APIs.
   absl::Mutex mu_;
-  /// The stores all the tasks that have previous attempts that are pending.
+  /// This stores all the tasks that have previous attempts that are pending.
   /// They are queued and will be executed after the previous attempt finishes.
   /// This can happen if transient network error happens after an actor
   /// task is submitted and recieved by the actor and the caller retries

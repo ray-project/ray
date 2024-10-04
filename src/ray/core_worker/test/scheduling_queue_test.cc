@@ -22,43 +22,6 @@
 namespace ray {
 namespace core {
 
-class MockActorSchedulingQueue {
- public:
-  MockActorSchedulingQueue(instrumented_io_context &main_io_service,
-                           DependencyWaiter &waiter)
-      : queue_(main_io_service,
-               waiter,
-               /*pool_manager=*/
-               std::make_shared<ConcurrencyGroupManager<BoundedExecutor>>(),
-               /*fiber_state_manager=*/
-               std::make_shared<ConcurrencyGroupManager<FiberState>>(),
-               /*is_asyncio=*/false,
-               /*fiber_max_concurrency=*/1,
-               /*concurrency_groups=*/{}) {}
-  void Add(int64_t seq_no,
-           int64_t client_processed_up_to,
-           std::function<void(rpc::SendReplyCallback)> accept_request,
-           std::function<void(const Status &, rpc::SendReplyCallback)> reject_request,
-           rpc::SendReplyCallback send_reply_callback = nullptr,
-           TaskID task_id = TaskID::Nil(),
-           const std::vector<rpc::ObjectReference> &dependencies = {}) {
-    queue_.Add(seq_no,
-               client_processed_up_to,
-               std::move(accept_request),
-               std::move(reject_request),
-               send_reply_callback,
-               "",
-               FunctionDescriptorBuilder::Empty(),
-               task_id,
-               dependencies);
-  }
-
-  ~MockActorSchedulingQueue() { queue_.Stop(); }
-
- private:
-  ActorSchedulingQueue queue_;
-};
-
 class MockWaiter : public DependencyWaiter {
  public:
   MockWaiter() {}
@@ -77,17 +40,59 @@ class MockWaiter : public DependencyWaiter {
 TEST(SchedulingQueueTest, TestInOrder) {
   instrumented_io_context io_service;
   MockWaiter waiter;
-  MockActorSchedulingQueue queue(io_service, waiter);
+  ActorSchedulingQueue queue(io_service,
+                             waiter,
+                             std::make_shared<ConcurrencyGroupManager<BoundedExecutor>>(),
+                             std::make_shared<ConcurrencyGroupManager<FiberState>>(),
+                             /*is_asyncio=*/false,
+                             /*fiber_max_concurrency=*/1,
+                             /*concurrency_groups=*/{});
   int n_ok = 0;
   int n_rej = 0;
   auto fn_ok = [&n_ok](rpc::SendReplyCallback callback) { n_ok++; };
   auto fn_rej = [&n_rej](const Status &status, rpc::SendReplyCallback callback) {
     n_rej++;
   };
-  queue.Add(0, -1, fn_ok, fn_rej, nullptr);
-  queue.Add(1, -1, fn_ok, fn_rej, nullptr);
-  queue.Add(2, -1, fn_ok, fn_rej, nullptr);
-  queue.Add(3, -1, fn_ok, fn_rej, nullptr);
+  queue.Add(0,
+            -1,
+            fn_ok,
+            fn_rej,
+            nullptr,
+            "",
+            FunctionDescriptorBuilder::Empty(),
+            TaskID::Nil(),
+            /*attempt_number=*/0,
+            {});
+  queue.Add(1,
+            -1,
+            fn_ok,
+            fn_rej,
+            nullptr,
+            "",
+            FunctionDescriptorBuilder::Empty(),
+            TaskID::Nil(),
+            /*attempt_number=*/0,
+            {});
+  queue.Add(2,
+            -1,
+            fn_ok,
+            fn_rej,
+            nullptr,
+            "",
+            FunctionDescriptorBuilder::Empty(),
+            TaskID::Nil(),
+            /*attempt_number=*/0,
+            {});
+  queue.Add(3,
+            -1,
+            fn_ok,
+            fn_rej,
+            nullptr,
+            "",
+            FunctionDescriptorBuilder::Empty(),
+            TaskID::Nil(),
+            /*attempt_number=*/0,
+            {});
   io_service.run();
   ASSERT_EQ(n_ok, 4);
   ASSERT_EQ(n_rej, 0);
@@ -99,7 +104,13 @@ TEST(SchedulingQueueTest, TestWaitForObjects) {
   ObjectID obj3 = ObjectID::FromRandom();
   instrumented_io_context io_service;
   MockWaiter waiter;
-  MockActorSchedulingQueue queue(io_service, waiter);
+  ActorSchedulingQueue queue(io_service,
+                             waiter,
+                             std::make_shared<ConcurrencyGroupManager<BoundedExecutor>>(),
+                             std::make_shared<ConcurrencyGroupManager<FiberState>>(),
+                             /*is_asyncio=*/false,
+                             /*fiber_max_concurrency=*/1,
+                             /*concurrency_groups=*/{});
   int n_ok = 0;
   int n_rej = 0;
 
@@ -107,10 +118,46 @@ TEST(SchedulingQueueTest, TestWaitForObjects) {
   auto fn_rej = [&n_rej](const Status &status, rpc::SendReplyCallback callback) {
     n_rej++;
   };
-  queue.Add(0, -1, fn_ok, fn_rej, nullptr);
-  queue.Add(1, -1, fn_ok, fn_rej, nullptr, TaskID::Nil(), ObjectIdsToRefs({obj1}));
-  queue.Add(2, -1, fn_ok, fn_rej, nullptr, TaskID::Nil(), ObjectIdsToRefs({obj2}));
-  queue.Add(3, -1, fn_ok, fn_rej, nullptr, TaskID::Nil(), ObjectIdsToRefs({obj3}));
+  queue.Add(0,
+            -1,
+            fn_ok,
+            fn_rej,
+            nullptr,
+            "",
+            FunctionDescriptorBuilder::Empty(),
+            TaskID::Nil(),
+            /*attempt_number=*/0,
+            {});
+  queue.Add(1,
+            -1,
+            fn_ok,
+            fn_rej,
+            nullptr,
+            "",
+            FunctionDescriptorBuilder::Empty(),
+            TaskID::Nil(),
+            /*attempt_number=*/0,
+            ObjectIdsToRefs({obj1}));
+  queue.Add(2,
+            -1,
+            fn_ok,
+            fn_rej,
+            nullptr,
+            "",
+            FunctionDescriptorBuilder::Empty(),
+            TaskID::Nil(),
+            /*attempt_number=*/0,
+            ObjectIdsToRefs({obj2}));
+  queue.Add(3,
+            -1,
+            fn_ok,
+            fn_rej,
+            nullptr,
+            "",
+            FunctionDescriptorBuilder::Empty(),
+            TaskID::Nil(),
+            /*attempt_number=*/0,
+            ObjectIdsToRefs({obj3}));
 
   ASSERT_EQ(n_ok, 1);
 
@@ -128,7 +175,13 @@ TEST(SchedulingQueueTest, TestWaitForObjectsNotSubjectToSeqTimeout) {
   ObjectID obj1 = ObjectID::FromRandom();
   instrumented_io_context io_service;
   MockWaiter waiter;
-  MockActorSchedulingQueue queue(io_service, waiter);
+  ActorSchedulingQueue queue(io_service,
+                             waiter,
+                             std::make_shared<ConcurrencyGroupManager<BoundedExecutor>>(),
+                             std::make_shared<ConcurrencyGroupManager<FiberState>>(),
+                             /*is_asyncio=*/false,
+                             /*fiber_max_concurrency=*/1,
+                             /*concurrency_groups=*/{});
   int n_ok = 0;
   int n_rej = 0;
 
@@ -136,8 +189,26 @@ TEST(SchedulingQueueTest, TestWaitForObjectsNotSubjectToSeqTimeout) {
   auto fn_rej = [&n_rej](const Status &status, rpc::SendReplyCallback callback) {
     n_rej++;
   };
-  queue.Add(0, -1, fn_ok, fn_rej, nullptr);
-  queue.Add(1, -1, fn_ok, fn_rej, nullptr, TaskID::Nil(), ObjectIdsToRefs({obj1}));
+  queue.Add(0,
+            -1,
+            fn_ok,
+            fn_rej,
+            nullptr,
+            "",
+            FunctionDescriptorBuilder::Empty(),
+            TaskID::Nil(),
+            /*attempt_number=*/0,
+            {});
+  queue.Add(1,
+            -1,
+            fn_ok,
+            fn_rej,
+            nullptr,
+            "",
+            FunctionDescriptorBuilder::Empty(),
+            TaskID::Nil(),
+            /*attempt_number=*/0,
+            ObjectIdsToRefs({obj1}));
 
   ASSERT_EQ(n_ok, 1);
   io_service.run();
@@ -149,17 +220,59 @@ TEST(SchedulingQueueTest, TestWaitForObjectsNotSubjectToSeqTimeout) {
 TEST(SchedulingQueueTest, TestOutOfOrder) {
   instrumented_io_context io_service;
   MockWaiter waiter;
-  MockActorSchedulingQueue queue(io_service, waiter);
+  ActorSchedulingQueue queue(io_service,
+                             waiter,
+                             std::make_shared<ConcurrencyGroupManager<BoundedExecutor>>(),
+                             std::make_shared<ConcurrencyGroupManager<FiberState>>(),
+                             /*is_asyncio=*/false,
+                             /*fiber_max_concurrency=*/1,
+                             /*concurrency_groups=*/{});
   int n_ok = 0;
   int n_rej = 0;
   auto fn_ok = [&n_ok](rpc::SendReplyCallback callback) { n_ok++; };
   auto fn_rej = [&n_rej](const Status &status, rpc::SendReplyCallback callback) {
     n_rej++;
   };
-  queue.Add(2, -1, fn_ok, fn_rej, nullptr);
-  queue.Add(0, -1, fn_ok, fn_rej, nullptr);
-  queue.Add(3, -1, fn_ok, fn_rej, nullptr);
-  queue.Add(1, -1, fn_ok, fn_rej, nullptr);
+  queue.Add(2,
+            -1,
+            fn_ok,
+            fn_rej,
+            nullptr,
+            "",
+            FunctionDescriptorBuilder::Empty(),
+            TaskID::Nil(),
+            /*attempt_number=*/0,
+            {});
+  queue.Add(0,
+            -1,
+            fn_ok,
+            fn_rej,
+            nullptr,
+            "",
+            FunctionDescriptorBuilder::Empty(),
+            TaskID::Nil(),
+            /*attempt_number=*/0,
+            {});
+  queue.Add(3,
+            -1,
+            fn_ok,
+            fn_rej,
+            nullptr,
+            "",
+            FunctionDescriptorBuilder::Empty(),
+            TaskID::Nil(),
+            /*attempt_number=*/0,
+            {});
+  queue.Add(1,
+            -1,
+            fn_ok,
+            fn_rej,
+            nullptr,
+            "",
+            FunctionDescriptorBuilder::Empty(),
+            TaskID::Nil(),
+            /*attempt_number=*/0,
+            {});
   io_service.run();
   ASSERT_EQ(n_ok, 4);
   ASSERT_EQ(n_rej, 0);
@@ -168,23 +281,74 @@ TEST(SchedulingQueueTest, TestOutOfOrder) {
 TEST(SchedulingQueueTest, TestSeqWaitTimeout) {
   instrumented_io_context io_service;
   MockWaiter waiter;
-  MockActorSchedulingQueue queue(io_service, waiter);
+  ActorSchedulingQueue queue(io_service,
+                             waiter,
+                             std::make_shared<ConcurrencyGroupManager<BoundedExecutor>>(),
+                             std::make_shared<ConcurrencyGroupManager<FiberState>>(),
+                             /*is_asyncio=*/false,
+                             /*fiber_max_concurrency=*/1,
+                             /*concurrency_groups=*/{});
   int n_ok = 0;
   int n_rej = 0;
   auto fn_ok = [&n_ok](rpc::SendReplyCallback callback) { n_ok++; };
   auto fn_rej = [&n_rej](const Status &status, rpc::SendReplyCallback callback) {
     n_rej++;
   };
-  queue.Add(2, -1, fn_ok, fn_rej, nullptr);
-  queue.Add(0, -1, fn_ok, fn_rej, nullptr);
-  queue.Add(3, -1, fn_ok, fn_rej, nullptr);
+  queue.Add(2,
+            -1,
+            fn_ok,
+            fn_rej,
+            nullptr,
+            "",
+            FunctionDescriptorBuilder::Empty(),
+            TaskID::Nil(),
+            /*attempt_number=*/0,
+            {});
+  queue.Add(0,
+            -1,
+            fn_ok,
+            fn_rej,
+            nullptr,
+            "",
+            FunctionDescriptorBuilder::Empty(),
+            TaskID::Nil(),
+            /*attempt_number=*/0,
+            {});
+  queue.Add(3,
+            -1,
+            fn_ok,
+            fn_rej,
+            nullptr,
+            "",
+            FunctionDescriptorBuilder::Empty(),
+            TaskID::Nil(),
+            /*attempt_number=*/0,
+            {});
   ASSERT_EQ(n_ok, 1);
   ASSERT_EQ(n_rej, 0);
   io_service.run();  // immediately triggers timeout
   ASSERT_EQ(n_ok, 1);
   ASSERT_EQ(n_rej, 2);
-  queue.Add(4, -1, fn_ok, fn_rej, nullptr);
-  queue.Add(5, -1, fn_ok, fn_rej, nullptr);
+  queue.Add(4,
+            -1,
+            fn_ok,
+            fn_rej,
+            nullptr,
+            "",
+            FunctionDescriptorBuilder::Empty(),
+            TaskID::Nil(),
+            /*attempt_number=*/0,
+            {});
+  queue.Add(5,
+            -1,
+            fn_ok,
+            fn_rej,
+            nullptr,
+            "",
+            FunctionDescriptorBuilder::Empty(),
+            TaskID::Nil(),
+            /*attempt_number=*/0,
+            {});
   ASSERT_EQ(n_ok, 3);
   ASSERT_EQ(n_rej, 2);
 }
@@ -192,16 +356,49 @@ TEST(SchedulingQueueTest, TestSeqWaitTimeout) {
 TEST(SchedulingQueueTest, TestSkipAlreadyProcessedByClient) {
   instrumented_io_context io_service;
   MockWaiter waiter;
-  MockActorSchedulingQueue queue(io_service, waiter);
+  ActorSchedulingQueue queue(io_service,
+                             waiter,
+                             std::make_shared<ConcurrencyGroupManager<BoundedExecutor>>(),
+                             std::make_shared<ConcurrencyGroupManager<FiberState>>(),
+                             /*is_asyncio=*/false,
+                             /*fiber_max_concurrency=*/1,
+                             /*concurrency_groups=*/{});
   int n_ok = 0;
   int n_rej = 0;
   auto fn_ok = [&n_ok](rpc::SendReplyCallback callback) { n_ok++; };
   auto fn_rej = [&n_rej](const Status &status, rpc::SendReplyCallback callback) {
     n_rej++;
   };
-  queue.Add(2, 2, fn_ok, fn_rej, nullptr);
-  queue.Add(3, 2, fn_ok, fn_rej, nullptr);
-  queue.Add(1, 2, fn_ok, fn_rej, nullptr);
+  queue.Add(2,
+            2,
+            fn_ok,
+            fn_rej,
+            nullptr,
+            "",
+            FunctionDescriptorBuilder::Empty(),
+            TaskID::Nil(),
+            /*attempt_number=*/0,
+            {});
+  queue.Add(3,
+            2,
+            fn_ok,
+            fn_rej,
+            nullptr,
+            "",
+            FunctionDescriptorBuilder::Empty(),
+            TaskID::Nil(),
+            /*attempt_number=*/0,
+            {});
+  queue.Add(1,
+            2,
+            fn_ok,
+            fn_rej,
+            nullptr,
+            "",
+            FunctionDescriptorBuilder::Empty(),
+            TaskID::Nil(),
+            /*attempt_number=*/0,
+            {});
   io_service.run();
   ASSERT_EQ(n_ok, 1);
   ASSERT_EQ(n_rej, 2);
