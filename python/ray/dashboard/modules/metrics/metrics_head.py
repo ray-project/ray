@@ -325,13 +325,12 @@ class MetricsHead(dashboard_utils.DashboardHeadModule):
             os.remove(prometheus_config_output_path)
         os.makedirs(os.path.dirname(prometheus_config_output_path), exist_ok=True)
 
-        # The code here is slightly different from how the prometheus config is
-        # setup in the start_prometheus in install_and_start_prometheus.py.
-        # Here the config is generated considering the temporary root directory
-        # the user set when starting the ray cluster. In start_prometheus in
-        # install_and_start_prometheus.py, it is assuming the temporty root directory
-        # to be the default "/tmp/ray" and leverage the hard coded file in the package
-        # to load into prometheus
+        # This code generates the Prometheus config based on the custom temporary root
+        # path set by the user at Ray cluster start up (via --temp-dir). In contrast,
+        # start_prometheus in install_and_start_prometheus.py uses a hardcoded
+        # Prometheus config at PROMETHEUS_CONFIG_INPUT_PATH that always uses "/tmp/ray".
+        # Other than the root path, the config file generated here is identical to that
+        # hardcoded config file.
         prom_discovery_file_path = os.path.join(
             self._dashboard_head.temp_dir, PROMETHEUS_SERVICE_DISCOVERY_FILE
         )
