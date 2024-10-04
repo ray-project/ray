@@ -267,7 +267,7 @@ class RuntimeEnv(dict):
         config: config for runtime environment. Either
             a dict or a RuntimeEnvConfig. Field: (1) setup_timeout_seconds, the
             timeout of runtime environment creation,  timeout is in seconds.
-        image_uri: Require a given container image, The Ray worker process will run 
+        image_uri: URI to a container image. The Ray worker process runs
             in a container with this image. Cannot be used together with other fields 
             of runtime_env.
     """
