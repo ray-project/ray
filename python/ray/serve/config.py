@@ -71,8 +71,8 @@ class AutoscalingConfig(BaseModel):
     # How long to wait before scaling up replicas
     upscale_delay_s: NonNegativeFloat = 30.0
 
-    # This function determines how scaling decisions are made based on the calculated replica counts.
-    # Replica counts are calculated many times over the upscale/downscale delay period.
+    # Determines how scaling decisions are made based on calculated replica counts
+    # Replica counts are calculated many times over the upscale/downscale delay period
     scaling_function: str = "last"
     _scaling_functions = {
         "last": staticmethod(lambda history: history[-1]),

@@ -1503,7 +1503,7 @@ def test_autoscaling_status_changes(serve_instance):
 def test_autoscaling_decision_functions(serve_instance_with_signal, scaling_function):
     client, signal = serve_instance_with_signal
 
-    # Control loop interval is too small to accurately target, so we compute over multiple cycles
+    # Compute over multiple control loop cycles to correct for misalignment
     interval = CONTROL_LOOP_INTERVAL_S * 15
     decision_history = [1, 9, 2]
     scaling_delay = interval * len(decision_history)
