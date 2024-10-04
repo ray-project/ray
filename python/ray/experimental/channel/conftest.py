@@ -114,7 +114,7 @@ def start_nccl_mock():
     cp_patcher.start()
 
     # Mock send/recv ops to use an actor instead of NCCL.
-    ray.experimental.channel.torch_tensor_nccl_channel._NcclGroup = MockNcclGroup
+    ray.experimental.channel.torch_tensor_communicator_channel._CommunicatorGroup = MockNcclGroup
 
     # PyTorch mocks.
     stream_patcher = mock.patch(
