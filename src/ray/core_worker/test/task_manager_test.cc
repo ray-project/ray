@@ -109,9 +109,10 @@ class MockTaskEventBuffer : public worker::TaskEventBuffer {
 
 class TaskManagerTest : public ::testing::Test {
  public:
-  TaskManagerTest(bool lineage_pinning_enabled = false,
-                  int64_t max_lineage_bytes = 1024 * 1024 * 1024)
-      : lineage_pinning_enabled_(lineage_pinning_enabled),
+  explicit TaskManagerTest(bool lineage_pinning_enabled = false,
+                           int64_t max_lineage_bytes = 1024 * 1024 * 1024)
+      : io_context_("TaskManagerTest"),
+        lineage_pinning_enabled_(lineage_pinning_enabled),
         addr_(GetRandomWorkerAddr()),
         publisher_(std::make_shared<pubsub::MockPublisher>()),
         subscriber_(std::make_shared<pubsub::MockSubscriber>()),
@@ -123,7 +124,7 @@ class TaskManagerTest : public ::testing::Test {
             [this](const NodeID &node_id) { return all_nodes_alive_; },
             lineage_pinning_enabled))),
         store_(std::shared_ptr<CoreWorkerMemoryStore>(
-            new CoreWorkerMemoryStore(reference_counter_))),
+            new CoreWorkerMemoryStore(&io_context_.GetIoService(), reference_counter_))),
         manager_(
             store_,
             reference_counter_,
@@ -175,6 +176,7 @@ class TaskManagerTest : public ::testing::Test {
     manager_.CompletePendingTask(spec.TaskId(), reply, caller_address, false);
   }
 
+  InstrumentedIOContextWithThread io_context_;
   bool lineage_pinning_enabled_;
   rpc::Address addr_;
   std::shared_ptr<pubsub::MockPublisher> publisher_;
