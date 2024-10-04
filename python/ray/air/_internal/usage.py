@@ -18,11 +18,9 @@ AIR_TRAINERS = {
     "HorovodTrainer",
     "LightGBMTrainer",
     "MosaicTrainer",
-    "SklearnTrainer",
     "TensorflowTrainer",
     "TorchTrainer",
     "XGBoostTrainer",
-    "HuggingFaceTrainer",  # Deprecated: Remove in 2.7.
 }
 
 # searchers implemented by Ray Tune.

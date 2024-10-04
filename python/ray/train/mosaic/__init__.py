@@ -1,3 +1,3 @@
-from ray.train.mosaic.mosaic_trainer import MosaicTrainer
+from ray.train.mosaic._mosaic_utils import RayLogger
 
-__all__ = ["MosaicTrainer"]
+__all__ = ["RayLogger"]
