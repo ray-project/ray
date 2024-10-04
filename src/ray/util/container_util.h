@@ -46,7 +46,7 @@ class DebugStringWrapper {
 
   // Only initialized for the blessed container types listed below with operator<<
   // specializations.
-  std::ostream &_container_debug_string_impl(std::ostream &os) const {
+  std::ostream &StringifyContainer(std::ostream &os) const {
     os << "[";
     for (auto it = obj_.begin(); it != obj_.end(); ++it) {
       if (it != obj_.begin()) {
@@ -92,30 +92,30 @@ std::ostream &operator<<(std::ostream &os, DebugStringWrapper<std::tuple<Ts...>>
 
 template <typename... Ts>
 std::ostream &operator<<(std::ostream &os, DebugStringWrapper<std::vector<Ts...>> c) {
-  return c._container_debug_string_impl(os);
+  return c.StringifyContainer(os);
 }
 template <typename... Ts>
 std::ostream &operator<<(std::ostream &os, DebugStringWrapper<std::set<Ts...>> c) {
-  return c._container_debug_string_impl(os);
+  return c.StringifyContainer(os);
 }
 template <typename... Ts>
 std::ostream &operator<<(std::ostream &os,
                          DebugStringWrapper<std::unordered_set<Ts...>> c) {
-  return c._container_debug_string_impl(os);
+  return c.StringifyContainer(os);
 }
 template <typename... Ts>
 std::ostream &operator<<(std::ostream &os,
                          DebugStringWrapper<absl::flat_hash_set<Ts...>> c) {
-  return c._container_debug_string_impl(os);
+  return c.StringifyContainer(os);
 }
 template <typename... Ts>
 std::ostream &operator<<(std::ostream &os, DebugStringWrapper<std::map<Ts...>> c) {
-  return c._container_debug_string_impl(os);
+  return c.StringifyContainer(os);
 }
 template <typename... Ts>
 std::ostream &operator<<(std::ostream &os,
                          DebugStringWrapper<absl::flat_hash_map<Ts...>> c) {
-  return c._container_debug_string_impl(os);
+  return c.StringifyContainer(os);
 }
 
 template <typename C>

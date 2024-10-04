@@ -25,7 +25,7 @@ template <typename T>
 std::string debug_string_to_string(const T &t) {
   std::ostringstream ss;
   ss << debug_string(t);
-  return ss.str();
+  return std::move(ss).str();
 }
 
 TEST(ContainerUtilTest, TestDebugString) {
