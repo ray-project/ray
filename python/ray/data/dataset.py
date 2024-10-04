@@ -410,6 +410,10 @@ class Dataset:
         :ref:`Stateful Transforms <stateful_transforms>`.
 
         .. tip::
+            To understand the format of the input to ``fn``, call :meth:`~Dataset.take_batch`
+            on the dataset to get a batch in the same format as will be passed to ``fn``.
+
+        .. tip::
             If ``fn`` doesn't mutate its input, set ``zero_copy_batch=True`` to improve
             performance and decrease memory utilization.
 
@@ -561,6 +565,11 @@ class Dataset:
 
             :meth:`~Dataset.iter_batches`
                 Call this function to iterate over batches of data.
+
+            :meth:`~Dataset.take_batch`
+                Call this function to get a batch of data from the dataset
+                in the same format as will be passed to the `fn` function of
+                :meth:`~Dataset.map_batches`.
 
             :meth:`~Dataset.flat_map`
                 Call this method to create new records from existing ones. Unlike
