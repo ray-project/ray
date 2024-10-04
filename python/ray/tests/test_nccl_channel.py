@@ -15,7 +15,7 @@ from ray.experimental.channel.conftest import (
 )
 from ray.experimental.channel.torch_tensor_type import TorchTensorType
 from ray.experimental.channel.torch_tensor_communicator_channel import (
-    _init_nccl_group,
+    _init_communicator_group,
 )
 from ray._private.test_utils import get_actor_node_id
 
@@ -91,7 +91,7 @@ def test_p2p(ray_start_cluster):
         ]
     )
 
-    nccl_id = _init_nccl_group([sender, receiver])
+    nccl_id = _init_communicator_group([sender, receiver])
 
     chan_typ = TorchTensorType(
         transport="nccl",
@@ -143,7 +143,7 @@ def test_multiple_receivers(ray_start_cluster):
 
     ray.get([worker.start_mock.remote() for worker in workers])
 
-    nccl_id = _init_nccl_group(workers)
+    nccl_id = _init_communicator_group(workers)
 
     chan_typ = TorchTensorType(
         transport="nccl",
