@@ -127,7 +127,6 @@ if __name__ == "__main__":
                 "fcnet_hiddens": [32],
                 "fcnet_activation": "linear",
                 "vf_share_layers": True,
-                "uses_new_env_runners": True,
             },
         )
     )
@@ -142,7 +141,7 @@ if __name__ == "__main__":
     # PPO-specific settings (for better learning behavior only).
     if args.algo == "PPO":
         base_config.training(
-            num_sgd_iter=6,
+            num_epochs=6,
             vf_loss_coeff=0.01,
         )
     # IMPALA-specific settings (for better learning behavior only).
@@ -155,7 +154,6 @@ if __name__ == "__main__":
         base_config.rl_module(
             model_config_dict={
                 "vf_share_layers": True,
-                "uses_new_env_runners": True,
             }
         )
 

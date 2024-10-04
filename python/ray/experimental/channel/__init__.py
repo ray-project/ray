@@ -5,6 +5,7 @@ from ray.experimental.channel.common import (  # noqa: F401
     ChannelContext,
     ChannelInterface,
     ChannelOutputType,
+    RayDAGArgs,
     ReaderInterface,
     SynchronousReader,
     SynchronousWriter,
@@ -34,4 +35,5 @@ __all__ = [
     "IntraProcessChannel",
     "CompositeChannel",
     "BufferedSharedMemoryChannel",
+    "RayDAGArgs",
 ]

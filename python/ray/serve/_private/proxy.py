@@ -913,6 +913,7 @@ class HTTPProxy(GenericProxy):
             "route": route_path,
             "app_name": app_name,
             "_internal_request_id": internal_request_id,
+            "is_http_request": True,
         }
         for key, value in proxy_request.headers:
             if key.decode() == SERVE_MULTIPLEXED_MODEL_ID:

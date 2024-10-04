@@ -4,7 +4,7 @@ import copy
 import threading
 import time
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Dict, List, NamedTuple, Optional, Tuple, Union
 
 import ray
 from ray.experimental.channel.gpu_communicator import GPUCommunicator
@@ -17,6 +17,13 @@ _context_lock = threading.Lock()
 
 if TYPE_CHECKING:
     import torch
+
+
+# Holds the input arguments for an accelerated DAG node.
+@PublicAPI(stability="alpha")
+class RayDAGArgs(NamedTuple):
+    args: Tuple[Any, ...]
+    kwargs: Dict[str, Any]
 
 
 @PublicAPI(stability="alpha")
@@ -77,6 +84,7 @@ class ChannelOutputType:
         self,
         writer: Optional["ray.actor.ActorHandle"],
         reader_and_node_list: List[Tuple["ray.actor.ActorHandle", str]],
+        read_by_adag_driver: bool,
     ) -> "ChannelInterface":
         """
         Instantiate a ChannelInterface class that can be used
@@ -86,6 +94,8 @@ class ChannelOutputType:
             writer: The actor that may write to the channel. None signifies the driver.
             reader_and_node_list: A list of tuples, where each tuple contains a reader
                 actor handle and the node ID where the actor is located.
+            read_by_adag_driver: True if a channel is read by an aDAG driver (Ray driver
+                or an actor that creates the aDAG).
         Returns:
             A ChannelInterface that can be used to pass data
                 of this type.
@@ -372,7 +382,10 @@ class AwaitableBackgroundReader(ReaderInterface):
 @DeveloperAPI
 class WriterInterface:
     def __init__(
-        self, output_channels: List[ChannelInterface], output_idxs: List[Optional[int]]
+        self,
+        output_channels: List[ChannelInterface],
+        output_idxs: List[Optional[Union[int, str]]],
+        is_input=False,
     ):
         """
         Initialize the writer.
@@ -380,9 +393,12 @@ class WriterInterface:
         Args:
             output_channels: The output channels to write to.
             output_idxs: The indices of the values to write to each channel.
-                It is the same length as output_channels. If an index is None,
-                the entire value is written. Otherwise, the value at the index
-                of the tuple is written.
+                This has the same length as `output_channels`. If `is_input` is True,
+                the index can be an integer or a string to retrieve the corresponding
+                value from `args` or `kwargs` in the DAG's input. If `is_input`
+                is False, the entire value is written if the index is None. Otherwise,
+                the value at the specified index in the tuple is written.
+            is_input: Whether the writer is DAG input writer or not.
         """
 
         assert len(output_channels) == len(output_idxs)
@@ -390,6 +406,7 @@ class WriterInterface:
         self._output_idxs = output_idxs
         self._closed = False
         self._num_writes = 0
+        self._is_input = is_input
 
     def get_num_writes(self) -> int:
         return self._num_writes
@@ -415,6 +432,37 @@ class WriterInterface:
             channel.close()
 
 
+def _adapt(raw_args: Any, key: Optional[Union[int, str]], is_input: bool):
+    """
+    Adapt the raw arguments to the key. If `is_input` is True, this method will
+    retrieve the value from the input data for an InputAttributeNode. Otherwise, it
+    will retrieve either a partial value or the entire value from the output of
+    a ClassMethodNode.
+
+    Args:
+        raw_args: The raw arguments to adapt.
+        key: The key to adapt.
+        is_input: Whether the writer is DAG input writer or not.
+    """
+    if is_input:
+        if not isinstance(raw_args, RayDAGArgs):
+            # Fast path for a single input.
+            return raw_args
+        else:
+            args = raw_args.args
+            kwargs = raw_args.kwargs
+
+        if isinstance(key, int):
+            return args[key]
+        else:
+            return kwargs[key]
+    else:
+        if key is not None:
+            return raw_args[key]
+        else:
+            return raw_args
+
+
 @DeveloperAPI
 class SynchronousWriter(WriterInterface):
     def start(self):
@@ -422,24 +470,28 @@ class SynchronousWriter(WriterInterface):
             channel.ensure_registered_as_writer()
 
     def write(self, val: Any, timeout: Optional[float] = None) -> None:
-        if len(self._output_channels) > 1:
-            if not isinstance(val, tuple):
-                raise ValueError(
-                    f"Expected a tuple of {len(self._output_channels)} outputs,"
-                    "but got {type(val)}"
-                )
-            if len(val) != len(self._output_channels):
-                raise ValueError(
-                    f"Expected {len(self._output_channels)} outputs, but got"
-                    "{len(val)} outputs"
-                )
+        # If it is an exception, there's only 1 return value.
+        # We have to send the same data to all channels.
+        if isinstance(val, Exception):
+            if len(self._output_channels) > 1:
+                val = tuple(val for _ in range(len(self._output_channels)))
+
+        if not self._is_input:
+            if len(self._output_channels) > 1:
+                if not isinstance(val, tuple):
+                    raise ValueError(
+                        f"Expected a tuple of {len(self._output_channels)} outputs, "
+                        f"but got {type(val)}"
+                    )
+                if len(val) != len(self._output_channels):
+                    raise ValueError(
+                        f"Expected {len(self._output_channels)} outputs, but got "
+                        f"{len(val)} outputs"
+                    )
 
         for i, channel in enumerate(self._output_channels):
             idx = self._output_idxs[i]
-            if idx is not None:
-                val_i = val[idx]
-            else:
-                val_i = val
+            val_i = _adapt(val, idx, self._is_input)
             channel.write(val_i, timeout)
         self._num_writes += 1
 
@@ -449,10 +501,11 @@ class AwaitableBackgroundWriter(WriterInterface):
     def __init__(
         self,
         output_channels: List[ChannelInterface],
-        output_idxs: List[Optional[int]],
+        output_idxs: List[Optional[Union[int, str]]],
         max_queue_size: Optional[int] = None,
+        is_input=False,
     ):
-        super().__init__(output_channels, output_idxs)
+        super().__init__(output_channels, output_idxs, is_input=is_input)
         if max_queue_size is None:
             from ray.dag import DAGContext
 
@@ -470,24 +523,22 @@ class AwaitableBackgroundWriter(WriterInterface):
         self._background_task = asyncio.ensure_future(self.run())
 
     def _run(self, res):
-        if len(self._output_channels) > 1:
-            if not isinstance(res, tuple):
-                raise ValueError(
-                    f"Expected a tuple of {len(self._output_channels)} outputs,"
-                    "but got {type(val)}"
-                )
-            if len(res) != len(self._output_channels):
-                raise ValueError(
-                    f"Expected {len(self._output_channels)} outputs, but got"
-                    "{len(val)} outputs"
-                )
+        if not self._is_input:
+            if len(self._output_channels) > 1:
+                if not isinstance(res, tuple):
+                    raise ValueError(
+                        f"Expected a tuple of {len(self._output_channels)} outputs, "
+                        f"but got {type(res)}"
+                    )
+                if len(res) != len(self._output_channels):
+                    raise ValueError(
+                        f"Expected {len(self._output_channels)} outputs, but got "
+                        f"{len(res)} outputs"
+                    )
 
         for i, channel in enumerate(self._output_channels):
             idx = self._output_idxs[i]
-            if idx is not None:
-                res_i = res[idx]
-            else:
-                res_i = res
+            res_i = _adapt(res, idx, self._is_input)
             channel.write(res_i)
 
     async def run(self):

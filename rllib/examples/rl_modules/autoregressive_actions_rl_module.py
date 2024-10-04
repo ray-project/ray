@@ -10,7 +10,7 @@ This examples:
     - Uses this `RLModule` in a PPO training run on a simple environment
         that rewards synchronized actions.
     - Stops the training after 100k steps or when the mean episode return
-        exceeds 150 in evaluation, i.e. if the agent has learned to
+        exceeds 0.01 in evaluation, i.e. if the agent has learned to
         synchronize its actions.
 
 How to run this script
@@ -42,7 +42,9 @@ over 100, the agent must learn to synchronize its actions.
 from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.core.models.catalog import Catalog
 from ray.rllib.core.rl_module.rl_module import RLModuleSpec
-from ray.rllib.examples.envs.classes.correlated_actions_env import CorrelatedActionsEnv
+from ray.rllib.examples.envs.classes.correlated_actions_env import (
+    AutoRegressiveActionEnv,
+)
 from ray.rllib.examples.rl_modules.classes.autoregressive_actions_rlm import (
     AutoregressiveActionsTorchRLM,
 )
@@ -59,7 +61,7 @@ from ray.rllib.utils.test_utils import (
 from ray.tune import register_env
 
 
-register_env("correlated_actions_env", lambda _: CorrelatedActionsEnv(_))
+register_env("correlated_actions_env", lambda _: AutoRegressiveActionEnv(_))
 
 parser = add_rllib_example_script_args(
     default_iters=200,
@@ -100,7 +102,7 @@ if __name__ == "__main__":
     # exceeds 150 in evaluation.
     stop = {
         f"{NUM_ENV_STEPS_SAMPLED_LIFETIME}": 100000,
-        f"{EVALUATION_RESULTS}/{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": 150.0,
+        f"{EVALUATION_RESULTS}/{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": -0.012,
     }
 
     # Run the example (with Tune).

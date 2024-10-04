@@ -74,6 +74,12 @@ DEFAULT_MIN_PARALLELISM = 200
 
 DEFAULT_ENABLE_TENSOR_EXTENSION_CASTING = True
 
+# NOTE: V1 tensor type format only supports tensors of no more than 2Gb in
+#       total cumulative size (due to it internally utilizing int32 offsets)
+#
+#       V2 in turn relies on int64 offsets, therefore having a limit of ~9Eb (exabytes)
+DEFAULT_USE_ARROW_TENSOR_V2 = env_bool("RAY_DATA_USE_ARROW_TENSOR_V2", False)
+
 DEFAULT_AUTO_LOG_STATS = False
 
 DEFAULT_VERBOSE_STATS_LOG = False
@@ -102,6 +108,8 @@ DEFAULT_ENABLE_PROGRESS_BAR_NAME_TRUNCATION = env_bool(
 DEFAULT_ENABLE_GET_OBJECT_LOCATIONS_FOR_METRICS = False
 
 
+# `write_file_retry_on_errors` is deprecated in favor of `retried_io_errors`. You
+# shouldn't need to modify `DEFAULT_WRITE_FILE_RETRY_ON_ERRORS`.
 DEFAULT_WRITE_FILE_RETRY_ON_ERRORS = (
     "AWS Error INTERNAL_FAILURE",
     "AWS Error NETWORK_CONNECTION",
@@ -114,6 +122,7 @@ DEFAULT_RETRIED_IO_ERRORS = (
     "AWS Error NETWORK_CONNECTION",
     "AWS Error SLOW_DOWN",
     "AWS Error UNKNOWN (HTTP status 503)",
+    "AWS Error SERVICE_UNAVAILABLE",
 )
 
 DEFAULT_WARN_ON_DRIVER_MEMORY_USAGE_BYTES = 2 * 1024 * 1024 * 1024
@@ -283,6 +292,7 @@ class DataContext:
     min_parallelism: int = DEFAULT_MIN_PARALLELISM
     read_op_min_num_blocks: int = DEFAULT_READ_OP_MIN_NUM_BLOCKS
     enable_tensor_extension_casting: bool = DEFAULT_ENABLE_TENSOR_EXTENSION_CASTING
+    use_arrow_tensor_v2: bool = DEFAULT_USE_ARROW_TENSOR_V2
     enable_auto_log_stats: bool = DEFAULT_AUTO_LOG_STATS
     verbose_stats_logs: bool = DEFAULT_VERBOSE_STATS_LOG
     trace_allocations: bool = DEFAULT_TRACE_ALLOCATIONS

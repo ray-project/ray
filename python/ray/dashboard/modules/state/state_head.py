@@ -2,6 +2,7 @@ import asyncio
 import functools
 import logging
 from abc import ABC, abstractmethod
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict
 from datetime import datetime
 from typing import AsyncIterable, Callable, List, Optional, Tuple
@@ -11,6 +12,7 @@ from aiohttp.web import Response
 
 import ray.dashboard.optional_utils as dashboard_optional_utils
 import ray.dashboard.utils as dashboard_utils
+from ray._private.ray_constants import env_integer
 from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
 from ray.dashboard.consts import (
     RAY_STATE_SERVER_MAX_HTTP_REQUEST,
@@ -40,6 +42,13 @@ from ray.util.state.util import convert_string_to_type
 
 logger = logging.getLogger(__name__)
 routes = dashboard_optional_utils.DashboardHeadRouteTable
+
+# NOTE: Executor in this head is intentionally constrained to just 1 thread by
+#       default to limit its concurrency, therefore reducing potential for
+#       GIL contention
+RAY_DASHBOARD_STATE_HEAD_TPE_MAX_WORKERS = env_integer(
+    "RAY_DASHBOARD_STATE_HEAD_TPE_MAX_WORKERS", 1
+)
 
 
 class RateLimitedModule(ABC):
@@ -150,6 +159,11 @@ class StateHead(dashboard_utils.DashboardHeadModule, RateLimitedModule):
         self._state_api_data_source_client = None
         self._state_api = None
         self._log_api = None
+
+        self._executor = ThreadPoolExecutor(
+            max_workers=RAY_DASHBOARD_STATE_HEAD_TPE_MAX_WORKERS,
+            thread_name_prefix="state_head_executor",
+        )
 
         DataSource.nodes.signal.append(self._update_raylet_stubs)
         DataSource.agents.signal.append(self._update_agent_stubs)
@@ -550,7 +564,7 @@ class StateHead(dashboard_utils.DashboardHeadModule, RateLimitedModule):
         )
         self._state_api = StateAPIManager(
             self._state_api_data_source_client,
-            self._dashboard_head._thread_pool_executor,
+            self._executor,
         )
         self._log_api = LogsManager(self._state_api_data_source_client)
 

@@ -78,11 +78,6 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
                             rpc::GetAllNodeInfoReply *reply,
                             rpc::SendReplyCallback send_reply_callback) override;
 
-  /// Handle get internal config.
-  void HandleGetInternalConfig(rpc::GetInternalConfigRequest request,
-                               rpc::GetInternalConfigReply *reply,
-                               rpc::SendReplyCallback send_reply_callback) override;
-
   /// Handle check alive request for GCS.
   void HandleCheckAlive(rpc::CheckAliveRequest request,
                         rpc::CheckAliveReply *reply,
@@ -262,8 +257,7 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
     REGISTER_NODE_REQUEST = 0,
     DRAIN_NODE_REQUEST = 1,
     GET_ALL_NODE_INFO_REQUEST = 2,
-    GET_INTERNAL_CONFIG_REQUEST = 3,
-    CountType_MAX = 4,
+    CountType_MAX = 3,
   };
   uint64_t counts_[CountType::CountType_MAX] = {0};
 
