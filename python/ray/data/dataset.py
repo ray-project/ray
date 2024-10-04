@@ -862,6 +862,7 @@ class Dataset:
             **ray_remote_args,
         )
 
+    @PublicAPI(api_group=BT_API_GROUP)
     def rename_columns(
         self,
         mapper: Dict[str, str],
