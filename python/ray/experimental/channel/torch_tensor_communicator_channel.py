@@ -28,10 +28,12 @@ if TYPE_CHECKING:
 # into the program using Ray. Ray provides a default configuration at
 # entry/init points.
 logger = logging.getLogger(__name__)
-
+USE_GPU = True
 if os.getenv("ASCEND_RT_VISIBLE_DEVICES"):
     try:
         from ray.experimental.channel.hccl_group import _HcclGroup as _CommunicatorGroup
+
+        USE_GPU = False
     except Exception:
         logger.warning("Failed in import hccl_group, use nccl_group instead")
         from ray.experimental.channel.nccl_group import _NcclGroup as _CommunicatorGroup
@@ -463,7 +465,9 @@ def _do_init_communicator_group(
     if custom_communicator_group is not None:
         custom_communicator_group.initialize(rank)
         ctx.communicator_groups[group_id] = custom_communicator_group
-    elif torch.cuda.is_available():  # Only stream with cudda is avaliable.
+    elif USE_GPU:
+        # Only stream with cuda is if use GPU (default)
+        # Cannot use cuda.is_avaliable() in case of mock test.
         ctx.communicator_groups[group_id] = _CommunicatorGroup(
             world_size,
             comm_id,
