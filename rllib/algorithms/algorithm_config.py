@@ -982,12 +982,26 @@ class AlgorithmConfig(_Config):
                     f"pipeline)! Your function returned {val_}."
                 )
 
+        obs_space = getattr(env, "single_observation_space", env.observation_space)
+        if obs_space is None and self.is_multi_agent():
+            obs_space = gym.spaces.Dict(
+                {
+                    aid: env.get_observation_space(aid)
+                    for aid in env.unwrapped.possible_agents
+                }
+            )
+        act_space = getattr(env, "single_action_space", env.action_space)
+        if act_space is None and self.is_multi_agent():
+            act_space = gym.spaces.Dict(
+                {
+                    aid: env.get_action_space(aid)
+                    for aid in env.unwrapped.possible_agents
+                }
+            )
         pipeline = EnvToModulePipeline(
+            input_observation_space=obs_space,
+            input_action_space=act_space,
             connectors=custom_connectors,
-            input_observation_space=getattr(
-                env, "single_observation_space", env.observation_space
-            ),
-            input_action_space=getattr(env, "single_action_space", env.action_space),
         )
 
         if self.add_default_connectors_to_env_to_module_pipeline:
@@ -1048,12 +1062,26 @@ class AlgorithmConfig(_Config):
                     f"pipeline)! Your function returned {val_}."
                 )
 
+        obs_space = getattr(env, "single_observation_space", env.observation_space)
+        if obs_space is None and self.is_multi_agent():
+            obs_space = gym.spaces.Dict(
+                {
+                    aid: env.get_observation_space(aid)
+                    for aid in env.unwrapped.possible_agents
+                }
+            )
+        act_space = getattr(env, "single_action_space", env.action_space)
+        if act_space is None and self.is_multi_agent():
+            act_space = gym.spaces.Dict(
+                {
+                    aid: env.get_action_space(aid)
+                    for aid in env.unwrapped.possible_agents
+                }
+            )
         pipeline = ModuleToEnvPipeline(
+            input_observation_space=obs_space,
+            input_action_space=act_space,
             connectors=custom_connectors,
-            input_observation_space=getattr(
-                env, "single_observation_space", env.observation_space
-            ),
-            input_action_space=getattr(env, "single_action_space", env.action_space),
         )
 
         if self.add_default_connectors_to_module_to_env_pipeline:
@@ -4916,47 +4944,54 @@ class AlgorithmConfig(_Config):
 
             # Infer observation space.
             if policy_spec.observation_space is None:
+                env_unwrapped = env.unwrapped if hasattr(env, "unwrapped") else env
+                # Module's space is provided -> Use it as-is.
                 if spaces is not None and pid in spaces:
                     obs_space = spaces[pid][0]
-                elif env_obs_space is not None:
-                    env_unwrapped = env.unwrapped if hasattr(env, "unwrapped") else env
-                    # Multi-agent case AND different agents have different spaces:
-                    # Need to reverse map spaces (for the different agents) to certain
-                    # policy IDs.
-                    if (
-                        isinstance(env_unwrapped, MultiAgentEnv)
-                        and hasattr(env_unwrapped, "_obs_space_in_preferred_format")
-                        and env_unwrapped._obs_space_in_preferred_format
-                    ):
-                        obs_space = None
-                        mapping_fn = self.policy_mapping_fn
-                        one_obs_space = next(iter(env_obs_space.values()))
-                        # If all obs spaces are the same anyways, just use the first
-                        # single-agent space.
-                        if all(s == one_obs_space for s in env_obs_space.values()):
-                            obs_space = one_obs_space
-                        # Otherwise, we have to compare the ModuleID with all possible
-                        # AgentIDs and find the agent ID that matches.
-                        elif mapping_fn:
-                            for aid in env_unwrapped.get_agent_ids():
-                                # Match: Assign spaces for this agentID to the PolicyID.
-                                if mapping_fn(aid, None, worker=None) == pid:
-                                    # Make sure, different agents that map to the same
-                                    # policy don't have different spaces.
-                                    if (
-                                        obs_space is not None
-                                        and env_obs_space[aid] != obs_space
-                                    ):
-                                        raise ValueError(
-                                            "Two agents in your environment map to the "
-                                            "same policyID (as per your `policy_mapping"
-                                            "_fn`), however, these agents also have "
-                                            "different observation spaces!"
-                                        )
-                                    obs_space = env_obs_space[aid]
-                    # Otherwise, just use env's obs space as-is.
+                # MultiAgentEnv -> Check, whether agents have different spaces.
+                elif isinstance(env_unwrapped, MultiAgentEnv):
+                    obs_space = None
+                    mapping_fn = self.policy_mapping_fn
+                    aids = list(
+                        env_unwrapped.possible_agents
+                        if hasattr(env_unwrapped, "possible_agents")
+                        and env_unwrapped.possible_agents
+                        else env_unwrapped.get_agent_ids()
+                    )
+                    if len(aids) == 0:
+                        one_obs_space = env_unwrapped.observation_space
                     else:
-                        obs_space = env_obs_space
+                        one_obs_space = env_unwrapped.get_observation_space(aids[0])
+                    # If all obs spaces are the same, just use the first space.
+                    if all(
+                        env_unwrapped.get_observation_space(aid) == one_obs_space
+                        for aid in aids
+                    ):
+                        obs_space = one_obs_space
+                    # Need to reverse-map spaces (for the different agents) to certain
+                    # policy IDs. We have to compare the ModuleID with all possible
+                    # AgentIDs and find the agent ID that matches.
+                    elif mapping_fn:
+                        for aid in aids:
+                            # Match: Assign spaces for this agentID to the PolicyID.
+                            if mapping_fn(aid, None, worker=None) == pid:
+                                # Make sure, different agents that map to the same
+                                # policy don't have different spaces.
+                                if (
+                                    obs_space is not None
+                                    and env_unwrapped.get_observation_space(aid)
+                                    != obs_space
+                                ):
+                                    raise ValueError(
+                                        "Two agents in your environment map to the "
+                                        "same policyID (as per your `policy_mapping"
+                                        "_fn`), however, these agents also have "
+                                        "different observation spaces!"
+                                    )
+                                obs_space = env_unwrapped.get_observation_space(aid)
+                # Just use env's obs space as-is.
+                elif env_obs_space is not None:
+                    obs_space = env_obs_space
                 # Space given directly in config.
                 elif self.observation_space:
                     obs_space = self.observation_space
@@ -4972,47 +5007,53 @@ class AlgorithmConfig(_Config):
 
             # Infer action space.
             if policy_spec.action_space is None:
+                env_unwrapped = env.unwrapped if hasattr(env, "unwrapped") else env
+                # Module's space is provided -> Use it as-is.
                 if spaces is not None and pid in spaces:
                     act_space = spaces[pid][1]
-                elif env_act_space is not None:
-                    env_unwrapped = env.unwrapped if hasattr(env, "unwrapped") else env
-                    # Multi-agent case AND different agents have different spaces:
-                    # Need to reverse map spaces (for the different agents) to certain
-                    # policy IDs.
-                    if (
-                        isinstance(env_unwrapped, MultiAgentEnv)
-                        and hasattr(env_unwrapped, "_action_space_in_preferred_format")
-                        and env_unwrapped._action_space_in_preferred_format
-                    ):
-                        act_space = None
-                        mapping_fn = self.policy_mapping_fn
-                        one_act_space = next(iter(env_act_space.values()))
-                        # If all action spaces are the same anyways, just use the first
-                        # single-agent space.
-                        if all(s == one_act_space for s in env_act_space.values()):
-                            act_space = one_act_space
-                        # Otherwise, we have to compare the ModuleID with all possible
-                        # AgentIDs and find the agent ID that matches.
-                        elif mapping_fn:
-                            for aid in env_unwrapped.get_agent_ids():
-                                # Match: Assign spaces for this AgentID to the PolicyID.
-                                if mapping_fn(aid, None, worker=None) == pid:
-                                    # Make sure, different agents that map to the same
-                                    # policy don't have different spaces.
-                                    if (
-                                        act_space is not None
-                                        and env_act_space[aid] != act_space
-                                    ):
-                                        raise ValueError(
-                                            "Two agents in your environment map to the "
-                                            "same policyID (as per your `policy_mapping"
-                                            "_fn`), however, these agents also have "
-                                            "different action spaces!"
-                                        )
-                                    act_space = env_act_space[aid]
-                    # Otherwise, just use env's action space as-is.
+                # MultiAgentEnv -> Check, whether agents have different spaces.
+                elif isinstance(env_unwrapped, MultiAgentEnv):
+                    act_space = None
+                    mapping_fn = self.policy_mapping_fn
+                    aids = list(
+                        env_unwrapped.possible_agents
+                        if hasattr(env_unwrapped, "possible_agents")
+                        and env_unwrapped.possible_agents
+                        else env_unwrapped.get_agent_ids()
+                    )
+                    if len(aids) == 0:
+                        one_act_space = env_unwrapped.action_space
                     else:
-                        act_space = env_act_space
+                        one_act_space = env_unwrapped.get_action_space(aids[0])
+                    # If all obs spaces are the same, just use the first space.
+                    if all(
+                        env_unwrapped.get_action_space(aid) == one_act_space
+                        for aid in aids
+                    ):
+                        act_space = one_act_space
+                    # Need to reverse-map spaces (for the different agents) to certain
+                    # policy IDs. We have to compare the ModuleID with all possible
+                    # AgentIDs and find the agent ID that matches.
+                    elif mapping_fn:
+                        for aid in aids:
+                            # Match: Assign spaces for this AgentID to the PolicyID.
+                            if mapping_fn(aid, None, worker=None) == pid:
+                                # Make sure, different agents that map to the same
+                                # policy don't have different spaces.
+                                if (
+                                    act_space is not None
+                                    and env_unwrapped.get_action_space(aid) != act_space
+                                ):
+                                    raise ValueError(
+                                        "Two agents in your environment map to the "
+                                        "same policyID (as per your `policy_mapping"
+                                        "_fn`), however, these agents also have "
+                                        "different action spaces!"
+                                    )
+                                act_space = env_unwrapped.get_action_space(aid)
+                # Just use env's action space as-is.
+                elif env_act_space is not None:
+                    act_space = env_act_space
                 elif self.action_space:
                     act_space = self.action_space
                 else:

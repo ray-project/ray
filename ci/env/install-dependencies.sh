@@ -244,9 +244,9 @@ install_pip_packages() {
 
     # For DAG visualization
     requirements_packages+=("pydot")
-    requirements_packages+=("pytesseract")
-    requirements_packages+=("spacy>=3")
-    requirements_packages+=("spacy_langdetect")
+    requirements_packages+=("pytesseract==0.3.13")
+    requirements_packages+=("spacy==3.7.5")
+    requirements_packages+=("spacy_langdetect==0.1.2")
   fi
 
   # Additional RLlib test dependencies.

@@ -160,6 +160,12 @@ class _MLPConfig(ModelConfig):
             "_" are allowed.
         output_layer_bias_initializer_config: Configuration to pass into the
             initializer defined in `output_layer_bias_initializer`.
+        clip_log_std: If log std should be clipped by `log_std_clip_param`. This applies
+            only to the action distribution parameters that encode the log standard
+            deviation of a `DiagGaussian` distribution.
+        log_std_clip_param: The clipping parameter for the log std, if clipping should
+            be applied - i.e. `clip_log_std=True`. The default value is 20, i.e. log
+            stds are clipped in between -20 and 20.
     """
 
     hidden_layer_dims: Union[List[int], Tuple[int]] = (256, 256)
@@ -180,6 +186,11 @@ class _MLPConfig(ModelConfig):
     output_layer_weights_initializer_config: Optional[Dict] = None
     output_layer_bias_initializer: Optional[Union[str, Callable]] = None
     output_layer_bias_initializer_config: Optional[Dict] = None
+
+    # Optional clipping of log standard deviation.
+    clip_log_std: bool = False
+    # Optional clip parameter for the log standard deviation.
+    log_std_clip_param: float = 20.0
 
     @property
     def output_dims(self):
@@ -204,6 +215,11 @@ class _MLPConfig(ModelConfig):
                 f"`output_dims` ({self.output_dims}) of _MLPConfig must be "
                 "1D, e.g. `[32]`! This is an inferred value, hence other settings might"
                 " be wrong."
+            )
+        if self.log_std_clip_param is None:
+            raise ValueError(
+                "`log_std_clip_param` of _MLPConfig must be a float value, but is "
+                "`None`."
             )
 
         # Call these already here to catch errors early on.
