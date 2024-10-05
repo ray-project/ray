@@ -58,7 +58,7 @@ class PPOTfRLModule(TfRLModule, PPORLModule):
         return output
 
     @override(ValueFunctionAPI)
-    def compute_values(self, batch: Dict[str, Any]) -> TensorType:
+    def compute_values(self, batch: Dict[str, Any], embeddings=None) -> TensorType:
         infos = batch.pop(Columns.INFOS, None)
         batch = tree.map_structure(lambda s: tf.convert_to_tensor(s), batch)
         if infos is not None:
