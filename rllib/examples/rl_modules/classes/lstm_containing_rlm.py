@@ -23,12 +23,12 @@ class LSTMContainingRLModule(TorchRLModule, ValueFunctionAPI):
 
         B = 10  # batch size
         T = 5  # seq len
-        f = 25  # feature dim
+        e = 25  # embedding dim
         CELL = 32  # LSTM cell size
 
         # Construct the RLModule.
         rl_module_config = RLModuleConfig(
-            observation_space=gym.spaces.Box(-1.0, 1.0, (f,), np.float32),
+            observation_space=gym.spaces.Box(-1.0, 1.0, (e,), np.float32),
             action_space=gym.spaces.Discrete(4),
             model_config_dict={"lstm_cell_size": CELL}
         )
@@ -36,7 +36,7 @@ class LSTMContainingRLModule(TorchRLModule, ValueFunctionAPI):
 
         # Create some dummy input.
         obs = torch.from_numpy(
-            np.random.random_sample(size=(B, T, f)
+            np.random.random_sample(size=(B, T, e)
         ).astype(np.float32))
         state_in = my_net.get_initial_state()
         # Repeat state_in across batch.
@@ -107,7 +107,7 @@ class LSTMContainingRLModule(TorchRLModule, ValueFunctionAPI):
 
     @override(TorchRLModule)
     def _forward(self, batch, **kwargs):
-        # Compute the basic 1D feature tensor (inputs to policy- and value-heads).
+        # Compute the basic 1D embedding tensor (inputs to policy- and value-heads).
         embeddings, state_outs = self._compute_embeddings_and_state_outs(batch)
         logits = self._pi_head(embeddings)
 
@@ -122,9 +122,9 @@ class LSTMContainingRLModule(TorchRLModule, ValueFunctionAPI):
 
     @override(TorchRLModule)
     def _forward_train(self, batch, **kwargs):
-        # Same logic as _forward, but also return features to be used by value function
-        # branch during training.
-        embeddings, state_outs = self._compute_features_and_state_outs(batch)
+        # Same logic as _forward, but also return embeddings to be used by value
+        # function branch during training.
+        embeddings, state_outs = self._compute_embeddings_and_state_outs(batch)
         logits = self._pi_head(embeddings)
         return {
             Columns.ACTION_DIST_INPUTS: logits,
