@@ -21,13 +21,22 @@ See [Quick Start Guide](https://github.com/volcano-sh/volcano#quick-start-guide)
 
 Deploy the KubeRay Operator with the `--batch-scheduler=volcano` flag to enable Volcano batch scheduling support.
 
-When installing KubeRay Operator using Helm, you should pass the `--set batchScheduler.name=volcano` flag when running on the command line:
+When installing KubeRay Operator using Helm, you should use one of these two options:
 
+* Set `batchScheduler.name` to `volcano` in your
+[`values.yaml`](https://github.com/ray-project/kuberay/blob/753dc05dbed5f6fe61db3a43b34a1b350f26324c/helm-chart/kuberay-operator/values.yaml#L48)
+file:
+```shell
+# values.yaml file
+batchScheduler:
+    name: volcano
+```
+
+* Pass the `--set batchScheduler.name=volcano` flag when running on the command line:
 ```shell
 # Install the Helm chart with --batch-scheduler=volcano flag
 helm install kuberay-operator kuberay/kuberay-operator --version 1.2.2 --set batchScheduler.name=volcano
 ```
-
 
 ### Step 4: Install a RayCluster with the Volcano scheduler
 
