@@ -17,6 +17,8 @@ class DefaultModelConfig:
 
     .. testcode::
 
+        import gymnasium as gym
+        import numpy as np
         from ray.rllib.core.rl_module.rl_module import RLModuleSpec
         from ray.rllib.examples.rl_modules.classes.tiny_atari_cnn_rlm import (
             TinyAtariCNN
@@ -24,7 +26,13 @@ class DefaultModelConfig:
 
         my_rl_module = RLModuleSpec(
             module_class=TinyAtariCNN,
-            model_config={"conv_filters": [[]]},
+            observation_space=gym.spaces.Box(-1.0, 1.0, (64, 64, 4), np.float32),
+            action_space=gym.spaces.Discrete(7),
+            # DreamerV3-style stack working on a 64x64, color or 4x-grayscale-stacked,
+            # normalized image.
+            model_config={
+                "conv_filters": [[16, 4, 2], [32, 4, 2], [64, 4, 2], [128, 4, 2]],
+            },
         ).build()
 
     Only RLlib's default RLModules (defined by the various algorithms) should use
@@ -34,7 +42,6 @@ class DefaultModelConfig:
 
         from ray.rllib.algorithms.ppo import PPOConfig
         from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
-        from ray.rllib.core.rl_module.rl_module import RLModuleSpec
 
         config = (
             PPOConfig().
