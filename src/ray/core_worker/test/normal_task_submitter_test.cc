@@ -99,7 +99,7 @@ class MockWorkerClient : public rpc::CoreWorkerClientInterface {
     if (callbacks.size() == 0) {
       return false;
     }
-    auto callback = callbacks.front();
+    const auto &callback = callbacks.front();
     auto reply = rpc::PushTaskReply();
     if (exit) {
       reply.set_worker_exiting(true);
@@ -282,7 +282,7 @@ class MockRayletClient : public WorkerLeaseInterface {
     if (callbacks.size() == 0) {
       return false;
     } else {
-      auto callback = callbacks.front();
+      const auto &callback = callbacks.front();
       callback(Status::OK(), std::move(reply));
       callbacks.pop_front();
       return true;
@@ -294,7 +294,7 @@ class MockRayletClient : public WorkerLeaseInterface {
     if (callbacks.size() == 0) {
       return false;
     } else {
-      auto callback = callbacks.front();
+      const auto &callback = callbacks.front();
       callback(Status::RpcError("unavailable", grpc::StatusCode::UNAVAILABLE),
                std::move(reply));
       callbacks.pop_front();
@@ -308,7 +308,7 @@ class MockRayletClient : public WorkerLeaseInterface {
     if (cancel_callbacks.size() == 0) {
       return false;
     } else {
-      auto callback = cancel_callbacks.front();
+      const auto &callback = cancel_callbacks.front();
       callback(Status::OK(), std::move(reply));
       cancel_callbacks.pop_front();
       return true;
