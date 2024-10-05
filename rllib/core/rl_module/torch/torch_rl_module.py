@@ -68,15 +68,6 @@ class TorchRLModule(nn.Module, RLModule):
                 if target is not None:
                     del target
 
-    @override(nn.Module)
-    def forward(self, batch: Dict[str, Any], **kwargs) -> Dict[str, Any]:
-        """forward pass of the module.
-
-        This is aliased to forward_train because Torch DDP requires a forward method to
-        be implemented for backpropagation to work.
-        """
-        return self.forward_train(batch, **kwargs)
-
     def compile(self, compile_config: TorchCompileConfig):
         """Compile the forward methods of this module.
 
@@ -169,6 +160,24 @@ class TorchRLModule(nn.Module, RLModule):
     @override(RLModule)
     def get_train_action_dist_cls(self) -> Type[TorchDistribution]:
         return self.get_inference_action_dist_cls()
+
+    @override(nn.Module)
+    def forward(self, batch: Dict[str, Any], **kwargs) -> Dict[str, Any]:
+        """DO NOT OVERRIDE!
+
+        This is aliased to `self.forward_train` because Torch DDP requires a forward
+        method to be implemented for backpropagation to work.
+
+        Instead, override:
+        `_forward()` to define a generic forward pass for all phases (exploration,
+        inference, training)
+        `_forward_inference()` to define the forward pass for action inference in
+        deployment/production (no exploration).
+        `_forward_exploration()` to define the forward pass for action inference during
+        training sample collection (w/ exploration behavior).
+        `_forward_train()` to define the forward pass prior to loss computation.
+        """
+        return self.forward_train(batch, **kwargs)
 
 
 class TorchDDPRLModule(RLModule, nn.parallel.DistributedDataParallel):
