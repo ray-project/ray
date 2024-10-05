@@ -268,8 +268,8 @@ class RuntimeEnv(dict):
             a dict or a RuntimeEnvConfig. Field: (1) setup_timeout_seconds, the
             timeout of runtime environment creation,  timeout is in seconds.
         image_uri: URI to a container image. The Ray worker process runs
-            in a container with this image. You can't use this parameter with other fields
-            of runtime_env.
+            in a container with this image. You can't use this parameter with 
+            other fields of runtime_env.
     """
 
     known_fields: Set[str] = {
