@@ -42,7 +42,6 @@ class MARWILTorchRLModule(TorchRLModule, MARWILRLModule):
                 "flag `inference_only=False` when building the module."
             )
         output = {}
-
         # Shared encoder.
         encoder_outs = self.encoder(batch)
         if Columns.STATE_OUT in encoder_outs:
