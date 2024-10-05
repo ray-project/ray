@@ -21,7 +21,6 @@ from typing import (
 from ray.rllib.core import COMPONENT_MULTI_RL_MODULE_SPEC
 from ray.rllib.core.models.specs.typing import SpecType
 from ray.rllib.core.rl_module.rl_module import RLModule, RLModuleSpec
-from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.utils import force_list
 from ray.rllib.utils.annotations import (
     override,
@@ -138,6 +137,7 @@ class MultiRLModule(RLModule):
     def setup(self):
         """Sets up the underlying, individual RLModules."""
         self._rl_modules = {}
+        self._check_module_configs(self.config.modules)
         # Make sure all individual RLModules have the same framework OR framework=None.
         framework = None
         for module_id, rl_module_spec in self.rl_module_specs.items():
@@ -404,54 +404,8 @@ class MultiRLModule(RLModule):
         """Returns the number of RLModules within this MultiRLModule."""
         return len(self._rl_modules)
 
-        The underlying single-agent RLModules will check the input specs.
-        """
-        return []
-
-    @override(RLModule)
-    def _forward_train(
-        self, batch: MultiAgentBatch, **kwargs
-    ) -> Union[Dict[str, Any], Dict[ModuleID, Dict[str, Any]]]:
-        """Runs the forward_train pass.
-
-        Args:
-            batch: The batch of multi-agent data (i.e. mapping from module ids to
-                individual modules' batches).
-
-        Returns:
-            The output of the forward_train pass the specified modules.
-        """
-        return self._run_forward_pass("forward_train", batch, **kwargs)
-
-    @override(RLModule)
-    def _forward_inference(
-        self, batch: MultiAgentBatch, **kwargs
-    ) -> Union[Dict[str, Any], Dict[ModuleID, Dict[str, Any]]]:
-        """Runs the forward_inference pass.
-
-        Args:
-            batch: The batch of multi-agent data (i.e. mapping from module ids to
-                individual modules' batches).
-
-        Returns:
-            The output of the forward_inference pass the specified modules.
-        """
-        return self._run_forward_pass("forward_inference", batch, **kwargs)
-
-    @override(RLModule)
-    def _forward_exploration(
-        self, batch: MultiAgentBatch, **kwargs
-    ) -> Union[Dict[str, Any], Dict[ModuleID, Dict[str, Any]]]:
-        """Runs the forward_exploration pass.
-
-        Args:
-            batch: The batch of multi-agent data (i.e. mapping from module ids to
-                individual modules' batches).
-
-        Returns:
-            The output of the forward_exploration pass the specified modules.
-        """
-        return self._run_forward_pass("forward_exploration", batch, **kwargs)
+    def __repr__(self) -> str:
+        return f"MARL({pprint.pformat(self._rl_modules)})"
 
     @override(RLModule)
     def get_state(
@@ -586,20 +540,6 @@ class MultiRLModule(RLModule):
         """
         for module_id, module_spec in module_configs.items():
             if not isinstance(module_spec, RLModuleSpec):
-                raise ValueError(f"Module {module_id} is not a RLModuleSpec object.")
-
-    @classmethod
-    def _check_module_specs(cls, rl_module_specs: Dict[ModuleID, RLModuleSpec]):
-        """Checks the individual RLModuleSpecs for validity.
-
-        Args:
-            rl_module_specs: Dict mapping ModuleIDs to the respective RLModuleSpec.
-
-        Raises:
-            ValueError: If any RLModuleSpec is invalid.
-        """
-        for module_id, rl_module_spec in rl_module_specs.items():
-            if not isinstance(rl_module_spec, RLModuleSpec):
                 raise ValueError(f"Module {module_id} is not a RLModuleSpec object.")
 
     def _check_module_exists(self, module_id: ModuleID) -> None:
