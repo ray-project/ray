@@ -264,9 +264,9 @@ class APPOConfig(IMPALAConfig):
                 "Use either 'torch' or 'tf2'."
             )
 
-        from ray.rllib.algorithms.appo.appo_catalog import APPOCatalog
+        from ray.rllib.algorithms.ppo.ppo_catalog import PPOCatalog
 
-        return RLModuleSpec(module_class=RLModule, catalog_class=APPOCatalog)
+        return RLModuleSpec(module_class=RLModule, catalog_class=PPOCatalog)
 
     @property
     @override(AlgorithmConfig)

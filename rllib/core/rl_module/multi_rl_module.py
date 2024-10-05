@@ -99,7 +99,12 @@ class MultiRLModule(RLModule):
                 to create the submodules.
         """
         if config != DEPRECATED_VALUE:
-            raise Exception
+            deprecation_warning(
+                old="MultiRLModule(config=..)",
+                new="MultiRLModule(*, observation_space=.., action_space=.., "
+                "inference_only=.., model_config=.., rl_module_specs=..)",
+                error=True,
+            )
 
         # Make sure we don't alter incoming module specs in this c'tor.
         rl_module_specs = copy.deepcopy(rl_module_specs)
@@ -618,17 +623,20 @@ class MultiRLModuleSpec:
         # Return MultiRLModule.
         try:
             module = self.multi_rl_module_class(
-                rl_module_specs=self.rl_module_specs,
                 observation_space=self.observation_space,
                 action_space=self.action_space,
-                model_config=self.model_config,
                 inference_only=self.inference_only,
+                model_config=self.model_config,
+                rl_module_specs=self.rl_module_specs,
             )
         # Older custom model might still require the old `MultiRLModuleConfig` under
         # the `config` arg.
-        except AttributeError:
-            multi_rl_module_config = self.get_rl_module_config()
-            module = self.multi_rl_module_class(multi_rl_module_config)
+        except AttributeError as e:
+            if self.multi_rl_module_class is not MultiRLModule:
+                multi_rl_module_config = self.get_rl_module_config()
+                module = self.multi_rl_module_class(multi_rl_module_config)
+            else:
+                raise e
 
         return module
 

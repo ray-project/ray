@@ -77,7 +77,7 @@ class TestAlgorithmRLModuleRestore(unittest.TestCase):
                 action_space=env.get_action_space(0),
                 # If we want to use this externally created module in the algorithm,
                 # we need to provide the same config as the algorithm.
-                model_config=config.model_config | {"fcnet_hiddens": [32 * (i + 1)]},
+                model_config=DefaultModelConfig(fcnet_hiddens=[32 * (i + 1)]),
                 catalog_class=PPOCatalog,
             )
         multi_rl_module_spec = MultiRLModuleSpec(rl_module_specs=module_specs)
@@ -119,7 +119,7 @@ class TestAlgorithmRLModuleRestore(unittest.TestCase):
                 action_space=env.get_action_space(0),
                 # If we want to use this externally created module in the algorithm,
                 # we need to provide the same config as the algorithm.
-                model_config=config.model_config | {"fcnet_hiddens": [32 * (i + 1)]},
+                model_config=DefaultModelConfig(fcnet_hiddens=[32 * (i + 1)]),
                 catalog_class=PPOCatalog,
             )
         multi_rl_module_spec = MultiRLModuleSpec(rl_module_specs=module_specs)
@@ -134,7 +134,7 @@ class TestAlgorithmRLModuleRestore(unittest.TestCase):
             action_space=env.get_action_space(0),
             # Note, we need to pass in the default model config for the algorithm
             # to be able to use this module later.
-            model_config=config.model_config | {"fcnet_hiddens": [64]},
+            model_config=DefaultModelConfig(fcnet_hiddens=[64]),
             catalog_class=PPOCatalog,
         ).build()
 
@@ -206,7 +206,7 @@ class TestAlgorithmRLModuleRestore(unittest.TestCase):
             action_space=env.action_space,
             # If we want to use this externally created module in the algorithm,
             # we need to provide the same config as the algorithm.
-            model_config=config.model_config | {"fcnet_hiddens": [32]},
+            model_config=DefaultModelConfig(fcnet_hiddens=[32]),
             catalog_class=PPOCatalog,
         )
         module = module_spec.build()
@@ -261,7 +261,7 @@ class TestAlgorithmRLModuleRestore(unittest.TestCase):
                 action_space=env.get_action_space(0),
                 # Note, we need to pass in the default model config for the
                 # algorithm to be able to use this module later.
-                model_config=config.model_config | {"fcnet_hiddens": [32 * (i + 1)]},
+                model_config=DefaultModelConfig(fcnet_hiddens=[32 * (i + 1)]),
                 catalog_class=PPOCatalog,
             )
         multi_rl_module_spec = MultiRLModuleSpec(rl_module_specs=module_specs)
@@ -276,7 +276,7 @@ class TestAlgorithmRLModuleRestore(unittest.TestCase):
             action_space=env.get_action_space(0),
             # Note, we need to pass in the default model config for the algorithm
             # to be able to use this module later.
-            model_config=config.model_config | {"fcnet_hiddens": [64]},
+            model_config=DefaultModelConfig(fcnet_hiddens=[64]),
             catalog_class=PPOCatalog,
         ).build()
 

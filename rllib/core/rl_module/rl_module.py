@@ -237,7 +237,7 @@ class RLModuleSpec:
 
     def _get_model_config(self):
         return (
-            self.model_config.asdict()
+            dataclasses.asdict(self.model_config)
             if dataclasses.is_dataclass(self.model_config)
             else (self.model_config or {})
         )

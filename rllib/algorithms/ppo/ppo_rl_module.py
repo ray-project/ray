@@ -31,10 +31,10 @@ class PPORLModule(RLModule, InferenceOnlyAPI, ValueFunctionAPI, abc.ABC):
             RecurrentEncoderConfig,
         )
         if is_stateful:
-            self.config.inference_only = False
+            self.inference_only = False
         # If this is an `inference_only` Module, we'll have to pass this information
         # to the encoder config as well.
-        if self.config.inference_only and self.framework == "torch":
+        if self.inference_only and self.framework == "torch":
             self.catalog.actor_critic_encoder_config.inference_only = True
 
         # Build models from catalog.
@@ -83,6 +83,6 @@ class PPORLModule(RLModule, InferenceOnlyAPI, ValueFunctionAPI, abc.ABC):
         """Return attributes, which are NOT inference-only (only used for training)."""
         return ["vf"] + (
             []
-            if self.config.model_config_dict.get("vf_share_layers")
+            if self.model_config.get("vf_share_layers")
             else ["encoder.critic_encoder"]
         )

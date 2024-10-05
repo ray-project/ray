@@ -1,3 +1,4 @@
+import dataclasses
 import enum
 import functools
 from typing import Optional
@@ -14,6 +15,7 @@ from ray.rllib.core.models.configs import (
     RecurrentEncoderConfig,
 )
 from ray.rllib.core.models.configs import ModelConfig
+from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
 from ray.rllib.models.distributions import Distribution
 from ray.rllib.models.preprocessors import get_preprocessor, Preprocessor
 from ray.rllib.models.utils import get_filter_config
@@ -100,10 +102,21 @@ class Catalog:
         if view_requirements != DEPRECATED_VALUE:
             deprecation_warning(old="Catalog(view_requirements=..)", error=True)
 
+        # TODO (sven): The following logic won't be needed anymore, once we get rid of
+        #  Catalogs entirely. We will assert directly inside the algo's DefaultRLModule
+        #  class that the `model_config` is a DefaultModelConfig. Thus users won't be
+        #  able to pass in partial config dicts into a default model (alternatively, we
+        #  could automatically augment the user provided dict by the default config
+        #  dataclass object only(!) for default modules).
+        if dataclasses.is_dataclass(model_config_dict):
+            model_config_dict = dataclasses.asdict(model_config_dict)
+        default_config = dataclasses.asdict(DefaultModelConfig())
+        # end: TODO
+
         self.observation_space = observation_space
         self.action_space = action_space
 
-        self._model_config_dict = model_config_dict
+        self._model_config_dict = default_config | model_config_dict
         self._latent_dims = None
 
         self._determine_components_hook()
