@@ -523,3 +523,7 @@ class PhysicalOperator(Operator):
     def supports_fusion(self) -> bool:
         """Returns ```True``` if this operator can be fused with other operators."""
         return False
+
+    def update_resource_usage(self) -> None:
+        """Updates resource usage."""
+        pass

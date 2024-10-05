@@ -4,6 +4,7 @@ from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple, Union
 
 import ray
 from ray.actor import ActorHandle
+from ray.core.generated import gcs_pb2
 from ray.data._internal.compute import ActorPoolStrategy
 from ray.data._internal.execution.autoscaler import AutoscalingActorPool
 from ray.data._internal.execution.interfaces import (
@@ -221,7 +222,7 @@ class ActorPoolMapOperator(MapOperator):
             self._submit_data_task(
                 gen,
                 bundle,
-                lambda: _task_done_callback(actor_to_return),
+                lambda: _task_done_callback(actor_to_return),  # noqa: B023
             )
 
     def _refresh_actor_cls(self):
@@ -350,6 +351,16 @@ class ActorPoolMapOperator(MapOperator):
 
     def get_autoscaling_actor_pools(self) -> List[AutoscalingActorPool]:
         return [self._actor_pool]
+
+    def update_resource_usage(self) -> None:
+        """Updates resources usage."""
+        # Walk all active actors and for each actor that's not ALIVE,
+        # it's a candidate to be marked as a pending actor.
+        actors = list(self._actor_pool._num_tasks_in_flight.keys())
+        for actor in actors:
+            actor_state = actor._get_local_state()
+            if (actor_state != gcs_pb2.ActorTableData.ActorState.ALIVE):
+                self._actor_pool.add_pending_actor(actor, actor.get_location)
 
 
 class _MapWorker:
