@@ -238,12 +238,8 @@ class IntrinsicCuriosityModel(TorchRLModule, SelfSupervisedLossAPI):
     # Inference and exploration not supported (this is a world-model that should only
     # be used for training).
     @override(TorchRLModule)
-    def _forward_inference(self, batch, **kwargs):
+    def _forward(self, batch, **kwargs):
         raise NotImplementedError(
             "`IntrinsicCuriosityModel` should only be used for training! "
-            "Use `forward_train()` instead."
+            "Only calls to `forward_train()` supported."
         )
-
-    @override(TorchRLModule)
-    def _forward_exploration(self, batch, **kwargs):
-        return self._forward_inference(batch)

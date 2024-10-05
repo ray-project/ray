@@ -4,13 +4,6 @@ from typing import Any, Collection, Dict, Optional, Type, TYPE_CHECKING, Union
 
 import gymnasium as gym
 
-if TYPE_CHECKING:
-    from ray.rllib.core.rl_module.multi_rl_module import (
-        MultiRLModule,
-        MultiRLModuleSpec,
-    )
-    from ray.rllib.core.models.catalog import Catalog
-
 from ray.rllib.core import DEFAULT_MODULE_ID
 from ray.rllib.core.columns import Columns
 from ray.rllib.core.models.specs.typing import SpecType
@@ -34,8 +27,15 @@ from ray.rllib.utils.serialization import (
     serialize_type,
     deserialize_type,
 )
-from ray.rllib.utils.typing import SampleBatchType, StateDict
+from ray.rllib.utils.typing import StateDict
 from ray.util.annotations import PublicAPI
+
+if TYPE_CHECKING:
+    from ray.rllib.core.rl_module.multi_rl_module import (
+        MultiRLModule,
+        MultiRLModuleSpec,
+    )
+    from ray.rllib.core.models.catalog import Catalog
 
 
 @PublicAPI(stability="alpha")
@@ -477,21 +477,6 @@ class RLModule(Checkpointable, abc.ABC):
         return None
 
     @OverrideToImplementCustomLogic
-    def get_train_action_dist_cls(self) -> Type[Distribution]:
-        """Returns the action distribution class for this RLModule used for training.
-
-        This class is used to get the correct action distribution class to be used by
-        the training components. In case that no action distribution class is needed,
-        this method can return None.
-
-        Note that RLlib's distribution classes all implement the `Distribution`
-        interface. This requires two special methods: `Distribution.from_logits()` and
-        `Distribution.to_deterministic()`. See the documentation of the
-        :py:class:`~ray.rllib.models.distributions.Distribution` class for more details.
-        """
-        raise NotImplementedError
-
-    @OverrideToImplementCustomLogic
     def get_exploration_action_dist_cls(self) -> Type[Distribution]:
         """Returns the action distribution class for this RLModule used for exploration.
 
@@ -522,77 +507,49 @@ class RLModule(Checkpointable, abc.ABC):
         raise NotImplementedError
 
     @OverrideToImplementCustomLogic
-    def get_initial_state(self) -> Any:
-        """Returns the initial state of the RLModule.
+    def get_train_action_dist_cls(self) -> Type[Distribution]:
+        """Returns the action distribution class for this RLModule used for training.
 
-        This can be used for recurrent models.
+        This class is used to get the correct action distribution class to be used by
+        the training components. In case that no action distribution class is needed,
+        this method can return None.
+
+        Note that RLlib's distribution classes all implement the `Distribution`
+        interface. This requires two special methods: `Distribution.from_logits()` and
+        `Distribution.to_deterministic()`. See the documentation of the
+        :py:class:`~ray.rllib.models.distributions.Distribution` class for more details.
         """
-        return {}
+        raise NotImplementedError
 
     @OverrideToImplementCustomLogic
-    def is_stateful(self) -> bool:
-        """Returns False if the initial state is an empty dict (or None).
+    def _forward(self, batch: Dict[str, Any], **kwargs) -> Dict[str, Any]:
+        """Generic forward pass method, used in all phases of training and evaluation.
 
-        By default, RLlib assumes that the module is non-recurrent if the initial
-        state is an empty dict and recurrent otherwise.
-        This behavior can be overridden by implementing this method.
+        If you need a more nuanced distinction between forward passes in the different
+        phases of training and evaluation, override the following methods instead:
+        For distinct action computation logic w/o exploration, override the
+        `self._forward_inference()` method.
+        For distinct action computation logic with exploration, override the
+        `self._forward_exploration()` method.
+        For distinct forward pass logic before loss computation, override the
+        `self._forward_train()` method.
+
+        Args:
+            batch: The input batch.
+            **kwargs: Additional keyword arguments.
+
+        Returns:
+            The output of the forward pass.
         """
-        initial_state = self.get_initial_state()
-        assert isinstance(initial_state, dict), (
-            "The initial state of an RLModule must be a dict, but is "
-            f"{type(initial_state)} instead."
-        )
-        return bool(initial_state)
-
-    @OverrideToImplementCustomLogic_CallToSuperRecommended
-    def output_specs_inference(self) -> SpecType:
-        """Returns the output specs of the `forward_inference()` method.
-
-        Override this method to customize the output specs of the inference call.
-        The default implementation requires the `forward_inference()` method to return
-        a dict that has `action_dist` key and its value is an instance of
-        `Distribution`.
-        """
-        return [Columns.ACTION_DIST_INPUTS]
-
-    @OverrideToImplementCustomLogic_CallToSuperRecommended
-    def output_specs_exploration(self) -> SpecType:
-        """Returns the output specs of the `forward_exploration()` method.
-
-        Override this method to customize the output specs of the exploration call.
-        The default implementation requires the `forward_exploration()` method to return
-        a dict that has `action_dist` key and its value is an instance of
-        `Distribution`.
-        """
-        return [Columns.ACTION_DIST_INPUTS]
-
-    def output_specs_train(self) -> SpecType:
-        """Returns the output specs of the forward_train method."""
         return {}
-
-    def input_specs_inference(self) -> SpecType:
-        """Returns the input specs of the forward_inference method."""
-        return self._default_input_specs()
-
-    def input_specs_exploration(self) -> SpecType:
-        """Returns the input specs of the forward_exploration method."""
-        return self._default_input_specs()
-
-    def input_specs_train(self) -> SpecType:
-        """Returns the input specs of the forward_train method."""
-        return self._default_input_specs()
-
-    def _default_input_specs(self) -> SpecType:
-        """Returns the default input specs."""
-        return [Columns.OBS]
 
     @check_input_specs("_input_specs_inference")
     @check_output_specs("_output_specs_inference")
-    def forward_inference(self, batch: SampleBatchType, **kwargs) -> Dict[str, Any]:
-        """Forward-pass during evaluation, called from the sampler.
+    def forward_inference(self, batch: Dict[str, Any], **kwargs) -> Dict[str, Any]:
+        """DO NOT OVERRIDE! Forward-pass during evaluation, called from the sampler.
 
-        This method should not be overriden to implement a custom forward inference
-        method. Instead, override the _forward_inference method.
+        This method should not be overridden. Override the `self._forward_inference()`
+        method instead.
 
         Args:
             batch: The input batch. This input batch should comply with
@@ -605,17 +562,25 @@ class RLModule(Checkpointable, abc.ABC):
         """
         return self._forward_inference(batch, **kwargs)
 
-    @abc.abstractmethod
+    @OverrideToImplementCustomLogic
     def _forward_inference(self, batch: Dict[str, Any], **kwargs) -> Dict[str, Any]:
-        """Forward-pass during evaluation. See forward_inference for details."""
+        """Forward-pass used for action computation without exploration behavior.
+
+        Override this method only, if you need specific behavior for non-exploratory
+        action computation behavior. If you have only one generic behavior for all
+        phases of training and evaluation, override `self._forward()` instead.
+
+        By default, this calls the generic `self._forward()` method.
+        """
+        return self._forward(batch, **kwargs)
 
     @check_input_specs("_input_specs_exploration")
     @check_output_specs("_output_specs_exploration")
-    def forward_exploration(self, batch: SampleBatchType, **kwargs) -> Dict[str, Any]:
-        """Forward-pass during exploration, called from the sampler.
+    def forward_exploration(self, batch: Dict[str, Any], **kwargs) -> Dict[str, Any]:
+        """DO NOT OVERRIDE! Forward-pass during exploration, called from the sampler.
 
-        This method should not be overriden to implement a custom forward exploration
-        method. Instead, override the _forward_exploration method.
+        This method should not be overridden. Override the `self._forward_exploration()`
+        method instead.
 
         Args:
             batch: The input batch. This input batch should comply with
@@ -628,15 +593,25 @@ class RLModule(Checkpointable, abc.ABC):
         """
         return self._forward_exploration(batch, **kwargs)
 
-    @abc.abstractmethod
+    @OverrideToImplementCustomLogic
     def _forward_exploration(self, batch: Dict[str, Any], **kwargs) -> Dict[str, Any]:
-        """Forward-pass during exploration. See forward_exploration for details."""
+        """Forward-pass used for action computation with exploration behavior.
+
+        Override this method only, if you need specific behavior for exploratory
+        action computation behavior. If you have only one generic behavior for all
+        phases of training and evaluation, override `self._forward()` instead.
+
+        By default, this calls the generic `self._forward()` method.
+        """
+        return self._forward(batch, **kwargs)
 
     @check_input_specs("_input_specs_train")
     @check_output_specs("_output_specs_train")
-    def forward_train(self, batch: SampleBatchType, **kwargs) -> Dict[str, Any]:
-        """Forward-pass during training called from the learner. This method should
-        not be overriden. Instead, override the _forward_train method.
+    def forward_train(self, batch: Dict[str, Any], **kwargs) -> Dict[str, Any]:
+        """DO NOT OVERRIDE! Forward-pass during training called from the learner.
+
+        This method should not be overridden. Override the `self._forward_train()`
+        method instead.
 
         Args:
             batch: The input batch. This input batch should comply with
@@ -655,9 +630,42 @@ class RLModule(Checkpointable, abc.ABC):
             )
         return self._forward_train(batch, **kwargs)
 
-    @abc.abstractmethod
+    @OverrideToImplementCustomLogic
     def _forward_train(self, batch: Dict[str, Any], **kwargs) -> Dict[str, Any]:
-        """Forward-pass during training. See forward_train for details."""
+        """Forward-pass used before the loss computation (training).
+
+        Override this method only, if you need specific behavior and outputs for your
+        loss computations. If you have only one generic behavior for all
+        phases of training and evaluation, override `self._forward()` instead.
+
+        By default, this calls the generic `self._forward()` method.
+        """
+        return self._forward(batch, **kwargs)
+
+    @OverrideToImplementCustomLogic
+    def get_initial_state(self) -> Any:
+        """Returns the initial state of the RLModule, in case this is a stateful module.
+
+        Returns:
+            A tensor or any nested struct of tensors, representing an initial state for
+            this (stateful) RLModule.
+        """
+        return {}
+
+    @OverrideToImplementCustomLogic
+    def is_stateful(self) -> bool:
+        """By default, returns False if the initial state is an empty dict (or None).
+
+        By default, RLlib assumes that the module is non-recurrent, if the initial
+        state is an empty dict and recurrent otherwise.
+        This behavior can be customized by overriding this method.
+        """
+        initial_state = self.get_initial_state()
+        assert isinstance(initial_state, dict), (
+            "The initial state of an RLModule must be a dict, but is "
+            f"{type(initial_state)} instead."
+        )
+        return bool(initial_state)
 
     @OverrideToImplementCustomLogic
     @override(Checkpointable)
@@ -700,6 +708,48 @@ class RLModule(Checkpointable, abc.ABC):
             (self.config,),  # *args
             {},  # **kwargs
         )
+
+    @OverrideToImplementCustomLogic_CallToSuperRecommended
+    def output_specs_inference(self) -> SpecType:
+        """Returns the output specs of the `forward_inference()` method.
+
+        Override this method to customize the output specs of the inference call.
+        The default implementation requires the `forward_inference()` method to return
+        a dict that has `action_dist` key and its value is an instance of
+        `Distribution`.
+        """
+        return [Columns.ACTION_DIST_INPUTS]
+
+    @OverrideToImplementCustomLogic_CallToSuperRecommended
+    def output_specs_exploration(self) -> SpecType:
+        """Returns the output specs of the `forward_exploration()` method.
+
+        Override this method to customize the output specs of the exploration call.
+        The default implementation requires the `forward_exploration()` method to return
+        a dict that has `action_dist` key and its value is an instance of
+        `Distribution`.
+        """
+        return [Columns.ACTION_DIST_INPUTS]
+
+    def output_specs_train(self) -> SpecType:
+        """Returns the output specs of the forward_train method."""
+        return {}
+
+    def input_specs_inference(self) -> SpecType:
+        """Returns the input specs of the forward_inference method."""
+        return self._default_input_specs()
+
+    def input_specs_exploration(self) -> SpecType:
+        """Returns the input specs of the forward_exploration method."""
+        return self._default_input_specs()
+
+    def input_specs_train(self) -> SpecType:
+        """Returns the input specs of the forward_train method."""
+        return self._default_input_specs()
+
+    def _default_input_specs(self) -> SpecType:
+        """Returns the default input specs."""
+        return [Columns.OBS]
 
     def as_multi_rl_module(self) -> "MultiRLModule":
         """Returns a multi-agent wrapper around this module."""
