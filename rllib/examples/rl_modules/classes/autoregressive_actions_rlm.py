@@ -234,11 +234,10 @@ class AutoregressiveActionsTorchRLM(TorchRLModule, AutoregressiveActionsRLM):
         return outs
 
     @override(ValueFunctionAPI)
-    def compute_values(self, batch: Dict[str, TensorType]):
-
-        # Encoder forward pass.
-        encoder_outs = self.encoder(batch)[ENCODER_OUT]
-
+    def compute_values(self, batch: Dict[str, TensorType], embeddings=None):
+        # Encoder forward pass to get `embeddings`, if necessary.
+        if embeddings is None:
+            embeddings = self.encoder(batch)[ENCODER_OUT]
         # Value head forward pass.
         vf_out = self.vf(embeddings)
         # Squeeze out last dimension (single node value head).

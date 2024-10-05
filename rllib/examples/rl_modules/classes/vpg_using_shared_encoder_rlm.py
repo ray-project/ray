@@ -19,11 +19,11 @@ class VPGTorchRLModuleUsingSharedEncoder(TorchRLModule):
         super().setup()
 
         # Incoming feature dim from the shared encoder.
-        feature_dim = self.model_config["feature_dim"]
+        embedding_dim = self.model_config["embedding_dim"]
         hidden_dim = self.model_config["hidden_dim"]
 
         self._pi_head = nn.Sequential(
-            nn.Linear(feature_dim, hidden_dim),
+            nn.Linear(embedding_dim, hidden_dim),
             nn.ReLU(),
             nn.Linear(hidden_dim, self.action_space.n),
         )
@@ -60,7 +60,7 @@ class VPGTorchMultiRLModuleWithSharedEncoder(MultiRLModule):
         from ray.rllib.core.rl_module.multi_rl_module import MultiRLModuleSpec
         from ray.rllib.core.rl_module.rl_module import RLModuleSpec
 
-        FEATURE_DIM = 64  # encoder output (feature) dim
+        EMBEDDING_DIM = 64  # encoder output (feature) dim
         HIDDEN_DIM = 64  # hidden dim for the policy nets
 
         config.rl_module(
@@ -69,20 +69,20 @@ class VPGTorchMultiRLModuleWithSharedEncoder(MultiRLModule):
                     # Central/shared encoder net.
                     SHARED_ENCODER_ID: RLModuleSpec(
                         module_class=SharedTorchEncoder,
-                        model_config_dict={"feature_dim": FEATURE_DIM},
+                        model_config_dict={"embedding_dim": EMBEDDING_DIM},
                     ),
                     # Arbitrary number of policy nets (w/o encoder sub-net).
                     "p0": RLModuleSpec(
                         module_class=VPGTorchRLModuleUsingSharedEncoder,
                         model_config_dict={
-                            "feature_dim": FEATURE_DIM,
+                            "embedding_dim": EMBEDDING_DIM,
                             "hidden_dim": HIDDEN_DIM,
                         },
                     ),
                     "p1": RLModuleSpec(
                         module_class=VPGTorchRLModuleUsingSharedEncoder,
                         model_config_dict={
-                            "feature_dim": FEATURE_DIM,
+                            "embedding_dim": EMBEDDING_DIM,
                             "hidden_dim": HIDDEN_DIM,
                         },
                     ),
@@ -138,10 +138,10 @@ class SharedTorchEncoder(TorchRLModule):
         super().setup()
 
         input_dim = self.observation_space.shape[0]
-        feature_dim = self.model_config["feature_dim"]
+        embedding_dim = self.model_config["embedding_dim"]
 
         self._encoder = nn.Sequential(
-            nn.Linear(input_dim, feature_dim),
+            nn.Linear(input_dim, embedding_dim),
         )
 
     @override(RLModule)
