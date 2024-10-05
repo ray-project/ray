@@ -71,10 +71,7 @@ class PPORLModule(RLModule, InferenceOnlyAPI, ValueFunctionAPI, abc.ABC):
 
     @override(RLModule)
     def output_specs_train(self) -> SpecDict:
-        return [
-            Columns.VF_PREDS,
-            Columns.ACTION_DIST_INPUTS,
-        ]
+        return [Columns.ACTION_DIST_INPUTS]
 
     @OverrideToImplementCustomLogic_CallToSuperRecommended
     @override(InferenceOnlyAPI)
