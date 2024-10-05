@@ -34,7 +34,7 @@ batchScheduler:
 
 * Pass the `--set batchScheduler.name=volcano` flag when running on the command line:
 ```shell
-# Install the Helm chart with --batch-scheduler=volcano flag
+# Install the Helm chart with the --batch-scheduler=volcano flag
 helm install kuberay-operator kuberay/kuberay-operator --version 1.2.2 --set batchScheduler.name=volcano
 ```
 
