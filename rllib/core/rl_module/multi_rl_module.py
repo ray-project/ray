@@ -107,7 +107,7 @@ class MultiRLModule(RLModule):
             )
 
         # Make sure we don't alter incoming module specs in this c'tor.
-        rl_module_specs = copy.deepcopy(rl_module_specs)
+        rl_module_specs = copy.deepcopy(rl_module_specs or {})
         # Figure out global inference_only setting.
         # If not provided (None), only if all submodules are
         # inference_only, this MultiRLModule will be inference_only.
@@ -119,7 +119,7 @@ class MultiRLModule(RLModule):
         # If given inference_only=True, make all submodules also inference_only (before
         # creating them).
         if inference_only is True:
-            for rl_module_spec in rl_module_specs:
+            for rl_module_spec in rl_module_specs.values():
                 rl_module_spec.inference_only = True
         self._check_module_specs(rl_module_specs)
         self.rl_module_specs = rl_module_specs
