@@ -34,7 +34,7 @@ class PPOTorchRLModule(TorchRLModule, PPORLModule):
         """Train forward pass (keep features for possible shared value func. call)."""
         output = {}
         encoder_outs = self.encoder(batch)
-        output[Columns.FEATURES] = encoder_outs[ENCODER_OUT][CRITIC]
+        output[Columns.EMBEDDINGS] = encoder_outs[ENCODER_OUT][CRITIC]
         if Columns.STATE_OUT in encoder_outs:
             output[Columns.STATE_OUT] = encoder_outs[Columns.STATE_OUT]
         output[Columns.ACTION_DIST_INPUTS] = self.pi(encoder_outs[ENCODER_OUT][ACTOR])
@@ -44,9 +44,9 @@ class PPOTorchRLModule(TorchRLModule, PPORLModule):
     def compute_values(
         self,
         batch: Dict[str, Any],
-        features: Optional[Any] = None,
+        embeddings: Optional[Any] = None,
     ) -> TensorType:
-        if features is None:
+        if embeddings is None:
             # Separate vf-encoder.
             if hasattr(self.encoder, "critic_encoder"):
                 batch_ = batch
@@ -55,12 +55,12 @@ class PPOTorchRLModule(TorchRLModule, PPORLModule):
                     # input dict while the key returned is `(state_in, critic, h)`.
                     batch_ = batch.copy()
                     batch_[Columns.STATE_IN] = batch[Columns.STATE_IN][CRITIC]
-                features = self.encoder.critic_encoder(batch_)[ENCODER_OUT]
+                embeddings = self.encoder.critic_encoder(batch_)[ENCODER_OUT]
             # Shared encoder.
             else:
-                features = self.encoder(batch)[ENCODER_OUT][CRITIC]
+                embeddings = self.encoder(batch)[ENCODER_OUT][CRITIC]
 
         # Value head.
-        vf_out = self.vf(features)
+        vf_out = self.vf(embeddings)
         # Squeeze out last dimension (single node value head).
         return vf_out.squeeze(-1)

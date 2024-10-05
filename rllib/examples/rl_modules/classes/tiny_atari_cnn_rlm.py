@@ -123,7 +123,7 @@ class TinyAtariCNN(TorchRLModule, ValueFunctionAPI):
     @override(TorchRLModule)
     def _forward(self, batch, **kwargs):
         # Compute the basic 1D feature tensor (inputs to policy- and value-heads).
-        _, logits = self._compute_features_and_logits(batch)
+        _, logits = self._compute_embeddings_and_logits(batch)
         # Return features and logits as ACTION_DIST_INPUTS (categorical distribution).
         return {
             Columns.ACTION_DIST_INPUTS: logits,
@@ -132,11 +132,11 @@ class TinyAtariCNN(TorchRLModule, ValueFunctionAPI):
     @override(TorchRLModule)
     def _forward_train(self, batch, **kwargs):
         # Compute the basic 1D feature tensor (inputs to policy- and value-heads).
-        features, logits = self._compute_features_and_logits(batch)
+        embeddings, logits = self._compute_embeddings_and_logits(batch)
         # Return features and logits as ACTION_DIST_INPUTS (categorical distribution).
         return {
             Columns.ACTION_DIST_INPUTS: logits,
-            Columns.FEATURES: features,
+            Columns.EMBEDDINGS: embeddings,
         }
 
     # We implement this RLModule as a ValueFunctionAPI RLModule, so it can be used
@@ -145,20 +145,20 @@ class TinyAtariCNN(TorchRLModule, ValueFunctionAPI):
     def compute_values(
         self,
         batch: Dict[str, Any],
-        features: Optional[Any] = None,
+        embeddings: Optional[Any] = None,
     ) -> TensorType:
         # Features not provided -> We need to compute them first.
-        if features is None:
+        if embeddings is None:
             obs = batch[Columns.OBS]
-            features = self._base_cnn_stack(obs.permute(0, 3, 1, 2))
-            features = torch.squeeze(features, dim=[-1, -2])
-        return self._values(features).squeeze(-1)
+            embeddings = self._base_cnn_stack(obs.permute(0, 3, 1, 2))
+            embeddings = torch.squeeze(embeddings, dim=[-1, -2])
+        return self._values(embeddings).squeeze(-1)
 
-    def _compute_features_and_logits(self, batch):
+    def _compute_embeddings_and_logits(self, batch):
         obs = batch[Columns.OBS].permute(0, 3, 1, 2)
-        features = self._base_cnn_stack(obs)
-        logits = self._logits(features)
+        embeddings = self._base_cnn_stack(obs)
+        logits = self._logits(embeddings)
         return (
-            torch.squeeze(features, dim=[-1, -2]),
+            torch.squeeze(embeddings, dim=[-1, -2]),
             torch.squeeze(logits, dim=[-1, -2]),
         )

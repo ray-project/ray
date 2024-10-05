@@ -54,7 +54,9 @@ class IMPALATorchLearner(IMPALALearner, TorchLearner):
         target_actions_logp = target_policy_dist.logp(batch[Columns.ACTIONS])
 
         # Values and bootstrap values.
-        values = module.compute_values(batch, features=fwd_out.get(Columns.FEATURES))
+        values = module.compute_values(
+            batch, embeddings=fwd_out.get(Columns.EMBEDDINGS)
+        )
         values_time_major = make_time_major(
             values,
             trajectory_len=rollout_frag_or_episode_len,

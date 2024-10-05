@@ -90,7 +90,7 @@ class PPOTorchLearner(PPOLearner, TorchLearner):
         # Compute a value function loss.
         if config.use_critic:
             value_fn_out = module.compute_values(
-                batch, features=fwd_out.get(Columns.FEATURES)
+                batch, embeddings=fwd_out.get(Columns.EMBEDDINGS)
             )
             vf_loss = torch.pow(value_fn_out - batch[Postprocessing.VALUE_TARGETS], 2.0)
             vf_loss_clipped = torch.clamp(vf_loss, 0, config.vf_clip_param)

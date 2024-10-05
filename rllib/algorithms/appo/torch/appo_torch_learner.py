@@ -55,7 +55,9 @@ class APPOTorchLearner(APPOLearner, IMPALATorchLearner):
         )
         size_loss_mask = torch.sum(loss_mask)
 
-        values = module.compute_values(batch, features=fwd_out.get(Columns.FEATURES))
+        values = module.compute_values(
+            batch, embeddings=fwd_out.get(Columns.EMBEDDINGS)
+        )
 
         action_dist_cls_train = module.get_train_action_dist_cls()
         target_policy_dist = action_dist_cls_train.from_logits(
