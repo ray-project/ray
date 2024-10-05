@@ -1,5 +1,5 @@
 import pathlib
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 import tree
 from ray.rllib.core import Columns, DEFAULT_POLICY_ID
@@ -181,7 +181,7 @@ class ModelV2ToRLModule(TorchRLModule, ValueFunctionAPI):
         return output
 
     @override(ValueFunctionAPI)
-    def compute_values(self, batch: Dict[str, Any]):
+    def compute_values(self, batch: Dict[str, Any], embeddings: Optional[Any] = None):
         self._forward_pass(batch, inference=False)
         v_preds = self._model_v2.value_function()
         if Columns.STATE_IN in batch and Columns.SEQ_LENS in batch:

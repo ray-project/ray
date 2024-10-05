@@ -74,8 +74,9 @@ class LSTMContainingRLModule(TorchRLModule, ValueFunctionAPI):
         # Assume a simple Box(1D) tensor as input shape.
         in_size = self.observation_space.shape[0]
 
-        # Get the LSTM cell size from the `model_config` attribute:
-        self._lstm_cell_size = self.model_config.get("lstm_cell_size", 256)
+        # Get the LSTM cell size from our RLModuleConfig's (self.config)
+        # `model_config_dict` property:
+        self._lstm_cell_size = self.config.model_config_dict.get("lstm_cell_size", 256)
         self._lstm = nn.LSTM(in_size, self._lstm_cell_size, batch_first=True)
         in_size = self._lstm_cell_size
 
@@ -93,7 +94,7 @@ class LSTMContainingRLModule(TorchRLModule, ValueFunctionAPI):
         self._fc_net = nn.Sequential(*layers)
 
         # Logits layer (no bias, no activation).
-        self._pi_head = nn.Linear(in_size, self.action_space.n)
+        self._pi_head = nn.Linear(in_size, self.config.action_space.n)
         # Single-node value layer.
         self._values = nn.Linear(in_size, 1)
 
