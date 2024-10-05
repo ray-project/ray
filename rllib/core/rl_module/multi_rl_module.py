@@ -312,15 +312,15 @@ class MultiRLModule(RLModule):
         return self._rl_modules[module_id]
 
     def items(self) -> ItemsView[ModuleID, RLModule]:
-        """Returns a keys view over the module IDs in this MultiRLModule."""
+        """Returns an ItemsView over the module IDs in this MultiRLModule."""
         return self._rl_modules.items()
 
     def keys(self) -> KeysView[ModuleID]:
-        """Returns a keys view over the module IDs in this MultiRLModule."""
+        """Returns a KeysView over the module IDs in this MultiRLModule."""
         return self._rl_modules.keys()
 
     def values(self) -> ValuesView[ModuleID]:
-        """Returns a keys view over the module IDs in this MultiRLModule."""
+        """Returns a ValuesView over the module IDs in this MultiRLModule."""
         return self._rl_modules.values()
 
     def __len__(self) -> int:
