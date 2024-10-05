@@ -11,7 +11,7 @@ class BCTorchRLModule(TorchRLModule):
     @override(RLModule)
     def setup(self):
         # __sphinx_doc_begin__
-        # Build models from catalog.
+        # Build models from catalog
         self.encoder = self.catalog.build_encoder(framework=self.framework)
         self.pi = self.catalog.build_pi_head(framework=self.framework)
 
@@ -20,12 +20,13 @@ class BCTorchRLModule(TorchRLModule):
         """Generic BC forward pass (for all phases of training/evaluation)."""
         output = {}
 
-        # Encoder forward pass.
+        # State encodings.
         encoder_outs = self.encoder(batch)
         if Columns.STATE_OUT in encoder_outs:
             output[Columns.STATE_OUT] = encoder_outs[Columns.STATE_OUT]
 
         # Actions.
-        output[Columns.ACTION_DIST_INPUTS] = self.pi(encoder_outs[ENCODER_OUT])
+        action_logits = self.pi(encoder_outs[ENCODER_OUT])
+        output[Columns.ACTION_DIST_INPUTS] = action_logits
 
         return output
