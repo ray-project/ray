@@ -28,6 +28,7 @@ import ray
 import ray.cloudpickle as pickle
 from ray._private.thirdparty.tabulate.tabulate import tabulate
 from ray._private.usage import usage_lib
+from ray.air.util.tensor_extensions.arrow import ArrowTensorTypeV2
 from ray.air.util.tensor_extensions.utils import _create_possibly_ragged_ndarray
 from ray.data._internal.aggregate import Max, Mean, Min, Std, Sum
 from ray.data._internal.compute import ComputeStrategy
@@ -409,6 +410,10 @@ class Dataset:
         :ref:`Stateful Transforms <stateful_transforms>`.
 
         .. tip::
+            To understand the format of the input to ``fn``, call :meth:`~Dataset.take_batch`
+            on the dataset to get a batch in the same format as will be passed to ``fn``.
+
+        .. tip::
             If ``fn`` doesn't mutate its input, set ``zero_copy_batch=True`` to improve
             performance and decrease memory utilization.
 
@@ -560,6 +565,11 @@ class Dataset:
 
             :meth:`~Dataset.iter_batches`
                 Call this function to iterate over batches of data.
+
+            :meth:`~Dataset.take_batch`
+                Call this function to get a batch of data from the dataset
+                in the same format as will be passed to the `fn` function of
+                :meth:`~Dataset.map_batches`.
 
             :meth:`~Dataset.flat_map`
                 Call this method to create new records from existing ones. Unlike
@@ -993,6 +1003,11 @@ class Dataset:
             If you can represent your predicate with NumPy or pandas operations,
             :meth:`Dataset.map_batches` might be faster. You can implement filter by
             dropping rows.
+
+        .. tip::
+            If you're using parquet and the filter is a simple predicate, you might
+            be able to speed it up by using filter pushdown, see
+            :ref:`Parquet row pruning <parquet_row_pruning>`.
 
         Examples:
 
@@ -2572,10 +2587,12 @@ class Dataset:
             schema is not known and fetch_if_missing is False.
         """
 
+        context = self._plan._context
+
         # First check if the schema is already known from materialized blocks.
         base_schema = self._plan.schema(fetch_if_missing=False)
         if base_schema is not None:
-            return Schema(base_schema)
+            return Schema(base_schema, data_context=context)
 
         # Lazily execute only the first block to minimize computation. We achieve this
         # by appending a Limit[1] operation to a copy of this Dataset, which we then
@@ -2583,7 +2600,7 @@ class Dataset:
         base_schema = self.limit(1)._plan.schema(fetch_if_missing=fetch_if_missing)
         if base_schema is not None:
             self._plan.cache_schema(base_schema)
-            return Schema(base_schema)
+            return Schema(base_schema, data_context=context)
         else:
             return None
 
@@ -5171,8 +5188,17 @@ class Schema:
         base_schema: The underlying Arrow or Pandas schema.
     """
 
-    def __init__(self, base_schema: Union["pyarrow.lib.Schema", "PandasBlockSchema"]):
+    def __init__(
+        self,
+        base_schema: Union["pyarrow.lib.Schema", "PandasBlockSchema"],
+        *,
+        data_context: Optional[DataContext] = None,
+    ):
         self.base_schema = base_schema
+
+        # Snapshot the current context, so that the config of Datasets is always
+        # determined by the config at the time it was created.
+        self._context = data_context or copy.deepcopy(DataContext.get_current())
 
     @property
     def names(self) -> List[str]:
@@ -5195,12 +5221,19 @@ class Schema:
         arrow_types = []
         for dtype in self.base_schema.types:
             if isinstance(dtype, TensorDtype):
+
+                if self._context.use_arrow_tensor_v2:
+                    pa_tensor_type_class = ArrowTensorTypeV2
+                else:
+                    pa_tensor_type_class = ArrowTensorType
+
                 # Manually convert our Pandas tensor extension type to Arrow.
                 arrow_types.append(
-                    ArrowTensorType(
+                    pa_tensor_type_class(
                         shape=dtype._shape, dtype=pa.from_numpy_dtype(dtype._dtype)
                     )
                 )
+
             else:
                 try:
                     arrow_types.append(pa.from_numpy_dtype(dtype))

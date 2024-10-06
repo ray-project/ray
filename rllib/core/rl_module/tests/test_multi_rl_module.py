@@ -1,7 +1,7 @@
 import tempfile
 import unittest
 
-from ray.rllib.core import DEFAULT_MODULE_ID
+from ray.rllib.core import COMPONENT_MULTI_RL_MODULE_SPEC, DEFAULT_MODULE_ID
 from ray.rllib.core.rl_module.rl_module import RLModuleSpec, RLModuleConfig
 from ray.rllib.core.rl_module.multi_rl_module import MultiRLModule, MultiRLModuleConfig
 from ray.rllib.core.testing.torch.bc_module import DiscreteBCTorchModule
@@ -16,15 +16,15 @@ class TestMultiRLModule(unittest.TestCase):
         env = env_class({"num_agents": 2})
         module1 = RLModuleSpec(
             module_class=DiscreteBCTorchModule,
-            observation_space=env.observation_space[0],
-            action_space=env.action_space[0],
+            observation_space=env.get_observation_space(0),
+            action_space=env.get_action_space(0),
             model_config_dict={"fcnet_hiddens": [32]},
         )
 
         module2 = RLModuleSpec(
             module_class=DiscreteBCTorchModule,
-            observation_space=env.observation_space[0],
-            action_space=env.action_space[0],
+            observation_space=env.get_observation_space(0),
+            action_space=env.get_action_space(0),
             model_config_dict={"fcnet_hiddens": [32]},
         )
 
@@ -42,8 +42,8 @@ class TestMultiRLModule(unittest.TestCase):
 
         multi_rl_module = DiscreteBCTorchModule(
             config=RLModuleConfig(
-                env.observation_space[0],
-                env.action_space[0],
+                env.get_observation_space(0),
+                env.get_action_space(0),
                 model_config_dict={"fcnet_hiddens": [32]},
             )
         ).as_multi_rl_module()
@@ -63,15 +63,18 @@ class TestMultiRLModule(unittest.TestCase):
 
         module = DiscreteBCTorchModule(
             config=RLModuleConfig(
-                env.observation_space[0],
-                env.action_space[0],
+                env.get_observation_space(0),
+                env.get_action_space(0),
                 model_config_dict={"fcnet_hiddens": [32]},
             )
         ).as_multi_rl_module()
 
         state = module.get_state()
         self.assertIsInstance(state, dict)
-        self.assertEqual(set(state.keys()), set(module.keys()))
+        self.assertEqual(
+            set(state.keys()) - {COMPONENT_MULTI_RL_MODULE_SPEC},
+            set(module.keys()),
+        )
         self.assertEqual(
             set(state[DEFAULT_MODULE_ID].keys()),
             set(module[DEFAULT_MODULE_ID].get_state().keys()),
@@ -79,13 +82,13 @@ class TestMultiRLModule(unittest.TestCase):
 
         module2 = DiscreteBCTorchModule(
             config=RLModuleConfig(
-                env.observation_space[0],
-                env.action_space[0],
+                env.get_observation_space(0),
+                env.get_action_space(0),
                 model_config_dict={"fcnet_hiddens": [32]},
             )
         ).as_multi_rl_module()
         state2 = module2.get_state()
-        check(state, state2, false=True)
+        check(state[DEFAULT_MODULE_ID], state2[DEFAULT_MODULE_ID], false=True)
 
         module2.set_state(state)
         state2_after = module2.get_state()
@@ -99,8 +102,8 @@ class TestMultiRLModule(unittest.TestCase):
         env = env_class({"num_agents": 2})
         module = DiscreteBCTorchModule(
             config=RLModuleConfig(
-                env.observation_space[0],
-                env.action_space[0],
+                env.get_observation_space(0),
+                env.get_action_space(0),
                 model_config_dict={"fcnet_hiddens": [32]},
             )
         ).as_multi_rl_module()
@@ -109,8 +112,8 @@ class TestMultiRLModule(unittest.TestCase):
             "test",
             DiscreteBCTorchModule(
                 config=RLModuleConfig(
-                    env.observation_space[0],
-                    env.action_space[0],
+                    env.get_observation_space(0),
+                    env.get_action_space(0),
                     model_config_dict={"fcnet_hiddens": [32]},
                 )
             ),
@@ -126,8 +129,8 @@ class TestMultiRLModule(unittest.TestCase):
                 DEFAULT_MODULE_ID,
                 DiscreteBCTorchModule(
                     config=RLModuleConfig(
-                        env.observation_space[0],
-                        env.action_space[0],
+                        env.get_observation_space(0),
+                        env.get_action_space(0),
                         model_config_dict={"fcnet_hiddens": [32]},
                     )
                 ),
@@ -138,8 +141,8 @@ class TestMultiRLModule(unittest.TestCase):
             DEFAULT_MODULE_ID,
             DiscreteBCTorchModule(
                 config=RLModuleConfig(
-                    env.observation_space[0],
-                    env.action_space[0],
+                    env.get_observation_space(0),
+                    env.get_action_space(0),
                     model_config_dict={"fcnet_hiddens": [32]},
                 )
             ),
@@ -152,8 +155,8 @@ class TestMultiRLModule(unittest.TestCase):
         env = env_class({"num_agents": 2})
         module = DiscreteBCTorchModule(
             config=RLModuleConfig(
-                env.observation_space[0],
-                env.action_space[0],
+                env.get_observation_space(0),
+                env.get_action_space(0),
                 model_config_dict={"fcnet_hiddens": [32]},
             )
         ).as_multi_rl_module()
@@ -162,8 +165,8 @@ class TestMultiRLModule(unittest.TestCase):
             "test",
             DiscreteBCTorchModule(
                 config=RLModuleConfig(
-                    env.observation_space[0],
-                    env.action_space[0],
+                    env.get_observation_space(0),
+                    env.get_action_space(0),
                     model_config_dict={"fcnet_hiddens": [32]},
                 )
             ),
@@ -172,8 +175,8 @@ class TestMultiRLModule(unittest.TestCase):
             "test2",
             DiscreteBCTorchModule(
                 config=RLModuleConfig(
-                    env.observation_space[0],
-                    env.action_space[0],
+                    env.get_observation_space(0),
+                    env.get_action_space(0),
                     model_config_dict={"fcnet_hiddens": [128]},
                 )
             ),
@@ -203,8 +206,8 @@ class TestMultiRLModule(unittest.TestCase):
             "test3",
             DiscreteBCTorchModule(
                 config=RLModuleConfig(
-                    env.observation_space[0],
-                    env.action_space[0],
+                    env.get_observation_space(0),
+                    env.get_action_space(0),
                     model_config_dict={"fcnet_hiddens": [120]},
                 )
             ),
