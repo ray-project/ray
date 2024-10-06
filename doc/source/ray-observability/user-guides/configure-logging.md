@@ -62,7 +62,7 @@ System logs may include information about your applications. For example, ``runt
   This is the log file of the agent containing logs of create or delete requests and cache hits and misses.
   For the logs of the actual installations (for example, ``pip install`` logs), see the ``runtime_env_setup-[job_id].log`` file (see below).
 - ``runtime_env_setup-ray_client_server_[port].log``: Logs from installing {ref}`Runtime Environments <runtime-environments>` for a job when connecting with {ref}`Ray Client <ray-client-ref>`.
-- ``runtime_env_setup-[job_id].log``: Logs from installing {ref}`Runtime Environments <runtime-environments>` for a Task, Actor or Job.  This file is only present if a Runtime Environment is installed.
+- ``runtime_env_setup-[job_id].log``: Logs from installing {ref}`Runtime Environments <runtime-environments>` for a Task, Actor or Job. This file is only present if a Runtime Environment is installed.
 
 
 (log-redirection-to-driver)=
@@ -138,11 +138,35 @@ The output is as follows:
 
 This feature is especially useful when importing libraries such as `tensorflow` or `numpy`, which may emit many verbose warning messages when imported. Configure this feature as follows:
 
-1. Set ``RAY_DEDUP_LOGS=0`` to disable this feature entirely.
-2. Set ``RAY_DEDUP_LOGS_AGG_WINDOW_S=<int>`` to change the agggregation window.
-3. Set ``RAY_DEDUP_LOGS_ALLOW_REGEX=<string>`` to specify log messages to never deduplicate.
-4. Set ``RAY_DEDUP_LOGS_SKIP_REGEX=<string>`` to specify log messages to skip printing.
+* Set ``RAY_DEDUP_LOGS=0`` to turn off this feature entirely.
+* Set ``RAY_DEDUP_LOGS_AGG_WINDOW_S=<int>`` to change the aggregation window.
+* Set ``RAY_DEDUP_LOGS_ALLOW_REGEX=<string>`` to specify log messages to never deduplicate.
+* Set ``RAY_DEDUP_LOGS_SKIP_REGEX=<string>`` to specify log messages to skip printing.
+    * Configure `RAY_DEDUP_LOGS_SKIP_REGEX` on the driver process before importing Ray.
+    * Example:
+        ```python
+        import os
+        skip_pattern = "ABC"
+        os.environ["RAY_DEDUP_LOGS_SKIP_REGEX"] = skip_pattern
 
+        import ray
+        from ray.runtime_env import RuntimeEnv
+
+        @ray.remote
+        def f():
+            print("ABC")
+            print("DEF")
+
+        ray.init()
+        ref = f.remote()
+        print(ray.get(ref))
+        # [console output]:
+        # 2024-10-06 04:27:30,959 INFO worker.py:1614 -- Connecting to existing Ray cluster at address: 172.31.13.10:6379...
+        # 2024-10-06 04:27:30,965 INFO worker.py:1799 -- Connected to Ray cluster.
+        # (f pid=3246723) DEF
+        # None
+        ```
+        
 
 
 ## Distributed progress bars (tqdm)
