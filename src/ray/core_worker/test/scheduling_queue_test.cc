@@ -96,6 +96,8 @@ TEST(SchedulingQueueTest, TestInOrder) {
   io_service.run();
   ASSERT_EQ(n_ok, 4);
   ASSERT_EQ(n_rej, 0);
+
+  queue.Stop();
 }
 
 TEST(SchedulingQueueTest, TestWaitForObjects) {
@@ -169,6 +171,8 @@ TEST(SchedulingQueueTest, TestWaitForObjects) {
 
   waiter.Complete(1);
   ASSERT_EQ(n_ok, 4);
+
+  queue.Stop();
 }
 
 TEST(SchedulingQueueTest, TestWaitForObjectsNotSubjectToSeqTimeout) {
@@ -215,6 +219,8 @@ TEST(SchedulingQueueTest, TestWaitForObjectsNotSubjectToSeqTimeout) {
   ASSERT_EQ(n_rej, 0);
   waiter.Complete(0);
   ASSERT_EQ(n_ok, 2);
+
+  queue.Stop();
 }
 
 TEST(SchedulingQueueTest, TestOutOfOrder) {
@@ -276,6 +282,8 @@ TEST(SchedulingQueueTest, TestOutOfOrder) {
   io_service.run();
   ASSERT_EQ(n_ok, 4);
   ASSERT_EQ(n_rej, 0);
+
+  queue.Stop();
 }
 
 TEST(SchedulingQueueTest, TestSeqWaitTimeout) {
@@ -351,6 +359,8 @@ TEST(SchedulingQueueTest, TestSeqWaitTimeout) {
             {});
   ASSERT_EQ(n_ok, 3);
   ASSERT_EQ(n_rej, 2);
+
+  queue.Stop();
 }
 
 TEST(SchedulingQueueTest, TestSkipAlreadyProcessedByClient) {
@@ -402,6 +412,8 @@ TEST(SchedulingQueueTest, TestSkipAlreadyProcessedByClient) {
   io_service.run();
   ASSERT_EQ(n_ok, 1);
   ASSERT_EQ(n_rej, 2);
+
+  queue.Stop();
 }
 
 TEST(SchedulingQueueTest, TestCancelQueuedTask) {
