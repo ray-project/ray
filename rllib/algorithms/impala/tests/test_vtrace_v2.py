@@ -2,7 +2,6 @@ import unittest
 import numpy as np
 
 from gymnasium.spaces import Box, Discrete
-import tree  # pip install dm_tree
 
 from ray.rllib.algorithms.impala.torch.vtrace_torch_v2 import (
     vtrace_torch,
