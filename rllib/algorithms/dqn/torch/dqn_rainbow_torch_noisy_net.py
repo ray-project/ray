@@ -9,7 +9,6 @@ from ray.rllib.core.columns import Columns
 from ray.rllib.core.models.base import Encoder, ENCODER_OUT, Model
 from ray.rllib.core.models.specs.specs_base import Spec
 from ray.rllib.core.models.specs.specs_base import TensorSpec
-from ray.rllib.core.models.specs.specs_dict import SpecDict
 from ray.rllib.core.models.torch.base import TorchModel
 from ray.rllib.core.models.torch.heads import auto_fold_unfold_time
 from ray.rllib.models.utils import get_activation_fn, get_initializer_fn
@@ -50,26 +49,6 @@ class TorchNoisyMLPEncoder(TorchModel, Encoder):
             output_bias_initializer_config=config.output_layer_bias_initializer_config,
             # Note, this is the only additional parameter in regard to a regular MLP.
             std_init=config.std_init,
-        )
-
-    @override(Model)
-    def get_input_specs(self) -> Optional[Spec]:
-        return SpecDict(
-            {
-                Columns.OBS: TensorSpec(
-                    "b, d", d=self.config.input_dims[0], framework="torch"
-                ),
-            }
-        )
-
-    @override(Model)
-    def get_output_specs(self) -> Optional[Spec]:
-        return SpecDict(
-            {
-                ENCODER_OUT: TensorSpec(
-                    "b, d", d=self.config.output_dims[0], framework="torch"
-                ),
-            }
         )
 
     @override(Model)

@@ -230,8 +230,6 @@ class Encoder(Model, abc.ABC):
                 super().__init__(config)
                 self.factor = config.factor
 
-            @check_input_specs("input_specs")
-            @check_output_specs("output_specs")
             def __call__(self, *args, **kwargs):
                 # This is a dummy method to do checked forward passes.
                 return self._forward(*args, **kwargs)

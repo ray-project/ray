@@ -1,7 +1,6 @@
 import abc
 
 from ray.rllib.core.columns import Columns
-from ray.rllib.core.models.specs.specs_dict import SpecDict
 from ray.rllib.core.rl_module import RLModule
 from ray.rllib.core.rl_module.apis.value_function_api import ValueFunctionAPI
 from ray.rllib.utils.annotations import override
@@ -25,27 +24,3 @@ class MARWILRLModule(RLModule, ValueFunctionAPI, abc.ABC):
             return self.encoder.get_initial_state()
         else:
             return {}
-
-    @override(RLModule)
-    def input_specs_inference(self) -> SpecDict:
-        return [Columns.OBS]
-
-    @override(RLModule)
-    def output_specs_inference(self) -> SpecDict:
-        return [Columns.ACTION_DIST_INPUTS]
-
-    @override(RLModule)
-    def input_specs_exploration(self):
-        return self.input_specs_inference()
-
-    @override(RLModule)
-    def output_specs_exploration(self) -> SpecDict:
-        return self.output_specs_inference()
-
-    @override(RLModule)
-    def input_specs_train(self) -> SpecDict:
-        return self.input_specs_exploration()
-
-    @override(RLModule)
-    def output_specs_train(self) -> SpecDict:
-        return [Columns.ACTION_DIST_INPUTS]

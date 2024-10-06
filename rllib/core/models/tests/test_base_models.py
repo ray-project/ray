@@ -6,7 +6,6 @@ import gymnasium as gym
 from ray.rllib.core.models.configs import ModelConfig
 from ray.rllib.core.models.specs.checker import SpecCheckingError
 from ray.rllib.core.models.specs.specs_base import TensorSpec
-from ray.rllib.core.models.specs.specs_dict import SpecDict
 from ray.rllib.core.models.torch.base import TorchModel
 from ray.rllib.core.rl_module.rl_module import RLModuleSpec
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
@@ -42,23 +41,6 @@ class TestModelBase(unittest.TestCase):
 
             def __init__(self, config):
                 super().__init__(config)
-
-            def get_output_specs(self):
-                return SpecDict(
-                    {
-                        "out_1": TensorSpec("b, h", h=1, framework="torch"),
-                        # out_2 is simply 2x stacked in_1
-                        "out_2": TensorSpec("b, h", h=4, framework="torch"),
-                    }
-                )
-
-            def get_input_specs(self):
-                return SpecDict(
-                    {
-                        "in_1": TensorSpec("b, h", h=1, framework="torch"),
-                        "in_2": TensorSpec("b, h", h=2, framework="torch"),
-                    }
-                )
 
         class TestModel(CatModel, TorchModel):
             def _forward(self, input_dict):
@@ -111,66 +93,6 @@ class TestModelBase(unittest.TestCase):
         # with input spec checking.
         with self.assertRaisesRegex(SpecCheckingError, "input spec validation failed"):
             model({"in_1": [1], "in_2": [1, 2]})
-
-    def test_model_output_spec_checking(self):
-        """Tests if model output spec checking works correctly.
-
-        This test is centered around the `always_check_shapes` flag of the
-        ModelConfig class. If this flag is set to True, the model will always
-        check if the outputs conform to the specs. If this flag is set to False,
-        the model will never check the outputs.
-        """
-
-        class BadModel:
-            """Simple model that produces bad outputs."""
-
-            def get_output_specs(self):
-                return SpecDict(
-                    {
-                        "out": TensorSpec("b, h", h=1, framework="torch"),
-                    }
-                )
-
-            def get_input_specs(self):
-                return SpecDict(
-                    {
-                        "in": TensorSpec("b, h", h=1, framework="torch"),
-                    }
-                )
-
-        class TestModel(BadModel, TorchModel):
-            def _forward(self, input_dict):
-                return {"out": torch.tensor([[1, 2]])}
-
-        @dataclass
-        class CatModelConfig(ModelConfig):
-            def build(self, framework: str):
-                # Since we define the correct model above anyway, we don't need
-                # to distinguish between frameworks here.
-                return TestModel(self)
-
-        # 1) Check if model behaves correctly with always_check_shapes=True first.
-        # We expect model to raise an error if the output shapes are not correct.
-        # This is the behaviour we use for debugging with model specs.
-
-        config = CatModelConfig(always_check_shapes=True)
-
-        model = config.build(framework="spam")
-
-        # We want to raise an output spec validation error here since the output
-        # has the wrong shape
-        with self.assertRaisesRegex(SpecCheckingError, "output spec validation failed"):
-            model({"in": torch.Tensor([[1]])})
-
-        # 2) Check if model behaves correctly with always_check_shapes=False.
-        # We don't expect model to raise an error.
-        # This is the more performant default behaviour
-
-        config = CatModelConfig(always_check_shapes=False)
-
-        model = config.build(framework="spam")
-
-        model({"in_1": [[1]]})
 
     # Todo (rllib-team): Fix for torch 2.0+
     @unittest.skip("Failing with torch >= 2.0")

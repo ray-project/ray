@@ -4,7 +4,6 @@ from collections import abc
 from typing import Any, Callable, Dict
 
 from ray.rllib.core.models.specs.specs_base import Spec, TypeSpec
-from ray.rllib.core.models.specs.specs_dict import SpecDict
 from ray.rllib.core.models.specs.typing import SpecType
 from ray.rllib.utils.deprecation import DEPRECATED_VALUE, deprecation_warning
 from ray.util.annotations import DeveloperAPI
@@ -311,7 +310,6 @@ def check_output_specs(
             def output_specs(self):
                 return {"obs": TensorSpec("b, d", d=64)}
 
-            @check_output_specs("output_specs")
             def forward(self, batch, return_loss=False):
                 return {"obs": torch.randn(32, 64)}
 
