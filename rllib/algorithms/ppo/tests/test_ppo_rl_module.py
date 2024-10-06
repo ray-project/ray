@@ -21,21 +21,7 @@ from ray.rllib.utils.torch_utils import convert_to_torch_tensor
 torch, nn = try_import_torch()
 
 
-def get_expected_module_config(
-    env: gym.Env,
-    model_config_dict: dict,
-    observation_space: gym.spaces.Space,
-) -> RLModuleConfig:
-    """Get a PPOModuleConfig that we would expect from the catalog otherwise.
-
-    Args:
-        env: Environment for which we build the model later
-        model_config_dict: Model config to use for the catalog
-        observation_space: Observation space to use for the catalog.
-
-    Returns:
-         A PPOModuleConfig containing the relevant configs to build PPORLModule
-    """
+def get_expected_module_config(env, model_config_dict, observation_space):
     config = RLModuleConfig(
         observation_space=observation_space,
         action_space=env.action_space,
@@ -47,22 +33,7 @@ def get_expected_module_config(
 
 
 def dummy_torch_ppo_loss(module, batch, fwd_out):
-    """Dummy PPO loss function for testing purposes.
-
-    Will eventually use the actual PPO loss function implemented in PPO.
-
-    Args:
-        batch: Batch used for training.
-        fwd_out: Forward output of the model.
-
-    Returns:
-        Loss tensor
-    """
-    # TODO: we should replace these components later with real ppo components when
-    # RLOptimizer and RLModule are integrated together.
-    # this is not exactly a ppo loss, just something to show that the
-    # forward train works
-    adv = batch[Columns.REWARDS] - fwd_out[Columns.VF_PREDS]
+    adv = batch[Columns.REWARDS] - module.compute_values(batch)
     action_dist_class = module.get_train_action_dist_cls()
     action_probs = action_dist_class.from_logits(
         fwd_out[Columns.ACTION_DIST_INPUTS]

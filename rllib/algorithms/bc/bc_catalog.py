@@ -64,7 +64,7 @@ class BCCatalog(Catalog):
 
         The default behavior is to build the head from the pi_head_config.
         This can be overridden to build a custom policy head as a means of configuring
-        the behavior of a BCRLModule implementation.
+        the behavior of a BC specific RLModule implementation.
 
         Args:
             framework: The framework to use. Either "torch" or "tf2".
