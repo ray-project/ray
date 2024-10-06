@@ -183,8 +183,17 @@ class TorchRLModule(nn.Module, RLModule):
 class TorchDDPRLModule(RLModule, nn.parallel.DistributedDataParallel):
     def __init__(self, *args, **kwargs) -> None:
         nn.parallel.DistributedDataParallel.__init__(self, *args, **kwargs)
-        # we do not want to call RLModule.__init__ here because all we need is
+        # We do not want to call RLModule.__init__ here because all we need is
         # the interface of that base-class not the actual implementation.
+        # RLModule.__init__(self, *args, **kwargs)
+        self.observation_space = self.unwrapped().observation_space
+        self.action_space = self.unwrapped().action_space
+        self.inference_only = self.unwrapped().inference_only
+        self.learner_only = self.unwrapped().learner_only
+        self.model_config = self.unwrapped().model_config
+        self.catalog = self.unwrapped().catalog
+
+        # Deprecated.
         self.config = self.unwrapped().config
 
     @override(RLModule)
