@@ -12,19 +12,19 @@ This feature requires KubeRay version 1.2.2 or newer, and it's still alpha.
 
 :::
 
-### Step 1: Create a Kubernetes cluster with KinD
+## Step 1: Create a Kubernetes cluster with KinD
 Run the following command in a terminal:
 
 ```shell
 kind create cluster
 ```
 
-### Step 2: Install Apache YuniKorn
+## Step 2: Install Apache YuniKorn
 
 You need to successfully install Apache YuniKorn on your Kubernetes cluster before enabling Apache YuniKorn integration with KubeRay.
 See [Get Started](https://yunikorn.apache.org/docs/) for Apache YuniKorn installation instructions.
 
-### Step 3: Install the KubeRay operator with Apache YuniKorn support
+## Step 3: Install the KubeRay operator with Apache YuniKorn support
 
 When installing KubeRay operator using Helm, you should pass the `--set batchScheduler.name=yunikorn` flag when running on the command line:
 
@@ -32,7 +32,7 @@ When installing KubeRay operator using Helm, you should pass the `--set batchSch
 helm install kuberay-operator kuberay/kuberay-operator --version 1.2.2 --set batchScheduler.name=yunikorn
 ```
 
-### Step 4: Use Apache YuniKorn for gang scheduling
+## Step 4: Use Apache YuniKorn for gang scheduling
 
 This example walks through how gang scheduling works with Apache YuniKorn and KubeRay.
 
