@@ -76,7 +76,7 @@ Next, create a RayCluster with a head node (1 CPU + 2Gi of RAM) and two workers 
 # Path: kuberay/ray-operator/config/samples
 # Configure the necessary labels on the RayCluster custom resource for Apache YuniKorn scheduler's gang scheduling:
 # - `ray.io/gang-scheduling-enabled`: This should be set to `true` to enable gang scheduling.
-# - `yunikorn.apache.org/app-id`: This should be set to the name of the RayCluster.
+# - `yunikorn.apache.org/app-id`: This should be set to a unique identifier for the application in Kubernetes, even across different namespaces.
 # - `yunikorn.apache.org/queue`: This should be set to the name of one of the queues in Apache YuniKorn.
 wget https://raw.githubusercontent.com/ray-project/kuberay/master/ray-operator/config/samples/ray-cluster.yunikorn-scheduler.yaml
 kubectl apply -f ray-cluster.yunikorn-scheduler.yaml
@@ -104,6 +104,12 @@ Metadata:
 ````
 
 Note the labels on the RayCluster: `ray.io/gang-scheduling-enabled=true`, `yunikorn.apache.org/app-id=test-yunikorn-0`, and `yunikorn.apache.org/queue=root.test`.
+
+:::{note}
+
+The `ray.io/gang-scheduling-enabled` label is only needed when Gang Scheduling is required. If this label is not set, the Ray cluster will be scheduled by YuniKorn without enforcing Gang Scheduling.
+
+:::
 
 Because the queue has a capacity of 4 CPU and 6Gi of RAM, this resource should schedule successfully without any issues.
 
