@@ -131,28 +131,12 @@ class SACRLModule(RLModule, InferenceOnlyAPI, TargetNetworkAPI):
         return {}
 
     @override(RLModule)
-    def input_specs_exploration(self) -> SpecType:
-        return [SampleBatch.OBS]
-
-    @override(RLModule)
-    def input_specs_inference(self) -> SpecType:
-        return [SampleBatch.OBS]
-
-    @override(RLModule)
     def input_specs_train(self) -> SpecType:
         return [
             SampleBatch.OBS,
             SampleBatch.ACTIONS,
             SampleBatch.NEXT_OBS,
         ]
-
-    @override(RLModule)
-    def output_specs_exploration(self) -> SpecType:
-        return [SampleBatch.ACTION_DIST_INPUTS]
-
-    @override(RLModule)
-    def output_specs_inference(self) -> SpecType:
-        return [SampleBatch.ACTION_DIST_INPUTS]
 
     @override(RLModule)
     def output_specs_train(self) -> SpecType:

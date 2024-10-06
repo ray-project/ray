@@ -2,10 +2,10 @@ from dataclasses import dataclass, field
 from typing import Callable, List, Optional, Union
 
 from ray.rllib.utils.typing import ConvFilterSpec
-from ray.util.annotations import PublicAPI
+from ray.util.annotations import DeveloperAPI
 
 
-@PublicAPI(stability="alpha")
+@DeveloperAPI(stability="alpha")
 @dataclass
 class DefaultModelConfig:
     """Dataclass to configure all default RLlib RLModules.
