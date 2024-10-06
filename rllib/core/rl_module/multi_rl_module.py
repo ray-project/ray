@@ -99,7 +99,7 @@ class MultiRLModule(RLModule):
             rl_module_specs: A dict mapping ModuleIDs to `RLModuleSpec` instances used
                 to create the submodules.
         """
-        if config != DEPRECATED_VALUE:
+        if config != DEPRECATED_VALUE and isinstance(config, MultiRLModuleConfig):
             deprecation_warning(
                 old="MultiRLModule(config=..)",
                 new="MultiRLModule(*, observation_space=.., action_space=.., "
@@ -463,6 +463,20 @@ class MultiRLModule(RLModule):
                 continue
             if module_id in self:
                 self._rl_modules[module_id].set_state(module_state)
+
+    @override(Checkpointable)
+    def get_ctor_args_and_kwargs(self):
+        return (
+            (),  # *args
+            {
+                "observation_space": self.observation_space,
+                "action_space": self.action_space,
+                "inference_only": self.inference_only,
+                "learner_only": self.learner_only,
+                "model_config": self.model_config,
+                "rl_module_specs": self.rl_module_specs,
+            },  # **kwargs
+        )
 
     @override(Checkpointable)
     def get_checkpointable_components(self) -> List[Tuple[str, Checkpointable]]:
