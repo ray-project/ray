@@ -268,17 +268,15 @@ class Catalog:
                 input_dims=observation_space.shape,
                 recurrent_layer_type="lstm",
                 hidden_dim=model_config_dict["lstm_cell_size"],
-                hidden_weights_initializer=model_config_dict[
-                    "lstm_weights_initializer"
-                ],
+                hidden_weights_initializer=model_config_dict["lstm_kernel_initializer"],
                 hidden_weights_initializer_config=model_config_dict[
-                    "lstm_weights_initializer_kwargs"
+                    "lstm_kernel_initializer_kwargs"
                 ],
                 hidden_bias_initializer=model_config_dict["lstm_bias_initializer"],
                 hidden_bias_initializer_config=model_config_dict[
                     "lstm_bias_initializer_kwargs"
                 ],
-                batch_major=not model_config_dict["_time_major"],
+                batch_major=True,
                 num_layers=1,
                 tokenizer_config=cls.get_tokenizer_config(
                     observation_space,

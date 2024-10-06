@@ -20,7 +20,7 @@ class TestRLModule(unittest.TestCase):
         module = VPGTorchRLModule(
             observation_space=env.observation_space,
             action_space=env.action_space,
-            model_config={"fcnet_hiddens": [32]},
+            model_config={"hidden_dim": 32},
         )
 
         self.assertIsInstance(module, TorchRLModule)
@@ -32,7 +32,7 @@ class TestRLModule(unittest.TestCase):
         module = VPGTorchRLModule(
             observation_space=env.observation_space,
             action_space=env.action_space,
-            model_config={"fcnet_hiddens": [32]},
+            model_config={"hidden_dim": 32},
         )
 
         obs_shape = env.observation_space.shape
@@ -63,7 +63,7 @@ class TestRLModule(unittest.TestCase):
         module = VPGTorchRLModule(
             observation_space=env.observation_space,
             action_space=env.action_space,
-            model_config={"fcnet_hiddens": [32]},
+            model_config={"hidden_dim": 32},
         )
 
         obs_shape = env.observation_space.shape
@@ -79,7 +79,7 @@ class TestRLModule(unittest.TestCase):
         module = VPGTorchRLModule(
             observation_space=env.observation_space,
             action_space=env.action_space,
-            model_config={"fcnet_hiddens": [32]},
+            model_config={"hidden_dim": 32},
         )
 
         state = module.get_state()
@@ -88,7 +88,7 @@ class TestRLModule(unittest.TestCase):
         module2 = VPGTorchRLModule(
             observation_space=env.observation_space,
             action_space=env.action_space,
-            model_config={"fcnet_hiddens": [32]},
+            model_config={"hidden_dim": 32},
         )
         state2 = module2.get_state()
         check(state, state2, false=True)
@@ -102,7 +102,7 @@ class TestRLModule(unittest.TestCase):
         module = VPGTorchRLModule(
             observation_space=env.observation_space,
             action_space=env.action_space,
-            model_config={"fcnet_hiddens": [32]},
+            model_config={"hidden_dim": 32},
         )
         with tempfile.TemporaryDirectory() as tmpdir:
             tmpdir = "/tmp/rl_module_test"
@@ -131,7 +131,7 @@ class TestRLModuleGPU(unittest.TestCase):
         torch_rl_module = VPGTorchRLModule(
             observation_space=env.observation_space,
             action_space=env.action_space,
-            model_config={"fcnet_hiddens": [32]},
+            model_config={"hidden_dim": 32},
         )
 
         torch_rl_module.cuda()
