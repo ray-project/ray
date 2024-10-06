@@ -27,22 +27,7 @@ torch, nn = try_import_torch()
 
 
 def dummy_torch_ppo_loss(module, batch, fwd_out):
-    """Dummy PPO loss function for testing purposes.
-
-    Will eventually use the actual PPO loss function implemented in PPO.
-
-    Args:
-        batch: Batch used for training.
-        fwd_out: Forward output of the model.
-
-    Returns:
-        Loss tensor
-    """
-    # TODO: we should replace these components later with real ppo components when
-    # RLOptimizer and RLModule are integrated together.
-    # this is not exactly a ppo loss, just something to show that the
-    # forward train works
-    adv = batch[Columns.REWARDS] - fwd_out[Columns.VF_PREDS]
+    adv = batch[Columns.REWARDS] - module.compute_values(batch)
     action_dist_class = module.get_train_action_dist_cls()
     action_probs = action_dist_class.from_logits(
         fwd_out[Columns.ACTION_DIST_INPUTS]
@@ -55,19 +40,7 @@ def dummy_torch_ppo_loss(module, batch, fwd_out):
 
 
 def dummy_tf_ppo_loss(module, batch, fwd_out):
-    """Dummy PPO loss function for testing purposes.
-
-    Will eventually use the actual PPO loss function implemented in PPO.
-
-    Args:
-        module: PPOTfRLModule
-        batch: Batch used for training.
-        fwd_out: Forward output of the model.
-
-    Returns:
-        Loss tensor
-    """
-    adv = batch[Columns.REWARDS] - fwd_out[Columns.VF_PREDS]
+    adv = batch[Columns.REWARDS] - module.compute_values(batch)
     action_dist_class = module.get_train_action_dist_cls()
     action_probs = action_dist_class.from_logits(
         fwd_out[Columns.ACTION_DIST_INPUTS]
@@ -157,7 +130,7 @@ class TestPPO(unittest.TestCase):
 
     def test_forward_train(self):
         # TODO: Add FrozenLake-v1 to cover LSTM case.
-        frameworks = ["tf2", "torch"]
+        frameworks = ["torch", "tf2"]
         env_names = ["CartPole-v1", "Pendulum-v1", "ALE/Breakout-v5"]
         lstm = [False, True]
         config_combinations = [frameworks, env_names, lstm]

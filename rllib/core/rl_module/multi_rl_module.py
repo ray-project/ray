@@ -61,9 +61,10 @@ class MultiRLModule(RLModule):
     to decide how to implement this class.
 
     The default implementation assumes the data communicated as input and output of
-    the APIs in this class are `MultiAgentBatch` types. The `MultiRLModule` simply
-    loops through each `module_id`, and runs the forward pass of the corresponding
-    `RLModule` object with the associated `SampleBatch` within the `MultiAgentBatch`.
+    the APIs in this class are `Dict[ModuleID, Dict[str, Any]]` types. The
+    `MultiRLModule` by default loops through each `module_id`, and runs the forward pass
+    of the corresponding `RLModule` object with the associated `batch` within the
+    input.
     It also assumes that the underlying RLModules do not share any parameters or
     communication with one another. The behavior of modules with such advanced
     communication would be undefined by default. To share parameters or communication
@@ -149,6 +150,91 @@ class MultiRLModule(RLModule):
                 assert self._rl_modules[module_id].framework in [None, framework]
         self.framework = framework
 
+    @override(RLModule)
+    def _forward(
+        self,
+        batch: Dict[ModuleID, Any],
+        **kwargs,
+    ) -> Dict[ModuleID, Dict[str, Any]]:
+        """Generic forward pass method, used in all phases of training and evaluation.
+
+        If you need a more nuanced distinction between forward passes in the different
+        phases of training and evaluation, override the following methods instead:
+        For distinct action computation logic w/o exploration, override the
+        `self._forward_inference()` method.
+        For distinct action computation logic with exploration, override the
+        `self._forward_exploration()` method.
+        For distinct forward pass logic before loss computation, override the
+        `self._forward_train()` method.
+
+        Args:
+            batch: The input batch, a dict mapping from ModuleID to individual modules'
+                batches.
+            **kwargs: Additional keyword arguments.
+
+        Returns:
+            The output of the forward pass.
+        """
+        return {
+            mid: self._rl_modules[mid]._forward(batch[mid], **kwargs)
+            for mid in batch.keys()
+            if mid in self
+        }
+
+    @override(RLModule)
+    def _forward_inference(
+        self, batch: Dict[str, Any], **kwargs
+    ) -> Union[Dict[str, Any], Dict[ModuleID, Dict[str, Any]]]:
+        """Forward-pass used for action computation without exploration behavior.
+
+        Override this method only, if you need specific behavior for non-exploratory
+        action computation behavior. If you have only one generic behavior for all
+        phases of training and evaluation, override `self._forward()` instead.
+
+        By default, this calls the generic `self._forward()` method.
+        """
+        return {
+            mid: self._rl_modules[mid]._forward_inference(batch[mid], **kwargs)
+            for mid in batch.keys()
+            if mid in self
+        }
+
+    @override(RLModule)
+    def _forward_exploration(
+        self, batch: Dict[str, Any], **kwargs
+    ) -> Union[Dict[str, Any], Dict[ModuleID, Dict[str, Any]]]:
+        """Forward-pass used for action computation with exploration behavior.
+
+        Override this method only, if you need specific behavior for exploratory
+        action computation behavior. If you have only one generic behavior for all
+        phases of training and evaluation, override `self._forward()` instead.
+
+        By default, this calls the generic `self._forward()` method.
+        """
+        return {
+            mid: self._rl_modules[mid]._forward_exploration(batch[mid], **kwargs)
+            for mid in batch.keys()
+            if mid in self
+        }
+
+    @override(RLModule)
+    def _forward_train(
+        self, batch: Dict[str, Any], **kwargs
+    ) -> Union[Dict[str, Any], Dict[ModuleID, Dict[str, Any]]]:
+        """Forward-pass used before the loss computation (training).
+
+        Override this method only, if you need specific behavior and outputs for your
+        loss computations. If you have only one generic behavior for all
+        phases of training and evaluation, override `self._forward()` instead.
+
+        By default, this calls the generic `self._forward()` method.
+        """
+        return {
+            mid: self._rl_modules[mid]._forward_train(batch[mid], **kwargs)
+            for mid in batch.keys()
+            if mid in self
+        }
+
     @OverrideToImplementCustomLogic
     @override(RLModule)
     def get_initial_state(self) -> Any:
@@ -168,33 +254,6 @@ class MultiRLModule(RLModule):
             f"{type(initial_state)} instead."
         )
         return bool(any(sa_init_state for sa_init_state in initial_state.values()))
-
-    def items(self) -> ItemsView[ModuleID, RLModule]:
-        """Returns a keys view over the module IDs in this MultiRLModule."""
-        return self._rl_modules.items()
-
-    def keys(self) -> KeysView[ModuleID]:
-        """Returns a keys view over the module IDs in this MultiRLModule."""
-        return self._rl_modules.keys()
-
-    def values(self) -> ValuesView[ModuleID]:
-        """Returns a keys view over the module IDs in this MultiRLModule."""
-        return self._rl_modules.values()
-
-    def __len__(self) -> int:
-        """Returns the number of RLModules within this MultiRLModule."""
-        return len(self._rl_modules)
-
-    @override(RLModule)
-    def as_multi_rl_module(self) -> "MultiRLModule":
-        """Returns self in order to match `RLModule.as_multi_rl_module()` behavior.
-
-        This method is overridden to avoid double wrapping.
-
-        Returns:
-            The instance itself.
-        """
-        return self
 
     def add_module(
         self,
@@ -318,70 +377,24 @@ class MultiRLModule(RLModule):
             return default
         return self._rl_modules[module_id]
 
-    @override(RLModule)
-    def output_specs_train(self) -> SpecType:
-        return []
+    def items(self) -> ItemsView[ModuleID, RLModule]:
+        """Returns an ItemsView over the module IDs in this MultiRLModule."""
+        return self._rl_modules.items()
 
-    @override(RLModule)
-    def output_specs_inference(self) -> SpecType:
-        return []
+    def keys(self) -> KeysView[ModuleID]:
+        """Returns a KeysView over the module IDs in this MultiRLModule."""
+        return self._rl_modules.keys()
 
-    @override(RLModule)
-    def output_specs_exploration(self) -> SpecType:
-        return []
+    def values(self) -> ValuesView[ModuleID]:
+        """Returns a ValuesView over the module IDs in this MultiRLModule."""
+        return self._rl_modules.values()
 
-    @override(RLModule)
-    def _default_input_specs(self) -> SpecType:
-        """MultiRLModule should not check the input specs.
+    def __len__(self) -> int:
+        """Returns the number of RLModules within this MultiRLModule."""
+        return len(self._rl_modules)
 
-        The underlying single-agent RLModules will check the input specs.
-        """
-        return []
-
-    @override(RLModule)
-    def _forward_train(
-        self, batch: Dict[ModuleID, Dict[str, Any]], **kwargs
-    ) -> Union[Dict[str, Any], Dict[ModuleID, Dict[str, Any]]]:
-        """Runs the forward_train pass.
-
-        Args:
-            batch: The batch of multi-agent data (i.e. mapping from module ids to
-                individual modules' batches).
-
-        Returns:
-            The output of the forward_train pass the specified modules.
-        """
-        return self._run_forward_pass("forward_train", batch, **kwargs)
-
-    @override(RLModule)
-    def _forward_inference(
-        self, batch: Dict[ModuleID, Dict[str, Any]], **kwargs
-    ) -> Union[Dict[str, Any], Dict[ModuleID, Dict[str, Any]]]:
-        """Runs the forward_inference pass.
-
-        Args:
-            batch: The batch of multi-agent data (i.e. mapping from module ids to
-                individual modules' batches).
-
-        Returns:
-            The output of the forward_inference pass the specified modules.
-        """
-        return self._run_forward_pass("forward_inference", batch, **kwargs)
-
-    @override(RLModule)
-    def _forward_exploration(
-        self, batch: Dict[ModuleID, Dict[str, Any]], **kwargs
-    ) -> Union[Dict[str, Any], Dict[ModuleID, Dict[str, Any]]]:
-        """Runs the forward_exploration pass.
-
-        Args:
-            batch: The batch of multi-agent data (i.e. mapping from module ids to
-                individual modules' batches).
-
-        Returns:
-            The output of the forward_exploration pass the specified modules.
-        """
-        return self._run_forward_pass("forward_exploration", batch, **kwargs)
+    def __repr__(self) -> str:
+        return f"MARL({pprint.pformat(self._rl_modules)})"
 
     @override(RLModule)
     def get_state(
@@ -456,39 +469,53 @@ class MultiRLModule(RLModule):
     def get_checkpointable_components(self) -> List[Tuple[str, Checkpointable]]:
         return list(self._rl_modules.items())
 
-    def __repr__(self) -> str:
-        return f"MARL({pprint.pformat(self._rl_modules)})"
+    @override(RLModule)
+    def output_specs_train(self) -> SpecType:
+        return []
 
-    def _run_forward_pass(
-        self,
-        forward_fn_name: str,
-        batch: Dict[ModuleID, Any],
-        **kwargs,
-    ) -> Dict[ModuleID, Dict[ModuleID, Any]]:
-        """This is a helper method that runs the forward pass for the given module.
+    @override(RLModule)
+    def output_specs_inference(self) -> SpecType:
+        return []
 
-        It uses forward_fn_name to get the forward pass method from the RLModule
-        (e.g. forward_train vs. forward_exploration) and runs it on the given batch.
+    @override(RLModule)
+    def output_specs_exploration(self) -> SpecType:
+        return []
 
-        Args:
-            forward_fn_name: The name of the forward pass method to run.
-            batch: The batch of multi-agent data (i.e. mapping from module ids to
-                SampleBaches).
-            **kwargs: Additional keyword arguments to pass to the forward function.
+    @override(RLModule)
+    def _default_input_specs(self) -> SpecType:
+        """MultiRLModule should not check the input specs.
+
+        The underlying single-agent RLModules will check the input specs.
+        """
+        return []
+
+    @override(RLModule)
+    def as_multi_rl_module(self) -> "MultiRLModule":
+        """Returns self in order to match `RLModule.as_multi_rl_module()` behavior.
+
+        This method is overridden to avoid double wrapping.
 
         Returns:
-            The output of the forward pass the specified modules. The output is a
-            mapping from module ID to the output of the forward pass.
+            The instance itself.
         """
+        return self
 
-        outputs = {}
-        for module_id in batch.keys():
-            self._check_module_exists(module_id)
-            rl_module = self._rl_modules[module_id]
-            forward_fn = getattr(rl_module, forward_fn_name)
-            outputs[module_id] = forward_fn(batch[module_id], **kwargs)
+    @classmethod
+    def _check_module_configs(cls, module_configs: Dict[ModuleID, Any]):
+        """Checks the module configs for validity.
 
-        return outputs
+        The module_configs be a mapping from module_ids to RLModuleSpec
+        objects.
+
+        Args:
+            module_configs: The module configs to check.
+
+        Raises:
+            ValueError: If the module configs are invalid.
+        """
+        for module_id, module_spec in module_configs.items():
+            if not isinstance(module_spec, RLModuleSpec):
+                raise ValueError(f"Module {module_id} is not a RLModuleSpec object.")
 
     @classmethod
     def _check_module_specs(cls, rl_module_specs: Dict[ModuleID, RLModuleSpec]):
