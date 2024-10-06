@@ -16,9 +16,9 @@ class DiscreteBCTFModule(TfRLModule):
         super().__init__(config)
 
     def setup(self):
-        input_dim = self.config.observation_space.shape[0]
-        hidden_dim = self.config.model_config_dict["fcnet_hiddens"][0]
-        output_dim = self.config.action_space.n
+        input_dim = self.observation_space.shape[0]
+        hidden_dim = self.model_config["fcnet_hiddens"][0]
+        output_dim = self.action_space.n
         layers = []
 
         layers.append(tf.keras.Input(shape=(input_dim,)))

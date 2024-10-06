@@ -435,6 +435,18 @@ class RLModule(Checkpointable, abc.ABC):
             except Exception:
                 pass
 
+        # TODO (sven): Deprecate this. We keep it here for now in case users
+        #  still have custom models (or subclasses of RLlib default models)
+        #  into which they pass in a `config` argument.
+        self.config = RLModuleConfig(
+            observation_space=self.observation_space,
+            action_space=self.action_space,
+            inference_only=self.inference_only,
+            learner_only=self.learner_only,
+            model_config_dict=self.model_config,
+            catalog_class=catalog_class,
+        )
+
         self.action_dist_cls = None
         if self.catalog is not None:
             self.action_dist_cls = self.catalog.get_action_dist_cls(

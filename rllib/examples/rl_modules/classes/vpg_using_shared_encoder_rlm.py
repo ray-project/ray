@@ -29,23 +29,10 @@ class VPGTorchRLModuleUsingSharedEncoder(TorchRLModule):
         )
 
     @override(RLModule)
-    def _forward_inference(self, batch):
-        with torch.no_grad():
-            return self._common_forward(batch)
-
-    @override(RLModule)
-    def _forward_exploration(self, batch):
-        with torch.no_grad():
-            return self._common_forward(batch)
-
-    @override(RLModule)
-    def _forward_train(self, batch):
-        return self._common_forward(batch)
-
-    def _common_forward(self, batch):
+    def _forward(self, batch, **kwargs):
         # Features can be found in the batch under the "encoder_features" key.
-        features = batch["encoder_features"]
-        logits = self._pi_head(features)
+        embeddings = batch["encoder_embeddings"]
+        logits = self._pi_head(embeddings)
         return {Columns.ACTION_DIST_INPUTS: logits}
 
 
@@ -109,7 +96,7 @@ class VPGTorchMultiRLModuleWithSharedEncoder(MultiRLModule):
         )
 
     @override(MultiRLModule)
-    def _run_forward_pass(self, forward_fn_name, batch, **kwargs):
+    def _forward(self, forward_fn_name, batch, **kwargs):
         outputs = {}
         encoder_forward_fn = getattr(
             self._rl_modules[SHARED_ENCODER_ID], forward_fn_name
@@ -122,9 +109,9 @@ class VPGTorchMultiRLModuleWithSharedEncoder(MultiRLModule):
 
             # Pass policy's observations through shared encoder to get the features for
             # this policy.
-            features = encoder_forward_fn(batch[policy_id])
+            embeddings = encoder_forward_fn(batch[policy_id])
             # Pass the policy's features through the policy net.
-            batch[policy_id]["encoder_features"] = features
+            batch[policy_id]["encoder_embeddings"] = embeddings
             outputs[policy_id] = forward_fn(batch[policy_id], **kwargs)
 
         return outputs
@@ -144,21 +131,7 @@ class SharedTorchEncoder(TorchRLModule):
             nn.Linear(input_dim, embedding_dim),
         )
 
-    @override(RLModule)
-    def _forward_inference(self, batch):
-        with torch.no_grad():
-            return self._common_forward(batch)
-
-    @override(RLModule)
-    def _forward_exploration(self, batch):
-        with torch.no_grad():
-            return self._common_forward(batch)
-
-    @override(RLModule)
-    def _forward_train(self, batch):
-        return self._common_forward(batch)
-
-    def _common_forward(self, batch):
+    def _forward(self, batch, **kwargs):
         # Pass observations through the encoder and return outputs.
-        features = self._encoder(batch[Columns.OBS])
-        return {"encoder_features": features}
+        embeddings = self._encoder(batch[Columns.OBS])
+        return {"encoder_embeddings": embeddings}

@@ -103,7 +103,7 @@ if __name__ == "__main__":
                 module_class=TinyAtariCNN,
                 # Feel free to specify your own `model_config_dict` settings below.
                 # The `model_config_dict` defined here will be available inside your
-                # custom RLModule class through the `self.config.model_config_dict`
+                # custom RLModule class through the `self.model_config`
                 # property.
                 model_config_dict={
                     "conv_filters": [

@@ -130,7 +130,6 @@ class MultiRLModule(RLModule):
             action_space=action_space,
             inference_only=inference_only,
             learner_only=None,
-            catalog_class=None,
             model_config=model_config,
             **kwargs,
         )

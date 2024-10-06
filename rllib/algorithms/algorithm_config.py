@@ -3390,6 +3390,8 @@ class AlgorithmConfig(_Config):
             )
         if model_config_dict != DEPRECATED_VALUE:
             deprecation_warning(
+                old="AlgorithmConfig.rl_module(model_config_dict=..)",
+                new="AlgorithmConfig.rl_module(model_config=..)",
                 error=False,
             )
             model_config = model_config_dict

@@ -94,7 +94,7 @@ class IntrinsicCuriosityModel(TorchRLModule, SelfSupervisedLossAPI):
     def setup(self):
         # Get the ICM achitecture settings from the RLModuleConfig's (self.config)
         # `model_config_dict` property:
-        cfg = self.config.model_config_dict
+        cfg = self.model_config
 
         feature_dim = cfg.get("feature_dim", 288)
 

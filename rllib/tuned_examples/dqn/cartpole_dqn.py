@@ -29,19 +29,17 @@ config = (
         },
         n_step=(2, 5),
         double_q=True,
-        num_atoms=1,
-        noisy=False,
         dueling=True,
+        epsilon=[(0, 1.0), (10000, 0.02)],
     )
     .rl_module(
         # Settings identical to old stack.
         model_config=DefaultModelConfig(
             fcnet_hiddens=[256],
             fcnet_activation="tanh",
-            epsilon=[(0, 1.0), (10000, 0.02)],
             fcnet_bias_initializer="zeros_",
-            post_fcnet_bias_initializer="zeros_",
-            post_fcnet_hiddens=[256],
+            head_fcnet_bias_initializer="zeros_",
+            head_fcnet_hiddens=[256],
         ),
     )
 )

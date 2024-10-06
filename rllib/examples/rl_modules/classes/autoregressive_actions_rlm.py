@@ -49,7 +49,7 @@ class AutoregressiveActionsRLM(RLModule, ValueFunctionAPI, abc.ABC):
         super().setup()
 
         # Build the encoder.
-        self.encoder = self.config.get_catalog().build_encoder(framework=self.framework)
+        self.encoder = self.catalog.build_encoder(framework=self.framework)
 
         # Build the prior and posterior heads.
         # Note further, we neet to know the required input dimensions for
@@ -58,26 +58,22 @@ class AutoregressiveActionsRLM(RLModule, ValueFunctionAPI, abc.ABC):
             space=self.config.action_space,
             as_list=True,
         )
-        action_dims = self.config.action_space[0].shape or (1,)
-        latent_dims = self.config.get_catalog().latent_dims
+        action_dims = self.action_space[0].shape or (1,)
+        latent_dims = self.catalog.latent_dims
         prior_config = MLPHeadConfig(
             # Use the hidden dimension from the encoder output.
             input_dims=latent_dims,
             # Use configurations from the `model_config_dict`.
-            hidden_layer_dims=self.config.model_config_dict["post_fcnet_hiddens"],
-            hidden_layer_activation=self.config.model_config_dict[
-                "post_fcnet_activation"
-            ],
+            hidden_layer_dims=self.model_config["post_fcnet_hiddens"],
+            hidden_layer_activation=self.model_config["post_fcnet_activation"],
             output_layer_dim=self.required_output_dims[0],
             output_layer_activation="linear",
         )
         # Build the posterior head.
         posterior_config = MLPHeadConfig(
             input_dims=(latent_dims[0] + action_dims[0],),
-            hidden_layer_dims=self.config.model_config_dict["post_fcnet_hiddens"],
-            hidden_layer_activation=self.config.model_config_dict[
-                "post_fcnet_activation"
-            ],
+            hidden_layer_dims=self.model_config["post_fcnet_hiddens"],
+            hidden_layer_activation=self.model_config["post_fcnet_activation"],
             output_layer_dim=self.required_output_dims[1],
             output_layer_activation="linear",
         )
@@ -88,10 +84,8 @@ class AutoregressiveActionsRLM(RLModule, ValueFunctionAPI, abc.ABC):
         # Build the value function head.
         vf_config = MLPHeadConfig(
             input_dims=latent_dims,
-            hidden_layer_dims=self.config.model_config_dict["post_fcnet_hiddens"],
-            hidden_layer_activation=self.config.model_config_dict[
-                "post_fcnet_activation"
-            ],
+            hidden_layer_dims=self.model_config["post_fcnet_hiddens"],
+            hidden_layer_activation=self.model_config["post_fcnet_activation"],
             output_layer_dim=1,
             output_layer_activation="linear",
         )

@@ -78,8 +78,6 @@ ths script as described above:
 |                  68000 |                  68000 |                 205.22 |
 +------------------------+------------------------+------------------------+
 """
-import functools
-
 from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.connectors.env_to_module import (
     FlattenObservations,
@@ -149,7 +147,8 @@ if __name__ == "__main__":
                 fcnet_hiddens=[32],
                 fcnet_activation="linear",
                 fcnet_kernel_initializer=nn.init.xavier_uniform_,
-                fcnet_bias_initializer=functools.partial(nn.init.constant_, 0.0),
+                fcnet_bias_initializer=nn.init.constant_,
+                fcnet_bias_initializer_kwargs={"val": 0.0},
                 vf_share_layers=True,
             ),
         )

@@ -55,12 +55,12 @@ class SACRLModule(RLModule, InferenceOnlyAPI, TargetNetworkAPI):
     @override(RLModule)
     def setup(self):
         # If a twin Q architecture should be used.
-        self.twin_q = self.config.model_config_dict["twin_q"]
+        self.twin_q = self.model_config["twin_q"]
 
         # Build the encoder for the policy.
         self.pi_encoder = self.catalog.build_encoder(framework=self.framework)
 
-        if not self.config.inference_only or self.framework != "torch":
+        if not self.inference_only or self.framework != "torch":
             # SAC needs a separate Q network encoder (besides the pi network).
             # This is because the Q network also takes the action as input
             # (concatenated with the observations).
@@ -75,7 +75,7 @@ class SACRLModule(RLModule, InferenceOnlyAPI, TargetNetworkAPI):
         # Build heads.
         self.pi = self.catalog.build_pi_head(framework=self.framework)
 
-        if not self.config.inference_only or self.framework != "torch":
+        if not self.inference_only or self.framework != "torch":
             self.qf = self.catalog.build_qf_head(framework=self.framework)
             # If necessary build also a twin Q heads.
             if self.twin_q:

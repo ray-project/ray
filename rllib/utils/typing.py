@@ -181,7 +181,11 @@ ParamList = List[Param]
 
 # A single learning rate or a learning rate schedule (list of sub-lists, each of
 # the format: [ts (int), lr_to_reach_by_ts (float)]).
-LearningRateOrSchedule = Union[float, List[List[Union[int, float]]]]
+LearningRateOrSchedule = Union[
+    float,
+    List[List[Union[int, float]]],
+    List[Tuple[int, Union[int, float]]],
+]
 
 # Dict of tensors returned by compute gradients on the policy, e.g.,
 # {"td_error": [...], "learner_stats": {"vf_loss": ..., ...}}, for multi-agent,

@@ -56,7 +56,7 @@ class TinyAtariCNN(TorchRLModule, ValueFunctionAPI):
         """Use this method to create all the model components that you require.
 
         Feel free to access the following useful properties in this class:
-        - `self.config.model_config_dict`: The config dict for this RLModule class,
+        - `self.model_config`: The config dict for this RLModule class,
         which should contain flxeible settings, for example: {"hiddens": [256, 256]}.
         - `self.config.observation|action_space`: The observation and action space that
         this RLModule is subject to. Note that the observation space might not be the
@@ -66,7 +66,7 @@ class TinyAtariCNN(TorchRLModule, ValueFunctionAPI):
         """
         # Get the CNN stack config from our RLModuleConfig's (self.config)
         # `model_config_dict` property:
-        conv_filters = self.config.model_config_dict.get("conv_filters")
+        conv_filters = self.model_config.get("conv_filters")
         # Default CNN stack with 3 layers:
         if conv_filters is None:
             conv_filters = [

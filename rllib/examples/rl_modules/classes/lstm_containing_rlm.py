@@ -63,7 +63,7 @@ class LSTMContainingRLModule(TorchRLModule, ValueFunctionAPI):
         """Use this method to create all the model components that you require.
 
         Feel free to access the following useful properties in this class:
-        - `self.config.model_config_dict`: The config dict for this RLModule class,
+        - `self.model_config`: The config dict for this RLModule class,
         which should contain flxeible settings, for example: {"hiddens": [256, 256]}.
         - `self.config.observation|action_space`: The observation and action space that
         this RLModule is subject to. Note that the observation space might not be the
@@ -76,14 +76,14 @@ class LSTMContainingRLModule(TorchRLModule, ValueFunctionAPI):
 
         # Get the LSTM cell size from our RLModuleConfig's (self.config)
         # `model_config_dict` property:
-        self._lstm_cell_size = self.config.model_config_dict.get("lstm_cell_size", 256)
+        self._lstm_cell_size = self.model_config.get("lstm_cell_size", 256)
         self._lstm = nn.LSTM(in_size, self._lstm_cell_size, batch_first=True)
         in_size = self._lstm_cell_size
 
         # Build a sequential stack.
         layers = []
         # Get the dense layer pre-stack configuration from the same config dict.
-        dense_layers = self.config.model_config_dict.get("dense_layers", [128, 128])
+        dense_layers = self.model_config.get("dense_layers", [128, 128])
         for out_size in dense_layers:
             # Dense layer.
             layers.append(nn.Linear(in_size, out_size))

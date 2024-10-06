@@ -41,10 +41,10 @@ class ModelV2ToRLModule(TorchRLModule, ValueFunctionAPI):
     @override(TorchRLModule)
     def setup(self):
         # Try extracting the policy ID from this RLModule's config dict.
-        policy_id = self.config.model_config_dict.get("policy_id", DEFAULT_POLICY_ID)
+        policy_id = self.model_config.get("policy_id", DEFAULT_POLICY_ID)
 
         # Try getting the algorithm checkpoint from the `model_config_dict`.
-        algo_checkpoint_dir = self.config.model_config_dict.get("algo_checkpoint_dir")
+        algo_checkpoint_dir = self.model_config.get("algo_checkpoint_dir")
         if algo_checkpoint_dir:
             algo_checkpoint_dir = pathlib.Path(algo_checkpoint_dir)
             if not algo_checkpoint_dir.is_dir():
@@ -59,9 +59,7 @@ class ModelV2ToRLModule(TorchRLModule, ValueFunctionAPI):
             policy_checkpoint_dir = algo_checkpoint_dir / "policies" / policy_id
         # Try getting the policy checkpoint from the `model_config_dict`.
         else:
-            policy_checkpoint_dir = self.config.model_config_dict.get(
-                "policy_checkpoint_dir"
-            )
+            policy_checkpoint_dir = self.model_config.get("policy_checkpoint_dir")
 
         # Create the ModelV2 from the Policy.
         if policy_checkpoint_dir:
@@ -80,7 +78,7 @@ class ModelV2ToRLModule(TorchRLModule, ValueFunctionAPI):
             policy = TorchPolicyV2.from_checkpoint(policy_checkpoint_dir)
         # Create the ModelV2 from scratch using the config.
         else:
-            config = self.config.model_config_dict.get("old_api_stack_algo_config")
+            config = self.model_config.get("old_api_stack_algo_config")
             if not config:
                 raise ValueError(
                     "The `model_config_dict` of your RLModule must contain a "
