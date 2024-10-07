@@ -28,20 +28,8 @@ add_project_arguments(
 # use `project_build_root` as they are generated dynamically.
 add_project_arguments(
     '-I' + meson.project_build_root(),
-    language: ['c', 'cpp']
-)
-
-add_project_arguments(
     '-I' + meson.project_build_root() / 'src',
-    language: ['c', 'cpp']
-)
-
-add_project_arguments(
     '-I' + meson.project_source_root(),
-    language: ['c', 'cpp']
-)
-
-add_project_arguments(
     '-I' + meson.project_source_root() / 'src',
     language: ['c', 'cpp']
 )
@@ -60,41 +48,40 @@ subdir('__eugo/')
 
 # === @begin: src/ ===
 subdir('src/')
+# === @end: src/ ===
 
-# GRPC common lib.
-grpc_common_lib_sources = files(
-    'src/ray/rpc/common.cc',
-    'src/ray/rpc/grpc_server.cc',
-    'src/ray/rpc/server_call.cc',
+
+# === @begin: grpc_common_lib (original: grpc_common_lib) ===
+grpc_common_cpp_lib = static_library(
+    'grpc_common_lib',
+    [
+        'src/ray/rpc/common.cc',
+        'src/ray/rpc/grpc_server.cc',
+        'src/ray/rpc/server_call.cc',
+    ],
+    dependencies: [
+        # Package-managed
+        stats_metric_cpp_lib_dep,
+        asio_cpp_lib_dep,
+        grpc_util_cpp_lib_dep,
+        id_cpp_lib_dep,
+        ray_config_cpp_lib_dep,
+        status_cpp_lib_dep,
+
+
+        # Eugo-managed
+        grpc,
+        protobuf
+    ],
+    install: false
 )
 
-grpc_common_cpp_include_directories = include_directories(
-    'src/'
+grpc_common_cpp_lib_dep = declare_dependency(
+    link_with: [grpc_common_cpp_lib]
 )
+# === @end: grpc_common_lib (original: grpc_common_lib) ===
 
-## @TODO: add deps
-#grpc_common_cpp_lib = static_library(
-#    'grpc_common_lib',
-#    grpc_common_lib_sources,
-#    include_directories: grpc_common_cpp_include_directories,
-#    dependencies: [
-#        absl,
-#        boost,
-#        grpc,
-#        msgpack,
-#        opencensus,
-#        protobuf
-#    ],
-#    install: false
-#)
-#
-#grpc_common_cpp_lib_dep = declare_dependency(
-#    link_with: [grpc_common_cpp_lib],
-#    include_directories: grpc_common_cpp_include_directories
-#)
 
-#
-#
 ## Node manager server and client.
 #ray_cc_library(
 #    name = "node_manager_rpc",
@@ -390,13 +377,6 @@ grpc_common_cpp_include_directories = include_directories(
 #    hdrs = glob(
 #    ["src/mock/**/*.h"],
 #),
-#)
-#
-#cc_grpc_library(
-#    name = "ray_syncer_cc_grpc",
-#    srcs = ["//src/ray/protobuf:ray_syncer_proto"],
-#    grpc_only = True,
-#    deps = ["//src/ray/protobuf:ray_syncer_cc_proto"],
 #)
 #
 #ray_cc_library(
@@ -1137,33 +1117,6 @@ grpc_common_cpp_include_directories = include_directories(
 #    deps = [
 #    ":raylet_lib",
 #    "@boost//:endian",
-#    "@com_google_absl//absl/strings:str_format",
-#    "@com_google_googletest//:gtest_main",
-#    ],
-#)
-#
-#ray_cc_test(
-#    name = "fallback_allocator_test",
-#    srcs = [
-#    "src/ray/object_manager/plasma/test/fallback_allocator_test.cc",
-#    ],
-#    tags = ["team:core"],
-#    deps = [
-#    ":plasma_store_server_lib",
-#    "@com_google_absl//absl/strings:str_format",
-#    "@com_google_googletest//:gtest_main",
-#    ],
-#)
-#
-#ray_cc_test(
-#    name = "object_store_test",
-#    srcs = [
-#    "src/ray/object_manager/plasma/test/object_store_test.cc",
-#    ],
-#    tags = ["team:core"],
-#    deps = [
-#    ":plasma_store_server_lib",
-#    "@com_google_absl//absl/random",
 #    "@com_google_absl//absl/strings:str_format",
 #    "@com_google_googletest//:gtest_main",
 #    ],

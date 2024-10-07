@@ -112,6 +112,25 @@ ray_syncer_proto_cpp_lib = static_library(
 ray_syncer_proto_cpp_lib_dep = declare_dependency(
     link_with: [ray_syncer_proto_cpp_lib]
 )
+
+ray_syncer_proto_cpp_grpc = custom_target(
+    input: ray_syncer_proto,
+    kwargs: proto_cpp_grpc_default_kwargs
+)
+
+ray_syncer_proto_cpp_grpc_dep = declare_dependency(
+    sources: ray_syncer_proto_cpp_grpc
+)
+
+ray_syncer_proto_cpp_grpc_lib = static_library(
+    'ray_syncer_proto_cpp_grpc_lib',
+    dependencies: [protobuf, grpc, ray_syncer_proto_cpp_grpc_dep, ray_syncer_proto_cpp_lib_dep],
+    install: false
+)
+
+ray_syncer_proto_cpp_grpc_lib_dep = declare_dependency(
+    link_with: [ray_syncer_proto_cpp_grpc_lib]
+)
 # === @end: ray_syncer.proto ===
 
 

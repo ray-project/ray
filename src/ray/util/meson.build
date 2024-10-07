@@ -44,6 +44,7 @@ util_cpp_lib = static_library(
 )
 
 util_cpp_lib_dep = declare_dependency(
-    link_with: [util_cpp_lib]
+    link_with: [util_cpp_lib],
+    dependencies: [spdlog]
 )
 # === @end: util (original: util) ===

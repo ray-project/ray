@@ -165,38 +165,53 @@ memory_monitor_cpp_lib_dep = declare_dependency(
 # === @end: memory_monitor (original: memory_monitor) ===
 
 
-#ray_cc_library(
-#    name = "file_system_monitor",
-#    srcs = [
-#    "file_system_monitor.cc",
-#    ],
-#    hdrs = [
-#    "file_system_monitor.h",
-#    ],
-#    deps = [
-#    ":asio",
-#    "//src/ray/util",
-#    "@com_google_googletest//:gtest_prod",
-#    ],
-#)
-#
-#ray_cc_library(
-#    name = "runtime_env",
-#    srcs = [
-#    "runtime_env_common.cc",
-#    "runtime_env_manager.cc",
-#    ],
-#    hdrs = [
-#    "runtime_env_common.h",
-#    "runtime_env_manager.h",
-#    ],
-#    deps = [
-#    ":id",
-#    "//src/ray/protobuf:common_cc_proto",
-#    "@com_google_absl//absl/container:flat_hash_map",
-#    ],
-#)
-#
+# === @begin: file_system_monitor (original: file_system_monitor) ===
+file_system_monitor_cpp_lib = static_library(
+    'file_system_monitor_cpp_lib',
+    ['file_system_monitor.cc'],
+    install: false,
+    dependencies: [
+        # Package-managed
+        asio_cpp_lib_dep,
+        util_cpp_lib_dep
+
+        # Eugo-managed
+        #    "@com_google_googletest//:gtest_prod",
+    ]
+)
+
+file_system_monitor_cpp_lib_dep = declare_dependency(
+    link_with: [file_system_monitor_cpp_lib]
+)
+# === @end: file_system_monitor (original: file_system_monitor) ===
+
+
+# === @begin: runtime_env (original: runtime_env) ===
+runtime_env_cpp_lib = static_library(
+    'runtime_env_cpp_lib',
+    ['runtime_env_common.cc', 'runtime_env_manager.cc'],
+    install: false,
+    dependencies: [
+        # Package-managed
+        id_cpp_lib_dep,
+        common_proto_cpp_lib_dep,
+
+        # Eugo-managed
+        absl_container_flat_hash_map
+    ]
+)
+
+runtime_env_cpp_lib_dep = declare_dependency(
+    link_with: [runtime_env_cpp_lib]
+)
+# === @end: runtime_env (original: runtime_env) ===
+
+
+# === @begin: ray_syncer (original: ray_syncer) ===
+subdir('ray_syncer/')
+# === @end: ray_syncer (original: ray_syncer) ===
+
+
 #ray_cc_library(
 #    name = "network",
 #    srcs = [
@@ -265,25 +280,7 @@ memory_monitor_cpp_lib_dep = declare_dependency(
 #
 
 
-#
-#ray_cc_library(
-#    name = "ray_syncer",
-#    srcs = [
-#    "ray_syncer/ray_syncer.cc",
-#    ],
-#    hdrs = [
-#    "ray_syncer/ray_syncer.h",
-#    "ray_syncer/ray_syncer-inl.h",
-#    ],
-#    deps = [
-#    ":asio",
-#    ":id",
-#    "//:ray_syncer_cc_grpc",
-#    "//src/ray/util",
-#    "@com_github_grpc_grpc//:grpc++",
-#    "@com_google_absl//absl/container:flat_hash_map",
-#    ],
-#)
+
 
 
 #ray_cc_library(
