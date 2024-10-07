@@ -192,6 +192,7 @@ class MockRayletClient : public WorkerLeaseInterface {
                       bool disconnect_worker,
                       const std::string &disconnect_worker_error_detail,
                       bool worker_exiting) override {
+    std::lock_guard<std::mutex> lock(mu_);
     if (disconnect_worker) {
       num_workers_disconnected++;
     } else {
@@ -207,6 +208,7 @@ class MockRayletClient : public WorkerLeaseInterface {
       const TaskID &task_id,
       const ray::rpc::ClientCallback<ray::rpc::GetTaskFailureCauseReply> &callback)
       override {
+    std::lock_guard<std::mutex> lock(mu_);
     ray::rpc::GetTaskFailureCauseReply reply;
     callback(Status::OK(), std::move(reply));
     num_get_task_failure_causes += 1;
@@ -215,6 +217,7 @@ class MockRayletClient : public WorkerLeaseInterface {
   void ReportWorkerBacklog(
       const WorkerID &worker_id,
       const std::vector<rpc::WorkerBacklogReport> &backlog_reports) override {
+    std::lock_guard<std::mutex> lock(mu_);
     reported_backlog_size = 0;
     reported_backlogs.clear();
     for (const auto &backlog_report : backlog_reports) {
@@ -231,6 +234,7 @@ class MockRayletClient : public WorkerLeaseInterface {
       const ray::rpc::ClientCallback<ray::rpc::RequestWorkerLeaseReply> &callback,
       const int64_t backlog_size,
       const bool is_selected_based_on_locality) override {
+    std::lock_guard<std::mutex> lock(mu_);
     num_workers_requested += 1;
     if (grant_or_reject) {
       num_grant_or_reject_leases_requested += 1;
@@ -249,6 +253,7 @@ class MockRayletClient : public WorkerLeaseInterface {
   void CancelWorkerLease(
       const TaskID &task_id,
       const rpc::ClientCallback<rpc::CancelWorkerLeaseReply> &callback) override {
+    std::lock_guard<std::mutex> lock(mu_);
     num_leases_canceled += 1;
     cancel_callbacks.push_back(callback);
   }
@@ -279,44 +284,60 @@ class MockRayletClient : public WorkerLeaseInterface {
       reply.mutable_worker_address()->set_raylet_id(retry_at_raylet_id.Binary());
       reply.mutable_worker_address()->set_worker_id(worker_id);
     }
-    if (callbacks.size() == 0) {
+    rpc::ClientCallback<rpc::RequestWorkerLeaseReply> callback = PopCallbackInLock();
+    if (!callback) {
       return false;
-    } else {
-      const auto &callback = callbacks.front();
-      callback(Status::OK(), std::move(reply));
-      callbacks.pop_front();
-      return true;
     }
+    callback(Status::OK(), std::move(reply));
+    return true;
   }
 
   bool FailWorkerLeaseDueToGrpcUnavailable() {
-    rpc::RequestWorkerLeaseReply reply;
-    if (callbacks.size() == 0) {
+    rpc::ClientCallback<rpc::RequestWorkerLeaseReply> callback = PopCallbackInLock();
+    if (!callback) {
       return false;
-    } else {
-      const auto &callback = callbacks.front();
-      callback(Status::RpcError("unavailable", grpc::StatusCode::UNAVAILABLE),
-               std::move(reply));
-      callbacks.pop_front();
-      return true;
     }
+    rpc::RequestWorkerLeaseReply reply;
+    callback(Status::RpcError("unavailable", grpc::StatusCode::UNAVAILABLE),
+             std::move(reply));
+    return true;
   }
 
   bool ReplyCancelWorkerLease(bool success = true) {
+    rpc::ClientCallback<rpc::CancelWorkerLeaseReply> callback = PopCancelCallbackInLock();
+    if (!callback) {
+      return false;
+    }
     rpc::CancelWorkerLeaseReply reply;
     reply.set_success(success);
-    if (cancel_callbacks.size() == 0) {
-      return false;
-    } else {
-      const auto &callback = cancel_callbacks.front();
-      callback(Status::OK(), std::move(reply));
-      cancel_callbacks.pop_front();
-      return true;
-    }
+    callback(Status::OK(), std::move(reply));
+    return true;
   }
 
-  ~MockRayletClient() {}
+  template <typename Callback>
+  Callback GenericPopCallbackInLock(std::list<Callback> &lst) {
+    std::lock_guard<std::mutex> lock(mu_);
+    if (lst.size() == 0) {
+      return nullptr;
+    }
+    auto callback = std::move(lst.front());
+    lst.pop_front();
+    return callback;
+  }
 
+  // Pop a callback from the list and return it. If there's no callbacks, returns nullptr.
+  rpc::ClientCallback<rpc::RequestWorkerLeaseReply> PopCallbackInLock() {
+    return GenericPopCallbackInLock(callbacks);
+  }
+
+  rpc::ClientCallback<rpc::CancelWorkerLeaseReply> PopCancelCallbackInLock() {
+    return GenericPopCallbackInLock(cancel_callbacks);
+  }
+
+  ~MockRayletClient() = default;
+
+  // Protects all internal fields.
+  std::mutex mu_;
   int num_grant_or_reject_leases_requested = 0;
   int num_is_selected_based_on_locality_leases_requested = 0;
   int num_workers_requested = 0;
