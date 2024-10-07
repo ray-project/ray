@@ -295,6 +295,7 @@ class TorchTensorCommunicatorChannel(ChannelInterface):
             self._meta_channel = metadata_type.create_channel(
                 self._writer,
                 self._reader_and_node_list,
+                False,
             )
 
         if self._meta_channel is None:
