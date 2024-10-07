@@ -8,7 +8,6 @@ from ray.rllib.algorithms.dqn.torch.torch_noisy_linear import NoisyLinear
 from ray.rllib.core.columns import Columns
 from ray.rllib.core.models.base import Encoder, ENCODER_OUT, Model
 from ray.rllib.core.models.torch.base import TorchModel
-from ray.rllib.core.models.torch.heads import auto_fold_unfold_time
 from ray.rllib.models.utils import get_activation_fn, get_initializer_fn
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
@@ -90,7 +89,6 @@ class TorchNoisyMLPHead(TorchModel):
         )
 
     @override(Model)
-    @auto_fold_unfold_time("input_specs")
     def _forward(self, inputs: torch.Tensor, **kwargs) -> torch.Tensor:
         return self.net(inputs)
 
