@@ -45,22 +45,13 @@ def dummy_torch_ppo_loss(module, batch, fwd_out):
     return loss
 
 
-def dummy_tf_ppo_loss(module, batch, fwd_out):
-    adv = batch[Columns.REWARDS] - module.compute_values(batch)
-    action_dist_class = module.get_train_action_dist_cls()
-    action_probs = action_dist_class.from_logits(
-        fwd_out[Columns.ACTION_DIST_INPUTS]
-    ).logp(batch[Columns.ACTIONS])
-    actor_loss = -tf.reduce_mean(action_probs * adv)
-    critic_loss = tf.reduce_mean(tf.square(adv))
-    return actor_loss + critic_loss
-
-
-def _get_ppo_module(framework, env, lstm, observation_space):
+def _get_ppo_module(env, lstm, observation_space):
     model_config_dict = {"use_lstm": lstm}
     config = get_expected_module_config(
         env, model_config_dict=model_config_dict, observation_space=observation_space
     )
+    module = PPOTorchRLModule(config)
+    return module
 
 
 def _get_input_batch_from_obs(obs, lstm):
@@ -118,7 +109,6 @@ class TestPPO(unittest.TestCase):
 
     def test_forward_train(self):
         # TODO: Add FrozenLake-v1 to cover LSTM case.
-        frameworks = ["torch", "tf2"]
         env_names = ["CartPole-v1", "Pendulum-v1", "ALE/Breakout-v5"]
         lstm = [False, True]
         config_combinations = [env_names, lstm]
