@@ -118,6 +118,7 @@ ray_syncer_proto_cpp_lib_dep = declare_dependency(
 # === @begin: gcs.proto ===
 gcs_proto = ['gcs.proto']
 
+# === @originial: gcs_cc_proto ===
 gcs_proto_cpp = custom_target(
     input: gcs_proto,
     kwargs: proto_cpp_default_kwargs
@@ -137,11 +138,15 @@ gcs_proto_cpp_lib = static_library(
 gcs_proto_cpp_lib_dep = declare_dependency(
     link_with: [gcs_proto_cpp_lib]
 )
+# === @end ===
 
+# === @originial: gcs_py_proto ===
 gcs_proto_py = custom_target(
     input: gcs_proto,
     kwargs: proto_py_default_kwargs
 )
+# === @end ===
+
 # === @end: gcs.proto ===
 
 
@@ -342,15 +347,11 @@ test_service_proto_py = custom_target(
 
 
 # === @begin: object_manager.proto ===
-proto_basename = 'object_manager'
-
-object_manager_proto = f'@proto_basename@.proto'
+object_manager_proto = ['object_manager.proto']
 
 object_manager_proto_cpp = custom_target(
-    f'@proto_basename@_proto_cpp',
     input: object_manager_proto,
-    command: protoc_cpp_with_default_args,
-    output: [f'@proto_basename@.pb.cc', f'@proto_basename@.pb.h']
+    kwargs: proto_cpp_default_kwargs
 )
 
 object_manager_proto_cpp_dep = declare_dependency(
@@ -359,7 +360,7 @@ object_manager_proto_cpp_dep = declare_dependency(
 )
 
 object_manager_proto_cpp_lib = static_library(
-    f'@proto_basename@_proto_cpp_lib',
+    'object_manager_proto_cpp_lib',
     dependencies: [protobuf, object_manager_proto_cpp_dep],
     install: false
 )
@@ -371,15 +372,11 @@ object_manager_proto_cpp_lib_dep = declare_dependency(
 
 
 # === @begin: core_worker.proto ===
-proto_basename = 'core_worker'
-
-core_worker_proto = f'@proto_basename@.proto'
+core_worker_proto = ['core_worker.proto']
 
 core_worker_proto_cpp = custom_target(
-    f'@proto_basename@_proto_cpp',
     input: core_worker_proto,
-    command: protoc_cpp_with_default_args,
-    output: [f'@proto_basename@.pb.cc', f'@proto_basename@.pb.h']
+    kwargs: proto_cpp_default_kwargs
 )
 
 core_worker_proto_cpp_dep = declare_dependency(
@@ -388,7 +385,7 @@ core_worker_proto_cpp_dep = declare_dependency(
 )
 
 core_worker_proto_cpp_lib = static_library(
-    f'@proto_basename@_proto_cpp_lib',
+    'core_worker_proto_cpp_lib',
     dependencies: [protobuf, core_worker_proto_cpp_dep],
     install: false
 )
@@ -398,25 +395,18 @@ core_worker_proto_cpp_lib_dep = declare_dependency(
 )
 
 core_worker_proto_py = custom_target(
-    f'@proto_basename@_proto_py',
     input: core_worker_proto,
-    command: protoc_py_with_default_args,
-    output: [f'@proto_basename@_pb2.py', f'@proto_basename@_pb2_grpc.py'],
-    build_by_default: true
+    kwargs: proto_py_default_kwargs
 )
 # === @end: core_worker.proto ===
 
 
 # === @begin: serialization.proto ===
-proto_basename = 'serialization'
-
-serialization_proto = f'@proto_basename@.proto'
+serialization_proto = ['serialization.proto']
 
 serialization_proto_cpp = custom_target(
-    f'@proto_basename@_proto_cpp',
     input: serialization_proto,
-    command: protoc_cpp_with_default_args,
-    output: [f'@proto_basename@.pb.cc', f'@proto_basename@.pb.h']
+    kwargs: proto_cpp_default_kwargs
 )
 
 serialization_proto_cpp_dep = declare_dependency(
@@ -424,7 +414,7 @@ serialization_proto_cpp_dep = declare_dependency(
 )
 
 serialization_proto_cpp_lib = static_library(
-    f'@proto_basename@_proto_cpp_lib',
+    'serialization_proto_cpp_lib',
     dependencies: [protobuf, serialization_proto_cpp_dep],
     install: false
 )
@@ -436,15 +426,11 @@ serialization_proto_cpp_lib_dep = declare_dependency(
 
 
 # === @begin: event.proto ===
-proto_basename = 'event'
-
-event_proto = f'@proto_basename@.proto'
+event_proto = ['event.proto']
 
 event_proto_cpp = custom_target(
-    f'@proto_basename@_proto_cpp',
     input: event_proto,
-    command: protoc_cpp_with_default_args,
-    output: [f'@proto_basename@.pb.cc', f'@proto_basename@.pb.h']
+    kwargs: proto_cpp_default_kwargs
 )
 
 event_proto_cpp_dep = declare_dependency(
@@ -452,7 +438,7 @@ event_proto_cpp_dep = declare_dependency(
 )
 
 event_proto_cpp_lib = static_library(
-    f'@proto_basename@_proto_cpp_lib',
+    'event_proto_cpp_lib',
     dependencies: [protobuf, event_proto_cpp_dep],
     install: false
 )
@@ -462,25 +448,18 @@ event_proto_cpp_lib_dep = declare_dependency(
 )
 
 event_proto_py = custom_target(
-    f'@proto_basename@_proto_py',
     input: event_proto,
-    command: protoc_py_with_default_args,
-    output: [f'@proto_basename@_pb2.py', f'@proto_basename@_pb2_grpc.py'],
-    build_by_default: true
+    kwargs: proto_py_default_kwargs
 )
 # === @end: event.proto ===
 
 
 # === @begin: agent_manager.proto ===
-proto_basename = 'agent_manager'
-
-agent_manager_proto = f'@proto_basename@.proto'
+agent_manager_proto = ['agent_manager.proto']
 
 agent_manager_proto_cpp = custom_target(
-    f'@proto_basename@_proto_cpp',
     input: agent_manager_proto,
-    command: protoc_cpp_with_default_args,
-    output: [f'@proto_basename@.pb.cc', f'@proto_basename@.pb.h']
+    kwargs: proto_cpp_default_kwargs
 )
 
 agent_manager_proto_cpp_dep = declare_dependency(
@@ -488,7 +467,7 @@ agent_manager_proto_cpp_dep = declare_dependency(
 )
 
 agent_manager_proto_cpp_lib = static_library(
-    f'@proto_basename@_proto_cpp_lib',
+    'agent_manager_proto_cpp_lib',
     dependencies: [protobuf, agent_manager_proto_cpp_dep],
     install: false
 )
@@ -498,25 +477,18 @@ agent_manager_proto_cpp_lib_dep = declare_dependency(
 )
 
 agent_manager_proto_py = custom_target(
-    f'@proto_basename@_proto_py',
     input: agent_manager_proto,
-    command: protoc_py_with_default_args,
-    output: [f'@proto_basename@_pb2.py', f'@proto_basename@_pb2_grpc.py'],
-    build_by_default: true
+    kwargs: proto_py_default_kwargs
 )
 # === @end: agent_manager.proto ===
 
 
 # === @begin: runtime_env_agent.proto ===
-proto_basename = 'runtime_env_agent'
-
-runtime_env_agent_proto = f'@proto_basename@.proto'
+runtime_env_agent_proto = ['runtime_env_agent.proto']
 
 runtime_env_agent_proto_cpp = custom_target(
-    f'@proto_basename@_proto_cpp',
     input: runtime_env_agent_proto,
-    command: protoc_cpp_with_default_args,
-    output: [f'@proto_basename@.pb.cc', f'@proto_basename@.pb.h']
+    kwargs: proto_cpp_default_kwargs
 )
 
 runtime_env_agent_proto_cpp_dep = declare_dependency(
@@ -525,7 +497,7 @@ runtime_env_agent_proto_cpp_dep = declare_dependency(
 )
 
 runtime_env_agent_proto_cpp_lib = static_library(
-    f'@proto_basename@_proto_cpp_lib',
+    'runtime_env_agent_proto_cpp_lib',
     dependencies: [protobuf, runtime_env_agent_proto_cpp_dep],
     install: false
 )
@@ -535,25 +507,18 @@ runtime_env_agent_proto_cpp_lib_dep = declare_dependency(
 )
 
 runtime_env_agent_proto_py = custom_target(
-    f'@proto_basename@_proto_py',
     input: runtime_env_agent_proto,
-    command: protoc_py_with_default_args,
-    output: [f'@proto_basename@_pb2.py', f'@proto_basename@_pb2_grpc.py'],
-    build_by_default: true
+    kwargs: proto_py_default_kwargs
 )
 # === @end: runtime_env_agent.proto ===
 
 
 # === @begin: usage.proto ===
-proto_basename = 'usage'
-
-usage_proto = f'@proto_basename@.proto'
+usage_proto = ['usage.proto']
 
 usage_proto_cpp = custom_target(
-    f'@proto_basename@_proto_cpp',
     input: usage_proto,
-    command: protoc_cpp_with_default_args,
-    output: [f'@proto_basename@.pb.cc', f'@proto_basename@.pb.h']
+    kwargs: proto_cpp_default_kwargs
 )
 
 usage_proto_cpp_dep = declare_dependency(
@@ -561,7 +526,7 @@ usage_proto_cpp_dep = declare_dependency(
 )
 
 usage_proto_cpp_lib = static_library(
-    f'@proto_basename@_proto_cpp_lib',
+    'usage_proto_cpp_lib_proto_cpp_lib',
     dependencies: [protobuf, usage_proto_cpp_dep],
     install: false
 )
@@ -571,71 +536,48 @@ usage_proto_cpp_lib_dep = declare_dependency(
 )
 
 usage_proto_py = custom_target(
-    f'@proto_basename@_proto_py',
     input: usage_proto,
-    command: protoc_py_with_default_args,
-    output: [f'@proto_basename@_pb2.py', f'@proto_basename@_pb2_grpc.py'],
-    build_by_default: true
+    kwargs: proto_py_default_kwargs
 )
 # === @end: usage.proto ===
 
 
 # === @begin: dependency.proto ===
-proto_basename = 'dependency'
-
-dependency_proto = f'@proto_basename@.proto'
+dependency_proto = ['dependency.proto']
 
 dependency_proto_py = custom_target(
-    f'@proto_basename@_proto_py',
     input: dependency_proto,
-    command: protoc_py_with_default_args,
-    output: [f'@proto_basename@_pb2.py', f'@proto_basename@_pb2_grpc.py'],
-    build_by_default: true
+    kwargs: proto_py_default_kwargs
 )
 # === @end: dependency.proto ===
 
 
 # === @begin: job_agent.proto ===
-proto_basename = 'job_agent'
-
-job_agent_proto = f'@proto_basename@.proto'
+job_agent_proto = ['job_agent.proto']
 
 job_agent_proto_py = custom_target(
-    f'@proto_basename@_proto_py',
     input: job_agent_proto,
-    command: protoc_py_with_default_args,
-    output: [f'@proto_basename@_pb2.py', f'@proto_basename@_pb2_grpc.py'],
-    build_by_default: true
+    kwargs: proto_py_default_kwargs
 )
 # === @end: job_agent.proto ===
 
 
 # === @begin: ray_client.proto ===
-proto_basename = 'ray_client'
-
-ray_client_proto = f'@proto_basename@.proto'
+ray_client_proto = ['ray_client.proto']
 
 ray_client_proto_py = custom_target(
-    f'@proto_basename@_proto_py',
     input: ray_client_proto,
-    command: protoc_py_with_default_args,
-    output: [f'@proto_basename@_pb2.py', f'@proto_basename@_pb2_grpc.py'],
-    build_by_default: true
+    kwargs: proto_py_default_kwargs
 )
 # === @end: ray_client.proto ===
 
 
 # === @begin: serve.proto ===
-proto_basename = 'serve'
-
-serve_proto = f'@proto_basename@.proto'
+serve_proto = ['serve.proto']
 
 serve_proto_py = custom_target(
-    f'@proto_basename@_proto_py',
     input: serve_proto,
-    command: protoc_py_with_default_args,
-    output: [f'@proto_basename@_pb2.py', f'@proto_basename@_pb2_grpc.py'],
-    build_by_default: true
+    kwargs: proto_py_default_kwargs
 )
 # === @end: serve.proto ===
 

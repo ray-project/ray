@@ -1,2 +1,5 @@
 subdir('protobuf/')
+subdir('thirdparty/')
+subdir('util/')
+subdir('stats/')
 subdir('common/')

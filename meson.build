@@ -30,6 +30,11 @@ add_project_arguments(
     '-I' + meson.project_build_root(),
     language: ['c', 'cpp']
 )
+
+add_project_arguments(
+    '-I' + meson.project_build_root() / 'src',
+    language: ['c', 'cpp']
+)
 # === End of dependencies ===
 
 
@@ -501,32 +506,7 @@ grpc_common_cpp_include_directories = include_directories(
 #],
 #)
 #
-#ray_cc_library(
-#    name = "stats_metric",
-#    srcs = [
-#    "src/ray/stats/metric.cc",
-#    "src/ray/stats/metric_defs.cc",
-#    "src/ray/stats/tag_defs.cc",
-#    ],
-#    hdrs = [
-#    "src/ray/stats/metric.h",
-#    "src/ray/stats/metric_defs.h",
-#    "src/ray/stats/tag_defs.h",
-#    ],
-#    deps = [
-#    "//src/ray/util",
-#    "@com_github_jupp0r_prometheus_cpp//pull",
-#    "@com_google_absl//absl/base:core_headers",
-#    "@com_google_absl//absl/container:flat_hash_map",
-#    "@com_google_absl//absl/memory",
-#    "@com_google_absl//absl/strings",
-#    "@com_google_googletest//:gtest",
-#    "@io_opencensus_cpp//opencensus/exporters/stats/prometheus:prometheus_exporter",
-#    "@io_opencensus_cpp//opencensus/exporters/stats/stdout:stdout_exporter",
-#    "@io_opencensus_cpp//opencensus/stats",
-#    "@io_opencensus_cpp//opencensus/tags",
-#    ],
-#)
+
 #
 #ray_cc_library(
 #    name = "stats_lib",
@@ -2074,27 +2054,8 @@ grpc_common_cpp_include_directories = include_directories(
 #"@com_google_protobuf//:protoc",
 #],
 #)
-#
-#ray_cc_library(
-#    name = "sha256",
-#    srcs = [
-#    "src/ray/thirdparty/sha256.c",
-#    ],
-#    hdrs = [
-#    "src/ray/thirdparty/sha256.h",
-#    ],
-#)
-#
-#ray_cc_library(
-#    name = "aligned_alloc",
-#    srcs = [
-#    "src/ray/thirdparty/aligned_alloc.c",
-#    ],
-#    hdrs = [
-#    "src/ray/thirdparty/aligned_alloc.h",
-#    ],
-#)
-#
+
+
 #alias(
 #    name = "hiredis",
 #    actual = "@com_github_redis_hiredis//:hiredis",

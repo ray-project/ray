@@ -1,19 +1,39 @@
+# === @begin: absl ===
+absl_base_core_headers = dependency('absl', method: 'cmake', modules: ['absl::core_headers'])
+
+absl_time = dependency('absl', method: 'cmake', modules: ['absl::time'])
+
+absl_types_optional = dependency('absl', method: 'cmake', modules: ['absl::optional'])
+
+absl_container_flat_hash_map = dependency('absl', method: 'cmake', modules: ['absl::flat_hash_map'])
+absl_container_flat_hash_set = dependency('absl', method: 'cmake', modules: ['absl::flat_hash_set'])
+
+absl_random = dependency('absl', method: 'cmake', modules: ['absl::random_random'])
+absl_synchronization = dependency('absl', method: 'cmake', modules: ['absl::synchronization'])
+
+absl_debugging_failure_signal_handler = dependency('absl', method: 'cmake', modules: ['absl::failure_signal_handler'])
+absl_debugging_stacktrace = dependency('absl', method: 'cmake', modules: ['absl::stacktrace'])
+absl_debugging_symbolize = dependency('absl', method: 'cmake', modules: ['absl::symbolize'])
+
+absl_algorithm = dependency('absl', method: 'cmake', modules: ['absl::algorithm'])
+absl_strings = dependency('absl', method: 'cmake', modules: ['absl::strings'])
+absl_memory = dependency('absl', method: 'cmake', modules: ['absl::memory'])
+
+
+# === @end: absl ===
+
 #absl = dependency('absl', method: 'cmake', modules: [
 #      #'absl::raw_logging_internal', # https://github.com/ray-project/ray/issues/8588, https://github.com/ray-project/ray/issues/17212
 #
 #      'absl::config', # @TODO+:not sure if it's really used
 #
-#      # `#include "absl/base/*"`
-#      'absl::core_headers', # https://github.com/ray-project/ray/blob/7591f91832872fc4606dd54641bb2b781de170a0/BUILD.bazel#L565
 #      #    'absl::base_internal',
 #      'absl::base', # https://github.com/ray-project/ray/blob/7591f91832872fc4606dd54641bb2b781de170a0/BUILD.bazel#L565
 #
 #      # `#include "absl/types/optional.h"`
-#      'absl::optional',
 #      #    'absl::bad_optional_access',
 #
 #      # `#include "absl/random/*"`
-#      'absl::random_random',
 #      #    'absl::random_bit_gen_ref',
 #      #    'absl::random_seed_gen_exception',
 #      #    'absl::random_seed_sequences',
@@ -42,8 +62,6 @@
 #
 #      # `#include "absl/container/*"`
 #      'absl::btree',
-#      'absl::flat_hash_map',
-#      'absl::flat_hash_set',
 #      'absl::node_hash_map',
 #      'absl::node_hash_set',
 #
@@ -51,8 +69,6 @@
 #      'absl::cleanup',
 #      #    'absl::cleanup_internal',
 #
-#      # `#include "absl/memory/*"`
-#      'absl::memory',
 #
 #      # `#include "absl/flags/*"`
 #      'absl::flags',
@@ -70,26 +86,20 @@
 #      #    'absl::flags_parse',
 #
 #      # `#include "absl/strings/*"`
-#      'absl::strings',
 #      'absl::strings_internal',
 #
 #      # `#include "absl/time/*"`
-#      'absl::time',
 #      #    'absl::civil_time',
 #      #    'absl::time_zone'
 #
 #      # `#include "absl/hash/*"`
 #      'absl::hash',
-#
-#      # `#include "absl/synchronization/*"`
-#      'absl::synchronization',
-#
 #      # `#include "absl/functional/*"`
 #
 #      #    'absl::endian',
 #      #    'absl::scoped_set_env',
 #      #    'absl::prefetch',
-#      #    'absl::algorithm',
+
 #      #    'absl::algorithm_container',
 #      #    'absl::compressed_tuple',
 #      #    'absl::fixed_array',
@@ -107,10 +117,7 @@
 #      #    'absl::container_common',
 #      #    'absl::raw_hash_set',
 #      #    'absl::layout',
-#      #    'absl::stacktrace',
-#      #    'absl::symbolize',
 #      #    'absl::examine_stack',
-#      #    'absl::failure_signal_handler',
 #      #    'absl::debugging_internal',
 #      #    'absl::demangle_internal',
 #      #    'absl::leak_check',
@@ -146,8 +153,19 @@
 # - 'absl::any', 'absl::bad_any_cast', 'absl::bad_any_cast_impl', 'absl::any_invocable',
 # - 'absl::variant', 'absl::bad_variant_access',
 
-# @TODO-:Add module-based approach like for `absl`?
-#boost = dependency('boost', method: 'cmake')
+
+# === @begin: boost ===
+# https://github.com/mesonbuild/meson/issues/5438
+# For now, modules resolution for Boost is imperfect so we have to bring the entire boost.
+# Anyway, bringing standalone parts would bring almost all others so not a big problem
+boost = dependency('boost', method: 'cmake')
+boost_asio = boost
+# === @end: boost ===
+
+
+# === @begin: spdlog ===
+spdlog = dependency('spdlog', method: 'cmake')
+# === @end: spdlog ===
 
 
 # === @begin: msgpack_cxx ===
@@ -155,7 +173,17 @@ msgpack_cxx = dependency('msgpack-cxx', method: 'cmake')
 # === @end: msgpack_cxx ===
 
 
+# === @begin: flatbuffers ===
+flatbuffers = dependency('flatbuffers', method: 'cmake')
+# === @end: flatbuffers ===
+
+
 # @TODO+: reimplment asap
+opencensus_cpp_prometheus_exporter = dependency('OpenCensus', method: 'cmake', modules: ['opencensus-cpp::exporters_stats_prometheus'])
+opencensus_cpp_stdout_exporter = dependency('OpenCensus', method: 'cmake', modules: ['opencensus-cpp::exporters_stats_stdout'])
+opencensus_cpp_stats = dependency('OpenCensus', method: 'cmake', modules: ['opencensus-cpp::stats'])
+opencensus_cpp_tags = dependency('OpenCensus', method: 'cmake', modules: ['opencensus-cpp::tags'])
+
 #opencensus = dependency('OpenCensus', method: 'cmake', modules: [
 #                            'opencensus-cpp::common_hostname',
 #                            'opencensus-cpp::common_random',
@@ -163,15 +191,11 @@ msgpack_cxx = dependency('msgpack-cxx', method: 'cmake')
 #                            'opencensus-cpp::common_string_vector_hash',
 #                            'opencensus-cpp::common_varint',
 #                            'opencensus-cpp::context',
-#                            'opencensus-cpp::exporters_stats_prometheus',
 #                            'opencensus-cpp::exporters_stats_prometheus_utils',
-#                            'opencensus-cpp::exporters_stats_stdout',
 #                            'opencensus-cpp::exporters_trace_stdout',
-#                            'opencensus-cpp::stats',
 #                            'opencensus-cpp::stats_test_utils',
 #                            'opencensus-cpp::stats_core',
 #                            'opencensus-cpp::stats_recording',
-#                            'opencensus-cpp::tags',
 #                            'opencensus-cpp::tags_context_util',
 #                            'opencensus-cpp::tags_grpc_tags_bin',
 #                            'opencensus-cpp::tags_with_tag_map',
@@ -191,7 +215,22 @@ protobuf = dependency('protobuf', modules: ['protobuf::libprotobuf'], method: 'c
 # === @end: protobuf ===
 
 
+# === @begin: prometheus_cpp ===
+prometheus_cpp_pull = dependency('prometheus-cpp', method: 'cmake', modules: ['prometheus-cpp::pull'])
+# === @end: prometheus_cpp ===
+
+
 # === @begin: grpc ===
 # Depend on `protobuf`, so the same caveat applies
 grpc = dependency('gRPC', method: 'cmake')
 # === @end: grpc ===
+
+
+# === @begin: nlohmann_json ===
+nlohmann_json = dependency('nlohmann_json', method: 'cmake')
+# === @end: nlohmann_json ===
+
+
+# === @begin: threads ===
+threads = dependency('threads')
+# === @begin: threads ===

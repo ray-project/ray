@@ -1,56 +1,146 @@
-# === @begin: constants.h ===
-constants_cpp_lib = static_library(
-    'constants_cpp_lib',
-    ['constants.h'],
-    install: false
+# === @begin: constants (originial: constants) ===
+constants_cpp_lib_dep = declare_dependency(
+    include_directories: ['.']
 )
-# === @end: constants.h ===
+# === @end: constants (original: constants) ===
 
 
-#ray_cc_library(
-#    name = "test_util",
-#    srcs = ["test_util.cc"],
-#    hdrs = ["test_util.h"],
-#    deps = [
-#    ":id",
-#    ":network",
-#    ":ray_object",
-#    "//src/ray/protobuf:common_cc_proto",
-#    "//src/ray/util",
-#    "@boost//:optional",
-#    "@com_google_googletest//:gtest",
-#    ],
-#)
-#
-#ray_cc_library(
-#    name = "ray_object",
-#    srcs = ["ray_object.cc"],
-#    hdrs = [
-#    "buffer.h",
-#    "ray_object.h",
-#    ],
-#    deps = [
-#    ":id",
-#    ":status",
-#    "//:aligned_alloc",
-#    "//src/ray/protobuf:gcs_cc_proto",
-#    "//src/ray/util",
-#    "@com_google_absl//absl/time",
-#    "@com_google_absl//absl/types:optional",
-#    ],
-#)
-#
-#ray_cc_library(
-#    name = "grpc_util",
-#    hdrs = ["grpc_util.h"],
-#    deps = [
-#    ":ray_config",
-#    ":status",
-#    "@com_github_grpc_grpc//:grpc++",
-#    "@com_google_absl//absl/container:flat_hash_map",
-#    ],
-#)
-#
+# === @begin: status (original: status) ===
+status_cpp_lib = static_library(
+    'status_cpp_lib',
+    ['status.cc'],
+    install: false,
+    dependencies: [
+        util_cpp_lib_dep
+    ]
+)
+
+status_cpp_lib_dep = declare_dependency(
+    link_with: [status_cpp_lib]
+)
+# === @end: status (original: status) ===
+
+
+# === @begin: id (original: id) ===
+id_cpp_lib = static_library(
+    'id_cpp_lib',
+    [
+        'id.cc',
+        'common_protocol.cc'
+    ],
+    install: false,
+    dependencies: [
+        # Project-managed
+        constants_cpp_lib_dep,
+        status_cpp_lib_dep,
+        common_proto_cpp_lib_dep,
+        gcs_proto_cpp_lib_dep,
+        util_cpp_lib_dep,
+
+        # Eugo-managed
+        flatbuffers,
+        msgpack_cxx
+    ]
+)
+
+id_cpp_lib_dep = declare_dependency(
+    link_with: [id_cpp_lib]
+)
+# === @end: id (original: id) ===
+
+
+# === @begin: ray_object (original: c) ===
+ray_object_cpp_lib = static_library(
+    'ray_object_cpp_lib',
+    ['ray_object.cc'],
+    install: false,
+    dependencies: [
+        # Package-managed
+        id_cpp_lib_dep,
+        status_cpp_lib_dep,
+        aligned_alloc_cpp_lib_dep,
+        gcs_proto_cpp_lib_dep,
+        util_cpp_lib_dep,
+
+        # Eugo-managed
+        absl_time,
+        absl_types_optional
+    ]
+)
+
+ray_object_cpp_lib_dep = declare_dependency(
+    link_with: [ray_object_cpp_lib]
+)
+# === @end: ray_object (original: c) ===
+
+
+# === @begin: ray_config (original: ray_config) ===
+ray_config_cpp_lib = static_library(
+    'ray_config_cpp_lib',
+    ['ray_config.cc'],
+    install: false,
+    dependencies: [
+        # Package-managed
+        util_cpp_lib_dep,
+
+        # Eugo-managed
+        absl_algorithm,
+        absl_strings,
+        nlohmann_json
+    ]
+)
+
+ray_config_cpp_lib_dep = declare_dependency(
+    link_with: [ray_config_cpp_lib]
+)
+# === @end: ray_config (original: ray_config) ===
+
+
+# === @begin: grpc_util (originial: grpc_util) ===
+grpc_util_cpp_lib_dep = declare_dependency(
+    include_directories: ['.'],
+    dependencies: [
+        # Package-managed
+        ray_config_cpp_lib_dep,
+        status_cpp_lib_dep,
+
+        # Eugo-managed
+        grpc,
+        absl_container_flat_hash_map
+    ]
+)
+# === @end: grpc_util (originial: grpc_util) ===
+
+
+
+# === @begin: event_stats (original: event_stats) ===
+event_stats_cpp_lib = static_library(
+    'event_stats_cpp_lib',
+    ['event_stats.cc'],
+    install: false,
+    dependencies: [
+        # Package-managed
+        ray_config_cpp_lib_dep,
+        stats_metric_cpp_lib_dep,
+        util_cpp_lib_dep,
+
+        # Eugo-managed
+        absl_container_flat_hash_map,
+        absl_synchronization
+    ]
+)
+
+event_stats_cpp_lib_dep = declare_dependency(
+    link_with: [event_stats_cpp_lib]
+)
+# === @end: event_stats (original: event_stats) ===
+
+
+# === @begin: asio/ ===
+subdir('asio')
+# === @end: asio/ ===
+
+
 #ray_cc_library(
 #    name = "memory_monitor",
 #    srcs = [
@@ -119,27 +209,7 @@ constants_cpp_lib = static_library(
 #    ],
 #)
 #
-#ray_cc_library(
-#    name = "id",
-#    srcs = [
-#    "common_protocol.cc",
-#    "id.cc",
-#    ],
-#    hdrs = [
-#    "common_protocol.h",
-#    "id.h",
-#    "id_def.h",
-#    ],
-#    deps = [
-#    ":constants",
-#    ":status",
-#    "//src/ray/protobuf:common_cc_proto",
-#    "//src/ray/protobuf:gcs_cc_proto",
-#    "//src/ray/util",
-#    "@com_github_google_flatbuffers//:flatbuffers",
-#    "@msgpack",
-#    ],
-#)
+
 #
 #ray_cc_library(
 #    name = "task_common",
@@ -187,63 +257,8 @@ constants_cpp_lib = static_library(
 #    ],
 #)
 #
-#ray_cc_library(
-#    name = "asio",
-#    srcs = [
-#    "asio/asio_chaos.cc",
-#    "asio/instrumented_io_context.cc",
-#    "asio/io_service_pool.cc",
-#    "asio/periodical_runner.cc",
-#    ],
-#    hdrs = [
-#    "asio/asio_chaos.h",
-#    "asio/asio_util.h",
-#    "asio/instrumented_io_context.h",
-#    "asio/io_service_pool.h",
-#    "asio/periodical_runner.h",
-#    ],
-#    deps = [
-#    ":event_stats",
-#    ":ray_config",
-#    "//src/ray/util",
-#    "@boost//:asio",
-#    "@com_google_absl//absl/container:flat_hash_map",
-#    "@com_google_absl//absl/synchronization",
-#    ],
-#)
-#
-#ray_cc_library(
-#    name = "event_stats",
-#    srcs = [
-#    "event_stats.cc",
-#    ],
-#    hdrs = [
-#    "event_stats.h",
-#    ],
-#    deps = [
-#    ":ray_config",
-#    "//:stats_metric",
-#    "//src/ray/util",
-#    "@com_google_absl//absl/container:flat_hash_map",
-#    "@com_google_absl//absl/synchronization",
-#    ],
-#)
-#
-#ray_cc_library(
-#    name = "ray_config",
-#    srcs = ["ray_config.cc"],
-#    hdrs = [
-#    "ray_config.h",
-#    "ray_config_def.h",
-#    "ray_internal_flag_def.h",
-#    ],
-#    deps = [
-#    "//src/ray/util",
-#    "@com_google_absl//absl/algorithm",
-#    "@com_google_absl//absl/strings",
-#    "@nlohmann_json",
-#    ],
-#)
+
+
 #
 #ray_cc_library(
 #    name = "ray_syncer",
@@ -263,16 +278,19 @@ constants_cpp_lib = static_library(
 #    "@com_google_absl//absl/container:flat_hash_map",
 #    ],
 #)
-#
+
+
 #ray_cc_library(
-#    name = "status",
-#    srcs = [
-#    "status.cc",
-#    ],
-#    hdrs = [
-#    "status.h",
-#    ],
+#    name = "test_util",
+#    srcs = ["test_util.cc"],
+#    hdrs = ["test_util.h"],
 #    deps = [
+#    ":id",
+#    ":network",
+#    ":ray_object",
+#    "//src/ray/protobuf:common_cc_proto",
 #    "//src/ray/util",
+#    "@boost//:optional",
+#    "@com_google_googletest//:gtest",
 #    ],
 #)
