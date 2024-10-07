@@ -174,12 +174,8 @@ class DQNRainbowCatalog(Catalog):
             # Check, if the observation space is 1D Box. Only then we can use an MLP.
             if isinstance(observation_space, Box) and len(observation_space.shape) == 1:
                 # Define the encoder hiddens.
-                if model_config_dict["encoder_latent_dim"]:
-                    af_and_vf_encoder_hiddens = model_config_dict["fcnet_hiddens"]
-                    latent_dims = (model_config_dict["encoder_latent_dim"],)
-                else:
-                    af_and_vf_encoder_hiddens = model_config_dict["fcnet_hiddens"][:-1]
-                    latent_dims = (model_config_dict["fcnet_hiddens"][-1],)
+                af_and_vf_encoder_hiddens = model_config_dict["fcnet_hiddens"][:-1]
+                latent_dims = (model_config_dict["fcnet_hiddens"][-1],)
 
                 # Instead of a regular MLP use a NoisyMLP.
                 return NoisyMLPEncoderConfig(

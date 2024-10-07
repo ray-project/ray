@@ -259,8 +259,6 @@ class Catalog:
         """
         activation = model_config_dict["fcnet_activation"]
         output_activation = model_config_dict["fcnet_activation"]
-        fcnet_hiddens = model_config_dict["fcnet_hiddens"]
-        encoder_latent_dim = fcnet_hiddens[-1]
         use_lstm = model_config_dict["use_lstm"]
 
         if use_lstm:

@@ -128,8 +128,7 @@ class TestCatalog(unittest.TestCase):
             },
             # This should produce an MLPEncoder with one hidden layer
             {
-                "fcnet_hiddens": [512],
-                "encoder_latent_dim": 512,
+                "fcnet_hiddens": [512, 512],
                 "fcnet_activation": "relu",
             },
             # This should produce an LSTMEncoder with one hidden layer
