@@ -153,7 +153,7 @@ class SharedMemoryType(ChannelOutputType):
                 return NestedTorchTensorCommunicatorChannel(
                     writer,
                     reader_and_node_list,
-                    communicator_data_channel=self._contains_type,
+                    communicator_data_typ=self._contains_type,
                     cpu_data_typ=cpu_data_typ,
                 )
 
