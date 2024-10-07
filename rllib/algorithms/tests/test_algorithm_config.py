@@ -6,7 +6,7 @@ import ray
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.algorithms.callbacks import make_multi_callbacks
 from ray.rllib.algorithms.ppo import PPO, PPOConfig
-from ray.rllib.algorithms.ppo.tf.ppo_tf_learner import PPOTfLearner
+from ray.rllib.algorithms.ppo.torch.ppo_torch_learner import PPOTorchLearner
 from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import PPOTorchRLModule
 from ray.rllib.core.rl_module.rl_module import RLModuleSpec, RLModule
 from ray.rllib.core.rl_module.multi_rl_module import (
@@ -240,10 +240,9 @@ class TestAlgorithmConfig(unittest.TestCase):
             )
             .environment("CartPole-v1")
             .env_runners(enable_connectors=True)
-            .framework("tf2")
         )
 
-        self.assertEqual(config.learner_class, PPOTfLearner)
+        self.assertEqual(config.learner_class, PPOTorchLearner)
 
     def _assertEqualMARLSpecs(self, spec1, spec2):
         self.assertEqual(spec1.multi_rl_module_class, spec2.multi_rl_module_class)

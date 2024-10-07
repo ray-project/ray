@@ -8,7 +8,6 @@ import unittest
 import ray
 from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.algorithms.ppo.ppo_catalog import PPOCatalog
-from ray.rllib.algorithms.ppo.tf.ppo_tf_rl_module import PPOTfRLModule
 from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import PPOTorchRLModule
 from ray.rllib.core import DEFAULT_MODULE_ID
 from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
@@ -22,7 +21,6 @@ from ray.rllib.utils.test_utils import check
 from ray.rllib.utils.numpy import convert_to_numpy
 
 
-PPO_MODULES = {"tf2": PPOTfRLModule, "torch": PPOTorchRLModule}
 NUM_AGENTS = 2
 
 
@@ -69,10 +67,9 @@ class TestAlgorithmRLModuleRestore(unittest.TestCase):
         env = MultiAgentCartPole({"num_agents": NUM_AGENTS})
         # create a multi_rl_module to load and save it to a checkpoint directory
         module_specs = {}
-        module_class = PPO_MODULES["torch"]
         for i in range(NUM_AGENTS):
             module_specs[f"policy_{i}"] = RLModuleSpec(
-                module_class=module_class,
+                module_class=PPOTorchRLModule,
                 observation_space=env.get_observation_space(0),
                 action_space=env.get_action_space(0),
                 # If we want to use this externally created module in the algorithm,
@@ -111,10 +108,9 @@ class TestAlgorithmRLModuleRestore(unittest.TestCase):
         env = MultiAgentCartPole({"num_agents": NUM_AGENTS})
         # create a multi_rl_module to load and save it to a checkpoint directory
         module_specs = {}
-        module_class = PPO_MODULES["torch"]
         for i in range(NUM_AGENTS):
             module_specs[f"policy_{i}"] = RLModuleSpec(
-                module_class=module_class,
+                module_class=PPOTorchRLModule,
                 observation_space=env.get_observation_space(0),
                 action_space=env.get_action_space(0),
                 # If we want to use this externally created module in the algorithm,
@@ -129,7 +125,7 @@ class TestAlgorithmRLModuleRestore(unittest.TestCase):
 
         # create a RLModule to load and override the "policy_1" module with
         module_to_swap_in = RLModuleSpec(
-            module_class=module_class,
+            module_class=PPOTorchRLModule,
             observation_space=env.get_observation_space(0),
             action_space=env.get_action_space(0),
             # Note, we need to pass in the default model config for the algorithm
@@ -144,7 +140,7 @@ class TestAlgorithmRLModuleRestore(unittest.TestCase):
         # create a new MARL_spec with the checkpoint from the marl_checkpoint
         # and the module_to_swap_in_checkpoint
         module_specs["policy_1"] = RLModuleSpec(
-            module_class=module_class,
+            module_class=PPOTorchRLModule,
             observation_space=env.get_observation_space(0),
             action_space=env.get_action_space(0),
             model_config=DefaultModelConfig(fcnet_hiddens=[64]),
@@ -199,9 +195,8 @@ class TestAlgorithmRLModuleRestore(unittest.TestCase):
         )
         env = gym.make("CartPole-v1")
         # create a multi_rl_module to load and save it to a checkpoint directory
-        module_class = PPO_MODULES["torch"]
         module_spec = RLModuleSpec(
-            module_class=module_class,
+            module_class=PPOTorchRLModule,
             observation_space=env.observation_space,
             action_space=env.action_space,
             # If we want to use this externally created module in the algorithm,
@@ -215,7 +210,7 @@ class TestAlgorithmRLModuleRestore(unittest.TestCase):
         module.save_to_path(module_ckpt_path)
 
         module_to_load_spec = RLModuleSpec(
-            module_class=module_class,
+            module_class=PPOTorchRLModule,
             observation_space=env.observation_space,
             action_space=env.action_space,
             model_config=DefaultModelConfig(fcnet_hiddens=[32]),
@@ -253,10 +248,9 @@ class TestAlgorithmRLModuleRestore(unittest.TestCase):
         env = MultiAgentCartPole({"num_agents": num_agents})
         # create a multi_rl_module to load and save it to a checkpoint directory
         module_specs = {}
-        module_class = PPO_MODULES["torch"]
         for i in range(num_agents):
             module_specs[f"policy_{i}"] = RLModuleSpec(
-                module_class=module_class,
+                module_class=PPOTorchRLModule,
                 observation_space=env.get_observation_space(0),
                 action_space=env.get_action_space(0),
                 # Note, we need to pass in the default model config for the
@@ -271,7 +265,7 @@ class TestAlgorithmRLModuleRestore(unittest.TestCase):
 
         # create a RLModule to load and override the "policy_1" module with
         module_to_swap_in = RLModuleSpec(
-            module_class=module_class,
+            module_class=PPOTorchRLModule,
             observation_space=env.get_observation_space(0),
             action_space=env.get_action_space(0),
             # Note, we need to pass in the default model config for the algorithm
@@ -286,7 +280,7 @@ class TestAlgorithmRLModuleRestore(unittest.TestCase):
         # create a new MARL_spec with the checkpoint from the marl_checkpoint
         # and the module_to_swap_in_checkpoint
         module_specs["policy_1"] = RLModuleSpec(
-            module_class=module_class,
+            module_class=PPOTorchRLModule,
             observation_space=env.get_observation_space(0),
             action_space=env.get_action_space(0),
             model_config=DefaultModelConfig(fcnet_hiddens=[64]),
