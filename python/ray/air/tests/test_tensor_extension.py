@@ -8,19 +8,15 @@ from packaging.version import parse as parse_version
 
 from ray._private.utils import _get_pyarrow_version
 from ray.air.util.tensor_extensions.arrow import (
-    ArrowConversionError,
     ArrowTensorArray,
     ArrowTensorType,
-    ArrowTensorTypeV2,
     ArrowVariableShapedTensorArray,
     ArrowVariableShapedTensorType,
 )
 from ray.air.util.tensor_extensions.pandas import TensorArray, TensorDtype
 from ray.air.util.tensor_extensions.utils import create_ragged_ndarray
-from ray.data import DataContext
 
 
-@pytest.mark.parametrize("tensor_format", ["v1", "v2"])
 @pytest.mark.parametrize(
     "values",
     [
@@ -28,9 +24,7 @@ from ray.data import DataContext
         [np.zeros((3,))],
     ],
 )
-def test_create_ragged_ndarray(values, restore_data_context, tensor_format):
-    DataContext.get_current().use_arrow_tensor_v2 = tensor_format == "v2"
-
+def test_create_ragged_ndarray(values):
     ragged_array = create_ragged_ndarray(values)
     assert len(ragged_array) == len(values)
     for actual_array, expected_array in zip(ragged_array, values):
@@ -50,10 +44,7 @@ def test_tensor_array_validation():
         TensorArray([object(), object()])
 
 
-@pytest.mark.parametrize("tensor_format", ["v1", "v2"])
-def test_arrow_scalar_tensor_array_roundtrip(restore_data_context, tensor_format):
-    DataContext.get_current().use_arrow_tensor_v2 = tensor_format == "v2"
-
+def test_arrow_scalar_tensor_array_roundtrip():
     arr = np.arange(10)
     ata = ArrowTensorArray.from_numpy(arr)
     assert isinstance(ata.type, pa.DataType)
@@ -62,12 +53,7 @@ def test_arrow_scalar_tensor_array_roundtrip(restore_data_context, tensor_format
     np.testing.assert_array_equal(out, arr)
 
 
-@pytest.mark.parametrize("tensor_format", ["v1", "v2"])
-def test_arrow_scalar_tensor_array_roundtrip_boolean(
-    restore_data_context, tensor_format
-):
-    DataContext.get_current().use_arrow_tensor_v2 = tensor_format == "v2"
-
+def test_arrow_scalar_tensor_array_roundtrip_boolean():
     arr = np.array([True, False, False, True])
     ata = ArrowTensorArray.from_numpy(arr)
     assert isinstance(ata.type, pa.DataType)
@@ -78,10 +64,7 @@ def test_arrow_scalar_tensor_array_roundtrip_boolean(
     np.testing.assert_array_equal(out, arr)
 
 
-@pytest.mark.parametrize("tensor_format", ["v1", "v2"])
-def test_scalar_tensor_array_roundtrip(restore_data_context, tensor_format):
-    DataContext.get_current().use_arrow_tensor_v2 = tensor_format == "v2"
-
+def test_scalar_tensor_array_roundtrip():
     arr = np.arange(10)
     ta = TensorArray(arr)
     assert isinstance(ta.dtype, TensorDtype)
@@ -97,12 +80,7 @@ def test_scalar_tensor_array_roundtrip(restore_data_context, tensor_format):
     np.testing.assert_array_equal(out, arr)
 
 
-@pytest.mark.parametrize("tensor_format", ["v1", "v2"])
-def test_arrow_variable_shaped_tensor_array_validation(
-    restore_data_context, tensor_format
-):
-    DataContext.get_current().use_arrow_tensor_v2 = tensor_format == "v2"
-
+def test_arrow_variable_shaped_tensor_array_validation():
     # Test tensor elements with differing dimensions raises ValueError.
     with pytest.raises(ValueError):
         ArrowVariableShapedTensorArray.from_numpy([np.ones((2, 2)), np.ones((3, 3, 3))])
@@ -147,12 +125,7 @@ def test_arrow_variable_shaped_tensor_array_validation(
         )
 
 
-@pytest.mark.parametrize("tensor_format", ["v1", "v2"])
-def test_arrow_variable_shaped_tensor_array_roundtrip(
-    restore_data_context, tensor_format
-):
-    DataContext.get_current().use_arrow_tensor_v2 = tensor_format == "v2"
-
+def test_arrow_variable_shaped_tensor_array_roundtrip():
     shapes = [(2, 2), (3, 3), (4, 4)]
     cumsum_sizes = np.cumsum([0] + [np.prod(shape) for shape in shapes[:-1]])
     arrs = [
@@ -168,12 +141,7 @@ def test_arrow_variable_shaped_tensor_array_roundtrip(
         np.testing.assert_array_equal(o, a)
 
 
-@pytest.mark.parametrize("tensor_format", ["v1", "v2"])
-def test_arrow_variable_shaped_tensor_array_roundtrip_boolean(
-    restore_data_context, tensor_format
-):
-    DataContext.get_current().use_arrow_tensor_v2 = tensor_format == "v2"
-
+def test_arrow_variable_shaped_tensor_array_roundtrip_boolean():
     arr = np.array(
         [[True, False], [False, False, True], [False], [True, True, False, True]],
         dtype=object,
@@ -186,12 +154,7 @@ def test_arrow_variable_shaped_tensor_array_roundtrip_boolean(
         np.testing.assert_array_equal(o, a)
 
 
-@pytest.mark.parametrize("tensor_format", ["v1", "v2"])
-def test_arrow_variable_shaped_tensor_array_roundtrip_contiguous_optimization(
-    restore_data_context, tensor_format
-):
-    DataContext.get_current().use_arrow_tensor_v2 = tensor_format == "v2"
-
+def test_arrow_variable_shaped_tensor_array_roundtrip_contiguous_optimization():
     # Test that a roundtrip on slices of an already-contiguous 1D base array does not
     # create any unnecessary copies.
     base = np.arange(6)
@@ -207,10 +170,7 @@ def test_arrow_variable_shaped_tensor_array_roundtrip_contiguous_optimization(
         np.testing.assert_array_equal(o, a)
 
 
-@pytest.mark.parametrize("tensor_format", ["v1", "v2"])
-def test_arrow_variable_shaped_tensor_array_slice(restore_data_context, tensor_format):
-    DataContext.get_current().use_arrow_tensor_v2 = tensor_format == "v2"
-
+def test_arrow_variable_shaped_tensor_array_slice():
     shapes = [(2, 2), (3, 3), (4, 4)]
     cumsum_sizes = np.cumsum([0] + [np.prod(shape) for shape in shapes[:-1]])
     arrs = [
@@ -244,12 +204,7 @@ def test_arrow_variable_shaped_tensor_array_slice(restore_data_context, tensor_f
             np.testing.assert_array_equal(o, e)
 
 
-@pytest.mark.parametrize("tensor_format", ["v1", "v2"])
-def test_arrow_variable_shaped_bool_tensor_array_slice(
-    restore_data_context, tensor_format
-):
-    DataContext.get_current().use_arrow_tensor_v2 = tensor_format == "v2"
-
+def test_arrow_variable_shaped_bool_tensor_array_slice():
     arr = np.array(
         [
             [True],
@@ -285,12 +240,7 @@ def test_arrow_variable_shaped_bool_tensor_array_slice(
             np.testing.assert_array_equal(o, e)
 
 
-@pytest.mark.parametrize("tensor_format", ["v1", "v2"])
-def test_arrow_variable_shaped_string_tensor_array_slice(
-    restore_data_context, tensor_format
-):
-    DataContext.get_current().use_arrow_tensor_v2 = tensor_format == "v2"
-
+def test_arrow_variable_shaped_string_tensor_array_slice():
     arr = np.array(
         [
             ["Philip", "J", "Fry"],
@@ -330,10 +280,7 @@ def test_arrow_variable_shaped_string_tensor_array_slice(
             np.testing.assert_array_equal(o, e)
 
 
-@pytest.mark.parametrize("tensor_format", ["v1", "v2"])
-def test_variable_shaped_tensor_array_roundtrip(restore_data_context, tensor_format):
-    DataContext.get_current().use_arrow_tensor_v2 = tensor_format == "v2"
-
+def test_variable_shaped_tensor_array_roundtrip():
     shapes = [(2, 2), (3, 3), (4, 4)]
     cumsum_sizes = np.cumsum([0] + [np.prod(shape) for shape in shapes[:-1]])
     arrs = [
@@ -357,10 +304,7 @@ def test_variable_shaped_tensor_array_roundtrip(restore_data_context, tensor_for
         np.testing.assert_array_equal(o, a)
 
 
-@pytest.mark.parametrize("tensor_format", ["v1", "v2"])
-def test_variable_shaped_tensor_array_slice(restore_data_context, tensor_format):
-    DataContext.get_current().use_arrow_tensor_v2 = tensor_format == "v2"
-
+def test_variable_shaped_tensor_array_slice():
     shapes = [(2, 2), (3, 3), (4, 4)]
     cumsum_sizes = np.cumsum([0] + [np.prod(shape) for shape in shapes[:-1]])
     arrs = [
@@ -387,10 +331,7 @@ def test_variable_shaped_tensor_array_slice(restore_data_context, tensor_format)
             np.testing.assert_array_equal(o, e)
 
 
-@pytest.mark.parametrize("tensor_format", ["v1", "v2"])
-def test_tensor_array_ops(restore_data_context, tensor_format):
-    DataContext.get_current().use_arrow_tensor_v2 = tensor_format == "v2"
-
+def test_tensor_array_ops():
     outer_dim = 3
     inner_shape = (2, 2, 2)
     shape = (outer_dim,) + inner_shape
@@ -416,10 +357,7 @@ def test_tensor_array_ops(restore_data_context, tensor_format):
     np.testing.assert_equal(apply_logical_ops(arr), apply_logical_ops(df["two"]))
 
 
-@pytest.mark.parametrize("tensor_format", ["v1", "v2"])
-def test_tensor_array_array_protocol(restore_data_context, tensor_format):
-    DataContext.get_current().use_arrow_tensor_v2 = tensor_format == "v2"
-
+def test_tensor_array_array_protocol():
     outer_dim = 3
     inner_shape = (2, 2, 2)
     shape = (outer_dim,) + inner_shape
@@ -439,10 +377,7 @@ def test_tensor_array_array_protocol(restore_data_context, tensor_format):
     )
 
 
-@pytest.mark.parametrize("tensor_format", ["v1", "v2"])
-def test_tensor_array_dataframe_repr(restore_data_context, tensor_format):
-    DataContext.get_current().use_arrow_tensor_v2 = tensor_format == "v2"
-
+def test_tensor_array_dataframe_repr():
     outer_dim = 3
     inner_shape = (2, 2)
     shape = (outer_dim,) + inner_shape
@@ -459,10 +394,7 @@ def test_tensor_array_dataframe_repr(restore_data_context, tensor_format):
     assert repr(df) == expected_repr
 
 
-@pytest.mark.parametrize("tensor_format", ["v1", "v2"])
-def test_tensor_array_scalar_cast(restore_data_context, tensor_format):
-    DataContext.get_current().use_arrow_tensor_v2 = tensor_format == "v2"
-
+def test_tensor_array_scalar_cast():
     outer_dim = 3
     inner_shape = (1,)
     shape = (outer_dim,) + inner_shape
@@ -479,10 +411,7 @@ def test_tensor_array_scalar_cast(restore_data_context, tensor_format):
     assert float(t_arr) == float(arr)
 
 
-@pytest.mark.parametrize("tensor_format", ["v1", "v2"])
-def test_tensor_array_reductions(restore_data_context, tensor_format):
-    DataContext.get_current().use_arrow_tensor_v2 = tensor_format == "v2"
-
+def test_tensor_array_reductions():
     outer_dim = 3
     inner_shape = (2, 2, 2)
     shape = (outer_dim,) + inner_shape
@@ -502,11 +431,8 @@ def test_tensor_array_reductions(restore_data_context, tensor_format):
         np.testing.assert_equal(df["two"].agg(name), reducer(arr, axis=0, **np_kwargs))
 
 
-@pytest.mark.parametrize("tensor_format", ["v1", "v2"])
 @pytest.mark.parametrize("chunked", [False, True])
-def test_arrow_tensor_array_getitem(chunked, restore_data_context, tensor_format):
-    DataContext.get_current().use_arrow_tensor_v2 = tensor_format == "v2"
-
+def test_arrow_tensor_array_getitem(chunked):
     outer_dim = 3
     inner_shape = (2, 2, 2)
     shape = (outer_dim,) + inner_shape
@@ -569,13 +495,8 @@ def test_arrow_tensor_array_getitem(chunked, restore_data_context, tensor_format
             np.testing.assert_array_equal(t_arr2[idx - 1], arr[idx])
 
 
-@pytest.mark.parametrize("tensor_format", ["v1", "v2"])
 @pytest.mark.parametrize("chunked", [False, True])
-def test_arrow_variable_shaped_tensor_array_getitem(
-    chunked, restore_data_context, tensor_format
-):
-    DataContext.get_current().use_arrow_tensor_v2 = tensor_format == "v2"
-
+def test_arrow_variable_shaped_tensor_array_getitem(chunked):
     shapes = [(2, 2), (3, 3), (4, 4)]
     outer_dim = len(shapes)
     cumsum_sizes = np.cumsum([0] + [np.prod(shape) for shape in shapes[:-1]])
@@ -643,7 +564,6 @@ def test_arrow_variable_shaped_tensor_array_getitem(
             np.testing.assert_array_equal(t_arr2[idx - 1], arr[idx])
 
 
-@pytest.mark.parametrize("tensor_format", ["v1", "v2"])
 @pytest.mark.parametrize(
     "test_arr,dtype",
     [
@@ -657,9 +577,7 @@ def test_arrow_variable_shaped_tensor_array_getitem(
         ([[False, True], [True, False], [True, True], [False, False]], None),
     ],
 )
-def test_arrow_tensor_array_slice(test_arr, dtype, restore_data_context, tensor_format):
-    DataContext.get_current().use_arrow_tensor_v2 = tensor_format == "v2"
-
+def test_arrow_tensor_array_slice(test_arr, dtype):
     # Test that ArrowTensorArray slicing works as expected.
     arr = np.array(test_arr, dtype=dtype)
     ata = ArrowTensorArray.from_numpy(arr)
@@ -687,11 +605,8 @@ pytest_tensor_array_concat_arr_combinations = list(
 )
 
 
-@pytest.mark.parametrize("tensor_format", ["v1", "v2"])
 @pytest.mark.parametrize("a1,a2", pytest_tensor_array_concat_arr_combinations)
-def test_tensor_array_concat(a1, a2, restore_data_context, tensor_format):
-    DataContext.get_current().use_arrow_tensor_v2 = tensor_format == "v2"
-
+def test_tensor_array_concat(a1, a2):
     ta1 = TensorArray(a1)
     ta2 = TensorArray(a2)
     ta = TensorArray._concat_same_type([ta1, ta2])
@@ -708,24 +623,14 @@ def test_tensor_array_concat(a1, a2, restore_data_context, tensor_format):
             np.testing.assert_array_equal(arr, expected)
 
 
-@pytest.mark.parametrize("tensor_format", ["v1", "v2"])
 @pytest.mark.parametrize("a1,a2", pytest_tensor_array_concat_arr_combinations)
-def test_arrow_tensor_array_concat(a1, a2, restore_data_context, tensor_format):
-    DataContext.get_current().use_arrow_tensor_v2 = tensor_format == "v2"
-
+def test_arrow_tensor_array_concat(a1, a2):
     ta1 = ArrowTensorArray.from_numpy(a1)
     ta2 = ArrowTensorArray.from_numpy(a2)
     ta = ArrowTensorArray._concat_same_type([ta1, ta2])
     assert len(ta) == a1.shape[0] + a2.shape[0]
     if a1.shape[1:] == a2.shape[1:]:
-        if tensor_format == "v1":
-            tensor_type_class = ArrowTensorType
-        elif tensor_format == "v2":
-            tensor_type_class = ArrowTensorTypeV2
-        else:
-            raise ValueError(f"unexpected format: {tensor_format}")
-
-        assert isinstance(ta.type, tensor_type_class)
+        assert isinstance(ta.type, ArrowTensorType)
         assert ta.type.storage_type == ta1.type.storage_type
         assert ta.type.storage_type == ta2.type.storage_type
         assert ta.type.shape == a1.shape[1:]
@@ -739,12 +644,7 @@ def test_arrow_tensor_array_concat(a1, a2, restore_data_context, tensor_format):
             np.testing.assert_array_equal(arr, expected)
 
 
-@pytest.mark.parametrize("tensor_format", ["v1", "v2"])
-def test_variable_shaped_tensor_array_chunked_concat(
-    restore_data_context, tensor_format
-):
-    DataContext.get_current().use_arrow_tensor_v2 = tensor_format == "v2"
-
+def test_variable_shaped_tensor_array_chunked_concat():
     # Test that chunking a tensor column and concatenating its chunks preserves typing
     # and underlying data.
     shape1 = (2, 2, 2)
@@ -764,10 +664,7 @@ def test_variable_shaped_tensor_array_chunked_concat(
         np.testing.assert_array_equal(arr, expected)
 
 
-@pytest.mark.parametrize("tensor_format", ["v1", "v2"])
-def test_variable_shaped_tensor_array_uniform_dim(restore_data_context, tensor_format):
-    DataContext.get_current().use_arrow_tensor_v2 = tensor_format == "v2"
-
+def test_variable_shaped_tensor_array_uniform_dim():
     shape1 = (3, 2, 2)
     shape2 = (3, 4, 4)
     a1 = np.arange(np.prod(shape1)).reshape(shape1)
@@ -777,27 +674,6 @@ def test_variable_shaped_tensor_array_uniform_dim(restore_data_context, tensor_f
     assert ta.is_variable_shaped
     for a, expected in zip(ta.to_numpy(), [a1, a2]):
         np.testing.assert_array_equal(a, expected)
-
-
-@pytest.mark.parametrize("tensor_format", ["v1", "v2"])
-def test_large_arrow_tensor_array(restore_data_context, tensor_format):
-    DataContext.get_current().use_arrow_tensor_v2 = tensor_format == "v2"
-
-    test_arr = np.ones((1000, 550), dtype=np.uint8)
-
-    if tensor_format == "v1":
-        with pytest.raises(ArrowConversionError) as exc_info:
-            ta = ArrowTensorArray.from_numpy([test_arr] * 4000)
-
-        assert (
-            repr(exc_info.value.__cause__)
-            == "ArrowInvalid('Negative offsets in list array')"
-        )
-    else:
-        ta = ArrowTensorArray.from_numpy([test_arr] * 4000)
-        assert len(ta) == 4000
-        for arr in ta:
-            assert np.asarray(arr).shape == (1000, 550)
 
 
 if __name__ == "__main__":

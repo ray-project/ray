@@ -1,7 +1,3 @@
-from ray.air.util.tensor_extensions.arrow import (
-    ArrowTensorTypeV2,
-    get_arrow_extension_tensor_types,
-)
 from ray.data.extensions.object_extension import (
     ArrowPythonObjectArray,
     ArrowPythonObjectScalar,
@@ -28,7 +24,6 @@ __all__ = [
     "TensorArray",
     "TensorArrayElement",
     "ArrowTensorType",
-    "ArrowTensorTypeV2",
     "ArrowTensorArray",
     "ArrowVariableShapedTensorType",
     "ArrowVariableShapedTensorArray",
@@ -41,5 +36,4 @@ __all__ = [
     "PythonObjectArray",
     "PythonObjectDtype",
     "object_extension_type_allowed",
-    "get_arrow_extension_tensor_types",
 ]

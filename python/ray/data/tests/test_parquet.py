@@ -11,7 +11,6 @@ import pytest
 from pytest_lazyfixture import lazy_fixture
 
 import ray
-from ray.air.util.tensor_extensions.arrow import ArrowTensorType, ArrowTensorTypeV2
 from ray.data._internal.datasource.parquet_bulk_datasource import ParquetBulkDatasource
 from ray.data._internal.datasource.parquet_datasource import (
     NUM_CPUS_FOR_META_FETCH_TASK,
@@ -1203,92 +1202,6 @@ def test_partitioning_in_dataset_kwargs_raises_error(ray_start_regular_shared):
         ray.data.read_parquet(
             "example://iris.parquet", dataset_kwargs=dict(partitioning="hive")
         )
-
-
-def test_tensors_in_tables_parquet(
-    ray_start_regular_shared, tmp_path, restore_data_context
-):
-    """This test verifies both V1 and V2 Tensor Type extensions of
-    Arrow Array types
-    """
-
-    num_rows = 10_000
-    num_groups = 10
-
-    inner_shape = (2, 2, 2)
-    shape = (num_rows,) + inner_shape
-    num_tensor_elem = np.prod(np.array(shape))
-
-    arr = np.arange(num_tensor_elem).reshape(shape)
-
-    id_col_name = "_id"
-    group_col_name = "group"
-    tensor_col_name = "tensor"
-
-    id_vals = list(range(num_rows))
-    group_vals = [i % num_groups for i in id_vals]
-
-    df = pd.DataFrame(
-        {
-            id_col_name: id_vals,
-            group_col_name: group_vals,
-            tensor_col_name: [a.tobytes() for a in arr],
-        }
-    )
-
-    #
-    # Test #1: Verify writing tensors as ArrowTensorType (v1)
-    #
-
-    tensor_v1_path = f"{tmp_path}/tensor_v1"
-
-    ds = ray.data.from_pandas([df])
-    ds.write_parquet(tensor_v1_path)
-
-    ds = ray.data.read_parquet(
-        tensor_v1_path,
-        tensor_column_schema={tensor_col_name: (arr.dtype, inner_shape)},
-        override_num_blocks=10,
-    )
-
-    assert isinstance(
-        ds.schema().base_schema.field_by_name(tensor_col_name).type, ArrowTensorType
-    )
-
-    expected_tuples = list(zip(id_vals, group_vals, arr))
-
-    def _assert_equal(rows, expected):
-        values = [[s[id_col_name], s[group_col_name], s[tensor_col_name]] for s in rows]
-
-        assert len(values) == len(expected)
-
-        for v, e in zip(sorted(values, key=lambda v: v[0]), expected):
-            np.testing.assert_equal(v, e)
-
-    _assert_equal(ds.take_all(), expected_tuples)
-
-    #
-    # Test #2: Verify writing tensors as ArrowTensorTypeV2
-    #
-
-    DataContext.get_current().use_arrow_tensor_v2 = True
-
-    tensor_v2_path = f"{tmp_path}/tensor_v2"
-
-    ds = ray.data.from_pandas([df])
-    ds.write_parquet(tensor_v2_path)
-
-    ds = ray.data.read_parquet(
-        tensor_v2_path,
-        tensor_column_schema={tensor_col_name: (arr.dtype, inner_shape)},
-        override_num_blocks=10,
-    )
-
-    assert isinstance(
-        ds.schema().base_schema.field_by_name(tensor_col_name).type, ArrowTensorTypeV2
-    )
-
-    _assert_equal(ds.take_all(), expected_tuples)
 
 
 if __name__ == "__main__":

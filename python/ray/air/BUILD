@@ -5,11 +5,6 @@ doctest(
     tags = ["team:ml"]
 )
 
-py_library(
-    name = "conftest",
-    srcs = ["tests/conftest.py"],
-)
-
 # --------------------------------------------------------------------
 # Tests from the python/ray/air/examples directory.
 # Please keep these sorted alphabetically.
@@ -150,7 +145,7 @@ py_test(
     size = "small",
     srcs = ["tests/test_tensor_extension.py"],
     tags = ["team:ml", "team:data", "exclusive", "ray_data"],
-    deps = [":ml_lib", ":conftest"]
+    deps = [":ml_lib"]
 )
 
 py_test(

@@ -20,18 +20,17 @@ def _concatenate_extension_column(ca: "pyarrow.ChunkedArray") -> "pyarrow.Array"
     """
     from ray.air.util.tensor_extensions.arrow import (
         ArrowTensorArray,
-        get_arrow_extension_tensor_types,
+        ArrowTensorType,
+        ArrowVariableShapedTensorType,
     )
 
     if not _is_column_extension_type(ca):
         raise ValueError("Chunked array isn't an extension array: {ca}")
 
-    tensor_extension_types = get_arrow_extension_tensor_types()
-
     if ca.num_chunks == 0:
         # Create empty storage array.
         storage = pyarrow.array([], type=ca.type.storage_type)
-    elif isinstance(ca.type, tensor_extension_types):
+    elif isinstance(ca.type, (ArrowTensorType, ArrowVariableShapedTensorType)):
         return ArrowTensorArray._concat_same_type(ca.chunks)
     else:
         storage = pyarrow.concat_arrays([c.storage for c in ca.chunks])
