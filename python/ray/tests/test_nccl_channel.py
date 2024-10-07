@@ -96,7 +96,7 @@ def test_p2p(ray_start_cluster):
     chan_typ = TorchTensorType(
         transport="nccl",
     )
-    chan_typ.set_nccl_group_id(nccl_id)
+    chan_typ.set_communicator_group_id(nccl_id)
     chan_ref = sender.create_nccl_channel.remote(chan_typ, [(receiver, receiver_node)])
     receiver_ready = receiver.set_nccl_channel.remote(chan_typ, chan_ref)
     ray.get([chan_ref, receiver_ready])
@@ -148,7 +148,7 @@ def test_multiple_receivers(ray_start_cluster):
     chan_typ = TorchTensorType(
         transport="nccl",
     )
-    chan_typ.set_nccl_group_id(nccl_id)
+    chan_typ.set_communicator_group_id(nccl_id)
     chan_ref = sender.create_nccl_channel.remote(chan_typ, receiver_to_node)
     receiver_ready = [
         receiver.set_nccl_channel.remote(chan_typ, chan_ref)
