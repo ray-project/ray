@@ -130,7 +130,8 @@ TEST_F(GcsJobManagerTest, TestExportDriverJobEvents) {
   promise.get_future().get();
 
   std::vector<std::string> vc;
-  Mocker::ReadContentFromFile(vc, log_dir_ + "/events/event_EXPORT_DRIVER_JOB.log");
+  Mocker::ReadContentFromFile(vc,
+                              log_dir_ + "/export_events/event_EXPORT_DRIVER_JOB.log");
   ASSERT_EQ((int)vc.size(), 1);
   json event_data = json::parse(vc[0])["event_data"].get<json>();
   ASSERT_EQ(event_data["is_dead"], false);
@@ -149,7 +150,8 @@ TEST_F(GcsJobManagerTest, TestExportDriverJobEvents) {
   job_finished_promise.get_future().get();
 
   vc.clear();
-  Mocker::ReadContentFromFile(vc, log_dir_ + "/events/event_EXPORT_DRIVER_JOB.log");
+  Mocker::ReadContentFromFile(vc,
+                              log_dir_ + "/export_events/event_EXPORT_DRIVER_JOB.log");
   ASSERT_EQ((int)vc.size(), 2);
   event_data = json::parse(vc[1])["event_data"].get<json>();
   ASSERT_EQ(event_data["is_dead"], true);

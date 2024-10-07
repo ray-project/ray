@@ -4,7 +4,7 @@ import traceback
 from typing import Optional, List, Tuple
 
 from ray_release.alerts.handle import handle_result, require_result
-from ray_release.anyscale_util import get_cluster_name
+from ray_release.anyscale_util import get_cluster_name, LAST_LOGS_LENGTH
 from ray_release.buildkite.output import buildkite_group, buildkite_open_last
 from ray_release.cluster_manager.cluster_manager import ClusterManager
 from ray_release.cluster_manager.full import FullClusterManager
@@ -75,6 +75,7 @@ def _load_test_configuration(
     smoke_test: bool = False,
     no_terminate: bool = False,
     test_definition_root: Optional[str] = None,
+    log_streaming_limit: int = LAST_LOGS_LENGTH,
 ) -> Tuple[ClusterManager, CommandRunner, str]:
     logger.info(f"Test config: {test}")
 
@@ -129,6 +130,7 @@ def _load_test_configuration(
             test,
             anyscale_project,
             smoke_test=smoke_test,
+            log_streaming_limit=log_streaming_limit,
         )
         command_runner = command_runner_cls(
             cluster_manager,
@@ -390,6 +392,7 @@ def run_release_test(
     cluster_env_id: Optional[str] = None,
     no_terminate: bool = False,
     test_definition_root: Optional[str] = None,
+    log_streaming_limit: int = LAST_LOGS_LENGTH,
 ) -> Result:
     old_wd = os.getcwd()
     start_time = time.monotonic()
@@ -407,6 +410,7 @@ def run_release_test(
             smoke_test,
             no_terminate,
             test_definition_root,
+            log_streaming_limit,
         )
         buildkite_group(":nut_and_bolt: Setting up cluster environment")
         (

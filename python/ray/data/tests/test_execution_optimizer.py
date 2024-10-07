@@ -661,7 +661,7 @@ def test_read_map_batches_operator_fusion_incompatible_remote_args(
     ray_start_regular_shared,
 ):
     # Test that map operators won't get fused if the remote args are incompatible.
-    incompatiple_remote_args_pairs = [
+    incompatible_remote_args_pairs = [
         # Use different resources.
         ({"num_cpus": 2}, {"num_gpus": 2}),
         # Same resource, but different values.
@@ -670,9 +670,9 @@ def test_read_map_batches_operator_fusion_incompatible_remote_args(
         ({"resources": {"custom": 2}}, {"resources": {"custom": 1}}),
         ({"resources": {"custom1": 1}}, {"resources": {"custom2": 1}}),
         # Different scheduling strategies.
-        ({"scheduling_strategy": "SPREAD"}, {"scheduing_strategy": "PACK"}),
+        ({"scheduling_strategy": "SPREAD"}, {"scheduling_strategy": "PACK"}),
     ]
-    for up_remote_args, down_remote_args in incompatiple_remote_args_pairs:
+    for up_remote_args, down_remote_args in incompatible_remote_args_pairs:
         planner = Planner()
         read_op = get_parquet_read_logical_op(
             ray_remote_args={"resources": {"non-existent": 1}}
