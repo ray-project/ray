@@ -185,7 +185,7 @@ export_event_proto_cpp = custom_target(
 )
 
 export_event_proto_cpp_dep = declare_dependency(
-    sources: export_node_data_proto_cpp,
+    sources: export_event_proto_cpp,
     dependencies: [
         export_task_event_proto_cpp_dep,
         export_node_data_proto_cpp_dep,

@@ -35,6 +35,16 @@ add_project_arguments(
     '-I' + meson.project_build_root() / 'src',
     language: ['c', 'cpp']
 )
+
+add_project_arguments(
+    '-I' + meson.project_source_root(),
+    language: ['c', 'cpp']
+)
+
+add_project_arguments(
+    '-I' + meson.project_source_root() / 'src',
+    language: ['c', 'cpp']
+)
 # === End of dependencies ===
 
 
