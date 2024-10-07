@@ -85,6 +85,9 @@ std::ostream &operator<<(std::ostream &os, DebugStringWrapper<std::tuple<Ts...>>
           ((os << debug_string(args) << (++n != sizeof...(Ts) ? ", " : "")), ...);
         },
         tuple.obj_);
+  } else {
+    // Avoid unused variable warning.
+    (void)tuple;
   }
   os << ")";
   return os;
