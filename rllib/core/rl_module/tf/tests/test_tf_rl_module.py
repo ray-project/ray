@@ -110,11 +110,9 @@ class TestTfRLModule(unittest.TestCase):
     def test_checkpointing(self):
         env = gym.make("CartPole-v1")
         module = DiscreteBCTFModule(
-            config=RLModuleConfig(
-                env.observation_space,
-                env.action_space,
-                model_config_dict={"fcnet_hiddens": [32]},
-            )
+            observation_space=env.observation_space,
+            action_space=env.action_space,
+            model_config={"fcnet_hiddens": [32]},
         )
         with tempfile.TemporaryDirectory() as tmpdir:
             module.save_to_path(tmpdir)
