@@ -153,7 +153,7 @@ if __name__ == "__main__":
         .rl_module(
             model_config=DefaultModelConfig(
                 fcnet_activation="relu",
-                fcnet_weights_initializer=torch.nn.init.xavier_uniform_,
+                fcnet_kernel_initializer=torch.nn.init.xavier_uniform_,
                 fcnet_bias_initializer=torch.nn.init.constant_,
                 fcnet_bias_initializer_config={"val": 0.0},
             ),

@@ -47,8 +47,8 @@ config = (
             fcnet_kernel_initializer=nn.init.xavier_uniform_,
             head_fcnet_hiddens=[],
             head_fcnet_activation=None,
-            head_fcnet_weights_initializer="orthogonal_",
-            head_fcnet_weights_initializer_kwargs={"gain": 0.01},
+            head_fcnet_kernel_initializer="orthogonal_",
+            head_fcnet_kernel_initializer_kwargs={"gain": 0.01},
         ),
     )
     .reporting(
