@@ -2,7 +2,7 @@ project(
     'ray-meson',
     'c', 'cpp',
     default_options: [
-        'c_std=gnu17', 'cpp_std=gnu++20'
+        'c_std=gnu17', 'cpp_std=gnu++23'
     ],
     meson_version: '>=1.3.0'
 )

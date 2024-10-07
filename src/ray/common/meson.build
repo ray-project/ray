@@ -141,24 +141,30 @@ subdir('asio')
 # === @end: asio/ ===
 
 
-#ray_cc_library(
-#    name = "memory_monitor",
-#    srcs = [
-#    "memory_monitor.cc",
-#    ],
-#    hdrs = [
-#    "memory_monitor.h",
-#    ],
-#    deps = [
-#    ":asio",
-#    ":ray_config",
-#    "//src/ray/util",
-#    "@com_google_absl//absl/strings",
-#    "@com_google_googletest//:gtest_prod",
-#    "@nlohmann_json",
-#    ],
-#)
-#
+# === @begin: memory_monitor (original: memory_monitor) ===
+memory_monitor_cpp_lib = static_library(
+    'memory_monitor_cpp_lib',
+    ['memory_monitor.cc'],
+    install: false,
+    dependencies: [
+        # Package-managed
+        asio_cpp_lib_dep,
+        ray_config_cpp_lib_dep,
+        util_cpp_lib_dep,
+
+        # Eugo-managed
+        absl_strings,
+        #"@com_google_googletest//:gtest_prod",
+        nlohmann_json
+    ]
+)
+
+memory_monitor_cpp_lib_dep = declare_dependency(
+    link_with: [memory_monitor_cpp_lib]
+)
+# === @end: memory_monitor (original: memory_monitor) ===
+
+
 #ray_cc_library(
 #    name = "file_system_monitor",
 #    srcs = [

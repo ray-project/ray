@@ -368,7 +368,9 @@ const std::vector<pid_t> MemoryMonitor::GetPidsFromDir(const std::string proc_di
     return pids;
   }
   for (const auto &file : std::filesystem::directory_iterator(proc_dir)) {
-    std::string filename{file.path().filename().u8string()};
+    // @TODO+:Eugo
+    std::u8string file_path = file.path().u8string();
+    std::string filename{reinterpret_cast<const char*>(file_path.c_str(), file_path.size())};
     if (std::all_of(filename.begin(), filename.end(), ::isdigit)) {
       pids.push_back(static_cast<pid_t>(std::stoi(filename)));
     }

@@ -130,8 +130,14 @@ std::string LogEventReporter::ExportEventToString(const rpc::ExportEvent &export
   std::string event_data_as_string;
   google::protobuf::util::JsonPrintOptions options;
   options.preserve_proto_field_names = true;
+  // @TODO+:Eugo
   // Required so enum with value 0 is not omitted
+  #if GOOGLE_PROTOBUF_VERSION < 5028000
   options.always_print_primitive_fields = true;
+  #else
+  // https://github.com/protocolbuffers/protobuf/issues/17437
+  options.always_print_fields_with_no_presence = true;
+  #endif
   if (export_event.has_task_event_data()) {
     RAY_CHECK(google::protobuf::util::MessageToJsonString(
                   export_event.task_event_data(), &event_data_as_string, options)
