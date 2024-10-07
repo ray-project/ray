@@ -213,6 +213,30 @@ subdir('ray_syncer/')
 
 
 #ray_cc_library(
+#    name = "ray_common",
+#    deps = [
+#    ":stats_metric",
+#    "//src/ray/common:asio",
+#    "//src/ray/common:constants",
+#    "//src/ray/common:event_stats",
+#    "//src/ray/common:file_system_monitor",
+#    "//src/ray/common:grpc_util",
+#    "//src/ray/common:id",
+#    "//src/ray/common:memory_monitor",
+#    "//src/ray/common:network",
+#    "//src/ray/common:ray_config",
+#    "//src/ray/common:ray_syncer",
+#    "//src/ray/common:status",
+#    "//src/ray/common:task_common",
+#    "//src/ray/common:test_util",
+#    "//src/ray/protobuf:gcs_cc_proto",
+#    "@com_google_googletest//:gtest",
+#    ],
+#)
+
+
+
+#ray_cc_library(
 #    name = "network",
 #    srcs = [
 #    "client_connection.cc",

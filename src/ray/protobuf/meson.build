@@ -272,6 +272,28 @@ reporter_proto_cpp_lib_dep = declare_dependency(
     link_with: [reporter_proto_cpp_lib]
 )
 
+
+reporter_proto_cpp_grpc = custom_target(
+    input: reporter_proto,
+    kwargs: proto_cpp_grpc_default_kwargs + {
+        'command': [protoc_cpp_grpc_with_default_args, '-I@SOURCE_ROOT@/__eugo/include']
+    }
+)
+
+reporter_proto_cpp_grpc_dep = declare_dependency(
+    sources: reporter_proto_cpp_grpc
+)
+
+reporter_proto_cpp_grpc_lib = static_library(
+    'reporter_proto_cpp_grpc_lib',
+    dependencies: [protobuf, grpc, reporter_proto_cpp_grpc_dep, reporter_proto_cpp_lib_dep],
+    install: false
+)
+
+reporter_proto_cpp_grpc_lib_dep = declare_dependency(
+    link_with: [reporter_proto_cpp_grpc_lib]
+)
+
 reporter_proto_py = custom_target(
     input: reporter_proto,
     kwargs: proto_py_default_kwargs + {
@@ -387,6 +409,25 @@ object_manager_proto_cpp_lib = static_library(
 object_manager_proto_cpp_lib_dep = declare_dependency(
     link_with: [object_manager_proto_cpp_lib]
 )
+
+object_manager_proto_cpp_grpc = custom_target(
+    input: object_manager_proto,
+    kwargs: proto_cpp_grpc_default_kwargs
+)
+
+object_manager_proto_cpp_grpc_dep = declare_dependency(
+    sources: object_manager_proto_cpp_grpc
+)
+
+object_manager_proto_cpp_grpc_lib = static_library(
+    'object_manager_proto_cpp_grpc_lib',
+    dependencies: [protobuf, grpc, object_manager_proto_cpp_grpc_dep, object_manager_proto_cpp_lib_dep],
+    install: false
+)
+
+object_manager_proto_cpp_grpc_lib_dep = declare_dependency(
+    link_with: [object_manager_proto_cpp_grpc_lib]
+)
 # === @end: object_manager.proto ===
 
 
@@ -411,6 +452,25 @@ core_worker_proto_cpp_lib = static_library(
 
 core_worker_proto_cpp_lib_dep = declare_dependency(
     link_with: [core_worker_proto_cpp_lib]
+)
+
+core_worker_proto_cpp_grpc = custom_target(
+    input: core_worker_proto,
+    kwargs: proto_cpp_grpc_default_kwargs
+)
+
+core_worker_proto_cpp_grpc_dep = declare_dependency(
+    sources: core_worker_proto_cpp_grpc
+)
+
+core_worker_proto_cpp_grpc_lib = static_library(
+    'core_worker_proto_cpp_grpc_lib',
+    dependencies: [protobuf, grpc, core_worker_proto_cpp_grpc_dep, core_worker_proto_cpp_lib_dep],
+    install: false
+)
+
+core_worker_proto_cpp_grpc_lib_dep = declare_dependency(
+    link_with: [core_worker_proto_cpp_grpc_lib]
 )
 
 core_worker_proto_py = custom_target(
