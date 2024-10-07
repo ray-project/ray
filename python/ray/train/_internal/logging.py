@@ -19,7 +19,7 @@ RAY_TRAIN_LOG_ENCODING = os.environ.get(RAY_TRAIN_LOG_ENCODING_ENV, "").upper()
 RAY_TRAIN_LOG_CONFIG_PATH = os.environ.get(RAY_TRAIN_LOG_CONFIG_PATH_ENV)
 
 
-class HiddenRecordFilter:
+class HiddenRecordFilter(logging.Filter):
     """Filters out log records with the "hide" attribute set to True.
 
     This filter allows you to override default logging behavior. For example, if errors
