@@ -106,7 +106,9 @@ class OutOfOrderActorSchedulingQueue : public SchedulingQueue {
   // Pending means tasks are queued or running.
   absl::flat_hash_map<TaskID, bool> pending_task_id_to_is_canceled ABSL_GUARDED_BY(mu_);
 
-  friend class SchedulingQueueTest;
+  FRIEND_TEST(OutOfOrderActorSchedulingQueueTest, TestSameTaskMultipleAttempts);
+  FRIEND_TEST(OutOfOrderActorSchedulingQueueTest,
+              TestSameTaskMultipleAttemptsCancellation);
 };
 
 }  // namespace core

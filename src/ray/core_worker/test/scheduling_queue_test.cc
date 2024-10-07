@@ -19,6 +19,8 @@
 #include "ray/common/test_util.h"
 #include "ray/core_worker/transport/task_receiver.h"
 
+using namespace std::chrono_literals;
+
 namespace ray {
 namespace core {
 
@@ -435,6 +437,198 @@ TEST(SchedulingQueueTest, TestCancelQueuedTask) {
   queue->ScheduleRequests();
   ASSERT_EQ(n_ok, 4);
   ASSERT_EQ(n_rej, 1);
+}
+
+TEST(OutOfOrderActorSchedulingQueueTest, TestSameTaskMultipleAttempts) {
+  // Test that if multiple attempts of the same task are received,
+  // the next attempt only runs after the previous attempt finishes.
+  instrumented_io_context io_service;
+  MockWaiter waiter;
+  OutOfOrderActorSchedulingQueue queue(
+      io_service,
+      waiter,
+      std::make_shared<ConcurrencyGroupManager<BoundedExecutor>>(
+          std::vector<ConcurrencyGroup>(),
+          /*max_concurrency_for_default_concurrency_group=*/100),
+      std::make_shared<ConcurrencyGroupManager<FiberState>>(),
+      /*is_asyncio=*/false,
+      /*fiber_max_concurrency=*/1,
+      /*concurrency_groups=*/{});
+  JobID job_id = JobID::FromInt(1);
+  TaskID task_id = TaskID::FromRandom(job_id);
+
+  std::promise<void> attempt_1_start_promise;
+  std::promise<void> attempt_1_finish_promise;
+  auto fn_ok_1 = [&attempt_1_start_promise,
+                  &attempt_1_finish_promise](rpc::SendReplyCallback callback) {
+    attempt_1_start_promise.set_value();
+    attempt_1_finish_promise.get_future().wait();
+  };
+  std::promise<void> attempt_2_start_promise;
+  auto fn_ok_2 = [&attempt_2_start_promise](rpc::SendReplyCallback callback) {
+    attempt_2_start_promise.set_value();
+  };
+  int n_rej = 0;
+  auto fn_rej = [&n_rej](const Status &status, rpc::SendReplyCallback callback) {
+    n_rej++;
+  };
+  queue.Add(-1,
+            -1,
+            fn_ok_1,
+            fn_rej,
+            nullptr,
+            "",
+            FunctionDescriptorBuilder::Empty(),
+            task_id,
+            /*attempt_number=*/1,
+            {});
+  attempt_1_start_promise.get_future().wait();
+  queue.Add(-1,
+            -1,
+            fn_ok_2,
+            fn_rej,
+            nullptr,
+            "",
+            FunctionDescriptorBuilder::Empty(),
+            task_id,
+            /*attempt_number=*/2,
+            {});
+  io_service.poll();
+  // Attempt 2 should only start after attempt 1 finishes.
+  auto attempt_2_start_future = attempt_2_start_promise.get_future();
+  ASSERT_TRUE(attempt_2_start_future.wait_for(1s) == std::future_status::timeout);
+
+  // Finish attempt 1 so attempt 2 can run.
+  attempt_1_finish_promise.set_value();
+  while (attempt_2_start_future.wait_for(1s) != std::future_status::ready) {
+    io_service.restart();
+    io_service.poll();
+  }
+
+  ASSERT_EQ(n_rej, 0);
+  auto no_leak = [&queue] {
+    absl::MutexLock lock(&queue.mu_);
+    return queue.queued_actor_tasks_.empty() &&
+           queue.pending_task_id_to_is_canceled.empty();
+  };
+  ASSERT_TRUE(WaitForCondition(no_leak, 10000));
+
+  queue.Stop();
+}
+
+TEST(OutOfOrderActorSchedulingQueueTest, TestSameTaskMultipleAttemptsCancellation) {
+  instrumented_io_context io_service;
+  MockWaiter waiter;
+  OutOfOrderActorSchedulingQueue queue(
+      io_service,
+      waiter,
+      std::make_shared<ConcurrencyGroupManager<BoundedExecutor>>(
+          std::vector<ConcurrencyGroup>(),
+          /*max_concurrency_for_default_concurrency_group=*/100),
+      std::make_shared<ConcurrencyGroupManager<FiberState>>(),
+      /*is_asyncio=*/false,
+      /*fiber_max_concurrency=*/1,
+      /*concurrency_groups=*/{});
+  JobID job_id = JobID::FromInt(1);
+  TaskID task_id = TaskID::FromRandom(job_id);
+
+  std::promise<void> attempt_1_start_promise;
+  std::promise<void> attempt_1_finish_promise;
+  auto fn_ok_1 = [&attempt_1_start_promise,
+                  &attempt_1_finish_promise](rpc::SendReplyCallback callback) {
+    attempt_1_start_promise.set_value();
+    attempt_1_finish_promise.get_future().wait();
+  };
+  auto fn_rej_1 = [](const Status &status, rpc::SendReplyCallback callback) {
+    ASSERT_FALSE(true);
+  };
+  queue.Add(-1,
+            -1,
+            fn_ok_1,
+            fn_rej_1,
+            nullptr,
+            "",
+            FunctionDescriptorBuilder::Empty(),
+            task_id,
+            /*attempt_number=*/1,
+            {});
+  attempt_1_start_promise.get_future().wait();
+
+  auto fn_ok_2 = [](rpc::SendReplyCallback callback) { ASSERT_FALSE(true); };
+  bool attempt_2_cancelled = false;
+  auto fn_rej_2 = [&attempt_2_cancelled](const Status &status,
+                                         rpc::SendReplyCallback callback) {
+    ASSERT_TRUE(status.IsSchedulingCancelled());
+    attempt_2_cancelled = true;
+  };
+  queue.Add(-1,
+            -1,
+            fn_ok_2,
+            fn_rej_2,
+            nullptr,
+            "",
+            FunctionDescriptorBuilder::Empty(),
+            task_id,
+            /*attempt_number=*/2,
+            {});
+
+  auto fn_ok_4 = [](rpc::SendReplyCallback callback) { ASSERT_FALSE(true); };
+  bool attempt_4_cancelled = false;
+  auto fn_rej_4 = [&attempt_4_cancelled](const Status &status,
+                                         rpc::SendReplyCallback callback) {
+    ASSERT_TRUE(status.IsSchedulingCancelled());
+    attempt_4_cancelled = true;
+  };
+  // Adding attempt 4 should cancel the old attempt 2
+  queue.Add(-1,
+            -1,
+            fn_ok_4,
+            fn_rej_4,
+            nullptr,
+            "",
+            FunctionDescriptorBuilder::Empty(),
+            task_id,
+            /*attempt_number=*/4,
+            {});
+  ASSERT_TRUE(attempt_2_cancelled);
+
+  auto fn_ok_3 = [](rpc::SendReplyCallback callback) { ASSERT_FALSE(true); };
+  bool attempt_3_cancelled = false;
+  auto fn_rej_3 = [&attempt_3_cancelled](const Status &status,
+                                         rpc::SendReplyCallback callback) {
+    ASSERT_TRUE(status.IsSchedulingCancelled());
+    attempt_3_cancelled = true;
+  };
+  // Attempt 3 should be cancelled immediately since there is attempt 4
+  // in the queue.
+  queue.Add(-1,
+            -1,
+            fn_ok_3,
+            fn_rej_3,
+            nullptr,
+            "",
+            FunctionDescriptorBuilder::Empty(),
+            task_id,
+            /*attempt_number=*/3,
+            {});
+  ASSERT_TRUE(attempt_3_cancelled);
+
+  // Attempt 4 should be cancelled.
+  queue.CancelTaskIfFound(task_id);
+  attempt_1_finish_promise.set_value();
+  while (!attempt_4_cancelled) {
+    io_service.restart();
+    io_service.poll();
+  }
+
+  auto no_leak = [&queue] {
+    absl::MutexLock lock(&queue.mu_);
+    return queue.queued_actor_tasks_.empty() &&
+           queue.pending_task_id_to_is_canceled.empty();
+  };
+  ASSERT_TRUE(WaitForCondition(no_leak, 10000));
+
+  queue.Stop();
 }
 
 }  // namespace core
