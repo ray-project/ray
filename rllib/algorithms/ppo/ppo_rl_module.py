@@ -5,7 +5,6 @@ This file holds framework-agnostic components for PPO's RLModules.
 import abc
 from typing import List
 
-from ray.rllib.core.columns import Columns
 from ray.rllib.core.models.configs import RecurrentEncoderConfig
 from ray.rllib.core.rl_module.apis import InferenceOnlyAPI, ValueFunctionAPI
 from ray.rllib.core.rl_module.rl_module import RLModule

@@ -261,14 +261,6 @@ class Encoder(Model, abc.ABC):
 
     """
 
-    @override(Model)
-    def get_input_specs(self) -> Optional[Spec]:
-        return [Columns.OBS]
-
-    @override(Model)
-    def get_output_specs(self) -> Optional[Spec]:
-        return []
-
     @abc.abstractmethod
     def _forward(self, input_dict: dict, **kwargs) -> dict:
         """Returns the latent of the encoder for the given inputs.
@@ -321,18 +313,6 @@ class ActorCriticEncoder(Encoder):
                 self.critic_encoder = config.base_encoder_config.build(
                     framework=self.framework
                 )
-
-    @override(Model)
-    def get_input_specs(self) -> Optional[Spec]:
-        return [Columns.OBS]
-
-    @override(Model)
-    def get_output_specs(self) -> Optional[Spec]:
-        return [(ENCODER_OUT, ACTOR)] + (
-            [(ENCODER_OUT, CRITIC)]
-            if not self.config.shared and self.critic_encoder
-            else []
-        )
 
     @override(Model)
     def _forward(self, inputs: dict, **kwargs) -> dict:
@@ -396,14 +376,6 @@ class StatefulActorCriticEncoder(Encoder):
             self.critic_encoder = config.base_encoder_config.build(
                 framework=self.framework
             )
-
-    @override(Model)
-    def get_input_specs(self) -> Optional[Spec]:
-        return [Columns.OBS, Columns.STATE_IN]
-
-    @override(Model)
-    def get_output_specs(self) -> Optional[Spec]:
-        return [(ENCODER_OUT, ACTOR), (ENCODER_OUT, CRITIC), (Columns.STATE_OUT,)]
 
     @override(Model)
     def get_initial_state(self):

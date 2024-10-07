@@ -8,7 +8,6 @@ from ray.rllib.core.models.base import Model
 from ray.rllib.core.models.configs import ModelConfig
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_tf
-from ray.util import log_once
 
 logger = logging.getLogger(__name__)
 _, tf, _ = try_import_tf()

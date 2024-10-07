@@ -7,13 +7,11 @@ import gymnasium as gym
 from ray.rllib.core import DEFAULT_MODULE_ID
 from ray.rllib.core.columns import Columns
 from ray.rllib.core.models.specs.typing import SpecType
-from ray.rllib.core.models.specs.checker import convert_to_canonical_format
 from ray.rllib.models.distributions import Distribution
 from ray.rllib.utils.annotations import (
     ExperimentalAPI,
     override,
     OverrideToImplementCustomLogic,
-    OverrideToImplementCustomLogic_CallToSuperRecommended,
 )
 from ray.rllib.utils.checkpoints import Checkpointable
 from ray.rllib.utils.deprecation import Deprecated
@@ -407,32 +405,17 @@ class RLModule(Checkpointable, abc.ABC):
                 framework=self.framework
             )
 
-        # Make sure, `setup()` is only called once, no matter what. In some cases
-        # of multiple inheritance (and with our __post_init__ functionality in place,
-        # this might get called twice.
+        # Make sure, `setup()` is only called once, no matter what.
         if hasattr(self, "_is_setup") and self._is_setup:
             raise RuntimeError(
                 "`RLModule.setup()` called twice within your RLModule implementation "
                 f"{self}! Make sure you are using the proper inheritance order "
                 "(TorchRLModule before [Algo]RLModule) or (TfRLModule before "
-                "[Algo]RLModule) and that you are using `super().__init__(...)` in "
-                "your custom constructor."
+                "[Algo]RLModule) and that you are NOT overriding the constructor, but "
+                "only the `setup()` method of your subclass."
             )
         self.setup()
         self._is_setup = True
-
-    def __init_subclass__(cls, **kwargs):
-        # Automatically add a __post_init__ method to all subclasses of RLModule.
-        # This method is called after the __init__ method of the subclass.
-        def init_decorator(previous_init):
-            def new_init(self, *args, **kwargs):
-                previous_init(self, *args, **kwargs)
-                if type(self) is cls:
-                    self.__post_init__()
-
-            return new_init
-
-        cls.__init__ = init_decorator(cls.__init__)
 
     @OverrideToImplementCustomLogic
     def setup(self):

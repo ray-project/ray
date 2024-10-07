@@ -4,8 +4,6 @@ from dataclasses import dataclass
 import gymnasium as gym
 
 from ray.rllib.core.models.configs import ModelConfig
-from ray.rllib.core.models.specs.checker import SpecCheckingError
-from ray.rllib.core.models.specs.specs_base import TensorSpec
 from ray.rllib.core.models.torch.base import TorchModel
 from ray.rllib.core.rl_module.rl_module import RLModuleSpec
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
@@ -64,7 +62,7 @@ class TestModelBase(unittest.TestCase):
 
         # We want to raise an input spec validation error here since the input
         # consists of lists and not torch Tensors
-        with self.assertRaisesRegex(SpecCheckingError, "input spec validation failed"):
+        with self.assertRaisesRegex(ValueError, "input spec validation failed"):
             model({"in_1": [1], "in_2": [1, 2]})
 
         # We don't want to raise an input spec validation error here since the
@@ -91,7 +89,7 @@ class TestModelBase(unittest.TestCase):
         # We want to raise an input spec validation error here since the model
         # raises an exception that stems from inputs that could have been caught
         # with input spec checking.
-        with self.assertRaisesRegex(SpecCheckingError, "input spec validation failed"):
+        with self.assertRaisesRegex(ValueError, "input spec validation failed"):
             model({"in_1": [1], "in_2": [1, 2]})
 
     # Todo (rllib-team): Fix for torch 2.0+
@@ -110,20 +108,6 @@ class TestModelBase(unittest.TestCase):
             def __init__(self, config):
                 super().__init__(config)
                 self._model = torch.nn.Linear(1, 1)
-
-            def get_output_specs(self):
-                return SpecDict(
-                    {
-                        "out": TensorSpec("b, h", h=1, framework="torch"),
-                    }
-                )
-
-            def get_input_specs(self):
-                return SpecDict(
-                    {
-                        "in": TensorSpec("b, h", h=1, framework="torch"),
-                    }
-                )
 
             def _forward(self, input_dict):
                 return {"out": self._model(input_dict["in"])}
