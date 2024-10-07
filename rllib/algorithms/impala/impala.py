@@ -459,14 +459,15 @@ class IMPALAConfig(AlgorithmConfig):
             )
 
             return IMPALATorchLearner
-        elif self.framework_str == "tf2":
-            from ray.rllib.algorithms.impala.tf.impala_tf_learner import IMPALATfLearner
-
-            return IMPALATfLearner
+        elif self.framework_str in ["tf2", "tf"]:
+            raise ValueError(
+                "TensorFlow is no longer supported on the new API stack! "
+                "Use `framework='torch'`."
+            )
         else:
             raise ValueError(
                 f"The framework {self.framework_str} is not supported. "
-                "Use either 'torch' or 'tf2'."
+                "Use `framework='torch'`."
             )
 
     @override(AlgorithmConfig)
