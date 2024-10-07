@@ -11,7 +11,7 @@ from ray.rllib.core.testing.tf.bc_module import DiscreteBCTFModule
 from ray.rllib.utils.test_utils import check
 
 
-class TestRLModule(unittest.TestCase):
+class TestTfRLModule(unittest.TestCase):
     def test_compilation(self):
 
         env = gym.make("CartPole-v1")
