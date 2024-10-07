@@ -117,7 +117,7 @@ class NestedTorchTensorCommunicatorChannel(ChannelInterface):
         return cls(
             writer=None,
             reader_and_node_list=None,
-            communicator_data_channel=None,
+            communicator_data_typ=None,
             cpu_data_typ=None,
             _communicator_data_channel=communicator_data_channel,
             _cpu_data_channel=cpu_data_channel,
