@@ -70,8 +70,9 @@ bool OptionalMatches(const std::optional<bool> &ask, const std::optional<bool> &
 }
 
 // Similar to OptionalMatches, but for JobID or ActorID.
-template <typename IdType>
-bool IdMatches(const IdType &ask, const IdType &have) {
+// TODO(ryw): use std::optional<IDType>.
+template <typename IDType>
+bool IdMatches(const IDType &ask, const IDType &have) {
   return ask.IsNil() || have.IsNil() || ask == have;
 }
 
@@ -1206,7 +1207,7 @@ WorkerUnfitForTaskReason WorkerPool::WorkerFitsForTask(
   return WorkerUnfitForTaskReason::NONE;
 }
 
-void WorkerPool::PopWorkerInner(
+void WorkerPool::StartNewWorker(
     const std::shared_ptr<PopWorkerRequest> &pop_worker_request) {
   auto start_worker_process_fn = [this](
                                      std::shared_ptr<PopWorkerRequest> pop_worker_request,
@@ -1243,8 +1244,6 @@ void WorkerPool::PopWorkerInner(
   const std::string &serialized_runtime_env =
       pop_worker_request->runtime_env_info.serialized_runtime_env();
 
-  // If there's an idle worker that fits the task, use it.
-  // Else, start a new worker.
   if (!IsRuntimeEnvEmpty(serialized_runtime_env)) {
     // create runtime env.
     GetOrCreateRuntimeEnv(
@@ -1345,10 +1344,12 @@ void WorkerPool::PopWorker(const TaskSpecification &task_spec,
     idle_of_all_languages_.erase(lit);
   }
 
+  // If there's an idle worker that fits the task, use it.
+  // Else, start a new worker.
   if (worker == nullptr) {
     RAY_LOG(DEBUG) << "No cached worker, cached workers skipped due to "
                    << debug_string(skip_reason_count);
-    PopWorkerInner(pop_worker_request);
+    StartNewWorker(pop_worker_request);
   } else {
     RAY_CHECK(worker->GetAssignedJobId().IsNil() ||
               worker->GetAssignedJobId() == task_spec.JobId());
@@ -1567,7 +1568,7 @@ void WorkerPool::TryPendingPopWorkerRequests(const Language &language) {
   std::deque<std::shared_ptr<PopWorkerRequest>> pending_start_requests;
   state.pending_start_requests.swap(pending_start_requests);
   for (const auto &request : pending_start_requests) {
-    PopWorkerInner(request);
+    StartNewWorker(request);
   }
 }
 

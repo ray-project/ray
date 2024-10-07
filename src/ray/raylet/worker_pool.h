@@ -538,7 +538,8 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
           callback(std::move(callback)) {}
   };
 
-  void PopWorkerInner(const std::shared_ptr<PopWorkerRequest> &pop_worker_request);
+  // Starts a new worker that fulfills `pop_worker_request`.
+  void StartNewWorker(const std::shared_ptr<PopWorkerRequest> &pop_worker_request);
 
   /// An internal data structure that maintains the pool state per language.
   struct State {
