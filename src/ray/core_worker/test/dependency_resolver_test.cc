@@ -393,7 +393,8 @@ TEST(LocalDependencyResolverTest, TestInlinedObjectIds) {
 }
 
 TEST(LocalDependencyResolverTest, TestCancelDependencyResolution) {
-  auto store = std::make_shared<CoreWorkerMemoryStore>();
+  InstrumentedIOContextWithThread io_context("TestCancelDependencyResolution");
+  auto store = std::make_shared<CoreWorkerMemoryStore>(&io_context.GetIoService());
   auto task_finisher = std::make_shared<MockTaskFinisher>();
   MockActorCreator actor_creator;
   LocalDependencyResolver resolver(*store, *task_finisher, actor_creator);
@@ -418,6 +419,8 @@ TEST(LocalDependencyResolverTest, TestCancelDependencyResolution) {
   ASSERT_EQ(task_finisher->num_inlined_dependencies, 0);
   // Check for leaks.
   ASSERT_EQ(resolver.NumPendingTasks(), 0);
+
+  io_context.Stop();
 }
 
 // Even if dependencies are already local, the ResolveDependencies callbacks are still
