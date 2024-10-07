@@ -182,7 +182,7 @@ class DefaultModelConfig:
     """
 
     fcnet_hiddens: List[int] = field(default_factory=lambda: [256, 256])
-    fcnet_activation: str = "relu"
+    fcnet_activation: str = "tanh"
     fcnet_kernel_initializer: Optional[Union[str, Callable]] = None
     fcnet_kernel_initializer_kwargs: Optional[dict] = None
     fcnet_bias_initializer: Optional[Union[str, Callable]] = None
