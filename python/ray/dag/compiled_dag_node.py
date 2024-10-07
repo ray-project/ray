@@ -1514,7 +1514,6 @@ class CompiledDAG:
 
         for idx, task in self.idx_to_task.items():
             for downstream_idx in task.downstream_task_idxs:
-                # Add an edge from the writer to the reader.
                 if task.dag_node.type_hint.requires_nccl():
                     if _is_same_actor(idx, downstream_idx):
                         actor_handle = self.idx_to_task[
