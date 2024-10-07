@@ -447,6 +447,9 @@ class ExecutableTask:
 
         try:
             output_val = method(*resolved_inputs, **self.resolved_kwargs)
+            # Handle None output value by allowing it to propagate
+            if output_val is None:
+                output_val = "__NONE_RETURN__"  # Special marker for None values
         except Exception as exc:
             output_val = _wrap_exception(exc)
         self.set_intermediate_buffer(output_val)
@@ -462,11 +465,12 @@ class ExecutableTask:
             True if system error occurs and exit the loop; otherwise, False.
         """
         output_val = self.reset_intermediate_buffer()
+        if output_val == "__NONE_RETURN__":
+            output_val = None  # Convert special marker back to None
         exit = False
         try:
             self.output_writer.write(output_val)
         except RayChannelError:
-            # Channel closed. Exit the loop.
             exit = True
         return exit
 
