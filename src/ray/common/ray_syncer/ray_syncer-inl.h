@@ -369,7 +369,7 @@ class RayServerBidiReactor : public RaySyncerBidiReactorBase<ServerBidiReactor> 
       instrumented_io_context &io_context,
       const std::string &local_node_id,
       std::function<void(std::shared_ptr<const RaySyncMessage>)> message_processor,
-      std::function<void(const std::string &, bool)> cleanup_cb);
+      std::function<void(RaySyncerBidiReactor *, bool)> cleanup_cb);
 
   ~RayServerBidiReactor() override = default;
 
@@ -379,7 +379,7 @@ class RayServerBidiReactor : public RaySyncerBidiReactorBase<ServerBidiReactor> 
   void OnDone() override;
 
   /// Cleanup callback when the call ends.
-  const std::function<void(const std::string &, bool)> cleanup_cb_;
+  const std::function<void(RaySyncerBidiReactor *, bool)> cleanup_cb_;
 
   /// grpc callback context
   grpc::CallbackServerContext *server_context_;
@@ -395,7 +395,7 @@ class RayClientBidiReactor : public RaySyncerBidiReactorBase<ClientBidiReactor> 
       const std::string &local_node_id,
       instrumented_io_context &io_context,
       std::function<void(std::shared_ptr<const RaySyncMessage>)> message_processor,
-      std::function<void(const std::string &, bool)> cleanup_cb,
+      std::function<void(RaySyncerBidiReactor *, bool)> cleanup_cb,
       std::unique_ptr<ray::rpc::syncer::RaySyncer::Stub> stub);
 
   ~RayClientBidiReactor() override = default;
@@ -406,7 +406,7 @@ class RayClientBidiReactor : public RaySyncerBidiReactorBase<ClientBidiReactor> 
   void OnDone(const grpc::Status &status) override;
 
   /// Cleanup callback when the call ends.
-  const std::function<void(const std::string &, bool)> cleanup_cb_;
+  const std::function<void(RaySyncerBidiReactor *, bool)> cleanup_cb_;
 
   /// grpc callback context
   grpc::ClientContext client_context_;

@@ -18,7 +18,11 @@ from typing import (
 
 import ray
 from ray import ObjectRef
-from ray.rllib.core import COMPONENT_LEARNER, COMPONENT_RL_MODULE
+from ray.rllib.core import (
+    COMPONENT_LEARNER,
+    COMPONENT_MULTI_RL_MODULE_SPEC,
+    COMPONENT_RL_MODULE,
+)
 from ray.rllib.core.learner.learner import Learner
 from ray.rllib.core.rl_module import validate_module_id
 from ray.rllib.core.rl_module.multi_rl_module import MultiRLModuleSpec
@@ -788,8 +792,10 @@ class LearnerGroup(Checkpointable):
                     list(module_ids),
                 )
             ]
-
-        return self.get_state(components)[COMPONENT_LEARNER][COMPONENT_RL_MODULE]
+        state = self.get_state(components)[COMPONENT_LEARNER][COMPONENT_RL_MODULE]
+        # Remove the MultiRLModuleSpec to just get the weights.
+        state.pop(COMPONENT_MULTI_RL_MODULE_SPEC, None)
+        return state
 
     def set_weights(self, weights) -> None:
         """Convenience method instead of self.set_state({'learner': {'rl_module': ..}}).
