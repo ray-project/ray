@@ -557,11 +557,11 @@ TEST(OutOfOrderActorSchedulingQueueTest, TestSameTaskMultipleAttemptsCancellatio
   attempt_1_start_promise.get_future().wait();
 
   auto fn_ok_2 = [](rpc::SendReplyCallback callback) { ASSERT_FALSE(true); };
-  bool attempt_2_cancelled = false;
+  std::atomic<bool> attempt_2_cancelled = false;
   auto fn_rej_2 = [&attempt_2_cancelled](const Status &status,
                                          rpc::SendReplyCallback callback) {
     ASSERT_TRUE(status.IsSchedulingCancelled());
-    attempt_2_cancelled = true;
+    attempt_2_cancelled.store(true);
   };
   queue.Add(-1,
             -1,
@@ -575,11 +575,11 @@ TEST(OutOfOrderActorSchedulingQueueTest, TestSameTaskMultipleAttemptsCancellatio
             {});
 
   auto fn_ok_4 = [](rpc::SendReplyCallback callback) { ASSERT_FALSE(true); };
-  bool attempt_4_cancelled = false;
+  std::atomic<bool> attempt_4_cancelled = false;
   auto fn_rej_4 = [&attempt_4_cancelled](const Status &status,
                                          rpc::SendReplyCallback callback) {
     ASSERT_TRUE(status.IsSchedulingCancelled());
-    attempt_4_cancelled = true;
+    attempt_4_cancelled.store(true);
   };
   // Adding attempt 4 should cancel the old attempt 2
   queue.Add(-1,
@@ -592,14 +592,14 @@ TEST(OutOfOrderActorSchedulingQueueTest, TestSameTaskMultipleAttemptsCancellatio
             task_id,
             /*attempt_number=*/4,
             {});
-  ASSERT_TRUE(attempt_2_cancelled);
+  ASSERT_TRUE(attempt_2_cancelled.load());
 
   auto fn_ok_3 = [](rpc::SendReplyCallback callback) { ASSERT_FALSE(true); };
-  bool attempt_3_cancelled = false;
+  std::atomic<bool> attempt_3_cancelled = false;
   auto fn_rej_3 = [&attempt_3_cancelled](const Status &status,
                                          rpc::SendReplyCallback callback) {
     ASSERT_TRUE(status.IsSchedulingCancelled());
-    attempt_3_cancelled = true;
+    attempt_3_cancelled.store(true);
   };
   // Attempt 3 should be cancelled immediately since there is attempt 4
   // in the queue.
@@ -613,12 +613,12 @@ TEST(OutOfOrderActorSchedulingQueueTest, TestSameTaskMultipleAttemptsCancellatio
             task_id,
             /*attempt_number=*/3,
             {});
-  ASSERT_TRUE(attempt_3_cancelled);
+  ASSERT_TRUE(attempt_3_cancelled.load());
 
   // Attempt 4 should be cancelled.
   queue.CancelTaskIfFound(task_id);
   attempt_1_finish_promise.set_value();
-  while (!attempt_4_cancelled) {
+  while (!attempt_4_cancelled.load()) {
     io_service.restart();
     io_service.poll();
   }
