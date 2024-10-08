@@ -37,7 +37,6 @@ config = (
         model_config_dict={
             "vf_share_layers": True,
             "use_lstm": True,
-            "uses_new_env_runners": True,
             "max_seq_len": 20,
         },
     )

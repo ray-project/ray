@@ -786,8 +786,8 @@ GcsPlacementGroupManager::GetBundlesOnNode(const NodeID &node_id) const {
 }
 
 void GcsPlacementGroupManager::OnNodeDead(const NodeID &node_id) {
-  RAY_LOG(INFO) << "Node " << node_id
-                << " failed, rescheduling the placement groups on the dead node.";
+  RAY_LOG(INFO).WithField(node_id)
+      << "Node failed, rescheduling the placement groups on the dead node.";
   auto bundles = gcs_placement_group_scheduler_->GetAndRemoveBundlesOnNode(node_id);
   for (const auto &bundle : bundles) {
     auto iter = registered_placement_groups_.find(bundle.first);
@@ -799,7 +799,7 @@ void GcsPlacementGroupManager::OnNodeDead(const NodeID &node_id) {
                       << " bundle index:" << bundle_index;
       }
       // TODO(ffbin): If we have a placement group bundle that requires a unique resource
-      // (for example gpu resource when there’s only one gpu node), this can postpone
+      // (for example gpu resource when there's only one gpu node), this can postpone
       // creating until a node with the resources is added. we will solve it in next pr.
       if (iter->second->GetState() != rpc::PlacementGroupTableData::RESCHEDULING) {
         iter->second->UpdateState(rpc::PlacementGroupTableData::RESCHEDULING);

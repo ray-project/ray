@@ -49,14 +49,6 @@ Base Policy classes
 Making models
 --------------------
 
-Base Policy
-~~~~~~~~~~~~~~~~~~~~
-.. autosummary::
-    :nosignatures:
-    :toctree: doc/
-
-    ~policy.Policy.make_rl_module
-
 
 Torch Policy
 ~~~~~~~~~~~~~~~~~~~~

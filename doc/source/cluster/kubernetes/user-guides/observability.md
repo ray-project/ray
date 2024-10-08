@@ -52,7 +52,7 @@ Although `Status.State` can represent the cluster situation, it's still only a s
 If you deployed KubeRay with Helm, then enable the `RayClusterStatusConditions` gate in the `featureGates` of your Helm values.
 
 ```bash
-helm upgrade kuberay-operator kuberay/kuberay-operator --version 1.2.1 \
+helm upgrade kuberay-operator kuberay/kuberay-operator --version 1.2.2 \
   --set featureGates\[0\].name=RayClusterStatusConditions \
   --set featureGates\[0\].enabled=true
 ```

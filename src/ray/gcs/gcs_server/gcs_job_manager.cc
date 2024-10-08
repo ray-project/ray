@@ -416,8 +416,8 @@ std::shared_ptr<rpc::JobConfig> GcsJobManager::GetJobConfig(const JobID &job_id)
 }
 
 void GcsJobManager::OnNodeDead(const NodeID &node_id) {
-  RAY_LOG(INFO) << "Node " << node_id
-                << " failed, mark all jobs from this node as finished";
+  RAY_LOG(INFO).WithField(node_id)
+      << "Node failed, mark all jobs from this node as finished";
 
   auto on_done = [this, node_id](const absl::flat_hash_map<JobID, JobTableData> &result) {
     // If job is not dead and from driver in current node, then mark it as finished

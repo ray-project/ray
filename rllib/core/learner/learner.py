@@ -691,7 +691,7 @@ class Learner(Checkpointable):
     def get_param_ref(self, param: Param) -> Hashable:
         """Returns a hashable reference to a trainable parameter.
 
-        This should be overriden in framework specific specialization. For example in
+        This should be overridden in framework specific specialization. For example in
         torch it will return the parameter itself, while in tf it returns the .ref() of
         the variable. The purpose is to retrieve a unique reference to the parameters.
 
@@ -706,7 +706,7 @@ class Learner(Checkpointable):
     def get_parameters(self, module: RLModule) -> Sequence[Param]:
         """Returns the list of parameters of a module.
 
-        This should be overriden in framework specific learner. For example in torch it
+        This should be overridden in framework specific learner. For example in torch it
         will return .parameters(), while in tf it returns .trainable_variables.
 
         Args:
