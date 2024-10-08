@@ -2383,10 +2383,16 @@ typeguard==2.13.3
     # via ax-platform
 typer==0.12.3
     # via -r /ray/ci/../python/requirements.txt
+types-pycurl==7.45.3.20240421
+    # via -r /ray/ci/../python/requirements/lint-requirements.txt
 types-python-dateutil==2.9.0.20240316
     # via arrow
 types-pyyaml==6.0.12.2
     # via -r /ray/ci/../python/requirements/lint-requirements.txt
+types-requests==2.31.0.6
+    # via -r /ray/ci/../python/requirements/lint-requirements.txt
+types-urllib3==1.26.25.14
+    # via types-requests
 typing-extensions==4.8.0
     # via
     #   -r /ray/ci/../python/requirements/test-requirements.txt
