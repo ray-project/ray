@@ -52,9 +52,13 @@ gcs_server_cpp_lib_private_deps = [
 gcs_server_cpp_lib_public_deps = [
     # Eugo-managed
     boost_bimap,
-    #"@com_github_grpc_grpc//src/proto/grpc/health/v1:health_proto",
-    grpc, # @TODO+:check if it works
-    absl_container_btree
+    absl_container_btree,
+
+    spdlog, # @TODO+:remove asap!
+
+    # Eugo-managed, in-tree
+    grpc_health_proto_cpp_dep,
+    grpc_health_proto_cpp_grpc_dep,
 ]
 
 gcs_server_cpp_lib = static_library(
@@ -94,6 +98,10 @@ gcs_server_cpp_lib_dep = declare_dependency(
     dependencies: gcs_server_cpp_lib_public_deps
 )
 # === @end: gcs_server_cpp_lib (original: gcs_server_lib) ===
+
+
+# === @begin: gcs_server ===
+# === @end: gcs_server ===
 
 
 #

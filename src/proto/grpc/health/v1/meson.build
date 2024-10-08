@@ -19,15 +19,7 @@ grpc_health_proto_cpp_dep = declare_dependency(
 # @begin: proto_cpp_grpc
 grpc_health_proto_cpp_grpc = custom_target(
     input: grpc_health_proto,
-    kwargs: proto_cpp_grpc_default_kwargs + {
-        'command': [
-            protoc,
-            '--plugin=protoc-gen-grpc=' + protoc_grpc_cpp_plugin.full_path(),
-            '--proto_path=../eugo/include/grpc/proto/grpc/health/v1/',
-            '--grpc_out=@BUILD_ROOT@/src/proto/grpc/health/v1/',
-            '@INPUT@'
-        ]
-    },
+    kwargs: proto_cpp_grpc_default_kwargs,
     build_by_default: true
 )
 
