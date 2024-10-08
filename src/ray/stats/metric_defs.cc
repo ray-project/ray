@@ -146,8 +146,8 @@ DEFINE_stats(operation_active_count,
 DEFINE_stats(grpc_server_req_process_time_ms,
              "Request latency in grpc server",
              ("Method"),
-             (),
-             ray::stats::GAUGE);
+             ({0.1, 1, 10, 100, 1000, 10000}, ),
+             ray::stats::HISTOGRAM);
 DEFINE_stats(grpc_server_req_new,
              "New request number in grpc server",
              ("Method"),
