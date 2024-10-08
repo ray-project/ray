@@ -1,4 +1,4 @@
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 from ray.rllib.algorithms.marwil.marwil_rl_module import MARWILRLModule
 from ray.rllib.core.columns import Columns
@@ -42,7 +42,6 @@ class MARWILTorchRLModule(TorchRLModule, MARWILRLModule):
                 "flag `inference_only=False` when building the module."
             )
         output = {}
-
         # Shared encoder.
         encoder_outs = self.encoder(batch)
         if Columns.STATE_OUT in encoder_outs:
@@ -63,18 +62,23 @@ class MARWILTorchRLModule(TorchRLModule, MARWILRLModule):
     # (similar to IMPALA's v-trace architecture). This would also get rid of the
     # second Connector pass currently necessary.
     @override(ValueFunctionAPI)
-    def compute_values(self, batch: Dict[str, Any]) -> TensorType:
-        # Separate vf-encoder.
-        if hasattr(self.encoder, "critic_encoder"):
-            if self.is_stateful():
-                # The recurrent encoders expect a `(state_in, h)`  key in the
-                # input dict while the key returned is `(state_in, critic, h)`.
-                batch[Columns.STATE_IN] = batch[Columns.STATE_IN][CRITIC]
-            encoder_outs = self.encoder.critic_encoder(batch)[ENCODER_OUT]
-        # Shared encoder.
-        else:
-            encoder_outs = self.encoder(batch)[ENCODER_OUT][CRITIC]
+    def compute_values(
+        self,
+        batch: Dict[str, Any],
+        embeddings: Optional[Any] = None,
+    ) -> TensorType:
+        if embeddings is None:
+            # Separate vf-encoder.
+            if hasattr(self.encoder, "critic_encoder"):
+                if self.is_stateful():
+                    # The recurrent encoders expect a `(state_in, h)`  key in the
+                    # input dict while the key returned is `(state_in, critic, h)`.
+                    batch[Columns.STATE_IN] = batch[Columns.STATE_IN][CRITIC]
+                embeddings = self.encoder.critic_encoder(batch)[ENCODER_OUT]
+            # Shared encoder.
+            else:
+                embeddings = self.encoder(batch)[ENCODER_OUT][CRITIC]
         # Value head.
-        vf_out = self.vf(encoder_outs)
+        vf_out = self.vf(embeddings)
         # Squeeze out last dimension (single node value head).
         return vf_out.squeeze(-1)

@@ -1,19 +1,13 @@
 import argparse
 from collections import Counter
 import copy
-import gymnasium as gym
-from gymnasium.spaces import Box, Discrete, MultiDiscrete, MultiBinary
-from gymnasium.spaces import Dict as GymDict
-from gymnasium.spaces import Tuple as GymTuple
 import json
 import logging
-import numpy as np
 import os
 import pprint
 import random
 import re
 import time
-import tree  # pip install dm_tree
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -26,11 +20,19 @@ from typing import (
 )
 import yaml
 
+import gymnasium as gym
+from gymnasium.spaces import Box, Discrete, MultiDiscrete, MultiBinary
+from gymnasium.spaces import Dict as GymDict
+from gymnasium.spaces import Tuple as GymTuple
+import numpy as np
+import tree  # pip install dm_tree
+
 import ray
 from ray import air, tune
 from ray.air.constants import TRAINING_ITERATION
 from ray.air.integrations.wandb import WandbLoggerCallback, WANDB_ENV_VAR
 from ray.rllib.common import SupportedFileType
+from ray.rllib.core import DEFAULT_MODULE_ID
 from ray.rllib.env.wrappers.atari_wrappers import is_atari, wrap_deepmind
 from ray.rllib.train import load_experiments_from_file
 from ray.rllib.utils.annotations import OldAPIStack
@@ -789,7 +791,6 @@ def check_train_results_new_api_stack(train_results: ResultDict) -> None:
             data in it.
     """
     # Import these here to avoid circular dependencies.
-    from ray.rllib.core import DEFAULT_MODULE_ID
     from ray.rllib.utils.metrics import (
         ENV_RUNNER_RESULTS,
         FAULT_TOLERANCE_STATS,
