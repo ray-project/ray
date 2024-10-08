@@ -1,12 +1,13 @@
 import logging
 from pathlib import Path
 import pyarrow.fs
-import ray
 import time
 import types
 
+import ray
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.core import COMPONENT_RL_MODULE
+from ray.rllib.core.learner import Learner
 from ray.rllib.env import INPUT_ENV_SPACES
 from ray.rllib.offline.offline_prelearner import OfflinePreLearner
 from ray.rllib.utils.annotations import (
@@ -123,33 +124,29 @@ class OfflineData:
         #       not materializing.
         #   (b) Rematerialize the data every couple of iterations. This is
         #       is costly.
+
         if not self.data_is_mapped:
-            # Constructor `kwargs` for the `OfflinePreLearner`.
-            fn_constructor_kwargs = {
-                "config": self.config,
-                "learner": self.learner_handles[0],
-                "spaces": self.spaces[INPUT_ENV_SPACES],
-            }
-            # If we have multiple learners, add to the constructor `kwargs`.
-            if num_shards > 1:
-                # Call here the learner to get an up-to-date module state.
-                # TODO (simon): This is a workaround as along as learners cannot
-                # receive any calls from another actor.
+            # Call here the learner to get an up-to-date module state.
+            # TODO (simon): This is a workaround as along as learners cannot
+            # receive any calls from another actor.
+            if num_shards > 1 or not isinstance(self.learner_handles[0], Learner):
                 module_state = ray.get(
                     self.learner_handles[0].get_state.remote(
                         component=COMPONENT_RL_MODULE
                     )
                 )
-                # Add constructor `kwargs` when using remote learners.
-                fn_constructor_kwargs.update(
-                    {
-                        "learner": self.learner_handles,
-                        "locality_hints": self.locality_hints,
-                        "module_spec": self.module_spec,
-                        "module_state": module_state,
-                    }
+            else:
+                module_state = self.learner_handles[0].get_state(
+                    component=COMPONENT_RL_MODULE
                 )
 
+            # Constructor `kwargs` for the `OfflinePreLearner`.
+            fn_constructor_kwargs = {
+                "config": self.config,
+                "spaces": self.spaces[INPUT_ENV_SPACES],
+                "module_spec": self.module_spec,
+                "module_state": module_state,
+            }
             self.data = self.data.map_batches(
                 self.prelearner_class,
                 fn_constructor_kwargs=fn_constructor_kwargs,

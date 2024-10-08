@@ -98,6 +98,7 @@ class BCConfig(MARWILConfig):
         # Remove unneeded connectors from the MARWIL connector pipeline.
         pipeline.remove("AddOneTsToEpisodesAndTruncate")
         pipeline.remove("GeneralAdvantageEstimation")
+        pipeline.remove("NumpyToTensor")
 
         return pipeline
 

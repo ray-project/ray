@@ -3,6 +3,7 @@ from typing import Callable, Optional, Type, Union
 from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
 from ray.rllib.algorithms.marwil.marwil_catalog import MARWILCatalog
+from ray.rllib.connectors.common.tensor_to_numpy import TensorToNumpy
 from ray.rllib.connectors.learner import (
     AddObservationsFromEpisodesToBatch,
     AddOneTsToEpisodesAndTruncate,
@@ -360,6 +361,9 @@ class MARWILConfig(AlgorithmConfig):
         # `forward_train` and `compute_losses`.
         pipeline.append(
             GeneralAdvantageEstimation(gamma=self.gamma, lambda_=self.lambda_)
+        )
+        pipeline.append(
+            TensorToNumpy(),
         )
 
         return pipeline

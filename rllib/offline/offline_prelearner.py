@@ -1,13 +1,9 @@
 import gymnasium as gym
 import logging
 import numpy as np
-import random
 from typing import Any, Dict, List, Optional, Union, Tuple, TYPE_CHECKING
 
-import ray
-from ray.actor import ActorHandle
 from ray.rllib.core.columns import Columns
-from ray.rllib.core.learner import Learner
 from ray.rllib.core.rl_module.multi_rl_module import MultiRLModuleSpec
 from ray.rllib.env.single_agent_episode import SingleAgentEpisode
 from ray.rllib.policy.sample_batch import MultiAgentBatch, SampleBatch
@@ -84,46 +80,19 @@ class OfflinePreLearner:
     def __init__(
         self,
         config: "AlgorithmConfig",
-        learner: Union[Learner, list[ActorHandle]],
         spaces: Optional[Tuple[gym.Space, gym.Space]] = None,
-        locality_hints: Optional[list] = None,
         module_spec: Optional[MultiRLModuleSpec] = None,
         module_state: Optional[Dict[ModuleID, Any]] = None,
     ):
-
         self.config = config
         self.input_read_episodes = self.config.input_read_episodes
         self.input_read_sample_batches = self.config.input_read_sample_batches
-        # We need this learner to run the learner connector pipeline.
-        # If it is a `Learner` instance, the `Learner` is local.
-        if isinstance(learner, Learner):
-            self._learner = learner
-            self.learner_is_remote = False
-            self._module = self._learner._module
-        # Otherwise we have remote `Learner`s.
-        else:
-            # TODO (simon): Check with the data team how to get at
-            # initialization the data block location.
-            node_id = ray.get_runtime_context().get_node_id()
-            # Shuffle indices such that not each data block syncs weights
-            # with the same learner in case there are multiple learners
-            # on the same node like the `PreLearner`.
-            indices = list(range(len(locality_hints)))
-            random.shuffle(indices)
-            locality_hints = [locality_hints[i] for i in indices]
-            learner = [learner[i] for i in indices]
-            # Choose a learner from the same node.
-            for i, hint in enumerate(locality_hints):
-                if hint == node_id:
-                    self._learner = learner[i]
-            # If no learner has been chosen, there is none on the same node.
-            if not self._learner:
-                # Then choose a learner randomly.
-                self._learner = learner[random.randint(0, len(learner) - 1)]
-            self.learner_is_remote = True
-            # Build the module from spec. Note, this will be a MultiRLModule.
-            self._module = module_spec.build()
-            self._module.set_state(module_state)
+
+        # Build the module from spec. Note, this will be a MultiRLModule.
+        # TODO (simon): Check, if this builds automatically on GPU if
+        # available.
+        self._module = module_spec.build()
+        self._module.set_state(module_state)
 
         # Store the observation and action space if defined, otherwise we
         # set them to `None`. Note, if `None` the `convert_from_jsonable`
@@ -135,6 +104,7 @@ class OfflinePreLearner:
             input_observation_space=self.observation_space,
             input_action_space=self.action_space,
         )
+        self._learner_connector.remove("NumpyToTensor")
         # Cache the policies to be trained to update weights only for these.
         self._policies_to_train = self.config.policies_to_train
         self._is_multi_agent = config.is_multi_agent()
