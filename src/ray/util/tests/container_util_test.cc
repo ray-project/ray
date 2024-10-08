@@ -69,6 +69,7 @@ TEST(ContainerUtilTest, TestDebugString) {
 
   // Optional.
   ASSERT_EQ(debug_string_to_string(std::nullopt), "(nullopt)");
+  ASSERT_EQ(debug_string_to_string(std::optional<std::string>{}), "(nullopt)");
   ASSERT_EQ(debug_string_to_string(std::optional<std::string>{"hello"}), "hello");
 
   // Composable: tuples of pairs of maps and vectors.

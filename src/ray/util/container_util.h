@@ -147,6 +147,9 @@ std::ostream &operator<<(std::ostream &os,
 
 template <typename T>
 std::ostream &operator<<(std::ostream &os, DebugStringWrapper<std::optional<T>> c) {
+  if (!c.obj_.has_value()) {
+    return os << "(nullopt)";
+  }
   return os << debug_string(c.obj_.value());
 }
 
