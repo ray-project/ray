@@ -292,93 +292,89 @@ network_cpp_lib_dep = declare_dependency(
 # === @end: network_cpp_lib (original: network) ===
 
 
-## === @begin: ray_common_cpp_lib (original: runtime_env) ===
-#ray_common_cpp_lib_private_deps = [
-#    # Package-managed
-#    stats_metric_cpp_lib_dep,
-#    asio_cpp_lib_dep,
-#    constants_cpp_lib_dep,
-#    event_stats_cpp_lib_dep,
-#    file_system_monitor_cpp_lib_dep,
-#    grpc_util_cpp_lib_dep,
-#    id_cpp_lib_dep,
-#    memory_monitor_cpp_lib_dep,
-#    network_cpp_lib_dep,
-#    ray_config_cpp_lib_dep,
-#    ray_syncer_cpp_lib_dep,
-#    status_cpp_lib_dep,
-#    task_common_cpp_lib_dep,
-#    #    "//src/ray/common:test_util",
-#    gcs_proto_cpp_lib_dep,
-#]
-#
-#ray_common_cpp_lib_public_deps = [
-#    # Eugo-managed
-#    #    "@com_google_googletest//:gtest",
-#]
-#
-## Header-only guy? Or even virtual dependency? meh
-#ray_common_cpp_lib_dep = declare_dependency(
-#    dependencies: [
-#        runtime_env_cpp_lib_private_deps,
-#        runtime_env_cpp_lib_public_deps
-#    ]
-#)
-## === @end: ray_common_cpp_lib (original: ray_common) ===
+# === @begin: task_common_cpp_lib (original: task_common) ===
+task_common_cpp_lib_private_deps = [
+    # Package-managed
+    event_stats_cpp_lib_dep,
+    grpc_util_cpp_lib_dep,
+    id_cpp_lib_dep,
+    ray_config_cpp_lib_dep,
+    ray_object_cpp_lib_dep,
+    runtime_env_cpp_lib_dep,
+    node_manager_cpp_fbs_lib_dep,
+    util_cpp_lib_dep
+]
+
+task_common_cpp_lib_public_deps = [
+    # Eugo-managed
+    absl_container_flat_hash_map,
+    absl_container_flat_hash_set,
+    absl_strings,
+    absl_synchronization
+]
+
+task_common_cpp_lib = static_library(
+    'task_common_cpp_lib',
+    [
+        'bundle_location_index.cc',
+        'bundle_spec.cc',
+        'function_descriptor.cc',
+        'placement_group.cc',
+        'scheduling/cluster_resource_data.cc',
+        'scheduling/fixed_point.cc',
+        'scheduling/resource_instance_set.cc',
+        'scheduling/resource_set.cc',
+        'scheduling/scheduling_ids.cc',
+        'task/task.cc',
+        'task/task_spec.cc'
+    ],
+    install: false,
+    dependencies: [
+        task_common_cpp_lib_private_deps,
+        task_common_cpp_lib_public_deps
+    ]
+)
+
+task_common_cpp_lib_dep = declare_dependency(
+    link_with: [task_common_cpp_lib],
+    dependencies: task_common_cpp_lib_public_deps
+)
+# === @end: task_common_cpp_lib (original: task_common) ===
 
 
+# === @begin: ray_common_cpp_lib (original: runtime_env) ===
+ray_common_cpp_lib_private_deps = [
+    # Package-managed
+    stats_metric_cpp_lib_dep,
+    asio_cpp_lib_dep,
+    constants_cpp_lib_dep,
+    event_stats_cpp_lib_dep,
+    file_system_monitor_cpp_lib_dep,
+    grpc_util_cpp_lib_dep,
+    id_cpp_lib_dep,
+    memory_monitor_cpp_lib_dep,
+    network_cpp_lib_dep,
+    ray_config_cpp_lib_dep,
+    ray_syncer_cpp_lib_dep,
+    status_cpp_lib_dep,
+    task_common_cpp_lib_dep,
+    #    "//src/ray/common:test_util",
+    gcs_proto_cpp_lib_dep,
+]
 
+ray_common_cpp_lib_public_deps = [
+    # Eugo-managed
+    #    "@com_google_googletest//:gtest",
+]
 
-#
-#ray_cc_library(
-#    name = "task_common",
-#    srcs = [
-#    "bundle_location_index.cc",
-#    "bundle_spec.cc",
-#    "function_descriptor.cc",
-#    "placement_group.cc",
-#    "scheduling/cluster_resource_data.cc",
-#    "scheduling/fixed_point.cc",
-#    "scheduling/resource_instance_set.cc",
-#    "scheduling/resource_set.cc",
-#    "scheduling/scheduling_ids.cc",
-#    "task/task.cc",
-#    "task/task_spec.cc",
-#    ],
-#    hdrs = [
-#    "bundle_location_index.h",
-#    "bundle_spec.h",
-#    "function_descriptor.h",
-#    "placement_group.h",
-#    "scheduling/cluster_resource_data.h",
-#    "scheduling/fixed_point.h",
-#    "scheduling/resource_instance_set.h",
-#    "scheduling/resource_set.h",
-#    "scheduling/scheduling_ids.h",
-#    "task/task.h",
-#    "task/task_common.h",
-#    "task/task_spec.h",
-#    "task/task_util.h",
-#    ],
-#    deps = [
-#    ":event_stats",
-#    ":grpc_util",
-#    ":id",
-#    ":ray_config",
-#    ":ray_object",
-#    ":runtime_env",
-#    "//:node_manager_fbs",
-#    "//src/ray/util",
-#    "@com_google_absl//absl/container:flat_hash_map",
-#    "@com_google_absl//absl/container:flat_hash_set",
-#    "@com_google_absl//absl/strings",
-#    "@com_google_absl//absl/synchronization",
-#    ],
-#)
-#
-
-
-
+# Header-only guy? Or even virtual dependency? meh
+ray_common_cpp_lib_dep = declare_dependency(
+    dependencies: [
+        runtime_env_cpp_lib_private_deps,
+        runtime_env_cpp_lib_public_deps
+    ]
+)
+# === @end: ray_common_cpp_lib (original: ray_common) ===
 
 
 #ray_cc_library(
