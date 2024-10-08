@@ -10,6 +10,7 @@ from google.cloud.bigquery_storage_v1.types import stream as gcbqs_stream
 import ray
 from ray.data._internal.datasource.bigquery_datasink import BigQueryDatasink
 from ray.data._internal.datasource.bigquery_datasource import BigQueryDatasource
+from ray.data._internal.planner.plan_write_op import generate_collect_write_stats_fn
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.mock_http_server import *  # noqa
 from ray.tests.conftest import *  # noqa
@@ -204,10 +205,14 @@ class TestWriteBigQuery:
         )
         arr = pa.array([2, 4, 5, 100])
         block = pa.Table.from_arrays([arr], names=["data"])
-        status = bq_datasink.write(
+        blocks = bq_datasink.write(
             blocks=[block],
             ctx=None,
         )
+
+        collect_stats_fn = generate_collect_write_stats_fn()
+        stats = collect_stats_fn(blocks, None)
+        status = stats[0].iloc[0]["write_result"]
         assert status == "ok"
 
     def test_write_dataset_exists(self, ray_get_mock):
@@ -217,10 +222,13 @@ class TestWriteBigQuery:
         )
         arr = pa.array([2, 4, 5, 100])
         block = pa.Table.from_arrays([arr], names=["data"])
-        status = bq_datasink.write(
+        blocks = bq_datasink.write(
             blocks=[block],
             ctx=None,
         )
+        collect_stats_fn = generate_collect_write_stats_fn()
+        stats = collect_stats_fn(blocks, None)
+        status = stats[0].iloc[0]["write_result"]
         assert status == "ok"
 
 
