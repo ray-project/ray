@@ -195,10 +195,11 @@ class TestMARWIL(unittest.TestCase):
         # Calculate our own expected values (to then compare against the
         # agent's loss output).
         tensor_batch = algo.learner_group._learner._convert_batch_type(batch)
+        tensor_batch = {k: v for k, v in tensor_batch[DEFAULT_MODULE_ID].items()}
         fwd_out = (
             algo.learner_group._learner.module[DEFAULT_MODULE_ID]
             .unwrapped()
-            .forward_train({k: v for k, v in tensor_batch[DEFAULT_MODULE_ID].items()})
+            .forward_train(tensor_batch)
         )
         advantages = (
             batch[DEFAULT_MODULE_ID][Columns.VALUE_TARGETS]
@@ -216,7 +217,7 @@ class TestMARWIL(unittest.TestCase):
         # Note we need the actual model's logits not the ones from the data set
         # stored in `batch[Columns.ACTION_DIST_INPUTS]`.
         action_dist = action_dist_cls.from_logits(fwd_out[Columns.ACTION_DIST_INPUTS])
-        logp = action_dist.logp(batch[DEFAULT_MODULE_ID][Columns.ACTIONS])
+        logp = action_dist.logp(tensor_batch[Columns.ACTIONS])
         logp = logp.detach().cpu().numpy()
 
         # Calculate all expected loss components.
@@ -228,7 +229,7 @@ class TestMARWIL(unittest.TestCase):
         # calculation above).
         total_loss = algo.learner_group._learner.compute_loss_for_module(
             module_id=DEFAULT_MODULE_ID,
-            batch={k: v for k, v in tensor_batch[DEFAULT_MODULE_ID].items()},
+            batch=tensor_batch,
             fwd_out=fwd_out,
             config=config,
         )
