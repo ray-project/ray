@@ -60,43 +60,6 @@ subdir('src/')
 #
 
 
-
-#
-#ray_cc_library(
-#    name = "gcs_server_lib",
-#    srcs = glob(
-#    [
-#    "src/ray/gcs/gcs_server/*.cc",
-#    ],
-#    exclude = [
-#    "src/ray/gcs/gcs_server/gcs_server_main.cc",
-#    "src/ray/gcs/gcs_server/test/*.cc",
-#    ],
-#),
-#hdrs = glob(
-#[
-#"src/ray/gcs/gcs_server/*.h",
-#],
-#),
-#deps = [
-#":autoscaler_rpc",
-#":gcs",
-#":gcs_pub_sub_lib",
-#":gcs_service_cc_grpc",
-#":gcs_service_rpc",
-#":gcs_table_storage_lib",
-#":node_manager_rpc",
-#":observable_store_client",
-#":pubsub_lib",
-#":raylet_client_lib",
-#":scheduler",
-#":worker_rpc",
-#"//src/ray/protobuf:agent_manager_cc_proto",
-#"@boost//:bimap",
-#"@com_github_grpc_grpc//src/proto/grpc/health/v1:health_proto",
-#"@com_google_absl//absl/container:btree",
-#],
-#)
 #
 #ray_cc_binary(
 #    name = "gcs_server",
@@ -113,51 +76,6 @@ subdir('src/')
 #
 
 
-
-#ray_cc_library(
-#    name = "scheduler",
-#    srcs = glob(
-#    [
-#    "src/ray/raylet/scheduling/**/*.cc",
-#    ],
-#    exclude = [
-#    "src/ray/raylet/scheduling/**/*_test.cc",
-#    ],
-#),
-#hdrs = glob(
-#[
-#"src/ray/raylet/scheduling/**/*.h",
-#"src/ray/core_worker/common.h",
-#],
-#),
-#linkopts = select({
-#"@platforms//os:windows": [
-#],
-#"//conditions:default": [
-#"-lpthread",
-#],
-#}),
-#deps = [
-#":gcs_client_lib",
-#":ray_common",
-#":stats_lib",
-#"//src/ray/protobuf:common_cc_proto",
-#"//src/ray/util",
-#"@boost//:asio",
-#"@boost//:system",
-#"@com_github_jupp0r_prometheus_cpp//pull",
-#"@com_google_absl//absl/base:core_headers",
-#"@com_google_absl//absl/container:flat_hash_set",
-#"@com_google_absl//absl/memory",
-#"@com_google_absl//absl/random",
-#"@com_google_absl//absl/random:bit_gen_ref",
-#"@com_google_absl//absl/strings",
-#"@com_google_googletest//:gtest",
-#"@io_opencensus_cpp//opencensus/exporters/stats/prometheus:prometheus_exporter",
-#"@io_opencensus_cpp//opencensus/stats",
-#"@io_opencensus_cpp//opencensus/tags",
-#],
-#)
 #
 #ray_cc_library(
 #    name = "raylet_lib",
@@ -218,31 +136,7 @@ subdir('src/')
 #],
 #)
 #
-#ray_cc_library(
-#    name = "raylet_client_lib",
-#    srcs = glob([
-#    "src/ray/raylet_client/*.cc",
-#    ]),
-#hdrs = glob([
-#"src/ray/raylet_client/*.h",
-#]),
-#linkopts = select({
-#"@platforms//os:windows": [
-#],
-#"//conditions:default": [
-#"-lpthread",
-#],
-#}),
-#deps = [
-#":node_manager_fbs",
-#":node_manager_rpc",
-#":ray_common",
-#"//src/ray/protobuf:gcs_cc_proto",
-#"//src/ray/util",
-#"@boost//:asio",
-#],
-#)
-#
+
 #ray_cc_library(
 #    name = "core_worker_lib",
 #    srcs = glob(
@@ -303,50 +197,7 @@ subdir('src/')
 #    alwayslink = 1,
 #)
 
-#ray_cc_library(
-#    name = "gcs_table_storage_lib",
-#    srcs = glob(
-#    [
-#    "src/ray/gcs/gcs_server/gcs_table_storage.cc",
-#    ],
-#),
-#hdrs = glob(
-#[
-#"src/ray/gcs/gcs_server/gcs_table_storage.h",
-#],
-#),
-#deps = [
-#":gcs",
-#":gcs_in_memory_store_client",
-#":observable_store_client",
-#":pubsub_lib",
-#":ray_common",
-#":redis_store_client",
-#],
-#)
-#
 
-#ray_cc_library(
-#    name = "gcs_client_lib",
-#    srcs = [
-#    "src/ray/gcs/gcs_client/accessor.cc",
-#    "src/ray/gcs/gcs_client/gcs_client.cc",
-#    ],
-#    hdrs = [
-#    "src/ray/gcs/gcs_client/accessor.h",
-#    "src/ray/gcs/gcs_client/gcs_client.h",
-#    ],
-#    deps = [
-#    ":gcs",
-#    ":gcs_pub_sub_lib",
-#    ":gcs_service_rpc",
-#    ":pubsub_lib",
-#    ":ray_common",
-#    ":redis_store_client",
-#    "//src/ray/protobuf:usage_cc_proto",
-#    ],
-#)
-#
 #ray_cc_library(
 #    name = "global_state_accessor_lib",
 #    srcs = glob(

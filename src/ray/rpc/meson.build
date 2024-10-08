@@ -92,7 +92,7 @@ pubsub_rpc_cpp_lib_dep = declare_dependency(
 
 
 # === @begin: autoscaler_rpc_cpp_lib (original: autoscaler_rpc) ===
-pubsub_rpc_cpp_lib_dep = declare_dependency(
+autoscaler_rpc_cpp_lib_dep = declare_dependency(
     dependencies: [
         autoscaler_proto_cpp_grpc_lib_dep
     ]

@@ -80,9 +80,11 @@ subdir('pubsub/')
 # === @end: pubsub/ ===
 
 
-# === @begin: pubsub/ ===
+# === @begin: store_client/ ===
 subdir('store_client/')
-# === @end: pubsub/ ===
+# === @end: store_client/ ===
 
 
-
+# === @begin: gcs_client/ ===
+subdir('gcs_client/')
+# === @end: gcs_client/ ===

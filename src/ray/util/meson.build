@@ -17,7 +17,7 @@ util_cpp_lib_public_deps = [
     absl_debugging_failure_signal_handler,
     absl_debugging_stacktrace,
     absl_debugging_symbolize,
-    absl_random,
+    absl_random_random,
     absl_synchronization,
     absl_time,
 

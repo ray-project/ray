@@ -11,7 +11,9 @@ absl_container_flat_hash_map = dependency('absl', method: 'cmake', modules: ['ab
 absl_container_flat_hash_set = dependency('absl', method: 'cmake', modules: ['absl::flat_hash_set'])
 absl_container_btree = dependency('absl', method: 'cmake', modules: ['absl::btree'])
 
-absl_random = dependency('absl', method: 'cmake', modules: ['absl::random_random'])
+absl_random_random = dependency('absl', method: 'cmake', modules: ['absl::random_random'])
+absl_random_bit_gen_ref = dependency('absl', method: 'cmake', modules: ['absl::random_bit_gen_ref'])
+
 absl_synchronization = dependency('absl', method: 'cmake', modules: ['absl::synchronization'])
 
 absl_debugging_failure_signal_handler = dependency('absl', method: 'cmake', modules: ['absl::failure_signal_handler'])
@@ -31,7 +33,9 @@ absl_memory = dependency('absl', method: 'cmake', modules: ['absl::memory'])
 boost = dependency('boost', method: 'cmake')
 boost_asio = boost
 boost_thread = dependency('boost', method: 'cmake', modules: ['thread'])
+boost_system = boost
 boost_any = boost
+boost_bimap = boost
 # === @end: boost ===
 
 

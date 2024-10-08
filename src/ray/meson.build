@@ -46,6 +46,14 @@ subdir('object_manager/')
 
 subdir('pubsub/')
 
+subdir('raylet_client/')
+
 subdir('gcs/')
+
+# We can't traverse the entire `raylet` tree, as it includes parts which depend on targets from `gcs`.
+subdir('raylet/scheduling/')
+
+# Such division is required to avoid circular raptors
+subdir('gcs/gcs_server/')
 
 #subdir('raylet/')
