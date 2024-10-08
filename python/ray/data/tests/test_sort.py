@@ -62,8 +62,13 @@ def test_sort_multiple_keys_produces_equally_sized_blocks(ray_start_regular_shar
     num_rows_per_block = [
         bundle.num_rows() for bundle in ds_sorted.iter_internal_ref_bundles()
     ]
+    # Number of output blocks should be equal to the number of input blocks.
     assert len(num_rows_per_block) == 5, len(num_rows_per_block)
-    assert max(num_rows_per_block) == 3, num_rows_per_block
+    # Ideally we should have 10 rows / 5 blocks = 2 rows per block, but to make this
+    # test less fragile we allow for a small deviation.
+    assert all(
+        1 <= num_rows <= 3 for num_rows in num_rows_per_block
+    ), num_rows_per_block
 
 
 def test_sort_simple(ray_start_regular, use_push_based_shuffle):
