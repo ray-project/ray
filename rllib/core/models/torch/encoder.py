@@ -218,6 +218,9 @@ class TorchGRUEncoder(TorchModel, Encoder):
                 self.gru.weight, **config.hidden_bias_initializer_config or {}
             )
 
+        # Add the linear output layer
+        self.output_layer = nn.Linear(config.hidden_dim, config.output_dims[0])
+
     @override(Model)
     def get_input_specs(self) -> Optional[Spec]:
         return SpecDict(
@@ -281,6 +284,9 @@ class TorchGRUEncoder(TorchModel, Encoder):
 
         out, states_out = self.gru(out, states_in["h"])
         states_out = {"h": states_out}
+
+        # Apply the linear output layer
+        out = self.output_layer(out)
 
         # Insert them into the output dict.
         outputs[ENCODER_OUT] = out
@@ -346,6 +352,9 @@ class TorchLSTMEncoder(TorchModel, Encoder):
                     layer[3], **config.hidden_bias_initializer_config or {}
                 )
 
+        # Add the linear output layer
+        self.output_layer = nn.Linear(config.hidden_dim, config.output_dims[0])
+
         self._state_in_out_spec = {
             "h": TensorSpec(
                 "b, l, d",
@@ -409,6 +418,9 @@ class TorchLSTMEncoder(TorchModel, Encoder):
 
         out, states_out = self.lstm(out, (states_in["h"], states_in["c"]))
         states_out = {"h": states_out[0], "c": states_out[1]}
+
+        # Apply the linear output layer
+        out = self.output_layer(out)
 
         # Insert them into the output dict.
         outputs[ENCODER_OUT] = out
