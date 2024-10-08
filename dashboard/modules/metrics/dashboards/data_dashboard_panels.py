@@ -388,6 +388,34 @@ DATA_GRAFANA_PANELS = [
         fill=0,
         stack=True,
     ),
+    Panel(
+        id=38,
+        title="In-Task Backpressure Time",
+        description="Time spent within a running task in backpressure.",
+        unit="seconds",
+        targets=[
+            Target(
+                expr="sum(ray_data_in_task_backpressure_time{{{global_filters}}}) by (dataset, operator)",
+                legend="In-Task Backpressure Time: {{dataset}}, {{operator}}",
+            )
+        ],
+        fill=0,
+        stack=True,
+    ),
+    Panel(
+        id=39,
+        title="Task CPU Time",
+        description="Time spent using CPU within a running task.",
+        unit="seconds",
+        targets=[
+            Target(
+                expr="sum(ray_data_task_cpu_time{{{global_filters}}}) by (dataset, operator)",
+                legend="Task CPU Time: {{dataset}}, {{operator}}",
+            )
+        ],
+        fill=0,
+        stack=True,
+    ),
     # Ray Data Metrics (Object Store Memory)
     Panel(
         id=13,

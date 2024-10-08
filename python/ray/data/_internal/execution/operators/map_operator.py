@@ -6,6 +6,7 @@ from collections import defaultdict, deque
 from typing import Any, Callable, Deque, Dict, Iterator, List, Optional, Set, Union
 
 import ray
+import time
 from ray import ObjectRef
 from ray._raylet import ObjectRefGenerator
 from ray.data._internal.compute import (
@@ -422,9 +423,11 @@ def _map_task(
         m_out.exec_stats = stats.build()
         m_out.exec_stats.udf_time_s = map_transformer.udf_time()
         m_out.exec_stats.task_idx = ctx.task_idx
+        finish_time = time.perf_counter()
         yield b_out
         yield m_out
         stats = BlockExecStats.builder()
+        stats.prev_map_task_finish_time = finish_time
 
 
 class _BlockRefBundler:
