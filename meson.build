@@ -39,98 +39,15 @@ add_project_arguments(
 # === @end: Project-wide settings ===
 
 
-# === @begin: __eugo/ ===
+# === @begin: eugo/ ===
 subdir('eugo/')
-# === @end: __eugo/ ===
+# === @end: eugo/ ===
 
 
 # === @begin: src/ ===
 subdir('src/')
 # === @end: src/ ===
 
-
-# === @begin: grpc_common_lib (original: grpc_common_lib) ===
-grpc_common_cpp_lib = static_library(
-    'grpc_common_lib',
-    [
-        'src/ray/rpc/common.cc',
-        'src/ray/rpc/grpc_server.cc',
-        'src/ray/rpc/server_call.cc',
-    ],
-    dependencies: [
-        # Package-managed
-        stats_metric_cpp_lib_dep,
-        asio_cpp_lib_dep,
-        grpc_util_cpp_lib_dep,
-        id_cpp_lib_dep,
-        ray_config_cpp_lib_dep,
-        status_cpp_lib_dep,
-
-        # Eugo-managed
-        grpc,
-        protobuf
-    ],
-    install: false
-)
-
-grpc_common_cpp_lib_dep = declare_dependency(
-    link_with: [grpc_common_cpp_lib]
-)
-# === @end: grpc_common_lib (original: grpc_common_lib) ===
-
-
-## Node manager server and client.
-#ray_cc_library(
-#    name = "node_manager_rpc",
-#    srcs = glob([
-#    "src/ray/rpc/node_manager/*.cc",
-#    ]),
-#hdrs = glob([
-#"src/ray/rpc/node_manager/*.h",
-#]),
-#deps = [
-#":grpc_common_lib",
-#":node_manager_cc_grpc",
-#":ray_common",
-#"@boost//:asio",
-#"@com_github_grpc_grpc//:grpc++",
-#],
-#)
-#
-## gcs_service gRPC lib.
-#cc_grpc_library(
-#    name = "gcs_service_cc_grpc",
-#    srcs = ["//src/ray/protobuf:gcs_service_proto"],
-#    grpc_only = True,
-#    deps = ["//src/ray/protobuf:gcs_service_cc_proto"],
-#)
-#
-## gcs_service gRPC lib.
-#cc_grpc_library(
-#    name = "test_service_cc_grpc",
-#    srcs = ["//src/ray/protobuf:test_service_proto"],
-#    grpc_only = True,
-#    deps = ["//src/ray/protobuf:test_service_cc_proto"],
-#)
-#
-## gcs rpc server and client.
-#ray_cc_library(
-#    name = "gcs_service_rpc",
-#    hdrs = [
-#    "src/ray/rpc/gcs_server/gcs_rpc_client.h",
-#    "src/ray/rpc/gcs_server/gcs_rpc_server.h",
-#    ],
-#    deps = [
-#    ":autoscaler_cc_grpc",
-#    ":gcs_service_cc_grpc",
-#    ":grpc_common_lib",
-#    ":pubsub_lib",
-#    ":ray_common",
-#    "@boost//:asio",
-#    "@com_github_grpc_grpc//:grpc++",
-#    "@com_google_absl//absl/container:btree",
-#    ],
-#)
 
 ## Object manager rpc server and client.
 #ray_cc_library(
@@ -206,14 +123,7 @@ grpc_common_cpp_lib_dep = declare_dependency(
 #    ],
 #)
 #
-#cc_grpc_library(
-##    name = "autoscaler_cc_grpc",
-##    srcs = ["//src/ray/protobuf:autoscaler_proto"],
-##    grpc_only = True,
-##    deps = [
-##    "//src/ray/protobuf:autoscaler_cc_proto",
-##    ],
-##)
+
 ##
 ##ray_cc_library(
 ##    name = "autoscaler_rpc",

@@ -7,3 +7,5 @@ subdir('stats/')
 subdir('raylet/format/')
 
 subdir('common/')
+
+subdir('rpc/')

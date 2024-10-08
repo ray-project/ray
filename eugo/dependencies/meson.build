@@ -9,6 +9,7 @@ absl_types_optional = dependency('absl', method: 'cmake', modules: ['absl::optio
 
 absl_container_flat_hash_map = dependency('absl', method: 'cmake', modules: ['absl::flat_hash_map'])
 absl_container_flat_hash_set = dependency('absl', method: 'cmake', modules: ['absl::flat_hash_set'])
+absl_container_btree = dependency('absl', method: 'cmake', modules: ['absl::btree'])
 
 absl_random = dependency('absl', method: 'cmake', modules: ['absl::random_random'])
 absl_synchronization = dependency('absl', method: 'cmake', modules: ['absl::synchronization'])

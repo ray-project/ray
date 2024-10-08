@@ -97,6 +97,28 @@ autoscaler_proto_cpp_lib_dep = declare_dependency(
 )
 # @end: proto_cpp (original: autoscaler_cc_proto)
 
+# @begin: proto_cpp_grpc (original: autoscaler_cc_grpc)
+autoscaler_proto_cpp_grpc = custom_target(
+    input: autoscaler_proto,
+    kwargs: proto_cpp_grpc_default_kwargs
+)
+
+autoscaler_proto_cpp_grpc_dep = declare_dependency(
+    sources: autoscaler_proto_cpp_grpc
+)
+
+autoscaler_proto_cpp_grpc_lib = static_library(
+    'autoscaler_proto_cpp_grpc_lib',
+    dependencies: [protobuf, grpc, autoscaler_proto_cpp_grpc_dep, autoscaler_proto_cpp_lib_dep],
+    install: false
+)
+
+autoscaler_proto_cpp_grpc_lib_dep = declare_dependency(
+    link_with: [autoscaler_proto_cpp_grpc_lib],
+    dependencies: [protobuf, grpc]
+)
+# @end: proto_cpp_grpc (original: autoscaler_cc_grpc)
+
 # @begin: proto_py (original: autoscaler_py_proto)
 autoscaler_proto_py = custom_target(
     input: autoscaler_proto,
@@ -398,6 +420,28 @@ gcs_service_proto_cpp_lib_dep = declare_dependency(
 )
 # @end: proto_cpp (@original: gcs_service_cc_proto)
 
+# @begin: proto_cpp_grpc (@original: gcs_service_cc_grpc)
+gcs_service_proto_cpp_grpc = custom_target(
+    input: gcs_service_proto,
+    kwargs: proto_cpp_grpc_default_kwargs
+)
+
+gcs_service_proto_cpp_grpc_dep = declare_dependency(
+    sources: gcs_service_proto_cpp_grpc
+)
+
+gcs_service_proto_cpp_grpc_lib = static_library(
+    'gcs_service_proto_cpp_grpc_lib',
+    dependencies: [protobuf, grpc, gcs_service_proto_cpp_grpc_dep, gcs_service_proto_cpp_lib_dep],
+    install: false
+)
+
+gcs_service_proto_cpp_grpc_lib_dep = declare_dependency(
+    link_with: [gcs_service_proto_cpp_grpc_lib],
+    dependencies: [protobuf, grpc]
+)
+# @end: proto_cpp (@original: gcs_service_cc_proto)
+
 # @begin: proto_py (@original: gcs_service_py_proto)
 gcs_service_proto_py = custom_target(
     input: gcs_service_proto,
@@ -431,6 +475,28 @@ test_service_proto_cpp_lib_dep = declare_dependency(
     dependencies: [protobuf]
 )
 # @end: proto_cpp (@original: test_service_cc_proto)
+
+# @begin: proto_cpp_grpc (@original: test_service_cc_grpc)
+test_service_proto_cpp_grpc = custom_target(
+    input: test_service_proto,
+    kwargs: proto_cpp_grpc_default_kwargs
+)
+
+test_service_proto_cpp_grpc_dep = declare_dependency(
+    sources: test_service_proto_cpp_grpc
+)
+
+test_service_proto_cpp_grpc_lib = static_library(
+    'test_service_proto_cpp_grpc_lib',
+    dependencies: [protobuf, grpc, test_service_proto_cpp_grpc_dep, test_service_proto_cpp_lib_dep],
+    install: false
+)
+
+test_service_proto_cpp_grpc_lib_dep = declare_dependency(
+    link_with: [test_service_proto_cpp_grpc_lib],
+    dependencies: [protobuf, grpc]
+)
+# @end: proto_cpp_grpc (@original: test_service_cc_grpc)
 
 # @begin: proto_py (@original: test_service_py_proto)
 test_service_proto_py = custom_target(
