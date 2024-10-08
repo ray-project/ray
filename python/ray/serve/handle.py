@@ -5,7 +5,6 @@ import threading
 import time
 import warnings
 from dataclasses import dataclass
-from functools import partial
 from typing import Any, AsyncIterator, Dict, Iterator, Optional, Tuple, Union
 
 import ray
@@ -833,5 +832,3 @@ class DeploymentHandle(_DeploymentHandleBase):
             response_cls = DeploymentResponse
 
         return response_cls(future)
-
-        return resp
