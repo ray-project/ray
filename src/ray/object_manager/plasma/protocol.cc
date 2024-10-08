@@ -466,8 +466,10 @@ Status SendDeleteReply(const std::shared_ptr<Client> &client,
       fbb,
       static_cast<int32_t>(object_ids.size()),
       ToFlatbuffer(&fbb, &object_ids[0], object_ids.size()),
-      fbb.CreateVector(MakeNonNull(reinterpret_cast<const int32_t *>(errors.data())),
-                       object_ids.size()));
+//      fbb.CreateVector(MakeNonNull(reinterpret_cast<const int32_t *>(errors.data())),
+//                       object_ids.size()));
+      // @TODO+:Eugo
+      fbb.CreateVector(MakeNonNull(errors.data()), object_ids.size()));
   return PlasmaSend(client, MessageType::PlasmaDeleteReply, &fbb, message);
 }
 
