@@ -53,3 +53,28 @@ subdir('object_manager/')
 # === @begin: worker/ ===
 subdir('worker/')
 # === @end: worker/ ===
+
+
+# === @begin: reporter_rpc_cpp_lib (original: reporter_rpc) ===
+reporter_rpc_cpp_lib_private_deps = [
+    # Package-managed
+    grpc_common_cpp_lib_dep,
+    reporter_proto_cpp_grpc_lib_dep,
+    status_cpp_lib_dep
+]
+
+reporter_rpc_cpp_lib_public_deps = [
+    # Eugo-managed
+    boost_asio,
+    boost_thread,
+    grpc
+]
+
+reporter_rpc_cpp_lib_dep = declare_dependency(
+    sources: ['metrics_agent_client.h'],
+    dependencies: [
+        reporter_rpc_cpp_lib_public_deps,
+        reporter_rpc_cpp_lib_private_deps
+    ]
+)
+# === @end: reporter_rpc_cpp_lib (original: reporter_rpc) ===

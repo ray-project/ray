@@ -50,21 +50,6 @@ subdir('src/')
 
 
 
-
-## Metrics Agent client.
-#ray_cc_library(
-#    name = "reporter_rpc",
-#    hdrs = glob([
-#    "src/ray/rpc/metrics_agent_client.h",
-#    ]),
-#deps = [
-#":grpc_common_lib",
-#":reporter_cc_grpc",
-#"//src/ray/common:status",
-#"@boost//:asio",
-#"@boost//:thread",
-#"@com_github_grpc_grpc//:grpc++",
-#],
 #)
 #
 ## pubsub.
