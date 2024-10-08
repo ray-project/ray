@@ -437,6 +437,8 @@ TEST(SchedulingQueueTest, TestCancelQueuedTask) {
   queue->ScheduleRequests();
   ASSERT_EQ(n_ok, 4);
   ASSERT_EQ(n_rej, 1);
+
+  queue->Stop();
 }
 
 TEST(OutOfOrderActorSchedulingQueueTest, TestSameTaskMultipleAttempts) {
