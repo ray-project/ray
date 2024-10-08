@@ -29,3 +29,9 @@ ANYSCALE_TRACING_EXPORTER_IMPORT_PATH = os.environ.get(
 ANYSCALE_TRACING_SAMPLING_RATIO = float(
     os.environ.get("ANYSCALE_TRACING_SAMPLING_RATIO", 1)
 )
+
+# For now, this is used only for testing. In the suite of tests that
+# use gRPC to send requests, we flip this flag on.
+ANYSCALE_RAY_SERVE_USE_GRPC_BY_DEFAULT = (
+    os.environ.get("ANYSCALE_RAY_SERVE_USE_GRPC_BY_DEFAULT", "0") == "1"
+)

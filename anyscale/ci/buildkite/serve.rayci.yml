@@ -6,3 +6,11 @@ steps:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/anyscale/serve/... serve
     depends_on: servebuild
     job_env: forge
+
+  - label: ":ray-serve: serve: gRPC tests"
+    instance_type: medium
+    commands:
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/serve/tests:test_runtime_env_2 serve
+        --test-env=ANYSCALE_RAY_SERVE_USE_GRPC_BY_DEFAULT=1
+    depends_on: servebuild
+    job_env: forge

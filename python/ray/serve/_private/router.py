@@ -9,6 +9,7 @@ from typing import Any, DefaultDict, Dict, List, Optional, Tuple, Union
 
 import ray
 from ray.actor import ActorHandle
+from ray.anyscale.serve._private.constants import ANYSCALE_RAY_SERVE_USE_GRPC_BY_DEFAULT
 from ray.anyscale.serve._private.tracing_utils import (
     create_propagated_context,
     set_span_attributes,
@@ -337,7 +338,7 @@ class Router:
         _prefer_local_node_routing: bool = False,
         enable_queue_len_cache: bool = RAY_SERVE_ENABLE_QUEUE_LENGTH_CACHE,
         enable_strict_max_ongoing_requests: bool = RAY_SERVE_ENABLE_STRICT_MAX_ONGOING_REQUESTS,  # noqa: E501
-        by_reference: bool = True,
+        by_reference: bool = not ANYSCALE_RAY_SERVE_USE_GRPC_BY_DEFAULT,
         *,
         replica_scheduler: Optional[ReplicaScheduler] = None,
     ):
