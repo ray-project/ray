@@ -505,11 +505,9 @@ class FaultTolerantActorManager:
             try:
                 result = ray.get(ready)
 
-            # ActorManager should not handle errors other than `RayError` (e.g.
-            # application level errors).
-            # Any other error type happening during ray.get() -> Throw exception right
-            # here (we don't know how to handle these non-remote worker issues and
-            # should therefore crash).
+            # Any error type other than `RayError` happening during ray.get() ->
+            # Throw exception right here (we don't know how to handle these non-remote
+            # worker issues and should therefore crash).
             except RayError as e:
                 # Return error to the user.
                 remote_results.add_result(actor_id, ResultOrError(error=e), tag)
