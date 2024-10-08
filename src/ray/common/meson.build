@@ -1,27 +1,42 @@
-# === @begin: constants (originial: constants) ===
+# === @begin: constants ===
+# header-only library
 constants_cpp_lib_dep = declare_dependency(
+    sources: ['constants.h'],
     include_directories: ['.']
 )
-# === @end: constants (original: constants) ===
+# === @end: constants ===
 
 
-# === @begin: status (original: status) ===
+# === @begin: status_cpp_lib (original: status) ===
 status_cpp_lib = static_library(
     'status_cpp_lib',
     ['status.cc'],
     install: false,
-    dependencies: [
-        util_cpp_lib_dep
-    ]
+    dependencies: [util_cpp_lib_dep]
 )
 
 status_cpp_lib_dep = declare_dependency(
     link_with: [status_cpp_lib]
 )
-# === @end: status (original: status) ===
+# === @end: status_cpp_lib (original: status) ===
 
 
-# === @begin: id (original: id) ===
+# === @begin: id_cpp_lib (original: id) ===
+id_cpp_lib_private_deps = [
+    # Project-managed
+    constants_cpp_lib_dep,
+    status_cpp_lib_dep,
+    common_proto_cpp_lib_dep,
+    gcs_proto_cpp_lib_dep,
+    util_cpp_lib_dep,
+]
+
+id_cpp_lib_public_deps = [
+    # Eugo-managed
+    flatbuffers,
+    msgpack_cxx
+]
+
 id_cpp_lib = static_library(
     'id_cpp_lib',
     [
@@ -30,76 +45,87 @@ id_cpp_lib = static_library(
     ],
     install: false,
     dependencies: [
-        # Project-managed
-        constants_cpp_lib_dep,
-        status_cpp_lib_dep,
-        common_proto_cpp_lib_dep,
-        gcs_proto_cpp_lib_dep,
-        util_cpp_lib_dep,
-
-        # Eugo-managed
-        flatbuffers,
-        msgpack_cxx
+        id_cpp_lib_private_deps,
+        id_cpp_lib_public_deps
     ]
 )
 
 id_cpp_lib_dep = declare_dependency(
-    link_with: [id_cpp_lib]
+    link_with: [id_cpp_lib],
+    dependencies: id_cpp_lib_public_deps
 )
-# === @end: id (original: id) ===
+# === @end: id_cpp_lib (original: id) ===
 
 
-# === @begin: ray_object (original: c) ===
+# === @begin: ray_object_cpp_lib (original: c) ===
+ray_object_cpp_lib_private_deps = [
+    # Package-managed
+    id_cpp_lib_dep,
+    status_cpp_lib_dep,
+    aligned_alloc_cpp_lib_dep,
+    gcs_proto_cpp_lib_dep,
+    util_cpp_lib_dep,
+]
+
+ray_object_cpp_lib_public_deps = [
+    # Eugo-managed
+    absl_time,
+    absl_types_optional
+]
+
 ray_object_cpp_lib = static_library(
     'ray_object_cpp_lib',
     ['ray_object.cc'],
     install: false,
     dependencies: [
-        # Package-managed
-        id_cpp_lib_dep,
-        status_cpp_lib_dep,
-        aligned_alloc_cpp_lib_dep,
-        gcs_proto_cpp_lib_dep,
-        util_cpp_lib_dep,
-
-        # Eugo-managed
-        absl_time,
-        absl_types_optional
+        ray_object_cpp_lib_private_deps,
+        ray_object_cpp_lib_public_deps
     ]
 )
 
 ray_object_cpp_lib_dep = declare_dependency(
-    link_with: [ray_object_cpp_lib]
+    link_with: [ray_object_cpp_lib],
+    dependencies: ray_object_cpp_lib_public_deps
 )
-# === @end: ray_object (original: c) ===
+# === @end: ray_object_cpp_lib (original: c) ===
 
 
-# === @begin: ray_config (original: ray_config) ===
+# === @begin: ray_config_cpp_lib (original: ray_config) ===
+ray_config_cpp_lib_private_deps = [
+    # Package-managed
+    util_cpp_lib_dep,
+]
+
+ray_config_cpp_lib_public_deps = [
+    # Eugo-managed
+    absl_algorithm,
+    absl_strings,
+    nlohmann_json
+]
+
 ray_config_cpp_lib = static_library(
     'ray_config_cpp_lib',
     ['ray_config.cc'],
     install: false,
     dependencies: [
-        # Package-managed
-        util_cpp_lib_dep,
-
-        # Eugo-managed
-        absl_algorithm,
-        absl_strings,
-        nlohmann_json
+        ray_config_cpp_lib_private_deps,
+        ray_config_cpp_lib_public_deps
     ]
 )
 
 ray_config_cpp_lib_dep = declare_dependency(
-    link_with: [ray_config_cpp_lib]
+    link_with: [ray_config_cpp_lib],
+    dependencies: ray_config_cpp_lib_public_deps
 )
-# === @end: ray_config (original: ray_config) ===
+# === @end: ray_config_cpp_lib (original: ray_config) ===
 
 
 # === @begin: grpc_util (originial: grpc_util) ===
+# header-only
 grpc_util_cpp_lib_dep = declare_dependency(
     include_directories: ['.'],
     dependencies: [
+        # @TODO+:should those guys become a private interface?
         # Package-managed
         ray_config_cpp_lib_dep,
         status_cpp_lib_dep,
@@ -112,26 +138,33 @@ grpc_util_cpp_lib_dep = declare_dependency(
 # === @end: grpc_util (originial: grpc_util) ===
 
 
+# === @begin: event_stats_cpp_lib (original: event_stats) ===
+event_stats_cpp_lib_private_deps = [
+    # Package-managed
+    ray_config_cpp_lib_dep,
+    stats_metric_cpp_lib_dep,
+    util_cpp_lib_dep,
+]
 
-# === @begin: event_stats (original: event_stats) ===
+event_stats_cpp_lib_public_deps = [
+    # Eugo-managed
+    absl_container_flat_hash_map,
+    absl_synchronization
+]
+
 event_stats_cpp_lib = static_library(
     'event_stats_cpp_lib',
     ['event_stats.cc'],
     install: false,
     dependencies: [
-        # Package-managed
-        ray_config_cpp_lib_dep,
-        stats_metric_cpp_lib_dep,
-        util_cpp_lib_dep,
-
-        # Eugo-managed
-        absl_container_flat_hash_map,
-        absl_synchronization
+        event_stats_cpp_lib_private_deps,
+        event_stats_cpp_lib_public_deps
     ]
 )
 
 event_stats_cpp_lib_dep = declare_dependency(
-    link_with: [event_stats_cpp_lib]
+    link_with: [event_stats_cpp_lib],
+    dependencies: event_stats_cpp_lib_public_deps
 )
 # === @end: event_stats (original: event_stats) ===
 
@@ -141,70 +174,94 @@ subdir('asio')
 # === @end: asio/ ===
 
 
-# === @begin: memory_monitor (original: memory_monitor) ===
+# === @begin: memory_monitor_cpp_lib (original: memory_monitor) ===
+memory_monitor_cpp_lib_private_deps = [
+    # Package-managed
+    asio_cpp_lib_dep,
+    ray_config_cpp_lib_dep,
+    util_cpp_lib_dep,
+]
+
+memory_monitor_cpp_lib_public_deps = [
+    # Eugo-managed
+    absl_strings,
+    #"@com_google_googletest//:gtest_prod",
+    nlohmann_json
+]
+
 memory_monitor_cpp_lib = static_library(
     'memory_monitor_cpp_lib',
     ['memory_monitor.cc'],
     install: false,
     dependencies: [
-        # Package-managed
-        asio_cpp_lib_dep,
-        ray_config_cpp_lib_dep,
-        util_cpp_lib_dep,
-
-        # Eugo-managed
-        absl_strings,
-        #"@com_google_googletest//:gtest_prod",
-        nlohmann_json
+        memory_monitor_cpp_lib_private_deps,
+        memory_monitor_cpp_lib_public_deps
     ]
 )
 
 memory_monitor_cpp_lib_dep = declare_dependency(
-    link_with: [memory_monitor_cpp_lib]
+    link_with: [memory_monitor_cpp_lib],
+    dependencies: memory_monitor_cpp_lib_public_deps
 )
-# === @end: memory_monitor (original: memory_monitor) ===
+# === @end: memory_monitor_cpp_lib (original: memory_monitor) ===
 
 
-# === @begin: file_system_monitor (original: file_system_monitor) ===
+# === @begin: file_system_monitor_cpp_lib (original: file_system_monitor) ===
+file_system_monitor_cpp_lib_private_deps = [
+    # Package-managed
+    asio_cpp_lib_dep,
+    util_cpp_lib_dep
+]
+
+file_system_monitor_cpp_lib_public_deps = [
+    # Eugo-managed
+    #    "@com_google_googletest//:gtest_prod",
+]
+
 file_system_monitor_cpp_lib = static_library(
     'file_system_monitor_cpp_lib',
     ['file_system_monitor.cc'],
     install: false,
     dependencies: [
-        # Package-managed
-        asio_cpp_lib_dep,
-        util_cpp_lib_dep
-
-        # Eugo-managed
-        #    "@com_google_googletest//:gtest_prod",
+        file_system_monitor_cpp_lib_private_deps,
+        file_system_monitor_cpp_lib_public_deps
     ]
 )
 
 file_system_monitor_cpp_lib_dep = declare_dependency(
-    link_with: [file_system_monitor_cpp_lib]
+    link_with: [file_system_monitor_cpp_lib],
+    dependencies: file_system_monitor_cpp_lib_public_deps
 )
-# === @end: file_system_monitor (original: file_system_monitor) ===
+# === @end: file_system_monitor_cpp_lib (original: file_system_monitor) ===
 
 
-# === @begin: runtime_env (original: runtime_env) ===
+# === @begin: runtime_env_cpp_lib (original: runtime_env) ===
+runtime_env_cpp_lib_private_deps = [
+    # Package-managed
+    id_cpp_lib_dep,
+    common_proto_cpp_lib_dep,
+]
+
+runtime_env_cpp_lib_public_deps = [
+    # Eugo-managed
+    absl_container_flat_hash_map
+]
+
 runtime_env_cpp_lib = static_library(
     'runtime_env_cpp_lib',
     ['runtime_env_common.cc', 'runtime_env_manager.cc'],
     install: false,
     dependencies: [
-        # Package-managed
-        id_cpp_lib_dep,
-        common_proto_cpp_lib_dep,
-
-        # Eugo-managed
-        absl_container_flat_hash_map
+        runtime_env_cpp_lib_private_deps,
+        runtime_env_cpp_lib_public_deps
     ]
 )
 
 runtime_env_cpp_lib_dep = declare_dependency(
-    link_with: [runtime_env_cpp_lib]
+    link_with: [runtime_env_cpp_lib],
+    dependencies: runtime_env_cpp_lib_public_deps
 )
-# === @end: runtime_env (original: runtime_env) ===
+# === @end: runtime_env_cpp_lib (original: runtime_env) ===
 
 
 # === @begin: ray_syncer (original: ray_syncer) ===

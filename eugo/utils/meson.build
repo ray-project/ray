@@ -51,7 +51,7 @@ flatc_cpp_fbs_with_default_args = [
     '--scoped-enums',
     '--gen-mutable',
     '--gen-object-api',
-    '-o @OUTDIR@',
+    '-o', '@OUTDIR@',
     '--cpp', '@INPUT@'
 ]
 cpp_fbs_default_kwargs = {
