@@ -264,53 +264,70 @@ runtime_env_cpp_lib_dep = declare_dependency(
 # === @end: runtime_env_cpp_lib (original: runtime_env) ===
 
 
-# === @begin: ray_syncer (original: ray_syncer) ===
+# === @begin: ray_syncer ===
 subdir('ray_syncer/')
-# === @end: ray_syncer (original: ray_syncer) ===
+# === @end: ray_syncer ===
 
 
-#ray_cc_library(
-#    name = "ray_common",
-#    deps = [
-#    ":stats_metric",
-#    "//src/ray/common:asio",
-#    "//src/ray/common:constants",
-#    "//src/ray/common:event_stats",
-#    "//src/ray/common:file_system_monitor",
-#    "//src/ray/common:grpc_util",
-#    "//src/ray/common:id",
-#    "//src/ray/common:memory_monitor",
-#    "//src/ray/common:network",
-#    "//src/ray/common:ray_config",
-#    "//src/ray/common:ray_syncer",
-#    "//src/ray/common:status",
-#    "//src/ray/common:task_common",
-#    "//src/ray/common:test_util",
-#    "//src/ray/protobuf:gcs_cc_proto",
-#    "@com_google_googletest//:gtest",
-#    ],
-#)
+# === @begin: network_cpp_lib (original: network) ===
+network_cpp_lib = static_library(
+    'network_cpp_lib',
+    [
+        'client_connection.cc',
+        'network_util.cc'
+    ],
+    install: false,
+    dependencies: [
+        # Package-managed
+        asio_cpp_lib_dep,
+        id_cpp_lib_dep,
+        status_cpp_lib_dep,
+        node_manager_cpp_fbs_lib_dep
+    ]
+)
+
+network_cpp_lib_dep = declare_dependency(
+    link_with: [network_cpp_lib],
+)
+# === @end: network_cpp_lib (original: network) ===
 
 
-
-#ray_cc_library(
-#    name = "network",
-#    srcs = [
-#    "client_connection.cc",
-#    "network_util.cc",
-#    ],
-#    hdrs = [
-#    "client_connection.h",
-#    "network_util.h",
-#    ],
-#    deps = [
-#    ":asio",
-#    ":id",
-#    ":status",
-#    "//:node_manager_fbs",
-#    ],
-#)
+## === @begin: ray_common_cpp_lib (original: runtime_env) ===
+#ray_common_cpp_lib_private_deps = [
+#    # Package-managed
+#    stats_metric_cpp_lib_dep,
+#    asio_cpp_lib_dep,
+#    constants_cpp_lib_dep,
+#    event_stats_cpp_lib_dep,
+#    file_system_monitor_cpp_lib_dep,
+#    grpc_util_cpp_lib_dep,
+#    id_cpp_lib_dep,
+#    memory_monitor_cpp_lib_dep,
+#    network_cpp_lib_dep,
+#    ray_config_cpp_lib_dep,
+#    ray_syncer_cpp_lib_dep,
+#    status_cpp_lib_dep,
+#    task_common_cpp_lib_dep,
+#    #    "//src/ray/common:test_util",
+#    gcs_proto_cpp_lib_dep,
+#]
 #
+#ray_common_cpp_lib_public_deps = [
+#    # Eugo-managed
+#    #    "@com_google_googletest//:gtest",
+#]
+#
+## Header-only guy? Or even virtual dependency? meh
+#ray_common_cpp_lib_dep = declare_dependency(
+#    dependencies: [
+#        runtime_env_cpp_lib_private_deps,
+#        runtime_env_cpp_lib_public_deps
+#    ]
+#)
+## === @end: ray_common_cpp_lib (original: ray_common) ===
+
+
+
 
 #
 #ray_cc_library(
