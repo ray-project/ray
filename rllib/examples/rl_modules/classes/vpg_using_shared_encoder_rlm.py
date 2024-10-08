@@ -56,19 +56,19 @@ class VPGTorchMultiRLModuleWithSharedEncoder(MultiRLModule):
                     # Central/shared encoder net.
                     SHARED_ENCODER_ID: RLModuleSpec(
                         module_class=SharedTorchEncoder,
-                        model_config_dict={"embedding_dim": EMBEDDING_DIM},
+                        model_config={"embedding_dim": EMBEDDING_DIM},
                     ),
                     # Arbitrary number of policy nets (w/o encoder sub-net).
                     "p0": RLModuleSpec(
                         module_class=VPGTorchRLModuleUsingSharedEncoder,
-                        model_config_dict={
+                        model_config={
                             "embedding_dim": EMBEDDING_DIM,
                             "hidden_dim": HIDDEN_DIM,
                         },
                     ),
                     "p1": RLModuleSpec(
                         module_class=VPGTorchRLModuleUsingSharedEncoder,
-                        model_config_dict={
+                        model_config={
                             "embedding_dim": EMBEDDING_DIM,
                             "hidden_dim": HIDDEN_DIM,
                         },

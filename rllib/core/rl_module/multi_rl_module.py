@@ -448,7 +448,7 @@ class MultiRLModule(RLModule):
             )
             # Go through all of our current modules and check, whether they are listed
             # in the given MultiRLModuleSpec. If not, erase them from `self`.
-            for module_id, module in self._rl_modules.items():
+            for module_id, module in self._rl_modules.copy().items():
                 if module_id not in multi_rl_module_spec.rl_module_specs:
                     self.remove_module(module_id, raise_err_if_not_found=True)
             # Go through all the modules in the given MultiRLModuleSpec and if

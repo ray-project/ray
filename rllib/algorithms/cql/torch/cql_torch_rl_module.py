@@ -42,11 +42,11 @@ class CQLTorchRLModule(SACTorchRLModule):
         # First for the random actions (from the mu-distribution as named by Kumar et
         # al. (2020)).
         low = torch.tensor(
-            self.config.action_space.low,
+            self.action_space.low,
             device=fwd_out[QF_PREDS].device,
         )
         high = torch.tensor(
-            self.config.action_space.high,
+            self.action_space.high,
             device=fwd_out[QF_PREDS].device,
         )
         num_samples = batch[Columns.ACTIONS].shape[0] * self.model_config["num_actions"]
@@ -125,7 +125,7 @@ class CQLTorchRLModule(SACTorchRLModule):
     ) -> Dict[str, TensorType]:
         """Generated actions and Q-values for repeated observations.
 
-        The `self.config.model_condfig_dict["num_actions"]` define a multiplier
+        The `self.model_config["num_actions"]` define a multiplier
         used for generating `num_actions` as many actions as the batch size.
         Observations are repeated and then a model forward pass is made.
 

@@ -30,11 +30,9 @@ class TestTfRLModule(unittest.TestCase):
         bsize = 1024
         env = gym.make("CartPole-v1")
         module = DiscreteBCTFModule(
-            config=RLModuleConfig(
-                env.observation_space,
-                env.action_space,
-                model_config_dict={"fcnet_hiddens": [32]},
-            )
+            observation_space=env.observation_space,
+            action_space=env.action_space,
+            model_config={"fcnet_hiddens": [32]},
         )
         obs_shape = env.observation_space.shape
         obs = tf.random.uniform((bsize,) + obs_shape)

@@ -39,7 +39,7 @@ if __name__ == "__main__":
         .rl_module(
             rl_module_spec=RLModuleSpec(
                 module_class=ModelV2ToRLModule,
-                model_config_dict={
+                model_config={
                     "policy_id": DEFAULT_POLICY_ID,
                     "old_api_stack_algo_config": config_old_stack,
                 },

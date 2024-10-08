@@ -778,6 +778,7 @@ class Learner(Checkpointable):
                 algorithm_config_overrides_per_module={module_id: config_overrides}
             )
         self.config.rl_module(rl_module_spec=MultiRLModuleSpec.from_module(self.module))
+        self._module_spec = self.config.rl_module_spec
         if new_should_module_be_updated is not None:
             self.config.multi_agent(policies_to_train=new_should_module_be_updated)
 

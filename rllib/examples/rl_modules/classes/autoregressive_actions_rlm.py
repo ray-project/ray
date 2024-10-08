@@ -55,7 +55,7 @@ class AutoregressiveActionsRLM(RLModule, ValueFunctionAPI, abc.ABC):
         # Note further, we neet to know the required input dimensions for
         # the partial distributions.
         self.required_output_dims = self.action_dist_cls.required_input_dim(
-            space=self.config.action_space,
+            space=self.action_space,
             as_list=True,
         )
         action_dims = self.action_space[0].shape or (1,)
@@ -63,7 +63,7 @@ class AutoregressiveActionsRLM(RLModule, ValueFunctionAPI, abc.ABC):
         prior_config = MLPHeadConfig(
             # Use the hidden dimension from the encoder output.
             input_dims=latent_dims,
-            # Use configurations from the `model_config_dict`.
+            # Use configurations from the `model_config`.
             hidden_layer_dims=self.model_config["head_fcnet_hiddens"],
             hidden_layer_activation=self.model_config["head_fcnet_activation"],
             output_layer_dim=self.required_output_dims[0],

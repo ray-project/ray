@@ -30,7 +30,7 @@ class LSTMContainingRLModule(TorchRLModule, ValueFunctionAPI):
         rl_module_config = RLModuleConfig(
             observation_space=gym.spaces.Box(-1.0, 1.0, (e,), np.float32),
             action_space=gym.spaces.Discrete(4),
-            model_config_dict={"lstm_cell_size": CELL}
+            model_config={"lstm_cell_size": CELL}
         )
         my_net = LSTMContainingRLModule(rl_module_config)
 
@@ -65,17 +65,16 @@ class LSTMContainingRLModule(TorchRLModule, ValueFunctionAPI):
         Feel free to access the following useful properties in this class:
         - `self.model_config`: The config dict for this RLModule class,
         which should contain flxeible settings, for example: {"hiddens": [256, 256]}.
-        - `self.config.observation|action_space`: The observation and action space that
+        - `self.observation|action_space`: The observation and action space that
         this RLModule is subject to. Note that the observation space might not be the
         exact space from your env, but that it might have already gone through
         preprocessing through a connector pipeline (for example, flattening,
         frame-stacking, mean/std-filtering, etc..).
         """
         # Assume a simple Box(1D) tensor as input shape.
-        in_size = self.config.observation_space.shape[0]
+        in_size = self.observation_space.shape[0]
 
-        # Get the LSTM cell size from our RLModuleConfig's (self.config)
-        # `model_config_dict` property:
+        # Get the LSTM cell size from the `model_config` attribute:
         self._lstm_cell_size = self.model_config.get("lstm_cell_size", 256)
         self._lstm = nn.LSTM(in_size, self._lstm_cell_size, batch_first=True)
         in_size = self._lstm_cell_size
@@ -94,7 +93,7 @@ class LSTMContainingRLModule(TorchRLModule, ValueFunctionAPI):
         self._fc_net = nn.Sequential(*layers)
 
         # Logits layer (no bias, no activation).
-        self._pi_head = nn.Linear(in_size, self.config.action_space.n)
+        self._pi_head = nn.Linear(in_size, self.action_space.n)
         # Single-node value layer.
         self._values = nn.Linear(in_size, 1)
 

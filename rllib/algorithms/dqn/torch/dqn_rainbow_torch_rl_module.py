@@ -197,7 +197,7 @@ class DQNRainbowTorchRLModule(TorchRLModule, DQNRainbowRLModule):
         # Reshape the action values.
         # NOTE: Handcrafted action shape.
         logits_per_action_per_atom = torch.reshape(
-            batch, shape=(-1, self.config.action_space.n, self.num_atoms)
+            batch, shape=(-1, self.action_space.n, self.num_atoms)
         )
         # Calculate the probability for each action value atom. Note,
         # the sum along action value atoms of a single action value
