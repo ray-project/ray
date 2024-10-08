@@ -44,3 +44,12 @@ subdir('node_manager/')
 # === @begin: gcs_server/ ===
 subdir('gcs_server/')
 # === @end: gcs_server/ ===
+
+
+# === @begin: object_manager/ ===
+subdir('object_manager/')
+# === @end: object_manager/ ===
+
+# === @begin: worker/ ===
+subdir('worker/')
+# === @end: worker/ ===

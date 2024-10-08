@@ -49,42 +49,7 @@ subdir('src/')
 # === @end: src/ ===
 
 
-## Object manager rpc server and client.
-#ray_cc_library(
-#    name = "object_manager_rpc",
-#    hdrs = glob([
-#    "src/ray/rpc/object_manager/*.h",
-#    ]),
-#deps = [
-#":grpc_common_lib",
-#":object_manager_cc_grpc",
-#":ray_common",
-#"@boost//:asio",
-#"@com_github_grpc_grpc//:grpc++",
-#],
-#)
-#
 
-## worker server and client.
-#ray_cc_library(
-#    name = "worker_rpc",
-#    srcs = glob([
-#    "src/ray/rpc/worker/*.cc",
-#    ]),
-#hdrs = glob([
-#"src/ray/rpc/worker/*.h",
-#]),
-#deps = [
-#":grpc_common_lib",
-#":pubsub_lib",
-#":ray_common",
-#":worker_cc_grpc",
-#"@boost//:asio",
-#"@boost//:thread",
-#"@com_github_grpc_grpc//:grpc++",
-#],
-#)
-#
 
 ## Metrics Agent client.
 #ray_cc_library(

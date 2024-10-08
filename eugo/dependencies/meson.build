@@ -30,6 +30,7 @@ absl_memory = dependency('absl', method: 'cmake', modules: ['absl::memory'])
 # Anyway, bringing standalone parts would bring almost all others so not a big problem
 boost = dependency('boost', method: 'cmake')
 boost_asio = boost
+boost_thread = dependency('boost', method: 'cmake', modules: ['thread'])
 # === @end: boost ===
 
 
