@@ -717,6 +717,18 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
                 async for candidates in self.choose_two_replicas_with_backoff(
                     request_metadata
                 ):
+                    # Clear out pending requests at the front of the
+                    # queue that have been cancelled, then reevaluate
+                    # if we need to continue this scheduling task.
+                    while (
+                        len(self._pending_requests_to_fulfill) > 0
+                        and self._pending_requests_to_fulfill[0].future.done()
+                    ):
+                        self._pending_requests_to_fulfill.popleft()
+
+                    if len(self._scheduling_tasks) > self.target_num_scheduling_tasks:
+                        break
+
                     replica = await self.select_from_candidate_replicas(
                         candidates, backoff_index
                     )
@@ -742,18 +754,6 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
                                     f"{request_metadata.multiplexed_model_id}."
                                 )
                         logger.warning(warning_log)
-
-                    # Clear out pending requests at the front of the
-                    # queue that have been cancelled, then reevaluate
-                    # if we need to continue this scheduling task.
-                    while (
-                        len(self._pending_requests_to_fulfill) > 0
-                        and self._pending_requests_to_fulfill[0].future.done()
-                    ):
-                        self._pending_requests_to_fulfill.popleft()
-
-                    if len(self._scheduling_tasks) > self.target_num_scheduling_tasks:
-                        break
 
         except Exception:
             logger.exception("Unexpected error in fulfill_pending_requests.")
