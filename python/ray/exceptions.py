@@ -151,6 +151,11 @@ class RayTaskError(RayError):
     def make_dual_exception_instance(self) -> "RayTaskError":
         """Makes a object instance that inherits from both RayTaskError and the type of
         `self.cause`. Raises TypeError if the cause class can't be subclassed"""
+        # For normal user Exceptions, we subclass from both
+        # RayTaskError and the user exception. For ExceptionGroup,
+        # we special handle it because it has a different __new__()
+        # signature from Exception.
+        # Ref: https://docs.python.org/3/library/exceptions.html#exception-groups
         if sys.version_info >= (3, 11) and isinstance(
             self.cause, ExceptionGroup  # noqa: F821
         ):
