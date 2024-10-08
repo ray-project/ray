@@ -78,7 +78,7 @@ def test_except_star_exception(ray_start_regular):
 
     try:
         ray.get(task.remote())
-    except* RayTaskError as ex:
+    except* RayTaskError as ex:  # noqa: E999
         assert isinstance(ex, ExceptionGroup)  # noqa: F821
         assert len(ex.exceptions) == 1
         assert isinstance(ex.exceptions[0], RayTaskError)
@@ -86,7 +86,7 @@ def test_except_star_exception(ray_start_regular):
 
     try:
         ray.get(task.remote())
-    except* ValueError as ex:
+    except* ValueError as ex:  # noqa: E999
         assert isinstance(ex, ExceptionGroup)  # noqa: F821
         assert len(ex.exceptions) == 1
         assert isinstance(ex.exceptions[0], RayTaskError)
@@ -95,7 +95,7 @@ def test_except_star_exception(ray_start_regular):
     try:
         a = Actor.remote()
         ray.get(a.f.remote())
-    except* RayTaskError as ex:
+    except* RayTaskError as ex:  # noqa: E999
         assert isinstance(ex, ExceptionGroup)  # noqa: F821
         assert len(ex.exceptions) == 1
         assert isinstance(ex.exceptions[0], RayTaskError)
@@ -104,7 +104,7 @@ def test_except_star_exception(ray_start_regular):
     try:
         a = Actor.remote()
         ray.get(a.f.remote())
-    except* ValueError as ex:
+    except* ValueError as ex:  # noqa: E999
         assert isinstance(ex, ExceptionGroup)  # noqa: F821
         assert len(ex.exceptions) == 1
         assert isinstance(ex.exceptions[0], RayTaskError)
@@ -127,7 +127,7 @@ def test_except_star_exceptiongroup(ray_start_regular):
 
     try:
         ray.get(task.remote())
-    except* RayTaskError as ex:
+    except* RayTaskError as ex:  # noqa: E999
         assert isinstance(ex, ExceptionGroup)  # noqa: F821
         assert len(ex.exceptions) == 2
         assert isinstance(ex.exceptions[0], ValueError)
@@ -135,11 +135,11 @@ def test_except_star_exceptiongroup(ray_start_regular):
 
     try:
         ray.get(task.remote())
-    except* ValueError as ex:
+    except* ValueError as ex:  # noqa: E999
         assert isinstance(ex, ExceptionGroup)  # noqa: F821
         assert len(ex.exceptions) == 1
         assert isinstance(ex.exceptions[0], ValueError)
-    except* TypeError as ex:
+    except* TypeError as ex:  # noqa: E999
         assert isinstance(ex, ExceptionGroup)  # noqa: F821
         assert len(ex.exceptions) == 1
         assert isinstance(ex.exceptions[0], TypeError)
@@ -147,7 +147,7 @@ def test_except_star_exceptiongroup(ray_start_regular):
     try:
         a = Actor.remote()
         ray.get(a.f.remote())
-    except* RayTaskError as ex:
+    except* RayTaskError as ex:  # noqa: E999
         assert isinstance(ex, ExceptionGroup)  # noqa: F821
         assert len(ex.exceptions) == 2
         assert isinstance(ex.exceptions[0], ValueError)
@@ -156,11 +156,11 @@ def test_except_star_exceptiongroup(ray_start_regular):
     try:
         a = Actor.remote()
         ray.get(a.f.remote())
-    except* ValueError as ex:
+    except* ValueError as ex:  # noqa: E999
         assert isinstance(ex, ExceptionGroup)  # noqa: F821
         assert len(ex.exceptions) == 1
         assert isinstance(ex.exceptions[0], ValueError)
-    except* TypeError as ex:
+    except* TypeError as ex:  # noqa: E999
         assert isinstance(ex, ExceptionGroup)  # noqa: F821
         assert len(ex.exceptions) == 1
         assert isinstance(ex.exceptions[0], TypeError)
