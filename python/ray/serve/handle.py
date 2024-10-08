@@ -414,6 +414,8 @@ class _DeploymentResponseBase:
             self._fetch_future_result_sync()
             self._replica_result.cancel()
 
+        ray.serve.context._remove_in_flight_request(self._request_id, self)
+
     @DeveloperAPI
     def cancelled(self) -> bool:
         """Whether or not the request has been cancelled.
