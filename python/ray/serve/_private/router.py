@@ -602,12 +602,12 @@ class Router:
             ):
                 self._metrics_manager.push_autoscaling_metrics_to_controller()
 
-            ref = None
+            replica_result = None
             try:
                 request_args, request_kwargs = await self._resolve_deployment_responses(
                     request_args, request_kwargs
                 )
-                ref, replica_id = await self.schedule_and_send_request(
+                replica_result, replica_id = await self.schedule_and_send_request(
                     PendingRequest(
                         args=list(request_args),
                         kwargs=request_kwargs,
@@ -621,15 +621,15 @@ class Router:
                         replica_id
                     )
                     callback = partial(self._process_finished_request, replica_id)
-                    ref.add_done_callback(callback)
+                    replica_result.add_done_callback(callback)
 
-                return ref
+                return replica_result
             except asyncio.CancelledError:
                 # NOTE(edoakes): this is not strictly necessary because
                 # there are currently no `await` statements between
                 # getting the ref and returning, but I'm adding it defensively.
-                if ref is not None:
-                    ref.cancel()
+                if replica_result is not None:
+                    replica_result.cancel()
 
                 raise
 
