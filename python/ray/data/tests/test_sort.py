@@ -51,6 +51,20 @@ def test_sort_with_specified_boundaries(ray_start_regular, descending, boundarie
         assert np.all(block["id"] == expected_block)
 
 
+def test_sort_multiple_keys_produces_equally_sized_blocks(ray_start_regular_shared):
+    ds = ray.data.from_items(
+        [{"a": i, "b": j} for i in range(2) for j in range(5)], override_num_blocks=5
+    )
+
+    ds_sorted = ds.sort(["a", "b"])
+
+    num_rows_per_block = [
+        bundle.num_rows() for bundle in ds_sorted.iter_internal_ref_bundles()
+    ]
+    assert len(num_rows_per_block) == 5, len(num_rows_per_block)
+    assert max(num_rows_per_block) == 3, num_rows_per_block
+
+
 def test_sort_simple(ray_start_regular, use_push_based_shuffle):
     num_items = 100
     parallelism = 4

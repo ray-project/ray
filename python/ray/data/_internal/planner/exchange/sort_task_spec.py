@@ -174,34 +174,26 @@ class SortTaskSpec(ExchangeTaskSpec):
         # TODO(zhilong): Update sort sample bar before finished.
         samples = sample_bar.fetch_until_complete(sample_results)
         del sample_results
-        samples = [s for s in samples if len(s) > 0]
+        samples: List[Block] = [s for s in samples if len(s) > 0]
         # The dataset is empty
         if len(samples) == 0:
             return [None] * (num_reducers - 1)
+
+        # Convert samples to a sorted list[tuple[...]] where each tuple represents a
+        # sample.
         builder = DelegatingBlockBuilder()
         for sample in samples:
             builder.add_block(sample)
         samples = builder.build()
+        samples = BlockAccessor.for_block(samples).to_numpy(columns=columns)
+        samples = sorted(zip(*samples.values()))
 
-        sample_dict = BlockAccessor.for_block(samples).to_numpy(columns=columns)
-        # Compute sorted indices of the samples. In np.lexsort last key is the
-        # primary key hence have to reverse the order.
-        indices = np.lexsort(list(reversed(list(sample_dict.values()))))
-        # Sort each column by indices, and calculate q-ths quantile items.
-        # Ignore the 1st item as it's not required for the boundary
-        for k, v in sample_dict.items():
-            sorted_v = v[indices]
-            sample_dict[k] = list(
-                np.quantile(
-                    sorted_v, np.linspace(0, 1, num_reducers), interpolation="nearest"
-                )[1:]
-            )
-        # Return the list of boundaries as tuples
-        # of a form (col1_value, col2_value, ...)
-        return [
-            tuple(sample_dict[k][i] for k in sample_dict)
-            for i in range(num_reducers - 1)
+        # Each boundary corresponds to a quantile of the data.
+        quantile_indices = [
+            int(q * (len(samples) - 1)) for q in np.linspace(0, 1, num_reducers + 1)
         ]
+        # Exclude the first and last quantiles because they're 0 and 1.
+        return [samples[i] for i in quantile_indices[1:-1]]
 
 
 def _sample_block(block: Block, n_samples: int, sort_key: SortKey) -> Block:
