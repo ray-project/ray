@@ -174,7 +174,7 @@ class NestedTorchTensorCommunicatorChannel(ChannelInterface):
         self._cpu_data_channel.write(serialized_cpu_data)
 
     def read(self, timeout: Optional[float] = None) -> Any:
-        tensors = self._communicator_data_channel_communicator_data_channel.read()
+        tensors = self._communicator_data_channel.read()
 
         if self._communicator_data_channel.has_static_type():
             # If the channel was declared with a static TorchTensorType, then
