@@ -208,7 +208,7 @@ class TestRolloutWorker(unittest.TestCase):
                 num_envs_per_env_runner=2,
                 create_env_on_local_worker=True,
             )
-            .training(train_batch_size=20, sgd_minibatch_size=5, num_sgd_iter=1)
+            .training(train_batch_size=20, minibatch_size=5, num_epochs=1)
         )
         algo = config.build()
         results = algo.env_runner_group.foreach_worker(
@@ -897,9 +897,6 @@ class TestRolloutWorker(unittest.TestCase):
             """A mock testing MultiAgentEnv that doesn't call super.__init__()."""
 
             def __init__(self):
-                # Intentinoally don't call super().__init__(),
-                # so this env doesn't have
-                # `self._[action|observation]_space_in_preferred_format`attributes.
                 self.observation_space = gym.spaces.Discrete(2)
                 self.action_space = gym.spaces.Discrete(2)
 

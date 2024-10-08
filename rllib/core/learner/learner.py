@@ -541,7 +541,7 @@ class Learner(Checkpointable):
         """
         postprocessed_grads = {}
 
-        if config.grad_clip is None:
+        if config.grad_clip is None and not config.log_gradients:
             postprocessed_grads.update(module_gradients_dict)
             return postprocessed_grads
 
@@ -550,19 +550,40 @@ class Learner(Checkpointable):
                 param_dict=module_gradients_dict,
                 optimizer=optimizer,
             )
-            # Perform gradient clipping, if configured.
-            global_norm = self._get_clip_function()(
-                grad_dict_to_clip,
-                grad_clip=config.grad_clip,
-                grad_clip_by=config.grad_clip_by,
-            )
-            if config.grad_clip_by == "global_norm":
+            if config.grad_clip:
+                # Perform gradient clipping, if configured.
+                global_norm = self._get_clip_function()(
+                    grad_dict_to_clip,
+                    grad_clip=config.grad_clip,
+                    grad_clip_by=config.grad_clip_by,
+                )
+                if config.grad_clip_by == "global_norm" or config.log_gradients:
+                    # If we want to log gradients, but do not use the global norm
+                    # for clipping compute it here.
+                    if config.log_gradients and config.grad_clip_by != "global_norm":
+                        # Compute the global norm of gradients.
+                        global_norm = self._get_global_norm_function()(
+                            # Note, `tf.linalg.global_norm` needs a list of tensors.
+                            list(grad_dict_to_clip.values()),
+                        )
+                    self.metrics.log_value(
+                        key=(module_id, f"gradients_{optimizer_name}_global_norm"),
+                        value=global_norm,
+                        window=1,
+                    )
+                postprocessed_grads.update(grad_dict_to_clip)
+            # In the other case check, if we want to log gradients only.
+            elif config.log_gradients:
+                # Compute the global norm of gradients and log it.
+                global_norm = self._get_global_norm_function()(
+                    # Note, `tf.linalg.global_norm` needs a list of tensors.
+                    list(grad_dict_to_clip.values()),
+                )
                 self.metrics.log_value(
                     key=(module_id, f"gradients_{optimizer_name}_global_norm"),
                     value=global_norm,
                     window=1,
                 )
-            postprocessed_grads.update(grad_dict_to_clip)
 
         return postprocessed_grads
 
@@ -670,7 +691,7 @@ class Learner(Checkpointable):
     def get_param_ref(self, param: Param) -> Hashable:
         """Returns a hashable reference to a trainable parameter.
 
-        This should be overriden in framework specific specialization. For example in
+        This should be overridden in framework specific specialization. For example in
         torch it will return the parameter itself, while in tf it returns the .ref() of
         the variable. The purpose is to retrieve a unique reference to the parameters.
 
@@ -685,7 +706,7 @@ class Learner(Checkpointable):
     def get_parameters(self, module: RLModule) -> Sequence[Param]:
         """Returns the list of parameters of a module.
 
-        This should be overriden in framework specific learner. For example in torch it
+        This should be overridden in framework specific learner. For example in torch it
         will return .parameters(), while in tf it returns .trainable_variables.
 
         Args:
@@ -867,7 +888,7 @@ class Learner(Checkpointable):
             fwd_out: Output from a call to the `forward_train()` method of the
                 underlying MultiRLModule (`self.module`) during training
                 (`self.update()`).
-            batch: The training batch that was used to compute `fwd_out`.
+            batch: The train batch that was used to compute `fwd_out`.
 
         Returns:
             A dictionary mapping module IDs to individual loss terms.
@@ -916,7 +937,7 @@ class Learner(Checkpointable):
         Args:
             module_id: The id of the module.
             config: The AlgorithmConfig specific to the given `module_id`.
-            batch: The sample batch for this particular module.
+            batch: The train batch for this particular module.
             fwd_out: The output of the forward pass for this particular module.
 
         Returns:
@@ -936,17 +957,16 @@ class Learner(Checkpointable):
         *,
         # TODO (sven): Make this a more formal structure with its own type.
         timesteps: Optional[Dict[str, Any]] = None,
-        # TODO (sven): Deprecate these in favor of config attributes for only those
-        #  algos that actually need (and know how) to do minibatching.
+        num_epochs: int = 1,
         minibatch_size: Optional[int] = None,
-        num_iters: int = 1,
+        shuffle_batch_per_epoch: bool = False,
         # Deprecated args.
-        reduce_fn=DEPRECATED_VALUE,
+        num_iters=DEPRECATED_VALUE,
     ) -> ResultDict:
-        """Do `num_iters` minibatch updates given a train batch.
+        """Run `num_epochs` epochs over the given train batch.
 
         You can use this method to take more than one backward pass on the batch.
-        The same `minibatch_size` and `num_iters` will be used for all module ids in
+        The same `minibatch_size` and `num_epochs` will be used for all module ids in
         MultiRLModule.
 
         Args:
@@ -954,9 +974,18 @@ class Learner(Checkpointable):
             timesteps: Timesteps dict, which must have the key
                 `NUM_ENV_STEPS_SAMPLED_LIFETIME`.
                 # TODO (sven): Make this a more formal structure with its own type.
-            minibatch_size: The size of the minibatch to use for each update.
-            num_iters: The number of complete passes over all the sub-batches
-                in the input multi-agent batch.
+            num_epochs: The number of complete passes over the entire train batch. Each
+                pass might be further split into n minibatches (if `minibatch_size`
+                provided).
+            minibatch_size: The size of minibatches to use to further split the train
+                `batch` into sub-batches. The `batch` is then iterated over n times
+                where n is `len(batch) // minibatch_size`.
+            shuffle_batch_per_epoch: Whether to shuffle the train batch once per epoch.
+                If the train batch has a time rank (axis=1), shuffling will only take
+                place along the batch axis to not disturb any intact (episode)
+                trajectories. Also, shuffling is always skipped if `minibatch_size` is
+                None, meaning the entire train batch is processed each epoch, making it
+                unnecessary to shuffle.
 
         Returns:
             A `ResultDict` object produced by a call to `self.metrics.reduce()`. The
@@ -965,21 +994,18 @@ class Learner(Checkpointable):
             Learner) to further reduce these results (for example over n parallel
             Learners).
         """
-        if reduce_fn != DEPRECATED_VALUE:
+        if num_iters != DEPRECATED_VALUE:
             deprecation_warning(
-                old="Learner.update_from_batch(reduce_fn=..)",
-                new="Learner.metrics.[log_value|log_dict|log_time](key=..., value=..., "
-                "reduce=[mean|min|max|sum], window=..., ema_coeff=...)",
-                help="Use the new ray.rllib.utils.metrics.metrics_logger::MetricsLogger"
-                " API in your custom Learner methods for logging your custom values "
-                "and time-reducing (or parallel-reducing) them.",
+                old="Learner.update_from_episodes(num_iters=...)",
+                new="Learner.update_from_episodes(num_epochs=...)",
                 error=True,
             )
         return self._update_from_batch_or_episodes(
             batch=batch,
             timesteps=timesteps,
+            num_epochs=num_epochs,
             minibatch_size=minibatch_size,
-            num_iters=num_iters,
+            shuffle_batch_per_epoch=shuffle_batch_per_epoch,
         )
 
     def update_from_episodes(
@@ -988,18 +1014,17 @@ class Learner(Checkpointable):
         *,
         # TODO (sven): Make this a more formal structure with its own type.
         timesteps: Optional[Dict[str, Any]] = None,
-        # TODO (sven): Deprecate these in favor of config attributes for only those
-        #  algos that actually need (and know how) to do minibatching.
+        num_epochs: int = 1,
         minibatch_size: Optional[int] = None,
-        num_iters: int = 1,
-        num_total_mini_batches: int = 0,
+        shuffle_batch_per_epoch: bool = False,
+        num_total_minibatches: int = 0,
         # Deprecated args.
-        reduce_fn=DEPRECATED_VALUE,
+        num_iters=DEPRECATED_VALUE,
     ) -> ResultDict:
-        """Do `num_iters` minibatch updates given a list of episodes.
+        """Run `num_epochs` epochs over the train batch generated from `episodes`.
 
         You can use this method to take more than one backward pass on the batch.
-        The same `minibatch_size` and `num_iters` will be used for all module ids in
+        The same `minibatch_size` and `num_epochs` will be used for all module ids in
         MultiRLModule.
 
         Args:
@@ -1007,17 +1032,28 @@ class Learner(Checkpointable):
             timesteps: Timesteps dict, which must have the key
                 `NUM_ENV_STEPS_SAMPLED_LIFETIME`.
                 # TODO (sven): Make this a more formal structure with its own type.
-            minibatch_size: The size of the minibatch to use for each update.
-            num_iters: The number of complete passes over all the sub-batches
-                in the input multi-agent batch.
-            num_total_mini_batches: The total number of mini-batches to loop through
-                (across all `num_sgd_iter` SGD iterations). It's required to set this
-                for multi-agent + multi-GPU situations in which the MultiAgentEpisodes
+            num_epochs: The number of complete passes over the entire train batch. Each
+                pass might be further split into n minibatches (if `minibatch_size`
+                provided). The train batch is generated from the given `episodes`
+                through the Learner connector pipeline.
+            minibatch_size: The size of minibatches to use to further split the train
+                `batch` into sub-batches. The `batch` is then iterated over n times
+                where n is `len(batch) // minibatch_size`. The train batch is generated
+                from the given `episodes` through the Learner connector pipeline.
+            shuffle_batch_per_epoch: Whether to shuffle the train batch once per epoch.
+                If the train batch has a time rank (axis=1), shuffling will only take
+                place along the batch axis to not disturb any intact (episode)
+                trajectories. Also, shuffling is always skipped if `minibatch_size` is
+                None, meaning the entire train batch is processed each epoch, making it
+                unnecessary to shuffle. The train batch is generated from the given
+                `episodes` through the Learner connector pipeline.
+            num_total_minibatches: The total number of minibatches to loop through
+                (over all `num_epochs` epochs). It's only required to set this to != 0
+                in multi-agent + multi-GPU situations, in which the MultiAgentEpisodes
                 themselves are roughly sharded equally, however, they might contain
                 SingleAgentEpisodes with very lopsided length distributions. Thus,
-                without this fixed, pre-computed value it can happen that one Learner
-                goes through a different number of mini-batches than other Learners,
-                causing a deadlock.
+                without this fixed, pre-computed value, one Learner might go through a
+                different number of minibatche passes than others causing a deadlock.
 
         Returns:
             A `ResultDict` object produced by a call to `self.metrics.reduce()`. The
@@ -1026,22 +1062,19 @@ class Learner(Checkpointable):
             Learner) to further reduce these results (for example over n parallel
             Learners).
         """
-        if reduce_fn != DEPRECATED_VALUE:
+        if num_iters != DEPRECATED_VALUE:
             deprecation_warning(
-                old="Learner.update_from_episodes(reduce_fn=..)",
-                new="Learner.metrics.[log_value|log_dict|log_time](key=..., value=..., "
-                "reduce=[mean|min|max|sum], window=..., ema_coeff=...)",
-                help="Use the new ray.rllib.utils.metrics.metrics_logger::MetricsLogger"
-                " API in your custom Learner methods for logging your custom values "
-                "and time-reducing (or parallel-reducing) them.",
+                old="Learner.update_from_episodes(num_iters=...)",
+                new="Learner.update_from_episodes(num_epochs=...)",
                 error=True,
             )
         return self._update_from_batch_or_episodes(
             episodes=episodes,
             timesteps=timesteps,
+            num_epochs=num_epochs,
             minibatch_size=minibatch_size,
-            num_iters=num_iters,
-            num_total_mini_batches=num_total_mini_batches,
+            shuffle_batch_per_epoch=shuffle_batch_per_epoch,
+            num_total_minibatches=num_total_minibatches,
         )
 
     def update_from_iterator(
@@ -1053,8 +1086,13 @@ class Learner(Checkpointable):
         num_iters: int = None,
         **kwargs,
     ):
+        if "num_epochs" in kwargs:
+            raise ValueError(
+                "`num_epochs` arg NOT supported by Learner.update_from_iterator! Use "
+                "`num_iters` instead."
+            )
+
         self._check_is_built()
-        minibatch_size = minibatch_size or 32
 
         # Call `before_gradient_based_update` to allow for non-gradient based
         # preparations-, logging-, and update logic to happen.
@@ -1067,8 +1105,11 @@ class Learner(Checkpointable):
             return {"batch": self._set_slicing_by_batch_id(batch, value=True)}
 
         i = 0
+        logger.debug(f"===> [Learner {id(self)}]: SLooping through batches ... ")
         for batch in iterator.iter_batches(
-            batch_size=minibatch_size,
+            # Note, this needs to be one b/c data is already mapped to
+            # `MultiAgentBatch`es of `minibatch_size`.
+            batch_size=1,
             _finalize_fn=_finalize_fn,
             **kwargs,
         ):
@@ -1077,6 +1118,9 @@ class Learner(Checkpointable):
 
             # Note, `_finalize_fn`  must return a dictionary.
             batch = batch["batch"]
+            logger.debug(
+                f"===> [Learner {id(self)}]: batch {i} with {batch.env_steps()} rows."
+            )
             # Check the MultiAgentBatch, whether our RLModule contains all ModuleIDs
             # found in this batch. If not, throw an error.
             unknown_module_ids = set(batch.policy_batches.keys()) - set(
@@ -1102,7 +1146,9 @@ class Learner(Checkpointable):
             if num_iters and i == num_iters:
                 break
 
-        logger.info(f"[Learner] Iterations run in epoch: {i}")
+        logger.info(
+            f"===> [Learner {id(self)}] number of iterations run in this epoch: {i}"
+        )
         # Convert logged tensor metrics (logged during tensor-mode of MetricsLogger)
         # to actual (numpy) values.
         self.metrics.tensors_to_numpy(tensor_metrics)
@@ -1241,9 +1287,10 @@ class Learner(Checkpointable):
         timesteps: Optional[Dict[str, Any]] = None,
         # TODO (sven): Deprecate these in favor of config attributes for only those
         #  algos that actually need (and know how) to do minibatching.
+        num_epochs: int = 1,
         minibatch_size: Optional[int] = None,
-        num_iters: int = 1,
-        num_total_mini_batches: int = 0,
+        shuffle_batch_per_epoch: bool = False,
+        num_total_minibatches: int = 0,
     ) -> Union[Dict[str, Any], List[Dict[str, Any]]]:
 
         self._check_is_built()
@@ -1277,7 +1324,11 @@ class Learner(Checkpointable):
                 # TODO (sven): Try to not require MultiAgentBatch anymore.
                 batch = MultiAgentBatch(
                     {
-                        module_id: SampleBatch(module_data)
+                        module_id: (
+                            SampleBatch(module_data, _zero_padded=True)
+                            if shared_data.get(f"_zero_padded_for_mid={module_id}")
+                            else SampleBatch(module_data)
+                        )
                         for module_id, module_data in batch.items()
                     },
                     env_steps=sum(len(e) for e in episodes),
@@ -1311,22 +1362,21 @@ class Learner(Checkpointable):
         if minibatch_size:
             if self._learner_connector is not None:
                 batch_iter = partial(
-                    MiniBatchCyclicIterator,
-                    uses_new_env_runners=True,
-                    num_total_mini_batches=num_total_mini_batches,
+                    MiniBatchCyclicIterator, _uses_new_env_runners=True
                 )
             else:
                 batch_iter = MiniBatchCyclicIterator
-        elif num_iters > 1:
-            # `minibatch_size` was not set but `num_iters` > 1.
-            # Under the old training stack, users could do multiple sgd passes
+        elif num_epochs > 1:
+            # `minibatch_size` was not set but `num_epochs` > 1.
+            # Under the old training stack, users could do multiple epochs
             # over a batch without specifying a minibatch size. We enable
             # this behavior here by setting the minibatch size to be the size
             # of the batch (e.g. 1 minibatch of size batch.count)
             minibatch_size = batch.count
+            # Note that there is no need to shuffle here, b/c we don't have minibatches.
             batch_iter = MiniBatchCyclicIterator
         else:
-            # `minibatch_size` and `num_iters` are not set by the user.
+            # `minibatch_size` and `num_epochs` are not set by the user.
             batch_iter = MiniBatchDummyIterator
 
         # Convert input batch into a tensor batch (MultiAgentBatch) on the correct
@@ -1336,7 +1386,13 @@ class Learner(Checkpointable):
             batch = self._convert_batch_type(batch)
         batch = self._set_slicing_by_batch_id(batch, value=True)
 
-        for tensor_minibatch in batch_iter(batch, minibatch_size, num_iters):
+        for tensor_minibatch in batch_iter(
+            batch,
+            num_epochs=num_epochs,
+            minibatch_size=minibatch_size,
+            shuffle_batch_per_epoch=shuffle_batch_per_epoch and (num_epochs > 1),
+            num_total_minibatches=num_total_minibatches,
+        ):
             # Make the actual in-graph/traced `_update` call. This should return
             # all tensor values (no numpy).
             fwd_out, loss_per_module, tensor_metrics = self._update(
@@ -1575,6 +1631,11 @@ class Learner(Checkpointable):
     @abc.abstractmethod
     def _get_clip_function() -> Callable:
         """Returns the gradient clipping function to use, given the framework."""
+
+    @staticmethod
+    @abc.abstractmethod
+    def _get_global_norm_function() -> Callable:
+        """Returns the global norm function to use, given the framework."""
 
     def _log_steps_trained_metrics(self, batch: MultiAgentBatch):
         """Logs this iteration's steps trained, based on given `batch`."""

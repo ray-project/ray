@@ -93,17 +93,13 @@ class ArrowRow(TableRow):
     """
 
     def __getitem__(self, key: Union[str, List[str]]) -> Any:
-        from ray.data.extensions.tensor_extension import (
-            ArrowTensorType,
-            ArrowVariableShapedTensorType,
-        )
+        from ray.data.extensions import get_arrow_extension_tensor_types
+
+        tensor_arrow_extension_types = get_arrow_extension_tensor_types()
 
         def get_item(keys: List[str]) -> Any:
             schema = self._row.schema
-            if isinstance(
-                schema.field(keys[0]).type,
-                (ArrowTensorType, ArrowVariableShapedTensorType),
-            ):
+            if isinstance(schema.field(keys[0]).type, tensor_arrow_extension_types):
                 # Build a tensor row.
                 return tuple(
                     [

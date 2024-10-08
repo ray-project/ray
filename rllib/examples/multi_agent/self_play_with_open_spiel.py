@@ -162,7 +162,6 @@ if __name__ == "__main__":
         .rl_module(
             model_config_dict={
                 "fcnet_hiddens": [512, 512],
-                "uses_new_env_runners": args.enable_new_api_stack,
             },
             rl_module_spec=MultiRLModuleSpec(
                 module_specs={
@@ -173,9 +172,9 @@ if __name__ == "__main__":
         )
     )
 
-    # Only for PPO, change the `num_sgd_iter` setting.
+    # Only for PPO, change the `num_epochs` setting.
     if args.algo == "PPO":
-        config.training(num_sgd_iter=20)
+        config.training(num_epochs=20)
 
     stop = {
         NUM_ENV_STEPS_SAMPLED_LIFETIME: args.stop_timesteps,

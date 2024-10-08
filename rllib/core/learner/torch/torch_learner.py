@@ -601,3 +601,10 @@ class TorchLearner(Learner):
         from ray.rllib.utils.torch_utils import clip_gradients
 
         return clip_gradients
+
+    @staticmethod
+    @override(Learner)
+    def _get_global_norm_function() -> Callable:
+        from ray.rllib.utils.torch_utils import compute_global_norm
+
+        return compute_global_norm

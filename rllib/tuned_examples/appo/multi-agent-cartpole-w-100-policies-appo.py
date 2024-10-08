@@ -35,7 +35,7 @@ config = (
             "fcnet_activation": "linear",
             "vf_share_layers": True,
         },
-        num_sgd_iter=1,
+        num_epochs=1,
         vf_loss_coeff=0.005,
         vtrace=True,
     )

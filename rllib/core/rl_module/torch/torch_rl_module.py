@@ -1,11 +1,16 @@
 from typing import Any, Collection, Dict, Optional, Union, Type
 
+import gymnasium as gym
 from packaging import version
 
 from ray.rllib.core.rl_module.apis import InferenceOnlyAPI
 from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.core.rl_module.torch.torch_compile_config import TorchCompileConfig
-from ray.rllib.models.torch.torch_distributions import TorchDistribution
+from ray.rllib.models.torch.torch_distributions import (
+    TorchCategorical,
+    TorchDiagGaussian,
+    TorchDistribution,
+)
 from ray.rllib.utils.annotations import override, OverrideToImplementCustomLogic
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.numpy import convert_to_numpy
@@ -63,15 +68,6 @@ class TorchRLModule(nn.Module, RLModule):
                 if target is not None:
                     del target
 
-    @override(nn.Module)
-    def forward(self, batch: Dict[str, Any], **kwargs) -> Dict[str, Any]:
-        """forward pass of the module.
-
-        This is aliased to forward_train because Torch DDP requires a forward method to
-        be implemented for backpropagation to work.
-        """
-        return self.forward_train(batch, **kwargs)
-
     def compile(self, compile_config: TorchCompileConfig):
         """Compile the forward methods of this module.
 
@@ -82,6 +78,20 @@ class TorchRLModule(nn.Module, RLModule):
             compile_config: The compile config to use.
         """
         return compile_wrapper(self, compile_config)
+
+    @OverrideToImplementCustomLogic
+    def _forward_inference(self, batch: Dict[str, Any], **kwargs) -> Dict[str, Any]:
+        # By default, calls the generic `_forward()` method, but with a no-grad context
+        # for performance reasons.
+        with torch.no_grad():
+            return self._forward(batch, **kwargs)
+
+    @OverrideToImplementCustomLogic
+    def _forward_exploration(self, batch: Dict[str, Any], **kwargs) -> Dict[str, Any]:
+        # By default, calls the generic `_forward()` method, but with a no-grad context
+        # for performance reasons.
+        with torch.no_grad():
+            return self._forward(batch, **kwargs)
 
     @OverrideToImplementCustomLogic
     @override(RLModule)
@@ -120,6 +130,55 @@ class TorchRLModule(nn.Module, RLModule):
         # RLModule.
         self.load_state_dict(convert_to_torch_tensor(state), strict=False)
 
+    @OverrideToImplementCustomLogic
+    @override(RLModule)
+    def get_inference_action_dist_cls(self) -> Type[TorchDistribution]:
+        if self.action_dist_cls is not None:
+            return self.action_dist_cls
+        elif isinstance(self.config.action_space, gym.spaces.Discrete):
+            return TorchCategorical
+        elif isinstance(self.config.action_space, gym.spaces.Box):
+            return TorchDiagGaussian
+        else:
+            raise ValueError(
+                f"Default action distribution for action space "
+                f"{self.config.action_space} not supported! Either set the "
+                f"`self.action_dist_cls` property in your RLModule's `setup()` method "
+                f"to a subclass of `ray.rllib.models.torch.torch_distributions."
+                f"TorchDistribution` or - if you need different distributions for "
+                f"inference and training - override the three methods: "
+                f"`get_inference_action_dist_cls`, `get_exploration_action_dist_cls`, "
+                f"and `get_train_action_dist_cls` in your RLModule."
+            )
+
+    @OverrideToImplementCustomLogic
+    @override(RLModule)
+    def get_exploration_action_dist_cls(self) -> Type[TorchDistribution]:
+        return self.get_inference_action_dist_cls()
+
+    @OverrideToImplementCustomLogic
+    @override(RLModule)
+    def get_train_action_dist_cls(self) -> Type[TorchDistribution]:
+        return self.get_inference_action_dist_cls()
+
+    @override(nn.Module)
+    def forward(self, batch: Dict[str, Any], **kwargs) -> Dict[str, Any]:
+        """DO NOT OVERRIDE!
+
+        This is aliased to `self.forward_train` because Torch DDP requires a forward
+        method to be implemented for backpropagation to work.
+
+        Instead, override:
+        `_forward()` to define a generic forward pass for all phases (exploration,
+        inference, training)
+        `_forward_inference()` to define the forward pass for action inference in
+        deployment/production (no exploration).
+        `_forward_exploration()` to define the forward pass for action inference during
+        training sample collection (w/ exploration behavior).
+        `_forward_train()` to define the forward pass prior to loss computation.
+        """
+        return self.forward_train(batch, **kwargs)
+
 
 class TorchDDPRLModule(RLModule, nn.parallel.DistributedDataParallel):
     def __init__(self, *args, **kwargs) -> None:
@@ -129,8 +188,8 @@ class TorchDDPRLModule(RLModule, nn.parallel.DistributedDataParallel):
         self.config = self.unwrapped().config
 
     @override(RLModule)
-    def get_train_action_dist_cls(self, *args, **kwargs) -> Type[TorchDistribution]:
-        return self.unwrapped().get_train_action_dist_cls(*args, **kwargs)
+    def get_inference_action_dist_cls(self, *args, **kwargs) -> Type[TorchDistribution]:
+        return self.unwrapped().get_inference_action_dist_cls(*args, **kwargs)
 
     @override(RLModule)
     def get_exploration_action_dist_cls(
@@ -139,8 +198,8 @@ class TorchDDPRLModule(RLModule, nn.parallel.DistributedDataParallel):
         return self.unwrapped().get_exploration_action_dist_cls(*args, **kwargs)
 
     @override(RLModule)
-    def get_inference_action_dist_cls(self, *args, **kwargs) -> Type[TorchDistribution]:
-        return self.unwrapped().get_inference_action_dist_cls(*args, **kwargs)
+    def get_train_action_dist_cls(self, *args, **kwargs) -> Type[TorchDistribution]:
+        return self.unwrapped().get_train_action_dist_cls(*args, **kwargs)
 
     @override(RLModule)
     def get_initial_state(self) -> Any:
@@ -151,8 +210,8 @@ class TorchDDPRLModule(RLModule, nn.parallel.DistributedDataParallel):
         return self.unwrapped().is_stateful()
 
     @override(RLModule)
-    def _forward_train(self, *args, **kwargs):
-        return self(*args, **kwargs)
+    def _forward(self, *args, **kwargs):
+        return self.unwrapped()._forward(*args, **kwargs)
 
     @override(RLModule)
     def _forward_inference(self, *args, **kwargs) -> Dict[str, Any]:
@@ -161,6 +220,10 @@ class TorchDDPRLModule(RLModule, nn.parallel.DistributedDataParallel):
     @override(RLModule)
     def _forward_exploration(self, *args, **kwargs) -> Dict[str, Any]:
         return self.unwrapped()._forward_exploration(*args, **kwargs)
+
+    @override(RLModule)
+    def _forward_train(self, *args, **kwargs):
+        return self(*args, **kwargs)
 
     @override(RLModule)
     def get_state(self, *args, **kwargs):
