@@ -362,9 +362,7 @@ class MARWILConfig(AlgorithmConfig):
         pipeline.append(
             GeneralAdvantageEstimation(gamma=self.gamma, lambda_=self.lambda_)
         )
-        pipeline.append(
-            TensorToNumpy(),
-        )
+        pipeline.append(TensorToNumpy())
 
         return pipeline
 
