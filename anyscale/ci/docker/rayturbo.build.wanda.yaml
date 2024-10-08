@@ -1,6 +1,6 @@
-name: "runtimebuild"
+name: "rayturbobuild"
 froms: ["cr.ray.io/rayproject/oss-ci-base_build"]
-dockerfile: anyscale/ci/docker/runtime.build.Dockerfile
+dockerfile: anyscale/ci/docker/rayturbo.build.Dockerfile
 srcs:
   - python/requirements.txt
   - python/requirements_compiled.txt
@@ -10,4 +10,4 @@ srcs:
 build_args:
   - DOCKER_IMAGE_BASE_BUILD=cr.ray.io/rayproject/oss-ci-base_build
 tags:
-  - cr.ray.io/rayproject/runtimebuild
+  - cr.ray.io/rayproject/rayturbobuild

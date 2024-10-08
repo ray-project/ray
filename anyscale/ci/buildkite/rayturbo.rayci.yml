@@ -1,24 +1,24 @@
-group: runtime-only tests
-sort_key: "~runtime-only"
+group: rayturbo-only tests
+sort_key: "~rayturbo-only"
 depends_on:
   - forge
   - oss-ci-base_build
 steps:
-  - name: runtimebuild
-    wanda: anyscale/ci/docker/runtime.build.wanda.yaml
-  
+  - name: rayturbobuild
+    wanda: anyscale/ci/docker/rayturbo.build.wanda.yaml
+
   - label: "anytensor tests"
     instance_type: medium
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/anyscale/anytensor/... serve
-        --build-name runtimebuild
-    depends_on: runtimebuild
+        --build-name rayturbobuild
+    depends_on: rayturbobuild
     job_env: forge
-  
+
   - label: "safetensors client tests"
     instance_type: medium
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/anyscale/safetensors/... serve
-        --build-name runtimebuild
-    depends_on: runtimebuild
+        --build-name rayturbobuild
+    depends_on: rayturbobuild
     job_env: forge

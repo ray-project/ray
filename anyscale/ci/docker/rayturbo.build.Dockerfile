@@ -20,4 +20,3 @@ pip install -U --ignore-installed \
   -r python/requirements/test-requirements.txt
 
 EOF
-
