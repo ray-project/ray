@@ -387,6 +387,29 @@ ray.get(actor_instance.print_message.remote())
         for s in should_not_exist:
             assert s not in stderr
 
+    def test_text_mode_driver_system_log(self, shutdown_only):
+        script = """
+import ray
+ray.init(
+    logging_config=ray.LoggingConfig(encoding="TEXT")
+)
+"""
+        stderr = run_string_as_driver(script)
+        should_exist = "timestamp_ns="
+        assert should_exist in stderr
+
+
+def test_structured_logging_with_working_dir(tmp_path, shutdown_only):
+    working_dir = tmp_path / "test-working-dir"
+    working_dir.mkdir()
+    runtime_env = {
+        "working_dir": str(working_dir),
+    }
+    ray.init(
+        runtime_env=runtime_env,
+        logging_config=ray.LoggingConfig(encoding="TEXT"),
+    )
+
 
 class TestSetupLogRecordFactory:
     @pytest.fixture
