@@ -607,7 +607,7 @@ class CompiledDAG:
             self._buffer_size_bytes = ctx.buffer_size_bytes
 
         self._default_type_hint: ChannelOutputType = SharedMemoryType(
-            self._buffer_size_bytes,
+            buffer_size_bytes=self._buffer_size_bytes,
             # We conservatively set num_shm_buffers to _max_inflight_executions.
             # It means that the DAG can be underutilized, but it guarantees there's
             # no false positive timeouts.
@@ -950,7 +950,10 @@ class CompiledDAG:
         # the NCCL group on the participating actors.
         nccl_actors = list(nccl_actors)
         if None in nccl_actors:
-            raise ValueError("Driver cannot participate in the NCCL group.")
+            raise ValueError(
+                "Outputs cannot be transferred via NCCL because the driver "
+                "cannot participate in the NCCL group"
+            )
         if nccl_actors and self._nccl_group_id is None:
             self._nccl_group_id = _init_nccl_group(nccl_actors, self._custom_nccl_group)
 
