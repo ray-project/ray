@@ -8,7 +8,7 @@ from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple, Union
 
 import ray
 from ray.actor import ActorHandle
-from ray.exceptions import RayActorError, RayError, RayTaskError
+from ray.exceptions import RayError, RayTaskError
 from ray.rllib.utils.typing import T
 from ray.util.annotations import DeveloperAPI
 
@@ -18,25 +18,26 @@ logger = logging.getLogger(__name__)
 
 @DeveloperAPI
 class ResultOrError:
-    """A wrapper around a result or an error.
+    """A wrapper around a result or a RayError thrown during remote task/actor calls.
 
-    This is used to return data from FaultTolerantActorManager
-    that allows us to distinguish between error and actual results.
+    This is used to return data from `FaultTolerantActorManager` that allows us to
+    distinguish between RayErrors (remote actor related) and valid results.
     """
 
     def __init__(self, result: Any = None, error: Exception = None):
         """One and only one of result or error should be set.
 
         Args:
-            result: The result of the computation.
+            result: The result of the computation. Note that None is a valid result if
+                the remote function does not return anything.
             error: Alternatively, the error that occurred during the computation.
         """
-        # Note(jungong) : None is a valid result if the remote function
-        # does not return anything.
         self._result = result
-        # Easier to handle if we show the user the original error.
         self._error = (
-            error.as_instanceof_cause() if isinstance(error, RayTaskError) else error
+            # Easier to handle if we show the user the original error.
+            error.as_instanceof_cause()
+            if isinstance(error, RayTaskError)
+            else error
         )
 
     @property
@@ -138,10 +139,11 @@ class RemoteCallResults:
 
         Similar to ignore_errors, but only skips Errors raised because of
         remote actor problems (often get restored automatcially).
-        This is useful for callers that wants to handle application errors differently.
+        This is useful for callers that want to handle application errors differently
+        from Ray errors.
         """
         return self._Iterator(
-            [r for r in self.result_or_errors if not isinstance(r.get(), RayActorError)]
+            [r for r in self.result_or_errors if not isinstance(r.get(), RayError)]
         )
 
 
@@ -197,18 +199,18 @@ class FaultTolerantActorManager:
     """A manager that is aware of the healthiness of remote actors.
 
     .. testcode::
-        :skipif: True
 
+        import time
         import ray
         from ray.rllib.utils.actor_manager import FaultTolerantActorManager
 
         @ray.remote
         class MyActor:
-        def apply(self, fn) -> Any:
-            return fn(self)
+            def apply(self, fn):
+                return fn(self)
 
-        def do_something(self):
-            return True
+            def do_something(self):
+                return True
 
         actors = [MyActor.remote() for _ in range(3)]
         manager = FaultTolerantActorManager(
@@ -222,11 +224,13 @@ class FaultTolerantActorManager:
 
         # Asynchronous remote calls.
         manager.foreach_actor_async(lambda actor: actor.do_something())
-        time.sleep(2) # Wait for the tasks to finish.
-        for r in manager.fetch_ready_async_reqs()
+        time.sleep(2)  # Wait for the tasks to finish.
+        for r in manager.fetch_ready_async_reqs():
             # Handle result and errors.
-            if r.ok: print(r.get())
-            else print("Error: {}".format(r.get()))
+            if r.ok:
+                print(r.get())
+            else:
+                print("Error: {}".format(r.get()))
     """
 
     @dataclass
@@ -455,11 +459,12 @@ class FaultTolerantActorManager:
         Args:
             remote_actor_ids: IDs of the actors these remote
                 calls were fired against.
-            remote_calls: list of remote calls to fetch.
-            tags: list of tags used for identifying the remote calls.
-            timeout_seconds: Timeout (in sec) for the ray.wait() call. Default is None.
-            return_obj_refs: whether to return ObjectRef instead of actual results.
-            mark_healthy: whether to mark certain actors healthy based on the results
+            remote_calls: List of remote calls to fetch.
+            tags: List of tags used for identifying the remote calls.
+            timeout_seconds: Timeout (in sec) for the ray.wait() call. Default is None,
+                meaning wait indefinitely for all results.
+            return_obj_refs: Whether to return ObjectRef instead of actual results.
+            mark_healthy: Whether to mark certain actors healthy based on the results
                 of these remote calls. Useful, for example, to make sure actors
                 do not come back without proper state restoration.
 
@@ -496,39 +501,41 @@ class FaultTolerantActorManager:
                 remote_results.add_result(actor_id, ResultOrError(result=ready), tag)
                 continue
 
+            # Try getting the ready results.
             try:
                 result = ray.get(ready)
-                remote_results.add_result(actor_id, ResultOrError(result=result), tag)
 
-                # Actor came back from an unhealthy state. Mark this actor as healthy
-                # and add it to our restored set.
-                if mark_healthy and not self.is_actor_healthy(actor_id):
-                    logger.info(f"brining actor {actor_id} back into service.")
-                    self.set_actor_state(actor_id, healthy=True)
-                    self._num_actor_restarts += 1
-            except Exception as e:
+            # ActorManager should not handle errors other than `RayError` (e.g.
+            # application level errors).
+            # Any other error type happening during ray.get() -> Throw exception right
+            # here (we don't know how to handle these non-remote worker issues and
+            # should therefore crash).
+            except RayError as e:
                 # Return error to the user.
                 remote_results.add_result(actor_id, ResultOrError(error=e), tag)
 
-                # Mark the actor as unhealthy.
-                # TODO (sven): Using RayError here to preserve historical behavior.
-                #  It may be better to use (RayActorError, RayTaskError) here, but it's
-                #  not 100% clear to me yet. For example, if an env crashes within an
-                #  EnvRunner (which is an actor), Ray seems to throw a RayTaskError,
-                #  not RayActorError.
-                if isinstance(e, RayError):
-                    # Take this actor out of service and wait for Ray Core to
-                    # restore it.
-                    if self.is_actor_healthy(actor_id):
-                        logger.error(
-                            f"Ray error, taking actor {actor_id} out of service. "
-                            f"{str(e)}"
-                        )
-                    self.set_actor_state(actor_id, healthy=False)
-                # ActorManager should not handle other RayErrors or application level
-                # errors.
-                else:
-                    pass
+                # Mark the actor as unhealthy, take it out of service, and wait for
+                # Ray Core to restore it.
+                if self.is_actor_healthy(actor_id):
+                    logger.error(
+                        f"Ray error ({str(e)}), taking actor {actor_id} out of service."
+                    )
+                self.set_actor_state(actor_id, healthy=False)
+
+            # If no errors, add result to `RemoteCallResults` to be returned.
+            else:
+                # Return valid result to the user.
+                remote_results.add_result(actor_id, ResultOrError(result=result), tag)
+
+                # Actor came back from an unhealthy state. Mark this actor as healthy
+                # and add it to our healthy set.
+                if mark_healthy and not self.is_actor_healthy(actor_id):
+                    logger.error(
+                        f"Bringing previously unhealthy, now-healthy actor {actor_id} "
+                        "back into service."
+                    )
+                    self.set_actor_state(actor_id, healthy=True)
+                    self._num_actor_restarts += 1
 
         # Make sure, to-be-returned results are sound.
         assert len(readies) == len(remote_results)
@@ -782,8 +789,8 @@ class FaultTolerantActorManager:
         returned.
 
         Args:
-            timeout_seconds: Ray.get() timeout. Default is 0 (only those that are
-                already ready).
+            timeout_seconds: ray.get() timeout. Default is 0, which only fetched those
+                results (immediately) that are already ready.
             tags: A tag or a list of tags to identify the results from this async call.
             return_obj_refs: Whether to return ObjectRef instead of actual results.
             mark_healthy: Whether to mark all those actors healthy again that are
@@ -885,3 +892,27 @@ class FaultTolerantActorManager:
         # TODO(jungong) : remove this API once EnvRunnerGroup.remote_workers()
         #  and EnvRunnerGroup._remote_workers() are removed.
         return self._actors
+
+
+def handle_remote_call_result_errors(
+    results_or_errors: RemoteCallResults,
+    *,
+    ignore_ray_errors: bool,
+) -> None:
+    """Checks given results for application errors and raises them if necessary.
+
+    Args:
+        results_or_errors: The results or errors to check.
+        ignore_ray_errors: Whether to ignore RayErrors within the elements of
+            `results_or_errors`.
+    """
+    for result_or_error in results_or_errors:
+        # Good result.
+        if result_or_error.ok:
+            continue
+        # RayError, but we ignore it.
+        elif ignore_ray_errors:
+            logger.exception(result_or_error.get())
+        # Raise RayError.
+        else:
+            raise result_or_error.get()

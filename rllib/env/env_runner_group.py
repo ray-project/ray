@@ -30,13 +30,15 @@ from ray.rllib.core.learner import LearnerGroup
 from ray.rllib.core.rl_module import validate_module_id
 from ray.rllib.core.rl_module.rl_module import RLModuleSpec
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
-from ray.rllib.utils.actor_manager import RemoteCallResults
 from ray.rllib.env.base_env import BaseEnv
 from ray.rllib.env.env_context import EnvContext
 from ray.rllib.env.env_runner import EnvRunner
 from ray.rllib.offline import get_dataset_and_shards
 from ray.rllib.policy.policy import Policy, PolicyState
-from ray.rllib.utils.actor_manager import FaultTolerantActorManager
+from ray.rllib.utils.actor_manager import (
+    FaultTolerantActorManager,
+    handle_remote_call_result_errors,
+)
 from ray.rllib.utils.deprecation import (
     Deprecated,
     deprecation_warning,
@@ -172,11 +174,13 @@ class EnvRunnerGroup:
         self._cls = ray.remote(**self._remote_args)(self.env_runner_cls).remote
 
         self._logdir = logdir
-        self._ignore_env_runner_failures = config.ignore_env_runner_failures
+        self._ignore_ray_errors_on_env_runners = (
+            config.ignore_env_runner_failures or config.recreate_failed_env_runners
+        )
 
         # Create remote worker manager.
-        # Note(jungong) : ID 0 is used by the local worker.
-        # Starting remote workers from ID 1 to avoid conflicts.
+        # ID=0 is used by the local worker.
+        # Starting remote workers from ID=1 to avoid conflicts.
         self._worker_manager = FaultTolerantActorManager(
             max_remote_requests_in_flight_per_actor=(
                 config["max_requests_in_flight_per_env_runner"]
@@ -897,8 +901,8 @@ class EnvRunnerGroup:
             mark_healthy=mark_healthy,
         )
 
-        _handle_remote_call_result_errors(
-            remote_results, self._ignore_env_runner_failures
+        handle_remote_call_result_errors(
+            remote_results, ignore_ray_errors=self._ignore_ray_errors_on_env_runners
         )
 
         # With application errors handled, return good results.
@@ -968,8 +972,9 @@ class EnvRunnerGroup:
             mark_healthy=mark_healthy,
         )
 
-        _handle_remote_call_result_errors(
-            remote_results, self._ignore_env_runner_failures
+        handle_remote_call_result_errors(
+            remote_results,
+            ignore_ray_errors=self._ignore_ray_errors_on_env_runners,
         )
 
         remote_results = [r.get() for r in remote_results.ignore_errors()]
@@ -1041,8 +1046,9 @@ class EnvRunnerGroup:
             mark_healthy=mark_healthy,
         )
 
-        _handle_remote_call_result_errors(
-            remote_results, self._ignore_env_runner_failures
+        handle_remote_call_result_errors(
+            remote_results,
+            ignore_ray_errors=self._ignore_ray_errors_on_env_runners,
         )
 
         return [(r.actor_id, r.get()) for r in remote_results.ignore_errors()]
@@ -1234,21 +1240,3 @@ class EnvRunnerGroup:
     )
     def remote_workers(self) -> List[ActorHandle]:
         return list(self._worker_manager.actors().values())
-
-
-def _handle_remote_call_result_errors(
-    results: RemoteCallResults,
-    ignore_env_runner_failures: bool,
-) -> None:
-    """Checks given results for application errors and raises them if necessary.
-
-    Args:
-        results: The results to check.
-    """
-    for r in results.ignore_ray_errors():
-        if r.ok:
-            continue
-        if ignore_env_runner_failures:
-            logger.exception(r.get())
-        else:
-            raise r.get()
