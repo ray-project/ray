@@ -63,7 +63,8 @@ class ParquetDatasink(_FileDatasink):
         blocks = list(blocks)
 
         if all(BlockAccessor.for_block(block).num_rows() == 0 for block in blocks):
-            return "skip"
+            # return "skip"
+            return iter(blocks)
 
         filename = self.filename_provider.get_filename_for_block(
             blocks[0], ctx.task_idx, 0
@@ -90,7 +91,8 @@ class ParquetDatasink(_FileDatasink):
             max_backoff_s=WRITE_FILE_RETRY_MAX_BACKOFF_SECONDS,
         )
 
-        return "ok"
+        # return "ok"
+        return iter(blocks)
 
     @property
     def num_rows_per_write(self) -> Optional[int]:

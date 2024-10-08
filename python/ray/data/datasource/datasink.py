@@ -132,10 +132,12 @@ class DummyOutputDatasink(Datasink):
         tasks = []
         if not self.enabled:
             raise ValueError("disabled")
+        original_blocks = []
         for b in blocks:
             tasks.append(self.data_sink.write.remote(b))
+            original_blocks.append(b)
         ray.get(tasks)
-        return "ok"
+        return iter(original_blocks)
 
     def on_write_complete(self, write_results: List[Any]) -> None:
         assert all(w == "ok" for w in write_results), write_results

@@ -263,10 +263,12 @@ class NodeLoggerOutputDatasink(Datasink):
             return data_sink.write.remote(node_id, b)
 
         tasks = []
+        original_blocks = []
         for b in blocks:
             tasks.append(write(b))
+            original_blocks.append(b)
         ray.get(tasks)
-        return "ok"
+        return iter(original_blocks)
 
     def on_write_complete(self, write_results: List[Any]) -> None:
         assert all(w == "ok" for w in write_results), write_results

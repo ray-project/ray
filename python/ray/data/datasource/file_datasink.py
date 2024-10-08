@@ -115,9 +115,11 @@ class _FileDatasink(Datasink):
         blocks: Iterable[Block],
         ctx: TaskContext,
     ) -> Any:
+        output_blocks = []
         builder = DelegatingBlockBuilder()
         for block in blocks:
             builder.add_block(block)
+            output_blocks.append(block)
         block = builder.build()
         block_accessor = BlockAccessor.for_block(block)
 
@@ -128,7 +130,8 @@ class _FileDatasink(Datasink):
         self.write_block(block_accessor, 0, ctx)
         # TODO: decide if we want to return richer object when the task
         # succeeds.
-        return "ok"
+        # return "ok"
+        return iter(output_blocks)
 
     def write_block(self, block: BlockAccessor, block_index: int, ctx: TaskContext):
         raise NotImplementedError
