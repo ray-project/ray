@@ -53,23 +53,21 @@ class OfflinePreLearner:
     This class is an essential part of the new `Offline RL API` of `RLlib`.
     It is a callable class that is run in `ray.data.Dataset.map_batches`
     when iterating over batches for training. It's basic function is to
-    convert data in batch from rows to episodes (`SingleAGentEpisode`s
+    convert data in batch from rows to episodes (`SingleAgentEpisode`s
     for now) and to then run the learner connector pipeline to convert
     further to trainable batches. These batches are used directly in the
     `Learner`'s `update` method.
 
     The main reason to run these transformations inside of `map_batches`
     is for better performance. Batches can be pre-fetched in `ray.data`
-    and therefore batch trransformation can be run highly parallelized to
+    and therefore batch transformation can be run highly parallelized to
     the `Learner''s `update`.
 
     This class can be overridden to implement custom logic for transforming
     batches and make them 'Learner'-ready. When deriving from this class
     the `__call__` method and `_map_to_episodes` can be overridden to induce
     custom logic for the complete transformation pipeline (`__call__`) or
-    for converting to episodes only ('_map_to_episodes`). For an example
-    how this class can be used to also compute values and advantages see
-    `rllib.algorithm.marwil.marwil_prelearner.MAWRILOfflinePreLearner`.
+    for converting to episodes only ('_map_to_episodes`).
 
     Custom `OfflinePreLearner` classes can be passed into
     `AlgorithmConfig.offline`'s `prelearner_class`. The `OfflineData` class
