@@ -15,6 +15,7 @@
 #include "ray/core_worker/transport/dependency_resolver.h"
 
 #include "gtest/gtest.h"
+#include "mock/ray/core_worker/memory_store.h"
 #include "ray/common/task/task_spec.h"
 #include "ray/common/task/task_util.h"
 #include "ray/common/test_util.h"
@@ -168,7 +169,7 @@ class MockActorCreator : public ActorCreatorInterface {
 };
 
 TEST(LocalDependencyResolverTest, TestNoDependencies) {
-  auto store = std::make_shared<CoreWorkerMemoryStore>();
+  auto store = DefaultCoreWorkerMemoryStoreWithThread::Create();
   auto task_finisher = std::make_shared<MockTaskFinisher>();
   MockActorCreator actor_creator;
   LocalDependencyResolver resolver(*store, *task_finisher, actor_creator);
@@ -181,7 +182,7 @@ TEST(LocalDependencyResolverTest, TestNoDependencies) {
 
 TEST(LocalDependencyResolverTest, TestActorAndObjectDependencies1) {
   // Actor dependency resolved first.
-  auto store = std::make_shared<CoreWorkerMemoryStore>();
+  auto store = DefaultCoreWorkerMemoryStoreWithThread::Create();
   auto task_finisher = std::make_shared<MockTaskFinisher>();
   MockActorCreator actor_creator;
   LocalDependencyResolver resolver(*store, *task_finisher, actor_creator);
@@ -223,7 +224,7 @@ TEST(LocalDependencyResolverTest, TestActorAndObjectDependencies1) {
 
 TEST(LocalDependencyResolverTest, TestActorAndObjectDependencies2) {
   // Object dependency resolved first.
-  auto store = std::make_shared<CoreWorkerMemoryStore>();
+  auto store = DefaultCoreWorkerMemoryStoreWithThread::Create();
   auto task_finisher = std::make_shared<MockTaskFinisher>();
   MockActorCreator actor_creator;
   LocalDependencyResolver resolver(*store, *task_finisher, actor_creator);
@@ -264,7 +265,7 @@ TEST(LocalDependencyResolverTest, TestActorAndObjectDependencies2) {
 }
 
 TEST(LocalDependencyResolverTest, TestHandlePlasmaPromotion) {
-  auto store = std::make_shared<CoreWorkerMemoryStore>();
+  auto store = DefaultCoreWorkerMemoryStoreWithThread::Create();
   auto task_finisher = std::make_shared<MockTaskFinisher>();
   MockActorCreator actor_creator;
   LocalDependencyResolver resolver(*store, *task_finisher, actor_creator);
@@ -291,7 +292,7 @@ TEST(LocalDependencyResolverTest, TestHandlePlasmaPromotion) {
 }
 
 TEST(LocalDependencyResolverTest, TestInlineLocalDependencies) {
-  auto store = std::make_shared<CoreWorkerMemoryStore>();
+  auto store = DefaultCoreWorkerMemoryStoreWithThread::Create();
   auto task_finisher = std::make_shared<MockTaskFinisher>();
   MockActorCreator actor_creator;
   LocalDependencyResolver resolver(*store, *task_finisher, actor_creator);
@@ -322,7 +323,7 @@ TEST(LocalDependencyResolverTest, TestInlineLocalDependencies) {
 }
 
 TEST(LocalDependencyResolverTest, TestInlinePendingDependencies) {
-  auto store = std::make_shared<CoreWorkerMemoryStore>();
+  auto store = DefaultCoreWorkerMemoryStoreWithThread::Create();
   auto task_finisher = std::make_shared<MockTaskFinisher>();
   MockActorCreator actor_creator;
   LocalDependencyResolver resolver(*store, *task_finisher, actor_creator);
@@ -357,7 +358,7 @@ TEST(LocalDependencyResolverTest, TestInlinePendingDependencies) {
 }
 
 TEST(LocalDependencyResolverTest, TestInlinedObjectIds) {
-  auto store = std::make_shared<CoreWorkerMemoryStore>();
+  auto store = DefaultCoreWorkerMemoryStoreWithThread::Create();
   auto task_finisher = std::make_shared<MockTaskFinisher>();
   MockActorCreator actor_creator;
   LocalDependencyResolver resolver(*store, *task_finisher, actor_creator);
@@ -394,7 +395,7 @@ TEST(LocalDependencyResolverTest, TestInlinedObjectIds) {
 
 TEST(LocalDependencyResolverTest, TestCancelDependencyResolution) {
   InstrumentedIOContextWithThread io_context("TestCancelDependencyResolution");
-  auto store = std::make_shared<CoreWorkerMemoryStore>(&io_context.GetIoService());
+  auto store = std::make_shared<CoreWorkerMemoryStore>(io_context.GetIoService());
   auto task_finisher = std::make_shared<MockTaskFinisher>();
   MockActorCreator actor_creator;
   LocalDependencyResolver resolver(*store, *task_finisher, actor_creator);
@@ -426,7 +427,7 @@ TEST(LocalDependencyResolverTest, TestCancelDependencyResolution) {
 // Even if dependencies are already local, the ResolveDependencies callbacks are still
 // called asynchronously in the event loop as a different task.
 TEST(LocalDependencyResolverTest, TestDependenciesAlreadyLocal) {
-  auto store = std::make_shared<CoreWorkerMemoryStore>();
+  auto store = DefaultCoreWorkerMemoryStoreWithThread::Create();
   auto task_finisher = std::make_shared<MockTaskFinisher>();
   MockActorCreator actor_creator;
   LocalDependencyResolver resolver(*store, *task_finisher, actor_creator);

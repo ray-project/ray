@@ -112,7 +112,7 @@ class ActorTaskSubmitterTest : public ::testing::TestWithParam<bool> {
               return worker_client_;
             })),
         worker_client_(std::make_shared<MockWorkerClient>()),
-        store_(std::make_shared<CoreWorkerMemoryStore>(&io_context)),
+        store_(std::make_shared<CoreWorkerMemoryStore>(io_context)),
         task_finisher_(std::make_shared<MockTaskFinisherInterface>()),
         io_work(io_context),
         reference_counter_(std::make_shared<MockReferenceCounter>()),

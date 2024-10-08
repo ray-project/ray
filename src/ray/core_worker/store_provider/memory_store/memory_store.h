@@ -44,13 +44,12 @@ class CoreWorkerMemoryStore {
  public:
   /// Create a memory store.
   ///
-  /// \param[in] io_context Posts async callbacks to this context. TESTONLY: if nullptr,
-  ///            creates an owned dedicated thread and uses that context.
+  /// \param[in] io_context Posts async callbacks to this context.
   /// \param[in] counter If not null, this enables ref counting for local objects,
   ///            and the `remove_after_get` flag for Get() will be ignored.
   /// \param[in] raylet_client If not null, used to notify tasks blocked / unblocked.
   explicit CoreWorkerMemoryStore(
-      instrumented_io_context *io_context = nullptr,
+      instrumented_io_context &io_context,
       std::shared_ptr<ReferenceCounter> counter = nullptr,
       std::shared_ptr<raylet::RayletClient> raylet_client = nullptr,
       std::function<Status()> check_signals = nullptr,
@@ -197,8 +196,6 @@ class CoreWorkerMemoryStore {
   void EraseObjectAndUpdateStats(const ObjectID &object_id)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
-  // Only created if ctor does not provide an io_context.
-  std::unique_ptr<InstrumentedIOContextWithThread> owned_io_context_with_thread_;
   instrumented_io_context &io_context_;
 
   /// If enabled, holds a reference to local worker ref counter. TODO(ekl) make this

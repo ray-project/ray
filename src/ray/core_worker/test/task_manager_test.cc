@@ -122,8 +122,9 @@ class TaskManagerTest : public ::testing::Test {
             subscriber_.get(),
             [this](const NodeID &node_id) { return all_nodes_alive_; },
             lineage_pinning_enabled))),
+        io_context_("TaskManagerTest"),
         store_(std::shared_ptr<CoreWorkerMemoryStore>(
-            new CoreWorkerMemoryStore(/*io_context=*/nullptr, reference_counter_))),
+            new CoreWorkerMemoryStore(io_context_.GetIoService(), reference_counter_))),
         manager_(
             store_,
             reference_counter_,
@@ -181,6 +182,7 @@ class TaskManagerTest : public ::testing::Test {
   std::shared_ptr<pubsub::MockSubscriber> subscriber_;
   std::unique_ptr<MockTaskEventBuffer> task_event_buffer_mock_;
   std::shared_ptr<ReferenceCounter> reference_counter_;
+  InstrumentedIOContextWithThread io_context_;
   std::shared_ptr<CoreWorkerMemoryStore> store_;
   bool all_nodes_alive_ = true;
   TaskManager manager_;

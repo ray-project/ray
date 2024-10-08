@@ -119,7 +119,7 @@ class ObjectRecoveryManagerTestBase : public ::testing::Test {
         subscriber_(std::make_shared<pubsub::MockSubscriber>()),
         object_directory_(std::make_shared<MockObjectDirectory>()),
         memory_store_(
-            std::make_shared<CoreWorkerMemoryStore>(&io_context_.GetIoService())),
+            std::make_shared<CoreWorkerMemoryStore>(io_context_.GetIoService())),
         raylet_client_(std::make_shared<MockRayletClient>()),
         task_resubmitter_(std::make_shared<MockTaskResubmitter>()),
         ref_counter_(std::make_shared<ReferenceCounter>(

@@ -149,29 +149,19 @@ std::shared_ptr<RayObject> GetRequest::Get(const ObjectID &object_id) const {
 }
 
 CoreWorkerMemoryStore::CoreWorkerMemoryStore(
-    instrumented_io_context *io_context,
+    instrumented_io_context &io_context,
     std::shared_ptr<ReferenceCounter> counter,
     std::shared_ptr<raylet::RayletClient> raylet_client,
     std::function<Status()> check_signals,
     std::function<void(const RayObject &)> unhandled_exception_handler,
     std::function<std::shared_ptr<ray::RayObject>(
         const ray::RayObject &object, const ObjectID &object_id)> object_allocator)
-    : owned_io_context_with_thread_(
-          io_context == nullptr ? std::make_unique<InstrumentedIOContextWithThread>(
-                                      "TestOnly.CoreWorkerMemoryStore")
-                                : nullptr),
-      io_context_(io_context == nullptr ? owned_io_context_with_thread_->GetIoService()
-                                        : *io_context),
+    : io_context_(io_context),
       ref_counter_(std::move(counter)),
       raylet_client_(std::move(raylet_client)),
       check_signals_(std::move(check_signals)),
       unhandled_exception_handler_(std::move(unhandled_exception_handler)),
-      object_allocator_(std::move(object_allocator)) {
-  if (owned_io_context_with_thread_ != nullptr) {
-    RAY_LOG(WARNING) << "io_context not provided to CoreWorkerMemoryStore! This should "
-                        "only happen in cpp tests.";
-  }
-}
+      object_allocator_(std::move(object_allocator)) {}
 
 void CoreWorkerMemoryStore::GetAsync(
     const ObjectID &object_id, std::function<void(std::shared_ptr<RayObject>)> callback) {
