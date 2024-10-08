@@ -28,6 +28,7 @@ do
     if conda env list | grep -q "${env_name}"; then
         # Clean up if env name is already taken from previous leaking runs
         conda env remove --name="${env_name}"
+        continue
     fi
 
     printf "\n\n\n"
