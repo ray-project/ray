@@ -19,8 +19,8 @@ from ray.anyscale.anytensor._private.http_downloader import (  # noqa: E402
     get_safetensor_metadata_len,
 )
 from ray.anyscale.anytensor._private.uri import parse_uri_info
-from ray.anyscale.anytensor.exceptions import NotFoundError  # noqa: E402
 from ray.anyscale.safetensors import set_local_cache_dir
+from ray.anyscale.safetensors.exceptions import NotFoundError
 from ray.anyscale.safetensors.torch import load_file
 
 DEVICE = "cuda" if os.environ.get("TEST_ON_CUDA", "0") == "1" else "cpu"

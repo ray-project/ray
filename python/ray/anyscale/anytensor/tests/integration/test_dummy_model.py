@@ -19,7 +19,6 @@ from ray.anyscale.anytensor._private.http_downloader import (  # noqa: E402
     get_safetensor_metadata_len,
 )
 from ray.anyscale.anytensor._private.uri import parse_uri_info
-from ray.anyscale.anytensor.exceptions import NotFoundError  # noqa: E402
 
 DEVICE = "cuda" if os.environ.get("TEST_ON_CUDA", "0") == "1" else "cpu"
 
@@ -328,6 +327,9 @@ def test_404_raises_not_found(
 
     url, _, _, _, _ = local_http_server_with_dummy_model
     missing_url = url + ".fake_suffix"
+
+    from ray.anyscale.safetensors.exceptions import NotFoundError
+
     with pytest.raises(NotFoundError, match=missing_url):
         client.load_state_dict(missing_url)
 

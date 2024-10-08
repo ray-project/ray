@@ -63,7 +63,6 @@ from ray.anyscale.anytensor._private.util import (
     preprocess_safetensor_tensor_key,
     retry_with_backoff,
 )
-from ray.anyscale.anytensor.exceptions import NotFoundError
 
 LOGGING_INTERVAL_S = 5
 # This stores all the operations that we would like to wait on before the process exits.
@@ -117,6 +116,10 @@ def _get_safetensor_metadata_from_url(
         if status > 299:
             msg = body_buffer.getvalue().decode("utf-8")
             if status == 404:
+                # NOTE(edoakes): this is temporarily a lazy import until the
+                # anytensor directory is fully deprecated.
+                from ray.anyscale.safetensors.exceptions import NotFoundError
+
                 raise NotFoundError(
                     f"Fetching metadata for URL {url} returned a 404 (not found) status"
                 )
