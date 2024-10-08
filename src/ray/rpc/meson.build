@@ -78,3 +78,23 @@ reporter_rpc_cpp_lib_dep = declare_dependency(
     ]
 )
 # === @end: reporter_rpc_cpp_lib (original: reporter_rpc) ===
+
+
+# === @begin: pubsub_rpc_cpp_lib (original: pubsub_rpc) ===
+pubsub_rpc_cpp_lib_dep = declare_dependency(
+    dependencies: [
+        pubsub_proto_cpp_grpc_lib_dep,
+        grpc_common_cpp_lib_dep,
+        ray_common_cpp_lib_dep
+    ]
+)
+# === @end: pubsub_rpc_cpp_lib (original: pubsub_rpc) ===
+
+
+# === @begin: autoscaler_rpc_cpp_lib (original: autoscaler_rpc) ===
+pubsub_rpc_cpp_lib_dep = declare_dependency(
+    dependencies: [
+        autoscaler_proto_cpp_grpc_lib_dep
+    ]
+)
+# === @end: autoscaler_rpc_cpp_lib (original: autoscaler_rpc) ===

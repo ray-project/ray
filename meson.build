@@ -50,37 +50,8 @@ subdir('src/')
 
 
 
-#)
-#
-## pubsub.
-#cc_grpc_library(
-#    name = "pubsub_cc_grpc",
-#    srcs = ["//src/ray/protobuf:pubsub_proto"],
-#    grpc_only = True,
-#    deps = [
-#    "//src/ray/protobuf:common_cc_proto",
-#    "//src/ray/protobuf:gcs_cc_proto",
-#    "//src/ray/protobuf:pubsub_cc_proto",
-#    ],
-#)
-#
-#ray_cc_library(
-#    name = "pubsub_rpc",
-#    deps = [
-#    "pubsub_cc_grpc",
-#    ":grpc_common_lib",
-#    ":ray_common",
-#    ],
-#)
-#
 
-##
-##ray_cc_library(
-##    name = "autoscaler_rpc",
-##    deps = [
-##    ":autoscaler_cc_grpc",
-##    ],
-##)
+
 ##
 ### === End of rpc definitions ===
 ##

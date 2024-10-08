@@ -391,6 +391,29 @@ pubsub_proto_cpp_lib_dep = declare_dependency(
     dependencies: [protobuf]
 )
 # @end: proto_cpp (@original: pubsub_cc_proto)
+
+# @begin: proto_cpp_grpc (@original: pubsub_cc_grpc)
+pubsub_proto_cpp_grpc = custom_target(
+    input: pubsub_proto,
+    kwargs: proto_cpp_grpc_default_kwargs
+)
+
+pubsub_proto_cpp_grpc_dep = declare_dependency(
+    sources: pubsub_proto_cpp_grpc,
+    dependencies: [common_proto_cpp_lib_dep, gcs_proto_cpp_lib_dep, pubsub_proto_cpp_lib_dep]
+)
+
+pubsub_proto_cpp_grpc_lib = static_library(
+    'pubsub_proto_cpp_grpc_lib',
+    dependencies: [protobuf, grpc, pubsub_proto_cpp_grpc_dep],
+    install: false
+)
+
+pubsub_proto_cpp_grpc_lib_dep = declare_dependency(
+    link_with: [pubsub_proto_cpp_grpc_lib],
+    dependencies: [protobuf, grpc]
+)
+# @end: proto_cpp_grpc (@original: pubsub_cc_grpc)
 # === @end: pubsub.proto ===
 
 
