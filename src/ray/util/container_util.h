@@ -21,7 +21,6 @@
 #include <set>
 #include <sstream>
 #include <type_traits>
-#include <unordered_map>
 #include <unordered_set>
 #include <vector>
 
@@ -70,13 +69,6 @@ std::ostream &operator<<(std::ostream &os, DebugStringWrapper<T> wrapper) {
   return os << wrapper.obj_;
 }
 
-// TODO(hjiang): Implement debug string for `std::variant`.
-template <>
-inline std::ostream &operator<<(std::ostream &os,
-                                DebugStringWrapper<std::nullopt_t> wrapper) {
-  return os << "(nullopt)";
-}
-
 template <typename... Ts>
 std::ostream &operator<<(std::ostream &os, DebugStringWrapper<std::pair<Ts...>> pair) {
   return os << "(" << debug_string(pair.obj_.first) << ", "
@@ -103,10 +95,6 @@ std::ostream &operator<<(std::ostream &os, DebugStringWrapper<std::tuple<Ts...>>
   return os;
 }
 
-template <typename T, std::size_t N>
-std::ostream &operator<<(std::ostream &os, DebugStringWrapper<std::array<T, N>> c) {
-  return c.StringifyContainer(os);
-}
 template <typename... Ts>
 std::ostream &operator<<(std::ostream &os, DebugStringWrapper<std::vector<Ts...>> c) {
   return c.StringifyContainer(os);
@@ -133,19 +121,6 @@ template <typename... Ts>
 std::ostream &operator<<(std::ostream &os,
                          DebugStringWrapper<absl::flat_hash_map<Ts...>> c) {
   return c.StringifyContainer(os);
-}
-template <typename... Ts>
-std::ostream &operator<<(std::ostream &os,
-                         DebugStringWrapper<std::unordered_map<Ts...>> c) {
-  return c.StringifyContainer(os);
-}
-
-template <typename T>
-std::ostream &operator<<(std::ostream &os, DebugStringWrapper<std::optional<T>> c) {
-  if (!c.obj_.has_value()) {
-    return os << debug_string(std::nullopt);
-  }
-  return os << debug_string(c.obj_.value());
 }
 
 template <typename C>
