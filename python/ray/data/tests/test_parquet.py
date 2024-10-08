@@ -121,7 +121,7 @@ def test_parquet_deserialize_fragments_with_retry(
         def __call__(self, *args: Any, **kwds: Any) -> Any:
             exp_or_ret = self.planned_exp_or_return[self.cur_index]
             self.cur_index += 1
-            if type(exp_or_ret) == Exception:
+            if isinstance(exp_or_ret, Exception):
                 raise exp_or_ret
             else:
                 return exp_or_ret
