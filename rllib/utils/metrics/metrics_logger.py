@@ -127,11 +127,27 @@ class MetricsLogger:
         if not self._key_in_stats(key) and default is not None:
             return default
 
+        # Otherwise, return the reduced Stats' (peek) value.
+
         # Create a reduced view of the requested sub-structure or leaf (Stats object).
         ret = tree.map_structure(lambda s: s.peek(), self._get_key(key))
-
-        # Otherwise, return the reduced Stats' (peek) value.
         return ret
+
+    @staticmethod
+    def peek_results(results: Any) -> Any:
+        """Performs `peek()` on any leaf element of an arbitrarily nested Stats struct.
+
+
+        Args:
+            results: The nested structure of Stats-leafs to be peek'd and returned.
+
+        Returns:
+            A corresponding structure of the peek'd `results` (reduced float/int values;
+            no Stats objects).
+        """
+        return tree.map_structure(
+            lambda s: s.peek() if isinstance(s, Stats) else s, results
+        )
 
     def reduce(
         self,

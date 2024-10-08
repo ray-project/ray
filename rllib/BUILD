@@ -57,6 +57,12 @@
 load("//bazel:python.bzl", "py_test_module_list")
 load("//bazel:python.bzl", "doctest")
 
+filegroup(
+  name = "cartpole-v1_large",
+  data = glob(["tests/data/cartpole/cartpole-v1_large/*.parquet"]),
+  visibility = ["//visibility:public"],
+)
+
 doctest(
     files = glob(
         ["**/*.py"],
@@ -112,7 +118,8 @@ doctest(
         ]
     ),
     tags = ["team:rllib"],
-    size = "enormous"
+    data = glob(["tests/data/cartpole/cartpole-v1_large/*.parquet"]),
+    size = "enormous",
 )
 
 # --------------------------------------------------------------------
@@ -327,7 +334,7 @@ py_test(
     tags = ["team:rllib", "exclusive", "learning_tests", "torch_only", "learning_tests_discrete", "learning_tests_pytorch_use_all_core"],
     size = "medium",
     srcs = ["tuned_examples/bc/cartpole_bc.py"],
-    # Include the zipped json data file as well.
+    # Include the offline data files.
     data = [
         "tests/data/cartpole/cartpole-v1_large",
     ],
@@ -550,7 +557,7 @@ py_test(
     tags = ["team:rllib", "exclusive", "learning_tests", "torch_only", "learning_tests_discrete", "learning_tests_pytorch_use_all_core"],
     size = "large",
     srcs = ["tuned_examples/marwil/cartpole_marwil.py"],
-    # Include the zipped json data file as well.
+    # Include the offline data files.
     data = [
         "tests/data/cartpole/cartpole-v1_large",
     ],
@@ -980,7 +987,7 @@ py_test(
     name = "test_bc",
     tags = ["team:rllib", "algorithms_dir"],
     size = "medium",
-    # Include the parquet data files.
+    # Include the offline data files.
     data = ["tests/data/cartpole/cartpole-v1_large"],
     srcs = ["algorithms/bc/tests/test_bc.py"]
 )
@@ -1045,7 +1052,7 @@ py_test(
     name = "test_marwil",
     tags = ["team:rllib", "algorithms_dir"],
     size = "large",
-    # Include the parquet data folder.
+    # Include the offline data files.
     data = [
         "tests/data/cartpole/cartpole-v1_large",
         "tests/data/pendulum/pendulum-v1_large",
@@ -1701,10 +1708,11 @@ py_test(
     tags = ["team:rllib", "offline"],
     size = "medium",
     srcs = ["offline/tests/test_offline_data.py"],
+    # Include the offline data files.
     data = [
         "tests/data/cartpole/cartpole-v1_large",
         "tests/data/cartpole/large.json",
-    ],
+    ]
 )
 
 py_test(
@@ -1712,10 +1720,11 @@ py_test(
     tags = ["team:rllib", "offline"],
     size = "small",
     srcs = ["offline/tests/test_offline_prelearner.py"],
+    # Include the offline data files.
     data = [
         "tests/data/cartpole/cartpole-v1_large",
         "tests/data/cartpole/large.json",
-    ],
+    ]
 )
 
 # --------------------------------------------------------------------
@@ -2943,15 +2952,6 @@ py_test(
     args = ["--framework=tf2", "--config=multi-gpu-ddp"]
 )
 
-#@OldAPIStack @HybridAPIStack
-py_test(
-    name = "examples/learners/train_w_bc_finetune_w_ppo",
-    main = "examples/learners/train_w_bc_finetune_w_ppo.py",
-    tags = ["team:rllib", "examples", "exclusive"],
-    size = "medium",
-    srcs = ["examples/learners/train_w_bc_finetune_w_ppo.py"],
-)
-
 # subdirectory: multi_agent/
 # ....................................
 py_test(
@@ -3104,6 +3104,17 @@ py_test(
 # subdirectory: offline_rl/
 # ....................................
 
+py_test(
+    name = "examples/offline_rl/train_w_bc_finetune_w_ppo",
+    main = "examples/offline_rl/train_w_bc_finetune_w_ppo.py",
+    tags = ["team:rllib", "examples", "exclusive"],
+    size = "medium",
+    srcs = ["examples/offline_rl/train_w_bc_finetune_w_ppo.py"],
+    args = ["--enable-new-api-stack", "--as-test", "--framework=torch"],
+    # Include the offline data files.
+    data = ["tests/data/cartpole/cartpole-v1_large"]
+)
+
 # @HybridAPIStack
 # py_test(
 #     name = "examples/offline_rl/pretrain_bc_single_agent_evaluate_as_multi_agent",
@@ -3247,7 +3258,7 @@ py_test(
     tags = ["team:rllib", "exclusive", "examples"],
     size = "medium",
     srcs = ["examples/autoregressive_action_dist.py"],
-    args = ["--as-test", "--framework=tf", "--stop-reward=150", "--num-cpus=4"]
+    args = ["--as-test", "--framework=tf", "--stop-reward=-0.012", "--num-cpus=4"]
 )
 
 #@OldAPIStack
@@ -3257,7 +3268,7 @@ py_test(
     tags = ["team:rllib", "exclusive", "examples"],
     size = "medium",
     srcs = ["examples/autoregressive_action_dist.py"],
-    args = ["--as-test", "--framework=torch", "--stop-reward=150", "--num-cpus=4"]
+    args = ["--as-test", "--framework=torch", "--stop-reward=-0.012", "--num-cpus=4"]
 )
 
 #@OldAPIStack

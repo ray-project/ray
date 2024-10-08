@@ -1,10 +1,12 @@
+import abc
 from abc import abstractmethod
-from typing import Any, Dict
+from typing import Dict
 
 from ray.rllib.core import Columns
 from ray.rllib.core.models.base import ENCODER_OUT
 from ray.rllib.core.models.configs import MLPHeadConfig
 from ray.rllib.core.models.specs.specs_dict import SpecDict
+from ray.rllib.core.rl_module.apis.value_function_api import ValueFunctionAPI
 from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.core.rl_module.torch.torch_rl_module import TorchRLModule
 from ray.rllib.utils.annotations import (
@@ -12,14 +14,13 @@ from ray.rllib.utils.annotations import (
     OverrideToImplementCustomLogic_CallToSuperRecommended,
 )
 from ray.rllib.utils.framework import try_import_torch
-from ray.rllib.utils.torch_utils import convert_to_torch_tensor
 from ray.rllib.utils.typing import TensorType
 
 torch, nn = try_import_torch()
 
 
 # TODO (simon): Improvements: `inference-only` mode.
-class AutoregressiveActionsRLM(RLModule):
+class AutoregressiveActionsRLM(RLModule, ValueFunctionAPI, abc.ABC):
     """An RLModule that implements an autoregressive action distribution.
 
     This RLModule implements an autoregressive action distribution, where the
@@ -124,22 +125,6 @@ class AutoregressiveActionsRLM(RLModule):
             A dict mapping Column names to batches of policy outputs.
         """
 
-    @abstractmethod
-    def _compute_values(self, batch) -> Any:
-        """Computes values using the vf-specific network(s) and given a batch of data.
-
-        Args:
-            batch: The input batch to pass through this RLModule (value function
-                encoder and vf-head).
-
-        Returns:
-            A dict mapping ModuleIDs to batches of value function outputs (already
-            squeezed on the last dimension (which should have shape (1,) b/c of the
-            single value output node). However, for complex multi-agent settings with
-            shareed value networks, the output might look differently (e.g. a single
-            return batch without the ModuleID-based mapping).
-        """
-
 
 class AutoregressiveActionsTorchRLM(TorchRLModule, AutoregressiveActionsRLM):
     @override(AutoregressiveActionsRLM)
@@ -227,10 +212,8 @@ class AutoregressiveActionsTorchRLM(TorchRLModule, AutoregressiveActionsRLM):
 
     @override(TorchRLModule)
     def _forward_inference(self, batch: Dict[str, TensorType]) -> Dict[str, TensorType]:
-
         # Encoder forward pass.
         encoder_out = self.encoder(batch)
-
         # Policy head forward pass.
         return self.pi(encoder_out[ENCODER_OUT], inference=True)
 
@@ -240,39 +223,28 @@ class AutoregressiveActionsTorchRLM(TorchRLModule, AutoregressiveActionsRLM):
     ) -> Dict[str, TensorType]:
         # Encoder forward pass.
         encoder_out = self.encoder(batch)
-
         # Policy head forward pass.
         return self.pi(encoder_out[ENCODER_OUT], inference=False)
 
     @override(TorchRLModule)
     def _forward_train(self, batch: Dict[str, TensorType]) -> Dict[str, TensorType]:
-
         outs = {}
-
         # Encoder forward pass.
         encoder_out = self.encoder(batch)
-
         # Policy head forward pass.
         outs.update(self.pi(encoder_out[ENCODER_OUT]))
-
         # Value function head forward pass.
         vf_out = self.vf(encoder_out[ENCODER_OUT])
         outs[Columns.VF_PREDS] = vf_out.squeeze(-1)
 
         return outs
 
-    @override(AutoregressiveActionsRLM)
-    def _compute_values(self, batch, device=None):
-        infos = batch.pop(Columns.INFOS, None)
-        batch = convert_to_torch_tensor(batch, device=device)
-        if infos is not None:
-            batch[Columns.INFOS] = infos
-
-        # Encoder forward pass.
-        encoder_outs = self.encoder(batch)[ENCODER_OUT]
-
+    @override(ValueFunctionAPI)
+    def compute_values(self, batch: Dict[str, TensorType], embeddings=None):
+        # Encoder forward pass to get `embeddings`, if necessary.
+        if embeddings is None:
+            embeddings = self.encoder(batch)[ENCODER_OUT]
         # Value head forward pass.
-        vf_out = self.vf(encoder_outs)
-
+        vf_out = self.vf(embeddings)
         # Squeeze out last dimension (single node value head).
         return vf_out.squeeze(-1)
