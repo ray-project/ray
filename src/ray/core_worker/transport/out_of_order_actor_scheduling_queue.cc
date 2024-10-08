@@ -52,17 +52,17 @@ void OutOfOrderActorSchedulingQueue::Stop() {
 }
 
 bool OutOfOrderActorSchedulingQueue::TaskQueueEmpty() const {
-  RAY_CHECK(false) << "TaskQueueEmpty() not implemented for actor queues";
+  RAY_LOG(FATAL) << "TaskQueueEmpty() not implemented for actor queues";
   return false;
 }
 
 size_t OutOfOrderActorSchedulingQueue::Size() const {
-  RAY_CHECK(false) << "Size() not implemented for actor queues";
+  RAY_LOG(FATAL) << "Size() not implemented for actor queues";
   return 0;
 }
 
 void OutOfOrderActorSchedulingQueue::ScheduleRequests() {
-  RAY_CHECK(false) << "ScheduleRequests() not implemented for actor queues";
+  RAY_LOG(FATAL) << "ScheduleRequests() not implemented for actor queues";
 }
 
 void OutOfOrderActorSchedulingQueue::Add(
@@ -76,6 +76,13 @@ void OutOfOrderActorSchedulingQueue::Add(
     TaskID task_id,
     uint64_t attempt_number,
     const std::vector<rpc::ObjectReference> &dependencies) {
+  // Add and execute a task. For different attempts of the same
+  // task id, if an attempt is running, the other attempt will
+  // wait until the first attempt finishes so that no more
+  // than one attempt of the same task run at the same time.
+  // The reason why we don't run multiple attempts of the same
+  // task concurrently is that it's not safe to assume user's
+  // code can handle concurrent execution of the same actor method.
   RAY_CHECK(boost::this_thread::get_id() == main_thread_id_);
   auto request = InboundRequest(std::move(accept_request),
                                 std::move(reject_request),
