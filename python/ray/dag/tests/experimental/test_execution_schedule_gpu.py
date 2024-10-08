@@ -117,8 +117,6 @@ def test_simulate_pp_2workers_2batches_1f1b(
     if not USE_GPU:
         pytest.skip("NCCL tests require GPUs")
 
-    monkeypatch.setattr(ray.dag.constants, "RAY_ADAG_ENABLE_DETECT_DEADLOCK", False)
-
     w1 = Worker.remote()
     w2 = Worker.remote()
 
@@ -208,8 +206,6 @@ def test_simulate_pp_4workers_8batches_1f1b(ray_start_regular, monkeypatch):
     if not USE_GPU:
         pytest.skip("NCCL tests require GPUs")
 
-    monkeypatch.setattr(ray.dag.constants, "RAY_ADAG_ENABLE_DETECT_DEADLOCK", False)
-
     num_workers, num_microbatches, num_lead_microbatches = 4, 8, 4
     compiled_dag = generate_1f1b_dag(
         num_workers, num_microbatches, num_lead_microbatches
@@ -298,8 +294,6 @@ def test_three_actors_with_nccl_1(ray_start_regular):
 def test_three_actors_with_nccl_2(ray_start_regular, single_fetch, monkeypatch):
     if not USE_GPU:
         pytest.skip("NCCL tests require GPUs")
-
-    monkeypatch.setattr(ray.dag.constants, "RAY_ADAG_ENABLE_DETECT_DEADLOCK", False)
 
     a = Worker.remote()
     b = Worker.remote()
