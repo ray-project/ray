@@ -1382,7 +1382,10 @@ class Learner(Checkpointable):
         # Convert input batch into a tensor batch (MultiAgentBatch) on the correct
         # device (e.g. GPU). We move the batch already here to avoid having to move
         # every single minibatch that is created in the `batch_iter` below.
-        if self._learner_connector is None:
+        # Note, if we have a learner connector, but a `MultiAgentBatch` is passed in,
+        # we are in an offline setting.
+        # TODO (simon, sven): Check, if DreamerV3 has the same setting.
+        if self._learner_connector is None or episodes is None:
             batch = self._convert_batch_type(batch)
         batch = self._set_slicing_by_batch_id(batch, value=True)
 

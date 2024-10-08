@@ -102,7 +102,6 @@ class OfflinePreLearner:
             input_observation_space=self.observation_space,
             input_action_space=self.action_space,
         )
-        self._learner_connector.remove("NumpyToTensor")
         # Cache the policies to be trained to update weights only for these.
         self._policies_to_train = self.config.policies_to_train
         self._is_multi_agent = config.is_multi_agent()

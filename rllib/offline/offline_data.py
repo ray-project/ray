@@ -124,7 +124,6 @@ class OfflineData:
         #       not materializing.
         #   (b) Rematerialize the data every couple of iterations. This is
         #       is costly.
-
         if not self.data_is_mapped:
             # Call here the learner to get an up-to-date module state.
             # TODO (simon): This is a workaround as along as learners cannot
@@ -134,11 +133,11 @@ class OfflineData:
                     self.learner_handles[0].get_state.remote(
                         component=COMPONENT_RL_MODULE
                     )
-                )
+                )[COMPONENT_RL_MODULE]
             else:
                 module_state = self.learner_handles[0].get_state(
                     component=COMPONENT_RL_MODULE
-                )
+                )[COMPONENT_RL_MODULE]
 
             # Constructor `kwargs` for the `OfflinePreLearner`.
             fn_constructor_kwargs = {
