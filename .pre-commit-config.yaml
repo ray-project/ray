@@ -80,7 +80,7 @@ repos:
           )
         additional_dependencies:
           [
-            types-PyYAML
+            types-PyYAML,
           ]
 
   - repo: https://github.com/pycqa/isort
