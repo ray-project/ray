@@ -181,6 +181,8 @@ class SortTaskSpec(ExchangeTaskSpec):
 
         # Convert samples to a sorted list[tuple[...]] where each tuple represents a
         # sample.
+        # TODO: Once we deprecate pandas blocks, we can avoid this conversion and
+        # directly sort the samples.
         builder = DelegatingBlockBuilder()
         for sample in samples:
             builder.add_block(sample)
