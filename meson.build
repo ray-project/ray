@@ -1,25 +1,28 @@
+# === @begin: General ===
 project(
     'ray-meson',
     'c', 'cpp',
     default_options: [
-        'c_std=gnu17', 'cpp_std=gnu++23'
+        'c_std=gnu17',
+        'cpp_std=gnu++23'
     ],
     meson_version: '>=1.3.0'
 )
+# === @end: General ===
 
 
-# === Begin of imports ===
+# === @begin: Meson modules imports ===
 fs = import('fs')
 py = import('python').find_installation(pure: false, modules: ['grpc_tools'])
-# === End of imports ===
+# === @end: Meson modules imports ===
 
 
-# === Begin of dependencies ===
+# === @begin: Project-wide settings ===
 # I don't want to bring the entire GTest, portions of which Ray requires even for non-test code.
 # Instead, I've vendored a few GTest headers it really uses and add them into search paths, used by all compiler invocations.
 add_project_arguments(
-    '-I' + meson.project_build_root() / '__eugo' / 'include',
-    '-I' + meson.project_source_root() / '__eugo' / 'include',
+    '-I' + meson.project_build_root() / 'eugo' / 'include',
+    '-I' + meson.project_source_root() / 'eugo' / 'include',
     language: ['c', 'cpp']
 )
 
@@ -33,16 +36,11 @@ add_project_arguments(
     '-I' + meson.project_source_root() / 'src',
     language: ['c', 'cpp']
 )
-# === End of dependencies ===
-
-
-# === @begin: meson/ ===
-subdir('meson/')
-# === @end: meson/ ===
+# === @end: Project-wide settings ===
 
 
 # === @begin: __eugo/ ===
-subdir('__eugo/')
+subdir('eugo/')
 # === @end: __eugo/ ===
 
 

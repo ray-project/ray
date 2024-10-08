@@ -8,7 +8,8 @@ node_manager_cpp_fbs = custom_target(
 )
 
 node_manager_cpp_fbs_dep = declare_dependency(
-    sources: [node_manager_cpp_fbs]
+    sources: [node_manager_cpp_fbs] # + inc dir with this file instead
+    # and dependency on flatbuffers package
 )
 
 node_manager_cpp_fbs_lib = static_library(
@@ -20,6 +21,7 @@ node_manager_cpp_fbs_lib = static_library(
 node_manager_cpp_fbs_lib_dep = declare_dependency(
     link_with: [node_manager_cpp_fbs_lib]
 )
+# Depends on flatbuffers!
 # === @end: node_manager_fbs (original: node_manager_fbs) ===
 
 

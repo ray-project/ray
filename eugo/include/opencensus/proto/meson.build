@@ -1,7 +1,7 @@
 opencensus_protoc_cpp_with_default_arguments = [
-    protoc_cpp,
-    '--proto_path=../__eugo/include',
-    '--cpp_out=@BUILD_ROOT@/__eugo/include',
+    protoc,
+    '--proto_path=../eugo/include',
+    '--cpp_out=@BUILD_ROOT@/eugo/include',
     '@INPUT@'
 ]
 
