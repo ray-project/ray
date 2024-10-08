@@ -425,39 +425,7 @@ subdir('src/')
 #)
 #
 
-#ray_cc_library(
-#    name = "redis_store_client",
-#    srcs = [
-#    "src/ray/gcs/store_client/redis_store_client.cc",
-#    ],
-#    hdrs = [
-#    "src/ray/gcs/callback.h",
-#    "src/ray/gcs/store_client/redis_store_client.h",
-#    "src/ray/gcs/store_client/store_client.h",
-#    ],
-#    deps = [
-#    "redis_client",
-#    "@com_google_absl//absl/strings:str_format",
-#    "@com_google_absl//absl/synchronization",
-#    ],
-#)
-#
-#ray_cc_library(
-#    name = "gcs_in_memory_store_client",
-#    srcs = [
-#    "src/ray/gcs/store_client/in_memory_store_client.cc",
-#    ],
-#    hdrs = [
-#    "src/ray/gcs/callback.h",
-#    "src/ray/gcs/store_client/in_memory_store_client.h",
-#    "src/ray/gcs/store_client/store_client.h",
-#    ],
-#    deps = [
-#    ":ray_common",
-#    "//src/ray/util",
-#    ],
-#)
-#
+
 
 
 #ray_cc_library(
