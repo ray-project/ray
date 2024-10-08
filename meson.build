@@ -60,21 +60,6 @@ subdir('src/')
 #
 
 
-#
-#ray_cc_binary(
-#    name = "gcs_server",
-#    srcs = [
-#    "src/ray/gcs/gcs_server/gcs_server_main.cc",
-#    ],
-#    visibility = ["//java:__subpackages__"],
-#    deps = [
-#    ":gcs_server_lib",
-#    ":stats_lib",
-#    "@com_github_gflags_gflags//:gflags",
-#    ],
-#)
-#
-
 
 #
 #ray_cc_library(

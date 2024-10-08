@@ -1,1 +1,2 @@
+subdir('proto/')
 subdir('ray/')

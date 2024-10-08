@@ -94,3 +94,19 @@ gcs_server_cpp_lib_dep = declare_dependency(
     dependencies: gcs_server_cpp_lib_public_deps
 )
 # === @end: gcs_server_cpp_lib (original: gcs_server_lib) ===
+
+
+#
+#ray_cc_binary(
+#    name = "gcs_server",
+#    srcs = [
+#    "src/ray/gcs/gcs_server/gcs_server_main.cc",
+#    ],
+#    visibility = ["//java:__subpackages__"],
+#    deps = [
+#    ":gcs_server_lib",
+#    ":stats_lib",
+#    "@com_github_gflags_gflags//:gflags",
+#    ],
+#)
+#
