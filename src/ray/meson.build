@@ -43,3 +43,9 @@ stats_cpp_lib_dep = declare_dependency(
 # === @end: stats/stats_cpp_lib (original: stats_lib) ===
 
 subdir('object_manager/')
+
+subdir('pubsub/')
+
+subdir('gcs/')
+
+#subdir('raylet/')

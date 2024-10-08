@@ -49,6 +49,7 @@ subdir('src/')
 # === @end: src/ ===
 
 
+
 #
 #ray_cc_library(
 #    name = "ray_mock",
@@ -59,34 +60,7 @@ subdir('src/')
 #
 
 
-#
-#ray_cc_binary(
-#    name = "raylet",
-#    srcs = ["src/ray/raylet/main.cc"],
-#    visibility = ["//java:__subpackages__"],
-#    deps = [
-#    ":raylet_lib",
-#    "//src/ray/util",
-#    "@com_github_gflags_gflags//:gflags",
-#    ],
-#)
-#
-#ray_cc_library(
-#    name = "gcs_pub_sub_lib",
-#    srcs = [
-#    "src/ray/gcs/pubsub/gcs_pub_sub.cc",
-#    ],
-#    hdrs = [
-#    "src/ray/gcs/pubsub/gcs_pub_sub.h",
-#    ],
-#    deps = [
-#    ":gcs",
-#    ":gcs_service_rpc",
-#    ":pubsub_lib",
-#    ":ray_common",
-#    ":redis_client",
-#    ],
-#)
+
 #
 #ray_cc_library(
 #    name = "gcs_server_lib",
@@ -137,24 +111,7 @@ subdir('src/')
 #    ],
 #)
 #
-## Ray native pubsub module.
-#ray_cc_library(
-#    name = "pubsub_lib",
-#    srcs = glob([
-#    "src/ray/pubsub/*.cc",
-#    ]),
-#hdrs = glob([
-#"src/ray/pubsub/*.h",
-#]),
-#deps = [
-#":pubsub_rpc",
-#"@boost//:any",
-#"@com_google_absl//absl/container:flat_hash_map",
-#"@com_google_absl//absl/container:flat_hash_set",
-#"@com_google_absl//absl/synchronization",
-#],
-#)
-#
+
 
 
 #ray_cc_library(
@@ -468,34 +425,6 @@ subdir('src/')
 #)
 #
 
-#alias(
-#    name = "hiredis",
-#    actual = "@com_github_redis_hiredis//:hiredis",
-#)
-#
-#ray_cc_library(
-#    name = "redis_client",
-#    srcs = [
-#    "src/ray/gcs/asio.cc",
-#    "src/ray/gcs/redis_async_context.cc",
-#    "src/ray/gcs/redis_client.cc",
-#    "src/ray/gcs/redis_context.cc",
-#    ],
-#    hdrs = [
-#    "src/ray/gcs/asio.h",
-#    "src/ray/gcs/redis_async_context.h",
-#    "src/ray/gcs/redis_client.h",
-#    "src/ray/gcs/redis_context.h",
-#    ],
-#    deps = [
-#    ":hiredis",
-#    ":ray_common",
-#    ":stats_lib",
-#    "//src/ray/util",
-#    "@boost//:asio",
-#    ],
-#)
-#
 #ray_cc_library(
 #    name = "redis_store_client",
 #    srcs = [
@@ -529,53 +458,8 @@ subdir('src/')
 #    ],
 #)
 #
-#ray_cc_library(
-#    name = "observable_store_client",
-#    srcs = [
-#    "src/ray/gcs/store_client/observable_store_client.cc",
-#    ],
-#    hdrs = [
-#    "src/ray/gcs/callback.h",
-#    "src/ray/gcs/store_client/observable_store_client.h",
-#    "src/ray/gcs/store_client/store_client.h",
-#    ],
-#    deps = [
-#    ":ray_common",
-#    "//src/ray/util",
-#    ],
-#)
-
-#ray_cc_library(
-#    name = "gcs",
-#    srcs = glob(
-#    [
-#    "src/ray/gcs/*.cc",
-#    ],
-#    exclude = [
-#    "src/ray/gcs/*_test.cc",
-#    ],
-#),
-#hdrs = glob([
-#"src/ray/gcs/*.h",
-#]),
-#deps = [
-#":hiredis",
-#":node_manager_fbs",
-#":node_manager_rpc",
-#":ray_common",
-#":stats_lib",
-#"//src/ray/protobuf:agent_manager_cc_proto",
-#"//src/ray/protobuf:gcs_cc_proto",
-#"//src/ray/protobuf:gcs_service_cc_proto",
-#"//src/ray/util",
-#"@boost//:asio",
-#],
-#)
-#
 
 
-
-#
 #ray_cc_library(
 #    name = "python_callbacks",
 #    hdrs = [

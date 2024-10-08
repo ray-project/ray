@@ -31,6 +31,7 @@ absl_memory = dependency('absl', method: 'cmake', modules: ['absl::memory'])
 boost = dependency('boost', method: 'cmake')
 boost_asio = boost
 boost_thread = dependency('boost', method: 'cmake', modules: ['thread'])
+boost_any = boost
 # === @end: boost ===
 
 
@@ -81,6 +82,17 @@ nlohmann_json = dependency('nlohmann_json', method: 'cmake')
 # === @end: nlohmann_json ===
 
 
+# === @begin: gflags ===
+gflags = dependency('gflags', method: 'cmake')
+# === @end: gflags ===
+
+
+# === @begin: gflags ===
+hiredis = dependency('hiredis', method: 'cmake')
+# === @end: gflags ===
+
+
 # === @begin: threads ===
 threads = dependency('threads')
 # === @begin: threads ===
+
