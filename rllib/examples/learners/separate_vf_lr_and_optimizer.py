@@ -65,7 +65,6 @@ With --lr-vf=0.0005 and --lr-policy=0.001
 """
 
 from ray.rllib.algorithms.ppo import PPOConfig
-from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
 from ray.rllib.examples.learners.classes.separate_vf_lr_and_optimizer_learner import (
     PPOTorchLearnerWithSeparateVfOptimizer,
 )
@@ -126,9 +125,11 @@ if __name__ == "__main__":
             lr=args.lr_policy,
         )
         .rl_module(
-            # Another very important setting is this here. Make sure you use
-            # completely separate NNs for policy and value-functions.
-            model_config=DefaultModelConfig(vf_share_layers=False),
+            model_config_dict={
+                # Another very important setting is this here. Make sure you use
+                # completely separate NNs for policy and value-functions.
+                "vf_share_layers": False,
+            },
         )
     )
 

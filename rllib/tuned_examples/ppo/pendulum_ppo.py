@@ -1,6 +1,5 @@
 from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.connectors.env_to_module import MeanStdFilter
-from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
 from ray.rllib.utils.test_utils import add_rllib_example_script_args
 
 parser = add_rllib_example_script_args(default_timesteps=400000, default_reward=-300)
@@ -26,7 +25,9 @@ config = (
         # num_epochs=8,
     )
     .rl_module(
-        model_config=DefaultModelConfig(fcnet_activation="relu"),
+        model_config_dict={
+            "fcnet_activation": "relu",
+        },
     )
 )
 

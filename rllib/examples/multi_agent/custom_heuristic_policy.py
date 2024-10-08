@@ -90,7 +90,7 @@ if __name__ == "__main__":
         )
         .rl_module(
             rl_module_spec=MultiRLModuleSpec(
-                rl_module_specs={
+                module_specs={
                     "learnable_policy": RLModuleSpec(),
                     "random": RLModuleSpec(module_class=RandomRLModule),
                 }

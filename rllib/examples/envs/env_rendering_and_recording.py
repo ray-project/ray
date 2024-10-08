@@ -62,7 +62,6 @@ import numpy as np
 from typing import Optional, Sequence
 
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
-from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
 from ray.rllib.env.wrappers.atari_wrappers import wrap_atari_for_new_api_stack
 from ray.rllib.utils.images import resize
 from ray.rllib.utils.test_utils import (
@@ -275,12 +274,12 @@ if __name__ == "__main__":
 
     if base_config.is_atari:
         base_config.rl_module(
-            model_config=DefaultModelConfig(
-                conv_filters=[[16, 4, 2], [32, 4, 2], [64, 4, 2], [128, 4, 2]],
-                conv_activation="relu",
-                head_fcnet_hiddens=[256],
-                vf_share_layers=True,
-            ),
+            model_config_dict={
+                "vf_share_layers": True,
+                "conv_filters": [[16, 4, 2], [32, 4, 2], [64, 4, 2], [128, 4, 2]],
+                "conv_activation": "relu",
+                "post_fcnet_hiddens": [256],
+            },
         )
 
     run_rllib_example_script_experiment(base_config, args)

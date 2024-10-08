@@ -101,11 +101,11 @@ if __name__ == "__main__":
             # Plug-in our custom RLModule class.
             rl_module_spec=RLModuleSpec(
                 module_class=TinyAtariCNN,
-                # Feel free to specify your own `model_config` settings below.
-                # The `model_config` defined here will be available inside your
-                # custom RLModule class through the `self.model_config`
+                # Feel free to specify your own `model_config_dict` settings below.
+                # The `model_config_dict` defined here will be available inside your
+                # custom RLModule class through the `self.config.model_config_dict`
                 # property.
-                model_config={
+                model_config_dict={
                     "conv_filters": [
                         # num filters, kernel wxh, stride wxh, padding type
                         [16, 4, 2, "same"],

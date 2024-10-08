@@ -7,7 +7,6 @@ import unittest
 import ray
 from ray.rllib.algorithms.ppo.ppo import PPOConfig
 from ray.rllib.core.columns import Columns
-from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
 from ray.rllib.env.single_agent_episode import SingleAgentEpisode
 from ray.rllib.offline.offline_data import OfflineData
 from ray.rllib.offline.offline_env_runner import OfflineSingleAgentEnvRunner
@@ -37,11 +36,11 @@ class TestOfflineEnvRunner(unittest.TestCase):
             .environment("CartPole-v1")
             .rl_module(
                 # Use a small network for this test.
-                model_config=DefaultModelConfig(
-                    fcnet_hiddens=[32],
-                    fcnet_activation="linear",
-                    vf_share_layers=True,
-                )
+                model_config_dict={
+                    "fcnet_hiddens": [32],
+                    "fcnet_activation": "linear",
+                    "vf_share_layers": True,
+                }
             )
         )
         ray.init()

@@ -30,25 +30,25 @@ class DQNRainbowRLModule(RLModule, InferenceOnlyAPI, TargetNetworkAPI):
     @override(RLModule)
     def setup(self):
         # If a dueling architecture is used.
-        self.uses_dueling: bool = self.model_config.get("dueling")
+        self.uses_dueling: bool = self.config.model_config_dict.get("dueling")
         # If double Q learning is used.
-        self.uses_double_q: bool = self.model_config.get("double_q")
+        self.uses_double_q: bool = self.config.model_config_dict.get("double_q")
         # If we use noisy layers.
-        self.uses_noisy: bool = self.model_config.get("noisy")
+        self.uses_noisy: bool = self.config.model_config_dict.get("noisy")
         # If we use a noisy encoder.
         self.uses_noisy_encoder: bool = False
         # The number of atoms for a distribution support.
-        self.num_atoms: int = self.model_config.get("num_atoms")
+        self.num_atoms: int = self.config.model_config_dict.get("num_atoms")
         # If distributional learning is requested configure the support.
         if self.num_atoms > 1:
-            self.v_min: float = self.model_config.get("v_min")
-            self.v_max: float = self.model_config.get("v_max")
+            self.v_min: float = self.config.model_config_dict.get("v_min")
+            self.v_max: float = self.config.model_config_dict.get("v_max")
         # In case of noisy networks no need for epsilon greedy (see DQN Rainbow
         # paper).
         if not self.uses_noisy:
             # The epsilon scheduler for epsilon greedy exploration.
             self.epsilon_schedule = Scheduler(
-                fixed_value_or_schedule=self.model_config["epsilon"],
+                fixed_value_or_schedule=self.config.model_config_dict["epsilon"],
                 framework=self.framework,
             )
 

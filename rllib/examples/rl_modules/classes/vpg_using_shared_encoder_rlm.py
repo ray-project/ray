@@ -29,10 +29,23 @@ class VPGTorchRLModuleUsingSharedEncoder(TorchRLModule):
         )
 
     @override(RLModule)
-    def _forward(self, batch, **kwargs):
+    def _forward_inference(self, batch):
+        with torch.no_grad():
+            return self._common_forward(batch)
+
+    @override(RLModule)
+    def _forward_exploration(self, batch):
+        with torch.no_grad():
+            return self._common_forward(batch)
+
+    @override(RLModule)
+    def _forward_train(self, batch):
+        return self._common_forward(batch)
+
+    def _common_forward(self, batch):
         # Features can be found in the batch under the "encoder_features" key.
-        embeddings = batch["encoder_embeddings"]
-        logits = self._pi_head(embeddings)
+        features = batch["encoder_features"]
+        logits = self._pi_head(features)
         return {Columns.ACTION_DIST_INPUTS: logits}
 
 
@@ -56,19 +69,19 @@ class VPGTorchMultiRLModuleWithSharedEncoder(MultiRLModule):
                     # Central/shared encoder net.
                     SHARED_ENCODER_ID: RLModuleSpec(
                         module_class=SharedTorchEncoder,
-                        model_config={"embedding_dim": EMBEDDING_DIM},
+                        model_config_dict={"embedding_dim": EMBEDDING_DIM},
                     ),
                     # Arbitrary number of policy nets (w/o encoder sub-net).
                     "p0": RLModuleSpec(
                         module_class=VPGTorchRLModuleUsingSharedEncoder,
-                        model_config={
+                        model_config_dict={
                             "embedding_dim": EMBEDDING_DIM,
                             "hidden_dim": HIDDEN_DIM,
                         },
                     ),
                     "p1": RLModuleSpec(
                         module_class=VPGTorchRLModuleUsingSharedEncoder,
-                        model_config={
+                        model_config_dict={
                             "embedding_dim": EMBEDDING_DIM,
                             "hidden_dim": HIDDEN_DIM,
                         },
@@ -96,7 +109,7 @@ class VPGTorchMultiRLModuleWithSharedEncoder(MultiRLModule):
         )
 
     @override(MultiRLModule)
-    def _forward(self, forward_fn_name, batch, **kwargs):
+    def _run_forward_pass(self, forward_fn_name, batch, **kwargs):
         outputs = {}
         encoder_forward_fn = getattr(
             self._rl_modules[SHARED_ENCODER_ID], forward_fn_name
@@ -109,9 +122,9 @@ class VPGTorchMultiRLModuleWithSharedEncoder(MultiRLModule):
 
             # Pass policy's observations through shared encoder to get the features for
             # this policy.
-            embeddings = encoder_forward_fn(batch[policy_id])
+            features = encoder_forward_fn(batch[policy_id])
             # Pass the policy's features through the policy net.
-            batch[policy_id]["encoder_embeddings"] = embeddings
+            batch[policy_id]["encoder_features"] = features
             outputs[policy_id] = forward_fn(batch[policy_id], **kwargs)
 
         return outputs
@@ -131,7 +144,21 @@ class SharedTorchEncoder(TorchRLModule):
             nn.Linear(input_dim, embedding_dim),
         )
 
-    def _forward(self, batch, **kwargs):
+    @override(RLModule)
+    def _forward_inference(self, batch):
+        with torch.no_grad():
+            return self._common_forward(batch)
+
+    @override(RLModule)
+    def _forward_exploration(self, batch):
+        with torch.no_grad():
+            return self._common_forward(batch)
+
+    @override(RLModule)
+    def _forward_train(self, batch):
+        return self._common_forward(batch)
+
+    def _common_forward(self, batch):
         # Pass observations through the encoder and return outputs.
-        embeddings = self._encoder(batch[Columns.OBS])
-        return {"encoder_embeddings": embeddings}
+        features = self._encoder(batch[Columns.OBS])
+        return {"encoder_features": features}

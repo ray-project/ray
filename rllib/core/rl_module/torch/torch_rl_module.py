@@ -49,10 +49,10 @@ class TorchRLModule(nn.Module, RLModule):
         nn.Module.__init__(self)
         RLModule.__init__(self, *args, **kwargs)
 
-        # If an inference-only class AND self.inference_only is True,
+        # If an inference-only class AND self.config.inference_only is True,
         # remove all attributes that are returned by
         # `self.get_non_inference_attributes()`.
-        if self.inference_only and isinstance(self, InferenceOnlyAPI):
+        if self.config.inference_only and isinstance(self, InferenceOnlyAPI):
             for attr in self.get_non_inference_attributes():
                 parts = attr.split(".")
                 if not hasattr(self, parts[0]):
@@ -109,7 +109,7 @@ class TorchRLModule(nn.Module, RLModule):
         # InferenceOnlyAPI).
         if (
             inference_only
-            and not self.inference_only
+            and not self.config.inference_only
             and isinstance(self, InferenceOnlyAPI)
         ):
             attr = self.get_non_inference_attributes()
@@ -135,14 +135,14 @@ class TorchRLModule(nn.Module, RLModule):
     def get_inference_action_dist_cls(self) -> Type[TorchDistribution]:
         if self.action_dist_cls is not None:
             return self.action_dist_cls
-        elif isinstance(self.action_space, gym.spaces.Discrete):
+        elif isinstance(self.config.action_space, gym.spaces.Discrete):
             return TorchCategorical
-        elif isinstance(self.action_space, gym.spaces.Box):
+        elif isinstance(self.config.action_space, gym.spaces.Box):
             return TorchDiagGaussian
         else:
             raise ValueError(
                 f"Default action distribution for action space "
-                f"{self.action_space} not supported! Either set the "
+                f"{self.config.action_space} not supported! Either set the "
                 f"`self.action_dist_cls` property in your RLModule's `setup()` method "
                 f"to a subclass of `ray.rllib.models.torch.torch_distributions."
                 f"TorchDistribution` or - if you need different distributions for "
@@ -183,17 +183,8 @@ class TorchRLModule(nn.Module, RLModule):
 class TorchDDPRLModule(RLModule, nn.parallel.DistributedDataParallel):
     def __init__(self, *args, **kwargs) -> None:
         nn.parallel.DistributedDataParallel.__init__(self, *args, **kwargs)
-        # We do not want to call RLModule.__init__ here because all we need is
+        # we do not want to call RLModule.__init__ here because all we need is
         # the interface of that base-class not the actual implementation.
-        # RLModule.__init__(self, *args, **kwargs)
-        self.observation_space = self.unwrapped().observation_space
-        self.action_space = self.unwrapped().action_space
-        self.inference_only = self.unwrapped().inference_only
-        self.learner_only = self.unwrapped().learner_only
-        self.model_config = self.unwrapped().model_config
-        self.catalog = self.unwrapped().catalog
-
-        # Deprecated.
         self.config = self.unwrapped().config
 
     @override(RLModule)

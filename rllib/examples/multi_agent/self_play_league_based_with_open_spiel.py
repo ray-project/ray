@@ -202,9 +202,7 @@ if __name__ == "__main__":
             policies_to_train=["main"],
         )
         .rl_module(
-            rl_module_spec=MultiRLModuleSpec(
-                rl_module_specs=_get_multi_agent()["spec"]
-            ),
+            rl_module_spec=MultiRLModuleSpec(module_specs=_get_multi_agent()["spec"]),
         )
     )
 

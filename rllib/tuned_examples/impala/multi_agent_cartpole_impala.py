@@ -1,5 +1,4 @@
 from ray.rllib.algorithms.impala import IMPALAConfig
-from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
 from ray.rllib.examples.envs.classes.multi_agent import MultiAgentCartPole
 from ray.rllib.utils.metrics import (
     ENV_RUNNER_RESULTS,
@@ -38,9 +37,9 @@ config = (
         entropy_coeff=0.0,
     )
     .rl_module(
-        model_config=DefaultModelConfig(
-            vf_share_layers=True,
-        ),
+        model_config_dict={
+            "vf_share_layers": True,
+        },
     )
     .multi_agent(
         policy_mapping_fn=(lambda agent_id, episode, **kwargs: f"p{agent_id}"),

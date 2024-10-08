@@ -97,7 +97,7 @@ if __name__ == "__main__":
     # If PPO set additional configurations.
     if args.run == "PPO":
         config.rl_module(
-            model_config={
+            model_config_dict={
                 "fcnet_hiddens": [32],
                 "fcnet_activation": "linear",
                 "vf_share_layers": True,

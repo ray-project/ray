@@ -65,7 +65,7 @@ class ActionMaskingTorchRLModule(ActionMaskingRLModule, PPOTorchRLModule):
         # super`s (`PPOTorchRLModule`) observation space is the
         # original space (i.e. without the action mask) and `self`'s
         # observation space contains the action mask.
-        self.observation_space = self.observation_space_with_mask
+        self.config.observation_space = self.observation_space_with_mask
 
     @override(PPOTorchRLModule)
     def _forward_inference(

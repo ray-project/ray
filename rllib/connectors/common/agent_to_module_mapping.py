@@ -97,7 +97,7 @@ class AgentToModuleMapping(ConnectorV2):
 
         # Create our connector piece.
         connector = AgentToModuleMapping(
-            rl_module_specs={"module0", "module1"},
+            module_specs={"module0", "module1"},
             agent_to_module_mapping_fn=(
                 lambda agent_id, eps: "module1" if agent_id == "agent1" else "module0"
             ),
@@ -150,12 +150,12 @@ class AgentToModuleMapping(ConnectorV2):
         input_observation_space: Optional[gym.Space] = None,
         input_action_space: Optional[gym.Space] = None,
         *,
-        rl_module_specs: Dict[ModuleID, RLModuleSpec],
+        module_specs: Dict[ModuleID, RLModuleSpec],
         agent_to_module_mapping_fn,
     ):
         super().__init__(input_observation_space, input_action_space)
 
-        self._rl_module_specs = rl_module_specs
+        self._module_specs = module_specs
         self._agent_to_module_mapping_fn = agent_to_module_mapping_fn
 
     @override(ConnectorV2)
@@ -215,7 +215,7 @@ class AgentToModuleMapping(ConnectorV2):
     def _map_space_if_necessary(self, space: gym.Space, which: str = "obs"):
         # Analyze input observation space to check, whether the user has already taken
         # care of the agent to module mapping.
-        if set(self._rl_module_specs) == set(space.spaces.keys()):
+        if set(self._module_specs) == set(space.spaces.keys()):
             return space
 
         # We need to take care of agent to module mapping. Figure out the resulting
@@ -223,22 +223,16 @@ class AgentToModuleMapping(ConnectorV2):
         dummy_eps = MultiAgentEpisode()
 
         ret_space = {}
-        for module_id in self._rl_module_specs:
+        for module_id in self._module_specs:
             # Easy way out, user has provided space in the RLModule spec dict.
-            if (
-                isinstance(self._rl_module_specs, dict)
-                and module_id in self._rl_module_specs
-            ):
-                if (
-                    which == "obs"
-                    and self._rl_module_specs[module_id].observation_space
-                ):
-                    ret_space[module_id] = self._rl_module_specs[
+            if isinstance(self._module_specs, dict) and module_id in self._module_specs:
+                if which == "obs" and self._module_specs[module_id].observation_space:
+                    ret_space[module_id] = self._module_specs[
                         module_id
                     ].observation_space
                     continue
-                elif which == "act" and self._rl_module_specs[module_id].action_space:
-                    ret_space[module_id] = self._rl_module_specs[module_id].action_space
+                elif which == "act" and self._module_specs[module_id].action_space:
+                    ret_space[module_id] = self._module_specs[module_id].action_space
                     continue
 
             # Need to reverse map spaces (for the different agents) to certain
@@ -282,7 +276,7 @@ class AgentToModuleMapping(ConnectorV2):
                         "more than one ModuleID might be returned somewhat randomly). "
                         f"Fix this error by providing {which}-space information using "
                         "`config.rl_module(rl_module_spec=MultiRLModuleSpec("
-                        f"rl_module_specs={{'{module_id}': RLModuleSpec("
+                        f"module_specs={{'{module_id}': RLModuleSpec("
                         "observation_space=..., action_space=...)}}))"
                     )
 

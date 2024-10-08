@@ -77,16 +77,16 @@ if __name__ == "__main__":
 
     base_config = (
         PPOConfig()
-        .environment("correlated_actions_env")
+        .environment(env="correlated_actions_env")
         .rl_module(
+            model_config_dict={
+                "post_fcnet_hiddens": [64, 64],
+                "post_fcnet_activation": "relu",
+            },
             # We need to explicitly specify here RLModule to use and
             # the catalog needed to build it.
             rl_module_spec=RLModuleSpec(
                 module_class=AutoregressiveActionsTorchRLM,
-                model_config={
-                    "head_fcnet_hiddens": [64, 64],
-                    "head_fcnet_activation": "relu",
-                },
                 catalog_class=Catalog,
             ),
         )

@@ -19,6 +19,7 @@ from ray.rllib.core import (
     COMPONENT_MODULE_TO_ENV_CONNECTOR,
 )
 from ray.rllib.core.rl_module.rl_module import RLModuleSpec
+from ray.rllib.env.env_runner_group import _handle_remote_call_result_errors
 from ray.rllib.execution.buffers.mixin_replay_buffer import MixInMultiAgentReplayBuffer
 from ray.rllib.execution.learner_thread import LearnerThread
 from ray.rllib.execution.multi_gpu_learner_thread import MultiGPULearnerThread
@@ -28,7 +29,6 @@ from ray.rllib.utils.actor_manager import (
     FaultAwareApply,
     FaultTolerantActorManager,
     RemoteCallResults,
-    handle_remote_call_result_errors,
 )
 from ray.rllib.utils.actors import create_colocated_actors
 from ray.rllib.utils.annotations import OldAPIStack, override
@@ -906,12 +906,9 @@ class IMPALA(Algorithm):
                 timeout_seconds=self.config.timeout_s_aggregator_manager,
             )
         )
-        handle_remote_call_result_errors(
+        _handle_remote_call_result_errors(
             waiting_processed_sample_batches,
-            ignore_ray_errors=(
-                self.config.ignore_env_runner_failures
-                or self.config.recreate_failed_env_runners
-            ),
+            self.config.ignore_env_runner_failures,
         )
 
         return list(waiting_processed_sample_batches.ignore_errors())
@@ -1146,12 +1143,9 @@ class IMPALA(Algorithm):
                 timeout_seconds=self.config.timeout_s_aggregator_manager,
             )
         )
-        handle_remote_call_result_errors(
+        _handle_remote_call_result_errors(
             waiting_processed_sample_batches,
-            ignore_ray_errors=(
-                self.config.ignore_env_runner_failures
-                or self.config.recreate_failed_env_runners
-            ),
+            self.config.ignore_env_runner_failures,
         )
 
         return [b.get() for b in waiting_processed_sample_batches.ignore_errors()]

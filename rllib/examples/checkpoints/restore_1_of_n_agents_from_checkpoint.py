@@ -48,7 +48,6 @@ iterations instead of 190).
 
 import os
 from ray.air.constants import TRAINING_ITERATION
-from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
 from ray.rllib.core.rl_module.multi_rl_module import MultiRLModuleSpec
 from ray.rllib.examples.envs.classes.multi_agent import MultiAgentPendulum
 from ray.rllib.utils.metrics import (
@@ -104,7 +103,7 @@ if __name__ == "__main__":
             vf_clip_param=10.0,
         )
         .rl_module(
-            model_config=DefaultModelConfig(fcnet_activation="relu"),
+            model_config_dict={"fcnet_activation": "relu"},
         )
     )
 
@@ -122,7 +121,9 @@ if __name__ == "__main__":
     env = MultiAgentPendulum(config={"num_agents": args.num_agents})
     # Get the default module spec from the algorithm config.
     module_spec = base_config.get_default_rl_module_spec()
-    module_spec.model_config.fcnet_activation = "relu"
+    module_spec.model_config_dict = base_config.model_config | {
+        "fcnet_activation": "relu",
+    }
     module_spec.observation_space = env.envs[0].observation_space
     module_spec.action_space = env.envs[0].action_space
     # Create the module for each policy, but policy 0.
@@ -137,7 +138,7 @@ if __name__ == "__main__":
     module_specs["p0"] = module_spec
 
     # Create the MultiRLModule.
-    multi_rl_module_spec = MultiRLModuleSpec(rl_module_specs=module_specs)
+    multi_rl_module_spec = MultiRLModuleSpec(module_specs=module_specs)
     # Define the MultiRLModule in the base config.
     base_config.rl_module(rl_module_spec=multi_rl_module_spec)
     # We need to re-register the environment when starting a new run.

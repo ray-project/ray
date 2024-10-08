@@ -23,9 +23,8 @@ import functools
 import numpy as np
 
 from ray.air.constants import TRAINING_ITERATION
-from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
-from ray.rllib.core.rl_module.multi_rl_module import MultiRLModuleSpec
 from ray.rllib.core.rl_module.rl_module import RLModuleSpec
+from ray.rllib.core.rl_module.multi_rl_module import MultiRLModuleSpec
 from ray.rllib.env.utils import try_import_pyspiel, try_import_open_spiel
 from ray.rllib.env.wrappers.open_spiel import OpenSpielEnv
 from ray.rllib.examples.rl_modules.classes.random_rlm import RandomRLModule
@@ -161,9 +160,11 @@ if __name__ == "__main__":
             policies_to_train=["main"],
         )
         .rl_module(
-            model_config=DefaultModelConfig(fcnet_hiddens=[512, 512]),
+            model_config_dict={
+                "fcnet_hiddens": [512, 512],
+            },
             rl_module_spec=MultiRLModuleSpec(
-                rl_module_specs={
+                module_specs={
                     "main": RLModuleSpec(),
                     "random": RLModuleSpec(module_class=RandomRLModule),
                 }

@@ -1,5 +1,4 @@
 from ray.rllib.algorithms.dqn import DQNConfig
-from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
 from ray.rllib.utils.test_utils import add_rllib_example_script_args
 
 parser = add_rllib_example_script_args(
@@ -29,18 +28,20 @@ config = (
         },
         n_step=(2, 5),
         double_q=True,
+        num_atoms=1,
+        noisy=False,
         dueling=True,
-        epsilon=[(0, 1.0), (10000, 0.02)],
     )
     .rl_module(
         # Settings identical to old stack.
-        model_config=DefaultModelConfig(
-            fcnet_hiddens=[256],
-            fcnet_activation="tanh",
-            fcnet_bias_initializer="zeros_",
-            head_fcnet_bias_initializer="zeros_",
-            head_fcnet_hiddens=[256],
-        ),
+        model_config_dict={
+            "fcnet_hiddens": [256],
+            "fcnet_activation": "tanh",
+            "epsilon": [(0, 1.0), (10000, 0.02)],
+            "fcnet_bias_initializer": "zeros_",
+            "post_fcnet_bias_initializer": "zeros_",
+            "post_fcnet_hiddens": [256],
+        },
     )
 )
 

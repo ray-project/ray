@@ -3,6 +3,7 @@ import numpy as np
 from gymnasium.spaces import Box
 
 from ray.rllib.core.columns import Columns
+from ray.rllib.core.rl_module.rl_module import RLModuleConfig
 from ray.rllib.examples._old_api_stack.policy.random_policy import RandomPolicy
 from ray.rllib.examples.rl_modules.classes.random_rlm import StatefulRandomRLModule
 from ray.rllib.policy.policy import Policy
@@ -16,14 +17,15 @@ class StatefulRandomPolicy(RandomPolicy):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.model = StatefulRandomRLModule(
+        config = RLModuleConfig(
             action_space=self.action_space,
-            model_config={
+            model_config_dict={
                 "max_seq_len": 50,
                 "lstm_use_prev_action": False,
                 "lstm_use_prev_reward": False,
             },
         )
+        self.model = StatefulRandomRLModule(config=config)
 
         self.view_requirements = self.model.update_default_view_requirements(
             self.view_requirements

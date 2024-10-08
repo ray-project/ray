@@ -34,35 +34,36 @@ class DreamerV3RLModule(RLModule, abc.ABC):
 
         # Gather model-relevant settings.
         B = 1
-        T = self.model_config["batch_length_T"]
-        horizon_H = self.model_config["horizon_H"]
-        gamma = self.model_config["gamma"]
+        T = self.config.model_config_dict["batch_length_T"]
+        horizon_H = self.config.model_config_dict["horizon_H"]
+        gamma = self.config.model_config_dict["gamma"]
         symlog_obs = do_symlog_obs(
-            self.observation_space,
-            self.model_config.get("symlog_obs", "auto"),
+            self.config.observation_space,
+            self.config.model_config_dict.get("symlog_obs", "auto"),
         )
-        model_size = self.model_config["model_size"]
+        model_size = self.config.model_config_dict["model_size"]
 
-        if self.model_config["use_float16"]:
+        if self.config.model_config_dict["use_float16"]:
             tf.compat.v1.keras.layers.enable_v2_dtype_behavior()
             tf.keras.mixed_precision.set_global_policy("mixed_float16")
 
         # Build encoder and decoder from catalog.
-        self.encoder = self.catalog.build_encoder(framework=self.framework)
-        self.decoder = self.catalog.build_decoder(framework=self.framework)
+        catalog = self.config.get_catalog()
+        self.encoder = catalog.build_encoder(framework=self.framework)
+        self.decoder = catalog.build_decoder(framework=self.framework)
 
         # Build the world model (containing encoder and decoder).
         self.world_model = WorldModel(
             model_size=model_size,
-            observation_space=self.observation_space,
-            action_space=self.action_space,
+            observation_space=self.config.observation_space,
+            action_space=self.config.action_space,
             batch_length_T=T,
             encoder=self.encoder,
             decoder=self.decoder,
             symlog_obs=symlog_obs,
         )
         self.actor = ActorNetwork(
-            action_space=self.action_space,
+            action_space=self.config.action_space,
             model_size=model_size,
         )
         self.critic = CriticNetwork(
@@ -70,30 +71,28 @@ class DreamerV3RLModule(RLModule, abc.ABC):
         )
         # Build the final dreamer model (containing the world model).
         self.dreamer_model = DreamerModel(
-            model_size=self.model_config["model_size"],
-            action_space=self.action_space,
+            model_size=self.config.model_config_dict["model_size"],
+            action_space=self.config.action_space,
             world_model=self.world_model,
             actor=self.actor,
             critic=self.critic,
             horizon=horizon_H,
             gamma=gamma,
         )
-        self.action_dist_cls = self.catalog.get_action_dist_cls(
-            framework=self.framework
-        )
+        self.action_dist_cls = catalog.get_action_dist_cls(framework=self.framework)
 
         # Perform a test `call()` to force building the dreamer model's variables.
         if self.framework == "tf2":
             test_obs = np.tile(
-                np.expand_dims(self.observation_space.sample(), (0, 1)),
-                reps=(B, T) + (1,) * len(self.observation_space.shape),
+                np.expand_dims(self.config.observation_space.sample(), (0, 1)),
+                reps=(B, T) + (1,) * len(self.config.observation_space.shape),
             )
-            if isinstance(self.action_space, gym.spaces.Discrete):
+            if isinstance(self.config.action_space, gym.spaces.Discrete):
                 test_actions = np.tile(
                     np.expand_dims(
                         one_hot(
-                            self.action_space.sample(),
-                            depth=self.action_space.n,
+                            self.config.action_space.sample(),
+                            depth=self.config.action_space.n,
                         ),
                         (0, 1),
                     ),
@@ -101,7 +100,7 @@ class DreamerV3RLModule(RLModule, abc.ABC):
                 )
             else:
                 test_actions = np.tile(
-                    np.expand_dims(self.action_space.sample(), (0, 1)),
+                    np.expand_dims(self.config.action_space.sample(), (0, 1)),
                     reps=(B, T, 1),
                 )
 

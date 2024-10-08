@@ -1,4 +1,3 @@
-import dataclasses
 from collections import namedtuple
 import functools
 import itertools
@@ -28,7 +27,6 @@ from ray.rllib.core.models.configs import (
     CNNEncoderConfig,
 )
 from ray.rllib.core.models.torch.base import TorchModel
-from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
 from ray.rllib.core.rl_module.rl_module import RLModuleSpec
 from ray.rllib.models import MODEL_DEFAULTS
 from ray.rllib.models.tf.tf_distributions import (
@@ -100,22 +98,76 @@ class TestCatalog(unittest.TestCase):
     def test_get_encoder_config(self):
         """Tests if we can create a bunch of encoders from the base catalog class."""
 
+        # TODO (Artur): Add support for the commented out spaces
         input_spaces_and_config_types = [
             (Box(-1.0, 1.0, (5,), dtype=np.float32), MLPEncoderConfig),
             (Box(-1.0, 1.0, (84, 84, 1), dtype=np.float32), CNNEncoderConfig),
+            # Box(-1.0, 1.0, (5, 5), dtype=np.float32),
+            # MultiBinary([3, 10, 10]),
+            # Discrete(5),
+            # Tuple([Discrete(10), Box(-1.0, 1.0, (5,), dtype=np.float32)]),
+            # Dict(
+            #     {
+            #         "task": Discrete(10),
+            #         "position": Box(-1.0, 1.0, (5,), dtype=np.float32),
+            #     }
+            # ),
+            # Text(),
+            # Graph(),
+            # GraphInstance(),
+            # MultiDiscrete(),
+            # Sequence(),
         ]
 
-        model_configs = [
+        # TODO (Artur): Add support for the commented out configs
+        model_config_dicts = [
             # This should produce an MLPEncoder with three hidden layers
-            DefaultModelConfig(
-                fcnet_activation="relu",
-                fcnet_hiddens=[256, 256, 256],
-            ),
+            {
+                "fcnet_activation": "relu",
+                "fcnet_hiddens": [256, 256, 256],
+            },
             # This should produce an MLPEncoder with one hidden layer
-            DefaultModelConfig(
-                fcnet_hiddens=[512, 512],
-                fcnet_activation="relu",
-            ),
+            {
+                "fcnet_hiddens": [512],
+                "encoder_latent_dim": 512,
+                "fcnet_activation": "relu",
+            },
+            # This should produce an LSTMEncoder with one hidden layer
+            # {"use_lstm": True},
+            # This should produce an AttentionNetEncoder with default configuration
+            # {"use_attention": True, "attention_num_transformer_units": 4},
+            # This should produce an AttentionNetEncoder with one hidden layer and
+            # other custom configuration
+            # {
+            #     "fcnet_hiddens": [32],
+            #     "fcnet_activation": "linear",
+            #     "vf_share_layers": True,
+            #     "use_attention": True,
+            #     "max_seq_len": 10,
+            #     "attention_num_transformer_units": 1,
+            #     "attention_dim": 32,
+            #     "attention_memory_inference": 10,
+            #     "attention_memory_training": 10,
+            #     "attention_num_heads": 1,
+            #     "attention_head_dim": 32,
+            #     "attention_position_wise_mlp_dim": 32,
+            # },
+            # This should produce an LSTMEncoder wrapping an CNNEncoder with
+            # additional other custom configuration
+            # {
+            #     "use_lstm": True,
+            #     "conv_activation": "elu",
+            #     "dim": 42,
+            #     "grayscale": True,
+            #     "zero_mean": False,
+            #     # Reduced channel depth and kernel size from default
+            #     "conv_filters": [
+            #         [32, [3, 3], 2],
+            #         [32, [3, 3], 2],
+            #         [32, [3, 3], 2],
+            #         [32, [3, 3], 2],
+            #     ]
+            # }
         ]
 
         frameworks = ["tf2", "torch"]
@@ -125,15 +177,14 @@ class TestCatalog(unittest.TestCase):
         config_combinations = [
             frameworks,
             input_spaces_and_config_types,
-            model_configs,
+            model_config_dicts,
         ]
         for config in itertools.product(*config_combinations):
-            framework, input_space_and_config_type, model_config = config
-            model_config_dict = dataclasses.asdict(model_config)
+            framework, input_space_and_config_type, model_config_dict = config
             input_space, model_config_type = input_space_and_config_type
             print(
                 f"Testing framework: \n{framework}\n, input space: \n{input_space}\n "
-                f"and config: \n{model_config}\n"
+                f"and config: \n{model_config_dict}\n"
             )
             catalog = Catalog(
                 observation_space=input_space,
@@ -150,6 +201,9 @@ class TestCatalog(unittest.TestCase):
 
             # Do a forward pass and check if the output has the correct shape
             self._check_model_outputs(model, framework, model_config_dict, input_space)
+
+        # TODO(Artur): Add support for composite spaces and test here.
+        #  Today, Catalog does not handle composite spaces, so we can't test them.
 
     def test_get_dist_cls_from_action_space(self):
         """Tests if we can create a bunch of action distributions.
@@ -393,7 +447,7 @@ class TestCatalog(unittest.TestCase):
             module_class=PPOTorchRLModule,
             observation_space=env.observation_space,
             action_space=env.action_space,
-            model_config=MODEL_DEFAULTS.copy(),
+            model_config_dict=MODEL_DEFAULTS.copy(),
             catalog_class=MyCustomCatalog,
         )
         module = spec.build()

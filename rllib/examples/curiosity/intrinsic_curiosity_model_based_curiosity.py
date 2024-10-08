@@ -233,11 +233,11 @@ if __name__ == "__main__":
         )
         .rl_module(
             rl_module_spec=MultiRLModuleSpec(
-                rl_module_specs={
+                module_specs={
                     # The "main" RLModule (policy) to be trained by our algo.
                     DEFAULT_MODULE_ID: RLModuleSpec(
                         **(
-                            {"model_config": {"vf_share_layers": True}}
+                            {"model_config_dict": {"vf_share_layers": True}}
                             if args.algo == "PPO"
                             else {}
                         ),
@@ -249,7 +249,7 @@ if __name__ == "__main__":
                         # EnvRunners.
                         learner_only=True,
                         # Configure the architecture of the ICM here.
-                        model_config={
+                        model_config_dict={
                             "feature_dim": 288,
                             "feature_net_hiddens": (256, 256),
                             "feature_net_activation": "relu",

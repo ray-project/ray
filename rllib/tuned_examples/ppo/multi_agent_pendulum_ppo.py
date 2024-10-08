@@ -1,6 +1,5 @@
 from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.connectors.env_to_module import MeanStdFilter
-from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
 from ray.rllib.examples.envs.classes.multi_agent import MultiAgentPendulum
 from ray.rllib.utils.metrics import (
     ENV_RUNNER_RESULTS,
@@ -39,7 +38,9 @@ config = (
         lambda_=0.5,
     )
     .rl_module(
-        model_config=DefaultModelConfig(fcnet_activation="relu"),
+        model_config_dict={
+            "fcnet_activation": "relu",
+        },
     )
     .multi_agent(
         policy_mapping_fn=lambda aid, *arg, **kw: f"p{aid}",

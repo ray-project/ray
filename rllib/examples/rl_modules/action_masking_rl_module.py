@@ -110,14 +110,14 @@ if __name__ == "__main__":
             },
         )
         .rl_module(
+            model_config_dict={
+                "post_fcnet_hiddens": [64, 64],
+                "post_fcnet_activation": "relu",
+            },
             # We need to explicitly specify here RLModule to use and
             # the catalog needed to build it.
             rl_module_spec=RLModuleSpec(
                 module_class=ActionMaskingTorchRLModule,
-                model_config={
-                    "head_fcnet_hiddens": [64, 64],
-                    "head_fcnet_activation": "relu",
-                },
             ),
         )
         .evaluation(

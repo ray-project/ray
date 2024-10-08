@@ -59,7 +59,7 @@ if __name__ == "__main__":
         config=RLModuleConfig(
             observation_space=env.observation_space,
             action_space=env.action_space,
-            model_config={"policy_checkpoint_dir": policy_path},
+            model_config_dict={"policy_checkpoint_dir": policy_path},
         ),
     )
 
@@ -87,7 +87,7 @@ if __name__ == "__main__":
     ).rl_module(
         rl_module_spec=RLModuleSpec(
             module_class=ModelV2ToRLModule,
-            model_config={"policy_checkpoint_dir": policy_path},
+            model_config_dict={"policy_checkpoint_dir": policy_path},
         ),
     )
 

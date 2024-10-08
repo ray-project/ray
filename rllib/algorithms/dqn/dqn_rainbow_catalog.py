@@ -174,8 +174,12 @@ class DQNRainbowCatalog(Catalog):
             # Check, if the observation space is 1D Box. Only then we can use an MLP.
             if isinstance(observation_space, Box) and len(observation_space.shape) == 1:
                 # Define the encoder hiddens.
-                af_and_vf_encoder_hiddens = model_config_dict["fcnet_hiddens"][:-1]
-                latent_dims = (model_config_dict["fcnet_hiddens"][-1],)
+                if model_config_dict["encoder_latent_dim"]:
+                    af_and_vf_encoder_hiddens = model_config_dict["fcnet_hiddens"]
+                    latent_dims = (model_config_dict["encoder_latent_dim"],)
+                else:
+                    af_and_vf_encoder_hiddens = model_config_dict["fcnet_hiddens"][:-1]
+                    latent_dims = (model_config_dict["fcnet_hiddens"][-1],)
 
                 # Instead of a regular MLP use a NoisyMLP.
                 return NoisyMLPEncoderConfig(
@@ -190,19 +194,19 @@ class DQNRainbowCatalog(Catalog):
                     #     "hidden_layer_use_bias"
                     # ],
                     hidden_layer_weights_initializer=model_config_dict[
-                        "fcnet_kernel_initializer"
+                        "fcnet_weights_initializer"
                     ],
                     hidden_layer_weights_initializer_config=model_config_dict[
-                        "fcnet_kernel_initializer_kwargs"
+                        "fcnet_weights_initializer_config"
                     ],
                     hidden_layer_bias_initializer=model_config_dict[
                         "fcnet_bias_initializer"
                     ],
                     hidden_layer_bias_initializer_config=model_config_dict[
-                        "fcnet_bias_initializer_kwargs"
+                        "fcnet_bias_initializer_config"
                     ],
                     # Note, `"post_fcnet_activation"` is `"relu"` by definition.
-                    output_layer_activation=model_config_dict["head_fcnet_activation"],
+                    output_layer_activation=model_config_dict["post_fcnet_activation"],
                     output_layer_dim=latent_dims[0],
                     # TODO (simon): Not yet available.
                     # output_layer_use_bias=self._model_config_dict[
@@ -211,16 +215,16 @@ class DQNRainbowCatalog(Catalog):
                     # TODO (sven, simon): Should these initializers be rather the fcnet
                     # ones?
                     output_layer_weights_initializer=model_config_dict[
-                        "head_fcnet_kernel_initializer"
+                        "post_fcnet_weights_initializer"
                     ],
                     output_layer_weights_initializer_config=model_config_dict[
-                        "head_fcnet_kernel_initializer_kwargs"
+                        "post_fcnet_weights_initializer_config"
                     ],
                     output_layer_bias_initializer=model_config_dict[
-                        "head_fcnet_bias_initializer"
+                        "post_fcnet_bias_initializer"
                     ],
                     output_layer_bias_initializer_config=model_config_dict[
-                        "head_fcnet_bias_initializer_kwargs"
+                        "post_fcnet_bias_initializer_config"
                     ],
                     std_init=model_config_dict["std_init"],
                 )
@@ -253,41 +257,41 @@ class DQNRainbowCatalog(Catalog):
         # Return the appropriate config.
         return config_cls(
             input_dims=self.latent_dims,
-            hidden_layer_dims=self._model_config_dict["head_fcnet_hiddens"],
+            hidden_layer_dims=self._model_config_dict["post_fcnet_hiddens"],
             # Note, `"post_fcnet_activation"` is `"relu"` by definition.
-            hidden_layer_activation=self._model_config_dict["head_fcnet_activation"],
+            hidden_layer_activation=self._model_config_dict["post_fcnet_activation"],
             # TODO (simon): Not yet available.
             # hidden_layer_use_layernorm=self._model_config_dict[
             #     "hidden_layer_use_layernorm"
             # ],
             # hidden_layer_use_bias=self._model_config_dict["hidden_layer_use_bias"],
             hidden_layer_weights_initializer=self._model_config_dict[
-                "head_fcnet_kernel_initializer"
+                "post_fcnet_weights_initializer"
             ],
             hidden_layer_weights_initializer_config=self._model_config_dict[
-                "head_fcnet_kernel_initializer_kwargs"
+                "post_fcnet_weights_initializer_config"
             ],
             hidden_layer_bias_initializer=self._model_config_dict[
-                "head_fcnet_bias_initializer"
+                "post_fcnet_bias_initializer"
             ],
             hidden_layer_bias_initializer_config=self._model_config_dict[
-                "head_fcnet_bias_initializer_kwargs"
+                "post_fcnet_bias_initializer_config"
             ],
             output_layer_activation="linear",
             output_layer_dim=output_layer_dim,
             # TODO (simon): Not yet available.
             # output_layer_use_bias=self._model_config_dict["output_layer_use_bias"],
             output_layer_weights_initializer=self._model_config_dict[
-                "head_fcnet_kernel_initializer"
+                "post_fcnet_weights_initializer"
             ],
             output_layer_weights_initializer_config=self._model_config_dict[
-                "head_fcnet_kernel_initializer_kwargs"
+                "post_fcnet_weights_initializer_config"
             ],
             output_layer_bias_initializer=self._model_config_dict[
-                "head_fcnet_bias_initializer"
+                "post_fcnet_bias_initializer"
             ],
             output_layer_bias_initializer_config=self._model_config_dict[
-                "head_fcnet_bias_initializer_kwargs"
+                "post_fcnet_bias_initializer_config"
             ],
             **kwargs
         )
