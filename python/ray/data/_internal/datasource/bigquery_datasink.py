@@ -3,7 +3,7 @@ import os
 import tempfile
 import time
 import uuid
-from typing import Any, Iterable, Optional
+from typing import Iterable, Optional
 
 import pyarrow.parquet as pq
 
@@ -70,7 +70,7 @@ class BigQueryDatasink(Datasink):
         self,
         blocks: Iterable[Block],
         ctx: TaskContext,
-    ) -> Any:
+    ) -> Iterable[Block]:
         def _write_single_block(block: Block, project_id: str, dataset: str) -> None:
             from google.api_core import exceptions
             from google.cloud import bigquery
@@ -120,12 +120,15 @@ class BigQueryDatasink(Datasink):
 
         _write_single_block = cached_remote_fn(_write_single_block)
 
-        # Launch a remote task for each block within this write task
-        ray.get(
-            [
+        tasks = []
+        original_blocks = []
+        for block in blocks:
+            tasks.append(
                 _write_single_block.remote(block, self.project_id, self.dataset)
-                for block in blocks
-            ]
-        )
+            )
+            original_blocks.append(block)
 
-        return "ok"
+        # Launch a remote task for each block within this write task
+        ray.get(tasks)
+
+        return iter(original_blocks)

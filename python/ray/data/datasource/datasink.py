@@ -26,7 +26,7 @@ class Datasink:
         self,
         blocks: Iterable[Block],
         ctx: TaskContext,
-    ) -> Any:
+    ) -> Iterable[Block]:
         """Write blocks. This is used by a single write task.
 
         Args:
@@ -34,8 +34,8 @@ class Datasink:
             ctx: ``TaskContext`` for the write task.
 
         Returns:
-            A user-defined output. Can be anything, and the returned value is passed to
-            :meth:`~ray.data.Datasink.on_write_complete`.
+            The original blocks to be written. After this method returns,
+            stats are collected and the write is considered complete.
         """
         raise NotImplementedError
 
@@ -128,7 +128,7 @@ class DummyOutputDatasink(Datasink):
         self,
         blocks: Iterable[Block],
         ctx: TaskContext,
-    ) -> Any:
+    ) -> Iterable[Block]:
         tasks = []
         if not self.enabled:
             raise ValueError("disabled")

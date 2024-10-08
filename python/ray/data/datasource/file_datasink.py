@@ -114,24 +114,21 @@ class _FileDatasink(Datasink):
         self,
         blocks: Iterable[Block],
         ctx: TaskContext,
-    ) -> Any:
-        output_blocks = []
+    ) -> Iterable[Block]:
+        original_blocks = []
         builder = DelegatingBlockBuilder()
         for block in blocks:
             builder.add_block(block)
-            output_blocks.append(block)
+            original_blocks.append(block)
         block = builder.build()
         block_accessor = BlockAccessor.for_block(block)
 
         if block_accessor.num_rows() == 0:
             logger.warning(f"Skipped writing empty block to {self.path}")
-            return "skip"
+            return iter(original_blocks)
 
         self.write_block(block_accessor, 0, ctx)
-        # TODO: decide if we want to return richer object when the task
-        # succeeds.
-        # return "ok"
-        return iter(output_blocks)
+        return iter(original_blocks)
 
     def write_block(self, block: BlockAccessor, block_index: int, ctx: TaskContext):
         raise NotImplementedError

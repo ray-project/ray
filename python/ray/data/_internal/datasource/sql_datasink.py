@@ -1,4 +1,4 @@
-from typing import Any, Callable, Iterable
+from typing import Callable, Iterable
 
 from ray.data._internal.datasource.sql_datasource import Connection, _connect
 from ray.data._internal.execution.interfaces import TaskContext
@@ -18,9 +18,11 @@ class SQLDatasink(Datasink):
         self,
         blocks: Iterable[Block],
         ctx: TaskContext,
-    ) -> Any:
+    ) -> Iterable[Block]:
         with _connect(self.connection_factory) as cursor:
+            original_blocks = []
             for block in blocks:
+                original_blocks.append(block)
                 block_accessor = BlockAccessor.for_block(block)
 
                 values = []
@@ -34,4 +36,4 @@ class SQLDatasink(Datasink):
                 if values:
                     cursor.executemany(self.sql, values)
 
-        return "ok"
+        return iter(original_blocks)

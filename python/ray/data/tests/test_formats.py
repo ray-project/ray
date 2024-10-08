@@ -255,7 +255,7 @@ class NodeLoggerOutputDatasink(Datasink):
         self,
         blocks: Iterable[Block],
         ctx: TaskContext,
-    ) -> Any:
+    ) -> Iterable[Block]:
         data_sink = self.data_sink
 
         def write(b):
