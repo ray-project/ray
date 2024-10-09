@@ -14,58 +14,6 @@ import subprocess
 from ray._private.utils import get_num_cpus
 import time
 import sys
-import filelock
-
-# The first worker with such env var starts up normally, while the second worker hangs.
-# This is achieved with file locks. The first worker creates a file and acquires a lock
-# and never releases (don't learn from this example). The second worker tries to acquire
-# and hangs forever.
-leaking_global_lock = None
-
-
-def _hook():
-    global leaking_global_lock
-
-    if os.environ.get("HELLO") != "WORLD":
-        print(f"HELLO={os.environ.get('HELLO')}, skip")
-        return
-
-    # Creates a file in $PWD to indicate the hook is executed.
-    hook_file_path = "ray_hook_ok.lock"
-    leaking_global_lock = filelock.FileLock(hook_file_path)
-    print(f"acquiring lock for {hook_file_path}")
-    leaking_global_lock.acquire()
-    print(f"acquired lock for {hook_file_path}")
-
-
-def test_can_reuse_released_workers(ray_start_cluster):
-    """
-    In this test, a worker startup hook is set so that only 1 worker can start, and all
-    subsequent workers will hang in runtime start up forever. We issue 2 tasks and test
-    that the second task can still be scheduled on the first worker released from the
-    first task, i.e. the task is not binded to the worker that it requested to start.
-    """
-    cluster = ray_start_cluster
-    cluster.add_node(num_cpus=2)
-    ray.init(
-        address=cluster.address,
-        runtime_env={"worker_process_setup_hook": "ray.tests.test_node_manager._hook"},
-    )
-
-    # A runtime env is set to avoid interference from prestarted workers.
-    @ray.remote(runtime_env={"env_vars": {"HELLO": "WORLD"}})
-    def f():
-        # Sleep for a while to make sure o2 also requests a worker.
-        time.sleep(1)
-        print(f"pid={os.getpid()}, env HELLO={os.environ.get('HELLO')}")
-        return os.getpid()
-
-    o1 = f.remote()
-    o2 = f.remote()
-
-    # A worker needs 5s to start.
-    pids = ray.get([o1, o2], timeout=8)
-    assert pids[0] == pids[1]
 
 
 # This tests the queue transitions for infeasible tasks. This has been an issue

@@ -632,10 +632,10 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   /// worker.
   void TryStartIOWorkers(const Language &language, const rpc::WorkerType &worker_type);
 
-  /// Try to fulfill pending PopWorker requests.
+  /// Try to fulfill pending_start_requests by trying to start more workers.
   /// This happens when we have more room to start workers or an idle worker is pushed.
   /// \param language The language of the PopWorker requests.
-  void TryPendingPopWorkerRequests(const Language &language);
+  void TryPendingStartRequests(const Language &language);
 
   /// Get either restore or spill worker state from state based on worker_type.
   ///

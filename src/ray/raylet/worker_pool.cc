@@ -577,7 +577,7 @@ void WorkerPool::MonitorStartingWorkerProcess(StartupToken proc_startup_token,
       // We may have places to start more workers now.
       TryStartIOWorkers(language);
       if (worker_type == rpc::WorkerType::WORKER) {
-        TryPendingPopWorkerRequests(language);
+        TryPendingStartRequests(language);
       }
       starting_worker_timeout_callback_();
     }
@@ -1040,7 +1040,7 @@ void WorkerPool::PushWorker(const std::shared_ptr<WorkerInterface> &worker) {
     }
     // We either have an idle worker or a slot to start a new worker.
     if (worker->GetWorkerType() == rpc::WorkerType::WORKER) {
-      TryPendingPopWorkerRequests(worker->GetLanguage());
+      TryPendingStartRequests(worker->GetLanguage());
     }
   }
 }
@@ -1425,7 +1425,7 @@ void WorkerPool::DisconnectWorker(const std::shared_ptr<WorkerInterface> &worker
         // This may add new workers to state.worker_processes
         // and invalidate the iterator, do not use `it`
         // after this call.
-        TryPendingPopWorkerRequests(worker->GetLanguage());
+        TryPendingStartRequests(worker->GetLanguage());
       }
     }
 
@@ -1559,7 +1559,7 @@ void WorkerPool::TryStartIOWorkers(const Language &language) {
   TryStartIOWorkers(language, rpc::WorkerType::SPILL_WORKER);
 }
 
-void WorkerPool::TryPendingPopWorkerRequests(const Language &language) {
+void WorkerPool::TryPendingStartRequests(const Language &language) {
   auto &state = GetStateForLanguage(language);
   if (state.pending_start_requests.empty()) {
     return;
