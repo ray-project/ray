@@ -77,7 +77,7 @@ class TestMLPHeads(unittest.TestCase):
             model_checker = ModelChecker(config)
 
             # Add this framework version of the model to our checker.
-            outputs = model_checker.add(framework="torch")
+            outputs = model_checker.add(framework="torch", obs=False)
             self.assertEqual(outputs.shape, (1, output_dim))
 
             # Check all added models against each other.

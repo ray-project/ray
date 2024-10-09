@@ -1,7 +1,5 @@
 # flake8: noqa
 from ray.rllib.utils.annotations import override
-from ray.rllib.core.models.specs.typing import SpecType
-from ray.rllib.core.models.specs.specs_base import TensorSpec
 
 
 # __enabling-rlmodules-in-configs-begin__
@@ -222,70 +220,6 @@ class DiscreteBCTfModule(TfRLModule):
 
 
 # __write-custom-sa-rlmodule-tf-end__
-
-
-# __extend-spec-checking-single-level-begin__
-class DiscreteBCTorchModule(TorchRLModule):
-    ...
-
-    @override(TorchRLModule)
-    def input_specs_exploration(self) -> SpecType:
-        # Enforce that input nested dict to exploration method has a key "obs"
-        return ["obs"]
-
-    @override(TorchRLModule)
-    def output_specs_exploration(self) -> SpecType:
-        # Enforce that output nested dict from exploration method has a key
-        # "action_dist"
-        return ["action_dist"]
-
-
-# __extend-spec-checking-single-level-end__
-
-
-# __extend-spec-checking-nested-begin__
-class DiscreteBCTorchModule(TorchRLModule):
-    ...
-
-    @override(TorchRLModule)
-    def input_specs_exploration(self) -> SpecType:
-        # Enforce that input nested dict to exploration method has a key "obs"
-        # and within that key, it has a key "global" and "local". There should
-        # also be a key "action_mask"
-        return [("obs", "global"), ("obs", "local"), "action_mask"]
-
-
-# __extend-spec-checking-nested-end__
-
-
-# __extend-spec-checking-torch-specs-begin__
-class DiscreteBCTorchModule(TorchRLModule):
-    ...
-
-    @override(TorchRLModule)
-    def input_specs_exploration(self) -> SpecType:
-        # Enforce that input nested dict to exploration method has a key "obs"
-        # and its value is a torch.Tensor with shape (b, h) where b is the
-        # batch size (determined at run-time) and h is the hidden size
-        # (fixed at 10).
-        return {"obs": TensorSpec("b, h", h=10, framework="torch")}
-
-
-# __extend-spec-checking-torch-specs-end__
-
-
-# __extend-spec-checking-type-specs-begin__
-class DiscreteBCTorchModule(TorchRLModule):
-    ...
-
-    @override(TorchRLModule)
-    def output_specs_exploration(self) -> SpecType:
-        # Enforce that output nested dict from exploration method has a key
-        # "action_dist" and its value is a torch.distribution.Categorical
-        return {"action_dist": torch.distribution.Categorical}
-
-
-# __extend-spec-checking-type-specs-end__
 
 
 # __write-custom-multirlmodule-shared-enc-begin__
