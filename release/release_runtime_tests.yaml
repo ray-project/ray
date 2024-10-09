@@ -28,6 +28,22 @@
       cluster:
         cluster_compute: ../../serve_tests/compute_tpl_8_cpu_autoscaling_gce.yaml
 
+- name: safetensors_integration_tests_on_gpu
+  group: Serve tests
+  working_dir: ../python/ray/anyscale/safetensors/tests/integration
+
+  frequency: nightly
+  team: serve
+
+  cluster:
+    byod:
+      type: gpu
+    cluster_compute: gpu_test_compute_aws.yaml
+
+  run:
+    timeout: 1200
+    script: TEST_ON_CUDA=1 pytest -vs test_dummy_model.py
+
 ###############
 # Data tests
 ###############
