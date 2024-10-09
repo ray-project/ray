@@ -413,7 +413,8 @@ class HangOnSecondWorkerPlugin(RuntimeEnvPlugin):
     The first worker will start up normally, but all subsequent workers will hang at
     start up indefinitely. How it works: Ray RuntimeEnvAgent caches the modified context
     so we can't do it in modify_context. Instead, we use a bash command to read a file
-    and hang forever.
+    and hang forever. We don't have a good file lock mechanism in bash (flock is not
+    installed by default in macos), so we also serialize the worker startup.
     """
 
     name = MyPlugin
@@ -442,8 +443,6 @@ class HangOnSecondWorkerPlugin(RuntimeEnvPlugin):
         with open(d["hang_sh"], "w+") as f:
             f.write(
                 f"""#!/bin/bash
-
-#!/bin/bash
 
 counter_file="{d['counter_file']}"
 
@@ -514,7 +513,7 @@ def test_can_reuse_released_workers(
 
     @ray.remote(runtime_env={"env_vars": {"HELLO": "WORLD"}, MyPlugin: "key"})
     def f():
-        # Sleep for a while to make sure o2 also requests a worker.
+        # Sleep for a while to make sure other tasks also request workers.
         time.sleep(1)
         print(f"pid={os.getpid()}, env HELLO={os.environ.get('HELLO')}")
         return os.getpid()
