@@ -1,6 +1,6 @@
 import os
 import sys
-from typing import Any, Iterable, List
+from typing import Iterable, List
 
 import pandas as pd
 import pyarrow as pa
@@ -255,7 +255,7 @@ class NodeLoggerOutputDatasink(Datasink):
         self,
         blocks: Iterable[Block],
         ctx: TaskContext,
-    ) -> Iterable[Block]:
+    ) -> None:
         data_sink = self.data_sink
 
         def write(b):
@@ -263,15 +263,16 @@ class NodeLoggerOutputDatasink(Datasink):
             return data_sink.write.remote(node_id, b)
 
         tasks = []
-        original_blocks = []
         for b in blocks:
             tasks.append(write(b))
-            original_blocks.append(b)
         ray.get(tasks)
-        return iter(original_blocks)
 
-    def on_write_complete(self, write_results: List[Any]) -> None:
-        assert all(w == "ok" for w in write_results), write_results
+    def on_write_complete(self, raw_write_results: List[Block]) -> None:
+        for result in raw_write_results:
+            ba = BlockAccessor.for_block(result)
+            write_status = ba.to_numpy("write_status")[0]
+            assert write_status == "ok"
+
         self.num_ok += 1
 
     def on_write_failed(self, error: Exception) -> None:

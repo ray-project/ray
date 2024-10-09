@@ -205,14 +205,14 @@ class TestWriteBigQuery:
         )
         arr = pa.array([2, 4, 5, 100])
         block = pa.Table.from_arrays([arr], names=["data"])
-        blocks = bq_datasink.write(
+        bq_datasink.write(
             blocks=[block],
             ctx=None,
         )
 
         collect_stats_fn = generate_collect_write_stats_fn()
-        stats = collect_stats_fn(blocks, None)
-        status = stats[0].iloc[0]["write_result"]
+        stats = collect_stats_fn([block], None)
+        status = stats[0].iloc[0]["write_status"]
         assert status == "ok"
 
     def test_write_dataset_exists(self, ray_get_mock):
@@ -222,13 +222,13 @@ class TestWriteBigQuery:
         )
         arr = pa.array([2, 4, 5, 100])
         block = pa.Table.from_arrays([arr], names=["data"])
-        blocks = bq_datasink.write(
+        bq_datasink.write(
             blocks=[block],
             ctx=None,
         )
         collect_stats_fn = generate_collect_write_stats_fn()
-        stats = collect_stats_fn(blocks, None)
-        status = stats[0].iloc[0]["write_result"]
+        stats = collect_stats_fn([block], None)
+        status = stats[0].iloc[0]["write_status"]
         assert status == "ok"
 
 

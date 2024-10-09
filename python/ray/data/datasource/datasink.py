@@ -1,4 +1,4 @@
-from typing import Any, Iterable, List, Optional
+from typing import Iterable, List, Optional
 
 import ray
 from ray.data._internal.execution.interfaces import TaskContext
@@ -26,20 +26,16 @@ class Datasink:
         self,
         blocks: Iterable[Block],
         ctx: TaskContext,
-    ) -> Iterable[Block]:
+    ) -> None:
         """Write blocks. This is used by a single write task.
 
         Args:
             blocks: Generator of data blocks.
             ctx: ``TaskContext`` for the write task.
-
-        Returns:
-            The original blocks to be written. After this method returns,
-            stats are collected and the write is considered complete.
         """
         raise NotImplementedError
 
-    def on_write_complete(self, write_results: List[Any]) -> None:
+    def on_write_complete(self, raw_write_results: List[Block]) -> None:
         """Callback for when a write job completes.
 
         This can be used to "commit" a write output. This method must
@@ -50,7 +46,7 @@ class Datasink:
             write_results: The objects returned by every
                 :meth:`~ray.data.Datasink.write` task.
         """
-        pass
+        # TODO: implement stats aggregation and logging
 
     def on_write_failed(self, error: Exception) -> None:
         """Callback for when a write job fails.
@@ -128,19 +124,20 @@ class DummyOutputDatasink(Datasink):
         self,
         blocks: Iterable[Block],
         ctx: TaskContext,
-    ) -> Iterable[Block]:
+    ) -> None:
         tasks = []
         if not self.enabled:
             raise ValueError("disabled")
-        original_blocks = []
         for b in blocks:
             tasks.append(self.data_sink.write.remote(b))
-            original_blocks.append(b)
         ray.get(tasks)
-        return iter(original_blocks)
 
-    def on_write_complete(self, write_results: List[Any]) -> None:
-        assert all(w == "ok" for w in write_results), write_results
+    def on_write_complete(self, raw_write_results: List[Block]) -> None:
+        for result in raw_write_results:
+            ba = BlockAccessor.for_block(result)
+            write_status = ba.to_numpy("write_status")[0]
+            assert write_status == "ok"
+
         self.num_ok += 1
 
     def on_write_failed(self, error: Exception) -> None:

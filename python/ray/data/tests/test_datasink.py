@@ -14,10 +14,8 @@ def test_num_rows_per_write(tmp_path, ray_start_regular_shared, num_rows_per_wri
         def __init__(self, num_rows_per_write):
             self._num_rows_per_write = num_rows_per_write
 
-        def write(self, blocks: Iterable[Block], ctx: TaskContext) -> Iterable[Block]:
-            blocks = list(blocks)
+        def write(self, blocks: Iterable[Block], ctx: TaskContext) -> None:
             assert sum(len(block) for block in blocks) == self._num_rows_per_write
-            return iter(blocks)
 
         @property
         def num_rows_per_write(self):

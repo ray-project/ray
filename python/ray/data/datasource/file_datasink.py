@@ -114,31 +114,32 @@ class _FileDatasink(Datasink):
         self,
         blocks: Iterable[Block],
         ctx: TaskContext,
-    ) -> Iterable[Block]:
-        original_blocks = []
+    ) -> None:
         builder = DelegatingBlockBuilder()
         for block in blocks:
             builder.add_block(block)
-            original_blocks.append(block)
         block = builder.build()
         block_accessor = BlockAccessor.for_block(block)
 
         if block_accessor.num_rows() == 0:
             logger.warning(f"Skipped writing empty block to {self.path}")
-            return iter(original_blocks)
+            return
 
         self.write_block(block_accessor, 0, ctx)
-        return iter(original_blocks)
 
     def write_block(self, block: BlockAccessor, block_index: int, ctx: TaskContext):
         raise NotImplementedError
 
-    def on_write_complete(self, write_results: List[Any]) -> None:
+    def on_write_complete(self, raw_write_results: List[Block]) -> None:
         if not self.has_created_dir:
             return
 
-        if all(write_results == "skip" for write_results in write_results):
-            self.filesystem.delete_dir(self.path)
+        for result in raw_write_results:
+            ba = BlockAccessor.for_block(result)
+            write_status = ba.to_numpy("write_status")[0]
+            if write_status != "skip":
+                return
+        self.filesystem.delete_dir(self.path)
 
     @property
     def supports_distributed_writes(self) -> bool:

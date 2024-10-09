@@ -1,3 +1,4 @@
+import itertools
 from typing import Callable, Iterator, List, Union
 
 from ray.data._internal.compute import TaskPoolStrategy
@@ -21,14 +22,14 @@ def generate_write_fn(
         """Writes the blocks to the given datasink or legacy datasource.
 
         Outputs the original blocks to be written."""
+        # Create a copy of the iterator, so we can return the original blocks.
+        it1, it2 = itertools.tee(blocks, 2)
         if isinstance(datasink_or_legacy_datasource, Datasink):
-            original_blocks = datasink_or_legacy_datasource.write(blocks, ctx)
+            datasink_or_legacy_datasource.write(it1, ctx)
         else:
-            original_blocks = datasink_or_legacy_datasource.write(
-                blocks, ctx, **write_args
-            )
+            datasink_or_legacy_datasource.write(it1, ctx, **write_args)
 
-        return original_blocks
+        return it2
 
     return fn
 
@@ -37,22 +38,30 @@ def generate_collect_write_stats_fn() -> Callable[
     [Iterator[Block], TaskContext], Iterator[Block]
 ]:
     # If the write op succeeds, the resulting Dataset is a list of
-    # arbitrary objects (one object per write task). Otherwise, an error will
-    # be raised. The Datasource can handle execution outcomes with the
-    # on_write_complete() and on_write_failed().
+    # one Block which contain stats/metrics about the write.
+    # Otherwise, an error will be raised. The Datasource can handle
+    # execution outcomes with `on_write_complete()`` and `on_write_failed()``.
     def fn(blocks: Iterator[Block], ctx) -> Iterator[Block]:
         """Handles stats collection for block writes."""
-        if all(BlockAccessor.for_block(block).num_rows() == 0 for block in blocks):
+        block_accessors = [BlockAccessor.for_block(block) for block in blocks]
+        if all(ba.num_rows() == 0 for ba in block_accessors):
             status = "skip"
         else:
             status = "ok"
+        total_num_rows = sum(ba.num_rows() for ba in block_accessors)
+        total_size_bytes = sum(ba.size_bytes() for ba in block_accessors)
 
         # NOTE: Write tasks can return anything, so we need to wrap it in a valid block
         # type.
         import pandas as pd
 
-        # TODO(scottjlee): add detailed stats collection for writes.
-        block = pd.DataFrame({"write_result": [status]})
+        block = pd.DataFrame(
+            {
+                "write_status": [status],
+                "write_num_rows": [total_num_rows],
+                "write_size_bytes": [total_size_bytes],
+            }
+        )
         return [block]
 
     return fn

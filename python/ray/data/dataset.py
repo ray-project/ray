@@ -3709,13 +3709,13 @@ class Dataset:
             datasink.on_write_start()
 
             self._write_ds = Dataset(plan, logical_plan).materialize()
-            blocks = ray.get(self._write_ds._plan.execute().block_refs)
+            raw_write_results = ray.get(self._write_ds._plan.execute().block_refs)
             assert all(
-                isinstance(block, pd.DataFrame) and len(block) == 1 for block in blocks
+                isinstance(block, pd.DataFrame) and len(block) == 1
+                for block in raw_write_results
             )
-            write_results = [block["write_result"][0] for block in blocks]
+            datasink.on_write_complete(raw_write_results)
 
-            datasink.on_write_complete(write_results)
         except Exception as e:
             datasink.on_write_failed(e)
             raise
