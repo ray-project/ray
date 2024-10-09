@@ -143,7 +143,7 @@ class TestAlgorithmRLModuleRestore(unittest.TestCase):
             module_class=PPOTorchRLModule,
             observation_space=env.get_observation_space(0),
             action_space=env.get_action_space(0),
-            model_config_dict={"fcnet_hiddens": [64]},
+            model_config=DefaultModelConfig(fcnet_hiddens=[64]),
             catalog_class=PPOCatalog,
             load_state_path=module_to_swap_in_path,
         )
@@ -283,7 +283,7 @@ class TestAlgorithmRLModuleRestore(unittest.TestCase):
             module_class=PPOTorchRLModule,
             observation_space=env.get_observation_space(0),
             action_space=env.get_action_space(0),
-            model_config_dict={"fcnet_hiddens": [64]},
+            model_config=DefaultModelConfig(fcnet_hiddens=[64]),
             catalog_class=PPOCatalog,
             load_state_path=module_to_swap_in_path,
         )
