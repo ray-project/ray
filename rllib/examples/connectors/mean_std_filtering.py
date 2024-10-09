@@ -151,12 +151,12 @@ if __name__ == "__main__":
             vf_loss_coeff=0.01,
         )
         .rl_module(
-            model_config_dict={
-                "fcnet_activation": "relu",
-                "fcnet_weights_initializer": torch.nn.init.xavier_uniform_,
-                "fcnet_bias_initializer": torch.nn.init.constant_,
-                "fcnet_bias_initializer_config": {"val": 0.0},
-            }
+            model_config=DefaultModelConfig(
+                fcnet_activation="relu",
+                fcnet_kernel_initializer=torch.nn.init.xavier_uniform_,
+                fcnet_bias_initializer=torch.nn.init.constant_,
+                fcnet_bias_initializer_kwargs={"val": 0.0},
+            ),
         )
         # In case you would like to run with a evaluation EnvRunners, make sure your
         # `evaluation_config` key contains the `use_worker_filter_stats=False` setting
