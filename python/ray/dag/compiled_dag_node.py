@@ -1887,7 +1887,7 @@ class CompiledDAG:
         self._execution_index += 1
         return fut
 
-    def visualize(self, filename='compiled_dag', format='png', view=False):
+    def visualize(self, filename="compiled_dag", format="png", view=False):
         """
         Visualize the compiled DAG using Graphviz.
 
@@ -1901,22 +1901,23 @@ class CompiledDAG:
             InputAttributeNode,
             InputNode,
         )
-        dot = graphviz.Digraph(name='CompiledDAG', format=format)
+
+        dot = graphviz.Digraph(name="CompiledDAG", format=format)
 
         # Add nodes with task information
         for idx, task in self.idx_to_task.items():
             dag_node = task.dag_node
 
             # Initialize the label
-            label = f'Task {idx}\n'
+            label = f"Task {idx}\n"
 
             # Handle different types of dag_node
             if isinstance(dag_node, InputNode):
-                label += 'InputNode'
+                label += "InputNode"
             elif isinstance(dag_node, InputAttributeNode):
-                label += f'InputAttributeNode[{dag_node.key}]'
-            elif hasattr(dag_node, 'get_method_name'):
-                method_name_attr = getattr(dag_node, 'get_method_name')
+                label += f"InputAttributeNode[{dag_node.key}]"
+            elif hasattr(dag_node, "get_method_name"):
+                method_name_attr = getattr(dag_node, "get_method_name")
                 if callable(method_name_attr):
                     method_name = method_name_attr()
                 else:
@@ -1926,9 +1927,9 @@ class CompiledDAG:
                 actor_handle = dag_node._get_actor_handle()
                 if actor_handle:
                     actor_id = actor_handle._actor_id.hex()
-                    label += f'Actor: {actor_id[:6]}...\nMethod: {method_name}'
+                    label += f"Actor: {actor_id[:6]}...\nMethod: {method_name}"
                 else:
-                    label += f'Method: {method_name}'
+                    label += f"Method: {method_name}"
             else:
                 label += type(dag_node).__name__
 
