@@ -121,11 +121,11 @@ if __name__ == "__main__":
             lr=0.0003,
         )
         .rl_module(
-            model_config_dict={
-                "fcnet_hiddens": [32],
-                "fcnet_activation": "linear",
-                "vf_share_layers": True,
-            },
+            model_config=DefaultModelConfig(
+                fcnet_hiddens=[32],
+                fcnet_activation="linear",
+                vf_share_layers=True,
+            ),
         )
     )
 
@@ -148,11 +148,6 @@ if __name__ == "__main__":
             lr=0.0005,
             vf_loss_coeff=0.05,
             entropy_coeff=0.0,
-        )
-        base_config.rl_module(
-            model_config_dict={
-                "vf_share_layers": True,
-            }
         )
 
     # Run everything as configured.
