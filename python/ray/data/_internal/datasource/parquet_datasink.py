@@ -57,13 +57,13 @@ class ParquetDatasink(_FileDatasink):
         self,
         blocks: Iterable[Block],
         ctx: TaskContext,
-    ) -> Iterable[Block]:
+    ) -> None:
         import pyarrow.parquet as pq
 
         blocks = list(blocks)
 
         if all(BlockAccessor.for_block(block).num_rows() == 0 for block in blocks):
-            return iter(blocks)
+            return
 
         filename = self.filename_provider.get_filename_for_block(
             blocks[0], ctx.task_idx, 0
@@ -89,8 +89,6 @@ class ParquetDatasink(_FileDatasink):
             max_attempts=WRITE_FILE_MAX_ATTEMPTS,
             max_backoff_s=WRITE_FILE_RETRY_MAX_BACKOFF_SECONDS,
         )
-
-        return iter(blocks)
 
     @property
     def num_rows_per_write(self) -> Optional[int]:

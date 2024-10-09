@@ -70,7 +70,7 @@ class BigQueryDatasink(Datasink):
         self,
         blocks: Iterable[Block],
         ctx: TaskContext,
-    ) -> Iterable[Block]:
+    ) -> None:
         def _write_single_block(block: Block, project_id: str, dataset: str) -> None:
             from google.api_core import exceptions
             from google.cloud import bigquery
@@ -120,15 +120,10 @@ class BigQueryDatasink(Datasink):
 
         _write_single_block = cached_remote_fn(_write_single_block)
 
-        tasks = []
-        original_blocks = []
-        for block in blocks:
-            tasks.append(
-                _write_single_block.remote(block, self.project_id, self.dataset)
-            )
-            original_blocks.append(block)
-
         # Launch a remote task for each block within this write task
-        ray.get(tasks)
-
-        return iter(original_blocks)
+        ray.get(
+            [
+                _write_single_block.remote(block, self.project_id, self.dataset)
+                for block in blocks
+            ]
+        )

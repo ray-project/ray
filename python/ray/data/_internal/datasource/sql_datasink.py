@@ -18,11 +18,9 @@ class SQLDatasink(Datasink):
         self,
         blocks: Iterable[Block],
         ctx: TaskContext,
-    ) -> Iterable[Block]:
+    ) -> None:
         with _connect(self.connection_factory) as cursor:
-            original_blocks = []
             for block in blocks:
-                original_blocks.append(block)
                 block_accessor = BlockAccessor.for_block(block)
 
                 values = []
@@ -35,5 +33,3 @@ class SQLDatasink(Datasink):
 
                 if values:
                     cursor.executemany(self.sql, values)
-
-        return iter(original_blocks)

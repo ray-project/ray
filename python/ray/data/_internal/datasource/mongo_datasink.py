@@ -26,7 +26,7 @@ class MongoDatasink(Datasink):
         self,
         blocks: Iterable[Block],
         ctx: TaskContext,
-    ) -> Iterable[Block]:
+    ) -> None:
         import pymongo
 
         _validate_database_collection_exist(
@@ -41,12 +41,8 @@ class MongoDatasink(Datasink):
             write(client[database][collection], block)
 
         builder = DelegatingBlockBuilder()
-        original_blocks = []
         for block in blocks:
             builder.add_block(block)
-            original_blocks.append(block)
         block = builder.build()
 
         write_block(self.uri, self.database, self.collection, block)
-
-        return iter(original_blocks)

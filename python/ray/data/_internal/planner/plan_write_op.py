@@ -28,7 +28,6 @@ def generate_write_fn(
             datasink_or_legacy_datasource.write(it1, ctx)
         else:
             datasink_or_legacy_datasource.write(it1, ctx, **write_args)
-
         return it2
 
     return fn
