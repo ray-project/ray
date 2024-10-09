@@ -7,17 +7,11 @@ import gymnasium as gym
 from ray.rllib.core import DEFAULT_MODULE_ID
 from ray.rllib.core.columns import Columns
 from ray.rllib.core.models.specs.typing import SpecType
-from ray.rllib.core.models.specs.checker import (
-    check_input_specs,
-    check_output_specs,
-    convert_to_canonical_format,
-)
 from ray.rllib.models.distributions import Distribution
 from ray.rllib.utils.annotations import (
     ExperimentalAPI,
     override,
     OverrideToImplementCustomLogic,
-    OverrideToImplementCustomLogic_CallToSuperRecommended,
 )
 from ray.rllib.utils.checkpoints import Checkpointable
 from ray.rllib.utils.deprecation import Deprecated
@@ -411,59 +405,17 @@ class RLModule(Checkpointable, abc.ABC):
                 framework=self.framework
             )
 
-        # Make sure, `setup()` is only called once, no matter what. In some cases
-        # of multiple inheritance (and with our __post_init__ functionality in place,
-        # this might get called twice.
+        # Make sure, `setup()` is only called once, no matter what.
         if hasattr(self, "_is_setup") and self._is_setup:
             raise RuntimeError(
                 "`RLModule.setup()` called twice within your RLModule implementation "
                 f"{self}! Make sure you are using the proper inheritance order "
                 "(TorchRLModule before [Algo]RLModule) or (TfRLModule before "
-                "[Algo]RLModule) and that you are using `super().__init__(...)` in "
-                "your custom constructor."
+                "[Algo]RLModule) and that you are NOT overriding the constructor, but "
+                "only the `setup()` method of your subclass."
             )
         self.setup()
         self._is_setup = True
-
-    def __init_subclass__(cls, **kwargs):
-        # Automatically add a __post_init__ method to all subclasses of RLModule.
-        # This method is called after the __init__ method of the subclass.
-        def init_decorator(previous_init):
-            def new_init(self, *args, **kwargs):
-                previous_init(self, *args, **kwargs)
-                if type(self) is cls:
-                    self.__post_init__()
-
-            return new_init
-
-        cls.__init__ = init_decorator(cls.__init__)
-
-    def __post_init__(self):
-        """Called automatically after the __init__ method of the subclass.
-
-        The module first calls the __init__ method of the subclass, With in the
-        __init__ you should call the super().__init__ method. Then after the __init__
-        method of the subclass is called, the __post_init__ method is called.
-
-        This is a good place to do any initialization that requires access to the
-        subclass's attributes.
-        """
-        self._input_specs_train = convert_to_canonical_format(self.input_specs_train())
-        self._output_specs_train = convert_to_canonical_format(
-            self.output_specs_train()
-        )
-        self._input_specs_exploration = convert_to_canonical_format(
-            self.input_specs_exploration()
-        )
-        self._output_specs_exploration = convert_to_canonical_format(
-            self.output_specs_exploration()
-        )
-        self._input_specs_inference = convert_to_canonical_format(
-            self.input_specs_inference()
-        )
-        self._output_specs_inference = convert_to_canonical_format(
-            self.output_specs_inference()
-        )
 
     @OverrideToImplementCustomLogic
     def setup(self):
@@ -543,8 +495,6 @@ class RLModule(Checkpointable, abc.ABC):
         """
         return {}
 
-    @check_input_specs("_input_specs_inference")
-    @check_output_specs("_output_specs_inference")
     def forward_inference(self, batch: Dict[str, Any], **kwargs) -> Dict[str, Any]:
         """DO NOT OVERRIDE! Forward-pass during evaluation, called from the sampler.
 
@@ -574,8 +524,6 @@ class RLModule(Checkpointable, abc.ABC):
         """
         return self._forward(batch, **kwargs)
 
-    @check_input_specs("_input_specs_exploration")
-    @check_output_specs("_output_specs_exploration")
     def forward_exploration(self, batch: Dict[str, Any], **kwargs) -> Dict[str, Any]:
         """DO NOT OVERRIDE! Forward-pass during exploration, called from the sampler.
 
@@ -605,8 +553,6 @@ class RLModule(Checkpointable, abc.ABC):
         """
         return self._forward(batch, **kwargs)
 
-    @check_input_specs("_input_specs_train")
-    @check_output_specs("_output_specs_train")
     def forward_train(self, batch: Dict[str, Any], **kwargs) -> Dict[str, Any]:
         """DO NOT OVERRIDE! Forward-pass during training called from the learner.
 
@@ -709,48 +655,6 @@ class RLModule(Checkpointable, abc.ABC):
             {},  # **kwargs
         )
 
-    @OverrideToImplementCustomLogic_CallToSuperRecommended
-    def output_specs_inference(self) -> SpecType:
-        """Returns the output specs of the `forward_inference()` method.
-
-        Override this method to customize the output specs of the inference call.
-        The default implementation requires the `forward_inference()` method to return
-        a dict that has `action_dist` key and its value is an instance of
-        `Distribution`.
-        """
-        return [Columns.ACTION_DIST_INPUTS]
-
-    @OverrideToImplementCustomLogic_CallToSuperRecommended
-    def output_specs_exploration(self) -> SpecType:
-        """Returns the output specs of the `forward_exploration()` method.
-
-        Override this method to customize the output specs of the exploration call.
-        The default implementation requires the `forward_exploration()` method to return
-        a dict that has `action_dist` key and its value is an instance of
-        `Distribution`.
-        """
-        return [Columns.ACTION_DIST_INPUTS]
-
-    def output_specs_train(self) -> SpecType:
-        """Returns the output specs of the forward_train method."""
-        return {}
-
-    def input_specs_inference(self) -> SpecType:
-        """Returns the input specs of the forward_inference method."""
-        return self._default_input_specs()
-
-    def input_specs_exploration(self) -> SpecType:
-        """Returns the input specs of the forward_exploration method."""
-        return self._default_input_specs()
-
-    def input_specs_train(self) -> SpecType:
-        """Returns the input specs of the forward_train method."""
-        return self._default_input_specs()
-
-    def _default_input_specs(self) -> SpecType:
-        """Returns the default input specs."""
-        return [Columns.OBS]
-
     def as_multi_rl_module(self) -> "MultiRLModule":
         """Returns a multi-agent wrapper around this module."""
         from ray.rllib.core.rl_module.multi_rl_module import MultiRLModule
@@ -785,3 +689,29 @@ class RLModule(Checkpointable, abc.ABC):
     @Deprecated(new="RLModule.save_to_path(...)", error=True)
     def save_to_checkpoint(self, *args, **kwargs):
         pass
+
+    def output_specs_inference(self) -> SpecType:
+        return [Columns.ACTION_DIST_INPUTS]
+
+    def output_specs_exploration(self) -> SpecType:
+        return [Columns.ACTION_DIST_INPUTS]
+
+    def output_specs_train(self) -> SpecType:
+        """Returns the output specs of the forward_train method."""
+        return {}
+
+    def input_specs_inference(self) -> SpecType:
+        """Returns the input specs of the forward_inference method."""
+        return self._default_input_specs()
+
+    def input_specs_exploration(self) -> SpecType:
+        """Returns the input specs of the forward_exploration method."""
+        return self._default_input_specs()
+
+    def input_specs_train(self) -> SpecType:
+        """Returns the input specs of the forward_train method."""
+        return self._default_input_specs()
+
+    def _default_input_specs(self) -> SpecType:
+        """Returns the default input specs."""
+        return [Columns.OBS]
