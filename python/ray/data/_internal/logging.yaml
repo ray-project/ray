@@ -11,7 +11,7 @@ filters:
     console_filter:
         (): ray.data._internal.logging.HiddenRecordFilter
     core_context_filter:
-        class: ray._private.ray_logging.filters.CoreContextFilter
+        (): ray._private.ray_logging.filters.CoreContextFilter
 
 handlers:
     file:
