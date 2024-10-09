@@ -60,6 +60,8 @@ _METRICS = [
     # "ray_unintentional_worker_failures_total",
     # "ray_node_failure_total",
     "ray_grpc_server_req_process_time_ms_sum",
+    "ray_grpc_server_req_process_time_ms_bucket",
+    "ray_grpc_server_req_process_time_ms_count",
     "ray_grpc_server_req_new_total",
     "ray_grpc_server_req_handling_total",
     "ray_grpc_server_req_finished_total",
@@ -333,6 +335,8 @@ def test_metrics_export_end_to_end(_setup_cluster_for_test):
         # it there because it has too high cardinality.
         grpc_metrics = [
             "ray_grpc_server_req_process_time_ms_sum",
+            "ray_grpc_server_req_process_time_ms_bucket",
+            "ray_grpc_server_req_process_time_ms_count",
             "ray_grpc_server_req_new_total",
             "ray_grpc_server_req_handling_total",
             "ray_grpc_server_req_finished_total",
