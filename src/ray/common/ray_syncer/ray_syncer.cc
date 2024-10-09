@@ -370,6 +370,7 @@ ServerBidiReactor *RaySyncerService::StartSync(grpc::CallbackServerContext *cont
           // 4. OnDone method of the old reactor is called which calls this cleanup_cb_
           return;
         }
+        RAY_LOG(INFO).WithField(NodeID::FromBinary(node_id)) << "Connection is broken.";
         syncer_.sync_reactors_.erase(node_id);
         syncer_.node_state_->RemoveNode(node_id);
       });
