@@ -49,80 +49,6 @@ subdir('src/')
 # === @end: src/ ===
 
 
-
-#
-#ray_cc_library(
-#    name = "ray_mock",
-#    hdrs = glob(
-#    ["src/mock/**/*.h"],
-#),
-#)
-#
-
-
-
-
-#ray_cc_library(
-#    name = "core_worker_lib",
-#    srcs = glob(
-#    [
-#    "src/ray/core_worker/*.cc",
-#    "src/ray/core_worker/store_provider/*.cc",
-#    "src/ray/core_worker/store_provider/memory_store/*.cc",
-#    "src/ray/core_worker/transport/*.cc",
-#    ],
-#    exclude = [
-#    "src/ray/core_worker/**/*_test.cc",
-#    ],
-#),
-#hdrs = glob([
-#"src/ray/core_worker/*.h",
-#"src/ray/core_worker/store_provider/*.h",
-#"src/ray/core_worker/store_provider/memory_store/*.h",
-#"src/ray/core_worker/transport/*.h",
-#]),
-#deps = [
-#":gcs",
-#":gcs_client_lib",
-#":plasma_client",
-#":ray_common",
-#":raylet_client_lib",
-#":stats_lib",
-#":worker_rpc",
-#"//src/ray/protobuf:worker_cc_proto",
-#"//src/ray/util",
-#"@boost//:circular_buffer",
-#"@boost//:fiber",
-#"@com_google_absl//absl/cleanup",
-#"@com_google_absl//absl/container:btree",
-#"@com_google_absl//absl/container:flat_hash_map",
-#"@com_google_absl//absl/container:flat_hash_set",
-#"@com_google_absl//absl/container:node_hash_map",
-#"@nlohmann_json",
-#],
-#)
-#
-## This header is used to wrap some internal codes so we can reduce suspicious
-## symbols export.
-#ray_cc_library(
-#    name = "exported_internal",
-#    srcs =
-#    [
-#    "src/ray/internal/internal.cc",
-#    ],
-#    hdrs =
-#    [
-#    "src/ray/internal/internal.h",
-#    ],
-#    copts = COPTS,
-#    strip_include_prefix = "src",
-#    deps = [
-#    ":core_worker_lib",
-#    ],
-#    alwayslink = 1,
-#)
-
-
 #ray_cc_library(
 #    name = "global_state_accessor_lib",
 #    srcs = glob(
@@ -140,69 +66,6 @@ subdir('src/')
 #],
 #)
 #
-#ray_cc_library(
-#    name = "object_manager",
-#    srcs = glob([
-#    "src/ray/object_manager/*.cc",
-#    "src/ray/object_manager/notification/*.cc",
-#    ]),
-#hdrs = glob([
-#"src/ray/object_manager/*.h",
-#"src/ray/object_manager/notification/*.h",
-#]),
-#deps = [
-#":core_worker_lib",
-#":gcs",
-#":object_manager_rpc",
-#":plasma_store_server_lib",
-#":ray_common",
-#"//src/ray/util",
-#"@boost//:asio",
-#],
-#)
-#
-#ray_cc_library(
-#    name = "platform_shims",
-#    srcs = [] + select({
-#    "@platforms//os:windows": glob([
-#    "src/shims/windows/**/*.c",
-#    "src/shims/windows/**/*.cc",
-#    "src/shims/windows/**/*.h",
-#    ]),
-#"//conditions:default": [],
-#}),
-#hdrs = [] + select({
-#"@platforms//os:windows": glob([
-#"src/shims/windows/**/*.h",
-#]),
-#"//conditions:default": [],
-#}),
-#strip_include_prefix = select({
-#"@platforms//os:windows": "src/shims/windows",
-#"//conditions:default": "",
-#}),
-#)
-#
-#filegroup(
-#    name = "extra_actions_base_proto",
-#    srcs = [
-#    "thirdparty/protobuf/extra_actions_base.proto",
-#    ],
-#)
-#
-#proto_library(
-#    name = "extra_actions_base_proto_lib",
-#    srcs = ["thirdparty/protobuf/extra_actions_base.proto"],
-#)
-#
-#cc_proto_library(
-#    name = "extra_actions_cc_proto_lib",
-#    deps = [":extra_actions_base_proto_lib"],
-#)
-#
-
-
-
 
 #ray_cc_library(
 #    name = "python_callbacks",
@@ -253,36 +116,7 @@ subdir('src/')
 #"//src/ray/util",
 #],
 #)
-#
-#ray_cc_binary(
-#    name = "libcore_worker_library_java.so",
-#    srcs = glob([
-#    "src/ray/core_worker/lib/java/*.h",
-#    "src/ray/core_worker/lib/java/*.cc",
-#    ]),
-## Export ray ABI symbols, which can then be used by libstreaming_java.so. see `//:_raylet`
-#linkopts = select({
-#"@platforms//os:osx": [
-#"-Wl,-exported_symbols_list,$(location //:src/ray/ray_exported_symbols.lds)",
-#],
-#"@platforms//os:windows": [],
-#"//conditions:default": [
-#"-Wl,--version-script,$(location //:src/ray/ray_version_script.lds)",
-#],
-#}),
-#linkshared = 1,
-#linkstatic = 1,
-#visibility = ["//java:__subpackages__"],
-#deps = [
-#"//:core_worker_lib",
-#"//:exported_internal",
-#"//:global_state_accessor_lib",
-#"//:src/ray/ray_exported_symbols.lds",
-#"//:src/ray/ray_version_script.lds",
-#"//:stats_lib",
-#"@bazel_tools//tools/jdk:jni",
-#],
-#)
+
 #
 #filegroup(
 #    name = "python_sources",
@@ -338,17 +172,7 @@ subdir('src/')
 #    ],
 #)
 #
-## This is a dummy test dependency that causes the python tests to be
-## re-run if any of these files changes.
-#py_library(
-#    name = "ray_lib",
-#    srcs = glob(
-#    ["python/ray/**/*.py"],
-#    exclude = ["python/ray/tests/*.py"],
-#),
-#visibility = ["__subpackages__"],
-#)
-#
+
 #copy_to_workspace(
 #    name = "cp_raylet_so",
 #    srcs = ["python/ray/_raylet.so"],

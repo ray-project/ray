@@ -74,8 +74,10 @@ LocalTaskManager::LocalTaskManager(
 void LocalTaskManager::QueueAndScheduleTask(std::shared_ptr<internal::Work> work) {
   // If the local node is draining, the cluster task manager will
   // guarantee that the local node is not selected for scheduling.
-  ASSERT_FALSE(
-      cluster_resource_scheduler_->GetLocalResourceManager().IsLocalNodeDraining());
+//  ASSERT_FALSE(
+//      cluster_resource_scheduler_->GetLocalResourceManager().IsLocalNodeDraining());
+  // @TODO+:Eugo
+  assert(cluster_resource_scheduler_->GetLocalResourceManager().IsLocalNodeDraining() == false);
   WaitForTaskArgsRequests(work);
   ScheduleAndDispatchTasks();
 }

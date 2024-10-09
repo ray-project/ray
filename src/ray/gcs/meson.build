@@ -11,7 +11,7 @@ gcs_cpp_lib_dependencies = [
     util_cpp_lib_dep,
 
     # Eugo-managed
-    hiredis,
+    hiredis, hiredis_ssl,
     boost_asio
 ]
 
@@ -42,7 +42,7 @@ redis_client_cpp_lib_dependencies = [
     util_cpp_lib_dep,
 
     # Eugo-managed
-    hiredis,
+    hiredis, hiredis_ssl,
     boost_asio
 ]
 

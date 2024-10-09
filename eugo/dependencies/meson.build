@@ -9,12 +9,15 @@ absl_types_optional = dependency('absl', method: 'cmake', modules: ['absl::optio
 
 absl_container_flat_hash_map = dependency('absl', method: 'cmake', modules: ['absl::flat_hash_map'])
 absl_container_flat_hash_set = dependency('absl', method: 'cmake', modules: ['absl::flat_hash_set'])
+absl_container_node_hash_map = dependency('absl', method: 'cmake', modules: ['absl::node_hash_map'])
 absl_container_btree = dependency('absl', method: 'cmake', modules: ['absl::btree'])
 
 absl_random_random = dependency('absl', method: 'cmake', modules: ['absl::random_random'])
 absl_random_bit_gen_ref = dependency('absl', method: 'cmake', modules: ['absl::random_bit_gen_ref'])
 
 absl_synchronization = dependency('absl', method: 'cmake', modules: ['absl::synchronization'])
+
+absl_cleanup = dependency('absl', method: 'cmake', modules: ['absl::cleanup'])
 
 absl_debugging_failure_signal_handler = dependency('absl', method: 'cmake', modules: ['absl::failure_signal_handler'])
 absl_debugging_stacktrace = dependency('absl', method: 'cmake', modules: ['absl::stacktrace'])
@@ -36,6 +39,9 @@ boost_thread = dependency('boost', method: 'cmake', modules: ['thread'])
 boost_system = boost
 boost_any = boost
 boost_bimap = boost
+boost_beast = boost
+boost_circular_buffer = boost
+boost_fiber = boost
 # === @end: boost ===
 
 
@@ -81,8 +87,28 @@ grpc = dependency('gRPC', method: 'cmake', modules: [
   'gRPC::gpr',
   'gRPC::grpc',
   'gRPC::address_sorting',
-  'gRPC::grpc++'
+  'gRPC::grpc++',
+  'gRPC::grpc++_reflection',
+  'gRPC::grpcpp_channelz',
 ])
+#'utf8_range::utf8_validity',
+#'utf8_range::utf8_range',
+#'gRPC::grpc_unsecure',
+#'gRPC::upb_base_lib',
+#'gRPC::upb_json_lib',
+#'gRPC::upb_mem_lib',
+#'gRPC::upb_message_lib',
+#'gRPC::upb_mini_descriptor_lib',
+#'gRPC::upb_textformat_lib',
+#'gRPC::upb_wire_lib',
+#'gRPC::utf8_range_lib',
+#'gRPC::grpc++_alts',
+#'gRPC::grpc++_error_details',
+#'gRPC::grpc++_unsecure',
+#'gRPC::grpc_authorization_provider',
+#'gRPC::grpc_plugin_support',
+#'gRPC::grpc_cpp_plugin',
+#'gRPC::grpc_python_plugin'
 # === @end: grpc ===
 
 
@@ -98,6 +124,7 @@ gflags = dependency('gflags', method: 'cmake')
 
 # === @begin: gflags ===
 hiredis = dependency('hiredis', method: 'cmake')
+hiredis_ssl = dependency('hiredis_ssl', method: 'cmake')
 # === @end: gflags ===
 
 

@@ -53,4 +53,45 @@ subdir('raylet/scheduling/')
 # Such division is required to avoid circular raptors
 subdir('gcs/gcs_server/')
 
-#subdir('raylet/')
+subdir('core_worker/')
+
+# @Important: due to circular dependency between `object_manager` and `gcs` folders, this guy should go here
+# === @begin: object_manager/object_manager_cpp_lib (original: object_manager) ===
+object_manager_cpp_lib_dependencies = [
+    # Package-managed
+    core_worker_cpp_lib_dep,
+    gcs_cpp_lib_dep,
+    object_manager_rpc_cpp_lib_dep,
+    plasma_store_server_cpp_lib_dep,
+    ray_common_cpp_lib_dep,
+    util_cpp_lib_dep,
+
+    # Eugo-managed
+    boost_asio
+]
+
+object_manager_cpp_lib = static_library(
+    'object_manager_cpp_lib',
+    [
+        'object_manager/chunk_object_reader.cc',
+        'object_manager/pull_manager.cc',
+        'object_manager/spilled_object_reader.cc',
+        'object_manager/memory_object_reader.cc',
+        'object_manager/object_manager.cc',
+        'object_manager/object_buffer_pool.cc',
+        'object_manager/ownership_based_object_directory.cc',
+        'object_manager/push_manager.cc',
+    ],
+    install: false,
+    dependencies: object_manager_cpp_lib_dependencies
+)
+
+object_manager_cpp_lib_dep = declare_dependency(
+    link_with: [object_manager_cpp_lib],
+    dependencies: object_manager_cpp_lib_dependencies
+)
+# === @end: object_manager/object_manager_cpp_lib (original: object_manager) ===
+
+subdir('raylet/')
+
+subdir('internal/')
