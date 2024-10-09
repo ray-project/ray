@@ -3362,9 +3362,9 @@ class AlgorithmConfig(_Config):
         """Sets the config's RLModule settings.
 
         Args:
-            model_config_dict: The default model config dictionary for `RLModule`s. This
-                is used for any `RLModule` if not otherwise specified in the
-                `rl_module_spec`.
+            model_config: The DefaultModelConfig object (or a config dictionary) passed
+                as `model_config` arg into each RLModule's constructor. This is used
+                for all RLModules, if not otherwise specified through `rl_module_spec`.
             rl_module_spec: The RLModule spec to use for this config. It can be either
                 a RLModuleSpec or a MultiRLModuleSpec. If the
                 observation_space, action_space, catalog_class, or the model config is
@@ -3392,9 +3392,16 @@ class AlgorithmConfig(_Config):
                 new="AlgorithmConfig.api_stack(enable_rl_module_and_learner=..)",
                 error=True,
             )
+        if model_config_dict != DEPRECATED_VALUE:
+            deprecation_warning(
+                old="AlgorithmConfig.rl_module(model_config_dict=..)",
+                new="AlgorithmConfig.rl_module(model_config=..)",
+                error=False,
+            )
+            model_config = model_config_dict
 
-        if model_config_dict is not NotProvided:
-            self._model_config_dict = model_config_dict
+        if model_config is not NotProvided:
+            self._model_config = model_config
         if rl_module_spec is not NotProvided:
             self._rl_module_spec = rl_module_spec
         if algorithm_config_overrides_per_module is not NotProvided:
@@ -4179,7 +4186,7 @@ class AlgorithmConfig(_Config):
 
         This method combines the auto configuration `self _model_config_auto_includes`
         defined by an algorithm with the user-defined configuration in
-        `self._model_config_dict`.This configuration dictionary is used to
+        `self._model_config`.This configuration dictionary is used to
         configure the `RLModule` in the new stack and the `ModelV2` in the old
         stack.
 
