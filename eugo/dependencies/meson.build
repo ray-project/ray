@@ -77,7 +77,12 @@ prometheus_cpp_pull = dependency('prometheus-cpp', method: 'cmake', modules: ['p
 
 # === @begin: grpc ===
 # Depend on `protobuf`, so the same caveat applies
-grpc = dependency('gRPC', method: 'cmake')
+grpc = dependency('gRPC', method: 'cmake', modules: [
+  'gRPC::gpr',
+  'gRPC::grpc',
+  'gRPC::address_sorting',
+  'gRPC::grpc++'
+])
 # === @end: grpc ===
 
 
