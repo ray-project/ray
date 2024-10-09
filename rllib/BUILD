@@ -351,7 +351,7 @@ py_test(
     data = [
         "tests/data/cartpole/cartpole-v1_large",
     ],
-    args = ["--as-test", "--enable-new-api-stack", "--num-gpus=1"]
+    args = ["--as-test", "--enable-new-api-stack", "--num-gpus=1", "--num-cpus=6"]
 )
 
 # CQL
@@ -379,7 +379,7 @@ py_test(
     data = [
         "tests/data/pendulum/pendulum-v1_enormous",
     ],
-    args = ["--as-test", "--enable-new-api-stack", "--num-gpus=1"]
+    args = ["--as-test", "--enable-new-api-stack", "--num-gpus=1","--num-cpus=6"]
 )
 
 # DQN
@@ -600,7 +600,7 @@ py_test(
     data = [
         "tests/data/cartpole/cartpole-v1_large",
     ],
-    args = ["--as-test", "--enable-new-api-stack", "--num-gpus=1"]
+    args = ["--as-test", "--enable-new-api-stack", "--num-gpus=1", "--num-cpus=6"]
 )
 
 # PPO
