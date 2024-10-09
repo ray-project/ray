@@ -11,15 +11,23 @@ export_runtime_env_proto_cpp_dep = declare_dependency(
     sources: export_runtime_env_proto_cpp
 )
 
+export_runtime_env_proto_cpp_lib_dependencies = [
+    # Package-managed
+    export_runtime_env_proto_cpp_dep,
+
+    # Eugo-managed
+    protobuf
+]
+
 export_runtime_env_proto_cpp_lib = static_library(
     'export_runtime_env_proto_cpp_lib',
-    dependencies: [protobuf, export_runtime_env_proto_cpp_dep],
+    dependencies: export_runtime_env_proto_cpp_lib_dependencies,
     install: false
 )
 
 export_runtime_env_proto_cpp_lib_dep = declare_dependency(
     link_with: [export_runtime_env_proto_cpp_lib],
-    dependencies: [protobuf]
+    dependencies: export_runtime_env_proto_cpp_lib_dependencies
 )
 # @end: proto_cpp (@original: export_runtime_env_cc_proto)
 
@@ -46,15 +54,23 @@ export_task_event_proto_cpp_dep = declare_dependency(
     dependencies: [common_proto_cpp_dep, export_runtime_env_proto_cpp_dep]
 )
 
+export_task_event_proto_cpp_lib_dependencies = [
+    # Package-managed
+    export_task_event_proto_cpp_dep,
+
+    # Eugo-managed
+    protobuf
+]
+
 export_task_event_proto_cpp_lib = static_library(
     'export_task_event_proto_cpp_lib',
-    dependencies: [protobuf, export_task_event_proto_cpp_dep],
+    dependencies: export_task_event_proto_cpp_lib_dependencies,
     install: false
 )
 
 export_task_event_proto_cpp_lib_dep = declare_dependency(
     link_with: [export_task_event_proto_cpp_lib],
-    dependencies: [protobuf]
+    dependencies: export_task_event_proto_cpp_lib_dependencies
 )
 # @end: proto_cpp (@original: export_task_event_cc_proto)
 
@@ -80,15 +96,23 @@ export_node_data_proto_cpp_dep = declare_dependency(
     sources: export_node_data_proto_cpp
 )
 
+export_node_data_proto_cpp_lib_dependencies = [
+    # Package-managed
+    export_node_data_proto_cpp_dep,
+
+    # Eugo-managed
+    protobuf
+]
+
 export_node_data_proto_cpp_lib = static_library(
     'export_node_data_proto_cpp_lib',
-    dependencies: [protobuf, export_node_data_proto_cpp_dep],
+    dependencies: export_node_data_proto_cpp_lib_dependencies,
     install: false
 )
 
 export_node_data_proto_cpp_lib_dep = declare_dependency(
     link_with: [export_node_data_proto_cpp_lib],
-    dependencies: [protobuf]
+    dependencies: export_node_data_proto_cpp_lib_dependencies
 )
 # @end: proto_cpp (@original: export_node_data_cc_proto)
 
@@ -115,15 +139,23 @@ export_actor_data_proto_cpp_dep = declare_dependency(
     dependencies: [common_proto_cpp_dep]
 )
 
+export_actor_data_proto_cpp_lib_dependencies = [
+    # Package-managed
+    export_actor_data_proto_cpp_dep,
+
+    # Eugo-managed
+    protobuf
+]
+
 export_actor_data_proto_cpp_lib = static_library(
     'export_actor_data_proto_cpp_lib',
-    dependencies: [protobuf, export_actor_data_proto_cpp_dep],
+    dependencies: export_actor_data_proto_cpp_lib_dependencies,
     install: false
 )
 
 export_actor_data_proto_cpp_lib_dep = declare_dependency(
     link_with: [export_actor_data_proto_cpp_lib],
-    dependencies: [protobuf]
+    dependencies: export_actor_data_proto_cpp_lib_dependencies
 )
 # @end: proto_cpp (@original: export_actor_data_cc_proto)
 
@@ -150,15 +182,23 @@ export_driver_job_event_proto_cpp_dep = declare_dependency(
     dependencies: [common_proto_cpp_dep, export_runtime_env_proto_cpp_dep]
 )
 
+export_driver_job_event_proto_cpp_lib_dependencies = [
+    # Package-managed
+    export_driver_job_event_proto_cpp_dep,
+
+    # Eugo-managed
+    protobuf
+]
+
 export_driver_job_event_proto_cpp_lib = static_library(
     'export_driver_job_event_proto_cpp_lib',
-    dependencies: [protobuf, export_driver_job_event_proto_cpp_dep],
+    dependencies: export_driver_job_event_proto_cpp_lib_dependencies,
     install: false
 )
 
 export_driver_job_event_proto_cpp_lib_dep = declare_dependency(
     link_with: [export_driver_job_event_proto_cpp_lib],
-    dependencies: [protobuf]
+    dependencies: export_driver_job_event_proto_cpp_lib_dependencies
 )
 # @end: proto_cpp (@original: export_driver_job_event_cc_proto)
 
@@ -185,15 +225,23 @@ export_submission_job_event_proto_cpp_dep = declare_dependency(
     dependencies: [common_proto_cpp_dep, export_runtime_env_proto_cpp_dep]
 )
 
+export_submission_job_event_proto_cpp_lib_dependencies = [
+    # Package-managed
+    export_submission_job_event_proto_cpp_dep,
+
+    # Eugo-managed
+    protobuf
+]
+
 export_submission_job_event_proto_cpp_lib = static_library(
     'export_submission_job_event_proto_cpp_lib',
-    dependencies: [protobuf, export_submission_job_event_proto_cpp_dep],
+    dependencies: export_submission_job_event_proto_cpp_lib_dependencies,
     install: false
 )
 
 export_submission_job_event_proto_cpp_lib_dep = declare_dependency(
     link_with: [export_submission_job_event_proto_cpp_lib],
-    dependencies: [protobuf]
+    dependencies: export_submission_job_event_proto_cpp_lib_dependencies
 )
 # @end: proto_cpp (@original: export_submission_job_event_cpp_proto)
 
@@ -226,15 +274,23 @@ export_event_proto_cpp_dep = declare_dependency(
     ]
 )
 
+export_event_proto_cpp_lib_dependencies = [
+    # Package-managed
+    export_event_proto_cpp_dep,
+
+    # Eugo-managed
+    protobuf
+]
+
 export_event_proto_cpp_lib = static_library(
     'export_event_proto_cpp_lib',
-    dependencies: [protobuf, export_event_proto_cpp_dep],
+    dependencies: export_event_proto_cpp_lib_dependencies,
     install: false
 )
 
 export_event_proto_cpp_lib_dep = declare_dependency(
     link_with: [export_event_proto_cpp_lib],
-    dependencies: [protobuf]
+    dependencies: export_event_proto_cpp_lib_dependencies
 )
 # @end: proto_cpp (@original: export_event_cpp_proto)
 

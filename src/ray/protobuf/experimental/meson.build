@@ -7,15 +7,27 @@ instance_manager_proto_cpp = custom_target(
     kwargs: proto_cpp_default_kwargs
 )
 
+instance_manager_proto_cpp_dep = declare_dependency(
+    sources: instance_manager_proto_cpp
+)
+
+instance_manager_proto_cpp_lib_dependencies = [
+    # Package-managed
+    instance_manager_proto_cpp_dep,
+
+    # Eugo-managed
+    protobuf
+]
+
 instance_manager_proto_cpp_lib = static_library(
     'instance_manager_proto_cpp_lib',
-    dependencies: [protobuf, declare_dependency(sources: instance_manager_proto_cpp)],
+    dependencies: instance_manager_proto_cpp_lib_dependencies,
     install: false
 )
 
 instance_manager_proto_cpp_lib_dep = declare_dependency(
     link_with: [instance_manager_proto_cpp_lib],
-    dependencies: [protobuf]
+    dependencies: instance_manager_proto_cpp_lib_dependencies
 )
 # @end: proto_cpp (original: instance_manager_cc_proto)
 

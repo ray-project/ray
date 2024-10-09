@@ -1,10 +1,8 @@
 # === @begin: stats_metric (original: stats_metric) ===
-stats_metric_cpp_lib_private_deps = [
+stats_metric_cpp_lib_private_dependencies = [
     # Package-managed
-    util_cpp_lib_dep
-]
+    util_cpp_lib_dep,
 
-stats_metric_cpp_lib_public_deps = [
     # Eugo-managed
     prometheus_cpp_pull,
 
@@ -25,14 +23,11 @@ stats_metric_cpp_lib = static_library(
     'stats_metric_cpp_lib',
     ['metric.cc', 'metric_defs.cc', 'tag_defs.cc'],
     install: false,
-    dependencies: [
-        stats_metric_cpp_lib_private_deps,
-        stats_metric_cpp_lib_public_deps
-    ]
+    dependencies: stats_metric_cpp_lib_private_dependencies
 )
 
 stats_metric_cpp_lib_dep = declare_dependency(
     link_with: [stats_metric_cpp_lib],
-    dependencies: [stats_metric_cpp_lib_public_deps]
+    dependencies: stats_metric_cpp_lib_private_dependencies
 )
 # === @end: stats_metric (original: stats_metric) ===

@@ -1,14 +1,12 @@
 # === @begin: scheduler_cpp_lib (original: scheduler) ===
-scheduler_cpp_lib_private_deps = [
+scheduler_cpp_lib_dependencies = [
     # Package-managed
     gcs_client_cpp_lib_dep,
     ray_common_cpp_lib_dep,
     stats_cpp_lib_dep,
     common_proto_cpp_lib_dep,
     util_cpp_lib_dep,
-]
 
-scheduler_cpp_lib_public_deps = [
     # Eugo-managed
     boost_asio,
     boost_system,
@@ -50,15 +48,12 @@ scheduler_cpp_lib = static_library(
         'policy/composite_scheduling_policy.cc'
     ],
     install: false,
-    dependencies: [
-        scheduler_cpp_lib_private_deps,
-        scheduler_cpp_lib_public_deps
-    ]
+    dependencies: scheduler_cpp_lib_dependencies
 )
 
 scheduler_cpp_lib_dep = declare_dependency(
     link_with: [scheduler_cpp_lib],
-    dependencies: scheduler_cpp_lib_public_deps
+    dependencies: scheduler_cpp_lib_dependencies
 )
 # === @end: scheduler_cpp_lib (original: scheduler) ===
 

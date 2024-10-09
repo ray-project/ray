@@ -11,17 +11,15 @@ subdir('plasma/')
 
 
 # === @begin: plasma_client_cpp_lib (@original: plasma_client) ===
-plasma_client_cpp_lib_private_deps = [
+plasma_client_cpp_lib_dependencies = [
     # Project-managed
     object_manager_common_dep,
 
     plasma_cpp_fbs_lib_dep,
     ray_common_cpp_lib_dep,
     common_proto_cpp_lib_dep,
-    util_cpp_lib_dep
-]
+    util_cpp_lib_dep,
 
-plasma_client_cpp_lib_public_deps = [
     # Eugo-managed
     msgpack_cxx,
     absl_strings
@@ -40,30 +38,25 @@ plasma_client_cpp_lib = static_library(
         'plasma/fling.cc'
     ],
     install: false,
-    dependencies: [
-        plasma_client_cpp_lib_private_deps,
-        plasma_client_cpp_lib_public_deps
-    ]
+    dependencies: plasma_client_cpp_lib_dependencies
 )
 
 plasma_client_cpp_lib_dep = declare_dependency(
     link_with: [plasma_client_cpp_lib],
-    dependencies: plasma_client_cpp_lib_public_deps
+    dependencies: plasma_client_cpp_lib_dependencies
 )
 # === @end: plasma_client_cpp_lib (@original: plasma_client) ===
 
 
 # === @begin: plasma_store_server_cpp_lib (@original: plasma_store_server_lib) ===
-plasma_store_server_cpp_lib_private_deps = [
+plasma_store_server_cpp_lib_dependencies = [
     # Project-managed
     object_manager_common_dep,
 
     plasma_client_cpp_lib_dep,
     stats_cpp_lib_dep,
-    network_cpp_lib_dep
-]
+    network_cpp_lib_dep,
 
-plasma_store_server_cpp_lib_public_deps = [
     # Eugo-managed
     spdlog
 ]
@@ -83,14 +76,11 @@ plasma_store_server_cpp_lib = static_library(
         'plasma/store_runner.cc'
     ],
     install: false,
-    dependencies: [
-        plasma_store_server_cpp_lib_private_deps,
-        plasma_store_server_cpp_lib_public_deps
-    ]
+    dependencies: plasma_store_server_cpp_lib_dependencies
 )
 
 plasma_store_server_cpp_lib_dep = declare_dependency(
     link_with: [plasma_store_server_cpp_lib],
-    dependencies: plasma_store_server_cpp_lib_public_deps
+    dependencies: plasma_store_server_cpp_lib_dependencies
 )
 # === @end: plasma_store_server_cpp_lib (@original: plasma_store_server_lib) ===

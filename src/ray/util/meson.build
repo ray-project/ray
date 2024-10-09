@@ -1,13 +1,11 @@
 # === @begin: util_cpp_lib (original: util) ===
-util_cpp_lib_private_deps = [
+util_cpp_lib_private_dependencies = [
     # Project-managed
     aligned_alloc_cpp_lib_dep,
     sha256_cpp_lib_dep,
     event_proto_cpp_lib_dep,
     export_event_proto_cpp_lib_dep,
-]
 
-util_cpp_lib_public_deps = [
     # Eugo-managed
     boost_asio,
     spdlog,
@@ -42,15 +40,12 @@ util_cpp_lib = static_library(
         'subreaper.cc',
         'util.cc',
     ],
-    dependencies: [
-        util_cpp_lib_private_deps,
-        util_cpp_lib_public_deps
-    ],
+    dependencies: util_cpp_lib_private_dependencies,
     install: false
 )
 
 util_cpp_lib_dep = declare_dependency(
     link_with: [util_cpp_lib],
-    dependencies: util_cpp_lib_public_deps
+    dependencies: util_cpp_lib_private_dependencies
 )
 # === @end: util_cpp_lib (original: util) ===

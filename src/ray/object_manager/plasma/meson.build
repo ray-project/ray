@@ -7,7 +7,6 @@ plasma_cpp_fbs = custom_target(
 # header-only
 plasma_cpp_fbs_lib_dep = declare_dependency(
     sources: [plasma_cpp_fbs],
-    dependencies: [flatbuffers],
-    include_directories: ['.']
+    dependencies: [flatbuffers]
 )
 # === @end: plasma_cpp_fbs_lib (@original: plasma_fbs) ===

@@ -1,12 +1,10 @@
 # === @begin: asio_cpp_lib (originial: asio) ===
-asio_cpp_lib_private_deps = [
+asio_cpp_lib_dependencies = [
     # Project-managed
     ray_config_cpp_lib_dep,
     util_cpp_lib_dep,
     event_stats_cpp_lib_dep,
-]
 
-asio_cpp_lib_public_deps = [
     # Eugo-managed
     boost_asio,
 
@@ -23,14 +21,11 @@ asio_cpp_lib = static_library(
         'periodical_runner.cc'
     ],
     install: false,
-    dependencies: [
-        asio_cpp_lib_private_deps,
-        asio_cpp_lib_public_deps
-    ]
+    dependencies: asio_cpp_lib_dependencies
 )
 
 asio_cpp_lib_dep = declare_dependency(
     link_with: [asio_cpp_lib],
-    dependencies: asio_cpp_lib_public_deps
+    dependencies: asio_cpp_lib_dependencies
 )
 # === @end: asio_cpp_lib (originial: asio) ===

@@ -16,15 +16,23 @@ runtime_env_common_proto_cpp_dep = declare_dependency(
     sources: runtime_env_common_proto_cpp
 )
 
+runtime_env_common_proto_cpp_lib_dependencies = [
+    # Package-managed
+    runtime_env_common_proto_cpp_dep,
+
+    # Eugo-managed
+    protobuf
+]
+
 runtime_env_common_proto_cpp_lib = static_library(
     'runtime_env_common_proto_cpp_lib',
-    dependencies: [protobuf, runtime_env_common_proto_cpp_dep],
+    dependencies: runtime_env_common_proto_cpp_lib_dependencies,
     install: false
 )
 
 runtime_env_common_proto_cpp_lib_dep = declare_dependency(
     link_with: [runtime_env_common_proto_cpp_lib],
-    dependencies: [protobuf]
+    dependencies: runtime_env_common_proto_cpp_lib_dependencies
 )
 # @end: proto_cpp (original: runtime_env_common_cc_proto)
 
@@ -51,15 +59,23 @@ common_proto_cpp_dep = declare_dependency(
     dependencies: [runtime_env_common_proto_cpp_dep]
 )
 
+common_proto_cpp_lib_dependencies = [
+    # Package-managed
+    common_proto_cpp_dep,
+
+    # Eugo-managed
+    protobuf
+]
+
 common_proto_cpp_lib = static_library(
     'common_proto_cpp_lib',
-    dependencies: [protobuf, common_proto_cpp_dep],
+    dependencies: common_proto_cpp_lib_dependencies,
     install: false
 )
 
 common_proto_cpp_lib_dep = declare_dependency(
     link_with: [common_proto_cpp_lib],
-    dependencies: [protobuf]
+    dependencies: common_proto_cpp_lib_dependencies
 )
 # @end: proto_cpp (original: common_cc_proto)
 
@@ -85,15 +101,23 @@ autoscaler_proto_cpp_dep = declare_dependency(
     sources: autoscaler_proto_cpp
 )
 
+autoscaler_proto_cpp_lib_dependencies = [
+    # Package-managed
+    autoscaler_proto_cpp_dep,
+
+    # Eugo-managed
+    protobuf
+]
+
 autoscaler_proto_cpp_lib = static_library(
     'autoscaler_proto_cpp_lib',
-    dependencies: [protobuf, autoscaler_proto_cpp_dep],
+    dependencies: autoscaler_proto_cpp_lib_dependencies,
     install: false
 )
 
 autoscaler_proto_cpp_lib_dep = declare_dependency(
     link_with: [autoscaler_proto_cpp_lib],
-    dependencies: [protobuf]
+    dependencies: autoscaler_proto_cpp_lib_dependencies
 )
 # @end: proto_cpp (original: autoscaler_cc_proto)
 
@@ -107,15 +131,25 @@ autoscaler_proto_cpp_grpc_dep = declare_dependency(
     sources: autoscaler_proto_cpp_grpc
 )
 
+autoscaler_proto_cpp_grpc_lib_dependencies = [
+    # Package-managed
+    autoscaler_proto_cpp_grpc_dep,
+    autoscaler_proto_cpp_lib_dep,
+
+    # Eugo-managed
+    protobuf,
+    grpc
+]
+
 autoscaler_proto_cpp_grpc_lib = static_library(
     'autoscaler_proto_cpp_grpc_lib',
-    dependencies: [protobuf, grpc, autoscaler_proto_cpp_grpc_dep, autoscaler_proto_cpp_lib_dep],
+    dependencies: autoscaler_proto_cpp_grpc_lib_dependencies,
     install: false
 )
 
 autoscaler_proto_cpp_grpc_lib_dep = declare_dependency(
     link_with: [autoscaler_proto_cpp_grpc_lib],
-    dependencies: [protobuf, grpc]
+    dependencies: autoscaler_proto_cpp_grpc_lib_dependencies
 )
 # @end: proto_cpp_grpc (original: autoscaler_cc_grpc)
 
@@ -141,15 +175,23 @@ ray_syncer_proto_cpp_dep = declare_dependency(
     sources: ray_syncer_proto_cpp
 )
 
+ray_syncer_proto_cpp_lib_dependencies = [
+    # Package-managed
+    ray_syncer_proto_cpp_dep,
+
+    # Eugo-managed
+    protobuf
+]
+
 ray_syncer_proto_cpp_lib = static_library(
     'ray_syncer_proto_cpp_lib',
-    dependencies: [protobuf, ray_syncer_proto_cpp_dep],
+    dependencies: ray_syncer_proto_cpp_lib_dependencies,
     install: false
 )
 
 ray_syncer_proto_cpp_lib_dep = declare_dependency(
     link_with: [ray_syncer_proto_cpp_lib],
-    dependencies: [protobuf]
+    dependencies: ray_syncer_proto_cpp_lib_dependencies
 )
 # @end: proto_cpp (original: ray_syncer_cc_proto)
 
@@ -163,15 +205,25 @@ ray_syncer_proto_cpp_grpc_dep = declare_dependency(
     sources: ray_syncer_proto_cpp_grpc
 )
 
+ray_syncer_proto_cpp_grpc_lib_dependencies = [
+    # Package-managed
+    ray_syncer_proto_cpp_grpc_dep,
+    ray_syncer_proto_cpp_lib_dep,
+
+    # Eugo-managed
+    protobuf,
+    grpc
+]
+
 ray_syncer_proto_cpp_grpc_lib = static_library(
     'ray_syncer_proto_cpp_grpc_lib',
-    dependencies: [protobuf, grpc, ray_syncer_proto_cpp_grpc_dep, ray_syncer_proto_cpp_lib_dep],
+    dependencies: ray_syncer_proto_cpp_grpc_lib_dependencies,
     install: false
 )
 
 ray_syncer_proto_cpp_grpc_lib_dep = declare_dependency(
     link_with: [ray_syncer_proto_cpp_grpc_lib],
-    dependencies: [protobuf, grpc]
+    dependencies: ray_syncer_proto_cpp_grpc_lib_dependencies
 )
 # @end: proto_cpp_grpc (original: ray_syncer_cc_grpc)
 # === @end: ray_syncer.proto ===
@@ -191,15 +243,23 @@ gcs_proto_cpp_dep = declare_dependency(
     dependencies: [common_proto_cpp_dep]
 )
 
+gcs_proto_cpp_lib_dependencies = [
+    # Package-managed
+    gcs_proto_cpp_dep,
+
+    # Eugo-managed
+    protobuf
+]
+
 gcs_proto_cpp_lib = static_library(
     'gcs_proto_cpp_lib',
-    dependencies: [protobuf, gcs_proto_cpp_dep],
+    dependencies: gcs_proto_cpp_lib_dependencies,
     install: false
 )
 
 gcs_proto_cpp_lib_dep = declare_dependency(
     link_with: [gcs_proto_cpp_lib],
-    dependencies: [protobuf]
+    dependencies: gcs_proto_cpp_lib_dependencies
 )
 # @end: proto_cpp (@original: gcs_cc_proto)
 
@@ -225,15 +285,23 @@ logging_proto_cpp_dep = declare_dependency(
     sources: logging_proto_cpp
 )
 
+logging_proto_cpp_lib_dependencies = [
+    # Package-managed
+    logging_proto_cpp_dep,
+
+    # Eugo-managed
+    protobuf
+]
+
 logging_proto_cpp_lib = static_library(
     'logging_proto_cpp_lib',
-    dependencies: [protobuf, logging_proto_cpp_dep],
+    dependencies: logging_proto_cpp_lib_dependencies,
     install: false
 )
 
 logging_proto_cpp_lib_dep = declare_dependency(
     link_with: [logging_proto_cpp_lib],
-    dependencies: [protobuf]
+    dependencies: logging_proto_cpp_lib_dependencies
 )
 # @end: proto_cpp (@original: logging_cc_proto)
 
@@ -260,15 +328,23 @@ node_manager_proto_cpp_dep = declare_dependency(
     dependencies: [common_proto_cpp_dep, gcs_proto_cpp_dep, autoscaler_proto_cpp_dep]
 )
 
+node_manager_proto_cpp_lib_dependencies = [
+    # Package-managed
+    node_manager_proto_cpp_dep,
+
+    # Eugo-managed
+    protobuf
+]
+
 node_manager_proto_cpp_lib = static_library(
     'node_manager_proto_cpp_lib',
-    dependencies: [protobuf, node_manager_proto_cpp_dep],
+    dependencies: node_manager_proto_cpp_lib_dependencies,
     install: false
 )
 
 node_manager_proto_cpp_lib_dep = declare_dependency(
     link_with: [node_manager_proto_cpp_lib],
-    dependencies: [protobuf]
+    dependencies: node_manager_proto_cpp_lib_dependencies
 )
 # @end: proto_cpp (@original: node_manager_cc_proto)
 
@@ -282,15 +358,25 @@ node_manager_proto_cpp_grpc_dep = declare_dependency(
     sources: node_manager_proto_cpp_grpc
 )
 
+node_manager_proto_cpp_grpc_lib_dependencies = [
+    # Package-managed
+    node_manager_proto_cpp_grpc_dep,
+    node_manager_proto_cpp_lib_dep,
+
+    # Eugo-managed
+    protobuf,
+    grpc
+]
+
 node_manager_proto_cpp_grpc_lib = static_library(
     'node_manager_proto_cpp_grpc_lib',
-    dependencies: [protobuf, grpc, node_manager_proto_cpp_grpc_dep, node_manager_proto_cpp_lib_dep],
+    dependencies: node_manager_proto_cpp_grpc_lib_dependencies,
     install: false
 )
 
 node_manager_proto_cpp_grpc_lib_dep = declare_dependency(
     link_with: [node_manager_proto_cpp_grpc_lib],
-    dependencies: [protobuf, grpc]
+    dependencies: node_manager_proto_cpp_grpc_lib_dependencies
 )
 # @end: proto_cpp_grpc (@original: node_manager_cc_grpc)
 
@@ -319,15 +405,23 @@ reporter_proto_cpp_dep = declare_dependency(
     dependencies: [opencensus_metrics_proto_cpp_dep]
 )
 
+reporter_proto_cpp_lib_dependencies = [
+    # Package-managed
+    reporter_proto_cpp_dep,
+
+    # Eugo-managed
+    protobuf
+]
+
 reporter_proto_cpp_lib = static_library(
     'reporter_proto_cpp_lib',
-    dependencies: [protobuf, reporter_proto_cpp_dep],
+    dependencies: reporter_proto_cpp_lib_dependencies,
     install: false
 )
 
 reporter_proto_cpp_lib_dep = declare_dependency(
     link_with: [reporter_proto_cpp_lib],
-    dependencies: [protobuf]
+    dependencies: reporter_proto_cpp_lib_dependencies
 )
 # @end: proto_cpp (@original: reporter_cc_proto)
 
@@ -343,15 +437,25 @@ reporter_proto_cpp_grpc_dep = declare_dependency(
     sources: reporter_proto_cpp_grpc
 )
 
+reporter_proto_cpp_grpc_lib_dependencies = [
+    # Package-managed
+    reporter_proto_cpp_grpc_dep,
+    reporter_proto_cpp_lib_dep,
+
+    # Eugo-managed
+    protobuf,
+    grpc
+]
+
 reporter_proto_cpp_grpc_lib = static_library(
     'reporter_proto_cpp_grpc_lib',
-    dependencies: [protobuf, grpc, reporter_proto_cpp_grpc_dep, reporter_proto_cpp_lib_dep],
+    dependencies: reporter_proto_cpp_grpc_lib_dependencies,
     install: false
 )
 
 reporter_proto_cpp_grpc_lib_dep = declare_dependency(
     link_with: [reporter_proto_cpp_grpc_lib],
-    dependencies: [protobuf, grpc]
+    dependencies: reporter_proto_cpp_grpc_lib_dependencies
 )
 # @end: proto_cpp_grpc (@original: reporter_cc_grpc)
 
@@ -380,15 +484,23 @@ pubsub_proto_cpp_dep = declare_dependency(
     dependencies: [common_proto_cpp_dep, gcs_proto_cpp_dep, logging_proto_cpp_dep]
 )
 
+pubsub_proto_cpp_lib_dependencies = [
+    # Package-managed
+    pubsub_proto_cpp_dep,
+
+    # Eugo-managed
+    protobuf
+]
+
 pubsub_proto_cpp_lib = static_library(
     'pubsub_proto_cpp_lib',
-    dependencies: [protobuf, pubsub_proto_cpp_dep],
+    dependencies: pubsub_proto_cpp_lib_dependencies,
     install: false
 )
 
 pubsub_proto_cpp_lib_dep = declare_dependency(
     link_with: [pubsub_proto_cpp_lib],
-    dependencies: [protobuf]
+    dependencies: pubsub_proto_cpp_lib_dependencies
 )
 # @end: proto_cpp (@original: pubsub_cc_proto)
 
@@ -403,15 +515,25 @@ pubsub_proto_cpp_grpc_dep = declare_dependency(
     dependencies: [common_proto_cpp_lib_dep, gcs_proto_cpp_lib_dep, pubsub_proto_cpp_lib_dep]
 )
 
+pubsub_proto_cpp_grpc_lib_dependencies = [
+    # Package-managed
+    pubsub_proto_cpp_grpc_dep,
+    pubsub_proto_cpp_lib_dep,
+
+    # Eugo-managed
+    protobuf,
+    grpc
+]
+
 pubsub_proto_cpp_grpc_lib = static_library(
     'pubsub_proto_cpp_grpc_lib',
-    dependencies: [protobuf, grpc, pubsub_proto_cpp_grpc_dep],
+    dependencies: pubsub_proto_cpp_grpc_lib_dependencies,
     install: false
 )
 
 pubsub_proto_cpp_grpc_lib_dep = declare_dependency(
     link_with: [pubsub_proto_cpp_grpc_lib],
-    dependencies: [protobuf, grpc]
+    dependencies: pubsub_proto_cpp_grpc_lib_dependencies
 )
 # @end: proto_cpp_grpc (@original: pubsub_cc_grpc)
 # === @end: pubsub.proto ===
@@ -431,15 +553,23 @@ gcs_service_proto_cpp_dep = declare_dependency(
     dependencies: [common_proto_cpp_dep, gcs_proto_cpp_dep, pubsub_proto_cpp_dep]
 )
 
+gcs_service_proto_cpp_lib_dependencies = [
+    # Package-managed
+    gcs_service_proto_cpp_dep,
+
+    # Eugo-managed
+    protobuf
+]
+
 gcs_service_proto_cpp_lib = static_library(
     'gcs_service_proto_cpp_lib',
-    dependencies: [protobuf, gcs_service_proto_cpp_dep],
+    dependencies: gcs_service_proto_cpp_lib_dependencies,
     install: false
 )
 
 gcs_service_proto_cpp_lib_dep = declare_dependency(
     link_with: [gcs_service_proto_cpp_lib],
-    dependencies: [protobuf]
+    dependencies: gcs_service_proto_cpp_lib_dependencies
 )
 # @end: proto_cpp (@original: gcs_service_cc_proto)
 
@@ -453,15 +583,25 @@ gcs_service_proto_cpp_grpc_dep = declare_dependency(
     sources: gcs_service_proto_cpp_grpc
 )
 
+gcs_service_proto_cpp_grpc_lib_dependencies = [
+    # Package-managed
+    gcs_service_proto_cpp_grpc_dep,
+    gcs_service_proto_cpp_lib_dep,
+
+    # Eugo-managed
+    protobuf,
+    grpc
+]
+
 gcs_service_proto_cpp_grpc_lib = static_library(
     'gcs_service_proto_cpp_grpc_lib',
-    dependencies: [protobuf, grpc, gcs_service_proto_cpp_grpc_dep, gcs_service_proto_cpp_lib_dep],
+    dependencies: gcs_service_proto_cpp_grpc_lib_dependencies,
     install: false
 )
 
 gcs_service_proto_cpp_grpc_lib_dep = declare_dependency(
     link_with: [gcs_service_proto_cpp_grpc_lib],
-    dependencies: [protobuf, grpc]
+    dependencies: gcs_service_proto_cpp_grpc_lib_dependencies
 )
 # @end: proto_cpp (@original: gcs_service_cc_proto)
 
@@ -487,15 +627,23 @@ test_service_proto_cpp_dep = declare_dependency(
     sources: test_service_proto_cpp
 )
 
+test_service_proto_cpp_lib_dependencies = [
+    # Package-managed
+    test_service_proto_cpp_dep,
+
+    # Eugo-managed
+    protobuf
+]
+
 test_service_proto_cpp_lib = static_library(
     'test_service_proto_cpp_lib',
-    dependencies: [protobuf, test_service_proto_cpp_dep],
+    dependencies: test_service_proto_cpp_lib_dependencies,
     install: false
 )
 
 test_service_proto_cpp_lib_dep = declare_dependency(
     link_with: [test_service_proto_cpp_lib],
-    dependencies: [protobuf]
+    dependencies: test_service_proto_cpp_lib_dependencies
 )
 # @end: proto_cpp (@original: test_service_cc_proto)
 
@@ -509,15 +657,25 @@ test_service_proto_cpp_grpc_dep = declare_dependency(
     sources: test_service_proto_cpp_grpc
 )
 
+test_service_proto_cpp_grpc_lib_dependencies = [
+    # Package-managed
+    test_service_proto_cpp_grpc_dep,
+    test_service_proto_cpp_lib_dep,
+
+    # Eugo-managed
+    protobuf,
+    grpc
+]
+
 test_service_proto_cpp_grpc_lib = static_library(
     'test_service_proto_cpp_grpc_lib',
-    dependencies: [protobuf, grpc, test_service_proto_cpp_grpc_dep, test_service_proto_cpp_lib_dep],
+    dependencies: test_service_proto_cpp_grpc_lib_dependencies,
     install: false
 )
 
 test_service_proto_cpp_grpc_lib_dep = declare_dependency(
     link_with: [test_service_proto_cpp_grpc_lib],
-    dependencies: [protobuf, grpc]
+    dependencies: test_service_proto_cpp_grpc_lib_dependencies
 )
 # @end: proto_cpp_grpc (@original: test_service_cc_grpc)
 
@@ -544,15 +702,23 @@ object_manager_proto_cpp_dep = declare_dependency(
     dependencies: [common_proto_cpp_dep]
 )
 
+object_manager_proto_cpp_lib_dependencies = [
+    # Package-managed
+    object_manager_proto_cpp_dep,
+
+    # Eugo-managed
+    protobuf
+]
+
 object_manager_proto_cpp_lib = static_library(
     'object_manager_proto_cpp_lib',
-    dependencies: [protobuf, object_manager_proto_cpp_dep],
+    dependencies: object_manager_proto_cpp_lib_dependencies,
     install: false
 )
 
 object_manager_proto_cpp_lib_dep = declare_dependency(
     link_with: [object_manager_proto_cpp_lib],
-    dependencies: [protobuf]
+    dependencies: object_manager_proto_cpp_lib_dependencies
 )
 # @end: proto_cpp (@original: object_manager_cc_proto)
 
@@ -566,15 +732,25 @@ object_manager_proto_cpp_grpc_dep = declare_dependency(
     sources: object_manager_proto_cpp_grpc
 )
 
+object_manager_proto_cpp_grpc_lib_dependencies = [
+    # Package-managed
+    object_manager_proto_cpp_grpc_dep,
+    object_manager_proto_cpp_lib_dep,
+
+    # Eugo-managed
+    protobuf,
+    grpc
+]
+
 object_manager_proto_cpp_grpc_lib = static_library(
     'object_manager_proto_cpp_grpc_lib',
-    dependencies: [protobuf, grpc, object_manager_proto_cpp_grpc_dep, object_manager_proto_cpp_lib_dep],
+    dependencies: object_manager_proto_cpp_grpc_lib_dependencies,
     install: false
 )
 
 object_manager_proto_cpp_grpc_lib_dep = declare_dependency(
     link_with: [object_manager_proto_cpp_grpc_lib],
-    dependencies: [protobuf, grpc]
+    dependencies: object_manager_proto_cpp_grpc_lib_dependencies
 )
 # @end: proto_cpp_grpc (@original: object_manager_cc_grpc)
 # === @end: object_manager.proto ===
@@ -594,15 +770,23 @@ core_worker_proto_cpp_dep = declare_dependency(
     dependencies: [common_proto_cpp_dep, pubsub_proto_cpp_dep]
 )
 
+core_worker_proto_cpp_lib_dependencies = [
+    # Package-managed
+    core_worker_proto_cpp_dep,
+
+    # Eugo-managed
+    protobuf
+]
+
 core_worker_proto_cpp_lib = static_library(
     'core_worker_proto_cpp_lib',
-    dependencies: [protobuf, core_worker_proto_cpp_dep],
+    dependencies: core_worker_proto_cpp_lib_dependencies,
     install: false
 )
 
 core_worker_proto_cpp_lib_dep = declare_dependency(
     link_with: [core_worker_proto_cpp_lib],
-    dependencies: [protobuf]
+    dependencies: core_worker_proto_cpp_lib_dependencies
 )
 # @end: proto_cpp (@original: worker_cc_proto (yep, original version doesn't have `core_` prefix, likely, for historical reasons))
 
@@ -616,15 +800,25 @@ core_worker_proto_cpp_grpc_dep = declare_dependency(
     sources: core_worker_proto_cpp_grpc
 )
 
+core_worker_proto_cpp_grpc_lib_dependencies = [
+    # Package-managed
+    core_worker_proto_cpp_grpc_dep,
+    core_worker_proto_cpp_lib_dep,
+
+    # Eugo-managed
+    protobuf,
+    grpc
+]
+
 core_worker_proto_cpp_grpc_lib = static_library(
     'core_worker_proto_cpp_grpc_lib',
-    dependencies: [protobuf, grpc, core_worker_proto_cpp_grpc_dep, core_worker_proto_cpp_lib_dep],
+    dependencies: core_worker_proto_cpp_grpc_lib_dependencies,
     install: false
 )
 
 core_worker_proto_cpp_grpc_lib_dep = declare_dependency(
     link_with: [core_worker_proto_cpp_grpc_lib],
-    dependencies: [protobuf, grpc]
+    dependencies: core_worker_proto_cpp_grpc_lib_dependencies
 )
 # @end: proto_cpp_grpc (@original: worker_cc_grpc (yep, original version doesn't have `core_` prefix, likely, for historical reasons))
 
@@ -650,15 +844,23 @@ serialization_proto_cpp_dep = declare_dependency(
     sources: serialization_proto_cpp
 )
 
+serialization_proto_cpp_lib_dependencies = [
+    # Package-managed
+    serialization_proto_cpp_dep,
+
+    # Eugo-managed
+    protobuf
+]
+
 serialization_proto_cpp_lib = static_library(
     'serialization_proto_cpp_lib',
-    dependencies: [protobuf, serialization_proto_cpp_dep],
+    dependencies: serialization_proto_cpp_lib_dependencies,
     install: false
 )
 
 serialization_proto_cpp_lib_dep = declare_dependency(
     link_with: [serialization_proto_cpp_lib],
-    dependencies: [protobuf]
+    dependencies: serialization_proto_cpp_lib_dependencies
 )
 # @end: proto_cpp (@original: serialization_cc_proto)
 # === @end: serialization.proto ===
@@ -677,15 +879,23 @@ event_proto_cpp_dep = declare_dependency(
     sources: event_proto_cpp
 )
 
+event_proto_cpp_lib_dependencies = [
+    # Package-managed
+    event_proto_cpp_dep,
+
+    # Eugo-managed
+    protobuf
+]
+
 event_proto_cpp_lib = static_library(
     'event_proto_cpp_lib',
-    dependencies: [protobuf, event_proto_cpp_dep],
+    dependencies: event_proto_cpp_lib_dependencies,
     install: false
 )
 
 event_proto_cpp_lib_dep = declare_dependency(
     link_with: [event_proto_cpp_lib],
-    dependencies: [protobuf]
+    dependencies: event_proto_cpp_lib_dependencies
 )
 # @end: proto_cpp (@original: event_cc_proto)
 
@@ -711,15 +921,23 @@ agent_manager_proto_cpp_dep = declare_dependency(
     sources: agent_manager_proto_cpp
 )
 
+agent_manager_proto_cpp_lib_dependencies = [
+    # Package-managed
+    agent_manager_proto_cpp_dep,
+
+    # Eugo-managed
+    protobuf
+]
+
 agent_manager_proto_cpp_lib = static_library(
     'agent_manager_proto_cpp_lib',
-    dependencies: [protobuf, agent_manager_proto_cpp_dep],
+    dependencies: agent_manager_proto_cpp_lib_dependencies,
     install: false
 )
 
 agent_manager_proto_cpp_lib_dep = declare_dependency(
     link_with: [agent_manager_proto_cpp_lib],
-    dependencies: [protobuf]
+    dependencies: agent_manager_proto_cpp_lib_dependencies
 )
 # @end: proto_cpp (@original: agent_manager_cc_proto)
 
@@ -746,15 +964,23 @@ runtime_env_agent_proto_cpp_dep = declare_dependency(
     dependencies: [runtime_env_common_proto_cpp_dep, agent_manager_proto_cpp_dep]
 )
 
+runtime_env_agent_proto_cpp_lib_dependencies = [
+    # Package-managed
+    runtime_env_agent_proto_cpp_dep,
+
+    # Eugo-managed
+    protobuf
+]
+
 runtime_env_agent_proto_cpp_lib = static_library(
     'runtime_env_agent_proto_cpp_lib',
-    dependencies: [protobuf, runtime_env_agent_proto_cpp_dep],
+    dependencies: runtime_env_agent_proto_cpp_lib_dependencies,
     install: false
 )
 
 runtime_env_agent_proto_cpp_lib_dep = declare_dependency(
     link_with: [runtime_env_agent_proto_cpp_lib],
-    dependencies: [protobuf]
+    dependencies: runtime_env_agent_proto_cpp_lib_dependencies
 )
 # @end: proto_cpp (@original: runtime_env_agent_cc_proto)
 
@@ -780,15 +1006,23 @@ usage_proto_cpp_dep = declare_dependency(
     sources: usage_proto_cpp
 )
 
+usage_proto_cpp_lib_dependencies = [
+    # Package-managed
+    usage_proto_cpp_dep,
+
+    # Eugo-managed
+    protobuf
+]
+
 usage_proto_cpp_lib = static_library(
     'usage_proto_cpp_lib_proto_cpp_lib',
-    dependencies: [protobuf, usage_proto_cpp_dep],
+    dependencies: usage_proto_cpp_lib_dependencies,
     install: false
 )
 
 usage_proto_cpp_lib_dep = declare_dependency(
     link_with: [usage_proto_cpp_lib],
-    dependencies: [protobuf]
+    dependencies: usage_proto_cpp_lib_dependencies
 )
 # @end: proto_cpp (@original: usage_cc_proto)
 
