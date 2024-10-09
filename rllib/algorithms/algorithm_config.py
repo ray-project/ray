@@ -260,8 +260,8 @@ class AlgorithmConfig(_Config):
         """
         # Define all settings and their default values.
 
-        # Define the default RLlib Algorithm class that this AlgorithmConfig will be
-        # applied to.
+        # Define the default RLlib Algorithm class that this AlgorithmConfig is applied
+        # to.
         self.algo_class = algo_class
 
         # `self.python_environment()`
@@ -301,13 +301,13 @@ class AlgorithmConfig(_Config):
         self.torch_compile_learner_what_to_compile = (
             TorchCompileWhatToCompile.FORWARD_TRAIN
         )
-        # AOT Eager is a dummy backend and will not result in speedups
+        # AOT Eager is a dummy backend and doesn't result in speedups.
         self.torch_compile_learner_dynamo_backend = (
             "aot_eager" if sys.platform == "darwin" else "inductor"
         )
         self.torch_compile_learner_dynamo_mode = None
         self.torch_compile_worker = False
-        # AOT Eager is a dummy backend and will not result in speedups
+        # AOT Eager is a dummy backend and doesn't result in speedups.
         self.torch_compile_worker_dynamo_backend = (
             "aot_eager" if sys.platform == "darwin" else "onnxrt"
         )
@@ -525,8 +525,10 @@ class AlgorithmConfig(_Config):
         self._evaluation_parallel_to_training_wo_thread = False
 
         # `self.fault_tolerance()`
-        self.ignore_env_runner_failures = False
+        # TODO (sven): Rename to `restart_..` to match other attributes AND ray's
+        #  `ray.remote(max_num_restarts=..)([class])` setting.
         self.recreate_failed_env_runners = False
+        self.ignore_env_runner_failures = False
         # By default, restart failed worker a thousand times.
         # This should be enough to handle normal transient failures.
         # This also prevents infinite number of restarts in case
@@ -836,10 +838,10 @@ class AlgorithmConfig(_Config):
     def serialize(self) -> Dict[str, Any]:
         """Returns a mapping from str to JSON'able values representing this config.
 
-        The resulting values will not have any code in them.
-        Classes (such as `callbacks_class`) will be converted to their full
+        The resulting values don't have any code in them.
+        Classes (such as `callbacks_class`) are converted to their full
         classpath, e.g. `ray.rllib.algorithms.callbacks.DefaultCallbacks`.
-        Actual code such as lambda functions will be written as their source
+        Actual code such as lambda functions ware written as their source
         code (str) plus any closure information for properly restoring the
         code inside the AlgorithmConfig object made from the returned dict data.
         Dataclass objects get converted to dicts.
@@ -854,7 +856,7 @@ class AlgorithmConfig(_Config):
         """Creates a deep copy of this config and (un)freezes if necessary.
 
         Args:
-            copy_frozen: Whether the created deep copy will be frozen or not. If None,
+            copy_frozen: Whether the created deep copy is frozen or not. If None,
                 keep the same frozen status that `self` currently has.
 
         Returns:
@@ -1215,7 +1217,7 @@ class AlgorithmConfig(_Config):
                 from the optional `env` arg or from `self`, the LearnerGroup cannot
                 be created.
             rl_module_spec: An optional (single-agent or multi-agent) RLModuleSpec to
-                use for the constructed LearnerGroup. If None, RLlib will try to infer
+                use for the constructed LearnerGroup. If None, RLlib tries to infer
                 the RLModuleSpec using the other information given and stored in this
                 `AlgorithmConfig` object.
 
@@ -1242,8 +1244,8 @@ class AlgorithmConfig(_Config):
     ) -> "Learner":
         """Builds and returns a new Learner object based on settings in `self`.
 
-        This Learner object will already have its `build()` method called, meaning
-        its RLModule will already be constructed.
+        This Learner object already has its `build()` method called, meaning
+        its RLModule is already constructed.
 
         Args:
             env: An optional EnvType object (e.g. a gym.Env) useful for extracting space
@@ -1358,14 +1360,14 @@ class AlgorithmConfig(_Config):
                 Support for multi-GPU is currently only available for
                 tf-[PPO/IMPALA/DQN/PG]. This can be fractional (e.g., 0.3 GPUs).
             _fake_gpus: Set to True for debugging (multi-)?GPU funcitonality on a
-                CPU machine. GPU towers will be simulated by graphs located on
+                CPU machine. GPU towers are simulated by graphs located on
                 CPUs in this case. Use `num_gpus` to test for different numbers of
                 fake GPUs.
             placement_strategy: The strategy for the placement group factory returned by
                 `Algorithm.default_resource_request()`. A PlacementGroup defines, which
                 devices (resources) should always be co-located on the same node.
                 For example, an Algorithm with 2 EnvRunners and 1 Learner (with
-                1 GPU) will request a placement group with the bundles:
+                1 GPU) requests a placement group with the bundles:
                 [{"cpu": 1}, {"gpu": 1, "cpu": 1}, {"cpu": 1}, {"cpu": 1}], where the
                 first bundle is for the local (main Algorithm) process, the second one
                 for the 1 Learner worker and the last 2 bundles are for the two
@@ -1588,13 +1590,13 @@ class AlgorithmConfig(_Config):
         Args:
             enable_rl_module_and_learner: Enables the usage of `RLModule` (instead of
                 `ModelV2`) and Learner (instead of the training-related parts of
-                `Policy`). If `enable_env_runner_and_connector_v2=False`, these two
-                classes (`RLModule` and `Learner`) will be used along with
-                `RolloutWorkers` and `Policy`.
+                `Policy`). Must be used with `enable_env_runner_and_connector_v2=True`.
+                Together, these two settings activate the "new API stack" of RLlib.
             enable_env_runner_and_connector_v2: Enables the usage of EnvRunners
                 (SingleAgentEnvRunner and MultiAgentEnvRunner) and ConnectorV2.
                 When setting this to True, `enable_rl_module_and_learner` must be True
-                as well.
+                as well. Together, these two settings activate the "new API stack" of
+                RLlib.
 
         Returns:
             This updated AlgorithmConfig object.
@@ -1647,7 +1649,7 @@ class AlgorithmConfig(_Config):
             env: The environment specifier. This can either be a tune-registered env,
                 via `tune.register_env([name], lambda env_ctx: [env object])`,
                 or a string specifier of an RLlib supported type. In the latter case,
-                RLlib will try to interpret the specifier as either an Farama-Foundation
+                RLlib tries to interpret the specifier as either an Farama-Foundation
                 gymnasium env, a PyBullet env, or a fully qualified classpath to an Env
                 class, e.g. "ray.rllib.examples.envs.classes.random_env.RandomEnv".
             env_config: Arguments dict passed to the env creator as an EnvContext
@@ -1661,8 +1663,8 @@ class AlgorithmConfig(_Config):
                 See `examples/curriculum_learning.py` for an example.
             render_env: If True, try to render the environment on the local worker or on
                 worker 1 (if num_env_runners > 0). For vectorized envs, this usually
-                means that only the first sub-environment will be rendered.
-                In order for this to work, your env will have to implement the
+                means that only the first sub-environment is rendered.
+                In order for this to work, your env has to implement the
                 `render()` method which either:
                 a) handles window generation and rendering itself (returning True) or
                 b) returns a numpy uint8 image of shape [height x width x 3 (RGB)].
@@ -1672,11 +1674,11 @@ class AlgorithmConfig(_Config):
                 False: Never clip.
                 [float value]: Clip at -value and + value.
                 Tuple[value1, value2]: Clip at value1 and value2.
-            normalize_actions: If True, RLlib will learn entirely inside a normalized
+            normalize_actions: If True, RLlib learns entirely inside a normalized
                 action space (0.0 centered with small stddev; only affecting Box
-                components). RLlib will unsquash actions (and clip, just in case) to the
+                components). RLlib unsquashes actions (and clip, just in case) to the
                 bounds of the env's action space before sending actions back to the env.
-            clip_actions: If True, the RLlib default ModuleToEnv connector will clip
+            clip_actions: If True, the RLlib default ModuleToEnv connector clips
                 actions according to the env's bounds (before sending them into the
                 `env.step()` call).
             disable_env_checking: Disable RLlib's env checks after a gymnasium.Env
@@ -1685,7 +1687,7 @@ class AlgorithmConfig(_Config):
                 might tinker with your env's logic and behavior and thus negatively
                 influence sample collection- and/or learning behavior.
             is_atari: This config can be used to explicitly specify whether the env is
-                an Atari env or not. If not specified, RLlib will try to auto-detect
+                an Atari env or not. If not specified, RLlib tries to auto-detect
                 this.
             action_mask_key: If observation is a dictionary, expect the value by
                 the key `action_mask_key` to contain a valid actions mask (`numpy.int8`
@@ -1782,7 +1784,7 @@ class AlgorithmConfig(_Config):
             env_runner_cls: The EnvRunner class to use for environment rollouts (data
                 collection).
             num_env_runners: Number of EnvRunner actors to create for parallel sampling.
-                Setting this to 0 will force sampling to be done in the local
+                Setting this to 0 forces sampling to be done in the local
                 EnvRunner (main process or the Algorithm's actor when using Tune).
             num_envs_per_env_runner: Number of environments to step through
                 (vector-wise) per EnvRunner. This enables batching when computing
@@ -1830,7 +1832,7 @@ class AlgorithmConfig(_Config):
                 args and returning a module-to-env ConnectorV2 (might be a pipeline)
                 object.
             add_default_connectors_to_env_to_module_pipeline: If True (default), RLlib's
-                EnvRunners will automatically add the default env-to-module ConnectorV2
+                EnvRunners automatically add the default env-to-module ConnectorV2
                 pieces to the EnvToModulePipeline. These automatically perform adding
                 observations and states (in case of stateful Module(s)), agent-to-module
                 mapping, batching, and conversion to tensor data. Only if you know
@@ -1838,7 +1840,7 @@ class AlgorithmConfig(_Config):
                 Note that this setting is only relevant if the new API stack is used
                 (including the new EnvRunner classes).
             add_default_connectors_to_module_to_env_pipeline: If True (default), RLlib's
-                EnvRunners will automatically add the default module-to-env ConnectorV2
+                EnvRunners automatically add the default module-to-env ConnectorV2
                 pieces to the ModuleToEnvPipeline. These automatically perform removing
                 the additional time-rank (if applicable, in case of stateful
                 Module(s)), module-to-agent unmapping, un-batching (to lists), and
@@ -1849,13 +1851,13 @@ class AlgorithmConfig(_Config):
             episode_lookback_horizon: The amount of data (in timesteps) to keep from the
                 preceeding episode chunk when a new chunk (for the same episode) is
                 generated to continue sampling at a later time. The larger this value,
-                the more an env-to-module connector will be able to look back in time
+                the more an env-to-module connector can look back in time
                 and compile RLModule input data from this information. For example, if
                 your custom env-to-module connector (and your custom RLModule) requires
                 the previous 10 rewards as inputs, you must set this to at least 10.
             use_worker_filter_stats: Whether to use the workers in the EnvRunnerGroup to
                 update the central filters (held by the local worker). If False, stats
-                from the workers will not be used and discarded.
+                from the workers aren't used and are discarded.
             update_worker_filter_stats: Whether to push filter updates from the central
                 filters (held by the local worker) to the remote workers' filters.
                 Setting this to True might be useful within the evaluation config in
@@ -1872,7 +1874,7 @@ class AlgorithmConfig(_Config):
                 When using multiple envs per worker, the fragment size is multiplied by
                 `num_envs_per_env_runner`. This is since we are collecting steps from
                 multiple envs in parallel. For example, if num_envs_per_env_runner=5,
-                then EnvRunners will return experiences in chunks of 5*100 = 500 steps.
+                then EnvRunners return experiences in chunks of 5*100 = 500 steps.
                 The dataflow here can vary per algorithm. For example, PPO further
                 divides the train batch into minibatches for multi-epoch SGD.
                 Set `rollout_fragment_length` to "auto" to have RLlib compute an exact
@@ -1882,19 +1884,19 @@ class AlgorithmConfig(_Config):
                 train batch. Note that "steps" below can mean different things (either
                 env- or agent-steps) and depends on the `count_steps_by` setting,
                 adjustable via `AlgorithmConfig.multi_agent(count_steps_by=..)`:
-                1) "truncate_episodes": Each call to `EnvRunner.sample()` will return a
+                1) "truncate_episodes": Each call to `EnvRunner.sample()` returns a
                 batch of at most `rollout_fragment_length * num_envs_per_env_runner` in
-                size. The batch will be exactly `rollout_fragment_length * num_envs`
+                size. The batch is exactly `rollout_fragment_length * num_envs`
                 in size if postprocessing does not change batch sizes. Episodes
                 may be truncated in order to meet this size requirement.
                 This mode guarantees evenly sized batches, but increases
                 variance as the future return must now be estimated at truncation
                 boundaries.
-                2) "complete_episodes": Each call to `EnvRunner.sample()` will return a
+                2) "complete_episodes": Each call to `EnvRunner.sample()` returns a
                 batch of at least `rollout_fragment_length * num_envs_per_env_runner` in
-                size. Episodes will not be truncated, but multiple episodes
+                size. Episodes aren't truncated, but multiple episodes
                 may be packed within one batch to meet the (minimum) batch size.
-                Note that when `num_envs_per_env_runner > 1`, episode steps will be
+                Note that when `num_envs_per_env_runner > 1`, episode steps are
                 buffered until the episode completes, and hence batches may contain
                 significant amounts of off-policy data.
             explore: Default exploration behavior, iff `explore=None` is passed into
@@ -1914,7 +1916,7 @@ class AlgorithmConfig(_Config):
                 created remote EnvRunner is healthy after its construction process.
             preprocessor_pref: Whether to use "rllib" or "deepmind" preprocessors by
                 default. Set to None for using no preprocessor. In this case, the
-                model will have to handle possibly complex observations from the
+                model has to handle possibly complex observations from the
                 environment.
             observation_filter: Element-wise observation filter, either "NoFilter"
                 or "MeanStdFilter".
@@ -2188,7 +2190,7 @@ class AlgorithmConfig(_Config):
             gamma: Float specifying the discount factor of the Markov Decision process.
             lr: The learning rate (float) or learning rate schedule in the format of
                 [[timestep, lr-value], [timestep, lr-value], ...]
-                In case of a schedule, intermediary timesteps will be assigned to
+                In case of a schedule, intermediary timesteps are assigned to
                 linearly interpolated learning rate values. A schedule config's first
                 entry must start with timestep 0, i.e.: [[0, initial_value], [...]].
                 Note: If you require a) more than one optimizer (per RLModule),
@@ -2198,17 +2200,17 @@ class AlgorithmConfig(_Config):
                 learning rate (e.g. Adam's epsilon), then you must override your
                 Learner's `configure_optimizer_for_module()` method and handle
                 lr-scheduling yourself.
-            grad_clip: If None, no gradient clipping will be applied. Otherwise,
+            grad_clip: If None, no gradient clipping is applied. Otherwise,
                 depending on the setting of `grad_clip_by`, the (float) value of
-                `grad_clip` will have the following effect:
-                If `grad_clip_by=value`: Will clip all computed gradients individually
+                `grad_clip` has the following effect:
+                If `grad_clip_by=value`: Clips all computed gradients individually
                 inside the interval [-`grad_clip`, +`grad_clip`].
-                If `grad_clip_by=norm`, will compute the L2-norm of each weight/bias
+                If `grad_clip_by=norm`, computes the L2-norm of each weight/bias
                 gradient tensor individually and then clip all gradients such that these
                 L2-norms do not exceed `grad_clip`. The L2-norm of a tensor is computed
                 via: `sqrt(SUM(w0^2, w1^2, ..., wn^2))` where w[i] are the elements of
                 the tensor (no matter what the shape of this tensor is).
-                If `grad_clip_by=global_norm`, will compute the square of the L2-norm of
+                If `grad_clip_by=global_norm`, computes the square of the L2-norm of
                 each weight/bias gradient tensor individually, sum up all these squared
                 L2-norms across all given gradient tensors (e.g. the entire module to
                 be updated), square root that overall sum, and then clip all gradients
@@ -2236,7 +2238,7 @@ class AlgorithmConfig(_Config):
             minibatch_size: The size of minibatches to use to further split the train
                 batch into.
             shuffle_batch_per_epoch: Whether to shuffle the train batch once per epoch.
-                If the train batch has a time rank (axis=1), shuffling will only take
+                If the train batch has a time rank (axis=1), shuffling only takes
                 place along the batch axis to not disturb any intact (episode)
                 trajectories.
             model: Arguments passed into the policy model. See models/catalog.py for a
@@ -2250,7 +2252,7 @@ class AlgorithmConfig(_Config):
                 action space as inputs and returning a learner ConnectorV2 (might be
                 a pipeline) object.
             add_default_connectors_to_learner_pipeline: If True (default), RLlib's
-                Learners will automatically add the default Learner ConnectorV2
+                Learners automatically add the default Learner ConnectorV2
                 pieces to the LearnerPipeline. These automatically perform:
                 a) adding observations from episodes to the train batch, if this has not
                 already been done by a user-provided connector piece
@@ -2353,7 +2355,7 @@ class AlgorithmConfig(_Config):
         """Sets the callbacks configuration.
 
         Args:
-            callbacks_class: Callbacks class, whose methods will be run during
+            callbacks_class: Callbacks class, whose methods are called during
                 various phases of training and environment sample collection.
                 See the `DefaultCallbacks` class and
                 `examples/metrics/custom_metrics_and_callbacks.py` for more usage
@@ -2399,18 +2401,18 @@ class AlgorithmConfig(_Config):
 
         Args:
             evaluation_interval: Evaluate with every `evaluation_interval` training
-                iterations. The evaluation stats will be reported under the "evaluation"
+                iterations. The evaluation stats are reported under the "evaluation"
                 metric key. Set to None (or 0) for no evaluation.
             evaluation_duration: Duration for which to run evaluation each
                 `evaluation_interval`. The unit for the duration can be set via
                 `evaluation_duration_unit` to either "episodes" (default) or
                 "timesteps". If using multiple evaluation workers (EnvRunners) in the
                 `evaluation_num_env_runners > 1` setting, the amount of
-                episodes/timesteps to run will be split amongst these.
+                episodes/timesteps to run are split amongst these.
                 A special value of "auto" can be used in case
                 `evaluation_parallel_to_training=True`. This is the recommended way when
                 trying to save as much time on evaluation as possible. The Algorithm
-                will then run as many timesteps via the evaluation workers as possible,
+                then runs as many timesteps via the evaluation workers as possible,
                 while not taking longer than the parallely running training step and
                 thus, never wasting any idle time on either training- or evaluation
                 workers. When using this setting (`evaluation_duration="auto"`), it is
@@ -2422,12 +2424,12 @@ class AlgorithmConfig(_Config):
             evaluation_sample_timeout_s: The timeout (in seconds) for evaluation workers
                 to sample a complete episode in the case your config settings are:
                 `evaluation_duration != auto` and `evaluation_duration_unit=episode`.
-                After this time, the user will receive a warning and instructions on how
+                After this time, the user receives a warning and instructions on how
                 to fix the issue.
             evaluation_parallel_to_training: Whether to run evaluation in parallel to
                 the `Algorithm.training_step()` call, using threading. Default=False.
                 E.g. for evaluation_interval=1 -> In every call to `Algorithm.train()`,
-                the `Algorithm.training_step()` and `Algorithm.evaluate()` calls will
+                the `Algorithm.training_step()` and `Algorithm.evaluate()` calls
                 run in parallel. Note that this setting - albeit extremely efficient b/c
                 it wastes no extra time for evaluation - causes the evaluation results
                 to lag one iteration behind the rest of the training results. This is
@@ -2438,9 +2440,9 @@ class AlgorithmConfig(_Config):
             evaluation_force_reset_envs_before_iteration: Whether all environments
                 should be force-reset (even if they are not done yet) right before
                 the evaluation step of the iteration begins. Setting this to True
-                (default) will make sure that the evaluation results will not be
-                polluted with episode statistics that were actually (at least partially)
-                achieved with an earlier set of weights. Note that this setting is only
+                (default) makes sure that the evaluation results aren't polluted with
+                episode statistics that were actually (at least partially) achieved with
+                an earlier set of weights. Note that this setting is only
                 supported on the new API stack w/ EnvRunners and ConnectorV2
                 (`config.enable_rl_module_and_learner=True` AND
                 `config.enable_env_runner_and_connector_v2=True`).
@@ -2448,7 +2450,7 @@ class AlgorithmConfig(_Config):
                 creator and to disable exploration by computing deterministic actions.
                 IMPORTANT NOTE: Policy gradient algorithms are able to find the optimal
                 policy, even if this is a stochastic one. Setting "explore=False" here
-                will result in the evaluation workers not using this optimal policy!
+                results in the evaluation workers not using this optimal policy!
             off_policy_estimation_methods: Specify how to evaluate the current policy,
                 along with any optional config parameters. This only has an effect when
                 reading offline experiences ("input" is not "sampler").
@@ -2468,9 +2470,9 @@ class AlgorithmConfig(_Config):
                 since each record is one timestep already. The default is True.
             evaluation_num_env_runners: Number of parallel EnvRunners to use for
                 evaluation. Note that this is set to zero by default, which means
-                evaluation will be run in the algorithm process (only if
-                `evaluation_interval` is not 0 or None). If you increase this, it will
-                increase the Ray resource usage of the algorithm since evaluation
+                evaluation is run in the algorithm process (only if
+                `evaluation_interval` is not 0 or None). If you increase this, also
+                increases the Ray resource usage of the algorithm since evaluation
                 workers are created separately from those EnvRunners used to sample data
                 for training.
             custom_evaluation_function: Customize the evaluation method. This must be a
@@ -2599,7 +2601,7 @@ class AlgorithmConfig(_Config):
                 files. See https://docs.ray.io/en/latest/data/api/input_output.html for
                 more info about available read methods in `ray.data`.
             input_read_method_kwargs: Keyword args for `input_read_method`. These
-                will be passed into the read method without checking. If no arguments
+                are passed into the read method without checking. If no arguments
                 are passed in the default argument
                 `{'override_num_blocks': max(num_learners * 2, 2)}` is used. Use these
                 keyword args together with `map_batches_kwargs` and
@@ -2643,8 +2645,8 @@ class AlgorithmConfig(_Config):
                 ABS filesystem arguments.
             input_compress_columns: What input columns are compressed with LZ4 in the
                 input data. If data is stored in RLlib's `SingleAgentEpisode` (
-                `MultiAgentEpisode` not supported, yet). Note,
-                `rllib.core.columns.Columns.OBS` will also try to decompress
+                `MultiAgentEpisode` not supported, yet). Note the providing
+                `rllib.core.columns.Columns.OBS` also tries to decompress
                 `rllib.core.columns.Columns.NEXT_OBS`.
             materialize_data: Whether the raw data should be materialized in memory.
                 This boosts performance, but requires enough memory to avoid an OOM, so
@@ -2671,14 +2673,14 @@ class AlgorithmConfig(_Config):
                 memory and your Learner connector pipeline requires an RLModule or is
                 stateful, set both `materialize_data` and `materialize_mapped_data` to
                 `False`.
-            map_batches_kwargs: Keyword args for the `map_batches` method. These will be
+            map_batches_kwargs: Keyword args for the `map_batches` method. These are
                 passed into the `ray.data.Dataset.map_batches` method when sampling
                 without checking. If no arguments passed in the default arguments
                 `{'concurrency': max(2, num_learners), 'zero_copy_batch': True}` is
                 used. Use these keyword args together with `input_read_method_kwargs`
                 and `iter_batches_kwargs` to tune the performance of the data pipeline.
-            iter_batches_kwargs: Keyword args for the `iter_batches` method. These will
-                be passed into the `ray.data.Dataset.iter_batches` method when sampling
+            iter_batches_kwargs: Keyword args for the `iter_batches` method. These are
+                passed into the `ray.data.Dataset.iter_batches` method when sampling
                 without checking. If no arguments are passed in, the default argument
                 `{'prefetch_batches': 2, 'local_buffer_shuffle_size':
                 train_batch_size_per_learner x 4}` is used. Use these keyword args
@@ -2695,8 +2697,8 @@ class AlgorithmConfig(_Config):
             prelearner_module_synch_period: The period (number of batches converted)
                 after which the `RLModule` held by the `PreLearner` should sync weights.
                 The `PreLearner` is used to preprocess batches for the learners. The
-                higher this value the more off-policy the `PreLearner`'s module will be.
-                Values too small will force the `PreLearner` to sync more frequently
+                higher this value, the more off-policy the `PreLearner`'s module is.
+                Values too small force the `PreLearner` to sync more frequently
                 and thus might slow down the data pipeline. The default value chosen
                 by the `OfflinePreLearner` is 10.
             dataset_num_iters_per_learner: Number of updates to run in each learner
@@ -2704,18 +2706,18 @@ class AlgorithmConfig(_Config):
                 complete epoch over its data block (the dataset is partitioned into
                 at least as many blocks as there are learners). The default is `None`.
             input_config: Arguments that describe the settings for reading the input.
-                If input is "sample", this will be environment configuration, e.g.
+                If input is "sample", this is the environment configuration, e.g.
                 `env_name` and `env_config`, etc. See `EnvContext` for more info.
-                If the input is "dataset", this will be e.g. `format`, `path`.
+                If the input is "dataset", this contains e.g. `format`, `path`.
             actions_in_input_normalized: True, if the actions in a given offline "input"
                 are already normalized (between -1.0 and 1.0). This is usually the case
                 when the offline file has been generated by another RLlib algorithm
                 (e.g. PPO or SAC), while "normalize_actions" was set to True.
             postprocess_inputs: Whether to run postprocess_trajectory() on the
-                trajectory fragments from offline inputs. Note that postprocessing will
-                be done using the *current* policy, not the *behavior* policy, which
+                trajectory fragments from offline inputs. Note that postprocessing is
+                done using the *current* policy, not the *behavior* policy, which
                 is typically undesirable for on-policy algorithms.
-            shuffle_buffer_size: If positive, input batches will be shuffled via a
+            shuffle_buffer_size: If positive, input batches are shuffled via a
                 sliding window buffer of this number of batches. Use this if the input
                 data is not in random enough order. Input is delayed until the shuffle
                 buffer is filled.
@@ -2727,8 +2729,8 @@ class AlgorithmConfig(_Config):
             output_config: Arguments accessible from the IOContext for configuring
                 custom output.
             output_compress_columns: What sample batch columns to LZ4 compress in the
-                output data. Note, `rllib.core.columns.Columns.OBS` will also compress
-                `rllib.core.columns.Columns.NEXT_OBS`.
+                output data. Note that providing `rllib.core.columns.Columns.OBS` also
+                compresses `rllib.core.columns.Columns.NEXT_OBS`.
             output_max_file_size: Max output file size (in bytes) before rolling over
                 to a new file.
             output_max_rows_per_file: Max output row numbers before rolling over to a
@@ -2738,7 +2740,7 @@ class AlgorithmConfig(_Config):
                 files. See https://docs.ray.io/en/latest/data/api/input_output.html for
                 more info about available read methods in `ray.data`.
             output_write_method_kwargs: `kwargs` for the `output_write_method`. These
-                will be passed into the write method without checking.
+                are passed into the write method without checking.
             output_filesystem: A cloud filesystem to handle access to cloud storage when
                 writing experiences. Should be either "gcs" for Google Cloud Storage,
                 "s3" for AWS S3 buckets, or "abs" for Azure Blob Storage.
@@ -2747,8 +2749,8 @@ class AlgorithmConfig(_Config):
                 `pyarrow.fs.S3FileSystem`, for S3, and `ablfs.AzureBlobFilesystem` for
                 ABS filesystem arguments.
             offline_sampling: Whether sampling for the Algorithm happens via
-                reading from offline data. If True, EnvRunners will NOT limit the
-                number of collected batches within the same `sample()` call based on
+                reading from offline data. If True, EnvRunners don't limit the number
+                of collected batches within the same `sample()` call based on
                 the number of sub-environments within the worker (no sub-environments
                 present).
 
@@ -2799,7 +2801,7 @@ class AlgorithmConfig(_Config):
             # TODO (Kourosh) Once we use a complete separation between rollout worker
             #  and input dataset reader we can remove this.
             #  For now Error out if user attempts to set these parameters.
-            msg = "{} should not be set in the input_config. RLlib will use {} instead."
+            msg = "{} should not be set in the input_config. RLlib uses {} instead."
             if input_config.get("num_cpus_per_read_task") is not None:
                 raise ValueError(
                     msg.format(
@@ -2905,9 +2907,9 @@ class AlgorithmConfig(_Config):
                 where `A` and `B` are policy instances in this map. You should set
                 this to True for significantly speeding up the PolicyMap's cache lookup
                 times, iff your policies all share the same neural network
-                architecture and optimizer types. If True, the PolicyMap will not
+                architecture and optimizer types. If True, the PolicyMap doesn't
                 have to garbage collect old, least recently used policies, but instead
-                keep them in memory and simply override their state with the state of
+                keeps them in memory and simply override their state with the state of
                 the most recently accessed one.
                 For example, in a league-based training setup, you might have 100s of
                 the same policies in your map (playing against each other in various
@@ -3059,8 +3061,8 @@ class AlgorithmConfig(_Config):
             keep_per_episode_custom_metrics: Store raw custom metrics without
                 calculating max, min, mean
             metrics_episode_collection_timeout_s: Wait for metric batches for at most
-                this many seconds. Those that have not returned in time will be
-                collected in the next train iteration.
+                this many seconds. Those that have not returned in time are collected
+                in the next train iteration.
             metrics_num_episodes_for_smoothing: Smooth rollout metrics over this many
                 episodes, if possible.
                 In case rollouts (sample collection) just started, there may be fewer
@@ -3075,21 +3077,21 @@ class AlgorithmConfig(_Config):
                 single `Algorithm.train()` call. This value does not affect learning,
                 only the number of times `Algorithm.training_step()` is called by
                 `Algorithm.train()`. If - after one such step attempt, the time taken
-                has not reached `min_time_s_per_iteration`, will perform n more
+                has not reached `min_time_s_per_iteration`, performs n more
                 `Algorithm.training_step()` calls until the minimum time has been
                 consumed. Set to 0 or None for no minimum time.
             min_train_timesteps_per_iteration: Minimum training timesteps to accumulate
                 within a single `train()` call. This value does not affect learning,
                 only the number of times `Algorithm.training_step()` is called by
                 `Algorithm.train()`. If - after one such step attempt, the training
-                timestep count has not been reached, will perform n more
+                timestep count has not been reached, performs n more
                 `training_step()` calls until the minimum timesteps have been
                 executed. Set to 0 or None for no minimum timesteps.
             min_sample_timesteps_per_iteration: Minimum env sampling timesteps to
                 accumulate within a single `train()` call. This value does not affect
                 learning, only the number of times `Algorithm.training_step()` is
                 called by `Algorithm.train()`. If - after one such step attempt, the env
-                sampling timestep count has not been reached, will perform n more
+                sampling timestep count has not been reached, performs n more
                 `training_step()` calls until the minimum timesteps have been
                 executed. Set to 0 or None for no minimum timesteps.
             log_gradients: Log gradients to results. If this is `True` the global norm
@@ -3168,13 +3170,13 @@ class AlgorithmConfig(_Config):
                 Default value None allows overwriting with nested dicts.
             log_level: Set the ray.rllib.* log level for the agent process and its
                 workers. Should be one of DEBUG, INFO, WARN, or ERROR. The DEBUG level
-                will also periodically print out summaries of relevant internal dataflow
+                also periodically prints out summaries of relevant internal dataflow
                 (this is also printed out once at startup at the INFO level).
             log_sys_usage: Log system resource metrics to results. This requires
                 `psutil` to be installed for sys stats, and `gputil` for GPU metrics.
             fake_sampler: Use fake (infinite speed) sampler. For testing only.
             seed: This argument, in conjunction with worker_index, sets the random
-                seed of each worker, so that identically configured trials will have
+                seed of each worker, so that identically configured trials have
                 identical results. This makes experiments reproducible.
             _run_training_always_in_thread: Runs the n `training_step()` calls per
                 iteration always in a separate thread (just as we would do with
@@ -3183,7 +3185,7 @@ class AlgorithmConfig(_Config):
                 Algorithm).
             _evaluation_parallel_to_training_wo_thread: Only relevant if
                 `evaluation_parallel_to_training` is True. Then, in order to achieve
-                parallelism, RLlib will not use a thread pool (as it usually does in
+                parallelism, RLlib doesn't use a thread pool (as it usually does in
                 this situation).
 
         Returns:
@@ -3212,8 +3214,9 @@ class AlgorithmConfig(_Config):
 
     def fault_tolerance(
         self,
-        ignore_env_runner_failures: Optional[bool] = NotProvided,
+        *,
         recreate_failed_env_runners: Optional[bool] = NotProvided,
+        ignore_env_runner_failures: Optional[bool] = NotProvided,
         max_num_env_runner_restarts: Optional[int] = NotProvided,
         delay_between_env_runner_restarts_s: Optional[float] = NotProvided,
         restart_failed_sub_environments: Optional[bool] = NotProvided,
@@ -3232,15 +3235,17 @@ class AlgorithmConfig(_Config):
         """Sets the config's fault tolerance settings.
 
         Args:
-            ignore_env_runner_failures: Whether to ignore any EnvRunner failures
-                and continue running with the remaining EnvRunners. This setting will
-                be ignored, if `recreate_failed_env_runners=True`.
             recreate_failed_env_runners: Whether - upon an EnvRunner failure - RLlib
-                will try to recreate the lost EnvRunner as an identical copy of the
-                failed one. The new EnvRunner will only differ from the failed one in
-                its `self.recreated_worker=True` property value. It will have the same
-                `worker_index` as the original one. If True, the
-                `ignore_env_runner_failures` setting will be ignored.
+                tries to recreate the lost EnvRunner(s) as an identical copy of the
+                failed one(s). You should set this to True when training on SPOT
+                instances that may preempt any time. The new, recreated EnvRunner(s)
+                only differ from the failed one in their `self.recreated_worker=True`
+                property value and have the same `worker_index` as the original(s).
+                If this setting is True, the value of the `ignore_env_runner_failures`
+                setting is ignored.
+            ignore_env_runner_failures: Whether to ignore any EnvRunner failures
+                and continue running with the remaining EnvRunners. This setting is
+                ignored, if `recreate_failed_env_runners=True`.
             max_num_env_runner_restarts: The maximum number of times any EnvRunner
                 is allowed to be restarted (if `recreate_failed_env_runners` is True).
             delay_between_env_runner_restarts_s: The delay (in seconds) between two
@@ -3248,7 +3253,7 @@ class AlgorithmConfig(_Config):
                 True).
             restart_failed_sub_environments: If True and any sub-environment (within
                 a vectorized env) throws any error during env stepping, the
-                Sampler will try to restart the faulty sub-environment. This is done
+                Sampler tries to restart the faulty sub-environment. This is done
                 without disturbing the other (still intact) sub-environment and without
                 the EnvRunner crashing.
             num_consecutive_env_runner_failures_tolerance: The number of consecutive
@@ -3355,12 +3360,12 @@ class AlgorithmConfig(_Config):
 
         Args:
             model_config_dict: The default model config dictionary for `RLModule`s. This
-                will be used for any `RLModule` if not otherwise specified in the
+                is used for any `RLModule` if not otherwise specified in the
                 `rl_module_spec`.
             rl_module_spec: The RLModule spec to use for this config. It can be either
                 a RLModuleSpec or a MultiRLModuleSpec. If the
                 observation_space, action_space, catalog_class, or the model config is
-                not specified it will be inferred from the env and other parts of the
+                not specified it is inferred from the env and other parts of the
                 algorithm config object.
             algorithm_config_overrides_per_module: Only used if
                 `enable_rl_module_and_learner=True`.
@@ -3435,7 +3440,7 @@ class AlgorithmConfig(_Config):
                 https://pytorch.org/docs/stable/optim.html#how-to-adjust-learning-rate)
                 classes or a dictionary mapping module IDs to such a list of respective
                 scheduler classes. Multiple scheduler classes can be applied in sequence
-                and will be stepped in the same sequence as defined here. Note, most
+                and are stepped in the same sequence as defined here. Note, most
                 learning rate schedulers need arguments to be configured, that is, you
                 might have to partially initialize the schedulers in the list(s) using
                 `functools.partial`.
@@ -3443,14 +3448,12 @@ class AlgorithmConfig(_Config):
                 If True, TFPolicy handles more than one loss or optimizer.
                 Set this to True, if you would like to return more than
                 one loss term from your `loss_fn` and an equal number of optimizers
-                from your `optimizer_fn`. In the future, the default for this will be
-                True.
+                from your `optimizer_fn`.
             _disable_preprocessor_api: Experimental flag.
-                If True, no (observation) preprocessor will be created and
-                observations will arrive in model as they are returned by the env.
-                In the future, the default for this will be True.
+                If True, no (observation) preprocessor is created and
+                observations arrive in model as they are returned by the env.
             _disable_action_flattening: Experimental flag.
-                If True, RLlib will no longer flatten the policy-computed actions into
+                If True, RLlib doesn't flatten the policy-computed actions into
                 a single tensor (for storage in SampleCollectors/output files/etc..),
                 but leave (possibly nested) actions as-is. Disabling flattening affects:
                 - SampleCollectors: Have to store possibly nested action structs.
@@ -3570,9 +3573,9 @@ class AlgorithmConfig(_Config):
         `rollout_fragment_length` = `total_train_batch_size` /
         (`num_envs_per_env_runner` * `num_env_runners`)
 
-        If result is a fraction AND `worker_index` is provided, will make
+        If result is a fraction AND `worker_index` is provided, makes
         those workers add additional timesteps, such that the overall batch size (across
-        the workers) will add up to exactly the `total_train_batch_size`.
+        the workers) adds up to exactly the `total_train_batch_size`.
 
         Returns:
             The user-provided `rollout_fragment_length` or a computed one (if user
@@ -3774,18 +3777,18 @@ class AlgorithmConfig(_Config):
 
         Args:
             env: An optional environment instance, from which to infer the observation-
-                and action spaces for the RLModule. If not provided, will try to infer
+                and action spaces for the RLModule. If not provided, tries to infer
                 from `spaces`, otherwise from `self.observation_space` and
-                `self.action_space`. If no information on spaces can be inferred, will
-                raise an error.
+                `self.action_space`. Raises an error, if no information on spaces can be
+                inferred.
             spaces: Optional dict mapping ModuleIDs to 2-tuples of observation- and
                 action space that should be used for the respective RLModule.
                 These spaces are usually provided by an already instantiated remote
-                EnvRunner (call `EnvRunner.get_spaces()`). If not provided, will try
+                EnvRunner (call `EnvRunner.get_spaces()`). If not provided, tries
                 to infer from `env`, otherwise from `self.observation_space` and
-                `self.action_space`. If no information on spaces can be inferred,
-                will raise an error.
-            inference_only: If `True`, the returned module spec will be used in an
+                `self.action_space`. Raises an error, if no information on spaces can be
+                inferred.
+            inference_only: If `True`, the returned module spec is used in an
                 inference-only setting (sampling) and the RLModule can thus be built in
                 its light version (if available). For example, the `inference_only`
                 version of an RLModule might only contain the networks required for
@@ -3797,8 +3800,8 @@ class AlgorithmConfig(_Config):
         rl_module_spec = copy.deepcopy(self.rl_module_spec)
 
         # If a MultiRLModuleSpec -> Reduce to single-agent (and assert that
-        # all non DEFAULT_MODULE_IDs are `learner_only` (so will not be built
-        # here on EnvRunner).
+        # all non DEFAULT_MODULE_IDs are `learner_only` (so they are not built on
+        # EnvRunner).
         if isinstance(rl_module_spec, MultiRLModuleSpec):
             error = False
             if DEFAULT_MODULE_ID not in rl_module_spec:
@@ -3851,31 +3854,31 @@ class AlgorithmConfig(_Config):
 
         Args:
             env: An optional environment instance, from which to infer the different
-                spaces for the individual RLModules. If not provided, will try to infer
+                spaces for the individual RLModules. If not provided, tries to infer
                 from `spaces`, otherwise from `self.observation_space` and
-                `self.action_space`. If no information on spaces can be inferred, will
-                raise an error.
+                `self.action_space`. Raises an error, if no information on spaces can be
+                inferred.
             spaces: Optional dict mapping ModuleIDs to 2-tuples of observation- and
                 action space that should be used for the respective RLModule.
                 These spaces are usually provided by an already instantiated remote
-                EnvRunner (call `EnvRunner.get_spaces()`). If not provided, will try
+                EnvRunner (call `EnvRunner.get_spaces()`). If not provided, tries
                 to infer from `env`, otherwise from `self.observation_space` and
-                `self.action_space`. If no information on spaces can be inferred,
-                will raise an error.
-            inference_only: If `True`, the returned module spec will be used in an
+                `self.action_space`. Raises an error, if no information on spaces can be
+                inferred.
+            inference_only: If `True`, the returned module spec is used in an
                 inference-only setting (sampling) and the RLModule can thus be built in
                 its light version (if available). For example, the `inference_only`
                 version of an RLModule might only contain the networks required for
                 computing actions, but misses additional target- or critic networks.
-                Also, if `True`, the returned spec will NOT contain those (sub)
+                Also, if `True`, the returned spec does NOT contain those (sub)
                 RLModuleSpecs that have their `learner_only` flag set to True.
 
         Returns:
             A new MultiRLModuleSpec instance that can be used to build a MultiRLModule.
         """
-        # TODO (Kourosh,sven): When we replace policy entirely there will be no need for
+        # TODO (Kourosh,sven): When we replace policy entirely there is no need for
         #  this function to map policy_dict to multi_rl_module_specs anymore. The module
-        #  spec will be directly given by the user or inferred from env and spaces.
+        #  spec is directly given by the user or inferred from env and spaces.
         if policy_dict is None:
             policy_dict, _ = self.get_multi_agent_setup(env=env, spaces=spaces)
 
@@ -4173,7 +4176,7 @@ class AlgorithmConfig(_Config):
 
         This method combines the auto configuration `self _model_config_auto_includes`
         defined by an algorithm with the user-defined configuration in
-        `self._model_config_dict`.This configuration dictionary will be used to
+        `self._model_config_dict`.This configuration dictionary is used to
         configure the `RLModule` in the new stack and the `ModelV2` in the old
         stack.
 
@@ -4188,7 +4191,7 @@ class AlgorithmConfig(_Config):
         auto-included into `self.model_config`.
 
         The dictionary in this property contains the default configuration of an
-        algorithm. Together with the `self._model`, this method will be used to
+        algorithm. Together with the `self._model`, this method is used to
         define the configuration sent to the `RLModule`.
 
         Returns:
@@ -4318,8 +4321,8 @@ class AlgorithmConfig(_Config):
             logger.warning(
                 f"You have specified {self.evaluation_num_env_runners} "
                 "evaluation workers, but your `evaluation_interval` is 0 or None! "
-                "Therefore, evaluation will not occur automatically with each"
-                " call to `Algorithm.train()`. Instead, you will have to call "
+                "Therefore, evaluation doesn't occur automatically with each"
+                " call to `Algorithm.train()`. Instead, you have to call "
                 "`Algorithm.evaluate()` manually in order to trigger an "
                 "evaluation run."
             )
@@ -4349,8 +4352,7 @@ class AlgorithmConfig(_Config):
                 logger.warning(
                     "When using `config.evaluation_duration='auto'`, the sampling unit "
                     "used is always 'timesteps'! You have set "
-                    "`config.evaluation_duration_unit='episodes'`, which will be "
-                    "ignored."
+                    "`config.evaluation_duration_unit='episodes'`, which is ignored."
                 )
 
         # Make sure, `evaluation_duration` is an int otherwise.
@@ -4508,7 +4510,7 @@ class AlgorithmConfig(_Config):
     # TODO (sven): Once everything is on the new API stack, we won't need this method
     #  anymore.
     def _validate_to_be_deprecated_settings(self):
-        # Env task fn will be deprecated.
+        # Env task fn is about to be deprecated.
         if self.enable_rl_module_and_learner and self.env_task_fn is not None:
             deprecation_warning(
                 old="AlgorithmConfig.env_task_fn",
@@ -4535,12 +4537,11 @@ class AlgorithmConfig(_Config):
 
         # Check model config.
         # If no preprocessing, propagate into model's config as well
-        # (so model will know, whether inputs are preprocessed or not).
+        # (so model knows whether inputs are preprocessed or not).
         if self._disable_preprocessor_api is True:
             self.model["_disable_preprocessor_api"] = True
         # If no action flattening, propagate into model's config as well
-        # (so model will know, whether action inputs are already flattened or
-        # not).
+        # (so model knows whether action inputs are already flattened or not).
         if self._disable_action_flattening is True:
             self.model["_disable_action_flattening"] = True
         if self.model.get("custom_preprocessor"):
@@ -4856,19 +4857,19 @@ class AlgorithmConfig(_Config):
 
         Args:
             policies: An optional multi-agent `policies` dict, mapping policy IDs
-                to PolicySpec objects. If not provided, will use `self.policies`
+                to PolicySpec objects. If not provided uses `self.policies`
                 instead. Note that the `policy_class`, `observation_space`, and
                 `action_space` properties in these PolicySpecs may be None and must
                 therefore be inferred here.
             env: An optional env instance, from which to infer the different spaces for
-                the different policies. If not provided, will try to infer from
+                the different policies. If not provided, tries to infer from
                 `spaces`. Otherwise from `self.observation_space` and
-                `self.action_space`. If no information on spaces can be infered, will
-                raise an error.
+                `self.action_space`. Raises an error, if no information on spaces can be
+                infered.
             spaces: Optional dict mapping policy IDs to tuples of 1) observation space
                 and 2) action space that should be used for the respective policy.
                 These spaces were usually provided by an already instantiated remote
-                EnvRunner. Note that if the `env` argument is provided, will try to
+                EnvRunner. Note that if the `env` argument is provided, tries to
                 infer spaces from `env` first.
             default_policy_class: The Policy class to use should a PolicySpec have its
                 policy_class property set to None.
@@ -4886,7 +4887,7 @@ class AlgorithmConfig(_Config):
         policies = copy.deepcopy(policies or self.policies)
 
         # Policies given as set/list/tuple (of PolicyIDs) -> Setup each policy
-        # automatically via empty PolicySpec (will make RLlib infer observation- and
+        # automatically via empty PolicySpec (makes RLlib infer observation- and
         # action spaces as well as the Policy's class).
         if isinstance(policies, (set, list, tuple)):
             policies = {pid: PolicySpec() for pid in policies}
