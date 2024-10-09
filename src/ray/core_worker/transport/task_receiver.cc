@@ -270,6 +270,7 @@ void TaskReceiver::HandleTask(const rpc::PushTaskRequest &request,
                     task_spec.ConcurrencyGroupName(),
                     task_spec.FunctionDescriptor(),
                     task_spec.TaskId(),
+                    task_spec.AttemptNumber(),
                     dependencies);
   } else {
     // Add the normal task's callbacks to the non-actor scheduling queue.
@@ -283,6 +284,7 @@ void TaskReceiver::HandleTask(const rpc::PushTaskRequest &request,
                                   "",
                                   task_spec.FunctionDescriptor(),
                                   task_spec.TaskId(),
+                                  task_spec.AttemptNumber(),
                                   dependencies);
   }
 }
