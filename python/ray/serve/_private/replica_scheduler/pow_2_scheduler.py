@@ -647,7 +647,6 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
 
     def _get_pending_request_matching_metadata(
         self,
-        replica: ReplicaWrapper,
         request_metadata: Optional[RequestMetadata] = None,
     ) -> Optional[PendingRequest]:
         if request_metadata is None or not request_metadata.multiplexed_model_id:
@@ -676,7 +675,7 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
         # First try to match a pending request based on the request metadata (currently
         # this only looks at the multiplexed model ID).
         matched_pending_request = self._get_pending_request_matching_metadata(
-            replica, request_metadata
+            request_metadata
         )
         if matched_pending_request is not None:
             matched_pending_request.future.set_result(replica)
@@ -718,6 +717,18 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
                 async for candidates in self.choose_two_replicas_with_backoff(
                     request_metadata
                 ):
+                    # Clear out pending requests at the front of the
+                    # queue that have been cancelled, then reevaluate
+                    # if we need to continue this scheduling task.
+                    while (
+                        len(self._pending_requests_to_fulfill) > 0
+                        and self._pending_requests_to_fulfill[0].future.done()
+                    ):
+                        self._pending_requests_to_fulfill.popleft()
+
+                    if len(self._scheduling_tasks) > self.target_num_scheduling_tasks:
+                        break
+
                     replica = await self.select_from_candidate_replicas(
                         candidates, backoff_index
                     )
