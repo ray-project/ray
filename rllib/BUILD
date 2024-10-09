@@ -962,7 +962,7 @@ py_test(
     name = "test_node_failures",
     tags = ["team:rllib", "tests_dir", "exclusive"],
     size = "medium",
-    srcs = ["algorothms/tests/test_node_failure.py"],
+    srcs = ["algorithms/tests/test_node_failure.py"],
 )
 
 
