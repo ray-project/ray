@@ -461,6 +461,7 @@ def read_fragments(
             return fragment.to_batches(
                 use_threads=use_threads,
                 columns=columns,
+                schema=schema,
                 batch_size=batch_size,
                 **to_batches_kwargs,
             )
@@ -471,7 +472,7 @@ def read_fragments(
         for batch in iterate_with_retry(
             get_batch_iterable, "load batch", match=ctx.retried_io_errors
         ):
-            table = pa.Table.from_batches([batch])
+            table = pa.Table.from_batches([batch], schema=schema)
             if include_paths:
                 table = table.append_column("path", [[fragment.path]] * len(table))
             if partitions:
