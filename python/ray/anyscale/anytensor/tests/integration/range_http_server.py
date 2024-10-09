@@ -360,4 +360,4 @@ if __name__ == "__main__":
         _error_chance = args.error_chance
         _error_from_range = args.error_from_range
 
-    SimpleHTTPServer.test(HandlerClass=RangeRequestHandlerWithArgs, port=args.port)
+    SimpleHTTPServer.test(HandlerClass=RangeRequestHandlerWithArgs, port=args.port)  # type: ignore

@@ -146,6 +146,8 @@ MYPY_FILES=(
     'ray/autoscaler/_private/commands.py'
     'ray/autoscaler/_private/autoscaler.py'
     'ray/_private/gcs_utils.py'
+    'ray/anyscale/anytensor/'
+    'ray/anyscale/safetensors/'
 )
 
 

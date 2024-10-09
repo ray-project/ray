@@ -206,7 +206,11 @@ def get_current_torch_device() -> "torch.device":
 
 
 def preprocess_safetensor_tensor_key(tensor_key: str) -> str:
-    return tensor_key.removeprefix("transformer.")
+    prefix = "transformer."
+    if tensor_key.startswith(prefix):
+        return tensor_key[len(prefix) :]
+    else:
+        return tensor_key
 
 
 def get_safetensor_metadata_len(b: bytes) -> int:

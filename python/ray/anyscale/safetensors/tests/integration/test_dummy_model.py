@@ -46,9 +46,9 @@ def _get_local_http_server_with_dummy_model(
         file_name = "dummy_model.safetensors"
         file_path = os.path.join(tmpdir, file_name)
         save_file(state_dict, file_path)
+
         with open(file_path, "rb") as f:
-            metadata_len = f.read(8)
-        metadata_len = get_safetensor_metadata_len(metadata_len)
+            metadata_len = get_safetensor_metadata_len(f.read(8))
         process = subprocess.Popen(
             [
                 sys.executable,
@@ -123,7 +123,7 @@ def _load_and_assert_equal(
     *,
     populate_existing_state_dict: bool = False,
     device: str = "cpu",
-) -> Dict:
+):
     if populate_existing_state_dict:
         assert False, "Not supported yet."
     else:
