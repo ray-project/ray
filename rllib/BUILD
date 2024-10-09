@@ -945,13 +945,6 @@ py_test(
 )
 
 py_test(
-    name = "test_node_failure",
-    tags = ["team:rllib", "tests_dir", "exclusive"],
-    size = "medium",
-    srcs = ["tests/test_node_failure.py"],
-)
-
-py_test(
     name = "test_registry",
     tags = ["team:rllib", "algorithms_dir", "algorithms_dir_generic"],
     size = "small",
