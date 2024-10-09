@@ -952,11 +952,19 @@ py_test(
 )
 
 py_test(
-    name = "test_worker_failures",
+    name = "test_env_runner_failures",
     tags = ["team:rllib", "algorithms_dir", "algorithms_dir_generic", "exclusive"],
     size = "large",
-    srcs = ["algorithms/tests/test_worker_failures.py"]
+    srcs = ["algorithms/tests/test_env_runner_failures.py"]
 )
+
+py_test(
+    name = "test_node_failures",
+    tags = ["team:rllib", "tests_dir", "exclusive"],
+    size = "medium",
+    srcs = ["algorothms/tests/test_node_failure.py"],
+)
+
 
 # Specific Algorithms
 

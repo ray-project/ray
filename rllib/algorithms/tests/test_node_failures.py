@@ -48,8 +48,9 @@ class TestNodeFailures(unittest.TestCase):
         ray.shutdown()
         self.cluster.shutdown()
 
-    def test_continue_training_on_env_runner_node_failures(self):
-        # We tolerate failing workers and pause training.
+    def test_node_failure_ignore(self):
+        # We ignore EnvRunners once failed nodes have come back and continue training
+        # with fewer EnvRunners..
         config = (
             PPOConfig()
             .api_stack(
@@ -63,15 +64,67 @@ class TestNodeFailures(unittest.TestCase):
             )
             .fault_tolerance(
                 ignore_env_runner_failures=True,
-                recreate_failed_env_runners=True,
+                recreate_failed_env_runners=False,
             )
         )
+
+        self._train(config=config, iters=10, min_reward=100.0, preempt_freq=4)
+
+    def test_node_failure_recreate_env_runners(self):
+        # We ignore EnvRunners failures and continue training with the remaining ones.
+        config = (
+            PPOConfig()
+            .api_stack(
+                enable_rl_module_and_learner=True,
+                enable_env_runner_and_connector_v2=True,
+            )
+            .environment("CartPole-v1")
+            .env_runners(
+                num_env_runners=6,
+                validate_env_runners_after_construction=True,
+            )
+            .fault_tolerance(
+                recreate_failed_env_runners=True,
+                ignore_env_runner_failures=False,  # True also ok here we recreate.
+            )
+        )
+
+        self._train(config=config, iters=30, min_reward=450.0, preempt_freq=5)
+
+    def test_node_failure_expect_crash(self):
+        # We do not ignore EnvRunner failures and should crash.
+        config = (
+            PPOConfig()
+            .api_stack(
+                enable_rl_module_and_learner=True,
+                enable_env_runner_and_connector_v2=True,
+            )
+            .environment("CartPole-v1")
+            .env_runners(
+                num_env_runners=6,
+                validate_env_runners_after_construction=True,
+            )
+            .fault_tolerance(
+                ignore_env_runner_failures=False,
+                recreate_failed_env_runners=False,
+            )
+        )
+
+        self.assertRaisesRegex(
+            ray.exceptions.RayError,
+            "The actor died unexpectedly before",
+            lambda: (
+                self._train(config=config, iters=10, min_reward=1000.0, preempt_freq=2)
+            ),
+        )
+
+    def _train(self, *, config, iters, min_reward, preempt_freq):
         algo = config.build()
 
         best_return = 0.0
-        for i in range(40):
+        for i in range(iters):
             results = algo.train()
-            print(f"ITER={i} results={results}")
+            print(f"ITER={i} of {iters} results={results}")
 
             best_return = max(
                 best_return, results[ENV_RUNNER_RESULTS][EPISODE_RETURN_MEAN]
@@ -85,25 +138,28 @@ class TestNodeFailures(unittest.TestCase):
                 config.total_train_batch_size + config.get_rollout_fragment_length(),
             )
 
-            self.assertEqual(algo.env_runner_group.num_remote_workers(), 6)
+            self.assertEqual(algo.env_runner_group.num_remote_env_runners(), 6)
             healthy_env_runners = algo.env_runner_group.num_healthy_remote_workers()
-            # After node has been removed, we expect 2 workers to be gone.
-            if (i - 1) % 5 == 0:
+            # After node has been removed, we expect 2 EnvRunners to be gone.
+            if (i - 1) % preempt_freq == 0:
                 self.assertEqual(healthy_env_runners, 4)
-            # Otherwise, all workers should be there (but might still be in the process
-            # of coming up).
+            # After the 0th iteration, in which we already kill one node,
+            # the number of workers should only be 4 if we don't recreate.
+            elif i > 0 and not config.recreate_failed_env_runners:
+                self.assertEqual(healthy_env_runners, 4)
+            # Otherwise, all EnvRunners should be there (but might still be in the
+            # process of coming up).
             else:
                 self.assertIn(healthy_env_runners, [4, 5, 6])
 
-            # print(f"healthy workers = {algo.env_runner_group.healthy_worker_ids()}")
             # Shut down one node every n iterations.
-            if i % 5 == 0:
+            if i % preempt_freq == 0:
                 to_kill = get_other_nodes(self.cluster, exclude_head=True)[0]
                 print(f"Killing node {to_kill} ...")
                 self.cluster.remove_node(to_kill)
 
             # Bring back a previously failed node.
-            elif (i - 1) % 5 == 0:
+            elif (i - 1) % preempt_freq == 0:
                 print("Bringing back node ...")
                 self.cluster.add_node(
                     redis_port=None,
@@ -115,7 +171,7 @@ class TestNodeFailures(unittest.TestCase):
                     dashboard_host="0.0.0.0",
                 )
 
-        self.assertGreaterEqual(best_return, 450.0)
+        self.assertGreaterEqual(best_return, min_reward)
 
 
 if __name__ == "__main__":

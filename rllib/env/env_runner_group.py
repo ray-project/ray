@@ -134,7 +134,11 @@ class EnvRunnerGroup:
             "num_cpus": self._remote_config.num_cpus_per_env_runner,
             "num_gpus": self._remote_config.num_gpus_per_env_runner,
             "resources": self._remote_config.custom_resources_per_env_runner,
-            "max_restarts": config.max_num_env_runner_restarts,
+            "max_restarts": (
+                config.max_num_env_runner_restarts
+                if config.recreate_failed_env_runners
+                else 0
+            ),
         }
         self._tune_trial_id = tune_trial_id
 

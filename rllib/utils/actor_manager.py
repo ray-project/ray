@@ -167,11 +167,11 @@ class FaultAwareApply:
     ) -> T:
         """Calls the given function with this Actor instance.
 
-        A generic interface for applying arbitray member functions on a
+        A generic interface for applying arbitrary member functions on a
         remote actor.
 
         Args:
-            func: The function to call, with this RolloutWorker as first
+            func: The function to call, with this actor as first
                 argument, followed by args, and kwargs.
             args: Optional additional args to pass to the function call.
             kwargs: Optional additional kwargs to pass to the function call.
@@ -528,7 +528,7 @@ class FaultTolerantActorManager:
                 # Actor came back from an unhealthy state. Mark this actor as healthy
                 # and add it to our healthy set.
                 if mark_healthy and not self.is_actor_healthy(actor_id):
-                    logger.error(
+                    logger.warning(
                         f"Bringing previously unhealthy, now-healthy actor {actor_id} "
                         "back into service."
                     )
