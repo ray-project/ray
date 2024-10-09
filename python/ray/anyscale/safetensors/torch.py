@@ -10,6 +10,9 @@ def load_file(
     *,
     device: str = "cpu",
     region: Optional[str] = None,
+    # TODO(edoakes): we should support the load_model API instead of these params.
+    _existing_state_dict: Optional[Dict[str, torch.Tensor]] = None,
+    _strict: bool = True,
 ) -> Dict[str, torch.Tensor]:
     """Load a safetensors file from the given URI and return a state_dict.
 
@@ -24,10 +27,12 @@ def load_file(
     Returns:
         A PyTorch state_dict.
     """
-    http_downloader, url = get_http_downloader_for_uri(file_uri, region=region)
+    http_downloader, url = get_http_downloader_for_uri(
+        file_uri, region=region, strict=_strict
+    )
     state_dict, _ = http_downloader.restore_state_dict_from_http(
         url,
-        None,
+        _existing_state_dict,
         device=device,
     )
     return state_dict

@@ -4,8 +4,7 @@ from unittest.mock import patch
 
 import pytest
 
-from ray.anyscale.anytensor._private.uri import URIInfo, parse_uri_info
-from ray.anyscale.anytensor.client import AnytensorClient
+from ray.anyscale.safetensors._private.uri import URIInfo, parse_uri_info
 
 
 class FakeAWSCredentials:
@@ -25,7 +24,7 @@ class FakeGCPCredentials:
 @pytest.fixture
 def mock_aws_credentials():
     with patch(
-        "ray.anyscale.anytensor._private.uri._get_aws_credentials",
+        "ray.anyscale.safetensors._private.uri._get_aws_credentials",
         new=lambda: FakeAWSCredentials,
     ):
         yield
@@ -34,7 +33,7 @@ def mock_aws_credentials():
 @pytest.fixture
 def mock_gcp_credentials():
     with patch(
-        "ray.anyscale.anytensor._private.uri._get_gcp_credentials",
+        "ray.anyscale.safetensors._private.uri._get_gcp_credentials",
         new=lambda: FakeGCPCredentials,
     ):
         yield
@@ -222,33 +221,6 @@ def test_get_cache_prefix_for_path(
         uri, region="us-west-2" if uri.startswith("s3://") else None
     )
     assert uri_info.cache_prefix == cache_prefix
-
-
-@pytest.mark.parametrize(
-    "local_cache_dir,env_cache_dir,expected_cache_dir",
-    [
-        ("cache_dir", None, "cache_dir"),
-        (None, "env_cache_dir", "env_cache_dir"),
-        (None, None, None),
-        ("cache_dir", "env_cache_dir", "cache_dir"),
-    ],
-)
-def test_get_local_cache_dir(
-    mock_aws_credentials,
-    mock_gcp_credentials,
-    local_cache_dir,
-    env_cache_dir,
-    expected_cache_dir,
-):
-    with patch.dict(
-        os.environ,
-        {"ANYTENSOR_CACHE_DIR": env_cache_dir} if env_cache_dir else {},
-        clear=True,
-    ):
-        client = AnytensorClient(
-            local_cache_dir=local_cache_dir,
-        )
-        assert client._local_cache_dir == expected_cache_dir
 
 
 if __name__ == "__main__":

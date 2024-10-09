@@ -1,14 +1,14 @@
 import time
 from typing import Dict, Tuple
 
-from ray.anyscale.anytensor._private.base_sink import BaseProcessingUnitSink
-from ray.anyscale.anytensor._private.env import (
+from ray.anyscale.safetensors._private.base_sink import BaseProcessingUnitSink
+from ray.anyscale.safetensors._private.env import (
     CPU_SINK_NUM_THREADS,
     PROCESS_SHUTDOWN_TIMEOUT_S,
 )
-from ray.anyscale.anytensor._private.lazy_torch import torch
-from ray.anyscale.anytensor._private.shm_download import ReadRangeOutput
-from ray.anyscale.anytensor._private.util import (
+from ray.anyscale.safetensors._private.lazy_torch import torch
+from ray.anyscale.safetensors._private.shm_download import ReadRangeOutput
+from ray.anyscale.safetensors._private.util import (
     TensorRanges,
     preprocess_safetensor_tensor_key,
 )

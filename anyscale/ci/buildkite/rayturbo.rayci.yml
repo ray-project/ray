@@ -7,14 +7,6 @@ steps:
   - name: rayturbobuild
     wanda: anyscale/ci/docker/rayturbo.build.wanda.yaml
 
-  - label: "anytensor tests"
-    instance_type: medium
-    commands:
-      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/anyscale/anytensor/... serve
-        --build-name rayturbobuild
-    depends_on: rayturbobuild
-    job_env: forge
-
   - label: "safetensors client tests"
     instance_type: medium
     commands:

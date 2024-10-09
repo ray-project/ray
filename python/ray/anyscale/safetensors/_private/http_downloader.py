@@ -19,16 +19,16 @@ from typing import IO, Any, Dict, Iterable, List, Optional, Sequence, Set, Tuple
 import certifi
 import pycurl
 
-from ray.anyscale.anytensor._private import shm_download
-from ray.anyscale.anytensor._private.base_sink import BaseSink
-from ray.anyscale.anytensor._private.base_source import BaseSource, SharedMemorySource
-from ray.anyscale.anytensor._private.cpu_sink import CPUSink
-from ray.anyscale.anytensor._private.disk_writer import (
+from ray.anyscale.safetensors._private import shm_download
+from ray.anyscale.safetensors._private.base_sink import BaseSink
+from ray.anyscale.safetensors._private.base_source import BaseSource, SharedMemorySource
+from ray.anyscale.safetensors._private.cpu_sink import CPUSink
+from ray.anyscale.safetensors._private.disk_writer import (
     DiskWriter,
     DummyDiskWriter,
     url_or_path_to_base_name,
 )
-from ray.anyscale.anytensor._private.env import (
+from ray.anyscale.safetensors._private.env import (
     CURL_BUFFERSIZE_BYTES,
     DEFAULT_BYTES_PER_SHARD,
     DEFAULT_SINGLE_STREAM_BANDWIDTH_MB_S,
@@ -37,15 +37,15 @@ from ray.anyscale.anytensor._private.env import (
     MAX_RETRIES,
     PROCESS_SHUTDOWN_TIMEOUT_S,
 )
-from ray.anyscale.anytensor._private.gpu_sink import GPUSink
-from ray.anyscale.anytensor._private.lazy_torch import torch
-from ray.anyscale.anytensor._private.logging_utils import logger
-from ray.anyscale.anytensor._private.shm_download import (
+from ray.anyscale.safetensors._private.gpu_sink import GPUSink
+from ray.anyscale.safetensors._private.lazy_torch import torch
+from ray.anyscale.safetensors._private.logging_utils import logger
+from ray.anyscale.safetensors._private.shm_download import (
     ReadRangeInput,
     ReadRangeInputs,
     ReadRangeOutput,
 )
-from ray.anyscale.anytensor._private.util import (
+from ray.anyscale.safetensors._private.util import (
     FileSource,
     SafetensorsMetadata,
     TensorMetadata,

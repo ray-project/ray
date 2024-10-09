@@ -77,7 +77,6 @@ repos:
             python/ray/autoscaler/_private/commands.py|
             python/ray/autoscaler/_private/autoscaler.py|
             python/ray/_private/gcs_utils.py
-            python/ray/anyscale/anytensor/.*\.py|
             python/ray/anyscale/safetensors/.*\.py
           )
         additional_dependencies:

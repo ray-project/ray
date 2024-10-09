@@ -11,7 +11,7 @@ import torch
 torch.dtype
 
 # After:
-from ray.anyscale.anytensor._private.lazy_torch import torch
+from ray.anyscale.safetensors._private.lazy_torch import torch
 torch.dtype
 """
 from typing import TYPE_CHECKING, Any

@@ -3,8 +3,8 @@ from typing import Optional, Tuple
 
 import pycurl
 
-from ray.anyscale.anytensor._private.http_downloader import HTTPSafetensorDownloader
-from ray.anyscale.anytensor._private.uri import parse_uri_info
+from ray.anyscale.safetensors._private.http_downloader import HTTPSafetensorDownloader
+from ray.anyscale.safetensors._private.uri import parse_uri_info
 
 _LOCAL_CACHE_DIR: Optional[str] = os.environ.get(
     "ANYSCALE_SAFETENSORS_LOCAL_CACHE_DIR", None
@@ -26,7 +26,7 @@ def get_local_cache_dir() -> Optional[str]:
 
 
 def get_http_downloader_for_uri(
-    uri: str, *, region: Optional[str]
+    uri: str, *, region: Optional[str], strict: bool = True
 ) -> Tuple[HTTPSafetensorDownloader, str]:
     uri_info = parse_uri_info(uri, region=region)
 
@@ -38,7 +38,7 @@ def get_http_downloader_for_uri(
 
     return (
         HTTPSafetensorDownloader(
-            strict=True,
+            strict=strict,
             cache_directory=local_cache_dir,
             pycurl_settings={
                 pycurl.HTTPHEADER: [

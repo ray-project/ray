@@ -4,10 +4,10 @@ import threading
 from abc import ABC, abstractmethod
 from typing import Callable, Dict, Optional, Tuple
 
-from ray.anyscale.anytensor._private.lazy_torch import torch
-from ray.anyscale.anytensor._private.logging_utils import logger
-from ray.anyscale.anytensor._private.shm_download import ReadRangeOutput
-from ray.anyscale.anytensor._private.util import TensorRanges
+from ray.anyscale.safetensors._private.lazy_torch import torch
+from ray.anyscale.safetensors._private.logging_utils import logger
+from ray.anyscale.safetensors._private.shm_download import ReadRangeOutput
+from ray.anyscale.safetensors._private.util import TensorRanges
 
 
 class BaseSink(ABC):

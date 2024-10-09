@@ -10,8 +10,8 @@ from enum import Enum
 from functools import cached_property, wraps
 from typing import Any, Dict, List, Optional, Tuple, Type
 
-from ray.anyscale.anytensor._private.lazy_torch import torch
-from ray.anyscale.anytensor._private.logging_utils import logger
+from ray.anyscale.safetensors._private.lazy_torch import torch
+from ray.anyscale.safetensors._private.logging_utils import logger
 
 
 def cum_mean(curr_mean: float, new_val: float, n: int) -> float:

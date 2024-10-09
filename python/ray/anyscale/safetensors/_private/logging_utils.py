@@ -2,7 +2,7 @@
 
 Example:
 
-    from ray.anyscale.anytensor._private.logging_utils import logger
+    from ray.anyscale.safetensors._private.logging_utils import logger
 
     logger.info("A highly important message!")
 
@@ -11,7 +11,7 @@ The log level can be set via the ANYTENSOR_LOG_LEVEL env var.
 
 import logging
 
-from ray.anyscale.anytensor._private.env import LOG_LEVEL
+from ray.anyscale.safetensors._private.env import LOG_LEVEL
 
 logger = logging.getLogger("anytensor")
 logger.setLevel(LOG_LEVEL)

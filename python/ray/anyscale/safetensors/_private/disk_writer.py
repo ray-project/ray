@@ -8,11 +8,11 @@ from queue import Queue
 from typing import IO, Dict, List, Tuple, Union
 from uuid import uuid4
 
-from ray.anyscale.anytensor._private.base_sink import BaseSink
-from ray.anyscale.anytensor._private.env import PROCESS_SHUTDOWN_TIMEOUT_S
-from ray.anyscale.anytensor._private.logging_utils import logger
-from ray.anyscale.anytensor._private.shm_download import ReadRangeOutput
-from ray.anyscale.anytensor._private.util import SafetensorsMetadata
+from ray.anyscale.safetensors._private.base_sink import BaseSink
+from ray.anyscale.safetensors._private.env import PROCESS_SHUTDOWN_TIMEOUT_S
+from ray.anyscale.safetensors._private.logging_utils import logger
+from ray.anyscale.safetensors._private.shm_download import ReadRangeOutput
+from ray.anyscale.safetensors._private.util import SafetensorsMetadata
 
 TMP_SUFFIX = ".tmp"
 

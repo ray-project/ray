@@ -13,13 +13,12 @@ import requests
 import torch
 from safetensors.torch import save_file
 
-from ray.anyscale.anytensor import AnytensorClient
-from ray.anyscale.anytensor._private.http_downloader import (  # noqa: E402
+from ray.anyscale.safetensors import set_local_cache_dir
+from ray.anyscale.safetensors._private.http_downloader import (  # noqa: E402
     _flush_pending_operations,
     get_safetensor_metadata_len,
 )
-from ray.anyscale.anytensor._private.uri import parse_uri_info
-from ray.anyscale.safetensors import set_local_cache_dir
+from ray.anyscale.safetensors._private.uri import parse_uri_info
 from ray.anyscale.safetensors.exceptions import NotFoundError
 from ray.anyscale.safetensors.torch import load_file
 
@@ -121,11 +120,13 @@ def _load_and_assert_equal(
     url: str,
     source_state_dict: Dict,
     *,
-    populate_existing_state_dict: bool = False,
     device: str = "cpu",
+    populate_existing_state_dict: bool = False,
+    strict: bool = True,
 ):
     if populate_existing_state_dict:
-        assert False, "Not supported yet."
+        state_dict = _gen_matching_empty_state_dict(source_state_dict, device=device)
+        load_file(url, _existing_state_dict=state_dict, _strict=strict)
     else:
         state_dict = load_file(url, device=device)
 
@@ -147,9 +148,6 @@ def test_basic_load(
     tmpdir,
     device,
 ):
-    if populate_existing_state_dict:
-        pytest.skip("populate_existing_state_dict not supported yet.")
-
     local_cache_dir = tmpdir + "/cache" if enable_local_cache else None
     set_local_cache_dir(local_cache_dir)
 
@@ -179,9 +177,6 @@ def test_error_raised_after_retries(
     local_http_server_with_dummy_model,
     populate_existing_state_dict,
 ):
-    if populate_existing_state_dict:
-        pytest.skip("populate_existing_state_dict not supported yet.")
-
     (
         url,
         source_file_path,
@@ -210,9 +205,6 @@ def test_restore_from_local_cache(
     cleanup,
     tmpdir,
 ):
-    if populate_existing_state_dict:
-        pytest.skip("populate_existing_state_dict not supported yet.")
-
     local_cache_dir = tmpdir + "/cache"
     set_local_cache_dir(local_cache_dir)
 
@@ -245,7 +237,6 @@ def test_restore_from_local_cache(
     )
 
 
-@pytest.mark.skip("populate_existing_state_dict not supported yet.")
 @pytest.mark.parametrize("error_chance", [0.0])
 @pytest.mark.parametrize("error_in_metadata", [False])
 @pytest.mark.parametrize("device", [DEVICE])
@@ -261,14 +252,12 @@ def test_strict_mode(
     cleanup,
     tmpdir,
 ):
-    pytest.skip("populate_existing_state_dict not supported yet.")
-
     if load_from_cache:
         local_cache_dir = tmpdir + "/cache"
     else:
         local_cache_dir = None
+    set_local_cache_dir(local_cache_dir)
 
-    client = AnytensorClient(local_cache_dir=local_cache_dir, _strict=strict)
     (
         url,
         source_file_path,
@@ -281,7 +270,7 @@ def test_strict_mode(
 
     if load_from_cache:
         # Load normally to populate local cache dir.
-        client.populate_state_dict(url, state_dict=state_dict)
+        load_file(url, _existing_state_dict=state_dict)
 
         # Terminate HTTP server to ensure reads are from the local cache.
         http_server_process.terminate()
@@ -297,15 +286,11 @@ def test_strict_mode(
             ValueError,
             match="Mismatch between remote and local state dict tensor names",
         ):
-            client.populate_state_dict(
-                url,
-                state_dict=state_dict_with_extra_key,
+            load_file(
+                url, _existing_state_dict=state_dict_with_extra_key, _strict=strict
             )
     else:
-        client.populate_state_dict(
-            url,
-            state_dict=state_dict_with_extra_key,
-        )
+        load_file(url, _existing_state_dict=state_dict_with_extra_key, _strict=strict)
 
     # Test missing key.
     state_dict_with_missing_key = state_dict.copy()
@@ -316,15 +301,11 @@ def test_strict_mode(
             ValueError,
             match="Mismatch between remote and local state dict tensor names",
         ):
-            client.populate_state_dict(
-                url,
-                state_dict=state_dict_with_missing_key,
+            load_file(
+                url, _existing_state_dict=state_dict_with_missing_key, _strict=strict
             )
     else:
-        client.populate_state_dict(
-            url,
-            state_dict=state_dict_with_missing_key,
-        )
+        load_file(url, _existing_state_dict=state_dict_with_missing_key, _strict=strict)
 
 
 @pytest.mark.parametrize("error_chance", [0.0])

@@ -11,7 +11,7 @@ from functools import partial, wraps
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple, Type
 from unittest.mock import patch
 
-from ray.anyscale.anytensor._private.logging_utils import logger
+from ray.anyscale.safetensors._private.logging_utils import logger
 
 if TYPE_CHECKING:
     import pycurl

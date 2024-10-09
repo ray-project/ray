@@ -2,7 +2,7 @@ import sys
 
 import pytest
 
-from ray.anyscale.anytensor._private.util import (
+from ray.anyscale.safetensors._private.util import (
     bytes_to_gigabytes,
     get_current_torch_device,
 )
