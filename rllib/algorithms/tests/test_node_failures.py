@@ -50,7 +50,7 @@ class TestNodeFailures(unittest.TestCase):
 
     def test_node_failure_ignore(self):
         # We ignore EnvRunners once failed nodes have come back and continue training
-        # with fewer EnvRunners..
+        # with fewer EnvRunners.
         config = (
             PPOConfig()
             .api_stack(
@@ -68,10 +68,10 @@ class TestNodeFailures(unittest.TestCase):
             )
         )
 
-        self._train(config=config, iters=10, min_reward=100.0, preempt_freq=4)
+        self._train(config=config, iters=10, min_reward=150.0, preempt_freq=4)
 
     def test_node_failure_recreate_env_runners(self):
-        # We ignore EnvRunners failures and continue training with the remaining ones.
+        # We recreate failed EnvRunners and continue training.
         config = (
             PPOConfig()
             .api_stack(
@@ -92,7 +92,7 @@ class TestNodeFailures(unittest.TestCase):
         self._train(config=config, iters=30, min_reward=450.0, preempt_freq=5)
 
     def test_node_failure_expect_crash(self):
-        # We do not ignore EnvRunner failures and should crash.
+        # We do not ignore EnvRunner failures and expect to crash upon failure.
         config = (
             PPOConfig()
             .api_stack(
@@ -140,13 +140,21 @@ class TestNodeFailures(unittest.TestCase):
 
             self.assertEqual(algo.env_runner_group.num_remote_env_runners(), 6)
             healthy_env_runners = algo.env_runner_group.num_healthy_remote_workers()
-            # After node has been removed, we expect 2 EnvRunners to be gone.
+            # After node has been removed and we recreate failed EnvRunners, we'd expect
+            # 2 EnvRunners to be gone.
+            # If we ignore EnvRunner failures, and both nodes have been shut down at
+            # least once, we might even only see 2 EnvRunners left (the ones on the head
+            # node, which are always safe from preemption).
             if (i - 1) % preempt_freq == 0:
-                self.assertEqual(healthy_env_runners, 4)
-            # After the 0th iteration, in which we already kill one node,
-            # the number of workers should only be 4 if we don't recreate.
+                if config.recreate_failed_env_runners:
+                    self.assertEqual(healthy_env_runners, 4)
+                elif config.ignore_env_runner_failures:
+                    self.assertIn(healthy_env_runners, [2, 4])
+            # After the 0th iteration, in which we already killed one node, if
+            # we don't recreate, the number of EnvRunners should be 2 (only head
+            # EnvRunners left) or 4 (one node down).
             elif i > 0 and not config.recreate_failed_env_runners:
-                self.assertEqual(healthy_env_runners, 4)
+                self.assertIn(healthy_env_runners, [2, 4])
             # Otherwise, all EnvRunners should be there (but might still be in the
             # process of coming up).
             else:

@@ -282,13 +282,14 @@ class TestWorkerFailures(unittest.TestCase):
             }
 
         algo = config.build()
-        self.assertRaises(Exception, lambda: algo.train())
+        self.assertRaises(ray.exceptions.RayError, lambda: algo.train())
         algo.stop()
 
     def _do_test_failing_ignore(self, config: AlgorithmConfig, fail_eval: bool = False):
         # Test fault handling
         config.num_env_runners = 2
         config.ignore_env_runner_failures = True
+        config.validate_env_runners_after_construction = False
         config.recreate_failed_env_runners = False
         config.env = "fault_env"
         # Make worker idx=1 fail. Other workers will be ok.

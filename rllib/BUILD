@@ -1344,13 +1344,6 @@ py_test(
 # Tag: evaluation
 # --------------------------------------------------------------------
 py_test(
-    name = "evaluation/tests/test_agent_collector",
-    tags = ["team:rllib", "evaluation"],
-    size = "small",
-    srcs = ["evaluation/tests/test_agent_collector.py"]
-)
-
-py_test(
     name = "evaluation/tests/test_envs_that_crash",
     tags = ["team:rllib", "evaluation"],
     size = "large",
@@ -1364,6 +1357,15 @@ py_test(
     srcs = ["env/tests/test_env_runner_group.py"]
 )
 
+# @OldAPIStack
+py_test(
+    name = "evaluation/tests/test_agent_collector",
+    tags = ["team:rllib", "evaluation"],
+    size = "small",
+    srcs = ["evaluation/tests/test_agent_collector.py"]
+)
+
+# @OldAPIStack
 py_test(
     name = "evaluation/tests/test_env_runner_v2",
     tags = ["team:rllib", "evaluation"],
@@ -1371,6 +1373,7 @@ py_test(
     srcs = ["evaluation/tests/test_env_runner_v2.py"]
 )
 
+# @OldAPIStack
 py_test(
     name = "evaluation/tests/test_episode",
     tags = ["team:rllib", "evaluation"],
@@ -1378,6 +1381,7 @@ py_test(
     srcs = ["evaluation/tests/test_episode.py"]
 )
 
+# @OldAPIStack
 py_test(
     name = "evaluation/tests/test_episode_v2",
     tags = ["team:rllib", "evaluation"],
@@ -1385,6 +1389,7 @@ py_test(
     srcs = ["evaluation/tests/test_episode_v2.py"]
 )
 
+# @OldAPIStack
 py_test(
     name = "evaluation/tests/test_postprocessing",
     tags = ["team:rllib", "evaluation"],
@@ -1392,6 +1397,7 @@ py_test(
     srcs = ["evaluation/tests/test_postprocessing.py"]
 )
 
+# @OldAPIStack
 py_test(
     name = "evaluation/tests/test_rollout_worker",
     tags = ["team:rllib", "evaluation", "exclusive"],

@@ -797,7 +797,11 @@ class EnvRunnerGroup:
                 # Simiply raise the error, which will get handled by the try-except
                 # clause around the _setup().
                 if not result.ok:
-                    raise result.get()
+                    e = result.get()
+                    if self._ignore_ray_errors_on_env_runners:
+                        logger.error(f"Validation of EnvRunner failed! Error={str(e)}")
+                    else:
+                        raise e
 
     @DeveloperAPI
     def reset(self, new_remote_workers: List[ActorHandle]) -> None:
