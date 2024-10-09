@@ -233,8 +233,8 @@ void RaySyncer::Connect(const std::string &node_id,
                 execute_after(
                     io_context_,
                     [this, node_id, channel]() {
-                      RAY_LOG(INFO) << "Connection is broken. Reconnect to node: "
-                                    << NodeID::FromBinary(node_id);
+                      RAY_LOG(INFO).WithField(NodeID::FromBinary(node_id))
+                          << "Connection is broken. Reconnect to node.";
                       Connect(node_id, channel);
                     },
                     /* delay_microseconds = */ std::chrono::milliseconds(2000));
@@ -370,10 +370,11 @@ ServerBidiReactor *RaySyncerService::StartSync(grpc::CallbackServerContext *cont
           // 4. OnDone method of the old reactor is called which calls this cleanup_cb_
           return;
         }
+        RAY_LOG(INFO).WithField(NodeID::FromBinary(node_id)) << "Connection is broken.";
         syncer_.sync_reactors_.erase(node_id);
         syncer_.node_state_->RemoveNode(node_id);
       });
-  RAY_LOG(INFO).WithField(kLogKeyNodeID, NodeID::FromBinary(reactor->GetRemoteNodeID()))
+  RAY_LOG(INFO).WithField(NodeID::FromBinary(reactor->GetRemoteNodeID()))
       << "Get connection";
   // Disconnect exiting connection if there is any.
   // This can happen when there is transient network error
