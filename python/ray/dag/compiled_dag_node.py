@@ -1892,9 +1892,9 @@ class CompiledDAG:
         Visualize the compiled DAG using Graphviz.
 
         Args:
-            filename (str): The name of the output file (without extension).
-            format (str): The format of the output file (e.g., 'png', 'pdf').
-            view (bool): Whether to open the file with the default viewer.
+            filename: The name of the output file (without extension).
+            format: The format of the output file (e.g., 'png', 'pdf').
+            view: Whether to open the file with the default viewer.
         """
         import graphviz
         from ray.dag import (
