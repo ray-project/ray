@@ -1030,18 +1030,18 @@ void WorkerPool::PushWorker(const std::shared_ptr<WorkerInterface> &worker) {
     state.idle.insert(worker);
     auto now = get_time_();
     if (worker->GetAssignedTaskTime() == absl::Time()) {
-      // If the worker is fresh started, then we should consider it first when
+      // If the worker never held any tasks, then we should consider it first when
       // choosing which idle workers to kill because it is not warmed up and is slower
       // than those workers who served tasks before.
       // See https://github.com/ray-project/ray/pull/36766
-      idle_of_all_languages_.push_front(std::make_pair(worker, now));
+      idle_of_all_languages_.emplace_front(worker, now);
     } else {
       idle_of_all_languages_.emplace_back(worker, now);
     }
-    // We either have an idle worker or a slot to start a new worker.
-    if (worker->GetWorkerType() == rpc::WorkerType::WORKER) {
-      TryPendingStartRequests(worker->GetLanguage());
-    }
+  }
+  // We either have an idle worker or a slot to start a new worker.
+  if (worker->GetWorkerType() == rpc::WorkerType::WORKER) {
+    TryPendingStartRequests(worker->GetLanguage());
   }
 }
 
@@ -1307,7 +1307,7 @@ void WorkerPool::PopWorker(const TaskSpecification &task_spec,
           // Not used
           return false;
         }
-        return callback(worker, status, /*runtime_env_setup_error_message*/ "");
+        return callback(worker, status, runtime_env_setup_error_message);
       });
 
   absl::flat_hash_map<WorkerUnfitForTaskReason, size_t> skip_reason_count;
@@ -1356,7 +1356,7 @@ void WorkerPool::PopWorker(const TaskSpecification &task_spec,
     RAY_LOG(DEBUG) << "Re-using worker " << worker->WorkerId() << " for task "
                    << task_spec.DebugString();
     stats::NumWorkersStartedFromCache.Record(1);
-    PopWorkerCallbackAsync(callback, worker, PopWorkerStatus::OK);
+    PopWorkerCallbackAsync(pop_worker_request->callback, worker, PopWorkerStatus::OK);
   }
 }
 
