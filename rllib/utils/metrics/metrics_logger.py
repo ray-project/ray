@@ -321,7 +321,7 @@ class MetricsLogger:
             logger.log_value("some_more_items", -7.0)
             # Peeking at these returns the full list of items (no reduction set up).
             check(logger.peek("some_more_items"), [-5.0, -6.0, -7.0])
-            # Reducing everything.
+            # Reducing everything (and return plain values, not `Stats` objects).
             results = logger.reduce(return_stats_obj=False)
             check(results, {
                 "loss": 0.05,
@@ -336,7 +336,7 @@ class MetricsLogger:
             # However, the `reduce()` call did empty the `some_more_items` list
             # (b/c we set `clear_on_reduce=True`).
             check(logger.peek("some_more_items"), [])
-            # ... but not the "some_items" list (b/c `reduce_on_reset=False`).
+            # ... but not the "some_items" list (b/c `clear_on_reduce=False`).
             check(logger.peek("some_items"), [])
 
         Args:
