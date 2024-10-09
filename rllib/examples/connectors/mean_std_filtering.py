@@ -155,7 +155,7 @@ if __name__ == "__main__":
                 fcnet_activation="relu",
                 fcnet_kernel_initializer=torch.nn.init.xavier_uniform_,
                 fcnet_bias_initializer=torch.nn.init.constant_,
-                fcnet_bias_initializer_config={"val": 0.0},
+                fcnet_bias_initializer_kwargs={"val": 0.0},
             ),
         )
         # In case you would like to run with a evaluation EnvRunners, make sure your

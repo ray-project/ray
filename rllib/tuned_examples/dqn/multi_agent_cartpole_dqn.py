@@ -31,7 +31,7 @@ config = (
     )
     .environment(env="multi_agent_cartpole", env_config={"num_agents": args.num_agents})
     .training(
-        lr=0.0005 * (args.num_gpus or 1) ** 0.5,
+        lr=0.00065 * (args.num_gpus or 1) ** 0.5,
         train_batch_size_per_learner=48,
         replay_buffer_config={
             "type": "MultiAgentPrioritizedEpisodeReplayBuffer",
@@ -44,15 +44,15 @@ config = (
         num_atoms=1,
         noisy=False,
         dueling=True,
+        epsilon=[(0, 1.0), (20000, 0.02)],
     )
     .rl_module(
         model_config=DefaultModelConfig(
             fcnet_hiddens=[256, 256],
             fcnet_activation="tanh",
-            epsilon=[(0, 1.0), (20000, 0.02)],
             fcnet_bias_initializer="zeros_",
-            post_fcnet_bias_initializer="zeros_",
-            post_fcnet_hiddens=[256],
+            head_fcnet_bias_initializer="zeros_",
+            head_fcnet_hiddens=[256],
         ),
     )
 )

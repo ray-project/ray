@@ -97,6 +97,7 @@ if __name__ == "__main__":
                 model_config={
                     "lstm_cell_size": 256,
                     "dense_layers": [256, 256],
+                    "max_seq_len": 20,
                 },
             ),
         )

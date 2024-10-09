@@ -42,6 +42,7 @@ if __name__ == "__main__":
                 model_config={
                     "policy_id": DEFAULT_POLICY_ID,
                     "old_api_stack_algo_config": config_old_stack,
+                    "max_seq_len": 20,
                 },
             ),
         )

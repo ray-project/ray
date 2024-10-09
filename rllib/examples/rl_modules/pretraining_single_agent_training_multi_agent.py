@@ -122,7 +122,7 @@ if __name__ == "__main__":
         # Note, we load here the module directly from the checkpoint.
         load_state_path=module_chkpt_path,
     )
-    multi_rl_module_spec = MultiRLModuleSpec(module_specs=module_specs)
+    multi_rl_module_spec = MultiRLModuleSpec(rl_module_specs=module_specs)
 
     # Register our environment with tune if we use multiple agents.
     register_env(
