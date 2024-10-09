@@ -21,17 +21,6 @@ from ray.rllib.utils.torch_utils import convert_to_torch_tensor
 torch, nn = try_import_torch()
 
 
-def get_expected_module_config(env, model_config_dict, observation_space):
-    config = RLModuleConfig(
-        observation_space=observation_space,
-        action_space=env.action_space,
-        model_config_dict=model_config_dict,
-        catalog_class=PPOCatalog,
-    )
-
-    return config
-
-
 def dummy_torch_ppo_loss(module, batch, fwd_out):
     adv = batch[Columns.REWARDS] - module.compute_values(batch)
     action_dist_class = module.get_train_action_dist_cls()
@@ -46,12 +35,12 @@ def dummy_torch_ppo_loss(module, batch, fwd_out):
 
 
 def _get_ppo_module(env, lstm, observation_space):
-    model_config_dict = {"use_lstm": lstm}
-    config = get_expected_module_config(
-        env, model_config_dict=model_config_dict, observation_space=observation_space
+    return PPOTorchRLModule(
+        observation_space=observation_space,
+        action_space=env.action_space,
+        model_config=DefaultModelConfig(use_lstm=lstm),
+        catalog_class=PPOCatalog,
     )
-    module = PPOTorchRLModule(config)
-    return module
 
 
 def _get_input_batch_from_obs(obs, lstm):
