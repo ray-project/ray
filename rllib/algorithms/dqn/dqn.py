@@ -539,8 +539,7 @@ class DQNConfig(AlgorithmConfig):
             return RLModuleSpec(
                 module_class=DQNRainbowTorchRLModule,
                 catalog_class=DQNRainbowCatalog,
-                model_config_dict=self.model_config,
-                # model_config_dict=self.model,
+                model_config=self.model_config,
             )
         else:
             raise ValueError(
