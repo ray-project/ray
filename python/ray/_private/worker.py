@@ -555,7 +555,7 @@ class Worker:
         return ray._private.state.get_worker_debugger_port(worker_id)
 
     @property
-    def get_job_logging_config(self):
+    def job_logging_config(self):
         """Get the job's logging config for this worker"""
         if not hasattr(self, "core_worker"):
             return None
@@ -1936,7 +1936,6 @@ def print_to_stdstream(data, ignore_prefix: bool):
             batches = [data]
         sink = sys.stdout
 
-    # Ignore the prefix if the logging config is set.
     for batch in batches:
         print_worker_logs(batch, sink, ignore_prefix)
 
@@ -2173,9 +2172,6 @@ def listen_error_messages(worker, threads_stopped):
             error_message = _internal_kv_get(ray_constants.DEBUG_AUTOSCALING_ERROR)
             if error_message is not None:
                 logger.warning(error_message.decode())
-        # If the job's logging config is set, don't add the prefix
-        # (task/actor's name and its PID) to the logs.
-        ignore_prefix = global_worker.get_job_logging_config is not None
         while True:
             # Exit if received a signal that the thread should stop.
             if threads_stopped.is_set():
@@ -2197,7 +2193,7 @@ def listen_error_messages(worker, threads_stopped):
                     "pid": "raylet",
                     "is_err": False,
                 },
-                ignore_prefix,
+                ignore_prefix=False,
             )
     except (OSError, ConnectionError) as e:
         logger.error(f"listen_error_messages: {e}")
@@ -2477,14 +2473,12 @@ def connect(
         worker.listener_thread.start()
         # If the job's logging config is set, don't add the prefix
         # (task/actor's name and its PID) to the logs.
-        ignore_prefix = global_worker.get_job_logging_config is not None
-        print_to_stdstream_with_ignore = functools.partial(
-            print_to_stdstream, ignore_prefix=ignore_prefix
-        )
+        ignore_prefix = global_worker.job_logging_config is not None
 
         if log_to_driver:
             global_worker_stdstream_dispatcher.add_handler(
-                "ray_print_logs", print_to_stdstream_with_ignore
+                "ray_print_logs",
+                functools.partial(print_to_stdstream, ignore_prefix=ignore_prefix),
             )
             worker.logger_thread = threading.Thread(
                 target=worker.print_logs, name="ray_print_logs"
@@ -2527,7 +2521,7 @@ def disconnect(exiting_interpreter=False):
         worker.threads_stopped.clear()
 
         # Ignore the prefix if the logging config is set.
-        ignore_prefix = worker.get_job_logging_config is not None
+        ignore_prefix = worker.job_logging_config is not None
         for leftover in stdout_deduplicator.flush():
             print_worker_logs(leftover, sys.stdout, ignore_prefix)
         for leftover in stderr_deduplicator.flush():
