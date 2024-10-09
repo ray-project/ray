@@ -6,7 +6,6 @@ import abc
 from typing import List
 
 from ray.rllib.core.models.configs import RecurrentEncoderConfig
-from ray.rllib.core.models.specs.specs_dict import SpecDict
 from ray.rllib.core.rl_module.apis import InferenceOnlyAPI, ValueFunctionAPI
 from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.utils.annotations import (
@@ -48,30 +47,6 @@ class PPORLModule(RLModule, InferenceOnlyAPI, ValueFunctionAPI, abc.ABC):
             return self.encoder.get_initial_state()
         else:
             return {}
-
-    @override(RLModule)
-    def input_specs_inference(self) -> SpecDict:
-        return [Columns.OBS]
-
-    @override(RLModule)
-    def output_specs_inference(self) -> SpecDict:
-        return [Columns.ACTION_DIST_INPUTS]
-
-    @override(RLModule)
-    def input_specs_exploration(self):
-        return self.input_specs_inference()
-
-    @override(RLModule)
-    def output_specs_exploration(self) -> SpecDict:
-        return self.output_specs_inference()
-
-    @override(RLModule)
-    def input_specs_train(self) -> SpecDict:
-        return self.input_specs_exploration()
-
-    @override(RLModule)
-    def output_specs_train(self) -> SpecDict:
-        return [Columns.ACTION_DIST_INPUTS]
 
     @OverrideToImplementCustomLogic_CallToSuperRecommended
     @override(InferenceOnlyAPI)

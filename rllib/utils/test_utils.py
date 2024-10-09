@@ -32,7 +32,7 @@ from ray import air, tune
 from ray.air.constants import TRAINING_ITERATION
 from ray.air.integrations.wandb import WandbLoggerCallback, WANDB_ENV_VAR
 from ray.rllib.common import SupportedFileType
-from ray.rllib.core import DEFAULT_MODULE_ID
+from ray.rllib.core import DEFAULT_MODULE_ID, Columns
 from ray.rllib.env.wrappers.atari_wrappers import is_atari, wrap_deepmind
 from ray.rllib.train import load_experiments_from_file
 from ray.rllib.utils.annotations import OldAPIStack
