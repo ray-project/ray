@@ -14,7 +14,6 @@ from ray.rllib.algorithms.dreamerv3.tf.models.critic_network import CriticNetwor
 from ray.rllib.algorithms.dreamerv3.tf.models.dreamer_model import DreamerModel
 from ray.rllib.algorithms.dreamerv3.tf.models.world_model import WorldModel
 from ray.rllib.core.columns import Columns
-from ray.rllib.core.models.specs.specs_dict import SpecDict
 from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.policy.eager_tf_policy import _convert_to_tf
 from ray.rllib.utils.annotations import override
@@ -122,43 +121,6 @@ class DreamerV3RLModule(RLModule, abc.ABC):
     def get_initial_state(self) -> Dict:
         # Use `DreamerModel`'s `get_initial_state` method.
         return self.dreamer_model.get_initial_state()
-
-    @override(RLModule)
-    def input_specs_inference(self) -> SpecDict:
-        return [Columns.OBS, Columns.STATE_IN, "is_first"]
-
-    @override(RLModule)
-    def output_specs_inference(self) -> SpecDict:
-        return [Columns.ACTIONS, Columns.STATE_OUT]
-
-    @override(RLModule)
-    def input_specs_exploration(self):
-        return self.input_specs_inference()
-
-    @override(RLModule)
-    def output_specs_exploration(self) -> SpecDict:
-        return self.output_specs_inference()
-
-    @override(RLModule)
-    def input_specs_train(self) -> SpecDict:
-        return [Columns.OBS, Columns.ACTIONS, "is_first"]
-
-    @override(RLModule)
-    def output_specs_train(self) -> SpecDict:
-        return [
-            "sampled_obs_symlog_BxT",
-            "obs_distribution_means_BxT",
-            "reward_logits_BxT",
-            "rewards_BxT",
-            "continue_distribution_BxT",
-            "continues_BxT",
-            # Sampled, discrete posterior z-states (t1 to T).
-            "z_posterior_states_BxT",
-            "z_posterior_probs_BxT",
-            "z_prior_probs_BxT",
-            # Deterministic, continuous h-states (t1 to T).
-            "h_states_BxT",
-        ]
 
     @override(RLModule)
     def _forward_inference(self, batch: Dict[str, Any]) -> Dict[str, Any]:
