@@ -42,10 +42,10 @@ config = (
         grad_clip=20.0,
     )
     .rl_module(
-        model_config_dict={
-            "use_lstm": True,
-            "max_seq_len": 20,
-        },
+        model_config=DefaultModelConfig(
+            use_lstm=True,
+            max_seq_len=20,
+        ),
     )
     .multi_agent(
         policy_mapping_fn=(lambda agent_id, episode, **kwargs: f"p{agent_id}"),

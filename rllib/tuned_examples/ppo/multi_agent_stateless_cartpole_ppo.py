@@ -42,10 +42,10 @@ config = (
         vf_loss_coeff=0.05,
     )
     .rl_module(
-        model_config_dict={
-            "use_lstm": True,
-            "max_seq_len": 20,
-        },
+        model_config=DefaultModelConfig(
+            use_lstm=True,
+            max_seq_len=20,
+        ),
     )
     .multi_agent(
         policy_mapping_fn=lambda aid, *arg, **kw: f"p{aid}",

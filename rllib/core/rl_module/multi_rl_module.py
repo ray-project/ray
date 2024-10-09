@@ -1,5 +1,5 @@
 import copy
-import dataclasses
+from dataclasses import dataclass, field
 import logging
 import pprint
 from typing import (
@@ -17,6 +17,8 @@ from typing import (
     Union,
     ValuesView,
 )
+
+import gymnasium as gym
 
 from ray.rllib.core import COMPONENT_MULTI_RL_MODULE_SPEC
 from ray.rllib.core.models.specs.typing import SpecType
@@ -137,7 +139,6 @@ class MultiRLModule(RLModule):
     def setup(self):
         """Sets up the underlying, individual RLModules."""
         self._rl_modules = {}
-        self._check_module_configs(self.config.modules)
         # Make sure all individual RLModules have the same framework OR framework=None.
         framework = None
         for module_id, rl_module_spec in self.rl_module_specs.items():
@@ -287,19 +288,6 @@ class MultiRLModule(RLModule):
         # has `inference_only=False`.
         if not module.inference_only:
             self.inference_only = False
-
-        # Check framework of incoming RLModule against `self.framework`.
-        if module.framework is not None:
-            if self.framework is None:
-                self.framework = module.framework
-            elif module.framework != self.framework:
-                raise ValueError(
-                    f"Framework ({module.framework}) of incoming RLModule does NOT "
-                    f"match framework ({self.framework}) of MultiRLModule! If the "
-                    f"added module should not be trained, try setting its framework "
-                    f"to None."
-                )
-
         self._rl_modules[module_id] = module
         # Update our RLModuleSpecs dict, such that - if written to disk -
         # it'll allow for proper restoring this instance through `.from_checkpoint()`.
@@ -460,12 +448,12 @@ class MultiRLModule(RLModule):
             )
             # Go through all of our current modules and check, whether they are listed
             # in the given MultiRLModuleSpec. If not, erase them from `self`.
-            for module_id, module in self._rl_modules.items():
-                if module_id not in multi_rl_module_spec.module_specs:
+            for module_id, module in self._rl_modules.copy().items():
+                if module_id not in multi_rl_module_spec.rl_module_specs:
                     self.remove_module(module_id, raise_err_if_not_found=True)
             # Go through all the modules in the given MultiRLModuleSpec and if
             # they are not present in `self`, add them.
-            for module_id, module_spec in multi_rl_module_spec.module_specs.items():
+            for module_id, module_spec in multi_rl_module_spec.rl_module_specs.items():
                 if module_id not in self:
                     self.add_module(module_id, module_spec.build(), override=False)
 
@@ -540,6 +528,20 @@ class MultiRLModule(RLModule):
         """
         for module_id, module_spec in module_configs.items():
             if not isinstance(module_spec, RLModuleSpec):
+                raise ValueError(f"Module {module_id} is not a RLModuleSpec object.")
+
+    @classmethod
+    def _check_module_specs(cls, rl_module_specs: Dict[ModuleID, RLModuleSpec]):
+        """Checks the individual RLModuleSpecs for validity.
+
+        Args:
+            rl_module_specs: Dict mapping ModuleIDs to the respective RLModuleSpec.
+
+        Raises:
+            ValueError: If any RLModuleSpec is invalid.
+        """
+        for module_id, rl_module_spec in rl_module_specs.items():
+            if not isinstance(rl_module_spec, RLModuleSpec):
                 raise ValueError(f"Module {module_id} is not a RLModuleSpec object.")
 
     def _check_module_exists(self, module_id: ModuleID) -> None:
@@ -664,11 +666,7 @@ class MultiRLModuleSpec:
                 observation_space=self.observation_space,
                 action_space=self.action_space,
                 inference_only=self.inference_only,
-                model_config=(
-                    dataclasses.asdict(self.model_config)
-                    if dataclasses.is_dataclass(self.model_config)
-                    else self.model_config
-                ),
+                model_config=self.model_config,
                 rl_module_specs=self.rl_module_specs,
             )
         # Older custom model might still require the old `MultiRLModuleConfig` under
@@ -861,7 +859,7 @@ class MultiRLModuleSpec:
     "module2: [RLModuleSpec], ..}, inference_only=..)",
     error=False,
 )
-@dataclasses.dataclass
+@dataclass
 class MultiRLModuleConfig:
     inference_only: bool = False
     modules: Dict[ModuleID, RLModuleSpec] = dataclasses.field(default_factory=dict)

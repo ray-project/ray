@@ -20,13 +20,12 @@ class BCTorchRLModule(TorchRLModule):
         """Generic BC forward pass (for all phases of training/evaluation)."""
         output = {}
 
-        # State encodings.
+        # Encoder forward pass.
         encoder_outs = self.encoder(batch)
         if Columns.STATE_OUT in encoder_outs:
             output[Columns.STATE_OUT] = encoder_outs[Columns.STATE_OUT]
 
         # Actions.
-        action_logits = self.pi(encoder_outs[ENCODER_OUT])
-        output[Columns.ACTION_DIST_INPUTS] = action_logits
+        output[Columns.ACTION_DIST_INPUTS] = self.pi(encoder_outs[ENCODER_OUT])
 
         return output

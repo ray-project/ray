@@ -154,6 +154,7 @@ class Learner(Checkpointable):
                 PPOTorchRLModule
             )
             from ray.rllib.core import COMPONENT_RL_MODULE, DEFAULT_MODULE_ID
+            from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
             from ray.rllib.core.rl_module.rl_module import RLModuleSpec
 
             env = gym.make("CartPole-v1")
