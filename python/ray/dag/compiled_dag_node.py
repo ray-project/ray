@@ -58,15 +58,15 @@ logger = logging.getLogger(__name__)
 # this process. It tracks them as weakref meaning when the compiled dag
 # is GC'ed, it is automatically removed from here. It is used to teardown
 # compiled dags at interpret shutdown time.
-_compiled_dag_queue = weakref.WeakValueDictionary()
+_compiled_dags = weakref.WeakValueDictionary()
 
 
 # Relying on __del__ doesn't work well upon shutdown because
 # the destructor order is not guaranteed. We call this function
 # upon `ray.worker.shutdown` which is registered to atexit handler
 # so that teardown is properly called before objects are destructed.
-def _shutdown_compiled_dag_node():
-    for _, compiled_dag in _compiled_dag_queue.items():
+def _shutdown_all_compiled_dags():
+    for _, compiled_dag in _compiled_dags.items():
         compiled_dag.teardown()
 
 
@@ -1552,8 +1552,6 @@ class CompiledDAG:
         return False
 
     def _monitor_failures(self):
-        import weakref
-
         outer = weakref.proxy(self)
 
         class Monitor(threading.Thread):
@@ -1563,7 +1561,7 @@ class CompiledDAG:
                 # Lock to make sure that we only perform teardown for this DAG
                 # once.
                 self.in_teardown_lock = threading.Lock()
-                self.name = "MonitorThread"
+                self.name = "CompiledGraphMonitorThread"
                 self._teardown_done = False
 
             def wait_teardown(self):
@@ -1927,7 +1925,6 @@ class CompiledDAG:
     def __del__(self):
         monitor = getattr(self, "_monitor", None)
         if monitor is not None:
-            # Teardown asynchronously.
             monitor.teardown(wait=True)
 
 
@@ -1957,6 +1954,6 @@ def build_compiled_dag_from_ray_dag(
     root = dag._find_root()
     root.traverse_and_apply(_build_compiled_dag)
     compiled_dag._get_or_compile()
-    global _compiled_dag_queue
-    _compiled_dag_queue[compiled_dag.get_id()] = compiled_dag
+    global _compiled_dags
+    _compiled_dags[compiled_dag.get_id()] = compiled_dag
     return compiled_dag

@@ -1858,9 +1858,9 @@ def shutdown(_exiting_interpreter: bool = False):
             wait a little while to print any extra error messages.
     """
     # Make sure to clean up compiled dag node if exists.
-    from ray.dag.compiled_dag_node import _shutdown_compiled_dag_node
+    from ray.dag.compiled_dag_node import _shutdown_all_compiled_dags
 
-    _shutdown_compiled_dag_node()
+    _shutdown_all_compiled_dags()
 
     if _exiting_interpreter and global_worker.mode == SCRIPT_MODE:
         # This is a duration to sleep before shutting down everything in order

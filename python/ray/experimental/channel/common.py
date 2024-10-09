@@ -364,11 +364,10 @@ class AwaitableBackgroundReader(ReaderInterface):
                     results.append(c.read(timeout=1))
                     break
                 except ray.exceptions.RayChannelTimeoutError:
-                    # Interpreter exits. We should stop reading
-                    # so that the thread can join.
                     if sys.is_finalizing():
+                        # Interpreter exits. We should ignore the error and
+                        # stop reading so that the thread can join.
                         break
-                    pass
 
             if sys.is_finalizing():
                 break
