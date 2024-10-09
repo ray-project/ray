@@ -95,9 +95,7 @@ class InfiniteLookbackBuffer:
         buffer = InfiniteLookbackBuffer()
         buffer.lookback = state["lookback"]
         buffer.finalized = state["finalized"]
-        buffer.space = (
-            gym_space_from_dict(state["space"]) if state["space"] else None
-        )
+        buffer.space = gym_space_from_dict(state["space"]) if state["space"] else None
         buffer.space_struct = (
             get_base_struct_from_space(buffer.space) if buffer.space else None
         )
