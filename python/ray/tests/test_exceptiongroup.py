@@ -1,7 +1,16 @@
+import os
+import sys
+from textwrap import dedent
+
 import pytest
 
 import ray
 from ray.exceptions import RayTaskError
+
+pytestmark = pytest.mark.skipif(
+    sys.version_info < (3, 11),
+    reason="ExceptionGroup is only available in Python 3.11+",
+)
 
 
 def test_baseexceptiongroup_task(ray_start_regular):
@@ -76,18 +85,22 @@ def test_except_star_exception(ray_start_regular):
         def f(self):
             raise ValueError
 
+    # TODO: Don't use exec() when we only support Python 3.11+
+    # Here the exec() is used to avoid SyntaxError for except* for Python < 3.11
+    python_code = dedent(
+        """\
     try:
         ray.get(task.remote())
-    except* RayTaskError as ex:  # noqa: E999
-        assert isinstance(ex, ExceptionGroup)  # noqa: F821
+    except* RayTaskError as ex:
+        assert isinstance(ex, ExceptionGroup)
         assert len(ex.exceptions) == 1
         assert isinstance(ex.exceptions[0], RayTaskError)
         assert isinstance(ex.exceptions[0], ValueError)
 
     try:
         ray.get(task.remote())
-    except* ValueError as ex:  # noqa: E999
-        assert isinstance(ex, ExceptionGroup)  # noqa: F821
+    except* ValueError as ex:
+        assert isinstance(ex, ExceptionGroup)
         assert len(ex.exceptions) == 1
         assert isinstance(ex.exceptions[0], RayTaskError)
         assert isinstance(ex.exceptions[0], ValueError)
@@ -95,8 +108,8 @@ def test_except_star_exception(ray_start_regular):
     try:
         a = Actor.remote()
         ray.get(a.f.remote())
-    except* RayTaskError as ex:  # noqa: E999
-        assert isinstance(ex, ExceptionGroup)  # noqa: F821
+    except* RayTaskError as ex:
+        assert isinstance(ex, ExceptionGroup)
         assert len(ex.exceptions) == 1
         assert isinstance(ex.exceptions[0], RayTaskError)
         assert isinstance(ex.exceptions[0], ValueError)
@@ -104,11 +117,14 @@ def test_except_star_exception(ray_start_regular):
     try:
         a = Actor.remote()
         ray.get(a.f.remote())
-    except* ValueError as ex:  # noqa: E999
-        assert isinstance(ex, ExceptionGroup)  # noqa: F821
+    except* ValueError as ex:
+        assert isinstance(ex, ExceptionGroup)
         assert len(ex.exceptions) == 1
         assert isinstance(ex.exceptions[0], RayTaskError)
         assert isinstance(ex.exceptions[0], ValueError)
+    """
+    )
+    exec(python_code)
 
 
 def test_except_star_exceptiongroup(ray_start_regular):
@@ -125,30 +141,34 @@ def test_except_star_exceptiongroup(ray_start_regular):
         def f(self):
             raise exceptiongroup
 
+    # TODO: Don't use exec() when we only support Python 3.11+
+    # Here the exec() is used to avoid SyntaxError for except* for Python < 3.11
+    python_code = dedent(
+        """\
     try:
         ray.get(task.remote())
-    except* RayTaskError as ex:  # noqa: E999
-        assert isinstance(ex, ExceptionGroup)  # noqa: F821
+    except* RayTaskError as ex:
+        assert isinstance(ex, ExceptionGroup)
         assert len(ex.exceptions) == 2
         assert isinstance(ex.exceptions[0], ValueError)
         assert isinstance(ex.exceptions[1], TypeError)
 
     try:
         ray.get(task.remote())
-    except* ValueError as ex:  # noqa: E999
-        assert isinstance(ex, ExceptionGroup)  # noqa: F821
+    except* ValueError as ex:
+        assert isinstance(ex, ExceptionGroup)
         assert len(ex.exceptions) == 1
         assert isinstance(ex.exceptions[0], ValueError)
-    except* TypeError as ex:  # noqa: E999
-        assert isinstance(ex, ExceptionGroup)  # noqa: F821
+    except* TypeError as ex:
+        assert isinstance(ex, ExceptionGroup)
         assert len(ex.exceptions) == 1
         assert isinstance(ex.exceptions[0], TypeError)
 
     try:
         a = Actor.remote()
         ray.get(a.f.remote())
-    except* RayTaskError as ex:  # noqa: E999
-        assert isinstance(ex, ExceptionGroup)  # noqa: F821
+    except* RayTaskError as ex:
+        assert isinstance(ex, ExceptionGroup)
         assert len(ex.exceptions) == 2
         assert isinstance(ex.exceptions[0], ValueError)
         assert isinstance(ex.exceptions[1], TypeError)
@@ -156,11 +176,21 @@ def test_except_star_exceptiongroup(ray_start_regular):
     try:
         a = Actor.remote()
         ray.get(a.f.remote())
-    except* ValueError as ex:  # noqa: E999
-        assert isinstance(ex, ExceptionGroup)  # noqa: F821
+    except* ValueError as ex:
+        assert isinstance(ex, ExceptionGroup)
         assert len(ex.exceptions) == 1
         assert isinstance(ex.exceptions[0], ValueError)
-    except* TypeError as ex:  # noqa: E999
-        assert isinstance(ex, ExceptionGroup)  # noqa: F821
+    except* TypeError as ex:
+        assert isinstance(ex, ExceptionGroup)
         assert len(ex.exceptions) == 1
         assert isinstance(ex.exceptions[0], TypeError)
+    """
+    )
+    exec(python_code)
+
+
+if __name__ == "__main__":
+    if os.environ.get("PARALLEL_CI"):
+        sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
+    else:
+        sys.exit(pytest.main(["-sv", __file__]))
