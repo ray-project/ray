@@ -367,7 +367,7 @@ async def test_user_code_runs_on_separate_loop():
             ), "User constructor and health check should run on the same loop."
             return check_health_loop
 
-        def __call__(self) -> asyncio.AbstractEventLoop:
+        async def __call__(self) -> asyncio.AbstractEventLoop:
             user_method_loop = asyncio.get_running_loop()
             assert (
                 user_method_loop == self._constructor_loop

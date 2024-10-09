@@ -1,4 +1,5 @@
 import asyncio
+import functools
 import inspect
 import logging
 import os
@@ -7,11 +8,11 @@ import threading
 import time
 import traceback
 from contextlib import contextmanager
-from functools import wraps
 from importlib import import_module
 from typing import Any, AsyncGenerator, Callable, Dict, Optional, Tuple, Union
 
 import starlette.responses
+from starlette.concurrency import run_in_threadpool
 
 import ray
 from ray import cloudpickle
@@ -35,6 +36,7 @@ from ray.serve._private.constants import (
     HEALTH_CHECK_METHOD,
     RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE,
     RAY_SERVE_REPLICA_AUTOSCALING_METRIC_RECORD_PERIOD_S,
+    RAY_SERVE_RUN_SYNC_IN_THREADPOOL,
     RECONFIGURE_METHOD,
     SERVE_CONTROLLER_NAME,
     SERVE_LOGGER_NAME,
@@ -771,6 +773,7 @@ class UserCallableWrapper:
         init_kwargs: Dict,
         *,
         deployment_id: DeploymentID,
+        run_sync_methods_in_threadpool: bool = RAY_SERVE_RUN_SYNC_IN_THREADPOOL,
     ):
         if not (inspect.isfunction(deployment_def) or inspect.isclass(deployment_def)):
             raise TypeError(
@@ -784,6 +787,7 @@ class UserCallableWrapper:
         self._is_function = inspect.isfunction(deployment_def)
         self._deployment_id = deployment_id
         self._destructor_called = False
+        self._run_sync_methods_in_threadpool = run_sync_methods_in_threadpool
 
         # Will be populated in `initialize_callable`.
         self._callable = None
@@ -813,7 +817,7 @@ class UserCallableWrapper:
             f
         ), "_run_on_user_code_event_loop can only be used on coroutine functions."
 
-        @wraps(f)
+        @functools.wraps(f)
         def wrapper(*args, **kwargs) -> asyncio.Future:
             return asyncio.wrap_future(
                 asyncio.run_coroutine_threadsafe(
@@ -864,15 +868,41 @@ class UserCallableWrapper:
         else:
             await Response(result).send(scope, receive, send)
 
-    async def _call_func_or_gen(self, callable: Callable, *args, **kwargs) -> Any:
+    async def _call_func_or_gen(
+        self,
+        callable: Callable,
+        *,
+        args: Optional[Tuple] = None,
+        kwargs: Optional[Dict] = None,
+        run_sync_in_threadpool: bool = False,
+    ) -> Any:
         """Call the callable with the provided arguments.
 
         This is a convenience wrapper that will work for `def`, `async def`,
         generator, and async generator functions.
         """
-        result = callable(*args, **kwargs)
-        if inspect.iscoroutine(result):
-            result = await result
+        if (
+            run_sync_in_threadpool
+            and self._run_sync_methods_in_threadpool
+            and (inspect.isfunction(callable) or inspect.ismethod(callable))
+            and not inspect.isgeneratorfunction(callable)
+            and not inspect.iscoroutinefunction(callable)
+            and not inspect.isasyncgenfunction(callable)
+        ):
+            curr_context = ray.serve.context._serve_request_context.get()
+
+            def set_context_and_run():
+                ray.serve.context._serve_request_context.set(curr_context)
+                return callable(*args, **kwargs)
+
+            result = await run_in_threadpool(set_context_and_run)
+        else:
+            result = callable(
+                *(args if args is not None else tuple()),
+                **(kwargs if kwargs is not None else dict()),
+            )
+            if inspect.iscoroutine(result):
+                result = await result
 
         return result
 
@@ -906,8 +936,8 @@ class UserCallableWrapper:
             self._callable = self._deployment_def.__new__(self._deployment_def)
             await self._call_func_or_gen(
                 self._callable.__init__,
-                *self._init_args,
-                **self._init_kwargs,
+                args=self._init_args,
+                kwargs=self._init_kwargs,
             )
 
             if isinstance(self._callable, ASGIAppReplicaWrapper):
@@ -961,7 +991,7 @@ class UserCallableWrapper:
                 )
             await self._call_func_or_gen(
                 getattr(self._callable, RECONFIGURE_METHOD),
-                user_config,
+                args=(user_config,),
             )
 
     def _prepare_args_for_http_request(
@@ -1149,7 +1179,10 @@ class UserCallableWrapper:
 
             result = await self._handle_user_method_result(
                 await self._call_func_or_gen(
-                    user_method, *request_args, **request_kwargs
+                    user_method,
+                    args=request_args,
+                    kwargs=request_kwargs,
+                    run_sync_in_threadpool=True,
                 ),
                 user_method_name,
                 request_metadata,
