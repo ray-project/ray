@@ -930,8 +930,9 @@ def test_torch_tensor_npu_communication(ray_start_regular):
     # Define the DAG with NPU actors
     with InputNode() as inp:
         dag = sender.send.bind(shape, dtype, inp)
+        # Can use with hccl after PR 47845 merged
         dag = dag.with_type_hint(
-            TorchTensorType(shape, dtype, transport="nccl", _direct_return=True)
+            TorchTensorType(shape, dtype, transport="hccl", _direct_return=True)
         )
         dag = receiver.recv.bind(dag)
 
