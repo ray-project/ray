@@ -343,15 +343,16 @@ def test_add_column(ray_start_regular_shared):
         ds = ray.data.range(5).add_column("id", 0)
 
 
-def test_rename_columns(ray_start_regular_shared):
+@pytest.mark.parametrize("names", (["foo", "bar"], {"spam": "foo", "ham": "bar"}))
+def test_rename_columns(ray_start_regular_shared, names):
     ds = ray.data.from_items([{"spam": 0, "ham": 0}])
 
-    renamed_ds = ds.rename_columns({"spam": "foo", "ham": "bar"})
+    renamed_ds = ds.rename_columns(names)
 
     assert renamed_ds.schema().names == ["foo", "bar"]
 
 
-def test_drop_columns(ray_start_regular_shared, tmp_path):
+def test_drop_columns(ray_start_regular_shared, tmp_wpath):
     df = pd.DataFrame({"col1": [1, 2, 3], "col2": [2, 3, 4], "col3": [3, 4, 5]})
     ds1 = ray.data.from_pandas(df)
     ds1.write_parquet(str(tmp_path))
