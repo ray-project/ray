@@ -30,7 +30,7 @@ from ray.experimental.channel import (
     AwaitableBackgroundWriter,
     RayDAGArgs,
 )
-from ray.util.annotations import DeveloperAPI, PrivateAPI
+from ray.util.annotations import DeveloperAPI
 
 from ray.experimental.channel.shared_memory_channel import (
     SharedMemoryType,
@@ -65,7 +65,6 @@ _compiled_dag_queue = weakref.WeakValueDictionary()
 # the destructor order is not guaranteed. We call this function
 # upon `ray.worker.shutdown` which is registered to atexit handler
 # so that teardown is properly called before objects are destructed.
-@PrivateAPI
 def _shutdown_compiled_dag_node():
     for _, compiled_dag in _compiled_dag_queue.items():
         compiled_dag.teardown()
