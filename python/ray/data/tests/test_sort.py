@@ -51,7 +51,7 @@ def test_sort_with_specified_boundaries(ray_start_regular, descending, boundarie
         assert np.all(block["id"] == expected_block)
 
 
-def test_sort_multiple_keys_produces_equally_sized_blocks(ray_start_regular_shared):
+def test_sort_multiple_keys_produces_equally_sized_blocks(ray_start_regular):
     # Test for https://github.com/ray-project/ray/issues/45303.
     ds = ray.data.from_items(
         [{"a": i, "b": j} for i in range(2) for j in range(5)], override_num_blocks=5

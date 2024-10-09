@@ -186,16 +186,18 @@ class SortTaskSpec(ExchangeTaskSpec):
         builder = DelegatingBlockBuilder()
         for sample in samples:
             builder.add_block(sample)
-        samples = builder.build()
-        samples = BlockAccessor.for_block(samples).to_numpy(columns=columns)
-        samples = sorted(zip(*samples.values()))
+        samples_table = builder.build()
+        samples_dict = BlockAccessor.for_block(samples_table).to_numpy(columns=columns)
+        # This zip does the transposition from list of column values to list of tuples.
+        samples_list = sorted(zip(*samples_dict.values()))
 
         # Each boundary corresponds to a quantile of the data.
         quantile_indices = [
-            int(q * (len(samples) - 1)) for q in np.linspace(0, 1, num_reducers + 1)
+            int(q * (len(samples_list) - 1))
+            for q in np.linspace(0, 1, num_reducers + 1)
         ]
         # Exclude the first and last quantiles because they're 0 and 1.
-        return [samples[i] for i in quantile_indices[1:-1]]
+        return [samples_list[i] for i in quantile_indices[1:-1]]
 
 
 def _sample_block(block: Block, n_samples: int, sort_key: SortKey) -> Block:
