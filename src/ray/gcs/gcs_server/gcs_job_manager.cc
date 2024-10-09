@@ -90,25 +90,33 @@ void GcsJobManager::HandleAddJob(rpc::AddJobRequest request,
   RAY_LOG(INFO) << "Adding job, job id = " << job_id
                 << ", driver pid = " << mutable_job_table_data.driver_pid();
 
-  auto on_done = [this, job_id, mutable_job_table_data, reply, send_reply_callback](
-                     const Status &status) {
+  auto on_done = [this,
+                  job_id,
+                  job_table_data_ref = std::cref(mutable_job_table_data),
+                  reply,
+                  send_reply_callback =
+                      std::move(send_reply_callback)](const Status &status) {
+    const auto &job_table_data = job_table_data_ref.get();
     if (!status.ok()) {
       RAY_LOG(ERROR) << "Failed to add job, job id = " << job_id
-                     << ", driver pid = " << mutable_job_table_data.driver_pid();
+                     << ", driver pid = " << job_table_data.driver_pid();
     } else {
-      RAY_CHECK_OK(
-          gcs_publisher_->PublishJob(job_id, mutable_job_table_data, /*done=*/nullptr));
-      if (mutable_job_table_data.config().has_runtime_env_info()) {
-        runtime_env_manager_.AddURIReference(
-            job_id.Hex(), mutable_job_table_data.config().runtime_env_info());
+      RAY_CHECK_OK(gcs_publisher_->PublishJob(job_id, job_table_data, /*done=*/nullptr));
+      if (job_table_data.config().has_runtime_env_info()) {
+        runtime_env_manager_.AddURIReference(job_id.Hex(),
+                                             job_table_data.config().runtime_env_info());
       }
       function_manager_.AddJobReference(job_id);
       RAY_LOG(INFO) << "Finished adding job, job id = " << job_id
-                    << ", driver pid = " << mutable_job_table_data.driver_pid();
+                    << ", driver pid = " << job_table_data.driver_pid();
       cached_job_configs_[job_id] =
-          std::make_shared<rpc::JobConfig>(mutable_job_table_data.config());
+          std::make_shared<rpc::JobConfig>(job_table_data.config());
+
+      // Intentionally not checking return value, since the function could be invoked for
+      // multiple times and requires idempotency (i.e. due to retry).
+      running_job_ids_.insert(job_id);
     }
-    WriteDriverJobExportEvent(mutable_job_table_data);
+    WriteDriverJobExportEvent(job_table_data);
     GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
   };
 
@@ -116,10 +124,6 @@ void GcsJobManager::HandleAddJob(rpc::AddJobRequest request,
       gcs_table_storage_->JobTable().Put(job_id, mutable_job_table_data, on_done);
   if (!status.ok()) {
     on_done(status);
-  } else {
-    // Intentionally not checking return value, since the function could be invoked for
-    // multiple times and requires idempotency (i.e. due to retry).
-    running_job_ids_.insert(job_id);
   }
 }
 
