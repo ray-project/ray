@@ -352,7 +352,7 @@ def test_rename_columns(ray_start_regular_shared, names):
     assert renamed_ds.schema().names == ["foo", "bar"]
 
 
-def test_drop_columns(ray_start_regular_shared, tmp_wpath):
+def test_drop_columns(ray_start_regular_shared, tmp_path):
     df = pd.DataFrame({"col1": [1, 2, 3], "col2": [2, 3, 4], "col3": [3, 4, 5]})
     ds1 = ray.data.from_pandas(df)
     ds1.write_parquet(str(tmp_path))
