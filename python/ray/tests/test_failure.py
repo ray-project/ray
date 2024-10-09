@@ -322,7 +322,7 @@ def test_exception_chain(ray_start_regular):
         assert isinstance(ex, RayTaskError)
 
 
-def test_base_exception_task(ray_start_regular):
+def test_baseexception_task(ray_start_regular):
     @ray.remote
     def task():
         raise BaseException("abc")
@@ -331,7 +331,7 @@ def test_base_exception_task(ray_start_regular):
         ray.get(task.remote())
 
 
-def test_base_exception_actor(ray_start_regular):
+def test_baseexception_actor(ray_start_regular):
     @ray.remote
     class Actor:
         def f(self):
