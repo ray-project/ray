@@ -488,14 +488,6 @@ py_test(
 )
 
 py_test(
-    name = "test_sklearn_predictor",
-    size = "small",
-    srcs = ["tests/test_sklearn_predictor.py"],
-    tags = ["team:ml", "exclusive", "ray_air"],
-    deps = [":train_lib", ":conftest"]
-)
-
-py_test(
     name = "test_storage",
     size = "small",
     srcs = ["tests/test_storage.py"],

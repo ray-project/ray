@@ -10,6 +10,7 @@ from ray.util.annotations import DeveloperAPI
 
 @DeveloperAPI(stability="alpha")
 class MARWILRLModule(RLModule, ValueFunctionAPI, abc.ABC):
+    @override(RLModule)
     def setup(self):
         # Build models from catalog
         self.encoder = self.catalog.build_actor_critic_encoder(framework=self.framework)
@@ -47,7 +48,4 @@ class MARWILRLModule(RLModule, ValueFunctionAPI, abc.ABC):
 
     @override(RLModule)
     def output_specs_train(self) -> SpecDict:
-        return [
-            Columns.VF_PREDS,
-            Columns.ACTION_DIST_INPUTS,
-        ]
+        return [Columns.ACTION_DIST_INPUTS]

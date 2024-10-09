@@ -44,6 +44,7 @@ class Columns:
     # Common extra RLModule output keys.
     STATE_IN = "state_in"
     STATE_OUT = "state_out"
+    EMBEDDINGS = "embeddings"
     ACTION_DIST_INPUTS = "action_dist_inputs"
     ACTION_PROB = "action_prob"
     ACTION_LOGP = "action_logp"
