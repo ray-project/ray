@@ -8,17 +8,11 @@ import gymnasium as gym
 from ray.rllib.core import DEFAULT_MODULE_ID
 from ray.rllib.core.columns import Columns
 from ray.rllib.core.models.specs.typing import SpecType
-from ray.rllib.core.models.specs.checker import (
-    check_input_specs,
-    check_output_specs,
-    convert_to_canonical_format,
-)
 from ray.rllib.models.distributions import Distribution
 from ray.rllib.utils.annotations import (
     ExperimentalAPI,
     override,
     OverrideToImplementCustomLogic,
-    OverrideToImplementCustomLogic_CallToSuperRecommended,
 )
 from ray.rllib.utils.checkpoints import Checkpointable
 from ray.rllib.utils.deprecation import Deprecated
@@ -476,9 +470,7 @@ class RLModule(Checkpointable, abc.ABC):
                 framework=self.framework
             )
 
-        # Make sure, `setup()` is only called once, no matter what. In some cases
-        # of multiple inheritance (and with our __post_init__ functionality in place,
-        # this might get called twice.
+        # Make sure, `setup()` is only called once, no matter what.
         if hasattr(self, "_is_setup") and self._is_setup:
             raise RuntimeError(
                 "`RLModule.setup()` called twice within your RLModule implementation "
@@ -568,8 +560,6 @@ class RLModule(Checkpointable, abc.ABC):
         """
         return {}
 
-    @check_input_specs("_input_specs_inference")
-    @check_output_specs("_output_specs_inference")
     def forward_inference(self, batch: Dict[str, Any], **kwargs) -> Dict[str, Any]:
         """DO NOT OVERRIDE! Forward-pass during evaluation, called from the sampler.
 
@@ -599,8 +589,6 @@ class RLModule(Checkpointable, abc.ABC):
         """
         return self._forward(batch, **kwargs)
 
-    @check_input_specs("_input_specs_exploration")
-    @check_output_specs("_output_specs_exploration")
     def forward_exploration(self, batch: Dict[str, Any], **kwargs) -> Dict[str, Any]:
         """DO NOT OVERRIDE! Forward-pass during exploration, called from the sampler.
 
@@ -630,8 +618,6 @@ class RLModule(Checkpointable, abc.ABC):
         """
         return self._forward(batch, **kwargs)
 
-    @check_input_specs("_input_specs_train")
-    @check_output_specs("_output_specs_train")
     def forward_train(self, batch: Dict[str, Any], **kwargs) -> Dict[str, Any]:
         """DO NOT OVERRIDE! Forward-pass during training called from the learner.
 
@@ -743,48 +729,6 @@ class RLModule(Checkpointable, abc.ABC):
             },  # **kwargs
         )
 
-    @OverrideToImplementCustomLogic_CallToSuperRecommended
-    def output_specs_inference(self) -> SpecType:
-        """Returns the output specs of the `forward_inference()` method.
-
-        Override this method to customize the output specs of the inference call.
-        The default implementation requires the `forward_inference()` method to return
-        a dict that has `action_dist` key and its value is an instance of
-        `Distribution`.
-        """
-        return [Columns.ACTION_DIST_INPUTS]
-
-    @OverrideToImplementCustomLogic_CallToSuperRecommended
-    def output_specs_exploration(self) -> SpecType:
-        """Returns the output specs of the `forward_exploration()` method.
-
-        Override this method to customize the output specs of the exploration call.
-        The default implementation requires the `forward_exploration()` method to return
-        a dict that has `action_dist` key and its value is an instance of
-        `Distribution`.
-        """
-        return [Columns.ACTION_DIST_INPUTS]
-
-    def output_specs_train(self) -> SpecType:
-        """Returns the output specs of the forward_train method."""
-        return {}
-
-    def input_specs_inference(self) -> SpecType:
-        """Returns the input specs of the forward_inference method."""
-        return self._default_input_specs()
-
-    def input_specs_exploration(self) -> SpecType:
-        """Returns the input specs of the forward_exploration method."""
-        return self._default_input_specs()
-
-    def input_specs_train(self) -> SpecType:
-        """Returns the input specs of the forward_train method."""
-        return self._default_input_specs()
-
-    def _default_input_specs(self) -> SpecType:
-        """Returns the default input specs."""
-        return [Columns.OBS]
-
     def as_multi_rl_module(self) -> "MultiRLModule":
         """Returns a multi-agent wrapper around this module."""
         from ray.rllib.core.rl_module.multi_rl_module import MultiRLModule
@@ -846,57 +790,3 @@ class RLModule(Checkpointable, abc.ABC):
     def _default_input_specs(self) -> SpecType:
         """Returns the default input specs."""
         return [Columns.OBS]
-
-
-@Deprecated(
-    old="RLModule(config=[RLModuleConfig object])",
-    new="RLModule(observation_space=.., action_space=.., inference_only=.., "
-    "model_config=.., catalog_class=..)",
-    error=False,
-)
-@dataclass
-class RLModuleConfig:
-    observation_space: gym.Space = None
-    action_space: gym.Space = None
-    inference_only: bool = False
-    learner_only: bool = False
-    model_config_dict: Dict[str, Any] = field(default_factory=dict)
-    catalog_class: Type["Catalog"] = None
-
-    def get_catalog(self) -> Optional["Catalog"]:
-        if self.catalog_class is not None:
-            return self.catalog_class(
-                observation_space=self.observation_space,
-                action_space=self.action_space,
-                model_config_dict=self.model_config_dict,
-            )
-        return None
-
-    def to_dict(self):
-        catalog_class_path = (
-            serialize_type(self.catalog_class) if self.catalog_class else ""
-        )
-        return {
-            "observation_space": gym_space_to_dict(self.observation_space),
-            "action_space": gym_space_to_dict(self.action_space),
-            "inference_only": self.inference_only,
-            "learner_only": self.learner_only,
-            "model_config_dict": self.model_config_dict,
-            "catalog_class_path": catalog_class_path,
-        }
-
-    @classmethod
-    def from_dict(cls, d: Dict[str, Any]):
-        catalog_class = (
-            None
-            if d["catalog_class_path"] == ""
-            else deserialize_type(d["catalog_class_path"])
-        )
-        return cls(
-            observation_space=gym_space_from_dict(d["observation_space"]),
-            action_space=gym_space_from_dict(d["action_space"]),
-            inference_only=d["inference_only"],
-            learner_only=d["learner_only"],
-            model_config_dict=d["model_config_dict"],
-            catalog_class=catalog_class,
-        )
