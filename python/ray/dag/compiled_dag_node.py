@@ -1887,6 +1887,63 @@ class CompiledDAG:
         self._execution_index += 1
         return fut
 
+    def visualize(self, filename='compiled_dag', format='png', view=False):
+        """
+        Visualize the compiled DAG using Graphviz.
+
+        Args:
+            filename (str): The name of the output file (without extension).
+            format (str): The format of the output file (e.g., 'png', 'pdf').
+            view (bool): Whether to open the file with the default viewer.
+        """
+        import graphviz
+        from ray.dag import (
+            InputAttributeNode,
+            InputNode,
+        )
+        dot = graphviz.Digraph(name='CompiledDAG', format=format)
+
+        # Add nodes with task information
+        for idx, task in self.idx_to_task.items():
+            dag_node = task.dag_node
+
+            # Initialize the label
+            label = f'Task {idx}\n'
+
+            # Handle different types of dag_node
+            if isinstance(dag_node, InputNode):
+                label += 'InputNode'
+            elif isinstance(dag_node, InputAttributeNode):
+                label += f'InputAttributeNode[{dag_node.key}]'
+            elif hasattr(dag_node, 'get_method_name'):
+                method_name_attr = getattr(dag_node, 'get_method_name')
+                if callable(method_name_attr):
+                    method_name = method_name_attr()
+                else:
+                    method_name = method_name_attr
+
+                # Get actor ID if applicable
+                actor_handle = dag_node._get_actor_handle()
+                if actor_handle:
+                    actor_id = actor_handle._actor_id.hex()
+                    label += f'Actor: {actor_id[:6]}...\nMethod: {method_name}'
+                else:
+                    label += f'Method: {method_name}'
+            else:
+                label += type(dag_node).__name__
+
+            # Add the node to the graph
+            dot.node(str(idx), label)
+
+        # Add edges based on downstream tasks
+        for idx, task in self.idx_to_task.items():
+            for downstream_idx, _ in task.downstream_task_idxs.items():
+                # You can also include edge labels with channel types or other info
+                dot.edge(str(idx), str(downstream_idx))
+
+        # Render the graph to a file
+        dot.render(filename, view=view)
+
     def teardown(self):
         """Teardown and cancel all actor tasks for this DAG. After this
         function returns, the actors should be available to execute new tasks
