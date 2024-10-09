@@ -36,6 +36,7 @@ class SchedulingQueue {
       const std::string &concurrency_group_name,
       const ray::FunctionDescriptor &function_descriptor,
       TaskID task_id = TaskID::Nil(),
+      uint64_t attempt_number = 0,
       const std::vector<rpc::ObjectReference> &dependencies = {}) = 0;
   virtual void ScheduleRequests() = 0;
   virtual bool TaskQueueEmpty() const = 0;
