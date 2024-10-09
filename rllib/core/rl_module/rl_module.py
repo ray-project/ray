@@ -1,6 +1,6 @@
 import abc
 import dataclasses
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Collection, Dict, Optional, Type, TYPE_CHECKING, Union
 
 import gymnasium as gym
