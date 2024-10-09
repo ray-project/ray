@@ -35,10 +35,7 @@ from ray.rllib.env.env_context import EnvContext
 from ray.rllib.env.env_runner import EnvRunner
 from ray.rllib.offline import get_dataset_and_shards
 from ray.rllib.policy.policy import Policy, PolicyState
-from ray.rllib.utils.actor_manager import (
-    FaultTolerantActorManager,
-    handle_remote_call_result_errors,
-)
+from ray.rllib.utils.actor_manager import FaultTolerantActorManager
 from ray.rllib.utils.deprecation import (
     Deprecated,
     deprecation_warning,
@@ -909,7 +906,7 @@ class EnvRunnerGroup:
             mark_healthy=mark_healthy,
         )
 
-        handle_remote_call_result_errors(
+        FaultTolerantActorManager.handle_remote_call_result_errors(
             remote_results, ignore_ray_errors=self._ignore_ray_errors_on_env_runners
         )
 
@@ -980,7 +977,7 @@ class EnvRunnerGroup:
             mark_healthy=mark_healthy,
         )
 
-        handle_remote_call_result_errors(
+        FaultTolerantActorManager.handle_remote_call_result_errors(
             remote_results,
             ignore_ray_errors=self._ignore_ray_errors_on_env_runners,
         )
@@ -1054,7 +1051,7 @@ class EnvRunnerGroup:
             mark_healthy=mark_healthy,
         )
 
-        handle_remote_call_result_errors(
+        FaultTolerantActorManager.handle_remote_call_result_errors(
             remote_results,
             ignore_ray_errors=self._ignore_ray_errors_on_env_runners,
         )

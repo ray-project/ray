@@ -303,22 +303,6 @@ class FaultTolerantActorManager:
             self._remote_actor_states[self._next_id] = self._ActorState()
             self._next_id += 1
 
-    def _remove_async_state(self, actor_id: int):
-        """Remove internal async state of for a given actor.
-
-        This is called when an actor is removed from the pool or being marked
-        unhealthy.
-
-        Args:
-            actor_id: The id of the actor.
-        """
-        # Remove any outstanding async requests for this actor.
-        # Use `list` here to not change a looped generator while we mutate the
-        # underlying dict.
-        for id, req in list(self._in_flight_req_to_actor_id.items()):
-            if id == actor_id:
-                del self._in_flight_req_to_actor_id[req]
-
     @DeveloperAPI
     def remove_actor(self, actor_id: int) -> ActorHandle:
         """Remove an actor from the pool.
@@ -407,6 +391,308 @@ class FaultTolerantActorManager:
         self._remote_actor_states.clear()
         self._restored_actors.clear()
         self._in_flight_req_to_actor_id.clear()
+
+    @DeveloperAPI
+    def foreach_actor(
+        self,
+        func: Union[Callable[[Any], Any], List[Callable[[Any], Any]]],
+        *,
+        healthy_only: bool = True,
+        remote_actor_ids: List[int] = None,
+        timeout_seconds: Optional[float] = None,
+        return_obj_refs: bool = False,
+        mark_healthy: bool = False,
+    ) -> RemoteCallResults:
+        """Calls the given function with each actor instance as arg.
+
+        Automatically marks actors unhealthy if they crash during the remote call.
+
+        Args:
+            func: A single, or a list of Callables, that get applied on the list
+                of specified remote actors.
+            healthy_only: If True, applies `func` only to actors currently tagged
+                "healthy", otherwise to all actors. If `healthy_only=False` and
+                `mark_healthy=True`, will send `func` to all actors and mark those
+                actors "healthy" that respond to the request within `timeout_seconds`
+                and are currently tagged as "unhealthy".
+            remote_actor_ids: Apply func on a selected set of remote actors. Use None
+                (default) for all actors.
+            timeout_seconds: Time to wait (in seconds) for results. Set this to 0.0 for
+                fire-and-forget. Set this to None (default) to wait infinitely (i.e. for
+                synchronous execution).
+            return_obj_refs: whether to return ObjectRef instead of actual results.
+                Note, for fault tolerance reasons, these returned ObjectRefs should
+                never be resolved with ray.get() outside of the context of this manager.
+            mark_healthy: Whether to mark all those actors healthy again that are
+                currently marked unhealthy AND that returned results from the remote
+                call (within the given `timeout_seconds`).
+                Note that actors are NOT set unhealthy, if they simply time out
+                (only if they return a RayActorError).
+                Also not that this setting is ignored if `healthy_only=True` (b/c this
+                setting only affects actors that are currently tagged as unhealthy).
+
+        Returns:
+            The list of return values of all calls to `func(actor)`. The values may be
+            actual data returned or exceptions raised during the remote call in the
+            format of RemoteCallResults.
+        """
+        remote_actor_ids = remote_actor_ids or self.actor_ids()
+        if healthy_only:
+            func, remote_actor_ids = self._filter_func_and_remote_actor_id_by_state(
+                func, remote_actor_ids
+            )
+
+        # Send out remote requests.
+        remote_calls = self._call_actors(
+            func=func,
+            remote_actor_ids=remote_actor_ids,
+        )
+
+        # Collect remote request results (if available given timeout and/or errors).
+        _, remote_results = self._fetch_result(
+            remote_actor_ids=remote_actor_ids,
+            remote_calls=remote_calls,
+            tags=[None] * len(remote_calls),
+            timeout_seconds=timeout_seconds,
+            return_obj_refs=return_obj_refs,
+            mark_healthy=mark_healthy,
+        )
+
+        return remote_results
+
+    @DeveloperAPI
+    def foreach_actor_async(
+        self,
+        func: Union[Callable[[Any], Any], List[Callable[[Any], Any]]],
+        tag: str = None,
+        *,
+        healthy_only: bool = True,
+        remote_actor_ids: List[int] = None,
+    ) -> int:
+        """Calls given functions against each actors without waiting for results.
+
+        Args:
+            func: A single Callable applied to all specified remote actors or a list
+                of Callables, that get applied on the list of specified remote actors.
+                In the latter case, both list of Callables and list of specified actors
+                must have the same length.
+            tag: A tag to identify the results from this async call.
+            healthy_only: If True, applies `func` only to actors currently tagged
+                "healthy", otherwise to all actors. If `healthy_only=False` and
+                later, `self.fetch_ready_async_reqs()` is called with
+                `mark_healthy=True`, will send `func` to all actors and mark those
+                actors "healthy" that respond to the request within `timeout_seconds`
+                and are currently tagged as "unhealthy".
+            remote_actor_ids: Apply func on a selected set of remote actors.
+                Note, for fault tolerance reasons, these returned ObjectRefs should
+                never be resolved with ray.get() outside of the context of this manager.
+
+        Returns:
+            The number of async requests that are actually fired.
+        """
+        # TODO(avnishn, jungong): so thinking about this a bit more, it would be the
+        #  best if we can attach multiple tags to an async all, like basically this
+        #  parameter should be tags:
+        #  For sync calls, tags would be ().
+        #  For async call users, they can attached multiple tags for a single call, like
+        #  ("rollout_worker", "sync_weight").
+        #  For async fetch result, we can also specify a single, or list of tags. For
+        #  example, ("eval", "sample") will fetch all the sample() calls on eval
+        #  workers.
+        remote_actor_ids = remote_actor_ids or self.actor_ids()
+
+        if healthy_only:
+            func, remote_actor_ids = self._filter_func_and_remote_actor_id_by_state(
+                func, remote_actor_ids
+            )
+
+        if isinstance(func, list) and len(func) != len(remote_actor_ids):
+            raise ValueError(
+                f"The number of functions specified {len(func)} must match "
+                f"the number of remote actor indices {len(remote_actor_ids)}."
+            )
+
+        num_calls_to_make: Dict[int, int] = defaultdict(lambda: 0)
+        # Drop calls to actors that are too busy.
+        if isinstance(func, list):
+            limited_func = []
+            limited_remote_actor_ids = []
+            for i, f in zip(remote_actor_ids, func):
+                num_outstanding_reqs = self._remote_actor_states[
+                    i
+                ].num_in_flight_async_requests
+                if (
+                    num_outstanding_reqs + num_calls_to_make[i]
+                    < self._max_remote_requests_in_flight_per_actor
+                ):
+                    num_calls_to_make[i] += 1
+                    limited_func.append(f)
+                    limited_remote_actor_ids.append(i)
+        else:
+            limited_func = func
+            limited_remote_actor_ids = []
+            for i in remote_actor_ids:
+                num_outstanding_reqs = self._remote_actor_states[
+                    i
+                ].num_in_flight_async_requests
+                if (
+                    num_outstanding_reqs + num_calls_to_make[i]
+                    < self._max_remote_requests_in_flight_per_actor
+                ):
+                    num_calls_to_make[i] += 1
+                    limited_remote_actor_ids.append(i)
+
+        remote_calls = self._call_actors(
+            func=limited_func,
+            remote_actor_ids=limited_remote_actor_ids,
+        )
+
+        # Save these as outstanding requests.
+        for id, call in zip(limited_remote_actor_ids, remote_calls):
+            self._remote_actor_states[id].num_in_flight_async_requests += 1
+            self._in_flight_req_to_actor_id[call] = (tag, id)
+
+        return len(remote_calls)
+
+    @DeveloperAPI
+    def fetch_ready_async_reqs(
+        self,
+        *,
+        tags: Union[str, List[str], Tuple[str]] = (),
+        timeout_seconds: Optional[float] = 0.0,
+        return_obj_refs: bool = False,
+        mark_healthy: bool = False,
+    ) -> RemoteCallResults:
+        """Get results from outstanding async requests that are ready.
+
+        Automatically mark actors unhealthy if they fail to respond.
+
+        Note: If tags is an empty tuple then results from all ready async requests are
+        returned.
+
+        Args:
+            timeout_seconds: ray.get() timeout. Default is 0, which only fetched those
+                results (immediately) that are already ready.
+            tags: A tag or a list of tags to identify the results from this async call.
+            return_obj_refs: Whether to return ObjectRef instead of actual results.
+            mark_healthy: Whether to mark all those actors healthy again that are
+                currently marked unhealthy AND that returned results from the remote
+                call (within the given `timeout_seconds`).
+                Note that actors are NOT set to unhealthy, if they simply time out,
+                meaning take a longer time to fulfil the remote request. We only ever
+                mark an actor unhealthy, if they raise a RayActorError inside the remote
+                request.
+                Also note that this settings is ignored if the preceding
+                `foreach_actor_async()` call used the `healthy_only=True` argument (b/c
+                `mark_healthy` only affects actors that are currently tagged as
+                unhealthy).
+
+        Returns:
+            A list of return values of all calls to `func(actor)` that are ready.
+            The values may be actual data returned or exceptions raised during the
+            remote call in the format of RemoteCallResults.
+        """
+        # Construct the list of in-flight requests filtered by tag.
+        remote_calls, remote_actor_ids, valid_tags = self._filter_calls_by_tag(tags)
+        ready, remote_results = self._fetch_result(
+            remote_actor_ids=remote_actor_ids,
+            remote_calls=remote_calls,
+            tags=valid_tags,
+            timeout_seconds=timeout_seconds,
+            return_obj_refs=return_obj_refs,
+            mark_healthy=mark_healthy,
+        )
+
+        for obj_ref, result in zip(ready, remote_results):
+            # Decrease outstanding request on this actor by 1.
+            self._remote_actor_states[result.actor_id].num_in_flight_async_requests -= 1
+            # Also, remove this call here from the in-flight list,
+            # obj_refs may have already been removed when we disable an actor.
+            if obj_ref in self._in_flight_req_to_actor_id:
+                del self._in_flight_req_to_actor_id[obj_ref]
+
+        return remote_results
+
+    @staticmethod
+    def handle_remote_call_result_errors(
+        results_or_errors: RemoteCallResults,
+        *,
+        ignore_ray_errors: bool,
+    ) -> None:
+        """Checks given results for application errors and raises them if necessary.
+
+        Args:
+            results_or_errors: The results or errors to check.
+            ignore_ray_errors: Whether to ignore RayErrors within the elements of
+                `results_or_errors`.
+        """
+        for result_or_error in results_or_errors:
+            # Good result.
+            if result_or_error.ok:
+                continue
+            # RayError, but we ignore it.
+            elif ignore_ray_errors:
+                logger.exception(result_or_error.get())
+            # Raise RayError.
+            else:
+                raise result_or_error.get()
+
+    @DeveloperAPI
+    def probe_unhealthy_actors(
+        self,
+        timeout_seconds: Optional[float] = None,
+        mark_healthy: bool = False,
+    ) -> List[int]:
+        """Ping all unhealthy actors to try bringing them back.
+
+        Args:
+            timeout_seconds: Timeout in seconds (to avoid pinging hanging workers
+                indefinitely).
+            mark_healthy: Whether to mark all those actors healthy again that are
+                currently marked unhealthy AND that respond to the `ping` remote request
+                (within the given `timeout_seconds`).
+                Note that actors are NOT set to unhealthy, if they simply time out,
+                meaning take a longer time to fulfil the remote request. We only ever
+                mark and actor unhealthy, if they return a RayActorError from the remote
+                request.
+                Also note that this settings is ignored if `healthy_only=True` (b/c this
+                setting only affects actors that are currently tagged as unhealthy).
+
+        Returns:
+            A list of actor IDs that were restored by the `ping.remote()` call PLUS
+            those actors that were previously restored via other remote requests.
+            The cached set of such previously restored actors will be erased in this
+            call.
+        """
+        # Collect recently restored actors (from `self._fetch_result` calls other than
+        # the one triggered here via the `ping`).
+        restored_actors = list(self._restored_actors)
+        self._restored_actors.clear()
+
+        # Probe all unhealthy actors via a simple `ping()`.
+        unhealthy_actor_ids = [
+            actor_id
+            for actor_id in self.actor_ids()
+            if not self.is_actor_healthy(actor_id)
+        ]
+        # No unhealthy actors currently -> Return recently restored ones.
+        if not unhealthy_actor_ids:
+            return restored_actors
+
+        # Some unhealthy actors -> `ping()` all of them to trigger a new fetch and
+        # capture all restored ones.
+        remote_results = self.foreach_actor(
+            func=lambda actor: actor.ping(),
+            remote_actor_ids=unhealthy_actor_ids,
+            healthy_only=False,  # We specifically want to ping unhealthy actors.
+            timeout_seconds=timeout_seconds,
+            mark_healthy=mark_healthy,
+        )
+
+        # Return previously restored actors AND actors restored via the `ping()` call.
+        return restored_actors + [
+            result.actor_id for result in remote_results if result.ok
+        ]
 
     def _call_actors(
         self,
@@ -574,168 +860,6 @@ class FaultTolerantActorManager:
 
         return func, remote_actor_ids
 
-    @DeveloperAPI
-    def foreach_actor(
-        self,
-        func: Union[Callable[[Any], Any], List[Callable[[Any], Any]]],
-        *,
-        healthy_only: bool = True,
-        remote_actor_ids: List[int] = None,
-        timeout_seconds: Optional[float] = None,
-        return_obj_refs: bool = False,
-        mark_healthy: bool = False,
-    ) -> RemoteCallResults:
-        """Calls the given function with each actor instance as arg.
-
-        Automatically marks actors unhealthy if they crash during the remote call.
-
-        Args:
-            func: A single, or a list of Callables, that get applied on the list
-                of specified remote actors.
-            healthy_only: If True, applies `func` only to actors currently tagged
-                "healthy", otherwise to all actors. If `healthy_only=False` and
-                `mark_healthy=True`, will send `func` to all actors and mark those
-                actors "healthy" that respond to the request within `timeout_seconds`
-                and are currently tagged as "unhealthy".
-            remote_actor_ids: Apply func on a selected set of remote actors. Use None
-                (default) for all actors.
-            timeout_seconds: Time to wait (in seconds) for results. Set this to 0.0 for
-                fire-and-forget. Set this to None (default) to wait infinitely (i.e. for
-                synchronous execution).
-            return_obj_refs: whether to return ObjectRef instead of actual results.
-                Note, for fault tolerance reasons, these returned ObjectRefs should
-                never be resolved with ray.get() outside of the context of this manager.
-            mark_healthy: Whether to mark all those actors healthy again that are
-                currently marked unhealthy AND that returned results from the remote
-                call (within the given `timeout_seconds`).
-                Note that actors are NOT set unhealthy, if they simply time out
-                (only if they return a RayActorError).
-                Also not that this setting is ignored if `healthy_only=True` (b/c this
-                setting only affects actors that are currently tagged as unhealthy).
-
-        Returns:
-            The list of return values of all calls to `func(actor)`. The values may be
-            actual data returned or exceptions raised during the remote call in the
-            format of RemoteCallResults.
-        """
-        remote_actor_ids = remote_actor_ids or self.actor_ids()
-        if healthy_only:
-            func, remote_actor_ids = self._filter_func_and_remote_actor_id_by_state(
-                func, remote_actor_ids
-            )
-
-        # Send out remote requests.
-        remote_calls = self._call_actors(
-            func=func,
-            remote_actor_ids=remote_actor_ids,
-        )
-
-        # Collect remote request results (if available given timeout and/or errors).
-        _, remote_results = self._fetch_result(
-            remote_actor_ids=remote_actor_ids,
-            remote_calls=remote_calls,
-            tags=[None] * len(remote_calls),
-            timeout_seconds=timeout_seconds,
-            return_obj_refs=return_obj_refs,
-            mark_healthy=mark_healthy,
-        )
-
-        return remote_results
-
-    @DeveloperAPI
-    def foreach_actor_async(
-        self,
-        func: Union[Callable[[Any], Any], List[Callable[[Any], Any]]],
-        tag: str = None,
-        *,
-        healthy_only: bool = True,
-        remote_actor_ids: List[int] = None,
-    ) -> int:
-        """Calls given functions against each actors without waiting for results.
-
-        Args:
-            func: A single Callable applied to all specified remote actors or a list
-                of Callables, that get applied on the list of specified remote actors.
-                In the latter case, both list of Callables and list of specified actors
-                must have the same length.
-            tag: A tag to identify the results from this async call.
-            healthy_only: If True, applies `func` only to actors currently tagged
-                "healthy", otherwise to all actors. If `healthy_only=False` and
-                later, `self.fetch_ready_async_reqs()` is called with
-                `mark_healthy=True`, will send `func` to all actors and mark those
-                actors "healthy" that respond to the request within `timeout_seconds`
-                and are currently tagged as "unhealthy".
-            remote_actor_ids: Apply func on a selected set of remote actors.
-                Note, for fault tolerance reasons, these returned ObjectRefs should
-                never be resolved with ray.get() outside of the context of this manager.
-
-        Returns:
-            The number of async requests that are actually fired.
-        """
-        # TODO(avnishn, jungong): so thinking about this a bit more, it would be the
-        #  best if we can attach multiple tags to an async all, like basically this
-        #  parameter should be tags:
-        #  For sync calls, tags would be ().
-        #  For async call users, they can attached multiple tags for a single call, like
-        #  ("rollout_worker", "sync_weight").
-        #  For async fetch result, we can also specify a single, or list of tags. For
-        #  example, ("eval", "sample") will fetch all the sample() calls on eval
-        #  workers.
-        remote_actor_ids = remote_actor_ids or self.actor_ids()
-
-        if healthy_only:
-            func, remote_actor_ids = self._filter_func_and_remote_actor_id_by_state(
-                func, remote_actor_ids
-            )
-
-        if isinstance(func, list) and len(func) != len(remote_actor_ids):
-            raise ValueError(
-                f"The number of functions specified {len(func)} must match "
-                f"the number of remote actor indices {len(remote_actor_ids)}."
-            )
-
-        num_calls_to_make: Dict[int, int] = defaultdict(lambda: 0)
-        # Drop calls to actors that are too busy.
-        if isinstance(func, list):
-            limited_func = []
-            limited_remote_actor_ids = []
-            for i, f in zip(remote_actor_ids, func):
-                num_outstanding_reqs = self._remote_actor_states[
-                    i
-                ].num_in_flight_async_requests
-                if (
-                    num_outstanding_reqs + num_calls_to_make[i]
-                    < self._max_remote_requests_in_flight_per_actor
-                ):
-                    num_calls_to_make[i] += 1
-                    limited_func.append(f)
-                    limited_remote_actor_ids.append(i)
-        else:
-            limited_func = func
-            limited_remote_actor_ids = []
-            for i in remote_actor_ids:
-                num_outstanding_reqs = self._remote_actor_states[
-                    i
-                ].num_in_flight_async_requests
-                if (
-                    num_outstanding_reqs + num_calls_to_make[i]
-                    < self._max_remote_requests_in_flight_per_actor
-                ):
-                    num_calls_to_make[i] += 1
-                    limited_remote_actor_ids.append(i)
-
-        remote_calls = self._call_actors(
-            func=limited_func,
-            remote_actor_ids=limited_remote_actor_ids,
-        )
-
-        # Save these as outstanding requests.
-        for id, call in zip(limited_remote_actor_ids, remote_calls):
-            self._remote_actor_states[id].num_in_flight_async_requests += 1
-            self._in_flight_req_to_actor_id[call] = (tag, id)
-
-        return len(remote_calls)
-
     def _filter_calls_by_tag(
         self, tags: Union[str, List[str], Tuple[str]]
     ) -> Tuple[List[ray.ObjectRef], List[ActorHandle], List[str]]:
@@ -770,147 +894,23 @@ class FaultTolerantActorManager:
 
         return remote_calls, remote_actor_ids, valid_tags
 
-    @DeveloperAPI
-    def fetch_ready_async_reqs(
-        self,
-        *,
-        tags: Union[str, List[str], Tuple[str]] = (),
-        timeout_seconds: Optional[float] = 0.0,
-        return_obj_refs: bool = False,
-        mark_healthy: bool = False,
-    ) -> RemoteCallResults:
-        """Get results from outstanding async requests that are ready.
+    def _remove_async_state(self, actor_id: int):
+        """Remove internal async state of for a given actor.
 
-        Automatically mark actors unhealthy if they fail to respond.
-
-        Note: If tags is an empty tuple then results from all ready async requests are
-        returned.
+        This is called when an actor is removed from the pool or being marked
+        unhealthy.
 
         Args:
-            timeout_seconds: ray.get() timeout. Default is 0, which only fetched those
-                results (immediately) that are already ready.
-            tags: A tag or a list of tags to identify the results from this async call.
-            return_obj_refs: Whether to return ObjectRef instead of actual results.
-            mark_healthy: Whether to mark all those actors healthy again that are
-                currently marked unhealthy AND that returned results from the remote
-                call (within the given `timeout_seconds`).
-                Note that actors are NOT set to unhealthy, if they simply time out,
-                meaning take a longer time to fulfil the remote request. We only ever
-                mark an actor unhealthy, if they raise a RayActorError inside the remote
-                request.
-                Also note that this settings is ignored if the preceding
-                `foreach_actor_async()` call used the `healthy_only=True` argument (b/c
-                `mark_healthy` only affects actors that are currently tagged as
-                unhealthy).
-
-        Returns:
-            A list of return values of all calls to `func(actor)` that are ready.
-            The values may be actual data returned or exceptions raised during the
-            remote call in the format of RemoteCallResults.
+            actor_id: The id of the actor.
         """
-        # Construct the list of in-flight requests filtered by tag.
-        remote_calls, remote_actor_ids, valid_tags = self._filter_calls_by_tag(tags)
-        ready, remote_results = self._fetch_result(
-            remote_actor_ids=remote_actor_ids,
-            remote_calls=remote_calls,
-            tags=valid_tags,
-            timeout_seconds=timeout_seconds,
-            return_obj_refs=return_obj_refs,
-            mark_healthy=mark_healthy,
-        )
-
-        for obj_ref, result in zip(ready, remote_results):
-            # Decrease outstanding request on this actor by 1.
-            self._remote_actor_states[result.actor_id].num_in_flight_async_requests -= 1
-            # Also, remove this call here from the in-flight list,
-            # obj_refs may have already been removed when we disable an actor.
-            if obj_ref in self._in_flight_req_to_actor_id:
-                del self._in_flight_req_to_actor_id[obj_ref]
-
-        return remote_results
-
-    @DeveloperAPI
-    def probe_unhealthy_actors(
-        self,
-        timeout_seconds: Optional[float] = None,
-        mark_healthy: bool = False,
-    ) -> List[int]:
-        """Ping all unhealthy actors to try bringing them back.
-
-        Args:
-            timeout_seconds: Timeout in seconds (to avoid pinging hanging workers
-                indefinitely).
-            mark_healthy: Whether to mark all those actors healthy again that are
-                currently marked unhealthy AND that respond to the `ping` remote request
-                (within the given `timeout_seconds`).
-                Note that actors are NOT set to unhealthy, if they simply time out,
-                meaning take a longer time to fulfil the remote request. We only ever
-                mark and actor unhealthy, if they return a RayActorError from the remote
-                request.
-                Also note that this settings is ignored if `healthy_only=True` (b/c this
-                setting only affects actors that are currently tagged as unhealthy).
-
-        Returns:
-            A list of actor IDs that were restored by the `ping.remote()` call PLUS
-            those actors that were previously restored via other remote requests.
-            The cached set of such previously restored actors will be erased in this
-            call.
-        """
-        # Collect recently restored actors (from `self._fetch_result` calls other than
-        # the one triggered here via the `ping`).
-        restored_actors = list(self._restored_actors)
-        self._restored_actors.clear()
-
-        # Probe all unhealthy actors via a simple `ping()`.
-        unhealthy_actor_ids = [
-            actor_id
-            for actor_id in self.actor_ids()
-            if not self.is_actor_healthy(actor_id)
-        ]
-        # No unhealthy actors currently -> Return recently restored ones.
-        if not unhealthy_actor_ids:
-            return restored_actors
-
-        # Some unhealthy actors -> `ping()` all of them to trigger a new fetch and
-        # capture all restored ones.
-        remote_results = self.foreach_actor(
-            func=lambda actor: actor.ping(),
-            remote_actor_ids=unhealthy_actor_ids,
-            healthy_only=False,  # We specifically want to ping unhealthy actors.
-            timeout_seconds=timeout_seconds,
-            mark_healthy=mark_healthy,
-        )
-
-        # Return previously restored actors AND actors restored via the `ping()` call.
-        return restored_actors + [
-            result.actor_id for result in remote_results if result.ok
-        ]
+        # Remove any outstanding async requests for this actor.
+        # Use `list` here to not change a looped generator while we mutate the
+        # underlying dict.
+        for id, req in list(self._in_flight_req_to_actor_id.items()):
+            if id == actor_id:
+                del self._in_flight_req_to_actor_id[req]
 
     def actors(self):
         # TODO(jungong) : remove this API once EnvRunnerGroup.remote_workers()
         #  and EnvRunnerGroup._remote_workers() are removed.
         return self._actors
-
-
-def handle_remote_call_result_errors(
-    results_or_errors: RemoteCallResults,
-    *,
-    ignore_ray_errors: bool,
-) -> None:
-    """Checks given results for application errors and raises them if necessary.
-
-    Args:
-        results_or_errors: The results or errors to check.
-        ignore_ray_errors: Whether to ignore RayErrors within the elements of
-            `results_or_errors`.
-    """
-    for result_or_error in results_or_errors:
-        # Good result.
-        if result_or_error.ok:
-            continue
-        # RayError, but we ignore it.
-        elif ignore_ray_errors:
-            logger.exception(result_or_error.get())
-        # Raise RayError.
-        else:
-            raise result_or_error.get()
