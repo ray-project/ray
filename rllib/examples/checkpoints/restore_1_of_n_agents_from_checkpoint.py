@@ -67,6 +67,10 @@ parser = add_rllib_example_script_args(
     default_timesteps=100000,
     default_reward=-400.0,
 )
+parser.set_defaults(
+    checkpoint_freq=1,
+    num_agents=2,
+)
 # TODO (sven): This arg is currently ignored (hard-set to 2).
 parser.add_argument("--num-policies", type=int, default=2)
 
@@ -122,7 +126,7 @@ if __name__ == "__main__":
     env = MultiAgentPendulum(config={"num_agents": args.num_agents})
     # Get the default module spec from the algorithm config.
     module_spec = base_config.get_default_rl_module_spec()
-    module_spec.model_config.fcnet_activation = "relu"
+    module_spec.model_config = DefaultModelConfig(fcnet_activation="relu")
     module_spec.observation_space = env.envs[0].observation_space
     module_spec.action_space = env.envs[0].action_space
     # Create the module for each policy, but policy 0.
