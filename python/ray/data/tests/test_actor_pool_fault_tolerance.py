@@ -15,7 +15,7 @@ def test_removed_nodes_and_added_back(ray_start_cluster):
     cluster = ray_start_cluster
     cluster.add_node(num_cpus=0)
     ray.init()
-    DataContext.get_current().max_errored_blocks = -1
+    #DataContext.get_current().max_errored_blocks = -1
 
     @ray.remote(num_cpus=0)
     class Signal:
