@@ -961,8 +961,8 @@ py_test(
 py_test(
     name = "test_node_failures",
     tags = ["team:rllib", "tests_dir", "exclusive"],
-    size = "medium",
-    srcs = ["algorithms/tests/test_node_failure.py"],
+    size = "large",
+    srcs = ["algorithms/tests/test_node_failures.py"],
 )
 
 
