@@ -560,8 +560,7 @@ class Worker:
         if not hasattr(self, "core_worker"):
             return None
         job_config = self.core_worker.get_job_config()
-        if job_config.serialized_py_logging_config == b"":
-            # py_logging_config is not set
+        if not job_config.serialized_py_logging_config:
             return None
         logging_config = pickle.loads(job_config.serialized_py_logging_config)
         return logging_config
