@@ -1,9 +1,12 @@
+import logging
 from typing import Iterable, List, Optional
 
 import ray
 from ray.data._internal.execution.interfaces import TaskContext
 from ray.data.block import Block, BlockAccessor
 from ray.util.annotations import DeveloperAPI
+
+logger = logging.getLogger(__name__)
 
 
 @DeveloperAPI
@@ -46,7 +49,28 @@ class Datasink:
             write_results: The objects returned by every
                 :meth:`~ray.data.Datasink.write` task.
         """
-        # TODO: implement stats aggregation and logging
+        total_num_rows = 0
+        total_size_bytes = 0
+
+        for result in raw_write_results:
+            ba = BlockAccessor.for_block(result)
+            write_results = ba.to_numpy()[0]
+            total_num_rows += write_results["write_num_rows"]
+            total_size_bytes += write_results["write_size_bytes"]
+
+        aggregated_results = {
+            "total_num_rows": total_num_rows,
+            "total_size_bytes": total_size_bytes,
+        }
+
+        aggregated_results_str = ""
+        for k, v in aggregated_results.items():
+            aggregated_results_str += f"\t{k}: {v}\n"
+
+        logger.info(
+            f"`write_datasink()` succeeded. Aggregated write results:\n"
+            f"{aggregated_results_str}"
+        )
 
     def on_write_failed(self, error: Exception) -> None:
         """Callback for when a write job fails.
