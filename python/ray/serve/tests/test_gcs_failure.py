@@ -1,6 +1,7 @@
 import importlib
 import os
 import sys
+from typing import Callable, Optional
 
 import pytest
 import requests
@@ -112,11 +113,16 @@ def test_controller_gcs_failure(serve_ha, use_handle):  # noqa: F811
 
 
 def router_populated_with_replicas(
-    handle: DeploymentHandle,
     threshold: int,
+    handle: Optional[DeploymentHandle] = None,
+    get_replicas_func: Optional[Callable] = None,
     check_cache_populated: bool = False,
 ):
-    replicas = handle._router._replica_scheduler._replica_id_set
+    if handle:
+        replicas = handle._router._replica_scheduler._replica_id_set
+    else:
+        replicas = get_replicas_func()
+
     assert len(replicas) >= threshold
 
     # Return early if we don't need to check cache
@@ -161,7 +167,7 @@ def test_new_router_on_gcs_failure(serve_ha, use_proxy: bool):
     # waiting for the first request
     h._get_or_create_router()
 
-    wait_for_condition(router_populated_with_replicas, handle=h, threshold=1)
+    wait_for_condition(router_populated_with_replicas, threshold=1, handle=h)
 
     # Kill GCS server before a single request is sent.
     ray.worker._global_node.kill_gcs_server()
@@ -208,8 +214,8 @@ def test_handle_router_updated_replicas_then_gcs_failure(serve_ha):
 
     wait_for_condition(
         router_populated_with_replicas,
-        handle=h,
         threshold=2,
+        handle=h,
         check_cache_populated=True,
     )
 
@@ -250,15 +256,15 @@ def test_proxy_router_updated_replicas_then_gcs_failure(serve_ha):
     config["deployments"][0]["num_replicas"] = 2
     client.deploy_apps(ServeDeploySchema(**{"applications": [config]}))
 
-    # There is no way to directly check if proxy has received updated replicas,
-    # so just check for the status. After controller updates status with new
-    # replicas, proxy should instantly receive updates from long poll
+    proxy_handles = ray.get(client._controller.get_proxies.remote())
+    proxy_handle = list(proxy_handles.values())[0]
+
     wait_for_condition(
-        check_replica_counts,
-        controller=client._controller,
-        deployment_id=DeploymentID("GetPID", "default"),
-        total=2,
-        by_state=[(ReplicaState.RUNNING, 2, None)],
+        router_populated_with_replicas,
+        threshold=2,
+        get_replicas_func=lambda: ray.get(
+            proxy_handle._dump_ingress_replicas_for_testing.remote("/")
+        ),
     )
 
     # Kill GCS server before router gets to send request to second replica

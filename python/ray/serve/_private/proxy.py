@@ -7,7 +7,7 @@ import socket
 import time
 from abc import ABC, abstractmethod
 from functools import partial
-from typing import Any, Callable, Dict, Generator, List, Optional, Tuple, Type
+from typing import Any, Callable, Dict, Generator, List, Optional, Set, Tuple, Type
 
 import grpc
 import starlette
@@ -27,6 +27,7 @@ from ray.serve._private.common import (
     DeploymentID,
     EndpointInfo,
     NodeId,
+    ReplicaID,
     RequestMetadata,
     RequestProtocol,
 )
@@ -1288,6 +1289,10 @@ class ProxyActor:
             if isinstance(handler, logging.handlers.RotatingFileHandler):
                 log_file_path = handler.baseFilename
         return log_file_path
+
+    def _dump_ingress_replicas_for_testing(self, route) -> Set[ReplicaID]:
+        _, handle, _ = self.http_proxy.proxy_router.match_route(route)
+        return handle._router._replica_scheduler._replica_id_set
 
     def should_start_grpc_service(self) -> bool:
         """Determine whether gRPC service should be started.
