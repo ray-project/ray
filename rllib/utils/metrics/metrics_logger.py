@@ -238,12 +238,14 @@ class MetricsLogger:
             objects if `return_stats_obj=True` or primitive values, carrying no
             reduction and history information, if `return_stats_obj=False`.
         """
+        # For better error message, catch the last key-path (reducing of which might
+        # throw an error).
         PATH = None
 
         def _reduce(path, stats):
             nonlocal PATH
             PATH = path
-            stats.reduce()
+            return stats.reduce()
 
         # Create a shallow copy of `self.stats` in case we need to reset some of our
         # stats due to this `reduce()` call (and the Stat having self.clear_on_reduce

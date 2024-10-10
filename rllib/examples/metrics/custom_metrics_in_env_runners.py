@@ -1,25 +1,78 @@
 """Example of adding custom metrics to the results returned by `EnvRunner.sample()`.
 
-
 We use the `MetricsLogger` class, which RLlib provides inside all its components (only
-when using the new API stack via `config.experimental(_enable_new_api_stack=True)`),
+when using the new API stack through
+`config.api_stack(_enable_rl_module_and_learner=True,
+_enable_env_runner_and_connector_v2=True)`),
 and which offers a unified API to log individual values per iteration, per episode
 timestep, per episode (as a whole), per loss call, etc..
 `MetricsLogger` objects are available in all custom API code, for example inside your
 custom `Algorithm.training_step()` methods, custom loss functions, custom callbacks,
 and custom EnvRunners.
 
-In this script, we define a custom `DefaultCallbacks` class and then override its
-`on_train_result()` method in order to alter the final `ResultDict` before it is sent
-back to Ray Tune (and possibly a WandB logger).
+This example:
+    - demonstrates how to write a custom Callbacks subclass, which overrides some
+    EnvRunner-bound methods, such as `on_episode_start`, `on_episode_step`, and
+    `on_episode_env`.
+    - shows how to temporarily store per-timestep data inside the currently running
+    episode within the EnvRunner (and the callback methods).
+    - shows how to extract this temporary data again when the episode is done to
+    further process it into a reportable metric.
+    - explains how to use the `MetricsLogger` API to create and log different metrics
+    to the final Algorithm's iteration output. These include - but are not limited to -
+    a 2D heatmap (image) per episode, an average per-episode metric (over a sliding
+    window of 200 episodes), a maximum per-episode metric (over a sliding window of 100
+    episodes), and an EMA-smoothed metric.
 
-For demonstration purposes only, we add the following simple metrics to this
-`ResultDict`:
-- The ratio of the delta-times for sampling vs. training. If this ratio is roughly 1.0,
-it means we are spending roughly as much time sampling than we do updating our model.
-- The number of times an episode reaches an overall return of > 100.0 and the number
-of times an episode stays below an overall return of 12.0.
--
+In this script, we define a custom `DefaultCallbacks` class and then override some of
+its methods in order to define custom behavior during episode sampling. In particular in
+this example, we add custom metrics to the Algorithm's published result dict (once per
+iteration) before it is sent back to Ray Tune (and possibly a WandB logger).
+
+For demonstration purposes only, we log the following custom metrics:
+- A 2D heatmap showing the frequency of certain y/x-locations of Ms Pacman during an
+episode. We create and log a separate heatmap per episode and limit the number of
+heatmaps reported back to the algorithm to 10.
+- The maximum per-episode distance travelled by Ms Pacman over a sliding window of 100
+episodes.
+- The average per-episode distance travelled by Ms Pacman over a sliding window of 200
+episodes.
+- The EMA-smoothed number of lives of Ms Pacman at each timestep (across all episodes).
+
+
+How to run this script
+----------------------
+`python [script file name].py --enable-new-api-stack --wandb-key [your WandB key]
+--wandb-projecy [some project name]`
+
+For debugging, use the following additional command line options
+`--no-tune --num-env-runners=0`
+which should allow you to set breakpoints anywhere in the RLlib code and
+have the execution stop there for inspection and debugging.
+
+For logging to your WandB account, use:
+`--wandb-key=[your WandB API key] --wandb-project=[some project name]
+--wandb-run-name=[optional: WandB run name (within the defined project)]`
+
+
+Results to expect
+-----------------
+This script has not been finetuned to actually learn the environment. Its purpose
+is to show how you can create and log custom metrics during episode sampling and
+have these stats be sent to WandB for further analysis.
+
++---------------------+----------+----------------+--------+------------------+
+| Trial name          | status   | loc            |   iter |   total time (s) |
+|                     |          |                |        |                  |
+|---------------------+----------+----------------+--------+------------------+
+| PPO_env_efd16_00000 | RUNNING  | 127.0.0.1:6181 |      4 |          72.4725 |
++---------------------+----------+----------------+--------+------------------+
++------------------------+------------------------+------------------------+
+|    episode_return_mean |   num_episodes_lifetim |   num_env_steps_traine |
+|                        |                      e |             d_lifetime |
+|------------------------+------------------------+------------------------|
+|                  76.4  |                     45 |                   8053 |
++------------------------+------------------------+------------------------+
 """
 from typing import Optional, Sequence
 
@@ -117,10 +170,14 @@ class MsPacmanHeatmapCallback(DefaultCallbacks):
         episode.add_temporary_timestep_data("pacman_yx_pos", yx_pos)
 
         # Compute distance to start position.
-        dist_travelled = np.sqrt(np.sum(np.square(
-            np.array(self._episode_start_position[episode.id_]) -
-            np.array(yx_pos)
-        )))
+        dist_travelled = np.sqrt(
+            np.sum(
+                np.square(
+                    np.array(self._episode_start_position[episode.id_])
+                    - np.array(yx_pos)
+                )
+            )
+        )
         episode.add_temporary_timestep_data("pacman_dist_travelled", dist_travelled)
 
     def on_episode_end(
@@ -188,12 +245,13 @@ class MsPacmanHeatmapCallback(DefaultCallbacks):
             window=100,
         )
 
-        # Log the average dist travelled per episode (window=inf).
+        # Log the average dist travelled per episode (window=200).
         metrics_logger.log_value(
-            "pacman_max_dist_travelled",
+            "pacman_mean_dist_travelled",
             dist_travelled,
             reduce="mean",  # <- default
-            window=float("inf"),  # never forget anything, average over lifetime
+            # Always keep the last 200 values and average over this window.
+            window=200,
         )
 
         # Log the number of lifes (as EMA-smoothed; no window).
