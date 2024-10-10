@@ -41,7 +41,6 @@ TEST(ContainerUtilTest, TestDebugString) {
   // Non-associative containers.
   ASSERT_EQ(debug_string_to_string(std::vector<int>{1, 2}), "[1, 2]");
   ASSERT_EQ(debug_string_to_string(std::array<int, 3>{1, 2, 3}), "[1, 2, 3]");
-  ASSERT_EQ(debug_string_to_string(absl::InlinedVector<int, 3>{1, 2}), "[1, 2]");
 
   // Associative containers.
   ASSERT_EQ(debug_string_to_string(std::set<int>{1, 2}), "[1, 2]");

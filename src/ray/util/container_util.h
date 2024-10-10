@@ -111,11 +111,6 @@ template <typename... Ts>
 std::ostream &operator<<(std::ostream &os, DebugStringWrapper<std::vector<Ts...>> c) {
   return c.StringifyContainer(os);
 }
-template <typename T, std::size_t N>
-std::ostream &operator<<(std::ostream &os,
-                         DebugStringWrapper<absl::InlinedVector<T, N>> c) {
-  return c.StringifyContainer(os);
-}
 template <typename... Ts>
 std::ostream &operator<<(std::ostream &os, DebugStringWrapper<std::set<Ts...>> c) {
   return c.StringifyContainer(os);
