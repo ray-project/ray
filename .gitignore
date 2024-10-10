@@ -236,3 +236,4 @@ tag-mapping.json
 
 # meson-ray specific
 eugo_build
+.mesonpy*
