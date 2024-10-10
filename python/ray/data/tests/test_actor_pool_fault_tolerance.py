@@ -1,11 +1,9 @@
 import asyncio
 import threading
-import time
 
 import pytest
 
 import ray
-from ray.data.context import DataContext
 from ray.tests.conftest import *  # noqa
 
 
@@ -15,7 +13,6 @@ def test_removed_nodes_and_added_back(ray_start_cluster):
     cluster = ray_start_cluster
     cluster.add_node(num_cpus=0)
     ray.init()
-    #DataContext.get_current().max_errored_blocks = -1
 
     @ray.remote(num_cpus=0)
     class Signal:
@@ -50,7 +47,7 @@ def test_removed_nodes_and_added_back(ray_start_cluster):
     signal_actor = Signal.remote()
 
     # Spin up nodes
-    num_nodes = 3
+    num_nodes = 5
     nodes = []
     for _ in range(num_nodes):
         nodes.append(cluster.add_node(num_cpus=10, num_gpus=1))
@@ -79,7 +76,7 @@ def test_removed_nodes_and_added_back(ray_start_cluster):
             return batch
 
     res = []
-    num_items = 10
+    num_items = 100
 
     def run_dataset():
         nonlocal res
@@ -115,6 +112,7 @@ def test_removed_nodes_and_added_back(ray_start_cluster):
 
     thread.join()
     assert sorted(res, key=lambda x: x["id"]) == [{"id": i} for i in range(num_items)]
+
 
 if __name__ == "__main__":
     import sys

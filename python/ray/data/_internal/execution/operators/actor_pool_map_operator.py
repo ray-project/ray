@@ -211,8 +211,17 @@ class ActorPoolMapOperator(MapOperator):
             ).remote(DataContext.get_current(), ctx, *input_blocks)
 
             def _task_done_callback(actor_to_return):
-                # Return the actor that was running the task to the pool.
-                self._actor_pool.return_actor(actor_to_return)
+                if actor_to_return in self._actor_pool._num_tasks_in_flight:
+                    # Return the actor that was running the task to the pool.
+                    self._actor_pool.return_actor(actor_to_return)
+                else:
+                    assert (
+                        actor_to_return.get_location
+                        in self._actor_pool._restarting_actors
+                    )
+                    # Move the actor from restarting to running state.
+                    self._actor_pool.restarting_to_running(actor_to_return)
+
                 # Dipsatch more tasks.
                 self._dispatch_tasks()
 
@@ -294,9 +303,11 @@ class ActorPoolMapOperator(MapOperator):
 
     def pending_processor_usage(self) -> ExecutionResources:
         num_pending_workers = self._actor_pool.num_pending_actors()
+        num_restarting_workers = self._actor_pool.num_restarting_actors()
+        num_non_running_workers = num_pending_workers + num_restarting_workers
         return ExecutionResources(
-            cpu=self._ray_remote_args.get("num_cpus", 0) * num_pending_workers,
-            gpu=self._ray_remote_args.get("num_gpus", 0) * num_pending_workers,
+            cpu=self._ray_remote_args.get("num_cpus", 0) * num_non_running_workers,
+            gpu=self._ray_remote_args.get("num_gpus", 0) * num_non_running_workers,
         )
 
     def num_active_actors(self) -> int:
@@ -354,16 +365,17 @@ class ActorPoolMapOperator(MapOperator):
 
     def update_resource_usage(self) -> None:
         """Updates resources usage."""
-        # Walk all active actors and for each actor that's not ALIVE,
-        # it's a candidate to be marked as a pending actor.
         actors = list(self._actor_pool._num_tasks_in_flight.keys())
         for actor in actors:
             actor_state = actor._get_local_state()
-            if (actor_state != gcs_pb2.ActorTableData.ActorState.ALIVE):
+            if actor_state != gcs_pb2.ActorTableData.ActorState.ALIVE:
+                # If an actor is not ALIVE, it's a candidate to be marked as a
+                # restarting actor.
                 self._actor_pool.running_to_restarting(actor, actor.get_location)
             else:
+                # If an actor is ALIVE, it's a candidate to be marked as a
+                # running actor, if not already the case.
                 self._actor_pool.restarting_to_running(actor.get_location)
-
 
 
 class _MapWorker:
@@ -522,12 +534,15 @@ class _ActorPool(AutoscalingActorPool):
         self._actor_locations[actor] = ray.get(ready_ref)
         return True
 
-    def running_to_restarting(self, actor: ray.actor.ActorHandle, ready_ref: ray.ObjectRef) -> bool:
-        """Mark the actor corresponding to the provided ready future as restaring.
+    def running_to_restarting(
+        self, actor: ray.actor.ActorHandle, ready_ref: ray.ObjectRef
+    ) -> bool:
+        """Mark the actor corresponding to the provided ready future as restarting.
 
         Args:
             actor: The running actor to add as restarting to the pool.
-            ready_ref: The ready future for the actor that we wish to mark as restarting.
+            ready_ref: The ready future for the actor that we wish to mark as
+            restarting.
 
         Returns:
             Whether the actor was still running. This can return False if the actor had
@@ -548,8 +563,8 @@ class _ActorPool(AutoscalingActorPool):
             ready_ref: The ready future for the actor that we wish to mark as running.
 
         Returns:
-            Whether the actor was still restarting. This can return False if the actor had
-            already been killed.
+            Whether the actor was still restarting. This can return False if the actor
+            had already been killed.
         """
         if ready_ref not in self._restarting_actors:
             # The actor has been removed from the pool before becoming running.
@@ -635,7 +650,8 @@ class _ActorPool(AutoscalingActorPool):
         )
 
     def kill_inactive_actor(self) -> bool:
-        """Kills a single pending, restarting or idle actor, if any actors are pending/restarting/idle.
+        """Kills a single pending, restarting or idle actor, if any actors are
+        pending/restarting/idle.
 
         Returns whether an inactive actor was actually killed.
         """
