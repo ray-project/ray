@@ -23,11 +23,11 @@ namespace ray {
 TEST(ThreadCheckerTest, BasicTest) {
   ThreadChecker thread_checker;
   // Pass at initialization.
-  ASSERT_TRUE(thread_checker.ok());
+  ASSERT_TRUE(thread_checker.IsOnSameThread());
   // Pass when invoked at the same thread.
-  ASSERT_TRUE(thread_checker.ok());
+  ASSERT_TRUE(thread_checker.IsOnSameThread());
 
-  auto thd = std::thread([&]() { ASSERT_FALSE(thread_checker.ok()); });
+  auto thd = std::thread([&]() { ASSERT_FALSE(thread_checker.IsOnSameThread()); });
   thd.join();
 }
 
