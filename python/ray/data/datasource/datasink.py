@@ -75,6 +75,7 @@ class Datasink:
             f"Write operation succeeded. Aggregated write results:\n"
             f"{aggregated_results_str}"
         )
+        return aggregated_results
 
     def on_write_failed(self, error: Exception) -> None:
         """Callback for when a write job fails.

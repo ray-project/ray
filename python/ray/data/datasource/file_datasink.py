@@ -131,16 +131,11 @@ class _FileDatasink(Datasink):
         raise NotImplementedError
 
     def on_write_complete(self, raw_write_results: List[Block]) -> None:
-        if not self.has_created_dir:
-            return
+        aggregated_results = super().on_write_complete(raw_write_results)
 
-        # If all blocks are empty, no rows were written,
-        # so we can delete the directory.
-        for result in raw_write_results:
-            ba = BlockAccessor.for_block(result)
-            if ba.num_rows() > 0:
-                return
-        self.filesystem.delete_dir(self.path)
+        # If no rows were written, we can delete the directory.
+        if self.has_created_dir and aggregated_results["total_num_rows"] == 0:
+            self.filesystem.delete_dir(self.path)
 
     @property
     def supports_distributed_writes(self) -> bool:
