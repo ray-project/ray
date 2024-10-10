@@ -288,6 +288,19 @@ class MultiRLModule(RLModule):
         # has `inference_only=False`.
         if not module.inference_only:
             self.inference_only = False
+
+        # Check framework of incoming RLModule against `self.framework`.
+        if module.framework is not None:
+            if self.framework is None:
+                self.framework = module.framework
+            elif module.framework != self.framework:
+                raise ValueError(
+                    f"Framework ({module.framework}) of incoming RLModule does NOT "
+                    f"match framework ({self.framework}) of MultiRLModule! If the "
+                    f"added module should not be trained, try setting its framework "
+                    f"to None."
+                )
+
         self._rl_modules[module_id] = module
         # Update our RLModuleSpecs dict, such that - if written to disk -
         # it'll allow for proper restoring this instance through `.from_checkpoint()`.
