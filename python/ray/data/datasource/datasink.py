@@ -46,8 +46,8 @@ class Datasink:
         method fails, then ``on_write_failed()`` is called.
 
         Args:
-            write_results: The objects returned by every
-                :meth:`~ray.data.Datasink.write` task.
+            raw_write_results: The blocks resulting from executing the Write operator,
+                containing write results and stats.
         """
         total_num_rows = 0
         total_size_bytes = 0
