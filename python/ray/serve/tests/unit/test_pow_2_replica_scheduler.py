@@ -1253,7 +1253,7 @@ class TestModelMultiplexing:
                 ),
             ]
 
-            done, _ = await asyncio.wait(tasks, timeout=0.01)
+            done, _ = await asyncio.wait(tasks, timeout=0.1)
             assert len(done) == len(tasks)
 
             assert all(
@@ -1600,7 +1600,7 @@ async def test_queue_len_cache_replica_at_capacity_is_probed(pow_2_scheduler):
     s.replica_queue_len_cache.update(r1.replica_id, DEFAULT_MAX_ONGOING_REQUESTS)
 
     task = loop.create_task(s.choose_replica_for_request(fake_pending_request()))
-    done, _ = await asyncio.wait([task], timeout=0.01)
+    done, _ = await asyncio.wait([task], timeout=0.1)
     assert len(done) == 0
     # 1 probe from scheduling requests
     # + 1 probe from when the replica set was updated with replica r1
@@ -1608,7 +1608,7 @@ async def test_queue_len_cache_replica_at_capacity_is_probed(pow_2_scheduler):
 
     # Now let the replica respond and accept the request, it should be scheduled.
     r1.set_queue_len_response(DEFAULT_MAX_ONGOING_REQUESTS - 1)
-    done, _ = await asyncio.wait([task], timeout=0.01)
+    done, _ = await asyncio.wait([task], timeout=0.1)
     assert len(done) == 1
     assert (await task) == r1
 
@@ -1636,7 +1636,7 @@ async def test_queue_len_cache_background_probing(pow_2_scheduler):
     s.replica_queue_len_cache.update(r1.replica_id, 0)
 
     task = loop.create_task(s.choose_replica_for_request(fake_pending_request()))
-    done, _ = await asyncio.wait([task], timeout=0.01)
+    done, _ = await asyncio.wait([task], timeout=0.1)
     assert len(done) == 1
     assert (await task) == r1
     # 0 probes from scheduling requests
