@@ -4,17 +4,17 @@ from libc.stdint cimport uint8_t, uint32_t, int64_t
 
 cdef extern from "ray/common/id.h" namespace "ray" nogil:
     cdef cppclass CBaseID[T]:
-        @staticmethod
-        T FromBinary(const c_string &binary)
+        # @staticmethod
+        # T FromBinary(const c_string &binary)
 
-        @staticmethod
-        T FromHex(const c_string &hex_str)
+        # @staticmethod
+        # T FromHex(const c_string &hex_str)
 
-        @staticmethod
-        const T Nil()
+        # @staticmethod
+        # const T Nil()
 
-        @staticmethod
-        size_t Size()
+        # @staticmethod
+        # size_t Size()
 
         size_t Hash() const
         c_bool IsNil() const
@@ -25,7 +25,7 @@ cdef extern from "ray/common/id.h" namespace "ray" nogil:
         c_string Binary() const
         c_string Hex() const
 
-    cdef cppclass CUniqueID "ray::UniqueID"(CBaseID):
+    cdef cppclass CUniqueID "ray::UniqueID"(CBaseID[CUniqueID]):
         CUniqueID()
 
         @staticmethod
@@ -40,13 +40,13 @@ cdef extern from "ray/common/id.h" namespace "ray" nogil:
         @staticmethod
         const CUniqueID Nil()
 
-        @staticmethod
-        size_t Size()
+        # @staticmethod
+        # size_t Size()
 
-    cdef cppclass CActorClassID "ray::ActorClassID"(CUniqueID):
+    cdef cppclass CActorClassID "ray::ActorClassID"(CBaseID[CActorClassID]):
 
-        @staticmethod
-        CActorClassID FromBinary(const c_string &binary)
+        # @staticmethod
+        # CActorClassID FromBinary(const c_string &binary)
 
         @staticmethod
         CActorClassID FromHex(const c_string &hex_str)
@@ -71,10 +71,10 @@ cdef extern from "ray/common/id.h" namespace "ray" nogil:
 
         CJobID JobId()
 
-    cdef cppclass CNodeID "ray::NodeID"(CUniqueID):
+    cdef cppclass CNodeID "ray::NodeID"(CBaseID[CNodeID]):
 
-        @staticmethod
-        CNodeID FromBinary(const c_string &binary)
+        # @staticmethod
+        # CNodeID FromBinary(const c_string &binary)
 
         @staticmethod
         CNodeID FromHex(const c_string &hex_str)
@@ -82,15 +82,16 @@ cdef extern from "ray/common/id.h" namespace "ray" nogil:
         @staticmethod
         const CNodeID Nil()
 
-    cdef cppclass CConfigID "ray::ConfigID"(CUniqueID):
+    cdef cppclass CConfigID "ray::ConfigID"(CBaseID[CConfigID]):
+        pass
 
         @staticmethod
         CConfigID FromBinary(const c_string &binary)
 
-    cdef cppclass CFunctionID "ray::FunctionID"(CUniqueID):
+    cdef cppclass CFunctionID "ray::FunctionID"(CBaseID[CFunctionID]):
 
-        @staticmethod
-        CFunctionID FromBinary(const c_string &binary)
+        # @staticmethod
+        # CFunctionID FromBinary(const c_string &binary)
 
         @staticmethod
         CFunctionID FromHex(const c_string &hex_str)
@@ -175,10 +176,10 @@ cdef extern from "ray/common/id.h" namespace "ray" nogil:
 
         CTaskID TaskId() const
 
-    cdef cppclass CClusterID "ray::ClusterID"(CUniqueID):
+    cdef cppclass CClusterID "ray::ClusterID"(CBaseID[CClusterID]):
 
-        @staticmethod
-        CClusterID FromBinary(const c_string &binary)
+        # @staticmethod
+        # CClusterID FromBinary(const c_string &binary)
 
         @staticmethod
         CClusterID FromHex(const c_string &hex_str)
@@ -189,10 +190,10 @@ cdef extern from "ray/common/id.h" namespace "ray" nogil:
         @staticmethod
         const CClusterID Nil()
 
-    cdef cppclass CWorkerID "ray::WorkerID"(CUniqueID):
+    cdef cppclass CWorkerID "ray::WorkerID"(CBaseID[CWorkerID]):
 
-        @staticmethod
-        CWorkerID FromBinary(const c_string &binary)
+        # @staticmethod
+        # CWorkerID FromBinary(const c_string &binary)
 
         @staticmethod
         CWorkerID FromHex(const c_string &hex_str)

@@ -317,7 +317,7 @@ cdef class NewGcsClient:
             c_vector[c_string] results
             CRayStatus status
         for node_id in node_ids:
-            c_node_ids.push_back(CNodeID.FromBinary(node_id))
+            c_node_ids.push_back(<CNodeID>CUniqueID.FromBinary(node_id))
         with nogil:
             status = self.inner.get().Nodes().DrainNodes(
                 c_node_ids, timeout_ms, results)
@@ -504,7 +504,7 @@ cdef class NewGcsClient:
     #############################################################
     def request_cluster_resource_constraint(
             self,
-            bundles: c_vector[unordered_map[c_string, double]],
+            bundles: c_vector[unordered_map[c_string, cython.double]],
             count_array: c_vector[int64_t],
             timeout_s=None):
         cdef:
@@ -591,7 +591,7 @@ cdef incremented_fut():
     cpython.Py_INCREF(fut)
     return fut
 
-cdef void assign_and_decrement_fut(result, fut) with gil:
+cdef void assign_and_decrement_fut(result, fut) noexcept with gil:
     assert isinstance(fut, concurrent.futures.Future)
 
     assert not fut.done()

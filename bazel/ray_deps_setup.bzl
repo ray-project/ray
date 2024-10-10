@@ -189,8 +189,10 @@ def ray_deps_setup():
     auto_http_archive(
         name = "cython",
         build_file = True,
-        url = "https://github.com/cython/cython/archive/refs/tags/0.29.37.tar.gz",
-        sha256 = "824eb14045d85c5af677536134199dd6709db8fb0835452fd2d54bc3c8df8887",
+        # We need a version with https://github.com/cython/cython/commit/3d41922a23793fef61eba6b51b779d24bac9a1f1
+        # which is not released yet (should be part of the 3.1 release)
+        # url = "https://github.com/cython/cython/archive/3d41922a23793fef61eba6b51b779d24bac9a1f1.tar.gz",
+        url = "https://github.com/cython/cython/archive/refs/tags/3.0.11.tar.gz",
     )
 
     auto_http_archive(
