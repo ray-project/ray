@@ -2,6 +2,18 @@ load("@rules_cc//cc:defs.bzl", "cc_test")
 load("//bazel:ray.bzl", "COPTS")
 
 cc_test(
+    name = "thread_checker_test",
+    srcs = ["thread_checker_test.cc"],
+    copts = COPTS,
+    size = "small",
+    tags = ["team:core"],
+    deps = [
+        "//src/ray/util:thread_checker",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
     name = "container_util_test",
     size = "small",
     srcs = ["container_util_test.cc"],
