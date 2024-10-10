@@ -7,6 +7,7 @@ cc_test(
     srcs = ["container_util_test.cc"],
     copts = COPTS,
     tags = ["team:core"],
+    linkstatic = True,
     deps = [
         "//src/ray/util",
         "@com_google_absl//absl/container:flat_hash_map",
