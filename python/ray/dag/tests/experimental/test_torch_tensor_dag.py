@@ -34,8 +34,6 @@ if sys.platform != "linux" and sys.platform != "darwin":
 
 USE_GPU = bool(os.environ.get("RAY_PYTEST_USE_GPU", 0))
 
-USE_GPU = bool(os.environ.get("RAY_PYTEST_USE_NPU", 0))
-
 
 @ray.remote
 class TorchTensorWorker:

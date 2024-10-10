@@ -26,7 +26,7 @@ class _HcclGroup(GPUCommunicator):
     """
     Represents an actor's HCCL communicator using NPUs.
 
-    This is the default HCCL communicator to be used in aDAG if a
+    This is the default HCCL communicator to be used in Compiled Graphs if a
     custom communicator is not provided.
 
     This class is not thread-safe.
@@ -54,13 +54,13 @@ class _HcclGroup(GPUCommunicator):
             rank: The rank of this actor. If None, then the caller is not a
                 participant of the HCCL group.
             actor_handles: A list of actor handles, in rank order.
-            cuda_stream: Not used here but to keep same agrs with nccl_group.
+            cuda_stream: Consistency with GPUCommunicator API. Hccl does not use cuda.
         """
-        self._world_size = world_size
-        self._comm_id = comm_id
-        self._rank = rank
-        self._actor_handles = actor_handles
-        self._closed = False
+        self._world_size: int = world_size
+        self._comm_id: int = comm_id
+        self._rank: int = rank
+        self._actor_handles: list = actor_handles
+        self._closed: bool = False
         # Initialize distributed HCCL communication if rank is provided
         if rank is not None:
             self._init_dist_hccl(rank, world_size)
