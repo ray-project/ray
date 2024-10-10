@@ -87,12 +87,6 @@ def _parse_filter(filter: str) -> Tuple[str, PredicateType, SupportedFilterType]
             f"key {key} is not an alphabetic string. "
             "Please provide key=val or key!=value"
         )
-    if not value.isalnum():
-        raise ValueError(
-            f"The format of a given filter {filter} is invalid: "
-            f"value {value} is not an alphanumeric string. "
-            "Please provide key=val or key!=value"
-        )
     assert predicate == "=" or predicate == "!="
     if len(key) == 0 or len(value) == 0:
         raise ValueError(
