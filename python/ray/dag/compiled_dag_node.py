@@ -1887,60 +1887,125 @@ class CompiledDAG:
         self._execution_index += 1
         return fut
 
-    def visualize(self, filename="compiled_dag", format="png", view=False):
+    def visualize(self, filename="compiled_graph", format="png", view=False):
         """
-        Visualize the compiled DAG using Graphviz.
+        Visualize the compiled graph using Graphviz.
+
+        This method generates a graphical representation of the compiled graph,
+        showing tasks and their dependencies.
+
+        **When to Call:**
+        - This method should be called **after** the graph has
+            been compiled using `experimental_compile()`.
+        - The internal data structures (`self.idx_to_task`,
+            `self.idx_to_task[task_idx].dag_node`, etc.)
+            must be fully initialized and populated.
+        - All tasks and their relationships (downstream tasks,
+          type hints, etc.) should be ready.
+
+        **Assumptions:**
+        - `self.idx_to_task` is a dictionary mapping task
+        indices to `CompiledTask` instances.
+        - Each `CompiledTask` has a `dag_node` attribute that represents the graph node.
+        - Type hints for inputs and outputs are properly set in the graph nodes.
+        - The compiled graph does not contain cycles (it's a Directed Acyclic Graph).
 
         Args:
             filename: The name of the output file (without extension).
             format: The format of the output file (e.g., 'png', 'pdf').
             view: Whether to open the file with the default viewer.
+
+        Raises:
+            ValueError: If the DAG is empty or not properly compiled.
+            ImportError: If the `graphviz` package is not installed.
+
         """
         import graphviz
         from ray.dag import (
             InputAttributeNode,
             InputNode,
+            MultiOutputNode,
+            ClassMethodNode,
+            DAGNode,
         )
 
-        dot = graphviz.Digraph(name="CompiledDAG", format=format)
+        # Dot file for debuging
+        dot = graphviz.Digraph(name="compiled_graph", format=format)
 
         # Add nodes with task information
         for idx, task in self.idx_to_task.items():
             dag_node = task.dag_node
 
-            # Initialize the label
+            # Initialize the label and attributes
             label = f"Task {idx}\n"
+            shape = "oval"  # Default shape
+            style = "filled"
+            fillcolor = ""
 
             # Handle different types of dag_node
             if isinstance(dag_node, InputNode):
                 label += "InputNode"
+                shape = "rectangle"
+                fillcolor = "lightblue"
             elif isinstance(dag_node, InputAttributeNode):
                 label += f"InputAttributeNode[{dag_node.key}]"
-            elif hasattr(dag_node, "get_method_name"):
-                method_name_attr = getattr(dag_node, "get_method_name")
-                if callable(method_name_attr):
-                    method_name = method_name_attr()
+                shape = "rectangle"
+                fillcolor = "lightblue"
+            elif isinstance(dag_node, MultiOutputNode):
+                label += "MultiOutputNode"
+                shape = "rectangle"
+                fillcolor = "yellow"
+            elif isinstance(dag_node, ClassMethodNode):
+                if dag_node.is_class_method_call:
+                    # Class Method Call Node
+                    method_name = dag_node.get_method_name()
+                    actor_handle = dag_node._get_actor_handle()
+                    if actor_handle:
+                        actor_id = actor_handle._actor_id.hex()
+                        label += f"Actor: {actor_id[:6]}...\nMethod: {method_name}"
+                    else:
+                        label += f"Method: {method_name}"
+                    shape = "oval"
+                    fillcolor = "lightgreen"
+                elif dag_node.is_class_method_output:
+                    # Class Method Output Node
+                    label += f"ClassMethodOutputNode[{dag_node.output_idx}]"
+                    shape = "rectangle"
+                    fillcolor = "orange"
                 else:
-                    method_name = method_name_attr
-
-                # Get actor ID if applicable
-                actor_handle = dag_node._get_actor_handle()
-                if actor_handle:
-                    actor_id = actor_handle._actor_id.hex()
-                    label += f"Actor: {actor_id[:6]}...\nMethod: {method_name}"
-                else:
-                    label += f"Method: {method_name}"
+                    # Unexpected ClassMethodNode
+                    label += "ClassMethodNode"
+                    shape = "diamond"
+                    fillcolor = "red"
             else:
+                # Unexpected node type
                 label += type(dag_node).__name__
+                shape = "diamond"
+                fillcolor = "red"
 
-            # Add the node to the graph
-            dot.node(str(idx), label)
+            # Add the node to the graph with attributes
+            dot.node(str(idx), label, shape=shape, style=style, fillcolor=fillcolor)
 
-        # Add edges based on downstream tasks
+        # Add edges with type hints based on argument mappings
         for idx, task in self.idx_to_task.items():
-            for downstream_idx, _ in task.downstream_task_idxs.items():
-                # You can also include edge labels with channel types or other info
-                dot.edge(str(idx), str(downstream_idx))
+            current_task_idx = idx
+
+            for arg_index, arg in enumerate(task.dag_node.get_args()):
+                if isinstance(arg, DAGNode):
+                    # Get the upstream task index
+                    upstream_task_idx = self.dag_node_to_idx[arg]
+
+                    # Get the type hint for this argument
+                    if arg_index < len(task.arg_type_hints):
+                        type_hint = type(task.arg_type_hints[arg_index]).__name__
+                    else:
+                        type_hint = "UnknownType"
+
+                    # Draw an edge from the upstream task to the
+                    # current task with the type hint
+                    dot.edge(
+                        str(upstream_task_idx), str(current_task_idx), label=type_hint
+                    )
 
         # Render the graph to a file
         dot.render(filename, view=view)
