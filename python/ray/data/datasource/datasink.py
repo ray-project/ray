@@ -53,7 +53,7 @@ class Datasink:
         total_size_bytes = 0
 
         for result in raw_write_results:
-            # `result`` is a Block containing a single row with write results/stats.
+            # `result` is a Block containing a single row with write results/stats.
             # Calling `iter_rows()` is the cleanest way to extract a single row
             # for various block types.
             for row in BlockAccessor.for_block(result).iter_rows(None):
