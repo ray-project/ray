@@ -417,6 +417,8 @@ class ObjectRefGenerator:
                     return False
                 else:
                     return True
+        else:
+            return False
 
     """
     Private APIs

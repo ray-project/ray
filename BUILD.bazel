@@ -98,6 +98,7 @@ ray_cc_library(
         "src/ray/rpc/client_call.h",
         "src/ray/rpc/common.h",
         "src/ray/rpc/grpc_client.h",
+        "src/ray/rpc/retryable_grpc_client.h",
         "src/ray/rpc/grpc_server.h",
         "src/ray/rpc/metrics_agent_client.h",
         "src/ray/rpc/server_call.h",

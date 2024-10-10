@@ -31,7 +31,7 @@
 #include "absl/hash/hash.h"
 #include "ray/common/status.h"
 #include "ray/pubsub/subscriber.h"
-#include "ray/rpc/grpc_client.h"
+#include "ray/rpc/retryable_grpc_client.h"
 #include "ray/util/logging.h"
 #include "src/ray/protobuf/core_worker.grpc.pb.h"
 #include "src/ray/protobuf/core_worker.pb.h"
