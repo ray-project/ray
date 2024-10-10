@@ -256,8 +256,7 @@ class ParquetDatasource(Datasource):
             # Try to infer dataset schema by passing dummy table through UDF.
             dummy_table = schema.empty_table()
             try:
-                schema = _block_udf(dummy_table).schema
-                schema = schema.with_metadata(schema.metadata)
+                schema = _block_udf(dummy_table).schema.with_metadata(schema.metadata)
             except Exception:
                 logger.debug(
                     "Failed to infer schema of dataset by passing dummy table "
