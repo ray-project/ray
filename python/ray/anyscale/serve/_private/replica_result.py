@@ -1,15 +1,22 @@
 import asyncio
 import concurrent.futures
+import inspect
+import logging
 from asyncio import run_coroutine_threadsafe
-from typing import Any, AsyncIterator, Callable, Iterator, Optional
+from functools import wraps
+from typing import Any, AsyncIterator, Callable, Coroutine, Iterator, Optional, Union
 
 import grpc
 
 import ray
 from ray import cloudpickle
+from ray.exceptions import RayTaskError
+from ray.serve._private.constants import SERVE_LOGGER_NAME
 from ray.serve._private.http_util import MessageQueue
 from ray.serve._private.replica_result import ReplicaResult
 from ray.serve.generated import serve_proprietary_pb2
+
+logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 
 def is_running_in_asyncio_loop() -> bool:
@@ -56,6 +63,40 @@ class gRPCReplicaResult(ReplicaResult):
                 self.consume_messages_from_gen()
             )
 
+    def _process_grpc_response(f: Union[Callable, Coroutine]):
+        def deserialize_or_raise_error(
+            grpc_response: serve_proprietary_pb2.ASGIResponse,
+        ):
+            if grpc_response.is_error:
+                err = cloudpickle.loads(grpc_response.serialized_message)
+                if isinstance(err, RayTaskError):
+                    raise err.as_instanceof_cause()
+                else:
+                    raise err
+            else:
+                # If it's an HTTP request, then the proxy response generator is
+                # expecting a pickled dictionary, so we return result directly
+                # without deserializing. Otherwise, we deserialize the result.
+                if ray.serve.context._serve_request_context.get().is_http_request:
+                    return grpc_response.serialized_message
+                else:
+                    return cloudpickle.loads(grpc_response.serialized_message)
+
+        @wraps(f)
+        def wrapper(*args, **kwargs):
+            grpc_response: serve_proprietary_pb2.ASGIResponse = f(*args, **kwargs)
+            return deserialize_or_raise_error(grpc_response)
+
+        @wraps(f)
+        async def async_wrapper(*args, **kwargs):
+            grpc_response: serve_proprietary_pb2.ASGIResponse = await f(*args, **kwargs)
+            return deserialize_or_raise_error(grpc_response)
+
+        if inspect.iscoroutinefunction(f):
+            return async_wrapper
+        else:
+            return wrapper
+
     def __aiter__(self) -> AsyncIterator[Any]:
         return self
 
@@ -90,6 +131,7 @@ class gRPCReplicaResult(ReplicaResult):
         else:
             return await self._gen.__anext__()
 
+    @_process_grpc_response
     def get(self, timeout_s: Optional[float]):
         if is_running_in_asyncio_loop():
             raise RuntimeError(
@@ -103,13 +145,11 @@ class gRPCReplicaResult(ReplicaResult):
             )
 
         try:
-            grpc_response: serve_proprietary_pb2.ASGIResponse = self._fut.result(
-                timeout=timeout_s
-            )
+            return self._fut.result(timeout=timeout_s)
         except concurrent.futures.TimeoutError:
             raise TimeoutError("Timed out waiting for result.") from None
-        return cloudpickle.loads(grpc_response.serialized_message)
 
+    @_process_grpc_response
     async def get_async(self):
         if self._fut is None:
             if self._calling_from_same_loop:
@@ -119,11 +159,9 @@ class gRPCReplicaResult(ReplicaResult):
                     self._get_internal(), self._grpc_call_loop
                 )
 
-        grpc_response: serve_proprietary_pb2.ASGIResponse = await asyncio.wrap_future(
-            self._fut
-        )
-        return cloudpickle.loads(grpc_response.serialized_message)
+        return await asyncio.wrap_future(self._fut)
 
+    @_process_grpc_response
     def __next__(self):
         if is_running_in_asyncio_loop():
             raise RuntimeError(
@@ -133,32 +171,20 @@ class gRPCReplicaResult(ReplicaResult):
 
         fut = run_coroutine_threadsafe(self._get_internal(), loop=self._grpc_call_loop)
         try:
-            grpc_response: serve_proprietary_pb2.ASGIResponse = fut.result()
-            return cloudpickle.loads(grpc_response.serialized_message)
+            return fut.result()
         except StopAsyncIteration:
             # We need to raise the synchronous version, StopIteration
             raise StopIteration
 
+    @_process_grpc_response
     async def __anext__(self):
         if self._calling_from_same_loop:
-            grpc_response: serve_proprietary_pb2.ASGIResponse = (
-                await self._get_internal()
-            )
+            return await self._get_internal()
         else:
             fut = run_coroutine_threadsafe(
                 self._get_internal(), loop=self._grpc_call_loop
             )
-            grpc_response: serve_proprietary_pb2.ASGIResponse = (
-                await asyncio.wrap_future(fut)
-            )
-
-        # If it's an HTTP request, then the proxy response generator is
-        # expecting a pickled dictionary, so we return result directly
-        # without deserializing. Otherwise, we deserialize the result.
-        if ray.serve.context._serve_request_context.get().is_http_request:
-            return grpc_response.serialized_message
-        else:
-            return cloudpickle.loads(grpc_response.serialized_message)
+            return await asyncio.wrap_future(fut)
 
     def add_callback(self, callback: Callable):
         self._call.add_done_callback(callback)

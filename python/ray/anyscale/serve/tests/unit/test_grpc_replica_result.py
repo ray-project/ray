@@ -11,9 +11,10 @@ from ray.serve.generated import serve_proprietary_pb2
 
 
 class FakegRPCUnaryCall:
-    def __init__(self, item):
+    def __init__(self, item, is_error: bool = False):
         self._loop = asyncio.get_running_loop()
         self._item = item
+        self._is_error = is_error
 
     def __await__(self):
         if asyncio.get_running_loop() != self._loop:
@@ -21,12 +22,12 @@ class FakegRPCUnaryCall:
 
         yield
         return serve_proprietary_pb2.ASGIResponse(
-            serialized_message=cloudpickle.dumps(self._item)
+            serialized_message=cloudpickle.dumps(self._item), is_error=self._is_error
         )
 
 
 class FakegRPCStreamCall:
-    def __init__(self, items, event: threading.Event = None):
+    def __init__(self, items, *, event: threading.Event = None):
         self._loop = asyncio.get_running_loop()
         self._items = items
         self._event = event
@@ -48,8 +49,10 @@ class FakegRPCStreamCall:
         if self._event:
             await self._loop.run_in_executor(None, self._event.wait)
 
+        item, is_error = self._items.pop(0)
         return serve_proprietary_pb2.ASGIResponse(
-            serialized_message=cloudpickle.dumps(self._items.pop(0))
+            serialized_message=cloudpickle.dumps(item),
+            is_error=is_error,
         )
 
 
@@ -68,36 +71,53 @@ def create_asyncio_event_loop_in_thread():
 
 @pytest.mark.asyncio
 class TestSameLoop:
-    async def test_unary(self):
-        fake_call = FakegRPCUnaryCall("hello")
-        replica_result = gRPCReplicaResult(
+    def make_fake_call(self, is_streaming: bool, *, data=None, error=None):
+        if is_streaming:
+            fake_call = FakegRPCStreamCall(data)
+        else:
+            if error:
+                fake_call = FakegRPCUnaryCall(error, is_error=True)
+            else:
+                fake_call = FakegRPCUnaryCall(data, is_error=False)
+
+        return gRPCReplicaResult(
             fake_call,
             is_streaming=False,
             loop=asyncio.get_running_loop(),
             on_separate_loop=False,
         )
 
+    async def test_unary(self):
+        replica_result = self.make_fake_call(is_streaming=False, data="hello")
         assert await replica_result.get_async() == "hello"
 
     async def test_streaming(self):
-        fake_call = FakegRPCStreamCall([1, 2, 3, 4])
-        replica_result = gRPCReplicaResult(
-            fake_call,
-            is_streaming=True,
-            loop=asyncio.get_running_loop(),
-            on_separate_loop=False,
+        replica_result = self.make_fake_call(
+            is_streaming=True, data=[(1, False), (2, False), (3, False), (4, False)]
         )
         assert [r async for r in replica_result] == [1, 2, 3, 4]
 
     async def test_unary_with_gen(self):
-        fake_call = FakegRPCStreamCall(["hello"])
-        replica_result = gRPCReplicaResult(
-            fake_call,
-            is_streaming=False,
-            loop=asyncio.get_running_loop(),
-            on_separate_loop=False,
-        )
+        replica_result = self.make_fake_call(is_streaming=True, data=[("hello", False)])
         assert await replica_result.get_async() == "hello"
+
+    async def test_unary_error(self):
+        """Test error is raised correctly."""
+
+        replica_result = self.make_fake_call(
+            is_streaming=False, error=RuntimeError("oh no!")
+        )
+        with pytest.raises(RuntimeError, match="oh no!"):
+            await replica_result.get_async()
+
+    async def test_streaming_error(self):
+        """Test error is raised correctly."""
+
+        replica_result = self.make_fake_call(
+            is_streaming=True, data=[(RuntimeError("oh no!"), True)]
+        )
+        with pytest.raises(RuntimeError, match="oh no!"):
+            await replica_result.__anext__()
 
 
 class TestSeparateLoop:
@@ -116,8 +136,12 @@ class TestSeparateLoop:
         *,
         is_streaming: bool = True,
         event: threading.Event = None,
+        error=None,
     ):
-        fake_call = FakegRPCStreamCall(data, event=event)
+        if error:
+            fake_call = FakegRPCStreamCall([(error, True)], event=event)
+        else:
+            fake_call = FakegRPCStreamCall([(d, False) for d in data], event=event)
         return gRPCReplicaResult(
             fake_call,
             is_streaming=is_streaming,
@@ -269,6 +293,68 @@ class TestSeparateLoop:
 
         event.set()
         assert replica_result.get(timeout_s=0.01) == "hello"
+
+    def test_unary_error_sync(self, create_asyncio_event_loop_in_thread):
+        """Test error is raised correctly."""
+
+        loop, _ = create_asyncio_event_loop_in_thread
+        fut = asyncio.run_coroutine_threadsafe(
+            self.make_fake_streaming_request(
+                None, loop, on_separate_loop=True, error=RuntimeError("oh no!")
+            ),
+            loop=loop,
+        )
+        replica_result = fut.result()
+
+        with pytest.raises(RuntimeError, match="oh no!"):
+            replica_result.get(None)
+
+    @pytest.mark.asyncio
+    async def test_unary_error_async(self, create_asyncio_event_loop_in_thread):
+        """Test error is raised correctly."""
+
+        loop, _ = create_asyncio_event_loop_in_thread
+        fut = asyncio.run_coroutine_threadsafe(
+            self.make_fake_streaming_request(
+                None, loop, on_separate_loop=True, error=RuntimeError("oh no!")
+            ),
+            loop=loop,
+        )
+        replica_result = fut.result()
+
+        with pytest.raises(RuntimeError, match="oh no!"):
+            await replica_result.get_async()
+
+    def test_streaming_error_sync(self, create_asyncio_event_loop_in_thread):
+        """Test error is raised correctly."""
+
+        loop, _ = create_asyncio_event_loop_in_thread
+        fut = asyncio.run_coroutine_threadsafe(
+            self.make_fake_streaming_request(
+                None, loop, on_separate_loop=True, error=RuntimeError("oh no!")
+            ),
+            loop=loop,
+        )
+        replica_result = fut.result()
+
+        with pytest.raises(RuntimeError, match="oh no!"):
+            replica_result.__next__()
+
+    @pytest.mark.asyncio
+    async def test_streaming_error_async(self, create_asyncio_event_loop_in_thread):
+        """Test error is raised correctly."""
+
+        loop, _ = create_asyncio_event_loop_in_thread
+        fut = asyncio.run_coroutine_threadsafe(
+            self.make_fake_streaming_request(
+                None, loop, on_separate_loop=True, error=RuntimeError("oh no!")
+            ),
+            loop=loop,
+        )
+        replica_result = fut.result()
+
+        with pytest.raises(RuntimeError, match="oh no!"):
+            await replica_result.__anext__()
 
 
 if __name__ == "__main__":

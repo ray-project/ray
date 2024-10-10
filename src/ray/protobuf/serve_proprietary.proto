@@ -27,6 +27,7 @@ message ASGIRequest {
 
 message ASGIResponse {
   bytes serialized_message = 1;
+  bool is_error = 2;
 }
 
 service ASGIService {

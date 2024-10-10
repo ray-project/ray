@@ -533,14 +533,20 @@ class ReplicaActor:
             trace_context=trace_context,
         )
         with trace_manager, self._wrap_user_method_call(request_metadata):
-            result = await self._user_callable_wrapper.call_user_method(
-                request_metadata,
-                cloudpickle.loads(request.request_args),
-                cloudpickle.loads(request.request_kwargs),
-            )
-            return serve_proprietary_pb2.ASGIResponse(
-                serialized_message=cloudpickle.dumps(result)
-            )
+            try:
+                result = await self._user_callable_wrapper.call_user_method(
+                    request_metadata,
+                    cloudpickle.loads(request.request_args),
+                    cloudpickle.loads(request.request_kwargs),
+                )
+                return serve_proprietary_pb2.ASGIResponse(
+                    serialized_message=cloudpickle.dumps(result)
+                )
+            except (Exception, asyncio.CancelledError) as e:
+                return serve_proprietary_pb2.ASGIResponse(
+                    serialized_message=cloudpickle.dumps(e),
+                    is_error=True,
+                )
 
     async def handle_request_streaming(
         self,
@@ -575,17 +581,25 @@ class ReplicaActor:
             trace_context=trace_context,
         )
         with trace_manager, self._wrap_user_method_call(request_metadata):
-            async for result in self._call_user_generator(
-                request_metadata,
-                cloudpickle.loads(request.request_args),
-                cloudpickle.loads(request.request_kwargs),
-            ):
-                if request_metadata.is_http_request:
-                    yield serve_proprietary_pb2.ASGIResponse(serialized_message=result)
-                else:
-                    yield serve_proprietary_pb2.ASGIResponse(
-                        serialized_message=cloudpickle.dumps(result)
-                    )
+            try:
+                async for result in self._call_user_generator(
+                    request_metadata,
+                    cloudpickle.loads(request.request_args),
+                    cloudpickle.loads(request.request_kwargs),
+                ):
+                    if request_metadata.is_http_request:
+                        yield serve_proprietary_pb2.ASGIResponse(
+                            serialized_message=result
+                        )
+                    else:
+                        yield serve_proprietary_pb2.ASGIResponse(
+                            serialized_message=cloudpickle.dumps(result)
+                        )
+            except (Exception, asyncio.CancelledError) as e:
+                yield serve_proprietary_pb2.ASGIResponse(
+                    serialized_message=cloudpickle.dumps(e),
+                    is_error=True,
+                )
 
     async def handle_request_with_rejection(
         self,
@@ -653,6 +667,15 @@ class ReplicaActor:
         request: serve_proprietary_pb2.ASGIRequest,
         context: grpc.aio.ServicerContext,
     ) -> AsyncGenerator[Any, None]:
+        """gRPC entrypoint for all requests with strict max_ongoing_requests enforcement
+
+        This generator yields a system message indicating if the request was accepted,
+        then the actual response(s).
+
+        If an exception occurred while processing the request, whether it's a user
+        exception or an error intentionally raised by Serve, it will be returned as
+        a gRPC response instead of raised directly.
+        """
         request_metadata = pickle.loads(request.pickled_request_metadata)
         limit = self._deployment_config.max_ongoing_requests
         num_ongoing_requests = self.get_num_ongoing_requests()
@@ -685,29 +708,35 @@ class ReplicaActor:
                 )
             )
 
-            if request_metadata.is_streaming:
-                async for result in self._call_user_generator(
-                    request_metadata,
-                    cloudpickle.loads(request.request_args),
-                    cloudpickle.loads(request.request_kwargs),
-                ):
-                    if request_metadata.is_http_request:
-                        yield serve_proprietary_pb2.ASGIResponse(
-                            serialized_message=result
-                        )
-                    else:
-                        yield serve_proprietary_pb2.ASGIResponse(
-                            serialized_message=cloudpickle.dumps(result)
-                        )
+            try:
+                if request_metadata.is_streaming:
+                    async for result in self._call_user_generator(
+                        request_metadata,
+                        cloudpickle.loads(request.request_args),
+                        cloudpickle.loads(request.request_kwargs),
+                    ):
+                        if request_metadata.is_http_request:
+                            yield serve_proprietary_pb2.ASGIResponse(
+                                serialized_message=result
+                            )
+                        else:
+                            yield serve_proprietary_pb2.ASGIResponse(
+                                serialized_message=cloudpickle.dumps(result)
+                            )
 
-            else:
-                result = await self._user_callable_wrapper.call_user_method(
-                    request_metadata,
-                    cloudpickle.loads(request.request_args),
-                    cloudpickle.loads(request.request_kwargs),
-                )
+                else:
+                    result = await self._user_callable_wrapper.call_user_method(
+                        request_metadata,
+                        cloudpickle.loads(request.request_args),
+                        cloudpickle.loads(request.request_kwargs),
+                    )
+                    yield serve_proprietary_pb2.ASGIResponse(
+                        serialized_message=cloudpickle.dumps(result)
+                    )
+            except (Exception, asyncio.CancelledError) as e:
                 yield serve_proprietary_pb2.ASGIResponse(
-                    serialized_message=cloudpickle.dumps(result)
+                    serialized_message=cloudpickle.dumps(e),
+                    is_error=True,
                 )
 
     async def handle_request_from_java(
