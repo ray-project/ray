@@ -92,11 +92,10 @@ void GcsJobManager::HandleAddJob(rpc::AddJobRequest request,
 
   auto on_done = [this,
                   job_id,
-                  job_table_data_ref = std::cref(mutable_job_table_data),
+                  job_table_data = mutable_job_table_data,
                   reply,
                   send_reply_callback =
                       std::move(send_reply_callback)](const Status &status) {
-    const auto &job_table_data = job_table_data_ref.get();
     if (!status.ok()) {
       RAY_LOG(ERROR) << "Failed to add job, job id = " << job_id
                      << ", driver pid = " << job_table_data.driver_pid();
@@ -135,7 +134,8 @@ void GcsJobManager::MarkJobAsFinished(rpc::JobTableData job_table_data,
   job_table_data.set_timestamp(time);
   job_table_data.set_end_time(time);
   job_table_data.set_is_dead(true);
-  auto on_done = [this, job_id, job_table_data, done_callback](const Status &status) {
+  auto on_done = [this, job_id, job_table_data, done_callback = std::move(done_callback)](
+                     const Status &status) {
     if (!status.ok()) {
       RAY_LOG(ERROR) << "Failed to mark job state, job id = " << job_id;
     } else {
@@ -146,16 +146,18 @@ void GcsJobManager::MarkJobAsFinished(rpc::JobTableData job_table_data,
     }
     function_manager_.RemoveJobReference(job_id);
     WriteDriverJobExportEvent(job_table_data);
+
+    // Update running job status.
+    auto iter = running_job_ids_.find(job_id);
+    RAY_CHECK(iter != running_job_ids_.end());
+    running_job_ids_.erase(iter);
+
     done_callback(status);
   };
 
   Status status = gcs_table_storage_->JobTable().Put(job_id, job_table_data, on_done);
   if (!status.ok()) {
     on_done(status);
-  } else {
-    auto iter = running_job_ids_.find(job_id);
-    RAY_CHECK(iter != running_job_ids_.end());
-    running_job_ids_.erase(iter);
   }
 }
 
@@ -164,26 +166,32 @@ void GcsJobManager::HandleMarkJobFinished(rpc::MarkJobFinishedRequest request,
                                           rpc::SendReplyCallback send_reply_callback) {
   const JobID job_id = JobID::FromBinary(request.job_id());
 
-  auto send_reply = [send_reply_callback, reply](Status status) {
+  auto send_reply = [send_reply_callback = std::move(send_reply_callback),
+                     reply](Status status) {
     GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
   };
 
   Status status = gcs_table_storage_->JobTable().Get(
       job_id,
-      [this, job_id, send_reply](Status status,
+      [this, job_id, send_reply](const Status &status,
                                  const std::optional<rpc::JobTableData> &result) {
         if (status.ok() && result) {
           MarkJobAsFinished(*result, send_reply);
-        } else {
+          ++finished_jobs_count_;
+          return;
+        }
+
+        if (!result.has_value()) {
           RAY_LOG(ERROR) << "Tried to mark job " << job_id
                          << " as finished, but there was no record of it starting!";
-          send_reply(status);
+        } else if (!status.ok()) {
+          RAY_LOG(ERROR) << "Fails to mark job " << job_id << " as finished due to "
+                         << status;
         }
+        send_reply(status);
       });
   if (!status.ok()) {
     send_reply(status);
-  } else {
-    ++finished_jobs_count_;
   }
 }
 
