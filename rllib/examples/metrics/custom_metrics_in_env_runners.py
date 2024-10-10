@@ -13,11 +13,11 @@ and custom EnvRunners.
 This example:
     - demonstrates how to write a custom Callbacks subclass, which overrides some
     EnvRunner-bound methods, such as `on_episode_start`, `on_episode_step`, and
-    `on_episode_env`.
+    `on_episode_end`.
     - shows how to temporarily store per-timestep data inside the currently running
     episode within the EnvRunner (and the callback methods).
-    - shows how to extract this temporary data again when the episode is done to
-    further process it into a reportable metric.
+    - shows how to extract this temporary data again when the episode is done in order
+    to further process the data into a single, reportable metric.
     - explains how to use the `MetricsLogger` API to create and log different metrics
     to the final Algorithm's iteration output. These include - but are not limited to -
     a 2D heatmap (image) per episode, an average per-episode metric (over a sliding
@@ -25,14 +25,14 @@ This example:
     episodes), and an EMA-smoothed metric.
 
 In this script, we define a custom `DefaultCallbacks` class and then override some of
-its methods in order to define custom behavior during episode sampling. In particular in
-this example, we add custom metrics to the Algorithm's published result dict (once per
+its methods in order to define custom behavior during episode sampling. In particular,
+we add custom metrics to the Algorithm's published result dict (once per
 iteration) before it is sent back to Ray Tune (and possibly a WandB logger).
 
 For demonstration purposes only, we log the following custom metrics:
-- A 2D heatmap showing the frequency of certain y/x-locations of Ms Pacman during an
-episode. We create and log a separate heatmap per episode and limit the number of
-heatmaps reported back to the algorithm to 10.
+- A 2D heatmap showing the frequency of all accumulated y/x-locations of Ms Pacman
+during an episode. We create and log a separate heatmap per episode and limit the number
+of heatmaps reported back to the algorithm by each EnvRunner to 10 (`window=10`).
 - The maximum per-episode distance travelled by Ms Pacman over a sliding window of 100
 episodes.
 - The average per-episode distance travelled by Ms Pacman over a sliding window of 200
@@ -43,7 +43,7 @@ episodes.
 How to run this script
 ----------------------
 `python [script file name].py --enable-new-api-stack --wandb-key [your WandB key]
---wandb-projecy [some project name]`
+--wandb-project [some project name]`
 
 For debugging, use the following additional command line options
 `--no-tune --num-env-runners=0`
@@ -61,6 +61,7 @@ This script has not been finetuned to actually learn the environment. Its purpos
 is to show how you can create and log custom metrics during episode sampling and
 have these stats be sent to WandB for further analysis.
 
+However, you should see training proceeding over time like this:
 +---------------------+----------+----------------+--------+------------------+
 | Trial name          | status   | loc            |   iter |   total time (s) |
 |                     |          |                |        |                  |

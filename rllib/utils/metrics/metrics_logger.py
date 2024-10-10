@@ -157,20 +157,25 @@ class MetricsLogger:
     ) -> Dict:
         """Reduces all logged values based on their settings and returns a result dict.
 
+        DO NOT CALL THIS METHOD under normal circumstances! RLlib's components call it
+        right before a distinct step has been completed and the (MetricsLogger-based)
+        results of that step need to be passed on to other components for further
+        processing.
+
         The returned result dict has the exact same structure as the logged keys (or
         nested key sequences) combined. At the leafs of the returned structure are
-        either `Stats` objects (return_stats_obj=True, which is the default) or
-        primitive (non-Stats) values. In case of `return_stats_obj=True`, the returned
-        dict with Stats at the leafs can conveniently be re-used downstream for further
-        logging and reduction operations.
+        either `Stats` objects (`return_stats_obj=True`, which is the default) or
+        primitive (non-Stats) values (`return_stats_obj=False`). In case of
+        `return_stats_obj=True`, the returned dict with Stats at the leafs can
+        conveniently be re-used downstream for further logging and reduction operations.
 
         For example, imagine component A (e.g. an Algorithm) containing a MetricsLogger
-        and n remote components (e.g. EnvRunner  workers), each with their own
-        MetricsLogger object. Component A now calls its n remote components, each of
+        and n remote components (e.g. n EnvRunners), each with their own
+        MetricsLogger object. Component A calls its n remote components, each of
         which returns an equivalent, reduced dict with `Stats` as leafs.
-        Component A can then further log these n result dicts via its own MetricsLogger:
-        `logger.merge_and_log_n_dicts([n returned result dicts from the remote
-        components])`.
+        Component A can then further log these n result dicts through its own
+        MetricsLogger through:
+        `logger.merge_and_log_n_dicts([n returned result dicts from n subcomponents])`.
 
         .. testcode::
 
@@ -249,7 +254,7 @@ class MetricsLogger:
 
         # Create a shallow copy of `self.stats` in case we need to reset some of our
         # stats due to this `reduce()` call (and the Stat having self.clear_on_reduce
-        # set to True). In case we clear the Stats upon `reduce`, we get returned a
+        # set to True). In case we clear the Stats upon `reduce`, we receive a
         # new empty `Stats` object from `stat.reduce()` with the same settings as
         # existing one and can now re-assign it to `self.stats[key]` (while we return
         # from this method the properly reduced, but not cleared/emptied new `Stats`).
@@ -272,8 +277,10 @@ class MetricsLogger:
                 f"\nThe original error was {str(e)}"
             )
 
+        # Return (reduced) `Stats` objects as leafs.
         if return_stats_obj:
             return stats_to_return
+        # Return actual (reduced) values (not reduced `Stats` objects) as leafs.
         else:
             return tree.map_structure(lambda s: s.peek(), stats_to_return)
 
