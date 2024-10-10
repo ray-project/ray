@@ -1,7 +1,7 @@
 # === @begin: General ===
 project(
     'ray-meson',
-    'c', 'cpp',
+    'c', 'cpp', 'cython',
     default_options: [
         'c_std=gnu17',
         'cpp_std=gnu++23'
@@ -53,50 +53,6 @@ subdir('src/')
 subdir('python/')
 # === @end: python/ ===
 
-
-#
-#pyx_library(
-#    name = "_raylet",
-#    srcs = glob([
-#    "python/ray/__init__.py",
-#    "python/ray/_raylet.pxd",
-#    "python/ray/_raylet.pyx",
-#    "python/ray/includes/*.pxd",
-#    "python/ray/includes/*.pxi",
-#    ]),
-## Export ray ABI symbols, which can then be used by _streaming.so.
-## We need to dlopen this lib with RTLD_GLOBAL to use ABI in this
-## shared lib, see python/ray/__init__.py.
-#cc_kwargs = dict(
-#srcs = PYX_SRCS,
-#copts = COPTS + PYX_COPTS,
-## see https://github.com/tensorflow/tensorflow/blob/r2.1/tensorflow/lite/BUILD#L444
-#linkopts = select({
-#"@platforms//os:osx": [
-#"-Wl,-exported_symbols_list,$(location //:src/ray/ray_exported_symbols.lds)",
-#],
-#"@platforms//os:windows": [],
-#"//conditions:default": [
-#"-Wl,--version-script,$(location //:src/ray/ray_version_script.lds)",
-#],
-#}),
-#linkstatic = 1,
-#),
-#deps = [
-#":python_callbacks",
-#"//:core_worker_lib",
-#"//:exported_internal",
-#"//:gcs_server_lib",
-#"//:global_state_accessor_lib",
-#"//:raylet_lib",
-#"//:redis_client",
-#"//:src/ray/ray_exported_symbols.lds",
-#"//:src/ray/ray_version_script.lds",
-#"//:stats_lib",
-#"//src/ray/protobuf:serialization_cc_proto",
-#"//src/ray/util",
-#],
-#)
 
 #
 #filegroup(

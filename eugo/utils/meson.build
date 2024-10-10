@@ -1,7 +1,7 @@
 # === @begin: proto_cpp (original: cc_proto_library w/o final static library linking) ===
 protoc_cpp_with_default_args = [
     protoc,
-    '--proto_path=..',
+    '--proto_path=@SOURCE_ROOT@',
     '--cpp_out=@BUILD_ROOT@',
     '@INPUT@'
 ]
@@ -17,7 +17,7 @@ protoc_grpc_cpp_plugin = find_program('grpc_cpp_plugin')
 protoc_cpp_grpc_with_default_args = [
     protoc,
     '--plugin=protoc-gen-grpc=' + protoc_grpc_cpp_plugin.full_path(),
-    '--proto_path=..',
+    '--proto_path=@SOURCE_ROOT@',
     '--grpc_out=@BUILD_ROOT@',
     '@INPUT@'
 ]
@@ -32,15 +32,14 @@ proto_cpp_grpc_default_kwargs = {
 protoc_py = ['python3', '-m', 'grpc_tools.protoc']
 protoc_py_with_default_args = [
     protoc_py,
-    '--proto_path=..',
+    '--proto_path=@SOURCE_ROOT@',
     '--python_out=@BUILD_ROOT@',
     '--grpc_python_out=@BUILD_ROOT@',
     '@INPUT@'
 ]
 proto_py_default_kwargs = {
     'command': protoc_py_with_default_args,
-    'output': ['@BASENAME@_pb2.py', '@BASENAME@_pb2_grpc.py'],
-    #'build_by_default': true # Required until something would explicitely depend on this
+    'output': ['@BASENAME@_pb2.py', '@BASENAME@_pb2_grpc.py']
 }
 # === @end: proto_py (original: python_grpc_compile) ===
 

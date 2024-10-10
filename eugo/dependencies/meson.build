@@ -90,6 +90,7 @@ grpc = dependency('gRPC', method: 'cmake', modules: [
   'gRPC::grpc++',
   'gRPC::grpc++_reflection',
   'gRPC::grpcpp_channelz',
+  'gRPC::grpc_opencensus_plugin'
 ])
 #'utf8_range::utf8_validity',
 #'utf8_range::utf8_range',
