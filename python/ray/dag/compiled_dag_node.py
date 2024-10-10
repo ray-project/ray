@@ -1916,7 +1916,7 @@ class CompiledDAG:
             view: Whether to open the file with the default viewer.
 
         Raises:
-            ValueError: If the DAG is empty or not properly compiled.
+            ValueError: If the graph is empty or not properly compiled.
             ImportError: If the `graphviz` package is not installed.
 
         """
