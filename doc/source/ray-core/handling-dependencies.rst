@@ -37,7 +37,7 @@ Concepts
 Preparing an environment using the Ray Cluster launcher
 -------------------------------------------------------
 
-The first way to set up dependencies is to is to prepare a single environment across the cluster before starting the Ray runtime.
+The first way to set up dependencies is to prepare a single environment across the cluster before starting the Ray runtime.
 
 - You can build all your files and dependencies into a container image and specify this in your your :ref:`Cluster YAML Configuration <cluster-config>`.
 
