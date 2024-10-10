@@ -1,34 +1,12 @@
 # === @begin: Compilable ===
 py.extension_module(
     '_raylet',
-    [
-        #'ray/__init__.py',
 
-        #'ray/_raylet.pxd',
-        'ray/_raylet.pyx',
+    # .py, .pxi, and .pxd files aren't needed there in contrast to Bazel nor would they work.
+    # Meson treats them not as usual sources but more like C/C++ header, `.h` files.
+    # It also results into much cleaner code :)
+    ['ray/_raylet.pyx'],
 
-        #'ray/includes/__init__.pxd',
-        #'ray/includes/common.pxd',
-        #'ray/includes/common.pxi',
-        #'ray/includes/metric.pxd',
-        #'ray/includes/metric.pxi',
-        #'ray/includes/function_descriptor.pxd',
-        #'ray/includes/function_descriptor.pxi',
-        #'ray/includes/global_state_accessor.pxd',
-        #'ray/includes/global_state_accessor.pxi',
-        #'ray/includes/unique_ids.pxd',
-        #'ray/includes/unique_ids.pxi',
-        #'ray/includes/ray_config.pxd',
-        #'ray/includes/ray_config.pxi',
-
-        #'ray/includes/optional.pxd',
-
-        #'ray/includes/serialization.pxi',
-        #'ray/includes/buffer.pxi',
-        #'ray/includes/object_ref.pxi',
-        #'ray/includes/gcs_client.pxi',
-        #'ray/includes/libcoreworker.pxi',
-    ],
     install: true,
     dependencies: [
         # Package-managed
@@ -43,7 +21,7 @@ py.extension_module(
         serialization_proto_cpp_lib_dep,
         util_cpp_lib_dep
     ],
-    link_args : ['-Wl,--version-script=@SOURCE_ROOT@/ray/ray_version_script.lds'],
+    link_args : ['-Wl,--version-script=' + meson.project_source_root() / 'src/ray/ray_version_script.lds'],
     override_options : ['cython_language=cpp']
 )
 # === @end: Compilable ===
