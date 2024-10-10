@@ -151,6 +151,7 @@ void GcsJobManager::MarkJobAsFinished(rpc::JobTableData job_table_data,
     auto iter = running_job_ids_.find(job_id);
     RAY_CHECK(iter != running_job_ids_.end());
     running_job_ids_.erase(iter);
+    ++finished_jobs_count_;
 
     done_callback(status);
   };
@@ -177,7 +178,6 @@ void GcsJobManager::HandleMarkJobFinished(rpc::MarkJobFinishedRequest request,
                                  const std::optional<rpc::JobTableData> &result) {
         if (status.ok() && result) {
           MarkJobAsFinished(*result, send_reply);
-          ++finished_jobs_count_;
           return;
         }
 
