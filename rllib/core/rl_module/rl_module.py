@@ -98,7 +98,7 @@ class RLModuleSpec:
                 observation_space=self.observation_space,
                 action_space=self.action_space,
                 inference_only=self.inference_only,
-                model_config=self.model_config,
+                model_config=self._get_model_config(),
                 catalog_class=self.catalog_class,
             )
         # Older custom model might still require the old `RLModuleConfig` under
