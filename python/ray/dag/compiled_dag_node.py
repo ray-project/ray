@@ -1908,7 +1908,7 @@ class CompiledDAG:
         indices to `CompiledTask` instances.
         - Each `CompiledTask` has a `dag_node` attribute that represents the graph node.
         - Type hints for inputs and outputs are properly set in the graph nodes.
-        - The compiled graph does not contain cycles (it's a Directed Acyclic Graph).
+        - The compiled graph does not contain cycles (it's a DAG).
 
         Args:
             filename: The name of the output file (without extension).
