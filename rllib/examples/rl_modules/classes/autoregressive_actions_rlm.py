@@ -49,7 +49,6 @@ class AutoregressiveActionsRLM(RLModule, ValueFunctionAPI, abc.ABC):
 
         # Build the encoder.
         self.encoder = self.catalog.build_encoder(framework=self.framework)
-        self.encoder = self.catalog.build_encoder(framework=self.framework)
 
         # Build the prior and posterior heads.
         # Note further, we neet to know the required input dimensions for
