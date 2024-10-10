@@ -1,5 +1,5 @@
 import copy
-from dataclasses import dataclass, field
+import dataclasses
 import logging
 import pprint
 from typing import (
@@ -666,7 +666,11 @@ class MultiRLModuleSpec:
                 observation_space=self.observation_space,
                 action_space=self.action_space,
                 inference_only=self.inference_only,
-                model_config=self.model_config,
+                model_config=(
+                    dataclasses.asdict(self.model_config)
+                    if dataclasses.is_dataclass(self.model_config)
+                    else self.model_config
+                ),
                 rl_module_specs=self.rl_module_specs,
             )
         # Older custom model might still require the old `MultiRLModuleConfig` under
@@ -859,7 +863,7 @@ class MultiRLModuleSpec:
     "module2: [RLModuleSpec], ..}, inference_only=..)",
     error=False,
 )
-@dataclass
+@dataclasses.dataclass
 class MultiRLModuleConfig:
     inference_only: bool = False
     modules: Dict[ModuleID, RLModuleSpec] = dataclasses.field(default_factory=dict)
