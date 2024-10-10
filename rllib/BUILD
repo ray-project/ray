@@ -2944,7 +2944,7 @@ py_test(
     name = "examples/metrics/custom_metrics_in_env_runners",
     main = "examples/metrics/custom_metrics_in_env_runners.py",
     tags = ["team:rllib", "exclusive", "examples"],
-    size = "small",
+    size = "medium",
     srcs = ["examples/metrics/custom_metrics_in_env_runners.py"],
     args = ["--enable-new-api-stack", "--stop-iters=3"]
 )
