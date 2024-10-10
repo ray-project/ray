@@ -945,13 +945,6 @@ py_test(
 )
 
 py_test(
-    name = "test_node_failure",
-    tags = ["team:rllib", "tests_dir", "exclusive"],
-    size = "medium",
-    srcs = ["tests/test_node_failure.py"],
-)
-
-py_test(
     name = "test_registry",
     tags = ["team:rllib", "algorithms_dir", "algorithms_dir_generic"],
     size = "small",
@@ -959,11 +952,19 @@ py_test(
 )
 
 py_test(
-    name = "test_worker_failures",
+    name = "test_env_runner_failures",
     tags = ["team:rllib", "algorithms_dir", "algorithms_dir_generic", "exclusive"],
     size = "large",
-    srcs = ["algorithms/tests/test_worker_failures.py"]
+    srcs = ["algorithms/tests/test_env_runner_failures.py"]
 )
+
+py_test(
+    name = "test_node_failures",
+    tags = ["team:rllib", "tests_dir", "exclusive"],
+    size = "large",
+    srcs = ["algorithms/tests/test_node_failures.py"],
+)
+
 
 # Specific Algorithms
 
@@ -1343,13 +1344,6 @@ py_test(
 # Tag: evaluation
 # --------------------------------------------------------------------
 py_test(
-    name = "evaluation/tests/test_agent_collector",
-    tags = ["team:rllib", "evaluation"],
-    size = "small",
-    srcs = ["evaluation/tests/test_agent_collector.py"]
-)
-
-py_test(
     name = "evaluation/tests/test_envs_that_crash",
     tags = ["team:rllib", "evaluation"],
     size = "large",
@@ -1363,6 +1357,15 @@ py_test(
     srcs = ["env/tests/test_env_runner_group.py"]
 )
 
+# @OldAPIStack
+py_test(
+    name = "evaluation/tests/test_agent_collector",
+    tags = ["team:rllib", "evaluation"],
+    size = "small",
+    srcs = ["evaluation/tests/test_agent_collector.py"]
+)
+
+# @OldAPIStack
 py_test(
     name = "evaluation/tests/test_env_runner_v2",
     tags = ["team:rllib", "evaluation"],
@@ -1370,6 +1373,7 @@ py_test(
     srcs = ["evaluation/tests/test_env_runner_v2.py"]
 )
 
+# @OldAPIStack
 py_test(
     name = "evaluation/tests/test_episode",
     tags = ["team:rllib", "evaluation"],
@@ -1377,6 +1381,7 @@ py_test(
     srcs = ["evaluation/tests/test_episode.py"]
 )
 
+# @OldAPIStack
 py_test(
     name = "evaluation/tests/test_episode_v2",
     tags = ["team:rllib", "evaluation"],
@@ -1384,6 +1389,7 @@ py_test(
     srcs = ["evaluation/tests/test_episode_v2.py"]
 )
 
+# @OldAPIStack
 py_test(
     name = "evaluation/tests/test_postprocessing",
     tags = ["team:rllib", "evaluation"],
@@ -1391,6 +1397,7 @@ py_test(
     srcs = ["evaluation/tests/test_postprocessing.py"]
 )
 
+# @OldAPIStack
 py_test(
     name = "evaluation/tests/test_rollout_worker",
     tags = ["team:rllib", "evaluation", "exclusive"],
@@ -1454,28 +1461,6 @@ py_test(
     tags = ["team:rllib", "core", "models"],
     size = "medium",
     srcs = ["core/models/tests/test_recurrent_encoders.py"]
-)
-
-# Specs
-py_test(
-    name = "test_check_specs",
-    tags = ["team:rllib", "models"],
-    size = "small",
-    srcs = ["core/models/specs/tests/test_check_specs.py"]
-)
-
-py_test(
-    name = "test_tensor_spec",
-    tags = ["team:rllib", "models"],
-    size = "small",
-    srcs = ["core/models/specs/tests/test_tensor_spec.py"]
-)
-
-py_test(
-    name = "test_spec_dict",
-    tags = ["team:rllib", "models"],
-    size = "small",
-    srcs = ["core/models/specs/tests/test_spec_dict.py"]
 )
 
 # RLModule
@@ -2851,107 +2836,6 @@ py_test(
     args = ["--enable-new-api-stack", "--as-test"]
 )
 
-
-#@OldAPIStack @HybridAPIStack
-py_test(
-    name = "examples/learners/ppo_tuner_local_cpu_torch",
-    main = "examples/learners/ppo_tuner.py",
-    tags = ["team:rllib", "examples"],
-    size = "medium",
-    srcs = ["examples/learners/ppo_tuner.py"],
-    args = ["--framework=torch", "--config=local-cpu"]
-)
-
-#@OldAPIStack @HybridAPIStack
-py_test(
-    name = "examples/learners/ppo_tuner_local_cpu_tf2",
-    main = "examples/learners/ppo_tuner.py",
-    tags = ["team:rllib", "examples"],
-    size = "medium",
-    srcs = ["examples/learners/ppo_tuner.py"],
-    args = ["--framework=tf2", "--config=local-cpu"]
-)
-
-#@OldAPIStack @HybridAPIStack
-py_test(
-    name = "examples/learners/ppo_tuner_local_gpu_torch",
-    main = "examples/learners/ppo_tuner.py",
-    tags = ["team:rllib", "examples", "gpu"],
-    size = "medium",
-    srcs = ["examples/learners/ppo_tuner.py"],
-    args = ["--framework=torch", "--config=local-gpu"]
-)
-
-#@OldAPIStack @HybridAPIStack
-py_test(
-    name = "examples/learners/ppo_tuner_local_gpu_tf2",
-    main = "examples/learners/ppo_tuner.py",
-    tags = ["team:rllib", "examples", "gpu", "exclusive"],
-    size = "medium",
-    srcs = ["examples/learners/ppo_tuner.py"],
-    args = ["--framework=tf2", "--config=local-gpu"]
-)
-
-#@OldAPIStack @HybridAPIStack
-py_test(
-    name = "examples/learners/ppo_tuner_remote_cpu_torch",
-    main = "examples/learners/ppo_tuner.py",
-    tags = ["team:rllib", "examples"],
-    size = "medium",
-    srcs = ["examples/learners/ppo_tuner.py"],
-    args = ["--framework=torch", "--config=remote-cpu"]
-)
-
-#@OldAPIStack @HybridAPIStack
-py_test(
-    name = "examples/learners/ppo_tuner_remote_cpu_tf2",
-    main = "examples/learners/ppo_tuner.py",
-    tags = ["team:rllib", "examples"],
-    size = "medium",
-    srcs = ["examples/learners/ppo_tuner.py"],
-    args = ["--framework=tf2", "--config=remote-cpu"]
-)
-
-#@OldAPIStack @HybridAPIStack
-py_test(
-    name = "examples/learners/ppo_tuner_remote_gpu_torch",
-    main = "examples/learners/ppo_tuner.py",
-    tags = ["team:rllib", "examples", "gpu", "exclusive"],
-    size = "medium",
-    srcs = ["examples/learners/ppo_tuner.py"],
-    args = ["--framework=torch", "--config=remote-gpu"]
-)
-
-#@OldAPIStack @HybridAPIStack
-py_test(
-    name = "examples/learners/ppo_tuner_remote_gpu_tf2",
-    main = "examples/learners/ppo_tuner.py",
-    tags = ["team:rllib", "examples", "gpu", "exclusive"],
-    size = "medium",
-    srcs = ["examples/learners/ppo_tuner.py"],
-    args = ["--framework=tf2", "--config=remote-gpu"]
-)
-
-#@OldAPIStack @HybridAPIStack
-py_test(
-    name = "examples/learners/ppo_tuner_multi_gpu_torch",
-    main = "examples/learners/ppo_tuner.py",
-    tags = ["team:rllib", "examples", "multi_gpu", "exclusive"],
-    size = "medium",
-    srcs = ["examples/learners/ppo_tuner.py"],
-    args = ["--framework=torch", "--config=multi-gpu-ddp"]
-)
-
-#@OldAPIStack @HybridAPIStack
-py_test(
-    name = "examples/learners/ppo_tuner_multi_gpu_tf2",
-    main = "examples/learners/ppo_tuner.py",
-    tags = ["team:rllib", "examples", "multi_gpu", "exclusive"],
-    size = "medium",
-    srcs = ["examples/learners/ppo_tuner.py"],
-    args = ["--framework=tf2", "--config=multi-gpu-ddp"]
-)
-
 # subdirectory: multi_agent/
 # ....................................
 py_test(
@@ -3273,56 +3157,6 @@ py_test(
 
 #@OldAPIStack
 py_test(
-    name = "examples/cartpole_lstm_impala_tf2",
-    main = "examples/cartpole_lstm.py",
-    tags = ["team:rllib", "exclusive", "examples"],
-    size = "medium",
-    srcs = ["examples/cartpole_lstm.py"],
-    args = ["--run=IMPALA", "--as-test", "--framework=tf2", "--stop-reward=28", "--num-cpus=4"]
-)
-
-#@OldAPIStack
-py_test(
-    name = "examples/cartpole_lstm_impala_torch",
-    main = "examples/cartpole_lstm.py",
-    tags = ["team:rllib", "exclusive", "examples"],
-    size = "medium",
-    srcs = ["examples/cartpole_lstm.py"],
-    args = ["--run=IMPALA", "--as-test", "--framework=torch", "--stop-reward=28", "--num-cpus=4"]
-)
-
-#@OldAPIStack
-py_test(
-    name = "examples/cartpole_lstm_ppo_tf2",
-    main = "examples/cartpole_lstm.py",
-    tags = ["team:rllib", "exclusive", "examples"],
-    size = "large",
-    srcs = ["examples/cartpole_lstm.py"],
-    args = ["--run=PPO", "--as-test", "--framework=tf2", "--stop-reward=28", "--num-cpus=4"]
-)
-
-#@OldAPIStack
-py_test(
-    name = "examples/cartpole_lstm_ppo_torch",
-    main = "examples/cartpole_lstm.py",
-    tags = ["team:rllib", "exclusive", "examples"],
-    size = "medium",
-    srcs = ["examples/cartpole_lstm.py"],
-    args = ["--run=PPO", "--as-test", "--framework=torch", "--stop-reward=28", "--num-cpus=4"]
-)
-
-#@OldAPIStack
-py_test(
-    name = "examples/cartpole_lstm_ppo_torch_with_prev_a_and_r",
-    main = "examples/cartpole_lstm.py",
-    tags = ["team:rllib", "exclusive", "examples"],
-    size = "medium",
-    srcs = ["examples/cartpole_lstm.py"],
-    args = ["--run=PPO", "--as-test", "--framework=torch", "--stop-reward=28", "--num-cpus=4", "--use-prev-action",  "--use-prev-reward"]
-)
-
-#@OldAPIStack
-py_test(
     name = "examples/centralized_critic_tf",
     main = "examples/centralized_critic.py",
     tags = ["team:rllib", "exclusive", "examples"],
@@ -3369,30 +3203,6 @@ py_test(
     size = "small",
     srcs = ["examples/metrics/custom_metrics_and_callbacks.py"],
     args = ["--stop-iters=2"]
-)
-
-#@OldAPIStack
-py_test(
-    name = "examples/custom_model_loss_and_metrics_ppo_tf",
-    main = "examples/custom_model_loss_and_metrics.py",
-    tags = ["team:rllib", "exclusive", "examples"],
-    size = "small",
-    # Include the json data file.
-    data = ["tests/data/cartpole/small.json"],
-    srcs = ["examples/custom_model_loss_and_metrics.py"],
-    args = ["--run=PPO", "--stop-iters=1", "--framework=tf","--input-files=tests/data/cartpole"]
-)
-
-#@OldAPIStack
-py_test(
-    name = "examples/custom_model_loss_and_metrics_ppo_torch",
-    main = "examples/custom_model_loss_and_metrics.py",
-    tags = ["team:rllib", "exclusive", "examples"],
-    size = "small",
-    # Include the json data file.
-    data = ["tests/data/cartpole/small.json"],
-    srcs = ["examples/custom_model_loss_and_metrics.py"],
-    args = ["--run=PPO", "--framework=torch", "--stop-iters=1", "--input-files=tests/data/cartpole"]
 )
 
 py_test(

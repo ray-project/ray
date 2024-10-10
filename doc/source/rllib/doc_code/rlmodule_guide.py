@@ -1,7 +1,5 @@
 # flake8: noqa
 from ray.rllib.utils.annotations import override
-from ray.rllib.core.models.specs.typing import SpecType
-from ray.rllib.core.models.specs.specs_base import TensorSpec
 
 
 # __enabling-rlmodules-in-configs-begin__
@@ -40,7 +38,7 @@ spec = RLModuleSpec(
     module_class=DiscreteBCTorchModule,
     observation_space=env.observation_space,
     action_space=env.action_space,
-    model_config_dict={"fcnet_hiddens": [64]},
+    model_config={"fcnet_hiddens": [64]},
 )
 
 module = spec.build()
@@ -54,18 +52,18 @@ from ray.rllib.core.rl_module.multi_rl_module import MultiRLModuleSpec
 from ray.rllib.core.testing.torch.bc_module import DiscreteBCTorchModule
 
 spec = MultiRLModuleSpec(
-    module_specs={
+    rl_module_specs={
         "module_1": RLModuleSpec(
             module_class=DiscreteBCTorchModule,
             observation_space=gym.spaces.Box(low=-1, high=1, shape=(10,)),
             action_space=gym.spaces.Discrete(2),
-            model_config_dict={"fcnet_hiddens": [32]},
+            model_config={"fcnet_hiddens": [32]},
         ),
         "module_2": RLModuleSpec(
             module_class=DiscreteBCTorchModule,
             observation_space=gym.spaces.Box(low=-1, high=1, shape=(5,)),
             action_space=gym.spaces.Discrete(2),
-            model_config_dict={"fcnet_hiddens": [16]},
+            model_config={"fcnet_hiddens": [16]},
         ),
     },
 )
@@ -89,7 +87,7 @@ config = (
     )
     .environment("CartPole-v1")
     .rl_module(
-        model_config_dict={"fcnet_hiddens": [32, 32]},
+        model_config={"fcnet_hiddens": [32, 32]},
         rl_module_spec=RLModuleSpec(module_class=DiscreteBCTorchModule),
     )
 )
@@ -115,9 +113,11 @@ config = (
     )
     .environment(MultiAgentCartPole, env_config={"num_agents": 2})
     .rl_module(
-        model_config_dict={"fcnet_hiddens": [32, 32]},
+        model_config={"fcnet_hiddens": [32, 32]},
         rl_module_spec=MultiRLModuleSpec(
-            module_specs=RLModuleSpec(module_class=DiscreteBCTorchModule)
+            rl_module_specs={
+                "p0": RLModuleSpec(module_class=DiscreteBCTorchModule),
+            },
         ),
     )
 )
@@ -134,7 +134,7 @@ spec = RLModuleSpec(
     module_class=DiscreteBCTorchModule,
     observation_space=env.observation_space,
     action_space=env.action_space,
-    model_config_dict={"fcnet_hiddens": [64]},
+    model_config={"fcnet_hiddens": [64]},
 )
 
 module = spec.build()
@@ -156,9 +156,9 @@ class DiscreteBCTorchModule(TorchRLModule):
         super().__init__(config)
 
     def setup(self):
-        input_dim = self.config.observation_space.shape[0]
-        hidden_dim = self.config.model_config_dict["fcnet_hiddens"][0]
-        output_dim = self.config.action_space.n
+        input_dim = self.observation_space.shape[0]
+        hidden_dim = self.model_config["fcnet_hiddens"][0]
+        output_dim = self.action_space.n
 
         self.policy = nn.Sequential(
             nn.Linear(input_dim, hidden_dim),
@@ -185,7 +185,7 @@ class DiscreteBCTorchModule(TorchRLModule):
 
 
 # __write-custom-sa-rlmodule-tf-begin__
-from typing import Mapping, Any
+from typing import Any
 from ray.rllib.core.rl_module.tf.tf_rl_module import TfRLModule
 from ray.rllib.core.rl_module.rl_module import RLModuleConfig
 
@@ -197,9 +197,9 @@ class DiscreteBCTfModule(TfRLModule):
         super().__init__(config)
 
     def setup(self):
-        input_dim = self.config.observation_space.shape[0]
-        hidden_dim = self.config.model_config_dict["fcnet_hiddens"][0]
-        output_dim = self.config.action_space.n
+        input_dim = self.observation_space.shape[0]
+        hidden_dim = self.model_config["fcnet_hiddens"][0]
+        output_dim = self.action_space.n
 
         self.policy = tf.keras.Sequential(
             [
@@ -222,70 +222,6 @@ class DiscreteBCTfModule(TfRLModule):
 
 
 # __write-custom-sa-rlmodule-tf-end__
-
-
-# __extend-spec-checking-single-level-begin__
-class DiscreteBCTorchModule(TorchRLModule):
-    ...
-
-    @override(TorchRLModule)
-    def input_specs_exploration(self) -> SpecType:
-        # Enforce that input nested dict to exploration method has a key "obs"
-        return ["obs"]
-
-    @override(TorchRLModule)
-    def output_specs_exploration(self) -> SpecType:
-        # Enforce that output nested dict from exploration method has a key
-        # "action_dist"
-        return ["action_dist"]
-
-
-# __extend-spec-checking-single-level-end__
-
-
-# __extend-spec-checking-nested-begin__
-class DiscreteBCTorchModule(TorchRLModule):
-    ...
-
-    @override(TorchRLModule)
-    def input_specs_exploration(self) -> SpecType:
-        # Enforce that input nested dict to exploration method has a key "obs"
-        # and within that key, it has a key "global" and "local". There should
-        # also be a key "action_mask"
-        return [("obs", "global"), ("obs", "local"), "action_mask"]
-
-
-# __extend-spec-checking-nested-end__
-
-
-# __extend-spec-checking-torch-specs-begin__
-class DiscreteBCTorchModule(TorchRLModule):
-    ...
-
-    @override(TorchRLModule)
-    def input_specs_exploration(self) -> SpecType:
-        # Enforce that input nested dict to exploration method has a key "obs"
-        # and its value is a torch.Tensor with shape (b, h) where b is the
-        # batch size (determined at run-time) and h is the hidden size
-        # (fixed at 10).
-        return {"obs": TensorSpec("b, h", h=10, framework="torch")}
-
-
-# __extend-spec-checking-torch-specs-end__
-
-
-# __extend-spec-checking-type-specs-begin__
-class DiscreteBCTorchModule(TorchRLModule):
-    ...
-
-    @override(TorchRLModule)
-    def output_specs_exploration(self) -> SpecType:
-        # Enforce that output nested dict from exploration method has a key
-        # "action_dist" and its value is a torch.distribution.Categorical
-        return {"action_dist": torch.distribution.Categorical}
-
-
-# __extend-spec-checking-type-specs-end__
 
 
 # __write-custom-multirlmodule-shared-enc-begin__
@@ -337,15 +273,12 @@ class BCTorchRLModuleWithSharedGlobalEncoder(TorchRLModule):
 
 
 class BCTorchMultiAgentModuleWithSharedEncoder(MultiRLModule):
-    def __init__(self, config: MultiRLModuleConfig) -> None:
-        super().__init__(config)
-
     def setup(self):
 
-        module_specs = self.config.modules
+        module_specs = self.rl_module_specs
         module_spec = next(iter(module_specs.values()))
         global_dim = module_spec.observation_space["global"].shape[0]
-        hidden_dim = module_spec.model_config_dict["fcnet_hiddens"][0]
+        hidden_dim = module_spec.model_config["fcnet_hiddens"][0]
         shared_encoder = nn.Sequential(
             nn.Linear(global_dim, hidden_dim),
             nn.ReLU(),
@@ -375,7 +308,7 @@ from ray.rllib.core.rl_module.multi_rl_module import MultiRLModuleSpec
 
 spec = MultiRLModuleSpec(
     multi_rl_module_class=BCTorchMultiAgentModuleWithSharedEncoder,
-    module_specs={
+    rl_module_specs={
         "local_2d": RLModuleSpec(
             observation_space=gym.spaces.Dict(
                 {
@@ -384,7 +317,7 @@ spec = MultiRLModuleSpec(
                 }
             ),
             action_space=gym.spaces.Discrete(2),
-            model_config_dict={"fcnet_hiddens": [64]},
+            model_config={"fcnet_hiddens": [64]},
         ),
         "local_5d": RLModuleSpec(
             observation_space=gym.spaces.Dict(
@@ -394,7 +327,7 @@ spec = MultiRLModuleSpec(
                 }
             ),
             action_space=gym.spaces.Discrete(5),
-            model_config_dict={"fcnet_hiddens": [64]},
+            model_config={"fcnet_hiddens": [64]},
         ),
     },
 )
@@ -429,7 +362,7 @@ module_spec = RLModuleSpec(
     # If we want to use this externally created module in the algorithm,
     # we need to provide the same config as the algorithm. Any changes to
     # the defaults can be given via the right side of the `|` operator.
-    model_config_dict=config.model_config | {"fcnet_hiddens": [32]},
+    model_config=config.model_config | {"fcnet_hiddens": [32]},
     catalog_class=PPOCatalog,
 )
 module = module_spec.build()
@@ -444,7 +377,7 @@ loaded_module = RLModule.from_checkpoint(module_ckpt_path)
 # Create a new Algorithm (with the changed module config: 32 units instead of the
 # default 256; otherwise loading the state of `module` will fail due to a shape
 # mismatch).
-config.rl_module(model_config_dict=config.model_config | {"fcnet_hiddens": [32]})
+config.rl_module(model_config=config.model_config | {"fcnet_hiddens": [32]})
 algo = config.build()
 # Now load the saved RLModule state (from the above `module.save_to_path()`) into the
 # Algorithm's RLModule(s). Note that all RLModules within the algo get updated, the ones
