@@ -5,6 +5,7 @@ import sys
 import time
 from pathlib import Path
 import os
+import asyncio
 
 import pytest
 from unittest import mock
@@ -38,27 +39,59 @@ def test_actor_scheduling(shutdown_only):
 
 def test_worker_startup_count(ray_start_cluster):
     """Test that no extra workers started while no available cpu resources
-    in cluster."""
+    in cluster.
+
+    Initially there can be more workers (e.g. 16 running + 3 idle) but later the idle
+    workers are killed by Raylet. This test checks that since all tasks start running,
+    the num of workers drop to 16 and stay there.
+    """
+    NUM_CPUS = 4
+    NUM_CPUS_PER_TASK_WORKER = 0.25
+    NUM_TASK_WORKERS = 16
+    NUM_WORKERS = NUM_TASK_WORKERS + 1  # 1 for actor
 
     cluster = ray_start_cluster
-    # Cluster total cpu resources is 4.
+
     cluster.add_node(
-        num_cpus=4,
+        num_cpus=NUM_CPUS,
         _system_config={
             "debug_dump_period_milliseconds": 100,
         },
     )
     ray.init(address=cluster.address)
 
-    # A slow function never returns. It will hold cpu resources all the way.
+    @ray.remote(num_cpus=0)
+    class Counter:
+        def __init__(self, signal_value):
+            self.value = 0
+            self.signal_value = signal_value
+            self.ready_event = asyncio.Event()
+
+        def increment(self):
+            self.value += 1
+            if self.value == self.signal_value:
+                self.ready_event.set()
+
+        async def wait(self):
+            await self.ready_event.wait()
+
+    # There can be 16 task workers started, = 4 cpus / 0.25 cpus per worker
+    # Note the actor itself does not consume any cpu resources, but uses a worker.
+    counter = Counter.remote(NUM_TASK_WORKERS)
+
+    # A slow function never returns. It will hold cpu resources all the way. It yields
+    # an object indicating it starts running.
     @ray.remote
-    def slow_function():
+    def slow_function(counter):
+        ray.get(counter.increment.remote())
         while True:
             time.sleep(1000)
 
     # Flood a large scale lease worker requests.
     for i in range(10000):
-        slow_function.options(num_cpus=0.25).remote()
+        slow_function.options(num_cpus=NUM_CPUS_PER_TASK_WORKER).remote(counter)
+
+    ray.get(counter.wait.remote())
 
     # Check "debug_state.txt" to ensure no extra workers were started.
     session_dir = ray._private.worker.global_worker.node.address_info["session_dir"]
@@ -77,7 +110,7 @@ def test_worker_startup_count(ray_start_cluster):
     # Wait for "debug_state.txt" to be updated to reflect the started worker.
     timeout_limit = 15
     start = time.time()
-    wait_for_condition(lambda: get_num_workers() == 16, timeout=timeout_limit)
+    wait_for_condition(lambda: get_num_workers() == NUM_WORKERS, timeout=timeout_limit)
     time_waited = time.time() - start
     print(f"Waited {time_waited} for debug_state.txt to be updated")
 
@@ -91,7 +124,7 @@ def test_worker_startup_count(ray_start_cluster):
                 time.sleep(0.05)
             else:
                 break
-        assert num == 16
+        assert num == NUM_WORKERS
         time.sleep(0.1)
 
 
