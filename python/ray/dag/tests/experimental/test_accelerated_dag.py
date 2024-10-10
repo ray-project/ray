@@ -2500,27 +2500,21 @@ class TestVisualization:
             def echo(self, x):
                 return x
 
-        # Create the actor instance outside the DAG
         actor = Actor.remote()
 
-        # Build the DAG using methods of the existing actor
         with InputNode() as i:
             dag = actor.echo.bind(i)
 
-        # Compile the DAG
         compiled_dag = dag.experimental_compile()
 
         # Call the visualize method
         filename = "compiled_graph_basic"
         compiled_dag.visualize(filename=filename, view=False)
 
-        # Assert that the visualization file exists
         assert os.path.exists(f"{filename}.png"), "Visualization file was not created."
 
-        # Clean up
         compiled_dag.teardown()
 
-        # Remove the generated files
         os.remove(f"{filename}.png")
         os.remove(f"{filename}")
 
@@ -2531,28 +2525,22 @@ class TestVisualization:
             def return_two(self, x):
                 return x, x + 1
 
-        # Create the actor instance outside the DAG
         actor = Actor.remote()
 
-        # Build the DAG with multi-return using methods of the existing actor
         with InputNode() as i:
             o1, o2 = actor.return_two.bind(i)
             dag = MultiOutputNode([o1, o2])
 
-        # Compile the DAG
         compiled_dag = dag.experimental_compile()
 
-        # Call the visualize method
         filename = "compiled_graph_multi_return"
         compiled_dag.visualize(filename=filename, view=False)
 
-        # Assert that the visualization file exists
         assert os.path.exists(f"{filename}.png"), "Visualization file was not created."
 
         # Clean up
         compiled_dag.teardown()
 
-        # Remove the generated files
         os.remove(f"{filename}.png")
         os.remove(f"{filename}")
 
@@ -2574,20 +2562,16 @@ class TestVisualization:
             o4 = b.echo.bind(o2)
             dag = MultiOutputNode([o3, o4])
 
-        # Compile the DAG
         compiled_dag = dag.experimental_compile()
 
-        # Call the visualize method
         filename = "compiled_graph_multi_return2"
         compiled_dag.visualize(filename=filename, view=False)
 
-        # Assert that the visualization file exists
         assert os.path.exists(f"{filename}.png"), "Visualization file was not created."
 
         # Clean up
         compiled_dag.teardown()
 
-        # Remove the generated files
         os.remove(f"{filename}.png")
         os.remove(f"{filename}")
 
