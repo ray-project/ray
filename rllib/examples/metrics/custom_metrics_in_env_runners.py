@@ -1,9 +1,31 @@
-"""TODO (sven)
+"""Example of adding custom metrics to the results returned by `EnvRunner.sample()`.
+
+
+We use the `MetricsLogger` class, which RLlib provides inside all its components (only
+when using the new API stack via `config.experimental(_enable_new_api_stack=True)`),
+and which offers a unified API to log individual values per iteration, per episode
+timestep, per episode (as a whole), per loss call, etc..
+`MetricsLogger` objects are available in all custom API code, for example inside your
+custom `Algorithm.training_step()` methods, custom loss functions, custom callbacks,
+and custom EnvRunners.
+
+In this script, we define a custom `DefaultCallbacks` class and then override its
+`on_train_result()` method in order to alter the final `ResultDict` before it is sent
+back to Ray Tune (and possibly a WandB logger).
+
+For demonstration purposes only, we add the following simple metrics to this
+`ResultDict`:
+- The ratio of the delta-times for sampling vs. training. If this ratio is roughly 1.0,
+it means we are spending roughly as much time sampling than we do updating our model.
+- The number of times an episode reaches an overall return of > 100.0 and the number
+of times an episode stays below an overall return of 12.0.
+-
 """
-from collections import defaultdict
 from typing import Optional, Sequence
 
 import gymnasium as gym
+import matplotlib.pyplot as plt
+from matplotlib.colors import Normalize
 import numpy as np
 
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
@@ -14,16 +36,24 @@ from ray.rllib.utils.test_utils import (
     run_rllib_example_script_experiment,
 )
 from ray.tune.registry import get_trainable_cls, register_env
-from ray import tune
 
 
 class MsPacmanHeatmapCallback(DefaultCallbacks):
-    """A custom callback to extract the position of MsPacman and log these in a heatmap.
+    """A custom callback to extract information from MsPacman and log these.
 
-    At each episode timestep, the current pacman (x/y)-position is determined and added
+    This callback logs:
+    - the positions of MsPacman over an episode to produce heatmaps from this data.
+    At each episode timestep, the current pacman (y/x)-position is determined and added
     to the episode's temporary storage. At the end of an episode, a simple 2D heatmap
     is created from this data and the heatmap is logged to the MetricsLogger (to be
     viewed in WandB).
+    - the max distance travelled by MsPacman per episode, then averaging these max
+    values over a window of size=100.
+    - the mean distance travelled by MsPacman per episode (over an infinite window).
+    - the number of lifes of MsPacman EMA-smoothed over time.
+
+    This callback can be setup to only log stats on certain EnvRunner indices through
+    the `env_runner_indices` c'tor arg.
     """
 
     def __init__(self, env_runner_indices: Optional[Sequence[int]] = None):
@@ -39,19 +69,42 @@ class MsPacmanHeatmapCallback(DefaultCallbacks):
         # Only create heatmap on certain EnvRunner indices?
         self._env_runner_indices = env_runner_indices
 
-        self._heatmaps = defaultdict(lambda: np.zeros((64, 64), dtype=np.int32))
+        # Mapping from episode ID to max distance travelled thus far.
+        self._episode_start_position = {}
+
+    def on_episode_start(
+        self,
+        *,
+        episode,
+        env_runner,
+        metrics_logger,
+        env,
+        env_index,
+        rl_module,
+        **kwargs,
+    ) -> None:
+        # Skip, if this EnvRunner's index is not in `self._env_runner_indices`.
+        if (
+            self._env_runner_indices is not None
+            and env_runner.worker_index not in self._env_runner_indices
+        ):
+            return
+
+        yx_pos = self._get_pacman_yx_pos(env)
+        self._episode_start_position[episode.id_] = yx_pos
 
     def on_episode_step(
         self,
         *,
         episode,
         env_runner,
+        metrics_logger,
         env,
         env_index,
         rl_module,
         **kwargs,
     ) -> None:
-        """Adds current pacman x/y-position to episode's temporary data."""
+        """Adds current pacman y/x-position to episode's temporary data."""
 
         # Skip, if this EnvRunner's index is not in `self._env_runner_indices`.
         if (
@@ -60,21 +113,22 @@ class MsPacmanHeatmapCallback(DefaultCallbacks):
         ):
             return
 
-        # If we have a vector env, only render the sub-env at index 0.
-        if isinstance(env.unwrapped, gym.vector.VectorEnv):
-            image = env.envs[0].render()
-        else:
-            image = env.render()
-        # Downsize to 64x64 for our utility function to work with.
-        image = resize(image, 64, 64)
-        xy_pos = self._get_pacman_xy_pos(image)
-        episode.add_temporary_timestep_data("pacman_xy_pos", xy_pos)
+        yx_pos = self._get_pacman_yx_pos(env)
+        episode.add_temporary_timestep_data("pacman_yx_pos", yx_pos)
+
+        # Compute distance to start position.
+        dist_travelled = np.sqrt(np.sum(np.square(
+            np.array(self._episode_start_position[episode.id_]) -
+            np.array(yx_pos)
+        )))
+        episode.add_temporary_timestep_data("pacman_dist_travelled", dist_travelled)
 
     def on_episode_end(
         self,
         *,
         episode,
         env_runner,
+        metrics_logger,
         env,
         env_index,
         rl_module,
@@ -87,65 +141,98 @@ class MsPacmanHeatmapCallback(DefaultCallbacks):
         ):
             return
 
-        # Get all pacman x/y-positions from the episode.
-        images = episode.get_temporary_timestep_data("render_images")
-        # Create a video from the images by simply stacking them.
-        video = np.expand_dims(
-            np.stack(images, axis=0), axis=0
-        )  # TODO: test to make sure WandB properly logs videos.
-        # video = np.stack(images, axis=0)
+        # Erase the start position record.
+        del self._episode_start_position[episode.id_]
 
-        if episode_return > self.best_episode_and_return[1]:
-            self.best_episode_and_return = (video, episode_return)
+        # Get all pacman y/x-positions from the episode.
+        yx_positions = episode.get_temporary_timestep_data("pacman_yx_pos")
+        # h x w
+        heatmap = np.zeros((80, 100), dtype=np.int32)
+        for yx_pos in yx_positions:
+            if yx_pos != (-1, -1):
+                heatmap[yx_pos[0], yx_pos[1]] += 1
+
+        # Create the actual heatmap image.
+        # Normalize the heatmap to values between 0 and 1
+        norm = Normalize(vmin=heatmap.min(), vmax=heatmap.max())
+        # Use a colormap (e.g., 'hot') to map normalized values to RGB
+        colormap = plt.get_cmap("coolwarm")  # try "hot" and "viridis" as well?
+        # Returns a (64, 64, 4) array (RGBA).
+        heatmap_rgb = colormap(norm(heatmap))
+        # Convert RGBA to RGB by dropping the alpha channel and converting to uint8.
+        heatmap_rgb = (heatmap_rgb[:, :, :3] * 255).astype(np.uint8)
+        # Log the image.
+        metrics_logger.log_value(
+            "pacman_heatmap",
+            heatmap_rgb,
+            reduce=None,
+            window=10,  # Log 10 images at most per EnvRunner/training iteration.
+        )
+
+        # Get the max distance travelled for this episode.
+        dist_travelled = np.max(
+            episode.get_temporary_timestep_data("pacman_dist_travelled")
+        )
+
+        # Log the max. dist travelled in this episode (window=100).
+        metrics_logger.log_value(
+            "pacman_max_dist_travelled",
+            dist_travelled,
+            # For future reductions (e.g. over n different episodes and all the
+            # data coming from other env runners), reduce by max.
+            reduce="max",
+            # Always keep the last 100 values and max over this window.
+            # Note that this means that over time, if the values drop to lower
+            # numbers again, the reported `pacman_max_dist_travelled` might also
+            # decrease again (meaning `window=100` makes this not a "lifetime max").
+            window=100,
+        )
+
+        # Log the average dist travelled per episode (window=inf).
+        metrics_logger.log_value(
+            "pacman_max_dist_travelled",
+            dist_travelled,
+            reduce="mean",  # <- default
+            window=float("inf"),  # never forget anything, average over lifetime
+        )
+
+        # Log the number of lifes (as EMA-smoothed; no window).
+        metrics_logger.log_value(
+            "pacman_lifes",
+            episode.get_infos(-1)["lives"],
+            reduce="mean",  # <- default (must be "mean" for EMA smothing)
+            ema_coeff=0.01,  # <- default EMA coefficient (`window` must be None)
+        )
+
+    def _get_pacman_yx_pos(self, env):
+        # If we have a vector env, only render the sub-env at index 0.
+        if isinstance(env.unwrapped, gym.vector.VectorEnv):
+            image = env.envs[0].render()
         else:
-            self.worst_episode_and_return = (video, episode_return)
-
-    def on_sample_end(
-        self,
-        *,
-        env_runner,
-        metrics_logger,
-        samples,
-        **kwargs,
-    ) -> None:
-        # For WandB videos, we need to put channels first.
-        #image = np.transpose(image, axes=[2, 0, 1])
-
-        # Log the best and worst video to MetricsLogger.
-        metrics_logger.log_value(
-            "episode_videos_best",
-            self.best_episode_and_return[0],
-            reduce=None,
-            clear_on_reduce=True,
-        )
-        metrics_logger.log_value(
-            "episode_videos_worst",
-            self.worst_episode_and_return[0],
-            reduce=None,
-            clear_on_reduce=True,
-        )
-        # Reset our best/worst placeholders.
-        self.best_episode_and_return = (None, float("-inf"))
-        self.worst_episode_and_return = (None, float("inf"))
-
-    def _get_pacman_xy_pos(self, image):
+            image = env.render()
+        # Downsize to 100x100 for our utility function to work with.
+        image = resize(image, 100, 100)
+        # Crop image at bottom 20% (where lives are shown, which may confuse the pacman
+        # detector).
+        image = image[:80]
         # Define the yellow color range in RGB (Ms. Pac-Man is yellowish).
         # We allow some range around yellow to account for variation.
-        yellow_lower = np.array([150, 150, 0], dtype=np.uint8)
-        yellow_upper = np.array([255, 255, 100], dtype=np.uint8)
+        yellow_lower = np.array([200, 130, 65], dtype=np.uint8)
+        yellow_upper = np.array([220, 175, 105], dtype=np.uint8)
         # Create a mask that highlights the yellow pixels
         mask = np.all((image >= yellow_lower) & (image <= yellow_upper), axis=-1)
         # Find the coordinates of the yellow pixels
         yellow_pixels = np.argwhere(mask)
         if yellow_pixels.size == 0:
-            return (0, 0)
+            return (-1, -1)
 
         # Calculate the centroid of the yellow pixels to get Ms. Pac-Man's position
         y, x = yellow_pixels.mean(axis=0).astype(int)
-        return (x, y)
+        return y, x
 
 
 parser = add_rllib_example_script_args(default_reward=450.0)
+parser.set_defaults(enable_new_api_stack=True)
 
 
 if __name__ == "__main__":
@@ -163,24 +250,30 @@ if __name__ == "__main__":
     base_config = (
         get_trainable_cls(args.algo)
         .get_default_config()
-        # .environment("env", env_config={
-        #    # Make analogous to old v4 + NoFrameskip.
-        #    "frameskip": 1,
-        #    "full_action_space": False,
-        #    "repeat_action_probability": 0.0,
-        # })
-        .environment("CartPole-v1", env_config={"render_mode": "rgb_array"})
-        # .rollouts(rollout_fragment_length=4000)#TODO: remove: only to show that a list of videos can be uploaded per iteration (b/c now we need 2 rollouts, producing 2 videos per str-key)
-        .callbacks(EnvRenderCallback)
-        .training(
-            # TODO: Atari.
-            model=dict(
-                {},
-            ),
+        .environment(
+            "env",
+            env_config={
+                # Make analogous to old v4 + NoFrameskip.
+                "frameskip": 1,
+                "full_action_space": False,
+                "repeat_action_probability": 0.0,
+            },
         )
-        .debugging(
-            logger_config={
-                "type": tune.logger.NoopLogger,
+        .callbacks(MsPacmanHeatmapCallback)
+        .training(
+            # Make learning time fast, but note that this example may not
+            # necessarily learn well (its purpose is to demo the
+            # functionality of callbacks and the MetricsLogger).
+            train_batch_size_per_learner=2000,
+            minibatch_size=512,
+            num_epochs=6,
+        )
+        .rl_module(
+            model_config_dict={
+                "vf_share_layers": True,
+                "conv_filters": [[16, 4, 2], [32, 4, 2], [64, 4, 2], [128, 4, 2]],
+                "conv_activation": "relu",
+                "post_fcnet_hiddens": [256],
             }
         )
     )

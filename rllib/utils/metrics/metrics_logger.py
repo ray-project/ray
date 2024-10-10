@@ -238,20 +238,37 @@ class MetricsLogger:
             objects if `return_stats_obj=True` or primitive values, carrying no
             reduction and history information, if `return_stats_obj=False`.
         """
+        PATH = None
+
+        def _reduce(path, stats):
+            nonlocal PATH
+            PATH = path
+            stats.reduce()
+
         # Create a shallow copy of `self.stats` in case we need to reset some of our
         # stats due to this `reduce()` call (and the Stat having self.clear_on_reduce
         # set to True). In case we clear the Stats upon `reduce`, we get returned a
         # new empty `Stats` object from `stat.reduce()` with the same settings as
         # existing one and can now re-assign it to `self.stats[key]` (while we return
         # from this method the properly reduced, but not cleared/emptied new `Stats`).
-        if key is not None:
-            stats_to_return = self._get_key(key).copy()
-            self._set_key(
-                key, tree.map_structure(lambda s: s.reduce(), stats_to_return)
+        try:
+            if key is not None:
+                stats_to_return = self._get_key(key).copy()
+                self._set_key(
+                    key, tree.map_structure_with_path(_reduce, stats_to_return)
+                )
+            else:
+                stats_to_return = self.stats.copy()
+                self.stats = tree.map_structure_with_path(_reduce, stats_to_return)
+        # Provide proper error message if reduction fails due to bad data.
+        except Exception as e:
+            raise ValueError(
+                "There was an error while reducing the Stats object under key="
+                f"{PATH}! Check, whether you logged invalid or incompatible "
+                "values into this key over time in your custom code."
+                f"\nThe values under this key are: {self._get_key(PATH).values}."
+                f"\nThe original error was {str(e)}"
             )
-        else:
-            stats_to_return = self.stats.copy()
-            self.stats = tree.map_structure(lambda s: s.reduce(), stats_to_return)
 
         if return_stats_obj:
             return stats_to_return
