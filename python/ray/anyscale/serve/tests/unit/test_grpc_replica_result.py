@@ -58,7 +58,12 @@ def create_asyncio_event_loop_in_thread():
     async_loop = asyncio.new_event_loop()
     thread = threading.Thread(daemon=True, target=async_loop.run_forever)
     thread.start()
-    yield async_loop
+    event = threading.Event()
+
+    yield async_loop, event
+
+    # Unblock event in case it's blocking shutdown
+    event.set()
 
 
 @pytest.mark.asyncio
@@ -121,7 +126,7 @@ class TestSeparateLoop:
         )
 
     def test_unary_sync(self, create_asyncio_event_loop_in_thread):
-        loop = create_asyncio_event_loop_in_thread
+        loop, _ = create_asyncio_event_loop_in_thread
 
         fut = asyncio.run_coroutine_threadsafe(
             self.make_fake_unary_request("hello", loop), loop=loop
@@ -132,7 +137,7 @@ class TestSeparateLoop:
 
     @pytest.mark.asyncio
     async def test_unary_async(self, create_asyncio_event_loop_in_thread):
-        loop = create_asyncio_event_loop_in_thread
+        loop, _ = create_asyncio_event_loop_in_thread
 
         fut = asyncio.run_coroutine_threadsafe(
             self.make_fake_unary_request("hello", loop), loop=loop
@@ -142,7 +147,7 @@ class TestSeparateLoop:
         assert await replica_result.get_async() == "hello"
 
     def test_streaming_sync(self, create_asyncio_event_loop_in_thread):
-        loop = create_asyncio_event_loop_in_thread
+        loop, _ = create_asyncio_event_loop_in_thread
 
         # Instantiate gRPCReplicaResult with FakegRPCStreamCall. This needs
         # to be run on the "other loop"
@@ -162,7 +167,7 @@ class TestSeparateLoop:
 
     @pytest.mark.asyncio
     async def test_streaming_async(self, create_asyncio_event_loop_in_thread):
-        loop = create_asyncio_event_loop_in_thread
+        loop, _ = create_asyncio_event_loop_in_thread
 
         fut = asyncio.run_coroutine_threadsafe(
             self.make_fake_streaming_request([1, 2, 3, 4], loop, on_separate_loop=True),
@@ -178,8 +183,7 @@ class TestSeparateLoop:
     async def test_streaming_blocked(self, create_asyncio_event_loop_in_thread):
         """Use threading event to block async generator, check everything works"""
 
-        loop = create_asyncio_event_loop_in_thread
-        event = threading.Event()
+        loop, event = create_asyncio_event_loop_in_thread
 
         fut = asyncio.run_coroutine_threadsafe(
             self.make_fake_streaming_request(
@@ -196,7 +200,7 @@ class TestSeparateLoop:
         assert [r async for r in replica_result] == [1, 2, 3, 4]
 
     def test_unary_with_gen_sync(self, create_asyncio_event_loop_in_thread):
-        loop = create_asyncio_event_loop_in_thread
+        loop, _ = create_asyncio_event_loop_in_thread
 
         fut = asyncio.run_coroutine_threadsafe(
             self.make_fake_streaming_request(
@@ -212,7 +216,7 @@ class TestSeparateLoop:
 
     @pytest.mark.asyncio
     async def test_unary_with_gen_async(self, create_asyncio_event_loop_in_thread):
-        loop = create_asyncio_event_loop_in_thread
+        loop, _ = create_asyncio_event_loop_in_thread
 
         fut = asyncio.run_coroutine_threadsafe(
             self.make_fake_streaming_request(
@@ -230,8 +234,7 @@ class TestSeparateLoop:
     async def test_unary_with_gen_blocked(self, create_asyncio_event_loop_in_thread):
         """Use threading event to block async generator, check everything works"""
 
-        loop = create_asyncio_event_loop_in_thread
-        event = threading.Event()
+        loop, event = create_asyncio_event_loop_in_thread
 
         fut = asyncio.run_coroutine_threadsafe(
             self.make_fake_streaming_request(
@@ -247,6 +250,25 @@ class TestSeparateLoop:
 
         event.set()
         assert await t == "hello"
+
+    def test_unary_with_timeout(self, create_asyncio_event_loop_in_thread):
+        """Test get() with timeout."""
+
+        loop, event = create_asyncio_event_loop_in_thread
+
+        fut = asyncio.run_coroutine_threadsafe(
+            self.make_fake_streaming_request(
+                ["hello"], loop, on_separate_loop=True, event=event
+            ),
+            loop=loop,
+        )
+        replica_result = fut.result()
+
+        with pytest.raises(TimeoutError):
+            replica_result.get(timeout_s=0.01)
+
+        event.set()
+        assert replica_result.get(timeout_s=0.01) == "hello"
 
 
 if __name__ == "__main__":

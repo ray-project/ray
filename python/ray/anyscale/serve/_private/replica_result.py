@@ -1,4 +1,5 @@
 import asyncio
+import concurrent.futures
 from asyncio import run_coroutine_threadsafe
 from typing import Any, AsyncIterator, Callable, Iterator, Optional
 
@@ -101,9 +102,12 @@ class gRPCReplicaResult(ReplicaResult):
                 self._get_internal(), self._grpc_call_loop
             )
 
-        grpc_response: serve_proprietary_pb2.ASGIResponse = self._fut.result(
-            timeout=timeout_s
-        )
+        try:
+            grpc_response: serve_proprietary_pb2.ASGIResponse = self._fut.result(
+                timeout=timeout_s
+            )
+        except concurrent.futures.TimeoutError:
+            raise TimeoutError("Timed out waiting for result.") from None
         return cloudpickle.loads(grpc_response.serialized_message)
 
     async def get_async(self):
