@@ -53,8 +53,12 @@ class Datasink:
         total_size_bytes = 0
 
         for result in raw_write_results:
-            ba = BlockAccessor.for_block(result)
-            write_results = ba.to_numpy()[0]
+            # `result`` is a Block containing a single row with write results/stats.
+            # Calling `iter_rows()` is the cleanest way to extract a single row
+            # for various block types.
+            for row in BlockAccessor.for_block(result).iter_rows(None):
+                write_results = row
+
             total_num_rows += write_results["write_num_rows"]
             total_size_bytes += write_results["write_size_bytes"]
 
