@@ -11,6 +11,7 @@ import ray
 from ray.rllib.algorithms.impala.impala import LEARNER_RESULTS_CURR_ENTROPY_COEFF_KEY
 from ray.rllib.core.columns import Columns
 from ray.rllib.core.learner.learner import Learner
+from ray.rllib.connectors.common import NumpyToTensor
 from ray.rllib.connectors.learner import AddOneTsToEpisodesAndTruncate
 from ray.rllib.policy.sample_batch import MultiAgentBatch, SampleBatch
 from ray.rllib.utils.annotations import (
@@ -68,6 +69,10 @@ class IMPALALearner(Learner):
             and self.config.add_default_connectors_to_learner_pipeline
         ):
             self._learner_connector.prepend(AddOneTsToEpisodesAndTruncate())
+            # Leave all batches on the CPU (they'll be moved to the GPU, if applicable,
+            # by the n GPU loader threads.
+            numpy_to_tensor_connector = self._learner_connector[NumpyToTensor][0]
+            numpy_to_tensor_connector._device = "cpu"  # TODO (sven): Provide API?
 
         # Create and start the GPU-loader thread. It picks up train-ready batches from
         # the "GPU-loader queue" and loads them to the GPU, then places the GPU batches
