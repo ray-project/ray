@@ -1,5 +1,4 @@
 import abc
-import dataclasses
 from typing import Any, Dict, List, Tuple, Union
 
 from ray.rllib.algorithms.sac.sac_learner import QF_PREDS
@@ -8,7 +7,6 @@ from ray.rllib.core.learner.utils import make_target_network
 from ray.rllib.core.models.base import Encoder, Model
 from ray.rllib.core.models.specs.typing import SpecType
 from ray.rllib.core.rl_module.apis import InferenceOnlyAPI, TargetNetworkAPI
-from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
 from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.utils.annotations import (
     override,
@@ -31,11 +29,6 @@ QF_TARGET_NEXT_PROBS = "qf_target_next_probs"
 class DQNRainbowRLModule(RLModule, InferenceOnlyAPI, TargetNetworkAPI):
     @override(RLModule)
     def setup(self):
-        # TODO (sven): Temporary fix (until we have figured out the final config
-        #  architecture for default models). If self.model_config is a dict (which
-        #  it should always be, make sure to merge it with the default config).
-        self.model_config = dataclasses.asdict(DefaultModelConfig()) | self.model_config
-
         # If a dueling architecture is used.
         self.uses_dueling: bool = self.model_config.get("dueling")
         # If double Q learning is used.
