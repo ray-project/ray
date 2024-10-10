@@ -932,7 +932,7 @@ class CompiledDAG:
         # node will not be propagated to the driver.
         if len(leaf_nodes) != 0:
             raise ValueError(
-                "Compiled DAG doesn't support leaf nodes that don't have "
+                "Compiled DAG doesn't support leaf nodes, i.e., nodes that don't have "
                 "downstream nodes and are not output nodes. There are "
                 f"{len(leaf_nodes)} leaf nodes in the DAG. Please add the outputs of "
                 f"{[leaf_node.get_method_name() for leaf_node in leaf_nodes]} to the "

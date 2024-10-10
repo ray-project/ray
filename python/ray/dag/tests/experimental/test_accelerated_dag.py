@@ -1861,8 +1861,8 @@ class TestCompositeChannel:
 
 class TestLeafNode:
     """
-    Leaf nodes are invalid because the exception thrown by the leaf
-    node will not be propagated to the driver.
+    Leaf nodes are not allowed right now because the exception thrown by the leaf
+    node will not be propagated to the driver and silently ignored, which is undesired.
     """
 
     LEAF_NODE_EXCEPTION_TEMPLATE = (
@@ -1912,11 +1912,11 @@ class TestLeafNode:
 
     def test_multi_leaf_nodes(self, ray_start_regular):
         """
-        driver -> a.inc -> a.inc (branch 1)
+        driver -> a.inc -> a.inc (branch 1, leaf node)
                |        |
                |        -> a.inc -> driver
                |
-               -> a.inc (branch 2)
+               -> a.inc (branch 2, leaf node)
         """
         a = Actor.remote(0)
         with InputNode() as i:
