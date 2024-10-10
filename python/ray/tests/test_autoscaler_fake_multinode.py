@@ -51,6 +51,16 @@ def test_fake_autoscaler_basic_e2e(autoscaler_v2, shutdown_only):
                 "min_workers": 0,
                 "max_workers": 2,
             },
+            "tpu_v6e_node": {
+                "resources": {
+                    "CPU": 4,
+                    "TPU": 8,
+                    "object_store_memory": 1024 * 1024 * 1024,
+                },
+                "node_config": {},
+                "min_workers": 0,
+                "max_workers": 2,
+            },
         },
         autoscaler_v2=autoscaler_v2,
     )

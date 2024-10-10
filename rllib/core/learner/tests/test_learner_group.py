@@ -5,13 +5,12 @@ import tempfile
 import unittest
 import pytest
 
-import tree  # pip install dm_tree
-
 import ray
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.algorithms.ppo.tests.test_ppo_learner import FAKE_BATCH
 from ray.rllib.core import (
     COMPONENT_LEARNER,
+    COMPONENT_MULTI_RL_MODULE_SPEC,
     COMPONENT_RL_MODULE,
     DEFAULT_MODULE_ID,
 )
@@ -28,6 +27,7 @@ from ray.rllib.examples.envs.classes.multi_agent import MultiAgentCartPole
 from ray.rllib.policy.sample_batch import SampleBatch, MultiAgentBatch
 from ray.rllib.utils.test_utils import check, get_cartpole_dataset_reader
 from ray.rllib.utils.metrics import ALL_MODULES
+from ray.rllib.utils.metrics.metrics_logger import MetricsLogger
 from ray.util.timer import _Timer
 
 
@@ -77,7 +77,7 @@ class RemoteTrainingHelper:
 
         # Update and check state again.
         learner_update = local_learner.update_from_batch(batch=batch)
-        learner_update = tree.map_structure(lambda s: s.peek(), learner_update)
+        learner_update = MetricsLogger.peek_results(learner_update)
         learner_group_update = learner_group.update_from_batch(batch=batch)
         check(learner_update, learner_group_update)
         check(local_learner.get_state(), learner_group.get_state()[COMPONENT_LEARNER])
@@ -164,9 +164,7 @@ class RemoteTrainingHelper:
 
         # check(local_learner.get_state(), learner_group.get_state()[COMPONENT_LEARNER])
         # local_learner_results = local_learner.update_from_batch(batch=ma_batch)
-        # local_learner_results = tree.map_structure(
-        #    lambda s: s.peek(), local_learner_results
-        # )
+        # local_learner_results = MetricsLogger.peek_results(local_learner_results)
         # learner_group_results = learner_group.update_from_batch(batch=ma_batch)
 
         # check(local_learner_results, learner_group_results)
@@ -201,7 +199,7 @@ class TestLearnerGroupSyncUpdate(unittest.TestCase):
             .rl_module(
                 rl_module_spec=RLModuleSpec(
                     module_class=DiscreteBCTorchModule,
-                    model_config_dict={"fcnet_hiddens": [32]},
+                    model_config={"fcnet_hiddens": [32]},
                 )
             )
         )
@@ -304,8 +302,10 @@ class TestLearnerGroupSyncUpdate(unittest.TestCase):
 
             # check that module ids are updated to include the new module
             module_ids_after_add = {DEFAULT_MODULE_ID, new_module_id}
-            # remove the total_loss key since its not a module key
-            self.assertEqual(set(results.keys()) - {ALL_MODULES}, module_ids_after_add)
+            # Compare module IDs in results with expected ones.
+            self.assertEqual(
+                set(results[0].keys()) - {ALL_MODULES}, module_ids_after_add
+            )
 
             # Remove the test_module.
             learner_group.remove_module(module_id=new_module_id)
@@ -318,7 +318,9 @@ class TestLearnerGroupSyncUpdate(unittest.TestCase):
             # check that module ids are updated after remove operation to not
             # include the new module
             # remove the total_loss key since its not a module key
-            self.assertEqual(set(results.keys()) - {ALL_MODULES}, module_ids_before_add)
+            self.assertEqual(
+                set(results[0].keys()) - {ALL_MODULES}, module_ids_before_add
+            )
 
             # make sure the learner_group resources are freed up so that we don't
             # autoscale
@@ -468,14 +470,12 @@ class TestLearnerGroupSaveLoadState(unittest.TestCase):
 
             # Do a single update.
             learner_group.update_from_batch(batch.as_multi_agent())
+            weights_after_update = learner_group.get_state(
+                components=COMPONENT_LEARNER + "/" + COMPONENT_RL_MODULE
+            )[COMPONENT_LEARNER][COMPONENT_RL_MODULE]
+            weights_after_update.pop(COMPONENT_MULTI_RL_MODULE_SPEC)
             # Weights after the update must be different from original ones.
-            check(
-                initial_weights,
-                learner_group.get_state(
-                    components=COMPONENT_LEARNER + "/" + COMPONENT_RL_MODULE
-                )[COMPONENT_LEARNER][COMPONENT_RL_MODULE],
-                false=True,
-            )
+            check(initial_weights, weights_after_update, false=True)
 
             # Checkpoint the learner state after 1 update for later comparison.
             learner_after_1_update_checkpoint_dir = tempfile.TemporaryDirectory().name
@@ -496,18 +496,18 @@ class TestLearnerGroupSaveLoadState(unittest.TestCase):
             weights_after_2_updates_with_break = learner_group.get_state(
                 components=COMPONENT_LEARNER + "/" + COMPONENT_RL_MODULE
             )[COMPONENT_LEARNER][COMPONENT_RL_MODULE]
+            weights_after_2_updates_with_break.pop(COMPONENT_MULTI_RL_MODULE_SPEC)
             learner_group.shutdown()
             del learner_group
 
             # Construct a new learner group and load the initial state of the learner.
             learner_group = config.build_learner_group(env=env)
             learner_group.restore_from_path(initial_learner_checkpoint_dir)
-            check(
-                initial_weights,
-                learner_group.get_state(
-                    components=COMPONENT_LEARNER + "/" + COMPONENT_RL_MODULE
-                )[COMPONENT_LEARNER][COMPONENT_RL_MODULE],
-            )
+            weights_after_restore = learner_group.get_state(
+                components=COMPONENT_LEARNER + "/" + COMPONENT_RL_MODULE
+            )[COMPONENT_LEARNER][COMPONENT_RL_MODULE]
+            weights_after_restore.pop(COMPONENT_MULTI_RL_MODULE_SPEC)
+            check(initial_weights, weights_after_restore)
             # Perform 2 updates to get to the same state as the previous learners.
             learner_group.update_from_batch(batch.as_multi_agent())
             results_2nd_without_break = learner_group.update_from_batch(
@@ -518,7 +518,11 @@ class TestLearnerGroupSaveLoadState(unittest.TestCase):
             del learner_group
 
             # Compare the results of the two updates.
-            check(results_2nd_update_with_break, results_2nd_without_break, rtol=0.05)
+            check(
+                MetricsLogger.peek_results(results_2nd_update_with_break),
+                MetricsLogger.peek_results(results_2nd_without_break),
+                rtol=0.05,
+            )
             check(
                 weights_after_2_updates_with_break,
                 weights_after_2_updates_without_break,
@@ -561,48 +565,58 @@ class TestLearnerGroupAsyncUpdate(unittest.TestCase):
                 result_async = learner_group.update_from_batch(
                     batch=batch.as_multi_agent(), async_update=True
                 )
-            # ideally the the first async update will return nothing, and an easy
+            # Ideally the the first async update will return nothing, and an easy
             # way to check that is if the time for an async update call is faster
             # than the time for a sync update call.
             self.assertLess(timer_async.mean, timer_sync.mean)
-            self.assertIsInstance(result_async, dict)
+            self.assertIsInstance(result_async, list)
             iter_i = 0
             while True:
                 batch = reader.next()
-                async_results = learner_group.update_from_batch(
+                result_async = learner_group.update_from_batch(
                     batch.as_multi_agent(), async_update=True
                 )
-                if not async_results:
+                if not result_async:
                     continue
-                loss = async_results[ALL_MODULES][Learner.TOTAL_LOSS_KEY]
+                self.assertIsInstance(result_async[0], list)
+                self.assertIsInstance(result_async[0][0], dict)
+                # Check the latest async result AND those sub-results of the first
+                # Learner in the group.
+                loss = result_async[-1][0][DEFAULT_MODULE_ID][Learner.TOTAL_LOSS_KEY]
                 # The loss is initially around 0.69 (ln2). When it gets to around
                 # 0.57 the return of the policy gets to around 100.
                 if loss < 0.57:
                     break
                 # Compare reported "mean_weight" with actual ones.
-                # TODO (sven): Right now, we don't have any way to know, whether
-                #  an async update result came from the most recent call to
-                #  `learner_group.update_from_batch(async_update=True)` or an earlier
-                #  one. Once APPO/IMPALA are properly implemented on the new API stack,
-                #  this problem should be resolved and we can uncomment the below line.
-                # _check_multi_worker_weights(learner_group, async_results)
+                _check_multi_worker_weights(
+                    learner_group, result_async, result_async=True
+                )
                 iter_i += 1
             learner_group.shutdown()
             self.assertLess(loss, 0.57)
 
 
-def _check_multi_worker_weights(learner_group, results):
+def _check_multi_worker_weights(learner_group, results, result_async=False):
     # Check that module weights are updated across workers and synchronized.
     # for i in range(1, len(results)):
-    for module_id, mod_results in results.items():
+
+    if result_async:
+        results = results[-1]
+
+    learner_1_results = results[0]
+    for module_id, mod_result in learner_1_results.items():
         if module_id == ALL_MODULES:
             continue
+        results = MetricsLogger.peek_results(results)
+        reported_mean_weights = np.mean([r[module_id]["mean_weight"] for r in results])
+
         # Compare the reported mean weights (merged across all Learner workers,
         # which all should have the same weights after updating) with the actual
         # current mean weights.
-        reported_mean_weights = mod_results["mean_weight"]
         parameters = learner_group.get_state(
-            components=COMPONENT_LEARNER + "/" + COMPONENT_RL_MODULE + "/" + module_id,
+            components=(
+                COMPONENT_LEARNER + "/" + COMPONENT_RL_MODULE + "/" + module_id
+            ),
         )[COMPONENT_LEARNER][COMPONENT_RL_MODULE][module_id]
         actual_mean_weights = np.mean([w.mean() for w in parameters.values()])
         check(reported_mean_weights, actual_mean_weights, rtol=0.02)

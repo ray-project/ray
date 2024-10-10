@@ -1,5 +1,5 @@
 import asyncio
-from collections import defaultdict, deque
+from collections import defaultdict
 from dataclasses import dataclass, asdict
 from typing import Any, Dict, List, Tuple, Union, Optional, Set
 import logging
@@ -669,9 +669,6 @@ class CompiledDAG:
         # Mapping from the actor handle to the node ID that the actor is on.
         self.actor_to_node_id: Dict["ray.actor.ActorHandle", str] = {}
 
-        # Type hints specified by the user for DAG (intermediate) outputs.
-        self._type_hints = []
-
         # This is set to true when type hint of `transport="nccl"`` is used
         self._use_default_nccl_group = False
         # This is set to the specified custom nccl group
@@ -744,7 +741,6 @@ class CompiledDAG:
 
         self.input_task_idx, self.output_task_idx = None, None
         self.actor_task_count.clear()
-        self._type_hints.clear()
 
         nccl_actors: Set["ray.actor.ActorHandle"] = set()
 
@@ -915,43 +911,12 @@ class CompiledDAG:
                         )
                     direct_input = True
 
-                elif (
-                    isinstance(upstream_task.dag_node, ClassMethodNode)
-                    and upstream_task.dag_node.is_class_method_call
-                ):
-                    from ray.dag.constants import RAY_ADAG_ENABLE_DETECT_DEADLOCK
-
-                    if (
-                        # Ray aDAG deadlock detection has the same check, but
-                        # it may be turned off because of false positives.
-                        # In that case, we need this check to be active.
-                        # TODO: When we clean up Ray aDAG deadlock detection
-                        # this check should be done at one place only.
-                        not RAY_ADAG_ENABLE_DETECT_DEADLOCK
-                        and downstream_actor_handle is not None
-                        and downstream_actor_handle
-                        == upstream_task.dag_node._get_actor_handle()
-                        and upstream_task.dag_node.type_hint.requires_nccl()
-                    ):
-                        raise ValueError(
-                            "Compiled DAG does not support NCCL communication between "
-                            "methods on the same actor. NCCL type hint is specified "
-                            "for the channel from method "
-                            f"{upstream_task.dag_node.get_method_name()} to method "
-                            f"{dag_node.get_method_name()} on actor "
-                            f"{downstream_actor_handle}. Please remove the NCCL "
-                            "type hint between these methods."
-                        )
-
                 upstream_task.downstream_task_idxs[task_idx] = downstream_actor_handle
                 task.arg_type_hints.append(upstream_task.dag_node.type_hint)
 
                 if upstream_task.dag_node.type_hint.requires_nccl():
                     # Add all readers to the NCCL group.
                     nccl_actors.add(downstream_actor_handle)
-
-            if dag_node.type_hint is not None:
-                self._type_hints.append(dag_node.type_hint)
 
         # If there were type hints indicating transport via NCCL, initialize
         # the NCCL group on the participating actors.
@@ -1498,70 +1463,20 @@ class CompiledDAG:
 
     def _detect_deadlock(self) -> bool:
         """
-        Create a graph with the following 3 rules, and then use
-        topological sort to verify whether the graph is a DAG.
-        If not, the DAG will result in a deadlock due to a cycle.
+        Check whether the DAG will deadlock on NCCL calls.
+        There are no false positives in this deadlock detection,
+        but there may be false negatives for now. For example,
 
-        We need to check whether there is a cycle in a “happens-before”
-        graph, where A -> B means that B happens before A.
+        actor1.f1 ---> actor2.f1
+                   |
+        actor1.f2 --
 
-        #1: Add an edge from task.{bind_index} to task.{bind_index+1}
-            on the same actor.
+        In this case, actor1.f1 and actor1.f2 have control dependencies
+        between them. If actor2.f1 reads actor1.f2 first and then actor1.f1,
+        there will be a deadlock. However, this deadlock is not detectable
+        until we have a more granular execution schedule.
 
-        Reason: Each actor executes tasks in the order that they are
-                bound in. Therefore task.{bind_index+1} happens after
-                task.{bind_index}.
-
-        #2: Add an edge from the writer to the reader
-
-        Reason: Channels represent data dependencies. In order to read
-                data, the writer must have written the data first.
-
-        #3: Add an edge from the reader of an NCCL channel to the node
-            that has the next bind index on the same actor as the writer.
-
-        Reason: NCCL channels are blocking, meaning that both the writer
-                and reader must reach the send/recv call before either can
-                proceed. Therefore, the next task on the writer cannot be
-                executed until the reader of the NCCL channel has started.
-
-        With rules #1 and #2 alone, it is not possible to create cycles,
-        because when the DAG is created, new tasks can only depend on tasks
-        that have already been created.
-
-        With rule #3, it is possible to create a cycle where two actors will
-        block waiting for the other to begin reading from an NCCL channel.
-
-        [Example]
-
-        # data flow: driver -> a.no_op -> a.no_op -> driver
-        with InputNode() as inp:
-            dag = a.no_op.bind(inp)
-            dag.with_type_hint(TorchTensorType(transport="nccl"))
-            dag = a.no_op.bind(dag)
-        dag.experimental_compile()
-
-        In the above example, communication between a.no_op occurs via an NCCL
-        channel, while communication between the driver process and a.no_op occurs
-        via shared memory channels. The example experiences a deadlock because the
-        completion of the write function in the first a.no_op requires the second
-        a.no_op to simultaneously call the read function. However, each actor has
-        a list of tasks, each assigned a bind index, and these tasks are executed
-        sequentially in ascending order of their bind index on the actor. Therefore,
-        it’s impossible for both writer and reader on the same actor to write and
-        read simultaneously.
-
-        We can create a happens-before graph based on the above rules. Then, the
-        graph will look like this:
-
-                              |---|
-                              |   v
-        driver -> a.no_op -> a.no_op -> driver
-
-        Then, we use topological sort to verify whether the graph has a cycle.
-
-        If you are interested in the detailed explanation, please refer to
-        https://github.com/ray-project/ray/pull/45960.
+        TODO (kevin85421): Avoid false negatives
 
         Returns:
             True if deadlock is detected, otherwise False.
@@ -1569,37 +1484,7 @@ class CompiledDAG:
         assert self.idx_to_task
         assert self.actor_to_tasks
 
-        class GraphNode:
-            def __init__(self):
-                self.in_edges = set()
-                self.out_edges = set()
-
-            @property
-            def in_degree(self) -> int:
-                return len(self.in_edges)
-
         from ray.dag import ClassMethodNode
-
-        def _get_next_task_idx(task: "CompiledTask") -> Optional[int]:
-            if (
-                not isinstance(task.dag_node, ClassMethodNode)
-                or task.dag_node.is_class_method_output
-            ):
-                return None
-            actor_handle = task.dag_node._get_actor_handle()
-            bind_index = task.dag_node._get_bind_index()
-            for same_node_task in self.actor_to_tasks[actor_handle]:
-                if same_node_task.dag_node._get_bind_index() == bind_index + 1:
-                    return same_node_task.idx
-            return None
-
-        def _add_edge(
-            graph: Dict[int, GraphNode], from_idx: int, to_idx: Optional[int]
-        ):
-            if to_idx is None:
-                return
-            graph[from_idx].out_edges.add(to_idx)
-            graph[to_idx].in_edges.add(from_idx)
 
         def _is_same_actor(idx1: int, idx2: int) -> bool:
             """
@@ -1627,15 +1512,8 @@ class CompiledDAG:
             actor_id_2 = task2.dag_node._get_actor_handle()._actor_id
             return actor_id_1 == actor_id_2
 
-        graph = defaultdict(GraphNode)
         for idx, task in self.idx_to_task.items():
-            # Add an edge from task_{bind_index} to task_{bind_index+1}
-            # on the same actor.
-            next_task_idx = _get_next_task_idx(task)
-            _add_edge(graph, idx, next_task_idx)
             for downstream_idx in task.downstream_task_idxs:
-                # Add an edge from the writer to the reader.
-                _add_edge(graph, idx, downstream_idx)
                 if task.dag_node.type_hint.requires_nccl():
                     if _is_same_actor(idx, downstream_idx):
                         actor_handle = self.idx_to_task[
@@ -1654,44 +1532,7 @@ class CompiledDAG:
                             "DAG nodes on the same actor."
                         )
                         return True
-                    # Add an edge from the reader of an NCCL channel to the node
-                    # that has the next bind index on the same actor as the writer.
-                    _add_edge(graph, downstream_idx, next_task_idx)
-        num_total_nodes = len(graph)
-
-        # A list of nodes with in-degree 0, including (1) InputNode and
-        # (2) the nodes that only read from NCCL channels and are the first
-        # node on the actor.
-        zero_in_degree_nodes = deque()
-        for idx, node in graph.items():
-            if node.in_degree == 0:
-                zero_in_degree_nodes.append(idx)
-        visited_nodes = set()
-
-        # Perform topological sort to find a topological order of the graph.
-        # If topological order exists, the graph is a DAG. Otherwise, it has
-        # a cycle.
-        while zero_in_degree_nodes:
-            node = zero_in_degree_nodes.popleft()
-            visited_nodes.add(node)
-            for out_node in graph[node].out_edges:
-                graph[out_node].in_edges.remove(node)
-                if graph[out_node].in_degree == 0:
-                    zero_in_degree_nodes.append(out_node)
-
-        # Remove visited nodes from the graph.
-        for node in visited_nodes:
-            del graph[node]
-
-        topological_order_exists = len(visited_nodes) == num_total_nodes
-        if not topological_order_exists:
-            logger.error(
-                "The compiled DAG may hang due to blocking NCCL calls. If you "
-                "believe this is a false positive, please file an issue at "
-                "https://github.com/ray-project/ray/issues/new/."
-            )
-
-        return not topological_order_exists
+        return False
 
     def _monitor_failures(self):
         outer = self
