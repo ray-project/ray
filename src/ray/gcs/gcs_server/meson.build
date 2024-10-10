@@ -86,16 +86,16 @@ gcs_server_cpp_lib_dep = declare_dependency(
 
 
 # === @begin: gcs_server ===
-#gcs_server = executable(
-#    'gcs_server',
-#    ['gcs_server_main.cc'],
-#    dependencies: [
-#        # Package-managed
-#        gcs_server_cpp_lib_dep,
-#        stats_cpp_lib_dep,
-#
-#        # Eugo-managed
-#        gflags
-#    ]
-#)
+gcs_server = executable(
+    'gcs_server',
+    ['gcs_server_main.cc'],
+    dependencies: [
+        # Package-managed
+        gcs_server_cpp_lib_dep,
+        stats_cpp_lib_dep,
+
+        # Eugo-managed
+        gflags
+    ]
+)
 # === @end: gcs_server ===

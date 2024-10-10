@@ -40,7 +40,7 @@ protoc_py_with_default_args = [
 proto_py_default_kwargs = {
     'command': protoc_py_with_default_args,
     'output': ['@BASENAME@_pb2.py', '@BASENAME@_pb2_grpc.py'],
-    'build_by_default': true # Required until something would explicitely depend on this
+    #'build_by_default': true # Required until something would explicitely depend on this
 }
 # === @end: proto_py (original: python_grpc_compile) ===
 
@@ -56,7 +56,6 @@ flatc_cpp_fbs_with_default_args = [
 ]
 cpp_fbs_default_kwargs = {
     'command': flatc_cpp_fbs_with_default_args,
-    'output': ['@BASENAME@_generated.h'],
-    'build_by_default': true # Required until something would explicitely depend on this
+    'output': ['@BASENAME@_generated.h']
 }
 # === @end: cpp_fbs (original: flatbuffer_cc_library w/o final static library linking) ===
