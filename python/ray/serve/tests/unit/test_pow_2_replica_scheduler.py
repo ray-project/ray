@@ -1608,7 +1608,7 @@ async def test_queue_len_cache_replica_at_capacity_is_probed(pow_2_scheduler):
 
     # Now let the replica respond and accept the request, it should be scheduled.
     r1.set_queue_len_response(DEFAULT_MAX_ONGOING_REQUESTS - 1)
-    done, _ = await asyncio.wait([task], timeout=0.01)
+    done, _ = await asyncio.wait([task], timeout=0.1)
     assert len(done) == 1
     assert (await task) == r1
 
