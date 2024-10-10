@@ -478,6 +478,11 @@ def test_parse_filter():
     with pytest.raises(ValueError):
         _parse_filter("key>value!=")
 
+    with pytest.raises(ValueError):
+        _parse_filter("{key=value}")
+    with pytest.raises(ValueError):
+        _parse_filter("key1=value")
+
 
 def test_id_to_ip_map():
     node_id_1 = "1"
