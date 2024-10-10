@@ -12,10 +12,10 @@ DEFAULT_CONFIG_PATH = os.path.abspath(
 )
 
 # Env. variable to specify the encoding of the file logs when using the default config.
-RAY_DATA_LOG_ENCODING = "RAY_DATA_LOG_ENCODING"
+RAY_DATA_LOG_ENCODING_ENV_VAR_NAME = "RAY_DATA_LOG_ENCODING"
 
 # Env. variable to specify the logging config path use defaults if not set
-RAY_DATA_LOGGING_CONFIG_PATH = "RAY_DATA_LOGGING_CONFIG_PATH"
+RAY_DATA_LOGGING_CONFIG_PATH_ENV_VAR_NAME = "RAY_DATA_LOGGING_CONFIG_PATH"
 
 # To facilitate debugging, Ray Data writes debug logs to a file. However, if Ray Data
 # logs every scheduler loop, logging might impact performance. So, we add a "TRACE"
@@ -99,7 +99,7 @@ def configure_logging() -> None:
     environment variable. If the variable isn't set, this function loads the default
     "logging.yaml" file that is adjacent to this module.
 
-    If "RAY_DATA_LOG_ENCODING" is specified as "JSON" we will enable JSON reading mode
+    If "RAY_DATA_LOG_ENCODING" is specified as "JSON" we will enable JSON logging mode
     if using the default logging config.
     """
 
@@ -109,8 +109,8 @@ def configure_logging() -> None:
         return config
 
     # Dynamically load env vars
-    config_path = os.environ.get("RAY_DATA_LOGGING_CONFIG_PATH")
-    log_encoding = os.environ.get("RAY_DATA_LOG_ENCODING")
+    config_path = os.environ.get(RAY_DATA_LOGGING_CONFIG_PATH_ENV_VAR_NAME)
+    log_encoding = os.environ.get(RAY_DATA_LOG_ENCODING_ENV_VAR_NAME)
 
     if config_path is not None:
         config = _load_logging_config(config_path)
@@ -126,7 +126,7 @@ def configure_logging() -> None:
     # After configuring logger, warn if RAY_DATA_LOGGING_CONFIG_PATH is used with
     # RAY_DATA_LOG_ENCODING, because they are not both supported together.
     if config_path is not None and log_encoding is not None:
-        logger = logging.getLogger("ray.data")
+        logger = logging.getLogger(__name__)
         logger.warning(
             "Using `RAY_DATA_LOG_ENCODING` is not supported with "
             + "`RAY_DATA_LOGGING_CONFIG_PATH`"
