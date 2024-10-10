@@ -181,8 +181,8 @@ class StateAPIManager:
                 if filter_column not in filterable_columns:
                     raise ValueError(
                         f"The given filter column {filter_column} is not supported. "
-                        "Enter filters with –-filter key=value"
-                        " or –-filter key!=value "
+                        "Enter filters with –-filter key=value "
+                        "or –-filter key!=value "
                         f"Supported filter columns: {filterable_columns}"
                     )
 
