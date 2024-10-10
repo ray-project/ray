@@ -88,9 +88,15 @@ class OfflineData:
             if self.materialize_data:
                 self.data = self.data.materialize()
             stop_time = time.perf_counter()
-            logger.debug(f"Time for loading dataset: {stop_time - start_time}s.")
-            logger.info("Reading data from {}".format(self.path))
-            logger.info(self.data.schema())
+            logger.debug(
+                "===> [OfflineData] - Time for loading dataset: "
+                f"{stop_time - start_time}s."
+            )
+            logger.info(f"===> [OfflineData] - Reading data from {self.path}")
+            logger.info(
+                "===> [OfflineData] - Read dataset with the following schema: "
+                f"{self.data.schema()}"
+            )
         except Exception as e:
             logger.error(e)
         # Avoids reinstantiating the batch iterator each time we sample.
@@ -146,6 +152,10 @@ class OfflineData:
                 "module_spec": self.module_spec,
                 "module_state": module_state,
             }
+            logger.debug("===> [OfflineData] - Mapping data ...")
+            logger.debug(
+                f"===> [OfflineData] - Available resources: {ray.available_resources()}"
+            )
             self.data = self.data.map_batches(
                 self.prelearner_class,
                 fn_constructor_kwargs=fn_constructor_kwargs,
@@ -184,7 +194,7 @@ class OfflineData:
             if num_shards > 1:
                 # TODO (simon): Check, if we should use `iter_batches_kwargs` here
                 #   as well.
-                logger.debug("===> [OfflineData]: Return streaming_split ... ")
+                logger.debug("===> [OfflineData] - Return streaming_split ... ")
                 return self.data.streaming_split(
                     n=num_shards,
                     # Note, `equal` must be `True`, i.e. the batch size must
