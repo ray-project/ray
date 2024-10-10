@@ -245,12 +245,12 @@ class MARWILConfig(AlgorithmConfig):
     @override(AlgorithmConfig)
     def get_default_rl_module_spec(self) -> RLModuleSpecType:
         if self.framework_str == "torch":
-            from ray.rllib.algorithms.marwil.torch.marwil_torch_rl_module import (
-                MARWILTorchRLModule,
+            from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import (
+                PPOTorchRLModule,
             )
 
             return RLModuleSpec(
-                module_class=MARWILTorchRLModule,
+                module_class=PPOTorchRLModule,
                 catalog_class=MARWILCatalog,
             )
         else:

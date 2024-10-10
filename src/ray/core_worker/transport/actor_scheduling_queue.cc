@@ -77,6 +77,7 @@ void ActorSchedulingQueue::Add(
     const std::string &concurrency_group_name,
     const ray::FunctionDescriptor &function_descriptor,
     TaskID task_id,
+    uint64_t attempt_number,
     const std::vector<rpc::ObjectReference> &dependencies) {
   // A seq_no of -1 means no ordering constraint. Actor tasks must be executed in order.
   RAY_CHECK(seq_no != -1);
@@ -93,7 +94,8 @@ void ActorSchedulingQueue::Add(
                                                 std::move(reject_request),
                                                 std::move(send_reply_callback),
                                                 task_id,
-                                                dependencies.size() > 0,
+                                                attempt_number,
+                                                dependencies,
                                                 concurrency_group_name,
                                                 function_descriptor);
   {

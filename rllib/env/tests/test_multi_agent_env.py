@@ -9,7 +9,6 @@ from ray.tune.registry import register_env
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.env.multi_agent_env import (
-    make_multi_agent,
     MultiAgentEnv,
     MultiAgentEnvWrapper,
 )
@@ -39,8 +38,8 @@ class BasicMultiAgent(MultiAgentEnv):
 
     def __init__(self, num):
         super().__init__()
-        self.agents = [MockEnv(25) for _ in range(num)]
-        self._agent_ids = set(range(num))
+        self.envs = [MockEnv(25) for _ in range(num)]
+        self.agents = list(range(num))
         self.terminateds = set()
         self.truncateds = set()
         self.observation_space = gym.spaces.Discrete(2)
@@ -55,7 +54,7 @@ class BasicMultiAgent(MultiAgentEnv):
         self.resetted = True
         self.terminateds = set()
         self.truncateds = set()
-        reset_results = [a.reset() for a in self.agents]
+        reset_results = [a.reset() for a in self.envs]
         return (
             {i: oi[0] for i, oi in enumerate(reset_results)},
             {i: oi[1] for i, oi in enumerate(reset_results)},
@@ -64,15 +63,15 @@ class BasicMultiAgent(MultiAgentEnv):
     def step(self, action_dict):
         obs, rew, terminated, truncated, info = {}, {}, {}, {}, {}
         for i, action in action_dict.items():
-            obs[i], rew[i], terminated[i], truncated[i], info[i] = self.agents[i].step(
+            obs[i], rew[i], terminated[i], truncated[i], info[i] = self.envs[i].step(
                 action
             )
             if terminated[i]:
                 self.terminateds.add(i)
             if truncated[i]:
                 self.truncateds.add(i)
-        terminated["__all__"] = len(self.terminateds) == len(self.agents)
-        truncated["__all__"] = len(self.truncateds) == len(self.agents)
+        terminated["__all__"] = len(self.terminateds) == len(self.envs)
+        truncated["__all__"] = len(self.truncateds) == len(self.envs)
         return obs, rew, terminated, truncated, info
 
     def render(self):
@@ -87,8 +86,8 @@ class EarlyDoneMultiAgent(MultiAgentEnv):
 
     def __init__(self):
         super().__init__()
-        self.agents = [MockEnv(3), MockEnv(5)]
-        self._agent_ids = set(range(len(self.agents)))
+        self.envs = [MockEnv(3), MockEnv(5)]
+        self.agents = list(range(len(self.envs)))
         self.terminateds = set()
         self.truncateds = set()
         self.last_obs = {}
@@ -109,18 +108,18 @@ class EarlyDoneMultiAgent(MultiAgentEnv):
         self.last_truncated = {}
         self.last_info = {}
         self.i = 0
-        for i, a in enumerate(self.agents):
+        for i, a in enumerate(self.envs):
             self.last_obs[i], self.last_info[i] = a.reset()
             self.last_rew[i] = 0
             self.last_terminated[i] = False
             self.last_truncated[i] = False
         obs_dict = {self.i: self.last_obs[self.i]}
         info_dict = {self.i: self.last_info[self.i]}
-        self.i = (self.i + 1) % len(self.agents)
+        self.i = (self.i + 1) % len(self.envs)
         return obs_dict, info_dict
 
     def step(self, action_dict):
-        assert len(self.terminateds) != len(self.agents)
+        assert len(self.terminateds) != len(self.envs)
         for i, action in action_dict.items():
             (
                 self.last_obs[i],
@@ -128,7 +127,7 @@ class EarlyDoneMultiAgent(MultiAgentEnv):
                 self.last_terminated[i],
                 self.last_truncated[i],
                 self.last_info[i],
-            ) = self.agents[i].step(action)
+            ) = self.envs[i].step(action)
         obs = {self.i: self.last_obs[self.i]}
         rew = {self.i: self.last_rew[self.i]}
         terminated = {self.i: self.last_terminated[self.i]}
@@ -140,9 +139,9 @@ class EarlyDoneMultiAgent(MultiAgentEnv):
         if truncated[self.i]:
             rew[self.i] = 0
             self.truncateds.add(self.i)
-        self.i = (self.i + 1) % len(self.agents)
-        terminated["__all__"] = len(self.terminateds) == len(self.agents) - 1
-        truncated["__all__"] = len(self.truncateds) == len(self.agents) - 1
+        self.i = (self.i + 1) % len(self.envs)
+        terminated["__all__"] = len(self.terminateds) == len(self.envs) - 1
+        truncated["__all__"] = len(self.truncateds) == len(self.envs) - 1
         return obs, rew, terminated, truncated, info
 
 
@@ -151,11 +150,13 @@ class FlexAgentsMultiAgent(MultiAgentEnv):
 
     def __init__(self):
         super().__init__()
-        self.agents = {}
-        self._agent_ids = set()
+        self.envs = {}
+        self.agents = []
+        self.possible_agents = list(range(10000))  # Absolute max. number of agents.
         self.agentID = 0
         self.terminateds = set()
         self.truncateds = set()
+        # All agents have the exact same spaces.
         self.observation_space = gym.spaces.Discrete(2)
         self.action_space = gym.spaces.Discrete(2)
         self.resetted = False
@@ -163,21 +164,25 @@ class FlexAgentsMultiAgent(MultiAgentEnv):
     def spawn(self):
         # Spawn a new agent into the current episode.
         agentID = self.agentID
-        self.agents[agentID] = MockEnv(25)
-        self._agent_ids.add(agentID)
+        self.envs[agentID] = MockEnv(25)
+        self.agents.append(agentID)
         self.agentID += 1
         return agentID
 
+    def kill(self, agent_id):
+        del self.envs[agent_id]
+        self.agents.remove(agent_id)
+
     def reset(self, *, seed=None, options=None):
-        self.agents = {}
-        self._agent_ids = set()
+        self.envs = {}
+        self.agents.clear()
         self.spawn()
         self.resetted = True
         self.terminateds = set()
         self.truncateds = set()
         obs = {}
         infos = {}
-        for i, a in self.agents.items():
+        for i, a in self.envs.items():
             obs[i], infos[i] = a.reset()
 
         return obs, infos
@@ -186,7 +191,7 @@ class FlexAgentsMultiAgent(MultiAgentEnv):
         obs, rew, terminated, truncated, info = {}, {}, {}, {}, {}
         # Apply the actions.
         for i, action in action_dict.items():
-            obs[i], rew[i], terminated[i], truncated[i], info[i] = self.agents[i].step(
+            obs[i], rew[i], terminated[i], truncated[i], info[i] = self.envs[i].step(
                 action
             )
             if terminated[i]:
@@ -196,24 +201,25 @@ class FlexAgentsMultiAgent(MultiAgentEnv):
 
         # Sometimes, add a new agent to the episode.
         if random.random() > 0.75 and len(action_dict) > 0:
-            i = self.spawn()
-            obs[i], rew[i], terminated[i], truncated[i], info[i] = self.agents[i].step(
-                action
-            )
-            if terminated[i]:
-                self.terminateds.add(i)
-            if truncated[i]:
-                self.truncateds.add(i)
+            aid = self.spawn()
+            obs[aid], rew[aid], terminated[aid], truncated[aid], info[aid] = self.envs[
+                aid
+            ].step(action)
+            if terminated[aid]:
+                self.terminateds.add(aid)
+            if truncated[aid]:
+                self.truncateds.add(aid)
 
         # Sometimes, kill an existing agent.
-        if len(self.agents) > 1 and random.random() > 0.25:
-            keys = list(self.agents.keys())
-            key = random.choice(keys)
-            terminated[key] = True
-            del self.agents[key]
+        if len(self.envs) > 1 and random.random() > 0.25:
+            keys = list(self.envs.keys())
+            aid = random.choice(keys)
+            self.kill(aid)
+            terminated[aid] = True
+            self.terminateds.add(aid)
 
-        terminated["__all__"] = len(self.terminateds) == len(self.agents)
-        truncated["__all__"] = len(self.truncateds) == len(self.agents)
+        terminated["__all__"] = len(self.terminateds) == len(self.envs)
+        truncated["__all__"] = len(self.truncateds) == len(self.envs)
         return obs, rew, terminated, truncated, info
 
 
@@ -229,9 +235,8 @@ class SometimesZeroAgentsMultiAgent(MultiAgentEnv):
 
     def __init__(self, num=3):
         super().__init__()
-        self.num_agents = num
-        self.agents = [MockEnv(25) for _ in range(self.num_agents)]
-        self._agent_ids = set(range(self.num_agents))
+        self.agents = list(range(num))
+        self.envs = [MockEnv(25) for _ in range(self.num_agents)]
         self._observations = {}
         self._infos = {}
         self.terminateds = set()
@@ -245,7 +250,7 @@ class SometimesZeroAgentsMultiAgent(MultiAgentEnv):
         self._observations = {}
         self._infos = {}
         for aid in self._get_random_agents():
-            self._observations[aid], self._infos[aid] = self.agents[aid].reset()
+            self._observations[aid], self._infos[aid] = self.envs[aid].reset()
         return self._observations, self._infos
 
     def step(self, action_dict):
@@ -258,7 +263,7 @@ class SometimesZeroAgentsMultiAgent(MultiAgentEnv):
                 terminated[aid],
                 truncated[aid],
                 self._infos[aid],
-            ) = self.agents[aid].step(action)
+            ) = self.envs[aid].step(action)
             if terminated[aid]:
                 self.terminateds.add(aid)
             if truncated[aid]:
@@ -306,10 +311,10 @@ class RoundRobinMultiAgent(MultiAgentEnv):
         super().__init__()
         if increment_obs:
             # Observations are 0, 1, 2, 3... etc. as time advances
-            self.agents = [MockEnv2(5) for _ in range(num)]
+            self.envs = [MockEnv2(5) for _ in range(num)]
         else:
             # Observations are all zeros
-            self.agents = [MockEnv(5) for _ in range(num)]
+            self.envs = [MockEnv(5) for _ in range(num)]
         self._agent_ids = set(range(num))
         self.terminateds = set()
         self.truncateds = set()
@@ -334,7 +339,7 @@ class RoundRobinMultiAgent(MultiAgentEnv):
         self.last_truncated = {}
         self.last_info = {}
         self.i = 0
-        for i, a in enumerate(self.agents):
+        for i, a in enumerate(self.envs):
             self.last_obs[i], self.last_info[i] = a.reset()
             self.last_rew[i] = 0
             self.last_terminated[i] = False
@@ -345,7 +350,7 @@ class RoundRobinMultiAgent(MultiAgentEnv):
         return obs_dict, info_dict
 
     def step(self, action_dict):
-        assert len(self.terminateds) != len(self.agents)
+        assert len(self.terminateds) != len(self.envs)
         for i, action in action_dict.items():
             (
                 self.last_obs[i],
@@ -353,7 +358,7 @@ class RoundRobinMultiAgent(MultiAgentEnv):
                 self.last_terminated[i],
                 self.last_truncated[i],
                 self.last_info[i],
-            ) = self.agents[i].step(action)
+            ) = self.envs[i].step(action)
         obs = {self.i: self.last_obs[self.i]}
         rew = {self.i: self.last_rew[self.i]}
         terminated = {self.i: self.last_terminated[self.i]}
@@ -365,8 +370,8 @@ class RoundRobinMultiAgent(MultiAgentEnv):
         if truncated[self.i]:
             self.truncateds.add(self.i)
         self.i = (self.i + 1) % self.num
-        terminated["__all__"] = len(self.terminateds) == len(self.agents)
-        truncated["__all__"] = len(self.truncateds) == len(self.agents)
+        terminated["__all__"] = len(self.terminateds) == len(self.envs)
+        truncated["__all__"] = len(self.truncateds) == len(self.envs)
         return obs, rew, terminated, truncated, info
 
 
@@ -781,7 +786,6 @@ class TestMultiAgentEnv(unittest.TestCase):
                 return [{}]  # empty dict
 
             def is_recurrent(self):
-                # TODO: avnishn automatically infer this.
                 return True
 
         ev = RolloutWorker(
@@ -805,58 +809,6 @@ class TestMultiAgentEnv(unittest.TestCase):
         for i in range(1, 5):
             check(batch["state_in_0"][i], h)
             check(batch["state_out_0"][i], h)
-
-    def test_space_in_preferred_format(self):
-        env = NestedMultiAgentEnv()
-        action_space_in_preferred_format = (
-            env._check_if_action_space_maps_agent_id_to_sub_space()
-        )
-        obs_space_in_preferred_format = (
-            env._check_if_obs_space_maps_agent_id_to_sub_space()
-        )
-        assert action_space_in_preferred_format, "Act space is not in preferred format."
-        assert obs_space_in_preferred_format, "Obs space is not in preferred format."
-
-        env2 = make_multi_agent("CartPole-v1")()
-        action_spaces_in_preferred_format = (
-            env2._check_if_action_space_maps_agent_id_to_sub_space()
-        )
-        obs_space_in_preferred_format = (
-            env2._check_if_obs_space_maps_agent_id_to_sub_space()
-        )
-        assert (
-            action_spaces_in_preferred_format
-        ), "Action space should be in preferred format but isn't."
-        assert (
-            obs_space_in_preferred_format
-        ), "Observation space should be in preferred format but isn't."
-
-    def test_spaces_sample_contain_in_preferred_format(self):
-        env = NestedMultiAgentEnv()
-        # this environment has spaces that are in the preferred format
-        # for multi-agent environments where the spaces are dict spaces
-        # mapping agent-ids to sub-spaces
-        obs = env.observation_space_sample()
-        assert env.observation_space_contains(
-            obs
-        ), "Observation space does not contain obs"
-
-        action = env.action_space_sample()
-        assert env.action_space_contains(action), "Action space does not contain action"
-
-    def test_spaces_sample_contain_not_in_preferred_format(self):
-        env = make_multi_agent("CartPole-v1")({"num_agents": 2})
-        # this environment has spaces that are not in the preferred format
-        # for multi-agent environments where the spaces not in the preferred
-        # format, users must override the observation_space_contains,
-        # action_space_contains observation_space_sample,
-        # and action_space_sample methods in order to do proper checks
-        obs = env.observation_space_sample()
-        assert env.observation_space_contains(
-            obs
-        ), "Observation space does not contain obs"
-        action = env.action_space_sample()
-        assert env.action_space_contains(action), "Action space does not contain action"
 
 
 if __name__ == "__main__":

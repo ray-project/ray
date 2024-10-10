@@ -320,7 +320,7 @@ class ConnectorV2(Checkpointable, abc.ABC):
         list_indices = defaultdict(int)
 
         # Single-agent case.
-        if isinstance(episodes[0], SingleAgentEpisode):
+        if episodes and isinstance(episodes[0], SingleAgentEpisode):
             if zip_with_batch_column is not None:
                 if len(zip_with_batch_column) != len(episodes):
                     raise ValueError(
