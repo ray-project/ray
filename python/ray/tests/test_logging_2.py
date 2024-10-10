@@ -424,6 +424,30 @@ class TestSetupLogRecordFactory:
             assert record.__dict__["existing_factory"]
 
 
+def test_text_mode_no_prefix(shutdown_only):
+    """
+    If logging_config is set, remove the prefix that contains
+    the actor or task's name and their PIDs.
+    """
+    script = """
+import ray
+import logging
+ray.init(
+    logging_config=ray.LoggingConfig(encoding="TEXT")
+)
+@ray.remote
+class MyActor:
+    def print_message(self):
+        logger = logging.getLogger(__name__)
+        logger.info("This is a Ray actor")
+my_actor = MyActor.remote()
+ray.get(my_actor.print_message.remote())
+"""
+    stderr = run_string_as_driver(script)
+    assert "This is a Ray actor" in stderr
+    assert "(MyActor pid=" not in stderr
+
+
 if __name__ == "__main__":
     if os.environ.get("PARALLEL_CI"):
         sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
