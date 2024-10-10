@@ -8,6 +8,7 @@ import pandas as pd
 import pyarrow as pa
 import pyarrow.parquet as pq
 import pytest
+from numpy.core.multiarray import dtype
 from pytest_lazyfixture import lazy_fixture
 
 import ray
@@ -1202,6 +1203,32 @@ def test_partitioning_in_dataset_kwargs_raises_error(ray_start_regular_shared):
         ray.data.read_parquet(
             "example://iris.parquet", dataset_kwargs=dict(partitioning="hive")
         )
+
+
+def test_multiple_files_with_ragged_arrays(ray_start_regular_shared, tmp_path):
+    # Test reading multiple parquet files, each of which has different-shaped
+    # ndarrays in the same column.
+    # See https://github.com/ray-project/ray/issues/47960 for more context.
+    num_rows = 3
+    ds = ray.data.range(num_rows)
+
+    def map(row):
+        id = row["id"] + 1
+        row["data"] = np.zeros((id * 100, id * 100), dtype=np.int8)
+        return row
+
+    # Write 3 parquet files with different-shaped ndarray values in the
+    # "data" column.
+    ds.map(map).repartition(num_rows).write_parquet(tmp_path)
+
+    # Read these 3 files, check that the result is correct.
+    ds2 = ray.data.read_parquet(tmp_path, override_num_blocks=1)
+    res = ds2.take_all()
+    res = sorted(res, key=lambda row: row["id"])
+    assert len(res) == num_rows
+    for index, item in enumerate(res):
+        assert item["id"] == index
+        assert item["data"].shape == (100 * (index + 1), 100 * (index + 1))
 
 
 if __name__ == "__main__":
