@@ -14,6 +14,7 @@ import ray
 from ray.data._internal.execution.interfaces import TaskContext
 from ray.data.block import Block, BlockAccessor
 from ray.data.datasource import Datasink, DummyOutputDatasink
+from ray.data.datasource.datasink import WriteResult
 from ray.data.datasource.file_meta_provider import _handle_read_os_error
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.mock_http_server import *  # noqa
@@ -266,8 +267,10 @@ class NodeLoggerOutputDatasink(Datasink):
             tasks.append(write(b))
         ray.get(tasks)
 
-    def on_write_complete(self, raw_write_results: List[Block]) -> None:
+    def on_write_complete(self, write_result_blocks: List[Block]) -> WriteResult:
         self.num_ok += 1
+        aggregated_results = super().on_write_complete(write_result_blocks)
+        return aggregated_results
 
     def on_write_failed(self, error: Exception) -> None:
         self.num_failed += 1

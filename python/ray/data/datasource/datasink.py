@@ -1,4 +1,5 @@
 import logging
+from dataclasses import dataclass, fields
 from typing import Iterable, List, Optional
 
 import ray
@@ -7,6 +8,42 @@ from ray.data.block import Block, BlockAccessor
 from ray.util.annotations import DeveloperAPI
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass
+class WriteResult:
+    """Result of a write operation, containing stats/metrics
+    on the written data.
+
+    Attributes:
+        total_num_rows: The total number of rows written.
+        total_size_bytes: The total size of the written data in bytes.
+    """
+
+    num_rows: int = 0
+    size_bytes: int = 0
+
+    @staticmethod
+    def aggregate_write_results(write_results: List["WriteResult"]) -> "WriteResult":
+        """Aggregate a list of write results.
+
+        Args:
+            write_results: A list of write results.
+
+        Returns:
+            A single write result that aggregates the input results.
+        """
+        total_num_rows = 0
+        total_size_bytes = 0
+
+        for write_result in write_results:
+            total_num_rows += write_result.num_rows
+            total_size_bytes += write_result.size_bytes
+
+        return WriteResult(
+            num_rows=total_num_rows,
+            size_bytes=total_size_bytes,
+        )
 
 
 @DeveloperAPI
@@ -38,7 +75,7 @@ class Datasink:
         """
         raise NotImplementedError
 
-    def on_write_complete(self, raw_write_results: List[Block]) -> None:
+    def on_write_complete(self, write_result_blocks: List[Block]) -> WriteResult:
         """Callback for when a write job completes.
 
         This can be used to "commit" a write output. This method must
@@ -46,36 +83,27 @@ class Datasink:
         method fails, then ``on_write_failed()`` is called.
 
         Args:
-            raw_write_results: The blocks resulting from executing the Write operator,
-                containing write results and stats.
+            write_result_blocks: The blocks resulting from executing
+            the Write operator, containing write results and stats.
+        Returns:
+            A ``WriteResult`` object containing the aggregated stats of all
+            the input write results.
         """
-        total_num_rows = 0
-        total_size_bytes = 0
-
-        for result in raw_write_results:
-            # `result` is a Block containing a single row with write results/stats.
-            # Calling `iter_rows()` is the cleanest way to extract a single row
-            # for various block types.
-            for row in BlockAccessor.for_block(result).iter_rows(None):
-                write_results = row
-
-            total_num_rows += write_results["write_num_rows"]
-            total_size_bytes += write_results["write_size_bytes"]
-
-        aggregated_results = {
-            "total_num_rows": total_num_rows,
-            "total_size_bytes": total_size_bytes,
-        }
+        write_results = [
+            result["write_result"].iloc[0] for result in write_result_blocks
+        ]
+        aggregated_write_results = WriteResult.aggregate_write_results(write_results)
 
         aggregated_results_str = ""
-        for k, v in aggregated_results.items():
+        for k in fields(aggregated_write_results.__class__):
+            v = getattr(aggregated_write_results, k.name)
             aggregated_results_str += f"\t{k}: {v}\n"
 
         logger.info(
             f"Write operation succeeded. Aggregated write results:\n"
             f"{aggregated_results_str}"
         )
-        return aggregated_results
+        return aggregated_write_results
 
     def on_write_failed(self, error: Exception) -> None:
         """Callback for when a write job fails.
@@ -160,8 +188,10 @@ class DummyOutputDatasink(Datasink):
             tasks.append(self.data_sink.write.remote(b))
         ray.get(tasks)
 
-    def on_write_complete(self, raw_write_results: List[Block]) -> None:
+    def on_write_complete(self, write_result_blocks: List[Block]) -> WriteResult:
         self.num_ok += 1
+        aggregated_results = super().on_write_complete(write_result_blocks)
+        return aggregated_results
 
     def on_write_failed(self, error: Exception) -> None:
         self.num_failed += 1

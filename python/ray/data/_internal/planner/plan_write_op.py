@@ -11,7 +11,7 @@ from ray.data._internal.execution.operators.map_transformer import (
 )
 from ray.data._internal.logical.operators.write_operator import Write
 from ray.data.block import Block, BlockAccessor
-from ray.data.datasource.datasink import Datasink
+from ray.data.datasource.datasink import Datasink, WriteResult
 from ray.data.datasource.datasource import Datasource
 
 
@@ -50,12 +50,8 @@ def generate_collect_write_stats_fn() -> Callable[
         # type.
         import pandas as pd
 
-        block = pd.DataFrame(
-            {
-                "write_num_rows": [total_num_rows],
-                "write_size_bytes": [total_size_bytes],
-            }
-        )
+        write_result = WriteResult(num_rows=total_num_rows, size_bytes=total_size_bytes)
+        block = pd.DataFrame({"write_result": [write_result]})
         return iter([block])
 
     return fn
