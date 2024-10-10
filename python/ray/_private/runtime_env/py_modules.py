@@ -75,11 +75,14 @@ def upload_py_modules_if_needed(
             # be split into multiple directories. We could probably handle
             # this, but it seems tricky & uncommon. If it's a problem for
             # users, we can add this support on demand.
-            if len(module.__path__) > 1:
-                raise ValueError(
-                    "py_modules only supports modules whose __path__ has length 1."
-                )
-            [module_path] = module.__path__
+            if hasattr(module, '__path__'):
+                if len(module.__path__) > 1:
+                    raise ValueError(
+                        "py_modules only supports modules whose __path__ has length 1."
+                    )
+                [module_path] = module.__path__
+            else:
+                module_path = os.path.dirname(module.__file__)
         else:
             raise TypeError(
                 "py_modules must be a list of file paths, URIs, "
