@@ -134,10 +134,11 @@ class _FileDatasink(Datasink):
         if not self.has_created_dir:
             return
 
+        # If all blocks are empty, no rows were written,
+        # so we can delete the directory.
         for result in raw_write_results:
             ba = BlockAccessor.for_block(result)
-            write_status = ba.to_numpy("write_status")[0]
-            if write_status != "skip":
+            if ba.num_rows() > 0:
                 return
         self.filesystem.delete_dir(self.path)
 

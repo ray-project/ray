@@ -3709,6 +3709,8 @@ class Dataset:
             datasink.on_write_start()
 
             self._write_ds = Dataset(plan, logical_plan).materialize()
+            # TODO: Get and handle the blocks with an iterator instead of getting
+            # everything in a blocking way, so some blocks can be freed earlier.
             raw_write_results = ray.get(self._write_ds._plan.execute().block_refs)
             assert all(
                 isinstance(block, pd.DataFrame) and len(block) == 1

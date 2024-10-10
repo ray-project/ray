@@ -1,3 +1,4 @@
+from typing import Iterator
 from unittest import mock
 
 import pyarrow as pa
@@ -11,6 +12,7 @@ import ray
 from ray.data._internal.datasource.bigquery_datasink import BigQueryDatasink
 from ray.data._internal.datasource.bigquery_datasource import BigQueryDatasource
 from ray.data._internal.planner.plan_write_op import generate_collect_write_stats_fn
+from ray.data.block import Block
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.mock_http_server import *  # noqa
 from ray.tests.conftest import *  # noqa
@@ -198,6 +200,11 @@ class TestReadBigQuery:
 class TestWriteBigQuery:
     """Tests for BigQuery Write."""
 
+    def _check_write_results(self, stats: Iterator[Block]):
+        write_results = dict(next(stats).iloc[0])
+        for k in ("write_num_rows", "write_size_bytes"):
+            assert k in write_results
+
     def test_write(self, ray_get_mock):
         bq_datasink = BigQueryDatasink(
             project_id=_TEST_GCP_PROJECT_ID,
@@ -212,8 +219,7 @@ class TestWriteBigQuery:
 
         collect_stats_fn = generate_collect_write_stats_fn()
         stats = collect_stats_fn([block], None)
-        status = stats[0].iloc[0]["write_status"]
-        assert status == "ok"
+        self._check_write_results(stats)
 
     def test_write_dataset_exists(self, ray_get_mock):
         bq_datasink = BigQueryDatasink(
@@ -228,8 +234,7 @@ class TestWriteBigQuery:
         )
         collect_stats_fn = generate_collect_write_stats_fn()
         stats = collect_stats_fn([block], None)
-        status = stats[0].iloc[0]["write_status"]
-        assert status == "ok"
+        self._check_write_results(stats)
 
 
 if __name__ == "__main__":

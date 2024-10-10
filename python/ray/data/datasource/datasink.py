@@ -72,7 +72,7 @@ class Datasink:
             aggregated_results_str += f"\t{k}: {v}\n"
 
         logger.info(
-            f"`write_datasink()` succeeded. Aggregated write results:\n"
+            f"Write operation succeeded. Aggregated write results:\n"
             f"{aggregated_results_str}"
         )
 
@@ -135,10 +135,9 @@ class DummyOutputDatasink(Datasink):
                 self.rows_written = 0
                 self.enabled = True
 
-            def write(self, block: Block) -> str:
+            def write(self, block: Block) -> None:
                 block = BlockAccessor.for_block(block)
                 self.rows_written += block.num_rows()
-                return "ok"
 
             def get_rows_written(self):
                 return self.rows_written
@@ -161,11 +160,6 @@ class DummyOutputDatasink(Datasink):
         ray.get(tasks)
 
     def on_write_complete(self, raw_write_results: List[Block]) -> None:
-        for result in raw_write_results:
-            ba = BlockAccessor.for_block(result)
-            write_status = ba.to_numpy("write_status")[0]
-            assert write_status == "ok"
-
         self.num_ok += 1
 
     def on_write_failed(self, error: Exception) -> None:

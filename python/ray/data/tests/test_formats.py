@@ -239,7 +239,6 @@ class NodeLoggerOutputDatasink(Datasink):
                 block = BlockAccessor.for_block(block)
                 self.rows_written += block.num_rows()
                 self.node_ids.add(node_id)
-                return "ok"
 
             def get_rows_written(self):
                 return self.rows_written
@@ -268,11 +267,6 @@ class NodeLoggerOutputDatasink(Datasink):
         ray.get(tasks)
 
     def on_write_complete(self, raw_write_results: List[Block]) -> None:
-        for result in raw_write_results:
-            ba = BlockAccessor.for_block(result)
-            write_status = ba.to_numpy("write_status")[0]
-            assert write_status == "ok"
-
         self.num_ok += 1
 
     def on_write_failed(self, error: Exception) -> None:

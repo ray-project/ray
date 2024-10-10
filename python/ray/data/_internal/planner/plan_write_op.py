@@ -43,10 +43,6 @@ def generate_collect_write_stats_fn() -> Callable[
     def fn(blocks: Iterator[Block], ctx) -> Iterator[Block]:
         """Handles stats collection for block writes."""
         block_accessors = [BlockAccessor.for_block(block) for block in blocks]
-        if all(ba.num_rows() == 0 for ba in block_accessors):
-            status = "skip"
-        else:
-            status = "ok"
         total_num_rows = sum(ba.num_rows() for ba in block_accessors)
         total_size_bytes = sum(ba.size_bytes() for ba in block_accessors)
 
@@ -56,12 +52,11 @@ def generate_collect_write_stats_fn() -> Callable[
 
         block = pd.DataFrame(
             {
-                "write_status": [status],
                 "write_num_rows": [total_num_rows],
                 "write_size_bytes": [total_size_bytes],
             }
         )
-        return [block]
+        return iter([block])
 
     return fn
 
