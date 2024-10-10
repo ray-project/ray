@@ -11,6 +11,7 @@ logger = logging.getLogger(__name__)
 
 
 @dataclass
+@DeveloperAPI
 class WriteResult:
     """Result of a write operation, containing stats/metrics
     on the written data.
