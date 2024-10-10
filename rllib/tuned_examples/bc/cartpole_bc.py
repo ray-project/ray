@@ -2,6 +2,7 @@ from pathlib import Path
 
 from ray.air.constants import TRAINING_ITERATION
 from ray.rllib.algorithms.bc import BCConfig
+from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
 from ray.rllib.utils.metrics import (
     ENV_RUNNER_RESULTS,
     EPISODE_RETURN_MEAN,
@@ -65,14 +66,19 @@ config = (
         # The number of iterations to be run per learner when in multi-learner
         # mode in a single RLlib training iteration. Leave this to `None` to
         # run an entire epoch on the dataset during a single RLlib training
-        # iteration. For single-learner mode 1 is the only option.
+        # iteration. For single-learner mode, 1 is the only option.
         dataset_num_iters_per_learner=1 if args.num_gpus == 0 else None,
     )
     .training(
+        train_batch_size_per_learner=1024,
         # To increase learning speed with multiple learners,
         # increase the learning rate correspondingly.
         lr=0.0008 * max(1, args.num_gpus**0.5),
-        train_batch_size_per_learner=1024,
+    )
+    .rl_module(
+        model_config=DefaultModelConfig(
+            fcnet_hiddens=[256, 256],
+        ),
     )
 )
 

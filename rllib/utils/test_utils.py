@@ -32,7 +32,7 @@ from ray import air, tune
 from ray.air.constants import TRAINING_ITERATION
 from ray.air.integrations.wandb import WandbLoggerCallback, WANDB_ENV_VAR
 from ray.rllib.common import SupportedFileType
-from ray.rllib.core import DEFAULT_MODULE_ID
+from ray.rllib.core import DEFAULT_MODULE_ID, Columns
 from ray.rllib.env.wrappers.atari_wrappers import is_atari, wrap_deepmind
 from ray.rllib.train import load_experiments_from_file
 from ray.rllib.utils.annotations import OldAPIStack
@@ -1833,36 +1833,26 @@ class ModelChecker:
         # Dict of models to check against each other.
         self.models = {}
 
-    def add(self, framework: str = "torch") -> Any:
+    def add(self, framework: str = "torch", obs=True, state=False) -> Any:
         """Builds a new Model for the given framework."""
         model = self.models[framework] = self.config.build(framework=framework)
 
         # Pass a B=1 observation through the model.
-        from ray.rllib.core.models.specs.specs_dict import SpecDict
+        inputs = np.full(
+            [1] + ([1] if state else []) + list(self.config.input_dims),
+            self.random_fill_input_value,
+        )
+        if obs:
+            inputs = {Columns.OBS: inputs}
+        if state:
+            inputs[Columns.STATE_IN] = tree.map_structure(
+                lambda s: np.zeros(shape=[1] + list(s)), state
+            )
+        if framework == "torch":
+            from ray.rllib.utils.torch_utils import convert_to_torch_tensor
 
-        if isinstance(model.input_specs, SpecDict):
-            # inputs = {}
-
-            def _fill(s):
-                if s is not None:
-                    return s.fill(self.random_fill_input_value)
-                else:
-                    return None
-
-            inputs = tree.map_structure(_fill, dict(model.input_specs))
-            # for key, spec in model.input_specs.items():
-            #    dict_ = inputs
-            #    for i, sub_key in enumerate(key):
-            #        if sub_key not in dict_:
-            #            dict_[sub_key] = {}
-            #        if i < len(key) - 1:
-            #            dict_ = dict_[sub_key]
-            #    if spec is not None:
-            #        dict_[sub_key] = spec.fill(self.random_fill_input_value)
-            #    else:
-            #        dict_[sub_key] = None
-        else:
-            inputs = model.input_specs.fill(self.random_fill_input_value)
+            inputs = convert_to_torch_tensor(inputs)
+        # w/ old specs: inputs = model.input_specs.fill(self.random_fill_input_value)
 
         outputs = model(inputs)
 

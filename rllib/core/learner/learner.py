@@ -154,6 +154,7 @@ class Learner(Checkpointable):
                 PPOTorchRLModule
             )
             from ray.rllib.core import COMPONENT_RL_MODULE, DEFAULT_MODULE_ID
+            from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
             from ray.rllib.core.rl_module.rl_module import RLModuleSpec
 
             env = gym.make("CartPole-v1")
@@ -180,7 +181,7 @@ class Learner(Checkpointable):
                     module_class=PPOTorchRLModule,
                     observation_space=env.observation_space,
                     action_space=env.action_space,
-                    model_config_dict={"fcnet_hiddens": [64, 64]},
+                    model_config=DefaultModelConfig(fcnet_hiddens=[64, 64]),
                     catalog_class=PPOCatalog,
                 )
             )
@@ -777,6 +778,7 @@ class Learner(Checkpointable):
                 algorithm_config_overrides_per_module={module_id: config_overrides}
             )
         self.config.rl_module(rl_module_spec=MultiRLModuleSpec.from_module(self.module))
+        self._module_spec = self.config.rl_module_spec
         if new_should_module_be_updated is not None:
             self.config.multi_agent(policies_to_train=new_should_module_be_updated)
 

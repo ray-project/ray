@@ -945,13 +945,6 @@ py_test(
 )
 
 py_test(
-    name = "test_node_failure",
-    tags = ["team:rllib", "tests_dir", "exclusive"],
-    size = "medium",
-    srcs = ["tests/test_node_failure.py"],
-)
-
-py_test(
     name = "test_registry",
     tags = ["team:rllib", "algorithms_dir", "algorithms_dir_generic"],
     size = "small",
@@ -959,11 +952,19 @@ py_test(
 )
 
 py_test(
-    name = "test_worker_failures",
+    name = "test_env_runner_failures",
     tags = ["team:rllib", "algorithms_dir", "algorithms_dir_generic", "exclusive"],
     size = "large",
-    srcs = ["algorithms/tests/test_worker_failures.py"]
+    srcs = ["algorithms/tests/test_env_runner_failures.py"]
 )
+
+py_test(
+    name = "test_node_failures",
+    tags = ["team:rllib", "tests_dir", "exclusive"],
+    size = "large",
+    srcs = ["algorithms/tests/test_node_failures.py"],
+)
+
 
 # Specific Algorithms
 
@@ -1343,13 +1344,6 @@ py_test(
 # Tag: evaluation
 # --------------------------------------------------------------------
 py_test(
-    name = "evaluation/tests/test_agent_collector",
-    tags = ["team:rllib", "evaluation"],
-    size = "small",
-    srcs = ["evaluation/tests/test_agent_collector.py"]
-)
-
-py_test(
     name = "evaluation/tests/test_envs_that_crash",
     tags = ["team:rllib", "evaluation"],
     size = "large",
@@ -1363,6 +1357,15 @@ py_test(
     srcs = ["env/tests/test_env_runner_group.py"]
 )
 
+# @OldAPIStack
+py_test(
+    name = "evaluation/tests/test_agent_collector",
+    tags = ["team:rllib", "evaluation"],
+    size = "small",
+    srcs = ["evaluation/tests/test_agent_collector.py"]
+)
+
+# @OldAPIStack
 py_test(
     name = "evaluation/tests/test_env_runner_v2",
     tags = ["team:rllib", "evaluation"],
@@ -1370,6 +1373,7 @@ py_test(
     srcs = ["evaluation/tests/test_env_runner_v2.py"]
 )
 
+# @OldAPIStack
 py_test(
     name = "evaluation/tests/test_episode",
     tags = ["team:rllib", "evaluation"],
@@ -1377,6 +1381,7 @@ py_test(
     srcs = ["evaluation/tests/test_episode.py"]
 )
 
+# @OldAPIStack
 py_test(
     name = "evaluation/tests/test_episode_v2",
     tags = ["team:rllib", "evaluation"],
@@ -1384,6 +1389,7 @@ py_test(
     srcs = ["evaluation/tests/test_episode_v2.py"]
 )
 
+# @OldAPIStack
 py_test(
     name = "evaluation/tests/test_postprocessing",
     tags = ["team:rllib", "evaluation"],
@@ -1391,6 +1397,7 @@ py_test(
     srcs = ["evaluation/tests/test_postprocessing.py"]
 )
 
+# @OldAPIStack
 py_test(
     name = "evaluation/tests/test_rollout_worker",
     tags = ["team:rllib", "evaluation", "exclusive"],
@@ -1454,28 +1461,6 @@ py_test(
     tags = ["team:rllib", "core", "models"],
     size = "medium",
     srcs = ["core/models/tests/test_recurrent_encoders.py"]
-)
-
-# Specs
-py_test(
-    name = "test_check_specs",
-    tags = ["team:rllib", "models"],
-    size = "small",
-    srcs = ["core/models/specs/tests/test_check_specs.py"]
-)
-
-py_test(
-    name = "test_tensor_spec",
-    tags = ["team:rllib", "models"],
-    size = "small",
-    srcs = ["core/models/specs/tests/test_tensor_spec.py"]
-)
-
-py_test(
-    name = "test_spec_dict",
-    tags = ["team:rllib", "models"],
-    size = "small",
-    srcs = ["core/models/specs/tests/test_spec_dict.py"]
 )
 
 # RLModule
