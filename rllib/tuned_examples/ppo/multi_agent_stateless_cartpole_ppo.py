@@ -1,5 +1,6 @@
 from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.connectors.env_to_module import MeanStdFilter
+from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
 from ray.rllib.examples.envs.classes.multi_agent import MultiAgentStatelessCartPole
 from ray.rllib.utils.metrics import (
     ENV_RUNNER_RESULTS,
@@ -37,15 +38,14 @@ config = (
     )
     .training(
         lr=0.0003 * ((args.num_gpus or 1) ** 0.5),
-        num_sgd_iter=6,
+        num_epochs=6,
         vf_loss_coeff=0.05,
     )
     .rl_module(
-        model_config_dict={
-            "use_lstm": True,
-            "uses_new_env_runners": True,
-            "max_seq_len": 20,
-        },
+        model_config=DefaultModelConfig(
+            use_lstm=True,
+            max_seq_len=20,
+        ),
     )
     .multi_agent(
         policy_mapping_fn=lambda aid, *arg, **kw: f"p{aid}",

@@ -62,6 +62,7 @@ import numpy as np
 from typing import Optional, Sequence
 
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
+from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
 from ray.rllib.env.wrappers.atari_wrappers import wrap_atari_for_new_api_stack
 from ray.rllib.utils.images import resize
 from ray.rllib.utils.test_utils import (
@@ -264,7 +265,7 @@ if __name__ == "__main__":
             clip_param=0.1,
             vf_clip_param=10.0,
             entropy_coeff=0.01,
-            num_sgd_iter=10,
+            num_epochs=10,
             # Linearly adjust learning rate based on number of GPUs.
             lr=0.00015 * (args.num_gpus or 1),
             grad_clip=100.0,
@@ -274,13 +275,12 @@ if __name__ == "__main__":
 
     if base_config.is_atari:
         base_config.rl_module(
-            model_config_dict={
-                "vf_share_layers": True,
-                "conv_filters": [[16, 4, 2], [32, 4, 2], [64, 4, 2], [128, 4, 2]],
-                "conv_activation": "relu",
-                "post_fcnet_hiddens": [256],
-                "uses_new_env_runners": True,
-            },
+            model_config=DefaultModelConfig(
+                conv_filters=[[16, 4, 2], [32, 4, 2], [64, 4, 2], [128, 4, 2]],
+                conv_activation="relu",
+                head_fcnet_hiddens=[256],
+                vf_share_layers=True,
+            ),
         )
 
     run_rllib_example_script_experiment(base_config, args)

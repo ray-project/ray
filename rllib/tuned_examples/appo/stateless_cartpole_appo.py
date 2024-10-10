@@ -1,5 +1,6 @@
 from ray.rllib.algorithms.appo import APPOConfig
 from ray.rllib.connectors.env_to_module import MeanStdFilter
+from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
 from ray.rllib.examples.envs.classes.stateless_cartpole import StatelessCartPole
 from ray.rllib.utils.test_utils import add_rllib_example_script_args
 
@@ -29,17 +30,16 @@ config = (
     )
     .training(
         lr=0.0005 * ((args.num_gpus or 1) ** 0.5),
-        num_sgd_iter=6,
+        num_epochs=1,
         vf_loss_coeff=0.05,
         grad_clip=20.0,
     )
     .rl_module(
-        model_config_dict={
-            "vf_share_layers": True,
-            "use_lstm": True,
-            "uses_new_env_runners": True,
-            "max_seq_len": 20,
-        },
+        model_config=DefaultModelConfig(
+            vf_share_layers=True,
+            use_lstm=True,
+            max_seq_len=20,
+        ),
     )
 )
 

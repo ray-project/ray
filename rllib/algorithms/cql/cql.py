@@ -89,15 +89,38 @@ class CQLConfig(SACConfig):
         # Note, the new stack defines learning rates for each component.
         # The base learning rate `lr` has to be set to `None`, if using
         # the new stack.
-        self.actor_lr = 1e-4,
+        self.actor_lr = 1e-4
         self.critic_lr = 1e-3
         self.alpha_lr = 1e-3
 
+        self.replay_buffer_config = {
+            "_enable_replay_buffer_api": True,
+            "type": "MultiAgentPrioritizedReplayBuffer",
+            "capacity": int(1e6),
+            # If True prioritized replay buffer will be used.
+            "prioritized_replay": False,
+            "prioritized_replay_alpha": 0.6,
+            "prioritized_replay_beta": 0.4,
+            "prioritized_replay_eps": 1e-6,
+            # Whether to compute priorities already on the remote worker side.
+            "worker_side_prioritization": False,
+        }
+
         # Changes to Algorithm's/SACConfig's default:
 
+        # `.api_stack()`
+        self.api_stack(
+            enable_rl_module_and_learner=False,
+            enable_env_runner_and_connector_v2=False,
+        )
         # .reporting()
         self.min_sample_timesteps_per_iteration = 0
         self.min_train_timesteps_per_iteration = 100
+        # `.api_stack()`
+        self.api_stack(
+            enable_rl_module_and_learner=False,
+            enable_env_runner_and_connector_v2=False,
+        )
         # fmt: on
         # __sphinx_doc_end__
 
@@ -291,13 +314,6 @@ class CQL(SAC):
     def training_step(self) -> ResultDict:
         if self.config.enable_env_runner_and_connector_v2:
             return self._training_step_new_api_stack()
-        elif self.config.enable_rl_module_and_learner:
-            raise ValueError(
-                "Hybrid API stack is not supported. Either set "
-                "`enable_rl_module_and_learner=True` and "
-                "`enable_env_runner_and_connector_v2=True` or set both "
-                "attributed to `False`."
-            )
         else:
             return self._training_step_old_api_stack()
 
@@ -306,7 +322,7 @@ class CQL(SAC):
         # Sampling from offline data.
         with self.metrics.log_time((TIMERS, OFFLINE_SAMPLING_TIMER)):
             # Return an iterator in case we are using remote learners.
-            batch = self.offline_data.sample(
+            batch_or_iterator = self.offline_data.sample(
                 num_samples=self.config.train_batch_size_per_learner,
                 num_shards=self.config.num_learners,
                 return_iterator=self.config.num_learners > 1,
@@ -315,9 +331,9 @@ class CQL(SAC):
         # Updating the policy.
         with self.metrics.log_time((TIMERS, LEARNER_UPDATE_TIMER)):
             # TODO (simon, sven): Check, if we should execute directly s.th. like
-            # update_from_iterator.
-            learner_results = self.learner_group.update_from_batch(
-                batch,
+            #  `LearnerGroup.update_from_iterator()`.
+            learner_results = self.learner_group._update(
+                batch=batch_or_iterator,
                 minibatch_size=self.config.train_batch_size_per_learner,
                 num_iters=self.config.dataset_num_iters_per_learner,
             )

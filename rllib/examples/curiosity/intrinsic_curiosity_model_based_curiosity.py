@@ -233,11 +233,11 @@ if __name__ == "__main__":
         )
         .rl_module(
             rl_module_spec=MultiRLModuleSpec(
-                module_specs={
+                rl_module_specs={
                     # The "main" RLModule (policy) to be trained by our algo.
                     DEFAULT_MODULE_ID: RLModuleSpec(
                         **(
-                            {"model_config_dict": {"vf_share_layers": True}}
+                            {"model_config": {"vf_share_layers": True}}
                             if args.algo == "PPO"
                             else {}
                         ),
@@ -249,7 +249,7 @@ if __name__ == "__main__":
                         # EnvRunners.
                         learner_only=True,
                         # Configure the architecture of the ICM here.
-                        model_config_dict={
+                        model_config={
                             "feature_dim": 288,
                             "feature_net_hiddens": (256, 256),
                             "feature_net_activation": "relu",
@@ -271,7 +271,7 @@ if __name__ == "__main__":
     # Set PPO-specific hyper-parameters.
     if args.algo == "PPO":
         base_config.training(
-            num_sgd_iter=6,
+            num_epochs=6,
             # Plug in the correct Learner class.
             learner_class=PPOTorchLearnerWithCuriosity,
             train_batch_size_per_learner=2000,

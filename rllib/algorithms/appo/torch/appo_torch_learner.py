@@ -14,7 +14,7 @@ from ray.rllib.algorithms.impala.torch.vtrace_torch_v2 import (
 )
 from ray.rllib.core.columns import Columns
 from ray.rllib.core.learner.learner import POLICY_LOSS_KEY, VF_LOSS_KEY, ENTROPY_KEY
-from ray.rllib.core.rl_module.apis.target_network_api import TargetNetworkAPI
+from ray.rllib.core.rl_module.apis import TargetNetworkAPI, ValueFunctionAPI
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.numpy import convert_to_numpy
@@ -35,6 +35,10 @@ class APPOTorchLearner(APPOLearner, IMPALATorchLearner):
         batch: Dict,
         fwd_out: Dict[str, TensorType],
     ) -> TensorType:
+        module = self.module[module_id].unwrapped()
+        assert isinstance(module, TargetNetworkAPI)
+        assert isinstance(module, ValueFunctionAPI)
+
         # TODO (sven): Now that we do the +1ts trick to be less vulnerable about
         #  bootstrap values at the end of rollouts in the new stack, we might make
         #  this a more flexible, configurable parameter for users, e.g.
@@ -51,10 +55,9 @@ class APPOTorchLearner(APPOLearner, IMPALATorchLearner):
         )
         size_loss_mask = torch.sum(loss_mask)
 
-        module = self.module[module_id].unwrapped()
-        assert isinstance(module, TargetNetworkAPI)
-
-        values = fwd_out[Columns.VF_PREDS]
+        values = module.compute_values(
+            batch, embeddings=fwd_out.get(Columns.EMBEDDINGS)
+        )
 
         action_dist_cls_train = module.get_train_action_dist_cls()
         target_policy_dist = action_dist_cls_train.from_logits(

@@ -21,7 +21,7 @@ halfcheetah-appo:
         num_multi_gpu_tower_stacks: 1
         num_envs_per_env_runner: 32
         minibatch_buffer_size: 16
-        num_sgd_iter: 32
+        num_epochs: 32
         clip_param: 0.2
         lr_schedule: [
             [0, 0.0005],

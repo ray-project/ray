@@ -96,6 +96,9 @@ class IMPALALearner(Learner):
             in_queue=self._learner_thread_in_queue,
             out_queue=self._learner_thread_out_queue,
             metrics_logger=self.metrics,
+            num_epochs=self.config.num_epochs,
+            minibatch_size=self.config.minibatch_size,
+            shuffle_batch_per_epoch=self.config.shuffle_batch_per_epoch,
         )
         self._learner_thread.start()
 
@@ -108,8 +111,9 @@ class IMPALALearner(Learner):
         # TODO (sven): Deprecate these in favor of config attributes for only those
         #  algos that actually need (and know how) to do minibatching.
         minibatch_size: Optional[int] = None,
-        num_iters: int = 1,
-        num_total_mini_batches: int = 0,
+        num_epochs: int = 1,
+        shuffle_batch_per_epoch: bool = False,
+        num_total_minibatches: int = 0,
         reduce_fn=None,  # Deprecated args.
         **kwargs,
     ) -> ResultDict:
@@ -228,7 +232,17 @@ class _GPULoaderThread(threading.Thread):
 
 
 class _LearnerThread(threading.Thread):
-    def __init__(self, *, update_method, in_queue, out_queue, metrics_logger):
+    def __init__(
+        self,
+        *,
+        update_method,
+        in_queue,
+        out_queue,
+        metrics_logger,
+        num_epochs,
+        minibatch_size,
+        shuffle_batch_per_epoch,
+    ):
         super().__init__()
         self.daemon = True
         self.metrics: MetricsLogger = metrics_logger
@@ -237,6 +251,10 @@ class _LearnerThread(threading.Thread):
         self._update_method = update_method
         self._in_queue: deque = in_queue
         self._out_queue: Queue = out_queue
+
+        self._num_epochs = num_epochs
+        self._minibatch_size = minibatch_size
+        self._shuffle_batch_per_epoch = shuffle_batch_per_epoch
 
     def run(self) -> None:
         while not self.stopped:
@@ -263,6 +281,9 @@ class _LearnerThread(threading.Thread):
                         NUM_ENV_STEPS_SAMPLED_LIFETIME, default=0
                     )
                 },
+                num_epochs=self._num_epochs,
+                minibatch_size=self._minibatch_size,
+                shuffle_batch_per_epoch=self._shuffle_batch_per_epoch,
             )
             # We have to deepcopy the results dict, b/c we must avoid having a returned
             # Stats object sit in the queue and getting a new (possibly even tensor)
