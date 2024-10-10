@@ -15,7 +15,7 @@ DEFAULT_CONFIG_PATH = os.path.abspath(
 RAY_DATA_LOG_ENCODING_ENV_VAR_NAME = "RAY_DATA_LOG_ENCODING"
 
 # Env. variable to specify the logging config path use defaults if not set
-RAY_DATA_LOGGING_CONFIG_PATH_ENV_VAR_NAME = "RAY_DATA_LOGGING_CONFIG_PATH"
+RAY_DATA_LOGGING_CONFIG_ENV_VAR_NAME = "RAY_DATA_LOGGING_CONFIG"
 
 # To facilitate debugging, Ray Data writes debug logs to a file. However, if Ray Data
 # logs every scheduler loop, logging might impact performance. So, we add a "TRACE"
@@ -109,7 +109,7 @@ def configure_logging() -> None:
         return config
 
     # Dynamically load env vars
-    config_path = os.environ.get(RAY_DATA_LOGGING_CONFIG_PATH_ENV_VAR_NAME)
+    config_path = os.environ.get(RAY_DATA_LOGGING_CONFIG_ENV_VAR_NAME)
     log_encoding = os.environ.get(RAY_DATA_LOG_ENCODING_ENV_VAR_NAME)
 
     if config_path is not None:
@@ -123,13 +123,13 @@ def configure_logging() -> None:
 
     logging.config.dictConfig(config)
 
-    # After configuring logger, warn if RAY_DATA_LOGGING_CONFIG_PATH is used with
+    # After configuring logger, warn if RAY_DATA_LOGGING_CONFIG is used with
     # RAY_DATA_LOG_ENCODING, because they are not both supported together.
     if config_path is not None and log_encoding is not None:
         logger = logging.getLogger(__name__)
         logger.warning(
             "Using `RAY_DATA_LOG_ENCODING` is not supported with "
-            + "`RAY_DATA_LOGGING_CONFIG_PATH`"
+            + "`RAY_DATA_LOGGING_CONFIG`"
         )
 
 
