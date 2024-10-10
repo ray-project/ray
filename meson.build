@@ -49,30 +49,11 @@ subdir('src/')
 # === @end: src/ ===
 
 
-#ray_cc_library(
-#    name = "global_state_accessor_lib",
-#    srcs = glob(
-#    [
-#    "src/ray/gcs/gcs_client/global_state_accessor.cc",
-#    ],
-#),
-#hdrs = glob(
-#[
-#"src/ray/gcs/gcs_client/global_state_accessor.h",
-#],
-#),
-#deps = [
-#":gcs_client_lib",
-#],
-#)
-#
+# === @begin: python/ ===
+subdir('python/')
+# === @end: python/ ===
 
-#ray_cc_library(
-#    name = "python_callbacks",
-#    hdrs = [
-#    "src/ray/gcs/gcs_client/python_callbacks.h",
-#    ],
-#)
+
 #
 #pyx_library(
 #    name = "_raylet",
