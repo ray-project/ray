@@ -95,7 +95,7 @@ refresh_compile_commands(
     targets = {
       "//:ray_pkg": "",
     },
-    exclude_external_sources = True,
+    exclude_external_sources = True, # remove to give lsp more info at the cost of 10-100x index time
     # No need to add flags already in .bazelrc. They're automatically picked up.
 )
 
