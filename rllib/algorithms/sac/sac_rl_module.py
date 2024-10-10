@@ -1,4 +1,5 @@
 from abc import abstractmethod
+import dataclasses
 from typing import Any, Dict, List, Tuple
 
 from ray.rllib.algorithms.sac.sac_learner import (
@@ -10,6 +11,7 @@ from ray.rllib.core.learner.utils import make_target_network
 from ray.rllib.core.models.base import Encoder, Model
 from ray.rllib.core.models.specs.typing import SpecType
 from ray.rllib.core.rl_module.apis import InferenceOnlyAPI, TargetNetworkAPI
+from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
 from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import (
@@ -54,6 +56,11 @@ class SACRLModule(RLModule, InferenceOnlyAPI, TargetNetworkAPI):
 
     @override(RLModule)
     def setup(self):
+        # TODO (sven): Temporary fix (until we have figured out the final config
+        #  architecture for default models). If self.model_config is a dict (which
+        #  it should always be, make sure to merge it with the default config).
+        self.model_config = dataclasses.asdict(DefaultModelConfig()) | self.model_config
+
         # If a twin Q architecture should be used.
         self.twin_q = self.model_config["twin_q"]
 

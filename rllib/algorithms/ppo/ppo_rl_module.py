@@ -3,10 +3,12 @@ This file holds framework-agnostic components for PPO's RLModules.
 """
 
 import abc
+import dataclasses
 from typing import List
 
 from ray.rllib.core.models.configs import RecurrentEncoderConfig
 from ray.rllib.core.rl_module.apis import InferenceOnlyAPI, ValueFunctionAPI
+from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
 from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.utils.annotations import (
     override,
@@ -19,6 +21,11 @@ from ray.util.annotations import DeveloperAPI
 class PPORLModule(RLModule, InferenceOnlyAPI, ValueFunctionAPI, abc.ABC):
     @override(RLModule)
     def setup(self):
+        # TODO (sven): Temporary fix (until we have figured out the final config
+        #  architecture for default models). If self.model_config is a dict (which
+        #  it should always be, make sure to merge it with the default config).
+        self.model_config = dataclasses.asdict(DefaultModelConfig()) | self.model_config
+
         # __sphinx_doc_begin__
         # If we have a stateful model, states for the critic need to be collected
         # during sampling and `inference-only` needs to be `False`. Note, at this
