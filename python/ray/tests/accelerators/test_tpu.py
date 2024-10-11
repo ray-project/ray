@@ -51,6 +51,7 @@ def test_autodetect_num_tpus_without_devices(mock_list, mock_glob):
         ("gce", "v4-2048", "TPU-V4"),
         ("gce", "v5p-8", "TPU-V5P"),
         ("gce", "v5litepod-8", "TPU-V5LITEPOD"),
+        ("gce", "v6e-8", "TPU-V6E"),
         ("gke", "v2-8", "TPU-V2"),
         ("gke", "v2-32", "TPU-V2"),
         ("gke", "v3-8", "TPU-V3"),
@@ -59,6 +60,7 @@ def test_autodetect_num_tpus_without_devices(mock_list, mock_glob):
         ("gke", "v4-2048", "TPU-V4"),
         ("gke", "v5p-8", "TPU-V5P"),
         ("gke", "v5litepod-8", "TPU-V5LITEPOD"),
+        ("gke", "v6e-8", "TPU-V6E"),
     ],
 )
 @patch("requests.get")

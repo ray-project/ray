@@ -6,7 +6,7 @@ import random
 import string
 import time
 import traceback
-from typing import Any, Dict, Iterator, Optional, Union
+from typing import Any, AsyncIterator, Dict, Optional, Union
 
 import ray
 import ray._private.ray_constants as ray_constants
@@ -70,7 +70,8 @@ class JobManager:
 
     def __init__(self, gcs_aio_client: GcsAioClient, logs_dir: str):
         self._gcs_aio_client = gcs_aio_client
-        self._job_info_client = JobInfoStorageClient(gcs_aio_client)
+        self._logs_dir = logs_dir
+        self._job_info_client = JobInfoStorageClient(gcs_aio_client, logs_dir)
         self._gcs_address = gcs_aio_client.address
         self._cluster_id_hex = gcs_aio_client.cluster_id.hex()
         self._log_client = JobLogStorageClient()
@@ -544,6 +545,7 @@ class JobManager:
                 metadata or {},
                 self._gcs_address,
                 self._cluster_id_hex,
+                self._logs_dir,
             )
             supervisor.run.remote(
                 _start_signal_actor=_start_signal_actor,
@@ -619,12 +621,12 @@ class JobManager:
         """Get all logs produced by a job."""
         return self._log_client.get_logs(job_id)
 
-    async def tail_job_logs(self, job_id: str) -> Iterator[str]:
+    async def tail_job_logs(self, job_id: str) -> AsyncIterator[str]:
         """Return an iterator following the logs of a job."""
         if await self.get_job_status(job_id) is None:
             raise RuntimeError(f"Job '{job_id}' does not exist.")
 
-        for lines in self._log_client.tail_logs(job_id):
+        async for lines in self._log_client.tail_logs(job_id):
             if lines is None:
                 # Return if the job has exited and there are no new log lines.
                 status = await self.get_job_status(job_id)
