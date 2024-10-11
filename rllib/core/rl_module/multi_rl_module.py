@@ -1,5 +1,5 @@
 import copy
-from dataclasses import dataclass, field
+import dataclasses
 import logging
 import pprint
 from typing import (
@@ -288,6 +288,19 @@ class MultiRLModule(RLModule):
         # has `inference_only=False`.
         if not module.inference_only:
             self.inference_only = False
+
+        # Check framework of incoming RLModule against `self.framework`.
+        if module.framework is not None:
+            if self.framework is None:
+                self.framework = module.framework
+            elif module.framework != self.framework:
+                raise ValueError(
+                    f"Framework ({module.framework}) of incoming RLModule does NOT "
+                    f"match framework ({self.framework}) of MultiRLModule! If the "
+                    f"added module should not be trained, try setting its framework "
+                    f"to None."
+                )
+
         self._rl_modules[module_id] = module
         # Update our RLModuleSpecs dict, such that - if written to disk -
         # it'll allow for proper restoring this instance through `.from_checkpoint()`.
@@ -553,7 +566,7 @@ class MultiRLModule(RLModule):
 
 
 @PublicAPI(stability="alpha")
-@dataclass
+@dataclasses.dataclass
 class MultiRLModuleSpec:
     """A utility spec class to make it constructing MultiRLModules easier.
 
@@ -666,7 +679,11 @@ class MultiRLModuleSpec:
                 observation_space=self.observation_space,
                 action_space=self.action_space,
                 inference_only=self.inference_only,
-                model_config=self.model_config,
+                model_config=(
+                    dataclasses.asdict(self.model_config)
+                    if dataclasses.is_dataclass(self.model_config)
+                    else self.model_config
+                ),
                 rl_module_specs=self.rl_module_specs,
             )
         # Older custom model might still require the old `MultiRLModuleConfig` under
@@ -859,10 +876,10 @@ class MultiRLModuleSpec:
     "module2: [RLModuleSpec], ..}, inference_only=..)",
     error=False,
 )
-@dataclass
+@dataclasses.dataclass
 class MultiRLModuleConfig:
     inference_only: bool = False
-    modules: Dict[ModuleID, RLModuleSpec] = field(default_factory=dict)
+    modules: Dict[ModuleID, RLModuleSpec] = dataclasses.field(default_factory=dict)
 
     def to_dict(self):
         return {
