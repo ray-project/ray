@@ -24,6 +24,21 @@
 namespace ray {
 namespace rpc {
 
+#define INVOKE_RETRYABLE_RPC_CALL(retryable_rpc_client,                       \
+                                  SERVICE,                                    \
+                                  METHOD,                                     \
+                                  request,                                    \
+                                  callback,                                   \
+                                  rpc_client,                                 \
+                                  method_timeout_ms)                          \
+  (retryable_rpc_client->CallMethod<SERVICE, METHOD##Request, METHOD##Reply>( \
+      &SERVICE::Stub::PrepareAsync##METHOD,                                   \
+      rpc_client,                                                             \
+      #SERVICE ".grpc_client." #METHOD,                                       \
+      request,                                                                \
+      callback,                                                               \
+      method_timeout_ms))
+
 /// \class Executor
 /// Executor saves operation and support retries.
 class Executor {
@@ -49,24 +64,26 @@ class Executor {
   std::function<void()> operation_;
 };
 
-class RetryableGrpcClient {
+class RetryableGrpcClient : public std::enable_shared_from_this<RetryableGrpcClient> {
  public:
-  RetryableGrpcClient(std::shared_ptr<grpc::Channel> channel,
-                      instrumented_io_context &io_context,
-                      uint64_t max_pending_requests_bytes,
-                      uint64_t check_channel_status_interval_milliseconds,
-                      uint64_t server_unavailable_timeout_seconds,
-                      std::function<void()> server_unavailable_timeout_callback)
-      : timer_(std::make_unique<boost::asio::deadline_timer>(io_context)),
-        channel_(channel),
-        max_pending_requests_bytes_(max_pending_requests_bytes),
-        check_channel_status_interval_milliseconds_(
-            check_channel_status_interval_milliseconds),
-        server_unavailable_timeout_seconds_(server_unavailable_timeout_seconds),
-        server_unavailable_timeout_callback_(
-            std::move(server_unavailable_timeout_callback)) {
-    SetupCheckTimer();
+  static std::shared_ptr<RetryableGrpcClient> Create(
+      std::shared_ptr<grpc::Channel> channel,
+      instrumented_io_context &io_context,
+      uint64_t max_pending_requests_bytes,
+      uint64_t check_channel_status_interval_milliseconds,
+      uint64_t server_unavailable_timeout_seconds,
+      std::function<void()> server_unavailable_timeout_callback) {
+    return std::shared_ptr<RetryableGrpcClient>(
+        new RetryableGrpcClient(channel,
+                                io_context,
+                                max_pending_requests_bytes,
+                                check_channel_status_interval_milliseconds,
+                                server_unavailable_timeout_seconds,
+                                server_unavailable_timeout_callback));
   }
+
+  RetryableGrpcClient(const RetryableGrpcClient &) = delete;
+  RetryableGrpcClient &operator=(const RetryableGrpcClient &) = delete;
 
   template <typename Service, typename Request, typename Reply>
   void CallMethod(PrepareAsyncFunction<Service, Request, Reply> prepare_async_function,
@@ -77,30 +94,30 @@ class RetryableGrpcClient {
                   const int64_t timeout_ms) {
     auto executor = new Executor(
         [callback](const ray::Status &status) { callback(status, Reply()); });
-    auto operation_callback = [this, request, callback, executor, timeout_ms](
+    std::weak_ptr<RetryableGrpcClient> weak_self = shared_from_this();
+    auto operation_callback = [weak_self, request, callback, executor, timeout_ms](
                                   const ray::Status &status, Reply &&reply) {
-      if (status.ok()) {
-        callback(status, std::move(reply));
-        delete executor;
-      } else if (!IsGrpcRetryableStatus(status)) {
+      auto self = weak_self.lock();
+      if (status.ok() || !IsGrpcRetryableStatus(status) || !self) {
         callback(status, std::move(reply));
         delete executor;
       } else {
         /* In case of transient network error, we queue the request and these requests
          * will be */
         /* executed once network is recovered. */
-        server_is_unavailable_ = true;
+        self->server_is_unavailable_ = true;
         auto request_bytes = request.ByteSizeLong();
-        if (pending_requests_bytes_ + request_bytes > max_pending_requests_bytes_) {
+        if (self->pending_requests_bytes_ + request_bytes >
+            self->max_pending_requests_bytes_) {
           RAY_LOG(WARNING)
               << "Pending queue for failed request has reached the "
               << "limit. Blocking the current thread until network is recovered";
-          while (server_is_unavailable_ && !shutdown_) {
-            CheckChannelStatus(false);
-            std::this_thread::sleep_for(
-                std::chrono::milliseconds(check_channel_status_interval_milliseconds_));
+          while (self->server_is_unavailable_ && !self->shutdown_) {
+            self->CheckChannelStatus(false);
+            std::this_thread::sleep_for(std::chrono::milliseconds(
+                self->check_channel_status_interval_milliseconds_));
           }
-          if (shutdown_) {
+          if (self->shutdown_) {
             callback(Status::Disconnected("GRPC client has been disconnected."),
                      std::move(reply));
             delete executor;
@@ -108,10 +125,11 @@ class RetryableGrpcClient {
             executor->Retry();
           }
         } else {
-          pending_requests_bytes_ += request_bytes;
+          self->pending_requests_bytes_ += request_bytes;
           auto timeout = timeout_ms == -1 ? absl::InfiniteFuture()
                                           : absl::Now() + absl::Milliseconds(timeout_ms);
-          pending_requests_.emplace(timeout, std::make_pair(executor, request_bytes));
+          self->pending_requests_.emplace(timeout,
+                                          std::make_pair(executor, request_bytes));
         }
       }
     };
@@ -132,20 +150,59 @@ class RetryableGrpcClient {
       // First call to shut down this GRPC client.
       absl::MutexLock lock(&timer_mu_);
       timer_->cancel();
+
+      // Fail the pending requests.
+      while (!pending_requests_.empty()) {
+        auto iter = pending_requests_.begin();
+        Executor *executor = iter->second.first;
+        size_t request_bytes = iter->second.second;
+        // Make sure the callback is executed in the io context thread.
+        io_context_.post(
+            [executor]() {
+              executor->Abort(Status::Disconnected("GRPC client has been disconnected."));
+              delete executor;
+            },
+            "RetryableGrpcClient.Shutdown");
+        pending_requests_bytes_ -= request_bytes;
+        pending_requests_.erase(iter);
+      }
     } else {
       RAY_LOG(DEBUG) << "GRPC client has already shutdown.";
     }
   }
 
+  ~RetryableGrpcClient() { Shutdown(); }
+
  private:
+  RetryableGrpcClient(std::shared_ptr<grpc::Channel> channel,
+                      instrumented_io_context &io_context,
+                      uint64_t max_pending_requests_bytes,
+                      uint64_t check_channel_status_interval_milliseconds,
+                      uint64_t server_unavailable_timeout_seconds,
+                      std::function<void()> server_unavailable_timeout_callback)
+      : io_context_(io_context),
+        timer_(std::make_unique<boost::asio::deadline_timer>(io_context)),
+        channel_(channel),
+        max_pending_requests_bytes_(max_pending_requests_bytes),
+        check_channel_status_interval_milliseconds_(
+            check_channel_status_interval_milliseconds),
+        server_unavailable_timeout_seconds_(server_unavailable_timeout_seconds),
+        server_unavailable_timeout_callback_(
+            std::move(server_unavailable_timeout_callback)) {
+    SetupCheckTimer();
+  }
+
   void SetupCheckTimer() {
     auto duration =
         boost::posix_time::milliseconds(check_channel_status_interval_milliseconds_);
     absl::MutexLock lock(&timer_mu_);
     timer_->expires_from_now(duration);
-    timer_->async_wait([this](boost::system::error_code error) {
-      if (error == boost::system::errc::success) {
-        CheckChannelStatus();
+    std::weak_ptr<RetryableGrpcClient> weak_self = shared_from_this();
+    timer_->async_wait([weak_self](boost::system::error_code error) {
+      if (auto self = weak_self.lock()) {
+        if (error == boost::system::errc::success) {
+          self->CheckChannelStatus();
+        }
       }
     });
   }
@@ -183,8 +240,8 @@ class RetryableGrpcClient {
       if (!server_is_unavailable_) {
         server_is_unavailable_ = true;
       } else {
-        int64_t server_unavailable_duration_seconds =
-            absl::ToInt64Seconds(absl::Now() - server_last_available_time_);
+        uint64_t server_unavailable_duration_seconds = static_cast<uint64_t>(
+            absl::ToInt64Seconds(absl::Now() - server_last_available_time_));
         if (server_unavailable_duration_seconds >= server_unavailable_timeout_seconds_) {
           RAY_LOG(WARNING) << "Server has been unavailable for "
                            << server_unavailable_duration_seconds << " seconds";
@@ -212,7 +269,8 @@ class RetryableGrpcClient {
     SetupCheckTimer();
   }
 
-  // Timer can be called from either the GCS RPC event loop, or the application's
+  instrumented_io_context &io_context_;
+  // Timer can be called from either the GRPC event loop, or the application's
   // main thread. It needs to be protected by a mutex.
   absl::Mutex timer_mu_;
   const std::unique_ptr<boost::asio::deadline_timer> timer_;

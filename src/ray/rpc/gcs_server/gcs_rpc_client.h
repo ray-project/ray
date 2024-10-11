@@ -178,7 +178,7 @@ class GcsRpcClient {
     runtime_env_grpc_client_ =
         std::make_unique<GrpcClient<RuntimeEnvGcsService>>(channel_, client_call_manager);
 
-    retryable_grpc_client_ = std::make_unique<RetryableGrpcClient>(
+    retryable_grpc_client_ = RetryableGrpcClient::Create(
         channel_,
         client_call_manager.GetMainService(),
         /*max_pending_requests_bytes=*/
@@ -559,7 +559,7 @@ class GcsRpcClient {
   const std::string gcs_address_;
   const int64_t gcs_port_;
   std::shared_ptr<grpc::Channel> channel_;
-  std::unique_ptr<RetryableGrpcClient> retryable_grpc_client_;
+  std::shared_ptr<RetryableGrpcClient> retryable_grpc_client_;
 
   /// The gRPC-generated stub.
   std::unique_ptr<GrpcClient<JobInfoGcsService>> job_info_grpc_client_;

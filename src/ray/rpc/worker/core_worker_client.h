@@ -14,12 +14,6 @@
 
 #pragma once
 
-#ifdef __clang__
-// TODO(mehrdadn): Remove this when the warnings are addressed
-#pragma clang diagnostic push
-#pragma clang diagnostic warning "-Wunused-result"
-#endif
-
 #include <grpcpp/grpcpp.h>
 
 #include <deque>
@@ -217,6 +211,20 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>,
       : addr_(address) {
     grpc_client_ = std::make_unique<GrpcClient<CoreWorkerService>>(
         addr_.ip_address(), addr_.port(), client_call_manager);
+
+    retryable_grpc_client_ = RetryableGrpcClient::Create(
+        grpc_client_->Channel(),
+        client_call_manager.GetMainService(),
+        /*max_pending_requests_bytes=*/
+        std::numeric_limits<uint64_t>::max(),
+        /*check_channel_status_interval_milliseconds=*/
+        ::RayConfig::instance()
+            .gcs_client_check_connection_status_interval_milliseconds(),
+        /*server_unavailable_timeout_seconds=*/
+        std::numeric_limits<uint64_t>::max(),
+        /*server_unavailable_timeout_callback=*/[]() {
+          RAY_LOG(FATAL) << "Server unavailable should never timeout";
+        });
   };
 
   const rpc::Address &Addr() const override { return addr_; }
@@ -285,11 +293,17 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>,
                          /*method_timeout_ms*/ -1,
                          override)
 
-  VOID_RPC_CLIENT_METHOD(CoreWorkerService,
-                         ReportGeneratorItemReturns,
-                         grpc_client_,
-                         /*method_timeout_ms*/ -1,
-                         override)
+  void ReportGeneratorItemReturns(
+      const ReportGeneratorItemReturnsRequest &request,
+      const ClientCallback<ReportGeneratorItemReturnsReply> &callback) override {
+    INVOKE_RETRYABLE_RPC_CALL(retryable_grpc_client_,
+                              CoreWorkerService,
+                              ReportGeneratorItemReturns,
+                              request,
+                              callback,
+                              *grpc_client_,
+                              /*method_timeout_ms*/ -1);
+  }
 
   VOID_RPC_CLIENT_METHOD(CoreWorkerService,
                          RegisterMutableObjectReader,
@@ -462,6 +476,8 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>,
   /// The RPC client.
   std::unique_ptr<GrpcClient<CoreWorkerService>> grpc_client_;
 
+  std::shared_ptr<RetryableGrpcClient> retryable_grpc_client_;
+
   /// Queue of requests to send.
   std::deque<std::pair<std::unique_ptr<PushTaskRequest>, ClientCallback<PushTaskReply>>>
       send_queue_ ABSL_GUARDED_BY(mutex_);
@@ -478,7 +494,3 @@ typedef std::function<std::shared_ptr<CoreWorkerClientInterface>(const rpc::Addr
 
 }  // namespace rpc
 }  // namespace ray
-
-#ifdef __clang__
-#pragma clang diagnostic pop
-#endif
