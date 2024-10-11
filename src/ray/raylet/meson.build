@@ -68,7 +68,6 @@ raylet_cpp_lib_dep = declare_dependency(
 raylet_executable = executable(
     'raylet',
     ['main.cc'],
-    install: false,
     dependencies: [
         # Package-managed
         raylet_cpp_lib_dep,
@@ -76,6 +75,7 @@ raylet_executable = executable(
 
         # Eugo-managed
         gflags
-    ]
+    ],
+    install_dir: py.get_install_dir() / 'ray/core/src/ray/raylet/'
 )
 # === @end: raylet_executable (original: raylet) ===
