@@ -113,6 +113,7 @@ def test_read_operator(ray_start_regular_shared):
     )
     # Check that the linked logical operator is the same the input op.
     assert physical_op._logical_op == op
+    assert physical_op.input_dependencies[0]._logical_op == op
 
 
 def test_read_operator_emits_warning_for_large_read_tasks():

@@ -96,6 +96,7 @@ def plan_read_op(
     inputs = InputDataBuffer(
         input_data_factory=get_input_data,
     )
+    inputs.set_logical_operator(op)
 
     def do_read(blocks: Iterable[ReadTask], _: TaskContext) -> Iterable[Block]:
         for read_task in blocks:
