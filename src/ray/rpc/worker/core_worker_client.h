@@ -222,9 +222,9 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>,
             .gcs_client_check_connection_status_interval_milliseconds(),
         /*server_unavailable_timeout_seconds=*/
         std::numeric_limits<uint64_t>::max(),
-        /*server_unavailable_timeout_callback=*/[]() {
-          RAY_LOG(FATAL) << "Server unavailable should never timeout";
-        });
+        /*server_unavailable_timeout_callback=*/
+        []() { RAY_LOG(FATAL) << "Server unavailable should never timeout"; },
+        /*server_name=*/"Core worker " + addr_.ip_address());
   };
 
   const rpc::Address &Addr() const override { return addr_; }

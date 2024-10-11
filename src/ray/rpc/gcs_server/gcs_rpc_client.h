@@ -188,7 +188,8 @@ class GcsRpcClient {
             .gcs_client_check_connection_status_interval_milliseconds(),
         /*server_unavailable_timeout_seconds=*/
         ::RayConfig::instance().gcs_rpc_server_reconnect_timeout_s(),
-        /*server_unavailable_timeout_callback=*/[]() {
+        /*server_unavailable_timeout_callback=*/
+        []() {
           RAY_LOG(ERROR) << "Failed to connect to GCS within "
                          << ::RayConfig::instance().gcs_rpc_server_reconnect_timeout_s()
                          << " seconds. "
@@ -200,7 +201,8 @@ class GcsRpcClient {
                             "configure-logging.html#logging-directory-structure. "
                          << "The program will terminate.";
           std::_Exit(EXIT_FAILURE);
-        });
+        },
+        /*server_name=*/"GCS");
   }
 
   template <typename Service,
