@@ -502,7 +502,7 @@ RAY_CONFIG(uint64_t, task_events_max_num_status_events_buffer_on_worker, 100 * 1
 /// for the export API. Events will be evicted based on a FIFO order.
 RAY_CONFIG(uint64_t,
            task_events_max_num_export_status_events_buffer_on_worker,
-           1000 * 1000)
+           100 * 1000)
 
 /// Max number of task events to be send in a single message to GCS. This caps both
 /// the message size, and also the processing work on GCS.
@@ -906,4 +906,4 @@ RAY_CONFIG(int, object_manager_client_connection_num, 4)
 RAY_CONFIG(int, object_manager_rpc_threads_num, 0)
 
 // Write export API events to file if enabled
-RAY_CONFIG(bool, enable_export_api_write, false)
+RAY_CONFIG(bool, enable_export_api_write, true)
