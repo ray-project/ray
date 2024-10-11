@@ -3287,33 +3287,51 @@ Status CoreWorker::ReportGeneratorItemReturns(
 
   waiter->IncrementObjectGenerated();
 
+  ReportGeneratorItemReturnsInternal(
+      client, request, generator_id, return_id, item_index, waiter);
+
+  // Backpressure if needed. See task_manager.h and search "backpressure" for protocol
+  // details.
+  return waiter->WaitUntilObjectConsumed();
+}
+
+void CoreWorker::ReportGeneratorItemReturnsInternal(
+    shared_ptr<rpc::CoreWorkerClientInterface> client,
+    rpc::ReportGeneratorItemReturnsRequest request,
+    const ObjectID &generator_id,
+    const ObjectID &return_id,
+    int64_t item_index,
+    std::shared_ptr<GeneratorBackpressureWaiter> waiter) {
   client->ReportGeneratorItemReturns(
       request,
-      [waiter, generator_id, return_id, item_index](
+      [this, client, request, generator_id, return_id, item_index, waiter](
           const Status &status, const rpc::ReportGeneratorItemReturnsReply &reply) {
         RAY_LOG(DEBUG) << "ReportGeneratorItemReturns replied. " << generator_id
                        << "index: " << item_index << ". total_consumed_reported: "
                        << reply.total_num_object_consumed();
         RAY_LOG(DEBUG) << "Total object consumed: " << waiter->TotalObjectConsumed()
                        << ". Total object generated: " << waiter->TotalObjectGenerated();
-        int64_t num_objects_consumed;
         if (status.ok()) {
-          num_objects_consumed = reply.total_num_object_consumed();
-        } else {
-          // TODO(sang): Handle network error more gracefully.
+          waiter->HandleObjectReported(reply.total_num_object_consumed());
+        } else if (!IsGrpcRetryableStatus(status)) {
           // If the request fails, we should just resume until task finishes without
           // backpressure.
-          num_objects_consumed = waiter->TotalObjectGenerated();
           RAY_LOG(WARNING).WithField(return_id)
               << "Failed to report streaming generator return "
                  "to the caller. The yield'ed ObjectRef may not be usable.";
+          waiter->HandleObjectReported(waiter->TotalObjectGenerated());
+        } else {
+          RAY_LOG(INFO).WithField(return_id)
+              << "Failed to report streaming generator return. Retrying...";
+          execute_after(
+              io_service_,
+              [this, client, request, generator_id, return_id, item_index, waiter]() {
+                ReportGeneratorItemReturnsInternal(
+                    client, request, generator_id, return_id, item_index, waiter);
+              },
+              std::chrono::milliseconds(1000) /* milliseconds */);
         }
-        waiter->HandleObjectReported(num_objects_consumed);
       });
-
-  // Backpressure if needed. See task_manager.h and search "backpressure" for protocol
-  // details.
-  return waiter->WaitUntilObjectConsumed();
 }
 
 void CoreWorker::HandleReportGeneratorItemReturns(

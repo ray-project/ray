@@ -903,6 +903,14 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
       uint64_t attempt_number,
       std::shared_ptr<GeneratorBackpressureWaiter> waiter);
 
+  void ReportGeneratorItemReturnsInternal(
+      shared_ptr<rpc::CoreWorkerClientInterface> client,
+      rpc::ReportGeneratorItemReturnsRequest request,
+      const ObjectID &generator_id,
+      const ObjectID &return_id,
+      int64_t item_index,
+      std::shared_ptr<GeneratorBackpressureWaiter> waiter);
+
   /// Implements gRPC server handler.
   /// If an executor can generator task return before the task is finished,
   /// it invokes this endpoint via ReportGeneratorItemReturns RPC.
