@@ -19,13 +19,13 @@ class AggregatorActor(FaultAwareApply):
     as Ray.ObjectRefs.
     - pass these refs (in round-robin fashion) to the set of aggregator actors. Each
     actor returns a new ref pointing to a ready-to-go train batch.
-    - the aggregator actor - when receiving a ref to a list of episodes - does:
-    -- ray.get() the actual list
-    -- pass the list of episodes through its LearnerConnector pipeline
-    -- buffering the batch output of this pipeline until enough batches have been
+    - the aggregator actor - when receiving p refs to List[EpisodeType] - does:
+    -- ray.get() the actual p lists
+    -- pass the lists of episodes through its LearnerConnector pipeline
+    -- buffering the output batches of this pipeline until enough batches have been
     collected to create one proper train batch (matching the config's
     `train_batch_size_per_learner`).
-    -- concatenating n batches into a train batch and returning that train batch.
+    -- concatenating q batches into a train batch and returning that train batch.
     - the algo main process then passes the ray.ObjectRef to the ready-to-go train batch
     to the m Learner workers for updating the model.
     """
@@ -38,13 +38,14 @@ class AggregatorActor(FaultAwareApply):
         )
         self._rl_module = None
 
-    def process_episodes(self, episodes):
+    def process_episodes(self, episode_refs: List[ray.ObjectRef]):
+        episodes = tree.flatten(ray.get(episode_refs))
+
         batch = self._learner_connector(
-            batch={},
             episodes=episodes,
             rl_module=self._rl_module,
-            shared_data={},
         )
+
         return batch
 
     def get_host(self) -> str:
