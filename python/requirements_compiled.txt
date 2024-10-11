@@ -682,7 +682,7 @@ graphql-core==3.2.3
     # via moto
 greenlet==3.0.1
     # via sqlalchemy
-grpcio==1.60.0 ; sys_platform != "darwin"
+grpcio==1.66.2 ; sys_platform != "darwin"
     # via
     #   -r /ray/ci/../python/requirements.txt
     #   -r /ray/ci/../python/requirements/anyscale-requirements.txt
