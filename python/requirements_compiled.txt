@@ -689,6 +689,7 @@ grpcio==1.60.0 ; sys_platform != "darwin"
     #   google-api-core
     #   google-cloud-bigquery
     #   grpcio-status
+    #   grpcio-tools
     #   mlagents-envs
     #   opencensus-proto
     #   opentelemetry-exporter-opencensus
@@ -697,6 +698,8 @@ grpcio==1.60.0 ; sys_platform != "darwin"
     #   tensorflow
 grpcio-status==1.48.2
     # via google-api-core
+grpcio-tools==1.48.2
+    # via -r /ray/ci/../python/requirements/anyscale-requirements.txt
 gsutil==5.27
     # via -r /ray/ci/../python/requirements/docker/ray-docker-requirements.txt
 gunicorn==20.1.0
@@ -1550,6 +1553,7 @@ protobuf==3.20.3
     #   google-cloud-bigquery-storage
     #   googleapis-common-protos
     #   grpcio-status
+    #   grpcio-tools
     #   mlagents-envs
     #   mlflow
     #   onnx

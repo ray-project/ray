@@ -863,6 +863,86 @@ class Dataset:
         )
 
     @PublicAPI(api_group=BT_API_GROUP)
+    def rename_columns(
+        self,
+        names: Union[List[str], Dict[str, str]],
+        *,
+        concurrency: Optional[Union[int, Tuple[int, int]]] = None,
+        **ray_remote_args,
+    ):
+        """Rename columns in the dataset.
+
+        Examples:
+
+            >>> import ray
+            >>> ds = ray.data.read_parquet("s3://anonymous@ray-example-data/iris.parquet")
+            >>> ds.schema()
+            Column        Type
+            ------        ----
+            sepal.length  double
+            sepal.width   double
+            petal.length  double
+            petal.width   double
+            variety       string
+
+            You can pass a dictionary mapping old column names to new column names.
+
+            >>> ds.rename_columns({"variety": "category"}).schema()
+            Column        Type
+            ------        ----
+            sepal.length  double
+            sepal.width   double
+            petal.length  double
+            petal.width   double
+            category      string
+
+            Or you can pass a list of new column names.
+
+            >>> ds.rename_columns(
+            ...     ["sepal_length", "sepal_width", "petal_length", "petal_width", "variety"]
+            ... ).schema()
+            Column        Type
+            ------        ----
+            sepal_length  double
+            sepal_width   double
+            petal_length  double
+            petal_width   double
+            variety       string
+
+        Args:
+            mapper: A dictionary that maps old column names to new column names, or a
+                list of new column names.
+            concurrency: The maximum number of Ray workers to use concurrently.
+            ray_remote_args: Additional resource requirements to request from
+                ray (e.g., num_gpus=1 to request GPUs for the map tasks).
+        """  # noqa: E501
+        if concurrency is not None and not isinstance(concurrency, int):
+            raise ValueError(
+                "Expected `concurrency` to be an integer or `None`, but got "
+                f"{concurrency}."
+            )
+
+        def rename_columns(batch: "pyarrow.Table") -> "pyarrow.Table":
+            # Versions of PyArrow before 17 don't support renaming columns with a dict.
+            if isinstance(names, dict):
+                column_names_list = batch.column_names
+                for i, column_name in enumerate(column_names_list):
+                    if column_name in names:
+                        column_names_list[i] = names[column_name]
+            else:
+                column_names_list = names
+
+            return batch.rename_columns(column_names_list)
+
+        return self.map_batches(
+            rename_columns,
+            batch_format="pyarrow",
+            zero_copy_batch=True,
+            concurrency=concurrency,
+            **ray_remote_args,
+        )
+
+    @PublicAPI(api_group=BT_API_GROUP)
     def flat_map(
         self,
         fn: UserDefinedFunction[Dict[str, Any], List[Dict[str, Any]]],
@@ -3629,13 +3709,15 @@ class Dataset:
             datasink.on_write_start()
 
             self._write_ds = Dataset(plan, logical_plan).materialize()
-            blocks = ray.get(self._write_ds._plan.execute().block_refs)
+            # TODO: Get and handle the blocks with an iterator instead of getting
+            # everything in a blocking way, so some blocks can be freed earlier.
+            raw_write_results = ray.get(self._write_ds._plan.execute().block_refs)
             assert all(
-                isinstance(block, pd.DataFrame) and len(block) == 1 for block in blocks
+                isinstance(block, pd.DataFrame) and len(block) == 1
+                for block in raw_write_results
             )
-            write_results = [block["write_result"][0] for block in blocks]
+            datasink.on_write_complete(raw_write_results)
 
-            datasink.on_write_complete(write_results)
         except Exception as e:
             datasink.on_write_failed(e)
             raise

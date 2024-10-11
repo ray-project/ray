@@ -92,6 +92,7 @@ from ray.rllib.connectors.env_to_module import (
 )
 from ray.rllib.core import DEFAULT_MODULE_ID
 from ray.rllib.core.columns import Columns
+from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
 from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.env.single_agent_episode import SingleAgentEpisode
 from ray.rllib.examples.envs.classes.stateless_cartpole import StatelessCartPole
@@ -156,7 +157,7 @@ if __name__ == "__main__":
             vf_loss_coeff=0.01,
         )
         # Add an LSTM setup to the default RLModule used.
-        .rl_module(model_config_dict={"use_lstm": True})
+        .rl_module(model_config=DefaultModelConfig(use_lstm=True))
     )
 
     print("Training LSTM-policy until desired reward/timesteps/iterations. ...")
