@@ -4,7 +4,7 @@ requires = ['meson-python']
 
 [project]
 name = 'ray'
-version = '2.37.0e'
+version = '2.37.99'
 #description = 'Our first Python project, using meson-python!'
 readme = 'README.rst'
 requires-python = '>=3.12'
