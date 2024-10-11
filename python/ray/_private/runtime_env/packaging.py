@@ -142,8 +142,8 @@ def _hash_file_content_or_directory_name(
 ) -> bytes:
     """Helper function to create hash of a single file or directory.
 
-    This function hashes the path of the file or directory,
-    and if it's a file, then it hashes its content too.
+    This function will hash the path of the file or directory,
+    and if it's a file, it'll hash its content too.
     """
 
     BUF_SIZE = 4096 * 1024
@@ -156,7 +156,7 @@ def _hash_file_content_or_directory_name(
         except Exception as e:
             logger.debug(
                 f"Skipping contents of file {filepath} when calculating package hash "
-                f"because the file couldn't be opened: {e}"
+                f"because the file could not be opened: {e}"
             )
         else:
             try:
@@ -177,7 +177,7 @@ def _hash_file(
 ) -> bytes:
     """Helper function to create hash of a single file.
 
-    It hashes the path of the file and its content to create a hash value.
+    It'll hash the path of the file and its content to create a hash value.
     """
     file_hash = _hash_file_content_or_directory_name(
         filepath, relative_path, logger=logger
@@ -490,10 +490,9 @@ def get_uri_for_package(package: Path) -> str:
 def get_uri_for_file(file: str) -> str:
     """Get a content-addressable URI from a file's content.
 
-    This function generates the name of the package by the file.
-    The final package name is _ray_pkg_<HASH_VAL>.zip of this package,
-    where HASH_VAL is the hash value of the file.
-    For example: _ray_pkg_029f88d5ecc55e1e4d64fc6e388fd103.zip
+    This function will generate the name of the package by the file.
+    The final package name is: _ray_pkg_<HASH_VAL>.zip of this package.
+    e.g., _ray_pkg_029f88d5ecc55e1e4d64fc6e388fd103.zip
 
     Examples:
 
