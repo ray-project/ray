@@ -44,6 +44,35 @@
     timeout: 1200
     script: TEST_ON_CUDA=1 pytest -vs test_dummy_model.py
 
+- name: safetensors_load_file_benchmark
+  group: Serve tests
+  working_dir: ../python/ray/anyscale/safetensors/tests/benchmarks
+
+  frequency: nightly
+  team: serve
+
+  cluster:
+    byod:
+      type: gpu
+
+  run:
+    timeout: 1200
+
+  variations:
+    - __suffix__: cpu
+      cluster:
+        cluster_compute: release_test_compute_cpu_aws.yaml
+
+      run:
+        script: python load_file_benchmark.py --device cpu
+
+    - __suffix__: gpu
+      cluster:
+        cluster_compute: release_test_compute_gpu_aws.yaml
+
+      run:
+        script: python load_file_benchmark.py --device cuda
+
 ###############
 # Data tests
 ###############
