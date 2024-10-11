@@ -550,6 +550,21 @@ pubsub_proto_cpp_grpc_lib_dep = declare_dependency(
     dependencies: pubsub_proto_cpp_grpc_lib_dependencies
 )
 # @end: proto_cpp_grpc (@original: pubsub_cc_grpc)
+
+# @Important:
+# Original Bazel script doesn't have a rule to build these Python protos, but likely behind the scenes it generates and
+# installs them together with some other protos which depend on them. In the same way, `metrics.proto` and `resource.proto`
+# from `opencensus-proto` aren't specified anywhere for installation but included there, so we decided to emulate that.
+# For details, find them in `@SOURCE_ROOT@/eugo/include/opencensus/`
+# @begin: proto_py (@original: ???)
+pubsub_proto_py = custom_target(
+    input: pubsub_proto,
+    kwargs: proto_py_default_kwargs,
+    install: true,
+    install_dir: py.get_install_dir() / 'ray/core/generated/'
+)
+
+# @end: proto_py (@original: ???)
 # === @end: pubsub.proto ===
 
 

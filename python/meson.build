@@ -51,7 +51,7 @@ install_subdir(
         'util/collective/examples/',
         'util/client/examples/',
 
-        'tune/examples/',
+        #'tune/examples/',
         'tune/tests/',
 
         'train/tests/',
@@ -66,6 +66,7 @@ install_subdir(
         'dag/tests/',
 
         'dashboard/tests/',
+        'dashboard/client/node_modules/',
         'dashboard/modules/tests/',
         'dashboard/modules/actor/tests/',
         'dashboard/modules/snapshot/tests/',
@@ -92,7 +93,7 @@ install_subdir(
         'autoscaler/aws/BUILD',
         'autoscaler/azure/BUILD',
         'autoscaler/gcp/BUILD',
-        'autoscaler/kuberay/BUILD',
+        'autoscaler/local/BUILD',
         'autoscaler/v2/BUILD',
         'workflow/BUILD',
         'util/BUILD',
@@ -152,7 +153,7 @@ install_subdir(
         'autoscaler/vsphere/example-vsan-file-service.yaml',
         'autoscaler/vsphere/gpu.yaml',
 
-        'autoscaler/cloudpickle/README.md',
+        'cloudpickle/README.md',
 
         'util/collective/requirements.txt',
         'util/client/ARCHITECTURE.md/',
@@ -184,10 +185,21 @@ install_subdir(
         'dashboard/client/package.json',
         'dashboard/client/README.rst',
         'dashboard/client/tsconfig.json',
+        'dashboard/client/meson.build',
 
         '_raylet.pyx'
     ]
 )
+
+# https://github.com/mesonbuild/meson/issues/12793
+install_subdir(
+    'ray/rllib/',
+    install_dir: py.get_install_dir() / 'ray/',
+    install_tag: 'python-runtime',
+
+    follow_symlinks: true
+)
+
 # @Important:
 # **/thirdparty_files/**
 # **/thirdparty/**

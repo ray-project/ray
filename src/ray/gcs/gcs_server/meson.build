@@ -97,6 +97,7 @@ gcs_server = executable(
         # Eugo-managed
         gflags
     ],
+    install: true,
     install_dir: py.get_install_dir() / 'ray/core/src/ray/gcs/'
 )
 # === @end: gcs_server ===

@@ -1,6 +1,6 @@
 # === @begin: proto_cpp (original: cc_proto_library w/o final static library linking) ===
 protoc_cpp_with_default_args = [
-    protoc,
+    protoc_cpp,
     '--proto_path=@SOURCE_ROOT@',
     '--cpp_out=@BUILD_ROOT@',
     '@INPUT@'
@@ -15,7 +15,7 @@ proto_cpp_default_kwargs = {
 # === @begin: proto_cpp_grpc (original: cc_grpc_library w/o final static library linking) ===
 protoc_grpc_cpp_plugin = find_program('grpc_cpp_plugin')
 protoc_cpp_grpc_with_default_args = [
-    protoc,
+    protoc_cpp,
     '--plugin=protoc-gen-grpc=' + protoc_grpc_cpp_plugin.full_path(),
     '--proto_path=@SOURCE_ROOT@',
     '--grpc_out=@BUILD_ROOT@',

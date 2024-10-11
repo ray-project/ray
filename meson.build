@@ -54,97 +54,9 @@ subdir('python/')
 # === @end: python/ ===
 
 
-#
-#filegroup(
-#    name = "python_sources",
-#    srcs = glob([
-#    "python/ray/*.py",
-#    "python/ray/autoscaler/*.py",
-#    "python/ray/autoscaler/_private/*.py",
-#    "python/ray/autoscaler/_private/_azure/*.json",
-#    "python/ray/autoscaler/aws/defaults.yaml",
-#    "python/ray/autoscaler/azure/defaults.yaml",
-#    "python/ray/autoscaler/gcp/defaults.yaml",
-#    "python/ray/autoscaler/local/defaults.yaml",
-#    "python/ray/autoscaler/vsphere/defaults.yaml",
-#    "python/ray/cloudpickle/*.py",
-#    "python/ray/core/__init__.py",
-#    "python/ray/core/generated/__init__.py",
-#    "python/ray/core/generated/ray/__init__.py",
-#    "python/ray/core/generated/ray/protocol/__init__.py",
-#    "python/ray/dashboard/**/*.py",
-#    "python/ray/experimental/*.py",
-#    "python/ray/util/*.py",
-#    "python/ray/internal/*.py",
-#    "python/ray/workers/default_worker.py",
-#    ]),
-#)
 
-#filegroup(
-#    name = "all_py_proto",
-#    srcs = [
-#    "//src/ray/protobuf:agent_manager_py_proto",
-#    "//src/ray/protobuf:autoscaler_py_proto",
-#    "//src/ray/protobuf:common_py_proto",
-#    "//src/ray/protobuf:core_worker_py_proto",
-#    "//src/ray/protobuf:event_py_proto",
-#    "//src/ray/protobuf:gcs_py_proto",
-#    "//src/ray/protobuf:gcs_service_py_proto",
-#    "//src/ray/protobuf:instance_manager_py_proto",
-#    "//src/ray/protobuf:job_agent_py_proto",
-#    "//src/ray/protobuf:node_manager_py_proto",
-#    "//src/ray/protobuf:ray_client_py_proto",
-#    "//src/ray/protobuf:reporter_py_proto",
-#    "//src/ray/protobuf:runtime_env_agent_py_proto",
-#    "//src/ray/protobuf:runtime_env_common_py_proto",
-#    "//src/ray/protobuf:usage_py_proto",
-#    "//src/ray/protobuf:export_event_py_proto",
-#    ],
-#)
-#
-#filegroup(
-#    name = "serve_py_proto",
-#    srcs = [
-#    "//src/ray/protobuf:serve_py_proto",
-#    ],
-#)
-#
 
-#copy_to_workspace(
-#    name = "cp_raylet_so",
-#    srcs = ["python/ray/_raylet.so"],
-#    dstdir = "python/ray",
-#)
-#
-#copy_to_workspace(
-#    name = "cp_all_py_proto",
-#    srcs = [":all_py_proto"],
-#    dstdir = "python/ray/core/generated",
-#)
-#
-#copy_to_workspace(
-#    name = "cp_serve_py_proto",
-#    srcs = [":serve_py_proto"],
-#    dstdir = "python/ray/serve/generated",
-#)
-#
-#copy_to_workspace(
-#    name = "cp_raylet",
-#    srcs = [":raylet"],
-#    dstdir = "python/ray/core/src/ray/raylet",
-#)
-#
-#copy_to_workspace(
-#    name = "cp_gcs_server",
-#    srcs = [":gcs_server"],
-#    dstdir = "python/ray/core/src/ray/gcs",
-#)
-#
-#copy_to_workspace(
-#    name = "cp_jemalloc",
-#    srcs = ["@jemalloc//:shared"],
-#    dstdir = "python/ray/core/",
-#)
+
 #
 #genrule(
 #    name = "install_py_proto",

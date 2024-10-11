@@ -72,7 +72,7 @@ opencensus_cpp_tags = dependency('OpenCensus', method: 'cmake', modules: ['openc
 # === @begin: protobuf ===
 # If not disabling `pkg-config` search, this causes the dependency cycle and infinite execution
 protobuf = dependency('protobuf', modules: ['protobuf::libprotobuf'], method: 'cmake')
-protoc = find_program('protoc')
+protoc_cpp = find_program('protoc')
 # === @end: protobuf ===
 
 

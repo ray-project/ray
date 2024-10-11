@@ -76,6 +76,7 @@ raylet_executable = executable(
         # Eugo-managed
         gflags
     ],
+    install: true,
     install_dir: py.get_install_dir() / 'ray/core/src/ray/raylet/'
 )
 # === @end: raylet_executable (original: raylet) ===

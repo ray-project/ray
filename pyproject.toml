@@ -3,8 +3,8 @@ build-backend = 'mesonpy'
 requires = ['meson-python']
 
 [project]
-name = 'ray-meson'
-version = '2.37.0'
+name = 'ray'
+version = '2.37.0e'
 #description = 'Our first Python project, using meson-python!'
 readme = 'README.rst'
 requires-python = '>=3.12'
