@@ -341,10 +341,6 @@ class OpState:
         else:
             self._exception = exception
 
-    def update_resource_usage(self) -> None:
-        """Updates resources usage."""
-        self.op.update_resource_usage()
-
 
 def build_streaming_topology(
     dag: PhysicalOperator, options: ExecutionOptions
