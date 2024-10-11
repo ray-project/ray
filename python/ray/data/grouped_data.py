@@ -178,10 +178,11 @@ class GroupedData:
             fn_constructor_kwargs: Keyword arguments to pass to ``fn``'s constructor.
                 This can only be provided if ``fn`` is a callable class. These arguments
                 are top-level arguments in the underlying Ray actor construction task.
-            num_cpus: The number of CPUs to reserve for each parallel map worker.
+            num_cpus: The number of CPUs to reserve for each parallel map worker. Only
+                one of `num_cpus` or `num_gpus` can be specified.
             num_gpus: The number of GPUs to reserve for each parallel map worker. For
                 example, specify `num_gpus=1` to request 1 GPU for each parallel map
-                worker.
+                worker. Only one of `num_cpus` or `num_gpus` can be specified.
             ray_remote_args: Additional resource requirements to request from
                 ray (e.g., num_gpus=1 to request GPUs for the map tasks).
 
