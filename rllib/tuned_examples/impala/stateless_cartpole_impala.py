@@ -1,5 +1,6 @@
 from ray.rllib.algorithms.impala import IMPALAConfig
 from ray.rllib.connectors.env_to_module import MeanStdFilter
+from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
 from ray.rllib.examples.envs.classes.stateless_cartpole import StatelessCartPole
 from ray.rllib.utils.test_utils import add_rllib_example_script_args
 
@@ -34,12 +35,11 @@ config = (
         entropy_coeff=0.0,
     )
     .rl_module(
-        model_config_dict={
-            "vf_share_layers": True,
-            "use_lstm": True,
-            "uses_new_env_runners": True,
-            "max_seq_len": 20,
-        },
+        model_config=DefaultModelConfig(
+            vf_share_layers=True,
+            use_lstm=True,
+            max_seq_len=20,
+        ),
     )
 )
 
