@@ -75,7 +75,7 @@ class MockWaiter : public DependencyWaiter {
 };
 
 TEST(SchedulingQueueTest, TestInOrder) {
-  instrumented_io_context io_service;
+  instrumented_io_context io_service(/*enable_lag_probe=*/false);
   MockWaiter waiter;
   MockActorSchedulingQueue queue(io_service, waiter);
   int n_ok = 0;
@@ -126,7 +126,7 @@ TEST(SchedulingQueueTest, TestWaitForObjects) {
 
 TEST(SchedulingQueueTest, TestWaitForObjectsNotSubjectToSeqTimeout) {
   ObjectID obj1 = ObjectID::FromRandom();
-  instrumented_io_context io_service;
+  instrumented_io_context io_service(/*enable_lag_probe=*/false);
   MockWaiter waiter;
   MockActorSchedulingQueue queue(io_service, waiter);
   int n_ok = 0;
@@ -147,7 +147,7 @@ TEST(SchedulingQueueTest, TestWaitForObjectsNotSubjectToSeqTimeout) {
 }
 
 TEST(SchedulingQueueTest, TestOutOfOrder) {
-  instrumented_io_context io_service;
+  instrumented_io_context io_service(/*enable_lag_probe=*/false);
   MockWaiter waiter;
   MockActorSchedulingQueue queue(io_service, waiter);
   int n_ok = 0;
@@ -166,7 +166,7 @@ TEST(SchedulingQueueTest, TestOutOfOrder) {
 }
 
 TEST(SchedulingQueueTest, TestSeqWaitTimeout) {
-  instrumented_io_context io_service;
+  instrumented_io_context io_service(/*enable_lag_probe=*/false);
   MockWaiter waiter;
   MockActorSchedulingQueue queue(io_service, waiter);
   int n_ok = 0;
@@ -190,7 +190,7 @@ TEST(SchedulingQueueTest, TestSeqWaitTimeout) {
 }
 
 TEST(SchedulingQueueTest, TestSkipAlreadyProcessedByClient) {
-  instrumented_io_context io_service;
+  instrumented_io_context io_service(/*enable_lag_probe=*/false);
   MockWaiter waiter;
   MockActorSchedulingQueue queue(io_service, waiter);
   int n_ok = 0;

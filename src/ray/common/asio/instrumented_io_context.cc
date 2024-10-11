@@ -76,9 +76,11 @@ void ScheduleLagProbe(instrumented_io_context &io_context) {
 }
 }  // namespace
 
-instrumented_io_context::instrumented_io_context()
+instrumented_io_context::instrumented_io_context(bool enable_lag_probe)
     : event_stats_(std::make_shared<EventTracker>()) {
-  ScheduleLagProbe(*this);
+  if (enable_lag_probe) {
+    ScheduleLagProbe(*this);
+  }
 }
 
 void instrumented_io_context::post(std::function<void()> handler,
