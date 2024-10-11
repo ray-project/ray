@@ -62,7 +62,7 @@ System logs may include information about your applications. For example, ``runt
   This is the log file of the agent containing logs of create or delete requests and cache hits and misses.
   For the logs of the actual installations (for example, ``pip install`` logs), see the ``runtime_env_setup-[job_id].log`` file (see below).
 - ``runtime_env_setup-ray_client_server_[port].log``: Logs from installing {ref}`Runtime Environments <runtime-environments>` for a job when connecting with {ref}`Ray Client <ray-client-ref>`.
-- ``runtime_env_setup-[job_id].log``: Logs from installing {ref}`Runtime Environments <runtime-environments>` for a Task, Actor or Job. This file is only present if a Runtime Environment is installed.
+- ``runtime_env_setup-[job_id].log``: Logs from installing {ref}`runtime environments <runtime-environments>` for a Task, Actor, or Job. This file is only present if you install a runtime environment.
 
 
 (log-redirection-to-driver)=
@@ -136,7 +136,7 @@ The output is as follows:
 (task pid=534174) Hello there, I am a task 0.17536720316370757 [repeated 99x across cluster] (Ray deduplicates logs by default. Set RAY_DEDUP_LOGS=0 to disable log deduplication)
 ```
 
-This feature is especially useful when importing libraries such as `tensorflow` or `numpy`, which may emit many verbose warning messages when imported. 
+This feature is useful when importing libraries such as `tensorflow` or `numpy`, which may emit many verbose warning messages when you import them. 
 
 Configure the following environment variables on the driver process before importing Ray to customize log deduplication:
 
