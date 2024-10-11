@@ -19,7 +19,6 @@ from ray.rllib.core import (
     COMPONENT_MODULE_TO_ENV_CONNECTOR,
 )
 from ray.rllib.core.rl_module.rl_module import RLModuleSpec
-from ray.rllib.env.env_runner_group import _handle_remote_call_result_errors
 from ray.rllib.execution.buffers.mixin_replay_buffer import MixInMultiAgentReplayBuffer
 from ray.rllib.execution.learner_thread import LearnerThread
 from ray.rllib.execution.multi_gpu_learner_thread import MultiGPULearnerThread
@@ -459,14 +458,15 @@ class IMPALAConfig(AlgorithmConfig):
             )
 
             return IMPALATorchLearner
-        elif self.framework_str == "tf2":
-            from ray.rllib.algorithms.impala.tf.impala_tf_learner import IMPALATfLearner
-
-            return IMPALATfLearner
+        elif self.framework_str in ["tf2", "tf"]:
+            raise ValueError(
+                "TensorFlow is no longer supported on the new API stack! "
+                "Use `framework='torch'`."
+            )
         else:
             raise ValueError(
                 f"The framework {self.framework_str} is not supported. "
-                "Use either 'torch' or 'tf2'."
+                "Use `framework='torch'`."
             )
 
     @override(AlgorithmConfig)
@@ -905,9 +905,12 @@ class IMPALA(Algorithm):
                 timeout_seconds=self.config.timeout_s_aggregator_manager,
             )
         )
-        _handle_remote_call_result_errors(
+        FaultTolerantActorManager.handle_remote_call_result_errors(
             waiting_processed_sample_batches,
-            self.config.ignore_env_runner_failures,
+            ignore_ray_errors=(
+                self.config.ignore_env_runner_failures
+                or self.config.recreate_failed_env_runners
+            ),
         )
 
         return list(waiting_processed_sample_batches.ignore_errors())
@@ -1142,9 +1145,12 @@ class IMPALA(Algorithm):
                 timeout_seconds=self.config.timeout_s_aggregator_manager,
             )
         )
-        _handle_remote_call_result_errors(
+        FaultTolerantActorManager.handle_remote_call_result_errors(
             waiting_processed_sample_batches,
-            self.config.ignore_env_runner_failures,
+            ignore_ray_errors=(
+                self.config.ignore_env_runner_failures
+                or self.config.recreate_failed_env_runners
+            ),
         )
 
         return [b.get() for b in waiting_processed_sample_batches.ignore_errors()]

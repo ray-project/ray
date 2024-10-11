@@ -769,7 +769,13 @@ RAY_CONFIG(bool, isolate_workers_across_resource_types, true)
 RAY_CONFIG(bool, isolate_workers_across_task_types, true)
 
 /// ServerCall instance number of each RPC service handler
-RAY_CONFIG(int64_t, gcs_max_active_rpcs_per_handler, 100)
+///
+/// NOTE: Default value is temporarily pegged at `gcs_server_rpc_server_thread_num * 100`
+///       to keep it at the level it has been prior to
+///       https://github.com/ray-project/ray/pull/47664
+RAY_CONFIG(int64_t,
+           gcs_max_active_rpcs_per_handler,
+           gcs_server_rpc_server_thread_num() * 100)
 
 /// grpc keepalive sent interval for server.
 /// This is only configured in GCS server now.

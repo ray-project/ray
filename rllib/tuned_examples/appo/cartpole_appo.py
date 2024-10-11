@@ -1,4 +1,5 @@
 from ray.rllib.algorithms.appo import APPOConfig
+from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
 from ray.rllib.utils.test_utils import add_rllib_example_script_args
 
 parser = add_rllib_example_script_args(
@@ -24,9 +25,7 @@ config = (
         entropy_coeff=0.0,
     )
     .rl_module(
-        model_config_dict={
-            "vf_share_layers": True,
-        },
+        model_config=DefaultModelConfig(vf_share_layers=True),
     )
 )
 

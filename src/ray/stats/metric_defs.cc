@@ -67,6 +67,21 @@ DEFINE_stats(actors,
              (),
              ray::stats::GAUGE);
 
+/// Job related stats.
+DEFINE_stats(running_jobs,
+             "Number of jobs currently running.",
+             /*tags=*/(),
+             /*buckets=*/(),
+             ray::stats::GAUGE);
+
+DEFINE_stats(finished_jobs,
+             "Number of jobs finished.",
+             // TODO(hjiang): Consider adding task completion status, for example, failed,
+             // completed in tags.
+             /*tags=*/(),
+             /*buckets=*/(),
+             ray::stats::COUNT);
+
 /// Logical resource usage reported by raylets.
 DEFINE_stats(resources,
              // TODO(sang): Support placement_group_reserved_available | used
