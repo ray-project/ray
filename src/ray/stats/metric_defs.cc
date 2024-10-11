@@ -130,6 +130,12 @@ DEFINE_stats(placement_groups,
 /// ===================== INTERNAL SYSTEM METRICS =================================
 /// ===============================================================================
 
+DEFINE_stats(io_context_event_loop_lag_ms,
+             "Latency of a task from post to execution",
+             ("Name"),  // Name of the instrumented_io_context.
+             (),
+             ray::stats::GAUGE);
+
 /// Event stats
 DEFINE_stats(operation_count, "operation count", ("Method"), (), ray::stats::GAUGE);
 DEFINE_stats(
