@@ -111,6 +111,8 @@ def test_read_operator(ray_start_regular_shared):
         physical_op.actual_target_max_block_size
         == DataContext.get_current().target_max_block_size
     )
+    # Check that the linked logical operator is the same the input op.
+    assert physical_op._logical_op == op
 
 
 def test_read_operator_emits_warning_for_large_read_tasks():
@@ -182,6 +184,9 @@ def test_from_operators(ray_start_regular_shared):
         assert isinstance(physical_op, InputDataBuffer)
         assert len(physical_op.input_dependencies) == 0
 
+        # Check that the linked logical operator is the same the input op.
+        assert physical_op._logical_op == op
+
 
 def test_from_items_e2e(ray_start_regular_shared):
     data = ["Hello", "World"]
@@ -252,6 +257,9 @@ def test_map_batches_operator(ray_start_regular_shared):
     assert isinstance(physical_op, MapOperator)
     assert len(physical_op.input_dependencies) == 1
     assert isinstance(physical_op.input_dependencies[0], MapOperator)
+
+    # Check that the linked logical operator is the same the input op.
+    assert physical_op._logical_op == op
 
 
 def test_map_batches_e2e(ray_start_regular_shared):
@@ -393,6 +401,9 @@ def test_random_shuffle_operator(ray_start_regular_shared):
         == DataContext.get_current().target_shuffle_max_block_size
     )
 
+    # Check that the linked logical operator is the same the input op.
+    assert physical_op._logical_op == op
+
 
 def test_random_shuffle_e2e(ray_start_regular_shared, use_push_based_shuffle):
     ds = ray.data.range(12, override_num_blocks=4)
@@ -429,6 +440,9 @@ def test_repartition_operator(ray_start_regular_shared, shuffle):
             physical_op.actual_target_max_block_size
             == DataContext.get_current().target_max_block_size
         )
+
+    # Check that the linked logical operator is the same the input op.
+    assert physical_op._logical_op == op
 
 
 @pytest.mark.parametrize(
@@ -505,6 +519,9 @@ def test_union_operator(ray_start_regular_shared, preserve_order):
         physical_op.actual_target_max_block_size
         == DataContext.get_current().target_max_block_size
     )
+
+    # Check that the linked logical operator is the same the input op.
+    assert physical_op._logical_op == union_op
 
 
 @pytest.mark.parametrize("preserve_order", (True, False))
@@ -1009,6 +1026,9 @@ def test_write_operator(ray_start_regular_shared, tmp_path):
     assert len(physical_op.input_dependencies) == 1
     assert isinstance(physical_op.input_dependencies[0], MapOperator)
 
+    # Check that the linked logical operator is the same the input op.
+    assert physical_op._logical_op == op
+
 
 def test_sort_operator(
     ray_start_regular_shared,
@@ -1105,6 +1125,9 @@ def test_aggregate_operator(ray_start_regular_shared):
         == DataContext.get_current().target_shuffle_max_block_size
     )
 
+    # Check that the linked logical operator is the same the input op.
+    assert physical_op._logical_op == op
+
 
 def test_aggregate_e2e(ray_start_regular_shared, use_push_based_shuffle):
     ds = ray.data.range(100, override_num_blocks=4)
@@ -1170,6 +1193,9 @@ def test_zip_operator(ray_start_regular_shared):
         physical_op.actual_target_max_block_size
         == DataContext.get_current().target_max_block_size
     )
+
+    # Check that the linked logical operator is the same the input op.
+    assert physical_op._logical_op == op
 
 
 @pytest.mark.parametrize(
