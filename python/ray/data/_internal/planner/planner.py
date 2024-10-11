@@ -120,13 +120,25 @@ class Planner:
         for op_type, plan_fn in PLAN_LOGICAL_OP_FNS:
             if isinstance(logical_op, op_type):
                 physical_op = plan_fn(logical_op, physical_children)
-                physical_op.set_logical_operator(logical_op)
                 break
 
         if physical_op is None:
             raise ValueError(
                 f"Found unknown logical operator during planning: {logical_op}"
             )
+
+        # Traverse up the DAG, and set the mapping from physical to logical operators.
+        # At this point, all physical operators without logical operators set
+        # must have been created by the current logical operator.
+        queue = [physical_op]
+        while queue:
+            curr_physical_op = queue.pop()
+            # Once we find an operator with a logical operator set, we can stop.
+            if curr_physical_op._logical_op:
+                break
+
+            curr_physical_op.set_logical_operator(logical_op)
+            queue.extend(physical_op.input_dependencies)
 
         self._physical_op_to_logical_op[physical_op] = logical_op
         return physical_op
