@@ -73,13 +73,18 @@ class RetryableGrpcClient : public std::enable_shared_from_this<RetryableGrpcCli
       uint64_t check_channel_status_interval_milliseconds,
       uint64_t server_unavailable_timeout_seconds,
       std::function<void()> server_unavailable_timeout_callback) {
-    return std::shared_ptr<RetryableGrpcClient>(
+    auto retryable_grpc_client = std::shared_ptr<RetryableGrpcClient>(
         new RetryableGrpcClient(channel,
                                 io_context,
                                 max_pending_requests_bytes,
                                 check_channel_status_interval_milliseconds,
                                 server_unavailable_timeout_seconds,
                                 server_unavailable_timeout_callback));
+    // SetupCheckTimer() MUST be called after we have the shard_ptr of
+    // RetryableGrpcClient since it calls shared_from_this()
+    // which requires a shared_ptr of this to exist.
+    retryable_grpc_client->SetupCheckTimer();
+    return retryable_grpc_client;
   }
 
   RetryableGrpcClient(const RetryableGrpcClient &) = delete;
@@ -171,6 +176,8 @@ class RetryableGrpcClient : public std::enable_shared_from_this<RetryableGrpcCli
     }
   }
 
+  size_t NumPendingRequests() { return pending_requests_.size(); }
+
   ~RetryableGrpcClient() { Shutdown(); }
 
  private:
@@ -188,9 +195,7 @@ class RetryableGrpcClient : public std::enable_shared_from_this<RetryableGrpcCli
             check_channel_status_interval_milliseconds),
         server_unavailable_timeout_seconds_(server_unavailable_timeout_seconds),
         server_unavailable_timeout_callback_(
-            std::move(server_unavailable_timeout_callback)) {
-    SetupCheckTimer();
-  }
+            std::move(server_unavailable_timeout_callback)) {}
 
   void SetupCheckTimer() {
     auto duration =
@@ -266,6 +271,7 @@ class RetryableGrpcClient : public std::enable_shared_from_this<RetryableGrpcCli
     default:
       RAY_LOG(FATAL) << "Not covered status: " << status;
     }
+
     SetupCheckTimer();
   }
 
