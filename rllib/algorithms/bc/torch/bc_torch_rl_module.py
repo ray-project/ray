@@ -11,7 +11,7 @@ class BCTorchRLModule(TorchRLModule):
     @override(RLModule)
     def setup(self):
         # __sphinx_doc_begin__
-        # Build models from catalog
+        # Build models from catalog.
         self.encoder = self.catalog.build_encoder(framework=self.framework)
         self.pi = self.catalog.build_pi_head(framework=self.framework)
 
