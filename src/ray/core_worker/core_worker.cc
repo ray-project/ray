@@ -3318,11 +3318,12 @@ void CoreWorker::ReportGeneratorItemReturnsInternal(
           // backpressure.
           RAY_LOG(WARNING).WithField(return_id)
               << "Failed to report streaming generator return "
-                 "to the caller. The yield'ed ObjectRef may not be usable.";
+                 "to the caller. The yield'ed ObjectRef may not be usable. "
+              << status;
           waiter->HandleObjectReported(waiter->TotalObjectGenerated());
         } else {
           RAY_LOG(INFO).WithField(return_id)
-              << "Failed to report streaming generator return. Retrying...";
+              << "Failed to report streaming generator return. Retrying... " << status;
           execute_after(
               io_service_,
               [this, client, request, generator_id, return_id, item_index, waiter]() {
