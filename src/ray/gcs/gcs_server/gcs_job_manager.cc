@@ -115,7 +115,7 @@ void GcsJobManager::HandleAddJob(rpc::AddJobRequest request,
       // multiple times and requires idempotency (i.e. due to retry).
       running_job_ids_.insert(job_id);
     }
-    WriteDriverJobExportEvent(mutable_job_table_data);
+    WriteDriverJobExportEvent(job_table_data);
     GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
   };
 
@@ -146,6 +146,13 @@ void GcsJobManager::MarkJobAsFinished(rpc::JobTableData job_table_data,
     }
     function_manager_.RemoveJobReference(job_id);
     WriteDriverJobExportEvent(job_table_data);
+
+    // Update running job status.
+    auto iter = running_job_ids_.find(job_id);
+    RAY_CHECK(iter != running_job_ids_.end());
+    running_job_ids_.erase(iter);
+    ++finished_jobs_count_;
+
     done_callback(status);
   };
 
