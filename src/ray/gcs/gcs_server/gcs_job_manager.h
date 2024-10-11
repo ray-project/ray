@@ -96,15 +96,16 @@ class GcsJobManager : public rpc::JobInfoHandler {
 
   void WriteDriverJobExportEvent(rpc::JobTableData job_data) const;
 
+  /// Record metrics.
+  /// For job manager, (1) running jobs count gauge and (2) new finished jobs (whether
+  /// succeed or fail) will be reported periodically.
+  void RecordMetrics();
+
  private:
   void ClearJobInfos(const rpc::JobTableData &job_data);
 
   void MarkJobAsFinished(rpc::JobTableData job_table_data,
                          std::function<void(Status)> done_callback);
-
-  // Used to validate invariants for threading; for example, all callbacks are executed on
-  // the same thread.
-  ThreadChecker thread_checker_;
 
   // Running Job IDs, used to report metrics.
   absl::flat_hash_set<JobID> running_job_ids_;
