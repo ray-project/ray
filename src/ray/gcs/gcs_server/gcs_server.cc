@@ -789,6 +789,7 @@ void GcsServer::RecordMetrics() const {
   gcs_actor_manager_->RecordMetrics();
   gcs_placement_group_manager_->RecordMetrics();
   gcs_task_manager_->RecordMetrics();
+  gcs_job_manager_->RecordMetrics();
   execute_after(
       main_service_,
       [this] { RecordMetrics(); },

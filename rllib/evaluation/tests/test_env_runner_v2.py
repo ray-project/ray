@@ -171,7 +171,7 @@ class TestEnvRunnerV2(unittest.TestCase):
             # directly overridden in the policy class.
             .rl_module(
                 rl_module_spec=MultiRLModuleSpec(
-                    module_specs={
+                    rl_module_specs={
                         "pol1": RLModuleSpec(module_class=RandomRLModule),
                         "pol2": RLModuleSpec(module_class=RandomRLModule),
                     }
@@ -238,7 +238,7 @@ class TestEnvRunnerV2(unittest.TestCase):
             )
             .rl_module(
                 rl_module_spec=MultiRLModuleSpec(
-                    module_specs={
+                    rl_module_specs={
                         "one": RLModuleSpec(module_class=RandomRLModule),
                         "two": RLModuleSpec(module_class=RandomRLModule),
                     }
@@ -335,7 +335,7 @@ class TestEnvRunnerV2(unittest.TestCase):
             )
             .rl_module(
                 rl_module_spec=MultiRLModuleSpec(
-                    module_specs={
+                    rl_module_specs={
                         "one": RLModuleSpec(module_class=RandomRLModule),
                         "two": RLModuleSpec(module_class=RandomRLModule),
                     }
@@ -391,7 +391,7 @@ class TestEnvRunnerV2(unittest.TestCase):
             )
             .rl_module(
                 rl_module_spec=MultiRLModuleSpec(
-                    module_specs={
+                    rl_module_specs={
                         "one": RLModuleSpec(module_class=RandomRLModule),
                         "two": RLModuleSpec(module_class=RandomRLModule),
                     }
@@ -450,7 +450,7 @@ class TestEnvRunnerV2(unittest.TestCase):
             )
             .rl_module(
                 rl_module_spec=MultiRLModuleSpec(
-                    module_specs={
+                    rl_module_specs={
                         "one": RLModuleSpec(module_class=RandomRLModule),
                         "two": RLModuleSpec(module_class=RandomRLModule),
                     }

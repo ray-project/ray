@@ -60,6 +60,7 @@ class OutOfOrderActorSchedulingQueue : public SchedulingQueue {
            const std::string &concurrency_group_name,
            const ray::FunctionDescriptor &function_descriptor,
            TaskID task_id = TaskID::Nil(),
+           uint64_t attempt_number = 0,
            const std::vector<rpc::ObjectReference> &dependencies = {}) override;
 
   /// Cancel the actor task in the queue.
@@ -72,12 +73,15 @@ class OutOfOrderActorSchedulingQueue : public SchedulingQueue {
   void ScheduleRequests() override;
 
  private:
+  void RunRequest(InboundRequest request);
+
+  void RunRequestWithSatisfiedDependencies(InboundRequest &request);
+
   /// Accept the given InboundRequest or reject it if a task id is canceled via
   /// CancelTaskIfFound.
   void AcceptRequestOrRejectIfCanceled(TaskID task_id, InboundRequest &request);
 
-  /// The queue stores all the pending tasks.
-  std::deque<InboundRequest> pending_actor_tasks_;
+  instrumented_io_context &io_service_;
   /// The id of the thread that constructed this scheduling queue.
   boost::thread::id main_thread_id_;
   /// Reference to the waiter owned by the task receiver.
@@ -92,11 +96,19 @@ class OutOfOrderActorSchedulingQueue : public SchedulingQueue {
   bool is_asyncio_ = false;
   /// Mutext to protect attributes used for thread safe APIs.
   absl::Mutex mu_;
+  /// This stores all the tasks that have previous attempts that are pending.
+  /// They are queued and will be executed after the previous attempt finishes.
+  /// This can happen if transient network error happens after an actor
+  /// task is submitted and recieved by the actor and the caller retries
+  /// the same task.
+  absl::flat_hash_map<TaskID, InboundRequest> queued_actor_tasks_ ABSL_GUARDED_BY(mu_);
   /// A map of actor task IDs -> is_canceled.
   // Pending means tasks are queued or running.
   absl::flat_hash_map<TaskID, bool> pending_task_id_to_is_canceled ABSL_GUARDED_BY(mu_);
 
-  friend class SchedulingQueueTest;
+  FRIEND_TEST(OutOfOrderActorSchedulingQueueTest, TestSameTaskMultipleAttempts);
+  FRIEND_TEST(OutOfOrderActorSchedulingQueueTest,
+              TestSameTaskMultipleAttemptsCancellation);
 };
 
 }  // namespace core
