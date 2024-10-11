@@ -2512,7 +2512,8 @@ class TestVisualization:
         compiled_dag.visualize(filename=filename, view=False)
 
         assert os.path.exists(f"{filename}.png"), "Visualization file was not created."
-
+        res = compiled_dag.execute(1)
+        ray.get(res)
         compiled_dag.teardown()
 
         os.remove(f"{filename}.png")
@@ -2537,7 +2538,8 @@ class TestVisualization:
         compiled_dag.visualize(filename=filename, view=False)
 
         assert os.path.exists(f"{filename}.png"), "Visualization file was not created."
-
+        res = compiled_dag.execute(1)
+        ray.get(res)
         # Clean up
         compiled_dag.teardown()
 
