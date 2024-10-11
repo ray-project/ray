@@ -88,7 +88,6 @@ class TestModelBase(unittest.TestCase):
             module_class=PPOTorchRLModule,
             observation_space=gym.spaces.Box(low=0, high=1, shape=(32,)),
             action_space=gym.spaces.Box(low=0, high=1, shape=(1,)),
-            model_config_dict={},
             catalog_class=PPOCatalog,
         )
         torch_module = spec.build()
