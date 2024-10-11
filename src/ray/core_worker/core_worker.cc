@@ -3300,13 +3300,13 @@ Status CoreWorker::ReportGeneratorItemReturns(
         if (status.ok()) {
           num_objects_consumed = reply.total_num_object_consumed();
         } else {
-          // TODO(sang): Handle network error more gracefully.
           // If the request fails, we should just resume until task finishes without
           // backpressure.
           num_objects_consumed = waiter->TotalObjectGenerated();
           RAY_LOG(WARNING).WithField(return_id)
               << "Failed to report streaming generator return "
-                 "to the caller. The yield'ed ObjectRef may not be usable.";
+                 "to the caller. The yield'ed ObjectRef may not be usable. "
+              << status;
         }
         waiter->HandleObjectReported(num_objects_consumed);
       });
