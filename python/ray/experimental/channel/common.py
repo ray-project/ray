@@ -478,14 +478,14 @@ def _adapt(raw_args: Any, key: Optional[Union[int, str]], is_input: bool):
 
 def _extract(val: Any, key: Optional[Union[int, str]], is_input: bool):
     """
-    Extract the raw arguments to the key. If `is_input` is True, this method will
-    retrieve the value from the input data for an InputAttributeNode. Otherwise, it
-    will retrieve either a partial value or the entire value from the output of
+    Extract result based on the key. If `is_input` is True, this method will
+    extract from the input data for an InputAttributeNode. Otherwise, it
+    will extract either a partial value or the entire value from the output of
     a ClassMethodNode.
 
     Args:
-        raw_args: The raw arguments to adapt.
-        key: The key to adapt.
+        val: The value to extract from.
+        key: The key to use for extraction.
         is_input: Whether the writer is DAG input writer or not.
     """
     if isinstance(val, Exception):
@@ -506,7 +506,6 @@ def _extract(val: Any, key: Optional[Union[int, str]], is_input: bool):
     else:
         if key is None:
             return val
-        assert key in val, f"Expected key {key} in {val}"
         return val[key]
 
 
