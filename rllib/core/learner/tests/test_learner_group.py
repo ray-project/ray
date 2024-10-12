@@ -199,7 +199,7 @@ class TestLearnerGroupSyncUpdate(unittest.TestCase):
             .rl_module(
                 rl_module_spec=RLModuleSpec(
                     module_class=DiscreteBCTorchModule,
-                    model_config_dict={"fcnet_hiddens": [32]},
+                    model_config={"fcnet_hiddens": [32]},
                 )
             )
         )

@@ -1,4 +1,5 @@
 from ray.rllib.algorithms.ppo import PPOConfig
+from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
 from ray.rllib.utils.metrics import (
     ENV_RUNNER_RESULTS,
     EPISODE_RETURN_MEAN,
@@ -24,11 +25,11 @@ config = (
     )
     .environment("CartPole-v1")
     .rl_module(
-        model_config_dict={
-            "fcnet_hiddens": [32],
-            "fcnet_activation": "linear",
-            "vf_share_layers": True,
-        }
+        model_config=DefaultModelConfig(
+            fcnet_hiddens=[32],
+            fcnet_activation="linear",
+            vf_share_layers=True,
+        ),
     )
     .training(
         lr=0.0003,

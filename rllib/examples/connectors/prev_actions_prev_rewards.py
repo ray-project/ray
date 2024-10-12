@@ -78,13 +78,12 @@ ths script as described above:
 |                  68000 |                  68000 |                 205.22 |
 +------------------------+------------------------+------------------------+
 """
-import functools
-
 from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.connectors.env_to_module import (
     FlattenObservations,
     PrevActionsPrevRewards,
 )
+from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
 from ray.rllib.examples.envs.classes.stateless_cartpole import StatelessCartPole
 from ray.rllib.examples.envs.classes.multi_agent import MultiAgentStatelessCartPole
 from ray.rllib.utils.framework import try_import_torch
@@ -142,15 +141,16 @@ if __name__ == "__main__":
             vf_loss_coeff=0.01,
         )
         .rl_module(
-            model_config_dict={
-                "use_lstm": True,
-                "max_seq_len": 20,
-                "fcnet_hiddens": [32],
-                "fcnet_activation": "linear",
-                "vf_share_layers": True,
-                "fcnet_weights_initializer": nn.init.xavier_uniform_,
-                "fcnet_bias_initializer": functools.partial(nn.init.constant_, 0.0),
-            }
+            model_config=DefaultModelConfig(
+                use_lstm=True,
+                max_seq_len=20,
+                fcnet_hiddens=[32],
+                fcnet_activation="linear",
+                fcnet_kernel_initializer=nn.init.xavier_uniform_,
+                fcnet_bias_initializer=nn.init.constant_,
+                fcnet_bias_initializer_kwargs={"val": 0.0},
+                vf_share_layers=True,
+            ),
         )
     )
 
