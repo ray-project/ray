@@ -272,6 +272,12 @@ class Dataset:
             If your transformation is vectorized like most NumPy or pandas operations,
             :meth:`~Dataset.map_batches` might be faster.
 
+        .. warning::
+            Specifying both ``num_cpus`` and ``num_gpus`` for map tasks is experimental,
+            and may result in scheduling or stability issues. Please
+            `report any issues <https://github.com/ray-project/ray/issues/new/choose>`_
+            to the Ray team.
+
         Examples:
 
             .. testcode::
@@ -314,11 +320,10 @@ class Dataset:
             fn_constructor_kwargs: Keyword arguments to pass to ``fn``'s constructor.
                 This can only be provided if ``fn`` is a callable class. These arguments
                 are top-level arguments in the underlying Ray actor construction task.
-            num_cpus: The number of CPUs to reserve for each parallel map worker. Only
-                one of `num_cpus` or `num_gpus` can be specified.
+            num_cpus: The number of CPUs to reserve for each parallel map worker.
             num_gpus: The number of GPUs to reserve for each parallel map worker. For
                 example, specify `num_gpus=1` to request 1 GPU for each parallel map
-                worker. Only one of `num_cpus` or `num_gpus` can be specified.
+                worker.
             concurrency: The number of Ray workers to use concurrently. For a fixed-sized
                 worker pool of size ``n``, specify ``concurrency=n``. For an autoscaling
                 worker pool from ``m`` to ``n`` workers, specify ``concurrency=(m, n)``.
@@ -417,6 +422,12 @@ class Dataset:
         .. tip::
             If ``fn`` doesn't mutate its input, set ``zero_copy_batch=True`` to improve
             performance and decrease memory utilization.
+
+        .. warning::
+            Specifying both ``num_cpus`` and ``num_gpus`` for map tasks is experimental,
+            and may result in scheduling or stability issues. Please
+            `report any issues <https://github.com/ray-project/ray/issues/new/choose>`_
+            to the Ray team.
 
         Examples:
 
@@ -534,11 +545,9 @@ class Dataset:
             fn_constructor_kwargs: Keyword arguments to pass to ``fn``'s constructor.
                 This can only be provided if ``fn`` is a callable class. These arguments
                 are top-level arguments in the underlying Ray actor construction task.
-            num_cpus: The number of CPUs to reserve for each parallel map worker. Only
-                one of `num_cpus` or `num_gpus` can be specified.
+            num_cpus: The number of CPUs to reserve for each parallel map worker.
             num_gpus: The number of GPUs to reserve for each parallel map worker. For
                 example, specify `num_gpus=1` to request 1 GPU for each parallel map worker.
-                Only one of `num_cpus` or `num_gpus` can be specified.
             concurrency: The number of Ray workers to use concurrently. For a fixed-sized
                 worker pool of size ``n``, specify ``concurrency=n``. For an autoscaling
                 worker pool from ``m`` to ``n`` workers, specify ``concurrency=(m, n)``.
@@ -976,6 +985,12 @@ class Dataset:
             transformation is vectorized like most NumPy and pandas operations,
             it might be faster.
 
+        .. warning::
+            Specifying both ``num_cpus`` and ``num_gpus`` for map tasks is experimental,
+            and may result in scheduling or stability issues. Please
+            `report any issues <https://github.com/ray-project/ray/issues/new/choose>`_
+            to the Ray team.
+
         Examples:
 
             .. testcode::
@@ -1012,11 +1027,10 @@ class Dataset:
             fn_constructor_kwargs: Keyword arguments to pass to ``fn``'s constructor.
                 This can only be provided if ``fn`` is a callable class. These arguments
                 are top-level arguments in the underlying Ray actor construction task.
-            num_cpus: The number of CPUs to reserve for each parallel map worker. Only
-                one of `num_cpus` or `num_gpus` can be specified.
+            num_cpus: The number of CPUs to reserve for each parallel map worker.
             num_gpus: The number of GPUs to reserve for each parallel map worker. For
                 example, specify `num_gpus=1` to request 1 GPU for each parallel map
-                worker. Only one of `num_cpus` or `num_gpus` can be specified.
+                worker.
             concurrency: The number of Ray workers to use concurrently. For a
                 fixed-sized worker pool of size ``n``, specify ``concurrency=n``.
                 For an autoscaling worker pool from ``m`` to ``n`` workers, specify

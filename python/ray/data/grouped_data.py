@@ -129,6 +129,12 @@ class GroupedData:
 
         In general, prefer to use aggregate() instead of map_groups().
 
+        .. warning::
+            Specifying both ``num_cpus`` and ``num_gpus`` for map tasks is experimental,
+            and may result in scheduling or stability issues. Please
+            `report any issues <https://github.com/ray-project/ray/issues/new/choose>`_
+            to the Ray team.
+
         Examples:
             >>> # Return a single record per group (list of multiple records in,
             >>> # list of a single record out).
@@ -178,11 +184,10 @@ class GroupedData:
             fn_constructor_kwargs: Keyword arguments to pass to ``fn``'s constructor.
                 This can only be provided if ``fn`` is a callable class. These arguments
                 are top-level arguments in the underlying Ray actor construction task.
-            num_cpus: The number of CPUs to reserve for each parallel map worker. Only
-                one of `num_cpus` or `num_gpus` can be specified.
+            num_cpus: The number of CPUs to reserve for each parallel map worker.
             num_gpus: The number of GPUs to reserve for each parallel map worker. For
                 example, specify `num_gpus=1` to request 1 GPU for each parallel map
-                worker. Only one of `num_cpus` or `num_gpus` can be specified.
+                worker.
             ray_remote_args: Additional resource requirements to request from
                 ray (e.g., num_gpus=1 to request GPUs for the map tasks).
 
