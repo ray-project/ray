@@ -180,6 +180,13 @@ void LogEventReporter::ReportExportEvent(const rpc::ExportEvent &export_event) {
   }
 }
 
+void LogEventReporter::ReportExportEvent(const std::string message) {
+  log_sink_->info(message);
+  if (force_flush_) {
+    Flush();
+  }
+}
+
 ///
 /// EventManager
 ///
@@ -213,6 +220,12 @@ void EventManager::PublishExportEvent(const rpc::ExportEvent &export_event) {
         << "RayEventInit wasn't called with the necessary source type "
         << ExportEvent_SourceType_Name(export_event.source_type())
         << ". This indicates a bug in the code, and the event will be dropped.";
+  }
+}
+
+void EventManager::PublishExportEvent(const std::string message) {
+  for (const auto &element : export_log_reporter_map_) {
+    (element.second)->ReportExportEvent(message);
   }
 }
 
@@ -418,6 +431,11 @@ RayExportEvent::~RayExportEvent() {}
 
 void RayExportEvent::SendEvent() {
   if (EventManager::Instance().IsEmpty()) {
+    return;
+  }
+
+  if (message_.length()){
+    EventManager::Instance().PublishExportEvent(message_);
     return;
   }
 
