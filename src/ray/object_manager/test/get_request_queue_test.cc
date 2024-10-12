@@ -100,7 +100,7 @@ struct GetRequestQueueTest : public Test {
   }
 
  protected:
-  instrumented_io_context io_context_;
+  instrumented_io_context io_context_{/*enable_lag_probe=*/false};
   boost::asio::io_service::work io_work_;
   std::thread thread_;
   LocalObject object1{Allocation()};

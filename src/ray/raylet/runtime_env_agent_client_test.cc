@@ -209,7 +209,7 @@ TEST(RuntimeEnvAgentClientTest, GetOrCreateRuntimeEnvOK) {
       port);
   http_server_thread.start();
 
-  instrumented_io_context ioc;
+  instrumented_io_context ioc(/*enable_lag_probe=*/false);
 
   auto client =
       raylet::RuntimeEnvAgentClient::Create(ioc,
@@ -263,7 +263,7 @@ TEST(RuntimeEnvAgentClientTest, GetOrCreateRuntimeEnvApplicationError) {
       port);
   http_server_thread.start();
 
-  instrumented_io_context ioc;
+  instrumented_io_context ioc(/*enable_lag_probe=*/false);
 
   auto client =
       raylet::RuntimeEnvAgentClient::Create(ioc,
@@ -319,7 +319,7 @@ TEST(RuntimeEnvAgentClientTest, GetOrCreateRuntimeEnvRetriesOnServerNotStarted) 
       "127.0.0.1",
       port);
 
-  instrumented_io_context ioc;
+  instrumented_io_context ioc(/*enable_lag_probe=*/false);
 
   auto client = raylet::RuntimeEnvAgentClient::Create(
       ioc,
@@ -374,7 +374,7 @@ TEST(RuntimeEnvAgentClientTest, DeleteRuntimeEnvIfPossibleOK) {
       port);
   http_server_thread.start();
 
-  instrumented_io_context ioc;
+  instrumented_io_context ioc(/*enable_lag_probe=*/false);
 
   auto client =
       raylet::RuntimeEnvAgentClient::Create(ioc,
@@ -418,7 +418,7 @@ TEST(RuntimeEnvAgentClientTest, DeleteRuntimeEnvIfPossibleApplicationError) {
       port);
   http_server_thread.start();
 
-  instrumented_io_context ioc;
+  instrumented_io_context ioc(/*enable_lag_probe=*/false);
 
   auto client =
       raylet::RuntimeEnvAgentClient::Create(ioc,
@@ -464,7 +464,7 @@ TEST(RuntimeEnvAgentClientTest, DeleteRuntimeEnvIfPossibleRetriesOnServerNotStar
       "127.0.0.1",
       port);
 
-  instrumented_io_context ioc;
+  instrumented_io_context ioc(/*enable_lag_probe=*/false);
 
   auto client = raylet::RuntimeEnvAgentClient::Create(
       ioc,
@@ -566,7 +566,7 @@ TEST(RuntimeEnvAgentClientTest, HoldsConcurrency) {
       port);
   http_server_thread.start();
 
-  instrumented_io_context ioc;
+  instrumented_io_context ioc(/*enable_lag_probe=*/false);
 
   auto client =
       raylet::RuntimeEnvAgentClient::Create(ioc,

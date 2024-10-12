@@ -29,7 +29,10 @@ namespace raylet {
 class ClientConnectionTest : public ::testing::Test {
  public:
   ClientConnectionTest()
-      : io_service_(), in_(io_service_), out_(io_service_), error_message_type_(1) {
+      : io_service_(/*enable_lag_probe=*/false),
+        in_(io_service_),
+        out_(io_service_),
+        error_message_type_(1) {
 #if defined(BOOST_ASIO_HAS_LOCAL_SOCKETS) && !defined(_WIN32)
     boost::asio::local::stream_protocol::socket input(io_service_), output(io_service_);
     boost::asio::local::connect_pair(input, output);
