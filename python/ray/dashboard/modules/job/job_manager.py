@@ -528,9 +528,6 @@ class JobManager:
             driver_logger = self._get_job_driver_logger(submission_id)
             driver_logger.info("Runtime env is setting up.")
             close_logger_file_descriptor(driver_logger)
-            for handler in driver_logger.handlers:
-                handler.close()
-                driver_logger.removeHandler(handler)
             supervisor = self._supervisor_actor_cls.options(
                 lifetime="detached",
                 name=JOB_ACTOR_NAME_TEMPLATE.format(job_id=submission_id),
