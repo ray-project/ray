@@ -1,6 +1,6 @@
 import os
 import sys
-from typing import Any, Iterable, List
+from typing import Iterable, List
 
 import pandas as pd
 import pyarrow as pa
@@ -14,6 +14,7 @@ import ray
 from ray.data._internal.execution.interfaces import TaskContext
 from ray.data.block import Block, BlockAccessor
 from ray.data.datasource import Datasink, DummyOutputDatasink
+from ray.data.datasource.datasink import WriteResult
 from ray.data.datasource.file_meta_provider import _handle_read_os_error
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.mock_http_server import *  # noqa
@@ -239,7 +240,6 @@ class NodeLoggerOutputDatasink(Datasink):
                 block = BlockAccessor.for_block(block)
                 self.rows_written += block.num_rows()
                 self.node_ids.add(node_id)
-                return "ok"
 
             def get_rows_written(self):
                 return self.rows_written
@@ -255,7 +255,7 @@ class NodeLoggerOutputDatasink(Datasink):
         self,
         blocks: Iterable[Block],
         ctx: TaskContext,
-    ) -> Any:
+    ) -> None:
         data_sink = self.data_sink
 
         def write(b):
@@ -266,11 +266,11 @@ class NodeLoggerOutputDatasink(Datasink):
         for b in blocks:
             tasks.append(write(b))
         ray.get(tasks)
-        return "ok"
 
-    def on_write_complete(self, write_results: List[Any]) -> None:
-        assert all(w == "ok" for w in write_results), write_results
+    def on_write_complete(self, write_result_blocks: List[Block]) -> WriteResult:
         self.num_ok += 1
+        aggregated_results = super().on_write_complete(write_result_blocks)
+        return aggregated_results
 
     def on_write_failed(self, error: Exception) -> None:
         self.num_failed += 1

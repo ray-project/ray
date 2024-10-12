@@ -27,6 +27,7 @@ from ray.data import TFXReadOptions
 from ray.rllib.algorithms.bc import BCConfig
 from ray.rllib.connectors.connector_v2 import ConnectorV2
 from ray.rllib.core.columns import Columns
+from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
 from ray.rllib.env.wrappers.atari_wrappers import wrap_atari_for_new_api_stack
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.test_utils import (
@@ -271,12 +272,12 @@ config = (
         learner_connector=_make_learner_connector,
     )
     .rl_module(
-        model_config_dict={
-            "vf_share_layers": True,
-            "conv_filters": [[16, 4, 2], [32, 4, 2], [64, 4, 2], [128, 4, 2]],
-            "conv_activation": "relu",
-            "post_fcnet_hiddens": [256],
-        }
+        model_config=DefaultModelConfig(
+            vf_share_layers=True,
+            conv_filters=[[16, 4, 2], [32, 4, 2], [64, 4, 2], [128, 4, 2]],
+            conv_activation="relu",
+            post_fcnet_hiddens=[256],
+        ),
     )
 )
 

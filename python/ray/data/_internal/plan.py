@@ -582,8 +582,8 @@ class ExecutionPlan:
         return isinstance(root_op, Read) and len(root_op.input_dependencies) == 0
 
     def has_computed_output(self) -> bool:
-        """Whether this plan has a computed snapshot for the final operator, i.e. for the
-        output of this plan.
+        """Whether this plan has a computed snapshot for the final operator, i.e. for
+        the output of this plan.
         """
         return (
             self._snapshot_bundle is not None
