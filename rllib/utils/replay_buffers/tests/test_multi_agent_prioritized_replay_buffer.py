@@ -151,7 +151,7 @@ class TestMultiAgentPrioritizedReplayBuffer(unittest.TestCase):
 
         # Sample without specifying the policy should yield approx. the same
         # number of batches from each policy
-        num_sampled_dict = {_id: 0 for _id in range(num_policies)}
+        num_sampled_dict = dict.fromkeys(range(num_policies), 0)
         num_samples = 200
         for i in range(num_samples):
             num_items = np.random.randint(1, 5)
@@ -186,7 +186,7 @@ class TestMultiAgentPrioritizedReplayBuffer(unittest.TestCase):
 
         # Fetch records, their indices and weights.
         mabatch = buffer.sample(3)
-        assert type(mabatch) == MultiAgentBatch
+        assert isinstance(mabatch, MultiAgentBatch)
         samplebatch = mabatch.policy_batches[DEFAULT_POLICY_ID]
 
         weights = samplebatch["weights"]
@@ -211,9 +211,9 @@ class TestMultiAgentPrioritizedReplayBuffer(unittest.TestCase):
         # (which still has a weight of 1.0).
         for _ in range(10):
             mabatch = buffer.sample(1000)
-            assert type(mabatch) == MultiAgentBatch
+            assert isinstance(mabatch, MultiAgentBatch)
             samplebatch = mabatch.policy_batches[DEFAULT_POLICY_ID]
-            assert type(mabatch) == MultiAgentBatch
+            assert isinstance(mabatch, MultiAgentBatch)
             indices = samplebatch["batch_indexes"]
             self.assertTrue(1900 < np.sum(indices) < 2200)
         # Test get_state/set_state.

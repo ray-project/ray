@@ -27,7 +27,7 @@ import requests
     indirect=True,
 )
 def test_cluster_crash_before_checkpoint(workflow_start_regular_shared_serve):
-    """If the cluster crashed before the event was checkpointed, after the cluster restarted
+    """If the cluster crashed before the event was checkpointed, after the cluster restarted # noqa:E501
     and the workflow resumed, the new event message is processed by the workflow.
     """
 

@@ -355,7 +355,7 @@ def _cast_large_list_to_list(batch: pyarrow.Table):
 
     for column_name in old_schema.names:
         field_type = old_schema.field(column_name).type
-        if type(field_type) == pyarrow.lib.LargeListType:
+        if isinstance(field_type, pyarrow.lib.LargeListType):
             value_type = field_type.value_type
 
             if value_type == pyarrow.large_binary():
@@ -416,7 +416,7 @@ class _MaxListSize(AggregateFn):
         )
 
     def _init(self, k: str):
-        return {col: 0 for col in self._columns}
+        return dict.fromkeys(self._columns, 0)
 
     def _merge(self, acc1: Dict[str, int], acc2: Dict[str, int]):
         merged = {}

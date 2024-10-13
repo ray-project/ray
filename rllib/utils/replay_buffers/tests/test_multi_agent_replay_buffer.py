@@ -121,7 +121,7 @@ class TestMultiAgentReplayBuffer(unittest.TestCase):
         self._add_sample_batch_to_buffer(buffer, batch_size=batch_size, num_batches=2)
 
         # Sampling from it now should yield our first batch 1/3 of the time
-        num_sampled_dict = {_id: 0 for _id in range(self.batch_id)}
+        num_sampled_dict = dict.fromkeys(range(self.batch_id), 0)
         num_samples = 200
         for i in range(num_samples):
             _id = get_batch_id(buffer.sample(1))
@@ -162,7 +162,7 @@ class TestMultiAgentReplayBuffer(unittest.TestCase):
 
         # Sampling from it now should yield each batch that went into a
         # multiagent batch 1/6th of the time
-        num_sampled_dict = {_id: 0 for _id in range(self.batch_id)}
+        num_sampled_dict = dict.fromkeys(range(self.batch_id), 0)
         num_samples = 200
         for i in range(num_samples):
             sample = buffer.sample(1)
@@ -207,7 +207,7 @@ class TestMultiAgentReplayBuffer(unittest.TestCase):
 
         # Sample without specifying the policy should yield the same number
         # of batches from each policy
-        num_sampled_dict = {_id: 0 for _id in range(num_policies)}
+        num_sampled_dict = dict.fromkeys(range(num_policies), 0)
         num_samples = 200
         for i in range(num_samples):
             num_items = np.random.randint(0, 5)

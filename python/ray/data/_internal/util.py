@@ -972,9 +972,7 @@ def call_with_retry(
         try:
             return f()
         except Exception as e:
-            is_retryable = match is None or any(
-                [pattern in str(e) for pattern in match]
-            )
+            is_retryable = match is None or any(pattern in str(e) for pattern in match)
             if is_retryable and i + 1 < max_attempts:
                 # Retry with binary expoential backoff with random jitter.
                 backoff = min((2 ** (i + 1)), max_backoff_s) * random.random()
@@ -1023,9 +1021,7 @@ def iterate_with_retry(
                 yield item
             return
         except Exception as e:
-            is_retryable = match is None or any(
-                [pattern in str(e) for pattern in match]
-            )
+            is_retryable = match is None or any(pattern in str(e) for pattern in match)
             if is_retryable and i + 1 < max_attempts:
                 # Retry with binary expoential backoff with random jitter.
                 backoff = min((2 ** (i + 1)), max_backoff_s) * random.random()

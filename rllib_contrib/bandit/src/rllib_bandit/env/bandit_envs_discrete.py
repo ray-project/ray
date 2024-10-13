@@ -56,7 +56,7 @@ class LinearDiscreteEnv(gym.Env):
 
     def __init__(self, config=None):
         self.config = copy.copy(self.DEFAULT_CONFIG_LINEAR)
-        if config is not None and type(config) == dict:
+        if config is not None and isinstance(config, dict):
             self.config.update(config)
 
         self.feature_dim = self.config["feature_dim"]
@@ -128,7 +128,7 @@ class WheelBanditEnv(gym.Env):
 
     def __init__(self, config=None):
         self.config = copy.copy(self.DEFAULT_CONFIG_WHEEL)
-        if config is not None and type(config) == dict:
+        if config is not None and isinstance(config, dict):
             self.config.update(config)
 
         self.delta = self.config["delta"]

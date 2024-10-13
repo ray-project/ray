@@ -107,8 +107,8 @@ def get_owner_info(node_ids):
     }
     # Force a global gc to clean up the object store.
     ray._private.internal_api.global_gc()
-    owner_stats = {n: 0 for n in node_ids}
-    primary_copy_stats = {n: 0 for n in node_ids}
+    owner_stats = dict.fromkeys(node_ids, 0)
+    primary_copy_stats = dict.fromkeys(node_ids, 0)
 
     for node_id in node_ids:
         node_stats = ray._private.internal_api.node_stats(

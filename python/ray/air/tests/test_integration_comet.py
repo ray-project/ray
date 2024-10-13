@@ -186,7 +186,7 @@ class ExperimentKwargsTest(unittest.TestCase):
         logger.log_trial_start(trial)
 
         # These are the default kwargs that get passed to create the experiment
-        expected_kwargs = {kwarg: False for kwarg in logger._exclude_autolog}
+        expected_kwargs = dict.fromkeys(logger._exclude_autolog, False)
         expected_kwargs.update(experiment_kwargs)
 
         experiment.assert_called_with(**expected_kwargs)

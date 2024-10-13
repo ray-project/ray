@@ -325,9 +325,9 @@ class TestReservationOpResourceAllocator:
         o3 = mock_map_op(o2, incremental_resource_usage=ExecutionResources(1, 0, 10))
         o4 = LimitOperator(1, o3)
 
-        op_usages = {op: ExecutionResources.zero() for op in [o1, o2, o3, o4]}
-        op_internal_usage = {op: 0 for op in [o1, o2, o3, o4]}
-        op_outputs_usages = {op: 0 for op in [o1, o2, o3, o4]}
+        op_usages = dict.fromkeys([o1, o2, o3, o4], ExecutionResources.zero())
+        op_internal_usage = dict.fromkeys([o1, o2, o3, o4], 0)
+        op_outputs_usages = dict.fromkeys([o1, o2, o3, o4], 0)
 
         topo, _ = build_streaming_topology(o4, ExecutionOptions())
 

@@ -300,7 +300,7 @@ class TestViewRequirementAgentConnector(unittest.TestCase):
         check(sample_batch, sample_batch_expected)
 
     def test_vr_connector_shift_by_one(self):
-        """Test that the ViewRequirementAgentConnector can handle shift by one correctly and
+        """Test that the ViewRequirementAgentConnector can handle shift by one correctly and # noqa:E501
         can ignore future referencing view_requirements to respect causality"""
         view_rq_dict = {
             "state": ViewRequirement("obs"),

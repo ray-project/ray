@@ -86,7 +86,7 @@ class AcceleratorManager(ABC):
     @staticmethod
     @abstractmethod
     def get_current_process_visible_accelerator_ids() -> Optional[List[str]]:
-        """Get the ids of accelerators of this family that are visible to the current process.
+        """Get the ids of accelerators of this family that are visible to the current process. # noqa:E501
 
         Returns:
             The list of visiable accelerator ids.
@@ -96,7 +96,7 @@ class AcceleratorManager(ABC):
     @staticmethod
     @abstractmethod
     def set_current_process_visible_accelerator_ids(ids: List[str]) -> None:
-        """Set the ids of accelerators of this family that are visible to the current process.
+        """Set the ids of accelerators of this family that are visible to the current process. # noqa:E501
 
         Args:
             ids: The ids of visible accelerators of this family.
@@ -106,7 +106,7 @@ class AcceleratorManager(ABC):
     def get_ec2_instance_num_accelerators(
         instance_type: str, instances: dict
     ) -> Optional[int]:
-        """Get the number of accelerators of this family on ec2 instance with given type.
+        """Get the number of accelerators of this family on ec2 instance with given type. # noqa:E501
 
         Args:
             instance_type: The ec2 instance type.

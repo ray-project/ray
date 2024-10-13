@@ -411,7 +411,7 @@ class TestPrioritizedReplayBuffer(unittest.TestCase):
             weight=1,
         )
 
-        num_sampled_dict = {_id: 0 for _id in range(1, 5)}
+        num_sampled_dict = dict.fromkeys(range(1, 5), 0)
         num_samples = 200
         for i in range(num_samples):
             sample = buffer.sample(1, beta=self.beta)
@@ -451,7 +451,7 @@ class TestPrioritizedReplayBuffer(unittest.TestCase):
         assert buffer._next_idx == 1
         assert buffer._eviction_started is True
 
-        num_sampled_dict = {_id: 0 for _id in range(1, 6)}
+        num_sampled_dict = dict.fromkeys(range(1, 6), 0)
         num_samples = 200
         for i in range(num_samples):
             sample = buffer.sample(1, beta=self.beta)
@@ -508,7 +508,7 @@ class TestPrioritizedReplayBuffer(unittest.TestCase):
             weight=1,
         )
 
-        num_sampled_dict = {_id: 0 for _id in range(5)}
+        num_sampled_dict = dict.fromkeys(range(5), 0)
         num_samples = 200
         for i in range(num_samples):
             sample = buffer.sample(1, beta=self.beta)
@@ -541,7 +541,7 @@ class TestPrioritizedReplayBuffer(unittest.TestCase):
             weight=1,
         )
 
-        num_sampled_dict = {_id: 0 for _id in range(7)}
+        num_sampled_dict = dict.fromkeys(range(7), 0)
         num_samples = 200
         for i in range(num_samples):
             sample = buffer.sample(1, beta=self.beta)
@@ -580,7 +580,7 @@ class TestPrioritizedReplayBuffer(unittest.TestCase):
         assert buffer._next_idx == 1
         assert buffer._eviction_started is True
 
-        num_sampled_dict = {_id: 0 for _id in range(8)}
+        num_sampled_dict = dict.fromkeys(range(8), 0)
         num_samples = 200
         for i in range(num_samples):
             sample = buffer.sample(1, beta=self.beta)

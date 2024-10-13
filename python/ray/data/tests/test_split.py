@@ -113,7 +113,7 @@ def _test_equal_split_balanced(block_sizes, num_splits):
     assert len(split_counts) == num_splits
     expected_block_size = total_rows // num_splits
     # Check that all splits are the expected size.
-    assert all([count == expected_block_size for count in split_counts])
+    assert all(count == expected_block_size for count in split_counts)
     expected_total_rows = sum(split_counts)
     # Check that the expected number of rows were dropped.
     assert total_rows - expected_total_rows == total_rows % num_splits

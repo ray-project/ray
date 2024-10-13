@@ -315,7 +315,7 @@ def _get_file_infos_common_path_prefix(
     filesystem: "pyarrow.fs.FileSystem",
     ignore_missing_paths: bool = False,
 ) -> Iterator[Tuple[str, int]]:
-    path_to_size = {path: None for path in paths}
+    path_to_size = dict.fromkeys(paths, None)
     for path, file_size in _get_file_infos(
         common_path, filesystem, ignore_missing_paths
     ):

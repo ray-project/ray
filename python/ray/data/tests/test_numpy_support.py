@@ -22,7 +22,7 @@ def do_map_batches(data):
 
 
 def assert_structure_equals(a, b):
-    assert type(a) == type(b), (type(a), type(b))
+    assert isinstance(a, b), (type(a), type(b))
     assert type(a[0]) == type(b[0]), (type(a[0]), type(b[0]))  # noqa: E721
     assert a.dtype == b.dtype
     assert a.shape == b.shape

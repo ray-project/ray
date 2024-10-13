@@ -288,7 +288,7 @@ class TestWandbLogger:
     def test_wandb_logger_auto_config_keys(self, trial):
         logger = WandbTestExperimentLogger(project="test_project", api_key="1234")
         logger.on_trial_start(iteration=0, trials=[], trial=trial)
-        result = {key: 0 for key in WandbLoggerCallback.AUTO_CONFIG_KEYS}
+        result = dict.fromkeys(WandbLoggerCallback.AUTO_CONFIG_KEYS, 0)
         logger.on_trial_result(0, [], trial, result)
         logger.on_trial_complete(0, [], trial)
         logger.on_experiment_end(trials=[trial])
@@ -314,7 +314,7 @@ class TestWandbLogger:
         logger.on_trial_start(iteration=0, trials=[], trial=trial)
 
         # We need to test that `excludes` also applies to `AUTO_CONFIG_KEYS`.
-        result = {key: 0 for key in WandbLoggerCallback.AUTO_CONFIG_KEYS}
+        result = dict.fromkeys(WandbLoggerCallback.AUTO_CONFIG_KEYS, 0)
         logger.on_trial_result(0, [], trial, result)
         logger.on_trial_complete(0, [], trial)
         logger.on_experiment_end(trials=[trial])

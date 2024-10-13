@@ -449,7 +449,7 @@ class TestUnzipPackage:
         unlink_zip,
         random_zip_file_without_top_level_dir,
     ):
-        """Test unzipping a package with multiple top level directories (not counting __MACOSX).
+        """Test unzipping a package with multiple top level directories (not counting __MACOSX). # noqa: E501
 
         Tests that we don't remove the top level directory, regardless of the
         value of remove_top_level_directory.

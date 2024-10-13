@@ -707,7 +707,7 @@ def _get_client_id_from_context(context: Any) -> str:
     Get `client_id` from gRPC metadata. If the `client_id` is not present,
     this function logs an error and sets the status_code.
     """
-    metadata = {k: v for k, v in context.invocation_metadata()}
+    metadata = dict(context.invocation_metadata())
     client_id = metadata.get("client_id") or ""
     if client_id == "":
         logger.error("Client connecting with no client_id")

@@ -117,7 +117,7 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
 
     @override(ReplayBufferInterface)
     def add(self, episodes: Union[List["SingleAgentEpisode"], "SingleAgentEpisode"]):
-        """Converts the incoming SampleBatch into a number of SingleAgentEpisode objects.
+        """Converts the incoming SampleBatch into a number of SingleAgentEpisode objects. # noqa:E501
 
         Then adds these episodes to the internal deque.
         """

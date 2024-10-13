@@ -334,9 +334,11 @@ class TFPolicy(Policy):
         self.global_timestep += (
             len(obs_batch)
             if isinstance(obs_batch, list)
-            else len(input_dict)
-            if isinstance(input_dict, SampleBatch)
-            else obs_batch.shape[0]
+            else (
+                len(input_dict)
+                if isinstance(input_dict, SampleBatch)
+                else obs_batch.shape[0]
+            )
         )
 
         return fetched
@@ -423,7 +425,7 @@ class TFPolicy(Policy):
                     self._state_inputs, state_batches
                 )
             )
-        builder.add_feed_dict({k: v for k, v in zip(self._state_inputs, state_batches)})
+        builder.add_feed_dict(dict(zip(self._state_inputs, state_batches)))
         if state_batches:
             builder.add_feed_dict({self._seq_lens: np.ones(len(obs_batch))})
         # Prev-a and r.
@@ -765,9 +767,11 @@ class TFPolicy(Policy):
                 )
             with tf1.control_dependencies(self._update_ops):
                 self._apply_op = self.build_apply_op(
-                    optimizer=self._optimizers
-                    if self.config["_tf_policy_handles_more_than_one_loss"]
-                    else self._optimizer,
+                    optimizer=(
+                        self._optimizers
+                        if self.config["_tf_policy_handles_more_than_one_loss"]
+                        else self._optimizer
+                    ),
                     grads_and_vars=self._grads_and_vars,
                 )
 

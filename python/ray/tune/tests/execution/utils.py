@@ -87,7 +87,7 @@ class NoopActorManager(RayActorManager):
         pass
 
     def set_num_pending(self, num_pending: int):
-        self._pending_actors_to_attrs = {i: None for i in range(num_pending)}
+        self._pending_actors_to_attrs = dict.fromkeys(range(num_pending), None)
 
 
 class _FakeResourceUpdater(_ResourceUpdater):

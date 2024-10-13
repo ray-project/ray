@@ -688,7 +688,7 @@ def _check_ami(config):
     """Provide helpful message for missing ImageId for node configuration."""
 
     # map from node type key -> source of ImageId field
-    ami_src_info = {key: "config" for key in config["available_node_types"]}
+    ami_src_info = dict.fromkeys(config["available_node_types"], "config")
     _set_config_info(ami_src=ami_src_info)
 
     region = config["provider"]["region"]

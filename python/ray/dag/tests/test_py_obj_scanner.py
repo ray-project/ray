@@ -15,7 +15,7 @@ def test_simple_replace():
     found = scanner.find_nodes(my_objs)
     assert len(found) == 3
 
-    replaced = scanner.replace_nodes({obj: 1 for obj in found})
+    replaced = scanner.replace_nodes(dict.fromkeys(found, 1))
     assert replaced == [1, [1, {"key": 1}]]
 
 
@@ -51,7 +51,7 @@ def test_replace_nested_in_obj():
     found = scanner.find_nodes(my_objs)
     assert len(found) == 3
 
-    replaced = scanner.replace_nodes({obj: 1 for obj in found})
+    replaced = scanner.replace_nodes(dict.fromkeys(found, 1))
     assert replaced == [Outer(1), Outer(Outer(1)), Outer((1,))]
 
 
@@ -73,7 +73,7 @@ def test_scanner_clear():
         scanner = _PyObjScanner(source_type=Source)
         my_objs = [Source(), [Source(), {"key": Source()}]]
         found = scanner.find_nodes(my_objs)
-        scanner.replace_nodes({obj: 1 for obj in found})
+        scanner.replace_nodes(dict.fromkeys(found, 1))
         scanner.clear()
         assert id(scanner) not in _instances
 

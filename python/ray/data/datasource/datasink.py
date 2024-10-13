@@ -136,7 +136,7 @@ class Datasink:
 
     @property
     def num_rows_per_write(self) -> Optional[int]:
-        """The target number of rows to pass to each :meth:`~ray.data.Datasink.write` call.
+        """The target number of rows to pass to each :meth:`~ray.data.Datasink.write` call. # noqa: E501
 
         If ``None``, Ray Data passes a system-chosen number of rows.
         """

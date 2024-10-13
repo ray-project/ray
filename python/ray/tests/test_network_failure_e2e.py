@@ -64,7 +64,7 @@ def test_network_task_submit(head, worker, gcs_network):
             print("tasks_json:", json.dumps(tasks_json, indent=2))
             if n is not None and n != len(tasks_json):
                 return False
-            return all([task["state"] == "RUNNING" for task in tasks_json])
+            return all(task["state"] == "RUNNING" for task in tasks_json)
         return False
 
     # list_task make sure all tasks are running
@@ -102,7 +102,7 @@ def test_network_task_submit(head, worker, gcs_network):
         if output.exit_code == 0:
             tasks_json = json.loads(output.output)
             print("tasks_json:", json.dumps(tasks_json, indent=2))
-            return all([task["state"] != "RUNNING" for task in tasks_json])
+            return all(task["state"] != "RUNNING" for task in tasks_json)
         return False
 
     # we set num_cpus=0 for head node.

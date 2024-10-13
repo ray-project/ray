@@ -134,7 +134,7 @@ class StreamingExecutor(Executor, threading.Thread):
             self._execution_id,
         )
 
-        self._has_op_completed = {op: False for op in self._topology}
+        self._has_op_completed = dict.fromkeys(self._topology, False)
 
         self._output_node: OpState = self._topology[dag]
         StatsManager.register_dataset_to_stats_actor(

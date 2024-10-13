@@ -237,7 +237,7 @@ class TestActorManager(unittest.TestCase):
             wait_for_restore()
 
         # Some calls did error out.
-        self.assertTrue(any([not r.ok for r in results]))
+        self.assertTrue(any(not r.ok for r in results))
 
         manager.clear()
 
@@ -248,7 +248,7 @@ class TestActorManager(unittest.TestCase):
 
         results = manager.foreach_actor(lambda w: w.call())
         # Some calls did error out.
-        self.assertTrue(any([not r.ok for r in results]))
+        self.assertTrue(any(not r.ok for r in results))
 
         # Wait for actors to recover.
         wait_for_restore()

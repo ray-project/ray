@@ -815,7 +815,7 @@ def test_redis_failureover(redis_replicas, ray_start_cluster_head_with_external_
 
     # Wait until all data is updated in the replica
     leader_cli.set("_hole", "0")
-    wait_for_condition(lambda: all([b"_hole" in f.keys("*") for f in follower_cli]))
+    wait_for_condition(lambda: all(b"_hole" in f.keys("*") for f in follower_cli))
 
     # Now kill pid
     leader_process = psutil.Process(pid=leader_pid)

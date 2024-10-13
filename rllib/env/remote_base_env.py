@@ -250,7 +250,7 @@ class RemoteBaseEnv(BaseEnv):
                 # observations and infos: Set rewards, terminateds, and truncateds to
                 # dummy values.
                 if rew is None:
-                    rew = {agent_id: 0 for agent_id in ob.keys()}
+                    rew = dict.fromkeys(ob.keys(), 0)
                     terminated = {"__all__": False}
                     truncated = {"__all__": False}
 
@@ -328,7 +328,7 @@ class RemoteBaseEnv(BaseEnv):
     @override(BaseEnv)
     def get_sub_environments(self, as_dict: bool = False) -> List[EnvType]:
         if as_dict:
-            return {env_id: actor for env_id, actor in enumerate(self.actors)}
+            return dict(enumerate(self.actors))
         return self.actors
 
     @property

@@ -282,7 +282,7 @@ class InstanceUtilTest(unittest.TestCase):
                     reachable[dst] if reachable[dst] is not None else set()
                 )
 
-        expected_reachable = {s: None for s in Instance.InstanceStatus.values()}
+        expected_reachable = dict.fromkeys(Instance.InstanceStatus.values(), None)
 
         # Error status and terminal status.
         expected_reachable[Instance.ALLOCATION_FAILED] = set()

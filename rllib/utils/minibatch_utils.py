@@ -76,9 +76,9 @@ class MiniBatchCyclicIterator(MiniBatchIteratorBase):
         self._shuffle_batch_per_epoch = shuffle_batch_per_epoch
 
         # mapping from module_id to the start index of the batch
-        self._start = {mid: 0 for mid in batch.policy_batches.keys()}
+        self._start = dict.fromkeys(batch.policy_batches.keys(), 0)
         # mapping from module_id to the number of epochs covered for each module_id
-        self._num_covered_epochs = {mid: 0 for mid in batch.policy_batches.keys()}
+        self._num_covered_epochs = dict.fromkeys(batch.policy_batches.keys(), 0)
 
         self._uses_new_env_runners = _uses_new_env_runners
 

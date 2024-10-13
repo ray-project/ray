@@ -76,7 +76,7 @@ class ProgressTracker:
         gauges: List[str],
         histograms: List[Tuple[str, List[int]]],
     ):
-        self.counts = {m: 0 for m in gauges}
+        self.counts = dict.fromkeys(gauges, 0)
         self.gauges = {m: Gauge(m) for m in gauges}
         self.reset_gauges()
         self.histograms = {m: Histogram(m, boundaries=b) for m, b in histograms}

@@ -183,7 +183,7 @@ class Unity3DEnv(MultiAgentEnv):
                 obs,
                 rewards,
                 terminateds,
-                dict({"__all__": True}, **{agent_id: True for agent_id in all_agents}),
+                {"__all__": True, **dict.fromkeys(all_agents, True)},
                 infos,
             )
 

@@ -1220,7 +1220,11 @@ class RayContext(BaseContext, Mapping):
 
     def __len__(self):
         if log_once("ray_context_len"):
-            warnings.warn("len(ctx) is deprecated. Use len(ctx.address_info) instead.")
+            warnings.warn(
+                "len(ctx) is deprecated. Use len(ctx.address_info) instead.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
         return len(self.address_info)
 
     def __iter__(self):
@@ -2762,9 +2766,9 @@ def get(
                 port=None,
                 patch_stdstreams=False,
                 quiet=None,
-                breakpoint_uuid=debugger_breakpoint.decode()
-                if debugger_breakpoint
-                else None,
+                breakpoint_uuid=(
+                    debugger_breakpoint.decode() if debugger_breakpoint else None
+                ),
                 debugger_external=worker.ray_debugger_external,
             )
             rdb.set_trace(frame=frame)

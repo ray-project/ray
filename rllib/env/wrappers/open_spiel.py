@@ -62,7 +62,7 @@ class OpenSpielEnv(MultiAgentEnv):
                 penalties[curr_player] = -0.1
 
             # Compile rewards dict.
-            rewards = {ag: r for ag, r in enumerate(self.state.returns())}
+            rewards = dict(enumerate(self.state.returns()))
         # Simultaneous game.
         else:
             assert self.state.current_player() == -2
@@ -74,19 +74,18 @@ class OpenSpielEnv(MultiAgentEnv):
 
         # Compile rewards dict and add the accumulated penalties
         # (for taking invalid actions).
-        rewards = {ag: r for ag, r in enumerate(self.state.returns())}
+        rewards = dict(enumerate(self.state.returns()))
         for ag, penalty in penalties.items():
             rewards[ag] += penalty
 
         # Are we done?
         is_terminated = self.state.is_terminal()
-        terminateds = dict(
-            {ag: is_terminated for ag in range(self.num_agents)},
-            **{"__all__": is_terminated}
-        )
-        truncateds = dict(
-            {ag: False for ag in range(self.num_agents)}, **{"__all__": False}
-        )
+        terminateds = {
+            **dict.fromkeys(range(self.num_agents), is_terminated),
+            "__all__": is_terminated,
+        }
+
+        truncateds = {**dict.fromkeys(range(self.num_agents), False), "__all__": False}
 
         return obs, rewards, terminateds, truncateds, {}
 

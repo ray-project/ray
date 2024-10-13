@@ -61,7 +61,7 @@ class MultiAgentEnvCompatibility(MultiAgentEnv):
         obs, rewards, terminateds, infos = self.env.step(action)
 
         # Truncated should always be False by default.
-        truncateds = {k: False for k in terminateds.keys()}
+        truncateds = dict.fromkeys(terminateds.keys(), False)
 
         return obs, rewards, terminateds, truncateds, infos
 

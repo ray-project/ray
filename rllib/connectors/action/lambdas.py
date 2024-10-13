@@ -19,7 +19,7 @@ from ray.rllib.utils.annotations import OldAPIStack
 def register_lambda_action_connector(
     name: str, fn: Callable[[TensorStructType, StateBatches, Dict], PolicyOutputType]
 ) -> Type[ActionConnector]:
-    """A util to register any function transforming PolicyOutputType as an ActionConnector.
+    """A util to register any function transforming PolicyOutputType as an ActionConnector. # noqa:E501
 
     The only requirement is that fn should take actions, states, and fetches as input,
     and return transformed actions, states, and fetches.

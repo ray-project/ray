@@ -158,7 +158,7 @@ class SimpleListCollector(SampleCollector):
 
         # Agents to collect data from for the next forward pass (per policy).
         self.forward_pass_agent_keys = {pid: [] for pid in self.policy_map.keys()}
-        self.forward_pass_size = {pid: 0 for pid in self.policy_map.keys()}
+        self.forward_pass_size = dict.fromkeys(self.policy_map.keys(), 0)
 
         # Maps episode ID to the (non-built) env steps taken in this episode.
         self.episode_steps: Dict[EpisodeID, int] = collections.defaultdict(int)
@@ -411,9 +411,11 @@ class SimpleListCollector(SampleCollector):
 
         return SampleBatch(
             input_dict,
-            seq_lens=np.ones(batch_size, dtype=np.int32)
-            if "state_in_0" in input_dict
-            else None,
+            seq_lens=(
+                np.ones(batch_size, dtype=np.int32)
+                if "state_in_0" in input_dict
+                else None
+            ),
         )
 
     @override(SampleCollector)
