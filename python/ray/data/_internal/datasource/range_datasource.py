@@ -112,7 +112,7 @@ class RangeDatasource(Datasource):
 
         return read_tasks
 
-    @functools.cache
+    @functools.cache  # noqa: B019 - Ignore to prevent GC issues
     def _schema(self):
         if self._n == 0:
             return None

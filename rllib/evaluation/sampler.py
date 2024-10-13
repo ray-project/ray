@@ -55,7 +55,7 @@ from ray.rllib.utils.typing import (
 from ray.util.debug import log_once
 
 if TYPE_CHECKING:
-    from gymnasium.envs.classic_control.rendering import SimpleImageViewer
+    from gymnasium.envs.classic_control.rendering import SimpleImageViewer  # noqa: F401
     from ray.rllib.algorithms.callbacks import DefaultCallbacks
     from ray.rllib.evaluation.observation_function import ObservationFunction
     from ray.rllib.evaluation.rollout_worker import RolloutWorker
@@ -450,7 +450,7 @@ def _env_runner(
                 # ImageViewer not defined yet, try to create one.
                 if simple_image_viewer is None:
                     try:
-                        from gymnasium.envs.classic_control.rendering import (
+                        from gymnasium.envs.classic_control.rendering import (  # noqa: F811,E501 - to avoid brekaing change
                             SimpleImageViewer,
                         )
 

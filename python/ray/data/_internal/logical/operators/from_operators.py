@@ -40,7 +40,7 @@ class AbstractFrom(LogicalOperator, metaclass=abc.ABCMeta):
     def output_data(self) -> Optional[List[RefBundle]]:
         return self._input_data
 
-    @functools.cache
+    @functools.cache  # noqa: B019 - Ignore to prevent GC issues
     def aggregate_output_metadata(self) -> BlockMetadata:
         return BlockMetadata(
             num_rows=self._num_rows(),

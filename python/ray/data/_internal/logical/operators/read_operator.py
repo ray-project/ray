@@ -46,7 +46,7 @@ class Read(AbstractMap):
         """
         return self._detected_parallelism
 
-    @functools.cache
+    @functools.cache  # noqa: B019 - Ignore to prevent GC issues
     def aggregate_output_metadata(self) -> BlockMetadata:
         """A ``BlockMetadata`` that represents the aggregate metadata of the outputs.
 

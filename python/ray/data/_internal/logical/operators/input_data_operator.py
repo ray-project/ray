@@ -33,7 +33,7 @@ class InputData(LogicalOperator):
             return None
         return self.input_data
 
-    @functools.cache
+    @functools.cache  # noqa: B019 - Ignore to prevent GC issues
     def aggregate_output_metadata(self) -> BlockMetadata:
         if self.input_data is None:
             return BlockMetadata(None, None, None, None, None)

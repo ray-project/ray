@@ -10,7 +10,7 @@ from ray.experimental.channel.gpu_communicator import (
 )
 
 if TYPE_CHECKING:
-    import cupy as cp
+    import cupy as cp  # noqa: F401
     import torch
 
 
@@ -92,8 +92,7 @@ class _NcclGroup(GPUCommunicator):
         self._cuda_stream: Optional["cp.cuda.ExternalStream"] = None
         if cuda_stream is not None:
             assert rank is not None, "NCCL actor has no rank assigned"
-
-            import cupy as cp
+            import cupy as cp  # noqa: F811
 
             from ray.air._internal import torch_utils
 
