@@ -190,3 +190,19 @@ class TorchTensorType(ChannelOutputType):
     @property
     def nccl_group_id(self) -> Optional[str]:
         return self._nccl_group_id
+
+    def __deepcopy__(self, memo):
+        """
+        Deep copy all the fields except for the custom NCCL group. The custom
+        NCCL group should not be deep copied because it can be shared across
+        `TorchTensorType` instances.
+        """
+        copy = TorchTensorType(
+            _shape=self._shape,
+            _dtype=self._dtype,
+            transport=self.transport,
+            _direct_return=self._direct_return,
+        )
+        copy._custom_nccl_group = self._custom_nccl_group
+        copy._nccl_group_id = self._nccl_group_id
+        return copy

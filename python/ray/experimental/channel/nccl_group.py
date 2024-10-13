@@ -208,17 +208,18 @@ class _NcclGroup(GPUCommunicator):
 
     def allreduce(
         self,
-        buf: "torch.Tensor",
+        send_buf: "torch.Tensor",
+        recv_buf: "torch.Tensor",
         op: ReduceOp = ReduceOp.SUM,
     ):
         if self._closed:
             raise RayChannelError("NCCL group has been destroyed.")
 
         self._comm.allReduce(
-            self.nccl_util.get_tensor_ptr(buf),
-            self.nccl_util.get_tensor_ptr(buf),
-            buf.numel(),
-            self.nccl_util.get_nccl_tensor_dtype(buf),
+            self.nccl_util.get_tensor_ptr(send_buf),
+            self.nccl_util.get_tensor_ptr(recv_buf),
+            send_buf.numel(),
+            self.nccl_util.get_nccl_tensor_dtype(send_buf),
             op.value,
             self._cuda_stream.ptr,
         )

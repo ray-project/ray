@@ -108,15 +108,17 @@ class GPUCommunicator(ABC):
     @abstractmethod
     def allreduce(
         self,
-        buf: "torch.Tensor",
+        send_buf: "torch.Tensor",
+        recv_buf: "torch.Tensor",
         op: ReduceOp,
     ) -> None:
         """
         Collectively allreduce the tensor across the group.
 
         Args:
-            tensor: The torch.tensor to allreduce. It should already be on this
-                actor's default device.
+            send_buf: The input torch.tensor to allreduce. It should already be
+                on this actor's default device.
+            recv_buf: The output torch.tensor to store the allreduce result.
             op: The reduce operation.
         """
         raise NotImplementedError

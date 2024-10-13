@@ -61,6 +61,19 @@ class TestSelectNextNodes:
     local_idx: The DAG node's index in the actor's `executable_tasks` list.
     """
 
+    def add_collective_group(
+        self,
+        mock_graph: Dict[int, Dict[_DAGNodeOperationType, _DAGOperationGraphNode]],
+        dag_idxs: List[int],
+    ) -> None:
+        collective_group = {
+            (dag_idx, _DAGNodeOperationType.COMPUTE) for dag_idx in dag_idxs
+        }
+        for dag_idx in dag_idxs:
+            mock_graph[dag_idx][
+                _DAGNodeOperationType.COMPUTE
+            ].set_collective_group_idxs(collective_group)
+
     def test_two_candidates_on_same_actor(self, monkeypatch):
         """
         Simulate the case where there are two candidates on the same actor.
@@ -288,28 +301,16 @@ class TestSelectNextNodes:
             ],
         }
         # Embed collective group information in _DAGNodeOperation.
-        collective_group_1 = {
-            (dag_idx_1, _DAGNodeOperationType.COMPUTE),
-            (dag_idx_2, _DAGNodeOperationType.COMPUTE),
-        }
-        mock_graph[dag_idx_1][
-            _DAGNodeOperationType.COMPUTE
-        ].collective_group = collective_group_1
-        mock_graph[dag_idx_2][
-            _DAGNodeOperationType.COMPUTE
-        ].collective_group = collective_group_1
-        collective_group_2 = {
-            (dag_idx_3, _DAGNodeOperationType.COMPUTE),
-        }
-        mock_graph[dag_idx_3][
-            _DAGNodeOperationType.COMPUTE
-        ].collective_group = collective_group_2
+        self.add_collective_group(mock_graph, [dag_idx_1, dag_idx_2])
+        self.add_collective_group(mock_graph, [dag_idx_3])
         next_nodes = _select_next_nodes(mock_actor_to_candidates, mock_graph)
         assert len(next_nodes) == 2
         assert set(next_nodes) == {
             mock_graph[dag_idx_1][_DAGNodeOperationType.COMPUTE],
             mock_graph[dag_idx_2][_DAGNodeOperationType.COMPUTE],
         }
+        next_nodes = _select_next_nodes(mock_actor_to_candidates, mock_graph)
+        assert next_nodes == [mock_graph[dag_idx_3][_DAGNodeOperationType.COMPUTE]]
 
     def test_nccl_collectives_one_ready_group(self, monkeypatch):
         """
@@ -379,22 +380,8 @@ class TestSelectNextNodes:
             fake_actor_2: [mock_graph[dag_idx_2][_DAGNodeOperationType.COMPUTE]],
         }
         # Embed collective group information in _DAGNodeOperation.
-        collective_group_1 = {
-            (dag_idx_1, _DAGNodeOperationType.COMPUTE),
-        }
-        mock_graph[dag_idx_1][
-            _DAGNodeOperationType.COMPUTE
-        ].collective_group = collective_group_1
-        collective_group_2 = {
-            (dag_idx_2, _DAGNodeOperationType.COMPUTE),
-            (dag_idx_3, _DAGNodeOperationType.COMPUTE),
-        }
-        mock_graph[dag_idx_2][
-            _DAGNodeOperationType.COMPUTE
-        ].collective_group = collective_group_2
-        mock_graph[dag_idx_3][
-            _DAGNodeOperationType.COMPUTE
-        ].collective_group = collective_group_2
+        self.add_collective_group(mock_graph, [dag_idx_1])
+        self.add_collective_group(mock_graph, [dag_idx_2, dag_idx_3])
         next_nodes = _select_next_nodes(mock_actor_to_candidates, mock_graph)
         assert len(next_nodes) == 1
         assert next_nodes[0] == mock_graph[dag_idx_1][_DAGNodeOperationType.COMPUTE]

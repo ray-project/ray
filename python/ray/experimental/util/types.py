@@ -1,13 +1,13 @@
 from enum import Enum
 
-from ray.util.annotations import DeveloperAPI
+from ray.util.annotations import PublicAPI
 
 
 class _CollectiveOp(Enum):
     pass
 
 
-@DeveloperAPI
+@PublicAPI
 class ReduceOp(_CollectiveOp):
     SUM = 0
     PRODUCT = 1
