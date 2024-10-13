@@ -1608,7 +1608,7 @@ class CompiledDAG:
                 bound in. Therefore task.{bind_index+1} happens after
                 task.{bind_index}.
 
-        #2: Add an edge from the writer to the reader
+        #2: Add an edge from the writer to the reader.
 
         Reason: Channels represent data dependencies. In order to read
                 data, the writer must have written the data first.

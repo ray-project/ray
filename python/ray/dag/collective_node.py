@@ -1,4 +1,3 @@
-from weakref import ReferenceType
 from typing import Any, Dict, List, Union, Tuple, Optional, TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -7,14 +6,9 @@ if TYPE_CHECKING:
 import ray
 from ray.dag import (
     DAGNode,
-    ClassNode,
+    ClassMethodNode,
 )
-from ray.dag.constants import (
-    PARENT_CLASS_NODE_KEY,
-    BIND_INDEX_KEY,
-    COLLECTIVE_GROUP_KEY,
-)
-from ray.dag.format_utils import get_dag_node_str
+from ray.dag.constants import COLLECTIVE_GROUP_KEY
 from ray.util.annotations import DeveloperAPI
 from ray.experimental.channel import ChannelContext
 from ray.experimental.channel.torch_tensor_nccl_channel import _init_nccl_group
@@ -132,7 +126,7 @@ class _CollectiveGroup:
 
 
 @DeveloperAPI
-class CollectiveOutputNode(DAGNode):
+class CollectiveOutputNode(ClassMethodNode):
     """Represent an output node from a NCCL collective operation in a Ray DAG."""
 
     def __init__(
@@ -145,18 +139,19 @@ class CollectiveOutputNode(DAGNode):
         method_options: Dict[str, Any],
         other_args_to_resolve: Dict[str, Any],
     ):
-        self._bound_args = method_args or []
-        self._bound_kwargs = method_kwargs or {}
-        self._bound_options = method_options or {}
-        self._method_name: str = method_name
-        # Parse other_args_to_resolve and assign to variables
-        self._parent_class_node: Union[
-            ClassNode, ReferenceType["ray._private.actor.ActorHandle"]
-        ] = other_args_to_resolve.get(PARENT_CLASS_NODE_KEY)
-        # The index/order when bind() is called on this class method
-        self._bind_index: Optional[int] = other_args_to_resolve.get(
-            BIND_INDEX_KEY, None
-        )
+        # [TODO] Remove.
+        # self._bound_args = method_args or []
+        # self._bound_kwargs = method_kwargs or {}
+        # self._bound_options = method_options or {}
+        # self._method_name: str = method_name
+        # # Parse other_args_to_resolve and assign to variables
+        # self._parent_class_node: Union[
+        #     ClassNode, ReferenceType["ray._private.actor.ActorHandle"]
+        # ] = other_args_to_resolve.get(PARENT_CLASS_NODE_KEY)
+        # # The index/order when bind() is called on this class method
+        # self._bind_index: Optional[int] = other_args_to_resolve.get(
+        #     BIND_INDEX_KEY, None
+        # )
 
         # Parse the input node.
         if not (
@@ -177,10 +172,11 @@ class CollectiveOutputNode(DAGNode):
         # and the ordering dependency as the second, which ensures they are
         # executed prior to this node.
         super().__init__(
+            method_name,
             method_args,
             method_kwargs,
             method_options,
-            other_args_to_resolve=other_args_to_resolve,
+            other_args_to_resolve,
         )
 
     def _copy_impl(
@@ -203,23 +199,24 @@ class CollectiveOutputNode(DAGNode):
             "CollectiveOutputNode is only supported with dag.experimental_compile()"
         )
 
-    def __str__(self) -> str:
-        return get_dag_node_str(self, f"{self._method_name}()")
+    # [TODO] Remove.
+    # def __str__(self) -> str:
+    #     return get_dag_node_str(self, f"{self._method_name}()")
 
-    def get_method_name(self) -> str:
-        return self._method_name
+    # def get_method_name(self) -> str:
+    #     return self._method_name
 
-    def _get_bind_index(self) -> int:
-        return self._bind_index
+    # def _get_bind_index(self) -> int:
+    #     return self._bind_index
 
-    def _get_remote_method(self, method_name):
-        method_body = getattr(self._parent_class_node, method_name)
-        return method_body
+    # def _get_remote_method(self, method_name):
+    #     method_body = getattr(self._parent_class_node, method_name)
+    #     return method_body
 
-    def _get_actor_handle(self) -> Optional["ray.actor.ActorHandle"]:
-        if not isinstance(self._parent_class_node, ray.actor.ActorHandle):
-            return None
-        return self._parent_class_node
+    # def _get_actor_handle(self) -> Optional["ray.actor.ActorHandle"]:
+    #     if not isinstance(self._parent_class_node, ray.actor.ActorHandle):
+    #         return None
+    #     return self._parent_class_node
 
     @property
     def collective_group(self) -> _CollectiveGroup:
