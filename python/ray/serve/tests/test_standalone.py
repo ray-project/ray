@@ -2,6 +2,7 @@
 The test file for all standalone tests that doesn't
 requires a shared Serve instance.
 """
+
 import logging
 import os
 import socket
@@ -536,7 +537,7 @@ def test_http_head_only(ray_cluster):
     cpu_per_nodes = {
         r["CPU"] for r in ray._private.state.available_resources_per_node().values()
     }
-    assert cpu_per_nodes == {4, 4}
+    assert cpu_per_nodes == {4}
 
 
 def test_serve_shutdown(ray_shutdown):

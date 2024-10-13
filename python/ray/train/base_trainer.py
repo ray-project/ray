@@ -361,7 +361,8 @@ class BaseTrainer(abc.ABC):
                 f"Invalid trainer type. You are attempting to restore a trainer of type"
                 f" {trainer_cls} with `{cls.__name__}.restore`, "
                 "which will most likely fail. "
-                f"Use `{trainer_cls.__name__}.restore` instead."
+                f"Use `{trainer_cls.__name__}.restore` instead.",
+                stacklevel=2,
             )
 
         original_datasets = param_dict.pop("datasets", {})
@@ -514,6 +515,7 @@ class BaseTrainer(abc.ABC):
         )
         return scaling_config
 
+    @abc.abstractmethod
     def setup(self) -> None:
         """Called during fit() to perform initial setup on the Trainer.
 

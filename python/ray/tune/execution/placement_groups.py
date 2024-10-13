@@ -96,6 +96,7 @@ class PlacementGroupFactory(ResourceRequest):
             "Calling PlacementGroupFactory objects is deprecated. Use "
             "`to_placement_group()` instead.",
             DeprecationWarning,
+            stacklevel=2,
         )
         kwargs.update(self._bound.kwargs)
         # Call with bounded *args and **kwargs

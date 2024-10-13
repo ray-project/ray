@@ -35,7 +35,6 @@ def generate_repartition_fn(
         # MapOperator->AllToAllOperator), we pass a map function which
         # is applied to each block before shuffling.
         map_transformer: Optional["MapTransformer"] = ctx.upstream_map_transformer
-        upstream_map_fn = None
         if map_transformer:
             # NOTE(swang): We override the target block size with infinity, to
             # prevent the upstream map from slicing its output into smaller
@@ -48,6 +47,9 @@ def generate_repartition_fn(
 
             def upstream_map_fn(blocks):
                 return map_transformer.apply_transform(blocks, ctx)
+
+        else:
+            upstream_map_fn = None
 
         shuffle_spec = ShuffleTaskSpec(
             ctx.target_max_block_size,

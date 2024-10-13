@@ -62,6 +62,7 @@ class ResourceManager(abc.ABC):
 
     """
 
+    @abc.abstractmethod
     def request_resources(self, resource_request: ResourceRequest):
         """Request resources.
 
@@ -75,6 +76,7 @@ class ResourceManager(abc.ABC):
         """
         raise NotImplementedError
 
+    @abc.abstractmethod
     def cancel_resource_request(self, resource_request: ResourceRequest):
         """Cancel resource request.
 
@@ -84,10 +86,12 @@ class ResourceManager(abc.ABC):
         """
         raise NotImplementedError
 
+    @abc.abstractmethod
     def has_resources_ready(self, resource_request: ResourceRequest) -> bool:
         """Returns True if resources for the given request are ready to be acquired."""
         raise NotImplementedError
 
+    @abc.abstractmethod
     def acquire_resources(
         self, resource_request: ResourceRequest
     ) -> Optional[AcquiredResources]:
@@ -98,6 +102,7 @@ class ResourceManager(abc.ABC):
         """
         raise NotImplementedError
 
+    @abc.abstractmethod
     def free_resources(self, acquired_resource: AcquiredResources):
         """Free acquired resources from usage and return them to the resource manager.
 
@@ -108,6 +113,7 @@ class ResourceManager(abc.ABC):
         """
         raise NotImplementedError
 
+    @abc.abstractmethod
     def get_resource_futures(self) -> List[ray.ObjectRef]:
         """Return futures for resources to await.
 
@@ -120,6 +126,7 @@ class ResourceManager(abc.ABC):
         """
         return []
 
+    @abc.abstractmethod
     def update_state(self):
         """Update internal state of the resource manager.
 
@@ -132,6 +139,7 @@ class ResourceManager(abc.ABC):
         """
         pass
 
+    @abc.abstractmethod
     def clear(self):
         """Reset internal state and clear all resources.
 

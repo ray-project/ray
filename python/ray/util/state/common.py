@@ -2,7 +2,6 @@ import datetime
 import json
 import logging
 import sys
-from abc import ABC
 from dataclasses import asdict, field, fields
 from enum import Enum, unique
 from typing import Any, Dict, List, Optional, Set, Tuple, Union
@@ -216,7 +215,7 @@ def state_column(*, filterable: bool, detail: bool = False, format_fn=None, **kw
     return field(**kwargs)
 
 
-class StateSchema(ABC):
+class StateSchema:
     """Schema class for Ray resource abstraction.
 
     The child class must be dataclass. All child classes

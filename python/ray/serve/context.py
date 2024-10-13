@@ -179,7 +179,8 @@ class _RequestContext:
 
 
 _serve_request_context = contextvars.ContextVar(
-    "Serve internal request context variable", default=_RequestContext()
+    "Serve internal request context variable",
+    default=_RequestContext(),  # noqa: B039
 )
 
 

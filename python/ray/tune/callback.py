@@ -380,6 +380,7 @@ class CallbackList(Callback):
                         f"`{callback.__class__}` to match the method signature"
                         " in `ray.tune.callback.Callback`.",
                         FutureWarning,
+                        stacklevel=2,
                     )
                     callback.setup()
                 else:

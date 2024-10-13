@@ -272,7 +272,8 @@ class HTTPOptions(BaseModel):
                 "Passing `middlewares` to HTTPOptions is deprecated and will be "
                 "removed in a future version. Consider using the FastAPI integration "
                 "to configure middlewares on your deployments: "
-                "https://docs.ray.io/en/latest/serve/http-guide.html#fastapi-http-deployments"  # noqa 501
+                "https://docs.ray.io/en/latest/serve/http-guide.html#fastapi-http-deployments",  # noqa 501
+                stacklevel=2,
             )
         return v
 
@@ -281,7 +282,8 @@ class HTTPOptions(BaseModel):
         if v:
             warnings.warn(
                 "Passing `num_cpus` to HTTPOptions is deprecated and will be "
-                "removed in a future version."
+                "removed in a future version.",
+                stacklevel=2,
             )
         return v
 

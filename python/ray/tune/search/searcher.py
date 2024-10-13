@@ -276,7 +276,8 @@ class Searcher:
         if not any_trial_had_metric:
             warnings.warn(
                 "No completed trial returned the specified metric. "
-                "Make sure the name you have passed is correct. "
+                "Make sure the name you have passed is correct. ",
+                stacklevel=2,
             )
 
     def save(self, checkpoint_path: str):

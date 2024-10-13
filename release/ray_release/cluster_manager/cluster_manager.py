@@ -114,12 +114,15 @@ class ClusterManager(abc.ABC):
         )
         return cluster_compute
 
+    @abc.abstractmethod
     def build_configs(self, timeout: float = 30.0):
         raise NotImplementedError
 
+    @abc.abstractmethod
     def delete_configs(self):
         raise NotImplementedError
 
+    @abc.abstractmethod
     def start_cluster(self, timeout: float = 600.0):
         raise NotImplementedError
 
@@ -129,9 +132,11 @@ class ClusterManager(abc.ABC):
         except Exception as e:
             logger.exception(f"Could not terminate cluster: {e}")
 
+    @abc.abstractmethod
     def terminate_cluster_ex(self, wait: bool = False):
         raise NotImplementedError
 
+    @abc.abstractmethod
     def get_cluster_address(self) -> str:
         raise NotImplementedError
 

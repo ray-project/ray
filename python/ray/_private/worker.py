@@ -1230,7 +1230,8 @@ class RayContext(BaseContext, Mapping):
     def __iter__(self):
         if log_once("ray_context_len"):
             warnings.warn(
-                "iter(ctx) is deprecated. Use iter(ctx.address_info) instead."
+                "iter(ctx) is deprecated. Use iter(ctx.address_info) instead.",
+                stacklevel=2,
             )
         return iter(self.address_info)
 

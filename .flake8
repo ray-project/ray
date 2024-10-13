@@ -44,6 +44,8 @@ ignore =
   B015
   B016
   B017
+  B023
+  B026
 avoid-escape = no
 # Error E731 is ignored because of the migration from YAPF to Black.
 # See https://github.com/ray-project/ray/issues/21315 for more information.

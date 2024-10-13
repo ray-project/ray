@@ -8,6 +8,7 @@ class FileManager(abc.ABC):
     def __init__(self, cluster_manager: ClusterManager):
         self.cluster_manager = cluster_manager
 
+    @abc.abstractmethod
     def upload(self, source: Optional[str] = None, target: Optional[str] = None):
         """Upload source to target.
 
@@ -15,6 +16,7 @@ class FileManager(abc.ABC):
         """
         raise NotImplementedError
 
+    @abc.abstractmethod
     def download(self, source: str, target: str):
         """Download source_dir to target_dir."""
         raise NotImplementedError

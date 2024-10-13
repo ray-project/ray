@@ -106,7 +106,8 @@ def execute_task(key, task_info, dumps, loads, get_id, pack_exception):
         id = get_id()
         result = dumps((result, id))
         failed = False
-    except BaseException as e:
+
+    except BaseException as e:  # noqa: B036 To avoid breaking change
         result = pack_exception(e, dumps)
         failed = True
     return key, result, failed

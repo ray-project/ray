@@ -768,7 +768,8 @@ class DeploymentHandle(_DeploymentHandleBase):
         if use_new_handle_api is not DEFAULT.VALUE:
             warnings.warn(
                 "Setting `use_new_handle_api` no longer has any effect. "
-                "This argument will be removed in a future version."
+                "This argument will be removed in a future version.",
+                stacklevel=2,
             )
 
         return self._options(

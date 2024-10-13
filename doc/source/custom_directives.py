@@ -751,17 +751,17 @@ def setup_context(app, pagename, templatename, context, doctree):
         # Group the examples by the ExampleConfig.groupby value:
         examples = defaultdict(list)
         example_config = ExampleConfig(config, app.srcdir)
-        for example in example_config:
+        for _example in example_config:
             try:
-                group = getattr(example, example_config.groupby.key())
+                group = getattr(_example, example_config.groupby.key())
             except AttributeError as e:
                 raise AttributeError(
-                    f"Example {example.link} has no {example_config.groupby.key()} "
+                    f"Example {_example.link} has no {example_config.groupby.key()} "
                     "key, but needs one because the examples for library "
                     f"{example_config.library.value} are configured to be grouped "
                     f"by {example_config.groupby.key()}."
                 ) from e
-            examples[group].append(example)
+            examples[group].append(_example)
 
         # Construct a table of examples
         soup = bs4.BeautifulSoup()
@@ -776,8 +776,8 @@ def setup_context(app, pagename, templatename, context, doctree):
         soup.append(page_text)
 
         container = soup.new_tag("div", attrs={"class": "example-index"})
-        for group, examples in examples.items():
-            if not examples:
+        for group, _examples in examples.items():
+            if not _examples:
                 continue
 
             header = soup.new_tag("h2", attrs={"class": "example-header"})
@@ -810,7 +810,7 @@ def setup_context(app, pagename, templatename, context, doctree):
                 table.append(thead)
 
             tbody = soup.new_tag("tbody")
-            for example in examples:
+            for _example in _examples:
                 tr = soup.new_tag("tr")
 
                 # The columns specify which attributes of each example to show;
@@ -821,7 +821,7 @@ def setup_context(app, pagename, templatename, context, doctree):
                         col_td = soup.new_tag("td")
                         col_p = soup.new_tag("p")
 
-                        attribute_value = getattr(example, attribute, "")
+                        attribute_value = getattr(_example, attribute, "")
                         if isinstance(attribute_value, str):
                             col_p.append(attribute_value)
                         elif isinstance(attribute_value, list):
@@ -834,14 +834,14 @@ def setup_context(app, pagename, templatename, context, doctree):
 
                 link_td = soup.new_tag("td")
                 link_p = soup.new_tag("p")
-                if example.link.startswith("http"):
-                    link_href = soup.new_tag("a", attrs={"href": example.link})
+                if _example.link.startswith("http"):
+                    link_href = soup.new_tag("a", attrs={"href": _example.link})
                 else:
                     link_href = soup.new_tag(
-                        "a", attrs={"href": context["pathto"](example.link)}
+                        "a", attrs={"href": context["pathto"](_example.link)}
                     )
                 link_span = soup.new_tag("span")
-                link_span.append(example.title)
+                link_span.append(_example.title)
                 link_href.append(link_span)
                 link_p.append(link_href)
                 link_td.append(link_p)

@@ -6,7 +6,7 @@ Eventually, these use cases should be consolidated.
 """
 
 import os
-from abc import ABC
+from abc import ABC, abstractmethod
 from collections import defaultdict
 from datetime import timedelta
 from typing import Callable, List, T
@@ -27,6 +27,7 @@ class TorchDistributedWorker(ABC):
     to be executed on a remote DDP worker.
     """
 
+    @abstractmethod
     def execute(self, func: Callable[..., T], *args, **kwargs) -> T:
         """Executes the input function and returns the output.
 

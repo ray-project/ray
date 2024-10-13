@@ -7,6 +7,7 @@ Supports color, bold text, italics, underlines, etc.
 (depending on TTY features)
 as well as indentation and other structured output.
 """
+
 import inspect
 import logging
 import os

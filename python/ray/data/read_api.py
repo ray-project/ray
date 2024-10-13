@@ -3170,6 +3170,7 @@ def _get_datasource_or_legacy_reader(
             "`Reader`, implement `Datasource.get_read_tasks` and "
             "`Datasource.estimate_inmemory_data_size`.",
             DeprecationWarning,
+            stacklevel=2,
         )
         datasource_or_legacy_reader = ds.create_reader(**kwargs)
     else:

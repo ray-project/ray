@@ -481,7 +481,8 @@ class PopulationBasedTraining(FIFOScheduler):
                 "Using `CheckpointConfig.num_to_keep <= 2` with PBT can lead to "
                 "restoration problems when checkpoint are deleted too early for "
                 "other trials to exploit them. If this happens, increase the value "
-                "of `num_to_keep`."
+                "of `num_to_keep`.",
+                stacklevel=2,
             )
 
         self._trial_state[trial] = _PBTTrialState(trial)

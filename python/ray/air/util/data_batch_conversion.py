@@ -158,6 +158,7 @@ def convert_batch_type_to_pandas(
         "starting from Ray 2.4. All batch format conversions should be "
         "done manually instead of relying on this API.",
         PendingDeprecationWarning,
+        stacklevel=2,
     )
     return _convert_batch_type_to_pandas(
         data=data, cast_tensor_columns=cast_tensor_columns
@@ -186,6 +187,7 @@ def convert_pandas_to_batch_type(
         "starting from Ray 2.4. All batch format conversions should be "
         "done manually instead of relying on this API.",
         PendingDeprecationWarning,
+        stacklevel=2,
     )
     return _convert_pandas_to_batch_type(
         data=data, type=type, cast_tensor_columns=cast_tensor_columns

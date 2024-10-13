@@ -51,6 +51,7 @@ class Logger(abc.ABC):
         self.trial = trial
         self._init()
 
+    @abc.abstractmethod
     def _init(self):
         pass
 
@@ -59,16 +60,19 @@ class Logger(abc.ABC):
 
         raise NotImplementedError
 
+    @abc.abstractmethod
     def update_config(self, config):
         """Updates the config for logger."""
 
         pass
 
+    @abc.abstractmethod
     def close(self):
         """Releases all resources used by this logger."""
 
         pass
 
+    @abc.abstractmethod
     def flush(self):
         """Flushes all disk writes to storage."""
 

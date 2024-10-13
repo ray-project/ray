@@ -121,6 +121,7 @@ class Connector(abc.ABC):
         return NotImplementedError
 
     @staticmethod
+    @abc.abstractmethod
     def from_state(self, ctx: ConnectorContext, params: Any) -> "Connector":
         """De-serialize a JSON params back into a Connector.
 
@@ -333,7 +334,7 @@ class ActionConnector(Connector):
 
 
 @OldAPIStack
-class ConnectorPipeline(abc.ABC):
+class ConnectorPipeline:
     """Utility class for quick manipulation of a connector pipeline."""
 
     def __init__(self, ctx: ConnectorContext, connectors: List[Connector]):

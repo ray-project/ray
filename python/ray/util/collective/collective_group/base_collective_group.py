@@ -1,4 +1,5 @@
 """Abstract class for collective groups."""
+
 from abc import ABCMeta
 from abc import abstractmethod
 
@@ -40,6 +41,7 @@ class BaseGroup(metaclass=ABCMeta):
         """Return the group name of this group."""
         return self._group_name
 
+    @abstractmethod
     def destroy_group(self):
         """GC the communicators."""
         pass

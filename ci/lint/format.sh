@@ -5,7 +5,7 @@
 # Cause the script to exit if a single command fails
 set -euo pipefail
 
-FLAKE8_VERSION_REQUIRED="3.9.1"
+FLAKE8_VERSION_REQUIRED="7.1.1"
 BLACK_VERSION_REQUIRED="22.10.0"
 SHELLCHECK_VERSION_REQUIRED="0.7.1"
 MYPY_VERSION_REQUIRED="1.7.0"

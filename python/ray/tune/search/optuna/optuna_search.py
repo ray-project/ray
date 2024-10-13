@@ -456,7 +456,8 @@ class OptunaSearch(Searcher):
                 f"took {time_taken} seconds to "
                 "run. Ensure that actual computation, training takes "
                 "place inside Tune's train functions or Trainables "
-                "passed to `tune.Tuner()`."
+                "passed to `tune.Tuner()`.",
+                stacklevel=2,
             )
         if ret is not None:
             if not isinstance(ret, dict):

@@ -339,7 +339,8 @@ class BasicVariantGenerator(SearchAlgorithm):
                     "exceeds the serialization threshold "
                     f"({int(SERIALIZATION_THRESHOLD)}). Resume ability is "
                     "disabled. To fix this, reduce the number of "
-                    "dimensions/size of the provided grid search."
+                    "dimensions/size of the provided grid search.",
+                    stacklevel=2,
                 )
 
             previous_samples = self._total_samples

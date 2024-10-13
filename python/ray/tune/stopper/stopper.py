@@ -44,10 +44,12 @@ class Stopper(abc.ABC):
 
     """
 
+    @abc.abstractmethod
     def __call__(self, trial_id: str, result: Dict[str, Any]) -> bool:
         """Returns true if the trial should be terminated given the result."""
         raise NotImplementedError
 
+    @abc.abstractmethod
     def stop_all(self) -> bool:
         """Returns true if the experiment should be terminated."""
         raise NotImplementedError

@@ -275,6 +275,7 @@ class Syncer(abc.ABC):
         """
         raise NotImplementedError
 
+    @abc.abstractmethod
     def retry(self):
         """Retry the last sync up, sync down, or delete command.
 
@@ -283,6 +284,7 @@ class Syncer(abc.ABC):
         """
         pass
 
+    @abc.abstractmethod
     def wait(self, timeout: Optional[float] = None):
         """Wait for asynchronous sync command to finish.
 
@@ -367,6 +369,7 @@ class Syncer(abc.ABC):
         self.last_sync_up_time = float("-inf")
         self.last_sync_down_time = float("-inf")
 
+    @abc.abstractmethod
     def close(self):
         pass
 

@@ -111,7 +111,8 @@ class Preprocessor(abc.ABC):
             warnings.warn(
                 "`fit` has already been called on the preprocessor (or at least one "
                 "contained preprocessors if this is a chain). "
-                "All previously fitted state will be overwritten!"
+                "All previously fitted state will be overwritten!",
+                stacklevel=2,
             )
 
         fitted_ds = self._fit(ds)

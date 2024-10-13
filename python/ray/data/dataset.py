@@ -3643,7 +3643,8 @@ class Dataset:
         if ray_remote_args.get("max_retries", 0) != 0:
             warnings.warn(
                 "The max_retries of a BigQuery Write Task should be set to 0"
-                " to avoid duplicate writes."
+                " to avoid duplicate writes.",
+                stacklevel=2,
             )
         else:
             ray_remote_args["max_retries"] = 0

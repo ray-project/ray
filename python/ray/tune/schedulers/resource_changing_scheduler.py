@@ -683,7 +683,8 @@ class ResourceChangingScheduler(TrialScheduler):
             warnings.warn(
                 "`resources_allocation_function` is None. No resource "
                 "requirements will be changed at any time. Pass a "
-                "correctly defined function to enable functionality."
+                "correctly defined function to enable functionality.",
+                stacklevel=2,
             )
         self._resources_allocation_function = resources_allocation_function
         self._base_scheduler = base_scheduler or FIFOScheduler()

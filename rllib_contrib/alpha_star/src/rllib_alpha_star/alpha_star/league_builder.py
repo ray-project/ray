@@ -1,6 +1,6 @@
 import logging
 import re
-from abc import ABCMeta
+from abc import ABCMeta, abstractmethod
 from collections import defaultdict
 from typing import Any, DefaultDict, Dict
 
@@ -33,6 +33,7 @@ class LeagueBuilder(metaclass=ABCMeta):
         self.algo = algo
         self.config = algo_config
 
+    @abstractmethod
     def build_league(self, result: ResultDict) -> None:
         """Method containing league-building logic. Called after train step.
 
@@ -170,10 +171,8 @@ class AlphaStarLeagueBuilder(LeagueBuilder):
             policies_to_train.append(pid)
 
         # Build initial policy mapping function: main_0 vs main_exploiter_0.
-        self.config.policy_mapping_fn = (
-            lambda agent_id, episode, worker, **kw: "main_0"
-            if episode.episode_id % 2 == agent_id
-            else "main_exploiter_0"
+        self.config.policy_mapping_fn = lambda agent_id, episode, worker, **kw: (
+            "main_0" if episode.episode_id % 2 == agent_id else "main_exploiter_0"
         )
         self.config.policies = policies
         self.config.policies_to_train = policies_to_train

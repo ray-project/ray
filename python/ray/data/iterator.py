@@ -225,11 +225,14 @@ class DataIterator(abc.ABC):
                 "the `prefetch_batches` parameter to specify the amount of prefetching "
                 "in terms of batches instead of blocks.",
                 DeprecationWarning,
+                stacklevel=2,
             )
             iter_batch_args["prefetch_batches"] = prefetch_blocks
         if prefetch_batches != 1:
             warnings.warn(
-                "`prefetch_batches` is deprecated in Ray 2.12.", DeprecationWarning
+                "`prefetch_batches` is deprecated in Ray 2.12.",
+                DeprecationWarning,
+                stacklevel=2,
             )
 
         batch_iterable = self.iter_batches(**iter_batch_args)

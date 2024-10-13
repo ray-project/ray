@@ -2,6 +2,7 @@
 It implements the Ray API functions that are forwarded through grpc calls
 to the server.
 """
+
 import base64
 import json
 import logging
@@ -255,7 +256,8 @@ class Worker:
                     "the Ray Client port on the head node is reachable "
                     "from your local machine. See https://docs.ray.io/en"
                     "/latest/cluster/ray-client.html#step-2-check-ports for "
-                    "more information."
+                    "more information.",
+                    stacklevel=2,
                 )
             raise ConnectionError("ray client connection timeout")
 
@@ -631,6 +633,7 @@ class Worker:
                 "document, available here: "
                 f"{DESIGN_PATTERN_LARGE_OBJECTS_LINK}",
                 UserWarning,
+                stacklevel=2,
             )
         return id_futures
 

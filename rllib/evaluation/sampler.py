@@ -56,7 +56,6 @@ from ray.util.debug import log_once
 
 if TYPE_CHECKING:
     from gymnasium.envs.classic_control.rendering import SimpleImageViewer
-
     from ray.rllib.algorithms.callbacks import DefaultCallbacks
     from ray.rllib.evaluation.observation_function import ObservationFunction
     from ray.rllib.evaluation.rollout_worker import RolloutWorker
@@ -691,12 +690,16 @@ def _process_observations(
                     agent_id,
                     filtered_obs,
                     agent_infos,
-                    None
-                    if last_observation is None
-                    else episode.rnn_state_for(agent_id),
-                    None
-                    if last_observation is None
-                    else episode.last_action_for(agent_id),
+                    (
+                        None
+                        if last_observation is None
+                        else episode.rnn_state_for(agent_id)
+                    ),
+                    (
+                        None
+                        if last_observation is None
+                        else episode.last_action_for(agent_id)
+                    ),
                     rewards[env_id].get(agent_id, 0.0),
                 )
                 to_eval[policy_id].append(item)
@@ -1030,10 +1033,10 @@ def _process_policy_eval_results(
             episode: Episode = active_episodes[env_id]
             _assert_episode_not_faulty(episode)
             episode._set_rnn_state(
-                agent_id, tree.map_structure(lambda x: x[i], rnn_out_cols)
+                agent_id, tree.map_structure(lambda x, i=i: x[i], rnn_out_cols)
             )
             episode._set_last_extra_action_outs(
-                agent_id, tree.map_structure(lambda x: x[i], extra_action_out_cols)
+                agent_id, tree.map_structure(lambda x, i=i: x[i], extra_action_out_cols)
             )
             if env_id in off_policy_actions and agent_id in off_policy_actions[env_id]:
                 episode._set_last_action(agent_id, off_policy_actions[env_id][agent_id])

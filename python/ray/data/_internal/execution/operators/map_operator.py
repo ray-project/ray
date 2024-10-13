@@ -567,6 +567,7 @@ class _OutputQueue(ABC):
         """Called when a task's output is ready."""
         pass
 
+    @abstractmethod
     def notify_task_completed(self, task_index: int):
         """Called when a previously pending task completes."""
         pass

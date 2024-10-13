@@ -82,7 +82,7 @@ def test_basic_actors(shutdown_only):
     def _all_actors_dead():
         actor_table = ray.state.actors()
         actors = {
-            id: actor_info
+            actor_info["ActorClassName"]: actor_info
             for actor_info in actor_table.values()
             if actor_info["ActorClassName"] == _MapWorker.__name__
         }

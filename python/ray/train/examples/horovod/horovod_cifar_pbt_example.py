@@ -52,7 +52,7 @@ def train_loop_per_worker(config):
         net.parameters(),
         lr=config["lr"],
     )
-    epoch = 0
+    epochs = 0
 
     checkpoint = train.get_checkpoint()
     if checkpoint:
@@ -62,7 +62,7 @@ def train_loop_per_worker(config):
 
         model_state = checkpoint_dict["model_state"]
         optimizer_state = checkpoint_dict["optimizer_state"]
-        epoch = checkpoint_dict["epoch"] + 1
+        epochs = checkpoint_dict["epoch"] + 1
 
         net.load_state_dict(model_state)
         optimizer.load_state_dict(optimizer_state)
@@ -88,7 +88,7 @@ def train_loop_per_worker(config):
         trainset, batch_size=int(config["batch_size"]), sampler=train_sampler
     )
 
-    for epoch in range(epoch, 40):  # loop over the dataset multiple times
+    for epoch in range(epochs, 40):  # loop over the dataset multiple times
         running_loss = 0.0
         epoch_steps = 0
         for i, data in enumerate(trainloader):

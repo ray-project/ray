@@ -174,7 +174,8 @@ class TorchCheckpoint(FrameworkCheckpoint):
                     "Discarding provided `model` argument. If you are using "
                     "TorchPredictor directly, you should do "
                     "`TorchPredictor.from_checkpoint(checkpoint)` by removing kwargs "
-                    "`model=`."
+                    "`model=`.",
+                    stacklevel=2,
                 )
         model = load_torch_model(
             saved_model=model_or_state_dict, model_definition=model

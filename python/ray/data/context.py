@@ -376,6 +376,7 @@ class DataContext:
                 "`write_file_retry_on_errors` is deprecated. Configure "
                 "`retried_io_errors` instead.",
                 DeprecationWarning,
+                stacklevel=2,
             )
 
         super().__setattr__(name, value)

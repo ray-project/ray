@@ -42,6 +42,7 @@ class BlockPrefetcher(metaclass=abc.ABCMeta):
         """Prefetch the provided blocks to this node."""
         pass
 
+    @abc.abstractmethod
     def stop(self):
         """Stop prefetching and release resources."""
         pass

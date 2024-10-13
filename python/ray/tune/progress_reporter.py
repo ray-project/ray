@@ -335,7 +335,8 @@ class TuneReporterBase(ProgressReporter):
             self._sort_by_metric = False
             warnings.warn(
                 "Both 'metric' and 'mode' must be set to be able "
-                "to sort by metric. No sorting is performed."
+                "to sort by metric. No sorting is performed.",
+                stacklevel=2,
             )
         if not self._metrics_override:
             user_metrics = self._infer_user_metrics(trials, self._infer_limit)
@@ -530,7 +531,8 @@ class JupyterNotebookReporter(TuneReporterBase, RemoteReporterMixin):
                 "If this leads to unformatted output (e.g. like "
                 "<IPython.core.display.HTML object>), consider passing "
                 "a `CLIReporter` as the `progress_reporter` argument "
-                "to `train.RunConfig()` instead."
+                "to `train.RunConfig()` instead.",
+                stacklevel=2,
             )
 
         self._overwrite = overwrite

@@ -558,6 +558,7 @@ class WandbLoggerCallback(LoggerCallback):
             warnings.warn(
                 "`save_checkpoints` is deprecated. Use `upload_checkpoints` instead.",
                 DeprecationWarning,
+                stacklevel=2,
             )
             upload_checkpoints = save_checkpoints
 

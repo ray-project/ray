@@ -269,6 +269,6 @@ if __name__ == "__main__":
             "dask_nthreads": args.dask_nthreads,
             "dask_memlimit": args.dask_memlimit,
         }
-        for output in output:
-            row["duration"] = output
+        for out in output:
+            row["duration"] = out
             writer.writerow(row)

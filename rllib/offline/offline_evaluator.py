@@ -55,6 +55,7 @@ class OfflineEvaluator(abc.ABC):
         """
         return {}
 
+    @abc.abstractmethod
     @ExperimentalAPI
     def estimate_on_dataset(
         self,
@@ -62,7 +63,6 @@ class OfflineEvaluator(abc.ABC):
         *,
         n_parallelism: int = os.cpu_count(),
     ) -> Dict[str, Any]:
-
         """Calculates the estimate of the metrics based on the given offline dataset.
 
         Typically, the dataset is passed through only once via n_parallel tasks in

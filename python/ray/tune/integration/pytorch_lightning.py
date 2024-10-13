@@ -199,7 +199,8 @@ class TuneReportCallback(TuneReportCheckpointCallback):
                 "`ray.tune.integration.pytorch_lightning.TuneReportCallback` "
                 "is deprecated. Use "
                 "`ray.tune.integration.pytorch_lightning.TuneReportCheckpointCallback`"
-                " instead."
+                " instead.",
+                stacklevel=2,
             )
         super(TuneReportCallback, self).__init__(
             metrics=metrics, save_checkpoints=False, on=on

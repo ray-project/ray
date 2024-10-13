@@ -14,7 +14,10 @@ if (
     multiprocessing.cpu_count() < 40
     or ray._private.utils.get_system_memory() < 50 * 10**9
 ):
-    warnings.warn("This test must be run on large machines.")
+    warnings.warn(
+        "This test must be run on large machines.",
+        stacklevel=2,
+    )
 
 
 def create_cluster(num_nodes):
@@ -134,7 +137,8 @@ def test_object_broadcast(ray_start_cluster_with_resource):
         if len(relevant_events) > num_nodes - 1:
             warnings.warn(
                 "This object was transferred {} times, when only {} "
-                "transfers were required.".format(len(relevant_events), num_nodes - 1)
+                "transfers were required.".format(len(relevant_events), num_nodes - 1),
+                stacklevel=2,
             )
         # Each object should not have been broadcast more than once from every
         # machine to every other machine. Also, a pair of machines should not

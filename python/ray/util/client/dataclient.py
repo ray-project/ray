@@ -57,6 +57,7 @@ def chunk_put(req: ray_client_pb2.DataRequest):
             "Documentation for doing this can be found here: "
             "https://docs.ray.io/en/latest/handling-dependencies.html#remote-uris",
             UserWarning,
+            stacklevel=2,
         )
     total_chunks = math.ceil(total_size / OBJECT_TRANSFER_CHUNK_SIZE)
     for chunk_id in range(0, total_chunks):
@@ -148,6 +149,7 @@ class ChunkCollector:
                 "be slow. Consider serializing the object to a file and "
                 "using rsync or S3 instead.",
                 UserWarning,
+                stacklevel=2,
             )
         chunk_data = get_resp.data
         chunk_id = get_resp.chunk_id

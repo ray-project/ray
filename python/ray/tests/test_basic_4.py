@@ -211,7 +211,7 @@ def test_job_id_consistency(ray_start_regular):
             def run():
                 try:
                     verify()
-                except BaseException as e:
+                except BaseException as e:  # noqa: B036 To avoid breaking change
                     exc.append(e)
 
             import threading

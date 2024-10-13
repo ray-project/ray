@@ -141,7 +141,10 @@ if __name__ == "__main__":
     ray.init(address=args.address)
 
     if not torch.cuda.is_available():
-        warnings.warn("GPU is not available. Skip the test using auto pipeline.")
+        warnings.warn(
+            "GPU is not available. Skip the test using auto pipeline.",
+            stacklevel=2,
+        )
     else:
         train_linear(
             num_workers=1,

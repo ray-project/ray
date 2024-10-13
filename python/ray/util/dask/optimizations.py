@@ -139,7 +139,8 @@ else:
             "Custom dataframe shuffle optimization only works on "
             "dask>=2020.12.0, you are on version "
             f"{dask.__version__}, please upgrade Dask."
-            "Falling back to default dataframe optimizer."
+            "Falling back to default dataframe optimizer.",
+            stacklevel=2,
         )
         return optimize(dsk, keys, **kwargs)
 

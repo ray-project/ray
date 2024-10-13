@@ -10,7 +10,8 @@ distributed prioritization of experience prior to storage in replay buffers.
 
 Detailed documentation:
 https://docs.ray.io/en/master/rllib-algorithms.html#distributed-prioritized-experience-replay-ape-x
-"""  # noqa: E501
+"""
+
 import copy
 import platform
 import random
@@ -396,9 +397,11 @@ class ApexDQN(DQN):
 
         # Update target network every `target_network_update_freq` sample steps.
         cur_ts = self._counters[
-            NUM_AGENT_STEPS_SAMPLED
-            if self.config.count_steps_by == "agent_steps"
-            else NUM_ENV_STEPS_SAMPLED
+            (
+                NUM_AGENT_STEPS_SAMPLED
+                if self.config.count_steps_by == "agent_steps"
+                else NUM_ENV_STEPS_SAMPLED
+            )
         ]
 
         if cur_ts > self.config.num_steps_sampled_before_learning_starts:
@@ -500,9 +503,11 @@ class ApexDQN(DQN):
         with self._timers[SYNCH_WORKER_WEIGHTS_TIMER]:
             curr_weights = self.curr_learner_weights
             timestep = self._counters[
-                NUM_AGENT_STEPS_TRAINED
-                if self.config.count_steps_by == "agent_steps"
-                else NUM_ENV_STEPS_TRAINED
+                (
+                    NUM_AGENT_STEPS_TRAINED
+                    if self.config.count_steps_by == "agent_steps"
+                    else NUM_ENV_STEPS_TRAINED
+                )
             ]
             for (
                 remote_sampler_worker_id,
@@ -646,9 +651,11 @@ class ApexDQN(DQN):
                 )
             self._counters[NUM_TARGET_UPDATES] += 1
             self._counters[LAST_TARGET_UPDATE_TS] = self._counters[
-                NUM_AGENT_STEPS_TRAINED
-                if self.config.count_steps_by == "agent_steps"
-                else NUM_ENV_STEPS_TRAINED
+                (
+                    NUM_AGENT_STEPS_TRAINED
+                    if self.config.count_steps_by == "agent_steps"
+                    else NUM_ENV_STEPS_TRAINED
+                )
             ]
 
     def _get_shard0_replay_stats(self) -> Dict[str, Any]:

@@ -93,7 +93,7 @@ async def check_output_cmd(
         # since Python 3.9, when cancelled, the inner process needs to throw as it is
         # for asyncio to timeout properly https://bugs.python.org/issue40607
         raise e
-    except BaseException as e:
+    except BaseException as e:  # noqa: B036 To avoid breaking change
         raise RuntimeError(f"Run cmd[{cmd_index}] got exception.") from e
     else:
         stdout = stdout.decode("utf-8")

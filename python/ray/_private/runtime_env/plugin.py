@@ -1,7 +1,7 @@
 import logging
 import os
 import json
-from abc import ABC
+from abc import ABC, abstractmethod
 from typing import List, Dict, Optional, Any, Type
 
 from ray._private.runtime_env.context import RuntimeEnvContext
@@ -27,6 +27,7 @@ class RuntimeEnvPlugin(ABC):
     name: str = None
     priority: int = RAY_RUNTIME_ENV_PLUGIN_DEFAULT_PRIORITY
 
+    @abstractmethod
     @staticmethod
     def validate(runtime_env_dict: dict) -> None:
         """Validate user entry for this plugin.

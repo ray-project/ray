@@ -56,6 +56,7 @@ def record_deprecated_state_api_import():
         "instead. Importing from `ray.experimental` will be deprecated in "
         "future releases. ",
         DeprecationWarning,
+        stacklevel=2,
     )
 
     record_extra_usage_tag(TagKey.EXPERIMENTAL_STATE_API_IMPORT, "1")

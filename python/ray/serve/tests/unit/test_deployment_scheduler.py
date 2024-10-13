@@ -304,7 +304,7 @@ def test_get_node_to_running_replicas():
     # Test random case
     node_to_running_replicas = defaultdict(set)
     for i in range(40):
-        node_id = f"node{random.randint(0,5)}"
+        node_id = f"node{random.randint(0, 5)}"
         r_id = ReplicaID(f"r{i}", d_id)
         node_to_running_replicas[node_id].add(r_id)
         scheduler.on_replica_running(r_id, node_id)

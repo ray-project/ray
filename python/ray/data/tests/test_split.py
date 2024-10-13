@@ -594,9 +594,9 @@ def verify_splits(splits, blocks_by_split):
     for blocks, (block_refs, meta) in zip(blocks_by_split, splits):
         assert len(blocks) == len(block_refs)
         assert len(blocks) == len(meta)
-        for block, block_ref, meta in zip(blocks, block_refs, meta):
+        for block, block_ref, _meta in zip(blocks, block_refs, meta):
             assert list(ray.get(block_ref)["id"]) == block
-            assert meta.num_rows == len(block)
+            assert _meta.num_rows == len(block)
 
 
 def test_generate_global_split_results(ray_start_regular_shared):

@@ -42,7 +42,8 @@ def cleaned_metadata(read_task: ReadTask, read_task_ref) -> BlockMetadata:
             f"'{read_task.read_fn.__name__}' is {memory_string(task_size)}. This size "
             "relatively large. As a result, Ray might excessively "
             "spill objects during execution. To fix this issue, avoid accessing "
-            f"`self` or other large objects in '{read_task.read_fn.__name__}'."
+            f"`self` or other large objects in '{read_task.read_fn.__name__}'.",
+            stacklevel=2,
         )
 
     # Defensively compute the size of the block as the max size reported by the

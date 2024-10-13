@@ -106,6 +106,7 @@ class GetAllNodeInfoClient(abc.ABC):
         else:
             return GetAllNodeInfoFromNewGcsClient(*args, **kwargs)
 
+    @abc.abstractmethod
     async def __call__(
         self,
         *,

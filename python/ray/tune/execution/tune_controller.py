@@ -188,7 +188,8 @@ class TuneController:
                     "mode as resources (such as Ray processes, "
                     "file descriptors, and temporary files) may not be "
                     "cleaned up properly. To use "
-                    "a safer mode, use fail_fast=True."
+                    "a safer mode, use fail_fast=True.",
+                    stacklevel=2,
                 )
             else:
                 raise ValueError(
@@ -1202,9 +1203,6 @@ class TuneController:
 
         tracked_actor = self._trial_to_actor[trial]
 
-        _on_result = None
-        _on_error = None
-
         args = args or tuple()
         kwargs = kwargs or {}
 
@@ -1228,6 +1226,8 @@ class TuneController:
                     else:
                         raise TuneError(traceback.format_exc())
 
+        else:
+            _on_result = None
         if on_error:
 
             def _on_error(tracked_actor: TrackedActor, exception: Exception):
@@ -1253,6 +1253,8 @@ class TuneController:
                     else:
                         raise TuneError(traceback.format_exc())
 
+        else:
+            _on_error = None
         logger.debug(f"Future {method_name.upper()} SCHEDULED for trial {trial}")
 
         with _change_working_directory(trial):

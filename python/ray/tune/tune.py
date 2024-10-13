@@ -258,6 +258,7 @@ def _ray_auto_init(entrypoint: str):
 
 
 class _Config(abc.ABC):
+    @abc.abstractmethod
     def to_dict(self) -> dict:
         """Converts this configuration to a dict format."""
         raise NotImplementedError
@@ -648,6 +649,7 @@ def run(
             "keep_checkpoints_num is deprecated and will be removed. "
             "use checkpoint_config.num_to_keep instead.",
             DeprecationWarning,
+            stacklevel=2,
         )
         checkpoint_config.num_to_keep = keep_checkpoints_num
     if checkpoint_score_attr is not None:
@@ -655,6 +657,7 @@ def run(
             "checkpoint_score_attr is deprecated and will be removed. "
             "use checkpoint_config.checkpoint_score_attribute instead.",
             DeprecationWarning,
+            stacklevel=2,
         )
 
         if checkpoint_score_attr.startswith("min-"):
@@ -663,6 +666,7 @@ def run(
                 "order is deprecated. Use CheckpointConfig.checkpoint_score_order "
                 "instead",
                 DeprecationWarning,
+                stacklevel=2,
             )
             checkpoint_config.checkpoint_score_attribute = checkpoint_score_attr[4:]
             checkpoint_config.checkpoint_score_order = "min"
@@ -676,6 +680,7 @@ def run(
             "checkpoint_freq is deprecated and will be removed. "
             "use checkpoint_config.checkpoint_frequency instead.",
             DeprecationWarning,
+            stacklevel=2,
         )
         checkpoint_config.checkpoint_frequency = checkpoint_freq
     if checkpoint_at_end:
@@ -683,6 +688,7 @@ def run(
             "checkpoint_at_end is deprecated and will be removed. "
             "use checkpoint_config.checkpoint_at_end instead.",
             DeprecationWarning,
+            stacklevel=2,
         )
         checkpoint_config.checkpoint_at_end = checkpoint_at_end
 
@@ -719,7 +725,8 @@ def run(
                 f"TUNE_RESULT_BUFFER_LENGTH is set "
                 f"({env_result_buffer_length}). This can lead to undesired "
                 f"and faulty behavior, so the buffer length was forcibly set "
-                f"to 1 instead."
+                f"to 1 instead.",
+                stacklevel=2,
             )
             os.environ["TUNE_RESULT_BUFFER_LENGTH"] = "1"
 
@@ -729,7 +736,8 @@ def run(
     ):
         warnings.warn(
             "Consider boosting PBT performance by enabling `reuse_actors` as "
-            "well as implementing `reset_config` for Trainable."
+            "well as implementing `reset_config` for Trainable.",
+            stacklevel=2,
         )
 
     # Before experiments are created, we first clean up the passed in

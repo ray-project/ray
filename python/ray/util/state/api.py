@@ -361,7 +361,7 @@ class StateApiClient(SubmissionClient):
         if warn_data_source_not_available:
             warning_msgs = api_response.get("partial_failure_warning", None)
             if warning_msgs:
-                warnings.warn(warning_msgs)
+                warnings.warn(warning_msgs, stacklevel=2)
 
         if warn_data_truncation:
             # Print warnings if data is truncated at the data source.
@@ -382,6 +382,7 @@ class StateApiClient(SubmissionClient):
                         f"Max of {num_after_truncation} entries are retrieved "
                         "from data source to prevent over-sized payloads."
                     ),
+                    stacklevel=2,
                 )
 
         if warn_limit:
@@ -397,6 +398,7 @@ class StateApiClient(SubmissionClient):
                         "the amount of data to return or "
                         "setting a higher limit with `--limit` to see all data. "
                     ),
+                    stacklevel=2,
                 )
 
         if warn_server_side_warnings:
@@ -404,7 +406,7 @@ class StateApiClient(SubmissionClient):
             warnings_to_print = api_response.get("warnings", [])
             if warnings_to_print:
                 for warning_to_print in warnings_to_print:
-                    warnings.warn(warning_to_print)
+                    warnings.warn(warning_to_print, stacklevel=2)
 
     def _raise_on_missing_output(self, resource: StateResource, api_response: dict):
         """Raise an exception when the API resopnse contains a missing output.

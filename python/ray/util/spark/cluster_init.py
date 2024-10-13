@@ -851,6 +851,7 @@ def _setup_ray_cluster_internal(
             "'num_cpus_per_node' argument is deprecated, please use "
             "'num_cpus_worker_node' argument instead.",
             DeprecationWarning,
+            stacklevel=2,
         )
 
     if "num_gpus_per_node" in kwargs:
@@ -864,6 +865,7 @@ def _setup_ray_cluster_internal(
             "'num_gpus_per_node' argument is deprecated, please use "
             "'num_gpus_worker_node' argument instead.",
             DeprecationWarning,
+            stacklevel=2,
         )
 
     if "object_store_memory_per_node" in kwargs:
@@ -878,6 +880,7 @@ def _setup_ray_cluster_internal(
             "'object_store_memory_per_node' argument is deprecated, please use "
             "'object_store_memory_worker_node' argument instead.",
             DeprecationWarning,
+            stacklevel=2,
         )
 
     # Environment configurations within the Spark Session that dictate how many cpus

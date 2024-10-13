@@ -122,7 +122,7 @@ class RunnerThread(threading.Thread):
             else:
                 # If non-zero exit code, then raise exception to main thread.
                 self._propagate_exception(e)
-        except BaseException as e:
+        except BaseException as e:  # noqa: B036 To avoid breaking change
             # Propagate all other exceptions to the main thread.
             self._propagate_exception(e)
 
