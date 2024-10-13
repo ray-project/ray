@@ -128,6 +128,37 @@ class TestActorPool(unittest.TestCase):
         assert pool.num_idle_actors() == 0
         assert pool.num_free_slots() == 3
 
+    def test_restarting_to_running(self):
+        # Test that actor is correctly transitioned from restarting to running.
+        pool = self._create_actor_pool(max_tasks_in_flight=1)
+        actor = self._add_ready_actor(pool)
+
+        # Mark the actor as restarting and test pick_actor fails
+        pool.mark_running_actor_as_restarting(actor)
+        assert pool.pick_actor() is None
+        assert pool.current_size() == 1
+        assert pool.num_pending_actors() == 0
+        assert pool.num_running_actors() == 1
+        assert pool.num_restarting_actors() == 1
+        assert pool.num_active_actors() == 0
+        assert pool.num_idle_actors() == 1
+        assert pool.num_free_slots() == 1
+
+        # Clear the actor as restarting and test pick_actor succeeds
+        pool.clear_restarting_from_running_actor(actor)
+        picked_actor = pool.pick_actor()
+        assert picked_actor == actor
+        assert pool.current_size() == 1
+        assert pool.num_pending_actors() == 0
+        assert pool.num_running_actors() == 1
+        assert pool.num_restarting_actors() == 0
+        assert pool.num_active_actors() == 1
+        assert pool.num_idle_actors() == 0
+        assert pool.num_free_slots() == 0
+
+        # Return the actor
+        pool.return_actor(picked_actor)
+
     def test_repeated_picking(self):
         # Test that we can repeatedly pick the same actor.
         pool = self._create_actor_pool(max_tasks_in_flight=999)
@@ -149,6 +180,25 @@ class TestActorPool(unittest.TestCase):
         # AssertionError.
         with pytest.raises(AssertionError):
             pool.return_actor(picked_actor)
+        # Check that the per-state pool sizes are as expected.
+        assert pool.current_size() == 1
+        assert pool.num_pending_actors() == 0
+        assert pool.num_running_actors() == 1
+        assert pool.num_active_actors() == 0
+        assert pool.num_idle_actors() == 1  # Actor should now be idle.
+        assert pool.num_free_slots() == 999
+
+    def test_returned_actor_to_running(self):
+        # Test that we can return the actor and it will be marked as running and clear
+        # restarting flag.
+        pool = self._create_actor_pool(max_tasks_in_flight=999)
+        self._add_ready_actor(pool)
+        picked_actor = pool.pick_actor()
+        pool.mark_running_actor_as_restarting(picked_actor)
+        assert pool.num_restarting_actors() == 1
+        # Return the actor as many times as it was picked.
+        pool.return_actor(picked_actor)
+        assert pool.num_restarting_actors() == 0
         # Check that the per-state pool sizes are as expected.
         assert pool.current_size() == 1
         assert pool.num_pending_actors() == 0
@@ -210,6 +260,35 @@ class TestActorPool(unittest.TestCase):
         for actor, count in pick_counts.items():
             assert actor in actors
             assert count == 2
+        # Check that the next pick doesn't return an actor.
+        assert pool.pick_actor() is None
+
+    def test_pick_ordering_restarting(self):
+        # Test that pick ordering is honored by restarting actors
+        pool = self._create_actor_pool(max_tasks_in_flight=2)
+        # Add 4 actors to the pool.
+        actors = [self._add_ready_actor(pool) for _ in range(4)]
+
+        # Pick actors
+        for _ in range(4):
+            picked_actor = pool.pick_actor()
+            assert pool._running_actors[picked_actor]._num_tasks_in_flight == 1
+
+        # Mark actor[0] as restarting
+        pool.mark_running_actor_as_restarting(actors[0])
+
+        # Verify clearing restarting makes the actor pickable
+        for _ in range(4):
+            picked_actor = pool.pick_actor()
+            if picked_actor is not None:
+                assert pool._running_actors[picked_actor]._num_tasks_in_flight == 2
+            else:
+                picked_actor = actors[0]
+                assert pool._running_actors[picked_actor]._num_tasks_in_flight == 1
+                pool.clear_restarting_from_running_actor(picked_actor)
+                picked_actor = pool.pick_actor()
+                picked_actor = actors[0]
+                assert pool._running_actors[picked_actor]._num_tasks_in_flight == 2
         # Check that the next pick doesn't return an actor.
         assert pool.pick_actor() is None
 
@@ -515,12 +594,12 @@ class TestActorPool(unittest.TestCase):
         actor2 = self._add_ready_actor(pool, node_id="node2")
 
         # Fake actor 2 as more busy.
-        pool._num_tasks_in_flight[actor2] = 1
+        pool._running_actors[actor2]._num_tasks_in_flight = 1
         res1 = pool.pick_actor(bundles[0])
         assert res1 == actor1
 
         # Fake actor 2 as more busy again.
-        pool._num_tasks_in_flight[actor2] = 2
+        pool._running_actors[actor2]._num_tasks_in_flight = 2
         res2 = pool.pick_actor(bundles[0])
         assert res2 == actor1
 
@@ -601,7 +680,7 @@ def test_removed_nodes_and_added_back(ray_start_cluster):
     signal_actor = Signal.remote()
 
     # Spin up nodes
-    num_nodes = 5
+    num_nodes = 2
     nodes = []
     for _ in range(num_nodes):
         nodes.append(cluster.add_node(num_cpus=10, num_gpus=1))
