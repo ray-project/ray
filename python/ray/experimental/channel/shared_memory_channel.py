@@ -526,9 +526,9 @@ class Channel(ChannelInterface):
                 [self._local_reader_ref], timeout=timeout, return_exceptions=True
             )[0][0]
 
-        from ray.dag.dag_operation_future import ReadyFuture
+        from ray.dag.dag_operation_future import ResolvedFuture
 
-        return ReadyFuture(ret)
+        return ResolvedFuture(ret)
 
     def close(self) -> None:
         """

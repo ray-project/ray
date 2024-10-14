@@ -4,7 +4,6 @@ import copy
 import threading
 import time
 from dataclasses import dataclass
-from functools import partial
 from typing import TYPE_CHECKING, Any, Dict, List, NamedTuple, Optional, Tuple, Union
 
 import ray
@@ -128,6 +127,7 @@ class ChannelOutputType:
 class ChannelContext:
     serialization_context = _SerializationContext()
     _torch_device: Optional["torch.device"] = None
+    _current_stream: Optional["torch.cuda.Stream"] = None
 
     def __init__(self):
         # Used for the torch.Tensor NCCL transport.
@@ -168,6 +168,28 @@ class ChannelContext:
 
     def set_torch_device(self, device: "torch.device"):
         self._torch_device = device
+
+    def set_current_stream(self, nccl_group_id: str, operation: str):
+        """
+        Set the current stream to execute the operation with the
+        specified NCCL group ID.
+
+        Args:
+            nccl_group_id: The NCCL group ID to use for current operation
+            operation: The current operation to perform, only "WRITE" is supported
+        """
+        nccl_group = self.nccl_groups[nccl_group_id]
+        if operation == "READ":
+            self._current_stream = nccl_group.read_stream
+        elif operation == "COMPUTE":
+            self._current_stream = nccl_group.compute_stream
+        elif operation == "WRITE":
+            self._current_stream = nccl_group.write_stream
+        else:
+            raise ValueError(f"Invalid operation: {operation}")
+
+    def get_current_stream(self) -> "torch.cuda.Stream":
+        return self._current_stream
 
 
 @PublicAPI(stability="alpha")
@@ -476,58 +498,36 @@ def _adapt(raw_args: Any, key: Optional[Union[int, str]], is_input: bool):
             return raw_args
 
 
-def _extract(val: Any, key: Optional[Union[int, str]], is_input: bool):
-    """
-    Extract result based on the key. If `is_input` is True, this method will
-    extract from the input data for an InputAttributeNode. Otherwise, it
-    will extract either a partial value or the entire value from the output of
-    a ClassMethodNode.
-
-    Args:
-        val: The value to extract from.
-        key: The key to use for extraction.
-        is_input: Whether the writer is DAG input writer or not.
-    """
-    if isinstance(val, Exception):
-        return val
-
-    if is_input:
-        if not isinstance(val, RayDAGArgs):
-            # Fast path for a single input.
-            return val
-        else:
-            args = val.args
-            kwargs = val.kwargs
-
-        if isinstance(key, int):
-            return args[key]
-        else:
-            return kwargs[key]
-    else:
-        if key is None:
-            return val
-        return val[key]
-
-
 @DeveloperAPI
 class SynchronousWriter(WriterInterface):
     def start(self):
         for channel in self._output_channels:
             channel.ensure_registered_as_writer()
 
-    def write(
-        self,
-        future: "ray.dag.dag_operation_future.DAGOperationFuture",
-        timeout: Optional[float] = None,
-    ) -> None:
-        from ray.dag.dag_operation_future import WrappedFuture
+    def write(self, val: Any, timeout: Optional[float] = None) -> None:
+        # If it is an exception, there's only 1 return value.
+        # We have to send the same data to all channels.
+        if isinstance(val, Exception):
+            if len(self._output_channels) > 1:
+                val = tuple(val for _ in range(len(self._output_channels)))
+
+        if not self._is_input:
+            if len(self._output_channels) > 1:
+                if not isinstance(val, tuple):
+                    raise ValueError(
+                        f"Expected a tuple of {len(self._output_channels)} outputs, "
+                        f"but got {type(val)}"
+                    )
+                if len(val) != len(self._output_channels):
+                    raise ValueError(
+                        f"Expected {len(self._output_channels)} outputs, but got "
+                        f"{len(val)} outputs"
+                    )
 
         for i, channel in enumerate(self._output_channels):
             idx = self._output_idxs[i]
-            wrapped = WrappedFuture(
-                future, partial(_extract, key=idx, is_input=self._is_input)
-            )
-            channel.write(wrapped, timeout)
+            val_i = _adapt(val, idx, self._is_input)
+            channel.write(val_i, timeout)
         self._num_writes += 1
 
 

@@ -642,9 +642,9 @@ def test_torch_tensor_custom_comm_inited(ray_start_regular):
         ) -> "ray.dag.dag_operation_future.DAGOperationFuture['torch.Tensor']":
             tensor = torch.empty(torch.Size(shape), dtype=dtype, device=self._device)
             torch.distributed.recv(tensor, peer_rank)
-            from ray.dag.dag_operation_future import ReadyFuture
+            from ray.dag.dag_operation_future import ResolvedFuture
 
-            return ReadyFuture(tensor)
+            return ResolvedFuture(tensor)
 
         def destroy(self) -> None:
             pass

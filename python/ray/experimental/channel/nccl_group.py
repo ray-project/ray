@@ -226,7 +226,7 @@ class _NcclGroup(GPUCommunicator):
         assert allocator is not None, "NCCL group requires a tensor allocator"
         buf = allocator(shape, dtype)
 
-        from ray.dag.dag_operation_future import ReadyFuture, _GPUFuture
+        from ray.dag.dag_operation_future import ResolvedFuture, _GPUFuture
 
         if self._use_communication_streams:
             # We observed that if all recv/compute/send operations run on GPU,
@@ -243,8 +243,7 @@ class _NcclGroup(GPUCommunicator):
                 peer_rank,
                 self._recv_stream.ptr,
             )
-            future = _GPUFuture(buf)
-            future.record_event(self._recv_stream)
+            future = _GPUFuture(buf, self._recv_stream)
         else:
             self._comm.recv(
                 self.nccl_util.get_tensor_ptr(buf),
@@ -259,11 +258,23 @@ class _NcclGroup(GPUCommunicator):
             # ensure that the receive buffer is valid.
             # TODO(swang): Avoid CUDA synchronization.
             self._cuda_stream.synchronize()
-            future = ReadyFuture(buf)
+            future = ResolvedFuture(buf)
 
         if self._closed:
             raise RayChannelError("NCCL group has been destroyed.")
         return future
+
+    @property
+    def recv_stream(self) -> "cp.cuda.ExternalStream":
+        return self._recv_stream
+
+    @property
+    def send_stream(self) -> "cp.cuda.ExternalStream":
+        return self._send_stream
+
+    @property
+    def compute_stream(self) -> "cp.cuda.ExternalStream":
+        return self._cuda_stream
 
     def destroy(self) -> None:
         """

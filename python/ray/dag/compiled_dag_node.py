@@ -8,7 +8,7 @@ import time
 import uuid
 import traceback
 
-from ray.dag.dag_operation_future import _GPUFuture, DAGOperationFuture, ReadyFuture
+from ray.dag.dag_operation_future import _GPUFuture, DAGOperationFuture, ResolvedFuture
 from ray.experimental.channel.cached_channel import CachedChannel
 from ray.experimental.channel.gpu_communicator import GPUCommunicator
 import ray
@@ -19,6 +19,7 @@ from ray.experimental.compiled_dag_ref import (
     _process_return_vals,
 )
 from ray.experimental.channel import (
+    ChannelContext,
     ChannelInterface,
     ChannelOutputType,
     ReaderInterface,
@@ -358,10 +359,13 @@ class ExecutableTask:
         self.output_writer: WriterInterface = SynchronousWriter(
             self.output_channels, self.output_idxs
         )
-        # Store the intermediate result of a READ or COMPUTE operation.
+        # The intermediate buffer holds the future of a READ or COMPUTE operation,
+        # which can be wait upon to get the actual value.
         # The result of a READ operation will be used by a COMPUTE operation,
         # and the result of a COMPUTE operation will be used by a WRITE operation.
-        self._intermediate_buffer: Any = None
+        self._intermediate_buffer: Optional[
+            Union[DAGOperationFuture, List[DAGOperationFuture]]
+        ] = None
 
     def cancel(self):
         """
@@ -383,25 +387,24 @@ class ExecutableTask:
         self.input_reader.start()
         self.output_writer.start()
 
-    def set_intermediate_buffer(self, data: DAGOperationFuture):
+    def set_intermediate_buffer(self, future: DAGOperationFuture):
         """
-        Store the intermediate result of a READ or COMPUTE operation.
+        Store the intermediate future of a READ or COMPUTE operation.
         Args:
-            data: The intermediate result of a READ or COMPUTE operation.
+            future: The future for a READ or COMPUTE operation.
         """
         assert self._intermediate_buffer is None
-        self._intermediate_buffer = data
+        self._intermediate_buffer = future
 
-    def reset_intermediate_buffer(self) -> DAGOperationFuture:
+    def reset_intermediate_buffer(self) -> Any:
         """
-        Retrieve the intermediate result of a READ or COMPUTE operation,
-        and reset the intermediate buffer to None.
+        Reset the intermediate future and wait for the result.
         Returns:
-            The intermediate result of a READ or COMPUTE operation.
+            The result of a READ or COMPUTE operation from the intermediate future.
         """
-        data = self._intermediate_buffer
+        future = self._intermediate_buffer
         self._intermediate_buffer = None
-        return data
+        return future
 
     def _read(self) -> bool:
         """
@@ -413,8 +416,8 @@ class ExecutableTask:
         assert self._intermediate_buffer is None
         exit = False
         try:
-            input_data = self.input_reader.read()
-            self.set_intermediate_buffer(input_data)
+            future = self.input_reader.read()
+            self.set_intermediate_buffer(future)
         except RayChannelError:
             # Channel closed. Exit the loop.
             exit = True
@@ -438,21 +441,21 @@ class ExecutableTask:
         Returns:
             True if system error occurs and exit the loop; otherwise, False.
         """
-        input_data = self.reset_intermediate_buffer()
+        input_futures = self.reset_intermediate_buffer()
         method = getattr(class_handle, self.method_name)
         try:
-            _process_return_vals(input_data, return_single_output=False)
+            _process_return_vals(input_futures, return_single_output=False)
         except Exception as exc:
             # Previous task raised an application-level exception.
             # Propagate it and skip the actual task. We don't need to wrap the
             # exception in a RayTaskError here because it has already been wrapped
             # by the previous task.
-            self.set_intermediate_buffer(ReadyFuture(exc))
+            self.set_intermediate_buffer(ResolvedFuture(exc))
             return False
 
         resolved_inputs = []
         for task_input in self.task_inputs:
-            resolved_inputs.append(task_input.resolve(input_data))
+            resolved_inputs.append(task_input.resolve(input_futures))
 
         try:
             output_val = method(*resolved_inputs, **self.resolved_kwargs)
@@ -462,10 +465,9 @@ class ExecutableTask:
         if overlap_gpu_communication:
             import cupy as cp
 
-            future = _GPUFuture(output_val)
-            future.record_event(cp.cuda.get_current_stream())
+            future = _GPUFuture(output_val, cp.cuda.get_current_stream())
         else:
-            future = ReadyFuture(output_val)
+            future = ResolvedFuture(output_val)
         self.set_intermediate_buffer(future)
         return False
 
@@ -479,9 +481,10 @@ class ExecutableTask:
             True if system error occurs and exit the loop; otherwise, False.
         """
         future = self.reset_intermediate_buffer()
+        value = future.wait()
         exit = False
         try:
-            self.output_writer.write(future)
+            self.output_writer.write(value)
         except RayChannelError:
             # Channel closed. Exit the loop.
             exit = True
@@ -507,6 +510,11 @@ class ExecutableTask:
         Returns:
             True if the next operation should not be executed; otherwise, False.
         """
+        if self.output_type_hint.requires_nccl():
+            nccl_group_id = self.output_type_hint.nccl_group_id
+            ctx = ChannelContext.get_current()
+            ctx.set_current_stream(nccl_group_id, op_type.name)
+
         if op_type == _DAGNodeOperationType.READ:
             return self._read()
         elif op_type == _DAGNodeOperationType.COMPUTE:
@@ -1867,7 +1875,7 @@ class CompiledDAG:
             inp = RayDAGArgs(args=args, kwargs=kwargs)
 
         self.raise_if_too_many_inflight_requests()
-        self._dag_submitter.write(ReadyFuture(inp), self._execution_timeout)
+        self._dag_submitter.write(ResolvedFuture(inp), self._execution_timeout)
 
         if self._returns_list:
             ref = [
@@ -1933,7 +1941,7 @@ class CompiledDAG:
                 inp = RayDAGArgs(args=args, kwargs=kwargs)
 
             self.raise_if_too_many_inflight_requests()
-            await self._dag_submitter.write(ReadyFuture(inp))
+            await self._dag_submitter.write(ResolvedFuture(inp))
             # Allocate a future that the caller can use to get the result.
             fut = asyncio.Future()
             await self._fut_queue.put(fut)

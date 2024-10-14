@@ -1,7 +1,6 @@
 import io
 import logging
 import uuid
-from functools import partial
 from types import ModuleType
 from typing import TYPE_CHECKING, List, Optional, Tuple, Union
 
@@ -157,13 +156,13 @@ class NestedTorchTensorNcclChannel(ChannelInterface):
             # normally.
             self.serialization_ctx.set_use_external_transport(False)
 
-        from ray.dag.dag_operation_future import ReadyFuture
+        from ray.dag.dag_operation_future import ResolvedFuture
 
         # Send the extracted tensors through a GPU-specific channel.
-        self._gpu_data_channel.write(ReadyFuture(tensors_to_send))
+        self._gpu_data_channel.write(ResolvedFuture(tensors_to_send))
         # Send the rest of the data, with placeholders for the extracted
         # tensors, through a CPU-specific channel.
-        self._cpu_data_channel.write(ReadyFuture(serialized_cpu_data))
+        self._cpu_data_channel.write(ResolvedFuture(serialized_cpu_data))
 
     def read(
         self, timeout: Optional[float] = None
@@ -184,9 +183,9 @@ class NestedTorchTensorNcclChannel(ChannelInterface):
         data = self._cpu_data_channel.read()
         self.serialization_ctx.reset_tensors([])
 
-        from ray.dag.dag_operation_future import ReadyFuture
+        from ray.dag.dag_operation_future import ResolvedFuture
 
-        assert isinstance(data, ReadyFuture)
+        assert isinstance(data, ResolvedFuture)
         return data
 
     def close(self) -> None:
@@ -375,51 +374,48 @@ class TorchTensorNcclChannel(ChannelInterface):
 
     def write(
         self,
-        future: "ray.dag.dag_operation_future.DAGOperationFuture[Union['torch.Tensor', List['torch.Tensor'], Exception]]",  # noqa
+        tensors: Union["torch.Tensor", List["torch.Tensor"], Exception],
         timeout: Optional[float] = None,
     ):
-        from ray.dag.dag_operation_future import WrappedFuture
+        if isinstance(tensors, ray.exceptions.RayTaskError):
+            # TODO(swang): Write exceptions to the meta channel if it is
+            # available.
+            raise tensors
 
-        if self.has_static_type():
-            for rank in self._reader_ranks:
-                self._nccl_group.send(
-                    WrappedFuture(
-                        future, partial(self._extract_static_type_tensors, self)
-                    ),
-                    rank,
-                )
-        else:
-            tensors = future.wait()
-            if isinstance(tensors, ray.exceptions.RayTaskError):
-                # TODO(swang): Write exceptions to the meta channel if it is
-                # available.
-                raise tensors
-
-            from ray.dag.dag_operation_future import ReadyFuture
-
-            if isinstance(tensors, list):
-                meta_list = []
-                for tensor in tensors:
-                    meta_list.append(self._get_tensor_meta(tensor))
-                self._meta_channel.write(ReadyFuture(meta_list))
-            else:
-                meta = self._get_tensor_meta(tensors)
-                if meta is not None:
-                    self._meta_channel.write(ReadyFuture(meta))
-                tensors = [tensors]
-
-            # NOTE(swang): We must send the metadata *before* launching the NCCL
-            # send. We are using blocking NCCL ops, so the following calls will
-            # block until the kernel has been enqueued. Also, peers must launch the
-            # kernel together before either can proceed. Therefore, we send the
-            # metadata first so that the receiver can read the metadata and then
-            # launch the same NCCL op.
+        if isinstance(tensors, list):
+            meta_list = []
             for tensor in tensors:
-                # TODO: If there are multiple readers, can replace with a
-                # broadcast.
-                ready_tensor = ReadyFuture(tensor)
-                for rank in self._reader_ranks:
-                    self._nccl_group.send(ready_tensor, rank)
+                meta_list.append(self._get_tensor_meta(tensor))
+            if self.has_static_type():
+                # Make sure that there is exactly one tensor to send, and its
+                # metadata should have matched the static type.
+                if meta_list != [None]:
+                    raise ValueError(
+                        "DAGNode annotated with "
+                        "TorchTensorType(_shape=shape, _dtype=dtype))` can return at "
+                        "most one tensor with the declared `_shape` and `_dtype`. "
+                        "Use TorchTensorType() if value contains more than one "
+                        "tensor or tensor of dynamic size."
+                    )
+            else:
+                self._meta_channel.write(meta_list)
+        else:
+            meta = self._get_tensor_meta(tensors)
+            if meta is not None:
+                self._meta_channel.write(meta)
+            tensors = [tensors]
+
+        # NOTE(swang): We must send the metadata *before* launching the NCCL
+        # send. We are using blocking NCCL ops, so the following calls will
+        # block until the kernel has been enqueued. Also, peers must launch the
+        # kernel together before either can proceed. Therefore, we send the
+        # metadata first so that the receiver can read the metadata and then
+        # launch the same NCCL op.
+        for tensor in tensors:
+            # TODO: If there are multiple readers, can replace with a
+            # broadcast.
+            for rank in self._reader_ranks:
+                self._nccl_group.send(tensor, rank)
 
     def read(
         self, timeout: Optional[float] = None
