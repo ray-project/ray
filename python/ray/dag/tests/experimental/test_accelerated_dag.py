@@ -173,6 +173,23 @@ def test_basic(ray_start_regular):
         # Delete the buffer so that the next DAG output can be written.
         del result
 
+def test_basic_destruction(ray_start_regular):
+    a = Actor.remote(0)
+    with InputNode() as i:
+        dag = a.echo.bind(i)
+
+    compiled_dag = dag.experimental_compile()
+    dag_id = compiled_dag.get_id()
+
+    try:
+        for i in range(3):
+            val = np.ones(100) * i
+            ref = compiled_dag.execute(val)
+            # ref is destructed at the end of the current iteration. Since ref.get() is not called,
+            # the destructor releases its native buffer without deserializing the value. If the destructor
+            # fails to release the buffer, the subsequent DAG execution will fail due to memory leak.
+    except RayChannelTimeoutError:
+        pytest.fail("The native buffer associated with the CompiledDAGRef was not released upon destruction.")
 
 @pytest.mark.parametrize("single_fetch", [True, False])
 def test_two_returns_one_reader(ray_start_regular, single_fetch):

@@ -2,6 +2,7 @@ import asyncio
 from typing import Any, List, Optional
 
 import ray
+import ray._private
 from ray.exceptions import RayTaskError
 from ray.util.annotations import PublicAPI
 
@@ -88,9 +89,11 @@ class CompiledDAGRef:
         if self._dag.is_teardown:
             return
 
-        # If not yet, get the result and discard to avoid execution result leak.
+        # If not yet, release native buffers to avoid execution result leak. Note that
+        # we skip python-based deserialization as the values stored in the buffers are
+        # not used.
         if not self._ray_get_called:
-            self.get()
+            self._dag._release_output_channel_buffers(self._execution_index)
 
     def get(self, timeout: Optional[float] = None):
         if self._ray_get_called:
