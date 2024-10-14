@@ -191,7 +191,7 @@ class _NcclGroup(GPUCommunicator):
             # TODO(rui): find a better approach
             self._send_stream.synchronize()
 
-        value = future.wait(self._send_stream)
+        value = future.wait()
 
         # TODO(swang): Handle send/recv async NCCL errors such as network
         # failures.
