@@ -158,16 +158,12 @@ class CompiledDAGFuture:
         fut = self._fut
         self._fut = None
 
-        async def _process_execution():
-            async with self._dag.get_execution_lock(self._execution_index):
-                if not self._dag._has_execution_results(self._execution_index):
-                    result = await fut
-                    self._dag._cache_execution_results(self._execution_index, result)
-                    self._dag.increment_max_finished_execution_index()
+        if not self._dag._has_execution_results(self._execution_index):
+            result = yield from fut.__await__()
+            self._dag._cache_execution_results(self._execution_index, result)
+            self._dag.increment_max_finished_execution_index()
 
-                return_vals = self._dag._get_execution_results(
-                    self._execution_index, self._channel_index
-                )
-            return _process_return_vals(return_vals, True)
-
-        return _process_execution().__await__()
+        return_vals = self._dag._get_execution_results(
+            self._execution_index, self._channel_index
+        )
+        return _process_return_vals(return_vals, True)
