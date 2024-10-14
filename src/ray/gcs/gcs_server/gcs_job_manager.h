@@ -31,6 +31,7 @@
 #include "ray/rpc/worker/core_worker_client.h"
 #include "ray/rpc/worker/core_worker_client_pool.h"
 #include "ray/util/event.h"
+#include "ray/util/thread_checker.h"
 
 namespace ray {
 namespace gcs {
@@ -106,6 +107,10 @@ class GcsJobManager : public rpc::JobInfoHandler {
 
   void MarkJobAsFinished(rpc::JobTableData job_table_data,
                          std::function<void(Status)> done_callback);
+
+  // Used to validate invariants for threading; for example, all callbacks are executed on
+  // the same thread.
+  ThreadChecker thread_checker_;
 
   // Running Job IDs, used to report metrics.
   absl::flat_hash_set<JobID> running_job_ids_;
