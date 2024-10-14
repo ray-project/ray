@@ -183,7 +183,7 @@ class GrpcClient {
       RAY_CHECK(call != nullptr);
     }
 
-    call_method_invoked_ = true;
+    call_method_invoked_.store(true);
   }
 
   std::shared_ptr<grpc::Channel> Channel() const { return channel_; }
@@ -194,7 +194,8 @@ class GrpcClient {
   /// Also see https://grpc.github.io/grpc/core/md_doc_connectivity-semantics-and-api.html
   /// for channel connectivity state machine.
   bool IsChannelIdleAfterRPCs() const {
-    return (channel_->GetState(false) == GRPC_CHANNEL_IDLE) && call_method_invoked_;
+    return (channel_->GetState(false) == GRPC_CHANNEL_IDLE) &&
+           call_method_invoked_.load();
   }
 
  private:
@@ -206,7 +207,7 @@ class GrpcClient {
   /// The channel of the stub.
   std::shared_ptr<grpc::Channel> channel_;
   /// Whether CallMethod is invoked.
-  bool call_method_invoked_ = false;
+  std::atomic<bool> call_method_invoked_ = false;
 };
 
 }  // namespace rpc
