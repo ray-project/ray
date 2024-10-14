@@ -99,6 +99,7 @@ refresh_compile_commands(
     # No need to add flags already in .bazelrc. They're automatically picked up.
 )
 
+# bazel run :refresh_compile_commands_external_sources for generation with external source files (cc files)
 refresh_compile_commands(
     name = "refresh_compile_commands_external_sources",
     targets = {
