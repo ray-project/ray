@@ -144,9 +144,11 @@ class GetAllActorInfoFromGrpc(GetAllActorInfoClient):
         reply = await self._gcs_actor_info_stub.GetAllActorInfo(
             request,
             timeout=timeout,
-            filters=gcs_service_pb2.GetAllActorInfoRequest.Filters(state=state)
-            if state
-            else None,
+            filters=(
+                gcs_service_pb2.GetAllActorInfoRequest.Filters(state=state)
+                if state
+                else None
+            ),
         )
 
         if reply.status.code != 0:
@@ -267,7 +269,9 @@ class ActorHead(dashboard_utils.DashboardHeadModule):
     def _process_updated_actor_table(
         self, actor_id: str, actor_table_data: Dict[str, Any]
     ):
-        """NOTE: This method has to be executed on the event-loop, provided that it accesses # noqa: E501
+        """
+        NOTE: This method has to be executed on the event-loop,
+        provided that it accesses
         DataSource data structures (to follow its thread-safety model)"""
 
         # If actor is not new registered but updated, we only update

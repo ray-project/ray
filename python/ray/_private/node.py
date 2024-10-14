@@ -534,7 +534,8 @@ class Node:
         """Resolve and return the current resource spec for the node."""
 
         def merge_resources(env_dict, params_dict):
-            """Separates special case params and merges two dictionaries, picking from the # noqa:E501
+            """
+            Separates special case params and merges two dictionaries, picking from the
             first in the event of a conflict. Also emit a warning on every
             conflict.
             """

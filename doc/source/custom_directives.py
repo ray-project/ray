@@ -751,17 +751,17 @@ def setup_context(app, pagename, templatename, context, doctree):
         # Group the examples by the ExampleConfig.groupby value:
         examples = defaultdict(list)
         example_config = ExampleConfig(config, app.srcdir)
-        for _example in example_config:
+        for example in example_config:
             try:
-                group = getattr(_example, example_config.groupby.key())
+                group = getattr(example, example_config.groupby.key())
             except AttributeError as e:
                 raise AttributeError(
-                    f"Example {_example.link} has no {example_config.groupby.key()} "
+                    f"Example {example.link} has no {example_config.groupby.key()} "
                     "key, but needs one because the examples for library "
                     f"{example_config.library.value} are configured to be grouped "
                     f"by {example_config.groupby.key()}."
                 ) from e
-            examples[group].append(_example)
+            examples[group].append(example)
 
         # Construct a table of examples
         soup = bs4.BeautifulSoup()
