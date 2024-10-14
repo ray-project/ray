@@ -1817,7 +1817,6 @@ class CompiledDAG:
             execution_index: The execution index corresponding to the result.
             result: The results from all channels to be cached.
         """
-        # assert not self._has_execution_results(execution_index)
         if not self._has_execution_results(execution_index):
             for chan_idx, res in enumerate(result):
                 self._result_buffer[execution_index][chan_idx] = res
