@@ -96,6 +96,8 @@ void GcsJobManager::HandleAddJob(rpc::AddJobRequest request,
                   reply,
                   send_reply_callback =
                       std::move(send_reply_callback)](const Status &status) {
+    RAY_CHECK(thread_checker_.IsOnSameThread());
+
     if (!status.ok()) {
       RAY_LOG(ERROR) << "Failed to add job, job id = " << job_id
                      << ", driver pid = " << job_table_data.driver_pid();
@@ -136,6 +138,8 @@ void GcsJobManager::MarkJobAsFinished(rpc::JobTableData job_table_data,
   job_table_data.set_is_dead(true);
   auto on_done = [this, job_id, job_table_data, done_callback = std::move(done_callback)](
                      const Status &status) {
+    RAY_CHECK(thread_checker_.IsOnSameThread());
+
     if (!status.ok()) {
       RAY_LOG(ERROR) << "Failed to mark job state, job id = " << job_id;
     } else {
@@ -268,6 +272,8 @@ void GcsJobManager::HandleGetAllJobInfo(rpc::GetAllJobInfoRequest request,
   };
   auto on_done = [this, filter_ok, request, reply, send_reply_callback, limit](
                      const absl::flat_hash_map<JobID, JobTableData> &&result) {
+    RAY_CHECK(thread_checker_.IsOnSameThread());
+
     // Internal KV keys for jobs that were submitted via the Ray Job API.
     std::vector<std::string> job_api_data_keys;
 
