@@ -95,8 +95,15 @@ refresh_compile_commands(
     targets = {
       "//:ray_pkg": "",
     },
-    exclude_external_sources = True, # remove to give lsp more info at the cost of 2x index time
+    exclude_external_sources = True, # removed below to have lsp index external cc files at the cost of 2x index time
     # No need to add flags already in .bazelrc. They're automatically picked up.
+)
+
+refresh_compile_commands(
+    name = "refresh_compile_commands_external_sources",
+    targets = {
+      "//:ray_pkg": "",
+    },
 )
 
 # === Begin of rpc definitions ===
