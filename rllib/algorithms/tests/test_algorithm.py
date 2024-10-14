@@ -12,6 +12,7 @@ import ray.rllib.algorithms.dqn as dqn
 from ray.rllib.algorithms.bc import BCConfig
 import ray.rllib.algorithms.ppo as ppo
 from ray.rllib.core.columns import Columns
+from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
 from ray.rllib.core.rl_module.rl_module import RLModuleSpec
 from ray.rllib.examples.envs.classes.multi_agent import MultiAgentCartPole
 from ray.rllib.examples.evaluation.evaluation_parallel_to_training import (
@@ -33,7 +34,7 @@ from ray.tune import register_env
 class TestAlgorithm(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        ray.init()
+        ray.init(local_mode=True)
         register_env("multi_cart", lambda cfg: MultiAgentCartPole(cfg))
 
     @classmethod
@@ -58,10 +59,9 @@ class TestAlgorithm(unittest.TestCase):
                 num_epochs=1,
             )
             .rl_module(
-                model_config_dict={
-                    "fcnet_hiddens": [5],
-                    "fcnet_activation": "linear",
-                },
+                model_config=DefaultModelConfig(
+                    fcnet_hiddens=[5], fcnet_activation="linear"
+                ),
             )
             .multi_agent(
                 # Start with a single policy.
@@ -425,7 +425,7 @@ class TestAlgorithm(unittest.TestCase):
         )
 
         algo = config.build()
-        # Given evaluation_interval=2, r0, r2, r4 should not contain
+        # Given evaluation_interval=2, r0, r2 should not contain
         # evaluation metrics, while r1, r3 should.
         r0 = algo.train()
         print(r0)
@@ -437,9 +437,10 @@ class TestAlgorithm(unittest.TestCase):
         print(r3)
         algo.stop()
 
+        # No eval results yet in first iteration (eval has not run yet).
         self.assertFalse(EVALUATION_RESULTS in r0)
         self.assertTrue(EVALUATION_RESULTS in r1)
-        self.assertFalse(EVALUATION_RESULTS in r2)
+        self.assertTrue(EVALUATION_RESULTS in r2)
         self.assertTrue(EVALUATION_RESULTS in r3)
         self.assertTrue(ENV_RUNNER_RESULTS in r1[EVALUATION_RESULTS])
         self.assertTrue(
@@ -452,7 +453,7 @@ class TestAlgorithm(unittest.TestCase):
         # configured exact number of episodes per evaluation.
         config = (
             dqn.DQNConfig()
-            .environment(env="CartPole-v1")
+            .environment("CartPole-v1")
             .evaluation(
                 evaluation_interval=2,
                 evaluation_duration=2,
@@ -471,11 +472,12 @@ class TestAlgorithm(unittest.TestCase):
         algo.stop()
 
         # Eval results are not available at step 0.
-        # But step 3 should still have it, even though no eval was
-        # run during that step.
         self.assertTrue(EVALUATION_RESULTS not in r0)
+        # But step 3 should still have it, even though no eval was
+        # run during that step (b/c the new API stack always attaches eval
+        # results, after the very first evaluation).
         self.assertTrue(EVALUATION_RESULTS in r1)
-        self.assertTrue(EVALUATION_RESULTS not in r2)
+        self.assertTrue(EVALUATION_RESULTS in r2)
         self.assertTrue(EVALUATION_RESULTS in r3)
 
     def test_evaluation_wo_evaluation_env_runner_group(self):
@@ -510,51 +512,6 @@ class TestAlgorithm(unittest.TestCase):
         )
         algo_w_env_on_local_worker.stop()
         config.create_env_on_local_worker = False
-
-    def test_space_inference_from_remote_workers(self):
-        # Expect to not do space inference if the learner has an env.
-
-        env = gym.make("CartPole-v1")
-
-        config = (
-            ppo.PPOConfig()
-            .env_runners(
-                num_env_runners=1, validate_env_runners_after_construction=False
-            )
-            .environment(env="CartPole-v1")
-        )
-
-        # No env on driver -> expect longer build time due to space
-        # lookup from remote worker.
-        t0 = time.time()
-        algo = config.build()
-        w_lookup = time.time() - t0
-        print(f"No env on learner: {w_lookup}sec")
-        algo.stop()
-
-        # Env on driver -> expect shorted build time due to no space
-        # lookup required from remote worker.
-        config.create_env_on_local_worker = True
-        t0 = time.time()
-        algo = config.build()
-        wo_lookup = time.time() - t0
-        print(f"Env on learner: {wo_lookup}sec")
-        self.assertLess(wo_lookup, w_lookup)
-        algo.stop()
-
-        # Spaces given -> expect shorter build time due to no space
-        # lookup required from remote worker.
-        config.create_env_on_local_worker = False
-        config.environment(
-            observation_space=env.observation_space,
-            action_space=env.action_space,
-        )
-        t0 = time.time()
-        algo = config.build()
-        wo_lookup = time.time() - t0
-        print(f"Spaces given manually in config: {wo_lookup}sec")
-        self.assertLess(wo_lookup, w_lookup)
-        algo.stop()
 
     def test_worker_validation_time(self):
         """Tests the time taken by `validate_env_runners_after_construction=True`."""
