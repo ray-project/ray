@@ -1048,7 +1048,7 @@ matplotlib-inline==0.1.6
     # via
     #   ipykernel
     #   ipython
-mccabe==0.6.1
+mccabe==0.7.0
     # via flake8
 mdit-py-plugins==0.3.5
     # via
