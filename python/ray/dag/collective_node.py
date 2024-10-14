@@ -139,20 +139,6 @@ class CollectiveOutputNode(ClassMethodNode):
         method_options: Dict[str, Any],
         other_args_to_resolve: Dict[str, Any],
     ):
-        # [TODO] Remove.
-        # self._bound_args = method_args or []
-        # self._bound_kwargs = method_kwargs or {}
-        # self._bound_options = method_options or {}
-        # self._method_name: str = method_name
-        # # Parse other_args_to_resolve and assign to variables
-        # self._parent_class_node: Union[
-        #     ClassNode, ReferenceType["ray._private.actor.ActorHandle"]
-        # ] = other_args_to_resolve.get(PARENT_CLASS_NODE_KEY)
-        # # The index/order when bind() is called on this class method
-        # self._bind_index: Optional[int] = other_args_to_resolve.get(
-        #     BIND_INDEX_KEY, None
-        # )
-
         # Parse the input node.
         if not (
             isinstance(method_args, tuple)
@@ -198,25 +184,6 @@ class CollectiveOutputNode(ClassMethodNode):
         raise NotImplementedError(
             "CollectiveOutputNode is only supported with dag.experimental_compile()"
         )
-
-    # [TODO] Remove.
-    # def __str__(self) -> str:
-    #     return get_dag_node_str(self, f"{self._method_name}()")
-
-    # def get_method_name(self) -> str:
-    #     return self._method_name
-
-    # def _get_bind_index(self) -> int:
-    #     return self._bind_index
-
-    # def _get_remote_method(self, method_name):
-    #     method_body = getattr(self._parent_class_node, method_name)
-    #     return method_body
-
-    # def _get_actor_handle(self) -> Optional["ray.actor.ActorHandle"]:
-    #     if not isinstance(self._parent_class_node, ray.actor.ActorHandle):
-    #         return None
-    #     return self._parent_class_node
 
     @property
     def collective_group(self) -> _CollectiveGroup:

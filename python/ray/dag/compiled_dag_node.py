@@ -812,7 +812,6 @@ class CompiledDAG:
                 or isinstance(dag_node, InputAttributeNode)
                 or isinstance(dag_node, MultiOutputNode)
                 or isinstance(dag_node, ClassMethodNode)
-                or isinstance(dag_node, CollectiveOutputNode)
             ):
                 if isinstance(dag_node, FunctionNode):
                     # TODO(swang): Support non-actor tasks.
@@ -822,9 +821,7 @@ class CompiledDAG:
                 else:
                     raise ValueError(f"Found unsupported node of type {type(dag_node)}")
 
-            if (
-                isinstance(dag_node, ClassMethodNode) and dag_node.is_class_method_call
-            ) or isinstance(dag_node, CollectiveOutputNode):
+            if isinstance(dag_node, ClassMethodNode) and dag_node.is_class_method_call:
                 actor_handle = dag_node._get_actor_handle()
                 if actor_handle is None:
                     raise ValueError(
@@ -897,7 +894,7 @@ class CompiledDAG:
                 if (
                     isinstance(dag_node, ClassMethodNode)
                     and dag_node.is_class_method_call
-                ) or isinstance(dag_node, CollectiveOutputNode):
+                ):
                     downstream_actor_handle = dag_node._get_actor_handle()
 
                 if isinstance(upstream_task.dag_node, InputAttributeNode):
@@ -1056,7 +1053,6 @@ class CompiledDAG:
             InputAttributeNode,
             MultiOutputNode,
             ClassMethodNode,
-            CollectiveOutputNode,
         )
 
         if self.input_task_idx is None:
@@ -1084,7 +1080,7 @@ class CompiledDAG:
             if (
                 isinstance(task.dag_node, ClassMethodNode)
                 and task.dag_node.is_class_method_call
-            ) or isinstance(task.dag_node, CollectiveOutputNode):
+            ):
                 # Create output buffers for the actor method.
                 assert len(task.output_channels) == 0
                 # `output_to_readers` stores the reader tasks for each output of
