@@ -1,0 +1,58 @@
+{{var "v"}} := *{{ .Varname }}
+{{var "l"}} := z.DecReadMapStart()
+if {{var "l"}} == codecSelferDecContainerLenNil{{xs}} {
+	*{{ .Varname }} = nil
+} else {
+if {{var "v"}} == nil {
+	{{var "rl"}} := z.DecInferLen({{var "l"}}, z.DecBasicHandle().MaxInitLen, {{ .Size }})
+	{{var "v"}} = make(map[{{ .KTyp }}]{{ .Typ }}, {{var "rl"}})
+	*{{ .Varname }} = {{var "v"}}
+}
+{{ $mk := var "mk" -}}
+var {{ $mk }} {{ .KTyp }}
+var {{var "mv"}} {{ .Typ }}
+var {{var "mg"}}, {{var "mdn"}} {{if decElemKindPtr}}, {{var "ms"}}, {{var "mok"}}{{end}} bool
+if z.DecBasicHandle().MapValueReset {
+	{{if decElemKindPtr}}{{var "mg"}} = true
+	{{else if decElemKindIntf}}if !z.DecBasicHandle().InterfaceReset { {{var "mg"}} = true }
+	{{else if not decElemKindImmutable}}{{var "mg"}} = true
+	{{end}} }
+if {{var "l"}} != 0 {
+	{{var "hl"}} := {{var "l"}} > 0 
+	for {{var "j"}} := 0; z.DecContainerNext({{var "j"}}, {{var "l"}}, {{var "hl"}}); {{var "j"}}++ {
+	z.DecReadMapElemKey()
+	{{ if eq .KTyp "string" -}}
+		{{ decLineVarK $mk -}}{{- /* decLineVarKStrZC $mk */ -}}
+	{{ else -}}
+		{{ decLineVarK $mk -}}
+	{{ end -}}
+	{{ if eq .KTyp "interface{}" }}{{/* // special case if a byte array. */ -}}
+    if {{var "bv"}}, {{var "bok"}} := {{var "mk"}}.([]byte); {{var "bok"}} {
+		{{var "mk"}} = z.DecStringZC({{var "bv"}})
+	}
+    {{ end -}}
+    {{if decElemKindPtr -}}
+	{{var "ms"}} = true
+    {{end -}}
+	if {{var "mg"}} {
+		{{if decElemKindPtr -}}
+        {{var "mv"}}, {{var "mok"}} = {{var "v"}}[{{ $mk }}]
+		if {{var "mok"}} {
+			{{var "ms"}} = false
+		}
+        {{else -}}
+        {{var "mv"}} = {{var "v"}}[{{ $mk }}]
+        {{end -}}
+	} {{if not decElemKindImmutable}}else { {{var "mv"}} = {{decElemZero}} }{{end}}
+	z.DecReadMapElemValue()
+	{{var "mdn"}} = false
+	{{ $x := printf "%vmv%v" .TempVar .Rand }}{{ $y := printf "%vmdn%v" .TempVar .Rand }}{{ decLineVar $x $y -}}
+	if {{var "mdn"}} {
+		{{var "v"}}[{{ $mk }}] = {{decElemZero}}
+	} else {{if decElemKindPtr}} if {{var "ms"}} {{end}} {
+		{{var "v"}}[{{ $mk }}] = {{var "mv"}}
+	}
+}
+} // else len==0: leave as-is (do not clear map entries)
+z.DecReadMapEnd()
+}

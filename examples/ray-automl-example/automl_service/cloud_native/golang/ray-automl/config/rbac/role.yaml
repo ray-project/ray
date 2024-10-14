@@ -1,0 +1,59 @@
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  creationTimestamp: null
+  name: manager-role
+rules:
+- apiGroups:
+  - automl.my.domain
+  resources:
+  - proxies
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - automl.my.domain
+  resources:
+  - proxies/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - automl.my.domain
+  resources:
+  - proxies/status
+  verbs:
+  - get
+  - patch
+  - update
+- apiGroups:
+  - automl.my.domain
+  resources:
+  - trainers
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - automl.my.domain
+  resources:
+  - trainers/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - automl.my.domain
+  resources:
+  - trainers/status
+  verbs:
+  - get
+  - patch
+  - update

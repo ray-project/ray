@@ -1,0 +1,74 @@
+# permissions to do leader election.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  labels:
+    app.kubernetes.io/name: role
+    app.kubernetes.io/instance: leader-election-role
+    app.kubernetes.io/component: rbac
+    app.kubernetes.io/created-by: ray-automl
+    app.kubernetes.io/part-of: ray-automl
+    app.kubernetes.io/managed-by: kustomize
+  name: leader-election-role
+rules:
+- apiGroups:
+  - ""
+  resources:
+  - pods
+  - configmaps
+  - services
+  verbs:
+  - '*'
+- apiGroups:
+  - coordination.k8s.io
+  resources:
+  - leases
+  verbs:
+  - '*'
+- apiGroups:
+  - ""
+  resources:
+  - events
+  verbs:
+  - get
+  - create
+  - patch
+- apiGroups:
+  - apps
+  resources:
+  - deployments
+  - statefulsets
+  verbs:
+  - '*'
+- apiGroups:
+  - apps
+  resources:
+  - deployments/status
+  - statefulsets/status
+  verbs:
+  - get
+  - update
+  - patch
+- apiGroups:
+  - automl.my.domain
+  resources:
+  - proxies
+  - trainers
+  verbs:
+  - '*'
+- apiGroups:
+  - automl.my.domain
+  resources:
+  - proxies/finalizers
+  - trainers/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - automl.my.domain
+  resources:
+  - proxies/status
+  - trainers/status
+  verbs:
+  - get
+  - patch
+  - update

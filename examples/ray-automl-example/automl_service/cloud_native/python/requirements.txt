@@ -1,0 +1,7 @@
+aiogrpc
+statsforecast
+scikit-learn
+pickleshare
+numpy
+protobuf
+requests

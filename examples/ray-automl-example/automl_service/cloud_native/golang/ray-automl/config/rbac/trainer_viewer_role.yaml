@@ -1,0 +1,27 @@
+# permissions for end users to view trainers.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
+    app.kubernetes.io/name: clusterrole
+    app.kubernetes.io/instance: trainer-viewer-role
+    app.kubernetes.io/component: rbac
+    app.kubernetes.io/created-by: ray-automl
+    app.kubernetes.io/part-of: ray-automl
+    app.kubernetes.io/managed-by: kustomize
+  name: trainer-viewer-role
+rules:
+- apiGroups:
+  - automl.my.domain
+  resources:
+  - trainers
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - automl.my.domain
+  resources:
+  - trainers/status
+  verbs:
+  - get

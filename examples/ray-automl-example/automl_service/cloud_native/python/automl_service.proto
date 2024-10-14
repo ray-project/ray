@@ -1,0 +1,93 @@
+syntax = "proto3";
+
+message DoAutoMLRequest {
+  string data_source = 1; 
+  string data_partition = 2;
+  repeated int32 model_season_lengths = 3;
+  repeated string models = 4;
+}
+
+message DoAutoMLReply {
+  bool success = 1;
+  optional int32 task_id = 2;
+  optional string message = 3;
+}
+
+message GetResultRequest {
+  int32 task_id = 1;
+}
+
+message GetResultReply {
+  bool success = 1;
+  optional string result = 2;
+}
+
+// Service from client to proxy
+service AutoMLService {
+  rpc DoAutoML (DoAutoMLRequest) returns (DoAutoMLReply) {}
+  rpc GetResult (GetResultRequest) returns (GetResultReply) {}
+}
+
+message RegisterRequest {
+  string id = 1;
+  int32 task_id = 2;
+}
+
+message RegisterReply {
+  bool success = 1;
+  optional string data_source = 2; 
+  optional string data_partition = 3;
+  repeated int32 model_season_lengths = 4;
+  repeated string models = 5;
+  optional string message = 6;
+}
+
+message ReportResultRequest {
+  string id = 1;
+  int32 task_id = 2;
+  string result = 3;
+}
+
+message ReportResultReply {
+  bool success = 1;
+  optional string message = 2;
+}
+
+// Service from trainer to proxy
+service TrainerRegisterService {
+  rpc Register (RegisterRequest) returns (RegisterReply) {}
+  rpc ReportResult (ReportResultRequest) returns (ReportResultReply) {}
+}
+
+message WorkerRegisterRequest {
+  string worker_id = 1;
+}
+
+message WorkerRegisterReply {
+  bool success = 1;
+  optional bytes worker_task = 2;
+  // optional bytes model = 2;
+  // optional bytes df = 3;
+  // optional bytes train_indices = 4;
+  // optional bytes test_indices = 5;
+  // optional string label_column = 6;
+  // optional bytes metrics = 7;
+  // optional string freq = 9;
+}
+
+message WorkerReportResultRequest {
+  string worker_id = 1;
+  map<string, double> result = 2;
+}
+
+message WorkerReportResultReply {
+  bool success = 1;
+  optional string message = 2;
+}
+
+// Service from worker to trainer
+service WorkerRegisterService {
+  rpc WorkerRegister (WorkerRegisterRequest) returns (WorkerRegisterReply) {}
+  rpc WorkerReportResult (WorkerReportResultRequest) returns (WorkerReportResultReply) {}
+}
+

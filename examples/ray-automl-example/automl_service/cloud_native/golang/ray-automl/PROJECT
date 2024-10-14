@@ -1,0 +1,25 @@
+domain: my.domain
+layout:
+- go.kubebuilder.io/v3
+projectName: ray-automl
+repo: github.com/ray-automl
+resources:
+- api:
+    crdVersion: v1
+    namespaced: true
+  controller: true
+  domain: my.domain
+  group: automl
+  kind: Trainer
+  path: github.com/ray-automl/api/v1
+  version: v1
+- api:
+    crdVersion: v1
+    namespaced: true
+  controller: true
+  domain: my.domain
+  group: automl
+  kind: Proxy
+  path: github.com/ray-automl/api/v1
+  version: v1
+version: "3"

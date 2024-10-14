@@ -1,0 +1,27 @@
+# permissions for end users to view proxies.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
+    app.kubernetes.io/name: clusterrole
+    app.kubernetes.io/instance: proxy-viewer-role
+    app.kubernetes.io/component: rbac
+    app.kubernetes.io/created-by: ray-automl
+    app.kubernetes.io/part-of: ray-automl
+    app.kubernetes.io/managed-by: kustomize
+  name: proxy-viewer-role
+rules:
+- apiGroups:
+  - automl.my.domain
+  resources:
+  - proxies
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - automl.my.domain
+  resources:
+  - proxies/status
+  verbs:
+  - get

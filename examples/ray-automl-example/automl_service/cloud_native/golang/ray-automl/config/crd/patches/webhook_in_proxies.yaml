@@ -1,0 +1,16 @@
+# The following patch enables a conversion webhook for the CRD
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: proxies.automl.my.domain
+spec:
+  conversion:
+    strategy: Webhook
+    webhook:
+      clientConfig:
+        service:
+          namespace: system
+          name: webhook-service
+          path: /convert
+      conversionReviewVersions:
+      - v1

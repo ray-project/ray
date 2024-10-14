@@ -1,0 +1,11 @@
+*.exe
+*.dll
+*.so
+*.dylib
+
+*.test
+
+*.out
+*.txt
+
+vendor/

@@ -1,0 +1,30 @@
+build:
+  main: cmd/swag/main.go
+  goos:
+    - linux
+    - darwin
+  goarch:
+    - amd64
+    - arm64
+    - 386
+  env:
+    - CGO_ENABLED=0
+
+archives:
+  - id: foo
+    name_template: >-
+      {{ .ProjectName }}_
+      {{- .Version }}_
+      {{- if eq .Os "linux"}}Linux{{ else if eq .Os "darwin"}}Darwin{{ else }}{{ .Os }}{{ end }}_
+      {{- if eq .Arch "386" }}i386{{ else if eq .Arch "amd64" }}x86_64{{ else }}{{ .Arch }}{{ end }}
+
+checksum:
+  name_template: 'checksums.txt'
+snapshot:
+  name_template: "{{ .Tag }}-next"
+changelog:
+  sort: asc
+  filters:
+    exclude:
+    - '^docs:'
+    - '^test:'

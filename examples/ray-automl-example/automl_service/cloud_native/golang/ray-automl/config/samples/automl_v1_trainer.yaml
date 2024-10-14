@@ -1,0 +1,51 @@
+apiVersion: automl.my.domain/v1
+kind: Trainer
+metadata:
+  labels:
+    app.kubernetes.io/name: trainer
+    app.kubernetes.io/instance: trainer-sample
+    app.kubernetes.io/part-of: ray-automl
+    app.kuberentes.io/managed-by: kustomize
+    app.kubernetes.io/created-by: ray-automl
+    ray.automl.proxy.name: proxy-sample
+    ray.automl.trainer.name: trainer-sample
+  name: trainer-sample
+  namespace: ray-automl-system
+spec:
+  image: gcr.io/distroless/static:debug
+  startParams:
+    grpc-port: "2345"
+    host-name: "$MY_POD_IP"
+  workers:
+    group1:
+      cpu: '500m'
+      memory: '500Mi'
+      disk: '500Mi'
+    group2:
+      cpu: '500m'
+      memory: '500Mi'
+      disk: '500Mi'
+  deploySpec:
+    selector:
+      matchLabels:
+        control-plane: controller-manager
+        app.kubernetes.io/instance: trainer-sample
+    replicas: 1
+    template:
+      spec:
+        containers:
+        - command:
+          - /busybox/sh
+          args:
+          - sleep infinity
+          image: gcr.io/distroless/static:debug
+          imagePullPolicy: IfNotPresent
+          name: trainer
+          resources:
+            limits:
+              cpu: 500m
+              memory: 128Mi
+            requests:
+              cpu: 10m
+              memory: 64Mi
+        terminationGracePeriodSeconds: 10

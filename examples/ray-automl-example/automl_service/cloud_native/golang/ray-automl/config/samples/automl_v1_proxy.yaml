@@ -1,0 +1,63 @@
+apiVersion: automl.my.domain/v1
+kind: Proxy
+metadata:
+  labels:
+    app.kubernetes.io/name: proxy
+    app.kubernetes.io/instance: proxy-sample
+    app.kubernetes.io/part-of: ray-automl
+    app.kubernetes.io/managed-by: kustomize
+    app.kubernetes.io/created-by: ray-automl
+  name: proxy-sample
+  namespace: ray-automl-system
+spec:
+  startParams:
+    port: "1234"
+    host-name: "$MY_POD_IP"
+  deploySpec:
+    selector:
+      matchLabels:
+        app.kubernetes.io/instance: proxy-sample
+    replicas: 1
+    template:
+      spec:
+        containers:
+        - command:
+          - /busybox/sh
+          args:
+          - sleep infinity
+          image: qstar/ray-automl:ray-automl-service-202305112103
+          imagePullPolicy: IfNotPresent
+          name: proxy
+          resources:
+            limits:
+              cpu: 200m
+              memory: 256Mi
+            requests:
+              cpu: 200m
+              memory: 256Mi
+          env:
+          - name: PROXY_NAME
+            valueFrom:
+              fieldRef:
+                apiVersion: v1
+                fieldPath: metadata.labels['app.kubernetes.io/instance']
+          - name: NAMESPACE
+            valueFrom:
+              fieldRef:
+                apiVersion: v1
+                fieldPath: metadata.namespace
+          - name: TRAINER_CPU
+            value: "1"
+          - name: TRAINER_MEMORY
+            value: "1Gi"
+          - name: TRAINER_DISK
+            value: "1Gi"
+          - name: WORKER_CPU
+            value: "1"
+          - name: WORKER_MEMORY
+            value: "1Gi"
+          - name: WORKER_DISK
+            value: "1Gi"
+          - name: IMAGE
+            value: "qstar/ray-automl:ray-automl-service-202305112103"
+        terminationGracePeriodSeconds: 0

@@ -1,0 +1,41 @@
+# See the OWNERS docs: https://git.k8s.io/community/contributors/guide/owners.md
+
+aliases:
+  # active folks who can be contacted to perform admin-related
+  # tasks on the repo, or otherwise approve any PRS.
+  controller-runtime-admins:
+  - droot
+  - mengqiy
+  - pwittrock
+
+  # non-admin folks who have write-access and can approve any PRs in the repo
+  controller-runtime-maintainers:
+  - vincepri
+  - joelanford
+
+  # non-admin folks who can approve any PRs in the repo
+  controller-runtime-approvers:
+  - gerred
+  - shawn-hurley
+  - alvaroaleman
+
+  # folks who can review and LGTM any PRs in the repo (doesn't
+  # include approvers & admins -- those count too via the OWNERS
+  # file)
+  controller-runtime-reviewers:
+  - alenkacz
+  - vincepri
+  - alexeldeib
+  - varshaprasad96
+  - fillzpp
+
+  # folks to can approve things in the directly-ported
+  # testing_frameworks portions of the codebase
+  testing-integration-approvers:
+  - apelisse
+  - hoegaarden
+
+  # folks who may have context on ancient history,
+  # but are no longer directly involved
+  controller-runtime-emeritus-maintainers:
+  - directxman12
