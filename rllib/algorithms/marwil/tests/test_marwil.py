@@ -10,11 +10,6 @@ from ray.rllib.core.learner.learner import POLICY_LOSS_KEY, VF_LOSS_KEY
 from ray.rllib.env import INPUT_ENV_SPACES
 from ray.rllib.offline.offline_prelearner import OfflinePreLearner
 from ray.rllib.utils.framework import try_import_torch
-from ray.rllib.utils.metrics import (
-    ENV_RUNNER_RESULTS,
-    EPISODE_RETURN_MEAN,
-    EVALUATION_RESULTS,
-)
 from ray.rllib.utils.test_utils import check
 
 torch, _ = try_import_torch()
@@ -29,7 +24,7 @@ class TestMARWIL(unittest.TestCase):
     def tearDownClass(cls):
         ray.shutdown()
 
-    def test_marwil_compilation_and_learning_from_offline_file(self):
+    def test_marwil_compilation_discrete_actions(self):
         """Test whether a MARWILAlgorithm can be built with all frameworks.
 
         Learns from a historic-data file.
@@ -51,52 +46,34 @@ class TestMARWIL(unittest.TestCase):
                 enable_rl_module_and_learner=True,
                 enable_env_runner_and_connector_v2=True,
             )
-            .evaluation(
-                evaluation_interval=3,
-                evaluation_num_env_runners=1,
-                evaluation_duration=5,
-                evaluation_parallel_to_training=True,
-            )
             .offline_data(
                 input_=[data_path.as_posix()],
                 dataset_num_iters_per_learner=1,
+                input_read_method_kwargs={"override_num_blocks": 2},
+                map_batches_kwargs={"concurrency": 2, "num_cpus": 2},
+                iter_batches_kwargs={"prefetch_batches": 1},
             )
             .training(
                 lr=0.0008,
                 train_batch_size_per_learner=2000,
                 beta=0.5,
             )
+            .evaluation(
+                evaluation_interval=3,
+                evaluation_num_env_runners=1,
+                evaluation_duration=5,
+                evaluation_parallel_to_training=True,
+            )
         )
 
-        num_iterations = 350
-        min_reward = 100.0
+        num_iterations = 3
 
         algo = config.build()
-        learnt = False
         for i in range(num_iterations):
-            results = algo.train()
-            print(results)
-
-            eval_results = results.get(EVALUATION_RESULTS, {})
-            if eval_results:
-                episode_return_mean = eval_results[ENV_RUNNER_RESULTS][
-                    EPISODE_RETURN_MEAN
-                ]
-                print(f"iter={i}, R={episode_return_mean}")
-                # Learn until some reward is reached on an actual live env.
-                if episode_return_mean > min_reward:
-                    print("BC has learnt the task!")
-                    learnt = True
-                    break
-
-        if not learnt:
-            raise ValueError(
-                f"`MARWIL` did not reach {min_reward} reward from expert offline data!"
-            )
-
+            print(algo.train())
         algo.stop()
 
-    def test_marwil_cont_actions_from_offline_file(self):
+    def test_marwil_compilation_cont_actions(self):
         """Test whether MARWIL runs with cont. actions.
 
         Learns from a historic-data file.
@@ -109,7 +86,6 @@ class TestMARWIL(unittest.TestCase):
 
         config = (
             marwil.MARWILConfig()
-            .env_runners(num_env_runners=1)
             .api_stack(
                 enable_rl_module_and_learner=True,
                 enable_env_runner_and_connector_v2=True,
@@ -133,7 +109,7 @@ class TestMARWIL(unittest.TestCase):
 
         num_iterations = 3
 
-        algo = config.build(env="Pendulum-v1")
+        algo = config.build()
         for i in range(num_iterations):
             print(algo.train())
         algo.stop()

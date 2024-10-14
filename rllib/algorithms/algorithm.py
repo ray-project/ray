@@ -807,7 +807,7 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
             rl_module_ckpt_dirs = {}
             multi_rl_module_ckpt_dir = module_spec.load_state_path
             modules_to_load = module_spec.modules_to_load
-            for module_id, sub_module_spec in module_spec.module_specs.items():
+            for module_id, sub_module_spec in module_spec.rl_module_specs.items():
                 if sub_module_spec.load_state_path:
                     rl_module_ckpt_dirs[module_id] = sub_module_spec.load_state_path
             if multi_rl_module_ckpt_dir or rl_module_ckpt_dirs:

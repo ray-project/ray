@@ -12,6 +12,7 @@ from ray.rllib.algorithms.impala import IMPALAConfig
 from ray.rllib.algorithms.sac.sac import SACConfig
 from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.connectors.env_to_module.flatten_observations import FlattenObservations
+from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
 from ray.rllib.env.multi_agent_env import make_multi_agent
 from ray.rllib.env.multi_agent_env_runner import MultiAgentEnvRunner
 from ray.rllib.env.single_agent_env_runner import SingleAgentEnvRunner
@@ -282,13 +283,14 @@ class TestWorkerFailures(unittest.TestCase):
             }
 
         algo = config.build()
-        self.assertRaises(Exception, lambda: algo.train())
+        self.assertRaises(ray.exceptions.RayError, lambda: algo.train())
         algo.stop()
 
     def _do_test_failing_ignore(self, config: AlgorithmConfig, fail_eval: bool = False):
         # Test fault handling
         config.num_env_runners = 2
         config.ignore_env_runner_failures = True
+        config.validate_env_runners_after_construction = False
         config.recreate_failed_env_runners = False
         config.env = "fault_env"
         # Make worker idx=1 fail. Other workers will be ok.
@@ -543,7 +545,7 @@ class TestWorkerFailures(unittest.TestCase):
                 rollout_fragment_length=16,
             )
             .rl_module(
-                model_config_dict={"fcnet_hiddens": [4]},
+                model_config=DefaultModelConfig(fcnet_hiddens=[4]),
             )
             .training(
                 train_batch_size_per_learner=32,
@@ -602,7 +604,7 @@ class TestWorkerFailures(unittest.TestCase):
                 rollout_fragment_length=16,
             )
             .rl_module(
-                model_config_dict={"fcnet_hiddens": [4]},
+                model_config=DefaultModelConfig(fcnet_hiddens=[4]),
             )
             .training(
                 train_batch_size_per_learner=32,
@@ -711,7 +713,7 @@ class TestWorkerFailures(unittest.TestCase):
                 rollout_fragment_length=16,
             )
             .rl_module(
-                model_config_dict={"fcnet_hiddens": [4]},
+                model_config=DefaultModelConfig(fcnet_hiddens=[4]),
             )
             .training(
                 train_batch_size_per_learner=32,

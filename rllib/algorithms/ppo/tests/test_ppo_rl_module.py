@@ -11,7 +11,7 @@ from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import (
     PPOTorchRLModule,
 )
 from ray.rllib.core.columns import Columns
-from ray.rllib.core.rl_module.rl_module import RLModuleConfig
+from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
 from ray.rllib.models.preprocessors import get_preprocessor
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.numpy import convert_to_numpy
@@ -19,17 +19,6 @@ from ray.rllib.utils.torch_utils import convert_to_torch_tensor
 
 
 torch, nn = try_import_torch()
-
-
-def get_expected_module_config(env, model_config_dict, observation_space):
-    config = RLModuleConfig(
-        observation_space=observation_space,
-        action_space=env.action_space,
-        model_config_dict=model_config_dict,
-        catalog_class=PPOCatalog,
-    )
-
-    return config
 
 
 def dummy_torch_ppo_loss(module, batch, fwd_out):
@@ -46,12 +35,12 @@ def dummy_torch_ppo_loss(module, batch, fwd_out):
 
 
 def _get_ppo_module(env, lstm, observation_space):
-    model_config_dict = {"use_lstm": lstm}
-    config = get_expected_module_config(
-        env, model_config_dict=model_config_dict, observation_space=observation_space
+    return PPOTorchRLModule(
+        observation_space=observation_space,
+        action_space=env.action_space,
+        model_config=DefaultModelConfig(use_lstm=lstm),
+        catalog_class=PPOCatalog,
     )
-    module = PPOTorchRLModule(config)
-    return module
 
 
 def _get_input_batch_from_obs(obs, lstm):
