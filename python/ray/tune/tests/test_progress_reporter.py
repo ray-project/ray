@@ -203,7 +203,8 @@ EXPECTED_BEST_1 = (
 
 EXPECTED_BEST_2 = "Current best trial: 00004 with metric_1=2.0 and parameters={'a': 4}"
 
-EXPECTED_SORT_RESULT_UNSORTED = """Number of trials: 5 (1 PENDING, 1 RUNNING, 3 TERMINATED) # noqa:E501
+EXPECTED_SORT_RESULT_UNSORTED = """\
+Number of trials: 5 (1 PENDING, 1 RUNNING, 3 TERMINATED)
 +--------------+------------+-------+-----+------------+
 |   Trial name | status     | loc   |   a |   metric_1 |
 |--------------+------------+-------+-----+------------|
@@ -225,7 +226,8 @@ EXPECTED_SORT_RESULT_ASC = """Number of trials: 5 (1 PENDING, 1 RUNNING, 3 TERMI
 +--------------+------------+-------+-----+------------+
 ... 1 more trials not shown (1 TERMINATED)"""
 
-EXPECTED_NESTED_SORT_RESULT = """Number of trials: 5 (1 PENDING, 1 RUNNING, 3 TERMINATED) # noqa:E501
+EXPECTED_NESTED_SORT_RESULT = """\
+Number of trials: 5 (1 PENDING, 1 RUNNING, 3 TERMINATED)
 +--------------+------------+-------+-----+-------------------+
 |   Trial name | status     | loc   |   a |   nested/metric_2 |
 |--------------+------------+-------+-----+-------------------|
@@ -279,7 +281,8 @@ VERBOSE_TRIAL_NORM_4 = (
 VERBOSE_TRIAL_WITH_ONCE_RESULT = "Result for train_fn_xxxxx_00001"
 VERBOSE_TRIAL_WITH_ONCE_COMPLETED = "Trial train_fn_xxxxx_00001 completed."
 
-VERBOSE_TRIAL_DETAIL = """+-------------------+----------+-------------------+----------+ # noqa:E501
+VERBOSE_TRIAL_DETAIL = """\
++-------------------+----------+-------------------+----------+
 | Trial name        | status   | loc               | do       |
 |-------------------+----------+-------------------+----------|
 | train_fn_xxxxx_00000 | RUNNING  | 123.123.123.123:1 | complete |"""
