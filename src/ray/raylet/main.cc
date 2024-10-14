@@ -269,7 +269,7 @@ int main(int argc, char *argv[]) {
         "shutdown_raylet_gracefully_internal");
   };
 
-  RAY_CHECK_OK(gcs_client->Nodes().AsyncGetInternalConfig(
+  RAY_CHECK_OK(gcs_client->InternalKV().AsyncGetInternalConfig(
       [&](::ray::Status status, const std::optional<std::string> &stored_raylet_config) {
         RAY_CHECK_OK(status);
         RAY_CHECK(stored_raylet_config.has_value());
@@ -413,8 +413,8 @@ int main(int argc, char *argv[]) {
             {ray::stats::SessionNameKey, session_name}};
         ray::stats::Init(global_tags, metrics_agent_port, WorkerID::Nil());
 
-        RAY_LOG(INFO) << "Setting node ID to: " << node_id;
         ray::NodeID raylet_node_id = ray::NodeID::FromHex(node_id);
+        RAY_LOG(INFO).WithField(raylet_node_id) << "Setting node ID";
 
         node_manager_config.AddDefaultLabels(raylet_node_id.Hex());
         // Initialize the node manager.
