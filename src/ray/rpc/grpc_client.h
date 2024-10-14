@@ -23,6 +23,7 @@
 #include "ray/common/status.h"
 #include "ray/rpc/client_call.h"
 #include "ray/rpc/common.h"
+#include "ray/rpc/rpc_chaos.h"
 
 namespace ray {
 namespace rpc {
@@ -148,14 +149,40 @@ class GrpcClient {
       const ClientCallback<Reply> &callback,
       std::string call_name = "UNKNOWN_RPC",
       int64_t method_timeout_ms = -1) {
-    auto call = client_call_manager_.CreateCall<GrpcService, Request, Reply>(
-        *stub_,
-        prepare_async_function,
-        request,
-        callback,
-        std::move(call_name),
-        method_timeout_ms);
-    RAY_CHECK(call != nullptr);
+    testing::RpcFailure failure = testing::get_rpc_failure(call_name);
+    if (failure == testing::RpcFailure::Request) {
+      // Simulate the case where the PRC fails before server receives
+      // the request.
+      client_call_manager_.GetMainService().post(
+          [callback]() {
+            callback(Status::RpcError("Unavailable", grpc::StatusCode::UNAVAILABLE),
+                     Reply());
+          },
+          "RpcChaos");
+    } else if (failure == testing::RpcFailure::Response) {
+      // Simulate the case where the RPC fails after server sends
+      // the response.
+      client_call_manager_.CreateCall<GrpcService, Request, Reply>(
+          *stub_,
+          prepare_async_function,
+          request,
+          [callback](const Status &status, Reply &&reply) {
+            callback(Status::RpcError("Unavailable", grpc::StatusCode::UNAVAILABLE),
+                     Reply());
+          },
+          std::move(call_name),
+          method_timeout_ms);
+    } else {
+      auto call = client_call_manager_.CreateCall<GrpcService, Request, Reply>(
+          *stub_,
+          prepare_async_function,
+          request,
+          callback,
+          std::move(call_name),
+          method_timeout_ms);
+      RAY_CHECK(call != nullptr);
+    }
+
     call_method_invoked_ = true;
   }
 

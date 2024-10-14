@@ -100,6 +100,16 @@ def test_kv_timeout(ray_start_regular):
             gcs_client.internal_kv_del(b"A", True, b"NS", timeout=2)
 
 
+def test_kv_transient_network_error(shutdown_only, monkeypatch):
+    monkeypatch.setenv("RAY_testing_rpc_failure", "InternalKVGet,InternalKVPut")
+    ray.init()
+    gcs_address = ray._private.worker.global_worker.gcs_client.address
+    gcs_client = ray._raylet.GcsClient(address=gcs_address, nums_reconnect_retry=0)
+
+    assert gcs_client.internal_kv_put(b"A", b"Hello", False, b"") == 1
+    assert gcs_client.internal_kv_get(b"A", b"") == b"Hello"
+
+
 @pytest.mark.asyncio
 async def test_kv_basic_aio(ray_start_regular):
     gcs_client = gcs_utils.GcsAioClient(
