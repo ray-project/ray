@@ -6,9 +6,9 @@ import pytest
 from google.protobuf.any_pb2 import Any as AnyProto
 
 from ray import cloudpickle
+from ray.serve._private.default_impl import add_grpc_address
 from ray.serve._private.grpc_util import (
     DummyServicer,
-    add_grpc_address,
     create_serve_grpc_server,
     gRPCServer,
 )
