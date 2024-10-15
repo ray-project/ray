@@ -502,7 +502,7 @@ RAY_CONFIG(uint64_t, task_events_max_num_status_events_buffer_on_worker, 100 * 1
 /// for the export API. Events will be evicted based on a FIFO order.
 RAY_CONFIG(uint64_t,
            task_events_max_num_export_status_events_buffer_on_worker,
-           100 * 1000)
+           100)
 
 /// Max number of task events to be send in a single message to GCS. This caps both
 /// the message size, and also the processing work on GCS.
@@ -510,7 +510,7 @@ RAY_CONFIG(uint64_t, task_events_send_batch_size, 10 * 1000)
 
 /// Max number of task events to be written in a single flush iteration. This
 /// caps the number of file writes per iteration.
-RAY_CONFIG(uint64_t, export_task_events_write_batch_size, 100 * 1000)
+RAY_CONFIG(uint64_t, export_task_events_write_batch_size, 100)
 
 /// Max number of profile events allowed to be tracked for a single task.
 /// Setting the value to -1 allows unlimited profile events to be tracked.
