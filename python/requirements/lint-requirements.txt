@@ -3,7 +3,7 @@ docutils
 flake8==7.1.1
 flake8-comprehensions==3.15.0
 flake8-quotes==3.4.0
-flake8-bugbear==24.8.19
+flake8-bugbear==21.9.2
 mypy==1.7.0
 mypy-extensions==1.0.0
 types-PyYAML==6.0.12.2

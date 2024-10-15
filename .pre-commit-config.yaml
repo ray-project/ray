@@ -54,7 +54,7 @@ repos:
           [
             flake8-comprehensions==3.15.0,
             flake8-quotes==3.4.0,
-            flake8-bugbear==24.8.19,
+            flake8-bugbear==21.9.2,
           ]
 
   - repo: https://github.com/pre-commit/mirrors-prettier
