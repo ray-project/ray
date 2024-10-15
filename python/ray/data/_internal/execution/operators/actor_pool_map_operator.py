@@ -1,5 +1,6 @@
 import collections
 import logging
+from dataclasses import dataclass
 from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple, Union
 
 import ray
@@ -273,7 +274,10 @@ class ActorPoolMapOperator(MapOperator):
     def progress_str(self) -> str:
         if self._actor_locality_enabled:
             return locality_string(
-                self._actor_pool._locality_hits, self._actor_pool._locality_misses
+                self._actor_pool._locality_hits,
+                self._actor_pool._locality_misses,
+                self._actor_pool.num_pending_actors(),
+                self._actor_pool.num_restarting_actors(),
             )
         return "[locality off]"
 
@@ -285,18 +289,22 @@ class ActorPoolMapOperator(MapOperator):
         )
 
     def current_processor_usage(self) -> ExecutionResources:
-        # Both pending and running actors count towards our current resource usage.
-        num_active_workers = self._actor_pool.current_size()
+        # Only alive actors count towards our current resource usage.
+        num_alive_workers = self._actor_pool.num_alive_actors()
         return ExecutionResources(
-            cpu=self._ray_remote_args.get("num_cpus", 0) * num_active_workers,
-            gpu=self._ray_remote_args.get("num_gpus", 0) * num_active_workers,
+            cpu=self._ray_remote_args.get("num_cpus", 0) * num_alive_workers,
+            gpu=self._ray_remote_args.get("num_gpus", 0) * num_alive_workers,
         )
 
     def pending_processor_usage(self) -> ExecutionResources:
-        num_pending_workers = self._actor_pool.num_pending_actors()
+        # Both pending and restarting actors count towards pending processor usage
+        num_pending_proc_workers = (
+            self._actor_pool.num_pending_actors()
+            + self._actor_pool.num_restarting_actors()
+        )
         return ExecutionResources(
-            cpu=self._ray_remote_args.get("num_cpus", 0) * num_pending_workers,
-            gpu=self._ray_remote_args.get("num_gpus", 0) * num_pending_workers,
+            cpu=self._ray_remote_args.get("num_cpus", 0) * num_pending_proc_workers,
+            gpu=self._ray_remote_args.get("num_gpus", 0) * num_pending_proc_workers,
         )
 
     def num_active_actors(self) -> int:
@@ -328,6 +336,8 @@ class ActorPoolMapOperator(MapOperator):
         if self._actor_locality_enabled:
             res["locality_hits"] = self._actor_pool._locality_hits
             res["locality_misses"] = self._actor_pool._locality_misses
+            res["pending_actors"] = self._actor_pool.num_pending_actors()
+            res["restarting_actors"] = self._actor_pool.num_restarting_actors()
         return res
 
     @staticmethod
@@ -360,9 +370,9 @@ class ActorPoolMapOperator(MapOperator):
             assert actor_state is gcs_pb2.ActorTableData.ActorState.RESTARTING
             self._actor_pool.mark_running_actor_as_restarting(actor)
         else:
-            # If an actor is ALIVE, it's a candidate to be marked as a
-            # running actor, if not already the case.
-            self._actor_pool.clear_restarting_from_running_actor(actor)
+            # If an actor is ALIVE, it's a candidate to be marked as an
+            # alive actor, if not already the case.
+            self._actor_pool.mark_actor_as_alive(actor)
 
     def update_resource_usage(self) -> None:
         """Updates resources usage."""
@@ -405,21 +415,18 @@ class _MapWorker:
         return f"MapWorker({self.src_fn_name})"
 
 
+@dataclass
 class _ActorRunningState:
     """Actor running state"""
 
-    def __init__(
-        self,
-        # Number of tasks in flight per actor.
-        num_tasks_in_flight: int,
-        # Node id of each ready actor.
-        actor_location: str,
-        # Is Actor in restarting state
-        is_restarting: bool,
-    ):
-        self._num_tasks_in_flight = num_tasks_in_flight
-        self._actor_location = actor_location
-        self._is_restarting = is_restarting
+    # Number of tasks in flight per actor
+    num_tasks_in_flight: int
+
+    # Node id of each ready actor
+    actor_location: str
+
+    # Is Actor in restarting state
+    is_restarting: bool
 
 
 class _ActorPool(AutoscalingActorPool):
@@ -474,13 +481,24 @@ class _ActorPool(AutoscalingActorPool):
 
     def num_restarting_actors(self) -> int:
         return sum(
-            1 if running_actor_state._is_restarting is True else 0
+            1 if running_actor_state.is_restarting is True else 0
             for running_actor_state in self._running_actors.values()
         )
 
     def num_active_actors(self) -> int:
         return sum(
-            1 if running_actor_state._num_tasks_in_flight > 0 else 0
+            1 if running_actor_state.num_tasks_in_flight > 0 else 0
+            for running_actor_state in self._running_actors.values()
+        )
+
+    def num_alive_actors(self) -> int:
+        return sum(
+            1
+            if (
+                running_actor_state.num_tasks_in_flight > 0
+                and running_actor_state.is_restarting is False
+            )
+            else 0
             for running_actor_state in self._running_actors.values()
         )
 
@@ -492,7 +510,7 @@ class _ActorPool(AutoscalingActorPool):
 
     def current_in_flight_tasks(self) -> int:
         return sum(
-            running_actor_state._num_tasks_in_flight
+            running_actor_state.num_tasks_in_flight
             for running_actor_state in self._running_actors.values()
         )
 
@@ -512,20 +530,20 @@ class _ActorPool(AutoscalingActorPool):
     # === End of overriding methods of AutoscalingActorPool ===
 
     def mark_running_actor_as_restarting(self, actor: ray.actor.ActorHandle):
-        """Mark the running actor as restarting
+        """Mark the running actor as restarting.
 
-        Args: The running actor to be marked as restarting
+        Args: The running actor to be marked as restarting.
         """
         assert actor in self._running_actors
-        self._running_actors[actor]._is_restarting = True
+        self._running_actors[actor].is_restarting = True
 
-    def clear_restarting_from_running_actor(self, actor: ray.actor.ActorHandle):
-        """Clear restarting from the running actor
+    def mark_actor_as_alive(self, actor: ray.actor.ActorHandle):
+        """Mark the running actor as alive.
 
-        Args: The running actor to be cleared of restarting state
+        Args: The running actor to be marked as alive.
         """
         assert actor in self._running_actors
-        self._running_actors[actor]._is_restarting = False
+        self._running_actors[actor].is_restarting = False
 
     def add_pending_actor(self, actor: ray.actor.ActorHandle, ready_ref: ray.ObjectRef):
         """Adds a pending actor to the pool.
@@ -590,42 +608,38 @@ class _ActorPool(AutoscalingActorPool):
             We prioritize valid actors, those with argument locality, and those that
             are not busy, in that order.
             """
-            busyness = self._running_actors[actor]._num_tasks_in_flight
-            is_restarting = self._running_actors[actor]._is_restarting
+            busyness = self._running_actors[actor].num_tasks_in_flight
+            is_restarting = self._running_actors[actor].is_restarting
             invalid = busyness >= self._max_tasks_in_flight or is_restarting
             requires_remote_fetch = (
-                self._running_actors[actor]._actor_location != preferred_loc
+                self._running_actors[actor].actor_location != preferred_loc
             )
             return invalid, requires_remote_fetch, busyness
 
         actor = min(self._running_actors.keys(), key=penalty_key)
         if (
-            self._running_actors[actor]._num_tasks_in_flight
-            >= self._max_tasks_in_flight
-            or self._running_actors[actor]._is_restarting
+            self._running_actors[actor].num_tasks_in_flight >= self._max_tasks_in_flight
+            or self._running_actors[actor].is_restarting
         ):
             # All actors are at capacity or restarting.
             return None
 
         if locality_hint:
-            if self._running_actors[actor]._actor_location == preferred_loc:
+            if self._running_actors[actor].actor_location == preferred_loc:
                 self._locality_hits += 1
             else:
                 self._locality_misses += 1
-        self._running_actors[actor]._num_tasks_in_flight += 1
+        self._running_actors[actor].num_tasks_in_flight += 1
         return actor
 
     def return_actor(self, actor: ray.actor.ActorHandle):
         """Returns the provided actor to the pool."""
         assert actor in self._running_actors
-        assert self._running_actors[actor]._num_tasks_in_flight > 0
-
-        # Mark restarting as false, now that the actor in running
-        self._running_actors[actor]._is_restarting = False
-        self._running_actors[actor]._num_tasks_in_flight -= 1
+        assert self._running_actors[actor].num_tasks_in_flight > 0
+        self._running_actors[actor].num_tasks_in_flight -= 1
         if (
             self._should_kill_idle_actors
-            and self._running_actors[actor]._num_tasks_in_flight == 0
+            and self._running_actors[actor].num_tasks_in_flight == 0
         ):
             self._remove_actor(actor)
 
@@ -635,7 +649,7 @@ class _ActorPool(AutoscalingActorPool):
     def num_idle_actors(self) -> int:
         """Return the number of idle actors in the pool."""
         return sum(
-            1 if running_actor._num_tasks_in_flight == 0 else 0
+            1 if running_actor.num_tasks_in_flight == 0 else 0
             for running_actor in self._running_actors.values()
         )
 
@@ -644,7 +658,7 @@ class _ActorPool(AutoscalingActorPool):
         if not self._running_actors:
             return 0
         return sum(
-            max(0, self._max_tasks_in_flight - running_actor._num_tasks_in_flight)
+            max(0, self._max_tasks_in_flight - running_actor.num_tasks_in_flight)
             for running_actor in self._running_actors.values()
         )
 
@@ -673,7 +687,7 @@ class _ActorPool(AutoscalingActorPool):
 
     def _maybe_kill_idle_actor(self) -> bool:
         for actor, running_actor in self._running_actors.items():
-            if running_actor._num_tasks_in_flight == 0:
+            if running_actor.num_tasks_in_flight == 0:
                 # At least one idle actor, so kill first one found.
                 self._remove_actor(actor)
                 return True
@@ -708,7 +722,7 @@ class _ActorPool(AutoscalingActorPool):
         idle_actors = [
             actor
             for actor, running_actor in self._running_actors.items()
-            if running_actor._num_tasks_in_flight == 0
+            if running_actor.num_tasks_in_flight == 0
         ]
         for actor in idle_actors:
             self._remove_actor(actor)
