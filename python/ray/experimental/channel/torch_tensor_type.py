@@ -1,5 +1,5 @@
 import logging
-from typing import TYPE_CHECKING, List, Optional, Tuple, Union
+from typing import TYPE_CHECKING, List, Literal, Optional, Tuple, Union
 
 import ray
 from ray.experimental.channel import ChannelContext, ChannelOutputType
@@ -30,6 +30,7 @@ class TorchTensorType(ChannelOutputType):
         self,
         _shape: Union[int, Tuple[int], str] = AUTO,
         _dtype: "torch.dtype" = AUTO,
+        _device: Literal["cuda", "cpu", "auto"] = AUTO,
         transport: Optional[Union[str, GPUCommunicator]] = AUTO,
         _direct_return: Optional[bool] = False,
     ):
@@ -55,6 +56,9 @@ class TorchTensorType(ChannelOutputType):
                 performance overhead from an additional metadata transfer.
             _dtype: The expected dtype of the torch.Tensor. Similar to the
                 shape, this may be statically or dynamically declared.
+            _device: The expected target device type of the torch.Tensor.
+                If "auto" is set, it moves the device to the same type
+                device on a receiver side.
             transport: "auto" (default) means that tensors will be passed via
                 host memory, using numpy as the serialization format. Pass
                 TorchTensorType.NCCL or "nccl" to use NCCL instead, avoiding
@@ -70,9 +74,13 @@ class TorchTensorType(ChannelOutputType):
             _shape = _shape.lower()
         if isinstance(_dtype, str):
             _dtype = _dtype.lower()
+        if isinstance(_device, str):
+            _device = _device.lower()
+            assert _device in ["cpu", "cuda", "auto"], _device
 
         self._shape = _shape
         self._dtype = _dtype
+        self._device = _device
         self._direct_return = _direct_return
 
         self._custom_nccl_group: Optional[GPUCommunicator] = None
@@ -174,7 +182,9 @@ class TorchTensorType(ChannelOutputType):
         buffer_size_bytes = int(num_elements * element_size_bytes)
         buffer_size_bytes += TENSOR_METADATA_SIZE_BYTES
 
-        return Channel(writer, reader_and_node_list, buffer_size_bytes)
+        return Channel(
+            writer, reader_and_node_list, buffer_size_bytes, torch_tensor_typ=self
+        )
 
     def requires_nccl(self) -> bool:
         return self.transport == self.NCCL
