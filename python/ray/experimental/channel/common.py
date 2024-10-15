@@ -21,6 +21,29 @@ if TYPE_CHECKING:
     import torch
 
 
+def retry_and_check_interpreter_exit(f) -> bool:
+    """This function is only useful when f contains channel read/write.
+
+    Keep retrying channel read/write inside `f` and check if interpreter exits.
+    It is important in case the read/write happens in a separate thread pool.
+    See https://github.com/ray-project/ray/pull/47702
+    """
+    exiting = False
+    while True:
+        try:
+            # results.append(c.read(timeout=1))
+            f()
+            break
+        except ray.exceptions.RayChannelTimeoutError:
+            if sys.is_finalizing():
+                # Interpreter exits. We should ignore the error and
+                # stop reading so that the thread can join.
+                exiting = True
+                break
+
+    return exiting
+
+
 # Holds the input arguments for an accelerated DAG node.
 @PublicAPI(stability="alpha")
 class RayDAGArgs(NamedTuple):
@@ -359,17 +382,10 @@ class AwaitableBackgroundReader(ReaderInterface):
     def _run(self):
         results = []
         for c in self._input_channels:
-            while True:
-                try:
-                    results.append(c.read(timeout=1))
-                    break
-                except ray.exceptions.RayChannelTimeoutError:
-                    if sys.is_finalizing():
-                        # Interpreter exits. We should ignore the error and
-                        # stop reading so that the thread can join.
-                        break
-
-            if sys.is_finalizing():
+            exiting = retry_and_check_interpreter_exit(
+                lambda: results.append(c.read(timeout=1))
+            )
+            if exiting:
                 break
 
         return results
@@ -557,14 +573,11 @@ class AwaitableBackgroundWriter(WriterInterface):
         for i, channel in enumerate(self._output_channels):
             idx = self._output_idxs[i]
             res_i = _adapt(res, idx, self._is_input)
-            while True:
-                try:
-                    channel.write(res_i, timeout=1)
-                except ray.exceptions.RayChannelTimeoutError:
-                    if sys.is_finalizing():
-                        break
-                else:
-                    break
+            exiting = retry_and_check_interpreter_exit(
+                lambda: channel.write(res_i, timeout=1)
+            )
+            if exiting:
+                break
 
     async def run(self):
         loop = asyncio.get_event_loop()
