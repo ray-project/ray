@@ -341,16 +341,15 @@ class SynchronousReader(ReaderInterface):
     def start(self):
         pass
 
-
-def _read_list(self, timeout: Optional[float] = None) -> List[Any]:
-    results = []
-    for c in self._input_channels:
-        start_time = time.monotonic()
-        results.append(c.read(timeout))
-        if timeout is not None:
-            timeout -= time.monotonic() - start_time
-            timeout = max(timeout, 0)
-    return results
+    def _read_list(self, timeout: Optional[float] = None) -> List[Any]:
+        results = []
+        for c in self._input_channels:
+            start_time = time.monotonic()
+            results.append(c.read(timeout))
+            if timeout is not None:
+                timeout -= time.monotonic() - start_time
+                timeout = max(timeout, 0)
+        return results
 
 
 @DeveloperAPI

@@ -519,11 +519,10 @@ class ExecutableTask:
         Returns:
             True if system error occurs and exit the loop; otherwise, False.
         """
-        future = self.reset_and_wait_intermediate_future()
-        value = future.wait()
+        output_val = self.reset_and_wait_intermediate_future()
         exit = False
         try:
-            self.output_writer.write(value)
+            self.output_writer.write(output_val)
         except RayChannelError:
             # Channel closed. Exit the loop.
             exit = True
@@ -551,7 +550,7 @@ class ExecutableTask:
         """
         if op_type == _DAGNodeOperationType.READ:
             with self._recv_stream:
-                return self._read()
+                return self._read(overlap_gpu_communication)
         elif op_type == _DAGNodeOperationType.COMPUTE:
             return self._compute(overlap_gpu_communication, class_handle)
         elif op_type == _DAGNodeOperationType.WRITE:
