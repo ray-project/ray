@@ -150,10 +150,10 @@ def test_json_logging_configuration(
         log_contents = file.read()
 
     # Validate the log is in JSON format (a basic check for JSON)
-    messages = set()
+    messages = []
     for log_line in log_contents.splitlines():
         log_dict = json.loads(log_line)  # will error if not a json line
-        messages.add(log_dict["message"])
+        messages.append(log_dict["message"])
 
     assert "ham" in messages
     assert "turkey" in messages
