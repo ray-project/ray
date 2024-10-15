@@ -95,6 +95,8 @@ class _NcclGroup(GPUCommunicator):
             self._comm = None
 
         self._cuda_stream: Optional["cp.cuda.ExternalStream"] = None
+        self._send_stream: Optional["cp.cuda.ExternalStream"] = None
+        self._recv_stream: Optional["cp.cuda.ExternalStream"] = None
         if cuda_stream is not None:
             assert rank is not None, "NCCL actor has no rank assigned"
 

@@ -35,6 +35,7 @@ from ray.util.annotations import DeveloperAPI
 
 from ray.experimental.channel.shared_memory_channel import (
     SharedMemoryType,
+    TorchTensorType,
 )
 
 from ray.experimental.channel.torch_tensor_nccl_channel import (
@@ -200,6 +201,27 @@ def _wrap_exception(exc):
     return wrapped
 
 
+def _get_nccl_group_id(type_hint: ChannelOutputType) -> Optional[str]:
+    """
+    Get the NCCL group ID from the type hint. If the type hint does not
+    require NCCL, return None.
+
+    Args:
+        type_hint: The type hint of the channel.
+
+    Returns:
+        The NCCL group ID if the type hint requires NCCL, otherwise None.
+    """
+    if type_hint.requires_nccl():
+        if isinstance(type_hint, SharedMemoryType):
+            assert type_hint._contains_type.requires_nccl()
+            return _get_nccl_group_id(type_hint._contains_type)
+        else:
+            assert isinstance(type_hint, TorchTensorType)
+            return type_hint.nccl_group_id
+    return None
+
+
 @DeveloperAPI
 class CompiledTask:
     """Wraps the normal Ray DAGNode with some metadata."""
@@ -315,30 +337,6 @@ class ExecutableTask:
         self.input_type_hints: List["ChannelOutputType"] = task.arg_type_hints
         self.output_type_hint: "ChannelOutputType" = task.dag_node.type_hint
 
-        import cupy as cp
-
-        self._send_stream: Optional[
-            Union["cp.cuda.Stream", nullcontext]
-        ] = nullcontext()
-        self._recv_stream: Optional[
-            Union["cp.cuda.Stream", nullcontext]
-        ] = nullcontext()
-        if self.output_type_hint.requires_nccl():
-            nccl_group_id = self.output_type_hint.nccl_group_id
-            nccl_group = ChannelContext.get_current().nccl_groups(nccl_group_id)
-            self._send_stream = nccl_group._send_stream
-        if self.input_type_hints:
-            for type_hint in self.input_type_hints:
-                if type_hint.requires_nccl():
-                    nccl_group_id = type_hint.nccl_group_id
-                    nccl_group = ChannelContext.get_current().nccl_groups(nccl_group_id)
-                    if not isinstance(self._recv_stream, nullcontext):
-                        assert self._recv_stream == nccl_group._recv_stream, (
-                            "Currenlty all torch tensor input channels of a "
-                            "Compiled Graph task should use the same recv cuda stream."
-                        )
-                    self._recv_stream = nccl_group._recv_stream
-
         self.input_channels: List[ChannelInterface] = []
         self.task_inputs: List[_ExecutableTaskInput] = []
         self.resolved_kwargs: Dict[str, Any] = resolved_kwargs
@@ -407,6 +405,30 @@ class ExecutableTask:
         self.output_type_hint.register_custom_serializer()
         self.input_reader.start()
         self.output_writer.start()
+
+        import cupy as cp
+
+        self._send_stream: Optional[
+            Union["cp.cuda.Stream", nullcontext]
+        ] = nullcontext()
+        self._recv_stream: Optional[
+            Union["cp.cuda.Stream", nullcontext]
+        ] = nullcontext()
+        if self.output_type_hint.requires_nccl():
+            nccl_group_id = _get_nccl_group_id(self.output_type_hint)
+            nccl_group = ChannelContext.get_current().nccl_groups[nccl_group_id]
+            self._send_stream = nccl_group.send_stream
+        if self.input_type_hints:
+            for type_hint in self.input_type_hints:
+                if type_hint.requires_nccl():
+                    nccl_group_id = _get_nccl_group_id(type_hint)
+                    nccl_group = ChannelContext.get_current().nccl_groups[nccl_group_id]
+                    if not isinstance(self._recv_stream, nullcontext):
+                        assert self._recv_stream == nccl_group.recv_stream, (
+                            "Currenlty all torch tensor input channels of a "
+                            "Compiled Graph task should use the same recv cuda stream."
+                        )
+                    self._recv_stream = nccl_group.recv_stream
 
     def set_intermediate_future(self, future: DAGOperationFuture):
         """
@@ -1910,7 +1932,7 @@ class CompiledDAG:
             inp = RayDAGArgs(args=args, kwargs=kwargs)
 
         self.raise_if_too_many_inflight_requests()
-        self._dag_submitter.write(ResolvedFuture(inp), self._execution_timeout)
+        self._dag_submitter.write(inp, self._execution_timeout)
 
         if self._returns_list:
             ref = [
@@ -1976,7 +1998,7 @@ class CompiledDAG:
                 inp = RayDAGArgs(args=args, kwargs=kwargs)
 
             self.raise_if_too_many_inflight_requests()
-            await self._dag_submitter.write(ResolvedFuture(inp))
+            await self._dag_submitter.write(inp)
             # Allocate a future that the caller can use to get the result.
             fut = asyncio.Future()
             await self._fut_queue.put(fut)

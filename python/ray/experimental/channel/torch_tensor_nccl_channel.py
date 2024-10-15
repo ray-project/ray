@@ -123,12 +123,7 @@ class NestedTorchTensorNcclChannel(ChannelInterface):
         if self._cpu_data_channel is not None:
             self._cpu_data_channel.ensure_registered_as_reader()
 
-    def write(
-        self,
-        future: "ray.dag.dag_operation_future.DAGOperationFuture",
-        timeout: Optional[float] = None,
-    ) -> None:
-        value = future.wait()
+    def write(self, value: Any, timeout: Optional[float] = None) -> None:
         self.serialization_ctx.reset_tensors([])
         # All tensors found in `value` will be transferred via NCCL.
         self.serialization_ctx.set_use_external_transport(True)
@@ -156,13 +151,11 @@ class NestedTorchTensorNcclChannel(ChannelInterface):
             # normally.
             self.serialization_ctx.set_use_external_transport(False)
 
-        from ray.dag.dag_operation_future import ResolvedFuture
-
         # Send the extracted tensors through a GPU-specific channel.
-        self._gpu_data_channel.write(ResolvedFuture(tensors_to_send))
+        self._gpu_data_channel.write(tensors_to_send)
         # Send the rest of the data, with placeholders for the extracted
         # tensors, through a CPU-specific channel.
-        self._cpu_data_channel.write(ResolvedFuture(serialized_cpu_data))
+        self._cpu_data_channel.write(serialized_cpu_data)
 
     def read(self, timeout: Optional[float] = None) -> Any:
         tensors = self._gpu_data_channel.read()
