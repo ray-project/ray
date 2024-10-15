@@ -72,6 +72,20 @@ class TorchTensorWorker:
         assert tensor.device == self.device
         return (tensor[0].item(), tensor.shape, tensor.dtype)
 
+    def recv_and_matmul(self, two_d_tensor):
+        """
+        Receive the tensor and do some expensive computation (matmul).
+
+        Args:
+            two_d_tensor: a 2D tensor that has the same size for its dimensions
+        """
+        # Check that tensor got loaded to the correct device.
+        assert two_d_tensor.dim() == 2
+        assert two_d_tensor.size(0) == two_d_tensor.size(1)
+        assert two_d_tensor.device == self.device
+        torch.matmul(two_d_tensor, two_d_tensor)
+        return (two_d_tensor[0][0].item(), two_d_tensor.shape, two_d_tensor.dtype)
+
     def recv_dict(self, tensor_dict):
         vals = {}
         for i, tensor in tensor_dict.items():
@@ -269,8 +283,12 @@ def test_torch_tensor_nccl(ray_start_regular):
     # ray.get(receiver.ping.remote())
 
 
-@pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
-def test_torch_tensor_nccl_overlap(ray_start_regular):
+@pytest.mark.parametrize(
+    "ray_start_regular, overlap_gpu_communication",
+    [({"num_cpus": 4}, False), ({"num_cpus": 4}, True)],
+    indirect=["ray_start_regular"],
+)
+def test_torch_tensor_nccl_overlap(ray_start_regular, overlap_gpu_communication):
     if not USE_GPU:
         pytest.skip("NCCL tests require GPUs")
 
@@ -284,7 +302,7 @@ def test_torch_tensor_nccl_overlap(ray_start_regular):
     sender2 = actor_cls.remote()
     receiver = actor_cls.remote()
 
-    shape = (100000,)
+    shape = (10000, 10000)
     dtype = torch.float16
 
     with InputNode() as inp:
@@ -293,22 +311,27 @@ def test_torch_tensor_nccl_overlap(ray_start_regular):
         branch1 = branch1.with_type_hint(
             TorchTensorType(shape, dtype, transport="nccl", _direct_return=True)
         )
-        branch1 = receiver.recv.bind(branch1)
+        branch1 = receiver.recv_and_matmul.bind(branch1)
 
         branch2 = sender2.send.bind(shape, dtype, inp)
         branch2 = branch2.with_type_hint(
             TorchTensorType(shape, dtype, transport="nccl", _direct_return=True)
         )
-        branch2 = receiver.recv.bind(branch2)
+        branch2 = receiver.recv_and_matmul.bind(branch2)
         dag = MultiOutputNode([branch1, branch2])
 
     # Test normal execution.
-    compiled_dag = dag.experimental_compile(_overlap_gpu_communication=True)
+    compiled_dag = dag.experimental_compile(
+        _overlap_gpu_communication=overlap_gpu_communication
+    )
 
-    for i in range(3):
+    start = time.monotonic()
+    for i in range(5):
         ref = compiled_dag.execute(i)
         result = ray.get(ref)
         assert result == [(i, shape, dtype), (i, shape, dtype)]
+    duration = time.monotonic() - start
+    print(f"{overlap_gpu_communication=}, {duration=}")
 
     compiled_dag.teardown()
 
