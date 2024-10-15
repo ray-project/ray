@@ -147,6 +147,8 @@ def test_new_router_on_gcs_failure(serve_ha, use_proxy: bool):
     sent to replicas during GCS downtime.
     """
 
+    _, client = serve_ha
+
     @serve.deployment
     class Dummy:
         def __call__(self):
@@ -166,7 +168,18 @@ def test_new_router_on_gcs_failure(serve_ha, use_proxy: bool):
     # waiting for the first request
     h._get_or_create_router()
 
-    wait_for_condition(router_populated_with_replicas, threshold=1, handle=h)
+    if use_proxy:
+        proxy_handles = ray.get(client._controller.get_proxies.remote())
+        proxy_handle = list(proxy_handles.values())[0]
+        wait_for_condition(
+            router_populated_with_replicas,
+            threshold=2,
+            get_replicas_func=lambda: ray.get(
+                proxy_handle._dump_ingress_replicas_for_testing.remote("/")
+            ),
+        )
+    else:
+        wait_for_condition(router_populated_with_replicas, threshold=1, handle=h)
 
     # Kill GCS server before a single request is sent.
     ray.worker._global_node.kill_gcs_server()
