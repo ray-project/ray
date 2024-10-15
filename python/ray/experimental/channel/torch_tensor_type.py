@@ -2,7 +2,7 @@ import logging
 from typing import TYPE_CHECKING, List, Optional, Tuple, Union
 
 import ray
-from ray.experimental.channel import ChannelContext, ChannelOutputType
+from ray.experimental.channel import ChannelContext, ChannelInterface, ChannelOutputType
 from ray.experimental.channel.gpu_communicator import (
     GPUCommunicator,
     TorchTensorAllocator,
@@ -126,8 +126,7 @@ class TorchTensorType(ChannelOutputType):
         reader_and_node_list: List[Tuple["ray.actor.ActorHandle", str]],
         read_by_adag_driver,
         _torch_tensor_allocator: Optional["TorchTensorAllocator"] = None,
-    ) -> type:
-
+    ) -> ChannelInterface:
         if self.requires_nccl():
             from ray.experimental.channel.torch_tensor_nccl_channel import (
                 TorchTensorNcclChannel,
@@ -189,5 +188,5 @@ class TorchTensorType(ChannelOutputType):
         self._nccl_group_id = group_id
 
     @property
-    def nccl_group_id(self) -> str:
+    def nccl_group_id(self) -> Optional[str]:
         return self._nccl_group_id

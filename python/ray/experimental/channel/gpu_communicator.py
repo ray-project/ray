@@ -2,6 +2,7 @@ from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING, Callable, List, Optional, Tuple
 
 import ray
+from ray.experimental.util.types import ReduceOp
 from ray.util.annotations import DeveloperAPI
 
 if TYPE_CHECKING:
@@ -105,6 +106,24 @@ class GPUCommunicator(ABC):
         raise NotImplementedError
 
     @abstractmethod
+    def allreduce(
+        self,
+        send_buf: "torch.Tensor",
+        recv_buf: "torch.Tensor",
+        op: ReduceOp,
+    ) -> None:
+        """
+        Collectively allreduce the tensor across the group.
+
+        Args:
+            send_buf: The input torch.tensor to allreduce. It should already be
+                on this actor's default device.
+            recv_buf: The output torch.tensor to store the allreduce result.
+            op: The reduce operation.
+        """
+        raise NotImplementedError
+
+    @abstractmethod
     def destroy() -> None:
         """
         Destroy the GPU communicator.
@@ -113,3 +132,6 @@ class GPUCommunicator(ABC):
         done here. Implement as a noop is nothing is needed.
         """
         raise NotImplementedError
+
+    def __deepcopy__(self, _) -> "GPUCommunicator":
+        return self
