@@ -29,12 +29,28 @@ class HudiDatasource(Datasource):
         self._storage_options = storage_options
 
     def get_read_tasks(self, parallelism: int) -> List["ReadTask"]:
-        from hudi import HudiTable
+        import pyarrow
+        from hudi import HudiFileGroupReader, HudiTable
+
+        def _perform_read(
+            table_uri: str,
+            base_file_paths: List[str],
+            options: Dict[str, str],
+        ) -> Iterator["pyarrow.Table"]:
+            fg_reader = HudiFileGroupReader(table_uri, options)
+            for p in base_file_paths:
+                yield pyarrow.Table.from_batches(
+                    fg_reader.read_file_slice_by_base_file_path(p)
+                )
 
         hudi_table = HudiTable(self._table_uri, self._storage_options)
 
-        read_tasks = []
+        reader_options = {}
+        reader_options.update(hudi_table.storage_options())
+        reader_options.update(hudi_table.hudi_options())
+
         schema = hudi_table.get_schema()
+        read_tasks = []
         for file_slices in hudi_table.split_file_slices(parallelism):
             if len(file_slices) <= 0:
                 continue
@@ -62,7 +78,9 @@ class HudiDatasource(Datasource):
             )
 
             read_task = ReadTask(
-                partial(_read_file_slices, hudi_table, relative_paths),
+                partial(
+                    _perform_read, self._table_uri, relative_paths, reader_options
+                ),
                 metadata,
             )
             read_tasks.append(read_task)
@@ -72,12 +90,3 @@ class HudiDatasource(Datasource):
     def estimate_inmemory_data_size(self) -> Optional[int]:
         # TODO(xushiyan) add APIs to provide estimated in-memory size
         return None
-
-
-def _read_file_slices(
-    hudi_table, file_slice_paths: List[str]
-) -> Iterator["pyarrow.Table"]:
-    import pyarrow
-
-    for p in file_slice_paths:
-        yield pyarrow.Table.from_batches(hudi_table.read_file_slice(p))
