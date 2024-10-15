@@ -900,7 +900,8 @@ def test_torch_tensor_nccl_direct_return_error(ray_start_regular):
 
 
 @pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
-def test_torch_tensor_exceptions(ray_start_regular):
+@pytest.mark.parametrize("overlap_gpu_communication", [False, True])
+def test_torch_tensor_exceptions(ray_start_regular, overlap_gpu_communication):
     """
     Test nested torch.Tensor passed via NCCL. Its shape and dtype is
     dynamically declared, and there may be multiple tensors.
@@ -924,7 +925,9 @@ def test_torch_tensor_exceptions(ray_start_regular):
         dag = dag.with_type_hint(TorchTensorType(transport="nccl"))
         dag = receiver.recv.bind(dag)
 
-    compiled_dag = dag.experimental_compile()
+    compiled_dag = dag.experimental_compile(
+        _overlap_gpu_communication=overlap_gpu_communication
+    )
 
     for i in range(3):
         i += 1
