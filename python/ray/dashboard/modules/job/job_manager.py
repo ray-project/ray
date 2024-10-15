@@ -507,7 +507,6 @@ class JobManager:
             )
 
         driver_logger = self._get_job_driver_logger(submission_id)
-        driver_logger.info("Runtime env is setting up.")
         # Wait for the actor to start up asynchronously so this call always
         # returns immediately and we can catch errors with the actor starting
         # up.
@@ -528,6 +527,7 @@ class JobManager:
                     f"Started a ray job {submission_id}.", submission_id=submission_id
                 )
 
+            driver_logger.info("Runtime env is setting up.")
             supervisor = self._supervisor_actor_cls.options(
                 lifetime="detached",
                 name=JOB_ACTOR_NAME_TEMPLATE.format(job_id=submission_id),
