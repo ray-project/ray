@@ -1,5 +1,6 @@
 import asyncio
 from collections import defaultdict
+from contextlib import nullcontext
 from dataclasses import dataclass, asdict
 from typing import Any, Dict, List, Tuple, Union, Optional, Set
 import logging
@@ -316,6 +317,30 @@ class ExecutableTask:
         self.input_type_hints: List["ChannelOutputType"] = task.arg_type_hints
         self.output_type_hint: "ChannelOutputType" = task.dag_node.type_hint
 
+        import cupy as cp
+
+        self._send_stream: Optional[
+            Union["cp.cuda.Stream", nullcontext]
+        ] = nullcontext()
+        self._recv_stream: Optional[
+            Union["cp.cuda.Stream", nullcontext]
+        ] = nullcontext()
+        if self.output_type_hint.requires_nccl():
+            nccl_group_id = self.output_type_hint.nccl_group_id
+            nccl_group = ChannelContext.get_current().nccl_groups(nccl_group_id)
+            self._send_stream = nccl_group._send_stream
+        if self.input_type_hints:
+            for type_hint in self.input_type_hints:
+                if type_hint.requires_nccl():
+                    nccl_group_id = type_hint.nccl_group_id
+                    nccl_group = ChannelContext.get_current().nccl_groups(nccl_group_id)
+                    if not isinstance(self._recv_stream, nullcontext):
+                        assert self._recv_stream == nccl_group._recv_stream, (
+                            "Currenlty all torch tensor input channels of a "
+                            "Compiled Graph task should use the same recv cuda stream."
+                        )
+                    self._recv_stream = nccl_group._recv_stream
+
         self.input_channels: List[ChannelInterface] = []
         self.task_inputs: List[_ExecutableTaskInput] = []
         self.resolved_kwargs: Dict[str, Any] = resolved_kwargs
@@ -407,6 +432,13 @@ class ExecutableTask:
     def _wrap_in_future(
         self, value: Any, overlap_gpu_communication: bool
     ) -> DAGOperationFuture:
+        """
+        Wrap the value in a future. If overlap_gpu_communication is True, the future
+        will be a _GPUFuture that can be waited to ensure the value is ready to consume.
+        Otherwise, the future will be a ResolvedFuture that will immediately return
+        upon wait.
+
+        """
         if overlap_gpu_communication:
             future = _GPUFuture(
                 value, ChannelContext.get_current().get_current_stream()
@@ -519,18 +551,13 @@ class ExecutableTask:
         Returns:
             True if the next operation should not be executed; otherwise, False.
         """
-        if self.output_type_hint.requires_nccl():
-            nccl_group_id = self.output_type_hint.nccl_group_id
-            nccl_group = ChannelContext.get_current().nccl_groups(nccl_group_id)
-
         if op_type == _DAGNodeOperationType.READ:
-            with nccl_group._recv_stream:
+            with self._recv_stream:
                 return self._read()
         elif op_type == _DAGNodeOperationType.COMPUTE:
-            with nccl_group._compute_stream:
-                return self._compute(overlap_gpu_communication, class_handle)
+            return self._compute(overlap_gpu_communication, class_handle)
         elif op_type == _DAGNodeOperationType.WRITE:
-            with nccl_group._send_stream:
+            with self._send_stream:
                 return self._write()
 
 

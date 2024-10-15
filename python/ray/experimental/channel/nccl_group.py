@@ -262,10 +262,6 @@ class _NcclGroup(GPUCommunicator):
     def send_stream(self) -> "cp.cuda.ExternalStream":
         return self._send_stream
 
-    @property
-    def compute_stream(self) -> "cp.cuda.ExternalStream":
-        return self._cuda_stream
-
     def destroy(self) -> None:
         """
         Destroy the NCCL group.
