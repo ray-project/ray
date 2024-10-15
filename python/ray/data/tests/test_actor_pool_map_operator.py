@@ -639,7 +639,7 @@ def test_start_actor_timeout(ray_start_regular_shared, restore_data_context):
         ).take_all()
 
 
-def test_removed_nodes_and_added_back(ray_start_cluster):
+def test_actor_pool_fault_tolerance_e2e(ray_start_cluster):
     """Test that a dataset with actor pools can finish, when
     all nodes in the cluster are removed and added back."""
     ray.shutdown()
