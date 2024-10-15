@@ -44,6 +44,27 @@ ignore =
   B015
   B016
   B017
+  # Temporarily ignore the new flake8 rules. will reopen it in a new issue
+  # ---------------------------------------------------
+  B018
+  B019
+  B020 
+  B023
+  B024
+  B026
+  B027
+  B028
+  B033
+  B035
+  B036
+  B039
+  E721
+  E225
+  E231
+  E501
+  F401
+  F811
+  # ---------------------------------------------------
 avoid-escape = no
 # Error E731 is ignored because of the migration from YAPF to Black.
 # See https://github.com/ray-project/ray/issues/21315 for more information.

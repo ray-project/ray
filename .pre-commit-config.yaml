@@ -47,14 +47,14 @@ repos:
         types_or: [python]
 
   - repo: https://github.com/pycqa/flake8
-    rev: 3.9.1
+    rev: 7.1.1
     hooks:
       - id: flake8
         additional_dependencies:
           [
-            flake8-comprehensions==3.10.1,
-            flake8-quotes==2.0.0,
-            flake8-bugbear==21.9.2,
+            flake8-comprehensions==3.15.0,
+            flake8-quotes==3.4.0,
+            flake8-bugbear==24.8.19,
           ]
 
   - repo: https://github.com/pre-commit/mirrors-prettier
