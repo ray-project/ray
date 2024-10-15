@@ -1,4 +1,7 @@
 import logging
+import sys
+
+import pytest
 
 from ray.dashboard.utils import close_logger_file_descriptor
 
@@ -16,3 +19,7 @@ def test_close_logger_file_descriptor():
     assert len(logger.handlers) == 1
     close_logger_file_descriptor(logger)
     assert len(logger.handlers) == 0
+
+
+if __name__ == "__main__":
+    sys.exit(pytest.main(["-v", __file__]))
