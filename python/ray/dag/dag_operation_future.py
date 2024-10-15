@@ -5,6 +5,7 @@ from ray.util.annotations import DeveloperAPI
 
 if TYPE_CHECKING:
     import torch
+    import cupy as cp
 
 T = TypeVar("T")
 
@@ -45,8 +46,6 @@ class _GPUFuture(DAGOperationFuture["torch.Tensor"]):
     """
     A future that represents a GPU operation.
     """
-
-    import cupy as cp
 
     def __init__(self, buf: "torch.Tensor", stream: "cp.cuda.Stream"):
         """
