@@ -431,13 +431,27 @@ class ExecutableTask:
                         )
                     self._recv_stream = nccl_group.recv_stream
 
-    def set_intermediate_future(self, future: DAGOperationFuture):
+    def wrap_and_set_intermediate_future(
+        self, val: Any, wrap_in_gpu_future: bool
+    ) -> None:
         """
-        Store the intermediate future of a READ or COMPUTE operation.
+        Wrap the value in a `DAGOperationFuture` and store to the intermediate future.
+        The value corresponds to result of a READ or COMPUTE operation.
+
+        If wrap_in_gpu_future is True, the value will be wrapped in a _GPUFuture,
+        Otherwise, the future will be a ResolvedFuture.
+
         Args:
-            future: The future for a READ or COMPUTE operation.
+            val: The value to wrap in a future.
+            wrap_in_gpu_future: Whether to wrap the value in a _GPUFuture.
         """
         assert self._intermediate_future is None
+        import cupy as cp
+
+        if wrap_in_gpu_future:
+            future = _GPUFuture(val, cp.cuda.get_current_stream())
+        else:
+            future = ResolvedFuture(val)
         self._intermediate_future = future
 
     def reset_and_wait_intermediate_future(self) -> Any:
@@ -449,23 +463,6 @@ class ExecutableTask:
         future = self._intermediate_future
         self._intermediate_future = None
         return future.wait()
-
-    def _wrap_in_future(
-        self, value: Any, async_gpu_operation: bool
-    ) -> DAGOperationFuture:
-        """
-        Wrap the value in a future. If async_gpu_operation is True, the future
-        will be a _GPUFuture that can be waited to ensure the value is ready to consume.
-        Otherwise, the future will be a ResolvedFuture that will immediately return
-        upon wait.
-        """
-        import cupy as cp
-
-        if async_gpu_operation:
-            future = _GPUFuture(value, cp.cuda.get_current_stream())
-        else:
-            future = ResolvedFuture(value)
-        return future
 
     def _read(self, overlap_gpu_communication: bool) -> bool:
         """
@@ -482,8 +479,7 @@ class ExecutableTask:
         exit = False
         try:
             input_data = self.input_reader.read()
-            future = self._wrap_in_future(input_data, overlap_gpu_communication)
-            self.set_intermediate_future(future)
+            self.wrap_and_set_intermediate_future(input_data, overlap_gpu_communication)
         except RayChannelError:
             # Channel closed. Exit the loop.
             exit = True
@@ -518,7 +514,7 @@ class ExecutableTask:
             # Propagate it and skip the actual task. We don't need to wrap the
             # exception in a RayTaskError here because it has already been wrapped
             # by the previous task.
-            self.set_intermediate_future(ResolvedFuture(exc))
+            self.wrap_and_set_intermediate_future(exc, overlap_gpu_communication)
             return False
 
         resolved_inputs = []
@@ -530,8 +526,7 @@ class ExecutableTask:
         except Exception as exc:
             output_val = _wrap_exception(exc)
 
-        future = self._wrap_in_future(output_val, overlap_gpu_communication)
-        self.set_intermediate_future(future)
+        self.wrap_and_set_intermediate_future(output_val, overlap_gpu_communication)
         return False
 
     def _write(self) -> bool:

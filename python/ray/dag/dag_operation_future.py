@@ -1,5 +1,6 @@
 from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING, Generic, TypeVar
+from ray.util.annotations import DeveloperAPI
 
 
 if TYPE_CHECKING:
@@ -8,6 +9,7 @@ if TYPE_CHECKING:
 T = TypeVar("T")
 
 
+@DeveloperAPI
 class DAGOperationFuture(ABC, Generic[T]):
     """
     A future representing the result of a DAG operation.
@@ -18,6 +20,7 @@ class DAGOperationFuture(ABC, Generic[T]):
         raise NotImplementedError
 
 
+@DeveloperAPI
 class ResolvedFuture(DAGOperationFuture):
     """
     A future that is already resolved. Calling `wait()` on this will
@@ -37,6 +40,7 @@ class ResolvedFuture(DAGOperationFuture):
         return self._result
 
 
+@DeveloperAPI
 class _GPUFuture(DAGOperationFuture["torch.Tensor"]):
     """
     A future that represents a GPU operation.
