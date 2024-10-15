@@ -128,7 +128,7 @@ class TestActorPool(unittest.TestCase):
         assert pool.num_idle_actors() == 0
         assert pool.num_free_slots() == 3
 
-    def test_restarting_to_running(self):
+    def test_restarting_to_alive(self):
         # Test that actor is correctly transitioned from restarting to running.
         pool = self._create_actor_pool(max_tasks_in_flight=1)
         actor = self._add_ready_actor(pool)
