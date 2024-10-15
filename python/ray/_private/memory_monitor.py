@@ -125,7 +125,7 @@ class MemoryMonitor:
         except IOError:
             self.cgroup_memory_limit_gb = sys.maxsize / (1024**3)
         if not psutil:
-            logger.warn(
+            logger.warning(
                 "WARNING: Not monitoring node memory since `psutil` "
                 "is not installed. Install this with "
                 "`pip install psutil` to enable "

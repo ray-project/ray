@@ -420,7 +420,7 @@ class _WandbLoggingActor:
             except urllib.error.HTTPError as e:
                 # Ignore HTTPError. Missing a few data points is not a
                 # big issue, as long as things eventually recover.
-                logger.warn("Failed to log result to w&b: {}".format(str(e)))
+                logger.warning("Failed to log result to w&b: {}".format(str(e)))
         self._wandb.finish()
 
     def _handle_checkpoint(self, checkpoint_path: str):
