@@ -28,6 +28,10 @@ message CommandsSyncMessage {
   bool cluster_full_of_actors_detected = 2;
 }
 
+message DoubleList {
+  repeated double values = 1;
+}
+
 message ResourceViewSyncMessage {
   // Resource capacity currently available on this node manager.
   map<string, double> resources_available = 1;
@@ -46,6 +50,8 @@ message ResourceViewSyncMessage {
   int64 draining_deadline_timestamp_ms = 6;
   // Why the node is not idle.
   repeated string node_activity = 7;
+  // Resource capacity currently available of each unit device on this node manager.
+  map<string, DoubleList> available_resources_instance_set = 8;
 }
 
 message RaySyncMessage {

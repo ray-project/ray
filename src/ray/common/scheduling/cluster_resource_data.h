@@ -293,6 +293,7 @@ class NodeResources {
       : total(resources), available(resources) {}
   NodeResourceSet total;
   NodeResourceSet available;
+  NodeResourceInstanceSet available_resources_instance_set;
   /// Only used by light resource report.
   ResourceSet load;
   /// Resources owned by normal tasks.
