@@ -1,6 +1,9 @@
 from abc import ABC, abstractmethod
-from typing import Generic, TypeVar
+from typing import TYPE_CHECKING, Generic, TypeVar
 
+
+if TYPE_CHECKING:
+    import torch
 
 T = TypeVar("T")
 
@@ -39,7 +42,6 @@ class _GPUFuture(DAGOperationFuture["torch.Tensor"]):
     A future that represents a GPU operation.
     """
 
-    import torch
     import cupy as cp
 
     def __init__(self, buf: "torch.Tensor", stream: "cp.cuda.Stream"):
