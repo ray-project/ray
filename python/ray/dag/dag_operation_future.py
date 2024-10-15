@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import Any, Generic, List, Optional, TypeVar
+from typing import Generic, TypeVar
 
 
 T = TypeVar("T")
@@ -25,17 +25,6 @@ class ResolvedFuture(DAGOperationFuture):
 
     def wait(self):
         return self._result
-
-
-class ListFuture(DAGOperationFuture):
-    def __init__(self, futures: List[DAGOperationFuture]):
-        self._futures = futures
-
-    def wait(self, waiter: Optional[Any] = None):
-        results = []
-        for future in self._futures:
-            results.append(future.wait(waiter))
-        return results
 
 
 class _GPUFuture(DAGOperationFuture["torch.Tensor"]):
