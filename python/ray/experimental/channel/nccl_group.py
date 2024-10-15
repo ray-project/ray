@@ -119,10 +119,6 @@ class _NcclGroup(GPUCommunicator):
                 self._recv_stream = cp.cuda.ExternalStream(
                     torch.cuda.Stream().cuda_stream, device_id=device.index
                 )
-                event = cp.cuda.Event()
-                event.record(cp.cuda.get_current_stream())
-                self._send_stream.wait_event(event)
-                self._recv_stream.wait_event(event)
             else:
                 self._send_stream = self._cuda_stream
                 self._recv_stream = self._cuda_stream
