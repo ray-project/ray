@@ -13,7 +13,6 @@ cc_library(
         "include/spdlog/sinks/*.h",
     ]),
     includes = [
-        ".",
         "include/",
     ],
     strip_include_prefix = 'include',
