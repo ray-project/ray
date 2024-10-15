@@ -136,12 +136,15 @@ def do_profile_tasks(
     self,
     tasks: List["ExecutableTask"],
     schedule: List[_DAGNodeOperation],
+    overlap_gpu_communication: bool = False,
 ) -> None:
     """A generic actor method similar to `do_exec_tasks`, but with profiling enabled.
 
     Args:
         tasks: the executable tasks corresponding to the actor methods.
         schedule: A list of _DAGNodeOperation that should be executed in order.
+        overlap_gpu_communication: Whether to overlap GPU communication with
+            computation during DAG execution to improve performance.
     """
     try:
         for task in tasks:
@@ -158,7 +161,7 @@ def do_profile_tasks(
                 start_t = time.perf_counter()
                 task = tasks[operation.exec_task_idx]
                 done = tasks[operation.exec_task_idx].exec_operation(
-                    self, operation.type
+                    self, operation.type, overlap_gpu_communication
                 )
                 end_t = time.perf_counter()
 
