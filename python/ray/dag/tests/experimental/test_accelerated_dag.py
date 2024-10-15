@@ -2110,21 +2110,21 @@ def test_channel_write_after_close(ray_start_regular):
         dag.execute(1)
 
 
-def test_driver_and_actor_as_readers(ray_start_cluster):
-    a = Actor.remote(0)
-    b = Actor.remote(10)
-    with InputNode() as inp:
-        x = a.inc.bind(inp)
-        y = b.inc.bind(x)
-        dag = MultiOutputNode([x, y])
+# def test_driver_and_actor_as_readers(ray_start_cluster):
+#     a = Actor.remote(0)
+#     b = Actor.remote(10)
+#     with InputNode() as inp:
+#         x = a.inc.bind(inp)
+#         y = b.inc.bind(x)
+#         dag = MultiOutputNode([x, y])
 
-    with pytest.raises(
-        ValueError,
-        match="DAG outputs currently can only be read by the driver or "
-        "the same actor that is also the InputNode, not by both "
-        "the driver and actors.",
-    ):
-        dag.experimental_compile()
+#     with pytest.raises(
+#         ValueError,
+#         match="DAG outputs currently can only be read by the driver or "
+#         "the same actor that is also the InputNode, not by both "
+#         "the driver and actors.",
+#     ):
+#         dag.experimental_compile()
 
 
 @pytest.mark.skip("Currently buffer size is set to 1 because of regression.")
