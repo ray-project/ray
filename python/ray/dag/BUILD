@@ -132,7 +132,7 @@ py_test_module_list(
 
 py_test(
     name = "test_torch_tensor_dag_gpu",
-    size = "medium",
+    size = "large",
     srcs = [
         "tests/experimental/test_torch_tensor_dag.py",
     ],
