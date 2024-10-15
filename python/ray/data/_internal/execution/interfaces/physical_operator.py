@@ -188,9 +188,9 @@ class PhysicalOperator(Operator):
         self._estimated_num_output_bundles = None
         self._estimated_output_num_rows = None
         self._execution_completed = False
-        # The LogicalOperator which was translated to create this PhysicalOperator.
-        # Set via `PhysicalOperator.set_logical_operator()`.
-        self._logical_op = None
+        # The LogicalOperator(s) which were translated to create this PhysicalOperator.
+        # Set via `PhysicalOperator.set_logical_operators()`.
+        self._logical_operators: List[LogicalOperator] = []
 
     def __reduce__(self):
         raise ValueError("Operator is not serializable.")
@@ -208,8 +208,11 @@ class PhysicalOperator(Operator):
     def post_order_iter(self) -> Iterator["PhysicalOperator"]:
         return super().post_order_iter()  # type: ignore
 
-    def set_logical_operator(self, logical_op: LogicalOperator):
-        self._logical_op = logical_op
+    def set_logical_operators(
+        self,
+        *logical_ops: LogicalOperator,
+    ):
+        self._logical_operators = list(logical_ops)
 
     @property
     def target_max_block_size(self) -> Optional[int]:

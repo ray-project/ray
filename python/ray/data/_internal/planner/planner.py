@@ -134,10 +134,10 @@ class Planner:
         while queue:
             curr_physical_op = queue.pop()
             # Once we find an operator with a logical operator set, we can stop.
-            if curr_physical_op._logical_op:
+            if curr_physical_op._logical_operators:
                 break
 
-            curr_physical_op.set_logical_operator(logical_op)
+            curr_physical_op.set_logical_operators(logical_op)
             queue.extend(physical_op.input_dependencies)
 
         self._physical_op_to_logical_op[physical_op] = logical_op
