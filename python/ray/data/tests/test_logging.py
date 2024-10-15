@@ -161,11 +161,8 @@ def test_json_logging_configuration(
     # Validate console logs are in text mode
     console_log_output = capsys.readouterr().err
     for log_line in console_log_output.splitlines():
-        try:
+        with pytest.raises(json.JSONDecodeError):
             json.loads(log_line)
-            raise ValueError("Expected log line to be logged without JSON formatting.")
-        except json.JSONDecodeError:
-            pass
 
     assert "ham" in console_log_output
     assert "turkey" not in console_log_output
