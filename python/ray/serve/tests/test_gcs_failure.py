@@ -117,6 +117,10 @@ def router_populated_with_replicas(
     get_replicas_func: Optional[Callable] = None,
     check_cache_populated: bool = False,
 ):
+    """Either get router's replica set from `handle` directly, or use
+    `get_replicas_func` to get replica set. Then check that the number
+    of replicas in set is at least `threshold`.
+    """
     if handle:
         replicas = handle._router._replica_scheduler._replica_id_set
     else:
@@ -179,7 +183,7 @@ def test_new_router_on_gcs_failure(serve_ha, use_proxy: bool):
             ),
         )
     else:
-        wait_for_condition(router_populated_with_replicas, threshold=1, handle=h)
+        wait_for_condition(router_populated_with_replicas, threshold=2, handle=h)
 
     # Kill GCS server before a single request is sent.
     ray.worker._global_node.kill_gcs_server()
