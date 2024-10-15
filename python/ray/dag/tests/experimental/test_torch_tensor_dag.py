@@ -134,7 +134,7 @@ def test_torch_tensor_p2p(ray_start_regular):
         dag = sender.send.bind(shape, dtype, inp)
         # TODO(swang): Test that we are using the minimum number of
         # channels/messages when _direct_return=True.
-        dag = dag.with_type_hint(TorchTensorType((20,), dtype))
+        dag = dag.with_type_hint(TorchTensorType((20,), dtype, _direct_return=True))
         dag = receiver.recv.bind(dag)
     compiled_dag = dag.experimental_compile()
     for i in range(3):
@@ -230,7 +230,6 @@ def test_torch_tensor_nccl(ray_start_regular):
     # Test normal execution.
     compiled_dag = dag.experimental_compile()
 
-    print("testing original")
     for i in range(3):
         ref = compiled_dag.execute(i)
         result = ray.get(ref)
@@ -251,7 +250,6 @@ def test_torch_tensor_nccl(ray_start_regular):
     ):
         compiled_dag = dag.experimental_compile()
 
-    print("testing reuse")
     # Test that actors can be reused for a valid DAG.
     with InputNode() as inp:
         dag = sender.send.bind(shape, dtype, inp)
@@ -285,7 +283,6 @@ def test_torch_tensor_nccl_overlap(ray_start_regular):
     sender1 = actor_cls.remote()
     sender2 = actor_cls.remote()
     receiver = actor_cls.remote()
-    print(f"{receiver=}")
 
     shape = (100000,)
     dtype = torch.float16
@@ -311,7 +308,6 @@ def test_torch_tensor_nccl_overlap(ray_start_regular):
     for i in range(3):
         ref = compiled_dag.execute(i)
         result = ray.get(ref)
-        # print(f"{result=}")
         assert result == [(i, shape, dtype), (i, shape, dtype)]
 
     compiled_dag.teardown()

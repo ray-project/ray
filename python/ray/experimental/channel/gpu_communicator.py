@@ -22,6 +22,8 @@ class GPUCommunicator(ABC):
     between actors in the group.
     """
 
+    import cupy as cp
+
     @abstractmethod
     def initialize(self, rank: int) -> None:
         """
@@ -66,11 +68,7 @@ class GPUCommunicator(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def send(
-        self,
-        value: "ray.dag.compiled_dag_node.DAGOperationFuture['torch.Tensor']",
-        peer_rank: int,
-    ) -> None:
+    def send(self, value: "torch.Tensor", peer_rank: int) -> None:
         """
         Send a torch.Tensor to a peer.
 
@@ -93,7 +91,7 @@ class GPUCommunicator(ABC):
         dtype: "torch.dtype",
         peer_rank: int,
         allocator: Optional[TorchTensorAllocator] = None,
-    ) -> "ray.dag.compiled_dag_node.DAGOperationFuture['torch.Tensor']":
+    ) -> "torch.Tensor":
         """
         Receive a torch.Tensor from a peer and synchronize.
 
@@ -106,6 +104,22 @@ class GPUCommunicator(ABC):
             dtype: The dtype of the tensor to receive.
             peer_rank: The rank of the actor to receive from.
             allocator: A function to allocate the tensor to receive into.
+        """
+        raise NotImplementedError
+
+    @property
+    @abstractmethod
+    def recv_stream(self) -> Optional["cp.cuda.ExternalStream"]:
+        """
+        Return the cuda stream used for receiving tensors.
+        """
+        raise NotImplementedError
+
+    @property
+    @abstractmethod
+    def send_stream(self) -> Optional["cp.cuda.ExternalStream"]:
+        """
+        Return the cuda stream used for sending tensors.
         """
         raise NotImplementedError
 

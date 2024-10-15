@@ -6,6 +6,10 @@ T = TypeVar("T")
 
 
 class DAGOperationFuture(ABC, Generic[T]):
+    """
+    A future representing the result of a DAG operation.
+    """
+
     @abstractmethod
     def wait(self):
         raise NotImplementedError
@@ -15,12 +19,15 @@ class ResolvedFuture(DAGOperationFuture):
     """
     A future that is already resolved. Calling `wait()` on this will
     immediately return the result without blocking.
-
-    Args:
-        result: The result of the future.
     """
 
     def __init__(self, result):
+        """
+        Initialize a resolved future.
+
+        Args:
+            result: The result of the future.
+        """
         self._result = result
 
     def wait(self):
@@ -28,12 +35,17 @@ class ResolvedFuture(DAGOperationFuture):
 
 
 class _GPUFuture(DAGOperationFuture["torch.Tensor"]):
+    """
+    A future that represents a GPU operation.
+    """
+
     import torch
     import cupy as cp
 
     def __init__(self, buf: "torch.Tensor", stream: "cp.cuda.Stream"):
         """
         Initialize a GPU future.
+
         Args:
             buf: The buffer to return when the future is resolved.
             stream: The CUDA stream to record the event on.
@@ -46,7 +58,7 @@ class _GPUFuture(DAGOperationFuture["torch.Tensor"]):
 
     def wait(self) -> "torch.Tensor":
         """
-        Wait for the future to resolve and return the buffer.
+        Wait for the future and return the result from the GPU operation.
         """
         import cupy as cp
 

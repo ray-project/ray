@@ -169,28 +169,6 @@ class ChannelContext:
     def set_torch_device(self, device: "torch.device"):
         self._torch_device = device
 
-    def set_current_stream(self, nccl_group_id: str, operation: str):
-        """
-        Set the current stream to execute the operation with the
-        specified NCCL group ID.
-
-        Args:
-            nccl_group_id: The NCCL group ID to use for current operation
-            operation: The current operation to perform, only "WRITE" is supported
-        """
-        nccl_group = self.nccl_groups[nccl_group_id]
-        if operation == "READ":
-            self._current_stream = nccl_group.recv_stream
-        elif operation == "COMPUTE":
-            self._current_stream = nccl_group.compute_stream
-        elif operation == "WRITE":
-            self._current_stream = nccl_group.send_stream
-        else:
-            raise ValueError(f"Invalid operation: {operation}")
-
-    def get_current_stream(self) -> "torch.cuda.Stream":
-        return self._current_stream
-
 
 @PublicAPI(stability="alpha")
 class ChannelInterface:

@@ -411,21 +411,19 @@ class ExecutableTask:
 
         import cupy as cp
 
-        self._send_stream: Optional[
-            Union["cp.cuda.Stream", nullcontext]
-        ] = nullcontext()
-        self._recv_stream: Optional[
-            Union["cp.cuda.Stream", nullcontext]
-        ] = nullcontext()
+        self._send_stream: Union["cp.cuda.Stream", nullcontext] = nullcontext()
+        self._recv_stream: Union["cp.cuda.Stream", nullcontext] = nullcontext()
         if self.output_type_hint.requires_nccl():
             nccl_group_id = _get_nccl_group_id(self.output_type_hint)
             nccl_group = ChannelContext.get_current().nccl_groups[nccl_group_id]
+            assert nccl_group is not None
             self._send_stream = nccl_group.send_stream
         if self.input_type_hints:
             for type_hint in self.input_type_hints:
                 if type_hint.requires_nccl():
                     nccl_group_id = _get_nccl_group_id(type_hint)
                     nccl_group = ChannelContext.get_current().nccl_groups[nccl_group_id]
+                    assert nccl_group is not None
                     if not isinstance(self._recv_stream, nullcontext):
                         assert self._recv_stream == nccl_group.recv_stream, (
                             "Currenlty all torch tensor input channels of a "
@@ -453,19 +451,18 @@ class ExecutableTask:
         return future.wait()
 
     def _wrap_in_future(
-        self, value: Any, overlap_gpu_communication: bool
+        self, value: Any, async_gpu_operation: bool
     ) -> DAGOperationFuture:
         """
-        Wrap the value in a future. If overlap_gpu_communication is True, the future
+        Wrap the value in a future. If async_gpu_operation is True, the future
         will be a _GPUFuture that can be waited to ensure the value is ready to consume.
         Otherwise, the future will be a ResolvedFuture that will immediately return
         upon wait.
-
         """
-        if overlap_gpu_communication:
-            future = _GPUFuture(
-                value, ChannelContext.get_current().get_current_stream()
-            )
+        import cupy as cp
+
+        if async_gpu_operation:
+            future = _GPUFuture(value, cp.cuda.get_current_stream())
         else:
             future = ResolvedFuture(value)
         return future
@@ -499,7 +496,9 @@ class ExecutableTask:
     ) -> bool:
         """
         Retrieve the intermediate result from the READ operation and perform the
-        computation. Then, cache the new intermediate result.
+        computation. Then, cache the new intermediate result. The caller must ensure
+        that the last operation executed is READ so that the function retrieves the
+        correct intermediate result.
 
         Args:
             overlap_gpu_communication: Whether to overlap GPU communication with
@@ -1785,7 +1784,7 @@ class CompiledDAG:
     def _cache_execution_results(
         self,
         execution_index: int,
-        futures: List[DAGOperationFuture],
+        result: Any,
     ):
         """Cache execution results in self._result_buffer. Results are converted
         to dictionary format to allow efficient element removal and calculation of
@@ -1796,8 +1795,8 @@ class CompiledDAG:
             result: The results from all channels to be cached.
         """
         assert not self._has_execution_results(execution_index)
-        for chan_idx, fut in enumerate(futures):
-            self._result_buffer[execution_index][chan_idx] = fut
+        for chan_idx, res in enumerate(result):
+            self._result_buffer[execution_index][chan_idx] = res
 
     def _get_execution_results(
         self, execution_index: int, channel_index: Optional[int]
