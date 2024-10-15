@@ -128,6 +128,7 @@ def test_json_logging_configuration(
     capsys, reset_logging, monkeypatch, shutdown_only, propagate_logs
 ):
     import json
+
     monkeypatch.setenv("RAY_DATA_LOG_ENCODING", "JSON")
     ray.init()
 
@@ -151,7 +152,7 @@ def test_json_logging_configuration(
     # Validate the log is in JSON format (a basic check for JSON)
     messages = set()
     for log_line in log_contents.splitlines():
-        log_dict = json.loads(log_line) # will error if not a json line
+        log_dict = json.loads(log_line)  # will error if not a json line
         messages.add(log_dict["message"])
 
     assert "ham" in messages
