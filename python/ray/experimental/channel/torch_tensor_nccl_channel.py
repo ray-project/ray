@@ -2,7 +2,7 @@ import io
 import logging
 import uuid
 from types import ModuleType
-from typing import TYPE_CHECKING, List, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Any, List, Optional, Tuple, Union
 
 import ray
 import ray.util.serialization
@@ -164,13 +164,8 @@ class NestedTorchTensorNcclChannel(ChannelInterface):
         # tensors, through a CPU-specific channel.
         self._cpu_data_channel.write(ResolvedFuture(serialized_cpu_data))
 
-    def read(
-        self, timeout: Optional[float] = None
-    ) -> "ray.dag.dag_operation_future.DAGOperationFuture":
-        future = self._gpu_data_channel.read()
-        # We need to wait and get the tensors before they can be passed
-        # to deserialize the rest of the CPU data.
-        tensors = future.wait()
+    def read(self, timeout: Optional[float] = None) -> Any:
+        tensors = self._gpu_data_channel.read()
 
         if self._gpu_data_channel.has_static_type():
             # If the channel was declared with a static TorchTensorType, then
@@ -183,9 +178,6 @@ class NestedTorchTensorNcclChannel(ChannelInterface):
         data = self._cpu_data_channel.read()
         self.serialization_ctx.reset_tensors([])
 
-        from ray.dag.dag_operation_future import ResolvedFuture
-
-        assert isinstance(data, ResolvedFuture)
         return data
 
     def close(self) -> None:
@@ -351,27 +343,6 @@ class TorchTensorNcclChannel(ChannelInterface):
 
         return meta
 
-    @staticmethod
-    def _extract_static_type_tensors(
-        self, tensors: Union["torch.Tensor", List["torch.Tensor"]]
-    ) -> None:
-        if not isinstance(tensors, list):
-            return tensors
-
-        VALIDATION_FAILURE_MSG = (
-            "DAGNode annotated with "
-            "TorchTensorType(_shape=shape, _dtype=dtype))` can return at "
-            "most one tensor with the declared `_shape` and `_dtype`. "
-            "Use TorchTensorType() if value contains more than one "
-            "tensor or tensor of dynamic size."
-        )
-        meta_list = []
-        for tensor in tensors:
-            meta_list.append(self._get_tensor_meta(tensor))
-        if meta_list != [None]:
-            raise ValueError(VALIDATION_FAILURE_MSG)
-        return tensors[0]
-
     def write(
         self,
         tensors: Union["torch.Tensor", List["torch.Tensor"], Exception],
@@ -419,9 +390,9 @@ class TorchTensorNcclChannel(ChannelInterface):
 
     def read(
         self, timeout: Optional[float] = None
-    ) -> "ray.dag.dag_operation_future.DAGOperationFuture[Union['torch.Tensor', List['torch.Tensor']]]":  # noqa
+    ) -> Union["torch.Tensor", List["torch.Tensor"]]:
         if self._meta_channel is not None:
-            meta = self._meta_channel.read().wait()
+            meta = self._meta_channel.read()
         else:
             meta = self._typ
 
@@ -432,18 +403,19 @@ class TorchTensorNcclChannel(ChannelInterface):
                 self._writer_rank,
                 self._torch_tensor_allocator,
             )
-        from ray.dag.dag_operation_future import DAGOperationFuture, ListFuture
 
-        futures: List[DAGOperationFuture["torch.Tensor"]] = []
+        bufs: List["torch.Tensor"] = []
         for typ in meta:
-            future = self._nccl_group.recv(
+            buf = self._nccl_group.recv(
                 typ._shape,
                 typ._dtype,
                 self._writer_rank,
                 self._torch_tensor_allocator,
             )
-            futures.append(future)
-        return ListFuture(futures)
+            bufs.append(buf)
+        # TODO: Sync CUDA stream after receiving all tensors, instead of after
+        # each tensor.
+        return bufs
 
     def close(self) -> None:
         if self._meta_channel is not None:

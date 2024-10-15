@@ -625,12 +625,7 @@ def test_torch_tensor_custom_comm_inited(ray_start_regular):
         def get_actor_handles(self) -> List["ray.actor.ActorHandle"]:
             return self._actor_handles
 
-        def send(
-            self,
-            future: "ray.dag.dag_operation_future.DAGOperationFuture['torch.Tensor']",
-            peer_rank: int,
-        ) -> None:
-            value = future.wait()
+        def send(self, value: "torch.Tensor", peer_rank: int) -> None:
             torch.distributed.send(value, peer_rank)
 
         def recv(
@@ -639,12 +634,10 @@ def test_torch_tensor_custom_comm_inited(ray_start_regular):
             dtype: "torch.dtype",
             peer_rank: int,
             allocator: Optional[TorchTensorAllocator] = None,
-        ) -> "ray.dag.dag_operation_future.DAGOperationFuture['torch.Tensor']":
+        ) -> "torch.Tensor":
             tensor = torch.empty(torch.Size(shape), dtype=dtype, device=self._device)
             torch.distributed.recv(tensor, peer_rank)
-            from ray.dag.dag_operation_future import ResolvedFuture
-
-            return ResolvedFuture(tensor)
+            return tensor
 
         def destroy(self) -> None:
             pass

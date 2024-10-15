@@ -180,11 +180,11 @@ class ChannelContext:
         """
         nccl_group = self.nccl_groups[nccl_group_id]
         if operation == "READ":
-            self._current_stream = nccl_group.read_stream
+            self._current_stream = nccl_group.recv_stream
         elif operation == "COMPUTE":
             self._current_stream = nccl_group.compute_stream
         elif operation == "WRITE":
-            self._current_stream = nccl_group.write_stream
+            self._current_stream = nccl_group.send_stream
         else:
             raise ValueError(f"Invalid operation: {operation}")
 
@@ -228,11 +228,7 @@ class ChannelInterface:
         """
         raise NotImplementedError
 
-    def write(
-        self,
-        future: "ray.dag.dag_operation_future.DAGOperationFuture",
-        timeout: Optional[float] = None,
-    ) -> None:
+    def write(self, value: Any, timeout: Optional[float] = None) -> None:
         """
         Write a value to the channel.
 
@@ -249,9 +245,7 @@ class ChannelInterface:
         """
         raise NotImplementedError
 
-    def read(
-        self, timeout: Optional[float] = None
-    ) -> "ray.dag.dag_operation_future.DAGOperationFuture":
+    def read(self, timeout: Optional[float] = None) -> Any:
         """
         Read the latest value from the channel. This call will block until a
         value is available to read.
@@ -300,9 +294,7 @@ class ReaderInterface:
     def start(self):
         raise NotImplementedError
 
-    def _read_list(
-        self, timeout: Optional[float] = None
-    ) -> List["ray.dag.dag_operation_future.DAGOperationFuture"]:
+    def _read_list(self, timeout: Optional[float] = None) -> List[Any]:
         """
         Read a list of values from this reader.
 
@@ -315,9 +307,7 @@ class ReaderInterface:
         """
         raise NotImplementedError
 
-    def read(
-        self, timeout: Optional[float] = None
-    ) -> List["ray.dag.dag_operation_future.DAGOperationFuture"]:
+    def read(self, timeout: Optional[float] = None) -> List[Any]:
         """
         Read from this reader.
 
@@ -351,17 +341,16 @@ class SynchronousReader(ReaderInterface):
     def start(self):
         pass
 
-    def _read_list(
-        self, timeout: Optional[float] = None
-    ) -> List["ray.dag.dag_operation_future.DAGOperationFuture"]:
-        results = []
-        for c in self._input_channels:
-            start_time = time.monotonic()
-            results.append(c.read(timeout))
-            if timeout is not None:
-                timeout -= time.monotonic() - start_time
-                timeout = max(timeout, 0)
-        return results
+
+def _read_list(self, timeout: Optional[float] = None) -> List[Any]:
+    results = []
+    for c in self._input_channels:
+        start_time = time.monotonic()
+        results.append(c.read(timeout))
+        if timeout is not None:
+            timeout -= time.monotonic() - start_time
+            timeout = max(timeout, 0)
+    return results
 
 
 @DeveloperAPI

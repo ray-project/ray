@@ -454,19 +454,13 @@ class Channel(ChannelInterface):
             #     prev_writer_ref
             # )
 
-    def write(
-        self,
-        future: "ray.dag.dag_operation_future.DAGOperationFuture",
-        timeout: Optional[float] = None,
-    ) -> None:
+    def write(self, value: Any, timeout: Optional[float] = None) -> None:
         self.ensure_registered_as_writer()
         assert (
             timeout is None or timeout >= 0 or timeout == -1
         ), "Timeout must be non-negative or -1."
         # -1 means no timeout (block indefinitely)
         timeout_ms = int(timeout * 1000) if timeout is not None else -1
-
-        value = future.wait()
 
         if not isinstance(value, SerializedObject):
             try:
@@ -498,9 +492,7 @@ class Channel(ChannelInterface):
             timeout_ms,
         )
 
-    def read(
-        self, timeout: Optional[float] = None
-    ) -> "ray.dag.dag_operation_future.DAGOperationFuture":
+    def read(self, timeout: Optional[float] = None) -> Any:
         assert (
             timeout is None or timeout >= 0 or timeout == -1
         ), "Timeout must be non-negative or -1."
@@ -526,9 +518,7 @@ class Channel(ChannelInterface):
                 [self._local_reader_ref], timeout=timeout, return_exceptions=True
             )[0][0]
 
-        from ray.dag.dag_operation_future import ResolvedFuture
-
-        return ResolvedFuture(ret)
+        return ret
 
     def close(self) -> None:
         """

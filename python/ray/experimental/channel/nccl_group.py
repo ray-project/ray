@@ -160,11 +160,7 @@ class _NcclGroup(GPUCommunicator):
         """
         return self._world_size
 
-    def send(
-        self,
-        future: "ray.dag.dag_operation_future.DAGOperationFuture['torch.Tensor']",
-        peer_rank: int,
-    ) -> None:
+    def send(self, value: "torch.Tensor", peer_rank: int) -> None:
         """
         Send a torch.Tensor to a peer.
 
@@ -185,13 +181,11 @@ class _NcclGroup(GPUCommunicator):
 
         if self._use_communication_streams:
             # We observed that if all recv/compute/send operations run on GPU,
-            # since there is no synchrnoziation, the CPU execution loop may be
+            # since there is no synchronization, the CPU execution loop may be
             # far ahead of the GPU operations and lead to runtime failures.
-            # To avoid that, we synchrnozie on the send stream.
+            # To avoid that, we synchronize on the send stream.
             # TODO(rui): find a better approach
             self._send_stream.synchronize()
-
-        value = future.wait()
 
         # TODO(swang): Handle send/recv async NCCL errors such as network
         # failures.
@@ -209,7 +203,7 @@ class _NcclGroup(GPUCommunicator):
         dtype: "torch.dtype",
         peer_rank: int,
         allocator=Optional[TorchTensorAllocator],
-    ) -> "ray.dag.dag_operation_future.DAGOperationFuture['torch.Tensor']":
+    ) -> "torch.Tensor":
         """
         Receive a torch.Tensor from a peer and synchronize the current stream.
 
@@ -226,13 +220,11 @@ class _NcclGroup(GPUCommunicator):
         assert allocator is not None, "NCCL group requires a tensor allocator"
         buf = allocator(shape, dtype)
 
-        from ray.dag.dag_operation_future import ResolvedFuture, _GPUFuture
-
         if self._use_communication_streams:
             # We observed that if all recv/compute/send operations run on GPU,
-            # since there is no synchrnoziation, the CPU execution loop may be
+            # since there is no synchronization, the CPU execution loop may be
             # far ahead of the GPU operations and lead to runtime failures.
-            # To avoid that, we synchrnozie on the recv stream.
+            # To avoid that, we synchronize on the recv stream.
             # TODO(rui): find a better approach
             self._recv_stream.synchronize()
 
@@ -243,7 +235,6 @@ class _NcclGroup(GPUCommunicator):
                 peer_rank,
                 self._recv_stream.ptr,
             )
-            future = _GPUFuture(buf, self._recv_stream)
         else:
             self._comm.recv(
                 self.nccl_util.get_tensor_ptr(buf),
@@ -258,11 +249,10 @@ class _NcclGroup(GPUCommunicator):
             # ensure that the receive buffer is valid.
             # TODO(swang): Avoid CUDA synchronization.
             self._cuda_stream.synchronize()
-            future = ResolvedFuture(buf)
 
         if self._closed:
             raise RayChannelError("NCCL group has been destroyed.")
-        return future
+        return buf
 
     @property
     def recv_stream(self) -> "cp.cuda.ExternalStream":

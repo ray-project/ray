@@ -363,9 +363,7 @@ class ExecutableTask:
         # which can be wait upon to get the actual value.
         # The result of a READ operation will be used by a COMPUTE operation,
         # and the result of a COMPUTE operation will be used by a WRITE operation.
-        self._intermediate_buffer: Optional[
-            Union[DAGOperationFuture, List[DAGOperationFuture]]
-        ] = None
+        self._intermediate_buffer: Optional[Union[DAGOperationFuture]] = None
 
     def cancel(self):
         """
@@ -406,9 +404,24 @@ class ExecutableTask:
         self._intermediate_buffer = None
         return future
 
-    def _read(self) -> bool:
+    def _wrap_in_future(
+        self, value: Any, overlap_gpu_communication: bool
+    ) -> DAGOperationFuture:
+        if overlap_gpu_communication:
+            future = _GPUFuture(
+                value, ChannelContext.get_current().get_current_stream()
+            )
+        else:
+            future = ResolvedFuture(value)
+        return future
+
+    def _read(self, overlap_gpu_communication: bool) -> bool:
         """
         Read input data from upstream DAG nodes and cache the intermediate result.
+
+        Args:
+            overlap_gpu_communication: Whether to overlap GPU communication with
+                computation during DAG execution to improve performance.
 
         Returns:
             True if system error occurs and exit the loop; otherwise, False.
@@ -416,7 +429,8 @@ class ExecutableTask:
         assert self._intermediate_buffer is None
         exit = False
         try:
-            future = self.input_reader.read()
+            input_data = self.input_reader.read()
+            future = self._wrap_in_future(input_data, overlap_gpu_communication)
             self.set_intermediate_buffer(future)
         except RayChannelError:
             # Channel closed. Exit the loop.
@@ -462,12 +476,7 @@ class ExecutableTask:
         except Exception as exc:
             output_val = _wrap_exception(exc)
 
-        if overlap_gpu_communication:
-            import cupy as cp
-
-            future = _GPUFuture(output_val, cp.cuda.get_current_stream())
-        else:
-            future = ResolvedFuture(output_val)
+        future = self._wrap_in_future(output_val, overlap_gpu_communication)
         self.set_intermediate_buffer(future)
         return False
 
@@ -512,15 +521,17 @@ class ExecutableTask:
         """
         if self.output_type_hint.requires_nccl():
             nccl_group_id = self.output_type_hint.nccl_group_id
-            ctx = ChannelContext.get_current()
-            ctx.set_current_stream(nccl_group_id, op_type.name)
+            nccl_group = ChannelContext.get_current().nccl_groups(nccl_group_id)
 
         if op_type == _DAGNodeOperationType.READ:
-            return self._read()
+            with nccl_group._recv_stream:
+                return self._read()
         elif op_type == _DAGNodeOperationType.COMPUTE:
-            return self._compute(overlap_gpu_communication, class_handle)
+            with nccl_group._compute_stream:
+                return self._compute(overlap_gpu_communication, class_handle)
         elif op_type == _DAGNodeOperationType.WRITE:
-            return self._write()
+            with nccl_group._send_stream:
+                return self._write()
 
 
 @dataclass
