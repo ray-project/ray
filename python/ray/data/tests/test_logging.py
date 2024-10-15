@@ -127,6 +127,7 @@ def test_custom_config(reset_logging, monkeypatch, tmp_path):
 def test_json_logging_configuration(
     capsys, reset_logging, monkeypatch, shutdown_only, propagate_logs
 ):
+    import json
     monkeypatch.setenv("RAY_DATA_LOG_ENCODING", "JSON")
     ray.init()
 
@@ -148,20 +149,22 @@ def test_json_logging_configuration(
         log_contents = file.read()
 
     # Validate the log is in JSON format (a basic check for JSON)
-    assert all(
-        log_line.startswith("{") and log_line.endswith("}")
-        for log_line in log_contents.splitlines()
-    )
+    messages = set()
+    for log_line in log_contents.splitlines():
+        log_dict = json.loads(log_line) # will error if not a json line
+        messages.add(log_dict["message"])
 
-    assert '"message": "ham"' in log_contents
-    assert '"message": "turkey"' in log_contents
+    assert "ham" in messages
+    assert "turkey" in messages
 
     # Validate console logs are in text mode
     console_log_output = capsys.readouterr().err
-    assert not any(
-        log_line.startswith("{") and log_line.endswith("}")
-        for log_line in console_log_output.splitlines()
-    )
+    for log_line in console_log_output.splitlines():
+        try:
+            json.loads(log_line)
+            raise ValueError("Expected log line to be logged without JSON formatting.")
+        except json.JSONDecodeError:
+            pass
 
     assert "ham" in console_log_output
     assert "turkey" not in console_log_output
