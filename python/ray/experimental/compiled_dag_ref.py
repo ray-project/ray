@@ -6,25 +6,22 @@ from ray.exceptions import RayTaskError
 from ray.util.annotations import PublicAPI
 
 
-def _process_return_vals(return_futures: List[Any], return_single_output: bool):
+def _process_return_vals(return_vals: List[Any], return_single_output: bool):
     """
     Process return values for return to the DAG caller. Any exceptions found in
     return_vals will be raised. If return_single_output=True, it indicates that
     the original DAG did not have a MultiOutputNode, so the DAG caller expects
     a single return value instead of a list.
     """
-    if isinstance(return_futures, Exception):
-        raise return_futures
+    if isinstance(return_vals, Exception):
+        raise return_vals
 
-    return_vals = []
-    for fut in return_futures:
-        val = fut.wait()
+    for val in return_vals:
         if isinstance(val, RayTaskError):
             raise val.as_instanceof_cause()
-        return_vals.append(val)
 
     if return_single_output:
-        assert len(return_futures) == 1
+        assert len(return_vals) == 1
         return return_vals[0]
 
     return return_vals

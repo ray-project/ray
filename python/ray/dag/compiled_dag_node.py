@@ -279,9 +279,7 @@ class _ExecutableTaskInput:
         """
 
         if isinstance(self.input_variant, ChannelInterface):
-            future = channel_results[self.channel_idx]
-            assert isinstance(future, DAGOperationFuture)
-            value = future.wait()
+            value = channel_results[self.channel_idx]
         else:
             value = self.input_variant
         return value
@@ -384,11 +382,11 @@ class ExecutableTask:
         self.output_writer: WriterInterface = SynchronousWriter(
             self.output_channels, self.output_idxs
         )
-        # The intermediate buffer holds the future of a READ or COMPUTE operation,
-        # which can be wait upon to get the actual value.
+        # The intermediate future for a READ or COMPUTE operation,
+        # and `wait()` must be called to get the actual result of the operation.
         # The result of a READ operation will be used by a COMPUTE operation,
         # and the result of a COMPUTE operation will be used by a WRITE operation.
-        self._intermediate_buffer: Optional[Union[DAGOperationFuture]] = None
+        self._intermediate_future: Optional[DAGOperationFuture] = None
 
     def cancel(self):
         """
@@ -410,24 +408,24 @@ class ExecutableTask:
         self.input_reader.start()
         self.output_writer.start()
 
-    def set_intermediate_buffer(self, future: DAGOperationFuture):
+    def set_intermediate_future(self, future: DAGOperationFuture):
         """
         Store the intermediate future of a READ or COMPUTE operation.
         Args:
             future: The future for a READ or COMPUTE operation.
         """
-        assert self._intermediate_buffer is None
-        self._intermediate_buffer = future
+        assert self._intermediate_future is None
+        self._intermediate_future = future
 
-    def reset_intermediate_buffer(self) -> Any:
+    def reset_and_wait_intermediate_future(self) -> Any:
         """
         Reset the intermediate future and wait for the result.
         Returns:
             The result of a READ or COMPUTE operation from the intermediate future.
         """
-        future = self._intermediate_buffer
-        self._intermediate_buffer = None
-        return future
+        future = self._intermediate_future
+        self._intermediate_future = None
+        return future.wait()
 
     def _wrap_in_future(
         self, value: Any, overlap_gpu_communication: bool
@@ -458,12 +456,12 @@ class ExecutableTask:
         Returns:
             True if system error occurs and exit the loop; otherwise, False.
         """
-        assert self._intermediate_buffer is None
+        assert self._intermediate_future is None
         exit = False
         try:
             input_data = self.input_reader.read()
             future = self._wrap_in_future(input_data, overlap_gpu_communication)
-            self.set_intermediate_buffer(future)
+            self.set_intermediate_future(future)
         except RayChannelError:
             # Channel closed. Exit the loop.
             exit = True
@@ -487,21 +485,21 @@ class ExecutableTask:
         Returns:
             True if system error occurs and exit the loop; otherwise, False.
         """
-        input_futures = self.reset_intermediate_buffer()
+        input_data = self.reset_and_wait_intermediate_future()
         method = getattr(class_handle, self.method_name)
         try:
-            _process_return_vals(input_futures, return_single_output=False)
+            _process_return_vals(input_data, return_single_output=False)
         except Exception as exc:
             # Previous task raised an application-level exception.
             # Propagate it and skip the actual task. We don't need to wrap the
             # exception in a RayTaskError here because it has already been wrapped
             # by the previous task.
-            self.set_intermediate_buffer(ResolvedFuture(exc))
+            self.set_intermediate_future(ResolvedFuture(exc))
             return False
 
         resolved_inputs = []
         for task_input in self.task_inputs:
-            resolved_inputs.append(task_input.resolve(input_futures))
+            resolved_inputs.append(task_input.resolve(input_data))
 
         try:
             output_val = method(*resolved_inputs, **self.resolved_kwargs)
@@ -509,7 +507,7 @@ class ExecutableTask:
             output_val = _wrap_exception(exc)
 
         future = self._wrap_in_future(output_val, overlap_gpu_communication)
-        self.set_intermediate_buffer(future)
+        self.set_intermediate_future(future)
         return False
 
     def _write(self) -> bool:
@@ -521,7 +519,7 @@ class ExecutableTask:
         Returns:
             True if system error occurs and exit the loop; otherwise, False.
         """
-        future = self.reset_intermediate_buffer()
+        future = self.reset_and_wait_intermediate_future()
         value = future.wait()
         exit = False
         try:
