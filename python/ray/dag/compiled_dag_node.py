@@ -1042,12 +1042,12 @@ class CompiledDAG:
 
                     reader_and_node_list: List[Tuple["ray.actor.ActorHandle", str]] = []
                     if read_by_multi_output_node:
-                        if len(readers) != 1:
-                            raise ValueError(
-                                "DAG outputs currently can only be read by the "
-                                "driver or the same actor that is also the "
-                                "InputNode, not by both the driver and actors.",
-                            )
+                        #     if len(readers) != 1:
+                        #         raise ValueError(
+                        #             "DAG outputs currently can only be read by the "
+                        #             "driver or the same actor that is also the "
+                        #             "InputNode, not by both the driver and actors.",
+                        #         )
 
                         # This node is a multi-output node, which means it will
                         # only be read by the driver or the actor that is also
@@ -1551,7 +1551,7 @@ class CompiledDAG:
                     try:
                         ray.get(ref, timeout=10)
                     except ray.exceptions.GetTimeoutError:
-                        logger.warn(
+                        logger.warning(
                             f"Compiled DAG actor {actor} is still running 10s "
                             "after teardown(). Teardown may hang."
                         )
