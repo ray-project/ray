@@ -743,10 +743,7 @@ class TorchPolicy(Policy):
             optim_state_dict = convert_to_numpy(o.state_dict())
             state["_optimizer_variables"].append(optim_state_dict)
         # Add exploration state.
-        if (
-            not self.config.get("enable_rl_module_and_learner", False)
-            and self.exploration
-        ):
+        if self.exploration:
             # This is not compatible with RLModules, which have a method
             # `forward_exploration` to specify custom exploration behavior.
             state["_exploration_state"] = self.exploration.get_state()

@@ -342,8 +342,8 @@ GcsActorManager::GcsActorManager(
       actor_gc_delay_(RayConfig::instance().gcs_actor_table_min_duration_ms()) {
   RAY_CHECK(worker_client_factory_);
   RAY_CHECK(destroy_owned_placement_group_if_needed_);
-  actor_state_counter_.reset(
-      new CounterMap<std::pair<rpc::ActorTableData::ActorState, std::string>>());
+  actor_state_counter_ = std::make_shared<
+      CounterMap<std::pair<rpc::ActorTableData::ActorState, std::string>>>();
   actor_state_counter_->SetOnChangeCallback(
       [this](const std::pair<rpc::ActorTableData::ActorState, std::string> key) mutable {
         int64_t num_actors = actor_state_counter_->Get(key);
@@ -1184,13 +1184,13 @@ void GcsActorManager::OnWorkerDead(const ray::NodeID &node_id,
                                      rpc::WorkerExitType_Name(disconnect_type),
                                      ", has creation_task_exception = ",
                                      (creation_task_exception != nullptr));
-  RAY_LOG(DEBUG) << "on worker dead worker id " << worker_id << " disconnect detail "
-                 << disconnect_detail;
+  RAY_LOG(DEBUG).WithField(worker_id)
+      << "on worker dead, disconnect detail " << disconnect_detail;
   if (disconnect_type == rpc::WorkerExitType::INTENDED_USER_EXIT ||
       disconnect_type == rpc::WorkerExitType::INTENDED_SYSTEM_EXIT) {
-    RAY_LOG(DEBUG) << message;
+    RAY_LOG(DEBUG).WithField(worker_id) << message;
   } else {
-    RAY_LOG(WARNING) << message;
+    RAY_LOG(WARNING).WithField(worker_id) << message;
   }
 
   bool need_reconstruct = disconnect_type != rpc::WorkerExitType::INTENDED_USER_EXIT &&
@@ -1363,8 +1363,8 @@ void GcsActorManager::RestartActor(const ActorID &actor_id,
   // could've been destroyed and dereigstered before restart.
   auto iter = registered_actors_.find(actor_id);
   if (iter == registered_actors_.end()) {
-    RAY_LOG(DEBUG) << "Actor is destroyed before restart, actor id = " << actor_id
-                   << ", job id = " << actor_id.JobId();
+    RAY_LOG(DEBUG).WithField(actor_id.JobId()).WithField(actor_id)
+        << "Actor is destroyed before restart";
     if (done_callback) {
       done_callback();
     }
@@ -1688,8 +1688,8 @@ void GcsActorManager::RemoveUnresolvedActor(const std::shared_ptr<GcsActor> &act
 void GcsActorManager::RemoveActorFromOwner(const std::shared_ptr<GcsActor> &actor) {
   const auto &actor_id = actor->GetActorID();
   const auto &owner_id = actor->GetOwnerID();
-  RAY_LOG(DEBUG) << "Erasing actor " << actor_id << " owned by " << owner_id
-                 << ", job id = " << actor_id.JobId();
+  RAY_LOG(DEBUG).WithField(actor_id).WithField(owner_id).WithField(actor_id.JobId())
+      << "Erasing actor owned by worker";
 
   const auto &owner_node_id = actor->GetOwnerNodeID();
   auto &node = owners_[owner_node_id];
@@ -1713,16 +1713,19 @@ void GcsActorManager::NotifyCoreWorkerToKillActor(const std::shared_ptr<GcsActor
   request.mutable_death_cause()->CopyFrom(death_cause);
   request.set_force_kill(force_kill);
   auto actor_client = worker_client_factory_(actor->GetAddress());
-  RAY_LOG(DEBUG) << "Send request to kill actor " << actor->GetActorID() << " to worker "
-                 << actor->GetWorkerID() << " at node " << actor->GetNodeID();
+  RAY_LOG(DEBUG)
+          .WithField(actor->GetActorID())
+          .WithField(actor->GetWorkerID())
+          .WithField(actor->GetNodeID())
+      << "Send request to kill actor to worker at node";
   actor_client->KillActor(request, [](auto &status, auto &&) {
     RAY_LOG(DEBUG) << "Killing status: " << status.ToString();
   });
 }
 
 void GcsActorManager::KillActor(const ActorID &actor_id, bool force_kill) {
-  RAY_LOG(DEBUG) << "Killing actor, job id = " << actor_id.JobId()
-                 << ", actor id = " << actor_id << ", force_kill = " << force_kill;
+  RAY_LOG(DEBUG).WithField(actor_id.JobId()).WithField(actor_id)
+      << "Killing actor, force_kill = " << force_kill;
   auto it = registered_actors_.find(actor_id);
   if (it == registered_actors_.end()) {
     RAY_LOG(INFO) << "Tried to kill actor that does not exist " << actor_id;
@@ -1746,8 +1749,8 @@ void GcsActorManager::KillActor(const ActorID &actor_id, bool force_kill) {
         actor, GenKilledByApplicationCause(GetActor(actor_id)), force_kill);
   } else {
     const auto &task_id = actor->GetCreationTaskSpecification().TaskId();
-    RAY_LOG(DEBUG) << "The actor " << actor->GetActorID()
-                   << " hasn't been created yet, cancel scheduling " << task_id;
+    RAY_LOG(DEBUG).WithField(actor->GetActorID()).WithField(task_id)
+        << "The actor hasn't been created yet, cancel scheduling task";
     if (!worker_id.IsNil()) {
       // The actor is in phase of creating, so we need to notify the core
       // worker exit to avoid process and resource leak.
@@ -1778,8 +1781,8 @@ void GcsActorManager::AddDestroyedActorToCache(const std::shared_ptr<GcsActor> &
 
 void GcsActorManager::CancelActorInScheduling(const std::shared_ptr<GcsActor> &actor,
                                               const TaskID &task_id) {
-  RAY_LOG(DEBUG) << "Cancel actor in scheduling: actor_id " << actor->GetActorID()
-                 << ", task_id " << task_id;
+  RAY_LOG(DEBUG).WithField(actor->GetActorID()).WithField(task_id)
+      << "Cancel actor in scheduling";
   const auto &actor_id = actor->GetActorID();
   const auto &node_id = actor->GetNodeID();
   // The actor has not been created yet. It is either being scheduled or is

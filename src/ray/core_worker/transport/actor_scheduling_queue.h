@@ -64,6 +64,7 @@ class ActorSchedulingQueue : public SchedulingQueue {
            const std::string &concurrency_group_name,
            const ray::FunctionDescriptor &function_descriptor,
            TaskID task_id = TaskID::Nil(),
+           uint64_t attempt_number = 0,
            const std::vector<rpc::ObjectReference> &dependencies = {}) override;
 
   /// Cancel the actor task in the queue.

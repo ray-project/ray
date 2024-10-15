@@ -87,6 +87,8 @@ def gym_space_to_dict(space: gym.spaces.Space) -> Dict:
     Returns:
         Serialized JSON string.
     """
+    if space is None:
+        return None
 
     def _box(sp: gym.spaces.Box) -> Dict:
         return {
@@ -213,6 +215,8 @@ def gym_space_from_dict(d: Dict) -> gym.spaces.Space:
     Returns:
         De-serialized gym space.
     """
+    if d is None:
+        return None
 
     def __common(d: Dict):
         """Common updates to the dict before we use it to construct spaces"""
