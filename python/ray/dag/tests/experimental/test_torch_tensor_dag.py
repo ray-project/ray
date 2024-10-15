@@ -370,6 +370,8 @@ def test_torch_tensor_custom_comm(ray_start_regular):
         A custom NCCL group for testing. This is a simple wrapper around `_NcclGroup`.
         """
 
+        import cupy as cp
+
         def __init__(self, world_size, comm_id, actor_handles):
             self._world_size = world_size
             self._comm_id = comm_id
@@ -420,6 +422,14 @@ def test_torch_tensor_custom_comm(ray_start_regular):
         ) -> "torch.Tensor":
             return self._inner.recv(shape, dtype, peer_rank, allocator=allocator)
 
+        @property
+        def recv_stream(self) -> Optional["cp.cuda.ExternalStream"]:
+            return self._inner.recv_stream
+
+        @property
+        def send_stream(self) -> Optional["cp.cuda.ExternalStream"]:
+            return self._inner.send_stream
+
         def destroy(self) -> None:
             return self._inner.destroy()
 
@@ -464,6 +474,8 @@ def test_torch_tensor_custom_comm_invalid(ray_start_regular):
         A mock NCCL group for testing. Send and recv are not implemented.
         """
 
+        import cupy as cp
+
         def __init__(self, world_size, actor_handles):
             self._world_size = world_size
             self._actor_handles = actor_handles
@@ -504,6 +516,14 @@ def test_torch_tensor_custom_comm_invalid(ray_start_regular):
             peer_rank: int,
             allocator: Optional[TorchTensorAllocator] = None,
         ) -> "torch.Tensor":
+            return None
+
+        @property
+        def recv_stream(self) -> Optional["cp.cuda.ExternalStream"]:
+            return None
+
+        @property
+        def send_stream(self) -> Optional["cp.cuda.ExternalStream"]:
             return None
 
         def destroy(self) -> None:
@@ -595,6 +615,8 @@ def test_torch_tensor_custom_comm_inited(ray_start_regular):
         A custom NCCL group based on existing torch.distributed setup.
         """
 
+        import cupy as cp
+
         def __init__(self, world_size, actor_handles):
             self._world_size = world_size
             self._actor_handles = actor_handles
@@ -638,6 +660,18 @@ def test_torch_tensor_custom_comm_inited(ray_start_regular):
             tensor = torch.empty(torch.Size(shape), dtype=dtype, device=self._device)
             torch.distributed.recv(tensor, peer_rank)
             return tensor
+
+        @property
+        def recv_stream(self) -> Optional["cp.cuda.ExternalStream"]:
+            import cupy as cp
+
+            return cp.cuda.get_current_stream()
+
+        @property
+        def send_stream(self) -> Optional["cp.cuda.ExternalStream"]:
+            import cupy as cp
+
+            return cp.cuda.get_current_stream()
 
         def destroy(self) -> None:
             pass

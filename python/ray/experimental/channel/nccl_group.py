@@ -257,11 +257,11 @@ class _NcclGroup(GPUCommunicator):
         return buf
 
     @property
-    def recv_stream(self) -> "cp.cuda.ExternalStream":
+    def recv_stream(self) -> Optional["cp.cuda.ExternalStream"]:
         return self._recv_stream
 
     @property
-    def send_stream(self) -> "cp.cuda.ExternalStream":
+    def send_stream(self) -> Optional["cp.cuda.ExternalStream"]:
         return self._send_stream
 
     def destroy(self) -> None:

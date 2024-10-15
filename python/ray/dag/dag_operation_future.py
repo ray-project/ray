@@ -48,9 +48,9 @@ class _GPUFuture(DAGOperationFuture["torch.Tensor"]):
         """
         Wait for the future to resolve and return the buffer.
         """
-        from python.ray.experimental.channel import ChannelContext
+        import cupy as cp
 
         if self._event is not None:
-            current_stream = ChannelContext.get_current().current_stream
+            current_stream = cp.cuda.get_current_stream()
             current_stream.wait_event(self._event)
         return self._buf
