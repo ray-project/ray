@@ -272,6 +272,12 @@ class Dataset:
             If your transformation is vectorized like most NumPy or pandas operations,
             :meth:`~Dataset.map_batches` might be faster.
 
+        .. warning::
+            Specifying both ``num_cpus`` and ``num_gpus`` for map tasks is experimental,
+            and may result in scheduling or stability issues. Please
+            `report any issues <https://github.com/ray-project/ray/issues/new/choose>`_
+            to the Ray team.
+
         Examples:
 
             .. testcode::
@@ -416,6 +422,12 @@ class Dataset:
         .. tip::
             If ``fn`` doesn't mutate its input, set ``zero_copy_batch=True`` to improve
             performance and decrease memory utilization.
+
+        .. warning::
+            Specifying both ``num_cpus`` and ``num_gpus`` for map tasks is experimental,
+            and may result in scheduling or stability issues. Please
+            `report any issues <https://github.com/ray-project/ray/issues/new/choose>`_
+            to the Ray team.
 
         Examples:
 
@@ -972,6 +984,12 @@ class Dataset:
             :meth:`~Dataset.map_batches` can also modify the number of rows. If your
             transformation is vectorized like most NumPy and pandas operations,
             it might be faster.
+
+        .. warning::
+            Specifying both ``num_cpus`` and ``num_gpus`` for map tasks is experimental,
+            and may result in scheduling or stability issues. Please
+            `report any issues <https://github.com/ray-project/ray/issues/new/choose>`_
+            to the Ray team.
 
         Examples:
 
@@ -3709,13 +3727,15 @@ class Dataset:
             datasink.on_write_start()
 
             self._write_ds = Dataset(plan, logical_plan).materialize()
-            blocks = ray.get(self._write_ds._plan.execute().block_refs)
+            # TODO: Get and handle the blocks with an iterator instead of getting
+            # everything in a blocking way, so some blocks can be freed earlier.
+            raw_write_results = ray.get(self._write_ds._plan.execute().block_refs)
             assert all(
-                isinstance(block, pd.DataFrame) and len(block) == 1 for block in blocks
+                isinstance(block, pd.DataFrame) and len(block) == 1
+                for block in raw_write_results
             )
-            write_results = [block["write_result"][0] for block in blocks]
+            datasink.on_write_complete(raw_write_results)
 
-            datasink.on_write_complete(write_results)
         except Exception as e:
             datasink.on_write_failed(e)
             raise
