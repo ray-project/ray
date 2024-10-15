@@ -15,6 +15,7 @@ from ray.anyscale.serve._private.tracing_utils import (
     set_span_attributes,
     tracing_decorator_factory,
 )
+from ray.anyscale.serve.utils import asyncio_grpc_exception_handler
 from ray.exceptions import ActorDiedError, ActorUnavailableError, RayError
 from ray.serve._private.common import (
     DeploymentHandleSource,
@@ -353,6 +354,7 @@ class Router:
         )
 
         self._by_reference = by_reference
+        event_loop.set_exception_handler(asyncio_grpc_exception_handler)
         # ===== End Anyscale proprietary code ======
 
         self._event_loop = event_loop
