@@ -29,14 +29,8 @@ proto_cpp_grpc_default_kwargs = {
 
 
 # === @begin: proto_py (original: python_grpc_compile) ===
-protoc_py = ['python3', '-m', 'grpc_tools.protoc']
-protoc_py_with_default_args = [
-    protoc_py,
-    '--proto_path=@SOURCE_ROOT@',
-    '--python_out=@BUILD_ROOT@',
-    '--grpc_python_out=@BUILD_ROOT@',
-    '@INPUT@'
-]
+protoc_py = files('patching_protoc_py.sh')
+protoc_py_with_default_args = [protoc_py, '@INPUT@', '@SOURCE_ROOT@', '@BUILD_ROOT@', '@OUTPUT0@', '@OUTPUT1@']
 proto_py_default_kwargs = {
     'command': protoc_py_with_default_args,
     'output': ['@BASENAME@_pb2.py', '@BASENAME@_pb2_grpc.py']

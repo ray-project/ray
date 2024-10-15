@@ -474,9 +474,7 @@ reporter_proto_cpp_grpc_lib_dep = declare_dependency(
 # @begin: proto_py (@original: reporter_py_proto)
 reporter_proto_py = custom_target(
     input: reporter_proto,
-    kwargs: proto_py_default_kwargs + {
-        'command': [protoc_py_with_default_args, '-I@SOURCE_ROOT@/eugo/include']
-    },
+    kwargs: proto_py_default_kwargs,
     install: true,
     install_dir: py.get_install_dir() / 'ray/core/generated/'
 )

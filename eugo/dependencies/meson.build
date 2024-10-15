@@ -33,15 +33,15 @@ absl_memory = dependency('absl', method: 'cmake', modules: ['absl::memory'])
 # https://github.com/mesonbuild/meson/issues/5438
 # For now, modules resolution for Boost is imperfect so we have to bring the entire boost.
 # Anyway, bringing standalone parts would bring almost all others so not a big problem
-boost = dependency('boost', method: 'cmake')
-boost_asio = boost
-boost_thread = dependency('boost', method: 'cmake', modules: ['thread'])
-boost_system = boost
+boost = dependency('boost', modules: ['fiber', 'thread'])
 boost_any = boost
-boost_bimap = boost
+boost_asio = boost
 boost_beast = boost
+boost_bimap = boost
 boost_circular_buffer = boost
 boost_fiber = boost
+boost_system = boost
+boost_thread = boost
 # === @end: boost ===
 
 
