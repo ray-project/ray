@@ -5206,3 +5206,10 @@ def get_session_key_from_storage(host, port, password, use_ssl, config, key):
     else:
         logger.info("Could not retrieve session key from storage.")
         return None
+
+
+def std_srand(seed):
+    cdef extern from "<cstdlib>" namespace "std":
+        void srand(unsigned int seed)
+
+    srand(seed)

@@ -18,6 +18,7 @@ from ray._private.test_utils import (
     async_wait_for_condition_async_predicate,
 )
 import ray._private.ray_constants as ray_constants
+import ray._raylet
 
 
 @contextlib.contextmanager
@@ -101,12 +102,19 @@ def test_kv_timeout(ray_start_regular):
 
 
 def test_kv_transient_network_error(shutdown_only, monkeypatch):
-    monkeypatch.setenv("RAY_testing_rpc_failure", "InternalKVGet,InternalKVPut")
+    monkeypatch.setenv(
+        "RAY_testing_rpc_failure",
+        "ray::rpc::InternalKVGcsService.grpc_client.InternalKVGet,"
+        "ray::rpc::InternalKVGcsService.grpc_client.InternalKVPut",
+    )
     ray.init()
+    seed = int(time.time())
+    print(f"Seed is {seed}")
+    ray._raylet.std_srand(seed)
     gcs_address = ray._private.worker.global_worker.gcs_client.address
     gcs_client = ray._raylet.GcsClient(address=gcs_address, nums_reconnect_retry=0)
 
-    assert gcs_client.internal_kv_put(b"A", b"Hello", False, b"") == 1
+    gcs_client.internal_kv_put(b"A", b"Hello", True, b"")
     assert gcs_client.internal_kv_get(b"A", b"") == b"Hello"
 
 

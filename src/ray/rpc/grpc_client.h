@@ -153,6 +153,7 @@ class GrpcClient {
     if (failure == testing::RpcFailure::Request) {
       // Simulate the case where the PRC fails before server receives
       // the request.
+      RAY_LOG(INFO) << "Inject RPC request failure for " << call_name;
       client_call_manager_.GetMainService().post(
           [callback]() {
             callback(Status::RpcError("Unavailable", grpc::StatusCode::UNAVAILABLE),
@@ -162,6 +163,7 @@ class GrpcClient {
     } else if (failure == testing::RpcFailure::Response) {
       // Simulate the case where the RPC fails after server sends
       // the response.
+      RAY_LOG(INFO) << "Inject RPC response failure for " << call_name;
       client_call_manager_.CreateCall<GrpcService, Request, Reply>(
           *stub_,
           prepare_async_function,
