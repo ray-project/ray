@@ -513,6 +513,7 @@ ray_cc_library(
         "@boost//:bimap",
         "@com_github_grpc_grpc//src/proto/grpc/health/v1:health_proto",
         "@com_google_absl//absl/container:btree",
+        "//src/ray/util:thread_checker",
     ],
 )
 
