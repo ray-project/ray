@@ -56,7 +56,7 @@ config = (
         # Concurrency defines the number of processes that run the
         # `map_batches` transformations. This should be aligned with the
         # 'prefetch_batches' argument in 'iter_batches_kwargs'.
-        map_batches_kwargs={"concurrency": 2, "num_cpus": 2},
+        map_batches_kwargs={"concurrency": 2, "num_cpus": 2, "num_gpus": 0},
         # This data set is small so do not prefetch too many batches and use no
         # local shuffle.
         iter_batches_kwargs={
@@ -66,8 +66,8 @@ config = (
         # The number of iterations to be run per learner when in multi-learner
         # mode in a single RLlib training iteration. Leave this to `None` to
         # run an entire epoch on the dataset during a single RLlib training
-        # iteration. For single-learner mode, 1 is the only option.
-        dataset_num_iters_per_learner=1 if args.num_gpus == 0 else None,
+        # iteration. For single-learner mode 1 is the only option.
+        dataset_num_iters_per_learner=1 if args.num_gpus < 2 else None,
     )
     .training(
         train_batch_size_per_learner=1024,
