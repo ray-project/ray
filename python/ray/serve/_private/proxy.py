@@ -1294,7 +1294,7 @@ class ProxyActor:
                 log_file_path = handler.baseFilename
         return log_file_path
 
-    def _dump_ingress_replicas_for_testing(self, route) -> Set[ReplicaID]:
+    def _dump_ingress_replicas_for_testing(self, route: str) -> Set[ReplicaID]:
         _, handle, _ = self.http_proxy.proxy_router.match_route(route)
         return handle._router._replica_scheduler._replica_id_set
 
