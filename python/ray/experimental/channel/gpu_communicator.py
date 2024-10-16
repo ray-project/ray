@@ -5,6 +5,7 @@ import ray
 from ray.util.annotations import DeveloperAPI
 
 if TYPE_CHECKING:
+    import cupy as cp
     import torch
 
 
@@ -21,8 +22,6 @@ class GPUCommunicator(ABC):
     The aDAG execution leverages this internally to support communication
     between actors in the group.
     """
-
-    import cupy as cp
 
     @abstractmethod
     def initialize(self, rank: int) -> None:

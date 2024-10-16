@@ -48,6 +48,7 @@ from ray.dag.dag_node_operation import (
     _DAGNodeOperationType,
     _DAGOperationGraphNode,
     _build_dag_node_operation_graph,
+    _extract_execution_schedule,
     _generate_actor_to_execution_schedule,
     _optimize_execution_schedule,
     _visualize_execution_schedule,
@@ -1577,13 +1578,7 @@ class CompiledDAG:
                 actor_to_execution_schedule, actor_to_optimized_schedule, graph
             )
 
-        # Extract _DAGNodeOperation from _DAGOperationGraphNode in the schedule
-        # and discard unnecessary information
-        actor_to_final_execution_schedule = {
-            actor: [node.operation for node in nodes]
-            for actor, nodes in actor_to_optimized_schedule.items()
-        }
-        return actor_to_final_execution_schedule
+        return _extract_execution_schedule(actor_to_optimized_schedule)
 
     def _detect_deadlock(self) -> bool:
         """

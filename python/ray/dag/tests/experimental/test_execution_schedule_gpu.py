@@ -444,6 +444,8 @@ def test_overlap_gpu_communication(ray_start_regular, overlap_gpu_communication)
         assert operation.exec_task_idx == expected_receiver_schedule[i][0]
         assert operation.type == expected_receiver_schedule[i][1]
 
+    compiled_dag.teardown()
+
 
 if __name__ == "__main__":
     if os.environ.get("PARALLEL_CI"):

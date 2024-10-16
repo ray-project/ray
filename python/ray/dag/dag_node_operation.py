@@ -508,11 +508,11 @@ def _generate_actor_to_execution_schedule(
 
 
 def _optimize_execution_schedule(
-    actor_to_execution_nodes: Dict[
+    actor_to_execution_schedule: Dict[
         "ray.actor.ActorHandle", List[_DAGOperationGraphNode]
     ],
     overlap_gpu_communication: bool,
-):
+) -> Dict["ray.actor.ActorHandle", List[_DAGOperationGraphNode]]:
     """
     Optimize the execution schedule by overlapping computation and communication.
 
@@ -524,11 +524,11 @@ def _optimize_execution_schedule(
             schedule (i.e., actor_to_execution_schedule).
     """
     if not overlap_gpu_communication:
-        return actor_to_execution_nodes
+        return actor_to_execution_schedule
 
     actor_to_optimized_schedule: Dict[
         "ray.actor.ActorHandle", List[_DAGOperationGraphNode]
-    ] = copy.deepcopy(actor_to_execution_nodes)
+    ] = copy.deepcopy(actor_to_execution_schedule)
     for optimized_schedule in actor_to_optimized_schedule.values():
         for i in range(len(optimized_schedule)):
             if (
@@ -559,3 +559,18 @@ def _optimize_execution_schedule(
                         # keep relative order of NCCL operations
                         break
     return actor_to_optimized_schedule
+
+
+def _extract_execution_schedule(
+    actor_to_execution_schedule: Dict[
+        "ray.actor.ActorHandle", List[_DAGOperationGraphNode]
+    ]
+) -> Dict["ray.actor.ActorHandle", List[_DAGNodeOperation]]:
+    """
+    Extract _DAGNodeOperation from _DAGOperationGraphNode in the schedule
+    and discard unnecessary information.
+    """
+    return {
+        actor: [node.operation for node in nodes]
+        for actor, nodes in actor_to_execution_schedule.items()
+    }
