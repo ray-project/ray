@@ -16,9 +16,9 @@ def test_close_logger_file_descriptor():
     job_driver_handler.setFormatter(job_driver_formatter)
     logger.addHandler(job_driver_handler)
 
-    assert job_driver_handler._closed is False
+    assert job_driver_handler.stream.closed is False
     close_logger_file_descriptor(logger)
-    assert job_driver_handler._closed is True
+    assert job_driver_handler.stream is None
 
 
 if __name__ == "__main__":
