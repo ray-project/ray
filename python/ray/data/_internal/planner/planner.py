@@ -121,8 +121,9 @@ class Planner:
         physical_op = None
         for op_type, plan_fn in PLAN_LOGICAL_OP_FNS:
             if isinstance(logical_op, op_type):
+                # We will call `set_logical_operators()` in the following for-loop,
+                # no need to do it here.
                 physical_op = plan_fn(logical_op, physical_children)
-                physical_op.set_logical_operators(logical_op)
                 break
 
         if physical_op is None:
