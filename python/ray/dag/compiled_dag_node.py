@@ -1894,11 +1894,8 @@ class CompiledDAG:
         Visualize the compiled graph using Graphviz.
 
         This method generates a graphical representation of the compiled graph,
-        showing tasks and their dependencies.
-
-        **When to Call:**
-        - This method should be called **after** the graph has
-            been compiled using `experimental_compile()`.
+        showing tasks and their dependencies.This method should be called
+        **after** the graph has been compiled using `experimental_compile()`.
 
         Args:
             filename: The name of the output file (without extension).
