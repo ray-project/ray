@@ -1887,7 +1887,9 @@ class CompiledDAG:
         self._execution_index += 1
         return fut
 
-    def visualize(self, filename="compiled_graph", format="png", view=False):
+    def visualize(
+        self, filename="compiled_graph", format="png", view=False, return_dot=False
+    ):
         """
         Visualize the compiled graph using Graphviz.
 
@@ -1897,23 +1899,12 @@ class CompiledDAG:
         **When to Call:**
         - This method should be called **after** the graph has
             been compiled using `experimental_compile()`.
-        - The internal data structures (`self.idx_to_task`,
-            `self.idx_to_task[task_idx].dag_node`, etc.)
-            must be fully initialized and populated.
-        - All tasks and their relationships (downstream tasks,
-          type hints, etc.) should be ready.
-
-        **Assumptions:**
-        - `self.idx_to_task` is a dictionary mapping task
-        indices to `CompiledTask` instances.
-        - Each `CompiledTask` has a `dag_node` attribute that represents the graph node.
-        - Type hints for inputs and outputs are properly set in the graph nodes.
-        - The compiled graph does not contain cycles (it's a DAG).
 
         Args:
             filename: The name of the output file (without extension).
             format: The format of the output file (e.g., 'png', 'pdf').
             view: Whether to open the file with the default viewer.
+            return_dot: If True, returns the DOT source as a string instead of figure.
 
         Raises:
             ValueError: If the graph is empty or not properly compiled.
@@ -1928,6 +1919,21 @@ class CompiledDAG:
             ClassMethodNode,
             DAGNode,
         )
+
+        # Check that the DAG has been compiled
+        if not hasattr(self, "idx_to_task") or not self.idx_to_task:
+            raise ValueError(
+                "The DAG must be compiled before calling 'visualize()'. "
+                "Please call 'experimental_compile()' first."
+            )
+
+        # Check that each CompiledTask has a valid dag_node
+        for idx, task in self.idx_to_task.items():
+            if not hasattr(task, "dag_node") or not isinstance(task.dag_node, DAGNode):
+                raise ValueError(
+                    f"Task at index {idx} does not have a valid 'dag_node'. "
+                    "Ensure that 'experimental_compile()' completed successfully."
+                )
 
         # Dot file for debuging
         dot = graphviz.Digraph(name="compiled_graph", format=format)
@@ -2007,8 +2013,11 @@ class CompiledDAG:
                         str(upstream_task_idx), str(current_task_idx), label=type_hint
                     )
 
-        # Render the graph to a file
-        dot.render(filename, view=view)
+        if return_dot:
+            return dot.source
+        else:
+            # Render the graph to a file
+            dot.render(filename, view=view)
 
     def teardown(self):
         """Teardown and cancel all actor tasks for this DAG. After this

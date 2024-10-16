@@ -10,6 +10,7 @@ import sys
 import time
 import numpy as np
 import torch
+import pydot
 
 import pytest
 
@@ -2494,7 +2495,17 @@ def test_multi_arg_exception_async(shutdown_only):
 
 
 class TestVisualization:
+
+    """Tests for the visualize method of compiled DAGs."""
+
     def test_visualize_basic(self, ray_start_regular):
+        """
+        Expect output or dot_source:
+            MultiOutputNode" fillcolor=yellow shape=rectangle style=filled]
+                0 -> 1 [label=SharedMemoryType]
+                1 -> 2 [label=SharedMemoryType]
+        """
+
         @ray.remote
         class Actor:
             def echo(self, x):
@@ -2508,18 +2519,39 @@ class TestVisualization:
         compiled_dag = dag.experimental_compile()
 
         # Call the visualize method
-        filename = "compiled_graph_basic"
-        compiled_dag.visualize(filename=filename, view=False)
+        dot_source = compiled_dag.visualize(return_dot=True)
 
-        assert os.path.exists(f"{filename}.png"), "Visualization file was not created."
-        res = compiled_dag.execute(1)
-        ray.get(res)
+        graphs = pydot.graph_from_dot_data(dot_source)
+        graph = graphs[0]
+
+        node_names = set(node.get_name() for node in graph.get_nodes())
+        edge_pairs = set(
+            (edge.get_source(), edge.get_destination()) for edge in graph.get_edges()
+        )
+
+        expected_nodes = {"0", "1", "2"}
+        assert expected_nodes.issubset(
+            node_names
+        ), f"Expected nodes {expected_nodes} not found."
+
+        expected_edges = {("0", "1"), ("1", "2")}
+        assert expected_edges.issubset(
+            edge_pairs
+        ), f"Expected edges {expected_edges} not found."
+
         compiled_dag.teardown()
 
-        os.remove(f"{filename}.png")
-        os.remove(f"{filename}")
-
     def test_visualize_multi_return(self, ray_start_regular):
+        """
+        Expect output or dot_source:
+            MultiOutputNode" fillcolor=yellow shape=rectangle style=filled]
+                0 -> 1 [label=SharedMemoryType]
+                1 -> 2 [label=SharedMemoryType]
+                1 -> 3 [label=SharedMemoryType]
+                2 -> 4 [label=SharedMemoryType]
+                3 -> 4 [label=SharedMemoryType]
+        """
+
         @ray.remote
         class Actor:
             @ray.method(num_returns=2)
@@ -2534,19 +2566,42 @@ class TestVisualization:
 
         compiled_dag = dag.experimental_compile()
 
-        filename = "compiled_graph_multi_return"
-        compiled_dag.visualize(filename=filename, view=False)
+        # Get the DOT source
+        dot_source = compiled_dag.visualize(return_dot=True)
 
-        assert os.path.exists(f"{filename}.png"), "Visualization file was not created."
-        res = compiled_dag.execute(1)
-        ray.get(res)
-        # Clean up
+        graphs = pydot.graph_from_dot_data(dot_source)
+        graph = graphs[0]
+
+        node_names = set(node.get_name() for node in graph.get_nodes())
+        edge_pairs = set(
+            (edge.get_source(), edge.get_destination()) for edge in graph.get_edges()
+        )
+
+        expected_nodes = {"0", "1", "2", "3", "4"}
+        assert expected_nodes.issubset(
+            node_names
+        ), f"Expected nodes {expected_nodes} not found."
+
+        expected_edges = {("0", "1"), ("1", "2"), ("1", "3"), ("2", "4"), ("3", "4")}
+        assert expected_edges.issubset(
+            edge_pairs
+        ), f"Expected edges {expected_edges} not found."
+
         compiled_dag.teardown()
 
-        os.remove(f"{filename}.png")
-        os.remove(f"{filename}")
-
     def test_visualize_multi_return2(self, ray_start_regular):
+        """
+        Expect output or dot_source:
+            MultiOutputNode" fillcolor=yellow shape=rectangle style=filled]
+                0 -> 1 [label=SharedMemoryType]
+                1 -> 2 [label=SharedMemoryType]
+                1 -> 3 [label=SharedMemoryType]
+                2 -> 4 [label=SharedMemoryType]
+                3 -> 5 [label=SharedMemoryType]
+                4 -> 6 [label=SharedMemoryType]
+                5 -> 6 [label=SharedMemoryType]
+        """
+
         @ray.remote
         class Actor:
             @ray.method(num_returns=2)
@@ -2566,16 +2621,36 @@ class TestVisualization:
 
         compiled_dag = dag.experimental_compile()
 
-        filename = "compiled_graph_multi_return2"
-        compiled_dag.visualize(filename=filename, view=False)
+        # Get the DOT source
+        dot_source = compiled_dag.visualize(return_dot=True)
 
-        assert os.path.exists(f"{filename}.png"), "Visualization file was not created."
+        graphs = pydot.graph_from_dot_data(dot_source)
+        graph = graphs[0]
 
-        # Clean up
+        node_names = set(node.get_name() for node in graph.get_nodes())
+        edge_pairs = set(
+            (edge.get_source(), edge.get_destination()) for edge in graph.get_edges()
+        )
+
+        expected_nodes = {"0", "1", "2", "3", "4", "5", "6"}
+        assert expected_nodes.issubset(
+            node_names
+        ), f"Expected nodes {expected_nodes} not found."
+
+        expected_edges = {
+            ("0", "1"),
+            ("1", "2"),
+            ("1", "3"),
+            ("2", "4"),
+            ("3", "5"),
+            ("4", "6"),
+            ("5", "6"),
+        }
+        assert expected_edges.issubset(
+            edge_pairs
+        ), f"Expected edges {expected_edges} not found."
+
         compiled_dag.teardown()
-
-        os.remove(f"{filename}.png")
-        os.remove(f"{filename}")
 
 
 if __name__ == "__main__":
