@@ -623,26 +623,25 @@ Status PlasmaClient::Impl::GetBuffers(
 
 Status PlasmaClient::Impl::ExperimentalMutableObjectRegisterWriter(
     const ObjectID &object_id) {
-#if 0
-  plasma::ObjectBuffer object_buffer;
-  const auto wrap_buffer = [=](const ObjectID &object_id,
-                               const std::shared_ptr<Buffer> &buffer) {
-    return std::make_shared<PlasmaBuffer>(shared_from_this(), object_id, buffer);
-  };
-  RAY_RETURN_NOT_OK(GetBuffers(&object_id,
-                    /*num_objects=*/1,
-                    /*timeout_ms=*/-1,
-                    wrap_buffer,
-                     &object_buffer,
-                     /*is_from_worker=*/false));
+  // https://github.com/ray-project/ray/pull/44094/files
+  // plasma::ObjectBuffer object_buffer;
+  // const auto wrap_buffer = [=](const ObjectID &object_id,
+  //                              const std::shared_ptr<Buffer> &buffer) {
+  //   return std::make_shared<PlasmaBuffer>(shared_from_this(), object_id, buffer);
+  // };
+  // RAY_RETURN_NOT_OK(GetBuffers(&object_id,
+  //                   /*num_objects=*/1,
+  //                   /*timeout_ms=*/-1,
+  //                   wrap_buffer,
+  //                    &object_buffer,
+  //                    /*is_from_worker=*/false));
 
-  std::lock_guard<std::recursive_mutex> guard(client_mutex_);
-  auto object_entry = objects_in_use_.find(object_id);
-  if (object_entry == objects_in_use_.end()) {
-    return Status::Invalid(
-        "Plasma buffer for mutable object is not local.");
-  }
-#endif
+  // std::lock_guard<std::recursive_mutex> guard(client_mutex_);
+  // auto object_entry = objects_in_use_.find(object_id);
+  // if (object_entry == objects_in_use_.end()) {
+  //   return Status::Invalid(
+  //       "Plasma buffer for mutable object is not local.");
+  // }
   return Status::OK();
 }
 
@@ -682,8 +681,8 @@ Status PlasmaClient::Impl::Get(const std::vector<ObjectID> &object_ids,
                                bool is_from_worker) {
   std::lock_guard<std::recursive_mutex> guard(client_mutex_);
 
-  const auto wrap_buffer = [=](const ObjectID &object_id,
-                               const std::shared_ptr<Buffer> &buffer) {
+  const auto wrap_buffer = [=, this](const ObjectID &object_id,
+                                     const std::shared_ptr<Buffer> &buffer) {
     return std::make_shared<PlasmaBuffer>(shared_from_this(), object_id, buffer);
   };
   const size_t num_objects = object_ids.size();

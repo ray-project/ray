@@ -15,17 +15,17 @@ build --action_env=RAY_BUILD_ENV
 build:windows --action_env=PATH
 # For --compilation_mode=dbg, consider enabling checks in the standard library as well (below).
 build --compilation_mode=opt
-# Using C++ 17 on all platforms.
-build:linux --host_cxxopt="-std=c++17"
-build:macos --host_cxxopt="-std=c++17"
-build:clang-cl --host_cxxopt="-std=c++17"
-build:msvc-cl --host_cxxopt="/std:c++17"
-build:windows --host_cxxopt="/std:c++17"
-build:linux --cxxopt="-std=c++17"
-build:macos --cxxopt="-std=c++17"
-build:clang-cl --cxxopt="-std=c++17"
-build:msvc-cl --cxxopt="/std:c++17"
-build:windows --cxxopt="/std:c++17"
+# Using C++ 20 on all platforms.
+build:linux --host_cxxopt="-std=c++20"
+build:macos --host_cxxopt="-std=c++20"
+build:clang-cl --host_cxxopt="-std=c++20"
+build:msvc-cl --host_cxxopt="/std:c++20"
+build:windows --host_cxxopt="/std:c++20"
+build:linux --cxxopt="-std=c++20"
+build:macos --cxxopt="-std=c++20"
+build:clang-cl --cxxopt="-std=c++20"
+build:msvc-cl --cxxopt="/std:c++20"
+build:windows --cxxopt="/std:c++20"
 # This workaround is needed to prevent Bazel from compiling the same file twice (once PIC and once not).
 build:linux --copt="-fPIC"
 build:macos --copt="-fPIC"

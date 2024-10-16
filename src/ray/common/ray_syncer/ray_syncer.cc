@@ -73,7 +73,8 @@ std::vector<std::string> RaySyncer::GetAllConnectedNodeIDs() const {
 void RaySyncer::Connect(const std::string &node_id,
                         std::shared_ptr<grpc::Channel> channel) {
   boost::asio::dispatch(
-      io_context_.get_executor(), std::packaged_task<void()>([=]() {
+      io_context_.get_executor(),
+      std::packaged_task<void()>([this, channel = std::move(channel), node_id]() {
         auto stub = ray::rpc::syncer::RaySyncer::NewStub(channel);
         auto *reactor = new RayClientBidiReactor(
             /* remote_node_id */ node_id,
@@ -100,7 +101,7 @@ void RaySyncer::Connect(const std::string &node_id,
                           << "Connection is broken. Reconnect to node.";
                       Connect(node_id, channel);
                     },
-                    /* delay_microseconds = */ std::chrono::milliseconds(2000));
+                    /* delay_duration = */ std::chrono::milliseconds(2000));
               } else {
                 node_state_->RemoveNode(node_id);
               }

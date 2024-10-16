@@ -490,9 +490,9 @@ void ObjectManager::PushObjectInternal(const ObjectID &object_id,
 
   auto push_id = UniqueID::FromRandom();
   push_manager_->StartPush(
-      node_id, object_id, chunk_reader->GetNumChunks(), [=](int64_t chunk_id) {
+      node_id, object_id, chunk_reader->GetNumChunks(), [=, this](int64_t chunk_id) {
         rpc_service_.post(
-            [=]() {
+            [=, this]() {
               // Post to the multithreaded RPC event loop so that data is copied
               // off of the main thread.
               SendObjectChunk(
@@ -501,7 +501,7 @@ void ObjectManager::PushObjectInternal(const ObjectID &object_id,
                   node_id,
                   chunk_id,
                   rpc_client,
-                  [=](const Status &status) {
+                  [=, this](const Status &status) {
                     // Post back to the main event loop because the
                     // PushManager is not thread-safe.
                     main_service_->post(
