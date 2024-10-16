@@ -610,6 +610,7 @@ def test_read_map_chain_operator_fusion(ray_start_regular_shared):
     map3 = FlatMap(map2, lambda x: x)
     map4 = Filter(map3, lambda x: x)
     logical_plan = LogicalPlan(map4)
+    logical_plan._set_context(DataContext.get_current())
     physical_plan = planner.plan(logical_plan)
     physical_plan = PhysicalOptimizer().optimize(physical_plan)
     physical_op = physical_plan.dag
@@ -659,9 +660,11 @@ def test_read_map_batches_operator_fusion_compatible_remote_args(
         op = MapBatches(read_op, lambda x: x, ray_remote_args=up_remote_args)
         op = MapBatches(op, lambda x: x, ray_remote_args=down_remote_args)
         logical_plan = LogicalPlan(op)
+        logical_plan._set_context(DataContext.get_current())
+
         physical_plan = planner.plan(logical_plan)
-        physical_plan = PhysicalOptimizer().optimize(physical_plan)
-        physical_op = physical_plan.dag
+        optimized_physical_plan = PhysicalOptimizer().optimize(physical_plan)
+        physical_op = optimized_physical_plan.dag
 
         assert op.name == "MapBatches(<lambda>)", (up_remote_args, down_remote_args)
         assert physical_op.name == "MapBatches(<lambda>)->MapBatches(<lambda>)", (
