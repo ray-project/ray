@@ -1,7 +1,8 @@
 import logging
 import os
+import sys
 from traceback import format_exception
-from typing import Optional, Type, Union
+from typing import Optional, Union
 
 import colorama
 
@@ -147,9 +148,21 @@ class RayTaskError(RayError):
 
         assert traceback_str is not None
 
-    def make_dual_exception_type(self) -> Type:
-        """Makes a Type that inherits from both RayTaskError and the type of
+    def make_dual_exception_instance(self) -> "RayTaskError":
+        """Makes a object instance that inherits from both RayTaskError and the type of
         `self.cause`. Raises TypeError if the cause class can't be subclassed"""
+        # For normal user Exceptions, we subclass from both
+        # RayTaskError and the user exception. For ExceptionGroup,
+        # we special handle it because it has a different __new__()
+        # signature from Exception.
+        # Ref: https://docs.python.org/3/library/exceptions.html#exception-groups
+        if sys.version_info >= (3, 11) and isinstance(
+            self.cause, ExceptionGroup  # noqa: F821
+        ):
+            return self._make_exceptiongroup_dual_exception_instance()
+        return self._make_normal_dual_exception_instance()
+
+    def _make_normal_dual_exception_instance(self) -> "RayTaskError":
         cause_cls = self.cause.__class__
         error_msg = str(self)
 
@@ -171,7 +184,35 @@ class RayTaskError(RayError):
         cls.__name__ = name
         cls.__qualname__ = name
 
-        return cls
+        return cls(self.cause)
+
+    def _make_exceptiongroup_dual_exception_instance(self) -> "RayTaskError":
+        cause_cls = self.cause.__class__
+        error_msg = str(self)
+
+        class cls(RayTaskError, cause_cls):
+            def __new__(cls, cause):
+                self = super().__new__(cls, cause.message, cause.exceptions)
+                return self
+
+            def __init__(self, cause):
+                self.cause = cause
+                # BaseException implements a __reduce__ method that returns
+                # a tuple with the type and the value of self.args.
+                # https://stackoverflow.com/a/49715949/2213289
+                self.args = (cause,)
+
+            def __getattr__(self, name):
+                return getattr(self.cause, name)
+
+            def __str__(self):
+                return error_msg
+
+        name = f"RayTaskError({cause_cls.__name__})"
+        cls.__name__ = name
+        cls.__qualname__ = name
+
+        return cls(self.cause)
 
     def as_instanceof_cause(self):
         """Returns an exception that's an instance of the cause's class.
@@ -187,8 +228,7 @@ class RayTaskError(RayError):
             return self  # already satisfied
 
         try:
-            dual_cls = self.make_dual_exception_type()
-            return dual_cls(self.cause)
+            return self.make_dual_exception_instance()
         except TypeError as e:
             logger.warning(
                 f"User exception type {type(self.cause)} in RayTaskError can't"
