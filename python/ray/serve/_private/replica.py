@@ -12,6 +12,7 @@ from importlib import import_module
 from typing import Any, AsyncGenerator, Callable, Dict, Optional, Tuple, Union
 
 import starlette.responses
+from starlette.types import ASGIApp
 
 import ray
 from ray import cloudpickle
@@ -275,6 +276,7 @@ class ReplicaActor:
         )
 
         # Guards against calling the user's callable constructor multiple times.
+        self._user_callable_asgi_app: Optional[ASGIApp] = None
         self._user_callable_initialized = False
         self._user_callable_initialized_lock = asyncio.Lock()
         self._initialization_latency: Optional[float] = None
@@ -335,16 +337,28 @@ class ReplicaActor:
         return self._metrics_manager.get_num_ongoing_requests()
 
     @contextmanager
-    def _wrap_user_method_call(self, request_metadata: RequestMetadata):
+    def _wrap_user_method_call(self, request_metadata: RequestMetadata, request_args: Tuple[Any]):
         """Context manager that wraps user method calls.
 
         1) Sets the request context var with appropriate metadata.
         2) Records the access log message (if not disabled).
         3) Records per-request metrics via the metrics manager.
         """
+        # XXX: all checks needed?
+        if request_metadata.is_http_request and len(request_args) == 1 and isinstance(
+            request_args[0], StreamingHTTPRequest
+        ) and self._user_callable_asgi_app is not None:
+            scope = pickle.loads(request_args[0].pickled_asgi_scope)
+            # TODO: add the route prefix.
+            route = get_route_name(self._user_callable_asgi_app, scope)
+            print("CALCULATED ROUTE:", route)
+        else:
+            print("NO ROUTE CALCULATION")
+            route = request_metadata.route
+
         ray.serve.context._serve_request_context.set(
             ray.serve.context._RequestContext(
-                route=request_metadata.route,
+                route=route,
                 request_id=request_metadata.request_id,
                 app_name=self._deployment_id.app_name,
                 multiplexed_model_id=request_metadata.multiplexed_model_id,
@@ -384,7 +398,7 @@ class ReplicaActor:
             extra={"serve_access_log": True},
         )
         self._metrics_manager.record_request_metrics(
-            route=request_metadata.route,
+            route=route,
             status_str=status_str,
             latency_ms=latency_ms,
             was_error=user_exception is not None,
@@ -468,7 +482,7 @@ class ReplicaActor:
     ) -> Tuple[bytes, Any]:
         """Entrypoint for `stream=False` calls."""
         request_metadata = pickle.loads(pickled_request_metadata)
-        with self._wrap_user_method_call(request_metadata):
+        with self._wrap_user_method_call(request_metadata, request_args):
             return await self._user_callable_wrapper.call_user_method(
                 request_metadata, request_args, request_kwargs
             )
@@ -481,7 +495,7 @@ class ReplicaActor:
     ) -> AsyncGenerator[Any, None]:
         """Generator that is the entrypoint for all `stream=True` handle calls."""
         request_metadata = pickle.loads(pickled_request_metadata)
-        with self._wrap_user_method_call(request_metadata):
+        with self._wrap_user_method_call(request_metadata, request_args):
             async for result in self._call_user_generator(
                 request_metadata,
                 request_args,
@@ -523,7 +537,7 @@ class ReplicaActor:
             )
             return
 
-        with self._wrap_user_method_call(request_metadata):
+        with self._wrap_user_method_call(request_metadata, request_args):
             yield pickle.dumps(
                 ReplicaQueueLengthInfo(
                     accepted=True,
@@ -564,7 +578,7 @@ class ReplicaActor:
             multiplexed_model_id=proto.multiplexed_model_id,
             route=proto.route,
         )
-        with self._wrap_user_method_call(request_metadata):
+        with self._wrap_user_method_call(request_metadata, request_args):
             return await self._user_callable_wrapper.call_user_method(
                 request_metadata, request_args, request_kwargs
             )
@@ -611,7 +625,9 @@ class ReplicaActor:
             async with self._user_callable_initialized_lock:
                 initialization_start_time = time.time()
                 if not self._user_callable_initialized:
-                    await self._user_callable_wrapper.initialize_callable()
+                    self._user_callable_asgi_app = (
+                        await self._user_callable_wrapper.initialize_callable()
+                    )
                     self._user_callable_initialized = True
                     self._set_internal_replica_context(
                         servable_object=self._user_callable_wrapper.user_callable
@@ -881,7 +897,12 @@ class UserCallableWrapper:
         return self._callable
 
     @_run_on_user_code_event_loop
-    async def initialize_callable(self):
+    async def initialize_callable(self) -> Optional[ASGIApp]:
+        """Initialize the user callable.
+
+        If the callable is an ASGI app wrapper (e.g., using @serve.ingress), returns
+        the ASGI app object, which may be used *read only* by the caller.
+        """
         if self._callable is not None:
             raise RuntimeError("initialize_callable should only be called once.")
 

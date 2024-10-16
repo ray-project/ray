@@ -10,6 +10,7 @@ from typing import Any, Awaitable, Callable, List, Optional, Tuple, Type
 
 import starlette
 from fastapi.encoders import jsonable_encoder
+from starlette.routing import Match, Mount, Route
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 from uvicorn.config import Config
 from uvicorn.lifespan.on import LifespanOn
@@ -471,6 +472,10 @@ class ASGIAppReplicaWrapper:
         # Replace uvicorn logger with our own.
         self._serve_asgi_lifespan.logger = logger
 
+    @property
+    def app(self) -> ASGIApp:
+        return self._asgi_app
+
     async def _run_asgi_lifespan_startup(self):
         # LifespanOn's logger logs in INFO level thus becomes spammy
         # Within this block we temporarily uplevel for cleaner logging
@@ -534,3 +539,55 @@ def validate_http_proxy_callback_return(
                     f"instead got {type(middleware)} type item in the list."
                 )
     return middlewares
+
+
+# XXX: TODO.
+
+def _get_route_name(
+    scope: Scope, routes: List[Route]
+) -> Optional[str]:
+    """Gets route name for given scope taking mounts into account."""
+
+    for route in routes:
+        match, child_scope = route.matches(scope)
+        if match == Match.FULL:
+            route_name = route.path
+            child_scope = {**scope, **child_scope}
+            if isinstance(route, Mount) and route.routes:
+                child_route_name = _get_route_name(child_scope, route.routes, route_name)
+                if child_route_name is None:
+                    route_name = None
+                else:
+                    route_name += child_route_name
+            return route_name
+        elif match == Match.PARTIAL and route_name is None:
+            route_name = route.path
+    return None
+
+
+def get_route_name(app: ASGIApp, scope: Scope) -> Optional[str]:
+    """Gets route name for given request taking mounts into account."""
+
+    routes = app.routes
+    route_name = _get_route_name(scope, routes)
+
+    # Starlette magically redirects requests if the path matches a route name
+    # with a trailing slash appended or removed. To not spam the transaction
+    # names list, we do the same here and put these redirects all in the
+    # same "redirect trailing slashes" transaction name.
+    #
+    # XXX(edoakes): need this?
+    if not route_name and app.router.redirect_slashes and scope["path"] != "/":
+        redirect_scope = dict(scope)
+        if scope["path"].endswith("/"):
+            redirect_scope["path"] = scope["path"][:-1]
+            trim = True
+        else:
+            redirect_scope["path"] = scope["path"] + "/"
+            trim = False
+
+        route_name = _get_route_name(redirect_scope, routes)
+        if route_name is not None:
+            route_name = route_name + "/" if trim else route_name[:-1]
+
+    return route_name
