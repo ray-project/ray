@@ -364,7 +364,10 @@ class ActorPoolMapOperator(MapOperator):
 
     def _manage_actor_restarting_state(self, actor):
         actor_state = actor._get_local_state()
-        if actor_state != gcs_pb2.ActorTableData.ActorState.ALIVE:
+        if actor_state is None:
+            # actor._get_local_state can return None if the state is Unknown
+            return
+        elif actor_state != gcs_pb2.ActorTableData.ActorState.ALIVE:
             # If an actor is not ALIVE, it's a candidate to be marked as a
             # restarting actor.
             assert actor_state is gcs_pb2.ActorTableData.ActorState.RESTARTING
@@ -376,7 +379,7 @@ class ActorPoolMapOperator(MapOperator):
 
     def update_resource_usage(self) -> None:
         """Updates resources usage."""
-        for actor in self._actor_pool._running_actors.keys():
+        for actor in self._actor_pool.get_running_actor_refs():
             self._manage_actor_restarting_state(actor)
 
 
@@ -481,7 +484,8 @@ class _ActorPool(AutoscalingActorPool):
 
     def num_restarting_actors(self) -> int:
         return sum(
-            running_actor_state.is_restarting for running_actor_state in self._running_actors.values()
+            running_actor_state.is_restarting
+            for running_actor_state in self._running_actors.values()
         )
 
     def num_active_actors(self) -> int:
@@ -491,6 +495,9 @@ class _ActorPool(AutoscalingActorPool):
         )
 
     def num_alive_actors(self) -> int:
+        """Alive actors must have inflight tasks and each of those should be in ALIVE
+        state.
+        """
         return sum(
             1
             if (
@@ -531,7 +538,7 @@ class _ActorPool(AutoscalingActorPool):
     def mark_running_actor_as_restarting(self, actor: ray.actor.ActorHandle):
         """Mark the running actor as restarting.
 
-        Args: 
+        Args:
             actor: The running actor to be marked as restarting.
         """
         assert actor in self._running_actors
@@ -540,7 +547,7 @@ class _ActorPool(AutoscalingActorPool):
     def mark_actor_as_alive(self, actor: ray.actor.ActorHandle):
         """Mark the running actor as alive.
 
-        Args: 
+        Args:
             actor: The running actor to be marked as alive.
         """
         assert actor in self._running_actors
@@ -646,6 +653,9 @@ class _ActorPool(AutoscalingActorPool):
 
     def get_pending_actor_refs(self) -> List[ray.ObjectRef]:
         return list(self._pending_actors.keys())
+
+    def get_running_actor_refs(self) -> List[ray.ObjectRef]:
+        return list(self._running_actors.keys())
 
     def num_idle_actors(self) -> int:
         """Return the number of idle actors in the pool."""
