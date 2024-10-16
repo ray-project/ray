@@ -110,7 +110,7 @@ class ScopedTaskRssHwmTracker {
              {"JobId", spec_.JobId().Hex()}});
       }
     }
-  }  // namespace
+  }
 
  private:
   // If you can't clear the number, the number is not reliable and we don't record.
@@ -165,7 +165,7 @@ class ScopedTaskRssHwmTracker {
   // https://man7.org/linux/man-pages/man5/proc_pid_clear_refs.5.html
   constexpr static std::string_view kSelfClearRefsFile = "/proc/self/clear_refs";
   constexpr static std::string_view kSelfClearRefsValue = "5";
-};  // namespace core
+};
 
 using ActorLifetime = ray::rpc::JobConfig_ActorLifetime;
 
