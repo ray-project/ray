@@ -1,4 +1,7 @@
+import os
 from typing import Callable, Optional
+
+import grpc
 
 import ray
 from ray._raylet import GcsClient
@@ -10,6 +13,7 @@ from ray.serve._private.deployment_scheduler import (
     DefaultDeploymentScheduler,
     DeploymentScheduler,
 )
+from ray.serve._private.grpc_util import gRPCServer
 from ray.serve._private.utils import get_head_node_id
 
 # NOTE: Please read carefully before changing!
@@ -74,3 +78,21 @@ def create_deployment_scheduler(  # noqa: F811
         create_placement_group_fn=create_placement_group_fn_override
         or ray.util.placement_group,
     )
+
+
+def add_grpc_address(grpc_server: gRPCServer, server_address: str):  # noqa: F811
+    """Helper function to add a address to gRPC server.
+
+    This overrides the original function to add secure port if the environment
+    `RAY_SERVE_GRPC_SERVER_USE_SECURE_PORT` is set.
+    """
+    if os.environ.get("RAY_SERVE_GRPC_SERVER_USE_SECURE_PORT", "0") == "1":
+        from ray._private.tls_utils import generate_self_signed_tls_certs
+
+        cert_chain, private_key = generate_self_signed_tls_certs()
+        server_creds = grpc.ssl_server_credentials(
+            [(private_key.encode(), cert_chain.encode())]
+        )
+        grpc_server.add_secure_port(server_address, server_creds)
+    else:
+        grpc_server.add_insecure_port(server_address)
