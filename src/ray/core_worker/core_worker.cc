@@ -20,6 +20,8 @@
 
 #include <google/protobuf/util/json_util.h>
 
+#include <fstream>
+
 #include "absl/cleanup/cleanup.h"
 #include "absl/strings/str_format.h"
 #include "boost/fiber/all.hpp"
@@ -85,6 +87,85 @@ class ScopedTaskMetricSetter {
   std::string task_name_;
   bool is_retry_;
 };
+
+// If feasible and needed, record RSS HWM on a task.
+// This class is inited before the task starts and destructed after the task finishes.
+class ScopedTaskRssHwmTracker {
+ public:
+  // `spec` must outlive this object.
+  explicit ScopedTaskRssHwmTracker(const TaskSpecification &spec)
+      : enabled_(spec.IsNormalTask()), spec_(spec) {
+    if (enabled_) {
+      ClearVmHWM();
+    }
+  }
+
+  ~ScopedTaskRssHwmTracker() {
+    if (enabled_) {
+      size_t hwm_kb = ReadVmHWMkB();
+      if (hwm_kb > 0) {
+        stats::STATS_task_rss_hwm_kb.Record(
+            hwm_kb,
+            {{"Name", spec_.FunctionDescriptor()->CallString()},
+             {"JobId", spec_.JobId().Hex()}});
+      }
+    }
+  }  // namespace
+
+ private:
+  // If you can't clear the number, the number is not reliable and we don't record.
+  void ClearVmHWM() {
+    std::ofstream clear_refs_file(kSelfClearRefsFile.data());
+    if (!clear_refs_file.is_open()) {
+      RAY_LOG(DEBUG) << "Failed to open " << kSelfClearRefsFile << " to clear VmHWM";
+      enabled_ = false;
+      return;
+    }
+    clear_refs_file << kSelfClearRefsValue;
+    clear_refs_file.close();
+    RAY_LOG(DEBUG) << "Cleared VmHWM";
+  }
+
+  // Read VmHWM in kB from /proc/self/status. If failed, return 0.
+  static size_t ReadVmHWMkB() {
+    // ifstream::ctor does not accept string_view. Pity.
+    std::ifstream status_file(kSelfStatusFile.data());
+    if (!status_file.is_open()) {
+      RAY_LOG(DEBUG) << "Failed to open " << kSelfStatusFile << " to read VmHWM";
+      return 0;
+    }
+    std::string line;
+    while (std::getline(status_file, line)) {
+      // Example line: VmHWM:    1234 kB
+      if (line.compare(0, kVmHWM.size(), kVmHWM) == 0) {
+        size_t hwm = 0;
+        std::string unit;
+        std::istringstream iss(line.substr(kVmHWM.size()));
+        iss >> hwm >> unit;
+        if (unit != "kB") {
+          RAY_LOG(DEBUG) << "Unexpected VmHWM format: " << line
+                         << ", not recording VmHWM for the task.";
+          return 0;
+        }
+        return hwm;
+      }
+    }
+    status_file.close();
+    RAY_LOG(DEBUG) << "Failed to find VmHWM in " << kSelfStatusFile;
+    return 0;
+  }
+
+  bool enabled_;
+  const TaskSpecification &spec_;
+
+  constexpr static std::string_view kSelfStatusFile = "/proc/self/status";
+  constexpr static std::string_view kVmHWM = "VmHWM:";
+  // Write 5 to /proc/self/clear_refs to drop previous VmHWM value. This is needed
+  // because the worker may have served other tasks and gained a high VmHWM value.
+  // https://man7.org/linux/man-pages/man5/proc_pid_clear_refs.5.html
+  constexpr static std::string_view kSelfClearRefsFile = "/proc/self/clear_refs";
+  constexpr static std::string_view kSelfClearRefsValue = "5";
+};  // namespace core
 
 using ActorLifetime = ray::rpc::JobConfig_ActorLifetime;
 
@@ -3018,6 +3099,8 @@ Status CoreWorker::ExecuteTask(
   } else if (task_spec.IsActorTask()) {
     task_type = TaskType::ACTOR_TASK;
   }
+
+  ScopedTaskRssHwmTracker rss_hwm_tracker(task_spec);
 
   std::shared_ptr<LocalMemoryBuffer> creation_task_exception_pb_bytes = nullptr;
 

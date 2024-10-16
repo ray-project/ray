@@ -52,6 +52,27 @@ DEFINE_stats(
     (),
     ray::stats::GAUGE);
 
+/// Only recorded on Linux > 4.0 and with CONFIG_PROC_PAGE_MONITOR set.
+/// Only recorded on normal tasks, not actors.
+DEFINE_stats(task_rss_hwm_kb,
+             "Memory High Watermark of resident memory of finished tasks.",
+             ("Name", "JobId"),
+             // From 64MB to 128GB. An empty Python worker is typically ~90MB.
+             (1024.0 * 64,          // 64 MB
+              1024.0 * 128,         // 128 MB
+              1024.0 * 256,         // 256 MB
+              1024.0 * 512,         // 512 MB
+              1024.0 * 1024,        // 1 GB
+              1024.0 * 1024 * 2,    // 2 GB
+              1024.0 * 1024 * 4,    // 4 GB
+              1024.0 * 1024 * 8,    // 8 GB
+              1024.0 * 1024 * 16,   // 16 GB
+              1024.0 * 1024 * 32,   // 32 GB
+              1024.0 * 1024 * 64,   // 64 GB
+              1024.0 * 1024 * 128,  // 128 GB
+              ),
+             ray::stats::HISTOGRAM);
+
 /// Tracks actors by state, including pending, running, and idle actors.
 ///
 /// To avoid metric collection conflicts between components reporting on the same task,
