@@ -138,7 +138,7 @@ The output is as follows:
 
 This feature is useful when importing libraries such as `tensorflow` or `numpy`, which may emit many verbose warning messages when you import them. 
 
-Configure the following environment variables on the driver process before importing Ray to customize log deduplication:
+Configure the following environment variables on the driver process **before importing Ray** to customize log deduplication:
 
 * Set ``RAY_DEDUP_LOGS=0`` to turn off this feature entirely.
 * Set ``RAY_DEDUP_LOGS_AGG_WINDOW_S=<int>`` to change the aggregation window.
