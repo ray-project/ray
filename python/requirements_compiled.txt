@@ -2157,7 +2157,7 @@ stack-data==0.6.3
     # via ipython
 stanio==0.3.0
     # via cmdstanpy
-starlette==0.36.3
+starlette==0.40.0
     # via
     #   -r /ray/ci/../python/requirements.txt
     #   fastapi
