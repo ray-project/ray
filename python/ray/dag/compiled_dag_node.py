@@ -318,13 +318,10 @@ class ExecutableTask:
         # its index in input_channels.
         input_channel_to_idx: dict[ChannelInterface, int] = {}
 
+        print("resolved_args", resolved_args, "method_name", self.method_name, "bind_index", self.bind_index)
         for arg in resolved_args:
             if isinstance(arg, ChannelInterface):
-                if isinstance(arg, ChannelInterface):
-                    channel = arg
-                else:
-                    adapter = arg
-                    channel = adapter.get_dag_input_channel()
+                channel = arg
 
                 if channel in input_channel_to_idx:
                     # The same channel was added before, so reuse the index.
@@ -864,7 +861,7 @@ class CompiledDAG:
                         "other DAG nodes as kwargs"
                     )
 
-            for upstream_node in task.dag_node._upstream_nodes:
+            for upstream_node in dag_node._upstream_nodes:
                 assert isinstance(upstream_node, DAGNode)
 
                 upstream_node_idx = self.dag_node_to_idx[upstream_node]
@@ -903,7 +900,7 @@ class CompiledDAG:
                     upstream_task = self.idx_to_task[self.input_task_idx]
 
                 elif isinstance(upstream_node, InputNode):
-                    if isinstance(task.dag_node, InputAttributeNode):
+                    if isinstance(dag_node, InputAttributeNode):
                         continue
 
                     if direct_input is not None and not direct_input:
@@ -997,6 +994,7 @@ class CompiledDAG:
             if cur_idx in visited:
                 continue
             visited.add(cur_idx)
+            print("cur_idx", cur_idx, self.idx_to_task[cur_idx].downstream_task_idxs)
 
             task = self.idx_to_task[cur_idx]
             type_hint = task.dag_node.type_hint
