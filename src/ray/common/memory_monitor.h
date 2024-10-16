@@ -16,6 +16,8 @@
 
 #include <gtest/gtest_prod.h>
 
+#include <string_view>
+
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/asio/periodical_runner.h"
 #include "ray/util/process.h"
@@ -74,16 +76,15 @@ class MemoryMonitor {
   ///
   /// \return the debug string that contains up to the top N memory-using processes,
   /// empty if process directory is invalid
-  static const std::string TopNMemoryDebugString(
-      uint32_t top_n,
-      const MemorySnapshot system_memory,
-      const std::string proc_dir = kProcDirectory);
+  static std::string TopNMemoryDebugString(uint32_t top_n,
+                                           const MemorySnapshot &system_memory,
+                                           std::string_view proc_dir = kProcDirectory);
 
   /// \param proc_dir the directory to scan for the processes
   ///
   /// \return the pid to memory usage map for all the processes
   static const absl::flat_hash_map<pid_t, int64_t> GetProcessMemoryUsage(
-      const std::string proc_dir = kProcDirectory);
+      std::string_view proc_dir = kProcDirectory);
 
  private:
   static constexpr char kCgroupsV1MemoryMaxPath[] =
@@ -122,10 +123,10 @@ class MemoryMonitor {
   /// \param active_file_key active_file key name in memory.stat file
   /// \return the used memory for cgroup. May return negative value, which should be
   /// discarded.
-  static int64_t GetCGroupMemoryUsedBytes(const char *stat_path,
-                                          const char *usage_path,
-                                          const char *inactive_file_key,
-                                          const char *active_file_key);
+  static int64_t GetCGroupMemoryUsedBytes(std::string_view stat_path,
+                                          std::string_view usage_path,
+                                          std::string_view inactive_file_key,
+                                          std::string_view active_file_key);
 
   /// \return the used and total memory in bytes for linux OS.
   std::tuple<int64_t, int64_t> GetLinuxMemoryBytes();
@@ -134,22 +135,21 @@ class MemoryMonitor {
   ///
   /// \return the used memory in bytes from the given smap file or kNull if the file does
   /// not exist or if it fails to read a valid value.
-  static int64_t GetLinuxProcessMemoryBytesFromSmap(const std::string smap_path);
+  static int64_t GetLinuxProcessMemoryBytesFromSmap(std::string_view smap_path);
 
   /// \param proc_dir directory to scan for the process ids
   ///
   /// \return list of process ids found in the directory,
   /// or empty list if the directory doesn't exist
-  static const std::vector<pid_t> GetPidsFromDir(
-      const std::string proc_dir = kProcDirectory);
+  static std::vector<pid_t> GetPidsFromDir(std::string_view proc_dir = kProcDirectory);
 
   /// \param pid the process id
   /// \param proc_dir directory to scan for the process ids
   ///
   /// \return the command line for the executing process,
   /// or empty string if the processs doesn't exist
-  static const std::string GetCommandLineForPid(
-      pid_t pid, const std::string proc_dir = kProcDirectory);
+  static std::string GetCommandLineForPid(pid_t pid,
+                                          std::string_view proc_dir = kProcDirectory);
 
   /// Truncates string if it is too long and append '...'
   ///
@@ -157,7 +157,7 @@ class MemoryMonitor {
   /// \param max_length the max length of the string value to preserve
   ///
   /// \return the debug string that contains the top N memory using process
-  static const std::string TruncateString(const std::string value, uint32_t max_length);
+  static std::string TruncateString(std::string_view value, uint32_t max_length);
 
   /// \return the smaller of the two integers, kNull if both are kNull,
   /// or one of the values if the other is kNull.
@@ -183,7 +183,7 @@ class MemoryMonitor {
   /// \return the used memory in bytes for the process,
   /// kNull if the file doesn't exist or it fails to find the fields
   static int64_t GetProcessMemoryBytes(pid_t pid,
-                                       const std::string proc_dir = kProcDirectory);
+                                       std::string_view proc_dir = kProcDirectory);
 
   /// \param top_n the number of top memory-using processes
   /// \param all_usage process to memory usage map
