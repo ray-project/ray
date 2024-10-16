@@ -3,6 +3,7 @@ from pathlib import Path
 import pyarrow.fs
 import time
 import types
+from typing import Any, List, Dict
 
 import ray
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
@@ -15,6 +16,7 @@ from ray.rllib.utils.annotations import (
     OverrideToImplementCustomLogic,
     OverrideToImplementCustomLogic_CallToSuperRecommended,
 )
+from ray.util.placement_group import placement_group_table
 
 logger = logging.getLogger(__name__)
 
@@ -55,6 +57,8 @@ class OfflineData:
         # be `gcsfs` for GCS, `pyarrow` for S3 or `adlfs` for Azure Blob Storage.
         # this filesystem is specifically needed, if a session has to be created
         # with the cloud provider.
+        # TODO (simon): Maybe just let the user define the arrow filesystem and
+        # the logic here.
         if self.filesystem == "gcs":
             import gcsfs
 
@@ -79,6 +83,10 @@ class OfflineData:
             }
         )
 
+        # Set scheduling strategy.
+        self._set_schedule_strategy()
+
+        # Try loading the dataset.
         try:
             # Load the dataset.
             start_time = time.perf_counter()
@@ -88,11 +96,11 @@ class OfflineData:
             if self.materialize_data:
                 self.data = self.data.materialize()
             stop_time = time.perf_counter()
-            logger.debug(f"Time for loading dataset: {stop_time - start_time}s.")
-            logger.info("Reading data from {}".format(self.path))
-            logger.info(self.data.schema())
+            logger.debug(f"===> [OfflineData] - Time for loading dataset: {stop_time - start_time}s.")
+            logger.info(f"===> [OfflineData] - Reading data from path: {self.path}")
+            logger.info(f"===> [OfflineData] - Dataset schema: {self.data.schema()}")
         except Exception as e:
-            logger.error(e)
+            logger.error(f"===> [OfflineData] - Error loading the dataset: {e}")
         # Avoids reinstantiating the batch iterator each time we sample.
         self.batch_iterator = None
         self.map_batches_kwargs = (
@@ -106,6 +114,8 @@ class OfflineData:
         # For remote learner setups.
         self.locality_hints = None
         self.learner_handles = None
+        # The `module_spec` is needed to build a learner module inside of the 
+        # `OfflinePreLearner`.
         self.module_spec = None
 
     @OverrideToImplementCustomLogic
@@ -146,6 +156,11 @@ class OfflineData:
                 "module_spec": self.module_spec,
                 "module_state": module_state,
             }
+
+            # For debugging show available resources.
+            logger.debug(f"===> [OfflineData] - Available resources: {ray.available_resources()}")
+            logger.debug(f"===> [OfflineData] - Placement group resources: {placement_group_table(ray.util.get_current_placement_group())}")
+
             self.data = self.data.map_batches(
                 self.prelearner_class,
                 fn_constructor_kwargs=fn_constructor_kwargs,
@@ -184,7 +199,7 @@ class OfflineData:
             if num_shards > 1:
                 # TODO (simon): Check, if we should use `iter_batches_kwargs` here
                 #   as well.
-                logger.debug("===> [OfflineData]: Return streaming_split ... ")
+                logger.debug("===> [OfflineData] - Return `streaming_split` ... ")
                 return self.data.streaming_split(
                     n=num_shards,
                     # Note, `equal` must be `True`, i.e. the batch size must
@@ -204,7 +219,7 @@ class OfflineData:
             except StopIteration:
                 # If the batch iterator is exhausted, reinitiate a new one.
                 logger.debug(
-                    "===> [OfflineData]: Batch iterator exhausted. Reinitiating ..."
+                    "===> [OfflineData] - Batch iterator exhausted. Reinitiating ..."
                 )
                 self.batch_iterator = None
                 return self.sample(
@@ -212,6 +227,30 @@ class OfflineData:
                     return_iterator=return_iterator,
                     num_shards=num_shards,
                 )
+
+    def _set_schedule_strategy(self) -> None:
+        """Sets the scheduling strategy for `ray.data`.
+        
+        If in a `ray.tune` session, use the current placement group resources instead
+        of scheduling any tasks or actors outside of it. This is needed as otherwise
+        `ray.data` and `ray.tune` will compete endlessly for resources and the program
+        stalls.
+        """
+        
+        # If main process is a remote worker (WORKER_MODE=1) resources must
+        # be assigned by ray.
+        if ray._private.worker._mode() == ray._private.worker.WORKER_MODE:
+            ray.data.DataContext.get_current().scheduling_strategy = None
+            logger.info(
+                "===> [OfflineData] - Running in a `ray.tune` session. Scheduling "
+                "strategy set to use current placement group resources."
+            )
+        # Otherwise all available resources are considered (`ray.data` default).
+        else:
+            logger.info(
+                "===> [OfflineData] - Scheduling strategy is to use resources ourside "
+                "of the current placement group."
+            )
 
     @property
     def default_read_method_kwargs(self):
@@ -233,3 +272,73 @@ class OfflineData:
             "local_shuffle_buffer_size": self.config.train_batch_size_per_learner
             or (self.config.train_batch_size // max(1, self.config.num_learners)) * 4,
         }
+
+
+    @classmethod
+    def default_resource_request(cls, config: AlgorithmConfig) -> List[Dict[str, Any]]:
+        """Defines default resource request for the `OfflineData` and `OfflinePreLearner`
+
+        Args:
+            cls: The `OfflineData` class.
+            config: An `AlgorithmConfig` instance that defines user configs for offline
+                data.
+
+        Returns: A resource bundle defined as a list of a dictionary defining the
+            resources to be requested.
+        """
+        
+        input_read_resource_bundle = {}
+        map_batches_resource_bundle = {}
+        # Reserve resources for the read task.
+        if "ray_remote_args" in config.input_read_method_kwargs:
+            ray_remote_args = config.input_read_method_kwargs["ray_remote_args"].copy()
+            if "num_gpus" in ray_remote_args:
+                input_read_resource_bundle["GPU"] = ray_remote_args["num_gpus"]
+            if "num_cpus" in ray_remote_args:
+                input_read_resource_bundle["CPU"] = ray_remote_args["num_cpus"]
+            if "memory" in ray_remote_args:
+                input_read_resource_bundle["memory"] = ray_remote_args["memory"]
+            if "resources" in ray_remote_args:
+                input_read_resource_bundle["resources"] = ray_remote_args["resources"]
+        
+        # If not explicitly requested, we reserve at least 1 CPU per worker in the read task.
+        if "CPU" not in input_read_resource_bundle or input_read_resource_bundle["CPU"] == 0:
+            input_read_resource_bundle["CPU"] = 1
+
+        # Define concurrency for the read task.
+        read_concurrency = config.input_read_method_kwargs.get("concurrency", max(2, config.num_learners // 2))
+         # If a pool is used, try to reserve the maximum number of bundles.
+        if isinstance(read_concurrency, tuple):
+                read_concurrency = read_concurrency[1]
+
+        # Reserve resources for the map task.
+        if "ray_remote_args" in config.map_batches_kwargs:
+            ray_remote_args = config.map_batches_kwargs["ray_remote_args"].copy()
+            if "num_gpus" in ray_remote_args:
+                map_batches_resource_bundle["GPU"] = ray_remote_args["num_gpus"]
+            if "num_cpus" in ray_remote_args:
+                map_batches_resource_bundle["CPU"] = ray_remote_args["num_cpus"]
+            if "memory" in ray_remote_args:
+                map_batches_resource_bundle["memory"] = ray_remote_args["memory"]
+            if "resources" in ray_remote_args:
+                map_batches_resource_bundle["resources"] = ray_remote_args["resources"]
+
+        # Override, if arguments are set. Note, `ray.data` does override, too.
+        if "num_gpus" in config.map_batches_kwargs:
+            map_batches_resource_bundle["GPU"] = config.map_batches_kwargs["num_gpus"] or 0
+        if "num_cpus" in config.map_batches_kwargs:
+            map_batches_resource_bundle["CPU"] = config.map_batches_kwargs["num_cpus"] or 0
+
+        # Only set default for CPUs, if not given and no GPU training.
+        if "CPU" not in map_batches_resource_bundle or map_batches_resource_bundle["CPU"] == 0:
+            map_batches_resource_bundle["CPU"] = 1
+        
+        # Assign concurrency for map task. If not given assign by number of learners.
+        map_concurrency = config.map_batches_kwargs.get("concurrency", max(2, config.num_learners // 2))
+        # If a pool is used, try to reserve the maximum number of bundles.
+        if isinstance(map_concurrency, tuple):
+            map_concurrency = map_concurrency[1]
+
+        # Multiply by concurrency and return. Note, in case of multiple learners, the `streaming_split` 
+        # is used and needs an additional `CoordinatorActor`. We account for these resources, too.
+        return read_concurrency * [input_read_resource_bundle] + (map_concurrency + int(config.num_learners > 1)) * (max(1, config.num_learners)) * [map_batches_resource_bundle]

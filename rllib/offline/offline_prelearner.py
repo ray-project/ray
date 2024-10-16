@@ -3,10 +3,13 @@ import logging
 import numpy as np
 from typing import Any, Dict, List, Optional, Union, Tuple, TYPE_CHECKING
 
+import ray
+from ray.rllib.core import DEFAULT_MODULE_ID
 from ray.rllib.core.columns import Columns
 from ray.rllib.core.rl_module.multi_rl_module import MultiRLModuleSpec
 from ray.rllib.env.single_agent_episode import SingleAgentEpisode
 from ray.rllib.policy.sample_batch import MultiAgentBatch, SampleBatch
+from ray.rllib.utils import try_import_torch
 from ray.rllib.utils.annotations import (
     ExperimentalAPI,
     OverrideToImplementCustomLogic,
@@ -15,6 +18,7 @@ from ray.rllib.utils.annotations import (
 from ray.rllib.utils.compression import unpack_if_needed
 from ray.rllib.utils.spaces.space_utils import from_jsonable_if_needed
 from ray.rllib.utils.typing import EpisodeType, ModuleID
+from ray.util.placement_group import placement_group_table
 
 if TYPE_CHECKING:
     from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
@@ -78,20 +82,21 @@ class OfflinePreLearner:
     def __init__(
         self,
         config: "AlgorithmConfig",
+        module_spec: MultiRLModuleSpec,
+        module_state: Dict[ModuleID, Any],
         spaces: Optional[Tuple[gym.Space, gym.Space]] = None,
-        module_spec: Optional[MultiRLModuleSpec] = None,
-        module_state: Optional[Dict[ModuleID, Any]] = None,
     ):
         self.config = config
         self.input_read_episodes = self.config.input_read_episodes
         self.input_read_sample_batches = self.config.input_read_sample_batches
 
         # Build the module from spec. Note, this will be a MultiRLModule.
-        # TODO (simon): Check, if this builds automatically on GPU if
-        # available.
         self._module = module_spec.build()
         self._module.set_state(module_state)
-
+        # Map the module to the device, if necessary.
+        logger.debug(f"===> [OfflinePreLearner] - Placement group resources: {placement_group_table(ray.util.get_current_placement_group())}")
+        self._map_module_to_device()
+        
         # Store the observation and action space if defined, otherwise we
         # set them to `None`. Note, if `None` the `convert_from_jsonable`
         # will not convert the input space samples.
@@ -101,6 +106,7 @@ class OfflinePreLearner:
         self._learner_connector = self.config.build_learner_connector(
             input_observation_space=self.observation_space,
             input_action_space=self.action_space,
+            device=self._device,
         )
         # Cache the policies to be trained to update weights only for these.
         self._policies_to_train = self.config.policies_to_train
@@ -209,7 +215,6 @@ class OfflinePreLearner:
         #     # module_state =
         # ray.get(self._learner.get_module_state.remote(inference_only=False))
         #     # self._module.set_state(module_state)
-
         # Run the `Learner`'s connector pipeline.
         batch = self._learner_connector(
             rl_module=self._module,
@@ -255,6 +260,35 @@ class OfflinePreLearner:
             "capacity": self.config.train_batch_size_per_learner * 10,
             "batch_size_B": self.config.train_batch_size_per_learner,
         }
+
+    def _map_module_to_device(self) -> None:
+        """Maps module to device, if necessary.
+        
+        Only, if the device is non-CPU the module is mapped to the device.
+        """
+        from ray.rllib.utils.framework import try_import_torch
+        from ray.air._internal.torch_utils import get_devices
+        _, nn = try_import_torch()
+
+        # Recevie a list of available devices.
+        devices = get_devices()
+        logger.debug(f"===> [OfflinePreLearner] - Available devices: {devices}")
+        # Assign devices randomly to balance loads.
+        # TODO (simon, sven): Optimize load balancing.
+        self._device = devices[np.random.randint(0, len(devices))]
+        logger.debug(f"===> [OfflinePreLearner] - Module is mapped to device: {self._device}")
+        # If on CPU, the module is already on the correct device.
+        if self._device == "cpu":
+            return
+        # Is this a plain `torch.nn.Module`?
+        if isinstance(self._module, nn.Module):
+            self._module.to(self._device)
+        # Otherwise it is a `MultiRLModule`.
+        else:
+            # Map each sub-module to the device.
+            for key in self._module.keys():
+                if isinstance(self._module[key], nn.Module):
+                    self._module[key].to(self._device)
 
     def _should_module_be_updated(self, module_id, multi_agent_batch=None):
         """Checks which modules in a MultiRLModule should be updated."""
