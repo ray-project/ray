@@ -326,14 +326,6 @@ class ExecutableTask:
         # its index in input_channels.
         input_channel_to_idx: dict[ChannelInterface, int] = {}
 
-        print(
-            "resolved_args",
-            resolved_args,
-            "method_name",
-            self.method_name,
-            "bind_index",
-            self.bind_index,
-        )
         for arg in resolved_args:
             if isinstance(arg, ChannelInterface):
                 channel = arg
@@ -1028,7 +1020,6 @@ class CompiledDAG:
             if cur_idx in visited:
                 continue
             visited.add(cur_idx)
-            print("cur_idx", cur_idx, self.idx_to_task[cur_idx].downstream_task_idxs)
 
             task = self.idx_to_task[cur_idx]
             type_hint = task.dag_node.type_hint
