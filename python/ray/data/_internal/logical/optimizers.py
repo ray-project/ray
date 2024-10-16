@@ -31,8 +31,11 @@ _PHYSICAL_RULES = [
 
 
 @DeveloperAPI
-def register_logical_rule(cls: Type[Rule]):
-    _LOGICAL_RULES.append(cls)
+def register_logical_rule(cls: Type[Rule], insert_index: Optional[int] = None):
+    if not insert_index:
+        _LOGICAL_RULES.append(cls)
+    else:
+        _LOGICAL_RULES.insert(insert_index, cls)
 
 
 @DeveloperAPI
