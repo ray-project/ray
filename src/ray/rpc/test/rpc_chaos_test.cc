@@ -20,9 +20,6 @@
 #include "ray/common/ray_config.h"
 
 TEST(RpcChaosTest, Basic) {
-  const auto seed = std::time(nullptr);
-  RAY_LOG(INFO) << "Seed is " << seed;
-  std::srand(seed);
   RayConfig::instance().testing_rpc_failure() = "method1=0,method2=1";
   ray::rpc::testing::init();
   ASSERT_EQ(ray::rpc::testing::get_rpc_failure("unknown"),

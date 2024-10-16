@@ -18,7 +18,6 @@ from ray._private.test_utils import (
     async_wait_for_condition_async_predicate,
 )
 import ray._private.ray_constants as ray_constants
-import ray._raylet
 
 
 @contextlib.contextmanager
@@ -108,9 +107,6 @@ def test_kv_transient_network_error(shutdown_only, monkeypatch):
         "ray::rpc::InternalKVGcsService.grpc_client.InternalKVPut=5",
     )
     ray.init()
-    seed = int(time.time())
-    print(f"Seed is {seed}")
-    ray._raylet.std_srand(seed)
     gcs_address = ray._private.worker.global_worker.gcs_client.address
     gcs_client = ray._raylet.GcsClient(address=gcs_address, nums_reconnect_retry=0)
 

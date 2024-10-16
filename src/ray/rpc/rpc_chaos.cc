@@ -14,6 +14,7 @@
 
 #include "ray/rpc/rpc_chaos.h"
 
+#include <random>
 #include <unordered_set>
 
 #include "absl/synchronization/mutex.h"
@@ -44,9 +45,14 @@ class RpcFailureManager {
       for (const auto &item :
            absl::StrSplit(RayConfig::instance().testing_rpc_failure(), ",")) {
         std::vector<std::string> parts = absl::StrSplit(item, "=");
-        RAY_CHECK_EQ(parts.size(), 2);
+        RAY_CHECK_EQ(parts.size(), 2UL);
         failable_methods_.emplace(parts[0], std::atoi(parts[1].c_str()));
       }
+
+      std::random_device rd;
+      auto seed = rd();
+      RAY_LOG(INFO) << "Setting RpcFailureManager seed to " << seed;
+      gen_.seed(seed);
     }
   }
 
@@ -62,7 +68,8 @@ class RpcFailureManager {
       return RpcFailure::None;
     }
 
-    int rand = std::rand() % 4;
+    std::uniform_int_distribution<int> dist(0, 3);
+    int rand = dist(gen_);
     if (rand == 0) {
       // 25% chance
       num_remaining_failures--;
@@ -78,7 +85,8 @@ class RpcFailureManager {
   }
 
  private:
-  mutable absl::Mutex mu_;
+  absl::Mutex mu_;
+  std::mt19937 gen_;
   // call name -> # remaining failures
   std::unordered_map<std::string, uint64_t> failable_methods_ ABSL_GUARDED_BY(&mu_);
 };
