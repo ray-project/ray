@@ -1317,26 +1317,17 @@ class CompiledDAG:
                 for arg in task.args:
                     if isinstance(arg, DAGNode):
                         visited_dag_nodes.add(arg)
-                        arg_idx = self.dag_node_to_idx[arg]
-                        upstream_task = self.idx_to_task[arg_idx]
-                        assert len(upstream_task.output_channels) == 1
-                        arg_channel = upstream_task.output_channels[0]
-                        assert arg_channel is not None
+                        arg_channel = self._get_dag_node_output_channel(arg)
                         arg_channel = channel_dict[arg_channel]
                         resolved_args.append(arg_channel)
                     elif isinstance(arg, list):
-                        # Handle a list of DAGNodes. For example, [DAGNode, 1, DAGNode].
                         resolved_list_arg = []
                         for item in arg:
                             if isinstance(item, DAGNode):
                                 visited_dag_nodes.add(item)
-                                arg_idx = self.dag_node_to_idx[item]
-                                upstream_task = self.idx_to_task[arg_idx]
-                                assert len(upstream_task.output_channels) == 1
-                                arg_channel = upstream_task.output_channels[0]
-                                assert arg_channel is not None
-                                arg_channel = channel_dict[arg_channel]
-                                resolved_list_arg.append(arg_channel)
+                                item_channel = self._get_dag_node_output_channel(item)
+                                item_channel = channel_dict[item_channel]
+                                resolved_list_arg.append(item_channel)
                             else:
                                 # Constant arg
                                 resolved_list_arg.append(item)
@@ -1419,6 +1410,20 @@ class CompiledDAG:
 
         self._dag_submitter.start()
         self._dag_output_fetcher.start()
+
+    def _get_dag_node_output_channel(self, node: "ray.dag.DAGNode") -> ChannelInterface:
+        """
+        A helper function to get the DAG node's output channel.
+
+        Args:
+            node: The DAG node.
+        """
+        idx = self.dag_node_to_idx[node]
+        task = self.idx_to_task[idx]
+        assert len(task.output_channels) == 1
+        channel = task.output_channels[0]
+        assert channel is not None
+        return channel
 
     def _generate_dag_operation_graph_node(
         self,
