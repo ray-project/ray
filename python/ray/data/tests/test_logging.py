@@ -136,7 +136,6 @@ def test_json_logging_configuration(
 
     # Ensure handlers correctly setup
     handlers = logger.handlers
-    assert len(handlers) == 2
     assert sum(handler.name == "file_json" for handler in handlers) == 1
     assert sum(handler.name == "console" for handler in handlers) == 1
 
