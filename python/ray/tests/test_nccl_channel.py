@@ -55,22 +55,22 @@ class Worker:
         typ: TorchTensorType,
         reader_and_node_list: List[Tuple[ray.actor.ActorHandle, str]],
         tensor_metadata_channel_key=None,
-        non_tensor_data_channel_key=None,
+        cpu_data_channel_key=None,
     ):
         typ.register_custom_serializer()
 
         tensor_metadata_channel = None
         if tensor_metadata_channel_key is not None:
             tensor_metadata_channel = self.traced_channels[tensor_metadata_channel_key]
-        non_tensor_data_channel = None
-        if non_tensor_data_channel_key is not None:
-            non_tensor_data_channel = self.traced_channels[non_tensor_data_channel_key]
+        cpu_data_channel = None
+        if cpu_data_channel_key is not None:
+            cpu_data_channel = self.traced_channels[cpu_data_channel_key]
 
         self.tensor_chan = typ.create_channel(
             ray.get_runtime_context().current_actor,
             reader_and_node_list,
             read_by_adag_driver=False,
-            _non_tensor_data_channel=non_tensor_data_channel,
+            _cpu_data_channel=cpu_data_channel,
             _tensor_metadata_channel=tensor_metadata_channel,
             )
 
@@ -251,12 +251,12 @@ def test_static_shape(ray_start_cluster):
     )
     chan_typ.set_nccl_group_id(nccl_id)
     sender.create_traced_channel.remote("tensor_metadata", [receiver])
-    sender.create_traced_channel.remote("non_tensor_data", [receiver])
+    sender.create_traced_channel.remote("cpu_data", [receiver])
     chan_ref = sender.create_nccl_channel.remote(
         chan_typ,
         [receiver],
         "tensor_metadata",
-        "non_tensor_data",
+        "cpu_data",
     )
     receiver_ready = receiver.set_nccl_channel.remote(chan_typ, chan_ref)
     ray.get([chan_ref, receiver_ready])
@@ -276,8 +276,8 @@ def test_static_shape(ray_start_cluster):
         sender.get_num_channel_ops.remote("tensor_metadata")
     )
     assert num_tensor_metadata_ops == 1
-    num_non_tensor_data_ops = ray.get(sender.get_num_channel_ops.remote("non_tensor_data"))
-    assert num_non_tensor_data_ops == 3
+    num_cpu_data_ops = ray.get(sender.get_num_channel_ops.remote("cpu_data"))
+    assert num_cpu_data_ops == 3
 
     # Attempting to write tensors of the wrong shape or dtype will error.
     with pytest.raises(ValueError):
@@ -339,12 +339,12 @@ def test_direct_return(ray_start_cluster):
     )
     chan_typ.set_nccl_group_id(nccl_id)
     sender.create_traced_channel.remote("tensor_metadata", [receiver])
-    sender.create_traced_channel.remote("non_tensor_data", [receiver])
+    sender.create_traced_channel.remote("cpu_data", [receiver])
     chan_ref = sender.create_nccl_channel.remote(
         chan_typ,
         [receiver],
         "tensor_metadata",
-        "non_tensor_data",
+        "cpu_data",
     )
     receiver_ready = receiver.set_nccl_channel.remote(chan_typ, chan_ref)
     ray.get([chan_ref, receiver_ready])
@@ -369,8 +369,8 @@ def test_direct_return(ray_start_cluster):
         sender.get_num_channel_ops.remote("tensor_metadata")
     )
     assert num_tensor_metadata_ops == 3
-    num_non_tensor_data_ops = ray.get(sender.get_num_channel_ops.remote("non_tensor_data"))
-    assert num_non_tensor_data_ops == 0
+    num_cpu_data_ops = ray.get(sender.get_num_channel_ops.remote("cpu_data"))
+    assert num_cpu_data_ops == 0
 
     # Attempting to write a different number of tensors will error.
     with pytest.raises(ValueError):
@@ -427,16 +427,16 @@ def test_static_shape_and_direct_return(ray_start_cluster):
     chan_typ = TorchTensorType(
         transport="nccl",
         _static_shape=True,
-        _static_non_tensor_data=True,
+        _static_cpu_data=True,
     )
     chan_typ.set_nccl_group_id(nccl_id)
     sender.create_traced_channel.remote("tensor_metadata", [receiver])
-    sender.create_traced_channel.remote("non_tensor_data", [receiver])
+    sender.create_traced_channel.remote("cpu_data", [receiver])
     chan_ref = sender.create_nccl_channel.remote(
         chan_typ,
         [receiver],
         "tensor_metadata",
-        "non_tensor_data",
+        "cpu_data",
     )
     receiver_ready = receiver.set_nccl_channel.remote(chan_typ, chan_ref)
     ray.get([chan_ref, receiver_ready])
@@ -457,8 +457,8 @@ def test_static_shape_and_direct_return(ray_start_cluster):
     )
     assert num_tensor_metadata_ops == 1
     # When direct_return=True, we never send non-tensor data.
-    num_non_tensor_data_ops = ray.get(sender.get_num_channel_ops.remote("non_tensor_data"))
-    assert num_non_tensor_data_ops == 0
+    num_cpu_data_ops = ray.get(sender.get_num_channel_ops.remote("cpu_data"))
+    assert num_cpu_data_ops == 0
 
     # Attempting to write tensors of the wrong shape or dtype will error.
     with pytest.raises(ValueError):

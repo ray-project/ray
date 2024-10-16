@@ -123,7 +123,7 @@ class TorchTensorType(ChannelOutputType):
         writer: Optional["ray.actor.ActorHandle"],
         reader_and_node_list: List[Tuple["ray.actor.ActorHandle", str]],
         read_by_adag_driver: bool,
-        _non_tensor_data_channel: Optional["Channel"] = None,
+        _cpu_data_channel: Optional["Channel"] = None,
         _tensor_metadata_channel: Optional["Channel"] = None,
     ) -> type:
 
@@ -133,16 +133,16 @@ class TorchTensorType(ChannelOutputType):
                 _TorchTensorNcclChannel,
             )
 
-            tensor_data_channel = _TorchTensorNcclChannel(
+            gpu_data_channel = _TorchTensorNcclChannel(
                 writer,
                 reader_and_node_list,
                 self,
                 _meta_channel=_tensor_metadata_channel,
             )
 
-            if _non_tensor_data_channel is None and not self._direct_return:
+            if _cpu_data_channel is None and not self._direct_return:
                 # Create a CPU channel to send non-tensor data.
-                _non_tensor_data_channel = SharedMemoryType().create_channel(
+                _cpu_data_channel = SharedMemoryType().create_channel(
                     writer, reader_and_node_list,
                     read_by_adag_driver,
                 )
@@ -151,8 +151,8 @@ class TorchTensorType(ChannelOutputType):
                 writer,
                 reader_and_node_list,
                 self,
-                tensor_data_channel,
-                _non_tensor_data_channel,
+                gpu_data_channel,
+                _cpu_data_channel,
             )
 
         # Data does not require NCCL. Transfer via host memory using a
