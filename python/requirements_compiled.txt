@@ -1623,7 +1623,7 @@ pyasn1-modules==0.3.0
     # via
     #   google-auth
     #   oauth2client
-pycodestyle==2.11.1
+pycodestyle==2.11.1; python_version > '3.8'
     # via flake8
 pycparser==2.21
     # via cffi
