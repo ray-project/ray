@@ -21,8 +21,6 @@ from ray.rllib.examples.envs.classes.repeat_initial_obs_env import RepeatInitial
 from ray.rllib.core.rl_module.rl_module import RLModuleSpec
 from ray.rllib.policy.sample_batch import SampleBatch
 from dataclasses import dataclass
-from ray.rllib.core.models.specs.specs_dict import SpecDict
-from ray.rllib.core.models.specs.specs_base import TensorSpec
 from ray.rllib.core.models.base import Encoder, ENCODER_OUT
 from ray.rllib.core.models.torch.base import TorchModel
 from ray.rllib.core.models.tf.base import TfModel
@@ -85,16 +83,6 @@ class CustomTorchTokenizer(TorchModel, Encoder):
             nn.Linear(config.input_dims[0], config.output_dims[0]),
         )
 
-    # Since we use this model as a tokenizer, we need to define it's output
-    # dimensions so that we know the input dim for the recurent cells that follow.
-    def get_output_specs(self):
-        # In this example, the output dim will be 64, but we still fetch it from
-        # config so that this code is more reusable.
-        output_dim = self.config.output_dims[0]
-        return SpecDict(
-            {ENCODER_OUT: TensorSpec("b, d", d=output_dim, framework="torch")}
-        )
-
     def _forward(self, inputs: dict, **kwargs):
         return {ENCODER_OUT: self.net(inputs[SampleBatch.OBS])}
 
@@ -109,12 +97,6 @@ class CustomTfTokenizer(TfModel, Encoder):
                 tf.keras.layers.Input(shape=config.input_dims),
                 tf.keras.layers.Dense(config.output_dims[0], activation="relu"),
             ]
-        )
-
-    def get_output_specs(self):
-        output_dim = self.config.output_dims[0]
-        return SpecDict(
-            {ENCODER_OUT: TensorSpec("b, d", d=output_dim, framework="tf2")}
         )
 
     def _forward(self, inputs: dict, **kwargs):
