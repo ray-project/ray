@@ -8,6 +8,7 @@ class LogicalPlan(Plan):
     """The plan with a DAG of logical operators."""
 
     def __init__(self, dag: LogicalOperator):
+        super().__init__()
         self._dag = dag
 
     @property

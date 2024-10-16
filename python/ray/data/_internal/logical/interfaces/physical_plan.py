@@ -13,6 +13,7 @@ class PhysicalPlan(Plan):
     def __init__(
         self, dag: "PhysicalOperator", op_map: Dict["PhysicalOperator", LogicalOperator]
     ):
+        super().__init__()
         self._dag = dag
         self._op_map = op_map
 

@@ -279,6 +279,7 @@ class ExecutionPlan:
         execution plan.
         """
         self._logical_plan = logical_plan
+        self._logical_plan._set_context(self._context)
 
     def copy(self) -> "ExecutionPlan":
         """Create a shallow copy of this execution plan.
