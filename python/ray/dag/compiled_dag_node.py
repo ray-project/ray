@@ -248,10 +248,21 @@ class _ExecutableTaskInput:
     """Represents an input to an ExecutableTask.
 
     Args:
-        input_variant: either an unresolved input (when type is ChannelInterface)
-            , or a resolved input value (when type is Any)
-        channel_idx: if input_variant is an unresolved input, this is the index
-            into the input channels list.
+        input_variant: either an unresolved input or a resolved input value.
+            - unresolved input: a ChannelInterface object or a list containing
+                ChannelInterface objects, but not in a nested form. For example,
+                [case 1]: [ChannelInterface] or [ChannelInterface, 2], ChannelInterface
+                [case 2]: [[ChannelInterface]] (nested form)
+                case 1 is supported, but case 2 is not supported.
+            - resolved input: This is not an unresolved input. For example,
+                123 (int), "abc" (string), [1, 2, 3] (list), etc.
+        channel_idx: if `input_variant` is an unresolved input, it is used to index the
+            corresponding channels from the input channels list.
+            - if `input_variant` is a ChannelInterface object, `channel_idx` is an int.
+            - if `input_variant` is a list containing ChannelInterface objects,
+                `channel_idx` is a list of int or None. If the value is None, it means
+                the corresponding value in `input_variant` is a resolved input.
+            - if `input_variant` is an unresolved input, `channel_idx` is None.
     """
 
     def __init__(
@@ -1333,9 +1344,8 @@ class CompiledDAG:
                     else:
                         # Constant arg
                         resolved_args.append(arg)
-                assert len(visited_dag_nodes) == len(
-                    task.dag_node._upstream_nodes
-                ), "Not all upstream nodes were visited. "
+                if len(visited_dag_nodes) != len(task.dag_node._upstream_nodes):
+                    raise ValueError("Not all upstream nodes were visited.")
                 executable_task = ExecutableTask(
                     task,
                     resolved_args,

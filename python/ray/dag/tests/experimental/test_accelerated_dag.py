@@ -1062,6 +1062,27 @@ class TestListArgs:
         ref = compiled_dag.execute(1)
         result = ray.get(ref)
         assert result == [[1] * 4 for _ in range(4)]
+        compiled_dag.teardown()
+
+    def test_nested_dag_node_list_args(self, ray_start_regular):
+        """
+        Currently, nested DAGNode lists as arguments are not supported.
+        If a DAGNode argument appears only in nested lists, it will not
+        be processed when building the ExecutableTask, and an error will
+        be raised.
+        """
+        a = Actor.remote(0)
+        c = Collector.remote()
+
+        with InputNode() as inp:
+            branch1 = a.inc.bind(inp)
+            branch2 = a.inc.bind(inp)
+            dag = c.collect_two.bind(branch1, [[branch2]])
+        with pytest.raises(
+            ValueError,
+            match=re.escape("Not all upstream nodes were visited."),
+        ):
+            dag.experimental_compile()
 
 
 @pytest.mark.parametrize("num_actors", [1, 4])
