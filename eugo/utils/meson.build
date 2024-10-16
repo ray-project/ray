@@ -31,9 +31,12 @@ proto_cpp_grpc_default_kwargs = {
 # === @begin: proto_py (original: python_grpc_compile) ===
 protoc_py = files('patching_protoc_py.sh')
 protoc_py_with_default_args = [protoc_py, '@INPUT@', '@SOURCE_ROOT@', '@BUILD_ROOT@', '@OUTPUT0@', '@OUTPUT1@']
+proto_py_default_install_dir = py.get_install_dir() / 'ray/core/generated/'
 proto_py_default_kwargs = {
     'command': protoc_py_with_default_args,
-    'output': ['@BASENAME@_pb2.py', '@BASENAME@_pb2_grpc.py']
+    'output': ['@BASENAME@_pb2.py', '@BASENAME@_pb2_grpc.py'],
+    'install': true,
+    'install_dir': proto_py_default_install_dir
 }
 # === @end: proto_py (original: python_grpc_compile) ===
 

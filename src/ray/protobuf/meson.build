@@ -39,9 +39,7 @@ runtime_env_common_proto_cpp_lib_dep = declare_dependency(
 # @begin: proto_py (original: runtime_env_common_py_proto)
 runtime_env_common_proto_py = custom_target(
     input: runtime_env_common_proto,
-    kwargs: proto_py_default_kwargs,
-    install: true,
-    install_dir: py.get_install_dir() / 'ray/core/generated/'
+    kwargs: proto_py_default_kwargs
 )
 # @end: proto_py (original: runtime_env_common_py_proto)
 # === @end: runtime_env_common.proto ===
@@ -84,9 +82,7 @@ common_proto_cpp_lib_dep = declare_dependency(
 # @begin: proto_py (original: common_py_proto)
 common_proto_py = custom_target(
     input: common_proto,
-    kwargs: proto_py_default_kwargs,
-    install: true,
-    install_dir: py.get_install_dir() / 'ray/core/generated/'
+    kwargs: proto_py_default_kwargs
 )
 # @end: proto_py (original: common_py_proto)
 # === @end: common.proto ===
@@ -160,9 +156,7 @@ autoscaler_proto_cpp_grpc_lib_dep = declare_dependency(
 # @begin: proto_py (original: autoscaler_py_proto)
 autoscaler_proto_py = custom_target(
     input: autoscaler_proto,
-    kwargs: proto_py_default_kwargs,
-    install: true,
-    install_dir: py.get_install_dir() / 'ray/core/generated/'
+    kwargs: proto_py_default_kwargs
 )
 # @end: proto_py (original: autoscaler_py_proto)
 # === @end: autoscaler.proto ===
@@ -272,9 +266,7 @@ gcs_proto_cpp_lib_dep = declare_dependency(
 # @begin: proto_py (@originial: gcs_py_proto)
 gcs_proto_py = custom_target(
     input: gcs_proto,
-    kwargs: proto_py_default_kwargs,
-    install: true,
-    install_dir: py.get_install_dir() / 'ray/core/generated/'
+    kwargs: proto_py_default_kwargs
 )
 # @end: proto_py (@originial: gcs_py_proto)
 # === @end: gcs.proto ===
@@ -316,9 +308,7 @@ logging_proto_cpp_lib_dep = declare_dependency(
 # @begin: proto_py (@originial: logging_py_proto)
 logging_proto_py = custom_target(
     input: logging_proto,
-    kwargs: proto_py_default_kwargs,
-    install: true,
-    install_dir: py.get_install_dir() / 'ray/core/generated/'
+    kwargs: proto_py_default_kwargs
 )
 # @end: proto_py (@originial: logging_py_proto)
 # === @end: logging.proto ===
@@ -393,9 +383,7 @@ node_manager_proto_cpp_grpc_lib_dep = declare_dependency(
 # @begin: proto_py (@originial: node_manager_py_proto)
 node_manager_proto_py = custom_target(
     input: node_manager_proto,
-    kwargs: proto_py_default_kwargs,
-    install: true,
-    install_dir: py.get_install_dir() / 'ray/core/generated/'
+    kwargs: proto_py_default_kwargs
 )
 # @end: proto_py (@originial: node_manager_py_proto)
 # === @end: node_manager.proto ===
@@ -474,9 +462,7 @@ reporter_proto_cpp_grpc_lib_dep = declare_dependency(
 # @begin: proto_py (@original: reporter_py_proto)
 reporter_proto_py = custom_target(
     input: reporter_proto,
-    kwargs: proto_py_default_kwargs,
-    install: true,
-    install_dir: py.get_install_dir() / 'ray/core/generated/'
+    kwargs: proto_py_default_kwargs
 )
 # @end: proto_py (@original: reporter_py_proto)
 # === @end: reporter.proto ===
@@ -557,9 +543,7 @@ pubsub_proto_cpp_grpc_lib_dep = declare_dependency(
 # @begin: proto_py (@original: ???)
 pubsub_proto_py = custom_target(
     input: pubsub_proto,
-    kwargs: proto_py_default_kwargs,
-    install: true,
-    install_dir: py.get_install_dir() / 'ray/core/generated/'
+    kwargs: proto_py_default_kwargs
 )
 
 # @end: proto_py (@original: ???)
@@ -635,9 +619,7 @@ gcs_service_proto_cpp_grpc_lib_dep = declare_dependency(
 # @begin: proto_py (@original: gcs_service_py_proto)
 gcs_service_proto_py = custom_target(
     input: gcs_service_proto,
-    kwargs: proto_py_default_kwargs,
-    install: true,
-    install_dir: py.get_install_dir() / 'ray/core/generated/'
+    kwargs: proto_py_default_kwargs
 )
 # @end: proto_py (@original: gcs_service_py_proto)
 # === @end: gcs_service.proto ===
@@ -711,9 +693,9 @@ test_service_proto_cpp_grpc_lib_dep = declare_dependency(
 # @begin: proto_py (@original: test_service_py_proto)
 test_service_proto_py = custom_target(
     input: test_service_proto,
-    kwargs: proto_py_default_kwargs,
-    install: false, # @TODO+:why this is build et al if not installed?
-    install_dir: py.get_install_dir() / 'ray/core/generated/'
+    kwargs: proto_py_default_kwargs + {
+        'install': false # @TODO+:why this is build et al if not installed?
+    }
 )
 # @end: proto_py (@original: test_service_py_proto)
 # === @end: test_service.proto ===
@@ -856,9 +838,7 @@ core_worker_proto_cpp_grpc_lib_dep = declare_dependency(
 # @begin: proto_py (@original: core_worker_py_proto (at the same time, py_proto and proto targets have the `core_` prefix, lol))
 core_worker_proto_py = custom_target(
     input: core_worker_proto,
-    kwargs: proto_py_default_kwargs,
-    install: true,
-    install_dir: py.get_install_dir() / 'ray/core/generated/'
+    kwargs: proto_py_default_kwargs
 )
 # @end: proto_py (@original: core_worker_py_proto (at the same time, py_proto and proto targets have the `core_` prefix, lol))
 # === @end: core_worker.proto ===
@@ -935,9 +915,7 @@ event_proto_cpp_lib_dep = declare_dependency(
 # @begin: proto_py (@original: event_py_proto)
 event_proto_py = custom_target(
     input: event_proto,
-    kwargs: proto_py_default_kwargs,
-    install: true,
-    install_dir: py.get_install_dir() / 'ray/core/generated/'
+    kwargs: proto_py_default_kwargs
 )
 # @end: proto_py (@original: event_py_proto)
 # === @end: event.proto ===
@@ -979,9 +957,7 @@ agent_manager_proto_cpp_lib_dep = declare_dependency(
 # @begin: proto_py (@original: agent_manager_py_proto)
 agent_manager_proto_py = custom_target(
     input: agent_manager_proto,
-    kwargs: proto_py_default_kwargs,
-    install: true,
-    install_dir: py.get_install_dir() / 'ray/core/generated/'
+    kwargs: proto_py_default_kwargs
 )
 # @end: proto_py (@original: agent_manager_py_proto)
 # === @end: agent_manager.proto ===
@@ -1024,9 +1000,7 @@ runtime_env_agent_proto_cpp_lib_dep = declare_dependency(
 # @begin: proto_py (@original: runtime_env_agent_py_proto)
 runtime_env_agent_proto_py = custom_target(
     input: runtime_env_agent_proto,
-    kwargs: proto_py_default_kwargs,
-    install: true,
-    install_dir: py.get_install_dir() / 'ray/core/generated/'
+    kwargs: proto_py_default_kwargs
 )
 # @end: proto_py (@original: runtime_env_agent_py_proto)
 # === @end: runtime_env_agent.proto ===
@@ -1068,9 +1042,7 @@ usage_proto_cpp_lib_dep = declare_dependency(
 # @begin: proto_py (@original: usage_py_proto)
 usage_proto_py = custom_target(
     input: usage_proto,
-    kwargs: proto_py_default_kwargs,
-    install: true,
-    install_dir: py.get_install_dir() / 'ray/core/generated/'
+    kwargs: proto_py_default_kwargs
 )
 # @end: proto_py (@original: usage_py_proto)
 # === @end: usage.proto ===
@@ -1082,9 +1054,7 @@ dependency_proto = ['dependency.proto']
 # @begin: proto_py (@original: dependency_py_proto)
 dependency_proto_py = custom_target(
     input: dependency_proto,
-    kwargs: proto_py_default_kwargs,
-    install: true,
-    install_dir: py.get_install_dir() / 'ray/core/generated/'
+    kwargs: proto_py_default_kwargs
 )
 # @end: proto_py (@original: dependency_py_proto)
 # === @end: dependency.proto ===
@@ -1097,8 +1067,6 @@ job_agent_proto = ['job_agent.proto']
 job_agent_proto_py = custom_target(
     input: job_agent_proto,
     kwargs: proto_py_default_kwargs,
-    install: true,
-    install_dir: py.get_install_dir() / 'ray/core/generated/'
 )
 # @end: proto_py (@original: job_agent_py_proto)
 # === @end: job_agent.proto ===
@@ -1111,8 +1079,6 @@ ray_client_proto = ['ray_client.proto']
 ray_client_proto_py = custom_target(
     input: ray_client_proto,
     kwargs: proto_py_default_kwargs,
-    install: true,
-    install_dir: py.get_install_dir() / 'ray/core/generated/'
 )
 # @end: proto_py (@original: ray_client_py_proto)
 # === @end: ray_client.proto ===
@@ -1124,9 +1090,9 @@ serve_proto = ['serve.proto']
 # @begin: proto_py (@original: serve_py_proto)
 serve_proto_py = custom_target(
     input: serve_proto,
-    kwargs: proto_py_default_kwargs,
-    install: true,
-    install_dir: py.get_install_dir() / 'ray/serve/generated/'
+    kwargs: proto_py_default_kwargs + {
+        'install_dir': py.get_install_dir() / 'ray/serve/generated/'
+    }
 )
 # @end: proto_py (@original: serve_py_proto)
 # === @end: serve.proto ===

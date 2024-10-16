@@ -38,6 +38,7 @@ util_cpp_lib = static_library(
         'memory.cc',
         'process.cc',
         'subreaper.cc',
+        'thread_checker.cc',
         'util.cc',
     ],
     dependencies: util_cpp_lib_private_dependencies,

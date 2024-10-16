@@ -34,9 +34,7 @@ instance_manager_proto_cpp_lib_dep = declare_dependency(
 # @begin: proto_py (original: instance_manager_py_proto)
 instance_manager_proto_py = custom_target(
     input: instance_manager_proto,
-    kwargs: proto_py_default_kwargs,
-    install: true,
-    install_dir: py.get_install_dir() / 'ray/core/generated/'
+    kwargs: proto_py_default_kwargs
 )
 # @end: proto_py (original: instance_manager_py_proto)
 # === @end: instance_manager.proto ===

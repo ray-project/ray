@@ -1,0 +1,12 @@
+#!/usr/bin/env bash
+
+
+# MARK: - 1. Build and Install
+eugo_log info "1. Build and Install"
+
+# shellcheck disable=SC2086
+pip3 install \
+  "${EUGO_PACKAGE_NAME}==${EUGO_PACKAGE_VERSION}" \
+  `# 1. General:` \
+  ${EUGO_PIP_COMPILABLE_PACKAGE_OPTIONS} \
+  ${EUGO_PIP_TARGET_FLAG}

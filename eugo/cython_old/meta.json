@@ -1,0 +1,11 @@
+{
+    "$type": "python",
+    "name": "cython",
+    "build_flow": [],
+    "version": {
+        "$type": "pypi",
+        "value": "0.29.37",
+        "should_auto_update": false,
+        "#should_auto_update": "We should always use the 0.x branch for Ray"
+    }
+}
