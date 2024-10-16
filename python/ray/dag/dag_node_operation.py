@@ -140,11 +140,6 @@ class _DAGOperationGraphNode:
         """
         return hash((self.operation, self.task_idx))
 
-    def set_collective_idxs(
-        self, collective_idxs: Set[Tuple[int, _DAGNodeOperationType]]
-    ):
-        self.collective_idxs = collective_idxs
-
     @property
     def in_degree(self) -> int:
         return len(self.in_edges)
@@ -194,6 +189,30 @@ def _add_edge(from_node: _DAGOperationGraphNode, to_node: _DAGOperationGraphNode
     to_node.in_edges.add((from_node.task_idx, from_node.operation.type))
 
 
+def _update_candidate_nodes(
+    actor_to_candidates: Dict["ray._raylet.ActorID", List[_DAGOperationGraphNode]],
+    graph: Dict[int, Dict[_DAGNodeOperationType, _DAGOperationGraphNode]],
+    node: _DAGOperationGraphNode,
+) -> None:
+    # There is only one NCCL collective node in the collective operation that
+    # is added to the candidates. The collective operation is ready when all
+    # the nodes have zero in-degrees. Except for the last node, all the other
+    # nodes are not ready yet. When the last node is selected, all the nodes
+    # in the collective operation are returned.
+    if node.is_nccl_collective:
+        for collective_node_metadata in node.collective_idxs:
+            task_idx, op_type = collective_node_metadata
+            collective_node = graph[task_idx][op_type]
+            collective_node.ready_collective_idxs.add(
+                (node.task_idx, node.operation.type)
+            )
+    if node.is_ready:
+        heapq.heappush(
+            actor_to_candidates[node.actor_handle._actor_id],
+            node,
+        )
+
+
 def _select_next_nodes(
     actor_to_candidates: Dict["ray._raylet.ActorID", List[_DAGOperationGraphNode]],
     graph: Dict[int, Dict[_DAGNodeOperationType, _DAGOperationGraphNode]],
@@ -233,28 +252,6 @@ def _select_next_nodes(
         A list of _DAGOperationGraphNodes to be placed into the corresponding
         execution schedules.
     """
-    # If a node is a NCCL collective node, it updates the `ready_collective_nodes`
-    # of all the nodes in its collective operation. It is removed from the candidate
-    # list if the collective operation is not ready.
-    for actor, candidates in actor_to_candidates.items():
-        ready_candidates: List[_DAGOperationGraphNode] = []
-        for node in candidates:
-            if node.is_nccl_collective:
-                for collective_node_metadata in node.collective_idxs:
-                    task_idx, op_type = collective_node_metadata
-                    collective_node = graph[task_idx][op_type]
-                    collective_node.ready_collective_idxs.add(
-                        (node.task_idx, node.operation.type)
-                    )
-            if node.is_ready:
-                # There is only one NCCL collective node in the collective operation
-                # that is added to the ready candidates. The collective operation is
-                # ready when all the nodes have zero in-degrees. Except for the last
-                # node, all the other nodes are not ready yet. When the last node is
-                # selected, all the nodes in the collective operation are returned.
-                heapq.heappush(ready_candidates, node)
-        actor_to_candidates[actor] = ready_candidates
-
     top_priority_node = None
     for _, candidates in actor_to_candidates.items():
         if len(candidates) == 0:
@@ -434,7 +431,7 @@ def _generate_actor_to_execution_schedule(
             # have been satisfied, including both data and control dependencies.
             # Therefore, it is a candidate for execution.
             if node.in_degree == 0:
-                heapq.heappush(actor_to_candidates[node.actor_handle._actor_id], node)
+                _update_candidate_nodes(actor_to_candidates, graph, node)
 
     visited_nodes = set()
 
@@ -464,12 +461,10 @@ def _generate_actor_to_execution_schedule(
                 out_node = graph[out_node_task_idx][out_node_type]
                 out_node.in_edges.remove((node.task_idx, node.operation.type))
                 if out_node.in_degree == 0 and out_node not in visited_nodes:
-                    # If the downstream node is already visited, it has been added to
-                    # the execution schedule. They are the NCCL read nodes in case 2.
-                    heapq.heappush(
-                        actor_to_candidates[out_node.actor_handle._actor_id],
-                        out_node,
-                    )
+                    # If the downstream node is already visited, it has been added
+                    # to the execution schedule. They are the NCCL read nodes in
+                    # case 2.
+                    _update_candidate_nodes(actor_to_candidates, graph, out_node)
     assert len(visited_nodes) == len(graph) * 3, "Expected all nodes to be visited"
     for node in visited_nodes:
         assert node.is_ready, f"Expected {node} to be ready"

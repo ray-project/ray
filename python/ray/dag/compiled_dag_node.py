@@ -1520,7 +1520,7 @@ class CompiledDAG:
         for collective_op, nodes in collective_op_to_nodes.items():
             idxs = collective_op_to_idxs[collective_op]
             for node in nodes:
-                node.set_collective_idxs(idxs)
+                node.collective_idxs = idxs
 
         return actor_to_operation_nodes
 
