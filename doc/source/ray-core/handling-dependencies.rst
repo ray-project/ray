@@ -327,7 +327,7 @@ To ensure your local changes show up across all Ray workers and can be imported 
       # No need to import my_module inside this function.
       my_module.test()
 
-  ray.get(f.remote())
+  ray.get(test_my_module.remote())
 
 .. _runtime-environments-api-ref:
 
