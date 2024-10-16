@@ -24,8 +24,8 @@ For a quick demo, you can run Prometheus locally on your machine. Follow the qui
 
 ```{admonition} Note
 :class: note
-If you need to change the root temporary directory by using "--temp-dir" in your Ray 
-cluster setup, follow these [manual steps](#optional-manual-running-prometheus-locally) to set up Prometheus locally.
+If you need to change the root temporary directory by using "--temp-dir" in your ray 
+cluster setup, please follow the [manual steps](#optional-manual-running-prometheus-locally) to setup Prometheus locally.
 ```
 
 Run the following command to download and start Prometheus locally with a configuration that scrapes metrics from a local Ray Cluster.
@@ -82,7 +82,7 @@ tar xvfz prometheus-*.tar.gz
 cd prometheus-*
 ```
 
-Ray provides a Prometheus config that works out of the box. After running Ray, you can find the config at `/tmp/ray/session_latest/metrics/prometheus/prometheus.yml`. If you specify the `--temp-dir={your_temp_path}` when starting the Ray cluster, the config file is at `{your_temp_path}/session_latest/metrics/prometheus/prometheus.yml`
+Ray provides a Prometheus config that works out of the box. After running Ray, you can find the config at `/tmp/ray/session_latest/metrics/prometheus/prometheus.yml`. If you specify the `--temp-dir={your_temp_path}` when starting the ray cluster, the config file will be at `{yout_temp_path}/session_latest/metrics/prometheus/prometheus.yml`
 
 ```yaml
 global:
