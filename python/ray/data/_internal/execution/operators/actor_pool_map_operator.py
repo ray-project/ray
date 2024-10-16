@@ -540,7 +540,8 @@ class _ActorPool(AutoscalingActorPool):
     def mark_actor_as_alive(self, actor: ray.actor.ActorHandle):
         """Mark the running actor as alive.
 
-        Args: The running actor to be marked as alive.
+        Args: 
+            actor: The running actor to be marked as alive.
         """
         assert actor in self._running_actors
         self._running_actors[actor].is_restarting = False
