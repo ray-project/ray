@@ -11,15 +11,10 @@ yq
 types-pycurl==7.45.3.20240421
 types-requests==2.31.0.6
 
-
-# Python > 3.8 dependencies
-flake8==7.1.1; python_version > '3.8'
-flake8-comprehensions==3.15.0; python_version > '3.8'
-flake8-quotes==3.4.0; python_version > '3.8'
-flake8-bugbear==24.8.19; python_version > '3.8'
-
 # Python 3.8 dependencies
 flake8==3.9.1; python_version <= '3.8'
 flake8-comprehensions==3.10.1; python_version <= '3.8'
 flake8-quotes==2.0.0; python_version <= '3.8'
 flake8-bugbear==21.9.2; python_version <= '3.8'
+mccabe==0.6.1; python_version <= '3.8'
+pyflakes==2.3.1; python_version <= '3.8'
