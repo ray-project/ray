@@ -39,10 +39,6 @@ DEFINE_stats(worker_register_time_ms,
 
 namespace {
 
-// Add this prefix because the worker setup token is just a counter which is easy to
-// duplicate with other ids.
-const std::string kWorkerSetupTokenPrefix = "worker_startup_token:";
-
 // A helper function to get a worker from a list.
 std::shared_ptr<ray::raylet::WorkerInterface> GetWorker(
     const std::unordered_set<std::shared_ptr<ray::raylet::WorkerInterface>> &worker_pool,
