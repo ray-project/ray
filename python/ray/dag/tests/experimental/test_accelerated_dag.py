@@ -977,6 +977,93 @@ class TestMultiArgs:
         compiled_dag.teardown()
 
 
+class TestListArgs:
+    def test_one_dag_node_list_arg(self, ray_start_regular):
+        a1 = Actor.remote(0)
+        a2 = Actor.remote(0)
+
+        with InputNode() as inp:
+            dag = a1.inc.bind(inp)
+            dag = a2.echo.bind([dag])
+        compiled_dag = dag.experimental_compile()
+
+        ref = compiled_dag.execute(1)
+        result = ray.get(ref)
+        assert result == [1]
+        compiled_dag.teardown()
+
+    def test_two_dag_nodes_list_arg(self, ray_start_regular):
+        a1 = Actor.remote(0)
+        a2 = Actor.remote(0)
+        a3 = Actor.remote(0)
+
+        with InputNode() as inp:
+            dag = a3.echo.bind([a1.inc.bind(inp), a2.inc.bind(inp)])
+        compiled_dag = dag.experimental_compile()
+
+        ref = compiled_dag.execute(1)
+        result = ray.get(ref)
+        assert result == [1, 1]
+        compiled_dag.teardown()
+
+    def test_partial_dag_nodes_list_arg(self, ray_start_regular):
+        a1 = Actor.remote(0)
+        a2 = Actor.remote(0)
+
+        with InputNode() as inp:
+            dag = a2.echo.bind([a1.inc.bind(inp), 0])
+        compiled_dag = dag.experimental_compile()
+
+        ref = compiled_dag.execute(1)
+        result = ray.get(ref)
+        assert result == [1, 0]
+        compiled_dag.teardown()
+
+    def test_no_dag_node_list_arg(self, ray_start_regular):
+        a = Actor.remote(0)
+        c = Collector.remote()
+
+        with InputNode() as inp:
+            dag = a.inc.bind(inp)
+            dag = c.collect_two.bind(dag, [0, 1, 2])
+        compiled_dag = dag.experimental_compile()
+
+        ref = compiled_dag.execute(1)
+        result = ray.get(ref)
+        assert result == [1, [0, 1, 2]]
+        compiled_dag.teardown()
+
+    def test_input_node_list_arg(self, ray_start_regular):
+        a = Actor.remote(0)
+
+        with InputNode() as inp:
+            dag = a.echo.bind([inp])
+        compiled_dag = dag.experimental_compile()
+        ref = compiled_dag.execute(1)
+        result = ray.get(ref)
+        assert result == [1]
+        compiled_dag.teardown()
+
+    def test_simulate_multi_modal(self, ray_start_regular):
+        wg1 = [Actor.remote(0) for _ in range(2)]
+        wg2 = [Actor.remote(0) for _ in range(2)]
+
+        with InputNode() as input_node:
+            logits_1 = [worker.echo.bind(input_node) for worker in wg1]
+            logits_2 = [worker.echo.bind(input_node) for worker in wg2]
+
+            logits = logits_1 + logits_2
+
+            outputs_1 = [worker.echo.bind(logits) for worker in wg1]
+            outputs_2 = [worker.echo.bind(logits) for worker in wg2]
+            dag = MultiOutputNode(outputs_1 + outputs_2)
+
+        compiled_dag = dag.experimental_compile()
+        ref = compiled_dag.execute(1)
+        result = ray.get(ref)
+        assert result == [[1] * 4 for _ in range(4)]
+
+
 @pytest.mark.parametrize("num_actors", [1, 4])
 @pytest.mark.parametrize("single_fetch", [True, False])
 def test_scatter_gather_dag(ray_start_regular, num_actors, single_fetch):
