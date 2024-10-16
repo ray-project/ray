@@ -14,7 +14,7 @@ from ray._private.test_utils import (
     async_wait_for_condition,
     wait_for_condition,
 )
-from ray.serve._private.test_utils import send_signal_on_cancellation
+from ray.serve._private.test_utils import send_signal_on_cancellation, tlog
 
 
 @pytest.mark.parametrize("use_fastapi", [False, True])
@@ -363,6 +363,89 @@ def test_out_of_band_task_is_not_cancelled(serve_instance):
     # cancelled.
     ray.get(signal_actor.send.remote())
     assert h.get_out_of_band_response.remote().result() == "ok"
+
+
+def test_recursive_cancellation_during_execution(serve_instance):
+    inner_signal_actor = SignalActor.remote()
+    outer_signal_actor = SignalActor.remote()
+
+    @serve.deployment
+    async def inner():
+        await send_signal_on_cancellation(inner_signal_actor)
+
+    @serve.deployment
+    class Ingress:
+        def __init__(self, handle):
+            self._handle = handle
+
+        async def __call__(self):
+            _ = self._handle.remote()
+            await send_signal_on_cancellation(outer_signal_actor)
+
+    h = serve.run(Ingress.bind(inner.bind()))
+
+    resp = h.remote()
+    with pytest.raises(TimeoutError):
+        resp.result(timeout_s=0.1)
+
+    resp.cancel()
+    ray.get(inner_signal_actor.wait.remote(), timeout=10)
+    ray.get(outer_signal_actor.wait.remote(), timeout=10)
+
+
+def test_recursive_cancellation_during_assignment(serve_instance):
+    signal = SignalActor.remote()
+    outer_signal_actor = SignalActor.remote()
+
+    @serve.deployment(max_ongoing_requests=1)
+    class Counter:
+        def __init__(self):
+            self._count = 0
+
+        async def __call__(self):
+            self._count += 1
+            await signal.wait.remote()
+
+        def get_count(self):
+            return self._count
+
+    @serve.deployment
+    class Ingress:
+        def __init__(self, handle):
+            self._handle = handle
+
+        async def __call__(self):
+            self._handle.remote()
+            await send_signal_on_cancellation(outer_signal_actor)
+
+        async def get_count(self):
+            return await self._handle.get_count.remote()
+
+    h = serve.run(Ingress.bind(Counter.bind()))
+
+    resp1 = h.remote()
+    # wait_for_condition()
+    with pytest.raises(TimeoutError):
+        resp1.result(timeout_s=0.1)
+
+    resp2 = h.remote()
+    with pytest.raises(TimeoutError):
+        resp2.result(timeout_s=0.1)
+
+    # Cancel second request, which should be blocked at Ingress because
+    # max ongoing requests for Counter is only 1
+    tlog("Canceling second request.")
+    resp2.cancel()
+    # The outer signal actor should have been triggered from cancelling
+    ray.get(outer_signal_actor.wait.remote(), timeout=10)
+    # Cancel first request so it doesn't block shutdown process.
+    resp1.cancel()
+
+    # Release signal
+    tlog("Releasing signal.")
+    ray.get(signal.send.remote())
+    for _ in range(10):
+        assert h.get_count.remote().result() == 1
 
 
 if __name__ == "__main__":
