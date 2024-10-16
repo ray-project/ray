@@ -4,7 +4,7 @@ import threading
 
 import pytest
 
-from ray import cloudpickle
+from ray import ActorID, cloudpickle
 from ray._private.test_utils import wait_for_condition
 from ray.anyscale.serve._private.replica_result import gRPCReplicaResult
 from ray.serve.generated import serve_proprietary_pb2
@@ -82,6 +82,7 @@ class TestSameLoop:
 
         return gRPCReplicaResult(
             fake_call,
+            actor_id=ActorID(b"2" * 16),
             is_streaming=False,
             loop=asyncio.get_running_loop(),
             on_separate_loop=False,
@@ -124,7 +125,11 @@ class TestSeparateLoop:
     async def make_fake_unary_request(self, data, loop: asyncio.AbstractEventLoop):
         fake_call = FakegRPCUnaryCall(data)
         replica_result = gRPCReplicaResult(
-            fake_call, is_streaming=False, loop=loop, on_separate_loop=True
+            fake_call,
+            actor_id=ActorID(b"2" * 16),
+            is_streaming=False,
+            loop=loop,
+            on_separate_loop=True,
         )
         return replica_result
 
@@ -144,6 +149,7 @@ class TestSeparateLoop:
             fake_call = FakegRPCStreamCall([(d, False) for d in data], event=event)
         return gRPCReplicaResult(
             fake_call,
+            actor_id=ActorID(b"2" * 16),
             is_streaming=is_streaming,
             loop=loop,
             on_separate_loop=on_separate_loop,

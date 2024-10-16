@@ -7,6 +7,7 @@ import grpc
 import ray
 from ray import cloudpickle
 from ray.anyscale.serve._private.replica_result import gRPCReplicaResult
+from ray.exceptions import ActorUnavailableError
 from ray.serve._private.common import ReplicaQueueLengthInfo, RunningReplicaInfo
 from ray.serve._private.replica_result import ReplicaResult
 from ray.serve._private.replica_scheduler.common import PendingRequest
@@ -60,6 +61,7 @@ class gRPCReplicaWrapper(ReplicaWrapper):
     def send_request(self, pr: PendingRequest) -> ReplicaResult:
         return gRPCReplicaResult(
             self._send_request_python(pr, with_rejection=False),
+            actor_id=self._actor_handle._actor_id,
             is_streaming=pr.metadata.is_streaming,
             loop=self._loop,
             on_separate_loop=True,
@@ -80,6 +82,7 @@ class gRPCReplicaWrapper(ReplicaWrapper):
             else:
                 replica_result = gRPCReplicaResult(
                     call,
+                    actor_id=self._actor_handle._actor_id,
                     is_streaming=pr.metadata.is_streaming,
                     loop=self._loop,
                     on_separate_loop=True,
@@ -89,3 +92,20 @@ class gRPCReplicaWrapper(ReplicaWrapper):
             # HTTP client disconnected or request was explicitly canceled.
             call.cancel()
             raise e from None
+        except grpc.aio.AioRpcError as e:
+            # If we received an `UNAVAILABLE` grpc error, that is
+            # equivalent to `RayActorError`, although we don't know
+            # whether it's `ActorDiedError` or `ActorUnavailableError`.
+            # Conservatively, we assume it is `ActorUnavailableError`,
+            # and we raise it here so that it goes through the unified
+            # code path for handling RayActorErrors.
+            # The router will retry scheduling the request with the
+            # cache invalidated, at which point if the actor is actually
+            # dead, the router will realize through active probing.
+            if e.code() == grpc.StatusCode.UNAVAILABLE:
+                raise ActorUnavailableError(
+                    "Actor is unavailable.",
+                    self._actor_handle._actor_id.binary(),
+                )
+
+            raise

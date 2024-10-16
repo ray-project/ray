@@ -456,6 +456,8 @@ py_test_module_list(
         "test_autoscaling_policy.py",
         "test_handle_streaming.py",
         "test_runtime_env_2.py",
+        "test_failure.py",
+        "test_gcs_failure.py",
     ],
     name_suffix = "_with_grpc",
     tags = [

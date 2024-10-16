@@ -10,7 +10,7 @@ import grpc
 
 import ray
 from ray import cloudpickle
-from ray.exceptions import RayTaskError
+from ray.exceptions import ActorUnavailableError, RayTaskError
 from ray.serve._private.constants import SERVE_LOGGER_NAME
 from ray.serve._private.http_util import MessageQueue
 from ray.serve._private.replica_result import ReplicaResult
@@ -31,11 +31,13 @@ class gRPCReplicaResult(ReplicaResult):
     def __init__(
         self,
         call: grpc.aio.Call,
+        actor_id: ray.ActorID,
         is_streaming: bool,
         loop: asyncio.AbstractEventLoop,
         on_separate_loop: bool,
     ):
         self._call: grpc.aio.Call = call
+        self._actor_id: ray.ActorID = actor_id
         self._result_queue: MessageQueue = MessageQueue()
         # This is the asyncio event loop that the gRPC Call object is attached to
         self._grpc_call_loop = loop
@@ -83,14 +85,30 @@ class gRPCReplicaResult(ReplicaResult):
                     return cloudpickle.loads(grpc_response.serialized_message)
 
         @wraps(f)
-        def wrapper(*args, **kwargs):
-            grpc_response: serve_proprietary_pb2.ASGIResponse = f(*args, **kwargs)
-            return deserialize_or_raise_error(grpc_response)
+        def wrapper(self, *args, **kwargs):
+            try:
+                grpc_response = f(self, *args, **kwargs)
+                return deserialize_or_raise_error(grpc_response)
+            except grpc.aio.AioRpcError as e:
+                if e.code() == grpc.StatusCode.UNAVAILABLE:
+                    raise ActorUnavailableError(
+                        "Actor is unavailable.",
+                        self._actor_id.binary(),
+                    )
+                raise
 
         @wraps(f)
-        async def async_wrapper(*args, **kwargs):
-            grpc_response: serve_proprietary_pb2.ASGIResponse = await f(*args, **kwargs)
-            return deserialize_or_raise_error(grpc_response)
+        async def async_wrapper(self, *args, **kwargs):
+            try:
+                grpc_response = await f(self, *args, **kwargs)
+                return deserialize_or_raise_error(grpc_response)
+            except grpc.aio.AioRpcError as e:
+                if e.code() == grpc.StatusCode.UNAVAILABLE:
+                    raise ActorUnavailableError(
+                        "Actor is unavailable.",
+                        self._actor_id.binary(),
+                    )
+                raise
 
         if inspect.iscoroutinefunction(f):
             return async_wrapper
