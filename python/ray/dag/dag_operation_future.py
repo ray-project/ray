@@ -42,7 +42,7 @@ class ResolvedFuture(DAGOperationFuture):
 
 
 @DeveloperAPI
-class _GPUFuture(DAGOperationFuture["torch.Tensor"]):
+class GPUFuture(DAGOperationFuture["torch.Tensor"]):
     """
     A future that represents a GPU operation.
     """

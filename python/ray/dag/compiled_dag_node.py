@@ -9,7 +9,7 @@ import time
 import uuid
 import traceback
 
-from ray.dag.dag_operation_future import _GPUFuture, DAGOperationFuture, ResolvedFuture
+from ray.dag.dag_operation_future import GPUFuture, DAGOperationFuture, ResolvedFuture
 from ray.experimental.channel.cached_channel import CachedChannel
 from ray.experimental.channel.gpu_communicator import GPUCommunicator
 import ray
@@ -450,7 +450,7 @@ class ExecutableTask:
         import cupy as cp
 
         if wrap_in_gpu_future:
-            future = _GPUFuture(val, cp.cuda.get_current_stream())
+            future = GPUFuture(val, cp.cuda.get_current_stream())
         else:
             future = ResolvedFuture(val)
         self._intermediate_future = future
