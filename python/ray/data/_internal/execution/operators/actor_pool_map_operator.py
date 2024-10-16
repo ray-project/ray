@@ -481,8 +481,7 @@ class _ActorPool(AutoscalingActorPool):
 
     def num_restarting_actors(self) -> int:
         return sum(
-            1 if running_actor_state.is_restarting is True else 0
-            for running_actor_state in self._running_actors.values()
+            running_actor_state.is_restarting for running_actor_state in self._running_actors.values()
         )
 
     def num_active_actors(self) -> int:
