@@ -531,7 +531,8 @@ class _ActorPool(AutoscalingActorPool):
     def mark_running_actor_as_restarting(self, actor: ray.actor.ActorHandle):
         """Mark the running actor as restarting.
 
-        Args: The running actor to be marked as restarting.
+        Args: 
+            actor: The running actor to be marked as restarting.
         """
         assert actor in self._running_actors
         self._running_actors[actor].is_restarting = True
