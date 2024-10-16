@@ -4,12 +4,10 @@ import numpy as np
 from typing import Any, Dict, List, Optional, Union, Tuple, TYPE_CHECKING
 
 import ray
-from ray.rllib.core import DEFAULT_MODULE_ID
 from ray.rllib.core.columns import Columns
 from ray.rllib.core.rl_module.multi_rl_module import MultiRLModuleSpec
 from ray.rllib.env.single_agent_episode import SingleAgentEpisode
 from ray.rllib.policy.sample_batch import MultiAgentBatch, SampleBatch
-from ray.rllib.utils import try_import_torch
 from ray.rllib.utils.annotations import (
     ExperimentalAPI,
     OverrideToImplementCustomLogic,
@@ -94,9 +92,12 @@ class OfflinePreLearner:
         self._module = module_spec.build()
         self._module.set_state(module_state)
         # Map the module to the device, if necessary.
-        logger.debug(f"===> [OfflinePreLearner] - Placement group resources: {placement_group_table(ray.util.get_current_placement_group())}")
+        logger.debug(
+            "===> [OfflinePreLearner] - Placement group resources: "
+            f"{placement_group_table(ray.util.get_current_placement_group())}"
+        )
         self._map_module_to_device()
-        
+
         # Store the observation and action space if defined, otherwise we
         # set them to `None`. Note, if `None` the `convert_from_jsonable`
         # will not convert the input space samples.
@@ -263,11 +264,12 @@ class OfflinePreLearner:
 
     def _map_module_to_device(self) -> None:
         """Maps module to device, if necessary.
-        
+
         Only, if the device is non-CPU the module is mapped to the device.
         """
         from ray.rllib.utils.framework import try_import_torch
         from ray.air._internal.torch_utils import get_devices
+
         _, nn = try_import_torch()
 
         # Recevie a list of available devices.
@@ -276,7 +278,9 @@ class OfflinePreLearner:
         # Assign devices randomly to balance loads.
         # TODO (simon, sven): Optimize load balancing.
         self._device = devices[np.random.randint(0, len(devices))]
-        logger.debug(f"===> [OfflinePreLearner] - Module is mapped to device: {self._device}")
+        logger.debug(
+            f"===> [OfflinePreLearner] - Module is mapped to device: {self._device}"
+        )
         # If on CPU, the module is already on the correct device.
         if self._device == "cpu":
             return

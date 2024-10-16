@@ -96,7 +96,10 @@ class OfflineData:
             if self.materialize_data:
                 self.data = self.data.materialize()
             stop_time = time.perf_counter()
-            logger.debug(f"===> [OfflineData] - Time for loading dataset: {stop_time - start_time}s.")
+            logger.debug(
+                "===> [OfflineData] - Time for loading dataset: "
+                f"{stop_time - start_time}s."
+            )
             logger.info(f"===> [OfflineData] - Reading data from path: {self.path}")
             logger.info(f"===> [OfflineData] - Dataset schema: {self.data.schema()}")
         except Exception as e:
@@ -114,7 +117,7 @@ class OfflineData:
         # For remote learner setups.
         self.locality_hints = None
         self.learner_handles = None
-        # The `module_spec` is needed to build a learner module inside of the 
+        # The `module_spec` is needed to build a learner module inside of the
         # `OfflinePreLearner`.
         self.module_spec = None
 
@@ -158,8 +161,13 @@ class OfflineData:
             }
 
             # For debugging show available resources.
-            logger.debug(f"===> [OfflineData] - Available resources: {ray.available_resources()}")
-            logger.debug(f"===> [OfflineData] - Placement group resources: {placement_group_table(ray.util.get_current_placement_group())}")
+            logger.debug(
+                f"===> [OfflineData] - Available resources: {ray.available_resources()}"
+            )
+            logger.debug(
+                "===> [OfflineData] - Placement group resources: "
+                f"{placement_group_table(ray.util.get_current_placement_group())}"
+            )
 
             self.data = self.data.map_batches(
                 self.prelearner_class,
@@ -230,13 +238,13 @@ class OfflineData:
 
     def _set_schedule_strategy(self) -> None:
         """Sets the scheduling strategy for `ray.data`.
-        
+
         If in a `ray.tune` session, use the current placement group resources instead
         of scheduling any tasks or actors outside of it. This is needed as otherwise
         `ray.data` and `ray.tune` will compete endlessly for resources and the program
         stalls.
         """
-        
+
         # If main process is a remote worker (WORKER_MODE=1) resources must
         # be assigned by ray.
         if ray._private.worker._mode() == ray._private.worker.WORKER_MODE:
@@ -273,7 +281,6 @@ class OfflineData:
             or (self.config.train_batch_size // max(1, self.config.num_learners)) * 4,
         }
 
-
     @classmethod
     def default_resource_request(cls, config: AlgorithmConfig) -> List[Dict[str, Any]]:
         """Defines default resource request for the `OfflineData` and `OfflinePreLearner`
@@ -286,7 +293,7 @@ class OfflineData:
         Returns: A resource bundle defined as a list of a dictionary defining the
             resources to be requested.
         """
-        
+
         input_read_resource_bundle = {}
         map_batches_resource_bundle = {}
         # Reserve resources for the read task.
@@ -300,16 +307,22 @@ class OfflineData:
                 input_read_resource_bundle["memory"] = ray_remote_args["memory"]
             if "resources" in ray_remote_args:
                 input_read_resource_bundle["resources"] = ray_remote_args["resources"]
-        
-        # If not explicitly requested, we reserve at least 1 CPU per worker in the read task.
-        if "CPU" not in input_read_resource_bundle or input_read_resource_bundle["CPU"] == 0:
+
+        # If not explicitly requested, we reserve at least 1 CPU per worker in the read
+        # task.
+        if (
+            "CPU" not in input_read_resource_bundle
+            or input_read_resource_bundle["CPU"] == 0
+        ):
             input_read_resource_bundle["CPU"] = 1
 
         # Define concurrency for the read task.
-        read_concurrency = config.input_read_method_kwargs.get("concurrency", max(2, config.num_learners // 2))
-         # If a pool is used, try to reserve the maximum number of bundles.
+        read_concurrency = config.input_read_method_kwargs.get(
+            "concurrency", max(2, config.num_learners // 2)
+        )
+        # If a pool is used, try to reserve the maximum number of bundles.
         if isinstance(read_concurrency, tuple):
-                read_concurrency = read_concurrency[1]
+            read_concurrency = read_concurrency[1]
 
         # Reserve resources for the map task.
         if "ray_remote_args" in config.map_batches_kwargs:
@@ -325,20 +338,32 @@ class OfflineData:
 
         # Override, if arguments are set. Note, `ray.data` does override, too.
         if "num_gpus" in config.map_batches_kwargs:
-            map_batches_resource_bundle["GPU"] = config.map_batches_kwargs["num_gpus"] or 0
+            map_batches_resource_bundle["GPU"] = (
+                config.map_batches_kwargs["num_gpus"] or 0
+            )
         if "num_cpus" in config.map_batches_kwargs:
-            map_batches_resource_bundle["CPU"] = config.map_batches_kwargs["num_cpus"] or 0
+            map_batches_resource_bundle["CPU"] = (
+                config.map_batches_kwargs["num_cpus"] or 0
+            )
 
         # Only set default for CPUs, if not given and no GPU training.
-        if "CPU" not in map_batches_resource_bundle or map_batches_resource_bundle["CPU"] == 0:
+        if (
+            "CPU" not in map_batches_resource_bundle
+            or map_batches_resource_bundle["CPU"] == 0
+        ):
             map_batches_resource_bundle["CPU"] = 1
-        
+
         # Assign concurrency for map task. If not given assign by number of learners.
-        map_concurrency = config.map_batches_kwargs.get("concurrency", max(2, config.num_learners // 2))
+        map_concurrency = config.map_batches_kwargs.get(
+            "concurrency", max(2, config.num_learners // 2)
+        )
         # If a pool is used, try to reserve the maximum number of bundles.
         if isinstance(map_concurrency, tuple):
             map_concurrency = map_concurrency[1]
 
-        # Multiply by concurrency and return. Note, in case of multiple learners, the `streaming_split` 
-        # is used and needs an additional `CoordinatorActor`. We account for these resources, too.
-        return read_concurrency * [input_read_resource_bundle] + (map_concurrency + int(config.num_learners > 1)) * (max(1, config.num_learners)) * [map_batches_resource_bundle]
+        # Multiply by concurrency and return. Note, in case of multiple learners, the
+        # `streaming_split` is used and needs an additional `CoordinatorActor`. We
+        # account for these resources, too.
+        return read_concurrency * [input_read_resource_bundle] + (
+            map_concurrency + int(config.num_learners > 1)
+        ) * (max(1, config.num_learners)) * [map_batches_resource_bundle]
