@@ -256,8 +256,8 @@ class _ExecutableTaskInput:
 
     def __init__(
         self,
-        input_variant: Union[ChannelInterface, Any],
-        channel_idx: Optional[int],
+        input_variant: Union[ChannelInterface, List, Any],
+        channel_idx: Union[Optional[int], List[Optional[int]]],
     ):
         self.input_variant = input_variant
         self.channel_idx = channel_idx
@@ -272,6 +272,14 @@ class _ExecutableTaskInput:
 
         if isinstance(self.input_variant, ChannelInterface):
             value = channel_results[self.channel_idx]
+        elif isinstance(self.input_variant, list):
+            assert len(self.input_variant) == len(self.channel_idx)
+            value = []
+            for idx, val in enumerate(self.input_variant):
+                if self.channel_idx[idx] is not None:
+                    value.append(channel_results[idx])
+                else:
+                    value.append(val)
         else:
             value = self.input_variant
         return value
@@ -318,7 +326,14 @@ class ExecutableTask:
         # its index in input_channels.
         input_channel_to_idx: dict[ChannelInterface, int] = {}
 
-        print("resolved_args", resolved_args, "method_name", self.method_name, "bind_index", self.bind_index)
+        print(
+            "resolved_args",
+            resolved_args,
+            "method_name",
+            self.method_name,
+            "bind_index",
+            self.bind_index,
+        )
         for arg in resolved_args:
             if isinstance(arg, ChannelInterface):
                 channel = arg
@@ -333,6 +348,25 @@ class ExecutableTask:
                     input_channel_to_idx[channel] = channel_idx
 
                 task_input = _ExecutableTaskInput(arg, channel_idx)
+            elif isinstance(arg, list):
+                # Handle the case where the argument is a list of channels.
+                channel_idx_list = []
+                for item in arg:
+                    if isinstance(item, ChannelInterface):
+                        channel = item
+
+                        if channel in input_channel_to_idx:
+                            # The same channel was added before, so reuse the index.
+                            channel_idx = input_channel_to_idx[channel]
+                        else:
+                            # Add a new channel to the list of input channels.
+                            self.input_channels.append(channel)
+                            channel_idx = len(self.input_channels) - 1
+                            input_channel_to_idx[channel] = channel_idx
+                        channel_idx_list.append(channel_idx)
+                    else:
+                        channel_idx_list.append(None)
+                task_input = _ExecutableTaskInput(arg, channel_idx_list)
             else:
                 task_input = _ExecutableTaskInput(arg, None)
             self.task_inputs.append(task_input)
