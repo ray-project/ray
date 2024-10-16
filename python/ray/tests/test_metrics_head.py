@@ -40,7 +40,8 @@ def test_metrics_folder_and_content(is_temp_dir_set, temp_dir_val):
         with open(
             f"{session_dir}/metrics/grafana/provisioning/dashboards/default.yml", "r"
         ) as f:
-            assert f"path: {session_dir}/metrics/grafana/dashboards" in f.read()
+            target_path = os.path.join(session_dir, "metrics", "grafana", "dashboards")
+            assert f"path: {target_path}" in f.read()
 
         assert os.path.exists(
             f"{session_dir}/metrics/grafana/dashboards"
@@ -52,14 +53,14 @@ def test_metrics_folder_and_content(is_temp_dir_set, temp_dir_val):
 
         assert os.path.exists(f"{session_dir}/metrics/grafana/grafana.ini")
         with open(f"{session_dir}/metrics/grafana/grafana.ini", "r") as f:
-            assert (
-                "provisioning = "
-                f"{temp_dir}/{SESSION_LATEST}/metrics/grafana/provisioning" in f.read()
-            )
+            target_path = os.path.join(temp_dir, SESSION_LATEST, "metrics", "grafana", 
+                                       "provisioning")
+            assert (f"provisioning = {target_path}" in f.read())
 
         assert os.path.exists(f"{session_dir}/metrics/prometheus/prometheus.yml")
         with open(f"{session_dir}/metrics/prometheus/prometheus.yml", "r") as f:
-            assert f"- '{temp_dir}/prom_metrics_service_discovery.json'" in f.read()
+            target_path = os.path.join(temp_dir, "prom_metrics_service_discovery.json")
+            assert f"- '{target_path}'" in f.read()
 
 
 @pytest.fixture
