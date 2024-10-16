@@ -5,6 +5,7 @@ import ray
 from pathlib import Path
 
 from ray.rllib.algorithms.bc import BCConfig
+from ray.rllib.core import COMPONENT_RL_MODULE
 from ray.rllib.env.single_agent_episode import SingleAgentEpisode
 from ray.rllib.offline.offline_prelearner import OfflinePreLearner
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID, MultiAgentBatch
@@ -56,10 +57,17 @@ class TestOfflinePreLearner(unittest.TestCase):
 
         # Build the algorithm to get the learner.
         algo = config.build()
-        # Build the `OfflinePreLearner` and add the learner.
+
+        # Get the module spec and state.
+        module_spec = algo.offline_data.module_spec
+        module_state = algo.learner_group._learner.get_state(
+            component=COMPONENT_RL_MODULE
+        )[COMPONENT_RL_MODULE]
+        # Build the `OfflinePreLearner` and add the module spec and state.
         oplr = OfflinePreLearner(
             config,
-            learner=algo.offline_data.learner_handles[0],
+            module_spec=module_spec,
+            module_state=module_state,
         )
 
         # Ensure we have indeed a `PrioritizedEpisodeReplayBuffer` in the `PreLearner`
@@ -183,10 +191,16 @@ class TestOfflinePreLearner(unittest.TestCase):
 
         # Build the algorithm to get the learner.
         algo = config.build()
-        # Build the `OfflinePreLearner` and add the learner.
+        # Get the module spec and state.
+        module_spec = algo.offline_data.module_spec
+        module_state = algo.learner_group._learner.get_state(
+            component=COMPONENT_RL_MODULE
+        )[COMPONENT_RL_MODULE]
+        # Build the `OfflinePreLearner` and add the module spec and state.
         oplr = OfflinePreLearner(
             config,
-            learner=algo.offline_data.learner_handles[0],
+            module_spec=module_spec,
+            module_state=module_state,
         )
         # Now, pull a batch of defined size formt he dataset.
         batch = algo.offline_data.data.take_batch(config.train_batch_size_per_learner)
