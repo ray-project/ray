@@ -61,7 +61,7 @@ class TestSelectNextNodes:
     local_idx: The DAG node's index in the actor's `executable_tasks` list.
     """
 
-    def add_collective_group(
+    def add_collective_operation(
         self,
         mock_graph: Dict[int, Dict[_DAGNodeOperationType, _DAGOperationGraphNode]],
         dag_idxs: List[int],
@@ -70,9 +70,9 @@ class TestSelectNextNodes:
             (dag_idx, _DAGNodeOperationType.COMPUTE) for dag_idx in dag_idxs
         }
         for dag_idx in dag_idxs:
-            mock_graph[dag_idx][
-                _DAGNodeOperationType.COMPUTE
-            ].set_collective_group_idxs(collective_group)
+            mock_graph[dag_idx][_DAGNodeOperationType.COMPUTE].set_collective_idxs(
+                collective_group
+            )
 
     def test_two_candidates_on_same_actor(self, monkeypatch):
         """
@@ -246,9 +246,9 @@ class TestSelectNextNodes:
 
     def test_two_ready_nccl_collectives(self, monkeypatch):
         """
-        Simulate the case where the only candidates are NCCL collective
-        operations. In this case, `_select_next_nodes` should return all
-        NCCL collective operations of the earliest-bound collective group together.
+        Simulate the case where the only candidates are NCCL collective operations.
+        In this case, `_select_next_nodes` should return all NCCL collective nodes
+        of the earliest-bound collective operation together.
 
         driver -> fake_actor_1.allreduce_1 -> driver
                |                            |
@@ -300,9 +300,9 @@ class TestSelectNextNodes:
                 mock_graph[dag_idx_3][_DAGNodeOperationType.COMPUTE],
             ],
         }
-        # Embed collective group information in _DAGNodeOperation.
-        self.add_collective_group(mock_graph, [dag_idx_1, dag_idx_2])
-        self.add_collective_group(mock_graph, [dag_idx_3])
+        # Add collective operations in _DAGNodeOperation.
+        self.add_collective_operation(mock_graph, [dag_idx_1, dag_idx_2])
+        self.add_collective_operation(mock_graph, [dag_idx_3])
         next_nodes = _select_next_nodes(mock_actor_to_candidates, mock_graph)
         assert len(next_nodes) == 2
         assert set(next_nodes) == {
@@ -312,11 +312,11 @@ class TestSelectNextNodes:
         next_nodes = _select_next_nodes(mock_actor_to_candidates, mock_graph)
         assert next_nodes == [mock_graph[dag_idx_3][_DAGNodeOperationType.COMPUTE]]
 
-    def test_nccl_collectives_one_ready_group(self, monkeypatch):
+    def test_nccl_collectives_one_ready(self, monkeypatch):
         """
-        Simulate the case where the only candidates are NCCL collective
-        operations and there is only 1 collective group that is ready.
-        In this case, we should pick a group that is ready.
+        Simulate the case where the only candidates are NCCL collective operations
+        and there is only one collective operation that is ready. In this case, we
+        should pick a group that is ready.
 
         driver -> fake_actor_1.allreduce_1 -> fake_actor_1.allreduce_2 -> driver
                |                                                        |
@@ -336,10 +336,9 @@ class TestSelectNextNodes:
             allreduce_2 = collective.allreduce.bind([y, z])  # (5, 1) (6, 3)
 
         In the example above, there are 2 allreduce groups, with the first group
-        including fake_actor_1 and the second group including both actors.
-        The following test case simulates a scenario where the READ
-        operations for x and y have already been added to the
-        execution schedule.
+        including fake_actor_1 and the second group including both actors. The
+        following test case simulates a scenario where the READ operations for
+        x and y have already been added to the execution schedule.
         """
         monkeypatch.setattr(ActorHandle, "__init__", mock_actor_handle_init)
         fake_actor_1, dag_idx_1, local_idx_1 = ActorHandle("fake_actor_1"), 4, 2
@@ -379,9 +378,9 @@ class TestSelectNextNodes:
             fake_actor_1: [mock_graph[dag_idx_1][_DAGNodeOperationType.COMPUTE]],
             fake_actor_2: [mock_graph[dag_idx_2][_DAGNodeOperationType.COMPUTE]],
         }
-        # Embed collective group information in _DAGNodeOperation.
-        self.add_collective_group(mock_graph, [dag_idx_1])
-        self.add_collective_group(mock_graph, [dag_idx_2, dag_idx_3])
+        # Add collective operations in _DAGNodeOperation.
+        self.add_collective_operation(mock_graph, [dag_idx_1])
+        self.add_collective_operation(mock_graph, [dag_idx_2, dag_idx_3])
         next_nodes = _select_next_nodes(mock_actor_to_candidates, mock_graph)
         assert len(next_nodes) == 1
         assert next_nodes[0] == mock_graph[dag_idx_1][_DAGNodeOperationType.COMPUTE]

@@ -1140,7 +1140,7 @@ def test_torch_tensor_nccl_all_reduce_duplicate_actors(ray_start_regular):
         computes = [worker.compute_with_tuple_args.bind(inp, 0) for _ in range(2)]
         with pytest.raises(
             ValueError,
-            match="Expected unique actor handles for a collective group",
+            match="Expected unique actor handles for a collective operation",
         ):
             collective.allreduce.bind(computes)
 
@@ -1149,7 +1149,7 @@ def test_torch_tensor_nccl_all_reduce_duplicate_actors(ray_start_regular):
         computes = [compute for _ in range(2)]
         with pytest.raises(
             ValueError,
-            match="Expected unique input nodes for a collective group",
+            match="Expected unique input nodes for a collective operation",
         ):
             collective.allreduce.bind(computes)
 
@@ -1947,10 +1947,10 @@ def test_torch_tensor_nccl_all_reduce_scheduling(ray_start_regular):
 
 
 @pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
-def test_torch_tensor_nccl_all_reduce_scheduling_ready_group(ray_start_regular):
+def test_torch_tensor_nccl_all_reduce_scheduling_ready(ray_start_regular):
     """
-    Test scheduling picks the all-reduce group that is ready instead of the other
-    group that is not.
+    Test scheduling picks the all-reduce operation that is ready instead of
+    the other operation that is not.
     """
     if not USE_GPU:
         pytest.skip("NCCL tests require GPUs")
