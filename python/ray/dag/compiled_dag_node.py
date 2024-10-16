@@ -1177,11 +1177,12 @@ class CompiledDAG:
                     assert isinstance(reader_task.dag_node, ClassMethodNode)
                     reader_handle = reader_task.dag_node._get_actor_handle()
                     reader_node_id = self._get_node_id(reader_handle)
-                    for arg in reader_task.args:
-                        if isinstance(arg, InputAttributeNode) or isinstance(
-                            arg, InputNode
+                    for upstream_node in reader_task.dag_node._upstream_nodes:
+                        assert isinstance(upstream_node, DAGNode)
+                        if isinstance(upstream_node, InputAttributeNode) or isinstance(
+                            upstream_node, InputNode
                         ):
-                            input_node_to_reader_and_node_set[arg].add(
+                            input_node_to_reader_and_node_set[upstream_node].add(
                                 (reader_handle, reader_node_id)
                             )
 
