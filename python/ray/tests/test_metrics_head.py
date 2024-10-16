@@ -53,9 +53,10 @@ def test_metrics_folder_and_content(is_temp_dir_set, temp_dir_val):
 
         assert os.path.exists(f"{session_dir}/metrics/grafana/grafana.ini")
         with open(f"{session_dir}/metrics/grafana/grafana.ini", "r") as f:
-            target_path = os.path.join(temp_dir, SESSION_LATEST, "metrics", "grafana", 
-                                       "provisioning")
-            assert (f"provisioning = {target_path}" in f.read())
+            target_path = os.path.join(
+                temp_dir, SESSION_LATEST, "metrics", "grafana", "provisioning"
+            )
+            assert f"provisioning = {target_path}" in f.read()
 
         assert os.path.exists(f"{session_dir}/metrics/prometheus/prometheus.yml")
         with open(f"{session_dir}/metrics/prometheus/prometheus.yml", "r") as f:
