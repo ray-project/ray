@@ -1,0 +1,89 @@
+// Copyright 2024 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+syntax = "proto3";
+option cc_enable_arenas = true;
+
+package ray.rpc;
+
+message ExportTrainRunInfo {
+  // State of an train run.
+  enum RunStatus {
+    // The train run is running
+    RUNNING = 0;
+    // The train run was terminated as expected
+    FINISHED = 1;
+    // The train run was terminated early due to errors in the training function
+    ERRORED = 2;
+    // The train run was terminated early due to system errors or controller errors
+    ABORTED = 3;
+  }
+
+  // State of an actor.
+  enum ActorStatus {
+    DEAD = 0;
+    ALIVE = 1;
+  }
+
+  message TrainWorkerInfo {
+    // Actor ID of the worker.
+    string actor_id = 1;
+    // World rank of the worker.
+    uint32 world_rank = 2;
+    // Local rank of the worker.
+    uint32 local_rank = 3;
+    // Node rank of the worker.
+    uint32 node_rank = 4;
+    // ID of the node that the worker is running on.
+    string node_id = 5;
+    // IP address of the node that the worker is running on.
+    string node_ip = 6;
+    // Process ID of the worker.
+    uint32 pid = 7;
+    // A list of GPU ids allocated to that worker.
+    repeated uint32 gpu_ids = 8;
+    // The status of the train worker actor. It can be ALIVE or DEAD.
+    optional ActorStatus status = 9;
+  }
+
+  message TrainDatasetInfo {
+    // The key of the dataset dict specified in Ray Train Trainer.
+    string name = 1;
+    // The uuid of the dataset.
+    string dataset_uuid = 2;
+    // The name of the dataset.
+    optional string dataset_name = 3;
+  }
+
+  // The name of the Train run.
+  string name = 1;
+  // The unique identifier for each Train run.
+  string run_id = 2;
+  // The Ray Job ID.
+  string job_id = 3;
+  // Actor Id of the Train controller.
+  string controller_actor_id = 4;
+  // A List of Train workers sorted by global ranks.
+  repeated TrainWorkerInfo workers = 5;
+  // A List of dataset info for this Train run.
+  repeated TrainDatasetInfo datasets = 6;
+  // The current status of the train run.
+  RunStatus run_status = 7;
+  // Detailed information about the current run status, such as error messages.
+  string status_detail = 8;
+  // The UNIX timestamp of the start time of this Train run.
+  uint64 start_time_ms = 9;
+  // The UNIX timestamp of the end time of this Train run.
+  uint64 end_time_ms = 10; 
+}
