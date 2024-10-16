@@ -16,6 +16,7 @@
 
 #include <unordered_set>
 
+#include "absl/synchronization/mutex.h"
 #include "ray/common/ray_config.h"
 
 namespace ray {
@@ -23,32 +24,52 @@ namespace rpc {
 namespace testing {
 namespace {
 
+/*
+  RpcFailureManager is a simple chaos testing framework. Before starting ray, users
+  should set up os environment to use this feature for testing purposes.
+  To use this, simply do
+      export RAY_testing_rpc_failure="method1=3,method2=5"
+   Key is the RPC call name and value is the max number of failures to inject.
+*/
 class RpcFailureManager {
  public:
   RpcFailureManager() { Init(); }
 
   void Init() {
+    absl::MutexLock lock(&mu_);
+
     failable_methods_.clear();
 
     if (!RayConfig::instance().testing_rpc_failure().empty()) {
-      for (const auto &method :
+      for (const auto &item :
            absl::StrSplit(RayConfig::instance().testing_rpc_failure(), ",")) {
-        failable_methods_.emplace(method);
+        std::vector<std::string> parts = absl::StrSplit(item, "=");
+        RAY_CHECK_EQ(parts.size(), 2);
+        failable_methods_.emplace(parts[0], std::atoi(parts[1].c_str()));
       }
     }
   }
 
   RpcFailure GetRpcFailure(const std::string &name) {
+    absl::MutexLock lock(&mu_);
+
     if (failable_methods_.find(name) == failable_methods_.end()) {
+      return RpcFailure::None;
+    }
+
+    uint64_t &num_remaining_failures = failable_methods_.at(name);
+    if (num_remaining_failures == 0) {
       return RpcFailure::None;
     }
 
     int rand = std::rand() % 4;
     if (rand == 0) {
       // 25% chance
+      num_remaining_failures--;
       return RpcFailure::Request;
     } else if (rand == 1) {
       // 25% chance
+      num_remaining_failures--;
       return RpcFailure::Response;
     } else {
       // 50% chance
@@ -57,7 +78,9 @@ class RpcFailureManager {
   }
 
  private:
-  std::unordered_set<std::string> failable_methods_;
+  mutable absl::Mutex mu_;
+  // call name -> # remaining failures
+  std::unordered_map<std::string, uint64_t> failable_methods_ ABSL_GUARDED_BY(&mu_);
 };
 
 static RpcFailureManager _rpc_failure_manager;

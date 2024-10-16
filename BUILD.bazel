@@ -1554,6 +1554,19 @@ ray_cc_test(
 )
 
 ray_cc_test(
+    name = "rpc_chaos_test",
+    size = "small",
+    srcs = [
+        "src/ray/rpc/test/rpc_chaos_test.cc",
+    ],
+    tags = ["team:core"],
+    deps = [
+        ":grpc_common_lib",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+ray_cc_test(
     name = "core_worker_client_pool_test",
     size = "small",
     srcs = [

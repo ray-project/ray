@@ -836,7 +836,8 @@ RAY_CONFIG(std::string, REDIS_SERVER_NAME, "")
 RAY_CONFIG(std::string, testing_asio_delay_us, "")
 
 ///  To use this, simply do
-///      export RAY_testing_rpc_failure="method1,method2"
+///      export
+///      RAY_testing_rpc_failure="method1=max_num_failures,method2=max_num_failures"
 RAY_CONFIG(std::string, testing_rpc_failure, "")
 
 /// The following are configs for the health check. They are borrowed

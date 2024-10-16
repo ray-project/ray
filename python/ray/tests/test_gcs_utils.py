@@ -104,8 +104,8 @@ def test_kv_timeout(ray_start_regular):
 def test_kv_transient_network_error(shutdown_only, monkeypatch):
     monkeypatch.setenv(
         "RAY_testing_rpc_failure",
-        "ray::rpc::InternalKVGcsService.grpc_client.InternalKVGet,"
-        "ray::rpc::InternalKVGcsService.grpc_client.InternalKVPut",
+        "ray::rpc::InternalKVGcsService.grpc_client.InternalKVGet=5,"
+        "ray::rpc::InternalKVGcsService.grpc_client.InternalKVPut=5",
     )
     ray.init()
     seed = int(time.time())
