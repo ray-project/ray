@@ -47,6 +47,7 @@ from ray.serve._private.http_util import (
     ASGIReceiveProxy,
     MessageQueue,
     Response,
+    get_route_name,
 )
 from ray.serve._private.logging_utils import (
     access_log_msg,
@@ -344,11 +345,11 @@ class ReplicaActor:
         2) Records the access log message (if not disabled).
         3) Records per-request metrics via the metrics manager.
         """
-        # XXX: all checks needed?
-        if request_metadata.is_http_request and len(request_args) == 1 and isinstance(
-            request_args[0], StreamingHTTPRequest
-        ) and self._user_callable_asgi_app is not None:
-            scope = pickle.loads(request_args[0].pickled_asgi_scope)
+        if request_metadata.is_http_request and self._user_callable_asgi_app is not None:
+            assert len(request_args) == 1 and isinstance(
+                request_args[0], StreamingHTTPRequest
+            )
+            scope = request_args[0].asgi_scope
             # TODO: add the route prefix.
             route = get_route_name(self._user_callable_asgi_app, scope)
             print("CALCULATED ROUTE:", route)
@@ -941,6 +942,8 @@ class UserCallableWrapper:
             extra={"log_to_stderr": False},
         )
 
+        return self._callable.app if isinstance(self._callable, ASGIAppReplicaWrapper) else None
+
     @_run_on_user_code_event_loop
     async def _call_user_health_check(self):
         await self._call_func_or_gen(self._user_health_check)
@@ -1000,7 +1003,7 @@ class UserCallableWrapper:
 
         The returned `receive_task` should be cancelled when the user method exits.
         """
-        scope = pickle.loads(request.pickled_asgi_scope)
+        scope = request.asgi_scope
         receive = ASGIReceiveProxy(
             scope,
             request_metadata,

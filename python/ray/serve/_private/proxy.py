@@ -386,7 +386,7 @@ class GenericProxy(ABC):
             return ResponseHandlerInfo(
                 response_generator=self.not_found_response(proxy_request),
                 metadata=HandlerMetadata(
-                    route=proxy_request.route_path,
+                    route=None,
                 ),
                 should_record_access_log=True,
                 should_increment_ongoing_requests=False,
@@ -410,7 +410,7 @@ class GenericProxy(ABC):
             handle, request_id = self.setup_request_context_and_handle(
                 app_name=handle.deployment_id.app_name,
                 handle=handle,
-                route_path=route_path,
+                route_path=route_prefix,
                 proxy_request=proxy_request,
                 internal_request_id=internal_request_id,
             )
@@ -428,7 +428,7 @@ class GenericProxy(ABC):
                 metadata=HandlerMetadata(
                     application_name=handle.deployment_id.app_name,
                     deployment_name=handle.deployment_id.name,
-                    route=route_path,
+                    route=route_prefix,
                 ),
                 should_record_access_log=True,
                 should_increment_ongoing_requests=True,
@@ -476,6 +476,7 @@ class GenericProxy(ABC):
                 extra={"log_to_stderr": False, "serve_access_log": True},
             )
 
+        print("REQUEST COUNTER ROUTE:", response_handler_info.metadata.route)
         self.request_counter.inc(
             tags={
                 "route": response_handler_info.metadata.route,
