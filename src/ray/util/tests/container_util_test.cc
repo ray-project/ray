@@ -14,10 +14,12 @@
 
 #include "ray/util/container_util.h"
 
-#include <sstream>
-#include <tuple>
+#include <gtest/gtest.h>
 
-#include "gtest/gtest.h"
+#include <optional>
+#include <sstream>
+#include <string>
+#include <tuple>
 
 namespace ray {
 
@@ -29,8 +31,18 @@ std::string debug_string_to_string(const T &t) {
 }
 
 TEST(ContainerUtilTest, TestDebugString) {
+  // Numerical values.
   ASSERT_EQ(debug_string_to_string(static_cast<int>(2)), "2");
+
+  // String values.
+  ASSERT_EQ(debug_string_to_string(std::string_view{"hello"}), "hello");
+  ASSERT_EQ(debug_string_to_string(std::string{"hello"}), "hello");
+
+  // Non-associative containers.
   ASSERT_EQ(debug_string_to_string(std::vector<int>{1, 2}), "[1, 2]");
+  ASSERT_EQ(debug_string_to_string(std::array<int, 3>{1, 2, 3}), "[1, 2, 3]");
+
+  // Associative containers.
   ASSERT_EQ(debug_string_to_string(std::set<int>{1, 2}), "[1, 2]");
   ASSERT_EQ(debug_string_to_string(std::unordered_set<int>{2}), "[2]");
   ASSERT_EQ(debug_string_to_string(absl::flat_hash_set<int>{1}), "[1]");
@@ -53,6 +65,11 @@ TEST(ContainerUtilTest, TestDebugString) {
   ASSERT_EQ(debug_string_to_string(std::pair<std::string, int>{"key", 42}), "(key, 42)");
   ASSERT_EQ(debug_string_to_string(std::pair<int, std::string>{3, "value"}),
             "(3, value)");
+
+  // Optional.
+  ASSERT_EQ(debug_string_to_string(std::nullopt), "(nullopt)");
+  ASSERT_EQ(debug_string_to_string(std::optional<std::string>{}), "(nullopt)");
+  ASSERT_EQ(debug_string_to_string(std::optional<std::string>{"hello"}), "hello");
 
   // Composable: tuples of pairs of maps and vectors.
   ASSERT_EQ(debug_string_to_string(

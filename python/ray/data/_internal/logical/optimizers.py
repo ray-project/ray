@@ -1,4 +1,4 @@
-from typing import List, Type
+from typing import List, Optional, Type
 
 from ray.data._internal.logical.interfaces import (
     LogicalPlan,
@@ -31,13 +31,19 @@ _PHYSICAL_RULES = [
 
 
 @DeveloperAPI
-def register_logical_rule(cls: Type[Rule]):
-    _LOGICAL_RULES.append(cls)
+def register_logical_rule(cls: Type[Rule], insert_index: Optional[int] = None):
+    if insert_index is None:
+        _LOGICAL_RULES.append(cls)
+    else:
+        _LOGICAL_RULES.insert(insert_index, cls)
 
 
 @DeveloperAPI
-def register_physical_rule(cls: Type[Rule]):
-    _PHYSICAL_RULES.append(cls)
+def register_physical_rule(cls: Type[Rule], insert_index: Optional[int] = None):
+    if insert_index is None:
+        _PHYSICAL_RULES.append(cls)
+    else:
+        _PHYSICAL_RULES.insert(insert_index, cls)
 
 
 class LogicalOptimizer(Optimizer):
