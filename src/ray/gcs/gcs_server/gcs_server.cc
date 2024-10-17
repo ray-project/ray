@@ -55,6 +55,7 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
       storage_type_(GetStorageType()),
       main_service_(main_service),
       pubsub_io_context_("pubsub_io_context"),
+      kv_io_context_("kv_io_context"),
       task_io_context_("task_io_context"),
       ray_syncer_io_context_("ray_syncer_io_context"),
       rpc_server_(config.grpc_server_name,
@@ -72,14 +73,16 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
       periodical_runner_(main_service),
       is_started_(false),
       is_stopped_(false) {
-  // Init GCS table storage.
+  // Init GCS table storage. Note this is on main_service_, not kv_io_context_, to avoid
+  // congestion on the kv_io_context_.
   RAY_LOG(INFO) << "GCS storage type is " << storage_type_;
   switch (storage_type_) {
   case StorageType::IN_MEMORY:
     gcs_table_storage_ = std::make_shared<InMemoryGcsTableStorage>(main_service_);
     break;
   case StorageType::REDIS_PERSIST:
-    gcs_table_storage_ = std::make_shared<gcs::RedisGcsTableStorage>(GetOrConnectRedis());
+    gcs_table_storage_ =
+        std::make_shared<gcs::RedisGcsTableStorage>(GetOrConnectRedis(main_service_));
     break;
   default:
     RAY_LOG(FATAL) << "Unexpected storage type: " << storage_type_;
@@ -270,6 +273,7 @@ void GcsServer::Stop() {
 
     ray_syncer_io_context_.Stop();
     task_io_context_.Stop();
+    kv_io_context_.Stop();
     pubsub_io_context_.Stop();
 
     ray_syncer_.reset();
@@ -561,13 +565,13 @@ void GcsServer::InitKVManager() {
   std::unique_ptr<InternalKVInterface> instance;
   switch (storage_type_) {
   case (StorageType::REDIS_PERSIST):
-    instance = std::make_unique<StoreClientInternalKV>(
-        std::make_unique<RedisStoreClient>(GetOrConnectRedis()));
+    instance = std::make_unique<StoreClientInternalKV>(std::make_unique<RedisStoreClient>(
+        GetOrConnectRedis(kv_io_context_.GetIoService())));
     break;
   case (StorageType::IN_MEMORY):
     instance =
         std::make_unique<StoreClientInternalKV>(std::make_unique<ObservableStoreClient>(
-            std::make_unique<InMemoryStoreClient>(main_service_)));
+            std::make_unique<InMemoryStoreClient>(kv_io_context_.GetIoService())));
     break;
   default:
     RAY_LOG(FATAL) << "Unexpected storage type! " << storage_type_;
@@ -579,7 +583,8 @@ void GcsServer::InitKVManager() {
 
 void GcsServer::InitKVService() {
   RAY_CHECK(kv_manager_);
-  kv_service_ = std::make_unique<rpc::InternalKVGrpcService>(main_service_, *kv_manager_);
+  kv_service_ = std::make_unique<rpc::InternalKVGrpcService>(
+      kv_io_context_.GetIoService(), *kv_manager_);
   // Register service.
   rpc_server_.RegisterService(*kv_service_, false /* token_auth */);
 }
@@ -819,15 +824,16 @@ std::string GcsServer::GetDebugState() const {
   return stream.str();
 }
 
-std::shared_ptr<RedisClient> GcsServer::GetOrConnectRedis() {
+std::shared_ptr<RedisClient> GcsServer::GetOrConnectRedis(
+    instrumented_io_context &io_service) {
   if (redis_client_ == nullptr) {
     redis_client_ = std::make_shared<RedisClient>(GetRedisClientOptions());
-    auto status = redis_client_->Connect(main_service_);
+    auto status = redis_client_->Connect(io_service);
     RAY_CHECK(status.ok()) << "Failed to init redis gcs client as " << status;
 
     // Init redis failure detector.
     gcs_redis_failure_detector_ =
-        std::make_shared<GcsRedisFailureDetector>(main_service_, redis_client_, []() {
+        std::make_shared<GcsRedisFailureDetector>(io_service, redis_client_, []() {
           RAY_LOG(FATAL) << "Redis connection failed. Shutdown GCS.";
         });
     gcs_redis_failure_detector_->Start();
@@ -844,6 +850,8 @@ void GcsServer::PrintAsioStats() {
                   << main_service_.stats().StatsString() << "\n\n";
     RAY_LOG(INFO) << "pubsub_io_context_ Event stats:\n\n"
                   << pubsub_io_context_.GetIoService().stats().StatsString() << "\n\n";
+    RAY_LOG(INFO) << "kv_io_context_ Event stats:\n\n"
+                  << kv_io_context_.GetIoService().stats().StatsString() << "\n\n";
     RAY_LOG(INFO) << "task_io_context_ Event stats:\n\n"
                   << task_io_context_.GetIoService().stats().StatsString() << "\n\n";
     RAY_LOG(INFO) << "ray_syncer_io_context_ Event stats:\n\n"
