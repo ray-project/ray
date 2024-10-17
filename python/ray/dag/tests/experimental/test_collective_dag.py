@@ -174,40 +174,6 @@ def test_all_reduce_duplicate_actors(ray_start_regular):
 
 
 @pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
-def test_comm_deduplicate_collectives(ray_start_regular, monkeypatch):
-    """
-    Test communicators are deduplicated when all-reduce is called on the same
-    group of actors more than once.
-    """
-    actor_cls = CPUTorchTensorWorker.options(num_cpus=0, num_gpus=1)
-
-    num_workers = 2
-    workers = [actor_cls.remote() for _ in range(num_workers)]
-
-    with InputNode() as inp:
-        computes = [
-            worker.compute_with_tuple_args.bind(inp, i)
-            for i, worker in enumerate(workers)
-        ]
-        collectives = collective.allreduce.bind(computes)
-        collectives = collective.allreduce.bind(collectives)
-        recvs = [
-            worker.recv.bind(collective)
-            for worker, collective in zip(workers, collectives)
-        ]
-        dag = MultiOutputNode(recvs)
-
-    compiled_dag = check_nccl_group_init(
-        monkeypatch,
-        dag,
-        1,
-        {(frozenset(workers), None)},
-    )
-
-    compiled_dag.teardown()
-
-
-@pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
 def test_all_reduce_custom_comm_wrong_actors(ray_start_regular):
     """
     Test an error is thrown when an all-reduce binds to a custom NCCL group and
@@ -310,6 +276,40 @@ def test_comm_all_reduces(ray_start_regular, monkeypatch):
             (frozenset([workers[0]]), None),
             (frozenset([workers[1]]), None),
         },
+    )
+
+    compiled_dag.teardown()
+
+
+@pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
+def test_comm_deduplicate_all_reduces(ray_start_regular, monkeypatch):
+    """
+    Test communicators are deduplicated when all-reduces are called on the same
+    group of actors more than once.
+    """
+    actor_cls = CPUTorchTensorWorker.options(num_cpus=0, num_gpus=1)
+
+    num_workers = 2
+    workers = [actor_cls.remote() for _ in range(num_workers)]
+
+    with InputNode() as inp:
+        computes = [
+            worker.compute_with_tuple_args.bind(inp, i)
+            for i, worker in enumerate(workers)
+        ]
+        collectives = collective.allreduce.bind(computes)
+        collectives = collective.allreduce.bind(collectives)
+        recvs = [
+            worker.recv.bind(collective)
+            for worker, collective in zip(workers, collectives)
+        ]
+        dag = MultiOutputNode(recvs)
+
+    compiled_dag = check_nccl_group_init(
+        monkeypatch,
+        dag,
+        1,
+        {(frozenset(workers), None)},
     )
 
     compiled_dag.teardown()

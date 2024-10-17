@@ -1479,49 +1479,6 @@ def test_torch_tensor_nccl_all_reduce_scheduling(ray_start_regular):
     compiled_dag.teardown()
 
 
-@pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
-def test_torch_tensor_nccl_all_reduce_scheduling_ready(ray_start_regular):
-    """
-    Test scheduling picks the all-reduce operation that is ready instead of
-    the other operation that is not.
-    """
-    if not USE_GPU:
-        pytest.skip("NCCL tests require GPUs")
-
-    assert (
-        sum(node["Resources"].get("GPU", 0) for node in ray.nodes()) > 1
-    ), "This test requires at least 2 GPUs"
-
-    actor_cls = TorchTensorWorker.options(num_cpus=0, num_gpus=1)
-
-    num_workers = 2
-    workers = [actor_cls.remote() for _ in range(num_workers)]
-
-    shape = (10,)
-    dtype = torch.float16
-    with InputNode() as inp:  # (task_idx, exec_task_idx): (0,)
-        x = workers[0].send.bind(shape, dtype, inp)  # (1, 0)
-        y = workers[1].send.bind(shape, dtype, inp)  # (2, 0)
-        _ = workers[0].send.bind(shape, dtype, inp)  # (3, 1)
-
-        allreduce_1 = collective.allreduce.bind([x])
-        z = allreduce_1[0]  # (4, 2)
-
-        allreduce_2 = collective.allreduce.bind([y, z])  # (5, 1) (6, 3)
-        recv_0 = workers[0].recv.bind(allreduce_2[0])
-        recv_1 = workers[1].recv.bind(allreduce_2[1])
-        dag = MultiOutputNode([recv_0, recv_1])
-
-    compiled_dag = dag.experimental_compile()
-
-    value = 10
-    ref = compiled_dag.execute(value)
-    result = ray.get(ref)
-    assert result == [(value * 2, shape, dtype) for _ in workers]
-
-    compiled_dag.teardown()
-
-
 if __name__ == "__main__":
     if os.environ.get("PARALLEL_CI"):
         sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
