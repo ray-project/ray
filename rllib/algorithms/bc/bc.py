@@ -113,15 +113,9 @@ class BCConfig(MARWILConfig):
 class BC(MARWIL):
     """Behavioral Cloning (derived from MARWIL).
 
-    Simply uses MARWIL with beta force-set to 0.0.
+    Uses MARWIL with beta force-set to 0.0.
     """
-
     @classmethod
     @override(MARWIL)
     def get_default_config(cls) -> AlgorithmConfig:
         return BCConfig()
-
-    @override(MARWIL)
-    def training_step(self) -> ResultDict:
-        # Call MARWIL's training step.
-        return super().training_step()

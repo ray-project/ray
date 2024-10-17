@@ -288,60 +288,55 @@ class APPO(IMPALA):
             self.env_runner.foreach_policy_to_train(lambda p, _: p.update_target())
 
     @override(IMPALA)
-    def training_step(self) -> ResultDict:
-        train_results = super().training_step()
+    def training_step(self) -> None:
+        if self.config.enable_rl_module_and_learner:
+            return super().training_step()
 
+        train_results = super().training_step()
         # Update the target network and the KL coefficient for the APPO-loss.
         # The target network update frequency is calculated automatically by the product
         # of `num_epochs` setting (usually 1 for APPO) and `minibatch_buffer_size`.
-        if self.config.enable_rl_module_and_learner:
-            if NUM_TARGET_UPDATES in train_results:
-                self._counters[NUM_TARGET_UPDATES] += train_results[NUM_TARGET_UPDATES]
-                self._counters[LAST_TARGET_UPDATE_TS] = train_results[
-                    LAST_TARGET_UPDATE_TS
-                ]
-        else:
-            last_update = self._counters[LAST_TARGET_UPDATE_TS]
-            cur_ts = self._counters[
-                (
-                    NUM_AGENT_STEPS_SAMPLED
-                    if self.config.count_steps_by == "agent_steps"
-                    else NUM_ENV_STEPS_SAMPLED
-                )
-            ]
-            target_update_freq = (
-                self.config.num_epochs * self.config.minibatch_buffer_size
+        last_update = self._counters[LAST_TARGET_UPDATE_TS]
+        cur_ts = self._counters[
+            (
+                NUM_AGENT_STEPS_SAMPLED
+                if self.config.count_steps_by == "agent_steps"
+                else NUM_ENV_STEPS_SAMPLED
             )
-            if cur_ts - last_update > target_update_freq:
-                self._counters[NUM_TARGET_UPDATES] += 1
-                self._counters[LAST_TARGET_UPDATE_TS] = cur_ts
+        ]
+        target_update_freq = (
+            self.config.num_epochs * self.config.minibatch_buffer_size
+        )
+        if cur_ts - last_update > target_update_freq:
+            self._counters[NUM_TARGET_UPDATES] += 1
+            self._counters[LAST_TARGET_UPDATE_TS] = cur_ts
 
-                # Update our target network.
-                self.env_runner.foreach_policy_to_train(lambda p, _: p.update_target())
+            # Update our target network.
+            self.env_runner.foreach_policy_to_train(lambda p, _: p.update_target())
 
-                # Also update the KL-coefficient for the APPO loss, if necessary.
-                if self.config.use_kl_loss:
+            # Also update the KL-coefficient for the APPO loss, if necessary.
+            if self.config.use_kl_loss:
 
-                    def update(pi, pi_id):
-                        assert LEARNER_STATS_KEY not in train_results, (
-                            "{} should be nested under policy id key".format(
-                                LEARNER_STATS_KEY
-                            ),
-                            train_results,
+                def update(pi, pi_id):
+                    assert LEARNER_STATS_KEY not in train_results, (
+                        "{} should be nested under policy id key".format(
+                            LEARNER_STATS_KEY
+                        ),
+                        train_results,
+                    )
+                    if pi_id in train_results:
+                        kl = train_results[pi_id][LEARNER_STATS_KEY].get("kl")
+                        assert kl is not None, (train_results, pi_id)
+                        # Make the actual `Policy.update_kl()` call.
+                        pi.update_kl(kl)
+                    else:
+                        logger.warning(
+                            "No data for {}, not updating kl".format(pi_id)
                         )
-                        if pi_id in train_results:
-                            kl = train_results[pi_id][LEARNER_STATS_KEY].get("kl")
-                            assert kl is not None, (train_results, pi_id)
-                            # Make the actual `Policy.update_kl()` call.
-                            pi.update_kl(kl)
-                        else:
-                            logger.warning(
-                                "No data for {}, not updating kl".format(pi_id)
-                            )
 
-                    # Update KL on all trainable policies within the local (trainer)
-                    # Worker.
-                    self.env_runner.foreach_policy_to_train(update)
+                # Update KL on all trainable policies within the local (trainer)
+                # Worker.
+                self.env_runner.foreach_policy_to_train(update)
 
         return train_results
 

@@ -400,7 +400,7 @@ class PPO(Algorithm):
             return PPOTF2Policy
 
     @override(Algorithm)
-    def training_step(self):
+    def training_step(self) -> None:
         # New API stack (RLModule, Learner, EnvRunner, ConnectorV2).
         if self.config.enable_env_runner_and_connector_v2:
             return self._training_step_new_api_stack()
@@ -409,7 +409,7 @@ class PPO(Algorithm):
         else:
             return self._training_step_old_api_stack()
 
-    def _training_step_new_api_stack(self) -> ResultDict:
+    def _training_step_new_api_stack(self):
         # Collect batches from sample workers until we have a full batch.
         with self.metrics.log_time((TIMERS, ENV_RUNNER_SAMPLING_TIMER)):
             # Sample in parallel from the workers.
@@ -435,7 +435,7 @@ class PPO(Algorithm):
                 )
             # Return early if all our workers failed.
             if not episodes:
-                return {}
+                return
 
             # Reduce EnvRunner metrics over the n EnvRunners.
             self.metrics.merge_and_log_n_dicts(
@@ -505,8 +505,6 @@ class PPO(Algorithm):
             # else:
             #    weights = self.learner_group.get_weights(inference_only=True)
             #    self.env_runner.set_weights(weights)
-
-        return self.metrics.reduce()
 
     def _training_step_old_api_stack(self) -> ResultDict:
         # Collect batches from sample workers until we have a full batch.

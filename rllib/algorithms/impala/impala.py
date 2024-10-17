@@ -610,7 +610,7 @@ class IMPALA(Algorithm):
             self._learner_thread.start()
 
     @override(Algorithm)
-    def training_step(self) -> ResultDict:
+    def training_step(self):
         # Old API stack.
         if not self.config.enable_rl_module_and_learner:
             return self._training_step_old_api_stack()
@@ -647,22 +647,22 @@ class IMPALA(Algorithm):
                 ),
             )
 
-        # Log lifetime counts for env- and agent steps.
-        if env_runner_metrics:
-            self.metrics.log_dict(
-                {
-                    NUM_AGENT_STEPS_SAMPLED_LIFETIME: self.metrics.peek(
-                        (ENV_RUNNER_RESULTS, NUM_AGENT_STEPS_SAMPLED)
-                    ),
-                    NUM_ENV_STEPS_SAMPLED_LIFETIME: self.metrics.peek(
-                        (ENV_RUNNER_RESULTS, NUM_ENV_STEPS_SAMPLED)
-                    ),
-                    NUM_EPISODES_LIFETIME: self.metrics.peek(
-                        (ENV_RUNNER_RESULTS, NUM_EPISODES)
-                    ),
-                },
-                reduce="sum",
-            )
+        ## Log lifetime counts for env- and agent steps.
+        #if env_runner_metrics:
+        #    self.metrics.log_dict(
+        #        {
+        #            NUM_AGENT_STEPS_SAMPLED_LIFETIME: self.metrics.peek(
+        #                (ENV_RUNNER_RESULTS, NUM_AGENT_STEPS_SAMPLED)
+        #            ),
+        #            NUM_ENV_STEPS_SAMPLED_LIFETIME: self.metrics.peek(
+        #                (ENV_RUNNER_RESULTS, NUM_ENV_STEPS_SAMPLED)
+        #            ),
+        #            NUM_EPISODES_LIFETIME: self.metrics.peek(
+        #                (ENV_RUNNER_RESULTS, NUM_EPISODES)
+        #            ),
+        #        },
+        #        reduce="sum",
+        #    )
 
         # "Batch" collected episode refs into groups, such that exactly
         # `total_train_batch_size` timesteps are sent to
@@ -771,10 +771,6 @@ class IMPALA(Algorithm):
                         connector_states=connector_states,
                         rl_module_state=rl_module_state,
                     )
-
-        if env_runner_metrics or last_good_learner_results:
-            return self.metrics.reduce()
-        return {}
 
     def _sample_and_get_connector_states(self):
         def _remote_sample_get_state_and_metrics(_worker):

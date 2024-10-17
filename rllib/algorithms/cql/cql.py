@@ -311,13 +311,13 @@ class CQL(SAC):
             return CQLTFPolicy
 
     @override(SAC)
-    def training_step(self) -> ResultDict:
+    def training_step(self) -> None:
         if self.config.enable_env_runner_and_connector_v2:
             return self._training_step_new_api_stack()
         else:
             return self._training_step_old_api_stack()
 
-    def _training_step_new_api_stack(self) -> ResultDict:
+    def _training_step_new_api_stack(self):
 
         # Sampling from offline data.
         with self.metrics.log_time((TIMERS, OFFLINE_SAMPLING_TIMER)):
@@ -373,8 +373,6 @@ class CQL(SAC):
                 policies=modules_to_update,
                 inference_only=True,
             )
-
-        return self.metrics.reduce()
 
     def _training_step_old_api_stack(self) -> ResultDict:
         # Collect SampleBatches from sample workers.

@@ -642,7 +642,7 @@ class DQN(Algorithm):
             return DQNTFPolicy
 
     @override(Algorithm)
-    def training_step(self) -> ResultDict:
+    def training_step(self) -> None:
         """DQN training iteration function.
 
         Each training iteration, we:
@@ -664,7 +664,7 @@ class DQN(Algorithm):
         else:
             return self._training_step_old_api_stack()
 
-    def _training_step_new_api_stack(self, *, with_noise_reset) -> ResultDict:
+    def _training_step_new_api_stack(self, *, with_noise_reset):
         # Alternate between storing and sampling and training.
         store_weight, sample_and_train_weight = calculate_rr_weights(self.config)
 
@@ -817,8 +817,6 @@ class DQN(Algorithm):
                     global_vars=None,
                     inference_only=True,
                 )
-
-        return self.metrics.reduce()
 
     def _training_step_old_api_stack(self) -> ResultDict:
         """Training step for the old API stack.

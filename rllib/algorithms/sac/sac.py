@@ -591,7 +591,7 @@ class SAC(DQN):
             return SACTFPolicy
 
     @override(DQN)
-    def training_step(self) -> ResultDict:
+    def training_step(self) -> None:
         """SAC training iteration function.
 
         Each training iteration, we:

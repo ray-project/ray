@@ -511,7 +511,7 @@ class DreamerV3(Algorithm):
         )
 
     @override(Algorithm)
-    def training_step(self) -> ResultDict:
+    def training_step(self) -> None:
         # Push enough samples into buffer initially before we start training.
         if self.training_iteration == 0:
             logger.info(
@@ -722,9 +722,6 @@ class DreamerV3(Algorithm):
         # Add train results and the actual training ratio to stats. The latter should
         # be close to the configured `training_ratio`.
         self.metrics.log_value("actual_training_ratio", self.training_ratio, window=1)
-
-        # Return all results.
-        return self.metrics.reduce()
 
     @property
     def training_ratio(self) -> float:

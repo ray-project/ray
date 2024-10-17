@@ -155,20 +155,21 @@ class MetricsLogger:
         *,
         return_stats_obj: bool = True,
     ) -> Dict:
-        """Reduces all logged values based on their settings and returns a result dict.
+        """DO NOT CALL THIS METHOD! Reduces all logged values based on their settings.
 
         The returned result dict has the exact same structure as the logged keys (or
         nested key sequences) combined. At the leafs of the returned structure are
-        either `Stats` objects (return_stats_obj=True, which is the default) or
-        primitive (non-Stats) values. In case of `return_stats_obj=True`, the returned
-        dict with Stats at the leafs can conveniently be re-used downstream for further
-        logging and reduction operations.
+        either `Stats` objects (`return_stats_obj=True`, which is the default) or
+        primitive (non-Stats) values (`return_stats_obj=False`). In case of
+        `return_stats_obj=True`, the returned dict with Stats at the leafs can be
+        reused conveniently  downstream for further logging and reduction operations.
 
         For example, imagine component A (e.g. an Algorithm) containing a MetricsLogger
-        and n remote components (e.g. EnvRunner  workers), each with their own
-        MetricsLogger object. Component A now calls its n remote components, each of
-        which returns an equivalent, reduced dict with `Stats` as leafs.
-        Component A can then further log these n result dicts via its own MetricsLogger:
+        and n remote components (e.g. n EnvRunner workers), each with their own
+        MetricsLogger object. Component A calls its n remote components, each of
+        which returns an equivalent, reduced dict with `Stats` instances as leafs.
+        Component A can now further log these n result dicts through its own
+        MetricsLogger:
         `logger.merge_and_log_n_dicts([n returned result dicts from the remote
         components])`.
 
@@ -267,6 +268,7 @@ class MetricsLogger:
         window: Optional[Union[int, float]] = None,
         ema_coeff: Optional[float] = None,
         clear_on_reduce: bool = False,
+        lifetime_key: Optional[Union[str, Tuple[str, ...]]] = None,
     ) -> None:
         """Logs a new value under a (possibly nested) key to the logger.
 
@@ -362,6 +364,14 @@ class MetricsLogger:
                 `self.reduce()` is called. Setting this to True is useful for cases,
                 in which the internal values list would otherwise grow indefinitely,
                 for example if reduce is None and there is no `window` provided.
+            lifetime_key: If not None, a key (or nested key-tuple) to sum up lifetime
+                stats for this value. `reduce` must be "sum" and `clear_on_reduce` must
+                be True in this case.
+                The given lifetime key is created automatically if it doesn't exist,
+                with the settings: reduce=sum, clear_on_reduce=False. Its Stats object
+                contains the overall sum (over the lifetime). Lifetime stats are NOT
+                returned upon a `self.reduce()` call and are added up across the
+                provided dicts in a `self.merge_and_log_n_dicts()` call.
         """
         # No reduction (continue appending to list) AND no window.
         # -> We'll force-reset our values upon `reduce()`.
@@ -370,6 +380,19 @@ class MetricsLogger:
 
         self._check_tensor(key, value)
 
+        # If `lifetime_key` is provided, log/create the extra Stats instance.
+        if lifetime_key is not None:
+            if reduce != "sum" or clear_on_reduce is False:
+                raise ValueError(
+                    f"When adding a `lifetime_key` ({lifetime_key}) to a logged Stats, "
+                    "this Stats must be logged with the settings `reduce=sum` and "
+                    "`clear_on_reduce=True`!"
+                )
+            self.log_value(
+                lifetime_key, value=value, reduce="sum", clear_on_reduce=False
+            )
+
+        # `key` doesn't exist -> Automativally create it.
         if not self._key_in_stats(key):
             self._set_key(
                 key,
