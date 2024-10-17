@@ -2836,6 +2836,18 @@ py_test(
     args = ["--enable-new-api-stack", "--as-test"]
 )
 
+# subdirectory: metrics/
+# ....................................
+
+py_test(
+    name = "examples/metrics/custom_metrics_in_env_runners",
+    main = "examples/metrics/custom_metrics_in_env_runners.py",
+    tags = ["team:rllib", "exclusive", "examples"],
+    size = "medium",
+    srcs = ["examples/metrics/custom_metrics_in_env_runners.py"],
+    args = ["--enable-new-api-stack", "--stop-iters=3"]
+)
+
 # subdirectory: multi_agent/
 # ....................................
 py_test(
@@ -3193,16 +3205,6 @@ py_test(
     size = "medium",
     srcs = ["examples/centralized_critic_2.py"],
     args = ["--as-test", "--framework=torch", "--stop-reward=6.0"]
-)
-
-#@OldAPIStack
-py_test(
-    name = "examples/metrics/custom_metrics_and_callbacks",
-    main = "examples/metrics/custom_metrics_and_callbacks.py",
-    tags = ["team:rllib", "exclusive", "examples"],
-    size = "small",
-    srcs = ["examples/metrics/custom_metrics_and_callbacks.py"],
-    args = ["--stop-iters=2"]
 )
 
 py_test(
