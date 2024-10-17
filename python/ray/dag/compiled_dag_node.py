@@ -248,16 +248,27 @@ class _ExecutableTaskInput:
     """Represents an input to an ExecutableTask.
 
     Args:
-        input_variant: either an unresolved input (when type is ChannelInterface)
-            , or a resolved input value (when type is Any)
-        channel_idx: if input_variant is an unresolved input, this is the index
-            into the input channels list.
+        input_variant: either an unresolved input or a resolved input value.
+            - unresolved input: a ChannelInterface object or a list containing
+                ChannelInterface objects, but not in a nested form. For example,
+                [case 1]: [ChannelInterface] or [ChannelInterface, 2], ChannelInterface
+                [case 2]: [[ChannelInterface]] (nested form)
+                case 1 is supported, but case 2 is not supported.
+            - resolved input: This is not an unresolved input. For example,
+                123 (int), "abc" (string), [1, 2, 3] (list), etc.
+        channel_idx: if `input_variant` is an unresolved input, it is used to index the
+            corresponding channels from the input channels list.
+            - if `input_variant` is a ChannelInterface object, `channel_idx` is an int.
+            - if `input_variant` is a list containing ChannelInterface objects,
+                `channel_idx` is a list of int or None. If the value is None, it means
+                the corresponding value in `input_variant` is a resolved input.
+            - if `input_variant` is an unresolved input, `channel_idx` is None.
     """
 
     def __init__(
         self,
-        input_variant: Union[ChannelInterface, Any],
-        channel_idx: Optional[int],
+        input_variant: Union[ChannelInterface, List, Any],
+        channel_idx: Union[Optional[int], List[Optional[int]]],
     ):
         self.input_variant = input_variant
         self.channel_idx = channel_idx
@@ -272,6 +283,14 @@ class _ExecutableTaskInput:
 
         if isinstance(self.input_variant, ChannelInterface):
             value = channel_results[self.channel_idx]
+        elif isinstance(self.input_variant, list):
+            assert len(self.input_variant) == len(self.channel_idx)
+            value = []
+            for idx, val in enumerate(self.input_variant):
+                if self.channel_idx[idx] is not None:
+                    value.append(channel_results[idx])
+                else:
+                    value.append(val)
         else:
             value = self.input_variant
         return value
@@ -320,11 +339,7 @@ class ExecutableTask:
 
         for arg in resolved_args:
             if isinstance(arg, ChannelInterface):
-                if isinstance(arg, ChannelInterface):
-                    channel = arg
-                else:
-                    adapter = arg
-                    channel = adapter.get_dag_input_channel()
+                channel = arg
 
                 if channel in input_channel_to_idx:
                     # The same channel was added before, so reuse the index.
@@ -336,6 +351,25 @@ class ExecutableTask:
                     input_channel_to_idx[channel] = channel_idx
 
                 task_input = _ExecutableTaskInput(arg, channel_idx)
+            elif isinstance(arg, list):
+                # Handle the case where the argument is a list of channels.
+                channel_idx_list = []
+                for item in arg:
+                    if isinstance(item, ChannelInterface):
+                        channel = item
+
+                        if channel in input_channel_to_idx:
+                            # The same channel was added before, so reuse the index.
+                            channel_idx = input_channel_to_idx[channel]
+                        else:
+                            # Add a new channel to the list of input channels.
+                            self.input_channels.append(channel)
+                            channel_idx = len(self.input_channels) - 1
+                            input_channel_to_idx[channel] = channel_idx
+                        channel_idx_list.append(channel_idx)
+                    else:
+                        channel_idx_list.append(None)
+                task_input = _ExecutableTaskInput(arg, channel_idx_list)
             else:
                 task_input = _ExecutableTaskInput(arg, None)
             self.task_inputs.append(task_input)
@@ -864,11 +898,10 @@ class CompiledDAG:
                         "other DAG nodes as kwargs"
                     )
 
-            for _, arg in enumerate(task.args):
-                if not isinstance(arg, DAGNode):
-                    continue
+            for upstream_node in dag_node._upstream_nodes:
+                assert isinstance(upstream_node, DAGNode)
 
-                upstream_node_idx = self.dag_node_to_idx[arg]
+                upstream_node_idx = self.dag_node_to_idx[upstream_node]
                 upstream_task = self.idx_to_task[upstream_node_idx]
                 downstream_actor_handle = None
                 if (
@@ -877,14 +910,14 @@ class CompiledDAG:
                 ):
                     downstream_actor_handle = dag_node._get_actor_handle()
 
-                if isinstance(upstream_task.dag_node, InputAttributeNode):
+                if isinstance(upstream_node, InputAttributeNode):
                     # Record all of the keys used to index the InputNode.
                     # During execution, we will check that the user provides
                     # the same args and kwargs.
-                    if isinstance(upstream_task.dag_node.key, int):
-                        input_positional_args.add(upstream_task.dag_node.key)
-                    elif isinstance(upstream_task.dag_node.key, str):
-                        input_kwargs.add(upstream_task.dag_node.key)
+                    if isinstance(upstream_node.key, int):
+                        input_positional_args.add(upstream_node.key)
+                    elif isinstance(upstream_node.key, str):
+                        input_kwargs.add(upstream_node.key)
                     else:
                         raise ValueError(
                             "InputNode() can only be indexed using int "
@@ -903,7 +936,10 @@ class CompiledDAG:
                     # DAG's input node as the actual upstream node
                     upstream_task = self.idx_to_task[self.input_task_idx]
 
-                elif isinstance(upstream_task.dag_node, InputNode):
+                elif isinstance(upstream_node, InputNode):
+                    if isinstance(dag_node, InputAttributeNode):
+                        continue
+
                     if direct_input is not None and not direct_input:
                         raise ValueError(
                             "All tasks must either use InputNode() directly, "
@@ -912,9 +948,9 @@ class CompiledDAG:
                     direct_input = True
 
                 upstream_task.downstream_task_idxs[task_idx] = downstream_actor_handle
-                task.arg_type_hints.append(upstream_task.dag_node.type_hint)
+                task.arg_type_hints.append(upstream_node.type_hint)
 
-                if upstream_task.dag_node.type_hint.requires_nccl():
+                if upstream_node.type_hint.requires_nccl():
                     # Add all readers to the NCCL group.
                     nccl_actors.add(downstream_actor_handle)
 
@@ -1143,11 +1179,12 @@ class CompiledDAG:
                     assert isinstance(reader_task.dag_node, ClassMethodNode)
                     reader_handle = reader_task.dag_node._get_actor_handle()
                     reader_node_id = self._get_node_id(reader_handle)
-                    for arg in reader_task.args:
-                        if isinstance(arg, InputAttributeNode) or isinstance(
-                            arg, InputNode
+                    for upstream_node in reader_task.dag_node._upstream_nodes:
+                        assert isinstance(upstream_node, DAGNode)
+                        if isinstance(upstream_node, InputAttributeNode) or isinstance(
+                            upstream_node, InputNode
                         ):
-                            input_node_to_reader_and_node_set[arg].add(
+                            input_node_to_reader_and_node_set[upstream_node].add(
                                 (reader_handle, reader_node_id)
                             )
 
@@ -1235,15 +1272,15 @@ class CompiledDAG:
             # Step 1: populate `arg_to_consumers` and perform some validation.
             for task in tasks:
                 has_at_least_one_channel_input = False
-                for arg in task.args:
-                    if isinstance(arg, DAGNode):
-                        has_at_least_one_channel_input = True
-                        arg_to_consumers[arg].add(task)
-                        arg_idx = self.dag_node_to_idx[arg]
-                        upstream_task = self.idx_to_task[arg_idx]
-                        assert len(upstream_task.output_channels) == 1
-                        arg_channel = upstream_task.output_channels[0]
-                        assert arg_channel is not None
+                for upstream_node in task.dag_node._upstream_nodes:
+                    assert isinstance(upstream_node, DAGNode)
+                    has_at_least_one_channel_input = True
+                    arg_to_consumers[upstream_node].add(task)
+                    arg_idx = self.dag_node_to_idx[upstream_node]
+                    upstream_task = self.idx_to_task[arg_idx]
+                    assert len(upstream_task.output_channels) == 1
+                    arg_channel = upstream_task.output_channels[0]
+                    assert arg_channel is not None
                 # TODO: Support no-input DAGs (use an empty object to signal).
                 if not has_at_least_one_channel_input:
                     raise ValueError(
@@ -1276,18 +1313,30 @@ class CompiledDAG:
             executable_tasks = []
             for task in tasks:
                 resolved_args: List[Any] = []
+                visited_dag_nodes = set()
                 for arg in task.args:
                     if isinstance(arg, DAGNode):
-                        arg_idx = self.dag_node_to_idx[arg]
-                        upstream_task = self.idx_to_task[arg_idx]
-                        assert len(upstream_task.output_channels) == 1
-                        arg_channel = upstream_task.output_channels[0]
-                        assert arg_channel is not None
+                        visited_dag_nodes.add(arg)
+                        arg_channel = self._get_dag_node_output_channel(arg)
                         arg_channel = channel_dict[arg_channel]
                         resolved_args.append(arg_channel)
+                    elif isinstance(arg, list):
+                        resolved_list_arg = []
+                        for item in arg:
+                            if isinstance(item, DAGNode):
+                                visited_dag_nodes.add(item)
+                                item_channel = self._get_dag_node_output_channel(item)
+                                item_channel = channel_dict[item_channel]
+                                resolved_list_arg.append(item_channel)
+                            else:
+                                # Constant arg
+                                resolved_list_arg.append(item)
+                        resolved_args.append(resolved_list_arg)
                     else:
                         # Constant arg
                         resolved_args.append(arg)
+                if len(visited_dag_nodes) != len(task.dag_node._upstream_nodes):
+                    raise ValueError("Not all upstream nodes were visited.")
                 executable_task = ExecutableTask(
                     task,
                     resolved_args,
@@ -1361,6 +1410,20 @@ class CompiledDAG:
 
         self._dag_submitter.start()
         self._dag_output_fetcher.start()
+
+    def _get_dag_node_output_channel(self, node: "ray.dag.DAGNode") -> ChannelInterface:
+        """
+        A helper function to get the DAG node's output channel.
+
+        Args:
+            node: The DAG node.
+        """
+        idx = self.dag_node_to_idx[node]
+        task = self.idx_to_task[idx]
+        assert len(task.output_channels) == 1
+        channel = task.output_channels[0]
+        assert channel is not None
+        return channel
 
     def _generate_dag_operation_graph_node(
         self,
