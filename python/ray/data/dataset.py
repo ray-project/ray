@@ -831,6 +831,11 @@ class Dataset:
 
         Specified columns must be in the dataset schema.
 
+        .. tip::
+            If you're reading parquet files with :meth:`ray.data.read_parquet`,
+            you might be able to speed it up by using projection pushdown; see
+            :ref:`Parquet column pruning <parquet_column_pruning>` for details.
+
         Examples:
 
             >>> import ray
@@ -1103,9 +1108,10 @@ class Dataset:
             dropping rows.
 
         .. tip::
-            If you're using parquet and the filter is a simple predicate, you might
-            be able to speed it up by using filter pushdown, see
-            :ref:`Parquet row pruning <parquet_row_pruning>`.
+            If you're reading parquet files with :meth:`ray.data.read_parquet`,
+            and the filter is a simple predicate, you might
+            be able to speed it up by using filter pushdown; see
+            :ref:`Parquet row pruning <parquet_row_pruning>` for details.
 
         Examples:
 
