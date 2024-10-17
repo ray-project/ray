@@ -45,7 +45,7 @@ void CoreWorkerClientPool::RemoveIdleClients() {
   while (!client_list_.empty()) {
     auto id = client_list_.back().worker_id;
     // The last client in the list is the least recent accessed client.
-    if (client_list_.back().core_worker_client->IsChannelIdleAfterRPCs()) {
+    if (client_list_.back().core_worker_client->IsIdleAfterRPCs()) {
       client_map_.erase(id);
       client_list_.pop_back();
       RAY_LOG(DEBUG) << "Remove idle client to worker " << id
