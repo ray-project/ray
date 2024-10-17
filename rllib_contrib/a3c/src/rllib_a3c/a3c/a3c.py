@@ -139,7 +139,7 @@ class A3CConfig(AlgorithmConfig):
         if lr_schedule is not NotProvided:
             self.lr_schedule = lr_schedule
         if use_critic is not NotProvided:
-            self.lr_schedule = use_critic
+            self.use_critic = use_critic
         if use_gae is not NotProvided:
             self.use_gae = use_gae
         if lambda_ is not NotProvided:
