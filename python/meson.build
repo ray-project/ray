@@ -51,10 +51,17 @@ install_subdir(
         'util/collective/examples/',
         'util/client/examples/',
 
-        #'tune/examples/',
+        'runtime_env/schemas/',
+        'runtime_env/types/',
+
         'tune/tests/',
+        'tune/examples/pbt_transformers/test_data/',
 
         'train/tests/',
+        'train/examples/accelerate/',
+        'train/examples/deepspeed/',
+        'train/examples/experiment_tracking/',
+        'train/examples/transformers/',
 
         'serve/tests/',
 
@@ -85,6 +92,8 @@ install_subdir(
     ],
 
     exclude_files: [
+        '_raylet.pyx',
+
         # Bazel build files - nothing interesting, mostly tests, examples, and docs
         'BUILD',
         '_private/BUILD',
@@ -160,6 +169,12 @@ install_subdir(
 
         'tune/README.rst',
         'tune/requirements-dev.txt',
+        'tune/examples/README.rst',
+        'tune/examples/tune-default.yaml',
+        'tune/examples/tune-local-default.yaml',
+        'tune/examples/pbt_dcgan_mnist/mnist_cnn.pt',
+
+        'train/examples/horovod/horovod-cluster.yaml',
 
         'air/data',
 
@@ -186,8 +201,9 @@ install_subdir(
         'dashboard/client/README.rst',
         'dashboard/client/tsconfig.json',
         'dashboard/client/meson.build',
+        'dashboard/modules/snapshot/component_activities_schema.json',
 
-        '_raylet.pyx'
+        'serve/_private/benchmarks/streaming/_grpc/test_server.proto'
     ]
 )
 
@@ -197,7 +213,91 @@ install_subdir(
     install_dir: py.get_install_dir() / 'ray/',
     install_tag: 'python-runtime',
 
-    follow_symlinks: true
+    follow_symlinks: true,
+
+    exclude_directories: [
+        'algorithms/tests/',
+        'algorithms/appo/tests/',
+        'algorithms/bc/tests/',
+        'algorithms/cql/tests/',
+        'algorithms/dqn/tests/',
+        'algorithms/dreamerv3/tests/',
+        'algorithms/impala/tests/',
+        'algorithms/marwil/tests/',
+        'algorithms/ppo/tests/',
+        'algorithms/sac/tests/',
+
+        'benchmarks/',
+
+        'connectors/tests/',
+
+        'core/learner/tests/',
+        'core/learner/torch/tests/',
+        'core/models/tests/',
+        'core/rl_module/tf/tests/',
+        'core/rl_module/torch/tests/',
+        'core/tf/tests/',
+        'core/torch/tests/',
+
+        'env/tests/',
+        'env/wrappers/tests/',
+
+        'evaluation/tests/',
+
+        'examples/_docs/',
+        'examples/_old_api_stack/connectors/',
+        'examples/catalogs/',
+        'examples/envs/external_envs/',
+        'examples/learners/',
+
+        'models/tests/',
+
+        'offline/tests/',
+        'offline/estimators/tests/',
+
+        'offline/tests/',
+
+        'policy/tests/',
+
+        'tests/',
+
+        'tuned_examples/appo/',
+        'tuned_examples/bc/',
+        'tuned_examples/cql/',
+        'tuned_examples/dqn/',
+        'tuned_examples/impala/',
+        'tuned_examples/marwil/',
+        'tuned_examples/ppo/',
+        'tuned_examples/sac/',
+
+        'utils/tests/',
+        'utils/exploration/tests/',
+        'utils/postprocessing/tests/',
+        'utils/replay_buffers/tests/',
+        'utils/schedules/tests/',
+        'utils/spaces/tests/',
+    ],
+
+    exclude_files: [
+        'BUILD',
+
+        'asv.conf.json',
+        'README.rst',
+
+        'algorithms/README.md',
+        'algorithms/appo/README.md',
+        'algorithms/cql/README.md',
+        'algorithms/dqn/README.md',
+        'algorithms/dreamerv3/README.md',
+        'algorithms/ppo/README.md',
+        'algorithms/sac/README.md',
+
+        'core/models/README.rst',
+
+        'examples/envs/classes/utils/cartpole_observations.proto',
+
+        'tuned_examples/compact-regression-test.yaml',
+    ],
 )
 
 # @Important:
