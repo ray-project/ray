@@ -494,6 +494,12 @@ class Node:
             self._session_dir, self._ray_params.runtime_env_dir_name
         )
         try_to_create_directory(self._runtime_env_dir)
+        # Create a symlink to the tpu_logs directory if this is a TPU node.
+        # TPU devices write log files to /tmp/tpu_logs on TPU containers.
+        if os.getenv("TPU_WORKER_ID") is not None:
+            user_temp_dir = ray._private.utils.get_user_temp_dir()
+            tpu_logs_symlink = os.path.join(self._logs_dir, "tpu_logs")
+            try_to_symlink(tpu_logs_symlink, f"{user_temp_dir}/tpu_logs")
 
     def _get_node_labels(self):
         def merge_labels(env_override_labels, params_labels):
