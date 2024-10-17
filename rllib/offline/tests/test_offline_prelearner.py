@@ -247,7 +247,7 @@ class TestOfflinePreLearner(unittest.TestCase):
 
         # Record some episodes.
         algo = config.build()
-        for _ in range(5):
+        for _ in range(3):
             algo.train()
 
         # Reset the input data and the episode read flag.

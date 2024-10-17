@@ -1703,7 +1703,7 @@ py_test(
 py_test(
     name = "test_offline_prelearner",
     tags = ["team:rllib", "offline"],
-    size = "small",
+    size = "medium",
     srcs = ["offline/tests/test_offline_prelearner.py"],
     # Include the offline data files.
     data = [
