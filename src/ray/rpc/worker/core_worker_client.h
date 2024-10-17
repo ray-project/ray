@@ -219,7 +219,7 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>,
         std::numeric_limits<uint64_t>::max(),
         /*check_channel_status_interval_milliseconds=*/
         ::RayConfig::instance()
-            .gcs_client_check_connection_status_interval_milliseconds(),
+            .grpc_client_check_connection_status_interval_milliseconds(),
         /*server_unavailable_timeout_seconds=*/
         std::numeric_limits<uint64_t>::max(),
         /*server_unavailable_timeout_callback=*/
@@ -294,17 +294,12 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>,
                          /*method_timeout_ms*/ -1,
                          override)
 
-  void ReportGeneratorItemReturns(
-      const ReportGeneratorItemReturnsRequest &request,
-      const ClientCallback<ReportGeneratorItemReturnsReply> &callback) override {
-    INVOKE_RETRYABLE_RPC_CALL(retryable_grpc_client_,
-                              CoreWorkerService,
-                              ReportGeneratorItemReturns,
-                              request,
-                              callback,
-                              *grpc_client_,
-                              /*method_timeout_ms*/ -1);
-  }
+  VOID_RETRYABLE_RPC_CLIENT_METHOD(retryable_grpc_client_,
+                                   CoreWorkerService,
+                                   ReportGeneratorItemReturns,
+                                   *grpc_client_,
+                                   /*method_timeout_ms*/ -1,
+                                   override)
 
   VOID_RPC_CLIENT_METHOD(CoreWorkerService,
                          RegisterMutableObjectReader,

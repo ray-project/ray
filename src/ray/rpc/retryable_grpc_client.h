@@ -40,6 +40,20 @@ namespace rpc {
       callback,                                                               \
       method_timeout_ms))
 
+// Define a void retryable RPC client method.
+#define VOID_RETRYABLE_RPC_CLIENT_METHOD(                                        \
+    retryable_rpc_client, SERVICE, METHOD, rpc_client, method_timeout_ms, SPECS) \
+  void METHOD(const METHOD##Request &request,                                    \
+              const ClientCallback<METHOD##Reply> &callback) SPECS {             \
+    INVOKE_RETRYABLE_RPC_CALL(retryable_rpc_client,                              \
+                              SERVICE,                                           \
+                              METHOD,                                            \
+                              request,                                           \
+                              callback,                                          \
+                              rpc_client,                                        \
+                              method_timeout_ms);                                \
+  }
+
 /// \class Executor
 /// Executor saves operation and support retries.
 class Executor {
@@ -65,6 +79,17 @@ class Executor {
   std::function<void()> operation_;
 };
 
+/**
+ * The client makes RPC calls through the provided underlying grpc client.
+ * If the call goes through, the user provided callback is invoked.
+ * If the call fails due to transient network error, it is added to a retry queue.
+ * The client waits for the grpc channel reconnection to resend the requests.
+ * If the total number of request bytes in the queue exceeds max_pending_requests_bytes,
+ * the thread is blocked until some requests are resent.
+ * If a call's timeout_ms reaches during retry, its callback is called with
+ * Status::TimedOut. If the whole client does not reconnect within
+ * server_unavailable_timeout_seconds, server_unavailable_timeout_callback is invoked.
+ */
 class RetryableGrpcClient : public std::enable_shared_from_this<RetryableGrpcClient> {
  public:
   static std::shared_ptr<RetryableGrpcClient> Create(
@@ -288,11 +313,11 @@ class RetryableGrpcClient : public std::enable_shared_from_this<RetryableGrpcCli
 
   std::shared_ptr<grpc::Channel> channel_;
 
-  uint64_t max_pending_requests_bytes_;
-  uint64_t check_channel_status_interval_milliseconds_;
-  uint64_t server_unavailable_timeout_seconds_;
+  const uint64_t max_pending_requests_bytes_;
+  const uint64_t check_channel_status_interval_milliseconds_;
+  const uint64_t server_unavailable_timeout_seconds_;
   std::function<void()> server_unavailable_timeout_callback_;
-  std::string server_name_;
+  const std::string server_name_;
 
   bool server_is_unavailable_ = false;
   absl::Time server_last_available_time_ = absl::Now();
