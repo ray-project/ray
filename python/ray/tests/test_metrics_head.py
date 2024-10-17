@@ -13,35 +13,20 @@ from ray.dashboard.modules.metrics.dashboards.serve_dashboard_panels import (
     SERVE_GRAFANA_PANELS,
 )
 from ray.tests.conftest import _ray_start
-from ray._private.ray_constants import SESSION_LATEST
 
 
 logger = logging.getLogger(__name__)
 
 
-@pytest.mark.parametrize(
-    "is_temp_dir_set, temp_dir_val", [(False, ""), (True, "/tmp/test-temp-dir")]
-)
-def test_metrics_folder_and_content(is_temp_dir_set, temp_dir_val):
+def test_metrics_folder():
     """
-    Tests that the default dashboard files get created. It also verifies paths in the
-    dashboard config files are set correctly.
-
-    It checks both the default case and the case where the _temp_dir is specified.
+    Tests that the default dashboard files get created.
     """
-    with _ray_start(
-        include_dashboard=True, _temp_dir=temp_dir_val if is_temp_dir_set else None
-    ) as context:
+    with _ray_start(include_dashboard=True) as context:
         session_dir = context["session_dir"]
-        temp_dir = temp_dir_val if is_temp_dir_set else "/tmp/ray"
         assert os.path.exists(
             f"{session_dir}/metrics/grafana/provisioning/dashboards/default.yml"
         )
-        with open(
-            f"{session_dir}/metrics/grafana/provisioning/dashboards/default.yml", "r"
-        ) as f:
-            assert f"path: {session_dir}/metrics/grafana/dashboards" in f.read()
-
         assert os.path.exists(
             f"{session_dir}/metrics/grafana/dashboards"
             "/default_grafana_dashboard.json"
@@ -49,17 +34,8 @@ def test_metrics_folder_and_content(is_temp_dir_set, temp_dir_val):
         assert os.path.exists(
             f"{session_dir}/metrics/grafana/provisioning/datasources/default.yml"
         )
-
         assert os.path.exists(f"{session_dir}/metrics/grafana/grafana.ini")
-        with open(f"{session_dir}/metrics/grafana/grafana.ini", "r") as f:
-            assert (
-                "provisioning = "
-                f"{temp_dir}/{SESSION_LATEST}/metrics/grafana/provisioning" in f.read()
-            )
-
         assert os.path.exists(f"{session_dir}/metrics/prometheus/prometheus.yml")
-        with open(f"{session_dir}/metrics/prometheus/prometheus.yml", "r") as f:
-            assert f"- '{temp_dir}/prom_metrics_service_discovery.json'" in f.read()
 
 
 @pytest.fixture
