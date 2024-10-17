@@ -1,5 +1,6 @@
 """This is the script for `ray microbenchmark`."""
 
+import asyncio
 import logging
 from ray._private.ray_microbenchmark_helpers import timeit, asyncio_timeit
 import multiprocessing
@@ -159,9 +160,7 @@ def main(results=None):
             if not isinstance(fut, list):
                 await fut
             else:
-                # TODO(sang): Right now, it doesn't work with asyncio.gather.
-                for f in fut:
-                    await f
+                await asyncio.gather(*fut)
 
         return await asyncio_timeit(
             tag,
