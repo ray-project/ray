@@ -18,7 +18,10 @@ import ray
 from ray import cloudpickle
 from ray._private.utils import get_or_create_event_loop
 from ray.actor import ActorClass, ActorHandle
-from ray.anyscale.serve._private.constants import ANYSCALE_RAY_SERVE_USE_GRPC_BY_DEFAULT
+from ray.anyscale.serve._private.constants import (
+    ANYSCALE_RAY_SERVE_REPLICA_GRPC_MAX_MESSAGE_LENGTH,
+    ANYSCALE_RAY_SERVE_USE_GRPC_BY_DEFAULT,
+)
 from ray.anyscale.serve._private.tracing_utils import (
     TraceContextManager,
     extract_propagated_context,
@@ -302,7 +305,14 @@ class ReplicaActor:
         self._port: Optional[int] = None
 
         # ===== Begin Anyscale proprietary code ======
-        self._server = grpc.aio.server()
+        self._server = grpc.aio.server(
+            options=[
+                (
+                    "grpc.max_receive_message_length",
+                    ANYSCALE_RAY_SERVE_REPLICA_GRPC_MAX_MESSAGE_LENGTH,
+                )
+            ]
+        )
         self._event_loop.set_exception_handler(asyncio_grpc_exception_handler)
         # ===== End Anyscale proprietary code ======
 

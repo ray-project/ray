@@ -35,3 +35,10 @@ ANYSCALE_TRACING_SAMPLING_RATIO = float(
 ANYSCALE_RAY_SERVE_USE_GRPC_BY_DEFAULT = (
     os.environ.get("ANYSCALE_RAY_SERVE_USE_GRPC_BY_DEFAULT", "0") == "1"
 )
+
+ANYSCALE_RAY_SERVE_REPLICA_GRPC_MAX_MESSAGE_LENGTH = int(
+    # Default max message length in gRPC is 4MB, we keep that default
+    os.environ.get(
+        "ANYSCALE_RAY_SERVE_REPLICA_GRPC_MAX_MESSAGE_LENGTH", 4 * 1024 * 1024
+    )
+)
