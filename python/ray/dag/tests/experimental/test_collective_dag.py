@@ -11,6 +11,8 @@ import ray.cluster_utils
 import ray.experimental.collective as collective
 import torch
 from ray.dag import InputNode, MultiOutputNode
+from ray.experimental.channel.torch_tensor_type import TorchTensorType
+from ray.experimental.channel.common import ChannelContext
 from ray.experimental.channel.gpu_communicator import (
     GPUCommunicator,
     TorchTensorAllocator,
@@ -45,6 +47,60 @@ class CPUTorchTensorWorker:
         return tensor
 
 
+class AbstractNcclGroup(GPUCommunicator):
+    """
+    A dummy NCCL group for testing.
+    """
+
+    def __init__(self, actor_handles: List[ray.actor.ActorHandle]):
+        self._actor_handles = actor_handles
+        self._rank = None
+
+    def initialize(self, rank: int) -> None:
+        self._rank = rank
+
+    def get_rank(self, actor: ray.actor.ActorHandle) -> int:
+        return self._actor_handles.index(actor)
+
+    def get_world_size(self) -> int:
+        return len(self._actor_handles)
+
+    def get_self_rank(self) -> Optional[int]:
+        return self._rank
+
+    def get_actor_handles(self) -> List["ray.actor.ActorHandle"]:
+        return self._actor_handles
+
+    def send(self, value: "torch.Tensor", peer_rank: int) -> None:
+        raise NotImplementedError
+
+    def recv(
+        self,
+        shape: Tuple[int],
+        dtype: "torch.dtype",
+        peer_rank: int,
+        allocator: Optional[TorchTensorAllocator] = None,
+    ) -> "torch.Tensor":
+        raise NotImplementedError
+
+    def allreduce(
+        self,
+        send_buf: "torch.Tensor",
+        recv_buf: "torch.Tensor",
+        op: ReduceOp = ReduceOp.SUM,
+    ) -> None:
+        raise NotImplementedError
+
+    def destroy(self) -> None:
+        pass
+
+
+def mock_do_init_nccl_group(self, rank: int, nccl_group_id: str, custom_nccl_group: GPUCommunicator):
+    ctx = ChannelContext.get_current()
+    custom_nccl_group.initialize(rank)
+    ctx.nccl_groups[nccl_group_id] = custom_nccl_group
+
+
 class MockNcclGroupSet:
     def __init__(self):
         # Represents a mapping from a NCCL group ID to a set of actors and a custom
@@ -63,6 +119,20 @@ class MockNcclGroupSet:
             frozenset(actors),
             custom_nccl_group,
         )
+        if custom_nccl_group is None:
+            custom_nccl_group = AbstractNcclGroup(actors)
+        ctx = ChannelContext.get_current()
+        ctx.nccl_groups[nccl_group_id] = custom_nccl_group
+        init_tasks = [
+            actor.__ray_call__.remote(
+                mock_do_init_nccl_group,
+                rank,
+                nccl_group_id,
+                custom_nccl_group,
+            )
+            for rank, actor in enumerate(actors)
+        ]
+        ray.get(init_tasks, timeout=30)
         return nccl_group_id
 
     def check_init(
@@ -184,52 +254,6 @@ def test_all_reduce_custom_comm_wrong_actors(ray_start_regular):
     num_workers = 2
     workers = [actor_cls.remote() for _ in range(num_workers)]
 
-    class AbstractNcclGroup(GPUCommunicator):
-        """
-        A dummy NCCL group for testing.
-        """
-
-        def __init__(self, actor_handles):
-            self._actor_handles = actor_handles
-
-        def initialize(self, rank: int) -> None:
-            pass
-
-        def get_rank(self, actor: ray.actor.ActorHandle) -> int:
-            raise NotImplementedError
-
-        def get_world_size(self) -> int:
-            raise NotImplementedError
-
-        def get_self_rank(self) -> Optional[int]:
-            raise NotImplementedError
-
-        def get_actor_handles(self) -> List["ray.actor.ActorHandle"]:
-            return self._actor_handles
-
-        def send(self, value: "torch.Tensor", peer_rank: int) -> None:
-            raise NotImplementedError
-
-        def recv(
-            self,
-            shape: Tuple[int],
-            dtype: "torch.dtype",
-            peer_rank: int,
-            allocator: Optional[TorchTensorAllocator] = None,
-        ) -> "torch.Tensor":
-            raise NotImplementedError
-
-        def allreduce(
-            self,
-            send_buf: "torch.Tensor",
-            recv_buf: "torch.Tensor",
-            op: ReduceOp = ReduceOp.SUM,
-        ) -> None:
-            raise NotImplementedError
-
-        def destroy(self) -> None:
-            raise NotImplementedError
-
     nccl_group = AbstractNcclGroup([workers[0]])
     with InputNode() as inp:
         computes = [
@@ -310,6 +334,68 @@ def test_comm_deduplicate_all_reduces(ray_start_regular, monkeypatch):
         dag,
         1,
         {(frozenset(workers), None)},
+    )
+
+    compiled_dag.teardown()
+
+
+@pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 4}], indirect=True)
+def test_torch_tensor_nccl_comm_deduplicate_p2p_and_collective(
+    ray_start_regular, monkeypatch
+):
+    """
+    Test communicators are deduplicated when the collective and the P2P are
+    on the same set of actors.
+    """
+    actor_cls = CPUTorchTensorWorker.options(num_cpus=0, num_gpus=1)
+
+    num_workers = 2
+    workers = [actor_cls.remote() for _ in range(num_workers)]
+
+    with InputNode() as inp:
+        computes = [
+            worker.compute_with_tuple_args.bind(inp, i)
+            for i, worker in enumerate(workers)
+        ]
+        collectives = collective.allreduce.bind(computes)
+        recvs = [
+            # Each of the 2 workers receives from the other.
+            workers[0].recv.bind(
+                collectives[1].with_type_hint(TorchTensorType(transport="nccl"))
+            ),
+            workers[1].recv.bind(
+                collectives[0].with_type_hint(TorchTensorType(transport="nccl"))
+            ),
+        ]
+        dag = MultiOutputNode(recvs)
+
+    compiled_dag = check_nccl_group_init(
+        monkeypatch,
+        dag,
+        1,
+        {(frozenset(workers), None)},
+        (frozenset(workers), None),
+    )
+
+    compiled_dag.teardown()
+
+    with InputNode() as inp:
+        computes = [
+            worker.compute_with_tuple_args.bind(inp, i)
+            for i, worker in enumerate(workers)
+        ]
+        collectives = collective.allreduce.bind(computes)
+        # Sender is workers[0] and receiver is workers[1].
+        dag = workers[1].recv.bind(
+            collectives[0].with_type_hint(TorchTensorType(transport="nccl"))
+        )
+
+    compiled_dag = check_nccl_group_init(
+        monkeypatch,
+        dag,
+        1,
+        {(frozenset(workers), None)},
+        (frozenset(workers), None),
     )
 
     compiled_dag.teardown()
