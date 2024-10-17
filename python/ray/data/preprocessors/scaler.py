@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 
 from ray.data import Dataset
-from ray.data._internal.aggregate import AbsMax, Max, Mean, Min, Std
+from ray.data._internal.aggregate import Mean, Std
 from ray.data.preprocessor import Preprocessor
 from ray.util.annotations import PublicAPI
 
@@ -152,8 +152,30 @@ class MinMaxScaler(Preprocessor):
         self.columns = columns
 
     def _fit(self, dataset: Dataset) -> Preprocessor:
-        aggregates = [Agg(col) for Agg in [Min, Max] for col in self.columns]
-        self.stats_ = dataset.aggregate(*aggregates)
+        columns = self.columns
+
+        def _compute_stats_batch(batch: pd.DataFrame):
+            return pd.DataFrame(
+                {
+                    col: [batch[col].abs().min(), batch[col].abs().max()]
+                    for col in columns
+                }
+            )
+
+        # Apply map_batches with pandas format
+        batch_results = dataset.map_batches(
+            _compute_stats_batch, batch_format="pandas"
+        ).to_pandas()
+        # Aggregate results in driver
+        aggregated_results = _compute_stats_batch(batch_results).to_dict()
+        self.stats_ = {
+            key: value
+            for col, row in aggregated_results.items()
+            for key, value in (
+                (f"min({col})", row[0]),
+                (f"max({col})", row[1]),
+            )
+        }
         return self
 
     def _transform_pandas(self, df: pd.DataFrame):
@@ -232,8 +254,20 @@ class MaxAbsScaler(Preprocessor):
         self.columns = columns
 
     def _fit(self, dataset: Dataset) -> Preprocessor:
-        aggregates = [AbsMax(col) for col in self.columns]
-        self.stats_ = dataset.aggregate(*aggregates)
+        columns = self.columns
+
+        def _compute_stats_batch(batch: pd.DataFrame):
+            return pd.DataFrame({col: [batch[col].abs().max()] for col in columns})
+
+        # Apply map_batches with pandas format
+        batch_results = dataset.map_batches(
+            _compute_stats_batch, batch_format="pandas"
+        ).to_pandas()
+        # Aggregate results in driver
+        aggregated_results = _compute_stats_batch(batch_results).to_dict()
+        self.stats_ = {
+            f"abs_max({col})": row[0] for col, row in aggregated_results.items()
+        }
         return self
 
     def _transform_pandas(self, df: pd.DataFrame):
