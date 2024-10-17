@@ -16,7 +16,9 @@
 
 #include <cmath>
 #include <sstream>
+#include <utility>
 
+#include "ray/common/bundle_spec.h"
 #include "ray/util/logging.h"
 
 namespace ray {
@@ -43,6 +45,21 @@ bool NodeResourceInstanceSet::Has(ResourceID resource_id) const {
 
 void NodeResourceInstanceSet::Remove(ResourceID resource_id) {
   resources_.erase(resource_id);
+
+  // Remove from the pg_indexed_resources_ as well
+  auto data = ParsePgFormattedResource(resource_id.Binary(),
+                                       /*for_wildcard_resource=*/false,
+                                       /*for_indexed_resource=*/true);
+  if (data) {
+    ResourceID original_resource_id(data->original_resource);
+    absl::flat_hash_set<ResourceID> &resource_set =
+        pg_indexed_resources_[original_resource_id];
+
+    resource_set.erase(resource_id);
+    if (resource_set.empty()) {
+      pg_indexed_resources_.erase(original_resource_id);
+    }
+  }
 }
 
 const std::vector<FixedPoint> &NodeResourceInstanceSet::Get(
@@ -69,6 +86,14 @@ NodeResourceInstanceSet &NodeResourceInstanceSet::Set(ResourceID resource_id,
     resources_.erase(resource_id);
   } else {
     resources_[resource_id] = std::move(instances);
+
+    // Popluate the pg_indexed_resources_map_
+    auto data = ParsePgFormattedResource(resource_id.Binary(),
+                                         /*for_wildcard_resource=*/false,
+                                         /*for_indexed_resource=*/true);
+    if (data) {
+      pg_indexed_resources_[ResourceID(data->original_resource)].emplace(resource_id);
+    }
   }
   return *this;
 }
@@ -93,19 +118,121 @@ bool NodeResourceInstanceSet::operator==(const NodeResourceInstanceSet &other) c
 std::optional<absl::flat_hash_map<ResourceID, std::vector<FixedPoint>>>
 NodeResourceInstanceSet::TryAllocate(const ResourceSet &resource_demands) {
   absl::flat_hash_map<ResourceID, std::vector<FixedPoint>> allocations;
+
+  // During resource allocation with a placement group, no matter whether the allocation
+  // requirement specifies a bundle index, we need to generate the allocation on both
+  // the wildcard resource and the indexed resource. The resource_demand shouldn't be
+  // assigned across bundles. And If no bundle index is specified, we will iterate
+  // through the bundles and find the first bundle that can fit the required resources.
+  // In addition, for unit resources, we need to make sure that the allocation on the
+  // wildcard resource and the indexed resource are consistent, meaning the same
+  // instance ids should be allocated.
+
+  // In the format of:
+  // key: original resource id,
+  // value: [resource id, parsed pg format resource data]
+  absl::flat_hash_map<ResourceID,
+                      std::vector<std::pair<ResourceID, PgFormattedResourceData>>>
+      pg_resource_map;
+
   for (const auto &[resource_id, demand] : resource_demands.Resources()) {
-    auto allocation = TryAllocate(resource_id, demand);
-    if (allocation) {
-      // Even if allocation failed we need to remember partial allocations to correctly
-      // free resources.
-      allocations[resource_id] = std::move(*allocation);
+    auto data = ParsePgFormattedResource(resource_id.Binary(),
+                                         /*for_wildcard_resource*/ true,
+                                         /*for_indexed_resource*/ true);
+
+    if (data) {
+      // Aggregate based on resource type
+      ResourceID original_resource_id{data->original_resource};
+      pg_resource_map[original_resource_id].push_back(
+          std::make_pair(resource_id, data.value()));
     } else {
-      // Allocation failed. Restore partially allocated resources.
-      for (const auto &[resource_id, allocation] : allocations) {
-        Free(resource_id, allocation);
+      // Directly allocate the resources if the resource is not with a placement group
+      auto allocation = TryAllocate(resource_id, demand);
+      if (allocation) {
+        // Even if allocation failed we need to remember partial allocations to
+        // correctly free resources.
+        allocations[resource_id] = std::move(*allocation);
+      } else {
+        // Allocation failed. Restore partially allocated resources.
+        for (const auto &[resource_id, allocation] : allocations) {
+          Free(resource_id, allocation);
+        }
+        return std::nullopt;
       }
-      return std::nullopt;
     }
+  }
+
+  // Handle the resource allocation for resources with placement group
+  for (const auto &[original_resource_id, resource_id_vector] : pg_resource_map) {
+    // Assuming exactly 1 placement group and at most 1 bundle index can be specified in
+    // the resource requirement for a single resource type
+    std::vector<FixedPoint> wildcard_allocation;
+    const ResourceID *wildcard_resource_id = nullptr;
+
+    // Allocate indexed resource
+    if (resource_id_vector.size() == 1) {
+      // The case where no bundle index is specified
+      // Iterate through the bundles to find the first one with enough space
+      bool found = false;
+      wildcard_resource_id = &resource_id_vector[0].first;
+      auto index_resources = pg_indexed_resources_.find(original_resource_id);
+      if (index_resources != pg_indexed_resources_.end()) {
+        for (ResourceID indexed_resource_id : index_resources->second) {
+          if (Has(indexed_resource_id)) {
+            auto allocation = TryAllocate(
+                indexed_resource_id, resource_demands.Get(resource_id_vector[0].first));
+
+            if (allocation) {
+              // Found the allocation in a bundle
+              wildcard_allocation = *allocation;
+              allocations[indexed_resource_id] = std::move(*allocation);
+              found = true;
+              break;
+            }
+          }
+        }
+      }
+
+      if (!found) {
+        // No bundle can fit the required resources, allocation failed
+        for (const auto &[resource_id, allocation] : allocations) {
+          Free(resource_id, allocation);
+        }
+        return std::nullopt;
+      }
+    } else {
+      // The case where the bundle index is specified
+      // The each resource type, both the wildcard resource and the indexed resource
+      // should be in the resource_demand
+      for (const std::pair<ResourceID, PgFormattedResourceData> &pair :
+           resource_id_vector) {
+        if (pair.second.bundle_index != -1) {
+          // This is the indexed resource
+          auto allocation = TryAllocate(pair.first, resource_demands.Get(pair.first));
+
+          if (allocation) {
+            wildcard_allocation = *allocation;
+            allocations[pair.first] = std::move(*allocation);
+          } else {
+            // The corresponding bundle cannot hold the required resources.
+            // Allocation failed
+            for (const auto &[resource_id, allocation] : allocations) {
+              Free(resource_id, allocation);
+            }
+            return std::nullopt;
+          }
+        } else {
+          // This is the wildcard resource
+          wildcard_resource_id = &pair.first;
+        }
+      }
+    }
+
+    // Allocate wildcard resource, should be consistent with the indexed resource
+    RAY_CHECK(wildcard_resource_id != nullptr);
+    RAY_CHECK(!wildcard_allocation.empty());
+    AllocateWithReference(wildcard_allocation, *wildcard_resource_id);
+    allocations[*wildcard_resource_id] = std::move(wildcard_allocation);
   }
 
   return std::make_optional<absl::flat_hash_map<ResourceID, std::vector<FixedPoint>>>(
@@ -139,7 +266,7 @@ std::optional<std::vector<FixedPoint>> NodeResourceInstanceSet::TryAllocate(
   //
   // As long as remaining_demand is greater than 1.,
   // allocate full unit-capacity instances until the remaining_demand becomes fractional.
-  // Then try to find the best fit for the fractional remaining_resources. Best fist means
+  // Then try to find the best fit for the fractional remaining_resources. Best fit means
   // allocating the resource instance with the smallest available capacity greater than
   // remaining_demand
   if (remaining_demand >= 1.) {
@@ -184,6 +311,20 @@ std::optional<std::vector<FixedPoint>> NodeResourceInstanceSet::TryAllocate(
 
   Set(resource_id, std::move(available));
   return std::make_optional<std::vector<FixedPoint>>(std::move(allocation));
+}
+
+void NodeResourceInstanceSet::AllocateWithReference(
+    const std::vector<FixedPoint> &ref_allocation, ResourceID resource_id) {
+  std::vector<FixedPoint> available = Get(resource_id);
+  RAY_CHECK(!available.empty());
+  RAY_CHECK_EQ(available.size(), ref_allocation.size());
+
+  for (int i = 0; i < ref_allocation.size(); i++) {
+    RAY_CHECK_GE(available[i], ref_allocation[i]);
+    available[i] -= ref_allocation[i];
+  }
+
+  Set(resource_id, std::move(available));
 }
 
 void NodeResourceInstanceSet::Free(ResourceID resource_id,
@@ -244,7 +385,7 @@ std::vector<FixedPoint> NodeResourceInstanceSet::Subtract(
 
 std::string NodeResourceInstanceSet::DebugString() const {
   std::stringstream buffer;
-  buffer << "{";
+  buffer << "{{";
   bool first = true;
   for (const auto &[id, quantity] : resources_) {
     if (!first) {
@@ -253,7 +394,27 @@ std::string NodeResourceInstanceSet::DebugString() const {
     first = false;
     buffer << id.Binary() << ": " << FixedPointVectorToString(quantity);
   }
-  buffer << "}";
+  buffer << "}, {";
+
+  first = true;
+  for (const auto &[original_id, indexed_ids] : pg_indexed_resources_) {
+    if (!first) {
+      buffer << ", ";
+    }
+    first = false;
+
+    buffer << original_id.Binary() << ": {";
+    bool firstInSet = true;
+    for (const auto &index_id : indexed_ids) {
+      if (!firstInSet) {
+        buffer << ", ";
+      }
+      firstInSet = false;
+      buffer << index_id.Binary();
+    }
+    buffer << "}";
+  }
+  buffer << "}}";
   return buffer.str();
 }
 
