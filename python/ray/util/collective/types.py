@@ -48,8 +48,11 @@ class Backend(object):
 class ReduceOp(Enum):
     SUM = 0
     PRODUCT = 1
-    MIN = 2
-    MAX = 3
+    # MIN = 2
+    # MAX = 3
+    # [NOTE] Testing MIN and MAX operations.
+    MIN = 3
+    MAX = 2
 
 
 unset_timeout_ms = timedelta(milliseconds=-1)
