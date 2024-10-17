@@ -749,6 +749,31 @@ def test_per_func_name_stats(shutdown_only):
     wait_for_condition(verify_mem_cleaned, timeout=30)
 
 
+@pytest.mark.skipif(sys.platform != "linux", reason="Only works in Linux.")
+def test_task_rss_hwm_kb(shutdown_only):
+    addr = ray.init(num_cpus=2)
+
+    @ray.remote
+    def fib(i):
+        if i <= 2:
+            return 1
+        return sum(ray.get([fib.remote(i - 1), fib.remote(i - 2)]))
+
+    assert ray.get(fib.remote(8)) == 21
+
+    def verify_components():
+        metrics = raw_metrics(addr)
+        for name, samples in metrics.items():
+            # Histogram, _count, _sum
+            if name.startswith("ray_task_rss_hwm_kb"):
+                for sample in samples:
+                    assert sample.labels["Name"] == "fib"
+                    return True
+        return False
+
+    wait_for_condition(verify_components, timeout=30)
+
+
 def test_prometheus_file_based_service_discovery(ray_start_cluster):
     # Make sure Prometheus service discovery file is correctly written
     # when number of nodes are dynamically changed.

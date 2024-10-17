@@ -88,6 +88,7 @@ class ScopedTaskMetricSetter {
   bool is_retry_;
 };
 
+#ifdef __linux__
 // If feasible and needed, record RSS HWM on a task.
 // This class is inited before the task starts and destructed after the task finishes.
 class ScopedTaskRssHwmTracker {
@@ -166,6 +167,16 @@ class ScopedTaskRssHwmTracker {
   constexpr static std::string_view kSelfClearRefsFile = "/proc/self/clear_refs";
   constexpr static std::string_view kSelfClearRefsValue = "5";
 };
+
+#else
+
+// No-op in MacOS or Windows.
+class ScopedTaskRssHwmTracker {
+ public:
+  explicit ScopedTaskRssHwmTracker(const TaskSpecification &spec) {}
+};
+
+#endif
 
 using ActorLifetime = ray::rpc::JobConfig_ActorLifetime;
 
