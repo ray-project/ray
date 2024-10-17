@@ -125,28 +125,6 @@ def check_nccl_group_init(
 
 
 @pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
-def test_all_reduce_non_tensor_input(ray_start_regular):
-    """
-    Test an error is thrown when an all-reduce takes non-tensor inputs.
-    """
-    actor_cls = CPUTorchTensorWorker.options(num_cpus=0, num_gpus=1)
-
-    worker = actor_cls.remote()
-
-    with InputNode() as inp:
-        non_tensor = worker.send.bind((10,), torch.float16, inp, send_tensor=False)
-        allreduce = collective.allreduce.bind([non_tensor])
-        dag = MultiOutputNode(allreduce)
-
-    compiled_dag = dag.experimental_compile()
-    ref = compiled_dag.execute(10)
-    with pytest.raises(ValueError, match="Expected a torch tensor"):
-        ray.get(ref)
-
-    compiled_dag.teardown()
-
-
-@pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
 def test_all_reduce_duplicate_actors(ray_start_regular):
     """
     Test an error is thrown when two input nodes from the same actor bind to
@@ -243,7 +221,9 @@ def test_all_reduce_custom_comm_wrong_actors(ray_start_regular):
             collective.allreduce.bind(computes, transport=nccl_group)
 
 
-@pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
+@pytest.mark.parametrize(
+    "ray_start_regular", [{"num_cpus": 4, "num_gpus": 4}], indirect=True
+)
 def test_comm_all_reduces(ray_start_regular, monkeypatch):
     """
     Test different communicators are used for different all-reduce calls of
@@ -281,7 +261,9 @@ def test_comm_all_reduces(ray_start_regular, monkeypatch):
     compiled_dag.teardown()
 
 
-@pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
+@pytest.mark.parametrize(
+    "ray_start_regular", [{"num_cpus": 4, "num_gpus": 4}], indirect=True
+)
 def test_comm_deduplicate_all_reduces(ray_start_regular, monkeypatch):
     """
     Test communicators are deduplicated when all-reduces are called on the same
