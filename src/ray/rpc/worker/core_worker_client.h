@@ -53,10 +53,10 @@ namespace ray {
 namespace rpc {
 
 /// The maximum number of requests in flight per client.
-const int64_t kMaxBytesInFlight = 16 * 1024 * 1024;
+constexpr int64_t kMaxBytesInFlight = 16L * 1024 * 1024;
 
 /// The base size in bytes per request.
-const int64_t kBaseRequestSize = 1024;
+constexpr int64_t kBaseRequestSize = 1024;
 
 /// Get the estimated size in bytes of the given task.
 const static int64_t RequestSizeInBytes(const PushTaskRequest &request) {
@@ -202,7 +202,7 @@ class CoreWorkerClientInterface : public pubsub::SubscriberClientInterface {
   /// Returns the max acked sequence number, useful for checking on progress.
   virtual int64_t ClientProcessedUpToSeqno() { return -1; }
 
-  virtual ~CoreWorkerClientInterface(){};
+  virtual ~CoreWorkerClientInterface() = default;
 };
 
 /// Client used for communicating with a remote worker server.
@@ -373,9 +373,9 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>,
 
     {
       absl::MutexLock lock(&mutex_);
-      send_queue_.push_back(std::make_pair(
-          std::move(request),
-          std::move(const_cast<ClientCallback<PushTaskReply> &>(callback))));
+      send_queue_.emplace_back(std::move(request),
+                               std::move(const_cast<ClientCallback<PushTaskReply> &>(
+                                   callback)));  // TODO(dayshah) remove const casts
     }
     SendRequests();
   }
@@ -473,8 +473,8 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>,
   int64_t max_finished_seq_no_ ABSL_GUARDED_BY(mutex_) = -1;
 };
 
-typedef std::function<std::shared_ptr<CoreWorkerClientInterface>(const rpc::Address &)>
-    ClientFactoryFn;
+using ClientFactoryFn =
+    std::function<std::shared_ptr<CoreWorkerClientInterface>(const rpc::Address &)>;
 
 }  // namespace rpc
 }  // namespace ray

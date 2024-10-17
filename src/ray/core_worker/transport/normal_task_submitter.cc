@@ -16,7 +16,6 @@
 
 #include "ray/core_worker/transport/dependency_resolver.h"
 #include "ray/gcs/pb_util.h"
-#include "ray/stats/metric_defs.h"
 
 namespace ray {
 namespace core {
@@ -65,7 +64,7 @@ Status NormalTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
           // There are idle workers, so we don't need more
           // workers.
 
-          for (auto active_worker_addr : scheduling_key_entry.active_workers) {
+          for (const auto &active_worker_addr : scheduling_key_entry.active_workers) {
             RAY_CHECK(worker_to_lease_entry_.find(active_worker_addr) !=
                       worker_to_lease_entry_.end());
             auto &lease_entry = worker_to_lease_entry_[active_worker_addr];
@@ -703,7 +702,7 @@ Status NormalTaskSubmitter::CancelTask(TaskSpecification task_spec,
                                        bool recursive) {
   RAY_LOG(INFO) << "Cancelling a task: " << task_spec.TaskId()
                 << " force_kill: " << force_kill << " recursive: " << recursive;
-  const SchedulingKey scheduling_key(
+  SchedulingKey scheduling_key(
       task_spec.GetSchedulingClass(),
       task_spec.GetDependencyIds(),
       task_spec.IsActorCreationTask() ? task_spec.ActorCreationId() : ActorID::Nil(),
@@ -763,8 +762,11 @@ Status NormalTaskSubmitter::CancelTask(TaskSpecification task_spec,
   request.set_caller_worker_id(task_spec.CallerWorkerId().Binary());
   client->CancelTask(
       request,
-      [this, task_spec, scheduling_key, force_kill, recursive](
-          const Status &status, const rpc::CancelTaskReply &reply) {
+      [this,
+       task_spec = std::move(task_spec),
+       scheduling_key = std::move(scheduling_key),
+       force_kill,
+       recursive](const Status &status, const rpc::CancelTaskReply &reply) mutable {
         absl::MutexLock lock(&mu_);
         RAY_LOG(DEBUG) << "CancelTask RPC response received for " << task_spec.TaskId()
                        << " with status " << status.ToString();
@@ -789,7 +791,7 @@ Status NormalTaskSubmitter::CancelTask(TaskSpecification task_spec,
               cancel_retry_timer_->async_wait(
                   boost::bind(&NormalTaskSubmitter::CancelTask,
                               this,
-                              task_spec,
+                              std::move(task_spec),
                               force_kill,
                               recursive));
             } else {
