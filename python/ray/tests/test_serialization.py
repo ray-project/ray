@@ -28,7 +28,7 @@ def is_named_tuple(cls):
     f = getattr(cls, "_fields", None)
     if not isinstance(f, tuple):
         return False
-    return all(type(n) == str for n in f)
+    return all(isinstance(n, str) for n in f)
 
 
 @pytest.mark.parametrize(
@@ -95,8 +95,8 @@ def test_simple_serialization(ray_start_regular):
         # TODO(rkn): The numpy dtypes currently come back as regular integers
         # or floats.
         if type(obj).__module__ != "numpy":
-            assert type(obj) == type(new_obj_1)
-            assert type(obj) == type(new_obj_2)
+            assert isinstance(obj, new_obj_1)
+            assert isinstance(obj, new_obj_2)
 
 
 @pytest.mark.parametrize(
