@@ -4662,6 +4662,17 @@ class AlgorithmConfig(_Config):
                 "`Single-/MultiAgentEpisode`s."
             )
 
+        if (
+            self.output
+            and self.output_write_episodes
+            and self.batch_mode != "complete_episodes"
+        ):
+            raise ValueError(
+                "When recording episodes only complete episodes should be "
+                "recorded (i.e. `batch_mode=='complete_episodes'`). Otherwise "
+                "recorded episodes cannot be read in for training."
+            )
+
     @staticmethod
     def _serialize_dict(config):
         # Serialize classes to classpaths:
