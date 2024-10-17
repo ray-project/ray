@@ -240,6 +240,7 @@ class ChannelInterface:
             Any: The deserialized value. If the deserialized value is an
             Exception, it will be returned directly instead of being raised.
         """
+        raise NotImplementedError
 
     def close(self) -> None:
         """

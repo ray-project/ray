@@ -3,6 +3,7 @@ from typing import TYPE_CHECKING, Callable, List, Optional, Tuple
 
 import ray
 from ray.util.annotations import DeveloperAPI
+from ray.util.collective.types import ReduceOp
 
 if TYPE_CHECKING:
     import torch
@@ -101,6 +102,24 @@ class GPUCommunicator(ABC):
             dtype: The dtype of the tensor to receive.
             peer_rank: The rank of the actor to receive from.
             allocator: A function to allocate the tensor to receive into.
+        """
+        raise NotImplementedError
+
+    @abstractmethod
+    def allreduce(
+        self,
+        send_buf: "torch.Tensor",
+        recv_buf: "torch.Tensor",
+        op: ReduceOp,
+    ) -> None:
+        """
+        Collectively allreduce the tensor across the group.
+
+        Args:
+            send_buf: The input torch.tensor to allreduce. It should already be
+                on this actor's default device.
+            recv_buf: The output torch.tensor to store the allreduce result.
+            op: The reduce operation.
         """
         raise NotImplementedError
 
