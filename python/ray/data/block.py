@@ -243,8 +243,8 @@ class BlockAccessor:
         """Return a slice of this block.
 
         Args:
-            start: The starting index of the slice.
-            end: The ending index of the slice.
+            start: The starting index of the slice (inclusive).
+            end: The ending index of the slice (exclusive).
             copy: Whether to perform a data copy for the slice.
 
         Returns:
