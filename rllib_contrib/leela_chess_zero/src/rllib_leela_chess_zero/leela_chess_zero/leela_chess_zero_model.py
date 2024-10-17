@@ -93,7 +93,7 @@ class LeelaChessZeroModel(TorchModelV2, nn.Module):
                     print(input_dict)
                     raise Exception("No observation in input_dict")
         if self.alpha_zero_obs:
-            if not type(obs) == torch.Tensor:
+            if not isinstance(obs, torch.Tensor):
                 obs = torch.from_numpy(obs.astype(np.float32))
                 action_mask = torch.from_numpy(action_mask.astype(np.float32))
             try:

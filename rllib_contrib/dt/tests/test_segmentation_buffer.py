@@ -89,9 +89,9 @@ def _get_internal_buffer(
     """Get the internal buffer list from the buffer. If MultiAgent then return the
     internal buffer corresponding to the given policy_id.
     """
-    if type(buffer) == SegmentationBuffer:
+    if isinstance(buffer, SegmentationBuffer):
         return buffer._buffer
-    elif type(buffer) == MultiAgentSegmentationBuffer:
+    elif isinstance(buffer, MultiAgentSegmentationBuffer):
         return buffer.buffers[policy_id]._buffer
     else:
         raise NotImplementedError
@@ -104,9 +104,9 @@ def _as_sample_batch(
     """Returns a SampleBatch. If MultiAgentBatch then return the SampleBatch
     corresponding to the given policy_id.
     """
-    if type(batch) == SampleBatch:
+    if isinstance(batch, SampleBatch):
         return batch
-    elif type(batch) == MultiAgentBatch:
+    elif isinstance(batch, MultiAgentBatch):
         return batch.policy_batches[policy_id]
     else:
         raise NotImplementedError
