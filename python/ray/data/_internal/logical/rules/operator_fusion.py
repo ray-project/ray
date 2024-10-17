@@ -50,7 +50,10 @@ class OperatorFusionRule(Rule):
         self._remove_output_depes(fused_dag)
         self._update_output_depes(fused_dag)
 
-        return PhysicalPlan(fused_dag, self._op_map)
+        new_plan = PhysicalPlan(fused_dag, self._op_map)
+        # Pass the existing DataContext to the new Plan.
+        new_plan._set_context(plan._context)
+        return new_plan
 
     def _remove_output_depes(self, op: PhysicalOperator) -> None:
         for input in op._input_dependencies:

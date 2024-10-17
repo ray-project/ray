@@ -22,7 +22,10 @@ class ReorderRandomizeBlocksRule(Rule):
 
     def apply(self, plan: LogicalPlan) -> LogicalPlan:
         optimized_dag: LogicalOperator = self._apply(plan.dag)
-        return LogicalPlan(dag=optimized_dag)
+        new_plan = LogicalPlan(dag=optimized_dag)
+        # Pass the existing DataContext to the new Plan.
+        new_plan._set_context(plan._context)
+        return new_plan
 
     def _apply(self, op: LogicalOperator) -> LogicalOperator:
         operators = []

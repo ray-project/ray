@@ -138,6 +138,7 @@ def test_split_blocks_operator(ray_start_regular_shared):
     planner = Planner()
     op = get_parquet_read_logical_op(parallelism=10)
     logical_plan = LogicalPlan(op)
+    logical_plan._set_context(DataContext.get_current())
     physical_plan = planner.plan(logical_plan)
     physical_plan = PhysicalOptimizer().optimize(physical_plan)
     physical_op = physical_plan.dag
@@ -158,6 +159,7 @@ def test_split_blocks_operator(ray_start_regular_shared):
         lambda x: x,
     )
     logical_plan = LogicalPlan(op)
+    logical_plan._set_context(DataContext.get_current())
     physical_plan = planner.plan(logical_plan)
     physical_plan = PhysicalOptimizer().optimize(physical_plan)
     physical_op = physical_plan.dag
@@ -581,6 +583,7 @@ def test_read_map_batches_operator_fusion(ray_start_regular_shared):
         lambda x: x,
     )
     logical_plan = LogicalPlan(op)
+    logical_plan._set_context(DataContext.get_current())
     physical_plan = planner.plan(logical_plan)
     physical_plan = PhysicalOptimizer().optimize(physical_plan)
     physical_op = physical_plan.dag
@@ -608,6 +611,7 @@ def test_read_map_chain_operator_fusion(ray_start_regular_shared):
     map3 = FlatMap(map2, lambda x: x)
     map4 = Filter(map3, lambda x: x)
     logical_plan = LogicalPlan(map4)
+    logical_plan._set_context(DataContext.get_current())
     physical_plan = planner.plan(logical_plan)
     physical_plan = PhysicalOptimizer().optimize(physical_plan)
     physical_op = physical_plan.dag
@@ -657,9 +661,11 @@ def test_read_map_batches_operator_fusion_compatible_remote_args(
         op = MapBatches(read_op, lambda x: x, ray_remote_args=up_remote_args)
         op = MapBatches(op, lambda x: x, ray_remote_args=down_remote_args)
         logical_plan = LogicalPlan(op)
+        logical_plan._set_context(DataContext.get_current())
+
         physical_plan = planner.plan(logical_plan)
-        physical_plan = PhysicalOptimizer().optimize(physical_plan)
-        physical_op = physical_plan.dag
+        optimized_physical_plan = PhysicalOptimizer().optimize(physical_plan)
+        physical_op = optimized_physical_plan.dag
 
         assert op.name == "MapBatches(<lambda>)", (up_remote_args, down_remote_args)
         assert physical_op.name == "MapBatches(<lambda>)->MapBatches(<lambda>)", (
@@ -700,6 +706,7 @@ def test_read_map_batches_operator_fusion_incompatible_remote_args(
         op = MapBatches(read_op, lambda x: x, ray_remote_args=up_remote_args)
         op = MapBatches(op, lambda x: x, ray_remote_args=down_remote_args)
         logical_plan = LogicalPlan(op)
+        logical_plan._set_context(DataContext.get_current())
         physical_plan = planner.plan(logical_plan)
         physical_plan = PhysicalOptimizer().optimize(physical_plan)
         physical_op = physical_plan.dag
@@ -730,6 +737,7 @@ def test_read_map_batches_operator_fusion_compute_tasks_to_actors(
     op = MapBatches(read_op, lambda x: x)
     op = MapBatches(op, lambda x: x, compute=ray.data.ActorPoolStrategy())
     logical_plan = LogicalPlan(op)
+    logical_plan._set_context(DataContext.get_current())
     physical_plan = planner.plan(logical_plan)
     physical_plan = PhysicalOptimizer().optimize(physical_plan)
     physical_op = physical_plan.dag
@@ -749,6 +757,7 @@ def test_read_map_batches_operator_fusion_compute_read_to_actors(
     read_op = get_parquet_read_logical_op(parallelism=1)
     op = MapBatches(read_op, lambda x: x, compute=ray.data.ActorPoolStrategy())
     logical_plan = LogicalPlan(op)
+    logical_plan._set_context(DataContext.get_current())
     physical_plan = planner.plan(logical_plan)
     physical_plan = PhysicalOptimizer().optimize(physical_plan)
     physical_op = physical_plan.dag
@@ -769,6 +778,7 @@ def test_read_map_batches_operator_fusion_incompatible_compute(
     op = MapBatches(read_op, lambda x: x, compute=ray.data.ActorPoolStrategy())
     op = MapBatches(op, lambda x: x)
     logical_plan = LogicalPlan(op)
+    logical_plan._set_context(DataContext.get_current())
     physical_plan = planner.plan(logical_plan)
     physical_plan = PhysicalOptimizer().optimize(physical_plan)
     physical_op = physical_plan.dag
@@ -794,6 +804,7 @@ def test_read_map_batches_operator_fusion_min_rows_per_bundled_input(
     op = MapBatches(op, lambda x: x, min_rows_per_bundled_input=5)
     op = MapBatches(op, lambda x: x, min_rows_per_bundled_input=3)
     logical_plan = LogicalPlan(op)
+    logical_plan._set_context(DataContext.get_current())
     physical_plan = planner.plan(logical_plan)
     physical_plan = PhysicalOptimizer().optimize(physical_plan)
     physical_op = physical_plan.dag
