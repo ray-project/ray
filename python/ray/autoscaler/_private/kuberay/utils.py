@@ -11,6 +11,7 @@ gke_tpu_accelerator_to_generation = {
     "tpu-v5-lite-device": "v5e",
     "tpu-v5-lite-podslice": "v5e",
     "tpu-v5p-slice": "v5p",
+    "tpu-v6e-slice": "v6e",
 }
 
 
@@ -103,7 +104,7 @@ def tpu_node_selectors_to_type(topology: str, accelerator: str) -> Optional[str]
         chip_dimensions = [int(chip_count) for chip_count in topology.split("x")]
         num_chips = reduce(lambda x, y: x * y, chip_dimensions)
         default_num_cores_per_chip = 2
-        if generation == "v5e":
+        if generation == "v5e" or generation == "v6e":
             default_num_cores_per_chip = 1
         num_cores = num_chips * default_num_cores_per_chip
         return f"{generation}-{num_cores}"
