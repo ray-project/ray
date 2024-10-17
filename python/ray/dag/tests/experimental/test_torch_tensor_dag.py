@@ -185,6 +185,7 @@ def check_nccl_group_init(
     ],
 ) -> None:
     nccl_group_ids = compiled_dag.nccl_group_ids
+    assert len(nccl_group_ids) == num
 
     ctx = ChannelContext.get_current()
     ctx_actors_and_custom_comms = set()
