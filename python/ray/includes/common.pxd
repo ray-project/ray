@@ -800,3 +800,5 @@ cdef extern from "ray/common/constants.h" nogil:
     cdef int kResourceUnitScaling
     cdef const char[] kImplicitResourcePrefix
     cdef int kStreamingGeneratorReturn
+    cdef int kRayLabelMaxLength
+    cdef const char[] kRayDefaultLabelKeyPrefix
