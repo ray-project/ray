@@ -127,5 +127,18 @@ class Planner:
                 f"Found unknown logical operator during planning: {logical_op}"
             )
 
+        # Traverse up the DAG, and set the mapping from physical to logical operators.
+        # At this point, all physical operators without logical operators set
+        # must have been created by the current logical operator.
+        queue = [physical_op]
+        while queue:
+            curr_physical_op = queue.pop()
+            # Once we find an operator with a logical operator set, we can stop.
+            if curr_physical_op._logical_operators:
+                break
+
+            curr_physical_op.set_logical_operators(logical_op)
+            queue.extend(physical_op.input_dependencies)
+
         self._physical_op_to_logical_op[physical_op] = logical_op
         return physical_op
