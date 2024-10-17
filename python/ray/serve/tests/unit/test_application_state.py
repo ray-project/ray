@@ -6,7 +6,6 @@ import pytest
 
 from ray.exceptions import RayTaskError
 from ray.serve._private.application_state import (
-    APIType,
     ApplicationState,
     ApplicationStateManager,
     override_deployment_info,
@@ -24,7 +23,12 @@ from ray.serve._private.deployment_info import DeploymentInfo
 from ray.serve._private.test_utils import MockKVStore
 from ray.serve._private.utils import get_random_string
 from ray.serve.exceptions import RayServeException
-from ray.serve.schema import DeploymentSchema, LoggingConfig, ServeApplicationSchema
+from ray.serve.schema import (
+    APIType,
+    DeploymentSchema,
+    LoggingConfig,
+    ServeApplicationSchema,
+)
 
 
 class MockEndpointState:
