@@ -1,4 +1,6 @@
+import asyncio
 import collections
+import threading
 import unittest
 from typing import Any, Optional, Tuple
 
@@ -7,6 +9,7 @@ import pytest
 import ray
 from ray._private.test_utils import wait_for_condition
 from ray.actor import ActorHandle
+from ray.core.generated import gcs_pb2
 from ray.data._internal.compute import ActorPoolStrategy
 from ray.data._internal.execution.operators.actor_pool_map_operator import _ActorPool
 from ray.data._internal.execution.util import make_ref_bundles
@@ -125,6 +128,41 @@ class TestActorPool(unittest.TestCase):
         assert pool.num_active_actors() == 1
         assert pool.num_idle_actors() == 0
         assert pool.num_free_slots() == 3
+
+    def test_restarting_to_alive(self):
+        # Test that actor is correctly transitioned from restarting to alive.
+        pool = self._create_actor_pool(max_tasks_in_flight=1)
+        actor = self._add_ready_actor(pool)
+
+        # Mark the actor as restarting and test pick_actor fails
+        pool.update_running_actor_state(
+            actor, gcs_pb2.ActorTableData.ActorState.RESTARTING
+        )
+        assert pool.pick_actor() is None
+        assert pool.current_size() == 1
+        assert pool.num_pending_actors() == 0
+        assert pool.num_running_actors() == 1
+        assert pool.num_restarting_actors() == 1
+        assert pool.num_alive_actors() == 0
+        assert pool.num_active_actors() == 0
+        assert pool.num_idle_actors() == 1
+        assert pool.num_free_slots() == 1
+
+        # Mark the actor as alive and test pick_actor succeeds
+        pool.update_running_actor_state(actor, gcs_pb2.ActorTableData.ActorState.ALIVE)
+        picked_actor = pool.pick_actor()
+        assert picked_actor == actor
+        assert pool.current_size() == 1
+        assert pool.num_pending_actors() == 0
+        assert pool.num_running_actors() == 1
+        assert pool.num_restarting_actors() == 0
+        assert pool.num_alive_actors() == 1
+        assert pool.num_active_actors() == 1
+        assert pool.num_idle_actors() == 0
+        assert pool.num_free_slots() == 0
+
+        # Return the actor
+        pool.return_actor(picked_actor)
 
     def test_repeated_picking(self):
         # Test that we can repeatedly pick the same actor.
@@ -513,12 +551,12 @@ class TestActorPool(unittest.TestCase):
         actor2 = self._add_ready_actor(pool, node_id="node2")
 
         # Fake actor 2 as more busy.
-        pool._num_tasks_in_flight[actor2] = 1
+        pool._running_actors[actor2].num_tasks_in_flight = 1
         res1 = pool.pick_actor(bundles[0])
         assert res1 == actor1
 
         # Fake actor 2 as more busy again.
-        pool._num_tasks_in_flight[actor2] = 2
+        pool._running_actors[actor2].num_tasks_in_flight = 2
         res2 = pool.pick_actor(bundles[0])
         assert res2 == actor1
 
@@ -554,6 +592,113 @@ def test_start_actor_timeout(ray_start_regular_shared, restore_data_context):
             compute=ray.data.ActorPoolStrategy(size=5),
             num_gpus=100,
         ).take_all()
+
+
+def test_actor_pool_fault_tolerance_e2e(ray_start_cluster):
+    """Test that a dataset with actor pools can finish, when
+    all nodes in the cluster are removed and added back."""
+    ray.shutdown()
+    cluster = ray_start_cluster
+    cluster.add_node(num_cpus=0)
+    ray.init()
+
+    @ray.remote(num_cpus=0)
+    class Signal:
+        def __init__(self):
+            self._node_id = ray.get_runtime_context().get_node_id()
+            self._num_alive_actors = 0
+            self._all_nodes_removed = False
+            self._all_nodes_restarted = False
+
+        async def notify_actor_alive(self):
+            self._num_alive_actors += 1
+
+        async def wait_for_actors_alive(self, value):
+            while self._num_alive_actors != value:
+                await asyncio.sleep(0.01)
+
+        async def notify_nodes_removed(self):
+            self._all_nodes_removed = True
+
+        async def notify_nodes_restarted(self):
+            self._all_nodes_restarted = True
+
+        async def wait_for_nodes_removed(self):
+            while not self._all_nodes_removed:
+                await asyncio.sleep(0.01)
+
+        async def wait_for_nodes_restarted(self):
+            while not self._all_nodes_restarted:
+                await asyncio.sleep(0.01)
+
+    # Create the signal actor on the head node.
+    signal_actor = Signal.remote()
+
+    # Spin up nodes
+    num_nodes = 1
+    nodes = []
+    for _ in range(num_nodes):
+        nodes.append(cluster.add_node(num_cpus=10))
+    cluster.wait_for_nodes()
+
+    class MyUDF:
+        def __init__(self, signal_actor):
+            self._node_id = ray.get_runtime_context().get_node_id()
+            self._signal_actor = signal_actor
+            self._signal_sent = False
+
+        def __call__(self, batch):
+            if not self._signal_sent:
+                # Notify the Actor is alive
+                self._signal_actor.notify_actor_alive.remote()
+
+                # Wait for the driver to remove nodes. This makes sure all
+                # actors are running tasks when removing nodes.
+                ray.get(self._signal_actor.wait_for_nodes_removed.remote())
+
+                # Wait for the driver to add nodes.
+                ray.get(self._signal_actor.wait_for_nodes_restarted.remote())
+
+                self._signal_sent = True
+
+            return batch
+
+    res = []
+    num_items = 100
+
+    def run_dataset():
+        nonlocal res
+
+        ds = ray.data.range(num_items, override_num_blocks=num_items)
+        ds = ds.map_batches(
+            MyUDF,
+            fn_constructor_args=[signal_actor],
+            concurrency=num_nodes,
+            batch_size=1,
+        )
+        res = ds.take_all()
+
+    # Kick off Actors
+    thread = threading.Thread(target=run_dataset)
+    thread.start()
+
+    # Wait for all actors to start
+    ray.get(signal_actor.wait_for_actors_alive.remote(num_nodes))
+
+    # Remove all the nodes
+    for node in nodes:
+        cluster.remove_node(node)
+    nodes.clear()
+    ray.get(signal_actor.notify_nodes_removed.remote())
+
+    # Add back all the nodes
+    for _ in range(num_nodes):
+        nodes.append(cluster.add_node(num_cpus=10))
+    cluster.wait_for_nodes()
+    ray.get(signal_actor.notify_nodes_restarted.remote())
+
+    thread.join()
+    assert sorted(res, key=lambda x: x["id"]) == [{"id": i} for i in range(num_items)]
 
 
 if __name__ == "__main__":
