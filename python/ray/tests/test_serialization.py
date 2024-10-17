@@ -95,8 +95,8 @@ def test_simple_serialization(ray_start_regular):
         # TODO(rkn): The numpy dtypes currently come back as regular integers
         # or floats.
         if type(obj).__module__ != "numpy":
-            assert isinstance(obj, new_obj_1)
-            assert isinstance(obj, new_obj_2)
+            assert isinstance(obj, type(new_obj_1))
+            assert isinstance(obj, type(new_obj_2))
 
 
 @pytest.mark.parametrize(
