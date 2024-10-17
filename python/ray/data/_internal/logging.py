@@ -11,6 +11,10 @@ DEFAULT_CONFIG_PATH = os.path.abspath(
     os.path.join(os.path.dirname(__file__), "logging.yaml")
 )
 
+# Dictionary of substitutions to be performed when using JSON mode. Handlers with names
+# corresponding to keys will be replaced by those corresponding to values.
+RAY_DATA_LOG_HANDLER_JSON_SUBSTITUTIONS = {"file": "file_json"}
+
 # Env. variable to specify the encoding of the file logs when using the default config.
 RAY_DATA_LOG_ENCODING_ENV_VAR_NAME = "RAY_DATA_LOG_ENCODING"
 
@@ -118,8 +122,12 @@ def configure_logging() -> None:
         config = _load_logging_config(DEFAULT_CONFIG_PATH)
         if log_encoding is not None and log_encoding.upper() == "JSON":
             for logger in config["loggers"].values():
-                logger["handlers"].remove("file")
-                logger["handlers"].append("file_json")
+                for (
+                    old_handler_name,
+                    new_handler_name,
+                ) in RAY_DATA_LOG_HANDLER_JSON_SUBSTITUTIONS.items():
+                    logger["handlers"].remove(old_handler_name)
+                    logger["handlers"].append(new_handler_name)
 
     logging.config.dictConfig(config)
 
