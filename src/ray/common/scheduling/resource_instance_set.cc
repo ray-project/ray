@@ -319,7 +319,7 @@ void NodeResourceInstanceSet::AllocateWithReference(
   RAY_CHECK(!available.empty());
   RAY_CHECK_EQ(available.size(), ref_allocation.size());
 
-  for (int i = 0; i < ref_allocation.size(); i++) {
+  for (size_t i = 0; i < ref_allocation.size(); i++) {
     RAY_CHECK_GE(available[i], ref_allocation[i]);
     available[i] -= ref_allocation[i];
   }
