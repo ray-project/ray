@@ -87,6 +87,12 @@ class NodeResourceInstanceSet {
     return resources_;
   }
 
+  /// Only for testing.
+  const absl::flat_hash_map<ResourceID, absl::flat_hash_set<ResourceID>>
+      &PgIndexedResources() const {
+    return pg_indexed_resources_;
+  }
+
  private:
   /// Allocate enough capacity across the instances of a resource to satisfy "demand".
   ///
@@ -108,8 +114,26 @@ class NodeResourceInstanceSet {
   std::optional<std::vector<FixedPoint>> TryAllocate(ResourceID resource_id,
                                                      FixedPoint demand);
 
+  /// Allocate resource to the resource_id based on a provided reference allocation.
+  /// The function is used for placement group allocation. Making the allocation of
+  /// the wildcard resource be identical to the indexed resource allocation.
+  ///
+  /// The function assumes and also verifies that (1) the resource_id exists in the
+  /// node; (2) the available resources with resource_id on the node can satisfy the
+  /// provided ref_allocation.
+  ///
+  /// \param ref_allocation: The reference allocation used to allocate the resource_id
+  /// \param resource_id: The id of the resource to be allocated
+  void AllocateWithReference(const std::vector<FixedPoint> &ref_allocation,
+                             ResourceID resource_id);
+
   /// Map from the resource IDs to the resource instance values.
   absl::flat_hash_map<ResourceID, std::vector<FixedPoint>> resources_;
+
+  /// Map from the original resource IDs to the actual resource IDs for all the indexed
+  /// placement group resources. This map should be treated as a derived map from the
+  /// resources_ map and should always be consistent with the _resource map.
+  absl::flat_hash_map<ResourceID, absl::flat_hash_set<ResourceID>> pg_indexed_resources_;
 };
 
 }  // namespace ray
