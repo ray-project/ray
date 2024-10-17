@@ -31,7 +31,7 @@ class MultiOutputNode(DAGNode):
     def _execute_impl(
         self, *args, **kwargs
     ) -> Union[ray.ObjectRef, "ray.actor.ActorHandle"]:
-        return self._bound_args
+        return [arg if arg is not None else None for arg in self._bound_args]
 
     def _copy_impl(
         self,
