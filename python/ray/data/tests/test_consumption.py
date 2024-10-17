@@ -160,7 +160,7 @@ def test_count_edge_case(ray_start_regular):
 
 def test_count_after_partial_execution(ray_start_regular):
     paths = ["example://iris.csv"] * 5
-    ds = ray.data.read_csv(paths)
+    ds = ray.data.read_csv(paths, override_num_blocks=2)
     for batch in ds.iter_batches():
         # Take one batch and break to simulate partial iteration/execution.
         break
@@ -388,7 +388,7 @@ def test_empty_dataset(ray_start_regular_shared):
     ds = ds.materialize()
     assert (
         str(ds)
-        == "MaterializedDataset(num_blocks=2, num_rows=0, schema=Unknown schema)"
+        == "MaterializedDataset(num_blocks=1, num_rows=0, schema=Unknown schema)"
     )
 
     # Test map on empty dataset.
