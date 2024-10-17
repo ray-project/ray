@@ -685,7 +685,7 @@ class CompiledDAG:
         self._use_default_nccl_group = False
         # This is set to the specified custom nccl group
         # if there exists a type hint of `transport=nccl_group`.
-        self._custom_nccl_group: Optional[GPUCommunicator] = None
+        self._custom_nccl_group_p2p: Optional[GPUCommunicator] = None
         # The NCCL group ID for P2P send/recv operations.
         self._nccl_group_id_p2p: Optional[str] = None
         # All the NCCL group IDs for P2P send/recv and collective operations.
@@ -714,6 +714,14 @@ class CompiledDAG:
             ).remote()
 
         self._proxy_actor = _create_proxy_actor()
+
+    @property
+    def nccl_group_id_p2p(self) -> Optional[str]:
+        return self._nccl_group_id_p2p
+
+    @property
+    def nccl_group_ids(self) -> Set[str]:
+        return self._nccl_group_ids
 
     def increment_max_finished_execution_index(self) -> None:
         """Increment the max finished execution index. It is used to
@@ -845,14 +853,14 @@ class CompiledDAG:
                         "make sure only one type of NCCL transport is specified."
                     )
                     if custom_nccl_group is None:
-                        if self._custom_nccl_group is not None:
+                        if self._custom_nccl_group_p2p is not None:
                             raise ValueError(mixed_nccl_group_error_message)
                         self._use_default_nccl_group = True
                     else:
                         if self._use_default_nccl_group:
                             raise ValueError(mixed_nccl_group_error_message)
-                        if self._custom_nccl_group is not None:
-                            if self._custom_nccl_group != custom_nccl_group:
+                        if self._custom_nccl_group_p2p is not None:
+                            if self._custom_nccl_group_p2p != custom_nccl_group:
                                 raise ValueError(
                                     "Accelerated DAGs currently only support "
                                     "a single custom NCCL group, but multiple "
@@ -860,7 +868,7 @@ class CompiledDAG:
                                     "TorchTensor(transport=nccl_group) type hints "
                                     "to make sure only one NCCL group is used."
                                 )
-                        self._custom_nccl_group = custom_nccl_group
+                        self._custom_nccl_group_p2p = custom_nccl_group
 
                 # Collect NCCL collective operations.
                 if isinstance(dag_node, CollectiveOutputNode):
@@ -952,17 +960,19 @@ class CompiledDAG:
 
         # If a custom NCCL group is specified for P2P actors, initialize and cache
         # the NCCL group ID.
-        if nccl_actors_p2p and self._custom_nccl_group:
+        if nccl_actors_p2p and self._custom_nccl_group_p2p:
             if not set(nccl_actors_p2p).issubset(
-                set(self._custom_nccl_group.get_actor_handles())
+                set(self._custom_nccl_group_p2p.get_actor_handles())
             ):
                 raise ValueError(
                     "Expected P2P actor handles to be a subset of the custom NCCL group"
                 )
             self._nccl_group_id_p2p = _init_nccl_group(
-                nccl_actors_p2p, self._custom_nccl_group
+                nccl_actors_p2p, self._custom_nccl_group_p2p
             )
-            custom_nccl_group_to_id[self._custom_nccl_group] = self._nccl_group_id_p2p
+            custom_nccl_group_to_id[
+                self._custom_nccl_group_p2p
+            ] = self._nccl_group_id_p2p
             actors = frozenset(nccl_actors_p2p)
             actors_to_nccl_group_id[actors] = self._nccl_group_id_p2p
 
@@ -988,7 +998,7 @@ class CompiledDAG:
                 self._nccl_group_id_p2p = actors_to_nccl_group_id[actors]
             else:
                 self._nccl_group_id_p2p = _init_nccl_group(
-                    nccl_actors_p2p, self._custom_nccl_group
+                    nccl_actors_p2p, self._custom_nccl_group_p2p
                 )
                 actors_to_nccl_group_id[actors] = self._nccl_group_id_p2p
 
