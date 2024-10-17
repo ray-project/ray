@@ -15,13 +15,12 @@
 #include "ray/common/memory_monitor.h"
 
 #include <boost/algorithm/string.hpp>
+#include <charconv>
 #include <filesystem>
 #include <fstream>  // std::ifstream
 #include <tuple>
 
-#include "ray/common/ray_config.h"
 #include "ray/util/logging.h"
-#include "ray/util/process.h"
 #include "ray/util/util.h"
 
 namespace ray {
@@ -368,9 +367,11 @@ const std::vector<pid_t> MemoryMonitor::GetPidsFromDir(const std::string proc_di
     return pids;
   }
   for (const auto &file : std::filesystem::directory_iterator(proc_dir)) {
-    std::string filename{file.path().filename().u8string()};
-    if (std::all_of(filename.begin(), filename.end(), ::isdigit)) {
-      pids.push_back(static_cast<pid_t>(std::stoi(filename)));
+    const auto filename = file.path().filename().string();
+    pid_t result = 0;
+    if (std::from_chars(filename.data(), filename.data() + filename.size(), result).ec !=
+        std::errc{}) {
+      pids.push_back(result);
     }
   }
   return pids;

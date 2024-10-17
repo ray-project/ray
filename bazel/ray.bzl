@@ -3,7 +3,7 @@ load("@bazel_skylib//rules:copy_file.bzl", "copy_file")
 load("@bazel_common//tools/maven:pom_file.bzl", "pom_file")
 load("@rules_cc//cc:defs.bzl", "cc_binary", "cc_library", "cc_test")
 
-COPTS_WITHOUT_LOG = select({
+COPTS = select({
     "//:opt": ["-DBAZEL_OPT"],
     "//conditions:default": [],
 }) + select({
@@ -20,13 +20,13 @@ COPTS_WITHOUT_LOG = select({
     "//conditions:default": [],
 })
 
-COPTS = COPTS_WITHOUT_LOG
-
 PYX_COPTS = select({
     "//:msvc-cl": [],
     "//conditions:default": [
         # Ignore this warning since CPython and Cython have issue removing deprecated tp_print on MacOS
         "-Wno-deprecated-declarations",
+        # Ignore this because the generated code uses volatile which is deprecated with C++20
+        "-Wdeprecated-volatile",
     ],
 }) + select({
     "@platforms//os:windows": [
