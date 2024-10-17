@@ -1004,7 +1004,9 @@ class CompiledDAG:
                     actors_to_nccl_group_id[actors] = nccl_group_id
 
         # Store all the NCCL group IDs for P2P send/recv and collective operations.
-        self._nccl_group_ids = set(actors_to_nccl_group_id.values())
+        self._nccl_group_ids = set(actors_to_nccl_group_id.values()).union(
+            set(custom_nccl_group_to_id.values())
+        )
 
         if direct_input:
             self._input_num_positional_args = 1
