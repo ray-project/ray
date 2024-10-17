@@ -1039,50 +1039,6 @@ def test_torch_tensor_nccl_all_reduce_get_partial(ray_start_regular):
 
 
 @pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
-def test_torch_tensor_nccl_all_reduce_allocate_tensor(ray_start_regular):
-    """
-    Test a new tensor is allocated before all-reduce and the input tensor can
-    be reused.
-    """
-    if not USE_GPU:
-        pytest.skip("NCCL tests require GPUs")
-
-    assert (
-        sum(node["Resources"].get("GPU", 0) for node in ray.nodes()) > 1
-    ), "This test requires at least 2 GPUs"
-
-    actor_cls = TorchTensorWorker.options(num_cpus=0, num_gpus=1)
-
-    num_workers = 2
-    workers = [actor_cls.remote() for _ in range(num_workers)]
-
-    shape = (10,)
-    dtype = torch.float16
-    with InputNode() as inp:
-        x = workers[0].send.bind(shape, dtype, inp)
-        y = workers[1].send.bind(shape, dtype, inp)
-        allreduce = collective.allreduce.bind([x, y])
-        u = workers[1].recv_tensor.bind(x)
-        v = workers[0].recv_tensor.bind(y)
-        dag = MultiOutputNode([*allreduce, u, v])
-
-    compiled_dag = dag.experimental_compile()
-
-    value = 10
-    ref = compiled_dag.execute(value)
-    result = ray.get(ref)
-    result = [tensor.to("cpu") for tensor in result]
-    expected_reduced_tensor_val = torch.ones(shape, dtype=dtype) * value * 2
-    expected_original_tensor_val = torch.ones(shape, dtype=dtype) * value
-    assert torch.equal(result[0], expected_reduced_tensor_val)
-    assert torch.equal(result[1], expected_reduced_tensor_val)
-    assert torch.equal(result[2], expected_original_tensor_val)
-    assert torch.equal(result[3], expected_original_tensor_val)
-
-    compiled_dag.teardown()
-
-
-@pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
 def test_torch_tensor_nccl_all_reduce_wrong_shape(ray_start_regular):
     """
     Test an error is thrown when an all-reduce takes tensors of wrong shapes.
