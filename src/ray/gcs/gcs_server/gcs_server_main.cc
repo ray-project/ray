@@ -73,6 +73,7 @@ int main(int argc, char *argv[]) {
   ray::rpc::testing::init();
 
   // IO Service for main loop.
+  SetThreadName("gcs_server_main");
   instrumented_io_context main_service;
   // Ensure that the IO service keeps running. Without this, the main_service will exit
   // as soon as there is no more work to be processed.
