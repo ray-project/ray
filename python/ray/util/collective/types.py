@@ -3,6 +3,8 @@ from enum import Enum
 from dataclasses import dataclass
 from datetime import timedelta
 
+from ray.util.annotations import PublicAPI
+
 _NUMPY_AVAILABLE = True
 _TORCH_AVAILABLE = True
 _CUPY_AVAILABLE = True
@@ -45,14 +47,20 @@ class Backend(object):
         return backend
 
 
-class ReduceOp(Enum):
+class _CollectiveOp(Enum):
+    pass
+
+
+@PublicAPI
+class ReduceOp(_CollectiveOp):
     SUM = 0
     PRODUCT = 1
-    # MIN = 2
-    # MAX = 3
-    # [NOTE] Testing MIN and MAX operations.
-    MIN = 3
     MAX = 2
+    MIN = 3
+    AVG = 4
+
+    def __str__(self):
+        return f"{self.name.lower()}"
 
 
 unset_timeout_ms = timedelta(milliseconds=-1)

@@ -9,8 +9,7 @@ from ray.dag.constants import (
     PARENT_CLASS_NODE_KEY,
 )
 from ray.experimental.channel.torch_tensor_type import GPUCommunicator, TorchTensorType
-from ray.experimental.util.types import ReduceOp
-from ray.util.collective import types as ray_collective_types
+from ray.util.collective.types import ReduceOp
 
 logger = logging.getLogger(__name__)
 
@@ -79,7 +78,7 @@ class AllReduceWrapper:
         self,
         tensor,
         group_name: str = "default",
-        op: ray_collective_types.ReduceOp = ray_collective_types.ReduceOp.SUM,
+        op: ReduceOp = ReduceOp.SUM,
     ):
         from ray.util.collective.collective import allreduce
 
