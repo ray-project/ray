@@ -111,6 +111,9 @@ def test_read_operator(ray_start_regular_shared):
         physical_op.actual_target_max_block_size
         == DataContext.get_current().target_max_block_size
     )
+    # Check that the linked logical operator is the same the input op.
+    assert physical_op._logical_operators == [op]
+    assert physical_op.input_dependencies[0]._logical_operators == [op]
 
 
 def test_read_operator_emits_warning_for_large_read_tasks():
@@ -182,6 +185,9 @@ def test_from_operators(ray_start_regular_shared):
         assert isinstance(physical_op, InputDataBuffer)
         assert len(physical_op.input_dependencies) == 0
 
+        # Check that the linked logical operator is the same the input op.
+        assert physical_op._logical_operators == [op]
+
 
 def test_from_items_e2e(ray_start_regular_shared):
     data = ["Hello", "World"]
@@ -252,6 +258,9 @@ def test_map_batches_operator(ray_start_regular_shared):
     assert isinstance(physical_op, MapOperator)
     assert len(physical_op.input_dependencies) == 1
     assert isinstance(physical_op.input_dependencies[0], MapOperator)
+
+    # Check that the linked logical operator is the same the input op.
+    assert physical_op._logical_operators == [op]
 
 
 def test_map_batches_e2e(ray_start_regular_shared):
@@ -393,6 +402,9 @@ def test_random_shuffle_operator(ray_start_regular_shared):
         == DataContext.get_current().target_shuffle_max_block_size
     )
 
+    # Check that the linked logical operator is the same the input op.
+    assert physical_op._logical_operators == [op]
+
 
 def test_random_shuffle_e2e(ray_start_regular_shared, use_push_based_shuffle):
     ds = ray.data.range(12, override_num_blocks=4)
@@ -429,6 +441,9 @@ def test_repartition_operator(ray_start_regular_shared, shuffle):
             physical_op.actual_target_max_block_size
             == DataContext.get_current().target_max_block_size
         )
+
+    # Check that the linked logical operator is the same the input op.
+    assert physical_op._logical_operators == [op]
 
 
 @pytest.mark.parametrize(
@@ -506,6 +521,9 @@ def test_union_operator(ray_start_regular_shared, preserve_order):
         == DataContext.get_current().target_max_block_size
     )
 
+    # Check that the linked logical operator is the same the input op.
+    assert physical_op._logical_operators == [union_op]
+
 
 @pytest.mark.parametrize("preserve_order", (True, False))
 def test_union_e2e(ray_start_regular_shared, preserve_order):
@@ -578,22 +596,23 @@ def test_read_map_batches_operator_fusion(ray_start_regular_shared):
         physical_op.actual_target_max_block_size
         == DataContext.get_current().target_max_block_size
     )
+    assert physical_op._logical_operators == [read_op, op]
 
 
 def test_read_map_chain_operator_fusion(ray_start_regular_shared):
     # Test that a chain of different map operators are fused.
     planner = Planner()
     read_op = get_parquet_read_logical_op(parallelism=1)
-    op = MapRows(read_op, lambda x: x)
-    op = MapBatches(op, lambda x: x)
-    op = FlatMap(op, lambda x: x)
-    op = Filter(op, lambda x: x)
-    logical_plan = LogicalPlan(op)
+    map1 = MapRows(read_op, lambda x: x)
+    map2 = MapBatches(map1, lambda x: x)
+    map3 = FlatMap(map2, lambda x: x)
+    map4 = Filter(map3, lambda x: x)
+    logical_plan = LogicalPlan(map4)
     physical_plan = planner.plan(logical_plan)
     physical_plan = PhysicalOptimizer().optimize(physical_plan)
     physical_op = physical_plan.dag
 
-    assert op.name == "Filter(<lambda>)"
+    assert map4.name == "Filter(<lambda>)"
     assert (
         physical_op.name == "ReadParquet->Map(<lambda>)->MapBatches(<lambda>)"
         "->FlatMap(<lambda>)->Filter(<lambda>)"
@@ -605,6 +624,7 @@ def test_read_map_chain_operator_fusion(ray_start_regular_shared):
         physical_op.actual_target_max_block_size
         == DataContext.get_current().target_max_block_size
     )
+    assert physical_op._logical_operators == [read_op, map1, map2, map3, map4]
 
 
 def test_read_map_batches_operator_fusion_compatible_remote_args(
@@ -1009,6 +1029,9 @@ def test_write_operator(ray_start_regular_shared, tmp_path):
     assert len(physical_op.input_dependencies) == 1
     assert isinstance(physical_op.input_dependencies[0], MapOperator)
 
+    # Check that the linked logical operator is the same the input op.
+    assert physical_op._logical_operators == [op]
+
 
 def test_sort_operator(
     ray_start_regular_shared,
@@ -1105,6 +1128,9 @@ def test_aggregate_operator(ray_start_regular_shared):
         == DataContext.get_current().target_shuffle_max_block_size
     )
 
+    # Check that the linked logical operator is the same the input op.
+    assert physical_op._logical_operators == [op]
+
 
 def test_aggregate_e2e(ray_start_regular_shared, use_push_based_shuffle):
     ds = ray.data.range(100, override_num_blocks=4)
@@ -1170,6 +1196,9 @@ def test_zip_operator(ray_start_regular_shared):
         physical_op.actual_target_max_block_size
         == DataContext.get_current().target_max_block_size
     )
+
+    # Check that the linked logical operator is the same the input op.
+    assert physical_op._logical_operators == [op]
 
 
 @pytest.mark.parametrize(
@@ -1618,6 +1647,89 @@ def test_zero_copy_fusion_eliminate_build_output_blocks(ray_start_regular_shared
             BuildOutputBlocksMapTransformFn,
         ],
     )
+
+
+def test_insert_logical_optimization_rules():
+    class FakeRule1:
+        pass
+
+    class FakeRule2:
+        pass
+
+    from ray.data._internal.logical.optimizers import (
+        _LOGICAL_RULES,
+        register_logical_rule,
+    )
+    from ray.data._internal.logical.rules.randomize_blocks import (
+        ReorderRandomizeBlocksRule,
+    )
+
+    register_logical_rule(FakeRule1)
+    assert _LOGICAL_RULES == [ReorderRandomizeBlocksRule, FakeRule1]
+
+    register_logical_rule(FakeRule2, 1)
+    assert _LOGICAL_RULES == [ReorderRandomizeBlocksRule, FakeRule2, FakeRule1]
+
+    register_logical_rule(FakeRule1, 0)
+    assert _LOGICAL_RULES == [
+        FakeRule1,
+        ReorderRandomizeBlocksRule,
+        FakeRule2,
+        FakeRule1,
+    ]
+
+
+def test_insert_physical_optimization_rules():
+    class FakeRule1:
+        pass
+
+    class FakeRule2:
+        pass
+
+    from ray.data._internal.logical.optimizers import (
+        _PHYSICAL_RULES,
+        register_physical_rule,
+    )
+    from ray.data._internal.logical.rules.inherit_target_max_block_size import (
+        InheritTargetMaxBlockSizeRule,
+    )
+    from ray.data._internal.logical.rules.operator_fusion import OperatorFusionRule
+    from ray.data._internal.logical.rules.set_read_parallelism import (
+        SetReadParallelismRule,
+    )
+    from ray.data._internal.logical.rules.zero_copy_map_fusion import (
+        EliminateBuildOutputBlocks,
+    )
+
+    register_physical_rule(FakeRule1)
+    assert _PHYSICAL_RULES == [
+        InheritTargetMaxBlockSizeRule,
+        SetReadParallelismRule,
+        OperatorFusionRule,
+        EliminateBuildOutputBlocks,
+        FakeRule1,
+    ]
+
+    register_physical_rule(FakeRule2, 2)
+    assert _PHYSICAL_RULES == [
+        InheritTargetMaxBlockSizeRule,
+        SetReadParallelismRule,
+        FakeRule2,
+        OperatorFusionRule,
+        EliminateBuildOutputBlocks,
+        FakeRule1,
+    ]
+
+    register_physical_rule(FakeRule1, 0)
+    assert _PHYSICAL_RULES == [
+        FakeRule1,
+        InheritTargetMaxBlockSizeRule,
+        SetReadParallelismRule,
+        FakeRule2,
+        OperatorFusionRule,
+        EliminateBuildOutputBlocks,
+        FakeRule1,
+    ]
 
 
 if __name__ == "__main__":
