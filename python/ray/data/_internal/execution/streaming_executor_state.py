@@ -341,15 +341,6 @@ class OpState:
         else:
             self._exception = exception
 
-    def update_resource_usage(self) -> None:
-        """Updates resource usage of this operator at runtime.
-
-        This method will be called at runtime in each StreamingExecutor iteration.
-        Subclasses can override it to account for dynamic resource usage updates due to
-        restarting actors, retrying tasks, lost objects, etc.
-        """
-        self.op.update_resource_usage()
-
 
 def build_streaming_topology(
     dag: PhysicalOperator, options: ExecutionOptions

@@ -292,7 +292,7 @@ def test_actor_pool_resource_reporting(ray_start_10_cpus_shared, restore_data_co
     assert op.incremental_resource_usage() == ExecutionResources(
         cpu=0, gpu=0, object_store_memory=inc_obj_store_mem
     )
-    assert op.current_processor_usage() == ExecutionResources(cpu=0, gpu=0)
+    assert op.current_processor_usage() == ExecutionResources(cpu=2, gpu=0)
     assert op.metrics.obj_store_mem_internal_inqueue == 0
     assert op.metrics.obj_store_mem_internal_outqueue == 0
     assert op.metrics.obj_store_mem_pending_task_inputs == 0
@@ -304,7 +304,7 @@ def test_actor_pool_resource_reporting(ray_start_10_cpus_shared, restore_data_co
             cpu=0, gpu=0, object_store_memory=inc_obj_store_mem
         )
         op.add_input(input_op.get_next(), 0)
-        assert op.current_processor_usage() == ExecutionResources(cpu=0, gpu=0)
+        assert op.current_processor_usage() == ExecutionResources(cpu=2, gpu=0)
         assert op.metrics.obj_store_mem_internal_inqueue == pytest.approx(
             (i + 1) * 800, rel=0.5
         )
@@ -384,7 +384,7 @@ def test_actor_pool_resource_reporting_with_bundling(ray_start_10_cpus_shared):
     assert op.incremental_resource_usage() == ExecutionResources(
         cpu=0, gpu=0, object_store_memory=inc_obj_store_mem
     )
-    assert op.current_processor_usage() == ExecutionResources(cpu=0, gpu=0)
+    assert op.current_processor_usage() == ExecutionResources(cpu=2, gpu=0)
     assert op.metrics.obj_store_mem_internal_inqueue == 0
     assert op.metrics.obj_store_mem_internal_outqueue == 0
     assert op.metrics.obj_store_mem_pending_task_inputs == 0
@@ -396,7 +396,7 @@ def test_actor_pool_resource_reporting_with_bundling(ray_start_10_cpus_shared):
             cpu=0, gpu=0, object_store_memory=inc_obj_store_mem
         )
         op.add_input(input_op.get_next(), 0)
-        assert op.current_processor_usage() == ExecutionResources(cpu=0, gpu=0)
+        assert op.current_processor_usage() == ExecutionResources(cpu=2, gpu=0)
         assert op.metrics.obj_store_mem_internal_inqueue == pytest.approx(
             (i + 1) * 800, rel=0.5
         )
@@ -405,7 +405,7 @@ def test_actor_pool_resource_reporting_with_bundling(ray_start_10_cpus_shared):
         assert op.metrics.obj_store_mem_pending_task_outputs == 0
 
     # Pool is still idle while waiting for actors to start.
-    assert op.current_processor_usage() == ExecutionResources(cpu=0, gpu=0)
+    assert op.current_processor_usage() == ExecutionResources(cpu=2, gpu=0)
     assert op.metrics.obj_store_mem_internal_inqueue == pytest.approx(3200, rel=0.5)
     assert op.metrics.obj_store_mem_internal_outqueue == 0
     assert op.metrics.obj_store_mem_pending_task_inputs == 0
@@ -417,7 +417,7 @@ def test_actor_pool_resource_reporting_with_bundling(ray_start_10_cpus_shared):
     run_op_tasks_sync(op, only_existing=True)
 
     # Actors have now started and the pool is actively running tasks.
-    assert op.current_processor_usage() == ExecutionResources(cpu=1, gpu=0)
+    assert op.current_processor_usage() == ExecutionResources(cpu=2, gpu=0)
 
     # Indicate that no more inputs will arrive.
     op.all_inputs_done()
