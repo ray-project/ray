@@ -1,9 +1,14 @@
 from functools import total_ordering
 from enum import Enum
-from typing import Set, Tuple, List, Dict
+from typing import Optional, Tuple, List, Dict
+import copy
+import logging
 import ray
 import heapq
 from collections import defaultdict
+
+
+logger = logging.getLogger(__name__)
 
 
 class _DAGNodeOperationType(Enum):
@@ -18,12 +23,22 @@ class _DAGNodeOperationType(Enum):
     COMPUTE = "COMPUTE"
     WRITE = "WRITE"
 
+    def __str__(self):
+        if self == _DAGNodeOperationType.READ:
+            return "R"
+        elif self == _DAGNodeOperationType.COMPUTE:
+            return "C"
+        elif self == _DAGNodeOperationType.WRITE:
+            return "W"
+        assert False, f"Unknown operation type: {self}"
+
 
 class _DAGNodeOperation:
     def __init__(
         self,
         exec_task_idx: int,
         operation_type: _DAGNodeOperationType,
+        method_name: Optional[str] = None,
     ):
         """
         Args:
@@ -32,12 +47,26 @@ class _DAGNodeOperation:
                 as bind_index because there may be more tasks bound to an actor
                 than tasks that appear in the current compiled DAG.
             operation_type: The type of operation to perform.
+            method_name: The name of the method that this operation originates
+                from. This is only for debugging purposes.
         """
         self.exec_task_idx = exec_task_idx
         self.type = operation_type
+        self.method_name = method_name
 
     def __repr__(self):
         return f"(Task idx: {self.exec_task_idx}, Type: {self.type})"
+
+    def __str__(self):
+        return f"([{self.exec_task_idx}] {self.method_name} {self.type})"
+
+    def __hash__(self):
+        return hash((self.exec_task_idx, self.type))
+
+    def __eq__(self, other):
+        # An operation is uniquely identified by its `exec_task_idx` and type.
+        # `func_name` is only for debugging purposes.
+        return self.exec_task_idx == other.exec_task_idx and self.type == other.type
 
 
 @total_ordering
@@ -66,12 +95,14 @@ class _DAGOperationGraphNode:
         self.task_idx = task_idx
         self.actor_handle = actor_handle
         self.requires_nccl = requires_nccl
-        # The in_edges and out_edges are sets of tuples. Each tuple contains
-        # an integer `task_idx`, which can be used to index into `idx_to_task`
-        # to get the corresponding task, and a `_DAGNodeOperationType`, which can
-        # be READ, COMPUTE, or WRITE.
-        self.in_edges: Set[Tuple[int, _DAGNodeOperationType]] = set()
-        self.out_edges: Set[Tuple[int, _DAGNodeOperationType]] = set()
+        # The in_edges and out_edges are dicts of tuples to strings.
+        # Each tuple (the key) contains an integer `task_idx`, which can be
+        # used to index into `idx_to_task` to get the corresponding task,
+        # and a `_DAGNodeOperationType`, which can be READ, COMPUTE, or WRITE.
+        # The string (the value) is the label of the edge, which will be used
+        # to annotate the edge in the visualization of the execution schedule.
+        self.in_edges: Dict[Tuple[int, _DAGNodeOperationType], str] = {}
+        self.out_edges: Dict[Tuple[int, _DAGNodeOperationType], str] = {}
 
     @property
     def in_degree(self) -> int:
@@ -122,14 +153,40 @@ class _DAGOperationGraphNode:
         """
         return hash((self.operation, self.task_idx))
 
+    def __str__(self):
+        class_name = (
+            self.actor_handle._ray_actor_creation_function_descriptor.class_name
+        )
+        actor_id = self._actor_id.hex()
+        actor_id_abbv = actor_id[:4] + "..."
+        return (
+            class_name
+            + "_"
+            + actor_id_abbv
+            + f" [{self.operation.exec_task_idx}] "
+            + f"{self.operation.method_name} {self.operation.type}"
+        )
 
-def _add_edge(from_node: _DAGOperationGraphNode, to_node: _DAGOperationGraphNode):
+    @property
+    def _actor_id(self):
+        return self.actor_handle._ray_actor_id.hex()
+
+
+def _add_edge(
+    from_node: _DAGOperationGraphNode, to_node: _DAGOperationGraphNode, label: str = ""
+):
     """
     Add an edge from `from_node` to `to_node`. An edge is a tuple of
     the operation's `task_idx` and type.
+
+    Args:
+        from_node: The node from which the edge originates.
+        to_node: The node to which the edge points.
+        label: The label of the edge. This will be used to annotate the edge
+            in the visualization of the execution schedule.
     """
-    from_node.out_edges.add((to_node.task_idx, to_node.operation.type))
-    to_node.in_edges.add((from_node.task_idx, from_node.operation.type))
+    from_node.out_edges[(to_node.task_idx, to_node.operation.type)] = label
+    to_node.in_edges[(from_node.task_idx, from_node.operation.type)] = label
 
 
 def _select_next_nodes(
@@ -258,7 +315,7 @@ def _build_dag_node_operation_graph(
             # Add an edge from COMPUTE with `bind_index` i to COMPUTE with
             # `bind_index` i+1 if they belong to the same actor.
             if prev_compute_node is not None:
-                _add_edge(prev_compute_node, compute_node)
+                _add_edge(prev_compute_node, compute_node, "next")
             prev_compute_node = compute_node
             assert task_idx not in graph
             graph[task_idx] = {
@@ -297,17 +354,96 @@ def _build_dag_node_operation_graph(
             _add_edge(
                 graph[task_idx][_DAGNodeOperationType.WRITE],
                 graph[downstream_task_idx][_DAGNodeOperationType.READ],
+                "nccl"
+                if graph[task_idx][_DAGNodeOperationType.WRITE].requires_nccl
+                else "shm",
             )
     return graph
 
 
+def _node_repr(node: _DAGOperationGraphNode, idx: int, optimized_index: int):
+    """
+    Representation of a node in the visualization of the execution schedule.
+
+    Args:
+        node: The node to be represented.
+        idx: The index of the node in the execution schedule.
+        optimized_index: The index of the node in the optimized execution schedule.
+    """
+    return str(node) + f" {idx},{optimized_index}"
+
+
+def _visualize_execution_schedule(
+    actor_to_execution_schedule: Dict[
+        "ray.actor.ActorHandle", List[_DAGOperationGraphNode]
+    ],
+    actor_to_optimized_schedule: Dict[
+        "ray.actor.ActorHandle", List[_DAGOperationGraphNode]
+    ],
+    graph: Dict[int, Dict[_DAGNodeOperationType, _DAGOperationGraphNode]],
+):
+    """
+    Visualize the execution schedule for each actor.
+
+    Args:
+        actor_to_execution_schedule: A dictionary that maps an actor handle to
+            the execution schedule which is a list of operation nodes.
+        actor_to_optimized_schedule: A dictionary that maps an actor handle to the
+            optimized execution schedule which is a list of operation nodes.
+        graph: A graph where each node is a _DAGOperationGraphNode. The key is
+            `task_idx`, the index to retrieve its task from `idx_to_task`, and
+            the value is a dictionary that maps the _DAGNodeOperationType (READ,
+            COMPUTE, or WRITE) to the corresponding _DAGOperationGraphNode. It is
+            generated by `_build_dag_node_operation_graph`.
+    """
+    try:
+        import graphviz
+    except ImportError:
+        raise ImportError(
+            "Please install graphviz to visualize the execution schedule. "
+            "You can install it by running `pip install graphviz`."
+        )
+
+    dot = graphviz.Digraph(comment="DAG")
+    node_to_repr: Dict[_DAGOperationGraphNode, str] = {}
+
+    for actor, execution_nodes in actor_to_execution_schedule.items():
+        optimized_schedule = actor_to_optimized_schedule[actor]
+        node_to_optimized_index = {node: i for i, node in enumerate(optimized_schedule)}
+
+        with dot.subgraph(name=f"cluster_{execution_nodes[0]._actor_id}") as subgraph:
+            subgraph.attr(rank=execution_nodes[0]._actor_id)
+            for i, node in enumerate(execution_nodes):
+                optimized_index = node_to_optimized_index.get(node)
+                node_repr = _node_repr(node, i, optimized_index)
+                color = "red" if optimized_index != i else "black"
+                subgraph.node(node_repr, node_repr, color=color)
+                node_to_repr[node] = node_repr
+
+    for actor, execution_nodes in actor_to_execution_schedule.items():
+        for i, node in enumerate(execution_nodes):
+            node_repr = node_to_repr[node]
+            for out_edge, label in node.out_edges.items():
+                out_task_idx, out_op_type = out_edge
+                out_node = graph[out_task_idx][out_op_type]
+                out_node_repr = node_to_repr[out_node]
+                color = "blue" if label == "nccl" else "black"
+                dot.edge(node_repr, out_node_repr, label=label, color=color)
+
+    logger.info(
+        "Writing compiled graph schedule visualization "
+        "to compiled_graph_schedule.png"
+    )
+    dot.render("compiled_graph_schedule", format="png", view=False)
+
+
 def _generate_actor_to_execution_schedule(
     graph: Dict[int, Dict[_DAGNodeOperationType, _DAGOperationGraphNode]]
-) -> Dict["ray.actor.ActorHandle", List[_DAGNodeOperation]]:
+) -> Dict["ray.actor.ActorHandle", List[_DAGOperationGraphNode]]:
     """
     Generate an execution schedule for each actor. The schedule is a list of
-    operations to be executed. The function uses a topological sort algorithm
-    to generate the schedule.
+    operation nodes to be executed. The function uses a topological sort
+    algorithm to generate the schedule.
 
     Args:
         graph: A graph where each node is a _DAGOperationGraphNode. The key is
@@ -318,13 +454,14 @@ def _generate_actor_to_execution_schedule(
 
     Returns:
         actor_to_execution_schedule: A dictionary that maps an actor handle to
-            the execution schedule which is a list of operations to be executed.
+            the execution schedule which is a list of operation nodes to be
+            executed.
     """
 
     # Mapping from the actor handle to the execution schedule which is a list
     # of operations to be executed.
     actor_to_execution_schedule: Dict[
-        "ray.actor.ActorHandle", List[_DAGNodeOperation]
+        "ray.actor.ActorHandle", List[_DAGOperationGraphNode]
     ] = defaultdict(list)
 
     # A dictionary mapping an actor id to a list of candidate nodes. The list
@@ -355,11 +492,11 @@ def _generate_actor_to_execution_schedule(
         for node in nodes:
             if node in visited_nodes:
                 continue
-            actor_to_execution_schedule[node.actor_handle].append(node.operation)
+            actor_to_execution_schedule[node.actor_handle].append(node)
             visited_nodes.add(node)
             for out_node_task_idx, out_node_type in node.out_edges:
                 out_node = graph[out_node_task_idx][out_node_type]
-                out_node.in_edges.remove((node.task_idx, node.operation.type))
+                out_node.in_edges.pop((node.task_idx, node.operation.type))
                 if out_node.in_degree == 0:
                     heapq.heappush(
                         actor_to_candidates[out_node.actor_handle._actor_id],
@@ -368,3 +505,72 @@ def _generate_actor_to_execution_schedule(
     for _, candidates in actor_to_candidates.items():
         assert len(candidates) == 0
     return actor_to_execution_schedule
+
+
+def _optimize_execution_schedule(
+    actor_to_execution_schedule: Dict[
+        "ray.actor.ActorHandle", List[_DAGOperationGraphNode]
+    ],
+    overlap_gpu_communication: bool,
+) -> Dict["ray.actor.ActorHandle", List[_DAGOperationGraphNode]]:
+    """
+    Optimize the execution schedule by overlapping computation and communication.
+
+    Args:
+        actor_to_execution_schedule: A dictionary that maps an actor handle to
+            the execution schedule which is a list of operations to be executed.
+        overlap_gpu_communication: Whether to overlap GPU communication with
+            computation. If False, the function will return the original execution
+            schedule (i.e., actor_to_execution_schedule).
+    """
+    if not overlap_gpu_communication:
+        return actor_to_execution_schedule
+
+    actor_to_optimized_schedule: Dict[
+        "ray.actor.ActorHandle", List[_DAGOperationGraphNode]
+    ] = copy.deepcopy(actor_to_execution_schedule)
+    for optimized_schedule in actor_to_optimized_schedule.values():
+        for i in range(len(optimized_schedule)):
+            if (
+                optimized_schedule[i].operation.type == _DAGNodeOperationType.READ
+                and optimized_schedule[i].requires_nccl
+            ):
+                # For each NCCL read operation (i.e., recv), scan backwards
+                # to find the nearest compute node to swap with so that
+                # the NCCL read operation can be overlapped with computation.
+                for j in range(i - 1, -1, -1):
+                    if (
+                        optimized_schedule[j].operation.type
+                        == _DAGNodeOperationType.COMPUTE
+                    ):
+                        # Found a desired compute operation, make the swap
+                        nccl_read_node = optimized_schedule[i]
+                        sublist = optimized_schedule[j:i]
+                        optimized_schedule[j + 1 : i + 1] = sublist
+                        optimized_schedule[j] = nccl_read_node
+                        break
+                    if (
+                        optimized_schedule[j].operation.type
+                        == _DAGNodeOperationType.READ
+                        or optimized_schedule[j].operation.type
+                        == _DAGNodeOperationType.WRITE
+                    ) and (optimized_schedule[j].requires_nccl):
+                        # Found a NCCL read/write operation, skip the optimiation to
+                        # keep relative order of NCCL operations
+                        break
+    return actor_to_optimized_schedule
+
+
+def _extract_execution_schedule(
+    actor_to_execution_schedule: Dict[
+        "ray.actor.ActorHandle", List[_DAGOperationGraphNode]
+    ]
+) -> Dict["ray.actor.ActorHandle", List[_DAGNodeOperation]]:
+    """
+    Extract _DAGNodeOperation from _DAGOperationGraphNode in the schedule
+    and discard unnecessary information.
+    """
+    return {
+        actor: [node.operation for node in nodes]
+        for actor, nodes in actor_to_execution_schedule.items()
+    }
