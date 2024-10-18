@@ -1649,5 +1649,88 @@ def test_zero_copy_fusion_eliminate_build_output_blocks(ray_start_regular_shared
     )
 
 
+def test_insert_logical_optimization_rules():
+    class FakeRule1:
+        pass
+
+    class FakeRule2:
+        pass
+
+    from ray.data._internal.logical.optimizers import (
+        _LOGICAL_RULES,
+        register_logical_rule,
+    )
+    from ray.data._internal.logical.rules.randomize_blocks import (
+        ReorderRandomizeBlocksRule,
+    )
+
+    register_logical_rule(FakeRule1)
+    assert _LOGICAL_RULES == [ReorderRandomizeBlocksRule, FakeRule1]
+
+    register_logical_rule(FakeRule2, 1)
+    assert _LOGICAL_RULES == [ReorderRandomizeBlocksRule, FakeRule2, FakeRule1]
+
+    register_logical_rule(FakeRule1, 0)
+    assert _LOGICAL_RULES == [
+        FakeRule1,
+        ReorderRandomizeBlocksRule,
+        FakeRule2,
+        FakeRule1,
+    ]
+
+
+def test_insert_physical_optimization_rules():
+    class FakeRule1:
+        pass
+
+    class FakeRule2:
+        pass
+
+    from ray.data._internal.logical.optimizers import (
+        _PHYSICAL_RULES,
+        register_physical_rule,
+    )
+    from ray.data._internal.logical.rules.inherit_target_max_block_size import (
+        InheritTargetMaxBlockSizeRule,
+    )
+    from ray.data._internal.logical.rules.operator_fusion import OperatorFusionRule
+    from ray.data._internal.logical.rules.set_read_parallelism import (
+        SetReadParallelismRule,
+    )
+    from ray.data._internal.logical.rules.zero_copy_map_fusion import (
+        EliminateBuildOutputBlocks,
+    )
+
+    register_physical_rule(FakeRule1)
+    assert _PHYSICAL_RULES == [
+        InheritTargetMaxBlockSizeRule,
+        SetReadParallelismRule,
+        OperatorFusionRule,
+        EliminateBuildOutputBlocks,
+        FakeRule1,
+    ]
+
+    register_physical_rule(FakeRule2, 2)
+    assert _PHYSICAL_RULES == [
+        InheritTargetMaxBlockSizeRule,
+        SetReadParallelismRule,
+        FakeRule2,
+        OperatorFusionRule,
+        EliminateBuildOutputBlocks,
+        FakeRule1,
+    ]
+
+    register_physical_rule(FakeRule1, 0)
+    assert _PHYSICAL_RULES == [
+        FakeRule1,
+        InheritTargetMaxBlockSizeRule,
+        SetReadParallelismRule,
+        FakeRule2,
+        OperatorFusionRule,
+        EliminateBuildOutputBlocks,
+        FakeRule1,
+    ]
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))
