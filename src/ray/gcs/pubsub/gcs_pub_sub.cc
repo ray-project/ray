@@ -163,6 +163,33 @@ bool GcsSubscriber::IsActorUnsubscribed(const ActorID &id) {
       rpc::ChannelType::GCS_ACTOR_CHANNEL, gcs_address_, id.Binary());
 }
 
+Status GcsSubscriber::SubscribeAllActors(
+    const SubscribeCallback<ActorID, rpc::ActorTableData> &subscribe,
+    const StatusCallback &done) {
+  // GCS subscriber.
+  auto subscribe_item_callback = [subscribe](const rpc::PubMessage &msg) {
+    RAY_CHECK(msg.channel_type() == rpc::ChannelType::GCS_ACTOR_CHANNEL);
+    const ActorID id = ActorID::FromBinary(msg.key_id());
+    subscribe(id, msg.actor_message());
+  };
+  auto subscription_failure_callback = [](const std::string &, const Status &status) {
+    RAY_LOG(WARNING) << "Subscription to Actor channel failed: " << status.ToString();
+  };
+  // Ignore if the subscription already exists, because the resubscription is intentional.
+  RAY_UNUSED(subscriber_->SubscribeChannel(
+      std::make_unique<rpc::SubMessage>(),
+      rpc::ChannelType::GCS_ACTOR_CHANNEL,
+      gcs_address_,
+      [done](Status status) {
+        if (done != nullptr) {
+          done(status);
+        }
+      },
+      std::move(subscribe_item_callback),
+      std::move(subscription_failure_callback)));
+  return Status::OK();
+}
+
 Status GcsSubscriber::SubscribeAllNodeInfo(
     const ItemCallback<rpc::GcsNodeInfo> &subscribe, const StatusCallback &done) {
   // GCS subscriber.
