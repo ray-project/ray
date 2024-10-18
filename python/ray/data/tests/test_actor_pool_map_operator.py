@@ -144,6 +144,10 @@ class TestActorPool(unittest.TestCase):
         assert pool.num_active_actors() == 0
         assert pool.num_idle_actors() == 1
         assert pool.num_free_slots() == 1
+        assert (
+            pool.actor_info_progress_str()
+            == "; Actors: 1 (alive 0, restarting 1, pending 0)"
+        )
 
         # Mark the actor as alive and test pick_actor succeeds
         pool.update_running_actor_state(actor, False)
@@ -157,6 +161,7 @@ class TestActorPool(unittest.TestCase):
         assert pool.num_active_actors() == 1
         assert pool.num_idle_actors() == 0
         assert pool.num_free_slots() == 0
+        assert pool.actor_info_progress_str() == "; Actors: 1"
 
         # Return the actor
         pool.return_actor(picked_actor)
@@ -168,6 +173,7 @@ class TestActorPool(unittest.TestCase):
         assert pool.num_active_actors() == 0
         assert pool.num_idle_actors() == 1
         assert pool.num_free_slots() == 1
+        assert pool.actor_info_progress_str() == "; Actors: 1"
 
     def test_repeated_picking(self):
         # Test that we can repeatedly pick the same actor.
@@ -570,7 +576,7 @@ class TestActorPool(unittest.TestCase):
         assert res3 is None
 
 
-def test_start_actor_timeout(ray_start_regular_shared, restore_data_context):
+def test_start_actor_timeout(ray_start_regular, restore_data_context):
     """Tests that ActorPoolMapOperator raises an exception on
     timeout while waiting for actors."""
 
@@ -602,7 +608,6 @@ def test_start_actor_timeout(ray_start_regular_shared, restore_data_context):
 def test_actor_pool_fault_tolerance_e2e(ray_start_cluster, restore_data_context):
     """Test that a dataset with actor pools can finish, when
     all nodes in the cluster are removed and added back."""
-    ray.shutdown()
     cluster = ray_start_cluster
     cluster.add_node(num_cpus=0)
     ray.init()
@@ -644,7 +649,7 @@ def test_actor_pool_fault_tolerance_e2e(ray_start_cluster, restore_data_context)
     signal_actor = Signal.remote()
 
     # Spin up nodes
-    num_nodes = 4
+    num_nodes = 2
     nodes = []
     for _ in range(num_nodes):
         nodes.append(cluster.add_node(num_cpus=10, num_gpus=1))
@@ -681,6 +686,7 @@ def test_actor_pool_fault_tolerance_e2e(ray_start_cluster, restore_data_context)
             fn_constructor_args=[signal_actor],
             concurrency=num_nodes,
             batch_size=1,
+            num_gpus=1,
         )
         res = ds.take_all()
 

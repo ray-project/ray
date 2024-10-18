@@ -305,27 +305,6 @@ class ActorPoolMapOperator(MapOperator):
             gpu=self._ray_remote_args.get("num_gpus", 0) * num_pending_workers,
         )
 
-    def num_alive_actors(self) -> int:
-        """Return the number of alive actors.
-
-        This method is used to display alive actor info in the progress bar.
-        """
-        return self._actor_pool.num_alive_actors()
-
-    def num_pending_actors(self) -> int:
-        """Return the number of pending actors.
-
-        This method is used to display pending actor info in the progress bar.
-        """
-        return self._actor_pool.num_pending_actors()
-
-    def num_restarting_actors(self) -> int:
-        """Return the number of restarting actors.
-
-        This method is used to display restarting actor info in the progress bar.
-        """
-        return self._actor_pool.num_restarting_actors()
-
     def incremental_resource_usage(self) -> ExecutionResources:
         # Submitting tasks to existing actors doesn't require additional
         # CPU/GPU resources.
@@ -381,6 +360,10 @@ class ActorPoolMapOperator(MapOperator):
                 self._actor_pool.update_running_actor_state(actor, True)
             else:
                 self._actor_pool.update_running_actor_state(actor, False)
+
+    def actor_info_progress_str(self) -> str:
+        """Returns Actor progress strings for Alive, Restarting and Pending Actors."""
+        return self._actor_pool.actor_info_progress_str()
 
 
 class _MapWorker:
@@ -756,3 +739,17 @@ class _ActorPool(AutoscalingActorPool):
             A node id associated with the bundle, or None if unknown.
         """
         return bundle.get_cached_location()
+
+    def actor_info_progress_str(self) -> str:
+        """Returns Actor progress strings for Alive, Restarting and Pending Actors."""
+        alive = self.num_alive_actors()
+        pending = self.num_pending_actors()
+        restarting = self.num_restarting_actors()
+        total = alive + pending + restarting
+        if total == alive:
+            return f"; Actors: {total}"
+        else:
+            return (
+                f"; Actors: {total} (alive {alive}, restarting {restarting}, "
+                f"pending {pending})"
+            )

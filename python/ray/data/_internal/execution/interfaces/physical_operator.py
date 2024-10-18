@@ -399,27 +399,6 @@ class PhysicalOperator(Operator):
         """
         return len(self.get_active_tasks())
 
-    def num_alive_actors(self) -> int:
-        """Return the number of alive actors.
-
-        This method is used to display alive actor info in the progress bar.
-        """
-        return 0
-
-    def num_pending_actors(self) -> int:
-        """Return the number of pending actors.
-
-        This method is used to display pending actor info in the progress bar.
-        """
-        return 0
-
-    def num_restarting_actors(self) -> int:
-        """Return the number of restarting actors.
-
-        This method is used to display restarting actor info in the progress bar.
-        """
-        return 0
-
     def throttling_disabled(self) -> bool:
         """Whether to disable resource throttling for this operator.
 
@@ -539,3 +518,12 @@ class PhysicalOperator(Operator):
         restarting actors, retrying tasks, lost objects, etc.
         """
         pass
+
+    def actor_info_progress_str(self) -> str:
+        """Returns Actor progress strings for Alive, Restarting and Pending Actors.
+
+        This method will be called in summary_str API in OpState. Subcallses can
+        override it to return Actor progress strings for Alive, Restarting and Pending
+        Actors.
+        """
+        return ""
