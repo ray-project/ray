@@ -1269,7 +1269,7 @@ sh_test(
     tags = ["team:rllib", "env", "exclusive"],
     size = "large", # bazel may complain about it being too long sometimes - large is on purpose as some frameworks take longer
     srcs = ["env/tests/test_policy_client_server_setup.sh"],
-    args = ["remote", "cartpole", "8810"],
+    args = ["remote", "cartpole", "64510"],
     data = glob(["examples/envs/external_envs/*.py"]),
 )
 
@@ -1278,7 +1278,7 @@ sh_test(
     tags = ["team:rllib", "env", "exclusive"],
     size = "large", # bazel may complain about it being too long sometimes - large is on purpose as some frameworks take longer
     srcs = ["env/tests/test_policy_client_server_setup.sh"],
-    args = ["remote", "cartpole_lstm", "8820"],
+    args = ["remote", "cartpole_lstm", "64520"],
     data = glob(["examples/envs/external_envs/*.py"]),
 )
 
@@ -1287,7 +1287,7 @@ sh_test(
     tags = ["team:rllib", "env", "exclusive"],
     size = "large", # bazel may complain about it being too long sometimes - large is on purpose as some frameworks take longer
     srcs = ["env/tests/test_policy_client_server_setup.sh"],
-    args = ["remote", "cartpole-dummy-2-episodes", "8840"],
+    args = ["remote", "cartpole-dummy-2-episodes", "64540"],
     data = glob(["examples/envs/external_envs/*.py"]),
 )
 
@@ -1298,7 +1298,7 @@ sh_test(
 #     tags = ["team:rllib", "env", "exclusive"],
 #     size = "small",
 #     srcs = ["env/tests/test_policy_client_server_setup.sh"],
-#     args = ["remote", "unity3d", "8860"],
+#     args = ["remote", "unity3d", "64560"],
 #     data = glob(["examples/envs/external_envs/*.py"]),
 # )
 
