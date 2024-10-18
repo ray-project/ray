@@ -7,9 +7,57 @@ import yaml
 
 import ray
 
-DEFAULT_CONFIG_PATH = os.path.abspath(
-    os.path.join(os.path.dirname(__file__), "logging.yaml")
-)
+DEFAULT_CONFIG = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "formatters": {
+        "ray": {
+            "format": "%(asctime)s\t%(levelname)s %(filename)s:%(lineno)s -- %(message)s"  # noqa: E501
+        },
+        "ray_json": {"class": "ray._private.ray_logging.formatters.JSONFormatter"},
+    },
+    "filters": {
+        "console_filter": {"()": "ray.data._internal.logging.HiddenRecordFilter"},
+        "core_context_filter": {
+            "()": "ray._private.ray_logging.filters.CoreContextFilter"
+        },
+    },
+    "handlers": {
+        "file": {
+            "class": "ray.data._internal.logging.SessionFileHandler",
+            "formatter": "ray",
+            "filename": "ray-data.log",
+        },
+        "file_json": {
+            "class": "ray.data._internal.logging.SessionFileHandler",
+            "formatter": "ray_json",
+            "filename": "ray-data.log",
+            "filters": ["core_context_filter"],
+        },
+        "console": {
+            "class": "ray._private.log.PlainRayHandler",
+            "formatter": "ray",
+            "level": "INFO",
+            "filters": ["console_filter"],
+        },
+    },
+    "loggers": {
+        "ray.data": {
+            "level": "DEBUG",
+            "handlers": ["file", "console"],
+            "propagate": False,
+        },
+        "ray.air.util.tensor_extensions": {
+            "level": "DEBUG",
+            "handlers": ["file", "console"],
+            "propagate": False,
+        },
+    },
+}
+
+# Dictionary of substitutions to be performed when using JSON mode. Handlers with names
+# corresponding to keys will be replaced by those corresponding to values.
+RAY_DATA_LOG_HANDLER_JSON_SUBSTITUTIONS = {"file": "file_json"}
 
 # Dictionary of substitutions to be performed when using JSON mode. Handlers with names
 # corresponding to keys will be replaced by those corresponding to values.
@@ -119,7 +167,7 @@ def configure_logging() -> None:
     if config_path is not None:
         config = _load_logging_config(config_path)
     else:
-        config = _load_logging_config(DEFAULT_CONFIG_PATH)
+        config = DEFAULT_CONFIG
         if log_encoding is not None and log_encoding.upper() == "JSON":
             for logger in config["loggers"].values():
                 for (

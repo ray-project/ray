@@ -1,5 +1,6 @@
 import ray
 from ray._private.ray_constants import env_bool
+from ray.anyscale.data._internal.logging import configure_anyscale_logging
 from ray.anyscale.data.api.dataset_mixin import DatasetMixin
 from ray.anyscale.data.local_limit import ApplyLocalLimitRule
 from ray.anyscale.data.planner import _register_anyscale_plan_logical_op_fns
@@ -25,3 +26,5 @@ def apply_anyscale_patches():
 
     if ANYSCALE_LOCAL_LIMIT_MAP_OPERATOR_ENABLED:
         register_physical_rule(ApplyLocalLimitRule)
+
+    configure_anyscale_logging()
