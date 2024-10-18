@@ -70,10 +70,9 @@ def sigkill_actor(actor):
     ["actor", "task", "driver"],
 )
 @pytest.mark.skipif(sys.platform == "win32", reason="does not work on windows")
-@pytest.mark.parametrize("ray_start_regular", [{"log_to_driver": False}], indirect=True)
 def test_actor_unavailable_conn_broken(ray_start_regular, caller):
     def body():
-        a = Counter.remote()
+        a = Counter.options(max_task_retries=0).remote()
         assert ray.get(a.slow_increment.remote(2, 0.1)) == 2
         pid = ray.get(a.getpid.remote())
         task = a.slow_increment.remote(3, 5)
@@ -105,7 +104,251 @@ def test_actor_unavailable_conn_broken(ray_start_regular, caller):
     ["actor", "task", "driver"],
 )
 @pytest.mark.skipif(sys.platform == "win32", reason="does not work on windows")
-@pytest.mark.parametrize("ray_start_regular", [{"log_to_driver": False}], indirect=True)
+def test_retryable_tasks_conn_broken(ray_start_regular, caller):
+    """
+    Number of retries = 1
+    1. The task is sent to the actor.
+    2. The connection is broken, causing the task to fail (ACTOR_UNAVAILABLE). Does not
+        consume a retry.
+    3. The task is retried, this time the actor sends back the cached reply (OK).
+
+    Actor's perspective: The actor received 2 calls:
+    1. (seqno=1) Updated the state, but the reply failed (connection broken).
+    2. (seqno=1) Same seqno, replied the cached result. No re-execution.
+
+    The user's python actor received 1 call, so 1 + 2 = 3.
+
+    Caller's perspective: The caller received 3 task:
+    1. (seqno=1) ACTOR_UNAVAILABLE. Retries, not comsuming a retry.
+    3. (seqno=1) OK. No retry.
+    """
+
+    def body():
+        a = Counter.remote()
+        assert ray.get(a.slow_increment.remote(1, 0.1)) == 1
+        pid = ray.get(a.getpid.remote())
+        task = a.slow_increment.options(max_task_retries=1).remote(2, secs=5)
+        close_common_connections(pid)
+        assert ray.get(task) == 3
+
+    call_from(body, caller)
+
+
+@pytest.mark.parametrize(
+    "caller",
+    ["actor", "task", "driver"],
+)
+@pytest.mark.skipif(sys.platform == "win32", reason="does not work on windows")
+def test_non_retryable_tasks_conn_broken(ray_start_regular, caller):
+    """
+    Just like `test_retryable_tasks_conn_broken` but not retryable. The task should
+    raise ActorUnavailableError.
+    """
+
+    def body():
+        a = Counter.remote()
+        assert ray.get(a.slow_increment.remote(1, 0.1)) == 1
+        pid = ray.get(a.getpid.remote())
+        task = a.slow_increment.remote(2, secs=5)
+        close_common_connections(pid)
+        with pytest.raises(
+            ActorUnavailableError,
+            match="The task may or maynot have been executed on the actor",
+        ):
+            ray.get(task)
+
+    call_from(body, caller)
+
+
+@pytest.mark.parametrize(
+    "caller",
+    ["actor", "task", "driver"],
+)
+@pytest.mark.skipif(sys.platform == "win32", reason="does not work on windows")
+def test_retryable_tasks_conn_broken_keep_order(ray_start_regular, caller):
+    """
+    In the middle of a stream of tasks, the connection is broken. For the tasks that:
+
+    1. Send to the actor before the break, and replied to the caller, order is kept.
+    2. Sent to the actor, processed or not, not yet replied to the caller, the task is
+        retried out of order.
+    3. Sent to the actor after the task, the order is kept.
+
+    At the connection break:
+
+    0 1 2 3 4 5 6 7 8 9
+        ^ caller got reply
+            ^ sent to the actor
+
+    We ensure:
+    - 0,1 are in order.
+    - 2,3,4 may be out of order.
+    - 5,6,7,8,9 are in order.
+
+    Out of order means they may be executed along with 5,6,7,8,9 in any sequence.
+    """
+
+    @ray.remote(max_task_retries=-1)
+    class CallLogger:
+        def __init__(self) -> None:
+            self.calls = []
+
+        def slow_call(self, arg, secs):
+            print(f"recording {self.calls} + {arg} for {secs}s")
+            time.sleep(secs)
+            self.calls.append(arg)
+
+        def getpid(self):
+            return os.getpid()
+
+        def read(self):
+            return self.calls
+
+    def body():
+        a = CallLogger.remote()
+        pid = ray.get(a.getpid.remote())
+
+        waits = []
+        for i in range(5):
+            waits.append(a.slow_call.remote(f"{i}", secs=1))
+        ray.get(waits[:2])  # make sure 0,1 are replied to the caller
+        close_common_connections(pid)
+
+        # ensure the connection reestablished
+        ray.get(a.getpid.remote())
+
+        for i in range(5, 10):
+            waits.append(a.slow_call.remote(f"{i}", secs=1))
+
+        ray.get(waits)
+        actor_received = ray.get(a.read.remote())
+        print(f"actor received: {actor_received}")
+
+        # 0,1 are in order, and executed only once.
+        assert actor_received[:2] == ["0", "1"]
+        assert not any(x in actor_received[2:] for x in ["0", "1"])
+
+        # 5,6,7,8,9 are in order, and executed only once.
+        assert [x for x in actor_received if x in ["5", "6", "7", "8", "9"]] == [
+            "5",
+            "6",
+            "7",
+            "8",
+            "9",
+        ]
+
+        # 2,3,4 may be out of order, and executed more than once. We only assert that
+        # they exist in the list.
+        assert all(x in actor_received for x in ["2", "3", "4"])
+
+    call_from(body, caller)
+
+
+@pytest.mark.parametrize(
+    "caller",
+    ["actor", "task", "driver"],
+)
+@pytest.mark.skipif(sys.platform == "win32", reason="does not work on windows")
+def test_retryable_tasks_killed_keep_order(ray_start_regular, caller):
+    """
+    In the middle of a stream of tasks, the connection is broken. For the tasks that:
+
+    1. Send to the actor before the break, and replied to the caller, order is kept.
+    2. Sent to the actor, processed or not, not yet replied to the caller, the task is
+        retried out of order.
+    3. Sent to the actor after the task, the order is kept.
+
+    At the connection break:
+
+    0 1 2 3 4 5 6 7 8 9
+        ^ caller got reply
+            ^ sent to the actor
+
+    We ensure:
+    - 0,1 are in order.
+    - 2,3,4 may be out of order.
+    - 5,6,7,8,9 are in order.
+
+    Out of order means they may be executed along with 5,6,7,8,9 in any sequence.
+    """
+
+    @ray.remote(max_task_retries=-1, max_restarts=-1)
+    class CallLogger:
+        def __init__(self) -> None:
+            self.calls = []
+
+        def slow_call(self, arg, secs):
+            print(f"recording {self.calls} + {arg} for {secs}s")
+            time.sleep(secs)
+            self.calls.append(arg)
+
+        def getpid(self):
+            return os.getpid()
+
+        def read(self):
+            return self.calls
+
+    def body():
+        a = CallLogger.remote()
+        pid = ray.get(a.getpid.remote())
+
+        waits = []
+        for i in range(5):
+            waits.append(a.slow_call.remote(f"{i}", secs=1))
+        ray.get(waits[:2])  # make sure 0,1 are replied to the caller
+        os.kill(pid, signal.SIGKILL)
+
+        # ensure the connection reestablished
+        ray.get(a.getpid.remote())
+
+        for i in range(5, 10):
+            waits.append(a.slow_call.remote(f"{i}", secs=1))
+
+        ray.get(waits)
+        actor_received = ray.get(a.read.remote())
+        print(f"actor received: {actor_received}")
+
+        # 0,1 are not re-executed in the new actor.
+        # 2,3,4 are re-executed in order; After those retry, 5,6,7,8,9 are executed.
+        assert actor_received == ["2", "3", "4", "5", "6", "7", "8", "9"]
+
+    call_from(body, caller)
+
+
+@pytest.mark.parametrize(
+    "caller",
+    ["actor", "task", "driver"],
+)
+@pytest.mark.skipif(sys.platform == "win32", reason="does not work on windows")
+def test_actor_task_retry_by_connections_closed_and_actor_restart(
+    ray_start_regular, caller
+):
+    def body():
+        a = Counter.options(max_restarts=-1).remote()
+        assert ray.get(a.slow_increment.remote(2, 0.1)) == 2
+        pid = ray.get(a.getpid.remote())
+        task1 = a.slow_increment.options(max_task_retries=-1).remote(3, 5)
+
+        close_common_connections(pid)
+        assert ray.get(task1) == 2 + 3 * 2
+
+        task2 = a.slow_increment.options(max_task_retries=-1).remote(3, 5)
+        # Ensure that Actor has received the PushActorTaskReuqest.
+        time.sleep(1)
+        os.kill(pid, signal.SIGKILL)
+        # The 25 seconds here is to be less than the C constant
+        # kMaxReorderWaitSeconds, to ensuring that
+        # ActorSchedulingQueue's waiting timeout is not triggered.
+        assert ray.get(task2, timeout=25) == 3
+
+    call_from(body, caller)
+
+
+@pytest.mark.parametrize(
+    "caller",
+    ["actor", "task", "driver"],
+)
+@pytest.mark.skipif(sys.platform == "win32", reason="does not work on windows")
 def test_actor_unavailable_restarting(ray_start_regular, caller):
     def body():
         a = Counter.options(max_restarts=1).remote(init_time_s=5)
@@ -142,7 +385,6 @@ def test_actor_unavailable_restarting(ray_start_regular, caller):
     ["actor", "task", "driver"],
 )
 @pytest.mark.skipif(sys.platform == "win32", reason="does not work on windows")
-@pytest.mark.parametrize("ray_start_regular", [{"log_to_driver": False}], indirect=True)
 def test_actor_unavailable_norestart(ray_start_regular, caller):
     def body():
         a = Counter.remote()
@@ -190,7 +432,6 @@ class SlowCtor:
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="does not work on windows")
-@pytest.mark.parametrize("ray_start_regular", [{"log_to_driver": False}], indirect=True)
 def test_unavailable_then_actor_error(ray_start_regular):
     c = Counter.remote()
     # Restart config:
@@ -228,7 +469,6 @@ def test_unavailable_then_actor_error(ray_start_regular):
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="does not work on windows")
-@pytest.mark.parametrize("ray_start_regular", [{"log_to_driver": False}], indirect=True)
 def test_inf_task_retries(ray_start_regular):
     c = Counter.remote()
     # The actor spends 2s in the init.
