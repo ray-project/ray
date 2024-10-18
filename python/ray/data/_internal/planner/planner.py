@@ -111,7 +111,7 @@ class Planner:
         physical_plan = PhysicalPlan(
             physical_dag,
             self._physical_op_to_logical_op,
-            logical_plan._context,
+            logical_plan.context,
         )
         return physical_plan
 
