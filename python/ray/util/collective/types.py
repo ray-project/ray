@@ -3,7 +3,7 @@ from enum import Enum
 from dataclasses import dataclass
 from datetime import timedelta
 
-from ray.util.annotations import PublicAPI, DeveloperAPI
+from ray.util.annotations import PublicAPI
 
 _NUMPY_AVAILABLE = True
 _TORCH_AVAILABLE = True
@@ -20,17 +20,17 @@ except ImportError:
     _CUPY_AVAILABLE = False
 
 
-@DeveloperAPI
+@PublicAPI
 def cupy_available():
     return _CUPY_AVAILABLE
 
 
-@DeveloperAPI
+@PublicAPI
 def torch_available():
     return _TORCH_AVAILABLE
 
 
-@DeveloperAPI
+@PublicAPI
 class Backend(object):
     """A class to represent different backends."""
 
