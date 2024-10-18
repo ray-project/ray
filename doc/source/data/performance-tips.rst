@@ -200,7 +200,7 @@ By default, :func:`ray.data.read_parquet` reads all columns in the Parquet files
 If you only need a subset of the columns, make sure to specify the list of columns
 explicitly when calling :func:`ray.data.read_parquet` to
 avoid loading unnecessary data (projection pushdown). Note that this is more efficient than
-calling :func:`~ray.data.Dataset.select_columns`, since column selection will be pushed down to the file scan.
+calling :func:`~ray.data.Dataset.select_columns`, since column selection is pushed down to the file scan.
 
 .. testcode::
 
