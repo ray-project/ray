@@ -5192,14 +5192,6 @@ class Dataset:
                 num_rows.append(get_num_rows.remote(block_ref))
         return ray.get(num_rows)
 
-    def _block_size_bytes(self) -> List[int]:
-        get_size_bytes = cached_remote_fn(_get_size_bytes)
-        size_bytes = []
-        for ref_bundle in self.iter_internal_ref_bundles():
-            for block_ref in ref_bundle.block_refs:
-                size_bytes.append(get_size_bytes.remote(block_ref))
-        return ray.get(size_bytes)
-
     def _meta_count(self) -> Optional[int]:
         return self._plan.meta_count()
 
@@ -5366,11 +5358,6 @@ class Schema:
 
         output = output.rstrip()
         return output
-
-
-def _get_size_bytes(block: Block) -> int:
-    block = BlockAccessor.for_block(block)
-    return block.size_bytes()
 
 
 def _block_to_df(block: Block) -> "pandas.DataFrame":
