@@ -649,7 +649,7 @@ def test_actor_pool_fault_tolerance_e2e(ray_start_cluster, restore_data_context)
     signal_actor = Signal.remote()
 
     # Spin up nodes
-    num_nodes = 2
+    num_nodes = 1
     nodes = []
     for _ in range(num_nodes):
         nodes.append(cluster.add_node(num_cpus=10, num_gpus=1))

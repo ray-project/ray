@@ -217,13 +217,10 @@ class ActorPoolMapOperator(MapOperator):
                 # Dipsatch more tasks.
                 self._dispatch_tasks()
 
-            # For some reason, if we don't define a new variable `actor_to_return`,
-            # the following lambda won't capture the correct `actor` variable.
-            actor_to_return = actor
+            from functools import partial
+
             self._submit_data_task(
-                gen,
-                bundle,
-                lambda: _task_done_callback(actor_to_return),
+                gen, bundle, partial(_task_done_callback, actor_to_return=actor)
             )
 
     def _refresh_actor_cls(self):
