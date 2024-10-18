@@ -111,7 +111,7 @@ class MetricsHead(dashboard_utils.DashboardHeadModule):
     @routes.get("/api/grafana_health")
     async def grafana_health(self, req) -> aiohttp.web.Response:
         """
-        Endpoint that checks if grafana is running
+        Endpoint that checks if Grafana is running
         """
         # If disabled, we don't want to show the metrics tab at all.
         if self.grafana_host == GRAFANA_HOST_DISABLED_VALUE:
@@ -134,7 +134,7 @@ class MetricsHead(dashboard_utils.DashboardHeadModule):
                         status=resp.status,
                     )
                 json = await resp.json()
-                # Check if the required grafana services are running.
+                # Check if the required Grafana services are running.
                 if json["database"] != "ok":
                     return dashboard_optional_utils.rest_response(
                         success=False,
@@ -192,14 +192,14 @@ class MetricsHead(dashboard_utils.DashboardHeadModule):
 
     def _create_default_grafana_configs(self):
         """
-        Creates the grafana configurations that are by default provided by Ray.
+        Creates the Grafana configurations that are by default provided by Ray.
         """
-        # Create grafana configuration folder
+        # Create Grafana configuration folder
         if os.path.exists(self._grafana_config_output_path):
             shutil.rmtree(self._grafana_config_output_path)
         os.makedirs(self._grafana_config_output_path, exist_ok=True)
 
-        # Overwrite grafana's configuration file
+        # Overwrite Grafana's configuration file
         grafana_provisioning_folder = os.path.join(
             self._grafana_config_output_path, "provisioning"
         )
@@ -219,7 +219,7 @@ class MetricsHead(dashboard_utils.DashboardHeadModule):
                 )
             )
 
-        # Overwrite grafana's dashboard provisioning directory based on env var
+        # Overwrite Grafana's dashboard provisioning directory based on env var
         dashboard_provisioning_path = os.path.join(
             grafana_provisioning_folder, "dashboards"
         )
@@ -240,7 +240,7 @@ class MetricsHead(dashboard_utils.DashboardHeadModule):
                 )
             )
 
-        # Overwrite grafana's prometheus datasource based on env var
+        # Overwrite Grafana's Prometheus datasource based on env var
         prometheus_host = os.environ.get(
             PROMETHEUS_HOST_ENV_VAR, DEFAULT_PROMETHEUS_HOST
         )
@@ -314,13 +314,13 @@ class MetricsHead(dashboard_utils.DashboardHeadModule):
 
     def _create_default_prometheus_configs(self):
         """
-        Creates the prometheus configurations that are by default provided by Ray.
+        Creates the Prometheus configurations that are by default provided by Ray.
         """
         prometheus_config_output_path = os.path.join(
             self._metrics_root, "prometheus", "prometheus.yml"
         )
 
-        # Generate the default prometheus configurations
+        # Generate the default Prometheus configurations
         if os.path.exists(prometheus_config_output_path):
             os.remove(prometheus_config_output_path)
         os.makedirs(os.path.dirname(prometheus_config_output_path), exist_ok=True)
