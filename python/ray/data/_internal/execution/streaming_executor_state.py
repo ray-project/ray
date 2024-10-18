@@ -266,14 +266,8 @@ class OpState:
         ):
             desc += " [backpressured]"
 
-        # Active/pending actors
-        active = self.op.num_active_actors()
-        pending = self.op.num_pending_actors()
-        if active or pending:
-            actor_str = f"; Actors: {active}"
-            if pending > 0:
-                actor_str += f", (pending: {pending})"
-            desc += actor_str
+        # Actors info
+        desc += self.op.actor_info_progress_str()
 
         # Queued blocks
         queued = self.num_queued() + self.op.internal_queue_size()
