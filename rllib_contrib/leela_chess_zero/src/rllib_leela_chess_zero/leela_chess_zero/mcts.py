@@ -41,11 +41,11 @@ class Node:
                 multi_agent = True
         if multi_agent:
             current_agent = self.state.agent_selection
-            if type(self.reward) == dict:
+            if isinstance(self.reward, dict):
                 self.reward = self.reward[current_agent]
-            if type(self.done) == dict:
+            if isinstance(self.done, dict):
                 self.done = self.done[current_agent]
-            if type(self.obs) == dict:
+            if isinstance(self.obs, dict):
                 self.valid_actions = obs[current_agent]["action_mask"].astype(bool)
                 self.obs = obs[current_agent]
         else:

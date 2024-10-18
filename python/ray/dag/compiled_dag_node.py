@@ -852,7 +852,7 @@ class CompiledDAG:
                         "the driver cannot participate in the NCCL group"
                     )
 
-            if type(dag_node.type_hint) == ChannelOutputType:
+            if isinstance(dag_node.type_hint, ChannelOutputType):
                 # No type hint specified by the user. Replace
                 # with the default type hint for this DAG.
                 dag_node.with_type_hint(self._default_type_hint)
