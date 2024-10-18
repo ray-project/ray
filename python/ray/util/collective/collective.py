@@ -6,7 +6,6 @@ from typing import List
 import numpy as np
 
 import ray
-from ray.util.annotations import PublicAPI
 from ray.util.collective import types
 
 _NCCL_AVAILABLE = True
@@ -30,17 +29,14 @@ except ImportError:
     _GLOO_AVAILABLE = False
 
 
-@PublicAPI
 def nccl_available():
     return _NCCL_AVAILABLE
 
 
-@PublicAPI
 def gloo_available():
     return _GLOO_AVAILABLE
 
 
-@PublicAPI
 class GroupManager(object):
     """Use this class to manage the collective groups we created so far.
 
@@ -116,13 +112,11 @@ class GroupManager(object):
 _group_mgr = GroupManager()
 
 
-@PublicAPI
 def is_group_initialized(group_name):
     """Check if the group is initialized in this process by the group name."""
     return _group_mgr.is_group_exist(group_name)
 
 
-@PublicAPI
 def init_collective_group(
     world_size: int, rank: int, backend=types.Backend.NCCL, group_name: str = "default"
 ):
@@ -154,7 +148,6 @@ def init_collective_group(
     _group_mgr.create_collective_group(backend, world_size, rank, group_name)
 
 
-@PublicAPI
 def create_collective_group(
     actors,
     world_size: int,
@@ -220,7 +213,8 @@ def create_collective_group(
 
 
 # TODO (we need a declarative destroy() API here.)
-@PublicAPI
+
+
 def destroy_collective_group(group_name: str = "default") -> None:
     """Destroy a collective group given its group name."""
     _check_inside_actor()
@@ -228,7 +222,6 @@ def destroy_collective_group(group_name: str = "default") -> None:
     _group_mgr.destroy_collective_group(group_name)
 
 
-@PublicAPI
 def get_rank(group_name: str = "default") -> int:
     """Return the rank of this process in the given group.
 
@@ -247,7 +240,6 @@ def get_rank(group_name: str = "default") -> int:
     return g.rank
 
 
-@PublicAPI
 def get_collective_group_size(group_name: str = "default") -> int:
     """Return the size of the collective group with the given name.
 
@@ -265,7 +257,6 @@ def get_collective_group_size(group_name: str = "default") -> int:
     return g.world_size
 
 
-@PublicAPI
 def allreduce(tensor, group_name: str = "default", op=types.ReduceOp.SUM):
     """Collective allreduce the tensor across the group.
 
@@ -284,7 +275,6 @@ def allreduce(tensor, group_name: str = "default", op=types.ReduceOp.SUM):
     g.allreduce([tensor], opts)
 
 
-@PublicAPI
 def allreduce_multigpu(
     tensor_list: list, group_name: str = "default", op=types.ReduceOp.SUM
 ):
@@ -307,7 +297,6 @@ def allreduce_multigpu(
     g.allreduce(tensor_list, opts)
 
 
-@PublicAPI
 def barrier(group_name: str = "default"):
     """Barrier all processes in the collective group.
 
@@ -321,7 +310,6 @@ def barrier(group_name: str = "default"):
     g.barrier()
 
 
-@PublicAPI
 def reduce(
     tensor, dst_rank: int = 0, group_name: str = "default", op=types.ReduceOp.SUM
 ):
@@ -348,7 +336,6 @@ def reduce(
     g.reduce([tensor], opts)
 
 
-@PublicAPI
 def reduce_multigpu(
     tensor_list: list,
     dst_rank: int = 0,
@@ -385,7 +372,6 @@ def reduce_multigpu(
     g.reduce(tensor_list, opts)
 
 
-@PublicAPI
 def broadcast(tensor, src_rank: int = 0, group_name: str = "default"):
     """Broadcast the tensor from a source process to all others.
 
@@ -408,7 +394,6 @@ def broadcast(tensor, src_rank: int = 0, group_name: str = "default"):
     g.broadcast([tensor], opts)
 
 
-@PublicAPI
 def broadcast_multigpu(
     tensor_list, src_rank: int = 0, src_tensor: int = 0, group_name: str = "default"
 ):
@@ -437,7 +422,6 @@ def broadcast_multigpu(
     g.broadcast(tensor_list, opts)
 
 
-@PublicAPI
 def allgather(tensor_list: list, tensor, group_name: str = "default"):
     """Allgather tensors from each process of the group into a list.
 
@@ -463,7 +447,6 @@ def allgather(tensor_list: list, tensor, group_name: str = "default"):
     g.allgather([tensor_list], [tensor], opts)
 
 
-@PublicAPI
 def allgather_multigpu(
     output_tensor_lists: list, input_tensor_list: list, group_name: str = "default"
 ):
@@ -488,7 +471,6 @@ def allgather_multigpu(
     g.allgather(output_tensor_lists, input_tensor_list, opts)
 
 
-@PublicAPI
 def reducescatter(
     tensor, tensor_list: list, group_name: str = "default", op=types.ReduceOp.SUM
 ):
@@ -519,7 +501,6 @@ def reducescatter(
     g.reducescatter([tensor], [tensor_list], opts)
 
 
-@PublicAPI
 def reducescatter_multigpu(
     output_tensor_list,
     input_tensor_lists,
@@ -549,7 +530,6 @@ def reducescatter_multigpu(
     g.reducescatter(output_tensor_list, input_tensor_lists, opts)
 
 
-@PublicAPI
 def send(tensor, dst_rank: int, group_name: str = "default"):
     """Send a tensor to a remote process synchronously.
 
@@ -571,7 +551,6 @@ def send(tensor, dst_rank: int, group_name: str = "default"):
     g.send([tensor], opts)
 
 
-@PublicAPI
 def send_multigpu(
     tensor,
     dst_rank: int,
@@ -614,7 +593,6 @@ def send_multigpu(
     g.send([tensor], opts)
 
 
-@PublicAPI
 def recv(tensor, src_rank: int, group_name: str = "default"):
     """Receive a tensor from a remote process synchronously.
 
@@ -636,7 +614,6 @@ def recv(tensor, src_rank: int, group_name: str = "default"):
     g.recv([tensor], opts)
 
 
-@PublicAPI
 def recv_multigpu(
     tensor,
     src_rank: int,
@@ -677,7 +654,6 @@ def recv_multigpu(
     g.recv([tensor], opts)
 
 
-@PublicAPI
 def synchronize(gpu_id: int):
     """Synchronize the current process to a give device.
 

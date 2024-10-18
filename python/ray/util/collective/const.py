@@ -7,10 +7,7 @@ import hashlib
 import os
 from enum import Enum, auto
 
-from ray.util.annotations import PublicAPI
 
-
-@PublicAPI
 def get_store_name(group_name):
     """Generate the unique name for the NCCLUniqueID store (named actor).
 
@@ -25,7 +22,6 @@ def get_store_name(group_name):
     return hexlified_name
 
 
-@PublicAPI
 class ENV(Enum):
     """ray.util.collective environment variables."""
 
