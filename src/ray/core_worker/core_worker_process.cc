@@ -144,6 +144,7 @@ CoreWorkerProcessImpl::CoreWorkerProcessImpl(const CoreWorkerOptions &options)
                  options_.log_dir,
                  RayConfig::instance().event_level(),
                  RayConfig::instance().emit_event_to_log_file());
+    ray::RayEventLog::Instance().StartPeriodicFlushThread();
   }
 }
 
@@ -154,6 +155,7 @@ CoreWorkerProcessImpl::~CoreWorkerProcessImpl() {
   if (options_.enable_logging) {
     RayLog::ShutDownRayLog();
   }
+  ray::RayEventLog::Instance().StopPeriodicFlushThread();
 }
 
 void CoreWorkerProcess::EnsureInitialized(bool quick_exit) {
