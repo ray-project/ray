@@ -1239,9 +1239,9 @@ class OperatorStatsSummary:
         )
 
     def __str__(self) -> str:
-        """For a given (pre-calculated) `OperatorStatsSummary` object (e.g. generated from
-        `OperatorStatsSummary.from_block_metadata()`), returns a human-friendly string
-        that summarizes operator execution statistics.
+        """For a given (pre-calculated) `OperatorStatsSummary` object (e.g. generated
+        from `OperatorStatsSummary.from_block_metadata()`), returns a human-friendly
+        string that summarizes operator execution statistics.
 
         Returns:
             String with summary statistics for executing the given operator.
@@ -1361,9 +1361,9 @@ class OperatorStatsSummary:
         return out
 
     def __repr__(self, level=0) -> str:
-        """For a given (pre-calculated) `OperatorStatsSummary` object (e.g. generated from
-        `OperatorStatsSummary.from_block_metadata()`), returns a human-friendly string
-        that summarizes operator execution statistics.
+        """For a given (pre-calculated) `OperatorStatsSummary` object (e.g. generated
+        from `OperatorStatsSummary.from_block_metadata()`), returns a human-friendly
+        string that summarizes operator execution statistics.
 
         Returns:
             String with summary statistics for executing the given operator.

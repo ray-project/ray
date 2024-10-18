@@ -48,7 +48,8 @@ def _generate_per_block_split_indices(
     num_rows_per_block: List[int],
     split_indices: List[int],
 ) -> List[List[int]]:
-    """Given num rows per block and valid split indices, generate per block split indices.
+    """Given num rows per block and valid split indices, generate per block split 
+    indices.
 
     Args:
         num_rows_per_block: num of rows per block.
