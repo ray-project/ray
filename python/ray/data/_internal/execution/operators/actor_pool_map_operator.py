@@ -276,8 +276,6 @@ class ActorPoolMapOperator(MapOperator):
             return locality_string(
                 self._actor_pool._locality_hits,
                 self._actor_pool._locality_misses,
-                self._actor_pool.num_pending_actors(),
-                self._actor_pool.num_restarting_actors(),
             )
         return "[locality off]"
 
@@ -307,12 +305,12 @@ class ActorPoolMapOperator(MapOperator):
             gpu=self._ray_remote_args.get("num_gpus", 0) * num_pending_workers,
         )
 
-    def num_active_actors(self) -> int:
-        """Return the number of active actors.
+    def num_alive_actors(self) -> int:
+        """Return the number of alive actors.
 
-        This method is used to display active actor info in the progress bar.
+        This method is used to display alive actor info in the progress bar.
         """
-        return self._actor_pool.num_running_actors()
+        return self._actor_pool.num_alive_actors()
 
     def num_pending_actors(self) -> int:
         """Return the number of pending actors.
@@ -320,6 +318,13 @@ class ActorPoolMapOperator(MapOperator):
         This method is used to display pending actor info in the progress bar.
         """
         return self._actor_pool.num_pending_actors()
+
+    def num_restarting_actors(self) -> int:
+        """Return the number of restarting actors.
+
+        This method is used to display restarting actor info in the progress bar.
+        """
+        return self._actor_pool.num_restarting_actors()
 
     def incremental_resource_usage(self) -> ExecutionResources:
         # Submitting tasks to existing actors doesn't require additional
@@ -336,8 +341,8 @@ class ActorPoolMapOperator(MapOperator):
         if self._actor_locality_enabled:
             res["locality_hits"] = self._actor_pool._locality_hits
             res["locality_misses"] = self._actor_pool._locality_misses
-            res["pending_actors"] = self._actor_pool.num_pending_actors()
-            res["restarting_actors"] = self._actor_pool.num_restarting_actors()
+        res["pending_actors"] = self._actor_pool.num_pending_actors()
+        res["restarting_actors"] = self._actor_pool.num_restarting_actors()
         return res
 
     @staticmethod
@@ -369,7 +374,13 @@ class ActorPoolMapOperator(MapOperator):
             if actor_state is None:
                 # actor._get_local_state can return None if the state is Unknown
                 continue
-            self._actor_pool.update_running_actor_state(actor, actor_state)
+            elif actor_state != gcs_pb2.ActorTableData.ActorState.ALIVE:
+                # The actors can be either ALIVE or RESTARTING here because they will
+                # be restarted indefinitely until execution finishes.
+                assert actor_state == gcs_pb2.ActorTableData.ActorState.RESTARTING
+                self._actor_pool.update_running_actor_state(actor, True)
+            else:
+                self._actor_pool.update_running_actor_state(actor, False)
 
 
 class _MapWorker:
@@ -417,8 +428,8 @@ class _ActorState:
     # Node id of each ready actor
     actor_location: str
 
-    # Actor state
-    actor_state: gcs_pb2.ActorTableData.ActorState
+    # Is Actor state restarting or alive
+    is_restarting: bool
 
 
 class _ActorPool(AutoscalingActorPool):
@@ -474,22 +485,21 @@ class _ActorPool(AutoscalingActorPool):
     def num_restarting_actors(self) -> int:
         """Restarting actors are all the running actors not in ALIVE state."""
         return sum(
-            running_actor_state.actor_state != gcs_pb2.ActorTableData.ActorState.ALIVE
-            for running_actor_state in self._running_actors.values()
+            actor_state.is_restarting for actor_state in self._running_actors.values()
         )
 
     def num_active_actors(self) -> int:
         """Active actors are all the running actors with inflight tasks."""
         return sum(
-            1 if running_actor_state.num_tasks_in_flight > 0 else 0
-            for running_actor_state in self._running_actors.values()
+            1 if actor_state.num_tasks_in_flight > 0 else 0
+            for actor_state in self._running_actors.values()
         )
 
     def num_alive_actors(self) -> int:
         """Alive actors are all the running actors in ALIVE state."""
         return sum(
-            running_actor_state.actor_state == gcs_pb2.ActorTableData.ActorState.ALIVE
-            for running_actor_state in self._running_actors.values()
+            not actor_state.is_restarting
+            for actor_state in self._running_actors.values()
         )
 
     def num_pending_actors(self) -> int:
@@ -500,8 +510,8 @@ class _ActorPool(AutoscalingActorPool):
 
     def current_in_flight_tasks(self) -> int:
         return sum(
-            running_actor_state.num_tasks_in_flight
-            for running_actor_state in self._running_actors.values()
+            actor_state.num_tasks_in_flight
+            for actor_state in self._running_actors.values()
         )
 
     def scale_up(self, num_actors: int) -> int:
@@ -520,18 +530,16 @@ class _ActorPool(AutoscalingActorPool):
     # === End of overriding methods of AutoscalingActorPool ===
 
     def update_running_actor_state(
-        self,
-        actor: ray.actor.ActorHandle,
-        actor_state: gcs_pb2.ActorTableData.ActorState,
+        self, actor: ray.actor.ActorHandle, is_restarting: bool
     ):
         """Update running actor state.
 
         Args:
             actor: The running actor that needs state update.
-            actor_state: Updated actor state for the running actor.
+            is_restarting: Whether running actor is restarting or alive.
         """
         assert actor in self._running_actors
-        self._running_actors[actor].actor_state = actor_state
+        self._running_actors[actor].is_restarting = is_restarting
 
     def add_pending_actor(self, actor: ray.actor.ActorHandle, ready_ref: ray.ObjectRef):
         """Adds a pending actor to the pool.
@@ -566,7 +574,7 @@ class _ActorPool(AutoscalingActorPool):
         self._running_actors[actor] = _ActorState(
             num_tasks_in_flight=0,
             actor_location=ray.get(ready_ref),
-            actor_state=gcs_pb2.ActorTableData.ActorState.ALIVE,
+            is_restarting=False,
         )
         return True
 
@@ -590,6 +598,20 @@ class _ActorPool(AutoscalingActorPool):
         else:
             preferred_loc = None
 
+        # Filter out actors that are invalid, i.e. actors with number of tasks in
+        # flight >= _max_tasks_in_flight or actor_state is not ALIVE.
+        valid_actors = [
+            actor
+            for actor in self._running_actors
+            if self._running_actors[actor].num_tasks_in_flight
+            < self._max_tasks_in_flight
+            and not self._running_actors[actor].is_restarting
+        ]
+
+        if not valid_actors:
+            # All actors are at capacity or actor state is not ALIVE.
+            return None
+
         def penalty_key(actor):
             """Returns the key that should be minimized for the best actor.
 
@@ -601,21 +623,6 @@ class _ActorPool(AutoscalingActorPool):
                 self._running_actors[actor].actor_location != preferred_loc
             )
             return requires_remote_fetch, busyness
-
-        # Filter out actors that are invalid, i.e. actors with number of tasks in
-        # flight >= _max_tasks_in_flight or actor_state is not ALIVE.
-        valid_actors = [
-            actor
-            for actor in self._running_actors
-            if self._running_actors[actor].num_tasks_in_flight
-            < self._max_tasks_in_flight
-            and self._running_actors[actor].actor_state
-            == gcs_pb2.ActorTableData.ActorState.ALIVE
-        ]
-
-        if not valid_actors:
-            # All actors are at capacity or actor state is not ALIVE.
-            return None
 
         # Pick the best valid actor based on the penalty key
         actor = min(valid_actors, key=penalty_key)

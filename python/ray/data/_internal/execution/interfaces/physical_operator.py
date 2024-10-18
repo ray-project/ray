@@ -399,10 +399,10 @@ class PhysicalOperator(Operator):
         """
         return len(self.get_active_tasks())
 
-    def num_active_actors(self) -> int:
-        """Return the number of active actors.
+    def num_alive_actors(self) -> int:
+        """Return the number of alive actors.
 
-        This method is used to display active actor info in the progress bar.
+        This method is used to display alive actor info in the progress bar.
         """
         return 0
 
@@ -410,6 +410,13 @@ class PhysicalOperator(Operator):
         """Return the number of pending actors.
 
         This method is used to display pending actor info in the progress bar.
+        """
+        return 0
+
+    def num_restarting_actors(self) -> int:
+        """Return the number of restarting actors.
+
+        This method is used to display restarting actor info in the progress bar.
         """
         return 0
 

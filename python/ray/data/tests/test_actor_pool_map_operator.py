@@ -9,7 +9,6 @@ import pytest
 import ray
 from ray._private.test_utils import wait_for_condition
 from ray.actor import ActorHandle
-from ray.core.generated import gcs_pb2
 from ray.data._internal.compute import ActorPoolStrategy
 from ray.data._internal.execution.operators.actor_pool_map_operator import _ActorPool
 from ray.data._internal.execution.util import make_ref_bundles
@@ -135,9 +134,7 @@ class TestActorPool(unittest.TestCase):
         actor = self._add_ready_actor(pool)
 
         # Mark the actor as restarting and test pick_actor fails
-        pool.update_running_actor_state(
-            actor, gcs_pb2.ActorTableData.ActorState.RESTARTING
-        )
+        pool.update_running_actor_state(actor, True)
         assert pool.pick_actor() is None
         assert pool.current_size() == 1
         assert pool.num_pending_actors() == 0
@@ -149,7 +146,7 @@ class TestActorPool(unittest.TestCase):
         assert pool.num_free_slots() == 1
 
         # Mark the actor as alive and test pick_actor succeeds
-        pool.update_running_actor_state(actor, gcs_pb2.ActorTableData.ActorState.ALIVE)
+        pool.update_running_actor_state(actor, False)
         picked_actor = pool.pick_actor()
         assert picked_actor == actor
         assert pool.current_size() == 1
@@ -163,6 +160,14 @@ class TestActorPool(unittest.TestCase):
 
         # Return the actor
         pool.return_actor(picked_actor)
+        assert pool.current_size() == 1
+        assert pool.num_pending_actors() == 0
+        assert pool.num_running_actors() == 1
+        assert pool.num_restarting_actors() == 0
+        assert pool.num_alive_actors() == 1
+        assert pool.num_active_actors() == 0
+        assert pool.num_idle_actors() == 1
+        assert pool.num_free_slots() == 1
 
     def test_repeated_picking(self):
         # Test that we can repeatedly pick the same actor.
@@ -594,13 +599,17 @@ def test_start_actor_timeout(ray_start_regular_shared, restore_data_context):
         ).take_all()
 
 
-def test_actor_pool_fault_tolerance_e2e(ray_start_cluster):
+def test_actor_pool_fault_tolerance_e2e(ray_start_cluster, restore_data_context):
     """Test that a dataset with actor pools can finish, when
     all nodes in the cluster are removed and added back."""
     ray.shutdown()
     cluster = ray_start_cluster
     cluster.add_node(num_cpus=0)
     ray.init()
+
+    # Ensure block size is small enough to pass resource limits
+    context = ray.data.DataContext.get_current()
+    context.target_max_block_size = 1
 
     @ray.remote(num_cpus=0)
     class Signal:
@@ -635,10 +644,10 @@ def test_actor_pool_fault_tolerance_e2e(ray_start_cluster):
     signal_actor = Signal.remote()
 
     # Spin up nodes
-    num_nodes = 1
+    num_nodes = 4
     nodes = []
     for _ in range(num_nodes):
-        nodes.append(cluster.add_node(num_cpus=10))
+        nodes.append(cluster.add_node(num_cpus=10, num_gpus=1))
     cluster.wait_for_nodes()
 
     class MyUDF:
@@ -655,9 +664,6 @@ def test_actor_pool_fault_tolerance_e2e(ray_start_cluster):
                 # Wait for the driver to remove nodes. This makes sure all
                 # actors are running tasks when removing nodes.
                 ray.get(self._signal_actor.wait_for_nodes_removed.remote())
-
-                # Wait for the driver to add nodes.
-                ray.get(self._signal_actor.wait_for_nodes_restarted.remote())
 
                 self._signal_sent = True
 
@@ -693,7 +699,7 @@ def test_actor_pool_fault_tolerance_e2e(ray_start_cluster):
 
     # Add back all the nodes
     for _ in range(num_nodes):
-        nodes.append(cluster.add_node(num_cpus=10))
+        nodes.append(cluster.add_node(num_cpus=10, num_gpus=1))
     cluster.wait_for_nodes()
     ray.get(signal_actor.notify_nodes_restarted.remote())
 

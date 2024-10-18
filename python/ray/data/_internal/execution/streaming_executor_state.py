@@ -256,6 +256,20 @@ class OpState:
             self.progress_bar.set_description(self.summary_str(resource_manager))
             self.progress_bar.refresh()
 
+    def actor_info_progress_str(self) -> str:
+        # Alive/Pending/Restarting actors
+        alive = self.op.num_alive_actors()
+        pending = self.op.num_pending_actors()
+        restarting = self.op.num_restarting_actors()
+        total = alive + pending + restarting
+        if total == alive:
+            return f"; Actors: {total}"
+        else:
+            return (
+                f"; Actors: {total} (alive {alive}, restarting {restarting}, "
+                f"pending {pending})"
+            )
+
     def summary_str(self, resource_manager: ResourceManager) -> str:
         # Active tasks
         active = self.op.num_active_tasks()
@@ -266,14 +280,8 @@ class OpState:
         ):
             desc += " [backpressured]"
 
-        # Active/pending actors
-        active = self.op.num_active_actors()
-        pending = self.op.num_pending_actors()
-        if active or pending:
-            actor_str = f"; Actors: {active}"
-            if pending > 0:
-                actor_str += f", (pending: {pending})"
-            desc += actor_str
+        # Actors info
+        desc += self.actor_info_progress_str()
 
         # Queued blocks
         queued = self.num_queued() + self.op.internal_queue_size()
