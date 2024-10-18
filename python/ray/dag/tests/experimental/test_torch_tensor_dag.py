@@ -10,7 +10,6 @@ from ray.experimental.channel.gpu_communicator import (
 from ray.experimental.channel.nccl_group import _NcclGroup
 import socket
 import torch
-import time
 
 import pytest
 
@@ -159,7 +158,6 @@ def test_torch_tensor_p2p(ray_start_regular):
 
     ref = compiled_dag.execute((shape, dtype, 1))
     ray.get(ref)
-    compiled_dag.teardown()
 
 
 @pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
@@ -196,8 +194,6 @@ def test_torch_tensor_as_dag_input(ray_start_regular):
         ref = compiled_dag.execute(torch.ones((20,), dtype=dtype) * i)
         result = ray.get(ref)
         assert result == (i, (20,), dtype)
-
-    compiled_dag.teardown()
 
 
 @pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
@@ -260,7 +256,6 @@ def test_torch_tensor_nccl(ray_start_regular):
         ref = compiled_dag.execute(i)
         result = ray.get(ref)
         assert result == (i, shape, dtype)
-    compiled_dag.teardown()
 
     # TODO(swang): Check that actors are still alive. Currently this fails due
     # to a ref counting assertion error.
@@ -298,8 +293,6 @@ def test_torch_tensor_nccl_dynamic(ray_start_regular):
         ref = compiled_dag.execute(args)
         result = ray.get(ref)
         assert result == (i, shape, dtype)
-
-    compiled_dag.teardown()
 
 
 @pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
@@ -392,8 +385,6 @@ def test_torch_tensor_custom_comm(ray_start_regular):
         ref = compiled_dag.execute(args)
         result = ray.get(ref)
         assert result == (i, shape, dtype)
-
-    compiled_dag.teardown()
 
 
 @pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
@@ -609,8 +600,6 @@ def test_torch_tensor_custom_comm_inited(ray_start_regular):
         result = ray.get(ref)
         assert result == (i, shape, dtype)
 
-    compiled_dag.teardown()
-
 
 @pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
 def test_torch_tensor_nccl_wrong_shape(ray_start_regular):
@@ -657,12 +646,6 @@ def test_torch_tensor_nccl_wrong_shape(ray_start_regular):
     with pytest.raises(RayChannelError):
         ref = compiled_dag.execute(shape=(20,), dtype=dtype, value=1)
 
-    compiled_dag.teardown()
-
-    # TODO(swang): This currently requires time.sleep to avoid some issue with
-    # following tests.
-    time.sleep(3)
-
 
 @pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
 def test_torch_tensor_nccl_nested(ray_start_regular):
@@ -702,8 +685,6 @@ def test_torch_tensor_nccl_nested(ray_start_regular):
         expected_result = {0: (0, shape, dtype)}
         assert result == expected_result
 
-    compiled_dag.teardown()
-
 
 @pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
 def test_torch_tensor_nccl_nested_dynamic(ray_start_regular):
@@ -741,8 +722,6 @@ def test_torch_tensor_nccl_nested_dynamic(ray_start_regular):
         result = ray.get(ref)
         expected_result = {j: (j, shape, dtype) for j in range(i)}
         assert result == expected_result
-
-    compiled_dag.teardown()
 
 
 @pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
@@ -789,12 +768,6 @@ def test_torch_tensor_nccl_direct_return_error(ray_start_regular):
     # to the DAG.
     with pytest.raises(RayChannelError):
         ref = compiled_dag.execute(shape=shape, dtype=dtype, value=1, send_tensor=True)
-
-    compiled_dag.teardown()
-
-    # TODO(swang): This currently requires time.sleep to avoid some issue with
-    # following tests.
-    time.sleep(3)
 
 
 @pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
@@ -859,8 +832,6 @@ def test_torch_tensor_exceptions(ray_start_regular):
     )
     result = ray.get(ref)
     assert result == (i, shape, dtype)
-
-    compiled_dag.teardown()
 
 
 if __name__ == "__main__":

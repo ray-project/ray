@@ -13,6 +13,8 @@ import torch
 
 import pytest
 
+
+from ray._private.test_utils import run_string_as_driver
 from ray.exceptions import RayChannelError, RayChannelTimeoutError
 import ray
 import ray._private
@@ -167,10 +169,6 @@ def test_basic(ray_start_regular):
         # Delete the buffer so that the next DAG output can be written.
         del result
 
-    # Note: must teardown before starting a new Ray session, otherwise you'll get
-    # a segfault from the dangling monitor thread upon the new Ray init.
-    compiled_dag.teardown()
-
 
 def test_two_returns_first(ray_start_regular):
     a = Actor.remote(0)
@@ -183,8 +181,6 @@ def test_two_returns_first(ray_start_regular):
         res = ray.get(compiled_dag.execute(1))
         assert res == 1
 
-    compiled_dag.teardown()
-
 
 def test_two_returns_second(ray_start_regular):
     a = Actor.remote(0)
@@ -196,8 +192,6 @@ def test_two_returns_second(ray_start_regular):
     for _ in range(3):
         res = ray.get(compiled_dag.execute(1))
         assert res == 2
-
-    compiled_dag.teardown()
 
 
 @pytest.mark.parametrize("single_fetch", [True, False])
@@ -220,8 +214,6 @@ def test_two_returns_one_reader(ray_start_regular, single_fetch):
         else:
             res = ray.get(refs)
             assert res == [1, 2]
-
-    compiled_dag.teardown()
 
 
 @pytest.mark.parametrize("single_fetch", [True, False])
@@ -246,8 +238,6 @@ def test_two_returns_two_readers(ray_start_regular, single_fetch):
             res = ray.get(refs)
             assert res == [1, 2]
 
-    compiled_dag.teardown()
-
 
 @pytest.mark.parametrize("single_fetch", [True, False])
 def test_inc_two_returns(ray_start_regular, single_fetch):
@@ -267,8 +257,6 @@ def test_inc_two_returns(ray_start_regular, single_fetch):
             res = ray.get(refs)
             assert res == [i + 1, i + 2]
 
-    compiled_dag.teardown()
-
 
 def test_two_as_one_return(ray_start_regular):
     a = Actor.remote(0)
@@ -280,8 +268,6 @@ def test_two_as_one_return(ray_start_regular):
     for _ in range(3):
         res = ray.get(compiled_dag.execute(1))
         assert res == (1, 2)
-
-    compiled_dag.teardown()
 
 
 def test_multi_output_get_exception(ray_start_regular):
@@ -303,8 +289,6 @@ def test_multi_output_get_exception(ray_start_regular):
         "CompiledDAGRefs if there is any CompiledDAGRef within it.",
     ):
         ray.get(refs)
-
-    compiled_dag.teardown()
 
 
 # TODO(wxdeng): Fix segfault. If this test is run, the following tests
@@ -362,8 +346,6 @@ def test_kwargs_not_supported(ray_start_regular):
     compiled_dag = dag.experimental_compile()
     assert ray.get(compiled_dag.execute(2)) == 3
 
-    compiled_dag.teardown()
-
 
 def test_out_of_order_get(ray_start_regular):
     c = Collector.remote()
@@ -380,8 +362,6 @@ def test_out_of_order_get(ray_start_regular):
     result_a = ray.get(ref_a)
     assert result_a == ["a"]
 
-    compiled_dag.teardown()
-
 
 def test_actor_multi_methods(ray_start_regular):
     a = Actor.remote(0)
@@ -393,8 +373,6 @@ def test_actor_multi_methods(ray_start_regular):
     ref = compiled_dag.execute(1)
     result = ray.get(ref)
     assert result == 1
-
-    compiled_dag.teardown()
 
 
 @pytest.mark.parametrize("single_fetch", [True, False])
@@ -417,8 +395,6 @@ def test_actor_methods_execution_order(ray_start_regular, single_fetch):
     else:
         assert ray.get(refs) == [4, 1]
 
-    compiled_dag.teardown()
-
 
 def test_actor_method_multi_binds(ray_start_regular):
     a = Actor.remote(0)
@@ -430,8 +406,6 @@ def test_actor_method_multi_binds(ray_start_regular):
     ref = compiled_dag.execute(1)
     result = ray.get(ref)
     assert result == 2
-
-    compiled_dag.teardown()
 
 
 def test_actor_method_bind_same_constant(ray_start_regular):
@@ -446,8 +420,6 @@ def test_actor_method_bind_same_constant(ray_start_regular):
     ref = compiled_dag.execute(1)
     result = ray.get(ref)
     assert result == 5
-
-    compiled_dag.teardown()
 
 
 def test_actor_method_bind_same_input(ray_start_regular):
@@ -465,7 +437,6 @@ def test_actor_method_bind_same_input(ray_start_regular):
         ref = compiled_dag.execute(i)
         result = ray.get(ref)
         assert result == expected[i]
-    compiled_dag.teardown()
 
 
 def test_actor_method_bind_same_input_attr(ray_start_regular):
@@ -483,7 +454,6 @@ def test_actor_method_bind_same_input_attr(ray_start_regular):
         ref = compiled_dag.execute(i)
         result = ray.get(ref)
         assert result == expected[i]
-    compiled_dag.teardown()
 
 
 def test_actor_method_bind_diff_input_attr_1(ray_start_regular):
@@ -504,8 +474,6 @@ def test_actor_method_bind_diff_input_attr_1(ray_start_regular):
 
     ref = compiled_dag.execute(2, 3)
     assert ray.get(ref) == [0, 1, 2, 4, 6, 9]
-
-    compiled_dag.teardown()
 
 
 def test_actor_method_bind_diff_input_attr_2(ray_start_regular):
@@ -529,8 +497,6 @@ def test_actor_method_bind_diff_input_attr_2(ray_start_regular):
     ref = compiled_dag.execute(2, 3)
     assert ray.get(ref) == [0, 0, 1, 2, 3, 5, 7, 9, 12]
 
-    compiled_dag.teardown()
-
 
 def test_actor_method_bind_diff_input_attr_3(ray_start_regular):
     actor = Actor.remote(0)
@@ -547,8 +513,6 @@ def test_actor_method_bind_diff_input_attr_3(ray_start_regular):
 
     ref = compiled_dag.execute(2, 3)
     assert ray.get(ref) == 9
-
-    compiled_dag.teardown()
 
 
 def test_actor_method_bind_diff_input_attr_4(ray_start_regular):
@@ -568,8 +532,6 @@ def test_actor_method_bind_diff_input_attr_4(ray_start_regular):
     ref = compiled_dag.execute(2, 3, 4)
     assert ray.get(ref) == [1, 3, 6, 9, 14, 18]
 
-    compiled_dag.teardown()
-
 
 def test_actor_method_bind_diff_input_attr_5(ray_start_regular):
     actor = Actor.remote(0)
@@ -587,8 +549,6 @@ def test_actor_method_bind_diff_input_attr_5(ray_start_regular):
 
     ref = compiled_dag.execute(2, 3, 4)
     assert ray.get(ref) == [1, 3, 6, 10, 15, 21]
-
-    compiled_dag.teardown()
 
 
 def test_actor_method_bind_diff_kwargs_input_attr(ray_start_regular):
@@ -610,8 +570,6 @@ def test_actor_method_bind_diff_kwargs_input_attr(ray_start_regular):
     ref = compiled_dag.execute(x=2, y=3)
     assert ray.get(ref) == [0, 1, 2, 4, 6, 9]
 
-    compiled_dag.teardown()
-
 
 def test_actor_method_bind_same_arg(ray_start_regular):
     a1 = Actor.remote(0)
@@ -630,7 +588,6 @@ def test_actor_method_bind_same_arg(ray_start_regular):
         ref = compiled_dag.execute(i)
         result = ray.get(ref)
         assert result == expected[i]
-    compiled_dag.teardown()
 
 
 def test_mixed_bind_same_input(ray_start_regular):
@@ -650,7 +607,6 @@ def test_mixed_bind_same_input(ray_start_regular):
         ref = compiled_dag.execute(i)
         result = ray.get(ref)
         assert result == expected[i]
-    compiled_dag.teardown()
 
 
 def test_regular_args(ray_start_regular):
@@ -665,8 +621,6 @@ def test_regular_args(ray_start_regular):
         ref = compiled_dag.execute(1)
         result = ray.get(ref)
         assert result == (i + 1) * 3
-
-    compiled_dag.teardown()
 
 
 class TestMultiArgs:
@@ -684,8 +638,6 @@ class TestMultiArgs:
         ref = compiled_dag.execute(2, 3)
         result = ray.get(ref)
         assert result == [3, 2]
-
-        compiled_dag.teardown()
 
     def test_multi_args_single_actor(self, ray_start_regular):
         c = Collector.remote()
@@ -721,8 +673,6 @@ class TestMultiArgs:
         ):
             compiled_dag.execute(args=(2, 3))
 
-        compiled_dag.teardown()
-
     def test_multi_args_branch(self, ray_start_regular):
         a = Actor.remote(0)
         c = Collector.remote()
@@ -735,8 +685,6 @@ class TestMultiArgs:
         ref = compiled_dag.execute(2, 3)
         result = ray.get(ref)
         assert result == [2, 3]
-
-        compiled_dag.teardown()
 
     def test_kwargs_basic(self, ray_start_regular):
         a1 = Actor.remote(0)
@@ -752,8 +700,6 @@ class TestMultiArgs:
         ref = compiled_dag.execute(x=2, y=3)
         result = ray.get(ref)
         assert result == [3, 2]
-
-        compiled_dag.teardown()
 
     def test_kwargs_single_actor(self, ray_start_regular):
         c = Collector.remote()
@@ -787,8 +733,6 @@ class TestMultiArgs:
         ):
             compiled_dag.execute(x=3)
 
-        compiled_dag.teardown()
-
     def test_kwargs_branch(self, ray_start_regular):
         a = Actor.remote(0)
         c = Collector.remote()
@@ -801,8 +745,6 @@ class TestMultiArgs:
         ref = compiled_dag.execute(x=2, y=3)
         result = ray.get(ref)
         assert result == [3, 2]
-
-        compiled_dag.teardown()
 
     def test_multi_args_and_kwargs(self, ray_start_regular):
         a1 = Actor.remote(0)
@@ -818,8 +760,6 @@ class TestMultiArgs:
         ref = compiled_dag.execute(2, y=3, z=4)
         result = ray.get(ref)
         assert result == [3, 4, 2]
-
-        compiled_dag.teardown()
 
     def test_multi_args_and_torch_type(self, ray_start_regular):
         a1 = Actor.remote(0)
@@ -843,8 +783,6 @@ class TestMultiArgs:
         assert len(tensors) == len(cpu_tensors)
         assert torch.equal(tensors[0], cpu_tensors[1])
         assert torch.equal(tensors[1], cpu_tensors[0])
-
-        compiled_dag.teardown()
 
     def test_mix_entire_input_and_args(self, ray_start_regular):
         """
@@ -879,8 +817,6 @@ class TestMultiArgs:
         result = ray.get(ref)
         assert result == [1, 3]
 
-        compiled_dag.teardown()
-
     def test_multi_args_basic_asyncio(self, ray_start_regular):
         a1 = Actor.remote(0)
         a2 = Actor.remote(0)
@@ -898,7 +834,6 @@ class TestMultiArgs:
 
         loop = get_or_create_event_loop()
         loop.run_until_complete(asyncio.gather(main()))
-        compiled_dag.teardown()
 
     def test_multi_args_branch_asyncio(self, ray_start_regular):
         a = Actor.remote(0)
@@ -916,7 +851,6 @@ class TestMultiArgs:
 
         loop = get_or_create_event_loop()
         loop.run_until_complete(asyncio.gather(main()))
-        compiled_dag.teardown()
 
     def test_kwargs_basic_asyncio(self, ray_start_regular):
         a1 = Actor.remote(0)
@@ -936,7 +870,6 @@ class TestMultiArgs:
 
         loop = get_or_create_event_loop()
         loop.run_until_complete(asyncio.gather(main()))
-        compiled_dag.teardown()
 
     def test_kwargs_branch_asyncio(self, ray_start_regular):
         a = Actor.remote(0)
@@ -954,7 +887,6 @@ class TestMultiArgs:
 
         loop = get_or_create_event_loop()
         loop.run_until_complete(asyncio.gather(main()))
-        compiled_dag.teardown()
 
     def test_multi_args_and_kwargs_asyncio(self, ray_start_regular):
         a1 = Actor.remote(0)
@@ -974,7 +906,6 @@ class TestMultiArgs:
 
         loop = get_or_create_event_loop()
         loop.run_until_complete(asyncio.gather(main()))
-        compiled_dag.teardown()
 
 
 @pytest.mark.parametrize("num_actors", [1, 4])
@@ -998,8 +929,6 @@ def test_scatter_gather_dag(ray_start_regular, num_actors, single_fetch):
             results = ray.get(refs)
             assert results == [i + 1] * num_actors
 
-    compiled_dag.teardown()
-
 
 @pytest.mark.parametrize("num_actors", [1, 4])
 def test_chain_dag(ray_start_regular, num_actors):
@@ -1015,8 +944,6 @@ def test_chain_dag(ray_start_regular, num_actors):
         ref = compiled_dag.execute([])
         result = ray.get(ref)
         assert result == list(range(num_actors))
-
-    compiled_dag.teardown()
 
 
 def test_get_timeout(ray_start_regular):
@@ -1039,8 +966,6 @@ def test_get_timeout(ray_start_regular):
         timed_out = True
     assert timed_out
 
-    compiled_dag.teardown()
-
 
 def test_buffered_get_timeout(ray_start_regular):
     a = Actor.remote(0)
@@ -1061,8 +986,6 @@ def test_buffered_get_timeout(ray_start_regular):
         # be raised.
         ray.get(refs[-1], timeout=3.5)
 
-    compiled_dag.teardown()
-
 
 def test_get_with_zero_timeout(ray_start_regular):
     a = Actor.remote(0)
@@ -1076,8 +999,6 @@ def test_get_with_zero_timeout(ray_start_regular):
     # Use timeout=0 to either get result immediately or raise an exception
     result = ray.get(ref, timeout=0)
     assert result == 1
-
-    compiled_dag.teardown()
 
 
 def test_dag_exception_basic(ray_start_regular, capsys):
@@ -1103,8 +1024,6 @@ def test_dag_exception_basic(ray_start_regular, capsys):
 
     # Can use the DAG after exceptions are thrown.
     assert ray.get(compiled_dag.execute(1)) == 1
-
-    compiled_dag.teardown()
 
 
 def test_dag_exception_chained(ray_start_regular, capsys):
@@ -1132,8 +1051,6 @@ def test_dag_exception_chained(ray_start_regular, capsys):
 
     # Can use the DAG after exceptions are thrown.
     assert ray.get(compiled_dag.execute(1)) == 2
-
-    compiled_dag.teardown()
 
 
 @pytest.mark.parametrize("single_fetch", [True, False])
@@ -1181,8 +1098,6 @@ def test_dag_exception_multi_output(ray_start_regular, single_fetch, capsys):
         assert ray.get(refs[1]) == 1
     else:
         assert ray.get(refs) == [1, 1]
-
-    compiled_dag.teardown()
 
 
 def test_dag_errors(ray_start_regular):
@@ -1277,7 +1192,6 @@ def test_dag_errors(ray_start_regular):
         ),
     ):
         ray.get(ref)
-    compiled_dag.teardown()
 
 
 class TestDAGExceptionCompileMultipleTimes:
@@ -1336,8 +1250,7 @@ class TestDAGExceptionCompileMultipleTimes:
             "object multiple times no matter whether `teardown` is called or not. "
             "Please reuse the existing compiled DAG or create a new one.",
         ):
-            compiled_dag = dag.experimental_compile()
-        compiled_dag.teardown()
+            compiled_dag = dag.experimental_compile()  # noqa
 
     def test_compile_twice_with_different_nodes(self, ray_start_regular):
         a = Actor.remote(0)
@@ -1382,7 +1295,6 @@ def test_exceed_max_buffered_results(ray_start_regular):
         ray.get(ref)
 
     del refs
-    compiled_dag.teardown()
 
 
 @pytest.mark.parametrize("single_fetch", [True, False])
@@ -1421,7 +1333,6 @@ def test_exceed_max_buffered_results_multi_output(ray_start_regular, single_fetc
             ray.get(ref)
 
     del refs
-    compiled_dag.teardown()
 
 
 def test_compiled_dag_ref_del(ray_start_regular):
@@ -1436,8 +1347,6 @@ def test_compiled_dag_ref_del(ray_start_regular):
     for _ in range(10):
         ref = compiled_dag.execute(1)
         del ref
-
-    compiled_dag.teardown()
 
 
 def test_dag_fault_tolerance_chain(ray_start_regular):
@@ -1479,8 +1388,6 @@ def test_dag_fault_tolerance_chain(ray_start_regular):
         ref = compiled_dag.execute(i)
         results = ray.get(ref)
         assert results == i
-
-    compiled_dag.teardown()
 
 
 @pytest.mark.parametrize("single_fetch", [True, False])
@@ -1532,8 +1439,6 @@ def test_dag_fault_tolerance(ray_start_regular, single_fetch):
         else:
             ray.get(refs)
 
-    compiled_dag.teardown()
-
 
 @pytest.mark.parametrize("single_fetch", [True, False])
 def test_dag_fault_tolerance_sys_exit(ray_start_regular, single_fetch):
@@ -1584,8 +1489,6 @@ def test_dag_fault_tolerance_sys_exit(ray_start_regular, single_fetch):
         else:
             ray.get(refs)
 
-    compiled_dag.teardown()
-
 
 def test_dag_teardown_while_running(ray_start_regular):
     a = Actor.remote(0)
@@ -1610,8 +1513,6 @@ def test_dag_teardown_while_running(ray_start_regular):
     result = ray.get(ref)
     assert result == 0.1
 
-    compiled_dag.teardown()
-
 
 @pytest.mark.parametrize("max_queue_size", [None, 2])
 def test_asyncio(ray_start_regular, max_queue_size):
@@ -1634,9 +1535,6 @@ def test_asyncio(ray_start_regular, max_queue_size):
         assert (result == val).all()
 
     loop.run_until_complete(asyncio.gather(*[main(i) for i in range(10)]))
-    # Note: must teardown before starting a new Ray session, otherwise you'll get
-    # a segfault from the dangling monitor thread upon the new Ray init.
-    compiled_dag.teardown()
 
 
 @pytest.mark.parametrize("max_queue_size", [None, 2])
@@ -1660,7 +1558,6 @@ def test_asyncio_out_of_order_get(ray_start_regular, max_queue_size):
         assert result_a == ["a"]
 
     loop.run_until_complete(main())
-    compiled_dag.teardown()
 
 
 @pytest.mark.parametrize("max_queue_size", [None, 2])
@@ -1688,9 +1585,6 @@ def test_asyncio_multi_output(ray_start_regular, max_queue_size):
             assert (result == val).all()
 
     loop.run_until_complete(asyncio.gather(*[main(i) for i in range(10)]))
-    # Note: must teardown before starting a new Ray session, otherwise you'll get
-    # a segfault from the dangling monitor thread upon the new Ray init.
-    compiled_dag.teardown()
 
 
 @pytest.mark.parametrize("max_queue_size", [None, 2])
@@ -1728,9 +1622,6 @@ def test_asyncio_exceptions(ray_start_regular, max_queue_size):
         assert result == 2
 
     loop.run_until_complete(main())
-    # Note: must teardown before starting a new Ray session, otherwise you'll get
-    # a segfault from the dangling monitor thread upon the new Ray init.
-    compiled_dag.teardown()
 
 
 class TestCompositeChannel:
@@ -1766,8 +1657,6 @@ class TestCompositeChannel:
         ref = compiled_dag.execute(3)
         assert ray.get(ref) == 108
 
-        compiled_dag.teardown()
-
     def test_composite_channel_two_actors(self, ray_start_regular):
         """
         In this test, there are three 'inc' tasks on the two Ray actors, chained
@@ -1799,8 +1688,6 @@ class TestCompositeChannel:
         # a: 309+3 -> b: 205+312 -> a: 312+517
         ref = compiled_dag.execute(3)
         assert ray.get(ref) == 829
-
-        compiled_dag.teardown()
 
     @pytest.mark.parametrize("single_fetch", [True, False])
     def test_composite_channel_multi_output(self, ray_start_regular, single_fetch):
@@ -1835,8 +1722,6 @@ class TestCompositeChannel:
             assert ray.get(refs[1]) == 106
         else:
             assert ray.get(refs) == [10, 106]
-
-        compiled_dag.teardown()
 
     @pytest.mark.parametrize("single_fetch", [True, False])
     def test_intra_process_channel_with_multi_readers(
@@ -1884,8 +1769,6 @@ class TestCompositeChannel:
         else:
             assert ray.get(refs) == [3, 3]
 
-        compiled_dag.teardown()
-
 
 class TestLeafNode:
     def test_leaf_node_one_actor(self, ray_start_regular):
@@ -1909,7 +1792,6 @@ class TestLeafNode:
 
         ref = compiled_dag.execute(10)
         assert ray.get(ref) == [20]
-        compiled_dag.teardown()
 
     def test_leaf_node_two_actors(self, ray_start_regular):
         """
@@ -1932,7 +1814,6 @@ class TestLeafNode:
 
         ref = compiled_dag.execute(10)
         assert ray.get(ref) == [120, 220]
-        compiled_dag.teardown()
 
 
 def test_output_node(ray_start_regular):
@@ -1986,7 +1867,6 @@ def test_output_node(ray_start_regular):
 
     ref = compiled_dag.execute(x=1, y=2)
     assert ray.get(ref) == [1, 2, 1]
-    compiled_dag.teardown()
 
 
 @pytest.mark.parametrize("single_fetch", [True, False])
@@ -2068,7 +1948,6 @@ def test_simulate_pipeline_parallelism(ray_start_regular, single_fetch):
         "BWD rank-1, batch-1",
         "BWD rank-1, batch-2",
     ]
-    output_dag.teardown()
 
 
 def test_channel_read_after_close(ray_start_regular):
@@ -2220,7 +2099,6 @@ def test_buffered_inputs(shutdown_only, temporary_change_timeout):
 
     loop = get_or_create_event_loop()
     loop.run_until_complete(main())
-    async_dag.teardown()
 
 
 def test_event_profiling(ray_start_regular, monkeypatch):
@@ -2249,8 +2127,6 @@ def test_event_profiling(ray_start_regular, monkeypatch):
         assert event.actor_name in ["a", "b"]
         assert event.method_name == "inc"
         assert event.operation in ["READ", "COMPUTE", "WRITE"]
-
-    adag.teardown()
 
 
 @ray.remote
@@ -2454,6 +2330,43 @@ def test_torch_tensor_type(shutdown_only):
     assert torch.equal(ray.get(ref), torch.tensor([5, 5, 5, 5, 5]))
 
 
+def test_async_shutdown(shutdown_only):
+    """Verify that when async API is used, shutdown doesn't hang
+    because of threads joining at exit.
+    """
+
+    script = """
+import asyncio
+import ray
+from ray.dag import InputNode, MultiOutputNode
+
+async def main():
+    @ray.remote
+    class A:
+        def f(self, i):
+            return i
+
+    a = A.remote()
+    b = A.remote()
+
+    with InputNode() as inp:
+        x = a.f.bind(inp)
+        y = b.f.bind(inp)
+        dag =  MultiOutputNode([x, y])
+
+    adag = dag.experimental_compile(enable_asyncio=True)
+    refs = await adag.execute_async(1)
+    outputs = []
+    for ref in refs:
+        outputs.append(await ref)
+    print(outputs)
+
+asyncio.run(main())
+    """
+
+    print(run_string_as_driver(script))
+
+
 def test_multi_arg_exception(shutdown_only):
     a = Actor.remote(0)
     with InputNode() as i:
@@ -2467,8 +2380,6 @@ def test_multi_arg_exception(shutdown_only):
             ray.get(x)
         with pytest.raises(RuntimeError):
             ray.get(y)
-
-    compiled_dag.teardown()
 
 
 def test_multi_arg_exception_async(shutdown_only):
@@ -2489,8 +2400,6 @@ def test_multi_arg_exception_async(shutdown_only):
 
     loop = get_or_create_event_loop()
     loop.run_until_complete(main())
-
-    compiled_dag.teardown()
 
 
 if __name__ == "__main__":

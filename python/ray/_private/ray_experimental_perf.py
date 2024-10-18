@@ -181,7 +181,6 @@ def main(results=None):
     results += timeit(
         "[unstable] compiled single-actor DAG calls", lambda: _exec(compiled_dag)
     )
-    compiled_dag.teardown()
     del a
 
     # Single-actor asyncio DAG calls
@@ -195,10 +194,6 @@ def main(results=None):
             "[unstable] compiled single-actor asyncio DAG calls",
         )
     )
-    # TODO: Need to explicitly tear down DAGs with enable_asyncio=True because
-    # these DAGs create a background thread that can segfault if the CoreWorker
-    # is torn down first.
-    compiled_dag.teardown()
     del a
 
     # Scatter-gather DAG calls
@@ -216,7 +211,6 @@ def main(results=None):
         f"[unstable] compiled scatter-gather DAG calls, n={n_cpu} actors",
         lambda: _exec(compiled_dag),
     )
-    compiled_dag.teardown()
 
     # Scatter-gather asyncio DAG calls
 
@@ -229,10 +223,6 @@ def main(results=None):
             f"[unstable] compiled scatter-gather asyncio DAG calls, n={n_cpu} actors",
         )
     )
-    # TODO: Need to explicitly tear down DAGs with enable_asyncio=True because
-    # these DAGs create a background thread that can segfault if the CoreWorker
-    # is torn down first.
-    compiled_dag.teardown()
 
     # Chain DAG calls
 
@@ -250,7 +240,6 @@ def main(results=None):
         f"[unstable] compiled chain DAG calls, n={n_cpu} actors",
         lambda: _exec(compiled_dag),
     )
-    compiled_dag.teardown()
 
     # Chain asyncio DAG calls
 
@@ -263,10 +252,6 @@ def main(results=None):
     results += loop.run_until_complete(
         exec_async(f"[unstable] compiled chain asyncio DAG calls, n={n_cpu} actors")
     )
-    # TODO: Need to explicitly tear down DAGs with enable_asyncio=True because
-    # these DAGs create a background thread that can segfault if the CoreWorker
-    # is torn down first.
-    compiled_dag.teardown()
 
     # Multiple args with small payloads
 
@@ -289,7 +274,6 @@ def main(results=None):
         f"n={n_actors} actors",
         lambda: _exec(compiled_dag, num_args=n_actors, payload_size=payload_size),
     )
-    compiled_dag.teardown()
 
     # Multiple args with medium payloads
 
@@ -307,7 +291,6 @@ def main(results=None):
         f"n={n_actors} actors",
         lambda: _exec(compiled_dag, num_args=n_actors, payload_size=payload_size),
     )
-    compiled_dag.teardown()
 
     # Multiple args with large payloads
 
@@ -325,7 +308,6 @@ def main(results=None):
         f"n={n_actors} actors",
         lambda: _exec(compiled_dag, num_args=n_actors, payload_size=payload_size),
     )
-    compiled_dag.teardown()
 
     # Worst case for multiple arguments: a single actor takes all the arguments
     # with small payloads.
@@ -346,7 +328,6 @@ def main(results=None):
         "n=1 actors",
         lambda: _exec(compiled_dag, num_args=n_args, payload_size=payload_size),
     )
-    compiled_dag.teardown()
 
     ray.shutdown()
 
