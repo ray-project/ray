@@ -5,7 +5,6 @@ from typing import Dict
 from ray.rllib.core import Columns
 from ray.rllib.core.models.base import ENCODER_OUT
 from ray.rllib.core.models.configs import MLPHeadConfig
-from ray.rllib.core.models.specs.specs_dict import SpecDict
 from ray.rllib.core.rl_module.apis.value_function_api import ValueFunctionAPI
 from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.core.rl_module.torch.torch_rl_module import TorchRLModule
@@ -49,35 +48,31 @@ class AutoregressiveActionsRLM(RLModule, ValueFunctionAPI, abc.ABC):
         super().setup()
 
         # Build the encoder.
-        self.encoder = self.config.get_catalog().build_encoder(framework=self.framework)
+        self.encoder = self.catalog.build_encoder(framework=self.framework)
 
         # Build the prior and posterior heads.
         # Note further, we neet to know the required input dimensions for
         # the partial distributions.
         self.required_output_dims = self.action_dist_cls.required_input_dim(
-            space=self.config.action_space,
+            space=self.action_space,
             as_list=True,
         )
-        action_dims = self.config.action_space[0].shape or (1,)
-        latent_dims = self.config.get_catalog().latent_dims
+        action_dims = self.action_space[0].shape or (1,)
+        latent_dims = self.catalog.latent_dims
         prior_config = MLPHeadConfig(
             # Use the hidden dimension from the encoder output.
             input_dims=latent_dims,
-            # Use configurations from the `model_config_dict`.
-            hidden_layer_dims=self.config.model_config_dict["post_fcnet_hiddens"],
-            hidden_layer_activation=self.config.model_config_dict[
-                "post_fcnet_activation"
-            ],
+            # Use configurations from the `model_config`.
+            hidden_layer_dims=self.model_config["head_fcnet_hiddens"],
+            hidden_layer_activation=self.model_config["head_fcnet_activation"],
             output_layer_dim=self.required_output_dims[0],
             output_layer_activation="linear",
         )
         # Build the posterior head.
         posterior_config = MLPHeadConfig(
             input_dims=(latent_dims[0] + action_dims[0],),
-            hidden_layer_dims=self.config.model_config_dict["post_fcnet_hiddens"],
-            hidden_layer_activation=self.config.model_config_dict[
-                "post_fcnet_activation"
-            ],
+            hidden_layer_dims=self.model_config["head_fcnet_hiddens"],
+            hidden_layer_activation=self.model_config["head_fcnet_activation"],
             output_layer_dim=self.required_output_dims[1],
             output_layer_activation="linear",
         )
@@ -88,31 +83,12 @@ class AutoregressiveActionsRLM(RLModule, ValueFunctionAPI, abc.ABC):
         # Build the value function head.
         vf_config = MLPHeadConfig(
             input_dims=latent_dims,
-            hidden_layer_dims=self.config.model_config_dict["post_fcnet_hiddens"],
-            hidden_layer_activation=self.config.model_config_dict[
-                "post_fcnet_activation"
-            ],
+            hidden_layer_dims=self.model_config["head_fcnet_hiddens"],
+            hidden_layer_activation=self.model_config["head_fcnet_activation"],
             output_layer_dim=1,
             output_layer_activation="linear",
         )
         self.vf = vf_config.build(framework=self.framework)
-
-    @override(RLModule)
-    def output_specs_inference(self) -> SpecDict:
-        return [Columns.ACTIONS]
-
-    @override(RLModule)
-    def output_specs_exploration(self) -> SpecDict:
-        return [Columns.ACTION_DIST_INPUTS, Columns.ACTIONS, Columns.ACTION_LOGP]
-
-    @override(RLModule)
-    def output_specs_train(self) -> SpecDict:
-        return [
-            Columns.ACTION_DIST_INPUTS,
-            Columns.ACTIONS,
-            Columns.ACTION_LOGP,
-            Columns.VF_PREDS,
-        ]
 
     @abstractmethod
     def pi(self, batch: Dict[str, TensorType]) -> Dict[str, TensorType]:
@@ -212,10 +188,8 @@ class AutoregressiveActionsTorchRLM(TorchRLModule, AutoregressiveActionsRLM):
 
     @override(TorchRLModule)
     def _forward_inference(self, batch: Dict[str, TensorType]) -> Dict[str, TensorType]:
-
         # Encoder forward pass.
         encoder_out = self.encoder(batch)
-
         # Policy head forward pass.
         return self.pi(encoder_out[ENCODER_OUT], inference=True)
 
@@ -225,21 +199,16 @@ class AutoregressiveActionsTorchRLM(TorchRLModule, AutoregressiveActionsRLM):
     ) -> Dict[str, TensorType]:
         # Encoder forward pass.
         encoder_out = self.encoder(batch)
-
         # Policy head forward pass.
         return self.pi(encoder_out[ENCODER_OUT], inference=False)
 
     @override(TorchRLModule)
     def _forward_train(self, batch: Dict[str, TensorType]) -> Dict[str, TensorType]:
-
         outs = {}
-
         # Encoder forward pass.
         encoder_out = self.encoder(batch)
-
         # Policy head forward pass.
         outs.update(self.pi(encoder_out[ENCODER_OUT]))
-
         # Value function head forward pass.
         vf_out = self.vf(encoder_out[ENCODER_OUT])
         outs[Columns.VF_PREDS] = vf_out.squeeze(-1)
@@ -247,13 +216,11 @@ class AutoregressiveActionsTorchRLM(TorchRLModule, AutoregressiveActionsRLM):
         return outs
 
     @override(ValueFunctionAPI)
-    def compute_values(self, batch: Dict[str, TensorType]):
-
-        # Encoder forward pass.
-        encoder_outs = self.encoder(batch)[ENCODER_OUT]
-
+    def compute_values(self, batch: Dict[str, TensorType], embeddings=None):
+        # Encoder forward pass to get `embeddings`, if necessary.
+        if embeddings is None:
+            embeddings = self.encoder(batch)[ENCODER_OUT]
         # Value head forward pass.
-        vf_out = self.vf(encoder_outs)
-
+        vf_out = self.vf(embeddings)
         # Squeeze out last dimension (single node value head).
         return vf_out.squeeze(-1)

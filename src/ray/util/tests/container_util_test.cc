@@ -14,18 +14,86 @@
 
 #include "ray/util/container_util.h"
 
-#include "gtest/gtest.h"
+#include <gtest/gtest.h>
+
+#include <optional>
+#include <sstream>
+#include <string>
+#include <tuple>
 
 namespace ray {
 
+template <typename T>
+std::string debug_string_to_string(const T &t) {
+  std::ostringstream ss;
+  ss << debug_string(t);
+  return std::move(ss).str();
+}
+
 TEST(ContainerUtilTest, TestDebugString) {
-  ASSERT_EQ(debug_string(std::vector<int>{1, 2}), "[1, 2]");
-  ASSERT_EQ(debug_string(std::set<int>{1, 2}), "[1, 2]");
-  ASSERT_EQ(debug_string(std::unordered_set<int>{2}), "[2]");
-  ASSERT_EQ(debug_string(absl::flat_hash_set<int>{1}), "[1]");
-  ASSERT_EQ(debug_string(std::map<int, int>{{1, 2}, {3, 4}}), "[(1, 2), (3, 4)]");
-  ASSERT_EQ(debug_string(absl::flat_hash_map<int, int>{{3, 4}}), "[(3, 4)]");
-  ASSERT_EQ(debug_string(absl::flat_hash_map<int, int>{{1, 2}}), "[(1, 2)]");
+  // Numerical values.
+  ASSERT_EQ(debug_string_to_string(static_cast<int>(2)), "2");
+
+  // String values.
+  ASSERT_EQ(debug_string_to_string(std::string_view{"hello"}), "hello");
+  ASSERT_EQ(debug_string_to_string(std::string{"hello"}), "hello");
+
+  // Non-associative containers.
+  ASSERT_EQ(debug_string_to_string(std::vector<int>{1, 2}), "[1, 2]");
+  ASSERT_EQ(debug_string_to_string(std::array<int, 3>{1, 2, 3}), "[1, 2, 3]");
+
+  // Associative containers.
+  ASSERT_EQ(debug_string_to_string(std::set<int>{1, 2}), "[1, 2]");
+  ASSERT_EQ(debug_string_to_string(std::unordered_set<int>{2}), "[2]");
+  ASSERT_EQ(debug_string_to_string(absl::flat_hash_set<int>{1}), "[1]");
+  ASSERT_EQ(debug_string_to_string(std::map<int, int>{{1, 2}, {3, 4}}),
+            "[(1, 2), (3, 4)]");
+  ASSERT_EQ(debug_string_to_string(absl::flat_hash_map<int, int>{{3, 4}}), "[(3, 4)]");
+  ASSERT_EQ(debug_string_to_string(absl::flat_hash_map<int, int>{{1, 2}}), "[(1, 2)]");
+
+  // Tuples
+  ASSERT_EQ(debug_string_to_string(std::tuple<>()), "()");
+  ASSERT_EQ(debug_string_to_string(std::tuple<int>(2)), "(2)");
+  ASSERT_EQ(debug_string_to_string(std::tuple<int, std::string>({2, "hello world"})),
+            "(2, hello world)");
+  ASSERT_EQ(debug_string_to_string(
+                std::tuple<int, std::string, bool>({2, "hello world", true})),
+            "(2, hello world, 1)");
+
+  // Pairs
+  ASSERT_EQ(debug_string_to_string(std::pair<int, int>{1, 2}), "(1, 2)");
+  ASSERT_EQ(debug_string_to_string(std::pair<std::string, int>{"key", 42}), "(key, 42)");
+  ASSERT_EQ(debug_string_to_string(std::pair<int, std::string>{3, "value"}),
+            "(3, value)");
+
+  // Optional.
+  ASSERT_EQ(debug_string_to_string(std::nullopt), "(nullopt)");
+  ASSERT_EQ(debug_string_to_string(std::optional<std::string>{}), "(nullopt)");
+  ASSERT_EQ(debug_string_to_string(std::optional<std::string>{"hello"}), "hello");
+
+  // Composable: tuples of pairs of maps and vectors.
+  ASSERT_EQ(debug_string_to_string(
+                std::tuple<std::pair<int, std::vector<int>>, std::map<int, int>>{
+                    {1, {2, 3}}, {{4, 5}, {6, 7}}}),
+            "((1, [2, 3]), [(4, 5), (6, 7)])");
+
+  ASSERT_EQ(
+      debug_string_to_string(std::tuple<std::pair<std::string, std::vector<std::string>>,
+                                        std::map<std::string, std::string>>{
+          {"key", {"value1", "value2"}}, {{"key1", "value1"}, {"key2", "value2"}}}),
+      "((key, [value1, value2]), [(key1, value1), (key2, value2)])");
+
+  ASSERT_EQ(
+      debug_string_to_string(
+          std::tuple<std::pair<int, std::vector<int>>, std::map<int, std::vector<int>>>{
+              {1, {2, 3}}, {{4, {5, 6}}, {7, {8, 9}}}}),
+      "((1, [2, 3]), [(4, [5, 6]), (7, [8, 9])])");
+
+  ASSERT_EQ(
+      debug_string_to_string(std::tuple<std::pair<int, std::vector<int>>,
+                                        std::map<int, std::vector<std::pair<int, int>>>>{
+          {1, {2, 3}}, {{4, {{5, 6}, {7, 8}}}, {9, {{10, 11}, {12, 13}}}}}),
+      "((1, [2, 3]), [(4, [(5, 6), (7, 8)]), (9, [(10, 11), (12, 13)])])");
 }
 
 TEST(ContainerUtilTest, TestMapFindOrDie) {

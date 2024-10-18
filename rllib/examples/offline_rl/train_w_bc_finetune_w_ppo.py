@@ -176,11 +176,12 @@ class MyPPOModel(MyBCModel, ValueFunctionAPI):
         }
 
     @override(ValueFunctionAPI)
-    def compute_values(self, batch):
-        # Compute features ...
-        features = self._encoder(batch)[ENCODER_OUT]
+    def compute_values(self, batch, embeddings=None):
+        # Compute embeddings ...
+        if embeddings is None:
+            embeddings = self._encoder(batch)[ENCODER_OUT]
         # then values using our value head.
-        return self._vf(features).squeeze(-1)
+        return self._vf(embeddings).squeeze(-1)
 
 
 if __name__ == "__main__":
