@@ -1140,8 +1140,6 @@ def test_torch_tensor_nccl_all_reduce_custom_comm(ray_start_regular):
     compiled_dag.teardown()
 
 
-
-
 @pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
 def test_torch_tensor_nccl_custom_comm_deduplicate(ray_start_regular, monkeypatch):
     """

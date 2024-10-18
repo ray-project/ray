@@ -95,12 +95,6 @@ class AbstractNcclGroup(GPUCommunicator):
         pass
 
 
-def mock_do_init_nccl_group(self, rank: int, nccl_group_id: str, custom_nccl_group: GPUCommunicator):
-    ctx = ChannelContext.get_current()
-    custom_nccl_group.initialize(rank)
-    ctx.nccl_groups[nccl_group_id] = custom_nccl_group
-
-
 class MockNcclGroupSet:
     def __init__(self):
         # Represents a mapping from a NCCL group ID to a set of actors and a custom
@@ -108,6 +102,22 @@ class MockNcclGroupSet:
         self.ids_to_actors_and_custom_comms: Dict[
             str, Tuple[FrozenSet["ray.actor.ActorHandle"], Optional[GPUCommunicator]]
         ] = {}
+
+    def mock_do_init_nccl_group(
+        self,
+        rank: int,
+        actors: List[ray.actor.ActorHandle],
+        nccl_group_id: str,
+        custom_nccl_group: Optional[GPUCommunicator],
+    ):
+        ctx = ChannelContext.get_current()
+        if custom_nccl_group is None:
+            nccl_group = AbstractNcclGroup(actors)
+            nccl_group.initialize(rank)
+            ctx.nccl_groups[nccl_group_id] = nccl_group
+        else:
+            custom_nccl_group.initialize(rank)
+            ctx.nccl_groups[nccl_group_id] = custom_nccl_group
 
     def __call__(
         self,
@@ -120,13 +130,16 @@ class MockNcclGroupSet:
             custom_nccl_group,
         )
         if custom_nccl_group is None:
-            custom_nccl_group = AbstractNcclGroup(actors)
+            nccl_group = AbstractNcclGroup(actors)
+        else:
+            nccl_group = custom_nccl_group
         ctx = ChannelContext.get_current()
-        ctx.nccl_groups[nccl_group_id] = custom_nccl_group
+        ctx.nccl_groups[nccl_group_id] = nccl_group
         init_tasks = [
             actor.__ray_call__.remote(
-                mock_do_init_nccl_group,
+                MockNcclGroupSet.mock_do_init_nccl_group,
                 rank,
+                actors,
                 nccl_group_id,
                 custom_nccl_group,
             )
