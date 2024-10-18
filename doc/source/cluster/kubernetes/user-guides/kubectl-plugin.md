@@ -10,6 +10,18 @@ Therefore, starting from KubeRay v1.2.2, we have introduced a `kubectl ray` plug
 
 Please follow the instructions in the [KubeRay Kubectl Plugin](https://github.com/ray-project/kuberay/tree/master/kubectl-plugin) to install the plugin.
 
+Currently, the recommended way to install the plugin is to download the binary from the [release page](https://github.com/ray-project/kuberay/releases) and add it to your PATH.
+
+For example, to install plugin version 1.2.2 on Linux amd64:
+
+```shell
+curl -LO https://github.com/ray-project/kuberay/releases/download/v1.2.2/kubectl-ray_v1.2.2_linux_amd64.tar.gz
+tar -xvf kubectl-ray_v1.2.2_linux_amd64.tar.gz
+cp kubectl-ray ~/.local/bin
+```
+
+Replace `~/.local/bin` with the directory in your `PATH`.
+
 ## Usage
 
 After installing the plugin, you can use `kubectl ray --help` to see the available commands and options.
