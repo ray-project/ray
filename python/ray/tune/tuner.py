@@ -42,7 +42,8 @@ _SELF = "self"
 
 @PublicAPI(stability="beta")
 class Tuner:
-    """Tuner is the recommended way of launching hyperparameter tuning jobs with Ray Tune.
+    """Tuner is the recommended way of launching hyperparameter tuning jobs with Ray 
+    Tune.
 
     Args:
         trainable: The trainable to be tuned.
