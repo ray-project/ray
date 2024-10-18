@@ -125,9 +125,12 @@ def from_blocks(blocks: List[Block]):
     block_refs = [ray.put(block) for block in blocks]
     metadata = [BlockAccessor.for_block(block).get_metadata() for block in blocks]
     from_blocks_op = FromBlocks(block_refs, metadata)
-    logical_plan = LogicalPlan(from_blocks_op)
+    execution_plan = ExecutionPlan(
+        DatasetStats(metadata={"FromBlocks": metadata}, parent=None)
+    )
+    logical_plan = LogicalPlan(from_blocks_op, execution_plan._context)
     return MaterializedDataset(
-        ExecutionPlan(DatasetStats(metadata={"FromBlocks": metadata}, parent=None)),
+        execution_plan,
         logical_plan,
     )
 
@@ -205,9 +208,12 @@ def from_items(
         )
 
     from_items_op = FromItems(blocks, metadata)
-    logical_plan = LogicalPlan(from_items_op)
+    execution_plan = ExecutionPlan(
+        DatasetStats(metadata={"FromItems": metadata}, parent=None)
+    )
+    logical_plan = LogicalPlan(from_items_op, execution_plan._context)
     return MaterializedDataset(
-        ExecutionPlan(DatasetStats(metadata={"FromItems": metadata}, parent=None)),
+        execution_plan,
         logical_plan,
     )
 
@@ -405,9 +411,10 @@ def read_datasource(
         ray_remote_args,
         concurrency,
     )
-    logical_plan = LogicalPlan(read_op)
+    execution_plan = ExecutionPlan(stats)
+    logical_plan = LogicalPlan(read_op, execution_plan._context)
     return Dataset(
-        plan=ExecutionPlan(stats),
+        plan=execution_plan,
         logical_plan=logical_plan,
     )
 
@@ -2447,9 +2454,12 @@ def from_pandas_refs(
     if context.enable_pandas_block:
         get_metadata = cached_remote_fn(get_table_block_metadata)
         metadata = ray.get([get_metadata.remote(df) for df in dfs])
-        logical_plan = LogicalPlan(FromPandas(dfs, metadata))
+        execution_plan = ExecutionPlan(
+            DatasetStats(metadata={"FromPandas": metadata}, parent=None)
+        )
+        logical_plan = LogicalPlan(FromPandas(dfs, metadata), execution_plan._context)
         return MaterializedDataset(
-            ExecutionPlan(DatasetStats(metadata={"FromPandas": metadata}, parent=None)),
+            execution_plan,
             logical_plan,
         )
 
@@ -2458,9 +2468,12 @@ def from_pandas_refs(
     res = [df_to_block.remote(df) for df in dfs]
     blocks, metadata = map(list, zip(*res))
     metadata = ray.get(metadata)
-    logical_plan = LogicalPlan(FromPandas(blocks, metadata))
+    execution_plan = ExecutionPlan(
+        DatasetStats(metadata={"FromPandas": metadata}, parent=None)
+    )
+    logical_plan = LogicalPlan(FromPandas(blocks, metadata), execution_plan._context)
     return MaterializedDataset(
-        ExecutionPlan(DatasetStats(metadata={"FromPandas": metadata}, parent=None)),
+        execution_plan,
         logical_plan,
     )
 
@@ -2540,10 +2553,13 @@ def from_numpy_refs(
     blocks, metadata = map(list, zip(*res))
     metadata = ray.get(metadata)
 
-    logical_plan = LogicalPlan(FromNumpy(blocks, metadata))
+    execution_plan = ExecutionPlan(
+        DatasetStats(metadata={"FromNumpy": metadata}, parent=None)
+    )
+    logical_plan = LogicalPlan(FromNumpy(blocks, metadata), execution_plan._context)
 
     return MaterializedDataset(
-        ExecutionPlan(DatasetStats(metadata={"FromNumpy": metadata}, parent=None)),
+        execution_plan,
         logical_plan,
     )
 
@@ -2616,10 +2632,13 @@ def from_arrow_refs(
 
     get_metadata = cached_remote_fn(get_table_block_metadata)
     metadata = ray.get([get_metadata.remote(t) for t in tables])
-    logical_plan = LogicalPlan(FromArrow(tables, metadata))
+    execution_plan = ExecutionPlan(
+        DatasetStats(metadata={"FromArrow": metadata}, parent=None)
+    )
+    logical_plan = LogicalPlan(FromArrow(tables, metadata), execution_plan._context)
 
     return MaterializedDataset(
-        ExecutionPlan(DatasetStats(metadata={"FromArrow": metadata}, parent=None)),
+        execution_plan,
         logical_plan,
     )
 
