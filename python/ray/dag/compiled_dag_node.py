@@ -1033,32 +1033,30 @@ class CompiledDAG:
                         output_to_readers[task].append(downstream_task)
                 fn = task.dag_node._get_remote_method("__ray_call__")
                 for output, readers in output_to_readers.items():
-                    read_by_multi_output_node = any(
-                        isinstance(reader.dag_node, MultiOutputNode)
-                        for reader in readers
-                    )
                     reader_and_node_list: List[Tuple["ray.actor.ActorHandle", str]] = []
-                    if read_by_multi_output_node:
-                        assert self._proxy_actor is not None
-                        for reader in readers:
-                            reader_and_node_list.append(
+                    # Use reader_handles_set to deduplicate readers on the
+                    # same actor, because with CachedChannel each actor will
+                    # only read from the upstream channel once.
+                    reader_handles_set = set()
+                    read_by_multi_output_node = False
+                    for reader in readers:
+                        if isinstance(reader.dag_node, MultiOutputNode):
+                            assert self._proxy_actor is not None
+                            reader_and_node_list.insert(
+                                0,
                                 (
                                     self._proxy_actor,
                                     self._get_node_id(self._proxy_actor),
-                                )
+                                ),
                             )
-                    else:
-                        # Use reader_handles_set to deduplicate readers on the
-                        # same actor, because with CachedChannel each actor will
-                        # only read from the upstream channel once.
-                        reader_handles_set = set()
-                        for reader in readers:
+                            read_by_multi_output_node = True
+                        else:
                             reader_handle = reader.dag_node._get_actor_handle()
                             if reader_handle not in reader_handles_set:
                                 reader_and_node_list.append(
                                     (reader_handle, self._get_node_id(reader_handle))
                                 )
-                            reader_handles_set.add(reader_handle)
+                                reader_handles_set.add(reader_handle)
 
                     # Create an output channel for each output of the current node.
                     output_channel = ray.get(

@@ -720,7 +720,10 @@ class CompositeChannel(ChannelInterface):
         if self._read_by_adag_driver:
             # The reader is the driver process.
             # Use the actor ID of the DAGDriverProxyActor.
-            # assert len(self._reader_and_node_list) == 1
+            assert len(self._reader_and_node_list) > 0
+            # The first element of the reader_and_node_list is always the
+            # proxy actor if it's a reader per the creation of reader_and_node_list
+            # in CompiledDAGNode.
             driver_actor = self._reader_and_node_list[0][0]
             actor_id = self._get_actor_id(driver_actor)
         return actor_id
