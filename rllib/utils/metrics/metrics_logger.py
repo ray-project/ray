@@ -137,7 +137,6 @@ class MetricsLogger:
     def peek_results(results: Any) -> Any:
         """Performs `peek()` on any leaf element of an arbitrarily nested Stats struct.
 
-
         Args:
             results: The nested structure of Stats-leafs to be peek'd and returned.
 
@@ -148,116 +147,6 @@ class MetricsLogger:
         return tree.map_structure(
             lambda s: s.peek() if isinstance(s, Stats) else s, results
         )
-
-    def reduce(
-        self,
-        key: Optional[Union[str, Tuple[str, ...]]] = None,
-        *,
-        return_stats_obj: bool = True,
-    ) -> Dict:
-        """DO NOT CALL THIS METHOD! Reduces all logged values based on their settings.
-
-        The returned result dict has the exact same structure as the logged keys (or
-        nested key sequences) combined. At the leafs of the returned structure are
-        either `Stats` objects (`return_stats_obj=True`, which is the default) or
-        primitive (non-Stats) values (`return_stats_obj=False`). In case of
-        `return_stats_obj=True`, the returned dict with Stats at the leafs can be
-        reused conveniently  downstream for further logging and reduction operations.
-
-        For example, imagine component A (e.g. an Algorithm) containing a MetricsLogger
-        and n remote components (e.g. n EnvRunner workers), each with their own
-        MetricsLogger object. Component A calls its n remote components, each of
-        which returns an equivalent, reduced dict with `Stats` instances as leafs.
-        Component A can now further log these n result dicts through its own
-        MetricsLogger:
-        `logger.merge_and_log_n_dicts([n returned result dicts from the remote
-        components])`.
-
-        .. testcode::
-
-            from ray.rllib.utils.metrics.metrics_logger import MetricsLogger
-            from ray.rllib.utils.test_utils import check
-
-            # Log some (EMA reduced) values.
-            logger = MetricsLogger()
-            logger.log_value("a", 2.0)
-            logger.log_value("a", 3.0)
-            expected_reduced = (1.0 - 0.01) * 2.0 + 0.01 * 3.0
-            # Reduce and return primitive values (not Stats objects).
-            results = logger.reduce(return_stats_obj=False)
-            check(results, {"a": expected_reduced})
-
-            # Log some values to be averaged with a sliding window.
-            logger = MetricsLogger()
-            logger.log_value("a", 2.0, window=2)
-            logger.log_value("a", 3.0)
-            logger.log_value("a", 4.0)
-            expected_reduced = (3.0 + 4.0) / 2  # <- win size is only 2; first logged
-                                                # item not used
-            # Reduce and return primitive values (not Stats objects).
-            results = logger.reduce(return_stats_obj=False)
-            check(results, {"a": expected_reduced})
-
-            # Assume we have 2 remote components, each one returning an equivalent
-            # reduced dict when called. We can simply use these results and log them
-            # to our own MetricsLogger, then reduce over these 2 logged results.
-            comp1_logger = MetricsLogger()
-            comp1_logger.log_value("a", 1.0, window=10)
-            comp1_logger.log_value("a", 2.0)
-            result1 = comp1_logger.reduce()  # <- return Stats objects as leafs
-
-            comp2_logger = MetricsLogger()
-            comp2_logger.log_value("a", 3.0, window=10)
-            comp2_logger.log_value("a", 4.0)
-            result2 = comp2_logger.reduce()  # <- return Stats objects as leafs
-
-            # Now combine the 2 equivalent results into 1 end result dict.
-            downstream_logger = MetricsLogger()
-            downstream_logger.merge_and_log_n_dicts([result1, result2])
-            # What happens internally is that both values lists of the 2 components
-            # are merged (concat'd) and randomly shuffled, then clipped at 10 (window
-            # size). This is done such that no component has an "advantage" over the
-            # other as we don't know the exact time-order in which these parallelly
-            # running components logged their own "a"-values.
-            # We execute similarly useful merging strategies for other reduce settings,
-            # such as EMA, max/min/sum-reducing, etc..
-            end_result = downstream_logger.reduce(return_stats_obj=False)
-            check(end_result, {"a": 2.5})
-
-        Args:
-            key: Optional key or key sequence (for nested location within self.stats),
-                limiting the reduce operation to that particular sub-structure of self.
-                If None, will reduce all of self's Stats.
-            return_stats_obj: Whether in the returned dict, the leafs should be Stats
-                objects. This is the default as it enables users to continue using
-                (and further logging) the results of this call inside another
-                (downstream) MetricsLogger object.
-
-        Returns:
-            A (nested) dict matching the structure of `self.stats` (contains all ever
-            logged keys to this MetricsLogger) with the leafs being (reduced) Stats
-            objects if `return_stats_obj=True` or primitive values, carrying no
-            reduction and history information, if `return_stats_obj=False`.
-        """
-        # Create a shallow copy of `self.stats` in case we need to reset some of our
-        # stats due to this `reduce()` call (and the Stat having self.clear_on_reduce
-        # set to True). In case we clear the Stats upon `reduce`, we get returned a
-        # new empty `Stats` object from `stat.reduce()` with the same settings as
-        # existing one and can now re-assign it to `self.stats[key]` (while we return
-        # from this method the properly reduced, but not cleared/emptied new `Stats`).
-        if key is not None:
-            stats_to_return = self._get_key(key).copy()
-            self._set_key(
-                key, tree.map_structure(lambda s: s.reduce(), stats_to_return)
-            )
-        else:
-            stats_to_return = self.stats.copy()
-            self.stats = tree.map_structure(lambda s: s.reduce(), stats_to_return)
-
-        if return_stats_obj:
-            return stats_to_return
-        else:
-            return tree.map_structure(lambda s: s.peek(), stats_to_return)
 
     def log_value(
         self,
@@ -798,6 +687,128 @@ class MetricsLogger:
 
         # Return the Stats object, so a `with` clause can enter and exit it.
         return self._get_key(key)
+
+    def reduce(
+        self,
+        key: Optional[Union[str, Tuple[str, ...]]] = None,
+        *,
+        return_stats_obj: bool = True,
+    ) -> Dict:
+        """DO NOT CALL THIS METHOD! Reduces all logged values based on their settings.
+
+        The returned result dict has the exact same structure as the logged keys (or
+        nested key sequences) combined. At the leafs of the returned structure are
+        either `Stats` objects (`return_stats_obj=True`, which is the default) or
+        primitive (non-Stats) values (`return_stats_obj=False`). In case of
+        `return_stats_obj=True`, the returned dict with Stats at the leafs can be
+        reused conveniently  downstream for further logging and reduction operations.
+
+        For example, imagine component A (e.g. an Algorithm) containing a MetricsLogger
+        and n remote components (e.g. n EnvRunner workers), each with their own
+        MetricsLogger object. Component A calls its n remote components, each of
+        which returns an equivalent, reduced dict with `Stats` instances as leafs.
+        Component A can now further log these n result dicts through its own
+        MetricsLogger:
+        `logger.merge_and_log_n_dicts([n returned result dicts from the remote
+        components])`.
+
+        .. testcode::
+
+            from ray.rllib.utils.metrics.metrics_logger import MetricsLogger
+            from ray.rllib.utils.test_utils import check
+
+            # Log some (EMA reduced) values.
+            logger = MetricsLogger()
+            logger.log_value("a", 2.0)
+            logger.log_value("a", 3.0)
+            expected_reduced = (1.0 - 0.01) * 2.0 + 0.01 * 3.0
+            # Reduce and return primitive values (not Stats objects).
+            results = logger.reduce(return_stats_obj=False)
+            check(results, {"a": expected_reduced})
+
+            # Log some values to be averaged with a sliding window.
+            logger = MetricsLogger()
+            logger.log_value("a", 2.0, window=2)
+            logger.log_value("a", 3.0)
+            logger.log_value("a", 4.0)
+            expected_reduced = (3.0 + 4.0) / 2  # <- win size is only 2; first logged
+                                                # item not used
+            # Reduce and return primitive values (not Stats objects).
+            results = logger.reduce(return_stats_obj=False)
+            check(results, {"a": expected_reduced})
+
+            # Assume we have 2 remote components, each one returning an equivalent
+            # reduced dict when called. We can simply use these results and log them
+            # to our own MetricsLogger, then reduce over these 2 logged results.
+            comp1_logger = MetricsLogger()
+            comp1_logger.log_value("a", 1.0, window=10)
+            comp1_logger.log_value("a", 2.0)
+            result1 = comp1_logger.reduce()  # <- return Stats objects as leafs
+
+            comp2_logger = MetricsLogger()
+            comp2_logger.log_value("a", 3.0, window=10)
+            comp2_logger.log_value("a", 4.0)
+            result2 = comp2_logger.reduce()  # <- return Stats objects as leafs
+
+            # Now combine the 2 equivalent results into 1 end result dict.
+            downstream_logger = MetricsLogger()
+            downstream_logger.merge_and_log_n_dicts([result1, result2])
+            # What happens internally is that both values lists of the 2 components
+            # are merged (concat'd) and randomly shuffled, then clipped at 10 (window
+            # size). This is done such that no component has an "advantage" over the
+            # other as we don't know the exact time-order in which these parallelly
+            # running components logged their own "a"-values.
+            # We execute similarly useful merging strategies for other reduce settings,
+            # such as EMA, max/min/sum-reducing, etc..
+            end_result = downstream_logger.reduce(return_stats_obj=False)
+            check(end_result, {"a": 2.5})
+
+        Args:
+            key: Optional key or key sequence (for nested location within self.stats),
+                limiting the reduce operation to that particular sub-structure of self.
+                If None, will reduce all of self's Stats.
+            return_stats_obj: Whether in the returned dict, the leafs should be Stats
+                objects. This is the default as it enables users to continue using
+                (and further logging) the results of this call inside another
+                (downstream) MetricsLogger object.
+
+        Returns:
+            A (nested) dict matching the structure of `self.stats` (contains all ever
+            logged keys to this MetricsLogger) with the leafs being (reduced) Stats
+            objects if `return_stats_obj=True` or primitive values, carrying no
+            reduction and history information, if `return_stats_obj=False`.
+        """
+        # Keys that should be excluded from the results b/c they point to lifetime
+        # stats, which are never returned from a `reduce()` call.
+        lifetime_keys_to_exclude = set()
+
+        # Create a shallow copy of `self.stats` in case we need to reset some of our
+        # stats due to this `reduce()` call (and the Stat having self.clear_on_reduce
+        # set to True). In case we clear the Stats upon `reduce`, we get returned a
+        # new empty `Stats` object from `stat.reduce()` with the same settings as
+        # existing one and can now re-assign it to `self.stats[key]` (while we return
+        # from this method the properly reduced, but not cleared/emptied new `Stats`).
+        if key is not None:
+            stats_to_return = self._get_key(key).copy()
+        else:
+            stats_to_return = self.stats.copy()
+
+        def _reduce(path, stats):
+            if path
+                lifetime_keys_to_exclude.add()
+            return stats.reduce()
+
+        reduced_stats = tree.map_structure(_reduce, stats_to_return)
+
+        if key is not None:
+            self._set_key(key, reduced_stats)
+        else:
+            self.stats = reduced_stats
+
+        if return_stats_obj:
+            return stats_to_return
+        else:
+            return tree.map_structure(lambda s: s.peek(), stats_to_return)
 
     def activate_tensor_mode(self):
         """Switches to tensor-mode, in which in-graph tensors can be logged.
