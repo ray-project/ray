@@ -148,6 +148,7 @@ def test_get_serve_instance_details_json_serializable(serve_instance, policy):
                     "message": "",
                     "last_deployed_time_s": deployment_timestamp,
                     "deployed_app_config": None,
+                    "source": "imperative",
                     "deployments": {
                         "autoscaling_app": {
                             "name": "autoscaling_app",
