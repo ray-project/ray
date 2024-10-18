@@ -159,7 +159,12 @@
   group: RLlib tests
   working_dir: rllib_tests
 
-  frequency: nightly
+  # Quoting sven: "a really old test case that should have been removed some time ago"
+  # So mark this test as not auto running.
+  #
+  # TODO(aslonnie, sven): to be removed after getting final
+  # confirmation from sven.
+  frequency: manual
   team: rllib
   cluster:
     byod:
