@@ -18,6 +18,9 @@ from ray.dashboard.modules.metrics.dashboards.serve_dashboard_panels import (
 from ray.dashboard.modules.metrics.dashboards.serve_deployment_dashboard_panels import (
     serve_deployment_dashboard_config,
 )
+from ray.dashboard.modules.metrics.dashboards.train_dashboard_panels import (
+    train_dashboard_config,
+)
 
 METRICS_INPUT_ROOT = os.path.join(os.path.dirname(__file__), "export")
 GRAFANA_CONFIG_INPUT_PATH = os.path.join(METRICS_INPUT_ROOT, "grafana")
@@ -212,6 +215,17 @@ def generate_data_grafana_dashboard() -> Tuple[str, str]:
       Tuple with format content, uid
     """
     return _generate_grafana_dashboard(data_dashboard_config)
+
+
+def generate_train_grafana_dashboard() -> Tuple[str, str]:
+    """
+    Generates the dashboard output for the train dashboard and returns
+    both the content and the uid.
+
+    Returns:
+      Tuple with format content, uid
+    """
+    return _generate_grafana_dashboard(train_dashboard_config)
 
 
 def _generate_grafana_dashboard(dashboard_config: DashboardConfig) -> str:

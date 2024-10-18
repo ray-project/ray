@@ -23,6 +23,7 @@ from ray.dashboard.modules.metrics.grafana_dashboard_factory import (
     generate_default_grafana_dashboard,
     generate_serve_deployment_grafana_dashboard,
     generate_serve_grafana_dashboard,
+    generate_train_grafana_dashboard,
 )
 from ray.dashboard.modules.metrics.grafana_dashboard_provisioning_template import (
     DASHBOARD_PROVISIONING_TEMPLATE,
@@ -287,6 +288,18 @@ class MetricsHead(dashboard_utils.DashboardHeadModule):
                 content,
                 self._dashboard_uids["data"],
             ) = generate_data_grafana_dashboard()
+            f.write(content)
+        with open(
+            os.path.join(
+                self._grafana_dashboard_output_dir,
+                "train_grafana_dashboard.json",
+            ),
+            "w",
+        ) as f:
+            (
+                content,
+                self._dashboard_uids["train"],
+            ) = generate_train_grafana_dashboard()
             f.write(content)
 
     def _create_default_prometheus_configs(self):

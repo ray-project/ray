@@ -3767,7 +3767,7 @@
   group: data-tests
   working_dir: nightly_tests/dataset
 
-  frequency: nightly
+  frequency: manual  # https://github.com/anyscale/rayturbo/issues/705
   team: data
 
   cluster:
