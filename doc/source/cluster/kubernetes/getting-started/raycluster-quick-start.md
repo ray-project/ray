@@ -133,6 +133,34 @@ Now that we have access to the Dashboard port, we can submit jobs to the RayClus
 ray job submit --address http://localhost:8265 -- python -c "import ray; ray.init(); print(ray.cluster_resources())"
 ```
 
+### Method 3:  Ray job submission with {ref}`ray client <ray-client-ref>`
+This method connects to the RayCluster via the {ref}`ray client <ray-client-ref>` and submits Ray jobs using ray.remote.
+
+```
+# Execute this in a separate shell.
+kubectl port-forward service/raycluster-kuberay-head-svc 10001:10001
+```
+Now we can submit ray job via {ref}`ray client <ray-client-ref>`
+
+```
+# You can run this code in your local Python environment.
+import ray
+
+ray.init("ray://localhost:10001")
+
+@ray.remote
+def do_work(x):
+    return x ** x
+
+do_work.remote(2)
+```
+
+
+:::{note}
+Ensure that your local Python version matches the Python version of the KubeRay cluster.
+:::
+
+
 ## Step 5: Access the Ray Dashboard
 
 Visit `${YOUR_IP}:8265` in your browser for the Dashboard. For example, `127.0.0.1:8265`.
