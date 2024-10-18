@@ -60,7 +60,6 @@ class ReduceOp(_CollectiveOp):
     PRODUCT = 1
     MAX = 2
     MIN = 3
-    AVG = 4
 
     def __str__(self):
         return f"{self.name.lower()}"

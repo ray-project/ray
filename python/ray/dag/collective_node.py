@@ -12,12 +12,8 @@ from ray.dag.constants import COLLECTIVE_OPERATION_KEY
 from ray.experimental.channel import ChannelContext
 from ray.experimental.channel.torch_tensor_nccl_channel import _init_nccl_group
 from ray.experimental.channel.torch_tensor_type import GPUCommunicator, TorchTensorType
+from ray.experimental.util.types import _CollectiveOp, ReduceOp
 from ray.util.annotations import DeveloperAPI
-
-if False:
-    from ray.util.collective.types import _CollectiveOp, ReduceOp
-else:
-    from ray.experimental.util.types import _CollectiveOp, ReduceOp
 
 
 class _CollectiveOperation:

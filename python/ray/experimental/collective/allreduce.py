@@ -9,11 +9,7 @@ from ray.dag.constants import (
     PARENT_CLASS_NODE_KEY,
 )
 from ray.experimental.channel.torch_tensor_type import GPUCommunicator, TorchTensorType
-
-if False:
-    from ray.util.collective.types import ReduceOp
-else:
-    from ray.experimental.util.types import ReduceOp
+from ray.experimental.util.types import ReduceOp
 
 logger = logging.getLogger(__name__)
 
@@ -85,8 +81,22 @@ class AllReduceWrapper:
         op: ReduceOp = ReduceOp.SUM,
     ):
         from ray.util.collective.collective import allreduce
+        from ray.util.collective.types import ReduceOp as RayReduceOp
 
-        return allreduce(tensor, group_name, op)
+        def get_ray_reduce_op(op: ReduceOp) -> RayReduceOp:
+            if op == ReduceOp.SUM:
+                return RayReduceOp.SUM
+            elif op == ReduceOp.PRODUCT:
+                return RayReduceOp.PRODUCT
+            elif op == ReduceOp.MIN:
+                return RayReduceOp.MIN
+            elif op == ReduceOp.MAX:
+                return RayReduceOp.MAX
+            else:
+                raise ValueError(f"Unsupported reduce operation: {op}")
+
+        ray_op = get_ray_reduce_op(op)
+        return allreduce(tensor, group_name, ray_op)
 
 
 allreduce = AllReduceWrapper()
