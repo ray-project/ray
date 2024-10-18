@@ -668,15 +668,6 @@ def ndarray_to_block(ndarray: np.ndarray, ctx: DataContext) -> "Block":
     return block, metadata
 
 
-def get_table_block_metadata(
-    table: Union["pyarrow.Table", "pandas.DataFrame"]
-) -> "BlockMetadata":
-    from ray.data.block import BlockAccessor, BlockExecStats
-
-    stats = BlockExecStats.builder()
-    return BlockAccessor.for_block(table).get_metadata(exec_stats=stats.build())
-
-
 def unify_block_metadata_schema(
     metadata: List["BlockMetadata"],
 ) -> Optional[Union[type, "pyarrow.lib.Schema"]]:

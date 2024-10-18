@@ -59,7 +59,6 @@ from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.stats import DatasetStats
 from ray.data._internal.util import (
     _autodetect_parallelism,
-    get_table_block_metadata,
     ndarray_to_block,
     pandas_df_to_arrow_block,
 )
@@ -2445,8 +2444,7 @@ def from_pandas_refs(
 
     context = DataContext.get_current()
     if context.enable_pandas_block:
-        get_metadata = cached_remote_fn(get_table_block_metadata)
-        metadata = ray.get([get_metadata.remote(df) for df in dfs])
+        metadata = [BlockAccessor.for_block(df).get_metadata() for df in dfs]
         logical_plan = LogicalPlan(FromPandas(dfs, metadata))
         return MaterializedDataset(
             ExecutionPlan(DatasetStats(metadata={"FromPandas": metadata}, parent=None)),
@@ -2614,8 +2612,7 @@ def from_arrow_refs(
     if isinstance(tables, ray.ObjectRef):
         tables = [tables]
 
-    get_metadata = cached_remote_fn(get_table_block_metadata)
-    metadata = ray.get([get_metadata.remote(t) for t in tables])
+    metadata = [BlockAccessor.for_block(table).get_metadata() for table in tables]
     logical_plan = LogicalPlan(FromArrow(tables, metadata))
 
     return MaterializedDataset(
