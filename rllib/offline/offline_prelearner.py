@@ -2,7 +2,7 @@ import gymnasium as gym
 import logging
 import numpy as np
 import random
-from typing import Any, Dict, List, Optional, Union, Tuple, TYPE_CHECKING
+from typing import Any, Dict, List, Optional, Union, Set, Tuple, TYPE_CHECKING
 
 import ray
 from ray.actor import ActorHandle
@@ -179,6 +179,9 @@ class OfflinePreLearner:
                 )
                 for state in batch["item"]
             ]
+            # Ensure that all episodes are done and no duplicates are in the batch.
+            episodes = self._validate_episodes(episodes)
+            # Add the episodes to the buffer.
             self.episode_buffer.add(episodes)
             episodes = self.episode_buffer.sample(
                 num_items=self.config.train_batch_size_per_learner,
@@ -196,7 +199,11 @@ class OfflinePreLearner:
                 schema=SCHEMA | self.config.input_read_schema,
                 input_compress_columns=self.config.input_compress_columns,
             )["episodes"]
+            # Ensure that all episodes are done and no duplicates are in the batch.
+            episodes = self._validate_episodes(episodes)
+            # Add the episodes to the buffer.
             self.episode_buffer.add(episodes)
+            # Sample steps from the buffer.
             episodes = self.episode_buffer.sample(
                 num_items=self.config.train_batch_size_per_learner,
                 # TODO (simon): This can be removed as soon as DreamerV3 has been
@@ -288,6 +295,44 @@ class OfflinePreLearner:
             "capacity": self.config.train_batch_size_per_learner * 10,
             "batch_size_B": self.config.train_batch_size_per_learner,
         }
+
+    def _validate_episodes(
+        self, episodes: List[SingleAgentEpisode]
+    ) -> Set[SingleAgentEpisode]:
+        """Validate episodes sampled from the dataset.
+
+        Note, our episode buffers cannot handle either duplicates nor
+        non-ordered fragmentations, i.e. fragments from episodes that do
+        not arrive in timestep order.
+
+        Args:
+            episodes: A list of `SingleAgentEpisode` instances sampled
+                from a dataset.
+
+        Raises:
+            ValueError: If not all episodes are `done`.
+
+        Returns:
+            A set of `SingleAgentEpisode` instances.
+        """
+        # Ensure that episodes are all done.
+        if not all(eps.is_done for eps in episodes):
+            raise ValueError(
+                "When sampling from episodes (`input_read_episodes=True`) all "
+                "recorded episodes must be done (i.e. either `terminated=True`) "
+                "or `truncated=True`)."
+            )
+        # Ensure that episodes do not contain duplicates. Note, this can happen
+        # if the dataset is small and pulled batches contain multiple episodes.
+        unique_episode_ids = set()
+        episodes = {
+            eps
+            for eps in episodes
+            if eps.id_ not in unique_episode_ids
+            and not unique_episode_ids.add(eps.id_)
+            and eps.id_ not in self.episode_buffer.episode_id_to_index.keys()
+        }
+        return episodes
 
     def _should_module_be_updated(self, module_id, multi_agent_batch=None):
         """Checks which modules in a MultiRLModule should be updated."""
