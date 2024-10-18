@@ -108,8 +108,11 @@ class Planner:
     def plan(self, logical_plan: LogicalPlan) -> PhysicalPlan:
         """Convert logical to physical operators recursively in post-order."""
         physical_dag = self._plan(logical_plan.dag)
-        physical_plan = PhysicalPlan(physical_dag, self._physical_op_to_logical_op)
-        physical_plan._set_context(logical_plan._context)
+        physical_plan = PhysicalPlan(
+            physical_dag,
+            self._physical_op_to_logical_op,
+            logical_plan._context,
+        )
         return physical_plan
 
     def _plan(self, logical_op: LogicalOperator) -> PhysicalOperator:

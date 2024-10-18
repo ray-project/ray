@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING
 
 from .operator import Operator
 
@@ -13,13 +13,13 @@ class Plan:
     that's useful for plan optimization or execution.
     """
 
-    def __init__(self):
-        self._context: Optional["DataContext"] = None
+    def __init__(self, context: "DataContext"):
+        self._context = context
 
     @property
     def dag(self) -> Operator:
         raise NotImplementedError
 
-    def _set_context(self, context: Optional["DataContext"]):
-        """Set the DataContext for this plan, usually from its ExecutionPlan."""
-        self._context = context
+    # def _set_context(self, context: Optional["DataContext"]):
+    #     """Set the DataContext for this plan, usually from its ExecutionPlan."""
+    #     self._context = context

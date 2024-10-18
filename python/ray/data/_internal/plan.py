@@ -165,7 +165,7 @@ class ExecutionPlan:
                 else:
                     assert len(sources) == 1
                     plan = ExecutionPlan(DatasetStats(metadata={}, parent=None))
-                    plan.link_logical_plan(LogicalPlan(sources[0]))
+                    plan.link_logical_plan(LogicalPlan(sources[0], plan._context))
                     schema = plan.schema()
                     count = plan.meta_count()
         else:
@@ -279,7 +279,7 @@ class ExecutionPlan:
         execution plan.
         """
         self._logical_plan = logical_plan
-        self._logical_plan._set_context(self._context)
+        self._logical_plan._context = self._context
 
     def copy(self) -> "ExecutionPlan":
         """Create a shallow copy of this execution plan.
