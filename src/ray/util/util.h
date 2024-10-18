@@ -310,7 +310,7 @@ inline void SetThreadName(const std::string &thread_name) {
 }
 
 inline std::string GetThreadName() {
-#if defined(__linux__)
+#if defined(__linux__) || defined(__APPLE__)
   char name[128];
   auto rc = pthread_getname_np(pthread_self(), name, sizeof(name));
   if (rc != 0) {

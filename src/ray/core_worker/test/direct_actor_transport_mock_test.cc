@@ -73,7 +73,7 @@ class DirectTaskTransportTest : public ::testing::Test {
   }
 
  protected:
-  instrumented_io_context io_context;
+  instrumented_io_context io_context{/*enable_lag_probe=*/false};
   boost::asio::io_service::work io_work;
   std::unique_ptr<ActorTaskSubmitter> actor_task_submitter;
   std::shared_ptr<rpc::CoreWorkerClientPool> client_pool;

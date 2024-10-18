@@ -33,6 +33,10 @@ MutableObjectProvider::~MutableObjectProvider() {
   }
   RAY_CHECK(object_manager_->SetErrorAll().code() == StatusCode::OK);
 
+  for (const auto &io_context : io_contexts_) {
+    io_context->stop();
+  }
+
   for (std::unique_ptr<std::thread> &io_thread : io_threads_) {
     RAY_CHECK(io_thread->joinable());
     io_thread->join();
