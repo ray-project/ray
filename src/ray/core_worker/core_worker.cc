@@ -2381,6 +2381,9 @@ Status CoreWorker::CreateActor(const RayFunction &function,
                     RAY_LOG(ERROR).WithField(task_spec.ActorCreationId())
                         << "Failed to register actor. Error message: "
                         << status.ToString();
+                    task_manager_->FailPendingTask(task_spec.TaskId(),
+                                                   rpc::ErrorType::ACTOR_CREATION_FAILED,
+                                                   &status);
                   } else {
                     RAY_UNUSED(actor_task_submitter_->SubmitActorCreationTask(task_spec));
                   }
