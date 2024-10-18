@@ -8,9 +8,9 @@ from ray.experimental.channel.gpu_communicator import (
     GPUCommunicator,
     TorchTensorAllocator,
 )
-# [TYPE]
-# from ray.util.collective.types import ReduceOp
-from ray.experimental.util.types import ReduceOp
+from ray.util.collective.types import ReduceOp
+
+# from ray.experimental.util.types import ReduceOp
 
 if TYPE_CHECKING:
     import cupy as cp
