@@ -22,8 +22,8 @@ def do_map_batches(data):
 
 
 def assert_structure_equals(a, b):
-    assert isinstance(a, type(b)), (type(a), type(b))
-    assert isinstance(a[0], type(b[0])), (type(a[0]), type(b[0]))
+    assert type(a) is type(b), (type(a), type(b))
+    assert type(a[0]) is type(b[0]), (type(a[0]), type(b[0]))
     assert a.dtype == b.dtype
     assert a.shape == b.shape
     for i in range(len(a)):
