@@ -30,7 +30,7 @@ namespace ray {
 /// All registered functions will stop running once this object is destructed.
 class PeriodicalRunner {
  public:
-  PeriodicalRunner(instrumented_io_context &io_service);
+  explicit PeriodicalRunner(instrumented_io_context &io_service);
 
   ~PeriodicalRunner();
 
@@ -38,7 +38,7 @@ class PeriodicalRunner {
 
   void RunFnPeriodically(std::function<void()> fn,
                          uint64_t period_ms,
-                         const std::string name) ABSL_LOCKS_EXCLUDED(mutex_);
+                         const std::string &name) ABSL_LOCKS_EXCLUDED(mutex_);
 
  private:
   void DoRunFnPeriodically(const std::function<void()> &fn,
@@ -49,14 +49,16 @@ class PeriodicalRunner {
   void DoRunFnPeriodicallyInstrumented(const std::function<void()> &fn,
                                        boost::posix_time::milliseconds period,
                                        std::shared_ptr<boost::asio::deadline_timer> timer,
-                                       const std::string name)
+                                       const std::string &name)
       ABSL_LOCKS_EXCLUDED(mutex_);
 
   instrumented_io_context &io_service_;
   mutable absl::Mutex mutex_;
   std::vector<std::shared_ptr<boost::asio::deadline_timer>> timers_
       ABSL_GUARDED_BY(mutex_);
-  std::shared_ptr<bool> stopped_;
+  // `stopped_` is copied to the timer callback, and may outlive `this`.
+  std::shared_ptr<std::atomic<bool>> stopped_ =
+      std::make_shared<std::atomic<bool>>(false);
 };
 
 }  // namespace ray
