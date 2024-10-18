@@ -213,8 +213,6 @@ def create_collective_group(
 
 
 # TODO (we need a declarative destroy() API here.)
-
-
 def destroy_collective_group(group_name: str = "default") -> None:
     """Destroy a collective group given its group name."""
     _check_inside_actor()

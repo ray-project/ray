@@ -51,9 +51,6 @@ class ReduceOp(Enum):
     MIN = 2
     MAX = 3
 
-    def __str__(self):
-        return f"{self.name.lower()}"
-
 
 unset_timeout_ms = timedelta(milliseconds=-1)
 
