@@ -4,16 +4,25 @@ disable_existing_loggers: False
 formatters:
     ray:
         format: "%(asctime)s\t%(levelname)s %(filename)s:%(lineno)s -- %(message)s"
+    ray_json:
+        class: ray._private.ray_logging.formatters.JSONFormatter
 
 filters:
     console_filter:
         (): ray.data._internal.logging.HiddenRecordFilter
+    core_context_filter:
+        (): ray._private.ray_logging.filters.CoreContextFilter
 
 handlers:
     file:
         class: ray.data._internal.logging.SessionFileHandler
         formatter: ray
         filename: ray-data.log
+    file_json:
+        class: ray.data._internal.logging.SessionFileHandler
+        formatter: ray_json
+        filename: ray-data.log
+        filters: [core_context_filter]
     console:
         class: ray._private.log.PlainRayHandler
         formatter: ray

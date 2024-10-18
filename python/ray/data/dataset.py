@@ -272,6 +272,12 @@ class Dataset:
             If your transformation is vectorized like most NumPy or pandas operations,
             :meth:`~Dataset.map_batches` might be faster.
 
+        .. warning::
+            Specifying both ``num_cpus`` and ``num_gpus`` for map tasks is experimental,
+            and may result in scheduling or stability issues. Please
+            `report any issues <https://github.com/ray-project/ray/issues/new/choose>`_
+            to the Ray team.
+
         Examples:
 
             .. testcode::
@@ -416,6 +422,12 @@ class Dataset:
         .. tip::
             If ``fn`` doesn't mutate its input, set ``zero_copy_batch=True`` to improve
             performance and decrease memory utilization.
+
+        .. warning::
+            Specifying both ``num_cpus`` and ``num_gpus`` for map tasks is experimental,
+            and may result in scheduling or stability issues. Please
+            `report any issues <https://github.com/ray-project/ray/issues/new/choose>`_
+            to the Ray team.
 
         Examples:
 
@@ -972,6 +984,12 @@ class Dataset:
             :meth:`~Dataset.map_batches` can also modify the number of rows. If your
             transformation is vectorized like most NumPy and pandas operations,
             it might be faster.
+
+        .. warning::
+            Specifying both ``num_cpus`` and ``num_gpus`` for map tasks is experimental,
+            and may result in scheduling or stability issues. Please
+            `report any issues <https://github.com/ray-project/ray/issues/new/choose>`_
+            to the Ray team.
 
         Examples:
 
