@@ -39,6 +39,7 @@ from ray.rllib.utils.metrics import (
     NUM_ENV_STEPS_SAMPLED,
     NUM_ENV_STEPS_SAMPLED_LIFETIME,
     NUM_EPISODES,
+    NUM_EPISODES_LIFETIME,
     NUM_MODULE_STEPS_SAMPLED,
     NUM_MODULE_STEPS_SAMPLED_LIFETIME,
     SAMPLE_TIMER,
@@ -437,7 +438,7 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
         # Continue collecting into the cut Episode chunks.
         self._episodes = ongoing_episodes_continuations
 
-        self._increase_sampled_metrics(ts)
+        self._increase_sampled_metrics(ts, len(done_episodes_to_return))
 
         # Return collected episode data.
         return done_episodes_to_return + ongoing_episodes_to_return
@@ -616,7 +617,7 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
         # Initialized episodes have to be removed as they lack `extra_model_outputs`.
         samples = [episode for episode in done_episodes_to_return if episode.t > 0]
 
-        self._increase_sampled_metrics(ts)
+        self._increase_sampled_metrics(ts, len(samples))
 
         return samples
 
@@ -648,15 +649,6 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
             self._log_episode_metrics(
                 episode_length, episode_return, episode_duration_s
             )
-
-        # Log num episodes counter for this iteration.
-        self.metrics.log_value(
-            NUM_EPISODES,
-            len(self._done_episodes_for_metrics),
-            reduce="sum",
-            # Reset internal data on `reduce()` call below (not a lifetime count).
-            clear_on_reduce=True,
-        )
 
         # Now that we have logged everything, clear cache of done episodes.
         self._done_episodes_for_metrics.clear()
@@ -868,7 +860,7 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
             env_index=idx,
         )
 
-    def _increase_sampled_metrics(self, num_steps):
+    def _increase_sampled_metrics(self, num_steps, num_episodes_completed):
         # Per sample cycle stats.
         self.metrics.log_value(
             NUM_ENV_STEPS_SAMPLED, num_steps, reduce="sum", clear_on_reduce=True
@@ -885,6 +877,12 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
             reduce="sum",
             clear_on_reduce=True,
         )
+        self.metrics.log_value(
+            NUM_EPISODES,
+            num_episodes_completed,
+            reduce="sum",
+            clear_on_reduce=True,
+        )
         # Lifetime stats.
         self.metrics.log_value(NUM_ENV_STEPS_SAMPLED_LIFETIME, num_steps, reduce="sum")
         self.metrics.log_value(
@@ -895,6 +893,11 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
         self.metrics.log_value(
             (NUM_MODULE_STEPS_SAMPLED_LIFETIME, DEFAULT_MODULE_ID),
             num_steps,
+            reduce="sum",
+        )
+        self.metrics.log_value(
+            NUM_EPISODES_LIFETIME,
+            num_episodes_completed,
             reduce="sum",
         )
         return num_steps
