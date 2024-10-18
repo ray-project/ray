@@ -9,9 +9,11 @@ from ray.dag.constants import (
     PARENT_CLASS_NODE_KEY,
 )
 from ray.experimental.channel.torch_tensor_type import GPUCommunicator, TorchTensorType
-from ray.util.collective.types import ReduceOp
 
-# from ray.experimental.util.types import ReduceOp
+if False:
+    from ray.util.collective.types import ReduceOp
+else:
+    from ray.experimental.util.types import ReduceOp
 
 logger = logging.getLogger(__name__)
 

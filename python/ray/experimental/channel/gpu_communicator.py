@@ -3,9 +3,11 @@ from typing import TYPE_CHECKING, Callable, List, Optional, Tuple
 
 import ray
 from ray.util.annotations import DeveloperAPI
-from ray.util.collective.types import ReduceOp
 
-# from ray.experimental.util.types import ReduceOp
+if False:
+    from ray.util.collective.types import ReduceOp
+else:
+    from ray.experimental.util.types import ReduceOp
 
 if TYPE_CHECKING:
     import torch

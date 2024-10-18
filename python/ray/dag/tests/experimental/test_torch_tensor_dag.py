@@ -22,9 +22,11 @@ from ray.experimental.channel.gpu_communicator import (
 from ray.experimental.channel.nccl_group import _NcclGroup
 from ray.experimental.channel.torch_tensor_type import TorchTensorType
 from ray.tests.conftest import *  # noqa
-from ray.util.collective.types import ReduceOp
 
-# from ray.experimental.util.types import ReduceOp
+if False:
+    from ray.util.collective.types import ReduceOp
+else:
+    from ray.experimental.util.types import ReduceOp
 
 logger = logging.getLogger(__name__)
 
