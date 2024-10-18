@@ -14,7 +14,6 @@
 
 #include "ray/object_manager/common.h"
 
-#include "absl/functional/bind_front.h"
 #include "absl/strings/str_format.h"
 
 namespace ray {
@@ -209,8 +208,9 @@ Status PlasmaObjectHeader::ReadAcquire(
 
   RAY_CHECK_EQ(sem_post(sem.header_sem), 0);
   if (!success) {
-    return Status::Invalid(
-        "Reader missed a value. Are you sure there are num_readers many readers?");
+    return Status::Invalid(absl::StrFormat(
+        "Reader missed a value. Are you sure there are num_readers=%d many readers?",
+        num_readers));
   }
   return Status::OK();
 }
@@ -230,7 +230,7 @@ Status PlasmaObjectHeader::ReadRelease(Semaphores &sem, int64_t read_version) {
     RAY_CHECK_GT(num_read_releases_remaining, 0UL);
     num_read_releases_remaining--;
     RAY_CHECK_GE(num_read_releases_remaining, 0UL);
-    all_readers_done = !num_read_releases_remaining;
+    all_readers_done = (num_read_releases_remaining == 0UL);
   }
 
   RAY_CHECK_EQ(sem_post(sem.header_sem), 0);

@@ -1033,65 +1033,30 @@ class CompiledDAG:
                         output_to_readers[task].append(downstream_task)
                 fn = task.dag_node._get_remote_method("__ray_call__")
                 for output, readers in output_to_readers.items():
-                    dag_nodes = [reader.dag_node for reader in readers]
-                    read_by_multi_output_node = False
-                    for dag_node in dag_nodes:
-                        if isinstance(dag_node, MultiOutputNode):
-                            read_by_multi_output_node = True
-                            break
-
                     reader_and_node_list: List[Tuple["ray.actor.ActorHandle", str]] = []
-                    if read_by_multi_output_node:
-                        if len(readers) != 1:
-                            raise ValueError(
-                                "DAG outputs currently can only be read by the "
-                                "driver or the same actor that is also the "
-                                "InputNode, not by both the driver and actors.",
-                            )
-
-                        # This node is a multi-output node, which means it will
-                        # only be read by the driver or the actor that is also
-                        # the InputNode.
-
-                        # TODO(jhumphri): Handle case where there is an actor,
-                        # other than just the driver actor, also reading the
-                        # output from the `task` node. For example, the following
-                        # currently does not work:
-                        # def test_blah(ray_start_regular):
-                        #     a = Actor.remote(0)
-                        #     b = Actor.remote(10)
-                        #     with InputNode() as inp:
-                        #         x = a.inc.bind(inp)
-                        #         y = b.inc.bind(x)
-                        #         dag = MultiOutputNode([x, y])
-
-                        #     compiled_dag = dag.experimental_compile()
-                        #     output_channel = compiled_dag.execute(1)
-                        #     result = output_channel.read()
-                        #     print(result)
-
-                        #     compiled_dag.teardown()
-
-                        assert self._proxy_actor is not None
-                        for reader in readers:
-                            reader_and_node_list.append(
+                    # Use reader_handles_set to deduplicate readers on the
+                    # same actor, because with CachedChannel each actor will
+                    # only read from the upstream channel once.
+                    reader_handles_set = set()
+                    read_by_multi_output_node = False
+                    for reader in readers:
+                        if isinstance(reader.dag_node, MultiOutputNode):
+                            assert self._proxy_actor is not None
+                            reader_and_node_list.insert(
+                                0,
                                 (
                                     self._proxy_actor,
                                     self._get_node_id(self._proxy_actor),
-                                )
+                                ),
                             )
-                    else:
-                        # Use reader_handles_set to deduplicate readers on the
-                        # same actor, because with CachedChannel each actor will
-                        # only read from the upstream channel once.
-                        reader_handles_set = set()
-                        for reader in readers:
+                            read_by_multi_output_node = True
+                        else:
                             reader_handle = reader.dag_node._get_actor_handle()
                             if reader_handle not in reader_handles_set:
                                 reader_and_node_list.append(
                                     (reader_handle, self._get_node_id(reader_handle))
                                 )
-                            reader_handles_set.add(reader_handle)
+                                reader_handles_set.add(reader_handle)
 
                     # Create an output channel for each output of the current node.
                     output_channel = ray.get(
@@ -1111,6 +1076,7 @@ class CompiledDAG:
                         output_idx = downstream_node.output_idx
                     task.output_channels.append(output_channel)
                     task.output_idxs.append(output_idx)
+
                 actor_handle = task.dag_node._get_actor_handle()
                 assert actor_handle is not None
                 self.actor_refs.add(actor_handle)
@@ -1551,7 +1517,7 @@ class CompiledDAG:
                     try:
                         ray.get(ref, timeout=10)
                     except ray.exceptions.GetTimeoutError:
-                        logger.warn(
+                        logger.warning(
                             f"Compiled DAG actor {actor} is still running 10s "
                             "after teardown(). Teardown may hang."
                         )
