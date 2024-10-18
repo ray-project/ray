@@ -417,6 +417,14 @@ def check(x, y, decimals=5, atol=None, rtol=None, false=False):
             if isinstance(y, torch.Tensor):
                 y = y.detach().cpu().numpy()
 
+        # Stats objects.
+        from ray.rllib.utils.metrics.stats import Stats
+
+        if isinstance(x, Stats):
+            x = x.peek()
+        if isinstance(y, Stats):
+            y = y.peek()
+
         # Using decimals.
         if atol is None and rtol is None:
             # Assert equality of both values.

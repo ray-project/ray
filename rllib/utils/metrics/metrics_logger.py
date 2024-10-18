@@ -34,16 +34,70 @@ class MetricsLogger:
 
     .. testcode::
 
+        import time
         from ray.rllib.utils.metrics.metrics_logger import MetricsLogger
+        from ray.rllib.utils.test_utils import check
 
         logger = MetricsLogger()
 
-        # Log n simple float values under the "loss" key. By default, all logged values
-        # under that key are averaged over once `reduce()` is called.
-        logger.log_value("loss", 0.001)
-        logger.log_value("loss", 0.002)
-        logger.log_value("loss", 0.003)
+        # 1) Logging float values (mean over window):
+        # Log some loss under the "loss" key. By default, all logged values
+        # under that key are averaged and reported back, once `reduce()` is called.
+        logger.log_value("loss", 0.001, reduce="mean", window=10)
+        logger.log_value("loss", 0.002)  # <- no need to repeat arg/options on same key
         # Peek at the current (reduced) value of "loss":
+        check(logger.peek("loss"), 0.0015)  # <- expect average value
+        # Actually reduce the underlying Stats object(s).
+        results = logger.reduce()
+        check(results["loss"], 0.0015)
+
+        # 2) Logging float values (minimum over window):
+        # Log the minimum of loss values under the "min_loss" key.
+        logger.log_value("min_loss", 0.1, reduce="min", window=2)
+        logger.log_value("min_loss", 0.01)
+        logger.log_value("min_loss", 0.1)
+        logger.log_value("min_loss", 0.02)
+        # Peek at the current (reduced) value of "min_loss":
+        check(logger.peek("min_loss"), 0.02)  # <- expect min value (over window=2)
+        # Actually reduce the underlying Stats object(s).
+        results = logger.reduce()
+        check(results["min_loss"], 0.02)
+
+        # 3) Log n counts in different (remote?) components and merge them on the
+        # controller side.
+        remote_logger_1 = MetricsLogger()
+        remote_logger_2 = MetricsLogger()
+        main_logger = MetricsLogger()
+        remote_logger_1.log_value("count", 2, reduce="sum", clear_on_reduce=True)
+        remote_logger_2.log_value("count", 3, reduce="sum", clear_on_reduce=True)
+        # Reduce the two remote loggers ..
+        remote_results_1 = remote_logger_1.reduce()
+        remote_results_2 = remote_logger_2.reduce()
+        # .. then merge the two results into the controller logger.
+        main_logger.merge_and_log_n_dicts([remote_results_1, remote_results_2])
+        check(main_logger.peek("count"), 5)
+
+        # 4) Time blocks of code using EMA (coeff=0.1). Note that the higher the coeff (the
+        # closer to 1.0), the more short term the EMA turns out.
+        logger = MetricsLogger()
+
+        # First delta measurement:
+        with logger.log_time("my_block_to_be_timed", reduce="mean", ema_coeff=0.1):
+            time.sleep(1.0)
+        # EMA should be ~1sec.
+        assert 1.1 > logger.peek("my_block_to_be_timed") > 0.9
+        # Second delta measurement (note that we don't have to repeat the args again, as
+        # the stats under that name have already been created above with the correct args).
+        with logger.log_time("my_block_to_be_timed"):
+            time.sleep(2.0)
+        # EMA should be ~1.1sec.
+        assert 1.15 > logger.peek("my_block_to_be_timed") > 1.05
+
+        # When calling `reduce()`, the internal values list gets cleaned up (reduced) and
+        # reduction results are returned.
+        results = logger.reduce()
+        assert 1.15 > results["my_block_to_be_timed"] > 1.05
+
 
     """
 
@@ -52,6 +106,9 @@ class MetricsLogger:
         self.stats = {}
         self._tensor_mode = False
         self._tensor_keys = set()
+        # Dict mapping (possibly nested) keys in `self.stats` to their respective
+        # lifetime counts (if applicable).
+        self._lifetime_key_mappings = {}
 
     def __contains__(self, key: Union[str, Tuple[str, ...]]) -> bool:
         """Returns True, if `key` can be found in self.stats.
@@ -280,6 +337,7 @@ class MetricsLogger:
             self.log_value(
                 lifetime_key, value=value, reduce="sum", clear_on_reduce=False
             )
+            self._lifetime_key_mappings[key] = lifetime_key
 
         # `key` doesn't exist -> Automativally create it.
         if not self._key_in_stats(key):
@@ -297,10 +355,10 @@ class MetricsLogger:
                     )
                 ),
             )
-        # If value itself is a stat, we merge it on time axis into `self`.
+        # If value itself is a `Stats`, we merge it on time axis into self's `Stats`.
         elif isinstance(value, Stats):
             self._get_key(key).merge_on_time_axis(value)
-        # Otherwise, we just push the value into `self`.
+        # Otherwise, we just push the value into self's `Stats`.
         else:
             self._get_key(key).push(value)
 
@@ -409,6 +467,8 @@ class MetricsLogger:
         stats_dicts: List[Dict[str, Any]],
         *,
         key: Optional[Union[str, Tuple[str, ...]]] = None,
+        # TODO (sven): Maybe remove these args. They don't seem to make sense in this
+        #  method. If we do so, values in the dicts must be Stats instances, though.
         reduce: Optional[str] = "mean",
         window: Optional[Union[int, float]] = None,
         ema_coeff: Optional[float] = None,
@@ -563,8 +623,15 @@ class MetricsLogger:
         if reduce is None and (window is None or window == float("inf")):
             clear_on_reduce = True
 
+        lifetime_keys = set(self._lifetime_key_mappings.values())
+
         for key in all_keys:
             extended_key = prefix_key + key
+
+            # If key is a lifetime key, do NOT perform the merge.
+            if extended_key in lifetime_keys:
+                continue
+
             available_stats = [
                 self._get_key(key, s) for s in stats_dicts if self._key_in_stats(key, s)
             ]
@@ -619,13 +686,29 @@ class MetricsLogger:
     ) -> None:
         """Measures and logs a time delta value under `key` when used with a with-block.
 
-        Additionally measures and logs the throughput for the timed code, iff
+        Additionally, measures and logs the throughput for the timed code, iff
         `log_throughput=True` and `throughput_key_for_unit_count` is provided.
 
         .. testcode::
 
             from ray.rllib.utils.metrics.metrics_logger import MetricsLogger
-            # TODO (sven): finish test case
+
+            logger = MetricsLogger()
+
+            # First delta measurement:
+            with logger.log_time("my_block_to_be_timed"):
+                time.sleep(1.0)
+            assert 1.1 > logger.peek("my_block_to_be_timed") > 0.9
+            # Second delta measurement:
+            with logger.log_time("my_block_to_be_timed"):
+                time.sleep(1.0)
+            assert 2.2 > logger.peek("my_block_to_be_timed") > 1.8
+
+            # When calling `reduce()`, the internal values list gets cleaned up.
+            check(len(logger.stats["my_block_to_be_timed"].values), 2)  # still 2 deltas
+            results = logger.reduce()
+            check(len(logger.stats["my_block_to_be_timed"].values), 1)  # reduced to 1
+            assert 2.2 > results["my_block_to_be_timed"] > 1.8
 
         Args:
             key: The key (or tuple of keys) to log the measured time delta under.
@@ -778,10 +861,6 @@ class MetricsLogger:
             objects if `return_stats_obj=True` or primitive values, carrying no
             reduction and history information, if `return_stats_obj=False`.
         """
-        # Keys that should be excluded from the results b/c they point to lifetime
-        # stats, which are never returned from a `reduce()` call.
-        lifetime_keys_to_exclude = set()
-
         # Create a shallow copy of `self.stats` in case we need to reset some of our
         # stats due to this `reduce()` call (and the Stat having self.clear_on_reduce
         # set to True). In case we clear the Stats upon `reduce`, we get returned a
@@ -790,20 +869,12 @@ class MetricsLogger:
         # from this method the properly reduced, but not cleared/emptied new `Stats`).
         if key is not None:
             stats_to_return = self._get_key(key).copy()
+            self._set_key(
+                key, tree.map_structure(lambda s: s.reduce(), stats_to_return)
+            )
         else:
             stats_to_return = self.stats.copy()
-
-        def _reduce(path, stats):
-            if path
-                lifetime_keys_to_exclude.add()
-            return stats.reduce()
-
-        reduced_stats = tree.map_structure(_reduce, stats_to_return)
-
-        if key is not None:
-            self._set_key(key, reduced_stats)
-        else:
-            self.stats = reduced_stats
+            self.stats = tree.map_structure(lambda s: s.reduce(), stats_to_return)
 
         if return_stats_obj:
             return stats_to_return
@@ -922,6 +993,7 @@ class MetricsLogger:
         """
         self.stats = {}
         self._tensor_keys = set()
+        self._lifetime_key_mappings = {}
 
     def delete(self, *key: Tuple[str, ...], key_error: bool = True) -> None:
         """Deletes the given `key` from this metrics logger's stats.
@@ -935,6 +1007,8 @@ class MetricsLogger:
             KeyError: If `key` cannot be found in `self` AND `key_error` is True.
         """
         self._del_key(key, key_error)
+        if key in self._lifetime_key_mappings:
+            del self._lifetime_key_mappings[key]
 
     def get_state(self) -> Dict[str, Any]:
         """Returns the current state of `self` as a dict.
@@ -949,7 +1023,10 @@ class MetricsLogger:
 
         tree.map_structure_with_path(_map, self.stats)
 
-        return {"stats": stats_dict}
+        return {
+            "stats": stats_dict,
+            "_lifetime_key_mappings": self._lifetime_key_mappings,
+        }
 
     def set_state(self, state: Dict[str, Any]) -> None:
         """Sets the state of `self` to the given `state`.
@@ -959,6 +1036,9 @@ class MetricsLogger:
         """
         for flat_key, stats_state in state["stats"].items():
             self._set_key(flat_key, Stats.from_state(stats_state))
+
+        if "_lifetime_key_mappings" in state:
+            self._lifetime_key_mappings = state["_lifetime_key_mappings"]
 
     def _check_tensor(self, key: Tuple[str], value) -> None:
         # `value` is a tensor -> Log it in our keys set.
