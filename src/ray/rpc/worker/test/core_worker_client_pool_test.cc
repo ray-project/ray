@@ -21,9 +21,9 @@ namespace ray {
 namespace rpc {
 class MockCoreWorkerClient : public CoreWorkerClientInterface {
  public:
-  bool IsChannelIdleAfterRPCs() const override { return is_channel_idle_after_rpcs; }
+  bool IsIdleAfterRPCs() const override { return is_idle_after_rpcs; }
 
-  bool is_channel_idle_after_rpcs = false;
+  bool is_idle_after_rpcs = false;
 };
 
 class CoreWorkerClientPoolTest : public ::testing::Test {
@@ -55,7 +55,7 @@ TEST_F(CoreWorkerClientPoolTest, TestGC) {
   ASSERT_EQ(client_pool.Size(), 1);
   client2 = client_pool.GetOrConnect(address2);
   ASSERT_EQ(client_pool.Size(), 2);
-  static_cast<MockCoreWorkerClient *>(client1.get())->is_channel_idle_after_rpcs = true;
+  static_cast<MockCoreWorkerClient *>(client1.get())->is_idle_after_rpcs = true;
   // Client 1 will be removed since it's idle.
   ASSERT_EQ(client2.get(), client_pool.GetOrConnect(address2).get());
   ASSERT_EQ(client_pool.Size(), 1);

@@ -54,6 +54,10 @@ def test_ray_datasetlike_mini_stress_test(
             "RAY_testing_asio_delay_us",
             "CoreWorkerService.grpc_server.ReportGeneratorItemReturns=10000:1000000",
         )
+        m.setenv(
+            "RAY_testing_rpc_failure",
+            "ray::rpc::CoreWorkerService.grpc_client.ReportGeneratorItemReturns=5",
+        )
         cluster = ray_start_cluster
         cluster.add_node(
             num_cpus=1,
