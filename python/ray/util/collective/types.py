@@ -3,8 +3,6 @@ from enum import Enum
 from dataclasses import dataclass
 from datetime import timedelta
 
-from ray.util.annotations import PublicAPI, DeveloperAPI
-
 _NUMPY_AVAILABLE = True
 _TORCH_AVAILABLE = True
 _CUPY_AVAILABLE = True
@@ -20,17 +18,14 @@ except ImportError:
     _CUPY_AVAILABLE = False
 
 
-@DeveloperAPI
 def cupy_available():
     return _CUPY_AVAILABLE
 
 
-@DeveloperAPI
 def torch_available():
     return _TORCH_AVAILABLE
 
 
-@DeveloperAPI
 class Backend(object):
     """A class to represent different backends."""
 
@@ -50,39 +45,27 @@ class Backend(object):
         return backend
 
 
-class _CollectiveOp(Enum):
-    pass
-
-
-@PublicAPI
-class ReduceOp(_CollectiveOp):
+class ReduceOp(Enum):
     SUM = 0
     PRODUCT = 1
-    MAX = 2
-    MIN = 3
-    AVG = 4
-
-    def __str__(self):
-        return f"{self.name.lower()}"
+    MIN = 2
+    MAX = 3
 
 
 unset_timeout_ms = timedelta(milliseconds=-1)
 
 
-@PublicAPI
 @dataclass
 class AllReduceOptions:
     reduceOp = ReduceOp.SUM
     timeout_ms = unset_timeout_ms
 
 
-@PublicAPI
 @dataclass
 class BarrierOptions:
     timeout_ms = unset_timeout_ms
 
 
-@PublicAPI
 @dataclass
 class ReduceOptions:
     reduceOp = ReduceOp.SUM
@@ -91,7 +74,6 @@ class ReduceOptions:
     timeout_ms = unset_timeout_ms
 
 
-@PublicAPI
 @dataclass
 class AllGatherOptions:
     timeout_ms = unset_timeout_ms
@@ -104,7 +86,6 @@ class AllGatherOptions:
 #     timeout = unset_timeout
 
 
-@PublicAPI
 @dataclass
 class BroadcastOptions:
     root_rank = 0
@@ -112,14 +93,12 @@ class BroadcastOptions:
     timeout_ms = unset_timeout_ms
 
 
-@PublicAPI
 @dataclass
 class ReduceScatterOptions:
     reduceOp = ReduceOp.SUM
     timeout_ms = unset_timeout_ms
 
 
-@PublicAPI
 @dataclass
 class SendOptions:
     dst_rank = 0
@@ -128,7 +107,6 @@ class SendOptions:
     timeout_ms = unset_timeout_ms
 
 
-@PublicAPI
 @dataclass
 class RecvOptions:
     src_rank = 0
