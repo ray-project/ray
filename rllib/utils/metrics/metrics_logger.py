@@ -106,9 +106,6 @@ class MetricsLogger:
         self.stats = {}
         self._tensor_mode = False
         self._tensor_keys = set()
-        # Dict mapping (possibly nested) keys in `self.stats` to their respective
-        # lifetime counts (if applicable).
-        self._lifetime_key_mappings = {}
 
     def __contains__(self, key: Union[str, Tuple[str, ...]]) -> bool:
         """Returns True, if `key` can be found in self.stats.
@@ -180,6 +177,21 @@ class MetricsLogger:
         Raises:
             KeyError: If `key` cannot be found AND `default` is not provided.
         """
+        ## TODO (sven, Oct 2024): Remove this after a few releases.
+        #if (
+        #    key in [
+        #        "num_env_steps_sampled_lifetime", "num_env_steps_trained_lifetime"
+        #    ]
+        #    and not self._key_in_stats(key)
+        #):
+        #    raise ValueError(
+        #        f"Global key={key} has been deprecated! When inside an Algorithm's "
+        #        "`training_step()` method, use instead: "
+        #        "`self.metrics.peek(('env_runners', 'num_env_steps_sampled_lifetime'))`"
+        #        "OR `self.metrics.peek(('learners', 'num_env_steps_trained_lifetime'))`"
+        #        "."
+        #    )
+
         # Use default value, b/c `key` cannot be found in our stats.
         if not self._key_in_stats(key) and default is not None:
             return default
@@ -214,7 +226,6 @@ class MetricsLogger:
         window: Optional[Union[int, float]] = None,
         ema_coeff: Optional[float] = None,
         clear_on_reduce: bool = False,
-        lifetime_key: Optional[Union[str, Tuple[str, ...]]] = None,
     ) -> None:
         """Logs a new value under a (possibly nested) key to the logger.
 
@@ -310,14 +321,6 @@ class MetricsLogger:
                 `self.reduce()` is called. Setting this to True is useful for cases,
                 in which the internal values list would otherwise grow indefinitely,
                 for example if reduce is None and there is no `window` provided.
-            lifetime_key: If not None, a key (or nested key-tuple) to sum up lifetime
-                stats for this value. `reduce` must be "sum" and `clear_on_reduce` must
-                be True in this case.
-                The given lifetime key is created automatically if it doesn't exist,
-                with the settings: reduce=sum, clear_on_reduce=False. Its Stats object
-                contains the overall sum (over the lifetime). Lifetime stats are NOT
-                returned upon a `self.reduce()` call and are added up across the
-                provided dicts in a `self.merge_and_log_n_dicts()` call.
         """
         # No reduction (continue appending to list) AND no window.
         # -> We'll force-reset our values upon `reduce()`.
@@ -325,19 +328,6 @@ class MetricsLogger:
             clear_on_reduce = True
 
         self._check_tensor(key, value)
-
-        # If `lifetime_key` is provided, log/create the extra Stats instance.
-        if lifetime_key is not None:
-            if reduce != "sum" or clear_on_reduce is False:
-                raise ValueError(
-                    f"When adding a `lifetime_key` ({lifetime_key}) to a logged Stats, "
-                    "this Stats must be logged with the settings `reduce=sum` and "
-                    "`clear_on_reduce=True`!"
-                )
-            self.log_value(
-                lifetime_key, value=value, reduce="sum", clear_on_reduce=False
-            )
-            self._lifetime_key_mappings[key] = lifetime_key
 
         # `key` doesn't exist -> Automativally create it.
         if not self._key_in_stats(key):
@@ -623,15 +613,8 @@ class MetricsLogger:
         if reduce is None and (window is None or window == float("inf")):
             clear_on_reduce = True
 
-        lifetime_keys = set(self._lifetime_key_mappings.values())
-
         for key in all_keys:
             extended_key = prefix_key + key
-
-            # If key is a lifetime key, do NOT perform the merge.
-            if extended_key in lifetime_keys:
-                continue
-
             available_stats = [
                 self._get_key(key, s) for s in stats_dicts if self._key_in_stats(key, s)
             ]
@@ -667,6 +650,18 @@ class MetricsLogger:
             # `key` not in self yet -> Store merged stats under the new key.
             if not self._key_in_stats(extended_key):
                 self._set_key(extended_key, base_stats)
+
+            # Very special case: `base_stats` is a lifetime sum (reduce=sum,
+            # clear_on_reduce=False) -> We only(!) use `base_stats`'s values, not
+            # our own (b/c the sum over `base_stats` already contains older values from
+            # before).
+            elif (
+                base_stats._reduce_method == "sum"
+                and base_stats._window is None
+                and base_stats._clear_on_reduce is False
+            ):
+                self._get_key(extended_key).values = base_stats.values[:]
+
             # `key` already exists in `self` -> Merge `base_stats` into self's entry
             # on time axis, meaning give the incoming values priority over already
             # existing ones.
@@ -993,7 +988,6 @@ class MetricsLogger:
         """
         self.stats = {}
         self._tensor_keys = set()
-        self._lifetime_key_mappings = {}
 
     def delete(self, *key: Tuple[str, ...], key_error: bool = True) -> None:
         """Deletes the given `key` from this metrics logger's stats.
@@ -1007,8 +1001,6 @@ class MetricsLogger:
             KeyError: If `key` cannot be found in `self` AND `key_error` is True.
         """
         self._del_key(key, key_error)
-        if key in self._lifetime_key_mappings:
-            del self._lifetime_key_mappings[key]
 
     def get_state(self) -> Dict[str, Any]:
         """Returns the current state of `self` as a dict.
@@ -1023,10 +1015,7 @@ class MetricsLogger:
 
         tree.map_structure_with_path(_map, self.stats)
 
-        return {
-            "stats": stats_dict,
-            "_lifetime_key_mappings": self._lifetime_key_mappings,
-        }
+        return {"stats": stats_dict}
 
     def set_state(self, state: Dict[str, Any]) -> None:
         """Sets the state of `self` to the given `state`.
@@ -1036,9 +1025,6 @@ class MetricsLogger:
         """
         for flat_key, stats_state in state["stats"].items():
             self._set_key(flat_key, Stats.from_state(stats_state))
-
-        if "_lifetime_key_mappings" in state:
-            self._lifetime_key_mappings = state["_lifetime_key_mappings"]
 
     def _check_tensor(self, key: Tuple[str], value) -> None:
         # `value` is a tensor -> Log it in our keys set.

@@ -38,13 +38,8 @@ from ray.rllib.utils.metrics import (
     GARBAGE_COLLECTION_TIMER,
     LEARN_ON_BATCH_TIMER,
     LEARNER_RESULTS,
-    NUM_AGENT_STEPS_SAMPLED,
-    NUM_AGENT_STEPS_SAMPLED_LIFETIME,
-    NUM_ENV_STEPS_SAMPLED,
     NUM_ENV_STEPS_SAMPLED_LIFETIME,
     NUM_ENV_STEPS_TRAINED_LIFETIME,
-    NUM_EPISODES,
-    NUM_EPISODES_LIFETIME,
     NUM_GRAD_UPDATES_LIFETIME,
     NUM_SYNCH_WORKER_WEIGHTS,
     SAMPLE_TIMER,
@@ -563,7 +558,10 @@ class DreamerV3(Algorithm):
 
                 # If we have never sampled before (just started the algo and not
                 # recovered from a checkpoint), sample B random actions first.
-                if self.metrics.peek(NUM_ENV_STEPS_SAMPLED_LIFETIME, default=0) == 0:
+                if self.metrics.peek(
+                    (ENV_RUNNER_RESULTS, NUM_ENV_STEPS_SAMPLED_LIFETIME),
+                    default=0,
+                ) == 0:
                     _episodes, _env_runner_results = synchronous_parallel_sample(
                         worker_set=self.env_runner_group,
                         max_agent_steps=(
@@ -580,23 +578,6 @@ class DreamerV3(Algorithm):
                     )
                     self.replay_buffer.add(episodes=_episodes)
                     total_sampled += sum(len(eps) for eps in _episodes)
-
-                # Update lifetime counts (now that we gathered results from all
-                # EnvRunners).
-                self.metrics.log_dict(
-                    {
-                        NUM_AGENT_STEPS_SAMPLED_LIFETIME: self.metrics.peek(
-                            (ENV_RUNNER_RESULTS, NUM_AGENT_STEPS_SAMPLED)
-                        ),
-                        NUM_ENV_STEPS_SAMPLED_LIFETIME: self.metrics.peek(
-                            (ENV_RUNNER_RESULTS, NUM_ENV_STEPS_SAMPLED)
-                        ),
-                        NUM_EPISODES_LIFETIME: self.metrics.peek(
-                            (ENV_RUNNER_RESULTS, NUM_EPISODES)
-                        ),
-                    },
-                    reduce="sum",
-                )
 
         # Summarize environment interaction and buffer data.
         report_sampling_and_replay_buffer(
@@ -646,14 +627,12 @@ class DreamerV3(Algorithm):
                     #  time - send the current globally summed/reduced-timesteps.
                     timesteps={
                         NUM_ENV_STEPS_SAMPLED_LIFETIME: self.metrics.peek(
-                            NUM_ENV_STEPS_SAMPLED_LIFETIME, default=0
+                            (ENV_RUNNER_RESULTS, NUM_ENV_STEPS_SAMPLED_LIFETIME),
+                            default=0,
                         )
                     },
                 )
                 self.metrics.merge_and_log_n_dicts(learner_results, key=LEARNER_RESULTS)
-                self.metrics.log_value(
-                    NUM_ENV_STEPS_TRAINED_LIFETIME, replayed_steps, reduce="sum"
-                )
 
                 sub_iter += 1
                 self.metrics.log_value(NUM_GRAD_UPDATES_LIFETIME, 1, reduce="sum")
@@ -732,8 +711,17 @@ class DreamerV3(Algorithm):
         env steps taken thus far.
         """
         eps = 0.0001
-        return self.metrics.peek(NUM_ENV_STEPS_TRAINED_LIFETIME, default=0) / (
-            (self.metrics.peek(NUM_ENV_STEPS_SAMPLED_LIFETIME, default=eps) or eps)
+        return (
+            self.metrics.peek(NUM_ENV_STEPS_TRAINED_LIFETIME, default=0)
+            / (
+                (
+                    self.metrics.peek(
+                        (ENV_RUNNER_RESULTS, NUM_ENV_STEPS_SAMPLED_LIFETIME),
+                        default=eps,
+                    )
+                    or eps
+                )
+            )
         )
 
     # TODO (sven): Remove this once DreamerV3 is on the new SingleAgentEnvRunner.

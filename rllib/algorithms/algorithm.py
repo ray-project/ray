@@ -540,7 +540,7 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
             # env id.
             timestr = datetime.today().strftime("%Y-%m-%d_%H-%M-%S")
             env_descr_for_dir = re.sub("[/\\\\]", "-", str(env_descr))
-            logdir_prefix = f"{str(self)}_{env_descr_for_dir}_{timestr}"
+            logdir_prefix = f"{type(self).__name__}_{env_descr_for_dir}_{timestr}"
             if not os.path.exists(DEFAULT_STORAGE_PATH):
                 # Possible race condition if dir is created several times on
                 # rollout workers
@@ -826,7 +826,7 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
             self.env_runner_group.sync_env_runner_states(
                 config=self.config,
                 env_steps_sampled=self.metrics.peek(
-                    NUM_ENV_STEPS_SAMPLED_LIFETIME, default=0
+                    (ENV_RUNNER_RESULTS, NUM_ENV_STEPS_SAMPLED_LIFETIME), default=0
                 ),
                 rl_module_state=rl_module_state,
             )
@@ -957,7 +957,8 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
                     self.env_runner_group.sync_env_runner_states(
                         config=self.config,
                         env_steps_sampled=self.metrics.peek(
-                            NUM_ENV_STEPS_SAMPLED_LIFETIME, default=0
+                            (ENV_RUNNER_RESULTS, NUM_ENV_STEPS_SAMPLED_LIFETIME),
+                            default=0,
                         ),
                     )
             # Compile final ResultDict from `train_results` and `eval_results`. Note
@@ -1040,12 +1041,14 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
             if self.config.enable_env_runner_and_connector_v2:
                 # Synchronize EnvToModule and ModuleToEnv connector states and broadcast
                 # new states back to all eval EnvRunners.
-                with self._timers[SYNCH_EVAL_ENV_CONNECTOR_STATES_TIMER]:
+                with self.metrics.log_time(
+                    (TIMERS, SYNCH_EVAL_ENV_CONNECTOR_STATES_TIMER)
+                ):
                     self.eval_env_runner_group.sync_env_runner_states(
                         config=self.evaluation_config,
                         from_worker=self.env_runner_group.local_env_runner,
                         env_steps_sampled=self.metrics.peek(
-                            NUM_ENV_STEPS_SAMPLED_LIFETIME, default=0
+                            (ENV_RUNNER_RESULTS, NUM_ENV_STEPS_SAMPLED_LIFETIME), default=0
                         ),
                     )
             else:
@@ -3242,23 +3245,6 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
                             "one single result dict per training iteration."
                         )
 
-                    # Create lifetime counts for env/agent/module-steps (sampled and
-                    # trained).
-                    self.metrics.log_dict(
-                        {
-                            NUM_AGENT_STEPS_SAMPLED_LIFETIME: self.metrics.peek(
-                                (ENV_RUNNER_RESULTS, NUM_AGENT_STEPS_SAMPLED), default={}
-                            ),
-                            NUM_ENV_STEPS_SAMPLED_LIFETIME: self.metrics.peek(
-                                (ENV_RUNNER_RESULTS, NUM_ENV_STEPS_SAMPLED), default=0
-                            ),
-                            NUM_EPISODES_LIFETIME: self.metrics.peek(
-                                (ENV_RUNNER_RESULTS, NUM_EPISODES), default=0
-                            ),
-                        },
-                        reduce="sum",
-                    )
-
         # Only here, reduce the results into a single result dict.
         return self.metrics.reduce(), train_iter_ctx
 
@@ -3548,7 +3534,16 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
         )
 
     def __repr__(self):
-        return type(self).__name__
+        if self.config.enable_rl_module_and_learner:
+            return (
+                f"{type(self).__name__}("
+                f"env={self.config.env}; env-runners={self.config.num_env_runners}; "
+                f"learners={self.config.num_learners}; "
+                f"multi-agent={self.config.is_multi_agent()}"
+                f")"
+            )
+        else:
+            return type(self).__name__
 
     @property
     def env_runner(self):

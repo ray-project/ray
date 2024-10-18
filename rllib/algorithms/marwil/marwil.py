@@ -19,7 +19,7 @@ from ray.rllib.execution.train_ops import (
     train_one_step,
 )
 from ray.rllib.policy.policy import Policy
-from ray.rllib.utils.annotations import override
+from ray.rllib.utils.annotations import OldAPIStack, override
 from ray.rllib.utils.deprecation import deprecation_warning
 from ray.rllib.utils.metrics import (
     ALL_MODULES,
@@ -27,10 +27,6 @@ from ray.rllib.utils.metrics import (
     LEARNER_UPDATE_TIMER,
     NUM_AGENT_STEPS_SAMPLED,
     NUM_ENV_STEPS_SAMPLED,
-    NUM_ENV_STEPS_TRAINED,
-    NUM_ENV_STEPS_TRAINED_LIFETIME,
-    NUM_MODULE_STEPS_TRAINED,
-    NUM_MODULE_STEPS_TRAINED_LIFETIME,
     OFFLINE_SAMPLING_TIMER,
     SAMPLE_TIMER,
     SYNCH_WORKER_WEIGHTS_TIMER,
@@ -429,12 +425,6 @@ class MARWIL(Algorithm):
 
     @override(Algorithm)
     def training_step(self) -> None:
-        if self.config.enable_env_runner_and_connector_v2:
-            return self._training_step_new_api_stack()
-        else:
-            return self._training_step_old_api_stack()
-
-    def _training_step_new_api_stack(self):
         """Implements training logic for the new stack
 
         Note, this includes so far training with the `OfflineData`
@@ -442,7 +432,10 @@ class MARWIL(Algorithm):
         `EnvRunner`s. Note further, evaluation on the dataset itself
         using estimators is not implemented, yet.
         """
-        # Implement logic using RLModule and Learner API.
+        # Old API stack (Policy, RolloutWorker, Connector).
+        if not self.config.enable_env_runner_and_connector_v2:
+            return self._training_step_old_api_stack()
+
         # TODO (simon): Take care of sampler metrics: right
         #  now all rewards are `nan`, which possibly confuses
         #  the user that sth. is not right, although it is as
@@ -467,22 +460,7 @@ class MARWIL(Algorithm):
 
             # Log training results.
             self.metrics.merge_and_log_n_dicts(learner_results, key=LEARNER_RESULTS)
-            self.metrics.log_value(
-                NUM_ENV_STEPS_TRAINED_LIFETIME,
-                self.metrics.peek(
-                    (LEARNER_RESULTS, ALL_MODULES, NUM_ENV_STEPS_TRAINED)
-                ),
-                reduce="sum",
-            )
-            self.metrics.log_dict(
-                {
-                    (LEARNER_RESULTS, mid, NUM_MODULE_STEPS_TRAINED_LIFETIME): (
-                        stats[NUM_MODULE_STEPS_TRAINED]
-                    )
-                    for mid, stats in self.metrics.peek(LEARNER_RESULTS).items()
-                },
-                reduce="sum",
-            )
+
         # Synchronize weights.
         # As the results contain for each policy the loss and in addition the
         # total loss over all policies is returned, this total loss has to be
@@ -499,6 +477,7 @@ class MARWIL(Algorithm):
                 inference_only=True,
             )
 
+    @OldAPIStack
     def _training_step_old_api_stack(self) -> ResultDict:
         """Implements training step for the old stack.
 

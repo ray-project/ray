@@ -291,12 +291,14 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
 
                 # RLModule forward pass: Explore or not.
                 if explore:
-                    env_steps_lifetime = (
+                    # Global env steps sampled are (roughly) this EnvRunner's lifetime
+                    # count times the number of env runners in the algo.
+                    global_env_steps_lifetime = (
                         self.metrics.peek(NUM_ENV_STEPS_SAMPLED_LIFETIME, default=0)
                         + ts
-                    )
+                    ) * (self.config.num_env_runners or 1)
                     to_env = self.module.forward_exploration(
-                        to_module, t=env_steps_lifetime
+                        to_module, t=global_env_steps_lifetime
                     )
                 else:
                     to_env = self.module.forward_inference(to_module)
@@ -494,12 +496,14 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
 
                 # RLModule forward pass: Explore or not.
                 if explore:
-                    env_steps_lifetime = (
+                    # Global env steps sampled are (roughly) this EnvRunner's lifetime
+                    # count times the number of env runners in the algo.
+                    global_env_steps_lifetime = (
                         self.metrics.peek(NUM_ENV_STEPS_SAMPLED_LIFETIME, default=0)
                         + ts
-                    )
+                    ) * (self.config.num_env_runners or 1)
                     to_env = self.module.forward_exploration(
-                        to_module, t=env_steps_lifetime
+                        to_module, t=global_env_steps_lifetime
                     )
                 else:
                     to_env = self.module.forward_inference(to_module)
@@ -727,6 +731,7 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
                 key=NUM_ENV_STEPS_SAMPLED_LIFETIME,
                 value=state[NUM_ENV_STEPS_SAMPLED_LIFETIME],
                 reduce="sum",
+                clear_on_reduce=False,  # lifetime
             )
 
     @override(Checkpointable)
@@ -881,17 +886,17 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
             clear_on_reduce=True,
         )
         # Lifetime stats.
-        #self.metrics.log_value(NUM_ENV_STEPS_SAMPLED_LIFETIME, num_steps, reduce="sum")
-        #self.metrics.log_value(
-        #    (NUM_AGENT_STEPS_SAMPLED_LIFETIME, DEFAULT_AGENT_ID),
-        #    num_steps,
-        #    reduce="sum",
-        #)
-        #self.metrics.log_value(
-        #    (NUM_MODULE_STEPS_SAMPLED_LIFETIME, DEFAULT_MODULE_ID),
-        #    num_steps,
-        #    reduce="sum",
-        #)
+        self.metrics.log_value(NUM_ENV_STEPS_SAMPLED_LIFETIME, num_steps, reduce="sum")
+        self.metrics.log_value(
+            (NUM_AGENT_STEPS_SAMPLED_LIFETIME, DEFAULT_AGENT_ID),
+            num_steps,
+            reduce="sum",
+        )
+        self.metrics.log_value(
+            (NUM_MODULE_STEPS_SAMPLED_LIFETIME, DEFAULT_MODULE_ID),
+            num_steps,
+            reduce="sum",
+        )
         return num_steps
 
     def _log_episode_metrics(self, length, ret, sec):

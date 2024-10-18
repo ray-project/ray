@@ -606,10 +606,8 @@ class SAC(DQN):
         Returns:
             The results dict from executing the training iteration.
         """
-        # New API stack (RLModule, Learner, EnvRunner, ConnectorV2).
-        if self.config.enable_env_runner_and_connector_v2:
-            return self._training_step_new_api_stack(with_noise_reset=False)
-        # Old API stack (Policy, RolloutWorker, Connector, maybe RLModule,
-        # maybe Learner).
-        else:
+        # Old API stack (Policy, RolloutWorker, Connector).
+        if not self.config.enable_env_runner_and_connector_v2:
             return self._training_step_old_api_stack()
+
+        return self._training_step_new_api_stack(with_noise_reset=False)

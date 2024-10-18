@@ -24,7 +24,7 @@ from ray.rllib.execution.train_ops import (
     multi_gpu_train_one_step,
 )
 from ray.rllib.policy.policy import Policy
-from ray.rllib.utils.annotations import override
+from ray.rllib.utils.annotations import OldAPIStack, override
 from ray.rllib.utils.deprecation import DEPRECATED_VALUE
 from ray.rllib.utils.metrics import (
     ENV_RUNNER_RESULTS,
@@ -32,13 +32,9 @@ from ray.rllib.utils.metrics import (
     LEARNER_RESULTS,
     LEARNER_UPDATE_TIMER,
     NUM_AGENT_STEPS_SAMPLED,
-    NUM_AGENT_STEPS_SAMPLED_LIFETIME,
     NUM_ENV_STEPS_SAMPLED,
     NUM_ENV_STEPS_SAMPLED_LIFETIME,
-    NUM_ENV_STEPS_TRAINED,
-    NUM_ENV_STEPS_TRAINED_LIFETIME,
     NUM_EPISODES,
-    NUM_EPISODES_LIFETIME,
     SYNCH_WORKER_WEIGHTS_TIMER,
     SAMPLE_TIMER,
     TIMERS,
@@ -401,15 +397,10 @@ class PPO(Algorithm):
 
     @override(Algorithm)
     def training_step(self) -> None:
-        # New API stack (RLModule, Learner, EnvRunner, ConnectorV2).
-        if self.config.enable_env_runner_and_connector_v2:
-            return self._training_step_new_api_stack()
-        # Old API stack (Policy, RolloutWorker, Connector, maybe RLModule,
-        # maybe Learner).
-        else:
+        # Old API stack (Policy, RolloutWorker, Connector).
+        if not self.config.enable_env_runner_and_connector_v2:
             return self._training_step_old_api_stack()
 
-    def _training_step_new_api_stack(self):
         # Collect batches from sample workers until we have a full batch.
         with self.metrics.log_time((TIMERS, ENV_RUNNER_SAMPLING_TIMER)):
             # Sample in parallel from the workers.
@@ -441,21 +432,6 @@ class PPO(Algorithm):
             self.metrics.merge_and_log_n_dicts(
                 env_runner_results, key=ENV_RUNNER_RESULTS
             )
-            # Log lifetime counts for env- and agent steps.
-            self.metrics.log_dict(
-                {
-                    NUM_AGENT_STEPS_SAMPLED_LIFETIME: self.metrics.peek(
-                        (ENV_RUNNER_RESULTS, NUM_AGENT_STEPS_SAMPLED)
-                    ),
-                    NUM_ENV_STEPS_SAMPLED_LIFETIME: self.metrics.peek(
-                        (ENV_RUNNER_RESULTS, NUM_ENV_STEPS_SAMPLED)
-                    ),
-                    NUM_EPISODES_LIFETIME: self.metrics.peek(
-                        (ENV_RUNNER_RESULTS, NUM_EPISODES)
-                    ),
-                },
-                reduce="sum",
-            )
 
         # Perform a learner update step on the collected episodes.
         with self.metrics.log_time((TIMERS, LEARNER_UPDATE_TIMER)):
@@ -463,7 +439,7 @@ class PPO(Algorithm):
                 episodes=episodes,
                 timesteps={
                     NUM_ENV_STEPS_SAMPLED_LIFETIME: (
-                        self.metrics.peek(NUM_ENV_STEPS_SAMPLED_LIFETIME)
+                        self.metrics.peek((ENV_RUNNER_RESULTS, NUM_ENV_STEPS_SAMPLED_LIFETIME))
                     ),
                 },
                 num_epochs=self.config.num_epochs,
@@ -471,17 +447,17 @@ class PPO(Algorithm):
                 shuffle_batch_per_epoch=self.config.shuffle_batch_per_epoch,
             )
             self.metrics.merge_and_log_n_dicts(learner_results, key=LEARNER_RESULTS)
-            self.metrics.log_dict(
-                {
-                    NUM_ENV_STEPS_TRAINED_LIFETIME: self.metrics.peek(
-                        (LEARNER_RESULTS, ALL_MODULES, NUM_ENV_STEPS_TRAINED)
-                    ),
-                    # NUM_MODULE_STEPS_TRAINED_LIFETIME: self.metrics.peek(
-                    #    (LEARNER_RESULTS, NUM_MODULE_STEPS_TRAINED)
-                    # ),
-                },
-                reduce="sum",
-            )
+            #self.metrics.log_dict(
+            #    {
+            #        NUM_ENV_STEPS_TRAINED_LIFETIME: self.metrics.peek(
+            #            (LEARNER_RESULTS, ALL_MODULES, NUM_ENV_STEPS_TRAINED)
+            #        ),
+            #        # NUM_MODULE_STEPS_TRAINED_LIFETIME: self.metrics.peek(
+            #        #    (LEARNER_RESULTS, NUM_MODULE_STEPS_TRAINED)
+            #        # ),
+            #    },
+            #    reduce="sum",
+            #)
 
         # Update weights - after learning on the local worker - on all remote
         # workers.
@@ -495,17 +471,14 @@ class PPO(Algorithm):
             #  as it might be a very large set (100s of Modules) vs a smaller Modules
             #  set that's present in the current train batch.
             modules_to_update = set(learner_results[0].keys()) - {ALL_MODULES}
-            # if self.env_runner_group.num_remote_workers() > 0:
             self.env_runner_group.sync_weights(
                 # Sync weights from learner_group to all EnvRunners.
                 from_worker_or_learner_group=self.learner_group,
                 policies=modules_to_update,
                 inference_only=True,
             )
-            # else:
-            #    weights = self.learner_group.get_weights(inference_only=True)
-            #    self.env_runner.set_weights(weights)
 
+    @OldAPIStack
     def _training_step_old_api_stack(self) -> ResultDict:
         # Collect batches from sample workers until we have a full batch.
         with self._timers[SAMPLE_TIMER]:
