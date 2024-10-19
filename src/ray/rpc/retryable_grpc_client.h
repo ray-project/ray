@@ -275,8 +275,9 @@ class RetryableGrpcClient : public std::enable_shared_from_this<RetryableGrpcCli
       if (!server_is_unavailable_) {
         server_is_unavailable_ = true;
       } else {
-        uint64_t server_unavailable_duration_seconds = static_cast<uint64_t>(std::max(
-            absl::ToInt64Seconds(absl::Now() - server_last_available_time_), 0ll));
+        uint64_t server_unavailable_duration_seconds = static_cast<uint64_t>(
+            std::max(absl::ToInt64Seconds(absl::Now() - server_last_available_time_),
+                     static_cast<int64_t>(0)));
         if (server_unavailable_duration_seconds >= server_unavailable_timeout_seconds_) {
           RAY_LOG(WARNING) << server_name_ << " has been unavailable for "
                            << server_unavailable_duration_seconds << " seconds";
