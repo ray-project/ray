@@ -2,9 +2,7 @@
 
 # Use Kubectl Plugin (Alpha Feature)
 
-Today it is incredibly challenging for data scientists and AI researchers unfamiliar with Kubernetes to start using Ray on Kubernetes. However, running Ray on Kubernetes is advantageous or necessary in certain environments.
-
-Therefore, starting from KubeRay v1.2.2, we have introduced a `kubectl ray` plugin to simplify the process of running Ray on Kubernetes. The plugin is designed to help users who are not familiar with Kubernetes to run Ray on Kubernetes with ease.
+Starting from KubeRay v1.2.2, we have introduced a `kubectl ray` plugin to simplify common workflows when deploying Ray on Kubernetes. The plugin is designed to help users who are not familiar with Kubernetes to run Ray on Kubernetes with ease.
 
 ## Installation
 
