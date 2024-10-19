@@ -4,7 +4,7 @@ import os
 import socket
 import sys
 import time
-from typing import FrozenSet, List, Optional, Set, Tuple
+from typing import List, Optional, Tuple
 
 import pytest
 import ray
@@ -14,7 +14,6 @@ import torch
 from ray.air._internal import torch_utils
 from ray.dag import InputNode, MultiOutputNode
 from ray.exceptions import RayChannelError
-from ray.experimental.channel import ChannelContext
 from ray.experimental.channel.gpu_communicator import (
     GPUCommunicator,
     TorchTensorAllocator,
