@@ -189,16 +189,13 @@ def _add_edge(from_node: _DAGOperationGraphNode, to_node: _DAGOperationGraphNode
     to_node.in_edges.add((from_node.task_idx, from_node.operation.type))
 
 
-def _update_candidate_nodes(
+def _push_candidate_node_if_ready(
     actor_to_candidates: Dict["ray._raylet.ActorID", List[_DAGOperationGraphNode]],
     graph: Dict[int, Dict[_DAGNodeOperationType, _DAGOperationGraphNode]],
     node: _DAGOperationGraphNode,
 ) -> None:
-    # There is only one NCCL collective node in the collective operation that
-    # is added to the candidates. The collective operation is ready when all
-    # the nodes have zero in-degrees. Except for the last node, all the other
-    # nodes are not ready yet. When the last node is selected, all the nodes
-    # in the collective operation are returned.
+    # Collective operations are ready when all the collective nodes have zero
+    # in-degrees. Only one node per collective will be added as ready.
     if node.is_nccl_collective:
         for collective_node_metadata in node.collective_idxs:
             task_idx, op_type = collective_node_metadata
@@ -431,7 +428,7 @@ def _generate_actor_to_execution_schedule(
             # have been satisfied, including both data and control dependencies.
             # Therefore, it is a candidate for execution.
             if node.in_degree == 0:
-                _update_candidate_nodes(actor_to_candidates, graph, node)
+                _push_candidate_node_if_ready(actor_to_candidates, graph, node)
 
     visited_nodes = set()
 
@@ -464,7 +461,7 @@ def _generate_actor_to_execution_schedule(
                     # If the downstream node is already visited, it has been added
                     # to the execution schedule. They are the NCCL read nodes in
                     # case 2.
-                    _update_candidate_nodes(actor_to_candidates, graph, out_node)
+                    _push_candidate_node_if_ready(actor_to_candidates, graph, out_node)
     assert len(visited_nodes) == len(graph) * 3, "Expected all nodes to be visited"
     for node in visited_nodes:
         assert node.is_ready, f"Expected {node} to be ready"
