@@ -625,7 +625,9 @@ class IMPALA(Algorithm):
             ) = self._sample_and_get_connector_states()
             # Reduce EnvRunner metrics over the n EnvRunners.
             self.metrics.merge_and_log_n_dicts(
-                env_runner_metrics, key=ENV_RUNNER_RESULTS
+                env_runner_metrics,
+                key=ENV_RUNNER_RESULTS,
+                max_n=self.config.num_env_runners,
             )
 
             # Log the average number of sample results (list of episodes) received.

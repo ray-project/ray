@@ -438,9 +438,6 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
         # Continue collecting into the cut Episode chunks.
         self._episodes = ongoing_episodes_continuations
 
-        TODO: fix env steps trained lifetime counts
-        TODO: fix APPO (weird lifetime and non-lifetime env_steps_sampled counts)
-
         self._increase_sampled_metrics(ts, len(done_episodes_to_return))
 
         # Return collected episode data.

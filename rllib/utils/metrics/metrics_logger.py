@@ -457,6 +457,7 @@ class MetricsLogger:
         stats_dicts: List[Dict[str, Any]],
         *,
         key: Optional[Union[str, Tuple[str, ...]]] = None,
+        max_n: Optional[int] = None,
         # TODO (sven): Maybe remove these args. They don't seem to make sense in this
         #  method. If we do so, values in the dicts must be Stats instances, though.
         reduce: Optional[str] = "mean",
@@ -651,7 +652,7 @@ class MetricsLogger:
             if not self._key_in_stats(extended_key):
                 self._set_key(extended_key, base_stats)
 
-            # Very special case: `base_stats` is a lifetime sum (reduce=sum,
+            # Special case: `base_stats` is a lifetime sum (reduce=sum,
             # clear_on_reduce=False) -> We only(!) use `base_stats`'s values, not
             # our own (b/c the sum over `base_stats` already contains older values from
             # before).
@@ -660,8 +661,15 @@ class MetricsLogger:
                 and base_stats._window is None
                 and base_stats._clear_on_reduce is False
             ):
-                self._get_key(extended_key).values = base_stats.values[:]
-
+                if max_n is None:
+                    self._get_key(extended_key).values = base_stats.values[:]
+                else:
+                    lifetime_sum = self.peek(extended_key)
+                    lifetime_sum_per_unit = lifetime_sum / max_n
+                    self._get_key(extended_key).values = (
+                        [lifetime_sum_per_unit for _ in range(max_n - len(base_stats))]
+                        + base_stats.values
+                    )
             # `key` already exists in `self` -> Merge `base_stats` into self's entry
             # on time axis, meaning give the incoming values priority over already
             # existing ones.

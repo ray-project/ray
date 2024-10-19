@@ -447,17 +447,6 @@ class PPO(Algorithm):
                 shuffle_batch_per_epoch=self.config.shuffle_batch_per_epoch,
             )
             self.metrics.merge_and_log_n_dicts(learner_results, key=LEARNER_RESULTS)
-            #self.metrics.log_dict(
-            #    {
-            #        NUM_ENV_STEPS_TRAINED_LIFETIME: self.metrics.peek(
-            #            (LEARNER_RESULTS, ALL_MODULES, NUM_ENV_STEPS_TRAINED)
-            #        ),
-            #        # NUM_MODULE_STEPS_TRAINED_LIFETIME: self.metrics.peek(
-            #        #    (LEARNER_RESULTS, NUM_MODULE_STEPS_TRAINED)
-            #        # ),
-            #    },
-            #    reduce="sum",
-            #)
 
         # Update weights - after learning on the local worker - on all remote
         # workers.

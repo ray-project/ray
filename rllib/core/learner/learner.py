@@ -52,7 +52,9 @@ from ray.rllib.utils.metrics import (
     ALL_MODULES,
     NUM_ENV_STEPS_SAMPLED_LIFETIME,
     NUM_ENV_STEPS_TRAINED,
+    NUM_ENV_STEPS_TRAINED_LIFETIME,
     NUM_MODULE_STEPS_TRAINED,
+    NUM_MODULE_STEPS_TRAINED_LIFETIME,
     LEARNER_CONNECTOR_TIMER,
     MODULE_TRAIN_BATCH_SIZE_MEAN,
 )
@@ -1641,8 +1643,6 @@ class Learner(Checkpointable):
 
     def _log_steps_trained_metrics(self, batch: MultiAgentBatch):
         """Logs this iteration's steps trained, based on given `batch`."""
-
-        log_dict = defaultdict(dict)
         for mid, module_batch in batch.policy_batches.items():
             module_batch_size = len(module_batch)
             # Log average batch size (for each module).
@@ -1651,17 +1651,29 @@ class Learner(Checkpointable):
                 value=module_batch_size,
             )
             # Log module steps (for each module).
-            if NUM_MODULE_STEPS_TRAINED not in log_dict[mid]:
-                log_dict[mid][NUM_MODULE_STEPS_TRAINED] = module_batch_size
-            else:
-                log_dict[mid][NUM_MODULE_STEPS_TRAINED] += module_batch_size
-
+            self.metrics.log_value(
+                key=(mid, NUM_MODULE_STEPS_TRAINED),
+                value=module_batch_size,
+                reduce="sum",
+                clear_on_reduce=True,
+            )
+            self.metrics.log_value(
+                key=(mid, NUM_MODULE_STEPS_TRAINED_LIFETIME),
+                value=module_batch_size,
+                reduce="sum",
+            )
             # Log module steps (sum of all modules).
-            if NUM_MODULE_STEPS_TRAINED not in log_dict[ALL_MODULES]:
-                log_dict[ALL_MODULES][NUM_MODULE_STEPS_TRAINED] = module_batch_size
-            else:
-                log_dict[ALL_MODULES][NUM_MODULE_STEPS_TRAINED] += module_batch_size
-
+            self.metrics.log_value(
+                key=(ALL_MODULES, NUM_MODULE_STEPS_TRAINED),
+                value=module_batch_size,
+                reduce="sum",
+                clear_on_reduce=True,
+            )
+            self.metrics.log_value(
+                key=(ALL_MODULES, NUM_MODULE_STEPS_TRAINED_LIFETIME),
+                value=module_batch_size,
+                reduce="sum",
+            )
         # Log env steps (all modules).
         self.metrics.log_value(
             (ALL_MODULES, NUM_ENV_STEPS_TRAINED),
@@ -1669,8 +1681,11 @@ class Learner(Checkpointable):
             reduce="sum",
             clear_on_reduce=True,
         )
-        # Log per-module steps trained (plus all modules) and per-agent steps trained.
-        self.metrics.log_dict(dict(log_dict), reduce="sum", clear_on_reduce=True)
+        self.metrics.log_value(
+            (ALL_MODULES, NUM_ENV_STEPS_TRAINED_LIFETIME),
+            batch.env_steps(),
+            reduce="sum",
+        )
 
     @Deprecated(
         new="Learner.before_gradient_based_update("
