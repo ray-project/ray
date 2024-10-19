@@ -56,7 +56,7 @@ def test_ray_datasetlike_mini_stress_test(
         )
         m.setenv(
             "RAY_testing_rpc_failure",
-            "ray::rpc::CoreWorkerService.grpc_client.ReportGeneratorItemReturns=5",
+            "CoreWorkerService.grpc_client.ReportGeneratorItemReturns=5",
         )
         cluster = ray_start_cluster
         cluster.add_node(
