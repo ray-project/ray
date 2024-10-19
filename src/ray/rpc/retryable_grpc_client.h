@@ -89,6 +89,8 @@ class Executor {
  * If a call's timeout_ms reaches during retry, its callback is called with
  * Status::TimedOut. If the whole client does not reconnect within
  * server_unavailable_timeout_seconds, server_unavailable_timeout_callback is invoked.
+ * When all callers of the client release the shared_ptr of the client, the client
+ * destructor is called and the client is shut down.
  */
 class RetryableGrpcClient : public std::enable_shared_from_this<RetryableGrpcClient> {
  public:
@@ -204,6 +206,7 @@ class RetryableGrpcClient : public std::enable_shared_from_this<RetryableGrpcCli
     }
   }
 
+  // Return the number of pending requests waiting for retry.
   size_t NumPendingRequests() { return pending_requests_.size(); }
 
   ~RetryableGrpcClient() { Shutdown(); }

@@ -76,6 +76,8 @@ class CoreWorkerClientInterface : public pubsub::SubscriberClientInterface {
     return empty_addr_;
   }
 
+  /// Returns true if the grpc channel is idle and there are no pending requests
+  /// after at least one RPC call is made.
   virtual bool IsIdleAfterRPCs() const { return false; }
 
   /// Push an actor task directly from worker to worker.
