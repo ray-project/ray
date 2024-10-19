@@ -354,7 +354,7 @@ def test_large_args_scheduling_strategy(
         f"Dataset throughput:\n"
         f"    * Ray Data throughput: N rows/s\n"
         f"    * Estimated single node throughput: N rows/s\n"
-        f"{gen_runtime_metrics_str(['ReadRange','MapBatches(dummy_map_batches)'], verbose_stats_logs)}"  # noqa: E501
+        f"{gen_runtime_metrics_str(['ReadRange', 'MapBatches(dummy_map_batches)'], verbose_stats_logs)}"  # noqa: E501
     )
     assert canonicalize(stats) == expected_stats
 
@@ -421,7 +421,7 @@ def test_dataset_stats_basic(
                 f"Dataset throughput:\n"
                 f"    * Ray Data throughput: N rows/s\n"
                 f"    * Estimated single node throughput: N rows/s\n"
-                f"{gen_runtime_metrics_str(['ReadRange->MapBatches(dummy_map_batches)','Map(dummy_map_batches)'], verbose_stats_logs)}"  # noqa: E501
+                f"{gen_runtime_metrics_str(['ReadRange->MapBatches(dummy_map_batches)', 'Map(dummy_map_batches)'], verbose_stats_logs)}"  # noqa: E501
             )
 
     for batch in ds.iter_batches():
@@ -473,7 +473,7 @@ def test_dataset_stats_basic(
         f"Dataset throughput:\n"
         f"    * Ray Data throughput: N rows/s\n"
         f"    * Estimated single node throughput: N rows/s\n"
-        f"{gen_runtime_metrics_str(['ReadRange->MapBatches(dummy_map_batches)','Map(dummy_map_batches)'], verbose_stats_logs)}"  # noqa: E501
+        f"{gen_runtime_metrics_str(['ReadRange->MapBatches(dummy_map_batches)', 'Map(dummy_map_batches)'], verbose_stats_logs)}"  # noqa: E501
     )
 
 
