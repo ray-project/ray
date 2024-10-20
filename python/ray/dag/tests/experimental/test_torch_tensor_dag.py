@@ -1085,7 +1085,7 @@ def test_torch_tensor_nccl_all_reduce_custom_comm(ray_start_regular):
         )
         result = ray.get(ref)
         reduced_val = sum(i + idx + 1 for idx in range(num_workers))
-        # The custom communicator adds 1 to the tensor after reducing.
+        # The custom communicator adds 1 to the tensor after the all-reduce.
         reduced_val += 1
         assert result == [(reduced_val, shape, dtype) for _ in workers]
 

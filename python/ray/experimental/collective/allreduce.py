@@ -10,6 +10,10 @@ from ray.dag.constants import (
 )
 from ray.experimental.channel.torch_tensor_type import GPUCommunicator, TorchTensorType
 from ray.experimental.util.types import ReduceOp
+from ray.util.collective.types import ReduceOp as RayReduceOp
+
+# TODO(wxdeng): Unify `ReduceOp` and `RayReduceOp`. Directly importing `RayReduceOp`
+# has dependency issues for some tests.
 
 logger = logging.getLogger(__name__)
 
@@ -78,25 +82,11 @@ class AllReduceWrapper:
         self,
         tensor,
         group_name: str = "default",
-        op: ReduceOp = ReduceOp.SUM,
+        op: RayReduceOp = RayReduceOp.SUM,
     ):
         from ray.util.collective.collective import allreduce
-        from ray.util.collective.types import ReduceOp as RayReduceOp
 
-        def get_ray_reduce_op(op: ReduceOp) -> RayReduceOp:
-            if op == ReduceOp.SUM:
-                return RayReduceOp.SUM
-            elif op == ReduceOp.PRODUCT:
-                return RayReduceOp.PRODUCT
-            elif op == ReduceOp.MIN:
-                return RayReduceOp.MIN
-            elif op == ReduceOp.MAX:
-                return RayReduceOp.MAX
-            else:
-                raise ValueError(f"Unsupported reduce operation: {op}")
-
-        ray_op = get_ray_reduce_op(op)
-        return allreduce(tensor, group_name, ray_op)
+        return allreduce(tensor, group_name, op)
 
 
 allreduce = AllReduceWrapper()
