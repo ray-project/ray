@@ -153,6 +153,7 @@ class MockNcclGroupSet:
             ctx.nccl_groups[group_id] = custom_nccl_group
         else:
             ctx.nccl_groups[group_id] = AbstractNcclGroup(actors)
+
         return group_id
 
     def mock_destroy_nccl_group(self, group_id: str) -> None:
