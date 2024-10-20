@@ -361,7 +361,9 @@ def test_comm_deduplicate_all_reduces(ray_start_regular, monkeypatch):
     check_nccl_group_teardown(monkeypatch, compiled_dag, mock_nccl_group_set)
 
 
-@pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 4}], indirect=True)
+@pytest.mark.parametrize(
+    "ray_start_regular", [{"num_cpus": 4, "num_gpus": 4}], indirect=True
+)
 def test_comm_deduplicate_p2p_and_collective(ray_start_regular, monkeypatch):
     """
     Test communicators are deduplicated when the collective and the P2P are on
@@ -413,7 +415,9 @@ def test_comm_deduplicate_p2p_and_collective(ray_start_regular, monkeypatch):
     check_nccl_group_teardown(monkeypatch, compiled_dag, mock_nccl_group_set)
 
 
-@pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
+@pytest.mark.parametrize(
+    "ray_start_regular", [{"num_cpus": 4, "num_gpus": 4}], indirect=True
+)
 def test_custom_comm_deduplicate(ray_start_regular, monkeypatch):
     """
     Test a custom GPU communicator is reused when possible.
@@ -460,7 +464,9 @@ def test_custom_comm_deduplicate(ray_start_regular, monkeypatch):
     check_nccl_group_teardown(monkeypatch, compiled_dag, mock_nccl_group_set)
 
 
-@pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 4}], indirect=True)
+@pytest.mark.parametrize(
+    "ray_start_regular", [{"num_cpus": 4, "num_gpus": 4}], indirect=True
+)
 def test_custom_comm_init_teardown(ray_start_regular, monkeypatch):
     """
     Test custom NCCL groups are properly initialized and destroyed.
