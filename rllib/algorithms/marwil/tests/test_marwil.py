@@ -4,9 +4,10 @@ import unittest
 
 import ray
 import ray.rllib.algorithms.marwil as marwil
-from ray.rllib.core import DEFAULT_MODULE_ID
+from ray.rllib.core import COMPONENT_RL_MODULE, DEFAULT_MODULE_ID
 from ray.rllib.core.columns import Columns
 from ray.rllib.core.learner.learner import POLICY_LOSS_KEY, VF_LOSS_KEY
+from ray.rllib.env import INPUT_ENV_SPACES
 from ray.rllib.offline.offline_prelearner import OfflinePreLearner
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.test_utils import check
@@ -89,25 +90,20 @@ class TestMARWIL(unittest.TestCase):
                 enable_rl_module_and_learner=True,
                 enable_env_runner_and_connector_v2=True,
             )
-            .environment(env="Pendulum-v1")
-            .env_runners(num_env_runners=1)
-            .training(
-                train_batch_size_per_learner=2000,
-            )
-            .offline_data(
-                # Learn from offline data.
-                input_=[data_path],
-                dataset_num_iters_per_learner=1,
-                input_read_method_kwargs={"override_num_blocks": 2},
-                map_batches_kwargs={"concurrency": 2, "num_cpus": 2},
-                iter_batches_kwargs={"prefetch_batches": 1},
-            )
             # Evaluate on actual environment.
             .evaluation(
                 evaluation_num_env_runners=1,
                 evaluation_interval=3,
                 evaluation_duration=5,
                 evaluation_parallel_to_training=True,
+            )
+            .training(
+                train_batch_size_per_learner=1024,
+            )
+            .offline_data(
+                # Learn from offline data.
+                input_=[data_path],
+                dataset_num_iters_per_learner=1,
             )
         )
 
@@ -148,15 +144,22 @@ class TestMARWIL(unittest.TestCase):
         # Sample a batch from the offline data.
         batch = algo.offline_data.data.take_batch(2000)
 
+        # Get the module state from learners.
+        module_state = algo.learner_group._learner.get_state(
+            components=COMPONENT_RL_MODULE
+        )[COMPONENT_RL_MODULE]
         # Create the prelearner and compute advantages and values.
-        offline_prelearner = OfflinePreLearner(config, algo.learner_group._learner)
+        offline_prelearner = OfflinePreLearner(
+            config,
+            spaces=algo.offline_data.spaces[INPUT_ENV_SPACES],
+            module_spec=algo.offline_data.module_spec,
+            module_state=module_state,
+        )
         # Note, for `ray.data`'s pipeline everything has to be a dictionary
         # therefore the batch is embedded into another dictionary.
         batch = offline_prelearner(batch)["batch"][0]
         if Columns.LOSS_MASK in batch[DEFAULT_MODULE_ID]:
-            loss_mask = (
-                batch[DEFAULT_MODULE_ID][Columns.LOSS_MASK].detach().cpu().numpy()
-            )
+            loss_mask = batch[DEFAULT_MODULE_ID][Columns.LOSS_MASK]
             num_valid = np.sum(loss_mask)
 
             def possibly_masked_mean(data_):
@@ -167,13 +170,16 @@ class TestMARWIL(unittest.TestCase):
 
         # Calculate our own expected values (to then compare against the
         # agent's loss output).
-        module = algo.learner_group._learner.module[DEFAULT_MODULE_ID].unwrapped()
-        fwd_out = module.forward_train(
-            {k: v for k, v in batch[DEFAULT_MODULE_ID].items()}
+        tensor_batch = algo.learner_group._learner._convert_batch_type(batch)
+        tensor_batch = {k: v for k, v in tensor_batch[DEFAULT_MODULE_ID].items()}
+        fwd_out = (
+            algo.learner_group._learner.module[DEFAULT_MODULE_ID]
+            .unwrapped()
+            .forward_train(tensor_batch)
         )
         advantages = (
-            batch[DEFAULT_MODULE_ID][Columns.VALUE_TARGETS].detach().cpu().numpy()
-            - module.compute_values(batch[DEFAULT_MODULE_ID]).detach().cpu().numpy()
+            batch[DEFAULT_MODULE_ID][Columns.VALUE_TARGETS]
+            - fwd_out["vf_preds"].detach().cpu().numpy()
         )
         advantages_squared = possibly_masked_mean(np.square(advantages))
         c_2 = 100.0 + 1e-8 * (advantages_squared - 100.0)
@@ -187,7 +193,7 @@ class TestMARWIL(unittest.TestCase):
         # Note we need the actual model's logits not the ones from the data set
         # stored in `batch[Columns.ACTION_DIST_INPUTS]`.
         action_dist = action_dist_cls.from_logits(fwd_out[Columns.ACTION_DIST_INPUTS])
-        logp = action_dist.logp(batch[DEFAULT_MODULE_ID][Columns.ACTIONS])
+        logp = action_dist.logp(tensor_batch[Columns.ACTIONS])
         logp = logp.detach().cpu().numpy()
 
         # Calculate all expected loss components.
@@ -199,7 +205,7 @@ class TestMARWIL(unittest.TestCase):
         # calculation above).
         total_loss = algo.learner_group._learner.compute_loss_for_module(
             module_id=DEFAULT_MODULE_ID,
-            batch={k: v for k, v in batch[DEFAULT_MODULE_ID].items()},
+            batch=tensor_batch,
             fwd_out=fwd_out,
             config=config,
         )
