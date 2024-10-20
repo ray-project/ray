@@ -22,7 +22,7 @@
 
 #include "absl/cleanup/cleanup.h"
 #include "absl/strings/str_format.h"
-#include "boost/fiber/all.hpp"
+#include "boost/fiber/operations.hpp"
 #include "ray/common/bundle_spec.h"
 #include "ray/common/ray_config.h"
 #include "ray/common/runtime_env_common.h"
@@ -31,10 +31,7 @@
 #include "ray/core_worker/transport/task_receiver.h"
 #include "ray/gcs/gcs_client/gcs_client.h"
 #include "ray/gcs/pb_util.h"
-#include "ray/stats/metric_defs.h"
-#include "ray/stats/stats.h"
 #include "ray/util/event.h"
-#include "ray/util/subreaper.h"
 #include "ray/util/util.h"
 
 namespace ray {
@@ -3552,7 +3549,7 @@ void CoreWorker::HandleDirectActorCallArgWaitComplete(
   // Post on the task execution event loop since this may trigger the
   // execution of a task that is now ready to run.
   task_execution_service_.post(
-      [=] {
+      [this, request = std::move(request)] {
         RAY_LOG(DEBUG) << "Arg wait complete for tag " << request.tag();
         task_argument_waiter_->OnWaitComplete(request.tag());
       },
