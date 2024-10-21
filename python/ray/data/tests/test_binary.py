@@ -8,6 +8,7 @@ import requests
 import snappy
 
 import ray
+from ray.data import Schema
 from ray.data.datasource import (
     BaseFileMetadataProvider,
     FastFileMetadataProvider,
@@ -191,8 +192,7 @@ def test_read_binary_snappy_partitioned_with_filter(
         assert_base_partitioned_ds(
             ds,
             count=2,
-            num_rows=2,
-            schema="{bytes: binary}",
+            schema=Schema(pa.schema([("bytes", pa.binary())])),
             sorted_values=[b"1 a\n1 b\n1 c", b"3 e\n3 f\n3 g"],
             ds_take_transform_fn=lambda t: extract_values("bytes", t),
         )
