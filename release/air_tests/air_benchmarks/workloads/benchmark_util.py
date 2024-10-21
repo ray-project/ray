@@ -58,13 +58,15 @@ def upload_file_to_all_nodes(path: str):
     return ray.get(futures)
 
 
-@ray.remote
+@ray.remote(num_cpus=0)
 def _run_command(cmd: str):
     return subprocess.check_call(cmd)
 
 
-def run_command_on_all_nodes(cmd: List[str]):
-    futures = schedule_remote_fn_on_all_nodes(_run_command, cmd=cmd)
+def run_command_on_all_nodes(cmd: List[str], exclude_head: bool = True):
+    futures = schedule_remote_fn_on_all_nodes(
+        _run_command, cmd=cmd, exclude_head=exclude_head
+    )
     return ray.get(futures)
 
 
