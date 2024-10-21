@@ -54,9 +54,7 @@ def test_tensors_basic(
     tensor_shape = (3, 5)
     ds = ray.data.range_tensor(6, shape=tensor_shape, override_num_blocks=6)
     assert ds.count() == 6
-    assert ds.schema() == Schema(
-        pa.schema([("data", tensor_type((3, 5), pa.int64()))])
-    )
+    assert ds.schema() == Schema(pa.schema([("data", tensor_type((3, 5), pa.int64()))]))
     # The actual size is slightly larger due to metadata.
     # We add 6 (one per tensor) offset values of 8 bytes each to account for the
     # in-memory representation of the PyArrow LargeList type
