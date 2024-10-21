@@ -59,10 +59,6 @@ DEFAULT_CONFIG = {
 # corresponding to keys will be replaced by those corresponding to values.
 RAY_DATA_LOG_HANDLER_JSON_SUBSTITUTIONS = {"file": "file_json"}
 
-# Dictionary of substitutions to be performed when using JSON mode. Handlers with names
-# corresponding to keys will be replaced by those corresponding to values.
-RAY_DATA_LOG_HANDLER_JSON_SUBSTITUTIONS = {"file": "file_json"}
-
 # Env. variable to specify the encoding of the file logs when using the default config.
 RAY_DATA_LOG_ENCODING_ENV_VAR_NAME = "RAY_DATA_LOG_ENCODING"
 
