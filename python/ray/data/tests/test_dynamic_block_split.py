@@ -304,7 +304,6 @@ def test_filter(ray_start_regular_shared, target_max_block_size):
     assert ds._plan.initial_num_blocks() == num_blocks_per_task
 
 
-@pytest.mark.skip("Needs zero-copy optimization for read->map_batches.")
 def test_read_large_data(ray_start_cluster):
     # Test 20G input with single task
     num_blocks_per_task = 20
