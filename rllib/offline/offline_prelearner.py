@@ -17,6 +17,7 @@ from ray.rllib.utils.annotations import (
     OverrideToImplementCustomLogic_CallToSuperRecommended,
 )
 from ray.rllib.utils.compression import unpack_if_needed
+from ray.rllib.utils.replay_buffers.replay_buffer import ReplayBuffer
 from ray.rllib.utils.spaces.space_utils import from_jsonable_if_needed
 from ray.rllib.utils.typing import EpisodeType, ModuleID
 
@@ -290,7 +291,7 @@ class OfflinePreLearner:
         return {"batch": [batch]}
 
     @property
-    def default_prelearner_buffer_class(self):
+    def default_prelearner_buffer_class(self) -> ReplayBuffer:
         """Sets the default replay buffer."""
         from ray.rllib.utils.replay_buffers.episode_replay_buffer import (
             EpisodeReplayBuffer,
@@ -300,7 +301,7 @@ class OfflinePreLearner:
         return EpisodeReplayBuffer
 
     @property
-    def default_prelearner_buffer_kwargs(self):
+    def default_prelearner_buffer_kwargs(self) -> Dict[str, Any]:
         """Sets the default arguments for the replay buffer.
 
         Note, the `capacity` might vary with the size of the episodes or
@@ -324,11 +325,11 @@ class OfflinePreLearner:
             episodes: A list of `SingleAgentEpisode` instances sampled
                 from a dataset.
 
-        Raises:
-            ValueError: If not all episodes are `done`.
-
         Returns:
             A set of `SingleAgentEpisode` instances.
+
+        Raises:
+            ValueError: If not all episodes are `done`.
         """
         # Ensure that episodes are all done.
         if not all(eps.is_done for eps in episodes):
@@ -349,7 +350,7 @@ class OfflinePreLearner:
         }
         return episodes
 
-    def _should_module_be_updated(self, module_id, multi_agent_batch=None):
+    def _should_module_be_updated(self, module_id, multi_agent_batch=None) -> bool:
         """Checks which modules in a MultiRLModule should be updated."""
         if not self._policies_to_train:
             # In case of no update information, the module is updated.
