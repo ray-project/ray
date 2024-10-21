@@ -5337,7 +5337,11 @@ class Schema:
         return arrow_types
 
     def __eq__(self, other):
-        return isinstance(other, Schema) and other.base_schema == self.base_schema
+        return (
+            isinstance(other, Schema)
+            and other.types == self.types
+            and other.names == self.names
+        )
 
     def __repr__(self):
         column_width = max([len(name) for name in self.names] + [len("Column")])
