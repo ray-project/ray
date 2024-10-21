@@ -4,7 +4,6 @@ import numpy as np
 import pandas as pd
 
 from ray.data import Dataset
-from ray.data._internal.aggregate import Max, Min
 from ray.data.preprocessor import Preprocessor
 from ray.util.annotations import PublicAPI
 
@@ -256,18 +255,41 @@ class UniformKBinsDiscretizer(_AbstractKBinsDiscretizer):
     def _fit(self, dataset: Dataset) -> Preprocessor:
         self._validate_on_fit()
         stats = {}
-        aggregates = []
         if isinstance(self.bins, dict):
             columns = self.bins.keys()
         else:
             columns = self.columns
-
         for column in columns:
-            aggregates.extend(
-                self._fit_uniform_covert_bin_to_aggregate_if_needed(column)
+            bins = self.bins[column] if isinstance(self.bins, dict) else self.bins
+            if not isinstance(bins, int):
+                raise TypeError(
+                    f"`bins` must be an integer or a dict of integers, got {bins}"
+                )
+
+        def _compute_stats_batch(batch: pd.DataFrame):
+            return pd.DataFrame(
+                {
+                    col: [batch[col].abs().min(), batch[col].abs().max()]
+                    for col in columns
+                }
             )
 
-        aggregate_stats = dataset.aggregate(*aggregates)
+        # Apply map_batches with pandas format
+        batch_results = dataset.map_batches(
+            _compute_stats_batch, batch_format="pandas"
+        ).to_pandas()
+        # Aggregate results in driver
+        aggregated_results = _compute_stats_batch(batch_results).to_dict()
+
+        aggregate_stats = {
+            key: value
+            for col, row in aggregated_results.items()
+            for key, value in (
+                (f"min({col})", row[0]),
+                (f"max({col})", row[1]),
+            )
+        }
+
         mins = {}
         maxes = {}
         for key, value in aggregate_stats.items():
@@ -288,15 +310,6 @@ class UniformKBinsDiscretizer(_AbstractKBinsDiscretizer):
 
     def _validate_on_fit(self):
         self._validate_bins_columns()
-
-    def _fit_uniform_covert_bin_to_aggregate_if_needed(self, column: str):
-        bins = self.bins[column] if isinstance(self.bins, dict) else self.bins
-        if isinstance(bins, int):
-            return (Min(column), Max(column))
-        else:
-            raise TypeError(
-                f"`bins` must be an integer or a dict of integers, got {bins}"
-            )
 
 
 # Copied from
