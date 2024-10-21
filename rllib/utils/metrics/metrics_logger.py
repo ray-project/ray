@@ -77,8 +77,8 @@ class MetricsLogger:
         main_logger.merge_and_log_n_dicts([remote_results_1, remote_results_2])
         check(main_logger.peek("count"), 5)
 
-        # 4) Time blocks of code using EMA (coeff=0.1). Note that the higher the coeff (the
-        # closer to 1.0), the more short term the EMA turns out.
+        # 4) Time blocks of code using EMA (coeff=0.1). Note that the higher the coeff
+        # (the closer to 1.0), the more short term the EMA turns out.
         logger = MetricsLogger()
 
         # First delta measurement:
@@ -87,14 +87,15 @@ class MetricsLogger:
         # EMA should be ~1sec.
         assert 1.1 > logger.peek("my_block_to_be_timed") > 0.9
         # Second delta measurement (note that we don't have to repeat the args again, as
-        # the stats under that name have already been created above with the correct args).
+        # the stats under that name have already been created above with the correct
+        # args).
         with logger.log_time("my_block_to_be_timed"):
             time.sleep(2.0)
         # EMA should be ~1.1sec.
         assert 1.15 > logger.peek("my_block_to_be_timed") > 1.05
 
-        # When calling `reduce()`, the internal values list gets cleaned up (reduced) and
-        # reduction results are returned.
+        # When calling `reduce()`, the internal values list gets cleaned up (reduced)
+        # and reduction results are returned.
         results = logger.reduce()
         assert 1.15 > results["my_block_to_be_timed"] > 1.05
 

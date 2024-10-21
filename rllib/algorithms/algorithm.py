@@ -3500,9 +3500,9 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
         results: ResultDict = train_results.copy()
         # Backward compatibility `NUM_ENV_STEPS_SAMPLED_LIFETIME` is now:
         # `ENV_RUNNER_RESULTS/NUM_ENV_STEPS_SAMPLED_LIFETIME`.
-        results[NUM_ENV_STEPS_SAMPLED_LIFETIME] = (
-            results[ENV_RUNNER_RESULTS][NUM_ENV_STEPS_SAMPLED_LIFETIME]
-        )
+        results[NUM_ENV_STEPS_SAMPLED_LIFETIME] = results[ENV_RUNNER_RESULTS][
+            NUM_ENV_STEPS_SAMPLED_LIFETIME
+        ]
 
         # Evaluation results.
         if eval_results:

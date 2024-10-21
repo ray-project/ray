@@ -803,8 +803,6 @@ def check_train_results_new_api_stack(train_results: ResultDict) -> None:
         ENV_RUNNER_RESULTS,
         FAULT_TOLERANCE_STATS,
         LEARNER_RESULTS,
-        NUM_AGENT_STEPS_SAMPLED_LIFETIME,
-        NUM_ENV_STEPS_SAMPLED_LIFETIME,
         TIMERS,
     )
 
@@ -1379,7 +1377,9 @@ def run_rllib_example_script_experiment(
     if stop is None:
         stop = {
             f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": args.stop_reward,
-            f"{ENV_RUNNER_RESULTS}/{NUM_ENV_STEPS_SAMPLED_LIFETIME}": args.stop_timesteps,
+            f"{ENV_RUNNER_RESULTS}/{NUM_ENV_STEPS_SAMPLED_LIFETIME}": (
+                args.stop_timesteps
+            ),
             TRAINING_ITERATION: args.stop_iters,
         }
 
