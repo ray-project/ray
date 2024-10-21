@@ -71,7 +71,7 @@ class DAGNode(DAGNodeBase):
         # Cached values from last call to execute()
         self.cache_from_last_execute = {}
 
-        self._type_hint: Optional[ChannelOutputType] = ChannelOutputType()
+        self._type_hint: ChannelOutputType = ChannelOutputType()
         # Whether this node calls `experimental_compile`.
         self.is_adag_output_node = False
 
@@ -112,7 +112,7 @@ class DAGNode(DAGNodeBase):
         return self
 
     @property
-    def type_hint(self) -> Optional[ChannelOutputType]:
+    def type_hint(self) -> ChannelOutputType:
         return self._type_hint
 
     def get_args(self) -> Tuple[Any]:
