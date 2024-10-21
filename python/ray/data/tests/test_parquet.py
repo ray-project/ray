@@ -6,6 +6,7 @@ from typing import Any
 import numpy as np
 import pandas as pd
 import pyarrow as pa
+import pyarrow.compute as pc
 import pyarrow.parquet as pq
 import pytest
 from pytest_lazyfixture import lazy_fixture
