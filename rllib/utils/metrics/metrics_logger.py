@@ -457,7 +457,6 @@ class MetricsLogger:
         stats_dicts: List[Dict[str, Any]],
         *,
         key: Optional[Union[str, Tuple[str, ...]]] = None,
-        max_n: Optional[int] = None,
         # TODO (sven): Maybe remove these args. They don't seem to make sense in this
         #  method. If we do so, values in the dicts must be Stats instances, though.
         reduce: Optional[str] = "mean",
@@ -639,9 +638,24 @@ class MetricsLogger:
                     base_stats = Stats.similar_to(
                         stat_or_value,
                         init_value=stat_or_value.values,
+                        prev_values=stat_or_value._hist,
                     )
                 else:
                     more_stats.append(stat_or_value)
+
+            # Special case: `base_stats` is a lifetime sum (reduce=sum,
+            # clear_on_reduce=False) -> We only(!) use `base_stats`'s values, not
+            # our own (b/c the sum over `base_stats` already contains older values from
+            # before).
+            if (
+                base_stats._reduce_method == "sum"
+                and base_stats._window is None
+                and base_stats._clear_on_reduce is False
+            ):
+                for stat in [base_stats] + more_stats:
+                    stat.push(-stat._hist[1])
+                    #if extended_key == ("env_runners", "num_env_steps_sampled_lifetime"):
+                    #    print(f"peek after fixing={stat.peek()}, hist={-stat._hist[1]}")
 
             # There are more than one incoming parallel others -> Merge all of them
             # first in parallel.
@@ -651,25 +665,6 @@ class MetricsLogger:
             # `key` not in self yet -> Store merged stats under the new key.
             if not self._key_in_stats(extended_key):
                 self._set_key(extended_key, base_stats)
-
-            # Special case: `base_stats` is a lifetime sum (reduce=sum,
-            # clear_on_reduce=False) -> We only(!) use `base_stats`'s values, not
-            # our own (b/c the sum over `base_stats` already contains older values from
-            # before).
-            elif (
-                base_stats._reduce_method == "sum"
-                and base_stats._window is None
-                and base_stats._clear_on_reduce is False
-            ):
-                if max_n is None:
-                    self._get_key(extended_key).values = base_stats.values[:]
-                else:
-                    lifetime_sum = self.peek(extended_key)
-                    lifetime_sum_per_unit = lifetime_sum / max_n
-                    self._get_key(extended_key).values = (
-                        [lifetime_sum_per_unit for _ in range(max_n - len(base_stats))]
-                        + base_stats.values
-                    )
             # `key` already exists in `self` -> Merge `base_stats` into self's entry
             # on time axis, meaning give the incoming values priority over already
             # existing ones.

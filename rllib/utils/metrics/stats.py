@@ -216,6 +216,8 @@ class Stats:
         # Code to execute when exiting a with-context.
         self._on_exit = on_exit
 
+        self._hist = (0, 0)
+
     def push(self, value) -> None:
         """Appends a new value into the internal values list.
 
@@ -256,7 +258,7 @@ class Stats:
 
         del self._start_times[thread_id]
 
-    def peek(self) -> Any:
+    def peek(self, *, previous: bool = False) -> Any:
         """Returns the result of reducing the internal values list.
 
         Note that this method does NOT alter the internal values list in this process.
@@ -266,6 +268,8 @@ class Stats:
         Returns:
             The result of reducing the internal values list.
         """
+        if previous:
+            return self._hist[1]
         return self._reduced_values()[0]
 
     def reduce(self) -> "Stats":
@@ -281,10 +285,12 @@ class Stats:
             Returns a new `Stats` object with an empty internal values list, but
             otherwise the same constructor settings (window, reduce, etc..) as `self`.
         """
+        reduced, values = self._reduced_values()
+        self._hist = (reduced, self._hist[0])
         # Reduce everything to a single (init) value.
-        self.values = self._reduced_values()[1]
-        # `clear_on_reduce` -> Return an empty new Stats object with the same option as
-        # `self`.
+        self.values = values
+        # `clear_on_reduce` -> Return an empty new Stats object with the same settings
+        # as `self`.
         if self._clear_on_reduce:
             return Stats.similar_to(self)
         # No reset required upon `reduce()` -> Return `self`.
@@ -567,14 +573,17 @@ class Stats:
         )
 
     @staticmethod
-    def similar_to(other: "Stats", init_value: Optional[Any] = None):
-        return Stats(
+    def similar_to(other: "Stats", init_value: Optional[Any] = None, prev_values=None):
+        stats = Stats(
             init_value=init_value,
             reduce=other._reduce_method,
             window=other._window,
             ema_coeff=other._ema_coeff,
             clear_on_reduce=other._clear_on_reduce,
         )
+        if prev_values is not None:
+            stats._hist = prev_values
+        return stats
 
     def _reduced_values(self, values=None, window=None) -> Tuple[Any, Any]:
         """Runs a non-commited reduction procedure on given values (or `self.values`).

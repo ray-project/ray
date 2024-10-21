@@ -956,10 +956,6 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
                 with self.metrics.log_time((TIMERS, SYNCH_ENV_CONNECTOR_STATES_TIMER)):
                     self.env_runner_group.sync_env_runner_states(
                         config=self.config,
-                        env_steps_sampled=self.metrics.peek(
-                            (ENV_RUNNER_RESULTS, NUM_ENV_STEPS_SAMPLED_LIFETIME),
-                            default=0,
-                        ),
                     )
             # Compile final ResultDict from `train_results` and `eval_results`. Note
             # that, as opposed to the old API stack, EnvRunner stats should already be
@@ -1047,9 +1043,6 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
                     self.eval_env_runner_group.sync_env_runner_states(
                         config=self.evaluation_config,
                         from_worker=self.env_runner_group.local_env_runner,
-                        env_steps_sampled=self.metrics.peek(
-                            (ENV_RUNNER_RESULTS, NUM_ENV_STEPS_SAMPLED_LIFETIME), default=0
-                        ),
                     )
             else:
                 self._sync_filters_if_needed(
