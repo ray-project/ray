@@ -1,9 +1,16 @@
 import asyncio
+import logging
 from typing import Any, List, Optional
 
 import ray
+from ray._private.ray_constants import env_bool
 from ray.exceptions import RayTaskError
 from ray.util.annotations import PublicAPI
+
+logger = logging.getLogger(__name__)
+
+RAY_IGNORE_UNHANDLED_ERRORS_ENV_VAR = "RAY_IGNORE_UNHANDLED_ERRORS"
+RAY_IGNORE_UNHANDLED_ERRORS = env_bool(RAY_IGNORE_UNHANDLED_ERRORS_ENV_VAR, False)
 
 
 def _process_return_vals(return_vals: List[Any], return_single_output: bool):
@@ -85,8 +92,17 @@ class CompiledDAGRef:
 
     def __del__(self):
         # If not yet, get the result and discard to avoid execution result leak.
-        if not self._ray_get_called:
-            self.get()
+        if not self._ray_get_called and not self._dag.is_teardown:
+            try:
+                self.get()
+            except Exception as e:
+                if RAY_IGNORE_UNHANDLED_ERRORS:
+                    return
+
+                logger.error(
+                    "Unhandled error (suppress with "
+                    f"{RAY_IGNORE_UNHANDLED_ERRORS_ENV_VAR}=1'): {e}"
+                )
 
     def get(self, timeout: Optional[float] = None):
         if self._ray_get_called:

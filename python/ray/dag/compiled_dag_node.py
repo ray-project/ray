@@ -661,6 +661,8 @@ class CompiledDAG:
         self.dag_output_channels: Optional[List[ChannelInterface]] = None
         self._dag_submitter: Optional[WriterInterface] = None
         self._dag_output_fetcher: Optional[ReaderInterface] = None
+        # True if teardown() is called on the dag.
+        self._is_teardown = False
 
         # ObjectRef for each worker's task. The task is an infinite loop that
         # repeatedly executes the method specified in the DAG.
@@ -722,6 +724,10 @@ class CompiledDAG:
     @property
     def nccl_group_ids(self) -> Set[str]:
         return self._nccl_group_ids
+
+    @property
+    def is_teardown(self):
+        return self._is_teardown
 
     def increment_max_finished_execution_index(self) -> None:
         """Increment the max finished execution index. It is used to
@@ -2007,6 +2013,7 @@ class CompiledDAG:
         monitor = getattr(self, "_monitor", None)
         if monitor is not None:
             monitor.teardown(wait=True)
+        self._is_teardown = True
 
     def __del__(self):
         monitor = getattr(self, "_monitor", None)
