@@ -56,6 +56,7 @@ from ray.data._internal.logical.operators.all_to_all_operator import (
     Repartition,
     Sort,
 )
+from ray.data._internal.logical.operators.count_operator import Count
 from ray.data._internal.logical.operators.input_data_operator import InputData
 from ray.data._internal.logical.operators.map_operator import (
     Filter,
@@ -831,6 +832,11 @@ class Dataset:
 
         Specified columns must be in the dataset schema.
 
+        .. tip::
+            If you're reading parquet files with :meth:`ray.data.read_parquet`,
+            you might be able to speed it up by using projection pushdown; see
+            :ref:`Parquet column pruning <parquet_column_pruning>` for details.
+
         Examples:
 
             >>> import ray
@@ -1103,9 +1109,10 @@ class Dataset:
             dropping rows.
 
         .. tip::
-            If you're using parquet and the filter is a simple predicate, you might
-            be able to speed it up by using filter pushdown, see
-            :ref:`Parquet row pruning <parquet_row_pruning>`.
+            If you're reading parquet files with :meth:`ray.data.read_parquet`,
+            and the filter is a simple predicate, you might
+            be able to speed it up by using filter pushdown; see
+            :ref:`Parquet row pruning <parquet_row_pruning>` for details.
 
         Examples:
 
@@ -2645,15 +2652,19 @@ class Dataset:
         if meta_count is not None:
             return meta_count
 
-        # Directly loop over the iterator of `RefBundle`s instead of
-        # retrieving a full list of `BlockRef`s.
-        total_rows = 0
-        for ref_bundle in self.iter_internal_ref_bundles():
-            num_rows = ref_bundle.num_rows()
-            # Executing the dataset always returns blocks with valid `num_rows`.
-            assert num_rows is not None
-            total_rows += num_rows
-        return total_rows
+        plan = self._plan.copy()
+        count_op = Count([self._logical_plan.dag])
+        logical_plan = LogicalPlan(count_op)
+        count_ds = Dataset(plan, logical_plan)
+
+        count = 0
+        for batch in count_ds.iter_batches(batch_size=None):
+            assert Count.COLUMN_NAME in batch, (
+                "Outputs from the 'Count' logical operator should contain a column "
+                f"named '{Count.COLUMN_NAME}'"
+            )
+            count += batch[Count.COLUMN_NAME].sum()
+        return count
 
     @ConsumptionAPI(
         if_more_than_read=True,
@@ -5338,7 +5349,11 @@ class Schema:
         return arrow_types
 
     def __eq__(self, other):
-        return isinstance(other, Schema) and other.base_schema == self.base_schema
+        return (
+            isinstance(other, Schema)
+            and other.types == self.types
+            and other.names == self.names
+        )
 
     def __repr__(self):
         column_width = max([len(name) for name in self.names] + [len("Column")])
