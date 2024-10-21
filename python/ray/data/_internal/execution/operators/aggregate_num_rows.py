@@ -13,7 +13,9 @@ class AggregateNumRows(PhysicalOperator):
     """
 
     def __init__(self, input_dependencies, column_name: str):
-        super().__init__("Count", input_dependencies, target_max_block_size=None)
+        super().__init__(
+            "AggregateNumRows", input_dependencies, target_max_block_size=None
+        )
 
         self._column_name = column_name
 
