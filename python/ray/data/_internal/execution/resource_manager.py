@@ -556,7 +556,7 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
     def _get_downstream_eligible_ops(
         self, op: PhysicalOperator
     ) -> Iterable[PhysicalOperator]:
-        """Get the downstream eligible operators of the given operator, ignoring 
+        """Get the downstream eligible operators of the given operator, ignoring
         intermediate ineligible operators.
 
         E.g.,

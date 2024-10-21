@@ -32,8 +32,8 @@ app = FastAPI()
 @serve.ingress(app)
 class HTTPEventProvider:
     """HTTPEventProvider is defined to be a Ray Serve deployment with
-    route_prefix='/event',which will receive external events via an HTTP endpoint. 
-    It supports FastAPI, e.g. post. It responds to both poll_for_event() and 
+    route_prefix='/event',which will receive external events via an HTTP endpoint.
+    It supports FastAPI, e.g. post. It responds to both poll_for_event() and
     event_checkpointed() from an HTTPListener instance.
 
     HTTPListener class is designed to work with the current workflow.wait_for_event()
