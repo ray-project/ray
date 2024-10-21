@@ -377,8 +377,8 @@ def _visualize_execution_schedule(
     actor_to_execution_schedule: Dict[
         "ray.actor.ActorHandle", List[_DAGOperationGraphNode]
     ],
-    actor_to_optimized_schedule: Dict[
-        "ray.actor.ActorHandle", List[_DAGOperationGraphNode]
+    actor_to_overlapped_schedule: Optional[
+        Dict["ray.actor.ActorHandle", List[_DAGOperationGraphNode]]
     ],
     graph: Dict[int, Dict[_DAGNodeOperationType, _DAGOperationGraphNode]],
 ):
@@ -388,7 +388,7 @@ def _visualize_execution_schedule(
     Args:
         actor_to_execution_schedule: A dictionary that maps an actor handle to
             the execution schedule which is a list of operation nodes.
-        actor_to_optimized_schedule: A dictionary that maps an actor handle to the
+        actor_to_overlapped_schedule: A dictionary that maps an actor handle to the
             optimized execution schedule which is a list of operation nodes.
         graph: A graph where each node is a _DAGOperationGraphNode. The key is
             `task_idx`, the index to retrieve its task from `idx_to_task`, and
@@ -407,9 +407,14 @@ def _visualize_execution_schedule(
     dot = graphviz.Digraph(comment="DAG")
     node_to_repr: Dict[_DAGOperationGraphNode, str] = {}
 
+    # TODO: only visualize the execution schedule if the overlapped schedule is None.
+    if actor_to_overlapped_schedule is None:
+        actor_to_overlapped_schedule = actor_to_execution_schedule
     for actor, execution_nodes in actor_to_execution_schedule.items():
-        optimized_schedule = actor_to_optimized_schedule[actor]
-        node_to_optimized_index = {node: i for i, node in enumerate(optimized_schedule)}
+        overlapped_schedule = actor_to_overlapped_schedule[actor]
+        node_to_optimized_index = {
+            node: i for i, node in enumerate(overlapped_schedule)
+        }
 
         with dot.subgraph(name=f"cluster_{execution_nodes[0]._actor_id}") as subgraph:
             subgraph.attr(rank=execution_nodes[0]._actor_id)
@@ -507,58 +512,58 @@ def _generate_actor_to_execution_schedule(
     return actor_to_execution_schedule
 
 
-def _optimize_execution_schedule(
+def _generate_overlapped_execution_schedule(
     actor_to_execution_schedule: Dict[
         "ray.actor.ActorHandle", List[_DAGOperationGraphNode]
     ],
-    overlap_gpu_communication: bool,
 ) -> Dict["ray.actor.ActorHandle", List[_DAGOperationGraphNode]]:
     """
-    Optimize the execution schedule by overlapping computation and communication.
+    From an existing execution schedule, generate a new schedule by overlapping
+    computation and communication.
 
     Args:
         actor_to_execution_schedule: A dictionary that maps an actor handle to
-            the execution schedule which is a list of operations to be executed.
-        overlap_gpu_communication: Whether to overlap GPU communication with
-            computation. If False, the function will return the original execution
-            schedule (i.e., actor_to_execution_schedule).
-    """
-    if not overlap_gpu_communication:
-        return actor_to_execution_schedule
+            the existing execution schedule for the actor. The schedule is a list
+            is a list of operations to be executed.
 
-    actor_to_optimized_schedule: Dict[
+    Returns:
+        A dictionary that maps an actor handle to the overlapped execution schedule
+        for the actor.
+    """
+
+    actor_to_overlapped_schedule: Dict[
         "ray.actor.ActorHandle", List[_DAGOperationGraphNode]
     ] = copy.deepcopy(actor_to_execution_schedule)
-    for optimized_schedule in actor_to_optimized_schedule.values():
-        for i in range(len(optimized_schedule)):
+    for overlapped_schedule in actor_to_overlapped_schedule.values():
+        for i in range(len(overlapped_schedule)):
             if (
-                optimized_schedule[i].operation.type == _DAGNodeOperationType.READ
-                and optimized_schedule[i].requires_nccl
+                overlapped_schedule[i].operation.type == _DAGNodeOperationType.READ
+                and overlapped_schedule[i].requires_nccl
             ):
                 # For each NCCL read operation (i.e., recv), scan backwards
                 # to find the nearest compute node to swap with so that
                 # the NCCL read operation can be overlapped with computation.
                 for j in range(i - 1, -1, -1):
                     if (
-                        optimized_schedule[j].operation.type
+                        overlapped_schedule[j].operation.type
                         == _DAGNodeOperationType.COMPUTE
                     ):
                         # Found a desired compute operation, make the swap
-                        nccl_read_node = optimized_schedule[i]
-                        sublist = optimized_schedule[j:i]
-                        optimized_schedule[j + 1 : i + 1] = sublist
-                        optimized_schedule[j] = nccl_read_node
+                        nccl_read_node = overlapped_schedule[i]
+                        sublist = overlapped_schedule[j:i]
+                        overlapped_schedule[j + 1 : i + 1] = sublist
+                        overlapped_schedule[j] = nccl_read_node
                         break
                     if (
-                        optimized_schedule[j].operation.type
+                        overlapped_schedule[j].operation.type
                         == _DAGNodeOperationType.READ
-                        or optimized_schedule[j].operation.type
+                        or overlapped_schedule[j].operation.type
                         == _DAGNodeOperationType.WRITE
-                    ) and (optimized_schedule[j].requires_nccl):
-                        # Found a NCCL read/write operation, skip the optimiation to
+                    ) and (overlapped_schedule[j].requires_nccl):
+                        # Found a NCCL read/write operation, skip the optimization to
                         # keep relative order of NCCL operations
                         break
-    return actor_to_optimized_schedule
+    return actor_to_overlapped_schedule
 
 
 def _extract_execution_schedule(

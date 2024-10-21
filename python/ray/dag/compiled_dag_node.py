@@ -50,7 +50,7 @@ from ray.dag.dag_node_operation import (
     _build_dag_node_operation_graph,
     _extract_execution_schedule,
     _generate_actor_to_execution_schedule,
-    _optimize_execution_schedule,
+    _generate_overlapped_execution_schedule,
     _visualize_execution_schedule,
 )
 
@@ -427,7 +427,7 @@ class ExecutableTask:
                     assert nccl_group is not None
                     if not isinstance(self._recv_stream, nullcontext):
                         assert self._recv_stream == nccl_group.recv_stream, (
-                            "Currenlty all torch tensor input channels of a "
+                            "Currently all torch tensor input channels of a "
                             "Compiled Graph task should use the same recv cuda stream."
                         )
                     self._recv_stream = nccl_group.recv_stream
@@ -480,7 +480,12 @@ class ExecutableTask:
         exit = False
         try:
             input_data = self.input_reader.read()
-            self.wrap_and_set_intermediate_future(input_data, overlap_gpu_communication)
+            # When overlap_gpu_communication is enabled, wrap the result in
+            # a GPU future so that this read operation (communication) can
+            # be overlapped with computation.
+            self.wrap_and_set_intermediate_future(
+                input_data, wrap_in_gpu_future=overlap_gpu_communication
+            )
         except RayChannelError:
             # Channel closed. Exit the loop.
             exit = True
@@ -515,7 +520,9 @@ class ExecutableTask:
             # Propagate it and skip the actual task. We don't need to wrap the
             # exception in a RayTaskError here because it has already been wrapped
             # by the previous task.
-            self.wrap_and_set_intermediate_future(exc, overlap_gpu_communication)
+            self.wrap_and_set_intermediate_future(
+                exc, wrap_in_gpu_future=overlap_gpu_communication
+            )
             return False
 
         resolved_inputs = []
@@ -527,7 +534,11 @@ class ExecutableTask:
         except Exception as exc:
             output_val = _wrap_exception(exc)
 
-        self.wrap_and_set_intermediate_future(output_val, overlap_gpu_communication)
+        # When overlap_gpu_communication is enabled, wrap the result in a GPU future
+        # so that this compute operation can be overlapped with communication.
+        self.wrap_and_set_intermediate_future(
+            output_val, wrap_in_gpu_future=overlap_gpu_communication
+        )
         return False
 
     def _write(self) -> bool:
@@ -1566,19 +1577,21 @@ class CompiledDAG:
         actor_to_execution_schedule = _generate_actor_to_execution_schedule(graph)
 
         # Step 3: Optimize the execution schedule if configured
-        actor_to_optimized_schedule = _optimize_execution_schedule(
-            actor_to_execution_schedule,
-            self._overlap_gpu_communication,
-        )
+        if self._optimize_execution_schedule:
+            actor_to_overlapped_schedule = _generate_overlapped_execution_schedule(
+                actor_to_execution_schedule
+            )
+        else:
+            actor_to_overlapped_schedule = None
 
         from ray.dag.constants import RAY_ADAG_VISUALIZE_SCHEDULE
 
         if RAY_ADAG_VISUALIZE_SCHEDULE:
             _visualize_execution_schedule(
-                actor_to_execution_schedule, actor_to_optimized_schedule, graph
+                actor_to_execution_schedule, actor_to_overlapped_schedule, graph
             )
 
-        return _extract_execution_schedule(actor_to_optimized_schedule)
+        return _extract_execution_schedule(actor_to_overlapped_schedule)
 
     def _detect_deadlock(self) -> bool:
         """

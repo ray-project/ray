@@ -14,10 +14,16 @@ T = TypeVar("T")
 class DAGOperationFuture(ABC, Generic[T]):
     """
     A future representing the result of a DAG operation.
+
+    This is an abstraction that is internal to each actor,
+    and is not exposed to the DAG caller.
     """
 
     @abstractmethod
     def wait(self):
+        """
+        Wait for the future and return the result of the operation.
+        """
         raise NotImplementedError
 
 
@@ -38,6 +44,9 @@ class ResolvedFuture(DAGOperationFuture):
         self._result = result
 
     def wait(self):
+        """
+        Wait and immediately return the result. This operation will not block.
+        """
         return self._result
 
 
