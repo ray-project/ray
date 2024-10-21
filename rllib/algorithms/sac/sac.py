@@ -18,7 +18,7 @@ from ray.rllib.utils.annotations import override
 from ray.rllib.utils.deprecation import DEPRECATED_VALUE, deprecation_warning
 from ray.rllib.utils.framework import try_import_tf, try_import_tfp
 from ray.rllib.utils.replay_buffers.episode_replay_buffer import EpisodeReplayBuffer
-from ray.rllib.utils.typing import LearningRateOrSchedule, RLModuleSpecType, ResultDict
+from ray.rllib.utils.typing import LearningRateOrSchedule, RLModuleSpecType
 
 tf1, tf, tfv = try_import_tf()
 tfp = try_import_tfp()

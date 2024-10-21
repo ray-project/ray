@@ -47,7 +47,7 @@ from ray.rllib.utils.metrics import (
     TIMERS,
 )
 from ray.rllib.utils.replay_buffers.episode_replay_buffer import EpisodeReplayBuffer
-from ray.rllib.utils.typing import LearningRateOrSchedule, ResultDict
+from ray.rllib.utils.typing import LearningRateOrSchedule
 
 
 logger = logging.getLogger(__name__)

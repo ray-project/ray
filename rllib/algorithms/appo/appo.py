@@ -26,9 +26,6 @@ from ray.rllib.utils.metrics import (
     NUM_TARGET_UPDATES,
 )
 from ray.rllib.utils.metrics import LEARNER_STATS_KEY
-from ray.rllib.utils.typing import (
-    ResultDict,
-)
 
 logger = logging.getLogger(__name__)
 
