@@ -14,7 +14,7 @@ from ray.rllib.algorithms.algorithm_config import (
     AlgorithmConfig,
     TorchCompileWhatToCompile,
 )
-from ray.rllib.core.learner.learner import Learner
+from ray.rllib.core.learner.learner import Learner, LR_KEY
 from ray.rllib.core.rl_module.multi_rl_module import (
     MultiRLModule,
     MultiRLModuleSpec,
@@ -32,6 +32,7 @@ from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.utils.annotations import (
     override,
     OverrideToImplementCustomLogic,
+    OverrideToImplementCustomLogic_CallToSuperRecommended,
 )
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.metrics import (
@@ -39,6 +40,7 @@ from ray.rllib.utils.metrics import (
     NUM_TRAINABLE_PARAMETERS,
     NUM_NON_TRAINABLE_PARAMETERS,
 )
+from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.torch_utils import convert_to_torch_tensor, copy_torch_tensors
 from ray.rllib.utils.typing import (
     ModuleID,
@@ -209,7 +211,10 @@ class TorchLearner(Learner):
                 # If we have learning rate schedulers for a module add them, if
                 # necessary.
                 if self._lr_scheduler_classes is not None:
-                    if module_id not in self._lr_schedulers:
+                    if (
+                        module_id not in self._lr_schedulers
+                        or optimizer_name not in self._lr_schedulers[module_id]
+                    ):
                         # Set for each module and optimizer a scheduler.
                         self._lr_schedulers[module_id] = {optimizer_name: []}
                         # If the classes are in a dictionary each module might have
@@ -257,15 +262,57 @@ class TorchLearner(Learner):
                         "`False`."
                     )
 
-                    # If the module uses learning rate schedulers, step them here.
-                    if module_id in self._lr_schedulers:
-                        for scheduler in self._lr_schedulers[module_id][optimizer_name]:
-                            scheduler.step()
+    @OverrideToImplementCustomLogic_CallToSuperRecommended
+    @override(Learner)
+    def after_gradient_based_update(self, *, timesteps: Dict[str, Any]) -> None:
+        """Called after gradient-based updates are completed.
 
-                    # If the module uses learning rate schedulers, step them here.
-                    if module_id in self._lr_schedulers:
+        Should be overridden to implement custom cleanup-, logging-, or non-gradient-
+        based Learner/RLModule update logic after(!) gradient-based updates have been
+        completed.
+
+        Note, for `framework="torch"` users can register
+        `torch.optim.lr_scheduler.LRScheduler` via
+        `AlgorithmConfig._torch_lr_scheduler_classes`. These schedulers need to be
+        stepped here after gradient updates and reported.
+
+        Args:
+            timesteps: Timesteps dict, which must have the key
+                `NUM_ENV_STEPS_SAMPLED_LIFETIME`.
+                # TODO (sven): Make this a more formal structure with its own type.
+        """
+        # If we have `torch.optim.lr_scheduler.LRScheduler` we need to step them here
+        # and report learning rates.
+        if self._lr_schedulers:
+            # Only update this optimizer's lr, if a scheduler has been registered
+            # along with it.
+            for module_id, optimizer_names in self._module_optimizers.items():
+                for optimizer_name in optimizer_names:
+                    # If learning rate schedulers are provided step them here. Note,
+                    # stepping them in `TorchLearner.apply_gradients` updates the
+                    # learning rates during minibatch updates; we want to update
+                    # between whole batch updates.
+                    if (
+                        module_id in self._lr_schedulers
+                        and optimizer_name in self._lr_schedulers[module_id]
+                    ):
                         for scheduler in self._lr_schedulers[module_id][optimizer_name]:
                             scheduler.step()
+                    optimizer = self.get_optimizer(module_id, optimizer_name)
+                    self.metrics.log_value(
+                        # Cut out the module ID from the beginning since it's already
+                        # part of the key sequence: (ModuleID, "[optim name]_lr").
+                        key=(
+                            module_id,
+                            f"{optimizer_name[len(module_id) + 1:]}_{LR_KEY}",
+                        ),
+                        value=convert_to_numpy(self._get_optimizer_lr(optimizer)),
+                        window=1,
+                    )
+        # Otherwise call the `super()`'s method to update RLlib's learning rate
+        # schedules.
+        else:
+            return super().after_gradient_based_update(timesteps=timesteps)
 
     @override(Learner)
     def _get_optimizer_state(self) -> StateDict:

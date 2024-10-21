@@ -96,7 +96,7 @@ if __name__ == "__main__":
         PPOConfig()
         .environment("CartPole-v1")
         .training(
-            lr=0.0003,
+            lr=0.03,
             num_sgd_iter=6,
             vf_loss_coeff=0.01,
         )
