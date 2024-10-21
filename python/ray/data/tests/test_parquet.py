@@ -6,6 +6,7 @@ from typing import Any
 import numpy as np
 import pandas as pd
 import pyarrow as pa
+import pyarrow.dataset as pa_ds
 import pyarrow.parquet as pq
 import pytest
 from pytest_lazyfixture import lazy_fixture
@@ -514,7 +515,7 @@ def test_parquet_read_partitioned_with_filter(ray_start_regular_shared, tmp_path
     # 2 partitions, 1 empty partition, 1 block/read task
 
     ds = ray.data.read_parquet(
-        str(tmp_path), override_num_blocks=1, filter=(pa.dataset.field("two") == "a")
+        str(tmp_path), override_num_blocks=1, filter=(pa_ds.field("two") == "a")
     )
 
     values = [[s["one"], s["two"]] for s in ds.take()]
@@ -524,7 +525,7 @@ def test_parquet_read_partitioned_with_filter(ray_start_regular_shared, tmp_path
     # 2 partitions, 1 empty partition, 2 block/read tasks, 1 empty block
 
     ds = ray.data.read_parquet(
-        str(tmp_path), override_num_blocks=2, filter=(pa.dataset.field("two") == "a")
+        str(tmp_path), override_num_blocks=2, filter=(pa_ds.field("two") == "a")
     )
 
     values = [[s["one"], s["two"]] for s in ds.take()]

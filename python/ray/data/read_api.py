@@ -656,14 +656,14 @@ def read_parquet(
 
         .. testcode::
 
-            import pyarrow as pa
+            import pyarrow.dataset as ds
 
             # Create a Dataset by reading a Parquet file, pushing column selection and
             # row filtering down to the file scan.
             ds = ray.data.read_parquet(
                 "s3://anonymous@ray-example-data/iris.parquet",
                 columns=["sepal.length", "variety"],
-                filter=pa.dataset.field("sepal.length") > 5.0,
+                filter=ds.field("sepal.length") > 5.0,
             )
 
             ds.show(2)

@@ -50,8 +50,9 @@ def run_read_parquet_benchmark(benchmark: Benchmark):
     # Since we have projection and filter pushdown, we can run the read on the full
     # size of one year data fast enough on a single node.
     # test_name = "read-parquet-nyc-taxi-2018-pushdown"
-    # filter_expr = (pa.dataset.field("passenger_count") <= 10) & (
-    #     pa.dataset.field("passenger_count") > 0
+    # import pyarrow.dataset as ds
+    # filter_expr = (ds.field("passenger_count") <= 10) & (
+    #     ds.field("passenger_count") > 0
     # )
     # benchmark.run(
     #     test_name,
