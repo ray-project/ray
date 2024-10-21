@@ -918,7 +918,7 @@ def test_parquet_write_multiple_blocks(ray_start_regular_shared, tmp_path):
     # 2 partitions, 1 empty partition, 3 block/read tasks, 1 empty block
 
     ds = ray.data.read_parquet(
-        str(tmp_path), override_num_blocks=3, filter=(pa.dataset.field("two") == "a")
+        str(tmp_path), override_num_blocks=3, filter=(pds.field("two") == "a")
     )
 
     parquet_output_path = os.path.join(tmp_path, "parquet")
