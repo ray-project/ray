@@ -48,7 +48,13 @@ from ray.data._internal.logical.operators.map_operator import (
 )
 from ray.data._internal.logical.operators.n_ary_operator import Union, Zip
 from ray.data._internal.logical.operators.write_operator import Write
-from ray.data._internal.logical.optimizers import PhysicalOptimizer
+from ray.data._internal.logical.optimizers import (
+    PhysicalOptimizer,
+    get_logical_rules,
+    get_physical_rules,
+    register_logical_rule,
+    register_physical_rule,
+)
 from ray.data._internal.logical.util import (
     _op_name_white_list,
     _recorded_operators,
@@ -1656,27 +1662,17 @@ def test_insert_logical_optimization_rules():
     class FakeRule2:
         pass
 
-    from ray.data._internal.logical.optimizers import (
-        _LOGICAL_RULES,
-        register_logical_rule,
-    )
-    from ray.data._internal.logical.rules.randomize_blocks import (
-        ReorderRandomizeBlocksRule,
-    )
-
+    # By default, add the rule to the end of the list.
     register_logical_rule(FakeRule1)
-    assert _LOGICAL_RULES == [ReorderRandomizeBlocksRule, FakeRule1]
+    assert get_logical_rules()[-1] == FakeRule1
 
-    register_logical_rule(FakeRule2, 1)
-    assert _LOGICAL_RULES == [ReorderRandomizeBlocksRule, FakeRule2, FakeRule1]
+    register_logical_rule(FakeRule2, 0)
+    assert get_logical_rules()[0] == FakeRule2
 
+    # 'FakeRule1' is already registered, so it shouldn't be added again.
     register_logical_rule(FakeRule1, 0)
-    assert _LOGICAL_RULES == [
-        FakeRule1,
-        ReorderRandomizeBlocksRule,
-        FakeRule2,
-        FakeRule1,
-    ]
+    assert get_logical_rules()[-1] == FakeRule1
+    assert get_logical_rules()[0] == FakeRule2
 
 
 def test_insert_physical_optimization_rules():
@@ -1686,50 +1682,17 @@ def test_insert_physical_optimization_rules():
     class FakeRule2:
         pass
 
-    from ray.data._internal.logical.optimizers import (
-        _PHYSICAL_RULES,
-        register_physical_rule,
-    )
-    from ray.data._internal.logical.rules.inherit_target_max_block_size import (
-        InheritTargetMaxBlockSizeRule,
-    )
-    from ray.data._internal.logical.rules.operator_fusion import OperatorFusionRule
-    from ray.data._internal.logical.rules.set_read_parallelism import (
-        SetReadParallelismRule,
-    )
-    from ray.data._internal.logical.rules.zero_copy_map_fusion import (
-        EliminateBuildOutputBlocks,
-    )
-
+    # By default, add the rule to the end of the list.
     register_physical_rule(FakeRule1)
-    assert _PHYSICAL_RULES == [
-        InheritTargetMaxBlockSizeRule,
-        SetReadParallelismRule,
-        OperatorFusionRule,
-        EliminateBuildOutputBlocks,
-        FakeRule1,
-    ]
+    assert get_physical_rules()[-1] == FakeRule1
 
-    register_physical_rule(FakeRule2, 2)
-    assert _PHYSICAL_RULES == [
-        InheritTargetMaxBlockSizeRule,
-        SetReadParallelismRule,
-        FakeRule2,
-        OperatorFusionRule,
-        EliminateBuildOutputBlocks,
-        FakeRule1,
-    ]
+    register_physical_rule(FakeRule2, 0)
+    assert get_physical_rules()[0] == FakeRule2
 
+    # 'FakeRule1' is already registered, so it shouldn't be added again.
     register_physical_rule(FakeRule1, 0)
-    assert _PHYSICAL_RULES == [
-        FakeRule1,
-        InheritTargetMaxBlockSizeRule,
-        SetReadParallelismRule,
-        FakeRule2,
-        OperatorFusionRule,
-        EliminateBuildOutputBlocks,
-        FakeRule1,
-    ]
+    assert get_physical_rules()[-1] == FakeRule1
+    assert get_physical_rules()[0] == FakeRule2
 
 
 if __name__ == "__main__":
