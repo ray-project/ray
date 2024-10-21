@@ -118,7 +118,12 @@ class Planner:
     def plan(self, logical_plan: LogicalPlan) -> PhysicalPlan:
         """Convert logical to physical operators recursively in post-order."""
         physical_dag = self._plan(logical_plan.dag)
-        return PhysicalPlan(physical_dag, self._physical_op_to_logical_op)
+        physical_plan = PhysicalPlan(
+            physical_dag,
+            self._physical_op_to_logical_op,
+            logical_plan.context,
+        )
+        return physical_plan
 
     def _plan(self, logical_op: LogicalOperator) -> PhysicalOperator:
         # Plan the input dependencies first.
@@ -129,6 +134,8 @@ class Planner:
         physical_op = None
         for op_type, plan_fn in PLAN_LOGICAL_OP_FNS:
             if isinstance(logical_op, op_type):
+                # We will call `set_logical_operators()` in the following for-loop,
+                # no need to do it here.
                 physical_op = plan_fn(logical_op, physical_children)
                 break
 

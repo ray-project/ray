@@ -372,7 +372,7 @@ class Dataset:
             ray_remote_args_fn=ray_remote_args_fn,
             ray_remote_args=ray_remote_args,
         )
-        logical_plan = LogicalPlan(map_op)
+        logical_plan = LogicalPlan(map_op, self.context)
         return Dataset(plan, logical_plan)
 
     def _set_name(self, name: Optional[str]):
@@ -690,7 +690,7 @@ class Dataset:
             ray_remote_args_fn=ray_remote_args_fn,
             ray_remote_args=ray_remote_args,
         )
-        logical_plan = LogicalPlan(map_batches_op)
+        logical_plan = LogicalPlan(map_batches_op, self.context)
         return Dataset(plan, logical_plan)
 
     @PublicAPI(api_group=BT_API_GROUP)
@@ -1083,7 +1083,7 @@ class Dataset:
             ray_remote_args_fn=ray_remote_args_fn,
             ray_remote_args=ray_remote_args,
         )
-        logical_plan = LogicalPlan(op)
+        logical_plan = LogicalPlan(op, self.context)
         return Dataset(plan, logical_plan)
 
     @PublicAPI(api_group=BT_API_GROUP)
@@ -1154,7 +1154,7 @@ class Dataset:
             ray_remote_args_fn=ray_remote_args_fn,
             ray_remote_args=ray_remote_args,
         )
-        logical_plan = LogicalPlan(op)
+        logical_plan = LogicalPlan(op, self.context)
         return Dataset(plan, logical_plan)
 
     @AllToAllAPI
@@ -1212,7 +1212,7 @@ class Dataset:
             num_outputs=num_blocks,
             shuffle=shuffle,
         )
-        logical_plan = LogicalPlan(op)
+        logical_plan = LogicalPlan(op, self.context)
         return Dataset(plan, logical_plan)
 
     @AllToAllAPI
@@ -1262,7 +1262,7 @@ class Dataset:
             seed=seed,
             ray_remote_args=ray_remote_args,
         )
-        logical_plan = LogicalPlan(op)
+        logical_plan = LogicalPlan(op, self.context)
         return Dataset(plan, logical_plan)
 
     @AllToAllAPI
@@ -1299,7 +1299,7 @@ class Dataset:
             self._logical_plan.dag,
             seed=seed,
         )
-        logical_plan = LogicalPlan(op)
+        logical_plan = LogicalPlan(op, self.context)
         return Dataset(plan, logical_plan)
 
     @PublicAPI(api_group=BT_API_GROUP)
@@ -1545,7 +1545,9 @@ class Dataset:
                     RefBundle([(b, m)], owns_blocks=owned_by_consumer)
                     for b, m in zip(block_refs_split, metadata_split)
                 ]
-                logical_plan = LogicalPlan(InputData(input_data=ref_bundles))
+                logical_plan = LogicalPlan(
+                    InputData(input_data=ref_bundles), self.context
+                )
                 split_datasets.append(
                     MaterializedDataset(
                         ExecutionPlan(stats),
@@ -1663,7 +1665,7 @@ class Dataset:
 
         split_datasets = []
         for bundle in per_split_bundles:
-            logical_plan = LogicalPlan(InputData(input_data=[bundle]))
+            logical_plan = LogicalPlan(InputData(input_data=[bundle]), self.context)
             split_datasets.append(
                 MaterializedDataset(
                     ExecutionPlan(stats),
@@ -1737,7 +1739,7 @@ class Dataset:
             ref_bundles = [
                 RefBundle([(b, m)], owns_blocks=False) for b, m in zip(bs, ms)
             ]
-            logical_plan = LogicalPlan(InputData(input_data=ref_bundles))
+            logical_plan = LogicalPlan(InputData(input_data=ref_bundles), self.context)
 
             splits.append(
                 MaterializedDataset(
@@ -1925,7 +1927,7 @@ class Dataset:
         op = UnionLogicalOperator(
             *[plan.dag for plan in logical_plans],
         )
-        logical_plan = LogicalPlan(op)
+        logical_plan = LogicalPlan(op, self.context)
 
         stats = DatasetStats(
             metadata={"Union": []},
@@ -2373,7 +2375,7 @@ class Dataset:
             self._logical_plan.dag,
             sort_key=sort_key,
         )
-        logical_plan = LogicalPlan(op)
+        logical_plan = LogicalPlan(op, self.context)
         return Dataset(plan, logical_plan)
 
     @PublicAPI(api_group=SMD_API_GROUP)
@@ -2409,7 +2411,7 @@ class Dataset:
         """
         plan = self._plan.copy()
         op = Zip(self._logical_plan.dag, other._logical_plan.dag)
-        logical_plan = LogicalPlan(op)
+        logical_plan = LogicalPlan(op, self.context)
         return Dataset(plan, logical_plan)
 
     @PublicAPI(api_group=BT_API_GROUP)
@@ -2436,7 +2438,7 @@ class Dataset:
         """
         plan = self._plan.copy()
         op = Limit(self._logical_plan.dag, limit=limit)
-        logical_plan = LogicalPlan(op)
+        logical_plan = LogicalPlan(op, self.context)
         return Dataset(plan, logical_plan)
 
     @ConsumptionAPI
@@ -3730,7 +3732,7 @@ class Dataset:
             ray_remote_args=ray_remote_args,
             concurrency=concurrency,
         )
-        logical_plan = LogicalPlan(write_op)
+        logical_plan = LogicalPlan(write_op, self.context)
 
         try:
             import pandas as pd
@@ -4783,7 +4785,7 @@ class Dataset:
             )
             for block_with_metadata in blocks_with_metadata
         ]
-        logical_plan = LogicalPlan(InputData(input_data=ref_bundles))
+        logical_plan = LogicalPlan(InputData(input_data=ref_bundles), self.context)
         output = MaterializedDataset(
             ExecutionPlan(copy._plan.stats()),
             logical_plan,
