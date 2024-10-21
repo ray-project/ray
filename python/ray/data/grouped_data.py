@@ -79,7 +79,7 @@ class GroupedData:
             key=self._key,
             aggs=aggs,
         )
-        logical_plan = LogicalPlan(op)
+        logical_plan = LogicalPlan(op, self._dataset.context)
         return Dataset(
             plan,
             logical_plan,

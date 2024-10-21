@@ -399,20 +399,6 @@ class PhysicalOperator(Operator):
         """
         return len(self.get_active_tasks())
 
-    def num_active_actors(self) -> int:
-        """Return the number of active actors.
-
-        This method is used to display active actor info in the progress bar.
-        """
-        return 0
-
-    def num_pending_actors(self) -> int:
-        """Return the number of pending actors.
-
-        This method is used to display pending actor info in the progress bar.
-        """
-        return 0
-
     def throttling_disabled(self) -> bool:
         """Whether to disable resource throttling for this operator.
 
@@ -523,3 +509,21 @@ class PhysicalOperator(Operator):
     def supports_fusion(self) -> bool:
         """Returns ```True``` if this operator can be fused with other operators."""
         return False
+
+    def update_resource_usage(self) -> None:
+        """Updates resource usage of this operator at runtime.
+
+        This method will be called at runtime in each StreamingExecutor iteration.
+        Subclasses can override it to account for dynamic resource usage updates due to
+        restarting actors, retrying tasks, lost objects, etc.
+        """
+        pass
+
+    def actor_info_progress_str(self) -> str:
+        """Returns Actor progress strings for Alive, Restarting and Pending Actors.
+
+        This method will be called in summary_str API in OpState. Subcallses can
+        override it to return Actor progress strings for Alive, Restarting and Pending
+        Actors.
+        """
+        return ""
