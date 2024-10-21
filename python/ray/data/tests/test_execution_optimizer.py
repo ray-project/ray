@@ -1607,7 +1607,7 @@ def check_transform_fns(op, expected_types):
 def test_zero_copy_fusion_eliminate_build_output_blocks(ray_start_regular_shared):
     # Test the EliminateBuildOutputBlocks optimization rule.
     planner = Planner()
-    read_op = get_parquet_read_logical_op()
+    read_op = get_parquet_read_logical_op(parallelism=1)
     op = MapBatches(read_op, lambda x: x)
     logical_plan = LogicalPlan(op)
     physical_plan = planner.plan(logical_plan)
