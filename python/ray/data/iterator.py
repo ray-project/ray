@@ -934,9 +934,13 @@ class DataIterator(abc.ABC):
         ref_bundles_iter, stats, _ = self._to_ref_bundle_iterator()
 
         ref_bundles = list(ref_bundles_iter)
-        logical_plan = LogicalPlan(InputData(input_data=ref_bundles))
+        execution_plan = ExecutionPlan(stats)
+        logical_plan = LogicalPlan(
+            InputData(input_data=ref_bundles),
+            execution_plan._context,
+        )
         return MaterializedDataset(
-            ExecutionPlan(stats),
+            execution_plan,
             logical_plan,
         )
 
