@@ -1522,7 +1522,8 @@ class Dataset:
             )
 
         bundle = self._plan.execute()
-        owned_by_consumer = bundle.owns_blocks
+        # We should not free blocks since we will materialize the Datasets.
+        owned_by_consumer = False
         stats = self._plan.stats()
         block_refs, metadata = zip(*bundle.blocks)
 
