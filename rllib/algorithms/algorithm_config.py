@@ -449,6 +449,7 @@ class AlgorithmConfig(_Config):
         self.input_read_schema = {}
         self.input_read_episodes = False
         self.input_read_sample_batches = False
+        self.input_read_batch_size = None
         self.input_filesystem = None
         self.input_filesystem_kwargs = {}
         self.input_compress_columns = [Columns.OBS, Columns.NEXT_OBS]
@@ -2556,6 +2557,7 @@ class AlgorithmConfig(_Config):
         input_read_schema: Optional[Dict[str, str]] = NotProvided,
         input_read_episodes: Optional[bool] = NotProvided,
         input_read_sample_batches: Optional[bool] = NotProvided,
+        input_read_batch_size: Optional[int] = NotProvided,
         input_filesystem: Optional[str] = NotProvided,
         input_filesystem_kwargs: Optional[Dict] = NotProvided,
         input_compress_columns: Optional[List[str]] = NotProvided,
@@ -2638,6 +2640,15 @@ class AlgorithmConfig(_Config):
                 RLlib's `EpisodeType` (i.e. `SingleAgentEpisode` or
                 `MultiAgentEpisode`). The default is False. `input_read_episodes`
                 and `input_read_sample_batches` cannot be True at the same time.
+            input_read_batch_size: Batch size to pull from the data set. This could
+                differ from the `train_batch_size_per_learner`, if a dataset holds
+                `EpisodeType` (i.e. `SingleAgentEpisode` or `MultiAgentEpisode`) or
+                `BatchType` (i.e. `SampleBatch` or `MultiAgentBatch`) or any other
+                data type that contains multiple timesteps in a single row of the
+                dataset. In such cases a single batch of size
+                `train_batch_size_per_learner` will potentially pull a multiple of
+                `train_batch_size_per_learner` timesteps from the offline dataset. The
+                default is `None` in which the `train_batch_size_per_learner` is pulled.
             input_filesystem: A cloud filesystem to handle access to cloud storage when
                 reading experiences. Should be either "gcs" for Google Cloud Storage,
                 "s3" for AWS S3 buckets, or "abs" for Azure Blob Storage.
@@ -2771,6 +2782,8 @@ class AlgorithmConfig(_Config):
             self.input_read_episodes = input_read_episodes
         if input_read_sample_batches is not NotProvided:
             self.input_read_sample_batches = input_read_sample_batches
+        if input_read_batch_size is not NotProvided:
+            self.input_read_batch_size = input_read_batch_size
         if input_filesystem is not NotProvided:
             self.input_filesystem = input_filesystem
         if input_filesystem_kwargs is not NotProvided:
@@ -4660,6 +4673,17 @@ class AlgorithmConfig(_Config):
                 "prelearner needs to inherit from `EpisodeReplayBuffer`. "
                 "Specifically it needs to store and sample lists of "
                 "`Single-/MultiAgentEpisode`s."
+            )
+
+        if self.input_read_batch_size and not (
+            self.input_read_episodes or self.input_read_sample_batches
+        ):
+            raise ValueError(
+                "Setting `input_read_batch_size` is only allowed in case of a "
+                "dataset that holds either `EpisodeType` or `BatchType` data (i.e. "
+                "rows that contains multiple timesteps), but neither "
+                "`input_read_episodes` nor `input_read_sample_batches` is set to "
+                "`True`."
             )
 
         if (

@@ -165,7 +165,16 @@ class OfflinePreLearner:
 
     @OverrideToImplementCustomLogic
     def __call__(self, batch: Dict[str, np.ndarray]) -> Dict[str, List[EpisodeType]]:
+        """Prepares plain data batches for training with `Learner`s.
 
+        Args:
+            batch: A dictionary of numpy arrays containing either column data
+                with `self.config.input_read_schema`, `EpisodeType` data, or
+                `BatchType` data.
+
+        Returns:
+            A `MultiAgentBatch` that can be passed to `Learner.update` methods.
+        """
         # If we directly read in episodes we just convert to list.
         if self.input_read_episodes:
             # Import `msgpack` for decoding.
@@ -282,6 +291,7 @@ class OfflinePreLearner:
 
     @property
     def default_prelearner_buffer_class(self):
+        """Sets the default replay buffer."""
         from ray.rllib.utils.replay_buffers.episode_replay_buffer import (
             EpisodeReplayBuffer,
         )
@@ -291,6 +301,11 @@ class OfflinePreLearner:
 
     @property
     def default_prelearner_buffer_kwargs(self):
+        """Sets the default arguments for the replay buffer.
+
+        Note, the `capacity` might vary with the size of the episodes or
+        sample batches in the offline dataset.
+        """
         return {
             "capacity": self.config.train_batch_size_per_learner * 10,
             "batch_size_B": self.config.train_batch_size_per_learner,

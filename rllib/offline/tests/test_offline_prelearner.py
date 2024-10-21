@@ -175,6 +175,9 @@ class TestOfflinePreLearner(unittest.TestCase):
             input_read_method="read_json",
             # Signal that we want to read in old `SampleBatch` data.
             input_read_sample_batches=True,
+            # Use a different input batch size b/c each `SampleBatch`
+            # contains multiple timesteps.
+            input_read_batch_size=50,
         )
 
         # Build the algorithm to get the learner.
@@ -254,6 +257,7 @@ class TestOfflinePreLearner(unittest.TestCase):
         self.config.offline_data(
             input_=[data_path],
             input_read_episodes=True,
+            input_read_batch_size=50,
         )
 
         # Build the `BC` algorithm.

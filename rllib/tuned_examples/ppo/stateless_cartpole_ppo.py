@@ -16,6 +16,9 @@ parser.set_defaults(
 # and (if needed) use their values toset up `config` below.
 args = parser.parse_args()
 
+args.enable_new_api_stack = True
+args.no_tune = True
+args.local_mode = True
 
 config = (
     PPOConfig()
@@ -30,7 +33,7 @@ config = (
     )
     .rl_module(
         model_config=DefaultModelConfig(
-            vf_share_layers=True,
+            vf_share_layers=False,
             use_lstm=True,
             max_seq_len=20,
         ),
