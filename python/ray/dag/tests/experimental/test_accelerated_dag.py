@@ -2119,6 +2119,7 @@ def test_driver_and_actor_as_readers(ray_start_cluster):
         dag = MultiOutputNode([x, y])
     dag = dag.experimental_compile()
     assert ray.get(dag.execute(1)) == [1, 11]
+    dag.teardown()
 
 
 @pytest.mark.skip("Currently buffer size is set to 1 because of regression.")

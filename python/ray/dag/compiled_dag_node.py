@@ -1042,6 +1042,8 @@ class CompiledDAG:
                     for reader in readers:
                         if isinstance(reader.dag_node, MultiOutputNode):
                             assert self._proxy_actor is not None
+                            # inserting at 0 because CompositeChannel
+                            # _get_self_actor_id() reads first element for proxy actor
                             reader_and_node_list.insert(
                                 0,
                                 (
@@ -1076,7 +1078,6 @@ class CompiledDAG:
                         output_idx = downstream_node.output_idx
                     task.output_channels.append(output_channel)
                     task.output_idxs.append(output_idx)
-
                 actor_handle = task.dag_node._get_actor_handle()
                 assert actor_handle is not None
                 self.actor_refs.add(actor_handle)
