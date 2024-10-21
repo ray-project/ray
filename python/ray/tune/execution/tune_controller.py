@@ -188,7 +188,8 @@ class TuneController:
                     "mode as resources (such as Ray processes, "
                     "file descriptors, and temporary files) may not be "
                     "cleaned up properly. To use "
-                    "a safer mode, use fail_fast=True."
+                    "a safer mode, use fail_fast=True.",
+                    stacklevel=2
                 )
             else:
                 raise ValueError(
