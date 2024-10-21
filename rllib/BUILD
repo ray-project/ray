@@ -1214,23 +1214,24 @@ py_test(
     srcs = ["env/tests/test_infinite_lookback_buffer.py"]
 )
 
-sh_test(
-    name = "env/tests/test_local_inference_cartpole",
-    tags = ["team:rllib", "env"],
-    size = "medium",
-    srcs = ["env/tests/test_policy_client_server_setup.sh"],
-    args = ["local", "cartpole", "8800"],
-    data = glob(["examples/envs/external_envs/*.py"]),
-)
+# CI all of a sudden has problems with accessing the ports.
+# sh_test(
+#    name = "env/tests/test_local_inference_cartpole",
+#    tags = ["team:rllib", "env"],
+#    size = "medium",
+#    srcs = ["env/tests/test_policy_client_server_setup.sh"],
+#    args = ["local", "cartpole", "8800"],
+#    data = glob(["examples/envs/external_envs/*.py"]),
+# )
 
-sh_test(
-    name = "env/tests/test_local_inference_cartpole_w_2_concurrent_episodes",
-    tags = ["team:rllib", "env"],
-    size = "medium",
-    srcs = ["env/tests/test_policy_client_server_setup.sh"],
-    args = ["local", "cartpole-dummy-2-episodes", "8830"],
-    data = glob(["examples/envs/external_envs/*.py"]),
-)
+# sh_test(
+#    name = "env/tests/test_local_inference_cartpole_w_2_concurrent_episodes",
+#    tags = ["team:rllib", "env"],
+#    size = "medium",
+#    srcs = ["env/tests/test_policy_client_server_setup.sh"],
+#    args = ["local", "cartpole-dummy-2-episodes", "8830"],
+#    data = glob(["examples/envs/external_envs/*.py"]),
+# )
 
 # Tests with unity 3d and external envs currently don't work
 # see: https://github.com/ray-project/ray/issues/34290 for more details
@@ -1264,32 +1265,33 @@ py_test(
     srcs = ["env/tests/test_multi_agent_episode.py"]
 )
 
-sh_test(
-    name = "env/tests/test_remote_inference_cartpole",
-    tags = ["team:rllib", "env", "exclusive"],
-    size = "large", # bazel may complain about it being too long sometimes - large is on purpose as some frameworks take longer
-    srcs = ["env/tests/test_policy_client_server_setup.sh"],
-    args = ["remote", "cartpole", "8810"],
-    data = glob(["examples/envs/external_envs/*.py"]),
-)
+# CI all of a sudden has problems with accessing the ports.
+# sh_test(
+#    name = "env/tests/test_remote_inference_cartpole",
+#    tags = ["team:rllib", "env", "exclusive"],
+#    size = "large", # bazel may complain about it being too long sometimes - large is on purpose as some frameworks take longer
+#    srcs = ["env/tests/test_policy_client_server_setup.sh"],
+#    args = ["remote", "cartpole", "8810"],
+#    data = glob(["examples/envs/external_envs/*.py"]),
+# )
 
-sh_test(
-    name = "env/tests/test_remote_inference_cartpole_lstm",
-    tags = ["team:rllib", "env", "exclusive"],
-    size = "large", # bazel may complain about it being too long sometimes - large is on purpose as some frameworks take longer
-    srcs = ["env/tests/test_policy_client_server_setup.sh"],
-    args = ["remote", "cartpole_lstm", "8820"],
-    data = glob(["examples/envs/external_envs/*.py"]),
-)
+# sh_test(
+#    name = "env/tests/test_remote_inference_cartpole_lstm",
+#    tags = ["team:rllib", "env", "exclusive"],
+#    size = "large", # bazel may complain about it being too long sometimes - large is on purpose as some frameworks take longer
+#    srcs = ["env/tests/test_policy_client_server_setup.sh"],
+#    args = ["remote", "cartpole_lstm", "8820"],
+#    data = glob(["examples/envs/external_envs/*.py"]),
+# )
 
-sh_test(
-    name = "env/tests/test_remote_inference_cartpole_w_2_concurrent_episodes",
-    tags = ["team:rllib", "env", "exclusive"],
-    size = "large", # bazel may complain about it being too long sometimes - large is on purpose as some frameworks take longer
-    srcs = ["env/tests/test_policy_client_server_setup.sh"],
-    args = ["remote", "cartpole-dummy-2-episodes", "8840"],
-    data = glob(["examples/envs/external_envs/*.py"]),
-)
+# sh_test(
+#    name = "env/tests/test_remote_inference_cartpole_w_2_concurrent_episodes",
+#    tags = ["team:rllib", "env", "exclusive"],
+#    size = "large", # bazel may complain about it being too long sometimes - large is on purpose as some frameworks take longer
+#    srcs = ["env/tests/test_policy_client_server_setup.sh"],
+#    args = ["remote", "cartpole-dummy-2-episodes", "8840"],
+#    data = glob(["examples/envs/external_envs/*.py"]),
+# )
 
 # Tests with unity 3d and external envs currently don't work
 # see: https://github.com/ray-project/ray/issues/34290 for more details
@@ -1696,7 +1698,7 @@ py_test(
 py_test(
     name = "test_offline_prelearner",
     tags = ["team:rllib", "offline"],
-    size = "small",
+    size = "medium",
     srcs = ["offline/tests/test_offline_prelearner.py"],
     # Include the offline data files.
     data = [
@@ -2829,6 +2831,18 @@ py_test(
     args = ["--enable-new-api-stack", "--as-test"]
 )
 
+# subdirectory: metrics/
+# ....................................
+
+py_test(
+    name = "examples/metrics/custom_metrics_in_env_runners",
+    main = "examples/metrics/custom_metrics_in_env_runners.py",
+    tags = ["team:rllib", "exclusive", "examples"],
+    size = "medium",
+    srcs = ["examples/metrics/custom_metrics_in_env_runners.py"],
+    args = ["--enable-new-api-stack", "--stop-iters=3"]
+)
+
 # subdirectory: multi_agent/
 # ....................................
 py_test(
@@ -3186,16 +3200,6 @@ py_test(
     size = "medium",
     srcs = ["examples/centralized_critic_2.py"],
     args = ["--as-test", "--framework=torch", "--stop-reward=6.0"]
-)
-
-#@OldAPIStack
-py_test(
-    name = "examples/metrics/custom_metrics_and_callbacks",
-    main = "examples/metrics/custom_metrics_and_callbacks.py",
-    tags = ["team:rllib", "exclusive", "examples"],
-    size = "small",
-    srcs = ["examples/metrics/custom_metrics_and_callbacks.py"],
-    args = ["--stop-iters=2"]
 )
 
 py_test(
