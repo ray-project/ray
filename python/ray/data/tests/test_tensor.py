@@ -42,8 +42,12 @@ def test_large_tensor_creation(
     assert end_time - start_time < 20
 
 
-@pytest.mark.parametrize("tensor_format", ["v1", "v2"])
-def test_tensors_basic(ray_start_regular_shared, restore_data_context, tensor_format):
+@pytest.mark.parametrize(
+    "tensor_format, tensor_type", [("v1", ArrowTensorType), ("v2", ArrowTensorTypeV2)]
+)
+def test_tensors_basic(
+    ray_start_regular_shared, restore_data_context, tensor_format, tensor_type
+):
     DataContext.get_current().use_arrow_tensor_v2 = tensor_format == "v2"
 
     # Create directly.
@@ -51,7 +55,7 @@ def test_tensors_basic(ray_start_regular_shared, restore_data_context, tensor_fo
     ds = ray.data.range_tensor(6, shape=tensor_shape, override_num_blocks=6)
     assert ds.count() == 6
     assert ds.schema() == Schema(
-        pa.schema([("data", ArrowTensorType((3, 5), pa.int64()))])
+        pa.schema([("data", tensor_type((3, 5), pa.int64()))])
     )
     # The actual size is slightly larger due to metadata.
     # We add 6 (one per tensor) offset values of 8 bytes each to account for the
