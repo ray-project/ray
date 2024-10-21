@@ -325,6 +325,7 @@ class OperatorFusionRule(Rule):
             ray_remote_args=ray_remote_args,
             ray_remote_args_fn=ray_remote_args_fn,
         )
+        op.set_logical_operators(*up_op._logical_operators, *down_op._logical_operators)
 
         # Build a map logical operator to be used as a reference for further fusion.
         # TODO(Scott): This is hacky, remove this once we push fusion to be purely based

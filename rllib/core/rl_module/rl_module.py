@@ -1,4 +1,5 @@
 import abc
+import dataclasses
 from dataclasses import dataclass, field
 from typing import Any, Collection, Dict, Optional, Type, TYPE_CHECKING, Union
 
@@ -7,20 +8,18 @@ import gymnasium as gym
 from ray.rllib.core import DEFAULT_MODULE_ID
 from ray.rllib.core.columns import Columns
 from ray.rllib.core.models.specs.typing import SpecType
-from ray.rllib.core.models.specs.checker import (
-    check_input_specs,
-    check_output_specs,
-    convert_to_canonical_format,
-)
+from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
 from ray.rllib.models.distributions import Distribution
 from ray.rllib.utils.annotations import (
-    ExperimentalAPI,
     override,
     OverrideToImplementCustomLogic,
-    OverrideToImplementCustomLogic_CallToSuperRecommended,
 )
 from ray.rllib.utils.checkpoints import Checkpointable
-from ray.rllib.utils.deprecation import Deprecated
+from ray.rllib.utils.deprecation import (
+    Deprecated,
+    DEPRECATED_VALUE,
+    deprecation_warning,
+)
 from ray.rllib.utils.serialization import (
     gym_space_from_dict,
     gym_space_to_dict,
@@ -59,7 +58,7 @@ class RLModuleSpec:
             used for training, for example a shared value function in a multi-agent
             setup or a world model in a curiosity-learning setup.
             Note that `inference_only=True` AND `learner_only=True` is not allowed.
-        model_config_dict: The model config dict to use.
+        model_config: The model config dict or default RLlib dataclass to use.
         catalog_class: The Catalog class to use.
         load_state_path: The path to the module state to load from. NOTE: This must be
             an absolute path.
@@ -70,20 +69,20 @@ class RLModuleSpec:
     action_space: Optional[gym.Space] = None
     inference_only: bool = False
     learner_only: bool = False
-    model_config_dict: Optional[Dict[str, Any]] = None
+    model_config: Optional[Union[Dict[str, Any], DefaultModelConfig]] = None
     catalog_class: Optional[Type["Catalog"]] = None
     load_state_path: Optional[str] = None
 
-    def get_rl_module_config(self) -> "RLModuleConfig":
-        """Returns the RLModule config for this spec."""
-        return RLModuleConfig(
-            observation_space=self.observation_space,
-            action_space=self.action_space,
-            inference_only=self.inference_only,
-            learner_only=self.learner_only,
-            model_config_dict=self.model_config_dict or {},
-            catalog_class=self.catalog_class,
-        )
+    # Deprecated field.
+    model_config_dict: Optional[Union[dict, int]] = None
+
+    def __post_init__(self):
+        if self.model_config_dict is not None:
+            deprecation_warning(
+                old="RLModuleSpec(model_config_dict=..)",
+                new="RLModuleSpec(model_config=..)",
+                error=True,
+            )
 
     def build(self) -> "RLModule":
         """Builds the RLModule from this spec."""
@@ -94,8 +93,19 @@ class RLModuleSpec:
         if self.action_space is None:
             raise ValueError("Action space is not set.")
 
-        module_config = self.get_rl_module_config()
-        module = self.module_class(module_config)
+        try:
+            module = self.module_class(
+                observation_space=self.observation_space,
+                action_space=self.action_space,
+                inference_only=self.inference_only,
+                model_config=self._get_model_config(),
+                catalog_class=self.catalog_class,
+            )
+        # Older custom model might still require the old `RLModuleConfig` under
+        # the `config` arg.
+        except AttributeError:
+            module_config = self.get_rl_module_config()
+            module = self.module_class(module_config)
         return module
 
     @classmethod
@@ -105,39 +115,77 @@ class RLModuleSpec:
         if isinstance(module, MultiRLModule):
             raise ValueError("MultiRLModule cannot be converted to RLModuleSpec.")
 
-        return RLModuleSpec(
-            module_class=type(module),
-            observation_space=module.config.observation_space,
-            action_space=module.config.action_space,
-            inference_only=module.config.inference_only,
-            learner_only=module.config.learner_only,
-            model_config_dict=module.config.model_config_dict,
-            catalog_class=module.config.catalog_class,
-        )
+        # Try instantiating a new RLModule from the spec using the new c'tor args.
+        try:
+            rl_module_spec = RLModuleSpec(
+                module_class=type(module),
+                observation_space=module.observation_space,
+                action_space=module.action_space,
+                inference_only=module.inference_only,
+                learner_only=module.learner_only,
+                model_config=module.model_config,
+                catalog_class=(
+                    type(module.catalog) if module.catalog is not None else None
+                ),
+            )
+
+        # Old path through deprecated `RLModuleConfig` class. Used only if `module`
+        # still has a valid `config` attribute.
+        except AttributeError:
+            rl_module_spec = RLModuleSpec(
+                module_class=type(module),
+                observation_space=module.config.observation_space,
+                action_space=module.config.action_space,
+                inference_only=module.config.inference_only,
+                learner_only=module.config.learner_only,
+                model_config=module.config.model_config_dict,
+                catalog_class=module.config.catalog_class,
+            )
+        return rl_module_spec
 
     def to_dict(self):
         """Returns a serialized representation of the spec."""
-
         return {
             "module_class": serialize_type(self.module_class),
-            "module_config": self.get_rl_module_config().to_dict(),
+            "observation_space": gym_space_to_dict(self.observation_space),
+            "action_space": gym_space_to_dict(self.action_space),
+            "inference_only": self.inference_only,
+            "learner_only": self.learner_only,
+            "model_config": self._get_model_config(),
+            "catalog_class": serialize_type(self.catalog_class)
+            if self.catalog_class is not None
+            else None,
         }
 
     @classmethod
     def from_dict(cls, d):
         """Returns a single agent RLModule spec from a serialized representation."""
         module_class = deserialize_type(d["module_class"])
-        module_config = RLModuleConfig.from_dict(d["module_config"])
+        try:
+            spec = RLModuleSpec(
+                module_class=module_class,
+                observation_space=gym_space_from_dict(d["observation_space"]),
+                action_space=gym_space_from_dict(d["action_space"]),
+                inference_only=d["inference_only"],
+                learner_only=d["learner_only"],
+                model_config=d["model_config"],
+                catalog_class=deserialize_type(d["catalog_class"])
+                if d["catalog_class"] is not None
+                else None,
+            )
 
-        spec = RLModuleSpec(
-            module_class=module_class,
-            observation_space=module_config.observation_space,
-            action_space=module_config.action_space,
-            inference_only=module_config.inference_only,
-            learner_only=module_config.learner_only,
-            model_config_dict=module_config.model_config_dict,
-            catalog_class=module_config.catalog_class,
-        )
+        # Old path through deprecated `RLModuleConfig` class.
+        except KeyError:
+            module_config = RLModuleConfig.from_dict(d["module_config"])
+            spec = RLModuleSpec(
+                module_class=module_class,
+                observation_space=module_config.observation_space,
+                action_space=module_config.action_space,
+                inference_only=module_config.inference_only,
+                learner_only=module_config.learner_only,
+                model_config=module_config.model_config_dict,
+                catalog_class=module_config.catalog_class,
+            )
         return spec
 
     def update(self, other, override: bool = True) -> None:
@@ -159,7 +207,7 @@ class RLModuleSpec:
             self.action_space = other.action_space or self.action_space
             self.inference_only = other.inference_only or self.inference_only
             self.learner_only = other.learner_only and self.learner_only
-            self.model_config_dict = other.model_config_dict or self.model_config_dict
+            self.model_config = other.model_config or self.model_config
             self.catalog_class = other.catalog_class or self.catalog_class
             self.load_state_path = other.load_state_path or self.load_state_path
         # Only override, if the field is None in `self`.
@@ -168,7 +216,7 @@ class RLModuleSpec:
             self.module_class = self.module_class or other.module_class
             self.observation_space = self.observation_space or other.observation_space
             self.action_space = self.action_space or other.action_space
-            self.model_config_dict = self.model_config_dict or other.model_config_dict
+            self.model_config = self.model_config or other.model_config
             self.catalog_class = self.catalog_class or other.catalog_class
             self.load_state_path = self.load_state_path or other.load_state_path
 
@@ -177,90 +225,29 @@ class RLModuleSpec:
         from ray.rllib.core.rl_module.multi_rl_module import MultiRLModuleSpec
 
         return MultiRLModuleSpec(
-            module_specs={DEFAULT_MODULE_ID: self},
+            rl_module_specs={DEFAULT_MODULE_ID: self},
             load_state_path=self.load_state_path,
         )
 
-    @Deprecated(new="RLModuleSpec.as_multi_rl_module_spec()", error=True)
-    def as_multi_agent(self, *args, **kwargs):
-        pass
-
-
-@ExperimentalAPI
-@dataclass
-class RLModuleConfig:
-    """A utility config class to make it constructing RLModules easier.
-
-    Args:
-        observation_space: The observation space of the RLModule. This may differ
-            from the observation space of the environment. For example, a discrete
-            observation space of an environment, would usually correspond to a
-            one-hot encoded observation space of the RLModule because of preprocessing.
-        action_space: The action space of the RLModule.
-        inference_only: Whether the RLModule should be configured in its inference-only
-            state, in which those components not needed for action computing (for
-            example a value function or a target network) might be missing.
-            Note that `inference_only=True` AND `learner_only=True` is not allowed.
-        learner_only: Whether this RLModule should only be built on Learner workers, but
-            NOT on EnvRunners. Useful for RLModules inside a MultiRLModule that are only
-            used for training, for example a shared value function in a multi-agent
-            setup or a world model in a curiosity-learning setup.
-            Note that `inference_only=True` AND `learner_only=True` is not allowed.
-        model_config_dict: The model config dict to use.
-        catalog_class: The Catalog class to use.
-    """
-
-    observation_space: gym.Space = None
-    action_space: gym.Space = None
-    inference_only: bool = False
-    learner_only: bool = False
-    model_config_dict: Dict[str, Any] = field(default_factory=dict)
-    catalog_class: Type["Catalog"] = None
-
-    def get_catalog(self) -> Optional["Catalog"]:
-        """Returns the catalog for this config, if a class is provided."""
-        if self.catalog_class is not None:
-            return self.catalog_class(
-                observation_space=self.observation_space,
-                action_space=self.action_space,
-                model_config_dict=self.model_config_dict,
-            )
-        return None
-
-    def to_dict(self):
-        """Returns a serialized representation of the config.
-
-        NOTE: This should be JSON-able. Users can test this by calling
-            json.dumps(config.to_dict()).
-
-        """
-        catalog_class_path = (
-            serialize_type(self.catalog_class) if self.catalog_class else ""
+    def _get_model_config(self):
+        return (
+            dataclasses.asdict(self.model_config)
+            if dataclasses.is_dataclass(self.model_config)
+            else (self.model_config or {})
         )
-        return {
-            "observation_space": gym_space_to_dict(self.observation_space),
-            "action_space": gym_space_to_dict(self.action_space),
-            "inference_only": self.inference_only,
-            "learner_only": self.learner_only,
-            "model_config_dict": self.model_config_dict,
-            "catalog_class_path": catalog_class_path,
-        }
 
-    @classmethod
-    def from_dict(cls, d: Dict[str, Any]):
-        """Creates a config from a serialized representation."""
-        catalog_class = (
-            None
-            if d["catalog_class_path"] == ""
-            else deserialize_type(d["catalog_class_path"])
-        )
-        return cls(
-            observation_space=gym_space_from_dict(d["observation_space"]),
-            action_space=gym_space_from_dict(d["action_space"]),
-            inference_only=d["inference_only"],
-            learner_only=d["learner_only"],
-            model_config_dict=d["model_config_dict"],
-            catalog_class=catalog_class,
+    @Deprecated(
+        new="RLModule(*, observation_space=.., action_space=.., ....)",
+        error=False,
+    )
+    def get_rl_module_config(self):
+        return RLModuleConfig(
+            observation_space=self.observation_space,
+            action_space=self.action_space,
+            inference_only=self.inference_only,
+            learner_only=self.learner_only,
+            model_config_dict=self._get_model_config(),
+            catalog_class=self.catalog_class,
         )
 
 
@@ -289,8 +276,8 @@ class RLModule(Checkpointable, abc.ABC):
             module_class=PPOTorchRLModule,
             observation_space=env.observation_space,
             action_space=env.action_space,
-            model_config_dict = {"hidden": [128, 128]},
-            catalog_class = PPOCatalog,
+            model_config=DefaultModelConfig(fcnet_hiddens=[128, 128]),
+            catalog_class=PPOCatalog,
         )
         module = module_spec.build()
         action_dist_class = module.get_inference_action_dist_cls()
@@ -326,8 +313,8 @@ class RLModule(Checkpointable, abc.ABC):
             module_class=PPOTorchRLModule,
             observation_space=env.observation_space,
             action_space=env.action_space,
-            model_config_dict = {"hidden": [128, 128]},
-            catalog_class = PPOCatalog,
+            model_config=DefaultModelConfig(fcnet_hiddens=[128, 128]),
+            catalog_class=PPOCatalog,
         )
         module = module_spec.build()
 
@@ -354,8 +341,8 @@ class RLModule(Checkpointable, abc.ABC):
             module_class=PPOTorchRLModule,
             observation_space=env.observation_space,
             action_space=env.action_space,
-            model_config_dict = {"hidden": [128, 128]},
-            catalog_class = PPOCatalog,
+            model_config=DefaultModelConfig(fcnet_hiddens=[128, 128]),
+            catalog_class=PPOCatalog,
         )
         module = module_spec.build()
 
@@ -394,16 +381,65 @@ class RLModule(Checkpointable, abc.ABC):
 
     STATE_FILE_NAME = "module_state.pkl"
 
-    def __init__(self, config: RLModuleConfig):
-        self.config = config
-
+    def __init__(
+        self,
+        config=DEPRECATED_VALUE,
+        *,
+        observation_space: Optional[gym.Space] = None,
+        action_space: Optional[gym.Space] = None,
+        inference_only: Optional[bool] = None,
+        learner_only: bool = False,
+        model_config: Optional[Union[dict, DefaultModelConfig]] = None,
+        catalog_class=None,
+    ):
         # TODO (sven): Deprecate Catalog and replace with utility functions to create
         #  primitive components based on obs- and action spaces.
         self.catalog = None
-        try:
-            self.catalog = self.config.get_catalog()
-        except Exception:
-            pass
+
+        # Deprecated
+        self.config = config
+        if self.config != DEPRECATED_VALUE:
+            deprecation_warning(
+                old="RLModule(config=[RLModuleConfig])",
+                new="RLModule(observation_space=.., action_space=.., inference_only=..,"
+                " learner_only=.., model_config=..)",
+                error=False,
+            )
+            self.observation_space = self.config.observation_space
+            self.action_space = self.config.action_space
+            self.inference_only = self.config.inference_only
+            self.learner_only = self.config.learner_only
+            self.model_config = self.config.model_config_dict
+            try:
+                self.catalog = self.config.get_catalog()
+            except Exception:
+                pass
+        else:
+            self.observation_space = observation_space
+            self.action_space = action_space
+            self.inference_only = inference_only
+            self.learner_only = learner_only
+            self.model_config = model_config
+            try:
+                self.catalog = catalog_class(
+                    observation_space=self.observation_space,
+                    action_space=self.action_space,
+                    model_config_dict=self.model_config,
+                )
+            except Exception:
+                pass
+
+        # TODO (sven): Deprecate this. We keep it here for now in case users
+        #  still have custom models (or subclasses of RLlib default models)
+        #  into which they pass in a `config` argument.
+        self.config = RLModuleConfig(
+            observation_space=self.observation_space,
+            action_space=self.action_space,
+            inference_only=self.inference_only,
+            learner_only=self.learner_only,
+            model_config_dict=self.model_config,
+            catalog_class=catalog_class,
+        )
 
         self.action_dist_cls = None
         if self.catalog is not None:
@@ -411,59 +447,17 @@ class RLModule(Checkpointable, abc.ABC):
                 framework=self.framework
             )
 
-        # Make sure, `setup()` is only called once, no matter what. In some cases
-        # of multiple inheritance (and with our __post_init__ functionality in place,
-        # this might get called twice.
+        # Make sure, `setup()` is only called once, no matter what.
         if hasattr(self, "_is_setup") and self._is_setup:
             raise RuntimeError(
                 "`RLModule.setup()` called twice within your RLModule implementation "
                 f"{self}! Make sure you are using the proper inheritance order "
                 "(TorchRLModule before [Algo]RLModule) or (TfRLModule before "
-                "[Algo]RLModule) and that you are using `super().__init__(...)` in "
-                "your custom constructor."
+                "[Algo]RLModule) and that you are NOT overriding the constructor, but "
+                "only the `setup()` method of your subclass."
             )
         self.setup()
         self._is_setup = True
-
-    def __init_subclass__(cls, **kwargs):
-        # Automatically add a __post_init__ method to all subclasses of RLModule.
-        # This method is called after the __init__ method of the subclass.
-        def init_decorator(previous_init):
-            def new_init(self, *args, **kwargs):
-                previous_init(self, *args, **kwargs)
-                if type(self) is cls:
-                    self.__post_init__()
-
-            return new_init
-
-        cls.__init__ = init_decorator(cls.__init__)
-
-    def __post_init__(self):
-        """Called automatically after the __init__ method of the subclass.
-
-        The module first calls the __init__ method of the subclass, With in the
-        __init__ you should call the super().__init__ method. Then after the __init__
-        method of the subclass is called, the __post_init__ method is called.
-
-        This is a good place to do any initialization that requires access to the
-        subclass's attributes.
-        """
-        self._input_specs_train = convert_to_canonical_format(self.input_specs_train())
-        self._output_specs_train = convert_to_canonical_format(
-            self.output_specs_train()
-        )
-        self._input_specs_exploration = convert_to_canonical_format(
-            self.input_specs_exploration()
-        )
-        self._output_specs_exploration = convert_to_canonical_format(
-            self.output_specs_exploration()
-        )
-        self._input_specs_inference = convert_to_canonical_format(
-            self.input_specs_inference()
-        )
-        self._output_specs_inference = convert_to_canonical_format(
-            self.output_specs_inference()
-        )
 
     @OverrideToImplementCustomLogic
     def setup(self):
@@ -543,8 +537,6 @@ class RLModule(Checkpointable, abc.ABC):
         """
         return {}
 
-    @check_input_specs("_input_specs_inference")
-    @check_output_specs("_output_specs_inference")
     def forward_inference(self, batch: Dict[str, Any], **kwargs) -> Dict[str, Any]:
         """DO NOT OVERRIDE! Forward-pass during evaluation, called from the sampler.
 
@@ -574,8 +566,6 @@ class RLModule(Checkpointable, abc.ABC):
         """
         return self._forward(batch, **kwargs)
 
-    @check_input_specs("_input_specs_exploration")
-    @check_output_specs("_output_specs_exploration")
     def forward_exploration(self, batch: Dict[str, Any], **kwargs) -> Dict[str, Any]:
         """DO NOT OVERRIDE! Forward-pass during exploration, called from the sampler.
 
@@ -605,8 +595,6 @@ class RLModule(Checkpointable, abc.ABC):
         """
         return self._forward(batch, **kwargs)
 
-    @check_input_specs("_input_specs_train")
-    @check_output_specs("_output_specs_train")
     def forward_train(self, batch: Dict[str, Any], **kwargs) -> Dict[str, Any]:
         """DO NOT OVERRIDE! Forward-pass during training called from the learner.
 
@@ -622,7 +610,7 @@ class RLModule(Checkpointable, abc.ABC):
             The output of the forward pass. This output should comply with the
             output_specs_train().
         """
-        if self.config.inference_only:
+        if self.inference_only:
             raise RuntimeError(
                 "Calling `forward_train` on an inference_only module is not allowed! "
                 "Set the `inference_only=False` flag in the RLModule's config when "
@@ -684,7 +672,7 @@ class RLModule(Checkpointable, abc.ABC):
                 state (w/o those model components that are not needed for action
                 computations, such as a value function or a target network).
                 Note that setting this to `False` might raise an error if
-                `self.config.inference_only` is True.
+                `self.inference_only` is True.
 
         Returns:
             This RLModule's state dict.
@@ -706,57 +694,25 @@ class RLModule(Checkpointable, abc.ABC):
     def get_ctor_args_and_kwargs(self):
         return (
             (self.config,),  # *args
-            {},  # **kwargs
+            {
+                "observation_space": self.observation_space,
+                "action_space": self.action_space,
+                "inference_only": self.inference_only,
+                "learner_only": self.learner_only,
+                "model_config": self.model_config,
+                "catalog_class": (
+                    type(self.catalog) if self.catalog is not None else None
+                ),
+            },  # **kwargs
         )
-
-    @OverrideToImplementCustomLogic_CallToSuperRecommended
-    def output_specs_inference(self) -> SpecType:
-        """Returns the output specs of the `forward_inference()` method.
-
-        Override this method to customize the output specs of the inference call.
-        The default implementation requires the `forward_inference()` method to return
-        a dict that has `action_dist` key and its value is an instance of
-        `Distribution`.
-        """
-        return [Columns.ACTION_DIST_INPUTS]
-
-    @OverrideToImplementCustomLogic_CallToSuperRecommended
-    def output_specs_exploration(self) -> SpecType:
-        """Returns the output specs of the `forward_exploration()` method.
-
-        Override this method to customize the output specs of the exploration call.
-        The default implementation requires the `forward_exploration()` method to return
-        a dict that has `action_dist` key and its value is an instance of
-        `Distribution`.
-        """
-        return [Columns.ACTION_DIST_INPUTS]
-
-    def output_specs_train(self) -> SpecType:
-        """Returns the output specs of the forward_train method."""
-        return {}
-
-    def input_specs_inference(self) -> SpecType:
-        """Returns the input specs of the forward_inference method."""
-        return self._default_input_specs()
-
-    def input_specs_exploration(self) -> SpecType:
-        """Returns the input specs of the forward_exploration method."""
-        return self._default_input_specs()
-
-    def input_specs_train(self) -> SpecType:
-        """Returns the input specs of the forward_train method."""
-        return self._default_input_specs()
-
-    def _default_input_specs(self) -> SpecType:
-        """Returns the default input specs."""
-        return [Columns.OBS]
 
     def as_multi_rl_module(self) -> "MultiRLModule":
         """Returns a multi-agent wrapper around this module."""
         from ray.rllib.core.rl_module.multi_rl_module import MultiRLModule
 
-        multi_rl_module = MultiRLModule()
-        multi_rl_module.add_module(DEFAULT_MODULE_ID, self)
+        multi_rl_module = MultiRLModule(
+            rl_module_specs={DEFAULT_MODULE_ID: RLModuleSpec.from_module(self)}
+        )
         return multi_rl_module
 
     def unwrapped(self) -> "RLModule":
@@ -785,3 +741,83 @@ class RLModule(Checkpointable, abc.ABC):
     @Deprecated(new="RLModule.save_to_path(...)", error=True)
     def save_to_checkpoint(self, *args, **kwargs):
         pass
+
+    def output_specs_inference(self) -> SpecType:
+        return [Columns.ACTION_DIST_INPUTS]
+
+    def output_specs_exploration(self) -> SpecType:
+        return [Columns.ACTION_DIST_INPUTS]
+
+    def output_specs_train(self) -> SpecType:
+        """Returns the output specs of the forward_train method."""
+        return {}
+
+    def input_specs_inference(self) -> SpecType:
+        """Returns the input specs of the forward_inference method."""
+        return self._default_input_specs()
+
+    def input_specs_exploration(self) -> SpecType:
+        """Returns the input specs of the forward_exploration method."""
+        return self._default_input_specs()
+
+    def input_specs_train(self) -> SpecType:
+        """Returns the input specs of the forward_train method."""
+        return self._default_input_specs()
+
+    def _default_input_specs(self) -> SpecType:
+        """Returns the default input specs."""
+        return [Columns.OBS]
+
+
+@Deprecated(
+    old="RLModule(config=[RLModuleConfig object])",
+    new="RLModule(observation_space=.., action_space=.., inference_only=.., "
+    "model_config=.., catalog_class=..)",
+    error=False,
+)
+@dataclass
+class RLModuleConfig:
+    observation_space: gym.Space = None
+    action_space: gym.Space = None
+    inference_only: bool = False
+    learner_only: bool = False
+    model_config_dict: Dict[str, Any] = field(default_factory=dict)
+    catalog_class: Type["Catalog"] = None
+
+    def get_catalog(self) -> Optional["Catalog"]:
+        if self.catalog_class is not None:
+            return self.catalog_class(
+                observation_space=self.observation_space,
+                action_space=self.action_space,
+                model_config_dict=self.model_config_dict,
+            )
+        return None
+
+    def to_dict(self):
+        catalog_class_path = (
+            serialize_type(self.catalog_class) if self.catalog_class else ""
+        )
+        return {
+            "observation_space": gym_space_to_dict(self.observation_space),
+            "action_space": gym_space_to_dict(self.action_space),
+            "inference_only": self.inference_only,
+            "learner_only": self.learner_only,
+            "model_config_dict": self.model_config_dict,
+            "catalog_class_path": catalog_class_path,
+        }
+
+    @classmethod
+    def from_dict(cls, d: Dict[str, Any]):
+        catalog_class = (
+            None
+            if d["catalog_class_path"] == ""
+            else deserialize_type(d["catalog_class_path"])
+        )
+        return cls(
+            observation_space=gym_space_from_dict(d["observation_space"]),
+            action_space=gym_space_from_dict(d["action_space"]),
+            inference_only=d["inference_only"],
+            learner_only=d["learner_only"],
+            model_config_dict=d["model_config_dict"],
+            catalog_class=catalog_class,
+        )
