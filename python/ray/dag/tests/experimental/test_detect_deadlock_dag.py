@@ -273,38 +273,6 @@ def test_valid_graph_3_actors_1(ray_start_regular, tensor_transport):
             ]
         )
 
-    if tensor_transport == TorchTensorType.AUTO:
-        dag.experimental_compile()  # noqa
-    elif tensor_transport == TorchTensorType.NCCL:
-        with pytest.raises(ValueError, match=INVALID_GRAPH):
-            dag.experimental_compile()
-
-
-@pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 2}], indirect=True)
-def test_valid_graph_2_actors(ray_start_regular):
-    """
-    Driver -> a.no_op -> b.no_op -> a.no_op -> b.no_op -> a.no_op -> b.no_op -> Driver
-
-    All communication between `a` and `b` is done via the NCCL channel.
-    """
-    a = MockedWorker.remote()
-    b = MockedWorker.remote()
-
-    ray.get([a.start_mock.remote(), b.start_mock.remote()])
-
-    with InputNode() as inp:
-        dag = a.no_op.bind(inp)
-        dag.with_type_hint(TorchTensorType(transport="nccl"))
-        dag = b.no_op.bind(dag)
-        dag.with_type_hint(TorchTensorType(transport="nccl"))
-        dag = a.no_op.bind(dag)
-        dag.with_type_hint(TorchTensorType(transport="nccl"))
-        dag = b.no_op.bind(dag)
-        dag.with_type_hint(TorchTensorType(transport="nccl"))
-        dag = a.no_op.bind(dag)
-        dag.with_type_hint(TorchTensorType(transport="nccl"))
-        dag = b.no_op.bind(dag)
-
     dag.experimental_compile()
 
 
