@@ -97,7 +97,7 @@ def _register_default_plan_logical_op_fns():
 
     def plan_count_op(logical_op, physical_children):
         assert len(physical_children) == 1
-        return AggregateNumRows(physical_children[0], column_name=Count.COLUMN_NAME)
+        return AggregateNumRows([physical_children[0]], column_name=Count.COLUMN_NAME)
 
     register_plan_logical_op_fn(Count, plan_count_op)
 
