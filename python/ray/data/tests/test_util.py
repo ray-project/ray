@@ -1,3 +1,4 @@
+import time
 from typing import Any, Dict, Optional
 
 import numpy as np
@@ -148,6 +149,23 @@ def test_list_splits():
     assert _split_list(list(range(5)), 1) == [[0, 1, 2, 3, 4]]
     assert _split_list(["foo", 1, [0], None], 2) == [["foo", 1], [[0], None]]
     assert _split_list(["foo", 1, [0], None], 3) == [["foo", 1], [[0]], [None]]
+
+
+def split_performance():
+    int_array = range(1000003)
+    start = time.perf_counter()
+
+    for split in np.array_split(int_array, 100):
+        len(split)
+
+    end1 = time.perf_counter()
+    print(f"============== {end1 - start}")
+
+    for split in _split_list(int_array, 100):
+        len(split)
+    end2 = time.perf_counter()
+    print(f"============== {end2 - end1}")
+    assert (end2 - end1) < (end1 - start)
 
 
 def get_parquet_read_logical_op(
