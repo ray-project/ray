@@ -11,8 +11,11 @@ from typing import List, Dict, Union, Callable
 
 
 def schedule_remote_fn_on_all_nodes(
-    remote_fn, exclude_head: bool = False, *args, **kwargs
+    remote_fn, exclude_head: bool = True, *args, **kwargs
 ):
+    """Runs remote fn on all worker nodes.
+    Also schedules on the head node if `exclude_head` is False.
+    """
     head_ip = ray.util.get_node_ip_address()
 
     futures = []
