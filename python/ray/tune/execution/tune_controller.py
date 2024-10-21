@@ -1202,9 +1202,6 @@ class TuneController:
 
         tracked_actor = self._trial_to_actor[trial]
 
-        _on_result = None
-        _on_error = None
-
         args = args or tuple()
         kwargs = kwargs or {}
 
