@@ -3,7 +3,6 @@ import logging
 import os
 import socket
 import sys
-import time
 from typing import List, Optional, Tuple
 
 import pytest
@@ -19,13 +18,7 @@ from ray.experimental.channel.gpu_communicator import (
     TorchTensorAllocator,
 )
 from ray.experimental.channel.nccl_group import _NcclGroup
-import socket
 
-from ray.exceptions import RayChannelError
-import ray
-from ray.air._internal import torch_utils
-import ray.cluster_utils
-from ray.dag import InputNode
 from ray.experimental.channel.torch_tensor_type import TorchTensorType
 from ray.tests.conftest import *  # noqa
 from ray.experimental.util.types import ReduceOp
