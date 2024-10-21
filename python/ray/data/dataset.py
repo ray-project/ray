@@ -56,6 +56,7 @@ from ray.data._internal.logical.operators.all_to_all_operator import (
     Repartition,
     Sort,
 )
+from ray.data._internal.logical.operators.count_operator import Count
 from ray.data._internal.logical.operators.input_data_operator import InputData
 from ray.data._internal.logical.operators.map_operator import (
     Filter,
@@ -2645,15 +2646,19 @@ class Dataset:
         if meta_count is not None:
             return meta_count
 
-        # Directly loop over the iterator of `RefBundle`s instead of
-        # retrieving a full list of `BlockRef`s.
-        total_rows = 0
-        for ref_bundle in self.iter_internal_ref_bundles():
-            num_rows = ref_bundle.num_rows()
-            # Executing the dataset always returns blocks with valid `num_rows`.
-            assert num_rows is not None
-            total_rows += num_rows
-        return total_rows
+        plan = self._plan.copy()
+        count_op = Count([self._logical_plan.dag])
+        logical_plan = LogicalPlan(count_op)
+        count_ds = Dataset(plan, logical_plan)
+
+        count = 0
+        for batch in count_ds.iter_batches():
+            assert Count.COLUMN_NAME in batch, (
+                "Outputs from the 'Count' logical operator should contain a column "
+                f"named '{Count.COLUMN_NAME}'"
+            )
+            count += batch[Count.COLUMN_NAME].sum()
+        return count
 
     @ConsumptionAPI(
         if_more_than_read=True,

@@ -28,6 +28,9 @@ def register_plan_logical_op_fn(
 
 
 def _register_default_plan_logical_op_fns():
+    from ray.data._internal.execution.operators.aggregate_num_rows import (
+        AggregateNumRows,
+    )
     from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
     from ray.data._internal.execution.operators.limit_operator import LimitOperator
     from ray.data._internal.execution.operators.union_operator import UnionOperator
@@ -35,6 +38,7 @@ def _register_default_plan_logical_op_fns():
     from ray.data._internal.logical.operators.all_to_all_operator import (
         AbstractAllToAll,
     )
+    from ray.data._internal.logical.operators.count_operator import Count
     from ray.data._internal.logical.operators.from_operators import AbstractFrom
     from ray.data._internal.logical.operators.input_data_operator import InputData
     from ray.data._internal.logical.operators.map_operator import AbstractUDFMap
@@ -90,6 +94,12 @@ def _register_default_plan_logical_op_fns():
         return LimitOperator(logical_op._limit, physical_children[0])
 
     register_plan_logical_op_fn(Limit, plan_limit_op)
+
+    def plan_count_op(logical_op, physical_children):
+        assert len(physical_children) == 1
+        return AggregateNumRows(physical_children[0])
+
+    register_plan_logical_op_fn(Count, plan_count_op)
 
 
 _register_default_plan_logical_op_fns()
