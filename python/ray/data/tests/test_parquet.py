@@ -1317,6 +1317,13 @@ def test_multiple_files_with_ragged_arrays(ray_start_regular_shared, tmp_path):
         assert item["data"].shape == (100 * (index + 1), 100 * (index + 1))
 
 
+def test_count_with_filter(ray_start_regular_shared):
+    ds = ray.data.read_parquet(
+        "example://iris.parquet", filter=(pc.field("sepal.length") < pc.scalar(0))
+    )
+    assert ds.count() == 0
+
+
 if __name__ == "__main__":
     import sys
 
