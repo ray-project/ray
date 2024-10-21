@@ -6,6 +6,7 @@ from typing import Any
 import numpy as np
 import pandas as pd
 import pyarrow as pa
+import pyarrow.dataset as pds
 import pyarrow.parquet as pq
 import pytest
 from pytest_lazyfixture import lazy_fixture
@@ -1304,6 +1305,13 @@ def test_multiple_files_with_ragged_arrays(ray_start_regular_shared, tmp_path):
     for index, item in enumerate(res):
         assert item["id"] == index
         assert item["data"].shape == (100 * (index + 1), 100 * (index + 1))
+
+
+def test_count_with_filter(ray_start_regular_shared):
+    ds = ray.data.read_parquet(
+        "example://iris.parquet", filter=(pds.field("sepal.length") < pds.scalar(0))
+    )
+    assert ds.count() == 0
 
 
 if __name__ == "__main__":
