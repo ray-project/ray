@@ -2652,7 +2652,7 @@ class Dataset:
         count_ds = Dataset(plan, logical_plan)
 
         count = 0
-        for batch in count_ds.iter_batches():
+        for batch in count_ds.iter_batches(batch_size=None):
             assert Count.COLUMN_NAME in batch, (
                 "Outputs from the 'Count' logical operator should contain a column "
                 f"named '{Count.COLUMN_NAME}'"
