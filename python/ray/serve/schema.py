@@ -962,6 +962,15 @@ class DeploymentDetails(BaseModel, extra=Extra.forbid, frozen=True):
         return v
 
 
+@PublicAPI(stability="alpha")
+class APIType(str, Enum):
+    """Tracks the type of API that an application originates from."""
+
+    UNKNOWN = "unknown"
+    IMPERATIVE = "imperative"
+    DECLARATIVE = "declarative"
+
+
 @PublicAPI(stability="stable")
 class ApplicationDetails(BaseModel, extra=Extra.forbid, frozen=True):
     """Detailed info about a Serve application."""
@@ -1010,6 +1019,12 @@ class ApplicationDetails(BaseModel, extra=Extra.forbid, frozen=True):
             "deployed. This config simply avoids cluttering with unspecified fields "
             "for readability."
         )
+    )
+    source: APIType = Field(
+        description=(
+            "The type of API that the application originates from. "
+            "This is a Developer API that is subject to change."
+        ),
     )
     deployments: Dict[str, DeploymentDetails] = Field(
         description="Details about the deployments in this application."

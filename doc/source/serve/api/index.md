@@ -373,6 +373,7 @@ Content-Type: application/json
    :toctree: doc/
 
    schema.ServeInstanceDetails
+   schema.APIType
    schema.ApplicationDetails
    schema.DeploymentDetails
    schema.ReplicaDetails
