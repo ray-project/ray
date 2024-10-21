@@ -76,8 +76,9 @@ def test_ray_debugger_commands(shutdown_only):
 
     # Make sure that calling "continue" in the debugger
     # gives back control to the debugger loop:
-    if sys.platform == 'win32':
+    if sys.platform == "win32":
         from pexpect.popen_spawn import PopenSpawn
+
         p = PopenSpawn("ray debug", encoding="utf-8")
     else:
         p = pexpect.spawn("ray debug")
@@ -112,8 +113,9 @@ def test_ray_debugger_stepping(shutdown_only):
 
     result = f.remote()
 
-    if sys.platform == 'win32':
+    if sys.platform == "win32":
         from pexpect.popen_spawn import PopenSpawn
+
         p = PopenSpawn("ray debug", encoding="utf-8")
     else:
         p = pexpect.spawn("ray debug")
@@ -143,8 +145,9 @@ def test_ray_debugger_recursive(shutdown_only):
 
     result = fact.remote(5)
 
-    if sys.platform == 'win32':
+    if sys.platform == "win32":
         from pexpect.popen_spawn import PopenSpawn
+
         p = PopenSpawn("ray debug", encoding="utf-8")
     else:
         p = pexpect.spawn("ray debug")
@@ -205,8 +208,9 @@ time.sleep(5)
 
     # Start the debugger. This should clean up any existing sessions that
     # belong to dead jobs.
-    if sys.platform == 'win32':
+    if sys.platform == "win32":
         from pexpect.popen_spawn import PopenSpawn
+
         p = PopenSpawn("ray debug", encoding="utf-8")  # noqa: F841
     else:
         p = pexpect.spawn("ray debug")  # noqa:F841
@@ -220,7 +224,10 @@ time.sleep(5)
 
     wait_for_condition(no_active_sessions)
 
-@pytest.mark.skipif(platform.system() == "Windows", reason="Windows does not print '--address' on init")
+
+@pytest.mark.skipif(
+    platform.system() == "Windows", reason="Windows does not print '--address' on init"
+)
 @pytest.mark.parametrize("ray_debugger_external", [False, True])
 def test_ray_debugger_public(shutdown_only, call_ray_stop_only, ray_debugger_external):
     redis_substring_prefix = "--address='"

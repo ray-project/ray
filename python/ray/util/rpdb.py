@@ -43,7 +43,9 @@ class _LF2CRLF_FileWrapper(object):
         self.flush = fh.flush
         self.fileno = fh.fileno
         if hasattr(fh, "encoding"):
-            self._send = lambda data: connection.sendall(data.encode(fh.encoding, errors="replace"))
+            self._send = lambda data: connection.sendall(
+                data.encode(fh.encoding, errors="replace")
+            )
         else:
             self._send = connection.sendall
 
@@ -337,16 +339,15 @@ def _post_mortem():
     rdb.post_mortem()
 
 
-
 def _connect_pdb_client(host, port):
-    if sys.platform == 'win32':
+    if sys.platform == "win32":
         import msvcrt
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     s.connect((host, port))
 
     while True:
         # Get the list of sockets which are readable.
-        if sys.platform == 'win32':
+        if sys.platform == "win32":
             ready_to_read = select.select([s], [], [], 1)[0]
             if msvcrt.kbhit():
                 ready_to_read.append(sys.stdin)
