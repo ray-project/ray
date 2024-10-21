@@ -189,7 +189,7 @@ class TuneController:
                     "file descriptors, and temporary files) may not be "
                     "cleaned up properly. To use "
                     "a safer mode, use fail_fast=True.",
-                    stacklevel=2
+                    stacklevel=2,
                 )
             else:
                 raise ValueError(
