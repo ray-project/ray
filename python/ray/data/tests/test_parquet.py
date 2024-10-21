@@ -6,7 +6,7 @@ from typing import Any
 import numpy as np
 import pandas as pd
 import pyarrow as pa
-import pyarrow.compute as pc
+import pyarrow.dataset as pds
 import pyarrow.parquet as pq
 import pytest
 from pytest_lazyfixture import lazy_fixture
@@ -1320,7 +1320,7 @@ def test_multiple_files_with_ragged_arrays(ray_start_regular_shared, tmp_path):
 
 def test_count_with_filter(ray_start_regular_shared):
     ds = ray.data.read_parquet(
-        "example://iris.parquet", filter=(pc.field("sepal.length") < pc.scalar(0))
+        "example://iris.parquet", filter=(pds.field("sepal.length") < pds.scalar(0))
     )
     assert ds.count() == 0
 
