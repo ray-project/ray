@@ -710,6 +710,35 @@ def test_log_monitor(tmp_path, live_dead_pids):
     assert len(list((log_dir / "old").iterdir())) == 2
 
 
+def test_tpu_logs(tmp_path):
+    # Create the log directories. tpu_logs would be a symlink to the
+    # /tmp/tpu_logs directory created in Node _init_temp.
+    log_dir = tmp_path / "logs"
+    log_dir.mkdir()
+    tpu_log_dir = log_dir / "tpu_logs"
+    tpu_log_dir.mkdir()
+    # Create TPU device log file in tpu_logs directory.
+    tpu_device_log_file = "tpu-device.log"
+    first_line = "First line\n"
+    create_file(tpu_log_dir, tpu_device_log_file, first_line)
+
+    mock_publisher = MagicMock()
+    log_monitor = LogMonitor(
+        "127.0.0.1",
+        str(log_dir),
+        mock_publisher,
+        is_proc_alive,
+        max_files_open=5,
+        is_tpu=True,
+    )
+    # Verify TPU logs are ingested by LogMonitor.
+    log_monitor.update_log_filenames()
+    log_monitor.open_closed_files()
+    assert len(log_monitor.open_file_infos) == 1
+    file_info = log_monitor.open_file_infos[0]
+    assert file_info.filename == str(tpu_log_dir / tpu_device_log_file)
+
+
 def test_log_monitor_actor_task_name_and_job_id(tmp_path):
     log_dir = tmp_path / "logs"
     log_dir.mkdir()
