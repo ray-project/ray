@@ -7,6 +7,6 @@ google-cloud-storage
 grpcio>=1.66.1
 grpcio-tools
 pyyaml
-pyopenssl
+pyopenssl>=24.2.1
 certifi
 pycurl
