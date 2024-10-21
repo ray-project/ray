@@ -588,6 +588,8 @@ class GcsActorManager : public rpc::ActorInfoHandler {
     actor_delta->set_state(actor.state());
     actor_delta->mutable_death_cause()->CopyFrom(actor.death_cause());
     actor_delta->mutable_address()->CopyFrom(actor.address());
+    // Actor's is_detached is used by raylet to kill descendants.
+    actor_delta->set_is_detached(actor.is_detached());
     actor_delta->set_num_restarts(actor.num_restarts());
     actor_delta->set_max_restarts(actor.max_restarts());
     actor_delta->set_timestamp(actor.timestamp());
@@ -596,7 +598,7 @@ class GcsActorManager : public rpc::ActorInfoHandler {
     actor_delta->set_end_time(actor.end_time());
     actor_delta->set_repr_name(actor.repr_name());
     actor_delta->set_preempted(actor.preempted());
-    // Acotr's namespace and name are used for removing cached name when it's dead.
+    // Actor's namespace and name are used for removing cached name when it's dead.
     if (!actor.ray_namespace().empty()) {
       actor_delta->set_ray_namespace(actor.ray_namespace());
     }
