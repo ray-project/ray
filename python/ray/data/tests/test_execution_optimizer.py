@@ -1604,7 +1604,6 @@ def check_transform_fns(op, expected_types):
         assert isinstance(transform_fn, expected_types[i]), transform_fn
 
 
-@pytest.mark.skip("Needs zero-copy optimization for read->map_batches.")
 def test_zero_copy_fusion_eliminate_build_output_blocks(ray_start_regular_shared):
     # Test the EliminateBuildOutputBlocks optimization rule.
     planner = Planner()
