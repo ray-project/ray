@@ -178,12 +178,12 @@ class MetricsLogger:
             KeyError: If `key` cannot be found AND `default` is not provided.
         """
         ## TODO (sven, Oct 2024): Remove this after a few releases.
-        #if (
+        # if (
         #    key in [
         #        "num_env_steps_sampled_lifetime", "num_env_steps_trained_lifetime"
         #    ]
         #    and not self._key_in_stats(key)
-        #):
+        # ):
         #    raise ValueError(
         #        f"Global key={key} has been deprecated! When inside an Algorithm's "
         #        "`training_step()` method, use instead: "
@@ -654,8 +654,6 @@ class MetricsLogger:
             ):
                 for stat in [base_stats] + more_stats:
                     stat.push(-stat._hist[1])
-                    #if extended_key == ("env_runners", "num_env_steps_sampled_lifetime"):
-                    #    print(f"peek after fixing={stat.peek()}, hist={-stat._hist[1]}")
 
             # There are more than one incoming parallel others -> Merge all of them
             # first in parallel.

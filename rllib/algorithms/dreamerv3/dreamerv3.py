@@ -558,10 +558,13 @@ class DreamerV3(Algorithm):
 
                 # If we have never sampled before (just started the algo and not
                 # recovered from a checkpoint), sample B random actions first.
-                if self.metrics.peek(
-                    (ENV_RUNNER_RESULTS, NUM_ENV_STEPS_SAMPLED_LIFETIME),
-                    default=0,
-                ) == 0:
+                if (
+                    self.metrics.peek(
+                        (ENV_RUNNER_RESULTS, NUM_ENV_STEPS_SAMPLED_LIFETIME),
+                        default=0,
+                    )
+                    == 0
+                ):
                     _episodes, _env_runner_results = synchronous_parallel_sample(
                         worker_set=self.env_runner_group,
                         max_agent_steps=(
@@ -711,16 +714,13 @@ class DreamerV3(Algorithm):
         env steps taken thus far.
         """
         eps = 0.0001
-        return (
-            self.metrics.peek(NUM_ENV_STEPS_TRAINED_LIFETIME, default=0)
-            / (
-                (
-                    self.metrics.peek(
-                        (ENV_RUNNER_RESULTS, NUM_ENV_STEPS_SAMPLED_LIFETIME),
-                        default=eps,
-                    )
-                    or eps
+        return self.metrics.peek(NUM_ENV_STEPS_TRAINED_LIFETIME, default=0) / (
+            (
+                self.metrics.peek(
+                    (ENV_RUNNER_RESULTS, NUM_ENV_STEPS_SAMPLED_LIFETIME),
+                    default=eps,
                 )
+                or eps
             )
         )
 

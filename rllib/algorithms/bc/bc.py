@@ -115,6 +115,7 @@ class BC(MARWIL):
 
     Uses MARWIL with beta force-set to 0.0.
     """
+
     @classmethod
     @override(MARWIL)
     def get_default_config(cls) -> AlgorithmConfig:

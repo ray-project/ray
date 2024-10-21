@@ -623,8 +623,6 @@ class IMPALA(Algorithm):
                 env_runner_metrics,
                 env_runner_indices_to_update,
             ) = self._sample_and_get_connector_states()
-            if env_runner_metrics:
-                print(env_runner_metrics[0]["num_env_steps_sampled_lifetime"])
             # Reduce EnvRunner metrics over the n EnvRunners.
             self.metrics.merge_and_log_n_dicts(
                 env_runner_metrics,
@@ -739,10 +737,10 @@ class IMPALA(Algorithm):
                     self.env_runner_group.sync_env_runner_states(
                         config=self.config,
                         env_runner_indices_to_update=env_runner_indices_to_update,
-                        env_steps_sampled=self.metrics.peek(
-                            (ENV_RUNNER_RESULTS, NUM_ENV_STEPS_SAMPLED_LIFETIME),
-                            default=0,
-                        ),
+                        #env_steps_sampled=self.metrics.peek(
+                        #    (ENV_RUNNER_RESULTS, NUM_ENV_STEPS_SAMPLED_LIFETIME),
+                        #    default=0,
+                        #),
                         connector_states=connector_states,
                         rl_module_state=rl_module_state,
                     )

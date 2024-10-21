@@ -934,9 +934,10 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
             if self.config.enable_env_runner_and_connector_v2:
                 train_results, train_iter_ctx = self._run_one_training_iteration()
             else:
-                train_results, train_iter_ctx = (
-                    self._run_one_training_iteration_old_api_stack()
-                )
+                (
+                    train_results,
+                    train_iter_ctx,
+                ) = self._run_one_training_iteration_old_api_stack()
 
         # Sequential: Train (already done above), then evaluate.
         if evaluate_this_iter and not self.config.evaluation_parallel_to_training:
@@ -963,7 +964,6 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
             results = self._compile_iteration_results_new_api_stack(
                 train_results=train_results,
                 eval_results=eval_results,
-                step_ctx=train_iter_ctx,
             )
         else:
             self._sync_filters_if_needed(
@@ -3485,9 +3485,7 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
             or eval_config.evaluation_interval
         )
 
-    def _compile_iteration_results_new_api_stack(
-        self, *, train_results, eval_results, step_ctx
-    ):
+    def _compile_iteration_results_new_api_stack(self, *, train_results, eval_results):
         # Error if users still use `self._timers`.
         if self._timers:
             raise ValueError(
@@ -3500,6 +3498,11 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
 
         # Return dict (shallow copy of `train_results`).
         results: ResultDict = train_results.copy()
+        # Backward compatibility `NUM_ENV_STEPS_SAMPLED_LIFETIME` is now:
+        # `ENV_RUNNER_RESULTS/NUM_ENV_STEPS_SAMPLED_LIFETIME`.
+        results[NUM_ENV_STEPS_SAMPLED_LIFETIME] = (
+            results[ENV_RUNNER_RESULTS][NUM_ENV_STEPS_SAMPLED_LIFETIME]
+        )
 
         # Evaluation results.
         if eval_results:

@@ -304,9 +304,7 @@ class APPO(IMPALA):
                 else NUM_ENV_STEPS_SAMPLED
             )
         ]
-        target_update_freq = (
-            self.config.num_epochs * self.config.minibatch_buffer_size
-        )
+        target_update_freq = self.config.num_epochs * self.config.minibatch_buffer_size
         if cur_ts - last_update > target_update_freq:
             self._counters[NUM_TARGET_UPDATES] += 1
             self._counters[LAST_TARGET_UPDATE_TS] = cur_ts
@@ -330,9 +328,7 @@ class APPO(IMPALA):
                         # Make the actual `Policy.update_kl()` call.
                         pi.update_kl(kl)
                     else:
-                        logger.warning(
-                            "No data for {}, not updating kl".format(pi_id)
-                        )
+                        logger.warning("No data for {}, not updating kl".format(pi_id))
 
                 # Update KL on all trainable policies within the local (trainer)
                 # Worker.

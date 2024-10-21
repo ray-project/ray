@@ -439,7 +439,9 @@ class PPO(Algorithm):
                 episodes=episodes,
                 timesteps={
                     NUM_ENV_STEPS_SAMPLED_LIFETIME: (
-                        self.metrics.peek((ENV_RUNNER_RESULTS, NUM_ENV_STEPS_SAMPLED_LIFETIME))
+                        self.metrics.peek(
+                            (ENV_RUNNER_RESULTS, NUM_ENV_STEPS_SAMPLED_LIFETIME)
+                        )
                     ),
                 },
                 num_epochs=self.config.num_epochs,

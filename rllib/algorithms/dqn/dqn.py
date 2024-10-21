@@ -733,10 +733,12 @@ class DQN(Algorithm):
                                 )
                             ),
                             NUM_AGENT_STEPS_SAMPLED_LIFETIME: (
-                                self.metrics.peek((
-                                    ENV_RUNNER_RESULTS,
-                                    NUM_AGENT_STEPS_SAMPLED_LIFETIME,
-                                ))
+                                self.metrics.peek(
+                                    (
+                                        ENV_RUNNER_RESULTS,
+                                        NUM_AGENT_STEPS_SAMPLED_LIFETIME,
+                                    )
+                                )
                             ),
                         },
                     )
