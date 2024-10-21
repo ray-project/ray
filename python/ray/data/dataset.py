@@ -525,7 +525,8 @@ class Dataset:
             compute: This argument is deprecated. Use ``concurrency`` argument.
             batch_format: If ``"default"`` or ``"numpy"``, batches are
                 ``Dict[str, numpy.ndarray]``. If ``"pandas"``, batches are
-                ``pandas.DataFrame``.
+                ``pandas.DataFrame``. If ``"pyarrow"``, batches are
+                ``pyarrow.Table``.
             zero_copy_batch: Whether ``fn`` should be provided zero-copy, read-only
                 batches. If this is ``True`` and no copy is required for the
                 ``batch_format`` conversion, the batch is a zero-copy, read-only
@@ -755,7 +756,7 @@ class Dataset:
 
         return self.map_batches(
             add_column,
-            batch_format="pandas",  # TODO(ekl) we should make this configurable.
+            batch_format="pyarrow",
             compute=compute,
             concurrency=concurrency,
             zero_copy_batch=False,
@@ -811,7 +812,7 @@ class Dataset:
 
         return self.map_batches(
             drop_columns,
-            batch_format="pandas",
+            batch_format="pyarrow",
             zero_copy_batch=True,
             compute=compute,
             concurrency=concurrency,
@@ -867,7 +868,7 @@ class Dataset:
 
         return self.map_batches(
             select_columns,
-            batch_format="pandas",
+            batch_format="pyarrow",
             zero_copy_batch=True,
             compute=compute,
             concurrency=concurrency,
