@@ -364,7 +364,7 @@ def test_drop_columns(ray_start_regular_shared, tmp_path):
         assert ds.drop_columns(["col2"]).take(1) == [{"col1": 1, "col3": 3}]
         assert ds.drop_columns(["col1", "col3"]).take(1) == [{"col2": 2}]
         assert ds.drop_columns([]).take(1) == [{"col1": 1, "col2": 2, "col3": 3}]
-        assert ds.drop_columns(["col1", "col2", "col3"]).take(1) == [{}]
+        assert ds.drop_columns(["col1", "col2", "col3"]).take(1) == []
         assert ds.drop_columns(["col1", "col1", "col2", "col1"]).take(1) == [
             {"col3": 3}
         ]
