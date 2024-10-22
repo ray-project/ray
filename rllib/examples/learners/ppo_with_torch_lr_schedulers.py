@@ -11,8 +11,8 @@ This example shows:
 
 How to run this script
 ----------------------
-`python [script file name].py --enable-new-api-stack --lr-const-factor=0.1
---lr-const-iters=10 --lr-exp-decay=0.3`
+`python [script file name].py --enable-new-api-stack --lr-const-factor=0.9
+--lr-const-iters=10 --lr-exp-decay=0.9`
 
 Use the `--lr-const-factor` to define the facotr by which to multiply the
 learning rate in the first `--lr-const-iters` iterations. Use the
@@ -68,7 +68,7 @@ parser.set_defaults(enable_new_api_stack=True)
 parser.add_argument(
     "--lr-const-factor",
     type=float,
-    default=0.1,
+    default=0.9,
     help="The factor by which the learning rate should be multiplied.",
 )
 parser.add_argument(
@@ -83,13 +83,13 @@ parser.add_argument(
 parser.add_argument(
     "--lr-exp-decay",
     type=float,
-    default=0.3,
+    default=0.99,
     help="The rate by which the learning rate should exponentially decay.",
 )
 
 if __name__ == "__main__":
     # Use `parser` to add your own custom command line options to this script
-    # and (if needed) use their values toset up `config` below.
+    # and (if needed) use their values to set up `config` below.
     args = parser.parse_args()
 
     config = (
