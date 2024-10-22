@@ -89,6 +89,7 @@ def _route_prefix_format(cls, v):
     return v
 
 
+@PublicAPI(stability="stable")
 class ApplicationStatus(str, Enum):
     NOT_STARTED = "NOT_STARTED"
     DEPLOYING = "DEPLOYING"
@@ -98,6 +99,7 @@ class ApplicationStatus(str, Enum):
     DELETING = "DELETING"
 
 
+@PublicAPI(stability="stable")
 @dataclass(eq=True)
 class ApplicationStatusInfo:
     status: ApplicationStatus
@@ -124,6 +126,7 @@ class ApplicationStatusInfo:
         )
 
 
+@PublicAPI(stability="stable")
 @dataclass(eq=True)
 class StatusOverview:
     app_status: ApplicationStatusInfo
