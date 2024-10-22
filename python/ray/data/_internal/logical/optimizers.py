@@ -32,6 +32,9 @@ _PHYSICAL_RULES = [
 
 @DeveloperAPI
 def register_logical_rule(cls: Type[Rule], insert_index: Optional[int] = None):
+    if cls in _LOGICAL_RULES:
+        return
+
     if insert_index is None:
         _LOGICAL_RULES.append(cls)
     else:
@@ -39,11 +42,24 @@ def register_logical_rule(cls: Type[Rule], insert_index: Optional[int] = None):
 
 
 @DeveloperAPI
+def get_logical_rules() -> List[Type[Rule]]:
+    return list(_LOGICAL_RULES)
+
+
+@DeveloperAPI
 def register_physical_rule(cls: Type[Rule], insert_index: Optional[int] = None):
+    if cls in _PHYSICAL_RULES:
+        return
+
     if insert_index is None:
         _PHYSICAL_RULES.append(cls)
     else:
         _PHYSICAL_RULES.insert(insert_index, cls)
+
+
+@DeveloperAPI
+def get_physical_rules() -> List[Type[Rule]]:
+    return list(_PHYSICAL_RULES)
 
 
 class LogicalOptimizer(Optimizer):
