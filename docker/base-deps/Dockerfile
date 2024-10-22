@@ -79,7 +79,7 @@ RUN sudo apt-get update -y && sudo apt-get upgrade -y \
         "redis>=3.5.0,<4.0.0" \
         "six==1.13.0" \
         "boto3==1.26.76" \
-        "pyOpenSSL==22.1.0" \
+        "pyOpenSSL==24.2.1" \
         "cryptography==38.0.1" \
         "google-api-python-client==1.7.8" \
         "google-oauth" \
