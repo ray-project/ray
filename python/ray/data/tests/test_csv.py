@@ -11,6 +11,7 @@ from packaging.version import Version
 from pytest_lazyfixture import lazy_fixture
 
 import ray
+from ray.data import Schema
 from ray.data.block import BlockAccessor
 from ray.data.datasource import (
     BaseFileMetadataProvider,
@@ -80,7 +81,7 @@ def test_csv_read(ray_start_regular_shared, fs, data_path, endpoint_url):
     # Test metadata ops.
     assert ds.count() == 3
     assert ds.input_files() == [_unwrap_protocol(path1)]
-    assert "{one: int64, two: string}" in str(ds), ds
+    assert ds.schema() == Schema(pa.schema([("one", pa.int64()), ("two", pa.string())]))
 
     # Two files, override_num_blocks=2.
     df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
@@ -270,7 +271,7 @@ def test_csv_read_meta_provider(
     # Expect to lazily compute all metadata correctly.
     assert ds.count() == 3
     assert ds.input_files() == [_unwrap_protocol(path1)]
-    assert "{one: int64, two: string}" in str(ds), ds
+    assert ds.schema() == Schema(pa.schema([("one", pa.int64()), ("two", pa.string())]))
 
     with pytest.raises(NotImplementedError):
         ray.data.read_csv(
@@ -372,8 +373,7 @@ def test_csv_read_many_files_partitioned(
         ds,
         count=num_rows,
         num_input_files=num_files,
-        num_rows=num_rows,
-        schema="{one: int64, two: int64}",
+        schema=Schema(pa.schema([("one", pa.int64()), ("two", pa.int64())])),
         sorted_values=sorted(
             itertools.chain.from_iterable(
                 list(
