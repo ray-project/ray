@@ -12,7 +12,6 @@ from ray.data._internal.execution.interfaces import (
     NodeIdStr,
 )
 from ray.data._internal.logging import configure_logging
-from ray.data._internal.progress_bar import set_progress_bars
 from ray.data.context import DataContext, DatasetContext
 from ray.data.dataset import Dataset, Schema
 from ray.data.datasource import (
@@ -151,7 +150,6 @@ __all__ = [
     "read_sql",
     "read_tfrecords",
     "read_webdataset",
-    "set_progress_bars",
     "Preprocessor",
     "TFXReadOptions",
 ]
