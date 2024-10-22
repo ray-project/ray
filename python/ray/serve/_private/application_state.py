@@ -41,9 +41,9 @@ from ray.serve.config import AutoscalingConfig
 from ray.serve.exceptions import RayServeException
 from ray.serve.generated.serve_pb2 import DeploymentLanguage
 from ray.serve.schema import (
+    APIType,
     ApplicationStatus,
     ApplicationStatusInfo,
-    APIType,
     DeploymentDetails,
     LoggingConfig,
     ServeApplicationSchema,

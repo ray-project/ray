@@ -109,8 +109,6 @@ class TestDeploymentStatusInfo:
         assert deployment_status_info == reconstructed_info
 
 
-
-
 def test_running_replica_info():
     """Test hash value of RunningReplicaInfo"""
 

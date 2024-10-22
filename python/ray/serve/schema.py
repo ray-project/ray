@@ -35,12 +35,14 @@ from ray.serve._private.constants import (
 from ray.serve._private.deployment_info import DeploymentInfo
 from ray.serve._private.utils import DEFAULT
 from ray.serve.config import ProxyLocation
+from ray.serve.generated.serve_pb2 import ApplicationStatus as ApplicationStatusProto
 from ray.serve.generated.serve_pb2 import (
-    ApplicationStatus as ApplicationStatusProto,
     ApplicationStatusInfo as ApplicationStatusInfoProto,
-    DeploymentStatusInfoList as DeploymentStatusInfoListProto,
-    StatusOverview as StatusOverviewProto,
 )
+from ray.serve.generated.serve_pb2 import (
+    DeploymentStatusInfoList as DeploymentStatusInfoListProto,
+)
+from ray.serve.generated.serve_pb2 import StatusOverview as StatusOverviewProto
 from ray.util.annotations import PublicAPI
 
 # Shared amongst multiple schemas.
@@ -185,7 +187,7 @@ class StatusOverview:
             deployment_statuses=deployment_statuses,
             name=proto.name,
         )
-    
+
 
 @PublicAPI(stability="alpha")
 class EncodingType(str, Enum):

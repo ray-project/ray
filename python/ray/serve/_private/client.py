@@ -31,7 +31,13 @@ from ray.serve.generated.serve_pb2 import (
 )
 from ray.serve.generated.serve_pb2 import StatusOverview as StatusOverviewProto
 from ray.serve.handle import DeploymentHandle, _HandleOptions
-from ray.serve.schema import ApplicationStatus, LoggingConfig, ServeApplicationSchema, ServeDeploySchema, StatusOverview
+from ray.serve.schema import (
+    ApplicationStatus,
+    LoggingConfig,
+    ServeApplicationSchema,
+    ServeDeploySchema,
+    StatusOverview,
+)
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 

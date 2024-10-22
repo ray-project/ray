@@ -18,8 +18,8 @@ from ray.serve.config import AutoscalingConfig
 from ray.serve.deployment import deployment_to_schema, schema_to_deployment
 from ray.serve.generated.serve_pb2 import (
     ApplicationStatusInfo as ApplicationStatusInfoProto,
-    StatusOverview as StatusOverviewProto,
 )
+from ray.serve.generated.serve_pb2 import StatusOverview as StatusOverviewProto
 from ray.serve.schema import (
     ApplicationStatus,
     ApplicationStatusInfo,
