@@ -3,7 +3,6 @@ import concurrent
 import sys
 import threading
 import time
-from collections import namedtuple
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Dict, List, NamedTuple, Optional, Tuple, Union
 

@@ -684,9 +684,9 @@ class CompiledDAG:
         self.worker_task_refs: Dict["ray.actor.ActorHandle", "ray.ObjectRef"] = {}
         # Set of actors present in the DAG.
         self.actor_refs = set()
-        self.actor_to_tasks: Dict["ray.actor.ActorHandle", List["CompiledTask"]] = (
-            defaultdict(list)
-        )
+        self.actor_to_tasks: Dict[
+            "ray.actor.ActorHandle", List["CompiledTask"]
+        ] = defaultdict(list)
         self.actor_to_executable_tasks: Dict[
             "ray.actor.ActorHandle", List["ExecutableTask"]
         ] = {}
@@ -987,9 +987,9 @@ class CompiledDAG:
             self._nccl_group_id_p2p = _init_nccl_group(
                 nccl_actors_p2p, self._custom_nccl_group_p2p
             )
-            custom_nccl_group_to_id[self._custom_nccl_group_p2p] = (
-                self._nccl_group_id_p2p
-            )
+            custom_nccl_group_to_id[
+                self._custom_nccl_group_p2p
+            ] = self._nccl_group_id_p2p
             actors = frozenset(nccl_actors_p2p)
             actors_to_nccl_group_id[actors] = self._nccl_group_id_p2p
 

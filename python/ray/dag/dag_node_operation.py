@@ -419,9 +419,9 @@ def _generate_actor_to_execution_schedule(
     # A dictionary mapping an actor id to a list of candidate nodes. The list
     # is maintained as a priority queue, so the head of the queue, i.e.,
     # `candidates[0]`, is the node with the smallest `bind_index`.
-    actor_to_candidates: Dict["ray._raylet.ActorID", List[_DAGOperationGraphNode]] = (
-        defaultdict(list)
-    )
+    actor_to_candidates: Dict[
+        "ray._raylet.ActorID", List[_DAGOperationGraphNode]
+    ] = defaultdict(list)
     for _, node_dict in graph.items():
         for _, node in node_dict.items():
             # A node with a zero in-degree edge means all of its dependencies

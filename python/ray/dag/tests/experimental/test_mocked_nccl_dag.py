@@ -13,7 +13,7 @@ from ray.experimental.channel.conftest import (
     Barrier,
     start_nccl_mock,
 )
-from ray.tests.conftest import *  # noqa
+from ray.tests.conftest import wait_for_condition
 from ray.dag import InputNode
 
 
@@ -216,7 +216,8 @@ def test_p2p_static_shape_error(capsys, ray_start_cluster):
         captured = capsys.readouterr()
         print(captured.out, captured.err)
         assert (
-            "Expected torch.Tensors with shapes and dtypes: [(shape=(10, ), dtype=torch.float16)],\nfound: [shape=(20, ), dtype=torch.float16]"
+            "Expected torch.Tensors with shapes and dtypes: [(shape=(10, ), "
+            "dtype=torch.float16)],\nfound: [shape=(20, ), dtype=torch.float16]"
             in captured.out
         )
 

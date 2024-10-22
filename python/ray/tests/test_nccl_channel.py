@@ -349,7 +349,6 @@ def test_direct_return(ray_start_cluster):
     receiver_ready = receiver.set_nccl_channel.remote(chan_typ, chan_ref)
     ray.get([chan_ref, receiver_ready])
 
-    key = "my_tensor"
     shape = 10
     dtype = torch.float16
 

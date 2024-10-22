@@ -1,6 +1,5 @@
 # coding: utf-8
 import logging
-import time
 import os
 import socket
 import sys
@@ -19,8 +18,6 @@ from ray.experimental.channel.gpu_communicator import (
     TorchTensorAllocator,
 )
 from ray.experimental.channel.nccl_group import _NcclGroup
-import socket
-import torch
 
 from ray.experimental.channel.torch_tensor_type import TorchTensorType
 from ray.tests.conftest import *  # noqa

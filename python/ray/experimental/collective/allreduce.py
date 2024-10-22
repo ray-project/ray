@@ -57,9 +57,9 @@ class AllReduceWrapper:
         collective_output_nodes: List[CollectiveOutputNode] = []
 
         for input_node in input_nodes:
-            actor_handle: Optional["ray.actor.ActorHandle"] = (
-                input_node._get_actor_handle()
-            )
+            actor_handle: Optional[
+                "ray.actor.ActorHandle"
+            ] = input_node._get_actor_handle()
             if actor_handle is None:
                 raise ValueError("Expected an actor handle from the input node")
             collective_output_node = CollectiveOutputNode(
