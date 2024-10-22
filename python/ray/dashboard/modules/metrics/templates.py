@@ -15,7 +15,7 @@ DASHBOARD_PROVISIONING_TEMPLATE = """
 apiVersion: 1
 
 providers:
-  - name: Ray    # Default dashboards provided by OSS ray
+  - name: Ray    # Default dashboards provided by OSS Ray
     folder: Ray
     type: file
     options:
@@ -41,7 +41,7 @@ minute.
   # scrape_timeout is set to the global default (10s).
 
 scrape_configs:
-# Scrape from each ray node as defined in the service_discovery.json provided by ray.
+# Scrape from each Ray node as defined in the service_discovery.json provided by Ray.
 - job_name: 'ray'
   file_sd_configs:
   - files:

@@ -77,9 +77,9 @@ def start_prometheus(prometheus_dir):
     # The function assumes the Ray cluster to be monitored by Prometheus uses the
     # default configuration with "/tmp/ray" as the default root temporary directory.
     #
-    # This is to support the `ray metrics launch-prometheus` command, when a ray cluster
-    # is not started yet and we have no way to get a `--temp-dir` anywhere. So we choose
-    # to use a hardcoded default value.
+    # This is to support the `ray metrics launch-prometheus` command, when a Ray cluster
+    # hasn't started yet and the user doesn't have a way to get a `--temp-dir`
+    # anywhere. So we choose to use a hardcoded default value.
 
     config_file = Path(PROMETHEUS_CONFIG_INPUT_PATH)
 
