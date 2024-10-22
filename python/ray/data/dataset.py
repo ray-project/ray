@@ -761,17 +761,10 @@ class Dataset:
             column_idx = batch.schema.get_field_index(col)
             if column_idx == -1:
                 # Append the column to the table
-                return batch.append_column(
-                    col,
-                    column
-                )
+                return batch.append_column(col, column)
             else:
                 # Create a new table with the updated column
-                return batch.set_column(
-                    column_idx,
-                    col,
-                    column
-                )
+                return batch.set_column(column_idx, col, column)
 
         if not callable(fn):
             raise ValueError("`fn` must be callable, got {}".format(fn))
