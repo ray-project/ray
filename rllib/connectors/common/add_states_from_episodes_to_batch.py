@@ -372,7 +372,8 @@ class AddStatesFromEpisodesToBatch(ConnectorV2):
                 # Episode is already ongoing -> Use most recent STATE_OUT.
                 else:
                     state = sa_episode.get_extra_model_outputs(
-                        key=Columns.STATE_OUT, indices=-1
+                        key=Columns.STATE_OUT,
+                        indices=-1,
                     )
                 self.add_batch_item(
                     batch,

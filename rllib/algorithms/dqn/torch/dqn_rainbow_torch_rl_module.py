@@ -100,7 +100,10 @@ class DQNRainbowTorchRLModule(TorchRLModule, DQNRainbowRLModule):
             B = qf_outs[QF_PREDS].shape[0]
             random_actions = torch.squeeze(
                 torch.multinomial(
-                    (torch.nan_to_num(qf_outs[QF_PREDS], neginf=0.0) != 0.0).float(),
+                    (
+                        torch.nan_to_num(qf_outs[QF_PREDS].squeeze(1), neginf=0.0)
+                        != 0.0
+                    ).float(),
                     num_samples=1,
                 ),
                 dim=1,
@@ -246,6 +249,10 @@ class DQNRainbowTorchRLModule(TorchRLModule, DQNRainbowRLModule):
 
         # Encoder forward pass.
         encoder_outs = encoder(batch)
+
+        # Stateful encoder?
+        if Columns.STATE_OUT in encoder_outs:
+            output[Columns.STATE_OUT] = encoder_outs[Columns.STATE_OUT]
 
         # Do we have a dueling architecture.
         if self.uses_dueling:

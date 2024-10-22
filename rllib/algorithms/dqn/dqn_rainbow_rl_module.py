@@ -116,10 +116,12 @@ class DQNRainbowRLModule(RLModule, InferenceOnlyAPI, TargetNetworkAPI):
             ),
         )
 
-    # TODO (simon): DQN Rainbow does not support RNNs, yet.
     @override(RLModule)
-    def get_initial_state(self) -> Any:
-        return {}
+    def get_initial_state(self) -> dict:
+        if hasattr(self.encoder, "get_initial_state"):
+            return self.encoder.get_initial_state()
+        else:
+            return {}
 
     @override(RLModule)
     def input_specs_exploration(self) -> SpecType:
