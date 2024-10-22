@@ -198,6 +198,12 @@ def continue_debug_session(live_jobs: Set[str]):
                 time.sleep(1.0)
 
 
+def none_to_empty(s):
+    if s is None:
+        return ""
+    return s
+
+
 def format_table(table):
     """Format a table as a list of lines with aligned columns."""
     result = []
@@ -246,7 +252,18 @@ def debug(address):
         sessions_data = sorted(
             sessions_data, key=lambda data: data["timestamp"], reverse=True
         )
-        table = [["index", "timestamp", "Ray task", "filename:lineno"]]
+        table = [
+            [
+                "index",
+                "timestamp",
+                "Ray task",
+                "filename:lineno",
+                "Node ID",
+                "Worker ID",
+                "Actor ID",
+                "Task ID",
+            ]
+        ]
         for i, data in enumerate(sessions_data):
             date = datetime.utcfromtimestamp(data["timestamp"]).strftime(
                 "%Y-%m-%d %H:%M:%S"
@@ -257,6 +274,10 @@ def debug(address):
                     date,
                     data["proctitle"],
                     data["filename"] + ":" + str(data["lineno"]),
+                    data["node_id"],
+                    data["worker_id"],
+                    none_to_empty(data["actor_id"]),
+                    data["task_id"],
                 ]
             )
         for i, line in enumerate(format_table(table)):
