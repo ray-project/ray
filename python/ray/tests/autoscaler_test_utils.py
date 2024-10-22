@@ -2,7 +2,7 @@ import re
 import threading
 
 from subprocess import CalledProcessError
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional  # noqa: F401
 from ray.autoscaler.node_provider import NodeProvider
 
 

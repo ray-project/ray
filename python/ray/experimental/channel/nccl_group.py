@@ -10,7 +10,7 @@ from ray.experimental.channel.gpu_communicator import (
 )
 
 if TYPE_CHECKING:
-    import cupy as cp
+    import cupy as cp  # noqa: F401
     import torch
 
 
