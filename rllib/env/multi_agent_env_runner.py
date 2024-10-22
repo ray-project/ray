@@ -278,9 +278,10 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
 
                 # MultiRLModule forward pass: Explore or not.
                 if explore:
-                    env_steps_lifetime = self.metrics.peek(
-                        NUM_ENV_STEPS_SAMPLED_LIFETIME, default=0
-                    ) + self.metrics.peek(NUM_ENV_STEPS_SAMPLED, default=0)
+                    env_steps_lifetime = (
+                        self.metrics.peek(NUM_ENV_STEPS_SAMPLED_LIFETIME, default=0)
+                        + self.metrics.peek(NUM_ENV_STEPS_SAMPLED, default=0)
+                    ) * (self.config.num_env_runners or 1)
                     to_env = self.module.forward_exploration(
                         to_module, t=env_steps_lifetime
                     )
@@ -479,9 +480,10 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
 
                 # MultiRLModule forward pass: Explore or not.
                 if explore:
-                    env_steps_lifetime = self.metrics.peek(
-                        NUM_ENV_STEPS_SAMPLED_LIFETIME, default=0
-                    ) + self.metrics.peek(NUM_ENV_STEPS_SAMPLED, default=0)
+                    env_steps_lifetime = (
+                        self.metrics.peek(NUM_ENV_STEPS_SAMPLED_LIFETIME, default=0)
+                        + self.metrics.peek(NUM_ENV_STEPS_SAMPLED, default=0)
+                    ) * (self.config.num_env_runners or 1)
                     to_env = self.module.forward_exploration(
                         to_module, t=env_steps_lifetime
                     )

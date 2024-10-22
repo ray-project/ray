@@ -1643,8 +1643,8 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
                     pol_states.pop("connector_configs", None)
             state_ref = ray.put(state)
 
-            # By default, entire local worker state is synced after restoration
-            # to bring these workers up to date.
+            # By default, entire local EnvRunner state is synced after restoration
+            # to bring the previously failed EnvRunner up to date.
             workers.foreach_worker(
                 func=lambda w: w.set_state(ray.get(state_ref)),
                 remote_worker_ids=restored,
@@ -3197,7 +3197,7 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
 
         Returns:
             The ResultDict from the last call to `training_step()`. Note that even
-            though we only return the last ResultDict, the user stil has full control
+            though we only return the last ResultDict, the user still has full control
             over the history and reduce behavior of individual metrics at the time these
             metrics are logged with `self.metrics.log_...()`.
         """
@@ -3500,9 +3500,9 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
         results: ResultDict = train_results.copy()
         # Backward compatibility `NUM_ENV_STEPS_SAMPLED_LIFETIME` is now:
         # `ENV_RUNNER_RESULTS/NUM_ENV_STEPS_SAMPLED_LIFETIME`.
-        results[NUM_ENV_STEPS_SAMPLED_LIFETIME] = results[ENV_RUNNER_RESULTS][
-            NUM_ENV_STEPS_SAMPLED_LIFETIME
-        ]
+        results[NUM_ENV_STEPS_SAMPLED_LIFETIME] = results.get(
+            ENV_RUNNER_RESULTS, {}
+        ).get(NUM_ENV_STEPS_SAMPLED_LIFETIME, 0)
 
         # Evaluation results.
         if eval_results:
@@ -4093,7 +4093,8 @@ class TrainIterCtx:
                 self.sampled = (
                     sum(
                         self.algo.metrics.peek(
-                            NUM_AGENT_STEPS_SAMPLED_LIFETIME, default={}
+                            (ENV_RUNNER_RESULTS, NUM_AGENT_STEPS_SAMPLED_LIFETIME),
+                            default={},
                         ).values()
                     )
                     - self.init_agent_steps_sampled
@@ -4101,18 +4102,23 @@ class TrainIterCtx:
                 self.trained = (
                     sum(
                         self.algo.metrics.peek(
-                            NUM_AGENT_STEPS_TRAINED_LIFETIME, default={}
+                            (ENV_RUNNER_RESULTS, NUM_AGENT_STEPS_TRAINED_LIFETIME),
+                            default={},
                         ).values()
                     )
                     - self.init_agent_steps_trained
                 )
             else:
                 self.sampled = (
-                    self.algo.metrics.peek(NUM_ENV_STEPS_SAMPLED_LIFETIME, default=0)
+                    self.algo.metrics.peek(
+                        (ENV_RUNNER_RESULTS, NUM_ENV_STEPS_SAMPLED_LIFETIME), default=0
+                    )
                     - self.init_env_steps_sampled
                 )
                 self.trained = (
-                    self.algo.metrics.peek(NUM_ENV_STEPS_TRAINED_LIFETIME, default=0)
+                    self.algo.metrics.peek(
+                        (ENV_RUNNER_RESULTS, NUM_ENV_STEPS_TRAINED_LIFETIME), default=0
+                    )
                     - self.init_env_steps_trained
                 )
         else:
