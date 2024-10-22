@@ -7,6 +7,7 @@ import pytest
 from pytest_lazyfixture import lazy_fixture
 
 import ray
+from ray.data import Schema
 from ray.data.datasource import (
     BaseFileMetadataProvider,
     FastFileMetadataProvider,
@@ -14,6 +15,7 @@ from ray.data.datasource import (
     PartitionStyle,
     PathPartitionFilter,
 )
+from ray.data.extensions.tensor_extension import ArrowTensorType
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.mock_http_server import *  # noqa
 from ray.data.tests.test_partitioning import PathPartitionEncoder
@@ -114,8 +116,9 @@ def test_numpy_roundtrip(ray_start_regular_shared, fs, data_path):
     ds = ray.data.range_tensor(10, override_num_blocks=2)
     ds.write_numpy(data_path, filesystem=fs, column="data")
     ds = ray.data.read_numpy(data_path, filesystem=fs)
-    assert str(ds) == (
-        "Dataset(num_rows=?, schema={data: numpy.ndarray(shape=(1,), dtype=int64)})"
+    assert ds.count() == 10
+    assert ds.schema() == Schema(
+        pa.schema([("data", ArrowTensorType((1,), pa.int64()))])
     )
     np.testing.assert_equal(
         extract_values("data", ds.take(2)), [np.array([0]), np.array([1])]
@@ -127,8 +130,9 @@ def test_numpy_read(ray_start_regular_shared, tmp_path):
     os.mkdir(path)
     np.save(os.path.join(path, "test.npy"), np.expand_dims(np.arange(0, 10), 1))
     ds = ray.data.read_numpy(path, override_num_blocks=1)
-    assert str(ds) == (
-        "Dataset(num_rows=?, schema={data: numpy.ndarray(shape=(1,), dtype=int64)})"
+    assert ds.count() == 10
+    assert ds.schema() == Schema(
+        pa.schema([("data", ArrowTensorType((1,), pa.int64()))])
     )
     np.testing.assert_equal(
         extract_values("data", ds.take(2)), [np.array([0]), np.array([1])]
@@ -141,8 +145,8 @@ def test_numpy_read(ray_start_regular_shared, tmp_path):
     ds = ray.data.read_numpy(path, override_num_blocks=1)
     assert ds._plan.initial_num_blocks() == 1
     assert ds.count() == 10
-    assert str(ds) == (
-        "Dataset(num_rows=10, schema={data: numpy.ndarray(shape=(1,), dtype=int64)})"
+    assert ds.schema() == Schema(
+        pa.schema([("data", ArrowTensorType((1,), pa.int64()))])
     )
     assert [v["data"].item() for v in ds.take(2)] == [0, 1]
 
@@ -177,8 +181,9 @@ def test_numpy_read_meta_provider(ray_start_regular_shared, tmp_path):
     ds = ray.data.read_numpy(
         path, meta_provider=FastFileMetadataProvider(), override_num_blocks=1
     )
-    assert str(ds) == (
-        "Dataset(num_rows=?, schema={data: numpy.ndarray(shape=(1,), dtype=int64)})"
+    assert ds.count() == 10
+    assert ds.schema() == Schema(
+        pa.schema([("data", ArrowTensorType((1,), pa.int64()))])
     )
     np.testing.assert_equal(
         extract_values("data", ds.take(2)), [np.array([0]), np.array([1])]
@@ -237,7 +242,7 @@ def test_numpy_read_partitioned_with_filter(
         val_str = "".join(f"array({v}, dtype=int8), " for v in vals)[:-2]
         assert_base_partitioned_ds(
             ds,
-            schema="{data: numpy.ndarray(shape=(2,), dtype=int8)}",
+            schema=Schema(pa.schema([("data", ArrowTensorType((2,), pa.int8()))])),
             sorted_values=f"[[{val_str}]]",
             ds_take_transform_fn=lambda taken: [extract_values("data", taken)],
             sorted_values_transform_fn=lambda sorted_values: str(sorted_values),
