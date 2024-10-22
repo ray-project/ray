@@ -701,7 +701,7 @@ class Dataset:
     def add_column(
         self,
         col: str,
-        fn: Callable[["pandas.DataFrame"], "pandas.Series"],
+        fn: Callable[["pyarrow.Table"], "pyarrow.Array"],
         *,
         compute: Optional[str] = None,
         concurrency: Optional[Union[int, Tuple[int, int]]] = None,
@@ -709,13 +709,14 @@ class Dataset:
     ) -> "Dataset":
         """Add the given column to the dataset.
 
-        A function generating the new column values given the batch in pandas
+        A function generating the new column values given the batch in pyarrow
         format must be specified.
 
         Examples:
 
 
             >>> import ray
+            >>> import pyarrow as pa
             >>> ds = ray.data.range(100)
             >>> ds.schema()
             Column  Type
@@ -724,7 +725,7 @@ class Dataset:
 
             Add a new column equal to ``id * 2``.
 
-            >>> ds.add_column("new_id", lambda df: df["id"] * 2).schema()
+            >>> ds.add_column("new_id", lambda x: pa.compute.multiply(x["id"], 2)).schema()
             Column  Type
             ------  ----
             id      int64
@@ -732,7 +733,7 @@ class Dataset:
 
             Overwrite the existing values with zeros.
 
-            >>> ds.add_column("id", lambda df: 0).take(3)
+            >>> ds.add_column("id", lambda x: pa.repeat(0, x.num_rows)).take(3)
             [{'id': 0}, {'id': 0}, {'id': 0}]
 
         Time complexity: O(dataset size / parallelism)
@@ -751,9 +752,26 @@ class Dataset:
                 ray (e.g., num_gpus=1 to request GPUs for the map tasks).
         """
 
-        def add_column(batch: "pandas.DataFrame") -> "pandas.DataFrame":
-            batch.loc[:, col] = fn(batch)
-            return batch
+        def add_column(batch: "pyarrow.Table") -> "pyarrow.Table":
+            # fn can output either a pandas Series or a pyarrow Array
+            column = fn(batch)
+
+            # The index of the column will be -1 if it is missing in which case we'll
+            # want to append it
+            column_idx = batch.schema.get_field_index(col)
+            if column_idx == -1:
+                # Append the column to the table
+                return batch.append_column(
+                    col,
+                    column
+                )
+            else:
+                # Create a new table with the updated column
+                return batch.set_column(
+                    column_idx,
+                    col,
+                    column
+                )
 
         if not callable(fn):
             raise ValueError("`fn` must be callable, got {}".format(fn))

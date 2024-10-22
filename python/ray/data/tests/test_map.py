@@ -9,6 +9,7 @@ from typing import Iterator
 import numpy as np
 import pandas as pd
 import pyarrow as pa
+import pyarrow.compute as pc
 import pyarrow.parquet as pq
 import pytest
 
@@ -330,13 +331,14 @@ def test_flat_map_generator(ray_start_regular_shared):
 
 
 def test_add_column(ray_start_regular_shared):
-    ds = ray.data.range(5).add_column("foo", lambda x: 1)
+    """Tests the add column API."""
+    ds = ray.data.range(5).add_column("foo", lambda x: pa.array([1] * x.num_rows))
     assert ds.take(1) == [{"id": 0, "foo": 1}]
 
-    ds = ray.data.range(5).add_column("foo", lambda x: x["id"] + 1)
+    ds = ray.data.range(5).add_column("foo", lambda x: pc.add(x["id"], 1))
     assert ds.take(1) == [{"id": 0, "foo": 1}]
 
-    ds = ray.data.range(5).add_column("id", lambda x: x["id"] + 1)
+    ds = ray.data.range(5).add_column("id", lambda x: pc.add(x["id"], 1))
     assert ds.take(2) == [{"id": 1}, {"id": 2}]
 
     with pytest.raises(ValueError):
