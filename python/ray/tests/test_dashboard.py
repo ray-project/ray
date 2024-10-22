@@ -4,11 +4,11 @@ import subprocess
 import sys
 import time
 
+import ray
 import psutil
 import pytest
 import requests
 
-import ray
 from ray._private import ray_constants
 from ray._private.test_utils import run_string_as_driver, wait_for_condition
 
