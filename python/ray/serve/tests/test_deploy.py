@@ -350,7 +350,7 @@ def test_reconfigure_with_queries(serve_instance):
     signal.send.remote()
     ray.get(reconfigure_ref)
 
-    assert all([r.result() == 1 for r in responses])
+    assert all(r.result() == 1 for r in responses)
     assert handle.remote().result() == 2
 
 

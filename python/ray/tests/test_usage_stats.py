@@ -1317,7 +1317,7 @@ def test_usage_report_disabled_ray_init_cluster(
                     contents = f.readlines()
                 break
         assert contents is not None
-        assert any(["Usage reporting is disabled" in c for c in contents])
+        assert any("Usage reporting is disabled" in c for c in contents)
 
 
 def test_usage_report_disabled(
@@ -1369,8 +1369,8 @@ def test_usage_report_disabled(
                     contents = f.readlines()
                 break
         assert contents is not None
-        assert any(["Usage reporting is disabled" in c for c in contents])
-        assert all(["Usage report request failed" not in c for c in contents])
+        assert any("Usage reporting is disabled" in c for c in contents)
+        assert all("Usage report request failed" not in c for c in contents)
 
 
 def test_usage_file_error_message(monkeypatch, ray_start_cluster, reset_usage_stats):
