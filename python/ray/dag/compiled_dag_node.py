@@ -1680,15 +1680,27 @@ class CompiledDAG:
                 self._teardown_done = False
 
             def wait_teardown(self, kill_actors: bool = False):
+                from ray.dag import DAGContext
+
+                ctx = DAGContext.get_current()
+                teardown_timeout = ctx.retrieval_timeout
+
                 for actor, ref in outer.worker_task_refs.items():
                     timeout = False
                     try:
-                        ray.get(ref, timeout=10)
+                        ray.get(ref, timeout=teardown_timeout)
                     except ray.exceptions.GetTimeoutError:
-                        logger.warning(
-                            f"Compiled DAG actor {actor} is still running 10s "
-                            "after teardown(). Teardown may hang."
+                        msg = (
+                            f"Compiled DAG actor {actor} is still running "
+                            f"{teardown_timeout}s after teardown()."
                         )
+                        if kill_actors:
+                            msg += " Force-killing actor."
+                            ray.kill(actor)
+                        else:
+                            msg += " Teardown may hang."
+
+                        logger.warning(msg)
                         timeout = True
                     except Exception:
                         # We just want to check that the task has finished so
@@ -1700,12 +1712,6 @@ class CompiledDAG:
                         continue
 
                     try:
-                        if kill_actors:
-                            logger.warning(
-                                f"Attempting force-kill of DAG actor {actor}"
-                            )
-                            ray.kill(actor)
-
                         ray.get(ref)
                     except Exception:
                         pass

@@ -73,7 +73,7 @@ class CachedChannel(ChannelInterface):
         ctx = ChannelContext.get_current().serialization_context
         ctx.set_data(self._channel_id, value, self._num_reads)
 
-    def read(self, timeout: Optional[float] = None, deserialize: bool = True) -> Any:
+    def read(self, timeout: Optional[float] = None) -> Any:
         # TODO: beter organize the imports
         from ray.experimental.channel import ChannelContext
 
@@ -85,7 +85,7 @@ class CachedChannel(ChannelInterface):
         assert (
             self._inner_channel is not None
         ), "Cannot read from the serialization context while inner channel is None."
-        value = self._inner_channel.read(timeout, deserialize)
+        value = self._inner_channel.read(timeout)
         ctx.set_data(self._channel_id, value, self._num_reads)
         # NOTE: Currently we make a contract with aDAG users that the
         # channel results should not be mutated by the actor methods.
