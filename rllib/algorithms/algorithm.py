@@ -4065,19 +4065,19 @@ class TrainIterCtx:
         self.trained = 0
         if self.algo.config.enable_env_runner_and_connector_v2:
             self.init_env_steps_sampled = self.algo.metrics.peek(
-                NUM_ENV_STEPS_SAMPLED_LIFETIME, default=0
+                (ENV_RUNNER_RESULTS, NUM_ENV_STEPS_SAMPLED_LIFETIME), default=0
             )
             self.init_env_steps_trained = self.algo.metrics.peek(
-                NUM_ENV_STEPS_TRAINED_LIFETIME, default=0
+                (ENV_RUNNER_RESULTS, NUM_ENV_STEPS_TRAINED_LIFETIME), default=0
             )
             self.init_agent_steps_sampled = sum(
                 self.algo.metrics.peek(
-                    NUM_AGENT_STEPS_SAMPLED_LIFETIME, default={}
+                    (ENV_RUNNER_RESULTS, NUM_AGENT_STEPS_SAMPLED_LIFETIME), default={}
                 ).values()
             )
             self.init_agent_steps_trained = sum(
                 self.algo.metrics.peek(
-                    NUM_AGENT_STEPS_TRAINED_LIFETIME, default={}
+                    (ENV_RUNNER_RESULTS, NUM_AGENT_STEPS_TRAINED_LIFETIME), default={}
                 ).values()
             )
         else:
