@@ -2441,10 +2441,10 @@ class TestVisualization:
         graphs = pydot.graph_from_dot_data(dot_source)
         graph = graphs[0]
 
-        node_names = set(node.get_name() for node in graph.get_nodes())
-        edge_pairs = set(
+        node_names = {node.get_name() for node in graph.get_nodes()}
+        edge_pairs = {
             (edge.get_source(), edge.get_destination()) for edge in graph.get_edges()
-        )
+        }
 
         expected_nodes = {"0", "1", "2"}
         assert expected_nodes.issubset(
@@ -2489,10 +2489,10 @@ class TestVisualization:
         graphs = pydot.graph_from_dot_data(dot_source)
         graph = graphs[0]
 
-        node_names = set(node.get_name() for node in graph.get_nodes())
-        edge_pairs = set(
+        node_names = {node.get_name() for node in graph.get_nodes()}
+        edge_pairs = {
             (edge.get_source(), edge.get_destination()) for edge in graph.get_edges()
-        )
+        }
 
         expected_nodes = {"0", "1", "2", "3", "4"}
         assert expected_nodes.issubset(
@@ -2544,10 +2544,10 @@ class TestVisualization:
         graphs = pydot.graph_from_dot_data(dot_source)
         graph = graphs[0]
 
-        node_names = set(node.get_name() for node in graph.get_nodes())
-        edge_pairs = set(
+        node_names = {node.get_name() for node in graph.get_nodes()}
+        edge_pairs = {
             (edge.get_source(), edge.get_destination()) for edge in graph.get_edges()
-        )
+        }
 
         expected_nodes = {"0", "1", "2", "3", "4", "5", "6"}
         assert expected_nodes.issubset(
