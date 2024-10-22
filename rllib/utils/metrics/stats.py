@@ -216,6 +216,7 @@ class Stats:
         # Code to execute when exiting a with-context.
         self._on_exit = on_exit
 
+        # On each `.reduce()` call, we store the result of this call in
         self._hist = (0, 0)
 
     def push(self, value) -> None:
@@ -265,8 +266,13 @@ class Stats:
         Thus, users can call this method to get an accurate look at the reduced value
         given the current internal values list.
 
+        Args:
+            previous: If True, returns the previous (reduced) result of this `Stats`
+                object.
+
         Returns:
-            The result of reducing the internal values list.
+            The result of reducing the internal values list (or the previously computed
+            reduced result, if `previous` is True).
         """
         if previous:
             return self._hist[1]
@@ -286,9 +292,13 @@ class Stats:
             otherwise the same constructor settings (window, reduce, etc..) as `self`.
         """
         reduced, values = self._reduced_values()
-        self._hist = (reduced, self._hist[0])
+
         # Reduce everything to a single (init) value.
         self.values = values
+
+        # Shift historic reduced valued by one in our hist-tuple.
+        self._hist = (reduced, self._hist[0])
+
         # `clear_on_reduce` -> Return an empty new Stats object with the same settings
         # as `self`.
         if self._clear_on_reduce:
@@ -573,7 +583,26 @@ class Stats:
         )
 
     @staticmethod
-    def similar_to(other: "Stats", init_value: Optional[Any] = None, prev_values=None):
+    def similar_to(
+        other: "Stats",
+        init_value: Optional[Any] = None,
+        prev_values: Optional[Tuple[Any, Any]] = None,
+    ) -> "Stats":
+        """Returns a new Stats object that's similar to `other`.
+
+        "Similar" here means it has the exact same settings (reduce, window, ema_coeff,
+        etc..). The initial values of the returned `Stats` are empty by default, but
+        can be set as well.
+
+        Args:
+            other: The other Stats object to return a similar new Stats equivalent for.
+            init_value: The initial value to already push into the returned Stats. If
+                None (default), the returned Stats object will have no values in it.
+
+        Returns:
+            A new Stats object similar to `other`, with the exact same settings and
+            maybe a custom initial value (if provided; otherwise empty).
+        """
         stats = Stats(
             init_value=init_value,
             reduce=other._reduce_method,
@@ -581,8 +610,7 @@ class Stats:
             ema_coeff=other._ema_coeff,
             clear_on_reduce=other._clear_on_reduce,
         )
-        if prev_values is not None:
-            stats._hist = prev_values
+        stats._hist = other._hist
         return stats
 
     def _reduced_values(self, values=None, window=None) -> Tuple[Any, Any]:

@@ -315,7 +315,7 @@ class MetricsLogger:
 
         self._check_tensor(key, value)
 
-        # `key` doesn't exist -> Automativally create it.
+        # `key` doesn't exist -> Automatically create it.
         if not self._key_in_stats(key):
             self._set_key(
                 key,
@@ -624,7 +624,6 @@ class MetricsLogger:
                     base_stats = Stats.similar_to(
                         stat_or_value,
                         init_value=stat_or_value.values,
-                        prev_values=stat_or_value._hist,
                     )
                 else:
                     more_stats.append(stat_or_value)
@@ -639,7 +638,7 @@ class MetricsLogger:
                 and base_stats._clear_on_reduce is False
             ):
                 for stat in [base_stats] + more_stats:
-                    stat.push(-stat._hist[1])
+                    stat.push(-stat.peek(previous=True))
 
             # There are more than one incoming parallel others -> Merge all of them
             # first in parallel.
