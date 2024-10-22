@@ -325,11 +325,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
       /*object_info_publisher=*/object_info_publisher_.get(),
       /*object_info_subscriber=*/object_info_subscriber_.get(),
       check_node_alive_fn,
-      RayConfig::instance().lineage_pinning_enabled(),
-      [this](const rpc::Address &addr) {
-        return std::shared_ptr<rpc::CoreWorkerClient>(
-            new rpc::CoreWorkerClient(addr, *client_call_manager_));
-      });
+      RayConfig::instance().lineage_pinning_enabled());
 
   if (RayConfig::instance().max_pending_lease_requests_per_scheduling_category() > 0) {
     lease_request_rate_limiter_ = std::make_shared<StaticLeaseRequestRateLimiter>(
@@ -2381,6 +2377,9 @@ Status CoreWorker::CreateActor(const RayFunction &function,
                     RAY_LOG(ERROR).WithField(task_spec.ActorCreationId())
                         << "Failed to register actor. Error message: "
                         << status.ToString();
+                    task_manager_->FailPendingTask(task_spec.TaskId(),
+                                                   rpc::ErrorType::ACTOR_CREATION_FAILED,
+                                                   &status);
                   } else {
                     RAY_UNUSED(actor_task_submitter_->SubmitActorCreationTask(task_spec));
                   }
