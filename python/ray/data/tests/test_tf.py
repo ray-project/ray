@@ -205,17 +205,15 @@ class TestToTF:
     @pytest.mark.parametrize(
         "data, expected_dtype",
         # Skip this test for Python 3.12+ due to to incompatibility tensorflow
-        (
-            [
-                (0, tf.int64),
-                (0.0, tf.double),
-                (False, tf.bool),
-                ("eggs", tf.string),
-                (np.zeros([2, 2], dtype=np.float32), tf.float32),
-            ]
-            if sys.version_info <= (3, 12)
-            else []
-        ),
+        [
+            (0, tf.int64),
+            (0.0, tf.double),
+            (False, tf.bool),
+            ("eggs", tf.string),
+            (np.zeros([2, 2], dtype=np.float32), tf.float32),
+        ]
+        if sys.version_info <= (3, 12)
+        else [],
     )
     @pytest.mark.parametrize("include_additional_columns", [False, True])
     def test_element_spec_dtype(self, data, expected_dtype, include_additional_columns):

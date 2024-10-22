@@ -418,58 +418,44 @@ class OfflinePreLearner:
                     # to a JSONable (when a composite space was used). We unserialize
                     # and then reconvert from JSONable to space sample.
                     observations=[
-                        (
-                            convert(unpack_if_needed(obs), observation_space)
-                            if Columns.OBS in input_compress_columns
-                            else convert(obs, observation_space)
-                        ),
-                        (
-                            convert(
-                                unpack_if_needed(batch[schema[Columns.NEXT_OBS]][i]),
-                                observation_space,
-                            )
-                            if Columns.OBS in input_compress_columns
-                            else convert(
-                                batch[schema[Columns.NEXT_OBS]][i], observation_space
-                            )
+                        convert(unpack_if_needed(obs), observation_space)
+                        if Columns.OBS in input_compress_columns
+                        else convert(obs, observation_space),
+                        convert(
+                            unpack_if_needed(batch[schema[Columns.NEXT_OBS]][i]),
+                            observation_space,
+                        )
+                        if Columns.OBS in input_compress_columns
+                        else convert(
+                            batch[schema[Columns.NEXT_OBS]][i], observation_space
                         ),
                     ],
                     infos=[
                         {},
-                        (
-                            batch[schema[Columns.INFOS]][i]
-                            if schema[Columns.INFOS] in batch
-                            else {}
-                        ),
+                        batch[schema[Columns.INFOS]][i]
+                        if schema[Columns.INFOS] in batch
+                        else {},
                     ],
                     # Actions might be (a) serialized and/or (b) converted to a JSONable
                     # (when a composite space was used). We unserializer and then
                     # reconvert from JSONable to space sample.
                     actions=[
-                        (
-                            convert(
-                                unpack_if_needed(batch[schema[Columns.ACTIONS]][i]),
-                                action_space,
-                            )
-                            if Columns.ACTIONS in input_compress_columns
-                            else convert(
-                                batch[schema[Columns.ACTIONS]][i], action_space
-                            )
+                        convert(
+                            unpack_if_needed(batch[schema[Columns.ACTIONS]][i]),
+                            action_space,
                         )
+                        if Columns.ACTIONS in input_compress_columns
+                        else convert(batch[schema[Columns.ACTIONS]][i], action_space)
                     ],
                     rewards=[batch[schema[Columns.REWARDS]][i]],
                     terminated=batch[
-                        (
-                            schema[Columns.TERMINATEDS]
-                            if schema[Columns.TERMINATEDS] in batch
-                            else "dones"
-                        )
+                        schema[Columns.TERMINATEDS]
+                        if schema[Columns.TERMINATEDS] in batch
+                        else "dones"
                     ][i],
-                    truncated=(
-                        batch[schema[Columns.TRUNCATEDS]][i]
-                        if schema[Columns.TRUNCATEDS] in batch
-                        else False
-                    ),
+                    truncated=batch[schema[Columns.TRUNCATEDS]][i]
+                    if schema[Columns.TRUNCATEDS] in batch
+                    else False,
                     # TODO (simon): Results in zero-length episodes in connector.
                     # t_started=batch[Columns.T if Columns.T in batch else
                     # "unroll_id"][i][0],
@@ -480,11 +466,9 @@ class OfflinePreLearner:
                     # JSONable in case of composite spaces.
                     extra_model_outputs={
                         k: [
-                            (
-                                unpack_if_needed(v[i])
-                                if k in input_compress_columns
-                                else v[i]
-                            )
+                            unpack_if_needed(v[i])
+                            if k in input_compress_columns
+                            else v[i]
                         ]
                         for k, v in batch.items()
                         if (
@@ -589,11 +573,9 @@ class OfflinePreLearner:
                     # TODO (simon): Check, if we need here also reconversion from
                     # JSONable in case of composite spaces.
                     extra_model_outputs={
-                        k: (
-                            unpack_if_needed(v[i])
-                            if k in input_compress_columns
-                            else v[i]
-                        )
+                        k: unpack_if_needed(v[i])
+                        if k in input_compress_columns
+                        else v[i]
                         for k, v in batch.items()
                         if (
                             k not in schema

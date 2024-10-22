@@ -36,9 +36,9 @@ def save_test(alg_name, framework="tf", multi_agent=False):
         config.multi_agent(
             policies={"pol1", "pol2"},
             policy_mapping_fn=(
-                lambda agent_id, episode, worker, **kwargs: (
-                    "pol1" if agent_id == "agent1" else "pol2"
-                )
+                lambda agent_id, episode, worker, **kwargs: "pol1"
+                if agent_id == "agent1"
+                else "pol2"
             ),
         )
         config.environment(MultiAgentCartPole, env_config={"num_agents": 2})

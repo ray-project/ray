@@ -57,7 +57,6 @@ Your terminal output should look similar to this:
 |                   4000 |                   4000 |                     24 |
 +------------------------+------------------------+------------------------+
 """
-
 import gymnasium as gym
 import numpy as np
 from typing import Optional, Sequence

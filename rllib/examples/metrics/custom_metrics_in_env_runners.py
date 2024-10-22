@@ -75,7 +75,6 @@ However, you should see training proceeding over time like this:
 |                  76.4  |                     45 |                   8053 |
 +------------------------+------------------------+------------------------+
 """
-
 from typing import Optional, Sequence
 
 import gymnasium as gym

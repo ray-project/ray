@@ -352,11 +352,9 @@ class TestWorkerFailures(unittest.TestCase):
                             # different-from-training-workers policy mapping fn.
                             "This is the eval mapping fn"
                             if episode is None
-                            else (
-                                "main"
-                                if hash(episode.id_) % 2 == aid
-                                else "p{}".format(np.random.choice([0, 1]))
-                            )
+                            else "main"
+                            if hash(episode.id_) % 2 == aid
+                            else "p{}".format(np.random.choice([0, 1]))
                         )
                     )
                 )
