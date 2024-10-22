@@ -829,8 +829,12 @@ class Dataset:
                 ray (e.g., num_gpus=1 to request GPUs for the map tasks).
         """  # noqa: E501
 
+        # Historically, we have also accesspted lists with duplicate column names.
+        # This is not tolerated by the underlying pyarrow.Table.drop_columns method.
+        cols_without_duplicates = list(set(cols))
+
         def drop_columns(batch):
-            return batch.drop(columns=cols)
+            return batch.drop_columns(columns=cols_without_duplicates)
 
         return self.map_batches(
             drop_columns,
