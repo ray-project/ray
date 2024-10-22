@@ -717,6 +717,7 @@ class Dataset:
 
             >>> import ray
             >>> import pyarrow as pa
+            >>> import pyarrow.compute as pc
             >>> ds = ray.data.range(100)
             >>> ds.schema()
             Column  Type
@@ -725,7 +726,7 @@ class Dataset:
 
             Add a new column equal to ``id * 2``.
 
-            >>> ds.add_column("new_id", lambda x: pa.compute.multiply(x["id"], 2)).schema()
+            >>> ds.add_column("new_id", lambda x: pc.multiply(x["id"], 2)).schema()
             Column  Type
             ------  ----
             id      int64
