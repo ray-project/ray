@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING, Generic, TypeVar
+from typing import TYPE_CHECKING, Generic, Optional, TypeVar
 from ray.util.annotations import DeveloperAPI
 
 
@@ -56,15 +56,19 @@ class GPUFuture(DAGOperationFuture["torch.Tensor"]):
     A future that represents a GPU operation.
     """
 
-    def __init__(self, buf: "torch.Tensor", stream: "cp.cuda.Stream"):
+    def __init__(self, buf: "torch.Tensor", stream: Optional["cp.cuda.Stream"] = None):
         """
         Initialize a GPU future.
 
         Args:
             buf: The buffer to return when the future is resolved.
-            stream: The CUDA stream to record the event on.
+            stream: The CUDA stream to record the event on. If None, the current
+                stream is used.
         """
         import cupy as cp
+
+        if stream is None:
+            stream = cp.cuda.get_current_stream()
 
         self._buf = buf
         self._event = cp.cuda.Event()

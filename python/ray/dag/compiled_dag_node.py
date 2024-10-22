@@ -447,10 +447,9 @@ class ExecutableTask:
             wrap_in_gpu_future: Whether to wrap the value in a _GPUFuture.
         """
         assert self._intermediate_future is None
-        import cupy as cp
 
         if wrap_in_gpu_future:
-            future = GPUFuture(val, cp.cuda.get_current_stream())
+            future = GPUFuture(val)
         else:
             future = ResolvedFuture(val)
         self._intermediate_future = future

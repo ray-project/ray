@@ -521,6 +521,11 @@ def _generate_overlapped_execution_schedule(
     From an existing execution schedule, generate a new schedule by overlapping
     computation and communication.
 
+    Currently, the algorithm generates a new schedule for each actor as follows:
+    For each NCCL read operation (i.e., recv), scan backwards to find the nearest
+    compute node to swap with so that the NCCL read operation can be overlapped
+    with computation.
+
     Args:
         actor_to_execution_schedule: A dictionary that maps an actor handle to
             the existing execution schedule for the actor. The schedule is a list
@@ -559,9 +564,9 @@ def _generate_overlapped_execution_schedule(
                         == _DAGNodeOperationType.READ
                         or overlapped_schedule[j].operation.type
                         == _DAGNodeOperationType.WRITE
-                    ) and (overlapped_schedule[j].requires_nccl):
-                        # Found a NCCL read/write operation, skip the optimization to
-                        # keep relative order of NCCL operations
+                    ) and overlapped_schedule[j].requires_nccl:
+                        # Found a NCCL read/write operation, skip the overlap
+                        # optimization to keep relative order of NCCL operations
                         break
     return actor_to_overlapped_schedule
 
