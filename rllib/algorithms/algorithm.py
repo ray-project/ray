@@ -3325,9 +3325,16 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
             the `TrainIterCtx` object returned by the training call.
         """
         with concurrent.futures.ThreadPoolExecutor() as executor:
-            parallel_train_future = executor.submit(
-                lambda: self._run_one_training_iteration()
-            )
+
+            if self.config.enable_env_runner_and_connector_v2:
+                parallel_train_future = executor.submit(
+                    lambda: self._run_one_training_iteration()
+                )
+            else:
+                parallel_train_future = executor.submit(
+                    lambda: self._run_one_training_iteration_old_api_stack()
+                )
+
             evaluation_results = {}
             # If the debug setting _run_training_always_in_thread is used, do NOT
             # evaluate, no matter what the settings are,
