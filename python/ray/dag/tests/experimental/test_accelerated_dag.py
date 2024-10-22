@@ -2498,6 +2498,14 @@ class TestVisualization:
 
     """Tests for the visualize method of compiled DAGs."""
 
+    # TODO(zhilong): "pip intsall pydot"
+    # and "sudo apt-get install graphviz " to run test.
+    @pytest.fixture(autouse=True)
+    def skip_if_pydot_graphviz_not_available(self):
+        # Skip the test if pydot or graphviz is not available
+        pytest.importorskip("pydot")
+        pytest.importorskip("graphviz")
+
     def test_visualize_basic(self, ray_start_regular):
         """
         Expect output or dot_source:
