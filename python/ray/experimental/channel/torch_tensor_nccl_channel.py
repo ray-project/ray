@@ -576,7 +576,9 @@ def _do_destroy_nccl_group(self, group_id):
         return
 
     ctx.nccl_groups[group_id].destroy()
-    del ctx.nccl_groups[group_id]
+
+    # Keep the NCCL group in the map after destruction in case there is still a
+    # task loop running.
 
 
 def _do_check_has_gpu(self) -> bool:

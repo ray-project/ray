@@ -68,12 +68,14 @@ class MockNcclGroup(ray_channel.nccl_group._NcclGroup):
         # We use the op index to synchronize the sender and receiver at the
         # barrier.
         self.num_ops = defaultdict(int)
+        self.barrier = None
 
     def send(self, tensor: torch.Tensor, peer_rank: int):
         # "Send" the tensor to the barrier actor.
         barrier_key = f"barrier-{self.get_self_rank()}-{peer_rank}"
-        barrier = ray.get_actor(name=barrier_key)
-        ray.get(barrier.wait.remote(self.num_ops[barrier_key], tensor))
+        if self.barrier is None:
+            self.barrier = ray.get_actor(name=barrier_key)
+        ray.get(self.barrier.wait.remote(self.num_ops[barrier_key], tensor))
         self.num_ops[barrier_key] += 1
 
     def recv(
@@ -85,8 +87,9 @@ class MockNcclGroup(ray_channel.nccl_group._NcclGroup):
     ):
         # "Receive" the tensor from the barrier actor.
         barrier_key = f"barrier-{peer_rank}-{self.get_self_rank()}"
-        barrier = ray.get_actor(name=barrier_key)
-        received_tensor = ray.get(barrier.wait.remote(self.num_ops[barrier_key]))
+        if self.barrier is None:
+            self.barrier = ray.get_actor(name=barrier_key)
+        received_tensor = ray.get(self.barrier.wait.remote(self.num_ops[barrier_key]))
         assert (
             allocator is not None
         ), "torch tensor allocator is required for MockNcclGroup"
@@ -94,6 +97,10 @@ class MockNcclGroup(ray_channel.nccl_group._NcclGroup):
         buf[:] = received_tensor[:]
         self.num_ops[barrier_key] += 1
         return buf
+
+    def destroy(self) -> None:
+        if self.barrier is not None:
+            ray.kill(self.barrier)
 
 
 def start_nccl_mock():

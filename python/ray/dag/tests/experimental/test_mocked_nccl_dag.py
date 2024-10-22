@@ -131,15 +131,13 @@ def test_p2p(ray_start_cluster):
     ],
     indirect=True,
 )
-def test_p2p_static_shape(ray_start_cluster):
+@pytest.mark.parametrize("send_as_dict", [True, False])
+def test_p2p_static_shape(ray_start_cluster, send_as_dict):
     """
     Test simple send -> recv pattern with
     _static_shape=True. If sender always sends tensors of
     the same shape, then it works.
     """
-    # TODO: Test that this works even if the sender sends
-    # a dictionary or a tensor directly.
-
     # Barrier name should be barrier-{sender rank}-{receiver rank}.
     # Create a barrier in both directions because we don't know which rank will
     # get assigned to sender and receiver.
@@ -156,7 +154,7 @@ def test_p2p_static_shape(ray_start_cluster):
 
     # Test torch.Tensor sent between actors.
     with InputNode() as inp:
-        dag = sender.send.bind(inp.shape, inp.dtype, inp[0])
+        dag = sender.send.bind(inp.shape, inp.dtype, inp[0], send_as_dict=send_as_dict)
         dag = dag.with_type_hint(TorchTensorType(transport="nccl", _static_shape=True))
         dag = receiver.recv.bind(dag)
 
@@ -164,10 +162,6 @@ def test_p2p_static_shape(ray_start_cluster):
     for i in range(3):
         ref = compiled_dag.execute(i, shape=shape, dtype=dtype)
         assert ray.get(ref) == (i, shape, dtype)
-
-    ray.kill(barrier1)
-    ray.kill(barrier2)
-    compiled_dag.teardown()
 
 
 @pytest.mark.parametrize(
@@ -181,7 +175,8 @@ def test_p2p_static_shape(ray_start_cluster):
     ],
     indirect=True,
 )
-def test_p2p_static_shape_error(capsys, ray_start_cluster):
+@pytest.mark.parametrize("send_as_dict", [True, False])
+def test_p2p_static_shape_error(capsys, ray_start_cluster, send_as_dict):
     """
     Test that when static_shape=True, an error is thrown when a tensor with a
     different shape or dtype is found.
@@ -202,7 +197,7 @@ def test_p2p_static_shape_error(capsys, ray_start_cluster):
 
     # Test torch.Tensor sent between actors.
     with InputNode() as inp:
-        dag = sender.send.bind(inp.shape, inp.dtype, inp[0])
+        dag = sender.send.bind(inp.shape, inp.dtype, inp[0], send_as_dict=send_as_dict)
         dag = dag.with_type_hint(TorchTensorType(transport="nccl", _static_shape=True))
         dag = receiver.recv.bind(dag)
 
@@ -229,12 +224,6 @@ def test_p2p_static_shape_error(capsys, ray_start_cluster):
             "[(shape=torch.Size([20]), dtype=torch.float16)]",
         )
     )
-
-    # One actor task loop will still be alive, waiting on this barrier to
-    # return. We can fallback to killing the MockedWorker actors after a
-    # timeout passes, but killing the barriers first is faster.
-    ray.kill(barrier1)
-    ray.kill(barrier2)
 
 
 @pytest.mark.parametrize(
@@ -344,13 +333,6 @@ def test_p2p_direct_return_error(capsys, ray_start_cluster):
         )
     )
 
-    # One actor task loop will still be alive, waiting on this barrier to
-    # return. We can fallback to killing the MockedWorker actors after a
-    # timeout passes, but killing the barriers first is faster.
-    ray.kill(barrier1)
-    ray.kill(barrier2)
-    compiled_dag.teardown()
-
 
 @pytest.mark.parametrize(
     "ray_start_cluster",
@@ -432,10 +414,6 @@ def test_p2p_static_shape_and_direct_return(
             "Task annotated with _direct_return=True must " "return a CUDA torch.Tensor"
         )
     wait_for_condition(lambda: error_logged(capsys, msg))
-
-    ray.kill(barrier1)
-    ray.kill(barrier2)
-    compiled_dag.teardown()
 
 
 if __name__ == "__main__":
