@@ -254,7 +254,8 @@ class GcsActor {
   std::optional<rpc::ActorTableData::ActorState> last_metric_state_;
 };
 
-using RegisterActorCallback = std::function<void(std::shared_ptr<GcsActor>)>;
+using RegisterActorCallback =
+    std::function<void(std::shared_ptr<GcsActor>, const Status &status)>;
 using RestartActorCallback = std::function<void(std::shared_ptr<GcsActor>)>;
 using CreateActorCallback = std::function<void(
     std::shared_ptr<GcsActor>, const rpc::PushTaskReply &reply, const Status &status)>;

@@ -223,7 +223,8 @@ class GcsActorManagerTest : public ::testing::Test {
     io_service_.post(
         [this, request, &promise]() {
           auto status = gcs_actor_manager_->RegisterActor(
-              request, [&promise](std::shared_ptr<gcs::GcsActor> actor) {
+              request,
+              [&promise](std::shared_ptr<gcs::GcsActor> actor, const Status &status) {
                 promise.set_value(std::move(actor));
               });
           if (!status.ok()) {
