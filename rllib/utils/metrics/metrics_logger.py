@@ -662,13 +662,13 @@ class MetricsLogger:
         window: Optional[Union[int, float]] = None,
         ema_coeff: Optional[float] = None,
         clear_on_reduce: bool = False,
-        # throughput_key: Optional[Union[str, Tuple[str, ...]]] = None,
-        # throughput_key_of_unit_count: Optional[Union[str, Tuple[str, ...]]] = None,
+        key_for_throughput: Optional[Union[str, Tuple[str, ...]]] = None,
+        key_for_unit_count: Optional[Union[str, Tuple[str, ...]]] = None,
     ) -> None:
         """Measures and logs a time delta value under `key` when used with a with-block.
 
         Additionally, measures and logs the throughput for the timed code, iff
-        `log_throughput=True` and `throughput_key_for_unit_count` is provided.
+        `key_for_throughput` and `key_for_unit_count` are provided.
 
         .. testcode::
 
@@ -720,12 +720,10 @@ class MetricsLogger:
             clear_on_reduce = True
 
         if not self._key_in_stats(key):
-            # TODO (sven): Figure out how to best implement an additional throughput
-            #  measurement.
-            # measure_throughput = None
-            # if throughput_key_of_unit_count is not None:
-            #    measure_throughput = True
-            #    throughput_key = throughput_key or (key + "_throughput_per_s")
+            measure_throughput = None
+            if key_for_unit_count is not None:
+                measure_throughput = True
+                key_for_throughput = key_for_throughput or (key + "_throughput_per_s")
 
             self._set_key(
                 key,
@@ -734,18 +732,20 @@ class MetricsLogger:
                     window=window,
                     ema_coeff=ema_coeff,
                     clear_on_reduce=clear_on_reduce,
-                    # on_exit=(
-                    #    lambda stats: (
-                    #        self.log_value(
-                    #            throughput_key,
-                    #            self.peek(throughput_key_of_unit_count),
-                    #            reduce=reduce,
-                    #            window=window,
-                    #            ema_coeff=ema_coeff,
-                    #            clear_on_reduce=clear_on_reduce,
-                    #        )
-                    #    ),
-                    # ),
+                    on_exit=(
+                        lambda time_delta_s, kt=key_for_throughput, ku=key_for_unit_count, r=reduce, w=window, e=ema_coeff, c=clear_on_reduce: (  # noqa
+                            self.log_value(
+                                kt,
+                                value=self.peek(ku) / time_delta_s,
+                                reduce=r,
+                                window=w,
+                                ema_coeff=e,
+                                clear_on_reduce=c,
+                            )
+                        )
+                    )
+                    if measure_throughput
+                    else None,
                 ),
             )
 

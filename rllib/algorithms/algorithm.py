@@ -123,6 +123,7 @@ from ray.rllib.utils.metrics import (
     NUM_AGENT_STEPS_TRAINED_LIFETIME,
     NUM_ENV_STEPS_SAMPLED,
     NUM_ENV_STEPS_SAMPLED_LIFETIME,
+    NUM_ENV_STEPS_SAMPLED_PER_SECOND,
     NUM_ENV_STEPS_SAMPLED_THIS_ITER,
     NUM_ENV_STEPS_SAMPLED_FOR_EVALUATION_THIS_ITER,
     NUM_ENV_STEPS_TRAINED,
@@ -1108,19 +1109,6 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
             eval_results = {}
 
         if self.config.enable_env_runner_and_connector_v2:
-            # Lifetime eval counters.
-            self.metrics.log_dict(
-                {
-                    NUM_ENV_STEPS_SAMPLED_LIFETIME: env_steps,
-                    NUM_AGENT_STEPS_SAMPLED_LIFETIME: agent_steps,
-                    NUM_EPISODES_LIFETIME: self.metrics.peek(
-                        (EVALUATION_RESULTS, ENV_RUNNER_RESULTS, NUM_EPISODES),
-                        default=0,
-                    ),
-                },
-                key=EVALUATION_RESULTS,
-                reduce="sum",
-            )
             eval_results = self.metrics.reduce(
                 key=EVALUATION_RESULTS, return_stats_obj=False
             )
@@ -1282,7 +1270,12 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
             return env_steps, agent_steps, metrics, iter
 
         env_steps = agent_steps = 0
-        train_mean_time = self._timers[TRAINING_ITERATION_TIMER].mean
+        if self.config.enable_env_runner_and_connector_v2:
+            train_mean_time = self.metrics.peek(
+                (TIMERS, TRAINING_ITERATION_TIMER), default=0.0
+            )
+        else:
+            train_mean_time = self._timers[TRAINING_ITERATION_TIMER].mean
         t0 = time.time()
         algo_iteration = self.iteration
 
@@ -1312,7 +1305,14 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
                             (train_mean_time - (time.time() - t0))
                             # Multiply by our own (eval) throughput to get the timesteps
                             # to do (per worker).
-                            * self._timers[EVALUATION_ITERATION_TIMER].mean_throughput
+                            * self.metrics.peek(
+                                (
+                                    EVALUATION_RESULTS,
+                                    ENV_RUNNER_RESULTS,
+                                    NUM_ENV_STEPS_SAMPLED_PER_SECOND,
+                                ),
+                                default=0.0,
+                            )
                             / num_healthy_workers
                         ),
                     ),
@@ -3258,16 +3258,41 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
             The results dict from the evaluation call.
         """
         if self.eval_env_runner_group is not None:
-            with self._timers[RESTORE_EVAL_WORKERS_TIMER]:
-                self.restore_workers(self.eval_env_runner_group)
+            if self.config.enable_env_runner_and_connector_v2:
+                with self.metrics.log_time((TIMERS, RESTORE_EVAL_WORKERS_TIMER)):
+                    self.restore_workers(self.eval_env_runner_group)
+            else:
+                with self._timers[RESTORE_EVAL_WORKERS_TIMER]:
+                    self.restore_workers(self.eval_env_runner_group)
 
         # Run `self.evaluate()` only once per training iteration.
-        # TODO (sven): Move this timer into new metrics-logger API.
-        with self._timers[EVALUATION_ITERATION_TIMER]:
-            eval_results = self.evaluate(parallel_train_future=parallel_train_future)
-        self._timers[EVALUATION_ITERATION_TIMER].push_units_processed(
-            self._counters[NUM_ENV_STEPS_SAMPLED_FOR_EVALUATION_THIS_ITER]
-        )
+        if self.config.enable_env_runner_and_connector_v2:
+            with self.metrics.log_time((TIMERS, EVALUATION_ITERATION_TIMER)):
+                eval_results = self.evaluate(
+                    parallel_train_future=parallel_train_future
+                )
+            # TODO (sven): Properly support throughput/sec measurements within
+            #  `self.metrics.log_time()` call.
+            self.metrics.log_value(
+                key=(
+                    EVALUATION_RESULTS,
+                    ENV_RUNNER_RESULTS,
+                    NUM_ENV_STEPS_SAMPLED_PER_SECOND,
+                ),
+                value=(
+                    eval_results[ENV_RUNNER_RESULTS][NUM_ENV_STEPS_SAMPLED]
+                    / self.metrics.peek((TIMERS, EVALUATION_ITERATION_TIMER))
+                ),
+            )
+
+        else:
+            with self._timers[EVALUATION_ITERATION_TIMER]:
+                eval_results = self.evaluate(
+                    parallel_train_future=parallel_train_future
+                )
+            self._timers[EVALUATION_ITERATION_TIMER].push_units_processed(
+                self._counters[NUM_ENV_STEPS_SAMPLED_FOR_EVALUATION_THIS_ITER]
+            )
 
         # After evaluation, do a round of health check on remote eval workers to see if
         # any of the failed workers are back.

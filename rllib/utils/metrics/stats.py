@@ -250,12 +250,12 @@ class Stats:
         """Called when exiting a context (with which users can measure a time delta)."""
         thread_id = threading.get_ident()
         assert self._start_times[thread_id] is not None
-        time_delta = time.perf_counter() - self._start_times[thread_id]
-        self.push(time_delta)
+        time_delta_s = time.perf_counter() - self._start_times[thread_id]
+        self.push(time_delta_s)
 
         # Call the on_exit handler.
         if self._on_exit:
-            self._on_exit(time_delta)
+            self._on_exit(time_delta_s)
 
         del self._start_times[thread_id]
 
