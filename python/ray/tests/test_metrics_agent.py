@@ -347,11 +347,7 @@ def test_metrics_export_end_to_end(_setup_cluster_for_test):
                 assert grpc_sample.labels["Component"] != "core_worker"
 
         # Autoscaler metrics
-        (
-            _,
-            autoscaler_metric_descriptors,
-            autoscaler_samples,
-        ) = fetch_prometheus(
+        (_, autoscaler_metric_descriptors, autoscaler_samples,) = fetch_prometheus(
             [autoscaler_export_addr]
         )  # noqa
         autoscaler_metric_names = autoscaler_metric_descriptors.keys()

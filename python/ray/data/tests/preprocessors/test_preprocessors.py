@@ -129,7 +129,8 @@ def test_fitted_preprocessor_with_stats():
     """Tests that Preprocessors can be fitted by setting an attribute that ends
     with _."""
 
-    class FittablePreprocessor(Preprocessor): ...
+    class FittablePreprocessor(Preprocessor):
+        ...
 
     preprocessor = FittablePreprocessor()
     preprocessor.stats_ = True
