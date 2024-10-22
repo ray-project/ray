@@ -321,7 +321,7 @@ def test_read_large_data(ray_start_regular_shared):
         override_num_blocks=1,
     )
 
-    ds = ds.map_batches(foo, num_rows_per_batch=None)
+    ds = ds.map_batches(foo)
     assert ds.count() == num_blocks_per_task
 
 
