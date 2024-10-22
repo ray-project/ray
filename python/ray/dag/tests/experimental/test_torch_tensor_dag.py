@@ -1,5 +1,6 @@
 # coding: utf-8
 import logging
+import time
 import os
 import socket
 import sys
@@ -679,6 +680,10 @@ def test_torch_tensor_nccl_wrong_shape(ray_start_regular):
     # that we can no longer submit to the DAG.
     with pytest.raises(RayChannelError):
         ref = compiled_dag.execute(shape=(20,), dtype=dtype, value=1)
+
+    # TODO(swang): This currently requires time.sleep to avoid some issue with
+    # following tests.
+    time.sleep(3)
 
 
 @pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
