@@ -426,7 +426,7 @@ class _TorchTensorNcclChannel(ChannelInterface):
                 ]
                 raise ValueError(
                     "Expected torch.Tensors with shapes and dtypes: "
-                    "[" + ", ".join(expected_str) + "],\n"
+                    "[" + ", ".join(expected_str) + "], "
                     "found: [" + ", ".join(metadata_str) + "]"
                 )
             # The receiver has already determined the shape and dtype of the

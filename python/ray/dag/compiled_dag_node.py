@@ -67,7 +67,9 @@ _compiled_dags = weakref.WeakValueDictionary()
 # so that teardown is properly called before objects are destructed.
 def _shutdown_all_compiled_dags():
     for _, compiled_dag in _compiled_dags.items():
-        compiled_dag.teardown()
+        # Kill DAG actors to avoid hanging during shutdown if the actor tasks
+        # cannot be cancelled.
+        compiled_dag.teardown(kill_actors=True)
 
 
 @DeveloperAPI
@@ -1677,7 +1679,7 @@ class CompiledDAG:
                 self.name = "CompiledGraphMonitorThread"
                 self._teardown_done = False
 
-            def wait_teardown(self):
+            def wait_teardown(self, kill_actors: bool = False):
                 for actor, ref in outer.worker_task_refs.items():
                     timeout = False
                     try:
@@ -1698,11 +1700,17 @@ class CompiledDAG:
                         continue
 
                     try:
+                        if kill_actors:
+                            logger.warning(
+                                f"Attempting force-kill of DAG actor {actor}"
+                            )
+                            ray.kill(actor)
+
                         ray.get(ref)
                     except Exception:
                         pass
 
-            def teardown(self, wait: bool):
+            def teardown(self, wait: bool, kill_actors: bool = False):
                 do_teardown = False
                 with self.in_teardown_lock:
                     if self._teardown_done:
@@ -1715,7 +1723,7 @@ class CompiledDAG:
                 if not do_teardown:
                     # Teardown is already being performed.
                     if wait:
-                        self.wait_teardown()
+                        self.wait_teardown(kill_actors)
                     return
 
                 logger.info("Tearing down compiled DAG")
@@ -2027,13 +2035,13 @@ class CompiledDAG:
         self._execution_index += 1
         return fut
 
-    def teardown(self):
+    def teardown(self, kill_actors: bool = False):
         """Teardown and cancel all actor tasks for this DAG. After this
         function returns, the actors should be available to execute new tasks
         or compile a new DAG."""
         monitor = getattr(self, "_monitor", None)
         if monitor is not None:
-            monitor.teardown(wait=True)
+            monitor.teardown(wait=True, kill_actors=kill_actors)
 
     def __del__(self):
         monitor = getattr(self, "_monitor", None)

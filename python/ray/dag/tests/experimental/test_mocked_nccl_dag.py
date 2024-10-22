@@ -13,8 +13,17 @@ from ray.experimental.channel.conftest import (
     Barrier,
     start_nccl_mock,
 )
+from ray.tests.conftest import *  # noqa
 from ray.tests.conftest import wait_for_condition
 from ray.dag import InputNode
+
+
+def error_logged(capsys, msg):
+    out, err = capsys.readouterr()
+    # Write captured back to stdout, stderr for easier test debugging.
+    sys.stdout.write(out)
+    sys.stderr.write(err)
+    return msg in err
 
 
 @ray.remote(num_cpus=0, num_gpus=1)
@@ -212,20 +221,20 @@ def test_p2p_static_shape_error(capsys, ray_start_cluster):
     with pytest.raises(RayChannelError):
         ref = compiled_dag.execute(i, shape=shape, dtype=dtype)
 
-    def error_logged():
-        captured = capsys.readouterr()
-        print(captured.out, captured.err)
-        assert (
-            "Expected torch.Tensors with shapes and dtypes: [(shape=(10, ), "
-            "dtype=torch.float16)],\nfound: [shape=(20, ), dtype=torch.float16]"
-            in captured.out
+    wait_for_condition(
+        lambda: error_logged(
+            capsys,
+            "ValueError: Expected torch.Tensors with shapes and dtypes: "
+            "[(shape=torch.Size([10]), dtype=torch.float16)], found: "
+            "[(shape=torch.Size([20]), dtype=torch.float16)]",
         )
+    )
 
-    wait_for_condition(error_logged)
-
+    # One actor task loop will still be alive, waiting on this barrier to
+    # return. We can fallback to killing the MockedWorker actors after a
+    # timeout passes, but killing the barriers first is faster.
     ray.kill(barrier1)
     ray.kill(barrier2)
-    compiled_dag.teardown()
 
 
 @pytest.mark.parametrize(
@@ -282,7 +291,7 @@ def test_p2p_direct_return(ray_start_cluster):
     ],
     indirect=True,
 )
-def test_p2p_direct_return_error(ray_start_cluster):
+def test_p2p_direct_return_error(capsys, ray_start_cluster):
     """
     Test simple sender -> receiver pattern with
     _direct_return=True. Test that error is thrown when
@@ -327,6 +336,17 @@ def test_p2p_direct_return_error(ray_start_cluster):
             shape=shape, dtype=dtype, value=1, send_as_dict=False
         )
 
+    wait_for_condition(
+        lambda: error_logged(
+            capsys,
+            "Task annotated with _direct_return=True must "
+            "return a CUDA torch.Tensor",
+        )
+    )
+
+    # One actor task loop will still be alive, waiting on this barrier to
+    # return. We can fallback to killing the MockedWorker actors after a
+    # timeout passes, but killing the barriers first is faster.
     ray.kill(barrier1)
     ray.kill(barrier2)
     compiled_dag.teardown()
@@ -344,10 +364,14 @@ def test_p2p_direct_return_error(ray_start_cluster):
     indirect=True,
 )
 @pytest.mark.parametrize("check_static_shape", [True, False])
-def test_p2p_static_shape_and_direct_return(ray_start_cluster, check_static_shape):
+def test_p2p_static_shape_and_direct_return(
+    capsys, ray_start_cluster, check_static_shape
+):
     """
-    Test simple sender -> receiver pattern with _static_shape=True and
-    _direct_return=True
+    Test simple sender -> receiver pattern with both _static_shape=True and
+    _direct_return=True. Check errors are thrown if tensors with wrong shape
+    are passed (check_static_shape=True) OR if non-tensor value is returned
+    (check_static_shape=False).
     """
     # Barrier name should be barrier-{sender rank}-{receiver rank}.
     # Create a barrier in both directions because we don't know which rank will
@@ -363,7 +387,9 @@ def test_p2p_static_shape_and_direct_return(ray_start_cluster, check_static_shap
     # Test torch.Tensor sent between actors.
     with InputNode() as inp:
         dag = sender.send.bind(inp.shape, inp.dtype, inp.value, inp.send_as_dict)
-        dag = dag.with_type_hint(TorchTensorType(transport="nccl", _direct_return=True))
+        dag = dag.with_type_hint(
+            TorchTensorType(transport="nccl", _static_shape=True, _direct_return=True)
+        )
         dag = receiver.recv.bind(dag)
 
     compiled_dag = dag.experimental_compile()
@@ -384,6 +410,7 @@ def test_p2p_static_shape_and_direct_return(ray_start_cluster, check_static_shap
     else:
         # Error is thrown if we do not send a tensor.
         ref = compiled_dag.execute(shape=shape, dtype=dtype, value=1, send_as_dict=True)
+
     with pytest.raises(RayChannelError):
         ray.get(ref)
 
@@ -393,6 +420,18 @@ def test_p2p_static_shape_and_direct_return(ray_start_cluster, check_static_shap
         ref = compiled_dag.execute(
             shape=shape, dtype=dtype, value=1, send_as_dict=False
         )
+
+    if check_static_shape:
+        msg = (
+            "ValueError: Expected torch.Tensors with shapes and dtypes: "
+            "[(shape=torch.Size([10]), dtype=torch.float16)], found: "
+            "[(shape=torch.Size([20]), dtype=torch.float16)]"
+        )
+    else:
+        msg = (
+            "Task annotated with _direct_return=True must " "return a CUDA torch.Tensor"
+        )
+    wait_for_condition(lambda: error_logged(capsys, msg))
 
     ray.kill(barrier1)
     ray.kill(barrier2)

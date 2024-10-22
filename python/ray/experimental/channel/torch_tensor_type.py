@@ -184,9 +184,8 @@ class TorchTensorType(ChannelOutputType):
         `TorchTensorType` instances.
         """
         copy = TorchTensorType(
-            _shape=self._shape,
-            _dtype=self._dtype,
             transport=self.transport,
+            _static_shape=self._static_shape,
             _direct_return=self._direct_return,
         )
         copy._custom_nccl_group = self._custom_nccl_group
