@@ -137,9 +137,8 @@ class RetryableGrpcClient : public std::enable_shared_from_this<RetryableGrpcCli
         callback(status, std::move(reply));
         delete executor;
       } else {
-        /* In case of transient network error, we queue the request and these requests
-         * will be */
-        /* executed once network is recovered. */
+        // In case of transient network error, we queue the request and these requests
+        // will be executed once network is recovered.
         self->server_is_unavailable_ = true;
         auto request_bytes = request.ByteSizeLong();
         if (self->pending_requests_bytes_ + request_bytes >
@@ -153,18 +152,31 @@ class RetryableGrpcClient : public std::enable_shared_from_this<RetryableGrpcCli
                 self->check_channel_status_interval_milliseconds_));
           }
           if (self->shutdown_) {
-            callback(Status::Disconnected("GRPC client has been disconnected."),
-                     std::move(reply));
+            callback(Status::Disconnected("GRPC client has been shutdown."), Reply());
             delete executor;
           } else {
             executor->Retry();
           }
         } else {
-          self->pending_requests_bytes_ += request_bytes;
-          auto timeout = timeout_ms == -1 ? absl::InfiniteFuture()
-                                          : absl::Now() + absl::Milliseconds(timeout_ms);
-          self->pending_requests_.emplace(timeout,
-                                          std::make_pair(executor, request_bytes));
+          bool shutdown = false;
+          {
+            absl::MutexLock lock(&self->mu_);
+            if (!self->shutdown_) {
+              self->pending_requests_bytes_ += request_bytes;
+              auto timeout = timeout_ms == -1
+                                 ? absl::InfiniteFuture()
+                                 : absl::Now() + absl::Milliseconds(timeout_ms);
+              self->pending_requests_.emplace(timeout,
+                                              std::make_pair(executor, request_bytes));
+            } else {
+              shutdown = true;
+            }
+          }
+          if (shutdown) {
+            // Run the callback outside of the lock.
+            callback(Status::Disconnected("GRPC client has been shutdown."), Reply());
+            delete executor;
+          }
         }
       }
     };
@@ -181,33 +193,35 @@ class RetryableGrpcClient : public std::enable_shared_from_this<RetryableGrpcCli
   }
 
   void Shutdown() {
+    absl::MutexLock lock(&mu_);
     if (!shutdown_.exchange(true)) {
       // First call to shut down this GRPC client.
-      absl::MutexLock lock(&timer_mu_);
       timer_->cancel();
 
       // Fail the pending requests.
       while (!pending_requests_.empty()) {
         auto iter = pending_requests_.begin();
         Executor *executor = iter->second.first;
-        size_t request_bytes = iter->second.second;
         // Make sure the callback is executed in the io context thread.
         io_context_.post(
             [executor]() {
-              executor->Abort(Status::Disconnected("GRPC client has been disconnected."));
+              executor->Abort(Status::Disconnected("GRPC client is shut down."));
               delete executor;
             },
             "RetryableGrpcClient.Shutdown");
-        pending_requests_bytes_ -= request_bytes;
         pending_requests_.erase(iter);
       }
+      pending_requests_bytes_ = 0;
     } else {
-      RAY_LOG(DEBUG) << "GRPC client has already shutdown.";
+      RAY_LOG(DEBUG) << "GRPC client has already been shut down.";
     }
   }
 
   // Return the number of pending requests waiting for retry.
-  size_t NumPendingRequests() { return pending_requests_.size(); }
+  size_t NumPendingRequests() {
+    absl::MutexLock lock(&mu_);
+    return pending_requests_.size();
+  }
 
   ~RetryableGrpcClient() { Shutdown(); }
 
@@ -233,7 +247,7 @@ class RetryableGrpcClient : public std::enable_shared_from_this<RetryableGrpcCli
   void SetupCheckTimer() {
     auto duration =
         boost::posix_time::milliseconds(check_channel_status_interval_milliseconds_);
-    absl::MutexLock lock(&timer_mu_);
+    absl::MutexLock lock(&mu_);
     timer_->expires_from_now(duration);
     std::weak_ptr<RetryableGrpcClient> weak_self = shared_from_this();
     timer_->async_wait([weak_self](boost::system::error_code error) {
@@ -250,26 +264,29 @@ class RetryableGrpcClient : public std::enable_shared_from_this<RetryableGrpcCli
       return;
     }
 
+    {
+      absl::MutexLock lock(&mu_);
+      // We need to cleanup all the pending requests which are timeout.
+      const auto now = absl::Now();
+      while (!pending_requests_.empty()) {
+        auto iter = pending_requests_.begin();
+        if (iter->first > now) {
+          break;
+        }
+        auto [executor, request_bytes] = iter->second;
+        executor->Abort(ray::Status::TimedOut(absl::StrFormat(
+            "Timed out while waiting for %s to become available.", server_name_)));
+        pending_requests_bytes_ -= request_bytes;
+        delete executor;
+        pending_requests_.erase(iter);
+      }
+    }
+
     auto status = channel_->GetState(false);
     // https://grpc.github.io/grpc/core/md_doc_connectivity-semantics-and-api.html
     // https://grpc.github.io/grpc/core/connectivity__state_8h_source.html
     if (status != GRPC_CHANNEL_READY) {
       RAY_LOG(DEBUG) << "GRPC channel status: " << status;
-    }
-
-    // We need to cleanup all the pending requests which are timeout.
-    auto now = absl::Now();
-    while (!pending_requests_.empty()) {
-      auto iter = pending_requests_.begin();
-      if (iter->first > now) {
-        break;
-      }
-      auto [executor, request_bytes] = iter->second;
-      executor->Abort(ray::Status::TimedOut(absl::StrFormat(
-          "Timed out while waiting for %s to become available.", server_name_)));
-      pending_requests_bytes_ -= request_bytes;
-      delete executor;
-      pending_requests_.erase(iter);
     }
 
     switch (status) {
@@ -295,12 +312,15 @@ class RetryableGrpcClient : public std::enable_shared_from_this<RetryableGrpcCli
     case GRPC_CHANNEL_IDLE:
       server_last_available_time_ = absl::Now();
       server_is_unavailable_ = false;
-      // Retry the ones queued.
-      while (!pending_requests_.empty()) {
-        pending_requests_.begin()->second.first->Retry();
-        pending_requests_.erase(pending_requests_.begin());
+      {
+        absl::MutexLock lock(&mu_);
+        // Retry the ones queued.
+        while (!pending_requests_.empty()) {
+          pending_requests_.begin()->second.first->Retry();
+          pending_requests_.erase(pending_requests_.begin());
+        }
+        pending_requests_bytes_ = 0;
       }
-      pending_requests_bytes_ = 0;
       break;
     default:
       RAY_LOG(FATAL) << "Not covered status: " << status;
@@ -310,10 +330,10 @@ class RetryableGrpcClient : public std::enable_shared_from_this<RetryableGrpcCli
   }
 
   instrumented_io_context &io_context_;
-  // Timer can be called from either the GRPC event loop, or the application's
+  absl::Mutex mu_;
+  // Timer can be called from either the io_context_ thread, or the application's
   // main thread. It needs to be protected by a mutex.
-  absl::Mutex timer_mu_;
-  const std::unique_ptr<boost::asio::deadline_timer> timer_;
+  const std::unique_ptr<boost::asio::deadline_timer> timer_ ABSL_GUARDED_BY(mu_);
 
   std::shared_ptr<grpc::Channel> channel_;
 
@@ -323,11 +343,15 @@ class RetryableGrpcClient : public std::enable_shared_from_this<RetryableGrpcCli
   std::function<void()> server_unavailable_timeout_callback_;
   const std::string server_name_;
 
+  // Only accessed by the io_context_ thread, no mutext needed.
   bool server_is_unavailable_ = false;
   absl::Time server_last_available_time_ = absl::Now();
 
   std::atomic<bool> shutdown_ = false;
-  absl::btree_multimap<absl::Time, std::pair<Executor *, size_t>> pending_requests_;
+  // Pending requests can be accessed from either the io_context_ thread, or the
+  // application's main thread (e.g. Shutdown()). It needs to be protected by a mutex.
+  absl::btree_multimap<absl::Time, std::pair<Executor *, size_t>> pending_requests_
+      ABSL_GUARDED_BY(mu_);
   size_t pending_requests_bytes_ = 0;
 };
 
