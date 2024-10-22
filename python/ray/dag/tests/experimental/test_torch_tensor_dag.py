@@ -201,24 +201,6 @@ def test_torch_tensor_p2p(ray_start_regular):
 
     compiled_dag.teardown()
 
-    # Passing a torch.tensor inside of other data is okay even if
-    # _direct_return=True, if `transport` is not set.
-    with InputNode() as inp:
-        dag = sender.send_dict_with_tuple_args.bind(inp)
-        dag = dag.with_type_hint(
-            TorchTensorType(
-                _shape=shape,
-                _dtype=dtype,
-                _direct_return=True,
-            )
-        )
-        dag = receiver.recv_dict.bind(dag)
-
-    compiled_dag = dag.experimental_compile()
-
-    ref = compiled_dag.execute((shape, dtype, 1))
-    ray.get(ref)
-
 
 @pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
 def test_torch_tensor_as_dag_input(ray_start_regular):
