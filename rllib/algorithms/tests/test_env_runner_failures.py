@@ -16,6 +16,7 @@ from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
 from ray.rllib.env.multi_agent_env import make_multi_agent
 from ray.rllib.env.multi_agent_env_runner import MultiAgentEnvRunner
 from ray.rllib.env.single_agent_env_runner import SingleAgentEnvRunner
+from ray.rllib.examples.envs.classes.cartpole_crashing import CartPoleCrashing
 from ray.rllib.examples.envs.classes.random_env import RandomEnv
 from ray.rllib.utils.metrics import (
     ENV_RUNNER_RESULTS,
@@ -351,9 +352,11 @@ class TestWorkerFailures(unittest.TestCase):
                             # different-from-training-workers policy mapping fn.
                             "This is the eval mapping fn"
                             if episode is None
-                            else "main"
-                            if hash(episode.id_) % 2 == aid
-                            else "p{}".format(np.random.choice([0, 1]))
+                            else (
+                                "main"
+                                if hash(episode.id_) % 2 == aid
+                                else "p{}".format(np.random.choice([0, 1]))
+                            )
                         )
                     )
                 )
@@ -455,6 +458,63 @@ class TestWorkerFailures(unittest.TestCase):
             .env_runners(env_runner_cls=ForwardHealthCheckToEnvWorker)
             .training(optimizer={})
         )
+
+    def test_env_crash_during_sampling_but_restart_crashed_sub_envs(self):
+        """Expect sub-envs to fail (and not recover), but re-start them individually."""
+        register_env(
+            "ma_cartpole_crashing",
+            lambda cfg: (
+                cfg.update({"num_agents": 2}),
+                make_multi_agent(CartPoleCrashing)(cfg),
+            )[1],
+        )
+
+        config = (
+            PPOConfig()
+            .api_stack(
+                enable_env_runner_and_connector_v2=True,
+                enable_rl_module_and_learner=True,
+            )
+            .env_runners(num_env_runners=4)
+            .fault_tolerance(
+                # Re-start failed individual sub-envs (then continue).
+                # This means no workers will ever fail due to individual env errors
+                # (only maybe for reasons other than the env).
+                restart_failed_sub_environments=True,
+                # If the worker was affected by an error (other than the env error),
+                # allow it to be removed, but training will continue.
+                ignore_env_runner_failures=True,
+            )
+            .environment(
+                env_config={
+                    # Crash prob=0.1%. Keep this as low as necessary to be able to
+                    # get at least a train batch sampled w/o too many interruptions.
+                    "p_crash": 0.001,
+                }
+            )
+        )
+        for multi_agent in [False, True]:
+            if multi_agent:
+                config.environment("ma_cartpole_crashing")
+                config.env_runners(num_envs_per_env_runner=1)
+                config.multi_agent(
+                    policies={"p0", "p1"},
+                    policy_mapping_fn=lambda aid, eps, **kw: f"p{aid}",
+                )
+            else:
+                config.environment(CartPoleCrashing)
+                config.env_runners(num_envs_per_env_runner=2)
+
+            # Pre-checking disables, so building the Algorithm is save.
+            algo = config.build()
+            # Try to re-create the sub-env for infinite amount of times.
+            for _ in range(5):
+                # Expect some errors being logged here, but in general, should continue
+                # as we recover from all sub-env failures.
+                algo.train()
+                # No worker has been removed. Still 2 left.
+                self.assertEqual(algo.env_runner_group.num_healthy_remote_workers(), 4)
+            algo.stop()
 
     def test_eval_workers_failing_ignore(self):
         # Test the case where one eval worker fails, but we chose to ignore.

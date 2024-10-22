@@ -126,7 +126,6 @@ class TorchTensorType(ChannelOutputType):
         _cpu_data_channel: Optional["Channel"] = None,
         _tensor_metadata_channel: Optional["Channel"] = None,
     ) -> type:
-
         if self.requires_nccl():
             from ray.experimental.channel.torch_tensor_nccl_channel import (
                 TorchTensorNcclChannel,
@@ -143,7 +142,8 @@ class TorchTensorType(ChannelOutputType):
             if _cpu_data_channel is None and not self._direct_return:
                 # Create a CPU channel to send non-tensor data.
                 _cpu_data_channel = SharedMemoryType().create_channel(
-                    writer, reader_and_node_list,
+                    writer,
+                    reader_and_node_list,
                     read_by_adag_driver,
                 )
 
@@ -159,8 +159,7 @@ class TorchTensorType(ChannelOutputType):
         # shared-memory channel.
         # TODO(swang): Allow the initial max buffer size to bereaders overridden.
         typ = SharedMemoryType()
-        return typ.create_channel(writer, reader_and_node_list,
-                read_by_adag_driver)
+        return typ.create_channel(writer, reader_and_node_list, read_by_adag_driver)
 
     def requires_nccl(self) -> bool:
         return self.transport == self.NCCL
@@ -175,5 +174,21 @@ class TorchTensorType(ChannelOutputType):
         self._nccl_group_id = group_id
 
     @property
-    def nccl_group_id(self) -> str:
+    def nccl_group_id(self) -> Optional[str]:
         return self._nccl_group_id
+
+    def __deepcopy__(self, memo):
+        """
+        Deep copy all the fields except for the custom NCCL group. The custom
+        NCCL group should not be deep copied because it can be shared across
+        `TorchTensorType` instances.
+        """
+        copy = TorchTensorType(
+            _shape=self._shape,
+            _dtype=self._dtype,
+            transport=self.transport,
+            _direct_return=self._direct_return,
+        )
+        copy._custom_nccl_group = self._custom_nccl_group
+        copy._nccl_group_id = self._nccl_group_id
+        return copy

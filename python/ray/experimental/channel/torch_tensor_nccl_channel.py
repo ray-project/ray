@@ -121,9 +121,7 @@ class TorchTensorNcclChannel(ChannelInterface):
             # Serialize the data. All tensors that match our current device
             # will be extracted into the serialization context and replaced
             # with a placeholder.
-            cpu_data = (
-                self._worker.get_serialization_context().serialize(value)
-            )
+            cpu_data = self._worker.get_serialization_context().serialize(value)
         except TypeError as e:
             sio = io.StringIO()
             ray.util.inspect_serializability(value, print_file=sio)
@@ -145,7 +143,6 @@ class TorchTensorNcclChannel(ChannelInterface):
         # Next send the non-tensor data through a CPU-specific channel. The
         # data contains placeholders for the extracted tensors.
         self._cpu_data_channel.write(cpu_data)
-
 
     def write(self, value: Any, timeout: Optional[float] = None) -> None:
         """
@@ -185,18 +182,24 @@ class TorchTensorNcclChannel(ChannelInterface):
                 # exception. This could be improved by sending the exception
                 # through the gpu_data_channel's CPU-based metadata channel,
                 # if one exists.
-                raise ValueError("Task annotated with _direct_return=True must "
-                        "return a CUDA torch.Tensor, instead found value "
-                        f"`{value}`. DAG will shut down.")
+                raise ValueError(
+                    "Task annotated with _direct_return=True must "
+                    "return a CUDA torch.Tensor, instead found value "
+                    f"`{value}`. DAG will shut down."
+                )
             elif not value.is_cuda:
-                raise ValueError("Task annotated with _direct_return=True must "
-                        "return a CUDA torch.Tensor, instead found CPU tensor. "
-                        "DAG will shut down.")
+                raise ValueError(
+                    "Task annotated with _direct_return=True must "
+                    "return a CUDA torch.Tensor, instead found CPU tensor. "
+                    "DAG will shut down."
+                )
             self._gpu_data_channel.write([value], timeout=timeout)
         else:
             self._send_cpu_and_gpu_data(value, timeout)
 
-    def _recv_cpu_and_gpu_data(self, tensors: List["torch.Tensor"], timeout: Optional[float] = None) -> Any:
+    def _recv_cpu_and_gpu_data(
+        self, tensors: List["torch.Tensor"], timeout: Optional[float] = None
+    ) -> Any:
         """
         Helper method to receive data that contains a mix of CPU and GPU data.
 

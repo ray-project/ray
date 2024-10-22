@@ -72,7 +72,7 @@ class Worker:
             read_by_adag_driver=False,
             _cpu_data_channel=cpu_data_channel,
             _tensor_metadata_channel=tensor_metadata_channel,
-            )
+        )
 
         return self.tensor_chan
 
@@ -388,9 +388,7 @@ def test_direct_return(ray_start_cluster):
     # The channel is still usable for valid tensors after errors occur.
     val = torch.ones(shape, dtype=dtype)
     sender.send.remote(val)
-    assert ray.get(receiver.receive.remote()) == [
-        (val[0], val.shape, val.dtype)
-    ]
+    assert ray.get(receiver.receive.remote()) == [(val[0], val.shape, val.dtype)]
 
 
 @pytest.mark.parametrize(

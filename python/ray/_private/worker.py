@@ -134,8 +134,7 @@ RF = TypeVar("RF", bound="HasOptions")
 
 
 class HasOptions(Protocol):
-    def options(self: RF, **task_options) -> RF:
-        ...
+    def options(self: RF, **task_options) -> RF: ...
 
 
 class RemoteFunctionNoArgs(HasOptions, Generic[R]):
@@ -144,13 +143,11 @@ class RemoteFunctionNoArgs(HasOptions, Generic[R]):
 
     def remote(
         self,
-    ) -> "ObjectRef[R]":
-        ...
+    ) -> "ObjectRef[R]": ...
 
     def bind(
         self,
-    ) -> "DAGNode[R]":
-        ...
+    ) -> "DAGNode[R]": ...
 
 
 class RemoteFunction0(HasOptions, Generic[R, T0]):
@@ -160,14 +157,12 @@ class RemoteFunction0(HasOptions, Generic[R, T0]):
     def remote(
         self,
         __arg0: "Union[T0, ObjectRef[T0]]",
-    ) -> "ObjectRef[R]":
-        ...
+    ) -> "ObjectRef[R]": ...
 
     def bind(
         self,
         __arg0: "Union[T0, DAGNode[T0]]",
-    ) -> "DAGNode[R]":
-        ...
+    ) -> "DAGNode[R]": ...
 
 
 class RemoteFunction1(HasOptions, Generic[R, T0, T1]):
@@ -178,15 +173,13 @@ class RemoteFunction1(HasOptions, Generic[R, T0, T1]):
         self,
         __arg0: "Union[T0, ObjectRef[T0]]",
         __arg1: "Union[T1, ObjectRef[T1]]",
-    ) -> "ObjectRef[R]":
-        ...
+    ) -> "ObjectRef[R]": ...
 
     def bind(
         self,
         __arg0: "Union[T0, DAGNode[T0]]",
         __arg1: "Union[T1, DAGNode[T1]]",
-    ) -> "DAGNode[R]":
-        ...
+    ) -> "DAGNode[R]": ...
 
 
 class RemoteFunction2(HasOptions, Generic[R, T0, T1, T2]):
@@ -198,16 +191,14 @@ class RemoteFunction2(HasOptions, Generic[R, T0, T1, T2]):
         __arg0: "Union[T0, ObjectRef[T0]]",
         __arg1: "Union[T1, ObjectRef[T1]]",
         __arg2: "Union[T2, ObjectRef[T2]]",
-    ) -> "ObjectRef[R]":
-        ...
+    ) -> "ObjectRef[R]": ...
 
     def bind(
         self,
         __arg0: "Union[T0, DAGNode[T0]]",
         __arg1: "Union[T1, DAGNode[T1]]",
         __arg2: "Union[T2, DAGNode[T2]]",
-    ) -> "DAGNode[R]":
-        ...
+    ) -> "DAGNode[R]": ...
 
 
 class RemoteFunction3(HasOptions, Generic[R, T0, T1, T2, T3]):
@@ -220,8 +211,7 @@ class RemoteFunction3(HasOptions, Generic[R, T0, T1, T2, T3]):
         __arg1: "Union[T1, ObjectRef[T1]]",
         __arg2: "Union[T2, ObjectRef[T2]]",
         __arg3: "Union[T3, ObjectRef[T3]]",
-    ) -> "ObjectRef[R]":
-        ...
+    ) -> "ObjectRef[R]": ...
 
     def bind(
         self,
@@ -229,8 +219,7 @@ class RemoteFunction3(HasOptions, Generic[R, T0, T1, T2, T3]):
         __arg1: "Union[T1, DAGNode[T1]]",
         __arg2: "Union[T2, DAGNode[T2]]",
         __arg3: "Union[T3, DAGNode[T3]]",
-    ) -> "DAGNode[R]":
-        ...
+    ) -> "DAGNode[R]": ...
 
 
 class RemoteFunction4(HasOptions, Generic[R, T0, T1, T2, T3, T4]):
@@ -244,8 +233,7 @@ class RemoteFunction4(HasOptions, Generic[R, T0, T1, T2, T3, T4]):
         __arg2: "Union[T2, ObjectRef[T2]]",
         __arg3: "Union[T3, ObjectRef[T3]]",
         __arg4: "Union[T4, ObjectRef[T4]]",
-    ) -> "ObjectRef[R]":
-        ...
+    ) -> "ObjectRef[R]": ...
 
     def bind(
         self,
@@ -254,8 +242,7 @@ class RemoteFunction4(HasOptions, Generic[R, T0, T1, T2, T3, T4]):
         __arg2: "Union[T2, DAGNode[T2]]",
         __arg3: "Union[T3, DAGNode[T3]]",
         __arg4: "Union[T4, DAGNode[T4]]",
-    ) -> "DAGNode[R]":
-        ...
+    ) -> "DAGNode[R]": ...
 
 
 class RemoteFunction5(HasOptions, Generic[R, T0, T1, T2, T3, T4, T5]):
@@ -270,8 +257,7 @@ class RemoteFunction5(HasOptions, Generic[R, T0, T1, T2, T3, T4, T5]):
         __arg3: "Union[T3, ObjectRef[T3]]",
         __arg4: "Union[T4, ObjectRef[T4]]",
         __arg5: "Union[T5, ObjectRef[T5]]",
-    ) -> "ObjectRef[R]":
-        ...
+    ) -> "ObjectRef[R]": ...
 
     def bind(
         self,
@@ -281,8 +267,7 @@ class RemoteFunction5(HasOptions, Generic[R, T0, T1, T2, T3, T4, T5]):
         __arg3: "Union[T3, DAGNode[T3]]",
         __arg4: "Union[T4, DAGNode[T4]]",
         __arg5: "Union[T5, DAGNode[T5]]",
-    ) -> "DAGNode[R]":
-        ...
+    ) -> "DAGNode[R]": ...
 
 
 class RemoteFunction6(HasOptions, Generic[R, T0, T1, T2, T3, T4, T5, T6]):
@@ -298,8 +283,7 @@ class RemoteFunction6(HasOptions, Generic[R, T0, T1, T2, T3, T4, T5, T6]):
         __arg4: "Union[T4, ObjectRef[T4]]",
         __arg5: "Union[T5, ObjectRef[T5]]",
         __arg6: "Union[T6, ObjectRef[T6]]",
-    ) -> "ObjectRef[R]":
-        ...
+    ) -> "ObjectRef[R]": ...
 
     def bind(
         self,
@@ -310,8 +294,7 @@ class RemoteFunction6(HasOptions, Generic[R, T0, T1, T2, T3, T4, T5, T6]):
         __arg4: "Union[T4, DAGNode[T4]]",
         __arg5: "Union[T5, DAGNode[T5]]",
         __arg6: "Union[T6, DAGNode[T6]]",
-    ) -> "DAGNode[R]":
-        ...
+    ) -> "DAGNode[R]": ...
 
 
 class RemoteFunction7(HasOptions, Generic[R, T0, T1, T2, T3, T4, T5, T6, T7]):
@@ -328,8 +311,7 @@ class RemoteFunction7(HasOptions, Generic[R, T0, T1, T2, T3, T4, T5, T6, T7]):
         __arg5: "Union[T5, ObjectRef[T5]]",
         __arg6: "Union[T6, ObjectRef[T6]]",
         __arg7: "Union[T7, ObjectRef[T7]]",
-    ) -> "ObjectRef[R]":
-        ...
+    ) -> "ObjectRef[R]": ...
 
     def bind(
         self,
@@ -341,8 +323,7 @@ class RemoteFunction7(HasOptions, Generic[R, T0, T1, T2, T3, T4, T5, T6, T7]):
         __arg5: "Union[T5, DAGNode[T5]]",
         __arg6: "Union[T6, DAGNode[T6]]",
         __arg7: "Union[T7, DAGNode[T7]]",
-    ) -> "DAGNode[R]":
-        ...
+    ) -> "DAGNode[R]": ...
 
 
 class RemoteFunction8(HasOptions, Generic[R, T0, T1, T2, T3, T4, T5, T6, T7, T8]):
@@ -362,8 +343,7 @@ class RemoteFunction8(HasOptions, Generic[R, T0, T1, T2, T3, T4, T5, T6, T7, T8]
         __arg6: "Union[T6, ObjectRef[T6]]",
         __arg7: "Union[T7, ObjectRef[T7]]",
         __arg8: "Union[T8, ObjectRef[T8]]",
-    ) -> "ObjectRef[R]":
-        ...
+    ) -> "ObjectRef[R]": ...
 
     def bind(
         self,
@@ -376,8 +356,7 @@ class RemoteFunction8(HasOptions, Generic[R, T0, T1, T2, T3, T4, T5, T6, T7, T8]
         __arg6: "Union[T6, DAGNode[T6]]",
         __arg7: "Union[T7, DAGNode[T7]]",
         __arg8: "Union[T8, DAGNode[T8]]",
-    ) -> "DAGNode[R]":
-        ...
+    ) -> "DAGNode[R]": ...
 
 
 class RemoteFunction9(HasOptions, Generic[R, T0, T1, T2, T3, T4, T5, T6, T7, T8, T9]):
@@ -398,8 +377,7 @@ class RemoteFunction9(HasOptions, Generic[R, T0, T1, T2, T3, T4, T5, T6, T7, T8,
         __arg7: "Union[T7, ObjectRef[T7]]",
         __arg8: "Union[T8, ObjectRef[T8]]",
         __arg9: "Union[T9, ObjectRef[T9]]",
-    ) -> "ObjectRef[R]":
-        ...
+    ) -> "ObjectRef[R]": ...
 
     def bind(
         self,
@@ -413,8 +391,7 @@ class RemoteFunction9(HasOptions, Generic[R, T0, T1, T2, T3, T4, T5, T6, T7, T8,
         __arg7: "Union[T7, DAGNode[T7]]",
         __arg8: "Union[T8, DAGNode[T8]]",
         __arg9: "Union[T9, DAGNode[T9]]",
-    ) -> "DAGNode[R]":
-        ...
+    ) -> "DAGNode[R]": ...
 
 
 # Visible for testing.
@@ -875,12 +852,12 @@ class Worker:
                 )
 
         timeout_ms = int(timeout * 1000) if timeout is not None else -1
-        data_metadata_pairs: List[
-            Tuple[ray._raylet.Buffer, bytes]
-        ] = self.core_worker.get_objects(
-            object_refs,
-            self.current_task_id,
-            timeout_ms,
+        data_metadata_pairs: List[Tuple[ray._raylet.Buffer, bytes]] = (
+            self.core_worker.get_objects(
+                object_refs,
+                self.current_task_id,
+                timeout_ms,
+            )
         )
 
         debugger_breakpoint = b""
@@ -1877,6 +1854,11 @@ def shutdown(_exiting_interpreter: bool = False):
             and false otherwise. If we are exiting the interpreter, we will
             wait a little while to print any extra error messages.
     """
+    # Make sure to clean up compiled dag node if exists.
+    from ray.dag.compiled_dag_node import _shutdown_all_compiled_dags
+
+    _shutdown_all_compiled_dags()
+
     if _exiting_interpreter and global_worker.mode == SCRIPT_MODE:
         # This is a duration to sleep before shutting down everything in order
         # to make sure that log messages finish printing.
@@ -2611,32 +2593,27 @@ blocking_get_inside_async_warned = False
 @overload
 def get(
     object_refs: "Sequence[ObjectRef[Any]]", *, timeout: Optional[float] = None
-) -> List[Any]:
-    ...
+) -> List[Any]: ...
 
 
 @overload
 def get(
     object_refs: "Sequence[ObjectRef[R]]", *, timeout: Optional[float] = None
-) -> List[R]:
-    ...
+) -> List[R]: ...
 
 
 @overload
-def get(object_refs: "ObjectRef[R]", *, timeout: Optional[float] = None) -> R:
-    ...
+def get(object_refs: "ObjectRef[R]", *, timeout: Optional[float] = None) -> R: ...
 
 
 @overload
 def get(
     object_refs: Sequence[CompiledDAGRef], *, timeout: Optional[float] = None
-) -> List[Any]:
-    ...
+) -> List[Any]: ...
 
 
 @overload
-def get(object_refs: CompiledDAGRef, *, timeout: Optional[float] = None) -> Any:
-    ...
+def get(object_refs: CompiledDAGRef, *, timeout: Optional[float] = None) -> Any: ...
 
 
 @PublicAPI
@@ -2765,9 +2742,9 @@ def get(
                 port=None,
                 patch_stdstreams=False,
                 quiet=None,
-                breakpoint_uuid=debugger_breakpoint.decode()
-                if debugger_breakpoint
-                else None,
+                breakpoint_uuid=(
+                    debugger_breakpoint.decode() if debugger_breakpoint else None
+                ),
                 debugger_external=worker.ray_debugger_external,
             )
             rdb.set_trace(frame=frame)
@@ -3164,146 +3141,124 @@ def _make_remote(function_or_class, options):
 
 class RemoteDecorator(Protocol):
     @overload
-    def __call__(self, __function: Callable[[], R]) -> RemoteFunctionNoArgs[R]:
-        ...
+    def __call__(self, __function: Callable[[], R]) -> RemoteFunctionNoArgs[R]: ...
 
     @overload
-    def __call__(self, __function: Callable[[T0], R]) -> RemoteFunction0[R, T0]:
-        ...
+    def __call__(self, __function: Callable[[T0], R]) -> RemoteFunction0[R, T0]: ...
 
     @overload
-    def __call__(self, __function: Callable[[T0, T1], R]) -> RemoteFunction1[R, T0, T1]:
-        ...
+    def __call__(
+        self, __function: Callable[[T0, T1], R]
+    ) -> RemoteFunction1[R, T0, T1]: ...
 
     @overload
     def __call__(
         self, __function: Callable[[T0, T1, T2], R]
-    ) -> RemoteFunction2[R, T0, T1, T2]:
-        ...
+    ) -> RemoteFunction2[R, T0, T1, T2]: ...
 
     @overload
     def __call__(
         self, __function: Callable[[T0, T1, T2, T3], R]
-    ) -> RemoteFunction3[R, T0, T1, T2, T3]:
-        ...
+    ) -> RemoteFunction3[R, T0, T1, T2, T3]: ...
 
     @overload
     def __call__(
         self, __function: Callable[[T0, T1, T2, T3, T4], R]
-    ) -> RemoteFunction4[R, T0, T1, T2, T3, T4]:
-        ...
+    ) -> RemoteFunction4[R, T0, T1, T2, T3, T4]: ...
 
     @overload
     def __call__(
         self, __function: Callable[[T0, T1, T2, T3, T4, T5], R]
-    ) -> RemoteFunction5[R, T0, T1, T2, T3, T4, T5]:
-        ...
+    ) -> RemoteFunction5[R, T0, T1, T2, T3, T4, T5]: ...
 
     @overload
     def __call__(
         self, __function: Callable[[T0, T1, T2, T3, T4, T5, T6], R]
-    ) -> RemoteFunction6[R, T0, T1, T2, T3, T4, T5, T6]:
-        ...
+    ) -> RemoteFunction6[R, T0, T1, T2, T3, T4, T5, T6]: ...
 
     @overload
     def __call__(
         self, __function: Callable[[T0, T1, T2, T3, T4, T5, T6, T7], R]
-    ) -> RemoteFunction7[R, T0, T1, T2, T3, T4, T5, T6, T7]:
-        ...
+    ) -> RemoteFunction7[R, T0, T1, T2, T3, T4, T5, T6, T7]: ...
 
     @overload
     def __call__(
         self, __function: Callable[[T0, T1, T2, T3, T4, T5, T6, T7, T8], R]
-    ) -> RemoteFunction8[R, T0, T1, T2, T3, T4, T5, T6, T7, T8]:
-        ...
+    ) -> RemoteFunction8[R, T0, T1, T2, T3, T4, T5, T6, T7, T8]: ...
 
     @overload
     def __call__(
         self, __function: Callable[[T0, T1, T2, T3, T4, T5, T6, T7, T8, T9], R]
-    ) -> RemoteFunction9[R, T0, T1, T2, T3, T4, T5, T6, T7, T8, T9]:
-        ...
+    ) -> RemoteFunction9[R, T0, T1, T2, T3, T4, T5, T6, T7, T8, T9]: ...
 
     # Pass on typing actors for now. The following makes it so no type errors
     # are generated for actors.
     @overload
-    def __call__(self, __t: type) -> Any:
-        ...
+    def __call__(self, __t: type) -> Any: ...
 
 
 @overload
-def remote(__function: Callable[[], R]) -> RemoteFunctionNoArgs[R]:
-    ...
+def remote(__function: Callable[[], R]) -> RemoteFunctionNoArgs[R]: ...
 
 
 @overload
-def remote(__function: Callable[[T0], R]) -> RemoteFunction0[R, T0]:
-    ...
+def remote(__function: Callable[[T0], R]) -> RemoteFunction0[R, T0]: ...
 
 
 @overload
-def remote(__function: Callable[[T0, T1], R]) -> RemoteFunction1[R, T0, T1]:
-    ...
+def remote(__function: Callable[[T0, T1], R]) -> RemoteFunction1[R, T0, T1]: ...
 
 
 @overload
-def remote(__function: Callable[[T0, T1, T2], R]) -> RemoteFunction2[R, T0, T1, T2]:
-    ...
+def remote(__function: Callable[[T0, T1, T2], R]) -> RemoteFunction2[R, T0, T1, T2]: ...
 
 
 @overload
 def remote(
     __function: Callable[[T0, T1, T2, T3], R]
-) -> RemoteFunction3[R, T0, T1, T2, T3]:
-    ...
+) -> RemoteFunction3[R, T0, T1, T2, T3]: ...
 
 
 @overload
 def remote(
     __function: Callable[[T0, T1, T2, T3, T4], R]
-) -> RemoteFunction4[R, T0, T1, T2, T3, T4]:
-    ...
+) -> RemoteFunction4[R, T0, T1, T2, T3, T4]: ...
 
 
 @overload
 def remote(
     __function: Callable[[T0, T1, T2, T3, T4, T5], R]
-) -> RemoteFunction5[R, T0, T1, T2, T3, T4, T5]:
-    ...
+) -> RemoteFunction5[R, T0, T1, T2, T3, T4, T5]: ...
 
 
 @overload
 def remote(
     __function: Callable[[T0, T1, T2, T3, T4, T5, T6], R]
-) -> RemoteFunction6[R, T0, T1, T2, T3, T4, T5, T6]:
-    ...
+) -> RemoteFunction6[R, T0, T1, T2, T3, T4, T5, T6]: ...
 
 
 @overload
 def remote(
     __function: Callable[[T0, T1, T2, T3, T4, T5, T6, T7], R]
-) -> RemoteFunction7[R, T0, T1, T2, T3, T4, T5, T6, T7]:
-    ...
+) -> RemoteFunction7[R, T0, T1, T2, T3, T4, T5, T6, T7]: ...
 
 
 @overload
 def remote(
     __function: Callable[[T0, T1, T2, T3, T4, T5, T6, T7, T8], R]
-) -> RemoteFunction8[R, T0, T1, T2, T3, T4, T5, T6, T7, T8]:
-    ...
+) -> RemoteFunction8[R, T0, T1, T2, T3, T4, T5, T6, T7, T8]: ...
 
 
 @overload
 def remote(
     __function: Callable[[T0, T1, T2, T3, T4, T5, T6, T7, T8, T9], R]
-) -> RemoteFunction9[R, T0, T1, T2, T3, T4, T5, T6, T7, T8, T9]:
-    ...
+) -> RemoteFunction9[R, T0, T1, T2, T3, T4, T5, T6, T7, T8, T9]: ...
 
 
 # Pass on typing actors for now. The following makes it so no type errors
 # are generated for actors.
 @overload
-def remote(__t: type) -> Any:
-    ...
+def remote(__t: type) -> Any: ...
 
 
 # Passing options
@@ -3325,8 +3280,7 @@ def remote(
     scheduling_strategy: Union[
         None, Literal["DEFAULT"], Literal["SPREAD"], PlacementGroupSchedulingStrategy
     ] = Undefined,
-) -> RemoteDecorator:
-    ...
+) -> RemoteDecorator: ...
 
 
 @PublicAPI

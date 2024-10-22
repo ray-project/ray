@@ -7,10 +7,7 @@ from typing import Any, Dict, List, Optional, Set, Tuple, Union
 import ray
 import ray.exceptions
 from ray._raylet import SerializedObject
-from ray.experimental.channel.common import (
-    ChannelInterface,
-    ChannelOutputType,
-)
+from ray.experimental.channel.common import ChannelInterface, ChannelOutputType
 from ray.experimental.channel.intra_process_channel import IntraProcessChannel
 from ray.util.annotations import DeveloperAPI, PublicAPI
 

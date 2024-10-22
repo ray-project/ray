@@ -235,9 +235,7 @@ if setup_spec.type == SetupType.RAY:
         "client": [
             # The Ray client needs a specific range of gRPC to work:
             # Tracking issues: https://github.com/grpc/grpc/issues/33714
-            "grpcio != 1.56.0"
-            if sys.platform == "darwin"
-            else "grpcio",
+            "grpcio != 1.56.0" if sys.platform == "darwin" else "grpcio",
         ],
         "data": [
             numpy_dep,
@@ -772,51 +770,55 @@ build_dir = os.path.join(ROOT_DIR, "build")
 if os.path.isdir(build_dir):
     shutil.rmtree(build_dir)
 
-setuptools.setup(
-    name=setup_spec.name,
-    version=setup_spec.version,
-    author="Ray Team",
-    author_email="ray-dev@googlegroups.com",
-    description=(setup_spec.description),
-    long_description=io.open(
-        os.path.join(ROOT_DIR, os.path.pardir, "README.rst"), "r", encoding="utf-8"
-    ).read(),
-    url="https://github.com/ray-project/ray",
-    keywords=(
-        "ray distributed parallel machine-learning hyperparameter-tuning"
-        "reinforcement-learning deep-learning serving python"
-    ),
-    python_requires=">=3.9",
-    classifiers=[
-        "Programming Language :: Python :: 3.9",
-        "Programming Language :: Python :: 3.10",
-        "Programming Language :: Python :: 3.11",
-        "Programming Language :: Python :: 3.12",
-    ],
-    packages=setup_spec.get_packages(),
-    cmdclass={"build_ext": build_ext},
-    # The BinaryDistribution argument triggers build_ext.
-    distclass=BinaryDistribution,
-    install_requires=setup_spec.install_requires,
-    setup_requires=["cython >= 0.29.32", "wheel"],
-    extras_require=setup_spec.extras,
-    entry_points={
-        "console_scripts": [
-            "ray=ray.scripts.scripts:main",
-            "rllib=ray.rllib.scripts:cli [rllib]",
-            "tune=ray.tune.cli.scripts:cli",
-            "serve=ray.serve.scripts:cli",
-        ]
-    },
-    package_data={
-        "ray": ["includes/*.pxd", "*.pxd", "data/_internal/logging.yaml"],
-    },
-    include_package_data=True,
-    exclude_package_data={
-        # Empty string means "any package".
-        # Therefore, exclude BUILD from every package:
-        "": ["BUILD"],
-    },
-    zip_safe=False,
-    license="Apache 2.0",
-) if __name__ == "__main__" else None
+(
+    setuptools.setup(
+        name=setup_spec.name,
+        version=setup_spec.version,
+        author="Ray Team",
+        author_email="ray-dev@googlegroups.com",
+        description=(setup_spec.description),
+        long_description=io.open(
+            os.path.join(ROOT_DIR, os.path.pardir, "README.rst"), "r", encoding="utf-8"
+        ).read(),
+        url="https://github.com/ray-project/ray",
+        keywords=(
+            "ray distributed parallel machine-learning hyperparameter-tuning"
+            "reinforcement-learning deep-learning serving python"
+        ),
+        python_requires=">=3.9",
+        classifiers=[
+            "Programming Language :: Python :: 3.9",
+            "Programming Language :: Python :: 3.10",
+            "Programming Language :: Python :: 3.11",
+            "Programming Language :: Python :: 3.12",
+        ],
+        packages=setup_spec.get_packages(),
+        cmdclass={"build_ext": build_ext},
+        # The BinaryDistribution argument triggers build_ext.
+        distclass=BinaryDistribution,
+        install_requires=setup_spec.install_requires,
+        setup_requires=["cython >= 0.29.32", "wheel"],
+        extras_require=setup_spec.extras,
+        entry_points={
+            "console_scripts": [
+                "ray=ray.scripts.scripts:main",
+                "rllib=ray.rllib.scripts:cli [rllib]",
+                "tune=ray.tune.cli.scripts:cli",
+                "serve=ray.serve.scripts:cli",
+            ]
+        },
+        package_data={
+            "ray": ["includes/*.pxd", "*.pxd"],
+        },
+        include_package_data=True,
+        exclude_package_data={
+            # Empty string means "any package".
+            # Therefore, exclude BUILD from every package:
+            "": ["BUILD"],
+        },
+        zip_safe=False,
+        license="Apache 2.0",
+    )
+    if __name__ == "__main__"
+    else None
+)

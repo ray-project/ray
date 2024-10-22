@@ -87,9 +87,7 @@ def test_p2p(ray_start_cluster):
 
     # Test torch.Tensor sent between actors.
     with InputNode() as inp:
-        dag = sender.send.bind(
-            inp.shape, inp.dtype, inp[0], inp.send_as_dict
-        )
+        dag = sender.send.bind(inp.shape, inp.dtype, inp[0], inp.send_as_dict)
         dag = dag.with_type_hint(TorchTensorType(transport="nccl"))
         dag = receiver.recv.bind(dag)
 
@@ -217,7 +215,11 @@ def test_p2p_static_shape_error(capsys, ray_start_cluster):
     def error_logged():
         captured = capsys.readouterr()
         print(captured.out, captured.err)
-        assert "Expected torch.Tensors with shapes and dtypes: [(shape=(10, ), dtype=torch.float16)],\nfound: [shape=(20, ), dtype=torch.float16]" in captured.out
+        assert (
+            "Expected torch.Tensors with shapes and dtypes: [(shape=(10, ), dtype=torch.float16)],\nfound: [shape=(20, ), dtype=torch.float16]"
+            in captured.out
+        )
+
     wait_for_condition(error_logged)
 
     ray.kill(barrier1)
@@ -253,20 +255,20 @@ def test_p2p_direct_return(ray_start_cluster):
 
     # Test torch.Tensor sent between actors.
     with InputNode() as inp:
-        dag = sender.send.bind(inp.shape, inp.dtype, inp.value,
-                               inp.send_as_dict)
-        dag = dag.with_type_hint(
-            TorchTensorType(transport="nccl", _direct_return=True)
-        )
+        dag = sender.send.bind(inp.shape, inp.dtype, inp.value, inp.send_as_dict)
+        dag = dag.with_type_hint(TorchTensorType(transport="nccl", _direct_return=True))
         dag = receiver.recv.bind(dag)
 
     compiled_dag = dag.experimental_compile()
 
     dtype = torch.float16
     for i in range(3):
-        shape = (10 * (i + 1), )
-        ref = compiled_dag.execute(shape=shape, dtype=dtype, value=i, send_as_dict=False)
+        shape = (10 * (i + 1),)
+        ref = compiled_dag.execute(
+            shape=shape, dtype=dtype, value=i, send_as_dict=False
+        )
         assert ray.get(ref) == (i, shape, dtype)
+
 
 @pytest.mark.parametrize(
     "ray_start_cluster",
@@ -298,19 +300,18 @@ def test_p2p_direct_return_error(ray_start_cluster):
 
     # Test torch.Tensor sent between actors.
     with InputNode() as inp:
-        dag = sender.send.bind(inp.shape, inp.dtype, inp.value,
-                               inp.send_as_dict)
-        dag = dag.with_type_hint(
-            TorchTensorType(transport="nccl", _direct_return=True)
-        )
+        dag = sender.send.bind(inp.shape, inp.dtype, inp.value, inp.send_as_dict)
+        dag = dag.with_type_hint(TorchTensorType(transport="nccl", _direct_return=True))
         dag = receiver.recv.bind(dag)
 
     compiled_dag = dag.experimental_compile()
 
     dtype = torch.float16
     for i in range(3):
-        shape = (10 * (i + 1), )
-        ref = compiled_dag.execute(shape=shape, dtype=dtype, value=i, send_as_dict=False)
+        shape = (10 * (i + 1),)
+        ref = compiled_dag.execute(
+            shape=shape, dtype=dtype, value=i, send_as_dict=False
+        )
         assert ray.get(ref) == (i, shape, dtype)
 
     # Error is thrown if we do not send a tensor.
@@ -321,7 +322,9 @@ def test_p2p_direct_return_error(ray_start_cluster):
     # Currently the receiver cannot catch the exception so the DAG cannot be
     # used again.
     with pytest.raises(RayChannelError):
-        ref = compiled_dag.execute(shape=shape, dtype=dtype, value=1, send_as_dict=False)
+        ref = compiled_dag.execute(
+            shape=shape, dtype=dtype, value=1, send_as_dict=False
+        )
 
     ray.kill(barrier1)
     ray.kill(barrier2)
@@ -358,24 +361,25 @@ def test_p2p_static_shape_and_direct_return(ray_start_cluster, check_static_shap
 
     # Test torch.Tensor sent between actors.
     with InputNode() as inp:
-        dag = sender.send.bind(inp.shape, inp.dtype, inp.value,
-                               inp.send_as_dict)
-        dag = dag.with_type_hint(
-            TorchTensorType(transport="nccl", _direct_return=True)
-        )
+        dag = sender.send.bind(inp.shape, inp.dtype, inp.value, inp.send_as_dict)
+        dag = dag.with_type_hint(TorchTensorType(transport="nccl", _direct_return=True))
         dag = receiver.recv.bind(dag)
 
     compiled_dag = dag.experimental_compile()
 
-    shape = (10, )
+    shape = (10,)
     dtype = torch.float16
     for i in range(3):
-        ref = compiled_dag.execute(shape=shape, dtype=dtype, value=i, send_as_dict=False)
+        ref = compiled_dag.execute(
+            shape=shape, dtype=dtype, value=i, send_as_dict=False
+        )
         assert ray.get(ref) == (i, shape, dtype)
 
     if check_static_shape:
         # Error is thrown if we send the wrong shape.
-        ref = compiled_dag.execute(shape=(20, ), dtype=dtype, value=1, send_as_dict=False)
+        ref = compiled_dag.execute(
+            shape=(20,), dtype=dtype, value=1, send_as_dict=False
+        )
     else:
         # Error is thrown if we do not send a tensor.
         ref = compiled_dag.execute(shape=shape, dtype=dtype, value=1, send_as_dict=True)
@@ -385,12 +389,13 @@ def test_p2p_static_shape_and_direct_return(ray_start_cluster, check_static_shap
     # Currently the receiver cannot catch either kind of
     # exception so the DAG cannot be used again.
     with pytest.raises(RayChannelError):
-        ref = compiled_dag.execute(shape=shape, dtype=dtype, value=1, send_as_dict=False)
+        ref = compiled_dag.execute(
+            shape=shape, dtype=dtype, value=1, send_as_dict=False
+        )
 
     ray.kill(barrier1)
     ray.kill(barrier2)
     compiled_dag.teardown()
-
 
 
 if __name__ == "__main__":

@@ -291,6 +291,7 @@ py_test_module_list(
     "test_debug_tools.py",
     "test_distributed_sort.py",
     "test_environ.py",
+    "test_exceptiongroup.py",
     "test_get_or_create_actor.py",
     "test_ids.py",
     "test_list_actors.py",
