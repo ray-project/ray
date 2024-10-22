@@ -120,9 +120,9 @@ def test_numpy_roundtrip(ray_start_regular_shared, fs, data_path):
     assert ds.schema() == Schema(
         pa.schema([("data", ArrowTensorType((1,), pa.int64()))])
     )
-    np.testing.assert_equal(
-        extract_values("data", ds.take(2)), [np.array([0]), np.array([1])]
-    )
+    assert sorted(ds.take_all(), key=lambda row: row["data"]) == [
+        {"data": np.array([i])} for i in range(10)
+    ]
 
 
 def test_numpy_read(ray_start_regular_shared, tmp_path):
