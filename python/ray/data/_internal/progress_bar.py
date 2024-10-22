@@ -5,7 +5,6 @@ from typing import Any, List, Optional
 import ray
 from ray.experimental import tqdm_ray
 from ray.types import ObjectRef
-from ray.util.annotations import Deprecated
 from ray.util.debug import log_once
 
 logger = logging.getLogger(__name__)
