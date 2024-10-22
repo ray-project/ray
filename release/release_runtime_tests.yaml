@@ -73,6 +73,36 @@
       run:
         script: python load_file_benchmark.py --device cuda
 
+- name: serve_grpc_microbenchmarks
+  group: Serve tests
+  working_dir: serve_tests
+
+  frequency: nightly
+  team: serve
+
+  cluster:
+    byod:
+      runtime_env:
+        - ANYSCALE_RAY_SERVE_USE_GRPC_BY_DEFAULT=1
+        - ANYSCALE_RAY_SERVE_REPLICA_GRPC_MAX_MESSAGE_LENGTH=10500000
+    cluster_compute: compute_tpl_single_node_32_cpu.yaml
+    cloud_id: cld_wy5a6nhazplvu32526ams61d98
+
+  run:
+    timeout: 7200
+    long_running: false
+    script: python workloads/microbenchmarks.py --run-all
+
+  alert: default
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_compute: compute_tpl_single_node_gce.yaml
+
 ###############
 # Data tests
 ###############
