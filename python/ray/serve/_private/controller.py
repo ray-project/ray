@@ -19,7 +19,6 @@ from ray.serve._private.common import (
     MultiplexedReplicaInfo,
     NodeId,
     RunningReplicaInfo,
-    StatusOverview,
     TargetCapacityDirection,
 )
 from ray.serve._private.constants import (
@@ -68,6 +67,7 @@ from ray.serve.schema import (
     ServeApplicationSchema,
     ServeDeploySchema,
     ServeInstanceDetails,
+    StatusOverview,
     gRPCOptionsSchema,
 )
 from ray.util import metrics

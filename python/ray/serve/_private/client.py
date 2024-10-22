@@ -7,13 +7,11 @@ from typing import Callable, Dict, Iterable, List, Optional, Tuple, Union
 import ray
 from ray.actor import ActorHandle
 from ray.serve._private.common import (
-    ApplicationStatus,
     DeploymentHandleSource,
     DeploymentID,
     DeploymentStatus,
     DeploymentStatusInfo,
     MultiplexedReplicaInfo,
-    StatusOverview,
 )
 from ray.serve._private.constants import (
     CLIENT_CHECK_CREATION_POLLING_INTERVAL_S,
@@ -33,7 +31,7 @@ from ray.serve.generated.serve_pb2 import (
 )
 from ray.serve.generated.serve_pb2 import StatusOverview as StatusOverviewProto
 from ray.serve.handle import DeploymentHandle, _HandleOptions
-from ray.serve.schema import LoggingConfig, ServeApplicationSchema, ServeDeploySchema
+from ray.serve.schema import ApplicationStatus, LoggingConfig, ServeApplicationSchema, ServeDeploySchema, StatusOverview
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 

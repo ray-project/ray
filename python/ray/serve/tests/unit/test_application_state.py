@@ -11,7 +11,6 @@ from ray.serve._private.application_state import (
     override_deployment_info,
 )
 from ray.serve._private.common import (
-    ApplicationStatus,
     DeploymentID,
     DeploymentStatus,
     DeploymentStatusInfo,
@@ -25,6 +24,7 @@ from ray.serve._private.utils import get_random_string
 from ray.serve.exceptions import RayServeException
 from ray.serve.schema import (
     APIType,
+    ApplicationStatus,
     DeploymentSchema,
     LoggingConfig,
     ServeApplicationSchema,
