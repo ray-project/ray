@@ -4,8 +4,8 @@ set -euo pipefail
 
 set -x
 
-RAY_VERSION="${RAY_VERSION:-2.32.0}"
-RAY_COMMIT="${RAY_COMMIT:-607f2f30f5f21543b6a5568ee77ea779eeba30a8}"
+RAY_VERSION="${RAY_VERSION:-2.38.0}"
+RAY_COMMIT="${RAY_COMMIT:-385ee466260ef3cd218d5e372aef5d39338b7b94}"
 
 # Download winpty
 mkdir -p /c/tmp/winpty
