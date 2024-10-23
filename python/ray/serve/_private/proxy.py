@@ -7,7 +7,7 @@ import socket
 import time
 from abc import ABC, abstractmethod
 from functools import partial
-from typing import Any, Callable, Dict, Generator, List, Optional, Tuple, Type
+from typing import Any, Callable, Dict, Generator, List, Optional, Set, Tuple, Type
 
 import grpc
 import starlette
@@ -27,6 +27,7 @@ from ray.serve._private.common import (
     DeploymentID,
     EndpointInfo,
     NodeId,
+    ReplicaID,
     RequestMetadata,
     RequestProtocol,
 )
@@ -40,6 +41,7 @@ from ray.serve._private.constants import (
     SERVE_MULTIPLEXED_MODEL_ID,
     SERVE_NAMESPACE,
 )
+from ray.serve._private.default_impl import add_grpc_address
 from ray.serve._private.grpc_util import DummyServicer, create_serve_grpc_server
 from ray.serve._private.http_util import (
     MessageQueue,
@@ -913,6 +915,7 @@ class HTTPProxy(GenericProxy):
             "route": route_path,
             "app_name": app_name,
             "_internal_request_id": internal_request_id,
+            "is_http_request": True,
         }
         for key, value in proxy_request.headers:
             if key.decode() == SERVE_MULTIPLEXED_MODEL_ID:
@@ -1288,6 +1291,10 @@ class ProxyActor:
                 log_file_path = handler.baseFilename
         return log_file_path
 
+    def _dump_ingress_replicas_for_testing(self, route: str) -> Set[ReplicaID]:
+        _, handle, _ = self.http_proxy.proxy_router.match_route(route)
+        return handle._router._replica_scheduler._replica_id_set
+
     def should_start_grpc_service(self) -> bool:
         """Determine whether gRPC service should be started.
 
@@ -1407,7 +1414,7 @@ class ProxyActor:
             service_handler_factory=self.grpc_proxy.service_handler_factory,
         )
 
-        grpc_server.add_insecure_port(f"[::]:{self.grpc_port}")
+        add_grpc_address(grpc_server, f"[::]:{self.grpc_port}")
 
         # Dummy servicer is used to be callable for the gRPC server. Serve have a
         # custom gRPC server implementation to redirect calls into gRPCProxy.

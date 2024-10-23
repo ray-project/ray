@@ -1,3 +1,5 @@
+import msgpack
+import msgpack_numpy as m
 import pathlib
 import shutil
 import unittest
@@ -5,6 +7,7 @@ import unittest
 import ray
 from ray.rllib.algorithms.ppo.ppo import PPOConfig
 from ray.rllib.core.columns import Columns
+from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
 from ray.rllib.env.single_agent_episode import SingleAgentEpisode
 from ray.rllib.offline.offline_data import OfflineData
 from ray.rllib.offline.offline_env_runner import OfflineSingleAgentEnvRunner
@@ -34,11 +37,11 @@ class TestOfflineEnvRunner(unittest.TestCase):
             .environment("CartPole-v1")
             .rl_module(
                 # Use a small network for this test.
-                model_config_dict={
-                    "fcnet_hiddens": [32],
-                    "fcnet_activation": "linear",
-                    "vf_share_layers": True,
-                }
+                model_config=DefaultModelConfig(
+                    fcnet_hiddens=[32],
+                    fcnet_activation="linear",
+                    vf_share_layers=True,
+                )
             )
         )
         ray.init()
@@ -60,7 +63,7 @@ class TestOfflineEnvRunner(unittest.TestCase):
         )
 
         offline_env_runner = OfflineSingleAgentEnvRunner(config, worker_index=1)
-        # Sample 1ßß episodes.
+        # Sample 100 episodes.
         _ = offline_env_runner.sample(
             num_episodes=100,
             random_actions=True,
@@ -81,7 +84,14 @@ class TestOfflineEnvRunner(unittest.TestCase):
         # Assert the dataset has only 100 rows (each row containing an episode).
         self.assertEqual(offline_data.data.count(), 100)
         # Take a single row and ensure its a `SingleAgentEpisode` instance.
-        self.assertIsInstance(offline_data.data.take(1)[0]["item"], SingleAgentEpisode)
+        self.assertIsInstance(
+            SingleAgentEpisode.from_state(
+                msgpack.unpackb(
+                    offline_data.data.take(1)[0]["item"], object_hook=m.decode
+                )
+            ),
+            SingleAgentEpisode,
+        )
         # The batch contains now episodes (in a numpy.NDArray).
         episodes = offline_data.data.take_batch(100)["item"]
         # The batch should contain 100 episodes (not 100 env steps).

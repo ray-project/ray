@@ -42,7 +42,12 @@ from ray.serve._private.utils import (
 from ray.serve.config import AutoscalingConfig
 from ray.serve.exceptions import RayServeException
 from ray.serve.generated.serve_pb2 import DeploymentLanguage
-from ray.serve.schema import DeploymentDetails, LoggingConfig, ServeApplicationSchema
+from ray.serve.schema import (
+    APIType,
+    DeploymentDetails,
+    LoggingConfig,
+    ServeApplicationSchema,
+)
 from ray.types import ObjectRef
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
@@ -57,14 +62,6 @@ class BuildAppStatus(Enum):
     IN_PROGRESS = 2
     SUCCEEDED = 3
     FAILED = 4
-
-
-class APIType(Enum):
-    """Tracks the type of API that an application originates from."""
-
-    UNKNOWN = 0
-    IMPERATIVE = 1
-    DECLARATIVE = 2
 
 
 @dataclass
@@ -448,7 +445,9 @@ class ApplicationState:
             self._clear_target_state_and_store_config(config)
 
             # Record telemetry for container runtime env feature
-            if self._target_state.config.runtime_env.get("container"):
+            if self._target_state.config.runtime_env.get(
+                "container"
+            ) or self._target_state.config.runtime_env.get("image_uri"):
                 ServeUsageTag.APP_CONTAINER_RUNTIME_ENV_USED.record("1")
 
             # Kick off new build app task
@@ -944,6 +943,9 @@ class ApplicationStateManager:
 
         return self._application_states[name].ingress_deployment
 
+    def get_app_source(self, name: str) -> APIType:
+        return self._application_states[name].api_type
+
     def list_app_statuses(self) -> Dict[str, ApplicationStatusInfo]:
         """Return a dictionary with {app name: application info}"""
         return {
@@ -1166,9 +1168,10 @@ def override_deployment_info(
         )
 
         # Record telemetry for container runtime env feature at deployment level
-        if override_actor_options.get("runtime_env") and override_actor_options[
-            "runtime_env"
-        ].get("container"):
+        if override_actor_options.get("runtime_env") and (
+            override_actor_options["runtime_env"].get("container")
+            or override_actor_options["runtime_env"].get("image_uri")
+        ):
             ServeUsageTag.DEPLOYMENT_CONTAINER_RUNTIME_ENV_USED.record("1")
 
         merged_env = override_runtime_envs_except_env_vars(

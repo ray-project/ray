@@ -12,7 +12,7 @@ cartpole-appo:
         num_env_runners: 4
         num_gpus: 0
         observation_filter: MeanStdFilter
-        num_sgd_iter: 1
+        num_epochs: 1
         vf_loss_coeff: 0.01
         vtrace: true
         model:

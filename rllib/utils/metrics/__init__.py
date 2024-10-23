@@ -6,9 +6,8 @@ LEARNER_GROUP = "learner_group"
 LEARNER_RESULTS = "learners"
 FAULT_TOLERANCE_STATS = "fault_tolerance"
 TIMERS = "timers"
-# ALGORITHM_RESULTS = "algorithm"
 
-# RLModule metrics
+# RLModule metrics.
 NUM_TRAINABLE_PARAMETERS = "num_trainable_parameters"
 NUM_NON_TRAINABLE_PARAMETERS = "num_non_trainable_parameters"
 
@@ -47,6 +46,7 @@ NUM_ENV_STEPS_TRAINED_LIFETIME = "num_env_steps_trained_lifetime"
 NUM_ENV_STEPS_TRAINED_THIS_ITER = "num_env_steps_trained_this_iter"  # @OldAPIStack
 NUM_MODULE_STEPS_TRAINED = "num_module_steps_trained"
 NUM_MODULE_STEPS_TRAINED_LIFETIME = "num_module_steps_trained_lifetime"
+MODULE_TRAIN_BATCH_SIZE_MEAN = "module_train_batch_size_mean"
 # Backward compatibility: Replace with num_env_steps_... or num_agent_steps_...
 STEPS_TRAINED_THIS_ITER_COUNTER = "num_steps_trained_this_iter"
 

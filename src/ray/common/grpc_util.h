@@ -129,11 +129,25 @@ inline std::vector<T> VectorFromProtobuf(
   return std::vector<T>(pb_repeated.begin(), pb_repeated.end());
 }
 
+template <class T>
+inline std::vector<T> VectorFromProtobuf(
+    ::google::protobuf::RepeatedPtrField<T> &&pb_repeated) {
+  return std::vector<T>(std::make_move_iterator(pb_repeated.begin()),
+                        std::make_move_iterator(pb_repeated.end()));
+}
+
 /// Converts a Protobuf `RepeatedField` to a vector.
 template <class T>
 inline std::vector<T> VectorFromProtobuf(
     const ::google::protobuf::RepeatedField<T> &pb_repeated) {
   return std::vector<T>(pb_repeated.begin(), pb_repeated.end());
+}
+
+template <class T>
+inline std::vector<T> VectorFromProtobuf(
+    ::google::protobuf::RepeatedField<T> &&pb_repeated) {
+  return std::vector<T>(std::make_move_iterator(pb_repeated.begin()),
+                        std::make_move_iterator(pb_repeated.end()));
 }
 
 /// Converts a Protobuf `RepeatedField` to a vector of IDs.

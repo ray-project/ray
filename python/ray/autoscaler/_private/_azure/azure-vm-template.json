@@ -253,7 +253,7 @@
                     }
                 },
                 "priority": "[parameters('priority')]",
-                "evictionPolicy": "[parameters('evictionPolicy')]",
+                "evictionPolicy": "[if(equals(parameters('priority'), 'Spot'), parameters('evictionPolicy'), '')]",
                 "billingProfile": "[parameters('billingProfile')]"
             },
             "identity": {

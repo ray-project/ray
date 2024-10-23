@@ -358,6 +358,16 @@ message ActorUnschedulableContext {
 // Note: ActorDiedErrorContext is used in the export API and state API so it is public.
 // Any modifications must be backward compatible.
 message ActorDiedErrorContext {
+  enum Reason {
+    UNSPECIFIED = 0;
+    WORKER_DIED = 1;
+    OWNER_DIED = 2;
+    NODE_DIED = 3;
+    RAY_KILL = 4;
+    OUT_OF_SCOPE = 5;
+    REF_DELETED = 6;
+  }
+
   string error_message = 1;
   // The id of owner of the actor.
   bytes owner_id = 2;
@@ -380,6 +390,7 @@ message ActorDiedErrorContext {
   bool never_started = 10;
   // The node death info, if node death is the cause of actor death.
   optional NodeDeathInfo node_death_info = 11;
+  Reason reason = 12;
 }
 
 // Context for task OOM.
@@ -699,6 +710,7 @@ message ActorCreationTaskSpec {
   // The dynamic options used in the worker command when starting a worker process for
   // an actor creation task. If the list isn't empty, the options will be used to replace
   // the placeholder string `RAY_WORKER_DYNAMIC_OPTION_PLACEHOLDER` in the worker command.
+  // Used by Java workers for JVM options.
   repeated string dynamic_worker_options = 5;
   // The max number of concurrent calls for default concurrency group of this actor.
   int32 max_concurrency = 6;
@@ -965,4 +977,10 @@ enum PlacementStrategy {
 message NamedActorInfo {
   string ray_namespace = 1;
   string name = 2;
+}
+
+message LineageReconstructionTask {
+  string name = 1;
+  map<string, double> resources = 2;
+  TaskStatus status = 3;
 }

@@ -41,6 +41,10 @@ def gen_expected_metrics(
 ):
     if is_map:
         metrics = [
+            "'average_num_outputs_per_task': N",
+            "'average_bytes_per_output': N",
+            "'average_bytes_inputs_per_task': N",
+            "'average_bytes_outputs_per_task': N",
             "'num_inputs_received': N",
             "'bytes_inputs_received': N",
             "'num_task_inputs_processed': N",
@@ -531,6 +535,10 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "   base_name=ReadRange,\n"
         "   number=N,\n"
         "   extra_metrics={\n"
+        "      average_num_outputs_per_task: N,\n"
+        "      average_bytes_per_output: N,\n"
+        "      average_bytes_inputs_per_task: N,\n"
+        "      average_bytes_outputs_per_task: N,\n"
         "      num_inputs_received: N,\n"
         "      bytes_inputs_received: N,\n"
         "      num_task_inputs_processed: N,\n"
@@ -641,6 +649,10 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "   base_name=MapBatches(<lambda>),\n"
         "   number=N,\n"
         "   extra_metrics={\n"
+        "      average_num_outputs_per_task: N,\n"
+        "      average_bytes_per_output: N,\n"
+        "      average_bytes_inputs_per_task: N,\n"
+        "      average_bytes_outputs_per_task: N,\n"
         "      num_inputs_received: N,\n"
         "      bytes_inputs_received: N,\n"
         "      num_task_inputs_processed: N,\n"
@@ -706,6 +718,10 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "         base_name=ReadRange,\n"
         "         number=N,\n"
         "         extra_metrics={\n"
+        "            average_num_outputs_per_task: N,\n"
+        "            average_bytes_per_output: N,\n"
+        "            average_bytes_inputs_per_task: N,\n"
+        "            average_bytes_outputs_per_task: N,\n"
         "            num_inputs_received: N,\n"
         "            bytes_inputs_received: N,\n"
         "            num_task_inputs_processed: N,\n"
