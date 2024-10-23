@@ -206,18 +206,38 @@ class GcsServer {
 
   void TryGlobalGC();
 
+  struct GcsServerIoContextPolicy {
+    // IoContext name for each handler.
+    // If a class needs a dedicated io context, it should be specialized here.
+    // If a class does NOT have a dedicated io context, returns -1;
+    template <typename T>
+    static constexpr int GetDedicatedIoContextIndex() {
+      if constexpr (std::is_same_v<T, GcsTaskManager>) {
+        return 0;
+      } else if constexpr (std::is_same_v<T, GcsPublisher>) {
+        return 1;
+      } else if constexpr (std::is_same_v<T, syncer::RaySyncer>) {
+        return 2;
+      } else {
+        // Due to if-constexpr limitations, this have to be in an else block.
+        // Using this tuple_size_v to put T into compile error message.
+        static_assert(std::tuple_size_v<std::tuple<T>> == 0, "unknown type");
+      }
+    }
+
+    // This list must be unique and complete set of names returned from
+    // GetDedicatedIoContextName. Or you can get runtime crashes when accessing a missing
+    // name, or get leaks by creating unused threads.
+    constexpr static std::string_view kAllDedicatedIoContextNames[] = {
+        "task_io_context", "pubsub_io_context", "ray_syncer_io_context"};
+  };
+
+  IoContextProvider<GcsServerIoContextPolicy> io_context_provider_;
+
   /// Gcs server configuration.
   const GcsServerConfig config_;
   // Type of storage to use.
   const StorageType storage_type_;
-  /// The main io service to drive event posted from grpc threads.
-  instrumented_io_context &main_service_;
-  /// The io service used by Pubsub, for isolation from other workload.
-  InstrumentedIOContextWithThread pubsub_io_context_;
-  // The io service used by task manager.
-  InstrumentedIOContextWithThread task_io_context_;
-  // The io service used by ray syncer.
-  InstrumentedIOContextWithThread ray_syncer_io_context_;
   /// The grpc server
   rpc::GrpcServer rpc_server_;
   /// The `ClientCallManager` object that is shared by all `NodeManagerWorkerClient`s.
