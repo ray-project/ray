@@ -12,8 +12,6 @@ from ray import cloudpickle
 from ray._private.utils import import_attr
 from ray.exceptions import RuntimeEnvSetupError
 from ray.serve._private.common import (
-    ApplicationStatus,
-    ApplicationStatusInfo,
     DeploymentID,
     DeploymentStatus,
     DeploymentStatusInfo,
@@ -44,6 +42,8 @@ from ray.serve.exceptions import RayServeException
 from ray.serve.generated.serve_pb2 import DeploymentLanguage
 from ray.serve.schema import (
     APIType,
+    ApplicationStatus,
+    ApplicationStatusInfo,
     DeploymentDetails,
     LoggingConfig,
     ServeApplicationSchema,
