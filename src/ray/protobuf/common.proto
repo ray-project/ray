@@ -589,6 +589,8 @@ message TaskInfoEntry {
   // If the task/actor is created within a placement group,
   // this value is configured.
   optional bytes placement_group_id = 26;
+  // Tasks arguments
+  repeated TaskArg task_args = 27;
 }
 
 message Bundle {
