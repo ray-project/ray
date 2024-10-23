@@ -1,5 +1,8 @@
 from collections import defaultdict
 import logging
+import pathlib
+import pickle
+import pyarrow.fs
 from typing import Any, Collection, Dict, List, Optional, Tuple, Type, Union
 
 import gymnasium as gym
@@ -7,7 +10,7 @@ import gymnasium as gym
 from ray.rllib.connectors.connector_v2 import ConnectorV2
 from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.checkpoints import Checkpointable
+from ray.rllib.utils.checkpoints import Checkpointable, _exists_at_fs_path
 from ray.rllib.utils.typing import EpisodeType, StateDict
 from ray.util.annotations import PublicAPI
 from ray.util.timer import _Timer
@@ -59,7 +62,17 @@ class ConnectorPipelineV2(ConnectorV2):
                 pipeline during construction. Note that you can always add (or remove)
                 more ConnectorV2 pieces later on the fly.
         """
-        self.connectors = connectors or []
+        if connectors:
+            if all(isinstance(conn, type) for conn in connectors):
+                self.connectors = connectors
+                self.connector_class_names = [
+                    conn.__class__.__name__ for conn in connectors
+                ]
+            elif all(isinstance(conn, str) for conn in connectors):
+                self.connectors = []
+                self.connector_class_names = connectors
+        else:
+            self.connectors = []
 
         super().__init__(input_observation_space, input_action_space, **kwargs)
 
@@ -260,12 +273,152 @@ class ConnectorPipelineV2(ConnectorV2):
 
     @override(Checkpointable)
     def get_checkpointable_components(self) -> List[Tuple[str, "Checkpointable"]]:
-        return [(type(conn).__name__, conn) for conn in self.connectors]
+        if self.connectors:
+            return [(type(conn).__name__, conn) for conn in self.connectors]
+        elif self.connector_class_names:
+            return [(conn_name, None) for conn_name in self.connector_class_names]
 
     # Note that we don't have to override Checkpointable.get_ctor_args_and_kwargs and
     # don't have to return the `connectors` c'tor kwarg from there. This is b/c all
     # connector pieces in this pipeline are themselves Checkpointable components,
     # so they will be properly written into this pipeline's checkpoint.
+    @override(Checkpointable)
+    def get_ctor_args_and_kwargs(self) -> Tuple[Tuple, Dict[str, Any]]:
+        return (
+            (self.input_observation_space, self.input_action_space),  # *args
+            {
+                "connectors": [conn.__class__.__name__ for conn in self.connectors]
+            },  # **kwargs
+        )
+
+    @override(Checkpointable)
+    def restore_from_path(
+        self,
+        path: Union[str, pathlib.Path],
+        *,
+        component: Optional[str] = None,
+        filesystem: Optional["pyarrow.fs.FileSystem"] = None,
+        **kwargs,
+    ) -> None:
+        """Restores the state of the implementing class from the given path.
+
+        If the `component` arg is provided, `path` refers to a checkpoint of a
+        subcomponent of `self`, thus allowing the user to load only the subcomponent's
+        state into `self` without affecting any of the other state information (for
+        example, loading only the NN state into a Checkpointable, which contains such
+        an NN, but also has other state information that should NOT be changed by
+        calling this method).
+
+        The given `path` should have the following structure and contain the following
+        files:
+
+        .. testcode::
+            :skipif: True
+
+            path/
+                [component1]/
+                    [component1 subcomponentA]/
+                        ...
+                    [component1 subcomponentB]/
+                        ...
+                [component2]/
+                        ...
+                [cls.METADATA_FILE_NAME] (json)
+                [cls.STATE_FILE_NAME] (pkl)
+
+        Note that the self.METADATA_FILE_NAME file is not required to restore the state.
+
+        Args:
+            path: The path to load the implementing class' state from or to load the
+                state of only one subcomponent's state of the implementing class (if
+                `component` is provided).
+            component: If provided, `path` is interpreted as the checkpoint path of only
+                the subcomponent and thus, only that subcomponent's state is
+                restored/loaded. All other state of `self` remains unchanged in this
+                case.
+            filesystem: PyArrow FileSystem to use to access data at the `path`. If not
+                specified, this is inferred from the URI scheme of `path`.
+            **kwargs: Forward compatibility kwargs.
+        """
+        path = path if isinstance(path, str) else path.as_posix()
+
+        if path and not filesystem:
+            # Note the path needs to be a path that is relative to the
+            # filesystem (e.g. `gs://tmp/...` -> `tmp/...`).
+            filesystem, path = pyarrow.fs.FileSystem.from_uri(path)
+        # Only here convert to a `Path` instance b/c otherwise
+        # cloud path gets broken (i.e. 'gs://' -> 'gs:/').
+        path = pathlib.Path(path)
+
+        if not _exists_at_fs_path(filesystem, path.as_posix()):
+            raise FileNotFoundError(f"`path` ({path}) not found!")
+
+        # Restore components of `self` that themselves are `Checkpointable`.
+        for comp_name, comp in self.get_checkpointable_components():
+
+            # The value of the `component` argument for the upcoming
+            # `[subcomponent].restore_from_path(.., component=..)` call.
+            comp_arg = None
+
+            if component is None:
+                comp_dir = path / comp_name
+                # If subcomponent's dir is not in path, ignore it and don't restore this
+                # subcomponent's state from disk.
+                if not _exists_at_fs_path(filesystem, comp_dir.as_posix()):
+                    continue
+            else:
+                comp_dir = path
+
+                # `component` is a path that starts with `comp` -> Remove the name of
+                # `comp` from the `component` arg in the upcoming call to `restore_..`.
+                if component.startswith(comp_name + "/"):
+                    comp_arg = component[len(comp_name) + 1 :]
+                # `component` has nothing to do with `comp` -> Skip.
+                elif component != comp_name:
+                    continue
+
+            # If component is an ActorManager, restore all the manager's healthy
+            # actors' states from disk (even if they are on another node, in which case,
+            # we'll sync checkpoint file(s) to the respective node).
+            if comp is None:
+                # Get the class constructor to call.
+                with filesystem.open_input_stream(
+                    (comp_dir / self.CLASS_AND_CTOR_ARGS_FILE_NAME).as_posix()
+                ) as f:
+                    comp_ctor_info = pickle.load(f)
+                comp_ctor = comp_ctor_info["class"]
+
+                # Check, whether the constructor actually goes together with `cls`.
+                if not issubclass(comp_ctor, ConnectorV2):
+                    raise ValueError(
+                        f"The class ({comp_ctor}) stored in checkpoint ({path}) does "
+                        f"not seem to be a subclass of `cls` ({ConnectorV2})!"
+                    )
+                elif not issubclass(comp_ctor, Checkpointable):
+                    raise ValueError(
+                        f"The class ({comp_ctor}) stored in checkpoint ({path}) does "
+                        "not seem to be an implementer of the `Checkpointable` API!"
+                    )
+
+                comp = comp_ctor(
+                    *comp_ctor_info["ctor_args_and_kwargs"][0],
+                    **comp_ctor_info["ctor_args_and_kwargs"][1],
+                )
+
+            # Call `restore_from_path()` on local subcomponent, thereby passing in the
+            # **kwargs.
+            comp.restore_from_path(
+                comp_dir, filesystem=filesystem, component=comp_arg, **kwargs
+            )
+            self.append(comp)
+
+        # Restore the rest of the state (not based on subcomponents).
+        if component is None:
+            with filesystem.open_input_stream(
+                (path / self.STATE_FILE_NAME).as_posix()
+            ) as f:
+                state = pickle.load(f)
+            self.set_state(state)
 
     @override(ConnectorV2)
     def reset_state(self) -> None:
