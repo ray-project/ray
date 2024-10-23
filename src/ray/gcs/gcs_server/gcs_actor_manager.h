@@ -496,9 +496,7 @@ class GcsActorManager : public rpc::ActorInfoHandler {
 
  private:
   const ray::rpc::ActorDeathCause GenNodeDiedCause(
-      const ray::gcs::GcsActor *actor,
-      const std::string ip_address,
-      std::shared_ptr<rpc::GcsNodeInfo> node);
+      const ray::gcs::GcsActor *actor, std::shared_ptr<rpc::GcsNodeInfo> node);
   /// A data structure representing an actor's owner.
   struct Owner {
     Owner(std::shared_ptr<rpc::CoreWorkerClientInterface> client)

@@ -75,7 +75,7 @@ const ray::rpc::ActorDeathCause GenOwnerDiedCause(
     const WorkerID &owner_id,
     const ray::rpc::WorkerExitType disconnect_type,
     const std::string &disconnect_detail,
-    const std::string owner_ip_address) {
+    const std::string &owner_ip_address) {
   ray::rpc::ActorDeathCause death_cause;
   auto actor_died_error_ctx = death_cause.mutable_actor_died_error_context();
   actor_died_error_ctx->set_reason(ray::rpc::ActorDiedErrorContext::OWNER_DIED);
@@ -286,9 +286,7 @@ void GcsActor::SetGrantOrReject(bool grant_or_reject) {
 }
 
 const ray::rpc::ActorDeathCause GcsActorManager::GenNodeDiedCause(
-    const ray::gcs::GcsActor *actor,
-    const std::string ip_address,
-    std::shared_ptr<rpc::GcsNodeInfo> node) {
+    const ray::gcs::GcsActor *actor, std::shared_ptr<rpc::GcsNodeInfo> node) {
   ray::rpc::ActorDeathCause death_cause;
 
   auto actor_died_error_ctx = death_cause.mutable_actor_died_error_context();
@@ -602,7 +600,7 @@ void GcsActorManager::HandleGetAllActorInfo(rpc::GetAllActorInfoRequest request,
   // We don't maintain an in-memory cache of all actors which belong to dead
   // jobs, so fetch it from redis.
   Status status = gcs_table_storage_->ActorTable().GetAll(
-      [reply, send_reply_callback, limit, request, filter_fn](
+      [reply, send_reply_callback, limit, request = std::move(request), filter_fn](
           absl::flat_hash_map<ActorID, rpc::ActorTableData> &&result) {
         auto total_actors = result.size();
 
@@ -613,7 +611,7 @@ void GcsActorManager::HandleGetAllActorInfo(rpc::GetAllActorInfoRequest request,
             absl::flat_hash_map<ActorID, rpc::ActorTableData>>(arena, std::move(result));
         size_t count = 0;
         size_t num_filtered = 0;
-        for (const auto &pair : *ptr) {
+        for (auto &pair : *ptr) {
           if (count >= limit) {
             break;
           }
@@ -624,9 +622,7 @@ void GcsActorManager::HandleGetAllActorInfo(rpc::GetAllActorInfoRequest request,
           }
           count += 1;
 
-          // TODO yic: Fix const cast
-          reply->mutable_actor_table_data()->UnsafeArenaAddAllocated(
-              const_cast<rpc::ActorTableData *>(&pair.second));
+          reply->mutable_actor_table_data()->UnsafeArenaAddAllocated(&pair.second);
         }
         reply->set_num_filtered(num_filtered);
         GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
@@ -1294,7 +1290,7 @@ void GcsActorManager::OnNodeDead(std::shared_ptr<rpc::GcsNodeInfo> node,
   for (auto &actor_id : scheduling_actor_ids) {
     RestartActor(actor_id,
                  /*need_reschedule=*/true,
-                 GenNodeDiedCause(GetActor(actor_id), node_ip_address, node));
+                 GenNodeDiedCause(GetActor(actor_id), node));
   }
 
   // Try reconstructing all workers created on the node.
@@ -1307,7 +1303,7 @@ void GcsActorManager::OnNodeDead(std::shared_ptr<rpc::GcsNodeInfo> node,
       // Reconstruct the removed actor.
       RestartActor(entry.second,
                    /*need_reschedule=*/true,
-                   GenNodeDiedCause(GetActor(entry.second), node_ip_address, node));
+                   GenNodeDiedCause(GetActor(entry.second), node));
     }
   }
 
@@ -1620,8 +1616,8 @@ void GcsActorManager::Initialize(const GcsInitData &gcs_init_data) {
       dead_actors.push_back(actor_id);
       auto actor = std::make_shared<GcsActor>(actor_table_data, actor_state_counter_);
       destroyed_actors_.emplace(actor_id, actor);
-      sorted_destroyed_actor_list_.emplace_back(actor_id,
-                                                (int64_t)actor_table_data.timestamp());
+      sorted_destroyed_actor_list_.emplace_back(
+          actor_id, static_cast<int64_t>(actor_table_data.timestamp()));
     }
   }
   if (!dead_actors.empty()) {
@@ -1775,7 +1771,8 @@ void GcsActorManager::AddDestroyedActorToCache(const std::shared_ptr<GcsActor> &
 
   if (destroyed_actors_.emplace(actor->GetActorID(), actor).second) {
     sorted_destroyed_actor_list_.emplace_back(
-        actor->GetActorID(), (int64_t)actor->GetActorTableData().timestamp());
+        actor->GetActorID(),
+        static_cast<int64_t>(actor->GetActorTableData().timestamp()));
   }
 }
 
@@ -1892,7 +1889,7 @@ void GcsActorManager::RecordMetrics() const {
   ray::stats::STATS_gcs_actors_count.Record(destroyed_actors_.size(), "Destroyed");
   ray::stats::STATS_gcs_actors_count.Record(unresolved_actors_.size(), "Unresolved");
   ray::stats::STATS_gcs_actors_count.Record(GetPendingActorsCount(), "Pending");
-  if (usage_stats_client_) {
+  if (usage_stats_client_ != nullptr) {
     usage_stats_client_->RecordExtraUsageCounter(usage::TagKey::ACTOR_NUM_CREATED,
                                                  liftime_num_created_actors_);
   }
