@@ -2,7 +2,7 @@ import re
 import threading
 
 from subprocess import CalledProcessError
-from typing import Any, Callable, Dict, List, Optional  # noqa: F401
+from typing import Any, Callable, Dict, List, Optional
 from ray.autoscaler.node_provider import NodeProvider
 
 
@@ -43,7 +43,7 @@ class MockNode:
 class MockProcessRunner:
     def __init__(self, fail_cmds=None, cmd_to_callback=None, print_out=False):
         self.calls = []
-        self.cmd_to_callback = cmd_to_callback or {}  # type: Dict[str, Callable]
+        self.cmd_to_callback: Dict[str, Callable] = cmd_to_callback or {}
         self.print_out = print_out
         self.fail_cmds = fail_cmds or []
         self.call_response = {}
