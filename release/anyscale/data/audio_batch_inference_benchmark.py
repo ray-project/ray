@@ -5,7 +5,6 @@ import numpy as np
 import torch
 
 import ray
-from ray.anyscale.data import AudioDatasource
 from benchmark import Benchmark, BenchmarkMetric
 import whisper
 
@@ -39,13 +38,7 @@ def run_benchmark(args):
     actor_pool_size = int(ray.cluster_resources().get("GPU"))
 
     ds = (
-        ray.data.read_datasource(
-            AudioDatasource(
-                paths=DATA_URI,
-                include_paths=True,
-                file_extensions=["flac"],
-            )
-        )
+        ray.data.read_audio(DATA_URI, include_paths=True, file_extensions=["flac"])
         .map(preprocess)
         .map_batches(
             BatchInference,

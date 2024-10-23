@@ -11,8 +11,6 @@ from torchvision.models.detection import (
     fasterrcnn_resnet50_fpn_v2,
 )
 
-from ray.anyscale.data import VideoDatasource
-
 from benchmark import Benchmark
 
 DATA_URI = "s3://anonymous@ray-example-data/static-videos"
@@ -31,7 +29,7 @@ def main(args):
         actor_pool_concurrency = int(ray.cluster_resources().get("GPU"))
     paths = [f"{DATA_URI}/000.mp4" for _ in range(NUM_FILES)]
     dataset = (
-        ray.data.read_datasource(VideoDatasource(paths=paths, include_paths=True))
+        ray.data.read_videos(paths, include_paths=True)
         # The videos are long, so we're filtering out frames like SewerAI.
         .filter(lambda row: row["frame_index"] % 5 == 0)
         .map(transform_frame)
