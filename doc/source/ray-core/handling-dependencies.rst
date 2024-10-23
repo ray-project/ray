@@ -37,7 +37,7 @@ Concepts
 Preparing an environment using the Ray Cluster launcher
 -------------------------------------------------------
 
-The first way to set up dependencies is to is to prepare a single environment across the cluster before starting the Ray runtime.
+The first way to set up dependencies is to prepare a single environment across the cluster before starting the Ray runtime.
 
 - You can build all your files and dependencies into a container image and specify this in your your :ref:`Cluster YAML Configuration <cluster-config>`.
 
@@ -327,9 +327,7 @@ To ensure your local changes show up across all Ray workers and can be imported 
       # No need to import my_module inside this function.
       my_module.test()
 
-  ray.get(f.remote())
-
-Note: This feature is currently limited to modules that are packages with a single directory containing an ``__init__.py`` file.  For single-file modules, you may use ``working_dir``.
+  ray.get(test_my_module.remote())
 
 .. _runtime-environments-api-ref:
 
@@ -358,13 +356,15 @@ The ``runtime_env`` is a Python dictionary or a Python class :class:`ray.runtime
   Note: If the local directory contains symbolic links, Ray follows the links and the files they point to are uploaded to the cluster.
 
 - ``py_modules`` (List[str|module]): Specifies Python modules to be available for import in the Ray workers.  (For more ways to specify packages, see also the ``pip`` and ``conda`` fields below.)
-  Each entry must be either (1) a path to a local directory, (2) a URI to a remote zip or wheel file (see :ref:`remote-uris` for details), (3) a Python module object, or (4) a path to a local `.whl` file.
+  Each entry must be either (1) a path to a local file or directory, (2) a URI to a remote zip or wheel file (see :ref:`remote-uris` for details), (3) a Python module object, or (4) a path to a local `.whl` file.
 
   - Examples of entries in the list:
 
     - ``"."``
 
-    - ``"/local_dependency/my_module"``
+    - ``"/local_dependency/my_dir_module"``
+
+    - ``"/local_dependency/my_file_module.py"``
 
     - ``"s3://bucket/my_module.zip"``
 
@@ -379,8 +379,6 @@ The ``runtime_env`` is a Python dictionary or a Python class :class:`ray.runtime
   Note: Setting options (1), (3) and (4) per-task or per-actor is currently unsupported, it can only be set per-job (i.e., in ``ray.init()``).
 
   Note: For option (1), if the local directory contains a ``.gitignore`` file, the files and paths specified there are not uploaded to the cluster.  You can disable this by setting the environment variable `RAY_RUNTIME_ENV_IGNORE_GITIGNORE=1` on the machine doing the uploading.
-
-  Note: This feature is currently limited to modules that are packages with a single directory containing an ``__init__.py`` file.  For single-file modules, you may use ``working_dir``.
 
 - ``excludes`` (List[str]): When used with ``working_dir`` or ``py_modules``, specifies a list of files or paths to exclude from being uploaded to the cluster.
   This field uses the pattern-matching syntax used by ``.gitignore`` files: see `<https://git-scm.com/docs/gitignore>`_ for details.
