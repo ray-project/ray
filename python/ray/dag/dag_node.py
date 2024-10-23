@@ -2,6 +2,7 @@ import ray
 from ray.dag.base import DAGNodeBase
 from ray.dag.py_obj_scanner import _PyObjScanner
 from ray.util.annotations import DeveloperAPI
+from ray.experimental.channel.gpu_communicator import GPUCommunicator
 import copy
 
 from itertools import chain
@@ -167,6 +168,7 @@ class DAGNode(DAGNodeBase):
         _asyncio_max_queue_size: Optional[int] = None,
         _max_buffered_results: Optional[int] = None,
         _max_inflight_executions: Optional[int] = None,
+        _custom_nccl_group: Optional[GPUCommunicator] = None,
     ) -> "ray.dag.CompiledDAG":
         """Compile an accelerated execution path for this DAG.
 
@@ -191,6 +193,8 @@ class DAGNode(DAGNodeBase):
                 are allowed to be sent to this DAG. Before submitting more requests,
                 the caller is responsible for calling ray.get to clear finished
                 in-flight requests.
+            _custom_nccl_group: The default custom NCCL group to be used for P2P NCCL
+                communications.
 
         Returns:
             A compiled DAG.
@@ -224,6 +228,7 @@ class DAGNode(DAGNodeBase):
             _asyncio_max_queue_size,
             _max_buffered_results,
             _max_inflight_executions,
+            _custom_nccl_group,
         )
 
     def execute(
