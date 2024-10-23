@@ -551,9 +551,10 @@ RAY_CONFIG(std::string, enable_grpc_metrics_collection_for, "")
 
 /// Only effective if `enable_metrics_collection` is also true.
 ///
-/// If > 0, we monitor each instrumented_io_context every `io_context_event_loop_lag_ms`
-/// milliseconds, by posting a task to the io_context to measure the duration from post
-/// to run. The metric is `ray_io_context_event_loop_lag_ms`.
+/// If > 0, we monitor each instrumented_io_context every
+/// `io_context_event_loop_lag_collection_interval_ms` milliseconds, by posting a task to
+/// the io_context to measure the duration from post to run. The metric is
+/// `ray_io_context_event_loop_lag_ms`.
 ///
 /// A probe task is only posted after a previous probe task has completed.
 RAY_CONFIG(int64_t, io_context_event_loop_lag_collection_interval_ms, 250)

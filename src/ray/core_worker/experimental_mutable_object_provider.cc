@@ -33,10 +33,6 @@ MutableObjectProvider::~MutableObjectProvider() {
   }
   RAY_CHECK(object_manager_->SetErrorAll().code() == StatusCode::OK);
 
-  for (const auto &io_context : io_contexts_) {
-    io_context->stop();
-  }
-
   for (std::unique_ptr<std::thread> &io_thread : io_threads_) {
     RAY_CHECK(io_thread->joinable());
     io_thread->join();
@@ -63,7 +59,10 @@ void MutableObjectProvider::RegisterWriterChannel(
   // TODO(sang): Currently, these attributes are not cleaned up.
   // Start a thread that repeatedly listens for values on this object and then sends
   // them via RPC to the remote reader.
-  io_contexts_.push_back(std::make_unique<instrumented_io_context>());
+  // Disables the lag probe because we can have unbounded number of io contexts which
+  // can overwhelm the metrics system.
+  io_contexts_.push_back(
+      std::make_unique<instrumented_io_context>(/*enable_lag_probe=*/false));
   instrumented_io_context &io_context = *io_contexts_.back();
   io_works_.push_back(
       std::make_unique<
