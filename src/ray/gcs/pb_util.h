@@ -252,9 +252,13 @@ inline void FillTaskInfo(rpc::TaskInfoEntry *task_info,
                                                   resources_map.end());
   task_info->mutable_runtime_env_info()->CopyFrom(task_spec.RuntimeEnvInfo());
   const auto &pg_id = task_spec.PlacementGroupBundleId().first;
+
   if (!pg_id.IsNil()) {
     task_info->set_placement_group_id(pg_id.Binary());
   }
+
+  // Fill in task args
+  task_info->set_task_args(task_spec.GetTaskArgs());
 }
 
 // Fill task_info for the export API with task specification from task_spec
@@ -308,6 +312,9 @@ inline void FillExportTaskInfo(rpc::ExportTaskEventData::TaskInfoEntry *task_inf
   if (!pg_id.IsNil()) {
     task_info->set_placement_group_id(pg_id.Binary());
   }
+
+  // Fill in task args
+  task_info->set_task_args(task_spec.GetTaskArgs());
 }
 
 /// Generate a RayErrorInfo from ErrorType
