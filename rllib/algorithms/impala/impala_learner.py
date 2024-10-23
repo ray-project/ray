@@ -61,7 +61,7 @@ class IMPALALearner(Learner):
             )
         )
 
-        # Extend all episodes by one artificual timestep to allow the value function net
+        # Extend all episodes by one artificial timestep to allow the value function net
         # to compute the bootstrap values (and add a mask to the batch to know, which
         # slots to mask out).
         if (
