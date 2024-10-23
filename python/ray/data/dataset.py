@@ -56,6 +56,7 @@ from ray.data._internal.logical.operators.all_to_all_operator import (
     Repartition,
     Sort,
 )
+from ray.data._internal.logical.operators.count_operator import Count
 from ray.data._internal.logical.operators.input_data_operator import InputData
 from ray.data._internal.logical.operators.map_operator import (
     Filter,
@@ -371,7 +372,7 @@ class Dataset:
             ray_remote_args_fn=ray_remote_args_fn,
             ray_remote_args=ray_remote_args,
         )
-        logical_plan = LogicalPlan(map_op)
+        logical_plan = LogicalPlan(map_op, self.context)
         return Dataset(plan, logical_plan)
 
     def _set_name(self, name: Optional[str]):
@@ -689,7 +690,7 @@ class Dataset:
             ray_remote_args_fn=ray_remote_args_fn,
             ray_remote_args=ray_remote_args,
         )
-        logical_plan = LogicalPlan(map_batches_op)
+        logical_plan = LogicalPlan(map_batches_op, self.context)
         return Dataset(plan, logical_plan)
 
     @PublicAPI(api_group=BT_API_GROUP)
@@ -830,6 +831,11 @@ class Dataset:
         """Select one or more columns from the dataset.
 
         Specified columns must be in the dataset schema.
+
+        .. tip::
+            If you're reading parquet files with :meth:`ray.data.read_parquet`,
+            you might be able to speed it up by using projection pushdown; see
+            :ref:`Parquet column pruning <parquet_column_pruning>` for details.
 
         Examples:
 
@@ -1077,7 +1083,7 @@ class Dataset:
             ray_remote_args_fn=ray_remote_args_fn,
             ray_remote_args=ray_remote_args,
         )
-        logical_plan = LogicalPlan(op)
+        logical_plan = LogicalPlan(op, self.context)
         return Dataset(plan, logical_plan)
 
     @PublicAPI(api_group=BT_API_GROUP)
@@ -1103,9 +1109,10 @@ class Dataset:
             dropping rows.
 
         .. tip::
-            If you're using parquet and the filter is a simple predicate, you might
-            be able to speed it up by using filter pushdown, see
-            :ref:`Parquet row pruning <parquet_row_pruning>`.
+            If you're reading parquet files with :meth:`ray.data.read_parquet`,
+            and the filter is a simple predicate, you might
+            be able to speed it up by using filter pushdown; see
+            :ref:`Parquet row pruning <parquet_row_pruning>` for details.
 
         Examples:
 
@@ -1147,7 +1154,7 @@ class Dataset:
             ray_remote_args_fn=ray_remote_args_fn,
             ray_remote_args=ray_remote_args,
         )
-        logical_plan = LogicalPlan(op)
+        logical_plan = LogicalPlan(op, self.context)
         return Dataset(plan, logical_plan)
 
     @AllToAllAPI
@@ -1205,7 +1212,7 @@ class Dataset:
             num_outputs=num_blocks,
             shuffle=shuffle,
         )
-        logical_plan = LogicalPlan(op)
+        logical_plan = LogicalPlan(op, self.context)
         return Dataset(plan, logical_plan)
 
     @AllToAllAPI
@@ -1255,7 +1262,7 @@ class Dataset:
             seed=seed,
             ray_remote_args=ray_remote_args,
         )
-        logical_plan = LogicalPlan(op)
+        logical_plan = LogicalPlan(op, self.context)
         return Dataset(plan, logical_plan)
 
     @AllToAllAPI
@@ -1292,7 +1299,7 @@ class Dataset:
             self._logical_plan.dag,
             seed=seed,
         )
-        logical_plan = LogicalPlan(op)
+        logical_plan = LogicalPlan(op, self.context)
         return Dataset(plan, logical_plan)
 
     @PublicAPI(api_group=BT_API_GROUP)
@@ -1522,7 +1529,8 @@ class Dataset:
             )
 
         bundle = self._plan.execute()
-        owned_by_consumer = bundle.owns_blocks
+        # We should not free blocks since we will materialize the Datasets.
+        owned_by_consumer = False
         stats = self._plan.stats()
         block_refs, metadata = zip(*bundle.blocks)
 
@@ -1538,7 +1546,9 @@ class Dataset:
                     RefBundle([(b, m)], owns_blocks=owned_by_consumer)
                     for b, m in zip(block_refs_split, metadata_split)
                 ]
-                logical_plan = LogicalPlan(InputData(input_data=ref_bundles))
+                logical_plan = LogicalPlan(
+                    InputData(input_data=ref_bundles), self.context
+                )
                 split_datasets.append(
                     MaterializedDataset(
                         ExecutionPlan(stats),
@@ -1656,7 +1666,7 @@ class Dataset:
 
         split_datasets = []
         for bundle in per_split_bundles:
-            logical_plan = LogicalPlan(InputData(input_data=[bundle]))
+            logical_plan = LogicalPlan(InputData(input_data=[bundle]), self.context)
             split_datasets.append(
                 MaterializedDataset(
                     ExecutionPlan(stats),
@@ -1730,7 +1740,7 @@ class Dataset:
             ref_bundles = [
                 RefBundle([(b, m)], owns_blocks=False) for b, m in zip(bs, ms)
             ]
-            logical_plan = LogicalPlan(InputData(input_data=ref_bundles))
+            logical_plan = LogicalPlan(InputData(input_data=ref_bundles), self.context)
 
             splits.append(
                 MaterializedDataset(
@@ -1918,7 +1928,7 @@ class Dataset:
         op = UnionLogicalOperator(
             *[plan.dag for plan in logical_plans],
         )
-        logical_plan = LogicalPlan(op)
+        logical_plan = LogicalPlan(op, self.context)
 
         stats = DatasetStats(
             metadata={"Union": []},
@@ -2366,7 +2376,7 @@ class Dataset:
             self._logical_plan.dag,
             sort_key=sort_key,
         )
-        logical_plan = LogicalPlan(op)
+        logical_plan = LogicalPlan(op, self.context)
         return Dataset(plan, logical_plan)
 
     @PublicAPI(api_group=SMD_API_GROUP)
@@ -2402,7 +2412,7 @@ class Dataset:
         """
         plan = self._plan.copy()
         op = Zip(self._logical_plan.dag, other._logical_plan.dag)
-        logical_plan = LogicalPlan(op)
+        logical_plan = LogicalPlan(op, self.context)
         return Dataset(plan, logical_plan)
 
     @PublicAPI(api_group=BT_API_GROUP)
@@ -2429,7 +2439,7 @@ class Dataset:
         """
         plan = self._plan.copy()
         op = Limit(self._logical_plan.dag, limit=limit)
-        logical_plan = LogicalPlan(op)
+        logical_plan = LogicalPlan(op, self.context)
         return Dataset(plan, logical_plan)
 
     @ConsumptionAPI
@@ -2645,15 +2655,19 @@ class Dataset:
         if meta_count is not None:
             return meta_count
 
-        # Directly loop over the iterator of `RefBundle`s instead of
-        # retrieving a full list of `BlockRef`s.
-        total_rows = 0
-        for ref_bundle in self.iter_internal_ref_bundles():
-            num_rows = ref_bundle.num_rows()
-            # Executing the dataset always returns blocks with valid `num_rows`.
-            assert num_rows is not None
-            total_rows += num_rows
-        return total_rows
+        plan = self._plan.copy()
+        count_op = Count([self._logical_plan.dag])
+        logical_plan = LogicalPlan(count_op, self.context)
+        count_ds = Dataset(plan, logical_plan)
+
+        count = 0
+        for batch in count_ds.iter_batches(batch_size=None):
+            assert Count.COLUMN_NAME in batch, (
+                "Outputs from the 'Count' logical operator should contain a column "
+                f"named '{Count.COLUMN_NAME}'"
+            )
+            count += batch[Count.COLUMN_NAME].sum()
+        return count
 
     @ConsumptionAPI(
         if_more_than_read=True,
@@ -3719,7 +3733,7 @@ class Dataset:
             ray_remote_args=ray_remote_args,
             concurrency=concurrency,
         )
-        logical_plan = LogicalPlan(write_op)
+        logical_plan = LogicalPlan(write_op, self.context)
 
         try:
             import pandas as pd
@@ -4229,7 +4243,8 @@ class Dataset:
             :class:`~ray.data.preprocessors.Concatenator`.
 
             >>> from ray.data.preprocessors import Concatenator
-            >>> preprocessor = Concatenator(output_column_name="features", exclude="target")
+            >>> columns_to_concat = ["sepal length (cm)", "sepal width (cm)", "petal length (cm)", "petal width (cm)"]
+            >>> preprocessor = Concatenator(columns=columns_to_concat, output_column_name="features")
             >>> ds = preprocessor.transform(ds)
             >>> ds
             Concatenator
@@ -4772,7 +4787,7 @@ class Dataset:
             )
             for block_with_metadata in blocks_with_metadata
         ]
-        logical_plan = LogicalPlan(InputData(input_data=ref_bundles))
+        logical_plan = LogicalPlan(InputData(input_data=ref_bundles), self.context)
         output = MaterializedDataset(
             ExecutionPlan(copy._plan.stats()),
             logical_plan,
@@ -5192,14 +5207,6 @@ class Dataset:
                 num_rows.append(get_num_rows.remote(block_ref))
         return ray.get(num_rows)
 
-    def _block_size_bytes(self) -> List[int]:
-        get_size_bytes = cached_remote_fn(_get_size_bytes)
-        size_bytes = []
-        for ref_bundle in self.iter_internal_ref_bundles():
-            for block_ref in ref_bundle.block_refs:
-                size_bytes.append(get_size_bytes.remote(block_ref))
-        return ray.get(size_bytes)
-
     def _meta_count(self) -> Optional[int]:
         return self._plan.meta_count()
 
@@ -5345,7 +5352,11 @@ class Schema:
         return arrow_types
 
     def __eq__(self, other):
-        return isinstance(other, Schema) and other.base_schema == self.base_schema
+        return (
+            isinstance(other, Schema)
+            and other.types == self.types
+            and other.names == self.names
+        )
 
     def __repr__(self):
         column_width = max([len(name) for name in self.names] + [len("Column")])
@@ -5366,11 +5377,6 @@ class Schema:
 
         output = output.rstrip()
         return output
-
-
-def _get_size_bytes(block: Block) -> int:
-    block = BlockAccessor.for_block(block)
-    return block.size_bytes()
 
 
 def _block_to_df(block: Block) -> "pandas.DataFrame":
