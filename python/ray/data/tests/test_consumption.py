@@ -12,6 +12,7 @@ import pyarrow as pa
 import pytest
 
 import ray
+from ray.data import Schema
 from ray.data._internal.block_builder import BlockBuilder
 from ray.data._internal.datasource.csv_datasink import CSVDatasink
 from ray.data._internal.datasource.csv_datasource import CSVDatasource
@@ -1509,11 +1510,9 @@ def test_global_tabular_std(ray_start_regular_shared, ds_format, num_parts):
 def test_column_name_type_check(ray_start_regular_shared):
     df = pd.DataFrame({"1": np.random.rand(10), "a": np.random.rand(10)})
     ds = ray.data.from_pandas(df)
-    expected_str = (
-        "MaterializedDataset(num_blocks=1, num_rows=10, "
-        "schema={1: float64, a: float64})"
-    )
-    assert str(ds) == expected_str, str(ds)
+    assert ds.schema() == Schema(pa.schema([("1", pa.float64()), ("a", pa.float64())]))
+    assert ds.count() == 10
+
     df = pd.DataFrame({1: np.random.rand(10), "a": np.random.rand(10)})
     with pytest.raises(ValueError):
         ray.data.from_pandas(df)
