@@ -372,7 +372,7 @@ class Dataset:
             ray_remote_args_fn=ray_remote_args_fn,
             ray_remote_args=ray_remote_args,
         )
-        logical_plan = LogicalPlan(map_op)
+        logical_plan = LogicalPlan(map_op, self.context)
         return Dataset(plan, logical_plan)
 
     def _set_name(self, name: Optional[str]):
@@ -690,7 +690,7 @@ class Dataset:
             ray_remote_args_fn=ray_remote_args_fn,
             ray_remote_args=ray_remote_args,
         )
-        logical_plan = LogicalPlan(map_batches_op)
+        logical_plan = LogicalPlan(map_batches_op, self.context)
         return Dataset(plan, logical_plan)
 
     @PublicAPI(api_group=BT_API_GROUP)
@@ -1083,7 +1083,7 @@ class Dataset:
             ray_remote_args_fn=ray_remote_args_fn,
             ray_remote_args=ray_remote_args,
         )
-        logical_plan = LogicalPlan(op)
+        logical_plan = LogicalPlan(op, self.context)
         return Dataset(plan, logical_plan)
 
     @PublicAPI(api_group=BT_API_GROUP)
@@ -1154,7 +1154,7 @@ class Dataset:
             ray_remote_args_fn=ray_remote_args_fn,
             ray_remote_args=ray_remote_args,
         )
-        logical_plan = LogicalPlan(op)
+        logical_plan = LogicalPlan(op, self.context)
         return Dataset(plan, logical_plan)
 
     @AllToAllAPI
@@ -1212,7 +1212,7 @@ class Dataset:
             num_outputs=num_blocks,
             shuffle=shuffle,
         )
-        logical_plan = LogicalPlan(op)
+        logical_plan = LogicalPlan(op, self.context)
         return Dataset(plan, logical_plan)
 
     @AllToAllAPI
@@ -1262,7 +1262,7 @@ class Dataset:
             seed=seed,
             ray_remote_args=ray_remote_args,
         )
-        logical_plan = LogicalPlan(op)
+        logical_plan = LogicalPlan(op, self.context)
         return Dataset(plan, logical_plan)
 
     @AllToAllAPI
@@ -1299,7 +1299,7 @@ class Dataset:
             self._logical_plan.dag,
             seed=seed,
         )
-        logical_plan = LogicalPlan(op)
+        logical_plan = LogicalPlan(op, self.context)
         return Dataset(plan, logical_plan)
 
     @PublicAPI(api_group=BT_API_GROUP)
@@ -1529,7 +1529,8 @@ class Dataset:
             )
 
         bundle = self._plan.execute()
-        owned_by_consumer = bundle.owns_blocks
+        # We should not free blocks since we will materialize the Datasets.
+        owned_by_consumer = False
         stats = self._plan.stats()
         block_refs, metadata = zip(*bundle.blocks)
 
@@ -1545,7 +1546,9 @@ class Dataset:
                     RefBundle([(b, m)], owns_blocks=owned_by_consumer)
                     for b, m in zip(block_refs_split, metadata_split)
                 ]
-                logical_plan = LogicalPlan(InputData(input_data=ref_bundles))
+                logical_plan = LogicalPlan(
+                    InputData(input_data=ref_bundles), self.context
+                )
                 split_datasets.append(
                     MaterializedDataset(
                         ExecutionPlan(stats),
@@ -1663,7 +1666,7 @@ class Dataset:
 
         split_datasets = []
         for bundle in per_split_bundles:
-            logical_plan = LogicalPlan(InputData(input_data=[bundle]))
+            logical_plan = LogicalPlan(InputData(input_data=[bundle]), self.context)
             split_datasets.append(
                 MaterializedDataset(
                     ExecutionPlan(stats),
@@ -1737,7 +1740,7 @@ class Dataset:
             ref_bundles = [
                 RefBundle([(b, m)], owns_blocks=False) for b, m in zip(bs, ms)
             ]
-            logical_plan = LogicalPlan(InputData(input_data=ref_bundles))
+            logical_plan = LogicalPlan(InputData(input_data=ref_bundles), self.context)
 
             splits.append(
                 MaterializedDataset(
@@ -1925,7 +1928,7 @@ class Dataset:
         op = UnionLogicalOperator(
             *[plan.dag for plan in logical_plans],
         )
-        logical_plan = LogicalPlan(op)
+        logical_plan = LogicalPlan(op, self.context)
 
         stats = DatasetStats(
             metadata={"Union": []},
@@ -2373,7 +2376,7 @@ class Dataset:
             self._logical_plan.dag,
             sort_key=sort_key,
         )
-        logical_plan = LogicalPlan(op)
+        logical_plan = LogicalPlan(op, self.context)
         return Dataset(plan, logical_plan)
 
     @PublicAPI(api_group=SMD_API_GROUP)
@@ -2409,7 +2412,7 @@ class Dataset:
         """
         plan = self._plan.copy()
         op = Zip(self._logical_plan.dag, other._logical_plan.dag)
-        logical_plan = LogicalPlan(op)
+        logical_plan = LogicalPlan(op, self.context)
         return Dataset(plan, logical_plan)
 
     @PublicAPI(api_group=BT_API_GROUP)
@@ -2436,7 +2439,7 @@ class Dataset:
         """
         plan = self._plan.copy()
         op = Limit(self._logical_plan.dag, limit=limit)
-        logical_plan = LogicalPlan(op)
+        logical_plan = LogicalPlan(op, self.context)
         return Dataset(plan, logical_plan)
 
     @ConsumptionAPI
@@ -2654,7 +2657,7 @@ class Dataset:
 
         plan = self._plan.copy()
         count_op = Count([self._logical_plan.dag])
-        logical_plan = LogicalPlan(count_op)
+        logical_plan = LogicalPlan(count_op, self.context)
         count_ds = Dataset(plan, logical_plan)
 
         count = 0
@@ -2874,10 +2877,12 @@ class Dataset:
                 instead of ``arrow_parquet_args`` if any of your write arguments
                 can't pickled, or if you'd like to lazily resolve the write
                 arguments for each dataset block.
-            num_rows_per_file: The target number of rows to write to each file. If
-                ``None``, Ray Data writes a system-chosen number of rows to each file.
-                The specified value is a hint, not a strict limit. Ray Data might write
-                more or fewer rows to each file.
+            num_rows_per_file: [Experimental] The target number of rows to write to each
+                file. If ``None``, Ray Data writes a system-chosen number of rows to
+                each file. The specified value is a hint, not a strict limit. Ray Data
+                might write more or fewer rows to each file. In specific, if the number
+                of rows per block is larger than the specified value, Ray Data writes
+                the number of rows per block to each file.
             ray_remote_args: Kwargs passed to :meth:`~ray.remote` in the write tasks.
             concurrency: The maximum number of Ray tasks to run concurrently. Set this
                 to control number of tasks to run concurrently. This doesn't change the
@@ -2985,10 +2990,12 @@ class Dataset:
                 instead of ``pandas_json_args`` if any of your write arguments
                 can't be pickled, or if you'd like to lazily resolve the write
                 arguments for each dataset block.
-            num_rows_per_file: The target number of rows to write to each file. If
-                ``None``, Ray Data writes a system-chosen number of rows to each file.
-                The specified value is a hint, not a strict limit. Ray Data might write
-                more or fewer rows to each file.
+            num_rows_per_file: [Experimental] The target number of rows to write to each
+                file. If ``None``, Ray Data writes a system-chosen number of rows to
+                each file. The specified value is a hint, not a strict limit. Ray Data
+                might write more or fewer rows to each file. In specific, if the number
+                of rows per block is larger than the specified value, Ray Data writes
+                the number of rows per block to each file.
             ray_remote_args: kwargs passed to :meth:`~ray.remote` in the write tasks.
             concurrency: The maximum number of Ray tasks to run concurrently. Set this
                 to control number of tasks to run concurrently. This doesn't change the
@@ -3169,10 +3176,12 @@ class Dataset:
                 Use this argument instead of ``arrow_csv_args`` if any of your write
                 arguments cannot be pickled, or if you'd like to lazily resolve the
                 write arguments for each dataset block.
-            num_rows_per_file: The target number of rows to write to each file. If
-                ``None``, Ray Data writes a system-chosen number of rows to each file.
-                The specified value is a hint, not a strict limit. Ray Data might write
-                more or fewer rows to each file.
+            num_rows_per_file: [Experimental] The target number of rows to write to each
+                file. If ``None``, Ray Data writes a system-chosen number of rows to
+                each file. The specified value is a hint, not a strict limit. Ray Data
+                might write more or fewer rows to each file. In specific, if the number
+                of rows per block is larger than the specified value, Ray Data writes
+                the number of rows per block to each file.
             ray_remote_args: kwargs passed to :meth:`~ray.remote` in the write tasks.
             concurrency: The maximum number of Ray tasks to run concurrently. Set this
                 to control number of tasks to run concurrently. This doesn't change the
@@ -3272,10 +3281,12 @@ class Dataset:
             filename_provider: A :class:`~ray.data.datasource.FilenameProvider`
                 implementation. Use this parameter to customize what your filenames
                 look like.
-            num_rows_per_file: The target number of rows to write to each file. If
-                ``None``, Ray Data writes a system-chosen number of rows to each file.
-                The specified value is a hint, not a strict limit. Ray Data might write
-                more or fewer rows to each file.
+            num_rows_per_file: [Experimental] The target number of rows to write to each
+                file. If ``None``, Ray Data writes a system-chosen number of rows to
+                each file. The specified value is a hint, not a strict limit. Ray Data
+                might write more or fewer rows to each file. In specific, if the number
+                of rows per block is larger than the specified value, Ray Data writes
+                the number of rows per block to each file.
             ray_remote_args: kwargs passed to :meth:`~ray.remote` in the write tasks.
             concurrency: The maximum number of Ray tasks to run concurrently. Set this
                 to control number of tasks to run concurrently. This doesn't change the
@@ -3357,10 +3368,12 @@ class Dataset:
             filename_provider: A :class:`~ray.data.datasource.FilenameProvider`
                 implementation. Use this parameter to customize what your filenames
                 look like.
-            num_rows_per_file: The target number of rows to write to each file. If
-                ``None``, Ray Data writes a system-chosen number of rows to each file.
-                The specified value is a hint, not a strict limit. Ray Data might write
-                more or fewer rows to each file.
+            num_rows_per_file: [Experimental] The target number of rows to write to each
+                file. If ``None``, Ray Data writes a system-chosen number of rows to
+                each file. The specified value is a hint, not a strict limit. Ray Data
+                might write more or fewer rows to each file. In specific, if the number
+                of rows per block is larger than the specified value, Ray Data writes
+                the number of rows per block to each file.
             ray_remote_args: Kwargs passed to ``ray.remote`` in the write tasks.
             concurrency: The maximum number of Ray tasks to run concurrently. Set this
                 to control number of tasks to run concurrently. This doesn't change the
@@ -3445,10 +3458,12 @@ class Dataset:
             filename_provider: A :class:`~ray.data.datasource.FilenameProvider`
                 implementation. Use this parameter to customize what your filenames
                 look like.
-            num_rows_per_file: The target number of rows to write to each file. If
-                ``None``, Ray Data writes a system-chosen number of rows to each file.
-                The specified value is a hint, not a strict limit. Ray Data might write
-                more or fewer rows to each file.
+            num_rows_per_file: [Experimental] The target number of rows to write to each
+                file. If ``None``, Ray Data writes a system-chosen number of rows to
+                each file. The specified value is a hint, not a strict limit. Ray Data
+                might write more or fewer rows to each file. In specific, if the number
+                of rows per block is larger than the specified value, Ray Data writes
+                the number of rows per block to each file.
             ray_remote_args: kwargs passed to :meth:`~ray.remote` in the write tasks.
             concurrency: The maximum number of Ray tasks to run concurrently. Set this
                 to control number of tasks to run concurrently. This doesn't change the
@@ -3730,7 +3745,7 @@ class Dataset:
             ray_remote_args=ray_remote_args,
             concurrency=concurrency,
         )
-        logical_plan = LogicalPlan(write_op)
+        logical_plan = LogicalPlan(write_op, self.context)
 
         try:
             import pandas as pd
@@ -4240,7 +4255,8 @@ class Dataset:
             :class:`~ray.data.preprocessors.Concatenator`.
 
             >>> from ray.data.preprocessors import Concatenator
-            >>> preprocessor = Concatenator(output_column_name="features", exclude="target")
+            >>> columns_to_concat = ["sepal length (cm)", "sepal width (cm)", "petal length (cm)", "petal width (cm)"]
+            >>> preprocessor = Concatenator(columns=columns_to_concat, output_column_name="features")
             >>> ds = preprocessor.transform(ds)
             >>> ds
             Concatenator
@@ -4783,7 +4799,7 @@ class Dataset:
             )
             for block_with_metadata in blocks_with_metadata
         ]
-        logical_plan = LogicalPlan(InputData(input_data=ref_bundles))
+        logical_plan = LogicalPlan(InputData(input_data=ref_bundles), self.context)
         output = MaterializedDataset(
             ExecutionPlan(copy._plan.stats()),
             logical_plan,
