@@ -13,58 +13,111 @@ from ray.serve.exceptions import RayServeException
 from ray.serve.handle import DeploymentHandle, _HandleOptions
 
 
-def test_handle_options():
-    default_options = _HandleOptions()
-    assert default_options.method_name == "__call__"
-    assert default_options.multiplexed_model_id == ""
-    assert default_options.stream is False
-    assert default_options._request_protocol == RequestProtocol.UNDEFINED
+class TestHandleOptions:
+    def test_handle_options(self):
+        default_options = _HandleOptions()
+        assert default_options.method_name == "__call__"
+        assert default_options.multiplexed_model_id == ""
+        assert default_options.stream is False
+        assert default_options._request_protocol == RequestProtocol.UNDEFINED
 
-    # Test setting method name.
-    only_set_method = default_options.copy_and_update(method_name="hi")
-    assert only_set_method.method_name == "hi"
-    assert only_set_method.multiplexed_model_id == ""
-    assert only_set_method.stream is False
-    assert default_options._request_protocol == RequestProtocol.UNDEFINED
+        # Test setting method name.
+        only_set_method = default_options.copy_and_update(method_name="hi")
+        assert only_set_method.method_name == "hi"
+        assert only_set_method.multiplexed_model_id == ""
+        assert only_set_method.stream is False
+        assert default_options._request_protocol == RequestProtocol.UNDEFINED
 
-    # Existing options should be unmodified.
-    assert default_options.method_name == "__call__"
-    assert default_options.multiplexed_model_id == ""
-    assert default_options.stream is False
-    assert default_options._request_protocol == RequestProtocol.UNDEFINED
+        # Existing options should be unmodified.
+        assert default_options.method_name == "__call__"
+        assert default_options.multiplexed_model_id == ""
+        assert default_options.stream is False
+        assert default_options._request_protocol == RequestProtocol.UNDEFINED
 
-    # Test setting model ID.
-    only_set_model_id = default_options.copy_and_update(multiplexed_model_id="hi")
-    assert only_set_model_id.method_name == "__call__"
-    assert only_set_model_id.multiplexed_model_id == "hi"
-    assert only_set_model_id.stream is False
-    assert default_options._request_protocol == RequestProtocol.UNDEFINED
+        # Test setting model ID.
+        only_set_model_id = default_options.copy_and_update(multiplexed_model_id="hi")
+        assert only_set_model_id.method_name == "__call__"
+        assert only_set_model_id.multiplexed_model_id == "hi"
+        assert only_set_model_id.stream is False
+        assert default_options._request_protocol == RequestProtocol.UNDEFINED
 
-    # Existing options should be unmodified.
-    assert default_options.method_name == "__call__"
-    assert default_options.multiplexed_model_id == ""
-    assert default_options.stream is False
-    assert default_options._request_protocol == RequestProtocol.UNDEFINED
+        # Existing options should be unmodified.
+        assert default_options.method_name == "__call__"
+        assert default_options.multiplexed_model_id == ""
+        assert default_options.stream is False
+        assert default_options._request_protocol == RequestProtocol.UNDEFINED
 
-    # Test setting stream.
-    only_set_stream = default_options.copy_and_update(stream=True)
-    assert only_set_stream.method_name == "__call__"
-    assert only_set_stream.multiplexed_model_id == ""
-    assert only_set_stream.stream is True
-    assert default_options._request_protocol == RequestProtocol.UNDEFINED
+        # Test setting stream.
+        only_set_stream = default_options.copy_and_update(stream=True)
+        assert only_set_stream.method_name == "__call__"
+        assert only_set_stream.multiplexed_model_id == ""
+        assert only_set_stream.stream is True
+        assert default_options._request_protocol == RequestProtocol.UNDEFINED
 
-    # Existing options should be unmodified.
-    assert default_options.method_name == "__call__"
-    assert default_options.multiplexed_model_id == ""
-    assert default_options.stream is False
-    assert default_options._request_protocol == RequestProtocol.UNDEFINED
+        # Existing options should be unmodified.
+        assert default_options.method_name == "__call__"
+        assert default_options.multiplexed_model_id == ""
+        assert default_options.stream is False
+        assert default_options._request_protocol == RequestProtocol.UNDEFINED
 
-    # Test setting multiple.
-    set_multiple = default_options.copy_and_update(method_name="hi", stream=True)
-    assert set_multiple.method_name == "hi"
-    assert set_multiple.multiplexed_model_id == ""
-    assert set_multiple.stream is True
-    assert default_options._request_protocol == RequestProtocol.UNDEFINED
+        # Test setting multiple.
+        set_multiple = default_options.copy_and_update(method_name="hi", stream=True)
+        assert set_multiple.method_name == "hi"
+        assert set_multiple.multiplexed_model_id == ""
+        assert set_multiple.stream is True
+        assert default_options._request_protocol == RequestProtocol.UNDEFINED
+
+    def test_router_shared(self, serve_instance):
+        """Make sure that multiple handles share same router object."""
+
+        @serve.deployment
+        def echo(name: str):
+            return f"Hi {name}"
+
+        handle = serve.run(echo.bind())
+        handle2 = handle.options(multiplexed_model_id="model2")
+        handle3 = handle.options(stream=True)
+        assert handle._router
+        assert id(handle2._router) == id(handle._router)
+        assert id(handle3._router) == id(handle._router)
+
+    def test_router_not_shared(self, serve_instance):
+        """Make sure that multiple handles share same router object."""
+
+        @serve.deployment
+        def echo(name: str):
+            return f"Hi {name}"
+
+        handle = serve.run(echo.bind())
+
+        # Before sending first request on handle
+        handle2 = handle.options(_prefer_local_routing=True)
+        assert handle._router is None and handle2._router is None
+
+        # Send first request on handle, now router should now be initialized
+        assert handle.remote("bob").result() == "Hi bob"
+        handle3 = handle.options(_prefer_local_routing=True)
+        assert handle._router and handle3._router is None
+        assert id(handle3._router) != id(handle._router)
+
+    def test_router_not_shared_mixed(self, serve_instance):
+        """Make sure that multiple handles share same router object."""
+
+        @serve.deployment
+        def echo(name: str):
+            return f"Hi {name}"
+
+        handle = serve.run(echo.bind())
+
+        # Before sending first request on handle
+        handle2 = handle.options(stream=True, _prefer_local_routing=True)
+        assert handle._router is None and handle2._router is None
+
+        # Send first request on handle, now router should now be initialized
+        assert handle.remote("bob").result() == "Hi bob"
+        handle3 = handle.options(stream=True, _prefer_local_routing=True)
+        assert handle._router and handle3._router is None
+        assert id(handle3._router) != id(handle._router)
 
 
 def test_async_handle_serializable(serve_instance):
@@ -343,19 +396,6 @@ def test_call_function_with_argument(serve_instance):
 
     h = serve.run(Ingress.bind(echo.bind()))
     assert h.remote("sned").result() == "Hi sned"
-
-
-def test_handle_options_with_same_router(serve_instance):
-    """Make sure that multiple handles share same router object."""
-
-    @serve.deployment
-    def echo(name: str):
-        return f"Hi {name}"
-
-    handle = serve.run(echo.bind())
-    handle2 = handle.options(multiplexed_model_id="model2")
-    assert handle._router
-    assert id(handle2._router) == id(handle._router)
 
 
 def test_set_request_protocol(serve_instance):
