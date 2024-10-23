@@ -845,6 +845,7 @@ class ApplicationStatus(str, Enum):
     DELETING = "DELETING"
 
 
+@PublicAPI(stability="stable")
 @dataclass(eq=True)
 class ApplicationStatusInfo:
     status: ApplicationStatus
@@ -871,6 +872,7 @@ class ApplicationStatusInfo:
         )
 
 
+@PublicAPI(stability="stable")
 @dataclass(eq=True)
 class StatusOverview:
     app_status: ApplicationStatusInfo
@@ -939,7 +941,7 @@ class StatusOverview:
 @PublicAPI(stability="alpha")
 @dataclass
 class ApplicationStatusOverview:
-    """Describes the status of an application and all its deployments.
+    """Describes the satus of an application and all its deployments.
 
     Attributes:
         status: The current status of the application.
