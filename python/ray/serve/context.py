@@ -211,20 +211,23 @@ def _set_request_context(
 
 # A map from current request ID to a set of ReplicaResults corresponding
 # to the requests the replica has sent during the current request
-_in_flight_requests: Dict[str, Set] = defaultdict(set)
+_in_flight_requests: Dict[str, Dict] = defaultdict(dict)
 _global_in_flight_requests_lock = threading.Lock()
 
 
-def _get_in_flight_requests():
-    return _in_flight_requests
-
-
-def _add_in_flight_request(parent_request_id: str, request):
+def _get_in_flight_requests(parent_request_id: str) -> Dict:
     with _global_in_flight_requests_lock:
-        _in_flight_requests[parent_request_id].add(request)
+        if parent_request_id in _in_flight_requests:
+            return _in_flight_requests[parent_request_id]
 
 
-def _remove_in_flight_request(parent_request_id: str, request):
+def _add_in_flight_request(parent_request_id: str, response_id: str, response):
     with _global_in_flight_requests_lock:
-        if request in _in_flight_requests:
-            _in_flight_requests[parent_request_id].remove(request)
+        if parent_request_id:
+            _in_flight_requests[parent_request_id][response_id] = response
+
+
+def _remove_in_flight_request(parent_request_id: str, response_id: str):
+    with _global_in_flight_requests_lock:
+        if response_id in _in_flight_requests[parent_request_id]:
+            del _in_flight_requests[parent_request_id][response_id]

@@ -8,13 +8,19 @@ from fastapi import FastAPI
 from starlette.requests import Request
 
 import ray
+import ray.util.state as state_api
 from ray import serve
 from ray._private.test_utils import (
     SignalActor,
     async_wait_for_condition,
     wait_for_condition,
 )
-from ray.serve._private.test_utils import send_signal_on_cancellation, tlog
+from ray.serve._private.common import DeploymentID, ReplicaState
+from ray.serve._private.test_utils import (
+    get_replica_ids,
+    send_signal_on_cancellation,
+    tlog,
+)
 
 
 @pytest.mark.parametrize("use_fastapi", [False, True])
@@ -386,7 +392,7 @@ def test_recursive_cancellation_during_execution(serve_instance):
 
     resp = h.remote()
     with pytest.raises(TimeoutError):
-        resp.result(timeout_s=0.1)
+        resp.result(timeout_s=0.5)
 
     resp.cancel()
     ray.get(inner_signal_actor.wait.remote(), timeout=10)
@@ -395,7 +401,6 @@ def test_recursive_cancellation_during_execution(serve_instance):
 
 def test_recursive_cancellation_during_assignment(serve_instance):
     signal = SignalActor.remote()
-    outer_signal_actor = SignalActor.remote()
 
     @serve.deployment(max_ongoing_requests=1)
     class Counter:
@@ -416,36 +421,42 @@ def test_recursive_cancellation_during_assignment(serve_instance):
 
         async def __call__(self):
             self._handle.remote()
-            await send_signal_on_cancellation(outer_signal_actor)
+            await signal.wait.remote()
+            return "hi"
 
         async def get_count(self):
             return await self._handle.get_count.remote()
 
     h = serve.run(Ingress.bind(Counter.bind()))
 
+    # Send two requests to Ingress. The second should be queued and
+    # pending assignment at Ingress because max ongoing requests for
+    # Counter is only 1.
+    tlog("Sending two requests to Ingress.")
     resp1 = h.remote()
-    # wait_for_condition()
     with pytest.raises(TimeoutError):
-        resp1.result(timeout_s=0.1)
-
+        resp1.result(timeout_s=0.5)
     resp2 = h.remote()
     with pytest.raises(TimeoutError):
-        resp2.result(timeout_s=0.1)
+        resp2.result(timeout_s=0.5)
 
-    # Cancel second request, which should be blocked at Ingress because
-    # max ongoing requests for Counter is only 1
+    # Cancel second request, which should be pending assignment.
     tlog("Canceling second request.")
     resp2.cancel()
-    # The outer signal actor should have been triggered from cancelling
-    ray.get(outer_signal_actor.wait.remote(), timeout=10)
-    # Cancel first request so it doesn't block shutdown process.
-    resp1.cancel()
 
-    # Release signal
+    # Release signal so that the first request can complete, and any new
+    # requests to Counter can be let through
     tlog("Releasing signal.")
     ray.get(signal.send.remote())
+    assert resp1.result() == "hi"
+
+    # The second request, even though it was pending assignment to a
+    # Counter replica, should have been properly canceled. Confirm this
+    # by making sure that no more calls to __call__ were made
     for _ in range(10):
         assert h.get_count.remote().result() == 1
+
+    tlog("Confirmed second request was properly canceled.")
 
 
 if __name__ == "__main__":

@@ -19,6 +19,7 @@ from ray.serve._private.common import (
     ApplicationStatus,
     DeploymentID,
     DeploymentStatus,
+    ReplicaID,
     RequestProtocol,
 )
 from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME, SERVE_NAMESPACE
@@ -353,6 +354,23 @@ def check_replica_counts(
             assert curr_count == count, msg
 
     return True
+
+
+def get_replica_ids(
+    deployment_name: str,
+    app_name: str = SERVE_DEFAULT_APP_NAME,
+    *,
+    state: Union[ReplicaState, List[ReplicaState]] = ReplicaState.RUNNING,
+) -> List[ReplicaID]:
+    client = _get_global_client()
+    replica_states = ray.get(
+        client._controller._dump_replica_states_for_testing.remote(
+            DeploymentID(deployment_name, app_name)
+        )
+    )
+
+    states = state if isinstance(state, list) else [state]
+    return [r.replica_id for r in replica_states.get(states)]
 
 
 @ray.remote(name=STORAGE_ACTOR_NAME, namespace=SERVE_NAMESPACE, num_cpus=0)

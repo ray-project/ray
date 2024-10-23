@@ -500,8 +500,15 @@ class Router:
         return new_args, new_kwargs
 
     def _process_finished_request(
-        self, replica_id: ReplicaID, result: Union[Any, RayError]
+        self,
+        replica_id: ReplicaID,
+        parent_request_id: str,
+        response_id: str,
+        result: Union[Any, RayError],
     ):
+        # Remove from in flight request cache
+        ray.serve.context._remove_in_flight_request(parent_request_id, response_id)
+
         self._metrics_manager.dec_num_running_requests_for_replica(replica_id)
         if isinstance(result, ActorDiedError):
             # Replica has died but controller hasn't notified the router yet.
@@ -589,6 +596,7 @@ class Router:
     async def assign_request(
         self,
         request_meta: RequestMetadata,
+        response_id: str,
         *request_args,
         **request_kwargs,
     ) -> ReplicaResult:
@@ -617,10 +625,17 @@ class Router:
 
                 # Keep track of requests that have been sent out to replicas
                 if RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE:
+                    _request_context = ray.serve.context._serve_request_context.get()
+                    request_id: str = _request_context.request_id
                     self._metrics_manager.inc_num_running_requests_for_replica(
                         replica_id
                     )
-                    callback = partial(self._process_finished_request, replica_id)
+                    callback = partial(
+                        self._process_finished_request,
+                        replica_id,
+                        request_id,
+                        response_id,
+                    )
                     replica_result.add_done_callback(callback)
 
                 return replica_result
