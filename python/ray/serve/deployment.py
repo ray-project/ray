@@ -117,7 +117,6 @@ class Deployment:
         deployment_config: DeploymentConfig,
         replica_config: ReplicaConfig,
         version: Optional[str] = None,
-        route_prefix: Union[str, None, DEFAULT] = DEFAULT.VALUE,
         _internal=False,
     ) -> None:
         if not _internal:
@@ -129,18 +128,6 @@ class Deployment:
             raise TypeError("name must be a string.")
         if not (version is None or isinstance(version, str)):
             raise TypeError("version must be a string.")
-        if route_prefix is not DEFAULT.VALUE and route_prefix is not None:
-            if not isinstance(route_prefix, str):
-                raise TypeError("route_prefix must be a string.")
-            if not route_prefix.startswith("/"):
-                raise ValueError("route_prefix must start with '/'.")
-            if route_prefix != "/" and route_prefix.endswith("/"):
-                raise ValueError(
-                    "route_prefix must not end with '/' unless it's the root."
-                )
-            if "{" in route_prefix or "}" in route_prefix:
-                raise ValueError("route_prefix may not contain wildcards.")
-
         docs_path = None
         if (
             inspect.isclass(replica_config.deployment_def)
@@ -154,7 +141,6 @@ class Deployment:
         self._version = version
         self._deployment_config = deployment_config
         self._replica_config = replica_config
-        self._route_prefix = route_prefix
         self._docs_path = docs_path
 
     @property
@@ -192,13 +178,6 @@ class Deployment:
         return self._deployment_config.max_queued_requests
 
     @property
-    def route_prefix(self) -> Optional[str]:
-        """HTTP route prefix that this deployment is exposed under."""
-        if self._route_prefix is DEFAULT.VALUE:
-            return f"/{self._name}"
-        return self._route_prefix
-
-    @property
     def ray_actor_options(self) -> Optional[Dict]:
         """Actor options such as resources required for each replica."""
         return self._replica_config.ray_actor_options
@@ -210,14 +189,6 @@ class Deployment:
     @property
     def init_kwargs(self) -> Tuple[Any]:
         return self._replica_config.init_kwargs
-
-    @property
-    def url(self) -> Optional[str]:
-        if self._route_prefix is None:
-            # this deployment is not exposed over HTTP
-            return None
-
-        return _get_global_client().root_url + self.route_prefix
 
     @property
     def logging_config(self) -> Dict:
@@ -294,7 +265,6 @@ class Deployment:
             replica_config=replica_config,
             deployment_config=self._deployment_config,
             version=self._version,
-            route_prefix=self.route_prefix,
             url=self.url,
             _blocking=_blocking,
         )
@@ -310,7 +280,6 @@ class Deployment:
         name: Default[str] = DEFAULT.VALUE,
         version: Default[str] = DEFAULT.VALUE,
         num_replicas: Default[Optional[Union[int, str]]] = DEFAULT.VALUE,
-        route_prefix: Default[Union[str, None]] = DEFAULT.VALUE,
         ray_actor_options: Default[Optional[Dict]] = DEFAULT.VALUE,
         placement_group_bundles: Default[List[Dict[str, float]]] = DEFAULT.VALUE,
         placement_group_strategy: Default[str] = DEFAULT.VALUE,
@@ -390,13 +359,6 @@ class Deployment:
                 "future!"
             )
 
-        if not _internal and route_prefix is not DEFAULT.VALUE:
-            logger.warning(
-                "DeprecationWarning: `route_prefix` in `@serve.deployment` has been "
-                "deprecated. To specify a route prefix for an application, pass it "
-                "into `serve.run` instead."
-            )
-
         elif num_replicas not in [DEFAULT.VALUE, None]:
             new_deployment_config.num_replicas = num_replicas
 
@@ -423,10 +385,6 @@ class Deployment:
 
         if _init_kwargs is DEFAULT.VALUE:
             _init_kwargs = self._replica_config.init_kwargs
-
-        if route_prefix is DEFAULT.VALUE:
-            # Default is to keep the previous value
-            route_prefix = self._route_prefix
 
         if ray_actor_options is DEFAULT.VALUE:
             ray_actor_options = self._replica_config.ray_actor_options
@@ -479,7 +437,6 @@ class Deployment:
             new_deployment_config,
             new_replica_config,
             version=version,
-            route_prefix=route_prefix,
             _internal=True,
         )
 
@@ -491,8 +448,6 @@ class Deployment:
                 self._deployment_config == other._deployment_config,
                 self._replica_config.init_args == other._replica_config.init_args,
                 self._replica_config.init_kwargs == other._replica_config.init_kwargs,
-                # compare route prefix with default value resolved
-                self.route_prefix == other.route_prefix,
                 self._replica_config.ray_actor_options
                 == self._replica_config.ray_actor_options,
             ]
@@ -502,7 +457,6 @@ class Deployment:
         return (
             f"Deployment(name={self._name},"
             f"version={self._version},"
-            f"route_prefix={self.route_prefix})"
         )
 
     def __repr__(self):
@@ -510,16 +464,12 @@ class Deployment:
 
 
 def deployment_to_schema(
-    d: Deployment, include_route_prefix: bool = True
+    d: Deployment,
 ) -> DeploymentSchema:
     """Converts a live deployment object to a corresponding structured schema.
 
     Args:
         d: Deployment object to convert
-        include_route_prefix: Whether to include the route_prefix in the returned
-            schema. This should be set to False if the schema will be included in a
-            higher-level object describing an application, and you want to place
-            route_prefix at the application level.
     """
 
     if d.ray_actor_options is not None:
@@ -546,9 +496,6 @@ def deployment_to_schema(
         "max_replicas_per_node": d._replica_config.max_replicas_per_node,
         "logging_config": d._deployment_config.logging_config,
     }
-
-    if include_route_prefix:
-        deployment_options["route_prefix"] = d.route_prefix
 
     # Let non-user-configured options be set to defaults. If the schema
     # is converted back to a deployment, this lets Serve continue tracking
@@ -627,6 +574,5 @@ def schema_to_deployment(s: DeploymentSchema) -> Deployment:
         name=s.name,
         deployment_config=deployment_config,
         replica_config=replica_config,
-        route_prefix=s.route_prefix,
         _internal=True,
     )
