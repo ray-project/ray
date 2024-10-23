@@ -10,16 +10,16 @@ RAY_COMMIT="${RAY_COMMIT:-607f2f30f5f21543b6a5568ee77ea779eeba30a8}"
 # Download winpty
 mkdir -p /c/tmp/winpty
 which curl
-wget -q https://github.com/rprichard/winpty/releases/download/0.4.3/winpty-0.4.3-msys2-2.7.0-x64.tar.gz -O /c/tmp/winpty/winpty.tar.gz
+curl -sfL https://github.com/rprichard/winpty/releases/download/0.4.3/winpty-0.4.3-msys2-2.7.0-x64.tar.gz -o /c/tmp/winpty/winpty.tar.gz
 tar -xzf /c/tmp/winpty/winpty.tar.gz -C /c/tmp/winpty
 
 # Setup verify context
 mkdir -p /c/tmp/verify
-cp /c/workdir/.buildkite/release-automation/verify-windows-wheels.sh /c/tmp/verify/verify-windows-wheels.sh
-cp /c/workdir/.buildkite/release-automation/windows.verify.Dockerfile /c/tmp/verify/Dockerfile
+cp .buildkite/release-automation/verify-windows-wheels.sh /c/tmp/verify/verify-windows-wheels.sh
+cp .buildkite/release-automation/windows.verify.Dockerfile /c/tmp/verify/Dockerfile
 
 mkdir -p /c/tmp/verify/release/util
-cp /c/workdir/release/util/sanity_check.py /c/tmp/verify/release/util/sanity_check.py
+cp release/util/sanity_check.py /c/tmp/verify/release/util/sanity_check.py
 
 docker build -t rayproject/win-verifier /c/tmp/verify
 
