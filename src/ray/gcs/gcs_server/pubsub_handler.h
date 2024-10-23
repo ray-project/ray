@@ -47,9 +47,6 @@ class InternalPubSubHandler : public rpc::InternalPubSubHandler {
                                      rpc::GcsUnregisterSubscriberReply *reply,
                                      rpc::SendReplyCallback send_reply_callback) final;
 
-  // Stops the event loop and the thread of the pubsub handler.
-  void Stop();
-
   std::string DebugString() const;
 
   void RemoveSubscriberFrom(const std::string &sender_id);
@@ -57,7 +54,6 @@ class InternalPubSubHandler : public rpc::InternalPubSubHandler {
  private:
   /// Not owning the io service, to allow sharing it with pubsub::Publisher.
   instrumented_io_context &io_service_;
-  std::unique_ptr<std::thread> io_service_thread_;
   std::shared_ptr<gcs::GcsPublisher> gcs_publisher_;
   absl::flat_hash_map<std::string, absl::flat_hash_set<UniqueID>> sender_to_subscribers_;
 };

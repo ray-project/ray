@@ -682,13 +682,14 @@ graphql-core==3.2.3
     # via moto
 greenlet==3.0.1
     # via sqlalchemy
-grpcio==1.60.0 ; sys_platform != "darwin"
+grpcio==1.66.2 ; sys_platform != "darwin"
     # via
     #   -r /ray/ci/../python/requirements.txt
     #   -r /ray/ci/../python/requirements/anyscale-requirements.txt
     #   google-api-core
     #   google-cloud-bigquery
     #   grpcio-status
+    #   grpcio-tools
     #   mlagents-envs
     #   opencensus-proto
     #   opentelemetry-exporter-opencensus
@@ -697,6 +698,8 @@ grpcio==1.60.0 ; sys_platform != "darwin"
     #   tensorflow
 grpcio-status==1.48.2
     # via google-api-core
+grpcio-tools==1.48.2
+    # via -r /ray/ci/../python/requirements/anyscale-requirements.txt
 gsutil==5.27
     # via -r /ray/ci/../python/requirements/docker/ray-docker-requirements.txt
 gunicorn==20.1.0
@@ -1143,6 +1146,7 @@ mypy==1.7.0
     #   -r /ray/ci/../python/requirements/test-requirements.txt
 mypy-extensions==1.0.0
     # via
+    #   -r /ray/ci/../python/requirements/lint-requirements.txt
     #   black
     #   mypy
 myst-nb==1.1.0
@@ -1549,6 +1553,7 @@ protobuf==3.20.3
     #   google-cloud-bigquery-storage
     #   googleapis-common-protos
     #   grpcio-status
+    #   grpcio-tools
     #   mlagents-envs
     #   mlflow
     #   onnx
@@ -1683,6 +1688,7 @@ pyopengl==3.1.7
     #   mujoco
 pyopenssl==23.0.0
     # via
+    #   -r /ray/ci/../python/requirements.txt
     #   -r /ray/ci/../python/requirements/anyscale-requirements.txt
     #   -r /ray/ci/../python/requirements/test-requirements.txt
     #   azure-cli-core
@@ -2382,10 +2388,16 @@ typeguard==2.13.3
     # via ax-platform
 typer==0.12.3
     # via -r /ray/ci/../python/requirements.txt
+types-pycurl==7.45.3.20240421
+    # via -r /ray/ci/../python/requirements/lint-requirements.txt
 types-python-dateutil==2.9.0.20240316
     # via arrow
 types-pyyaml==6.0.12.2
     # via -r /ray/ci/../python/requirements/lint-requirements.txt
+types-requests==2.31.0.6
+    # via -r /ray/ci/../python/requirements/lint-requirements.txt
+types-urllib3==1.26.25.14
+    # via types-requests
 typing-extensions==4.8.0
     # via
     #   -r /ray/ci/../python/requirements/test-requirements.txt

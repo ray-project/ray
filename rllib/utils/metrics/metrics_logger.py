@@ -127,11 +127,27 @@ class MetricsLogger:
         if not self._key_in_stats(key) and default is not None:
             return default
 
+        # Otherwise, return the reduced Stats' (peek) value.
+
         # Create a reduced view of the requested sub-structure or leaf (Stats object).
         ret = tree.map_structure(lambda s: s.peek(), self._get_key(key))
-
-        # Otherwise, return the reduced Stats' (peek) value.
         return ret
+
+    @staticmethod
+    def peek_results(results: Any) -> Any:
+        """Performs `peek()` on any leaf element of an arbitrarily nested Stats struct.
+
+
+        Args:
+            results: The nested structure of Stats-leafs to be peek'd and returned.
+
+        Returns:
+            A corresponding structure of the peek'd `results` (reduced float/int values;
+            no Stats objects).
+        """
+        return tree.map_structure(
+            lambda s: s.peek() if isinstance(s, Stats) else s, results
+        )
 
     def reduce(
         self,
@@ -141,20 +157,25 @@ class MetricsLogger:
     ) -> Dict:
         """Reduces all logged values based on their settings and returns a result dict.
 
+        DO NOT CALL THIS METHOD under normal circumstances! RLlib's components call it
+        right before a distinct step has been completed and the (MetricsLogger-based)
+        results of that step need to be passed on to other components for further
+        processing.
+
         The returned result dict has the exact same structure as the logged keys (or
         nested key sequences) combined. At the leafs of the returned structure are
-        either `Stats` objects (return_stats_obj=True, which is the default) or
-        primitive (non-Stats) values. In case of `return_stats_obj=True`, the returned
-        dict with Stats at the leafs can conveniently be re-used downstream for further
-        logging and reduction operations.
+        either `Stats` objects (`return_stats_obj=True`, which is the default) or
+        primitive (non-Stats) values (`return_stats_obj=False`). In case of
+        `return_stats_obj=True`, the returned dict with Stats at the leafs can
+        conveniently be re-used downstream for further logging and reduction operations.
 
         For example, imagine component A (e.g. an Algorithm) containing a MetricsLogger
-        and n remote components (e.g. EnvRunner  workers), each with their own
-        MetricsLogger object. Component A now calls its n remote components, each of
+        and n remote components (e.g. n EnvRunners), each with their own
+        MetricsLogger object. Component A calls its n remote components, each of
         which returns an equivalent, reduced dict with `Stats` as leafs.
-        Component A can then further log these n result dicts via its own MetricsLogger:
-        `logger.merge_and_log_n_dicts([n returned result dicts from the remote
-        components])`.
+        Component A can then further log these n result dicts through its own
+        MetricsLogger through:
+        `logger.merge_and_log_n_dicts([n returned result dicts from n subcomponents])`.
 
         .. testcode::
 
@@ -222,23 +243,44 @@ class MetricsLogger:
             objects if `return_stats_obj=True` or primitive values, carrying no
             reduction and history information, if `return_stats_obj=False`.
         """
+        # For better error message, catch the last key-path (reducing of which might
+        # throw an error).
+        PATH = None
+
+        def _reduce(path, stats):
+            nonlocal PATH
+            PATH = path
+            return stats.reduce()
+
         # Create a shallow copy of `self.stats` in case we need to reset some of our
         # stats due to this `reduce()` call (and the Stat having self.clear_on_reduce
-        # set to True). In case we clear the Stats upon `reduce`, we get returned a
+        # set to True). In case we clear the Stats upon `reduce`, we receive a
         # new empty `Stats` object from `stat.reduce()` with the same settings as
         # existing one and can now re-assign it to `self.stats[key]` (while we return
         # from this method the properly reduced, but not cleared/emptied new `Stats`).
-        if key is not None:
-            stats_to_return = self._get_key(key).copy()
-            self._set_key(
-                key, tree.map_structure(lambda s: s.reduce(), stats_to_return)
+        try:
+            if key is not None:
+                stats_to_return = self._get_key(key).copy()
+                self._set_key(
+                    key, tree.map_structure_with_path(_reduce, stats_to_return)
+                )
+            else:
+                stats_to_return = self.stats.copy()
+                self.stats = tree.map_structure_with_path(_reduce, stats_to_return)
+        # Provide proper error message if reduction fails due to bad data.
+        except Exception as e:
+            raise ValueError(
+                "There was an error while reducing the Stats object under key="
+                f"{PATH}! Check, whether you logged invalid or incompatible "
+                "values into this key over time in your custom code."
+                f"\nThe values under this key are: {self._get_key(PATH).values}."
+                f"\nThe original error was {str(e)}"
             )
-        else:
-            stats_to_return = self.stats.copy()
-            self.stats = tree.map_structure(lambda s: s.reduce(), stats_to_return)
 
+        # Return (reduced) `Stats` objects as leafs.
         if return_stats_obj:
             return stats_to_return
+        # Return actual (reduced) values (not reduced `Stats` objects) as leafs.
         else:
             return tree.map_structure(lambda s: s.peek(), stats_to_return)
 
@@ -305,7 +347,7 @@ class MetricsLogger:
             logger.log_value("some_more_items", -7.0)
             # Peeking at these returns the full list of items (no reduction set up).
             check(logger.peek("some_more_items"), [-5.0, -6.0, -7.0])
-            # Reducing everything.
+            # Reducing everything (and return plain values, not `Stats` objects).
             results = logger.reduce(return_stats_obj=False)
             check(results, {
                 "loss": 0.05,
@@ -320,7 +362,7 @@ class MetricsLogger:
             # However, the `reduce()` call did empty the `some_more_items` list
             # (b/c we set `clear_on_reduce=True`).
             check(logger.peek("some_more_items"), [])
-            # ... but not the "some_items" list (b/c `reduce_on_reset=False`).
+            # ... but not the "some_items" list (b/c `clear_on_reduce=False`).
             check(logger.peek("some_items"), [])
 
         Args:

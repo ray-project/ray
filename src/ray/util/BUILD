@@ -41,3 +41,10 @@ cc_library(
         "@nlohmann_json",
     ],
 )
+
+cc_library(
+    name = "thread_checker",
+    hdrs = ["thread_checker.h"],
+    srcs = ["thread_checker.cc"],
+    visibility = ["//visibility:public"],
+)

@@ -109,8 +109,6 @@ class TestMultiAgentEnvRunner(unittest.TestCase):
                 policies={"p0", "p1"},
                 policy_mapping_fn=lambda aid, *args, **kwargs: f"p{aid}",
             )
-            # TODO (sven): Make this hack no longer required.
-            .training(model={"uses_new_env_runners": True})
         )
 
         return config

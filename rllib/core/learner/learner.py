@@ -154,6 +154,7 @@ class Learner(Checkpointable):
                 PPOTorchRLModule
             )
             from ray.rllib.core import COMPONENT_RL_MODULE, DEFAULT_MODULE_ID
+            from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
             from ray.rllib.core.rl_module.rl_module import RLModuleSpec
 
             env = gym.make("CartPole-v1")
@@ -180,7 +181,7 @@ class Learner(Checkpointable):
                     module_class=PPOTorchRLModule,
                     observation_space=env.observation_space,
                     action_space=env.action_space,
-                    model_config_dict={"fcnet_hiddens": [64, 64]},
+                    model_config=DefaultModelConfig(fcnet_hiddens=[64, 64]),
                     catalog_class=PPOCatalog,
                 )
             )
@@ -691,7 +692,7 @@ class Learner(Checkpointable):
     def get_param_ref(self, param: Param) -> Hashable:
         """Returns a hashable reference to a trainable parameter.
 
-        This should be overriden in framework specific specialization. For example in
+        This should be overridden in framework specific specialization. For example in
         torch it will return the parameter itself, while in tf it returns the .ref() of
         the variable. The purpose is to retrieve a unique reference to the parameters.
 
@@ -706,7 +707,7 @@ class Learner(Checkpointable):
     def get_parameters(self, module: RLModule) -> Sequence[Param]:
         """Returns the list of parameters of a module.
 
-        This should be overriden in framework specific learner. For example in torch it
+        This should be overridden in framework specific learner. For example in torch it
         will return .parameters(), while in tf it returns .trainable_variables.
 
         Args:
@@ -777,6 +778,7 @@ class Learner(Checkpointable):
                 algorithm_config_overrides_per_module={module_id: config_overrides}
             )
         self.config.rl_module(rl_module_spec=MultiRLModuleSpec.from_module(self.module))
+        self._module_spec = self.config.rl_module_spec
         if new_should_module_be_updated is not None:
             self.config.multi_agent(policies_to_train=new_should_module_be_updated)
 
@@ -1093,7 +1095,6 @@ class Learner(Checkpointable):
             )
 
         self._check_is_built()
-        # minibatch_size = minibatch_size or 32
 
         # Call `before_gradient_based_update` to allow for non-gradient based
         # preparations-, logging-, and update logic to happen.
@@ -1106,8 +1107,11 @@ class Learner(Checkpointable):
             return {"batch": self._set_slicing_by_batch_id(batch, value=True)}
 
         i = 0
+        logger.debug(f"===> [Learner {id(self)}]: SLooping through batches ... ")
         for batch in iterator.iter_batches(
-            batch_size=minibatch_size,
+            # Note, this needs to be one b/c data is already mapped to
+            # `MultiAgentBatch`es of `minibatch_size`.
+            batch_size=1,
             _finalize_fn=_finalize_fn,
             **kwargs,
         ):
@@ -1116,6 +1120,9 @@ class Learner(Checkpointable):
 
             # Note, `_finalize_fn`  must return a dictionary.
             batch = batch["batch"]
+            logger.debug(
+                f"===> [Learner {id(self)}]: batch {i} with {batch.env_steps()} rows."
+            )
             # Check the MultiAgentBatch, whether our RLModule contains all ModuleIDs
             # found in this batch. If not, throw an error.
             unknown_module_ids = set(batch.policy_batches.keys()) - set(
@@ -1141,7 +1148,9 @@ class Learner(Checkpointable):
             if num_iters and i == num_iters:
                 break
 
-        logger.info(f"[Learner] Iterations run in epoch: {i}")
+        logger.info(
+            f"===> [Learner {id(self)}] number of iterations run in this epoch: {i}"
+        )
         # Convert logged tensor metrics (logged during tensor-mode of MetricsLogger)
         # to actual (numpy) values.
         self.metrics.tensors_to_numpy(tensor_metrics)

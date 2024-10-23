@@ -11,6 +11,7 @@ import pandas as pd
 import pyarrow as pa
 
 import ray
+from ray._private.utils import get_or_create_event_loop
 from ray.data._internal.compute import get_compute
 from ray.data._internal.execution.interfaces import PhysicalOperator
 from ray.data._internal.execution.interfaces.task_context import TaskContext
@@ -65,7 +66,7 @@ class _MapActorContext:
 
     def _init_async(self):
         # Only used for callable class with async generator `__call__` method.
-        loop = asyncio.new_event_loop()
+        loop = get_or_create_event_loop()
 
         def run_loop():
             asyncio.set_event_loop(loop)
@@ -348,7 +349,9 @@ def _generate_transform_fn_for_async_map_batches(
         future = asyncio.run_coroutine_threadsafe(process_all_batches(), loop)
 
         # Yield results as they become available.
-        while not future.done():
+        # After all futures are completed, drain the queue to
+        # yield any remaining results.
+        while not future.done() or not output_batch_queue.empty():
             # Here, `out_batch` is a one-row output batch
             # from the async generator, corresponding to a
             # single row from the input batch.

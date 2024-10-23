@@ -223,7 +223,8 @@ class GcsActorManagerTest : public ::testing::Test {
     io_service_.post(
         [this, request, &promise]() {
           auto status = gcs_actor_manager_->RegisterActor(
-              request, [&promise](std::shared_ptr<gcs::GcsActor> actor) {
+              request,
+              [&promise](std::shared_ptr<gcs::GcsActor> actor, const Status &status) {
                 promise.set_value(std::move(actor));
               });
           if (!status.ok()) {
@@ -298,7 +299,7 @@ TEST_F(GcsActorManagerTest, TestBasic) {
       "DEPENDENCIES_UNREADY", "PENDING_CREATION", "ALIVE", "DEAD"};
   std::vector<std::string> vc;
   for (int i = 0; i < num_retry; i++) {
-    Mocker::ReadContentFromFile(vc, log_dir_ + "/events/event_EXPORT_ACTOR.log");
+    Mocker::ReadContentFromFile(vc, log_dir_ + "/export_events/event_EXPORT_ACTOR.log");
     if ((int)vc.size() == num_export_events) {
       for (int event_idx = 0; event_idx < num_export_events; event_idx++) {
         json export_event_as_json = json::parse(vc[event_idx]);
@@ -319,7 +320,7 @@ TEST_F(GcsActorManagerTest, TestBasic) {
       vc.clear();
     }
   }
-  Mocker::ReadContentFromFile(vc, log_dir_ + "/events/event_EXPORT_ACTOR.log");
+  Mocker::ReadContentFromFile(vc, log_dir_ + "/export_events/event_EXPORT_ACTOR.log");
   std::ostringstream lines;
   for (auto line : vc) {
     lines << line << "\n";

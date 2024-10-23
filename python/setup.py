@@ -289,6 +289,7 @@ if setup_spec.type == SetupType.RAY:
             + [
                 "grpcio >= 1.32.0; python_version < '3.10'",  # noqa:E501
                 "grpcio >= 1.42.0; python_version >= '3.10'",  # noqa:E501
+                "pyOpenSSL",
             ]
         )
     )
@@ -808,7 +809,7 @@ setuptools.setup(
         ]
     },
     package_data={
-        "ray": ["includes/*.pxd", "*.pxd", "data/_internal/logging.yaml"],
+        "ray": ["includes/*.pxd", "*.pxd"],
     },
     include_package_data=True,
     exclude_package_data={
