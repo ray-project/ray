@@ -360,11 +360,6 @@ class _DeploymentResponseBase:
                 self._replica_result = self._object_ref_future.result(
                     timeout=_timeout_s
                 )
-                # self._replica_result.add_done_callback(
-                #     lambda *args: ray.serve.context._remove_in_flight_request(
-                #         self._request_id, self
-                #     )
-                # )
             except concurrent.futures.TimeoutError:
                 raise TimeoutError("Timed out resolving to ObjectRef.") from None
 
@@ -380,11 +375,6 @@ class _DeploymentResponseBase:
             # Use `asyncio.wrap_future` so `self._object_ref_future` can be awaited
             # safely from any asyncio loop.
             self._replica_result = await asyncio.wrap_future(self._object_ref_future)
-            # self._replica_result.add_done_callback(
-            #     lambda *args: ray.serve.context._remove_in_flight_request(
-            #         self._request_id, self
-            #     )
-            # )
 
         return self._replica_result
 
