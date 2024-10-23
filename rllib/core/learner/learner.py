@@ -25,7 +25,12 @@ import ray
 from ray.rllib.connectors.learner.learner_connector_pipeline import (
     LearnerConnectorPipeline,
 )
-from ray.rllib.core import COMPONENT_OPTIMIZER, COMPONENT_RL_MODULE, DEFAULT_MODULE_ID
+from ray.rllib.core import (
+    COMPONENT_METRICS_LOGGER,
+    COMPONENT_OPTIMIZER,
+    COMPONENT_RL_MODULE,
+    DEFAULT_MODULE_ID,
+)
 from ray.rllib.core.rl_module.apis import SelfSupervisedLossAPI
 from ray.rllib.core.rl_module import validate_module_id
 from ray.rllib.core.rl_module.multi_rl_module import (
@@ -1215,6 +1220,8 @@ class Learner(Checkpointable):
 
         state = {
             "should_module_be_updated": self.config.policies_to_train,
+            # TODO (sven): Make `MetricsLogger` a Checkpointable.
+            COMPONENT_METRICS_LOGGER: self.metrics.get_state(),
         }
 
         if self._check_component(COMPONENT_RL_MODULE, components, not_components):
@@ -1244,6 +1251,10 @@ class Learner(Checkpointable):
         # If not provided in state (None), all Modules will be trained by default.
         if "should_module_be_updated" in state:
             self.config.multi_agent(policies_to_train=state["should_module_be_updated"])
+
+        # TODO (sven): Make `MetricsLogger` a Checkpointable.
+        if COMPONENT_METRICS_LOGGER in state:
+            self.metrics.set_state(state[COMPONENT_METRICS_LOGGER])
 
     @override(Checkpointable)
     def get_ctor_args_and_kwargs(self):

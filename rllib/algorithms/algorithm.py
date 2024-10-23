@@ -3280,7 +3280,9 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
                     NUM_ENV_STEPS_SAMPLED_PER_SECOND,
                 ),
                 value=(
-                    eval_results[ENV_RUNNER_RESULTS][NUM_ENV_STEPS_SAMPLED]
+                    eval_results.get(ENV_RUNNER_RESULTS, {}).get(
+                        NUM_ENV_STEPS_SAMPLED, 0
+                    )
                     / self.metrics.peek((TIMERS, EVALUATION_ITERATION_TIMER))
                 ),
             )

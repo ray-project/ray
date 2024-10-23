@@ -97,6 +97,7 @@ class MetricsLogger:
         # When calling `reduce()`, the internal values list gets cleaned up (reduced)
         # and reduction results are returned.
         results = logger.reduce()
+        # EMA should be ~1.1sec.
         assert 1.15 > results["my_block_to_be_timed"] > 1.05
 
 
@@ -602,7 +603,9 @@ class MetricsLogger:
         for key in all_keys:
             extended_key = prefix_key + key
             available_stats = [
-                self._get_key(key, s) for s in stats_dicts if self._key_in_stats(key, s)
+                self._get_key(key, stats=s)
+                for s in stats_dicts
+                if self._key_in_stats(key, stats=s)
             ]
             base_stats = None
             more_stats = []
@@ -672,24 +675,34 @@ class MetricsLogger:
 
         .. testcode::
 
+            import time
             from ray.rllib.utils.metrics.metrics_logger import MetricsLogger
+            from ray.rllib.utils.test_utils import check
 
             logger = MetricsLogger()
 
             # First delta measurement:
-            with logger.log_time("my_block_to_be_timed"):
+            with logger.log_time("my_block_to_be_timed", reduce="mean", ema_coeff=0.1):
                 time.sleep(1.0)
+
+            # EMA should be ~1sec.
             assert 1.1 > logger.peek("my_block_to_be_timed") > 0.9
-            # Second delta measurement:
+
+            # Second delta measurement (note that we don't have to repeat the args
+            # again, as the stats under that name have already been created above with
+            # the correct args).
             with logger.log_time("my_block_to_be_timed"):
-                time.sleep(1.0)
-            assert 2.2 > logger.peek("my_block_to_be_timed") > 1.8
+                time.sleep(2.0)
+
+            # EMA should be ~1.1sec.
+            assert 1.15 > logger.peek("my_block_to_be_timed") > 1.05
 
             # When calling `reduce()`, the internal values list gets cleaned up.
             check(len(logger.stats["my_block_to_be_timed"].values), 2)  # still 2 deltas
             results = logger.reduce()
             check(len(logger.stats["my_block_to_be_timed"].values), 1)  # reduced to 1
-            assert 2.2 > results["my_block_to_be_timed"] > 1.8
+            # EMA should be ~1.1sec.
+            assert 1.15 > results["my_block_to_be_timed"] > 1.05
 
         Args:
             key: The key (or tuple of keys) to log the measured time delta under.
@@ -879,7 +892,7 @@ class MetricsLogger:
         # from this method the properly reduced, but not cleared/emptied new `Stats`).
         try:
             if key is not None:
-                stats_to_return = self._get_key(key).copy()
+                stats_to_return = self._get_key(key, key_error=False).copy()
                 self._set_key(
                     key, tree.map_structure_with_path(_reduce, stats_to_return)
                 )
@@ -1060,7 +1073,7 @@ class MetricsLogger:
         ):
             self._tensor_keys.add(key)
 
-    def _key_in_stats(self, flat_key, stats=None):
+    def _key_in_stats(self, flat_key, *, stats=None):
         flat_key = force_tuple(tree.flatten(flat_key))
         _dict = stats if stats is not None else self.stats
         for key in flat_key:
@@ -1069,11 +1082,17 @@ class MetricsLogger:
             _dict = _dict[key]
         return True
 
-    def _get_key(self, flat_key, stats=None):
+    def _get_key(self, flat_key, *, stats=None, key_error=True):
         flat_key = force_tuple(tree.flatten(flat_key))
         _dict = stats if stats is not None else self.stats
         for key in flat_key:
-            _dict = _dict[key]
+            try:
+                _dict = _dict[key]
+            except KeyError as e:
+                if key_error:
+                    raise e
+                else:
+                    return {}
         return _dict
 
     def _set_key(self, flat_key, stats):

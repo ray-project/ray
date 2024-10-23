@@ -683,12 +683,12 @@ class DQN(Algorithm):
         if self.config.count_steps_by == "agent_steps":
             current_ts = sum(
                 self.metrics.peek(
-                    (ENV_RUNNER_RESULTS, NUM_AGENT_STEPS_SAMPLED_LIFETIME)
+                    (ENV_RUNNER_RESULTS, NUM_AGENT_STEPS_SAMPLED_LIFETIME), default={}
                 ).values()
             )
         else:
             current_ts = self.metrics.peek(
-                (ENV_RUNNER_RESULTS, NUM_ENV_STEPS_SAMPLED_LIFETIME)
+                (ENV_RUNNER_RESULTS, NUM_ENV_STEPS_SAMPLED_LIFETIME), default=0
             )
 
         # If enough experiences have been sampled start training.
