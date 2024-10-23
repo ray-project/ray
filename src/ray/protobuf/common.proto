@@ -589,8 +589,13 @@ message TaskInfoEntry {
   // If the task/actor is created within a placement group,
   // this value is configured.
   optional bytes placement_group_id = 26;
-  // Tasks arguments
-  repeated TaskArg task_args = 27;
+  // Tasks arguments passed in as (object) references.
+  //
+  // NOTE: This list only contains `ObjectReference`s passed in as arguments
+  //       this task is dependent on and does NOT contain
+  //        - Args passed by value (inlined)
+  //        - ObjectRefs of the args passed by value
+  repeated ObjectReference dependent_args_refs = 27;
 }
 
 message Bundle {
