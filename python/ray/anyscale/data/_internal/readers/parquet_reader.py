@@ -4,6 +4,7 @@ from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple
 import pyarrow
 import pyarrow as pa
 import pyarrow.dataset
+from pyarrow.parquet import ParquetFile
 
 import ray
 from .file_reader import FileReader
@@ -195,3 +196,28 @@ class ParquetReader(FileReader):
         # row. To avoid slow startup times, just return a constant value. For more
         # information, see https://github.com/anyscale/rayturbo/issues/924.
         return PARQUET_ENCODING_RATIO_ESTIMATE_DEFAULT * file_size
+
+    def count_rows(self, paths: List[str], *, filesystem) -> int:
+        def open_file(path: str) -> ParquetFile:
+            stream = filesystem.open_input_file(path)
+            return ParquetFile(stream)
+
+        num_rows = 0
+        ctx = DataContext.get_current()
+        for path in paths:
+            file = call_with_retry(
+                lambda: open_file(path),
+                description="open Parquet file",
+                match=ctx.retried_io_errors,
+            )
+            # Getting the metadata requires network calls, so it might fail with
+            # transient errors.
+            num_rows += call_with_retry(
+                lambda: file.metadata.num_rows,
+                description="get count from Parquet metadata",
+                match=ctx.retried_io_errors,
+            )
+        return num_rows
+
+    def supports_count_rows(self) -> bool:
+        return "filter" not in self._to_batches_kwargs

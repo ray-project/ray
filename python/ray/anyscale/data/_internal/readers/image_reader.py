@@ -1,5 +1,5 @@
 import io
-from typing import Iterable, Optional, Tuple
+from typing import Iterable, List, Optional, Tuple
 
 import numpy as np
 import pyarrow
@@ -54,3 +54,9 @@ class ImageReader(NativeFileReader):
 
         batch = np.expand_dims(np.array(image), axis=0)
         yield {"image": batch}
+
+    def count_rows(self, paths: List[str], *, filesystem) -> int:
+        return len(paths)
+
+    def supports_count_rows(self) -> bool:
+        return True
