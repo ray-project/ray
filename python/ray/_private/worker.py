@@ -1874,11 +1874,6 @@ def shutdown(_exiting_interpreter: bool = False):
             and false otherwise. If we are exiting the interpreter, we will
             wait a little while to print any extra error messages.
     """
-    # Make sure to clean up compiled dag node if exists.
-    from ray.dag.compiled_dag_node import _shutdown_all_compiled_dags
-
-    _shutdown_all_compiled_dags()
-
     if _exiting_interpreter and global_worker.mode == SCRIPT_MODE:
         # This is a duration to sleep before shutting down everything in order
         # to make sure that log messages finish printing.
