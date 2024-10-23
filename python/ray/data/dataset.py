@@ -4333,7 +4333,8 @@ class Dataset:
             If your model accepts additional metadata aside from features and label, specify a single additional column or a list of additional columns.
             A common use case is to include sample weights in the data samples and train a ``tf.keras.Model`` with ``tf.keras.Model.fit``.
 
-            >>> ds = ds.add_column("sample weights", lambda x: [1] * x.num_rows)
+            >>> import pyarrow as pa
+            >>> ds = ds.add_column("sample weights", lambda x: pa.array([1] * x.num_rows))
             >>> ds.to_tf(feature_columns="features", label_columns="target", additional_columns="sample weights")
             <_OptionsDataset element_spec=(TensorSpec(shape=(None, 4), dtype=tf.float64, name='features'), TensorSpec(shape=(None,), dtype=tf.int64, name='target'), TensorSpec(shape=(None,), dtype=tf.int64, name='sample weights'))>
 
