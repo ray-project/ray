@@ -17,10 +17,6 @@ from ray.serve._private.config import (
     handle_num_replicas_auto,
 )
 from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME, SERVE_LOGGER_NAME
-from ray.serve._private.deployment_graph_build import build as pipeline_build
-from ray.serve._private.deployment_graph_build import (
-    get_and_validate_ingress_deployment,
-)
 from ray.serve._private.http_util import (
     ASGIAppReplicaWrapper,
     make_fastapi_class_based_view,
@@ -435,7 +431,7 @@ def _run(
     target: Application,
     _blocking: bool = True,
     name: str = SERVE_DEFAULT_APP_NAME,
-    route_prefix: str = DEFAULT.VALUE,
+    route_prefix: str = "/",
     logging_config: Optional[Union[Dict, LoggingConfig]] = None,
 ) -> DeploymentHandle:
     """Run an application and return a handle to its ingress deployment.
@@ -443,6 +439,8 @@ def _run(
     This is only used internally with the _blocking not totally blocking the following
     code indefinitely until Ctrl-C'd.
     """
+    if route_prefix == DEFAULT.VALUE:
+        route_prefix = "/"  # XXX: fix.
     if len(name) == 0:
         raise RayServeException("Application name must a non-empty string.")
 
@@ -454,8 +452,7 @@ def _run(
     ServeUsageTag.API_VERSION.record("v2")
 
     if isinstance(target, Application):
-        deployments = pipeline_build(target._get_internal_dag_node(), name)
-        ingress = get_and_validate_ingress_deployment(deployments)
+        ingress_name, deployments = target._build(app_name=name)
     else:
         msg = "`serve.run` expects an `Application` returned by `Deployment.bind()`."
         if isinstance(target, DAGNode):
@@ -466,16 +463,8 @@ def _run(
         raise TypeError(msg)
 
     parameter_group = []
-
     for deployment in deployments:
-        # Overwrite route prefix
-        if route_prefix is not DEFAULT.VALUE and deployment._route_prefix is not None:
-            if route_prefix is not None and not route_prefix.startswith("/"):
-                raise ValueError(
-                    "The route_prefix must start with a forward slash ('/')"
-                )
-
-            deployment._route_prefix = route_prefix
+        is_ingress = deployment._name == ingress_name
         if deployment.logging_config is None and logging_config:
             if isinstance(logging_config, dict):
                 logging_config = LoggingConfig(**logging_config)
@@ -485,10 +474,10 @@ def _run(
             "replica_config": deployment._replica_config,
             "deployment_config": deployment._deployment_config,
             "version": deployment._version or get_random_string(),
-            "route_prefix": deployment.route_prefix,
+            "route_prefix": route_prefix if is_ingress else None,
             "url": deployment.url,
             "docs_path": deployment._docs_path,
-            "ingress": deployment._name == ingress._name,
+            "ingress": is_ingress,
         }
         parameter_group.append(deployment_parameters)
     client.deploy_application(
@@ -497,13 +486,12 @@ def _run(
         _blocking=_blocking,
     )
 
-    if ingress is not None:
-        # The deployment state is not guaranteed to be created after
-        # deploy_application returns; the application state manager will
-        # need another reconcile iteration to create it.
-        client._wait_for_deployment_created(ingress.name, name)
-        handle = client.get_handle(ingress.name, name, check_exists=False)
-        return handle
+    # The deployment state is not guaranteed to be created after
+    # deploy_application returns; the application state manager will
+    # need another reconcile iteration to create it.
+    client._wait_for_deployment_created(ingress_name, name)
+    handle = client.get_handle(ingress_name, name, check_exists=False)
+    return handle
 
 
 @PublicAPI(stability="stable")
@@ -511,7 +499,7 @@ def run(
     target: Application,
     blocking: bool = False,
     name: str = SERVE_DEFAULT_APP_NAME,
-    route_prefix: Optional[str] = DEFAULT.VALUE,
+    route_prefix: str = "/",
     logging_config: Optional[Union[Dict, LoggingConfig]] = None,
 ) -> DeploymentHandle:
     """Run an application and return a handle to its ingress deployment.
