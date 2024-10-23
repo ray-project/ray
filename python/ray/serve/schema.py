@@ -836,6 +836,7 @@ class DeploymentStatusOverview:
 @PublicAPI(stability="stable")
 class ApplicationStatus(str, Enum):
     """The current status of the application."""
+
     NOT_STARTED = "NOT_STARTED"
     DEPLOYING = "DEPLOYING"
     DEPLOY_FAILED = "DEPLOY_FAILED"
