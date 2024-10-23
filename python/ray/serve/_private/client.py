@@ -6,6 +6,7 @@ from typing import Callable, Dict, Iterable, List, Optional, Tuple, Union
 
 import ray
 from ray.actor import ActorHandle
+from ray.serve._private.application_state import StatusOverview
 from ray.serve._private.common import (
     DeploymentHandleSource,
     DeploymentID,
@@ -36,7 +37,6 @@ from ray.serve.schema import (
     LoggingConfig,
     ServeApplicationSchema,
     ServeDeploySchema,
-    StatusOverview,
 )
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)

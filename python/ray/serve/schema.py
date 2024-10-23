@@ -1,7 +1,6 @@
-import json
 import logging
 from collections import Counter
-from dataclasses import asdict, dataclass, field
+from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Dict, List, Optional, Set, Union
 from zlib import crc32
@@ -19,7 +18,6 @@ from ray._private.pydantic_compat import (
 from ray._private.runtime_env.packaging import parse_uri
 from ray.serve._private.common import (
     DeploymentStatus,
-    DeploymentStatusInfo,
     DeploymentStatusTrigger,
     ProxyStatus,
     ReplicaState,
@@ -35,14 +33,6 @@ from ray.serve._private.constants import (
 from ray.serve._private.deployment_info import DeploymentInfo
 from ray.serve._private.utils import DEFAULT
 from ray.serve.config import ProxyLocation
-from ray.serve.generated.serve_pb2 import ApplicationStatus as ApplicationStatusProto
-from ray.serve.generated.serve_pb2 import (
-    ApplicationStatusInfo as ApplicationStatusInfoProto,
-)
-from ray.serve.generated.serve_pb2 import (
-    DeploymentStatusInfoList as DeploymentStatusInfoListProto,
-)
-from ray.serve.generated.serve_pb2 import StatusOverview as StatusOverviewProto
 from ray.util.annotations import PublicAPI
 
 # Shared amongst multiple schemas.
@@ -843,99 +833,6 @@ class ApplicationStatus(str, Enum):
     RUNNING = "RUNNING"
     UNHEALTHY = "UNHEALTHY"
     DELETING = "DELETING"
-
-
-@PublicAPI(stability="stable")
-@dataclass(eq=True)
-class ApplicationStatusInfo:
-    status: ApplicationStatus
-    message: str = ""
-    deployment_timestamp: float = 0
-
-    def debug_string(self):
-        return json.dumps(asdict(self), indent=4)
-
-    def to_proto(self):
-        return ApplicationStatusInfoProto(
-            status=f"APPLICATION_STATUS_{self.status.name}",
-            message=self.message,
-            deployment_timestamp=self.deployment_timestamp,
-        )
-
-    @classmethod
-    def from_proto(cls, proto: ApplicationStatusInfoProto):
-        status = ApplicationStatusProto.Name(proto.status)[len("APPLICATION_STATUS_") :]
-        return cls(
-            status=ApplicationStatus(status),
-            message=proto.message,
-            deployment_timestamp=proto.deployment_timestamp,
-        )
-
-
-@PublicAPI(stability="stable")
-@dataclass(eq=True)
-class StatusOverview:
-    app_status: ApplicationStatusInfo
-    name: str = ""
-    deployment_statuses: List[DeploymentStatusInfo] = field(default_factory=list)
-
-    def debug_string(self):
-        return json.dumps(asdict(self), indent=4)
-
-    def get_deployment_status(self, name: str) -> Optional[DeploymentStatusInfo]:
-        """Get a deployment's status by name.
-
-        Args:
-            name: Deployment's name.
-
-        Return (Optional[DeploymentStatusInfo]): Status with a name matching
-            the argument, if one exists. Otherwise, returns None.
-        """
-
-        for deployment_status in self.deployment_statuses:
-            if name == deployment_status.name:
-                return deployment_status
-
-        return None
-
-    def to_proto(self):
-        # Create a protobuf for the Serve Application info
-        app_status_proto = self.app_status.to_proto()
-
-        # Create protobufs for all individual deployment statuses
-        deployment_status_protos = map(
-            lambda status: status.to_proto(), self.deployment_statuses
-        )
-
-        # Create a protobuf list containing all the deployment status protobufs
-        deployment_status_proto_list = DeploymentStatusInfoListProto()
-        deployment_status_proto_list.deployment_status_infos.extend(
-            deployment_status_protos
-        )
-
-        # Return protobuf encapsulating application and deployment protos
-        return StatusOverviewProto(
-            name=self.name,
-            app_status=app_status_proto,
-            deployment_statuses=deployment_status_proto_list,
-        )
-
-    @classmethod
-    def from_proto(cls, proto: StatusOverviewProto) -> "StatusOverview":
-        # Recreate Serve Application info
-        app_status = ApplicationStatusInfo.from_proto(proto.app_status)
-
-        # Recreate deployment statuses
-        deployment_statuses = []
-        for info_proto in proto.deployment_statuses.deployment_status_infos:
-            deployment_statuses.append(DeploymentStatusInfo.from_proto(info_proto))
-
-        # Recreate StatusInfo
-        return cls(
-            app_status=app_status,
-            deployment_statuses=deployment_statuses,
-            name=proto.name,
-        )
 
 
 @PublicAPI(stability="alpha")
