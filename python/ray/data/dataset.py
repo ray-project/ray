@@ -2657,7 +2657,7 @@ class Dataset:
 
         plan = self._plan.copy()
         count_op = Count([self._logical_plan.dag])
-        logical_plan = LogicalPlan(count_op)
+        logical_plan = LogicalPlan(count_op, self.context)
         count_ds = Dataset(plan, logical_plan)
 
         count = 0
