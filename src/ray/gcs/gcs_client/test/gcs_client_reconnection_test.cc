@@ -14,6 +14,7 @@
 
 #include <boost/asio/ip/tcp.hpp>
 #include <chrono>
+#include <future>
 
 #include "absl/strings/substitute.h"
 #include "gtest/gtest.h"
@@ -124,6 +125,19 @@ class GcsClientReconnectionTest : public ::testing::Test {
       std::this_thread::sleep_for(100ms);
     }
     return false;
+  }
+
+  std::string futureStatusToString(std::future_status state) {
+    switch (state) {
+    case std::future_status::deferred:
+      return "deferred";
+    case std::future_status::timeout:
+      return "timeout";
+    case std::future_status::ready:
+      return "ready";
+    default:
+      return "unknown";
+    }
   }
 
  protected:
@@ -292,57 +306,57 @@ TEST_F(GcsClientReconnectionTest, ReconnectionBackoff) {
       1s));
 }
 
-// TEST_F(GcsClientReconnectionTest, QueueingAndBlocking) {
-//   RayConfig::instance().initialize(
-//       R"(
-// {
-//   "gcs_rpc_server_reconnect_timeout_s": 60,
-//   "gcs_storage": "redis",
-//   "gcs_grpc_max_request_queued_max_bytes": 10
-// }
-//   )");
-//   StartGCS();
-//   auto client = CreateGCSClient();
-//   std::promise<void> p1;
-//   auto f1 = p1.get_future();
-//   RAY_UNUSED(client->InternalKV().AsyncInternalKVPut(
-//       "", "A", "B", false, gcs::GetGcsTimeoutMs(), [&p1](auto status, auto) {
-//         ASSERT_TRUE(status.ok()) << status.ToString();
-//         p1.set_value();
-//       }));
-//   f1.get();
+TEST_F(GcsClientReconnectionTest, QueueingAndBlocking) {
+  RayConfig::instance().initialize(
+      R"(
+{
+  "gcs_rpc_server_reconnect_timeout_s": 60,
+  "gcs_storage": "redis",
+  "gcs_grpc_max_request_queued_max_bytes": 10
+}
+  )");
+  StartGCS();
+  auto client = CreateGCSClient();
+  std::promise<void> p1;
+  auto f1 = p1.get_future();
+  RAY_UNUSED(client->InternalKV().AsyncInternalKVPut(
+      "", "A", "B", false, gcs::GetGcsTimeoutMs(), [&p1](auto status, auto) {
+        ASSERT_TRUE(status.ok()) << status.ToString();
+        p1.set_value();
+      }));
+  f1.get();
 
-//   ShutdownGCS();
+  ShutdownGCS();
 
-//   // Send one request which should fail
-//   RAY_UNUSED(client->InternalKV().AsyncInternalKVPut(
-//       "", "A", "B", false, gcs::GetGcsTimeoutMs(), [](auto status, auto) {}));
+  // Send one request which should fail
+  RAY_UNUSED(client->InternalKV().AsyncInternalKVPut(
+      "", "A", "B", false, gcs::GetGcsTimeoutMs(), [](auto status, auto) {}));
 
-//   // Make sure it's not blocking
-//   std::promise<void> p2;
-//   client_io_service_->post([&p2]() { p2.set_value(); }, "");
-//   auto f2 = p2.get_future();
-//   auto state = f2.wait_for(1s);
-//   RAY_LOG(INFO) << "1. state=" << state;
-//   ASSERT_EQ(std::future_status::ready, state);
+  // Make sure it's not blocking
+  std::promise<void> p2;
+  client_io_service_->post([&p2]() { p2.set_value(); }, "");
+  auto f2 = p2.get_future();
+  auto state = f2.wait_for(1s);
+  RAY_LOG(INFO) << "1. state=" << futureStatusToString(state);
+  ASSERT_EQ(std::future_status::ready, state);
 
-//   // Send the second one and it should block the thread
-//   RAY_UNUSED(client->InternalKV().AsyncInternalKVPut(
-//       "", "A", "B", false, gcs::GetGcsTimeoutMs(), [](auto status, auto) {}));
-//   std::this_thread::sleep_for(1s);
-//   std::promise<void> p3;
-//   client_io_service_->post([&p3]() { p3.set_value(); }, "");
-//   auto f3 = p3.get_future();
-//   state = f3.wait_for(1s);
-//   RAY_LOG(INFO) << "2. state=" << state;
-//   ASSERT_EQ(std::future_status::timeout, state);
+  // Send the second one and it should block the thread
+  RAY_UNUSED(client->InternalKV().AsyncInternalKVPut(
+      "", "A", "B", false, gcs::GetGcsTimeoutMs(), [](auto status, auto) {}));
+  std::this_thread::sleep_for(1s);
+  std::promise<void> p3;
+  client_io_service_->post([&p3]() { p3.set_value(); }, "");
+  auto f3 = p3.get_future();
+  state = f3.wait_for(1s);
+  RAY_LOG(INFO) << "2. state=" << futureStatusToString(state);
+  ASSERT_EQ(std::future_status::timeout, state);
 
-//   // Resume GCS server and it should unblock
-//   StartGCS();
-//   state = f3.wait_for(5s);
-//   RAY_LOG(INFO) << "3. state=" << state;
-//   ASSERT_EQ(std::future_status::ready, state);
-// }
+  // Resume GCS server and it should unblock
+  StartGCS();
+  state = f3.wait_for(5s);
+  RAY_LOG(INFO) << "3. state=" << futureStatusToString(state);
+  ASSERT_EQ(std::future_status::ready, state);
+}
 
 TEST_F(GcsClientReconnectionTest, Timeout) {
   RayConfig::instance().initialize(
@@ -357,7 +371,8 @@ TEST_F(GcsClientReconnectionTest, Timeout) {
   StartGCS();
   auto client = CreateGCSClient();
   bool added = false;
-  auto status = client->InternalKV().Put("", "A", "B", false, gcs::GetGcsTimeoutMs(), added);
+  auto status =
+      client->InternalKV().Put("", "A", "B", false, gcs::GetGcsTimeoutMs(), added);
   RAY_LOG(INFO) << "1. status=" << status.ToString();
   ASSERT_TRUE(status.ok());
   ASSERT_TRUE(added);
@@ -370,7 +385,7 @@ TEST_F(GcsClientReconnectionTest, Timeout) {
   ASSERT_TRUE(status.IsTimedOut());
   ASSERT_TRUE(values.empty());
   RAY_LOG(INFO) << "values=";
-  for (const std::string& value : values) {
+  for (const std::string &value : values) {
     RAY_LOG(INFO) << "- value=" << value;
   }
   StartGCS();
@@ -378,7 +393,7 @@ TEST_F(GcsClientReconnectionTest, Timeout) {
   RAY_LOG(INFO) << "3. status=" << status.ToString();
   ASSERT_TRUE(status.ok());
   RAY_LOG(INFO) << "values=";
-  for (const std::string& value : values) {
+  for (const std::string &value : values) {
     RAY_LOG(INFO) << "- value=" << value;
   }
   ASSERT_EQ(std::vector<std::string>{"A"}, values);
