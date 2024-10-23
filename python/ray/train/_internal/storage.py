@@ -98,7 +98,8 @@ class _ExcludingLocalFilesystem(LocalFileSystem):
 def _pyarrow_fs_copy_files(
     source, destination, source_filesystem=None, destination_filesystem=None, **kwargs
 ):
-    if isinstance(destination_filesystem, pyarrow.fs.S3FileSystem):
+    # Use type_name as some implementation of PyArrow do not have S3/GCP/Azure support
+    if destination_filesystem.type_name.lower() == "s3":
         # Workaround multi-threading issue with pyarrow. Note that use_threads=True
         # is safe for download, just not for uploads, see:
         # https://github.com/apache/arrow/issues/32372
