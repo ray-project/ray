@@ -733,7 +733,7 @@ class DataIterator(abc.ABC):
 
             If your model accepts additional metadata aside from features and label, specify a single additional column or a list of additional columns.
             A common use case is to include sample weights in the data samples and train a ``tf.keras.Model`` with ``tf.keras.Model.fit``.
-            
+
             >>> import pyarrow as pa
             >>> ds = ds.add_column("sample weights", lambda x: pa.array([1] * x.num_rows))
             >>> it = ds.iterator()
