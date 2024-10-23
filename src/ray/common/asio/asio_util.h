@@ -103,7 +103,7 @@ class InstrumentedIOContextWithThread {
 /// struct YourPolicy {
 ///     // List of all IO Context names. We will create 1 thread + 1
 ///     // instrumented_io_context for each. Must be unique and should not contain empty
-///     names.
+///     // names.
 ///     constexpr static std::string_view kAllDedicatedIoContextNames[];
 ///
 ///     // For a given T, returns an index to kAllDedicatedIoContextNames, or -1 for the
@@ -134,8 +134,8 @@ class IoContextProvider {
     }
   }
 
-  // Gets IoContext registered for type T. If the name does not exist in
-  // Policy::kAllDedicatedIoContextNames, crashes.
+  // Gets IoContext registered for type T. If the type is not registered in
+  // Policy::kAllDedicatedIoContextNames, it's a compile error.
   template <typename T>
   instrumented_io_context &GetIoContext() const {
     constexpr int index = Policy::template GetDedicatedIoContextIndex<T>();
