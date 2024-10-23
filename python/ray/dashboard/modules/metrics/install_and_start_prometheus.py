@@ -74,12 +74,13 @@ def install_prometheus(file_path):
 
 def start_prometheus(prometheus_dir):
 
-    # Currently, Ray never modifies this config file, so we can just use the
-    # hardcoded path. (It just copies it to a more user-friendly location, in
-    # MetricsHead._create_default_prometheus_configs.)
-    # However, if in the future Ray ever modifies this file at runtime, we'll
-    # need to use the user-friendly location instead, and reload the config
-    # file after it's updated by Ray.
+    # The function assumes the Ray cluster to be monitored by Prometheus uses the
+    # default configuration with "/tmp/ray" as the default root temporary directory.
+    #
+    # This is to support the `ray metrics launch-prometheus` command, when a Ray cluster
+    # hasn't started yet and the user doesn't have a way to get a `--temp-dir`
+    # anywhere. So we choose to use a hardcoded default value.
+
     config_file = Path(PROMETHEUS_CONFIG_INPUT_PATH)
 
     if not config_file.exists():

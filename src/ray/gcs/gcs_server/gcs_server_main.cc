@@ -70,6 +70,7 @@ int main(int argc, char *argv[]) {
 
   RayConfig::instance().initialize(config_list);
   ray::asio::testing::init();
+  ray::rpc::testing::init();
 
   // IO Service for main loop.
   SetThreadName("gcs_server_main");

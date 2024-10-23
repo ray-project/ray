@@ -259,6 +259,10 @@ def _connect_ray_pdb(
         "traceback": "\n".join(traceback.format_exception(*sys.exc_info())),
         "timestamp": time.time(),
         "job_id": ray.get_runtime_context().get_job_id(),
+        "node_id": ray.get_runtime_context().get_node_id(),
+        "worker_id": ray.get_runtime_context().get_worker_id(),
+        "actor_id": ray.get_runtime_context().get_actor_id(),
+        "task_id": ray.get_runtime_context().get_task_id(),
     }
     _internal_kv_put(
         "RAY_PDB_{}".format(breakpoint_uuid),
