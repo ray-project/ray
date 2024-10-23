@@ -94,6 +94,7 @@ steps:
     job_env: WINDOWS
     instance_type: windows
     commands:
+      - sleep 7200
       - export RAY_VERSION="$RAY_VERSION"
       - export RAY_COMMIT="$RAY_COMMIT"
       - bash /c/workdir/.buildkite/release-automation/verify-windows-wheels-in-docker.sh
