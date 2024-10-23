@@ -93,8 +93,10 @@ ray_cc_library(
         "src/ray/rpc/common.cc",
         "src/ray/rpc/grpc_server.cc",
         "src/ray/rpc/server_call.cc",
+        "src/ray/rpc/rpc_chaos.cc",
     ],
     hdrs = glob([
+        "src/ray/rpc/rpc_chaos.h",
         "src/ray/rpc/client_call.h",
         "src/ray/rpc/common.h",
         "src/ray/rpc/grpc_client.h",
@@ -1548,6 +1550,19 @@ ray_cc_test(
     deps = [
         ":grpc_common_lib",
         ":test_service_cc_grpc",
+    ],
+)
+
+ray_cc_test(
+    name = "rpc_chaos_test",
+    size = "small",
+    srcs = [
+        "src/ray/rpc/test/rpc_chaos_test.cc",
+    ],
+    tags = ["team:core"],
+    deps = [
+        ":grpc_common_lib",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
