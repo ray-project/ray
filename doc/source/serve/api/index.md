@@ -95,6 +95,7 @@ See the [model composition guide](serve-model-composition) for how to update cod
 
    serve.schema.ServeActorDetails
    serve.schema.ProxyDetails
+   serve.schema.ApplicationStatus
    serve.schema.ApplicationStatusOverview
    serve.schema.ServeStatus
    serve.schema.DeploymentStatusOverview
