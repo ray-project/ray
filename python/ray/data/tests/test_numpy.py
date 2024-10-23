@@ -120,9 +120,9 @@ def test_numpy_roundtrip(ray_start_regular_shared, fs, data_path):
     assert ds.schema() == Schema(
         pa.schema([("data", ArrowTensorType((1,), pa.int64()))])
     )
-    np.testing.assert_equal(
-        extract_values("data", ds.take(2)), [np.array([0]), np.array([1])]
-    )
+    assert sorted(ds.take_all(), key=lambda row: row["data"]) == [
+        {"data": np.array([i])} for i in range(10)
+    ]
 
 
 def test_numpy_read(ray_start_regular_shared, tmp_path):
@@ -130,8 +130,9 @@ def test_numpy_read(ray_start_regular_shared, tmp_path):
     os.mkdir(path)
     np.save(os.path.join(path, "test.npy"), np.expand_dims(np.arange(0, 10), 1))
     ds = ray.data.read_numpy(path, override_num_blocks=1)
-    assert str(ds) == (
-        "Dataset(num_rows=?, schema={data: numpy.ndarray(shape=(1,), dtype=int64)})"
+    assert ds.count() == 10
+    assert ds.schema() == Schema(
+        pa.schema([("data", ArrowTensorType((1,), pa.int64()))])
     )
     np.testing.assert_equal(
         extract_values("data", ds.take(2)), [np.array([0]), np.array([1])]
@@ -144,8 +145,8 @@ def test_numpy_read(ray_start_regular_shared, tmp_path):
     ds = ray.data.read_numpy(path, override_num_blocks=1)
     assert ds._plan.initial_num_blocks() == 1
     assert ds.count() == 10
-    assert str(ds) == (
-        "Dataset(num_rows=10, schema={data: numpy.ndarray(shape=(1,), dtype=int64)})"
+    assert ds.schema() == Schema(
+        pa.schema([("data", ArrowTensorType((1,), pa.int64()))])
     )
     assert [v["data"].item() for v in ds.take(2)] == [0, 1]
 
@@ -180,8 +181,9 @@ def test_numpy_read_meta_provider(ray_start_regular_shared, tmp_path):
     ds = ray.data.read_numpy(
         path, meta_provider=FastFileMetadataProvider(), override_num_blocks=1
     )
-    assert str(ds) == (
-        "Dataset(num_rows=?, schema={data: numpy.ndarray(shape=(1,), dtype=int64)})"
+    assert ds.count() == 10
+    assert ds.schema() == Schema(
+        pa.schema([("data", ArrowTensorType((1,), pa.int64()))])
     )
     np.testing.assert_equal(
         extract_values("data", ds.take(2)), [np.array([0]), np.array([1])]
