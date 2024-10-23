@@ -7,6 +7,7 @@ import socket
 import sys
 import traceback
 from collections import defaultdict
+from concurrent.futures import ThreadPoolExecutor
 from typing import List, Optional, Tuple, TypedDict, Union
 
 from opencensus.stats import stats as stats_module
@@ -20,7 +21,7 @@ import ray.dashboard.modules.reporter.reporter_consts as reporter_consts
 import ray.dashboard.utils as dashboard_utils
 from ray._private import utils
 from ray._private.metrics_agent import Gauge, MetricsAgent, Record
-from ray._private.ray_constants import DEBUG_AUTOSCALING_STATUS
+from ray._private.ray_constants import DEBUG_AUTOSCALING_STATUS, env_integer
 from ray._raylet import WorkerID
 from ray.core.generated import reporter_pb2, reporter_pb2_grpc
 from ray.dashboard import k8s_utils
@@ -46,6 +47,13 @@ ENABLE_K8S_DISK_USAGE = os.environ.get("RAY_DASHBOARD_ENABLE_K8S_DISK_USAGE") ==
 IN_CONTAINER = os.path.exists("/sys/fs/cgroup")
 # Using existence of /sys/fs/cgroup as the criterion is consistent with
 # Ray's existing resource logic, see e.g. ray._private.utils.get_num_cpus().
+
+# NOTE: Executor in this head is intentionally constrained to just 1 thread by
+#       default to limit its concurrency, therefore reducing potential for
+#       GIL contention
+RAY_DASHBOARD_REPORTER_AGENT_TPE_MAX_WORKERS = env_integer(
+    "RAY_DASHBOARD_REPORTER_AGENT_TPE_MAX_WORKERS", 1
+)
 
 
 def recursive_asdict(o):
@@ -393,6 +401,11 @@ class ReporterAgent(
             f"{reporter_consts.REPORTER_PREFIX}" f"{self._dashboard_agent.node_id}"
         )
 
+        self._executor = ThreadPoolExecutor(
+            max_workers=RAY_DASHBOARD_REPORTER_AGENT_TPE_MAX_WORKERS,
+            thread_name_prefix="reporter_agent_executor",
+        )
+
     async def GetTraceback(self, request, context):
         pid = request.pid
         native = request.native
@@ -605,9 +618,18 @@ class ReporterAgent(
         if raylet_proc is None:
             return []
         else:
-            workers = {
-                self._generate_worker_key(proc): proc for proc in raylet_proc.children()
-            }
+            workers = {}
+            if sys.platform == "win32":
+                # windows, get the child process not the runner
+                for child in raylet_proc.children():
+                    if child.children():
+                        child = child.children()[0]
+                    workers[self._generate_worker_key(child)] = child
+            else:
+                workers = {
+                    self._generate_worker_key(proc): proc
+                    for proc in raylet_proc.children()
+                }
 
             # We should keep `raylet_proc.children()` in `self` because
             # when `cpu_percent` is first called, it returns the meaningless 0.
@@ -645,9 +667,16 @@ class ReporterAgent(
         try:
             if not self._raylet_proc:
                 curr_proc = psutil.Process()
-                # Here, parent is always raylet because the
-                # dashboard agent is a child of the raylet process.
-                self._raylet_proc = curr_proc.parent()
+                # The dashboard agent is a child of the raylet process.
+                # It is not necessarily the direct child (python-windows
+                # typically uses a py.exe runner to run python), so search
+                # up for a process named 'raylet'
+                candidate = curr_proc.parent()
+                while candidate:
+                    if "raylet" in candidate.name():
+                        break
+                    candidate = candidate.parent()
+                self._raylet_proc = candidate
 
             if self._raylet_proc is not None:
                 if self._raylet_proc.pid == 1:
@@ -1207,9 +1236,11 @@ class ReporterAgent(
                 )
 
                 # NOTE: Stats collection is executed inside the thread-pool
-                #       executor (TPE) to avoid blocking the Dashboard's event-loop
+                #       executor (TPE) to avoid blocking the Agent's event-loop
                 json_payload = await loop.run_in_executor(
-                    None, self._compose_stats_payload, autoscaler_status_json_bytes
+                    self._executor,
+                    self._compose_stats_payload,
+                    autoscaler_status_json_bytes,
                 )
 
                 await publisher.publish_resource_usage(self._key, json_payload)

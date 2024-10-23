@@ -108,7 +108,7 @@ class Curiosity(Exploration):
 
         super().__init__(action_space, model=model, framework=framework, **kwargs)
 
-        if self.policy_config["num_workers"] != 0:
+        if self.policy_config["num_env_runners"] != 0:
             raise ValueError(
                 "Curiosity exploration currently does not support parallelism."
                 " `num_workers` must be 0!"

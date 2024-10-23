@@ -66,7 +66,7 @@ install_ray() {
 
 
     pushd python/ray/dashboard/client
-      choco install nodejs -y
+      choco install nodejs --version=22.4.1 -y
       refreshenv
       # https://stackoverflow.com/questions/69692842/error-message-error0308010cdigital-envelope-routinesunsupported
       export NODE_OPTIONS=--openssl-legacy-provider

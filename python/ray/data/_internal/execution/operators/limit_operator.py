@@ -1,6 +1,6 @@
 import copy
 from collections import deque
-from typing import Deque, List, Tuple
+from typing import Deque, List, Optional, Tuple
 
 import ray
 from ray.data._internal.execution.interfaces import PhysicalOperator, RefBundle
@@ -81,11 +81,12 @@ class LimitOperator(OneToOneOperator):
         if self._limit_reached():
             self.mark_execution_completed()
 
-        # We cannot estimate if we have only consumed empty blocks
-        if self._consumed_rows > 0:
+        # We cannot estimate if we have only consumed empty blocks,
+        # or if the input dependency's total number of output bundles is unknown.
+        num_inputs = self.input_dependencies[0].num_outputs_total()
+        if self._consumed_rows > 0 and num_inputs is not None:
             # Estimate number of output bundles
             # Check the case where _limit > # of input rows
-            num_inputs = self.input_dependencies[0].num_outputs_total()
             estimated_total_output_rows = min(
                 self._limit, self._consumed_rows / self._cur_output_bundles * num_inputs
             )
@@ -108,15 +109,20 @@ class LimitOperator(OneToOneOperator):
     def get_stats(self) -> StatsDict:
         return {self._name: self._output_metadata}
 
-    def num_outputs_total(self) -> int:
+    def num_outputs_total(self) -> Optional[int]:
         # Before execution is completed, we don't know how many output
         # bundles we will have. We estimate based off the consumption so far.
         if self._execution_completed:
             return self._cur_output_bundles
-        elif self._estimated_num_output_bundles is not None:
-            return self._estimated_num_output_bundles
-        else:
-            return self.input_dependencies[0].num_outputs_total()
+        return self._estimated_num_output_bundles
+
+    def num_output_rows_total(self) -> Optional[int]:
+        # The total number of rows is simply the limit or the number
+        # of input rows, whichever is smaller
+        input_num_rows = self.input_dependencies[0].num_output_rows_total()
+        if input_num_rows is None:
+            return None
+        return min(self._limit, input_num_rows)
 
     def throttling_disabled(self) -> bool:
         return True

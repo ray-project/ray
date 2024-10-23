@@ -6,22 +6,23 @@ import numpy as np
 
 import ray
 from ray import tune
-from ray.rllib import _register_all
 from ray.train.constants import DEFAULT_STORAGE_PATH
 from ray.tune.search import BasicVariantGenerator, grid_search
 from ray.tune.search.variant_generator import (
     RecursiveDependencyError,
     _resolve_nested_dict,
 )
+from ray.tune.utils.mock_trainable import MOCK_TRAINABLE_NAME, register_mock_trainable
 
 
 class VariantGeneratorTest(unittest.TestCase):
     def setUp(self):
         ray.init(num_cpus=2)
 
+        register_mock_trainable()
+
     def tearDown(self):
         ray.shutdown()
-        _register_all()  # re-register the evicted objects
 
     def generate_trials(self, spec, name):
         suggester = BasicVariantGenerator()
@@ -38,7 +39,7 @@ class VariantGeneratorTest(unittest.TestCase):
     def testParseToTrials(self):
         trials = self.generate_trials(
             {
-                "run": "PPO",
+                "run": MOCK_TRAINABLE_NAME,
                 "num_samples": 2,
                 "max_failures": 5,
                 "config": {"env": "Pong-v0", "foo": "bar"},
@@ -47,9 +48,9 @@ class VariantGeneratorTest(unittest.TestCase):
         )
         trials = list(trials)
         self.assertEqual(len(trials), 2)
-        self.assertTrue("PPO_Pong-v0" in str(trials[0]))
+        self.assertTrue(MOCK_TRAINABLE_NAME in str(trials[0]))
         self.assertEqual(trials[0].config, {"foo": "bar", "env": "Pong-v0"})
-        self.assertEqual(trials[0].trainable_name, "PPO")
+        self.assertEqual(trials[0].trainable_name, MOCK_TRAINABLE_NAME)
         self.assertEqual(trials[0].experiment_tag, "0")
         self.assertEqual(trials[0].max_failures, 5)
         self.assertEqual(trials[0].evaluated_params, {})
@@ -62,7 +63,7 @@ class VariantGeneratorTest(unittest.TestCase):
     def testEval(self):
         trials = self.generate_trials(
             {
-                "run": "PPO",
+                "run": MOCK_TRAINABLE_NAME,
                 "config": {
                     "foo": {"eval": "2 + 2"},
                 },
@@ -78,7 +79,7 @@ class VariantGeneratorTest(unittest.TestCase):
     def testGridSearch(self):
         trials = self.generate_trials(
             {
-                "run": "PPO",
+                "run": MOCK_TRAINABLE_NAME,
                 "config": {
                     "bar": {"grid_search": [True, False]},
                     "foo": {"grid_search": [1, 2, 3]},
@@ -190,7 +191,7 @@ class VariantGeneratorTest(unittest.TestCase):
     def testGridSearchAndEval(self):
         trials = self.generate_trials(
             {
-                "run": "PPO",
+                "run": MOCK_TRAINABLE_NAME,
                 "config": {
                     "qux": tune.sample_from(lambda spec: 2 + 2),
                     "bar": grid_search([True, False]),
@@ -224,7 +225,7 @@ class VariantGeneratorTest(unittest.TestCase):
     def testConditionResolution(self):
         trials = self.generate_trials(
             {
-                "run": "PPO",
+                "run": MOCK_TRAINABLE_NAME,
                 "config": {
                     "x": 1,
                     "y": tune.sample_from(lambda spec: spec.config.x + 1),
@@ -242,7 +243,7 @@ class VariantGeneratorTest(unittest.TestCase):
     def testDependentLambda(self):
         trials = self.generate_trials(
             {
-                "run": "PPO",
+                "run": MOCK_TRAINABLE_NAME,
                 "config": {
                     "x": grid_search([1, 2]),
                     "y": tune.sample_from(lambda spec: spec.config.x * 100),
@@ -258,7 +259,7 @@ class VariantGeneratorTest(unittest.TestCase):
     def testDependentGridSearch(self):
         trials = self.generate_trials(
             {
-                "run": "PPO",
+                "run": MOCK_TRAINABLE_NAME,
                 "config": {
                     "x": grid_search(
                         [
@@ -287,7 +288,7 @@ class VariantGeneratorTest(unittest.TestCase):
 
         trials = self.generate_trials(
             {
-                "run": "PPO",
+                "run": MOCK_TRAINABLE_NAME,
                 "config": {
                     "x": grid_search(
                         [tune.sample_from(Normal()), tune.sample_from(Normal())]
@@ -305,7 +306,7 @@ class VariantGeneratorTest(unittest.TestCase):
     def testNestedValues(self):
         trials = self.generate_trials(
             {
-                "run": "PPO",
+                "run": MOCK_TRAINABLE_NAME,
                 "config": {
                     "x": {"y": {"z": tune.sample_from(lambda spec: 1)}},
                     "y": tune.sample_from(lambda spec: 12),
@@ -347,7 +348,7 @@ class VariantGeneratorTest(unittest.TestCase):
             list(
                 self.generate_trials(
                     {
-                        "run": "PPO",
+                        "run": MOCK_TRAINABLE_NAME,
                         "config": {
                             "foo": tune.sample_from(lambda spec: spec.config.foo),
                         },

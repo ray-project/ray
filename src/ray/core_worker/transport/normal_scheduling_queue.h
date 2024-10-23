@@ -46,6 +46,7 @@ class NormalSchedulingQueue : public SchedulingQueue {
            const std::string &concurrency_group_name,
            const FunctionDescriptor &function_descriptor,
            TaskID task_id,
+           uint64_t attempt_number,
            const std::vector<rpc::ObjectReference> &dependencies) override;
 
   // Search for an InboundRequest associated with the task that we are trying to cancel.

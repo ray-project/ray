@@ -114,6 +114,14 @@ inline Status GrpcStatusToRayStatus(const grpc::Status &grpc_status) {
   }
 }
 
+/// Statuses that are retried infinitely by the GcsClient.
+/// Now we only retry UNAVAILABLE and UNKNOWN statuses because that indicates the server
+/// may be down.
+inline bool IsGrpcRetryableStatus(Status status) {
+  return status.IsRpcError() && (status.rpc_code() == grpc::StatusCode::UNAVAILABLE ||
+                                 status.rpc_code() == grpc::StatusCode::UNKNOWN);
+}
+
 /// Converts a Protobuf `RepeatedPtrField` to a vector.
 template <class T>
 inline std::vector<T> VectorFromProtobuf(
@@ -121,11 +129,25 @@ inline std::vector<T> VectorFromProtobuf(
   return std::vector<T>(pb_repeated.begin(), pb_repeated.end());
 }
 
+template <class T>
+inline std::vector<T> VectorFromProtobuf(
+    ::google::protobuf::RepeatedPtrField<T> &&pb_repeated) {
+  return std::vector<T>(std::make_move_iterator(pb_repeated.begin()),
+                        std::make_move_iterator(pb_repeated.end()));
+}
+
 /// Converts a Protobuf `RepeatedField` to a vector.
 template <class T>
 inline std::vector<T> VectorFromProtobuf(
     const ::google::protobuf::RepeatedField<T> &pb_repeated) {
   return std::vector<T>(pb_repeated.begin(), pb_repeated.end());
+}
+
+template <class T>
+inline std::vector<T> VectorFromProtobuf(
+    ::google::protobuf::RepeatedField<T> &&pb_repeated) {
+  return std::vector<T>(std::make_move_iterator(pb_repeated.begin()),
+                        std::make_move_iterator(pb_repeated.end()));
 }
 
 /// Converts a Protobuf `RepeatedField` to a vector of IDs.

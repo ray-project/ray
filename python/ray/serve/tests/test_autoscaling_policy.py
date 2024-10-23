@@ -122,45 +122,22 @@ def check_num_requests_ge(client, id: DeploymentID, expected: int):
 
 
 class TestAutoscalingMetrics:
-    @pytest.mark.parametrize(
-        "use_target_ongoing_requests,use_target_num_ongoing_requests_per_replica",
-        [(True, True), (True, False), (False, True)],
-    )
-    def test_basic(
-        self,
-        serve_instance,
-        use_target_num_ongoing_requests_per_replica,
-        use_target_ongoing_requests,
-    ):
+    def test_basic(self, serve_instance):
         """Test that request metrics are sent correctly to the controller."""
 
         client = serve_instance
         signal = SignalActor.remote()
 
-        autoscaling_config = {
-            "metrics_interval_s": 0.1,
-            "min_replicas": 1,
-            "max_replicas": 10,
-            "upscale_delay_s": 0,
-            "downscale_delay_s": 0,
-            "look_back_period_s": 1,
-        }
-        if (
-            use_target_ongoing_requests
-            and not use_target_num_ongoing_requests_per_replica
-        ):
-            autoscaling_config["target_ongoing_requests"] = 10
-        elif (
-            use_target_ongoing_requests and use_target_num_ongoing_requests_per_replica
-        ):
-            autoscaling_config["target_ongoing_requests"] = 10
-            # Random setting, should get ignored
-            autoscaling_config["target_num_ongoing_requests_per_replica"] = 234
-        else:
-            autoscaling_config["target_num_ongoing_requests_per_replica"] = 10
-
         @serve.deployment(
-            autoscaling_config=autoscaling_config,
+            autoscaling_config={
+                "metrics_interval_s": 0.1,
+                "min_replicas": 1,
+                "max_replicas": 10,
+                "target_ongoing_requests": 10,
+                "upscale_delay_s": 0,
+                "downscale_delay_s": 0,
+                "look_back_period_s": 1,
+            },
             # We will send many requests. This will make sure replicas are
             # killed quickly during cleanup.
             graceful_shutdown_timeout_s=1,
@@ -556,6 +533,9 @@ def test_cold_start_time(serve_instance):
         return True
 
     wait_for_condition(check_running)
+
+    assert requests.post("http://localhost:8000/-/healthz").status_code == 200
+    assert requests.post("http://localhost:8000/-/routes").status_code == 200
 
     start = time.time()
     result = handle.remote().result()
@@ -1046,7 +1026,7 @@ import os
 
 @serve.deployment
 def g():
-    signal = ray.get_actor("signal", namespace="serve")
+    signal = ray.get_actor("signal123")
     ray.get(signal.wait.remote())
     return os.getpid()
 
@@ -1091,7 +1071,7 @@ app = g.bind()
     )
 
     signal.send.remote()
-    existing_pid = ray.get(ref)
+    existing_pid = int(ray.get(ref))
 
     # Step 4: Change the max replicas to 2
     app_config["deployments"][0]["autoscaling_config"]["max_replicas"] = 2
@@ -1105,7 +1085,7 @@ app = g.bind()
 
     # Step 5: Make sure it is the same replica (lightweight change).
     for _ in range(10):
-        other_pid = ray.get(send_request.remote())
+        other_pid = int(ray.get(send_request.remote()))
         assert other_pid == existing_pid
 
     # Step 6: Make sure initial_replicas overrides previous replicas
@@ -1121,9 +1101,7 @@ app = g.bind()
     )
 
     # Step 7: Make sure original replica is still running (lightweight change)
-    pids = set()
-    for _ in range(15):
-        pids.add(ray.get(send_request.remote()))
+    pids = {int(pid) for pid in ray.get([send_request.remote() for _ in range(20)])}
     assert existing_pid in pids
 
 
@@ -1132,13 +1110,7 @@ app = g.bind()
     not RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE,
     reason="Only works when collecting request metrics at handle.",
 )
-@pytest.mark.parametrize(
-    "use_max_concurrent_queries,use_max_ongoing_requests",
-    [(True, True), (True, False), (False, True)],
-)
-def test_max_ongoing_requests_set_to_one(
-    serve_instance_with_signal, use_max_concurrent_queries, use_max_ongoing_requests
-):
+def test_max_ongoing_requests_set_to_one(serve_instance_with_signal):
     assert RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE
     _, signal = serve_instance_with_signal
 
@@ -1152,6 +1124,7 @@ def test_max_ongoing_requests_set_to_one(
             metrics_interval_s=0.5,
             look_back_period_s=2,
         ),
+        max_ongoing_requests=1,
         graceful_shutdown_timeout_s=1,
         ray_actor_options={"num_cpus": 0},
     )
@@ -1159,10 +1132,6 @@ def test_max_ongoing_requests_set_to_one(
         await signal.wait.remote()
         return os.getpid()
 
-    if use_max_concurrent_queries:
-        f = f.options(max_concurrent_queries=1)
-    if use_max_ongoing_requests:
-        f = f.options(max_ongoing_requests=1)
     h = serve.run(f.bind())
 
     check_num_replicas_eq("f", 1)

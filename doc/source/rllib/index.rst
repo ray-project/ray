@@ -17,6 +17,7 @@ RLlib: Industry-Grade Reinforcement Learning
     user-guides
     rllib-examples
     rllib-new-api-stack
+    new-api-stack-migration-guide
     package_ref/index
 
 
@@ -125,7 +126,6 @@ click on the dropdowns below:
 
     *  Offline
 
-       -  |pytorch| |tensorflow| :ref:`Conservative Q-Learning (CQL) <cql>`
        -  |pytorch| |tensorflow| :ref:`Advantage Re-Weighted Imitation Learning (MARWIL) <marwil>`
 
 

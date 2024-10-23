@@ -14,6 +14,22 @@ from ray.includes.common cimport (
     kStreamingGeneratorReturn,
 )
 
+from ray.exceptions import (
+    RayActorError,
+    ActorDiedError,
+    RayError,
+    RaySystemError,
+    RayTaskError,
+    ObjectStoreFullError,
+    OutOfDiskError,
+    GetTimeoutError,
+    TaskCancelledError,
+    AsyncioActorExit,
+    PendingCallsLimitExceeded,
+    RpcError,
+    ObjectRefStreamEndOfStreamError,
+)
+
 
 cdef class GcsClientOptions:
     """Cython wrapper class of C++ `ray::gcs::GcsClientOptions`."""
@@ -43,6 +59,61 @@ cdef class GcsClientOptions:
 
     cdef CGcsClientOptions* native(self):
         return <CGcsClientOptions*>(self.inner.get())
+
+cdef int check_status(const CRayStatus& status) nogil except -1:
+    if status.ok():
+        return 0
+
+    with gil:
+        message = status.message().decode()
+
+    if status.IsObjectStoreFull():
+        raise ObjectStoreFullError(message)
+    elif status.IsInvalidArgument():
+        raise ValueError(message)
+    elif status.IsOutOfDisk():
+        raise OutOfDiskError(message)
+    elif status.IsObjectRefEndOfStream():
+        raise ObjectRefStreamEndOfStreamError(message)
+    elif status.IsInterrupted():
+        raise KeyboardInterrupt()
+    elif status.IsTimedOut():
+        raise GetTimeoutError(message)
+    elif status.IsNotFound():
+        raise ValueError(message)
+    elif status.IsObjectNotFound():
+        raise ValueError(message)
+    elif status.IsObjectUnknownOwner():
+        raise ValueError(message)
+    elif status.IsIOError():
+        raise IOError(message)
+    elif status.IsRpcError():
+        raise RpcError(message, rpc_code=status.rpc_code())
+    elif status.IsIntentionalSystemExit():
+        with gil:
+            raise_sys_exit_with_custom_error_message(message)
+    elif status.IsUnexpectedSystemExit():
+        with gil:
+            raise_sys_exit_with_custom_error_message(
+                message, exit_code=1)
+    elif status.IsChannelError():
+        raise RayChannelError(message)
+    elif status.IsChannelTimeoutError():
+        raise RayChannelTimeoutError(message)
+    else:
+        raise RaySystemError(message)
+
+cdef int check_status_timeout_as_rpc_error(const CRayStatus& status) nogil except -1:
+    """
+    Same as check_status, except that it raises RpcError for timeout. This is for
+    backward compatibility: on timeout, `ray.get` raises GetTimeoutError, while
+    GcsClient methods raise RpcError. So in the binding, `get_objects` use check_status
+    and GcsClient methods use check_status_timeout_as_rpc_error.
+    """
+    if status.IsTimedOut():
+        raise RpcError(status.message().decode(),
+                       rpc_code=CGrpcStatusCode.DEADLINE_EXCEEDED)
+    return check_status(status)
 
 
 WORKER_PROCESS_SETUP_HOOK_KEY_NAME_GCS = str(kWorkerSetupHookKeyName)

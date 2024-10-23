@@ -137,7 +137,7 @@ def custom_eval_function(
             # Return only the metrics, NOT the sampled episodes (we don't need them
             # anymore).
             func=lambda worker: (worker.sample(), worker.get_metrics()),
-            local_worker=False,
+            local_env_runner=False,
         )
         sampled_episodes.extend(
             eps

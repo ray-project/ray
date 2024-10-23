@@ -221,7 +221,9 @@ def test_list_basic(shutdown_only, storage_type):
         assert sorted([f.base_name for f in d2]) == ["bar1", "bar2"], d2
         with pytest.raises(FileNotFoundError):
             client.list("invalid")
-        with pytest.raises(NotADirectoryError):
+        with pytest.raises(
+            FileNotFoundError if storage_type == "s3" else NotADirectoryError
+        ):
             client.list("foo/bar1")
 
 

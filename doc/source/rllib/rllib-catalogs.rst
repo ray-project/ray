@@ -2,8 +2,6 @@
 
 .. include:: /_includes/rllib/new_api_stack.rst
 
-.. include:: /_includes/rllib/new_api_stack_component.rst
-
 
 Catalog (Alpha)
 ===============
@@ -146,9 +144,9 @@ Since Catalogs effectively control what ``models`` and ``distributions`` RLlib u
 they are also part of RLlib’s configurations. As the primary entry point for configuring RLlib,
 :py:class:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig` is the place where you can configure the
 Catalogs of the RLModules that are created.
-You set the ``catalog class`` by going through the :py:class:`~ray.rllib.core.rl_module.rl_module.SingleAgentRLModuleSpec`
-or :py:class:`~ray.rllib.core.rl_module.marl_module.MultiAgentRLModuleSpec` of an AlgorithmConfig.
-For example, in heterogeneous multi-agent cases, you modify the MultiAgentRLModuleSpec.
+You set the ``catalog class`` by going through the :py:class:`~ray.rllib.core.rl_module.rl_module.RLModuleSpec`
+or :py:class:`~ray.rllib.core.rl_module.multi_rl_module.MultiRLModuleSpec` of an AlgorithmConfig.
+For example, in heterogeneous multi-agent cases, you modify the MultiRLModuleSpec.
 
 .. image:: images/catalog/catalog_rlmspecs_diagram.svg
     :align: center

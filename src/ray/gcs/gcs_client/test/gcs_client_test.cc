@@ -90,6 +90,7 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
       std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
 
+    // Create GCS client.
     ReconnectClient();
   }
 
@@ -110,6 +111,7 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
     rpc::ResetServerCallExecutor();
   }
 
+  // Each GcsClient has its own const cluster_id, so to reconnect we re-create the client.
   void ReconnectClient() {
     // Reconnecting a client happens when the server restarts with a different cluster
     // id. So we nede to re-create the client with the new cluster id.
@@ -242,7 +244,7 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
     message.mutable_actor_creation_task_spec()->set_actor_id(actor_id.Binary());
     message.mutable_actor_creation_task_spec()->set_is_detached(is_detached);
     message.mutable_actor_creation_task_spec()->set_ray_namespace("test");
-    // If the actor is non-detached, the `WaitForActorOutOfScope` function of the core
+    // If the actor is non-detached, the `WaitForActorRefDeleted` function of the core
     // worker client is called during the actor registration process. In order to simulate
     // the scenario of registration failure, we set the address to an illegal value.
     if (!is_detached) {
@@ -276,8 +278,8 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
     rpc::ActorTableData actor_table_data;
     RAY_CHECK_OK(gcs_client_->Actors().AsyncGet(
         actor_id,
-        [&actor_table_data, &promise](
-            Status status, const boost::optional<rpc::ActorTableData> &result) {
+        [&actor_table_data, &promise](Status status,
+                                      const std::optional<rpc::ActorTableData> &result) {
           assert(result);
           actor_table_data.CopyFrom(*result);
           promise.set_value(true);
@@ -741,7 +743,7 @@ TEST_P(GcsClientTest, TestActorTableResubscribe) {
   auto expected_num_subscribe_one_notifications = num_subscribe_one_notifications + 1;
 
   // NOTE: In the process of actor registration, if the callback function of
-  // `WaitForActorOutOfScope` is executed first, and then the callback function of
+  // `WaitForActorRefDeleted` is executed first, and then the callback function of
   // `ActorTable().Put` is executed, the actor registration fails, we will receive one
   // notification message; otherwise, the actor registration succeeds, we will receive
   // two notification messages. So we can't assert whether the actor is registered

@@ -14,8 +14,11 @@ from ray import ObjectRef
 from ray.rllib import SampleBatch
 from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
-from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
-from ray.rllib.env.env_runner_group import _handle_remote_call_result_errors
+from ray.rllib.core import (
+    COMPONENT_ENV_TO_MODULE_CONNECTOR,
+    COMPONENT_MODULE_TO_ENV_CONNECTOR,
+)
+from ray.rllib.core.rl_module.rl_module import RLModuleSpec
 from ray.rllib.execution.buffers.mixin_replay_buffer import MixInMultiAgentReplayBuffer
 from ray.rllib.execution.learner_thread import LearnerThread
 from ray.rllib.execution.multi_gpu_learner_thread import MultiGPULearnerThread
@@ -74,7 +77,7 @@ logger = logging.getLogger(__name__)
 LEARNER_RESULTS_CURR_ENTROPY_COEFF_KEY = "curr_entropy_coeff"
 
 
-class ImpalaConfig(AlgorithmConfig):
+class IMPALAConfig(AlgorithmConfig):
     """Defines a configuration class from which an Impala can be built.
 
     .. testcode::
@@ -130,12 +133,11 @@ class ImpalaConfig(AlgorithmConfig):
         self.vtrace_clip_pg_rho_threshold = 1.0
         self.num_multi_gpu_tower_stacks = 1  # @OldAPIstack
         self.minibatch_buffer_size = 1  # @OldAPIstack
-        self.num_sgd_iter = 1
         self.replay_proportion = 0.0  # @OldAPIstack
         self.replay_buffer_num_slots = 0  # @OldAPIstack
         self.learner_queue_size = 3
         self.learner_queue_timeout = 300  # @OldAPIstack
-        self.max_requests_in_flight_per_sampler_worker = 2
+        self.max_requests_in_flight_per_env_runner = 2
         self.max_requests_in_flight_per_aggregator_worker = 2
         self.timeout_s_sampler_manager = 0.0
         self.timeout_s_aggregator_manager = 0.0
@@ -164,10 +166,10 @@ class ImpalaConfig(AlgorithmConfig):
         self._lr_vf = 0.0005  # @OldAPIstack
 
         # Override some of AlgorithmConfig's default values with IMPALA-specific values.
+        self.num_learners = 1
         self.rollout_fragment_length = 50
         self.train_batch_size = 500  # @OldAPIstack
         self.train_batch_size_per_learner = 500
-        self._minibatch_size = "auto"
         self.num_env_runners = 2
         self.num_gpus = 1  # @OldAPIstack
         self.lr = 0.0005
@@ -196,8 +198,6 @@ class ImpalaConfig(AlgorithmConfig):
         num_gpu_loader_threads: Optional[int] = NotProvided,
         num_multi_gpu_tower_stacks: Optional[int] = NotProvided,
         minibatch_buffer_size: Optional[int] = NotProvided,
-        minibatch_size: Optional[Union[int, str]] = NotProvided,
-        num_sgd_iter: Optional[int] = NotProvided,
         replay_proportion: Optional[float] = NotProvided,
         replay_buffer_num_slots: Optional[int] = NotProvided,
         learner_queue_size: Optional[int] = NotProvided,
@@ -248,15 +248,7 @@ class ImpalaConfig(AlgorithmConfig):
                 - This enables us to preload data into these stacks while another stack
                 is performing gradient calculations.
             minibatch_buffer_size: How many train batches should be retained for
-                minibatching. This conf only has an effect if `num_sgd_iter > 1`.
-            minibatch_size: The size of minibatches that are trained over during
-                each SGD iteration. If "auto", will use the same value as
-                `train_batch_size`.
-                Note that this setting only has an effect if
-                `enable_rl_module_and_learner=True` and it must be a multiple of
-                `rollout_fragment_length` or `sequence_length` and smaller than or equal
-                to `train_batch_size`.
-            num_sgd_iter: Number of passes to make over each train batch.
+                minibatching. This conf only has an effect if `num_epochs > 1`.
             replay_proportion: Set >0 to enable experience replay. Saved samples will
                 be replayed with a p:1 proportion to new data samples.
             replay_buffer_num_slots: Number of sample batches to store for replay.
@@ -326,8 +318,6 @@ class ImpalaConfig(AlgorithmConfig):
             self.num_multi_gpu_tower_stacks = num_multi_gpu_tower_stacks
         if minibatch_buffer_size is not NotProvided:
             self.minibatch_buffer_size = minibatch_buffer_size
-        if num_sgd_iter is not NotProvided:
-            self.num_sgd_iter = num_sgd_iter
         if replay_proportion is not NotProvided:
             self.replay_proportion = replay_proportion
         if replay_buffer_num_slots is not NotProvided:
@@ -370,8 +360,6 @@ class ImpalaConfig(AlgorithmConfig):
             self._separate_vf_optimizer = _separate_vf_optimizer
         if _lr_vf is not NotProvided:
             self._lr_vf = _lr_vf
-        if minibatch_size is not NotProvided:
-            self._minibatch_size = minibatch_size
 
         return self
 
@@ -399,14 +387,6 @@ class ImpalaConfig(AlgorithmConfig):
 
         # Entropy coeff schedule checking.
         if self.enable_rl_module_and_learner:
-            if not self.enable_env_runner_and_connector_v2:
-                raise ValueError(
-                    "Setting `enable_rl_module_and_learner` to True and "
-                    "`enable_env_runner_and_connector_v2` to False ('hybrid API stack'"
-                    ") is not longer supported! Set both to True or both to False, "
-                    "instead."
-                )
-
             if self.entropy_coeff_schedule is not None:
                 raise ValueError(
                     "`entropy_coeff_schedule` is deprecated and must be None! Use the "
@@ -448,14 +428,14 @@ class ImpalaConfig(AlgorithmConfig):
         # Learner API specific checks.
         if (
             self.enable_rl_module_and_learner
-            and self._minibatch_size != "auto"
+            and self.minibatch_size is not None
             and not (
                 (self.minibatch_size % self.rollout_fragment_length == 0)
                 and self.minibatch_size <= self.total_train_batch_size
             )
         ):
             raise ValueError(
-                f"`minibatch_size` ({self._minibatch_size}) must either be 'auto' "
+                f"`minibatch_size` ({self._minibatch_size}) must either be None "
                 "or a multiple of `rollout_fragment_length` "
                 f"({self.rollout_fragment_length}) while at the same time smaller "
                 "than or equal to `total_train_batch_size` "
@@ -470,56 +450,39 @@ class ImpalaConfig(AlgorithmConfig):
         """
         return (1 / self.replay_proportion) if self.replay_proportion > 0 else 0.0
 
-    @property
-    def minibatch_size(self):
-        # If 'auto', use the train_batch_size (meaning each SGD iter is a single pass
-        # through the entire train batch). Otherwise, use user provided setting.
-        return (
-            (
-                self.train_batch_size_per_learner
-                if self.enable_env_runner_and_connector_v2
-                else self.train_batch_size
-            )
-            if self._minibatch_size == "auto"
-            else self._minibatch_size
-        )
-
     @override(AlgorithmConfig)
     def get_default_learner_class(self):
         if self.framework_str == "torch":
             from ray.rllib.algorithms.impala.torch.impala_torch_learner import (
-                ImpalaTorchLearner,
+                IMPALATorchLearner,
             )
 
-            return ImpalaTorchLearner
-        elif self.framework_str == "tf2":
-            from ray.rllib.algorithms.impala.tf.impala_tf_learner import ImpalaTfLearner
-
-            return ImpalaTfLearner
+            return IMPALATorchLearner
+        elif self.framework_str in ["tf2", "tf"]:
+            raise ValueError(
+                "TensorFlow is no longer supported on the new API stack! "
+                "Use `framework='torch'`."
+            )
         else:
             raise ValueError(
                 f"The framework {self.framework_str} is not supported. "
-                "Use either 'torch' or 'tf2'."
+                "Use `framework='torch'`."
             )
 
     @override(AlgorithmConfig)
-    def get_default_rl_module_spec(self) -> SingleAgentRLModuleSpec:
+    def get_default_rl_module_spec(self) -> RLModuleSpec:
         from ray.rllib.algorithms.ppo.ppo_catalog import PPOCatalog
 
         if self.framework_str == "tf2":
             from ray.rllib.algorithms.ppo.tf.ppo_tf_rl_module import PPOTfRLModule
 
-            return SingleAgentRLModuleSpec(
-                module_class=PPOTfRLModule, catalog_class=PPOCatalog
-            )
+            return RLModuleSpec(module_class=PPOTfRLModule, catalog_class=PPOCatalog)
         elif self.framework_str == "torch":
             from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import (
                 PPOTorchRLModule,
             )
 
-            return SingleAgentRLModuleSpec(
-                module_class=PPOTorchRLModule, catalog_class=PPOCatalog
-            )
+            return RLModuleSpec(module_class=PPOTorchRLModule, catalog_class=PPOCatalog)
         else:
             raise ValueError(
                 f"The framework {self.framework_str} is not supported. "
@@ -527,7 +490,10 @@ class ImpalaConfig(AlgorithmConfig):
             )
 
 
-class Impala(Algorithm):
+ImpalaConfig = IMPALAConfig
+
+
+class IMPALA(Algorithm):
     """Importance weighted actor/learner architecture (IMPALA) Algorithm
 
     == Overview of data flow in IMPALA ==
@@ -536,7 +502,7 @@ class Impala(Algorithm):
     2. If enabled, the replay buffer stores and produces batches of size
        `rollout_fragment_length * num_envs_per_env_runner`.
     3. If enabled, the minibatch ring buffer stores and replays batches of
-       size `train_batch_size` up to `num_sgd_iter` times per batch.
+       size `train_batch_size` up to `num_epochs` times per batch.
     4. The learner thread executes data parallel SGD across `num_gpus` GPUs
        on batches of size `train_batch_size`.
     """
@@ -640,14 +606,12 @@ class Impala(Algorithm):
 
         if not self.config.enable_rl_module_and_learner:
             # Create and start the learner thread.
-            self._learner_thread = make_learner_thread(
-                self.workers.local_worker(), self.config
-            )
+            self._learner_thread = make_learner_thread(self.env_runner, self.config)
             self._learner_thread.start()
 
     @override(Algorithm)
     def training_step(self) -> ResultDict:
-        # Old- and hybrid API stacks.
+        # Old API stack.
         if not self.config.enable_rl_module_and_learner:
             return self._training_step_old_api_stack()
 
@@ -733,6 +697,9 @@ class Impala(Algorithm):
                                 NUM_ENV_STEPS_SAMPLED_LIFETIME, default=0
                             ),
                         },
+                        num_epochs=self.config.num_epochs,
+                        minibatch_size=self.config.minibatch_size,
+                        shuffle_batch_per_epoch=self.config.shuffle_batch_per_epoch,
                     )
                 else:
                     learner_results = self.learner_group.update_from_episodes(
@@ -744,6 +711,9 @@ class Impala(Algorithm):
                                 NUM_ENV_STEPS_SAMPLED_LIFETIME, default=0
                             ),
                         },
+                        num_epochs=self.config.num_epochs,
+                        minibatch_size=self.config.minibatch_size,
+                        shuffle_batch_per_epoch=self.config.shuffle_batch_per_epoch,
                     )
                 if not do_async_updates:
                     learner_results = [learner_results]
@@ -792,7 +762,7 @@ class Impala(Algorithm):
                 )
                 self.metrics.log_value(NUM_SYNCH_WORKER_WEIGHTS, 1, reduce="sum")
                 with self.metrics.log_time((TIMERS, SYNCH_WORKER_WEIGHTS_TIMER)):
-                    self.workers.sync_env_runner_states(
+                    self.env_runner_group.sync_env_runner_states(
                         config=self.config,
                         env_runner_indices_to_update=env_runner_indices_to_update,
                         env_steps_sampled=self.metrics.peek(
@@ -811,7 +781,10 @@ class Impala(Algorithm):
             _episodes = _worker.sample()
             # Get the EnvRunner's connector states.
             _connector_states = _worker.get_state(
-                components=["env_to_module_connector", "module_to_env_connector"]
+                components=[
+                    COMPONENT_ENV_TO_MODULE_CONNECTOR,
+                    COMPONENT_MODULE_TO_ENV_CONNECTOR,
+                ]
             )
             _metrics = _worker.get_metrics()
             # Return episode lists by reference so we don't have to send them to the
@@ -822,14 +795,16 @@ class Impala(Algorithm):
         episode_refs = []
         connector_states = []
         env_runner_metrics = []
-        num_healthy_remote_workers = self.workers.num_healthy_remote_workers()
+        num_healthy_remote_workers = self.env_runner_group.num_healthy_remote_workers()
 
         # Perform asynchronous sampling on all (healthy) remote rollout workers.
         if num_healthy_remote_workers > 0:
-            self.workers.foreach_worker_async(_remote_sample_get_state_and_metrics)
+            self.env_runner_group.foreach_worker_async(
+                _remote_sample_get_state_and_metrics
+            )
             async_results: List[
                 Tuple[int, ObjectRef]
-            ] = self.workers.fetch_ready_async_reqs(
+            ] = self.env_runner_group.fetch_ready_async_reqs(
                 timeout_seconds=self.config.timeout_s_sampler_manager,
                 return_obj_refs=False,
             )
@@ -846,12 +821,15 @@ class Impala(Algorithm):
                 env_runner_metrics.append(metrics)
         # Sample from the local EnvRunner.
         else:
-            episodes = self.workers.local_worker().sample()
-            env_runner_metrics = [self.workers.local_worker().get_metrics()]
+            episodes = self.env_runner.sample()
+            env_runner_metrics = [self.env_runner.get_metrics()]
             episode_refs = [ray.put(episodes)]
             connector_states = [
-                self.workers.local_worker().get_state(
-                    components=["env_to_module_connector", "module_to_env_connector"]
+                self.env_runner.get_state(
+                    components=[
+                        COMPONENT_ENV_TO_MODULE_CONNECTOR,
+                        COMPONENT_MODULE_TO_ENV_CONNECTOR,
+                    ]
                 )
             ]
 
@@ -927,9 +905,12 @@ class Impala(Algorithm):
                 timeout_seconds=self.config.timeout_s_aggregator_manager,
             )
         )
-        _handle_remote_call_result_errors(
+        FaultTolerantActorManager.handle_remote_call_result_errors(
             waiting_processed_sample_batches,
-            self.config.ignore_env_runner_failures,
+            ignore_ray_errors=(
+                self.config.ignore_env_runner_failures
+                or self.config.recreate_failed_env_runners
+            ),
         )
 
         return list(waiting_processed_sample_batches.ignore_errors())
@@ -1017,10 +998,8 @@ class Impala(Algorithm):
 
         # Get sampled SampleBatches from our workers (by ray references if we use
         # tree-aggregation).
-        unprocessed_sample_batches = (
-            self._get_samples_from_workers_old_and_hybrid_api_stack(
-                return_object_refs=use_tree_aggregation,
-            )
+        unprocessed_sample_batches = self._get_samples_from_workers_old_api_stack(
+            return_object_refs=use_tree_aggregation,
         )
         # Tag workers that actually produced ready sample batches this iteration.
         # Those workers will have to get updated at the end of the iteration.
@@ -1064,12 +1043,13 @@ class Impala(Algorithm):
         if self._aggregator_actor_manager:
             self._aggregator_actor_manager.probe_unhealthy_actors(
                 timeout_seconds=self.config.env_runner_health_probe_timeout_s,
+                mark_healthy=True,
             )
 
         return train_results
 
     @OldAPIStack
-    def _get_samples_from_workers_old_and_hybrid_api_stack(
+    def _get_samples_from_workers_old_api_stack(
         self,
         return_object_refs: Optional[bool] = False,
     ) -> List[Tuple[int, Union[ObjectRef, SampleBatchType]]]:
@@ -1094,21 +1074,22 @@ class Impala(Algorithm):
             # env_instance (either because there are no remote workers or
             # self.config.create_env_on_local_worker == True), then sample from the
             # local worker. Otherwise just return an empty list.
-            if self.workers.num_healthy_remote_workers() > 0:
+            if self.env_runner_group.num_healthy_remote_workers() > 0:
                 # Perform asynchronous sampling on all (remote) rollout workers.
-                self.workers.foreach_worker_async(lambda worker: worker.sample())
+                self.env_runner_group.foreach_worker_async(
+                    lambda worker: worker.sample()
+                )
                 sample_batches: List[
                     Tuple[int, ObjectRef]
-                ] = self.workers.fetch_ready_async_reqs(
+                ] = self.env_runner_group.fetch_ready_async_reqs(
                     timeout_seconds=self.config.timeout_s_sampler_manager,
                     return_obj_refs=return_object_refs,
                 )
             elif self.config.num_env_runners == 0 or (
-                self.workers.local_worker()
-                and self.workers.local_worker().async_env is not None
+                self.env_runner and self.env_runner.async_env is not None
             ):
                 # Sampling from the local worker
-                sample_batch = self.workers.local_worker().sample()
+                sample_batch = self.env_runner.sample()
                 if return_object_refs:
                     sample_batch = ray.put(sample_batch)
                 sample_batches = [(0, sample_batch)]
@@ -1164,9 +1145,12 @@ class Impala(Algorithm):
                 timeout_seconds=self.config.timeout_s_aggregator_manager,
             )
         )
-        _handle_remote_call_result_errors(
+        FaultTolerantActorManager.handle_remote_call_result_errors(
             waiting_processed_sample_batches,
-            self.config.ignore_env_runner_failures,
+            ignore_ray_errors=(
+                self.config.ignore_env_runner_failures
+                or self.config.recreate_failed_env_runners
+            ),
         )
 
         return [b.get() for b in waiting_processed_sample_batches.ignore_errors()]
@@ -1281,7 +1265,7 @@ class Impala(Algorithm):
                     ),
                 },
                 async_update=async_update,
-                num_iters=self.config.num_sgd_iter,
+                num_epochs=self.config.num_epochs,
                 minibatch_size=self.config.minibatch_size,
             )
             if not async_update:
@@ -1386,56 +1370,56 @@ class Impala(Algorithm):
             policy_ids: Optional list of Policy IDs to update. If None, will update all
                 policies on the to-be-updated workers.
         """
-        local_worker = self.workers.local_worker()
         # Update global vars of the local worker.
         if self.config.policy_states_are_swappable:
-            local_worker.lock()
+            self.env_runner.lock()
         global_vars = {
             "timestep": self._counters[NUM_AGENT_STEPS_TRAINED],
             "num_grad_updates_per_policy": {
-                pid: local_worker.policy_map[pid].num_grad_updates
+                pid: self.env_runner.policy_map[pid].num_grad_updates
                 for pid in policy_ids or []
             },
         }
-        local_worker.set_global_vars(global_vars, policy_ids=policy_ids)
+        self.env_runner.set_global_vars(global_vars, policy_ids=policy_ids)
         if self.config.policy_states_are_swappable:
-            local_worker.unlock()
+            self.env_runner.unlock()
 
         # Only need to update workers if there are remote workers.
         self._counters[NUM_TRAINING_STEP_CALLS_SINCE_LAST_SYNCH_WORKER_WEIGHTS] += 1
         if (
-            self.workers.num_remote_workers() > 0
+            self.env_runner_group.num_remote_workers() > 0
             and self._counters[NUM_TRAINING_STEP_CALLS_SINCE_LAST_SYNCH_WORKER_WEIGHTS]
             >= self.config.broadcast_interval
             and workers_that_need_updates
         ):
             if self.config.policy_states_are_swappable:
-                local_worker.lock()
-            weights = local_worker.get_weights(policy_ids)
+                self.env_runner.lock()
+            weights = self.env_runner.get_weights(policy_ids)
             if self.config.policy_states_are_swappable:
-                local_worker.unlock()
+                self.env_runner.unlock()
             weights_ref = ray.put(weights)
 
             self._learner_thread.policy_ids_updated.clear()
             self._counters[NUM_TRAINING_STEP_CALLS_SINCE_LAST_SYNCH_WORKER_WEIGHTS] = 0
             self._counters[NUM_SYNCH_WORKER_WEIGHTS] += 1
-            self.workers.foreach_worker(
+            self.env_runner_group.foreach_worker(
                 func=lambda w: w.set_weights(ray.get(weights_ref), global_vars),
-                local_worker=False,
+                local_env_runner=False,
                 remote_worker_ids=list(workers_that_need_updates),
                 timeout_seconds=0,  # Don't wait for the workers to finish.
             )
 
     @override(Algorithm)
-    def _compile_iteration_results_old_and_hybrid_api_stacks(self, *args, **kwargs):
-        result = super()._compile_iteration_results_old_and_hybrid_api_stacks(
-            *args, **kwargs
-        )
+    def _compile_iteration_results_old_api_stack(self, *args, **kwargs):
+        result = super()._compile_iteration_results_old_api_stack(*args, **kwargs)
         if not self.config.enable_rl_module_and_learner:
             result = self._learner_thread.add_learner_metrics(
                 result, overwrite_learner_info=False
             )
         return result
+
+
+Impala = IMPALA
 
 
 @DeveloperAPI
@@ -1518,7 +1502,7 @@ def make_learner_thread(local_worker, config):
             lr=config["lr"],
             train_batch_size=config["train_batch_size"],
             num_multi_gpu_tower_stacks=config["num_multi_gpu_tower_stacks"],
-            num_sgd_iter=config["num_sgd_iter"],
+            num_sgd_iter=config["num_epochs"],
             learner_queue_size=config["learner_queue_size"],
             learner_queue_timeout=config["learner_queue_timeout"],
             num_data_load_threads=config["num_gpu_loader_threads"],
@@ -1527,7 +1511,7 @@ def make_learner_thread(local_worker, config):
         learner_thread = LearnerThread(
             local_worker,
             minibatch_buffer_size=config["minibatch_buffer_size"],
-            num_sgd_iter=config["num_sgd_iter"],
+            num_sgd_iter=config["num_epochs"],
             learner_queue_size=config["learner_queue_size"],
             learner_queue_timeout=config["learner_queue_timeout"],
         )

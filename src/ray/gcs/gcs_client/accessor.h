@@ -19,7 +19,6 @@
 #include "ray/common/placement_group.h"
 #include "ray/common/task/task_spec.h"
 #include "ray/gcs/callback.h"
-#include "ray/gcs/entry_change_notification.h"
 #include "ray/rpc/client_call.h"
 #include "ray/util/sequencer.h"
 #include "src/ray/protobuf/gcs.pb.h"
@@ -60,12 +59,14 @@ class ActorInfoAccessor {
   /// \param  job_id To filter actors by job_id.
   /// \param  actor_state_name To filter actors based on actor state.
   /// \param callback Callback that will be called after lookup finishes.
+  /// \param timeout_ms -1 means infinite.
   /// \return Status
   virtual Status AsyncGetAllByFilter(
       const std::optional<ActorID> &actor_id,
       const std::optional<JobID> &job_id,
       const std::optional<std::string> &actor_state_name,
-      const MultiItemCallback<rpc::ActorTableData> &callback);
+      const MultiItemCallback<rpc::ActorTableData> &callback,
+      int64_t timeout_ms = -1);
 
   /// Get actor specification for a named actor from the GCS asynchronously.
   ///
@@ -118,6 +119,12 @@ class ActorInfoAccessor {
       const std::string &ray_namespace,
       std::vector<std::pair<std::string, std::string>> &actors);
 
+  virtual Status AsyncReportActorOutOfScope(
+      const ActorID &actor_id,
+      uint64_t num_restarts_due_to_lineage_reconstruction,
+      const StatusCallback &callback,
+      int64_t timeout_ms = -1);
+
   /// Register actor to GCS asynchronously.
   ///
   /// \param task_spec The specification for the actor creation task.
@@ -127,6 +134,11 @@ class ActorInfoAccessor {
   virtual Status AsyncRegisterActor(const TaskSpecification &task_spec,
                                     const StatusCallback &callback,
                                     int64_t timeout_ms = -1);
+
+  virtual Status AsyncRestartActor(const ActorID &actor_id,
+                                   uint64_t num_restarts,
+                                   const StatusCallback &callback,
+                                   int64_t timeout_ms = -1);
 
   /// Register actor to GCS synchronously.
   ///
@@ -143,11 +155,13 @@ class ActorInfoAccessor {
   /// \param force_kill Whether to force kill an actor by killing the worker.
   /// \param no_restart If set to true, the killed actor will not be restarted anymore.
   /// \param callback Callback that will be called after the actor is destroyed.
+  /// \param timeout_ms RPC timeout in milliseconds. -1 means infinite.
   /// \return Status
   virtual Status AsyncKillActor(const ActorID &actor_id,
                                 bool force_kill,
                                 bool no_restart,
-                                const StatusCallback &callback);
+                                const StatusCallback &callback,
+                                int64_t timeout_ms = -1);
 
   /// Asynchronously request GCS to create the actor.
   ///
@@ -244,17 +258,25 @@ class JobInfoAccessor {
 
   /// Get all job info from GCS asynchronously.
   ///
+  /// \param job_or_submission_id If not null, filter the jobs with this id.
   /// \param callback Callback that will be called after lookup finished.
   /// \return Status
-  virtual Status AsyncGetAll(const MultiItemCallback<rpc::JobTableData> &callback,
+  virtual Status AsyncGetAll(const std::optional<std::string> &job_or_submission_id,
+                             bool skip_submission_job_info_field,
+                             bool skip_is_running_tasks_field,
+                             const MultiItemCallback<rpc::JobTableData> &callback,
                              int64_t timeout_ms);
 
   /// Get all job info from GCS synchronously.
   ///
-  /// \param timeout_ms -1 means infinite.
+  /// \param job_or_submission_id If not null, filter the jobs with this id.
   /// \param[out] job_data_list The list of job data retrieved from GCS.
+  /// \param timeout_ms -1 means infinite.
   /// \return Status
-  virtual Status GetAll(std::vector<rpc::JobTableData> &job_data_list,
+  virtual Status GetAll(const std::optional<std::string> &job_or_submission_id,
+                        bool skip_submission_job_info_field,
+                        bool skip_is_running_tasks_field,
+                        std::vector<rpc::JobTableData> &job_data_list,
                         int64_t timeout_ms);
 
   /// Reestablish subscription.
@@ -434,15 +456,8 @@ class NodeInfoAccessor {
   /// server.
   virtual void AsyncResubscribe();
 
-  /// Get the internal config string from GCS.
-  ///
-  /// \param callback Processes a map of config options
-  /// \return Status
-  virtual Status AsyncGetInternalConfig(
-      const OptionalItemCallback<std::string> &callback);
-
   /// Add a node to accessor cache.
-  virtual void HandleNotification(const rpc::GcsNodeInfo &node_info);
+  virtual void HandleNotification(rpc::GcsNodeInfo &&node_info);
 
  private:
   /// Save the subscribe operation in this function, so we can call it again when PubSub
@@ -456,7 +471,7 @@ class NodeInfoAccessor {
   GcsClient *client_impl_;
 
   using NodeChangeCallback =
-      std::function<void(const NodeID &id, const rpc::GcsNodeInfo &node_info)>;
+      std::function<void(const NodeID &id, rpc::GcsNodeInfo &&node_info)>;
 
   rpc::GcsNodeInfo local_node_info_;
   NodeID local_node_id_;
@@ -853,6 +868,7 @@ class InternalKVAccessor {
   /// \param added It's an output parameter. It'll be set to be true if
   ///     any row is added.
   /// \return Status
+  /// TODO(ryw): change the out parameter type to `int` just like AsyncInternalKVPut.
   virtual Status Put(const std::string &ns,
                      const std::string &key,
                      const std::string &value,
@@ -915,6 +931,13 @@ class InternalKVAccessor {
                         const std::string &key,
                         const int64_t timeout_ms,
                         bool &exists);
+
+  /// Get the internal config string from GCS.
+  ///
+  /// \param callback Processes a map of config options
+  /// \return Status
+  virtual Status AsyncGetInternalConfig(
+      const OptionalItemCallback<std::string> &callback);
 
  private:
   GcsClient *client_impl_;

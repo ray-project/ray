@@ -34,6 +34,17 @@
 namespace ray {
 namespace experimental {
 
+struct ReaderRefInfo {
+  ReaderRefInfo() = default;
+
+  // The ObjectID of the reader reference.
+  ObjectID reader_ref_id;
+  // The actor id of the owner of the reference.
+  ActorID owner_reader_actor_id;
+  // The number of reader actors reading this buffer.
+  int64_t num_reader_actors;
+};
+
 class MutableObjectManager : public std::enable_shared_from_this<MutableObjectManager> {
  public:
   /// Buffer for a mutable object. This buffer wraps a shared memory buffer of
@@ -106,6 +117,19 @@ class MutableObjectManager : public std::enable_shared_from_this<MutableObjectMa
   /// \return The return status. True if the channel is registered for object_id, false
   ///         otherwise.
   bool ChannelRegistered(const ObjectID &object_id) { return GetChannel(object_id); }
+
+  /// Gets the backing store for an object. WriteAcquire() must have already been called
+  /// before this method is called, and WriteRelease() must not yet have been called.
+  ///
+  /// \param[in] object_id The ID of the object.
+  /// \param[in] data_size The size of the data in the object.
+  /// \param[in] metadata_size The size of the metadata in the object.
+  /// \param[out] data The mutable object buffer in plasma that can be written to.
+  /// \return The return status.
+  Status GetObjectBackingStore(const ObjectID &object_id,
+                               int64_t data_size,
+                               int64_t metadata_size,
+                               std::shared_ptr<Buffer> &data);
 
   /// Acquires a write lock on the object that prevents readers from reading
   /// until we are done writing. This is safe for concurrent writers.

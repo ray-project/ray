@@ -181,7 +181,9 @@ class GlobalState:
         """
         self._check_connected()
 
-        job_table = self.global_state_accessor.get_job_table()
+        job_table = self.global_state_accessor.get_job_table(
+            skip_submission_job_info_field=True, skip_is_running_tasks_field=True
+        )
 
         results = []
         for i in range(len(job_table)):
@@ -317,6 +319,8 @@ class GlobalState:
         def get_state(state):
             if state == gcs_pb2.PlacementGroupTableData.PENDING:
                 return "PENDING"
+            elif state == gcs_pb2.PlacementGroupTableData.PREPARED:
+                return "PREPARED"
             elif state == gcs_pb2.PlacementGroupTableData.CREATED:
                 return "CREATED"
             elif state == gcs_pb2.PlacementGroupTableData.RESCHEDULING:
@@ -791,7 +795,9 @@ class GlobalState:
 
         Returns:
             A dictionary mapping resource name to the total quantity of that
-                resource in the cluster.
+                resource in the cluster. Note that if a resource (e.g., "CPU")
+                is currently not available (i.e., quantity is 0), it will not
+                be included in this dictionary.
         """
         self._check_connected()
 
@@ -1006,7 +1012,9 @@ def available_resources():
 
     Returns:
         A dictionary mapping resource name to the total quantity of that
-            resource in the cluster.
+            resource in the cluster. Note that if a resource (e.g., "CPU")
+            is currently not available (i.e., quantity is 0), it will not
+            be included in this dictionary.
     """
     return state.available_resources()
 

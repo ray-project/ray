@@ -2,13 +2,15 @@ import logging
 from typing import TYPE_CHECKING, List, Optional, Tuple, Union
 
 import ray
-from ray.experimental.channel import ChannelContext, ChannelOutputType
+from ray.experimental.channel import ChannelContext, ChannelInterface, ChannelOutputType
+from ray.experimental.channel.gpu_communicator import (
+    GPUCommunicator,
+    TorchTensorAllocator,
+)
 from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
     import torch
-
-    from ray.experimental.channel.torch_tensor_nccl_channel import TorchTensorAllocator
 
 logger = logging.getLogger(__name__)
 
@@ -28,7 +30,7 @@ class TorchTensorType(ChannelOutputType):
         self,
         _shape: Union[int, Tuple[int], str] = AUTO,
         _dtype: "torch.dtype" = AUTO,
-        transport: Optional[str] = AUTO,
+        transport: Optional[Union[str, GPUCommunicator]] = AUTO,
         _direct_return: Optional[bool] = False,
     ):
         """
@@ -73,6 +75,11 @@ class TorchTensorType(ChannelOutputType):
         self._dtype = _dtype
         self._direct_return = _direct_return
 
+        self._custom_nccl_group: Optional[GPUCommunicator] = None
+        if isinstance(transport, GPUCommunicator):
+            self._custom_nccl_group = transport
+            transport = self.NCCL
+
         if transport not in [self.AUTO, self.NCCL]:
             raise ValueError(
                 "`transport` must be TorchTensorType.AUTO or TorchTensorType.NCCL"
@@ -116,16 +123,20 @@ class TorchTensorType(ChannelOutputType):
     def create_channel(
         self,
         writer: Optional["ray.actor.ActorHandle"],
-        readers: List[Optional["ray.actor.ActorHandle"]],
+        reader_and_node_list: List[Tuple["ray.actor.ActorHandle", str]],
+        read_by_adag_driver,
         _torch_tensor_allocator: Optional["TorchTensorAllocator"] = None,
-    ) -> type:
+    ) -> ChannelInterface:
         if self.requires_nccl():
             from ray.experimental.channel.torch_tensor_nccl_channel import (
                 TorchTensorNcclChannel,
             )
 
             return TorchTensorNcclChannel(
-                writer, readers, self, _torch_tensor_allocator=_torch_tensor_allocator
+                writer,
+                reader_and_node_list,
+                self,
+                _torch_tensor_allocator=_torch_tensor_allocator,
             )
 
         # Transfer via host memory using a shared-memory channel.
@@ -162,14 +173,36 @@ class TorchTensorType(ChannelOutputType):
         buffer_size_bytes = int(num_elements * element_size_bytes)
         buffer_size_bytes += TENSOR_METADATA_SIZE_BYTES
 
-        return Channel(writer, readers, buffer_size_bytes)
+        return Channel(writer, reader_and_node_list, buffer_size_bytes)
 
     def requires_nccl(self) -> bool:
         return self.transport == self.NCCL
+
+    def get_custom_nccl_group(self) -> Optional[GPUCommunicator]:
+        """
+        Return the custom NCCL group if one is specified.
+        """
+        return self._custom_nccl_group
 
     def set_nccl_group_id(self, group_id: str) -> None:
         self._nccl_group_id = group_id
 
     @property
-    def nccl_group_id(self) -> str:
+    def nccl_group_id(self) -> Optional[str]:
         return self._nccl_group_id
+
+    def __deepcopy__(self, memo):
+        """
+        Deep copy all the fields except for the custom NCCL group. The custom
+        NCCL group should not be deep copied because it can be shared across
+        `TorchTensorType` instances.
+        """
+        copy = TorchTensorType(
+            _shape=self._shape,
+            _dtype=self._dtype,
+            transport=self.transport,
+            _direct_return=self._direct_return,
+        )
+        copy._custom_nccl_group = self._custom_nccl_group
+        copy._nccl_group_id = self._nccl_group_id
+        return copy

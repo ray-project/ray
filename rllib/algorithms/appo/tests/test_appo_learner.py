@@ -5,9 +5,7 @@ import tree  # pip install dm_tree
 
 import ray
 import ray.rllib.algorithms.appo as appo
-from ray.rllib.algorithms.appo.tf.appo_tf_learner import (
-    LEARNER_RESULTS_CURR_KL_COEFF_KEY,
-)
+from ray.rllib.algorithms.appo.appo import LEARNER_RESULTS_CURR_KL_COEFF_KEY
 from ray.rllib.core import DEFAULT_MODULE_ID
 from ray.rllib.core.columns import Columns
 from ray.rllib.policy.sample_batch import SampleBatch
@@ -32,10 +30,11 @@ FAKE_BATCH = {
     Columns.ACTION_LOGP: np.log(
         np.random.uniform(low=0, high=1, size=(frag_length,))
     ).astype(np.float32),
+    Columns.LOSS_MASK: np.ones(shape=(frag_length,)),
 }
 
 
-class TestAPPOTfLearner(unittest.TestCase):
+class TestAPPOLearner(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         ray.init()
@@ -81,9 +80,7 @@ class TestAPPOTfLearner(unittest.TestCase):
         algo_config.learners(num_learners=0)
         algo_config.validate()
 
-        learner_group = algo_config.build_learner_group(
-            env=algo.workers.local_worker().env
-        )
+        learner_group = algo_config.build_learner_group(env=algo.env_runner.env)
         learner_group.update_from_batch(batch=train_batch.as_multi_agent())
 
         algo.stop()

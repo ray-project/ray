@@ -16,8 +16,10 @@ from typing import (
 
 import numpy as np
 
+import ray
 from ray.data._internal.progress_bar import ProgressBar
 from ray.data._internal.remote_fn import cached_remote_fn
+from ray.data._internal.util import call_with_retry
 from ray.data.block import BlockMetadata
 from ray.data.datasource.partitioning import Partitioning
 from ray.util.annotations import DeveloperAPI
@@ -418,7 +420,12 @@ def _get_file_infos(
 
     file_infos = []
     try:
-        file_info = filesystem.get_file_info(path)
+        ctx = ray.data.DataContext.get_current()
+        file_info = call_with_retry(
+            lambda: filesystem.get_file_info(path),
+            description="get file info",
+            match=ctx.retried_io_errors,
+        )
     except OSError as e:
         _handle_read_os_error(e, path)
     if file_info.type == FileType.Directory:

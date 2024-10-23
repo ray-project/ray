@@ -185,7 +185,10 @@ class ServeController:
 
         # Manage all applications' state
         self.application_state_manager = ApplicationStateManager(
-            self.deployment_state_manager, self.endpoint_state, self.kv_store
+            self.deployment_state_manager,
+            self.endpoint_state,
+            self.kv_store,
+            self.global_logging_config,
         )
 
         # Controller actor details
@@ -290,9 +293,9 @@ class ServeController:
     def _dump_replica_states_for_testing(self, deployment_id: DeploymentID):
         return self.deployment_state_manager._deployment_states[deployment_id]._replicas
 
-    def _stop_one_running_replica_for_testing(self, deployment_name):
+    def _stop_one_running_replica_for_testing(self, deployment_id):
         self.deployment_state_manager._deployment_states[
-            deployment_name
+            deployment_id
         ]._stop_one_running_replica_for_testing()
 
     async def listen_for_change(self, keys_to_snapshot_ids: Dict[str, int]):
@@ -737,13 +740,17 @@ class ServeController:
                     "deployment_config_proto_bytes": deployment_args.deployment_config,
                     "replica_config_proto_bytes": deployment_args.replica_config,
                     "deployer_job_id": deployment_args.deployer_job_id,
-                    "route_prefix": deployment_args.route_prefix
-                    if deployment_args.HasField("route_prefix")
-                    else None,
+                    "route_prefix": (
+                        deployment_args.route_prefix
+                        if deployment_args.HasField("route_prefix")
+                        else None
+                    ),
                     "ingress": deployment_args.ingress,
-                    "docs_path": deployment_args.docs_path
-                    if deployment_args.HasField("docs_path")
-                    else None,
+                    "docs_path": (
+                        deployment_args.docs_path
+                        if deployment_args.HasField("docs_path")
+                        else None
+                    ),
                 }
             )
         self.application_state_manager.deploy_app(name, deployment_args_deserialized)
@@ -900,6 +907,7 @@ class ServeController:
                 # serve.run, the app is in deleting state,
                 # or a checkpoint hasn't been set yet
                 deployed_app_config=app_configs.get(app_name),
+                source=self.application_state_manager.get_app_source(app_name),
                 deployments=self.application_state_manager.list_deployment_details(
                     app_name
                 ),
@@ -918,9 +926,11 @@ class ServeController:
             proxy_location=ProxyLocation._from_deployment_mode(http_config.location),
             http_options=http_options,
             grpc_options=grpc_options,
-            proxies=self.proxy_state_manager.get_proxy_details()
-            if self.proxy_state_manager
-            else None,
+            proxies=(
+                self.proxy_state_manager.get_proxy_details()
+                if self.proxy_state_manager
+                else None
+            ),
             applications=applications,
         )._get_user_facing_json_serializable_dict(exclude_unset=True)
 

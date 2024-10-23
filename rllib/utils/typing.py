@@ -19,8 +19,8 @@ import gymnasium as gym
 from ray.rllib.utils.annotations import OldAPIStack
 
 if TYPE_CHECKING:
-    from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
-    from ray.rllib.core.rl_module.marl_module import MultiAgentRLModuleSpec
+    from ray.rllib.core.rl_module.rl_module import RLModuleSpec
+    from ray.rllib.core.rl_module.multi_rl_module import MultiRLModuleSpec
     from ray.rllib.env.env_context import EnvContext
     from ray.rllib.env.multi_agent_episode import MultiAgentEpisode
     from ray.rllib.env.single_agent_episode import SingleAgentEpisode
@@ -30,7 +30,6 @@ if TYPE_CHECKING:
     from ray.rllib.policy.sample_batch import MultiAgentBatch, SampleBatch
     from ray.rllib.policy.view_requirement import ViewRequirement
     from ray.rllib.utils import try_import_jax, try_import_tf, try_import_torch
-    from ray.rllib.utils.nested_dict import NestedDict
 
     _, tf, _ = try_import_tf()
     torch, _ = try_import_torch()
@@ -53,7 +52,7 @@ TensorShape = Union[Tuple[int], List[int]]
 NetworkType = Union["torch.nn.Module", "tf.keras.Model"]
 
 # An RLModule spec (single-agent or multi-agent).
-RLModuleSpec = Union["SingleAgentRLModuleSpec", "MultiAgentRLModuleSpec"]
+RLModuleSpecType = Union["RLModuleSpec", "MultiRLModuleSpec"]
 
 # A state dict of an RLlib component (e.g. EnvRunner, Learner, RLModule).
 StateDict = Dict[str, Any]
@@ -70,7 +69,16 @@ PartialAlgorithmConfigDict = dict  # @OldAPIStack
 
 # Represents the model config sub-dict of the algo config that is passed to
 # the model catalog.
-ModelConfigDict = dict
+ModelConfigDict = dict  # @OldAPIStack
+
+# Conv2D configuration format.
+# Each entry in the outer list represents one Conv2D layer.
+# Each inner list has the format: [num_output_filters, kernel, stride], where kernel
+# and stride may be single ints (width and height are the same) or 2-tuples (int, int)
+# for width and height (different values).
+ConvFilterSpec = List[
+    Tuple[int, Union[int, Tuple[int, int]], Union[int, Tuple[int, int]]]
+]
 
 # Objects that can be created through the `from_config()` util method
 # need a config dict with a "type" key, a class path (str), or a type directly.
@@ -161,7 +169,7 @@ ViewRequirementsDict = Dict[str, "ViewRequirement"]  # @OldAPIStack
 # such as EnvRunners, LearnerGroup, etc.. Also, the MetricsLogger used by all these
 # components returns this upon its `reduce()` method call, so a ResultDict can further
 # be accumulated (and reduced again) by downstream components.
-ResultDict = Union[dict, "NestedDict"]
+ResultDict = Dict
 
 # A tf or torch local optimizer object.
 LocalOptimizer = Union["torch.optim.Optimizer", "tf.keras.optimizers.Optimizer"]
@@ -169,10 +177,15 @@ Optimizer = LocalOptimizer
 Param = Union["torch.Tensor", "tf.Variable"]
 ParamRef = Hashable
 ParamDict = Dict[ParamRef, Param]
+ParamList = List[Param]
 
 # A single learning rate or a learning rate schedule (list of sub-lists, each of
 # the format: [ts (int), lr_to_reach_by_ts (float)]).
-LearningRateOrSchedule = Union[float, List[List[Union[int, float]]]]
+LearningRateOrSchedule = Union[
+    float,
+    List[List[Union[int, float]]],
+    List[Tuple[int, Union[int, float]]],
+]
 
 # Dict of tensors returned by compute gradients on the policy, e.g.,
 # {"td_error": [...], "learner_stats": {"vf_loss": ..., ...}}, for multi-agent,

@@ -36,7 +36,13 @@ export const CodeDialogButton = ({
 
   return (
     <React.Fragment>
-      <Link component="button" onClick={handleConfigClick}>
+      <Link
+        sx={{
+          whiteSpace: "nowrap",
+        }}
+        component="button"
+        onClick={handleConfigClick}
+      >
         {buttonText}
       </Link>
       {showConfigDialog && (

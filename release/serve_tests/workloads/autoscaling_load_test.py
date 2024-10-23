@@ -35,8 +35,8 @@ URI = "https://serve-resnet-benchmark-data.s3.us-west-1.amazonaws.com/0000000000
 
 @click.command()
 @click.option("--output-path", "-o", type=str, default=None)
-@click.option("--cluster-env", type=str, default=None)
-def main(output_path: Optional[str], cluster_env: Optional[str]):
+@click.option("--image-uri", type=str, default=None)
+def main(output_path: Optional[str], image_uri: Optional[str]):
     resnet_application = {
         "import_path": "resnet_50:app",
         "deployments": [
@@ -63,9 +63,10 @@ def main(output_path: Optional[str], cluster_env: Optional[str]):
 
     with start_service(
         "autoscaling-load-test",
+        image_uri=image_uri,
         compute_config=compute_config,
         applications=[resnet_application],
-        cluster_env=cluster_env,
+        working_dir="workloads",
     ) as service_name:
         ray.init(address="auto")
         status = service.status(name=service_name)

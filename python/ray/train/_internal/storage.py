@@ -233,12 +233,15 @@ def _upload_to_uri_with_exclude_fsspec(
 def _list_at_fs_path(
     fs: pyarrow.fs.FileSystem,
     fs_path: str,
-    file_filter: Callable[[pyarrow.fs.FileInfo], bool] = lambda x: True,
+    file_filter: Optional[Callable[[pyarrow.fs.FileInfo], bool]] = None,
 ) -> List[str]:
     """Returns the list of filenames at (fs, fs_path), similar to os.listdir.
 
     If the path doesn't exist, returns an empty list.
     """
+    if file_filter is None:
+        file_filter = lambda x: True  # noqa: E731
+
     selector = pyarrow.fs.FileSelector(fs_path, allow_not_found=True, recursive=False)
     return [
         os.path.relpath(file_info.path.lstrip("/"), start=fs_path.lstrip("/"))

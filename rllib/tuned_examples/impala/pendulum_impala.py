@@ -1,4 +1,5 @@
-from ray.rllib.algorithms.impala import ImpalaConfig
+from ray.rllib.algorithms.impala import IMPALAConfig
+from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
 from ray.rllib.utils.metrics import (
     ENV_RUNNER_RESULTS,
     EPISODE_RETURN_MEAN,
@@ -7,10 +8,13 @@ from ray.rllib.utils.metrics import (
 from ray.rllib.utils.test_utils import add_rllib_example_script_args
 
 parser = add_rllib_example_script_args()
+parser.set_defaults(enable_new_api_stack=True)
+# Use `parser` to add your own custom command line options to this script
+# and (if needed) use their values toset up `config` below.
 args = parser.parse_args()
 
 config = (
-    ImpalaConfig()
+    IMPALAConfig()
     # Enable new API stack and use EnvRunner.
     .api_stack(
         enable_rl_module_and_learner=True,
@@ -27,11 +31,10 @@ config = (
         entropy_coeff=[[0, 0.1], [2000000, 0.0]],
     )
     .rl_module(
-        model_config_dict={
-            "vf_share_layers": True,
-            "fcnet_hiddens": [512, 512],
-            "uses_new_env_runners": True,
-        },
+        model_config=DefaultModelConfig(
+            vf_share_layers=True,
+            fcnet_hiddens=[512, 512],
+        ),
     )
 )
 

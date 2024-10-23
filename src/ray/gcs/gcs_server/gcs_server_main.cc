@@ -70,6 +70,7 @@ int main(int argc, char *argv[]) {
 
   RayConfig::instance().initialize(config_list);
   ray::asio::testing::init();
+  ray::rpc::testing::init();
 
   // IO Service for main loop.
   instrumented_io_context main_service;
@@ -88,7 +89,16 @@ int main(int argc, char *argv[]) {
 
   // Initialize event framework.
   if (RayConfig::instance().event_log_reporter_enabled() && !log_dir.empty()) {
-    ray::RayEventInit(ray::rpc::Event_SourceType::Event_SourceType_GCS,
+    // This GCS server process emits GCS standard events, and
+    // Node, Actor, and Driver Job export events
+    // so the various source types are passed to RayEventInit. The type of an
+    // event is determined by the schema of its event data.
+    const std::vector<ray::SourceTypeVariant> source_types = {
+        ray::rpc::Event_SourceType::Event_SourceType_GCS,
+        ray::rpc::ExportEvent_SourceType::ExportEvent_SourceType_EXPORT_NODE,
+        ray::rpc::ExportEvent_SourceType_EXPORT_ACTOR,
+        ray::rpc::ExportEvent_SourceType::ExportEvent_SourceType_EXPORT_DRIVER_JOB};
+    ray::RayEventInit(source_types,
                       absl::flat_hash_map<std::string, std::string>(),
                       log_dir,
                       RayConfig::instance().event_level(),

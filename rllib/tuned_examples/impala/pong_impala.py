@@ -1,7 +1,7 @@
 import gymnasium as gym
 
-from ray.rllib.algorithms.impala import ImpalaConfig
-from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
+from ray.rllib.algorithms.impala import IMPALAConfig
+from ray.rllib.core.rl_module.rl_module import RLModuleSpec
 from ray.rllib.env.wrappers.atari_wrappers import wrap_atari_for_new_api_stack
 from ray.rllib.examples.rl_modules.classes.tiny_atari_cnn_rlm import TinyAtariCNN
 from ray.rllib.utils.metrics import (
@@ -13,7 +13,10 @@ from ray.rllib.utils.test_utils import add_rllib_example_script_args
 from ray.tune.registry import register_env
 
 parser = add_rllib_example_script_args()
-parser.set_defaults(env="ALE/Pong-v5")
+parser.set_defaults(
+    enable_new_api_stack=True,
+    env="ALE/Pong-v5",
+)
 parser.add_argument(
     "--use-tiny-cnn",
     action="store_true",
@@ -39,7 +42,7 @@ register_env("env", _env_creator)
 
 
 config = (
-    ImpalaConfig()
+    IMPALAConfig()
     # Enable new API stack and use EnvRunner.
     .api_stack(
         enable_rl_module_and_learner=True,
@@ -68,17 +71,14 @@ config = (
     )
     .rl_module(
         rl_module_spec=(
-            SingleAgentRLModuleSpec(module_class=TinyAtariCNN)
-            if args.use_tiny_cnn
-            else None
+            RLModuleSpec(module_class=TinyAtariCNN) if args.use_tiny_cnn else None
         ),
-        model_config_dict=(
+        model_config=(
             {
                 "vf_share_layers": True,
                 "conv_filters": [[16, 4, 2], [32, 4, 2], [64, 4, 2], [128, 4, 2]],
                 "conv_activation": "relu",
                 "post_fcnet_hiddens": [256],
-                "uses_new_env_runners": True,
             }
             if not args.use_tiny_cnn
             else {}

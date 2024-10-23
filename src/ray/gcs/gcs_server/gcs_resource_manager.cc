@@ -305,8 +305,8 @@ void GcsResourceManager::OnNodeAdd(const rpc::GcsNodeInfo &node) {
           scheduling_node_id, scheduling::ResourceID(entry.first), entry.second);
     }
   } else {
-    RAY_LOG(WARNING) << "The registered node " << node_id
-                     << " doesn't set the total resources.";
+    RAY_LOG(WARNING).WithField(node_id)
+        << "The registered node doesn't set the total resources.";
   }
 
   absl::flat_hash_map<std::string, std::string> labels(node.labels().begin(),
@@ -335,9 +335,9 @@ void GcsResourceManager::UpdatePlacementGroupLoad(
 std::string GcsResourceManager::DebugString() const {
   std::ostringstream stream;
   stream << "GcsResourceManager: "
-         << "\n- GetAllAvailableResources request count"
+         << "\n- GetAllAvailableResources request count: "
          << counts_[CountType::GET_ALL_AVAILABLE_RESOURCES_REQUEST]
-         << "\n- GetAllTotalResources request count"
+         << "\n- GetAllTotalResources request count: "
          << counts_[CountType::GET_All_TOTAL_RESOURCES_REQUEST]
          << "\n- GetAllResourceUsage request count: "
          << counts_[CountType::GET_ALL_RESOURCE_USAGE_REQUEST];

@@ -293,15 +293,18 @@ class Node:
                 logger.debug(f"Setting node ID to {node_id}")
                 self._node_id = node_id
 
+        # The dashboard agent port is assigned first to avoid
+        # other processes accidentally taking its default port
+        self._dashboard_agent_listen_port = self._get_cached_port(
+            "dashboard_agent_listen_port",
+            default_port=ray_params.dashboard_agent_listen_port,
+        )
+
         self.metrics_agent_port = self._get_cached_port(
             "metrics_agent_port", default_port=ray_params.metrics_agent_port
         )
         self._metrics_export_port = self._get_cached_port(
             "metrics_export_port", default_port=ray_params.metrics_export_port
-        )
-        self._dashboard_agent_listen_port = self._get_cached_port(
-            "dashboard_agent_listen_port",
-            default_port=ray_params.dashboard_agent_listen_port,
         )
         self._runtime_env_agent_port = self._get_cached_port(
             "runtime_env_agent_port",
@@ -720,6 +723,8 @@ class Node:
         else:
             gcs_process = None
 
+        # TODO(ryw) instead of create a new GcsClient, wrap the one from
+        # CoreWorkerProcess to save a grpc channel.
         for _ in range(ray_constants.NUM_REDIS_GET_RETRIES):
             gcs_address = None
             last_ex = None
@@ -1003,9 +1008,14 @@ class Node:
                 port = int(ports_by_node[self.unique_id][port_name])
             else:
                 # Pick a new port to use and cache it at this node.
-                port = default_port or self._get_unused_port(
-                    set(ports_by_node[self.unique_id].values())
-                )
+                allocated_ports = set(ports_by_node[self.unique_id].values())
+
+                if default_port is not None and default_port in allocated_ports:
+                    # The default port is already in use, so don't use it.
+                    default_port = None
+
+                port = default_port or self._get_unused_port(allocated_ports)
+
                 ports_by_node[self.unique_id][port_name] = port
                 with open(file_path, "w") as f:
                     json.dump(ports_by_node, f)
@@ -1112,6 +1122,7 @@ class Node:
             raise_on_failure,
             self._ray_params.dashboard_host,
             self.gcs_address,
+            self.cluster_id.hex(),
             self._node_ip_address,
             self._temp_dir,
             self._logs_dir,

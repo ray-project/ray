@@ -1,6 +1,8 @@
 load("//bazel:python.bzl", "py_test_run_all_subdirectory")
 load("//bazel:python.bzl", "py_test_run_all_notebooks")
 load("//bazel:python.bzl", "doctest")
+load("@py_deps_buildkite//:requirements.bzl", ci_require = "requirement")
+load("@rules_python//python:defs.bzl", "py_test")
 
 exports_files(["test_myst_doc.py"])
 
@@ -269,7 +271,9 @@ py_test_run_all_subdirectory(
 py_test_run_all_subdirectory(
     size = "large",
     include = ["source/train/doc_code/*.py"],
-    exclude = [],
+    exclude = [
+        "source/train/doc_code/hvd_trainer.py",  # CI do not have Horovod
+    ],
     extra_srcs = [],
     tags = [
         "exclusive",
@@ -351,12 +355,28 @@ py_test(
 py_test_run_all_subdirectory(
     size = "enormous",
     include = ["external/*.py"],
-    exclude = [],
+    exclude = ["external/test_hashes.py"],
     extra_srcs = [],
     tags = [
         "exclusive",
         "external",
         "team:ml",
+    ],
+)
+
+py_test(
+    name = "test_external_hashes",
+    srcs = ["external/test_hashes.py"],
+    data = glob(
+        ["external/*.py"],
+        exclude = ["external/test_hashes.py"],
+    ),
+    exec_compatible_with = ["//:hermetic_python"],
+    main = "external/test_hashes.py",
+    tags = ["team:ml"],
+    deps = [
+        ci_require("pytest"),
+        ci_require("bazel-runfiles"),
     ],
 )
 
@@ -407,7 +427,8 @@ doctest(
             # GPU
             "source/train/user-guides/data-loading-preprocessing.rst",
             "source/train/user-guides/using-gpus.rst",
-        ],
+            "source/train/horovod.rst",  # CI do not have Horovod
+        ]
     ),
     tags = ["team:ml"],
 )
@@ -446,6 +467,7 @@ doctest(
             "source/rllib/rllib-sample-collection.rst",
         ],
     ),
+    data = ["//rllib:cartpole-v1_large"],
     tags = ["team:rllib"],
 )
 

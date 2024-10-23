@@ -6,6 +6,7 @@ from ray.data._internal.execution.interfaces import TaskContext
 from ray.data._internal.util import call_with_retry
 from ray.data.block import Block, BlockAccessor
 from ray.data.context import DataContext
+from ray.data.datasource.file_based_datasource import _resolve_kwargs
 from ray.data.datasource.file_datasink import _FileDatasink
 from ray.data.datasource.filename_provider import FilenameProvider
 
@@ -56,23 +57,26 @@ class ParquetDatasink(_FileDatasink):
         self,
         blocks: Iterable[Block],
         ctx: TaskContext,
-    ) -> Any:
+    ) -> None:
         import pyarrow.parquet as pq
 
         blocks = list(blocks)
 
         if all(BlockAccessor.for_block(block).num_rows() == 0 for block in blocks):
-            return "skip"
+            return
 
         filename = self.filename_provider.get_filename_for_block(
             blocks[0], ctx.task_idx, 0
         )
         write_path = posixpath.join(self.path, filename)
+        write_kwargs = _resolve_kwargs(
+            self.arrow_parquet_args_fn, **self.arrow_parquet_args
+        )
 
         def write_blocks_to_path():
             with self.open_output_stream(write_path) as file:
                 schema = BlockAccessor.for_block(blocks[0]).to_arrow().schema
-                with pq.ParquetWriter(file, schema) as writer:
+                with pq.ParquetWriter(file, schema, **write_kwargs) as writer:
                     for block in blocks:
                         table = BlockAccessor.for_block(block).to_arrow()
                         writer.write_table(table)
@@ -81,12 +85,10 @@ class ParquetDatasink(_FileDatasink):
         call_with_retry(
             write_blocks_to_path,
             description=f"write '{write_path}'",
-            match=DataContext.get_current().write_file_retry_on_errors,
+            match=DataContext.get_current().retried_io_errors,
             max_attempts=WRITE_FILE_MAX_ATTEMPTS,
             max_backoff_s=WRITE_FILE_RETRY_MAX_BACKOFF_SECONDS,
         )
-
-        return "ok"
 
     @property
     def num_rows_per_write(self) -> Optional[int]:

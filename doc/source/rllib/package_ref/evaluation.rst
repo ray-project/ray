@@ -13,7 +13,7 @@ Data ingest via either environment rollouts or other data-generating methods
 (e.g. reading from offline files) is done in RLlib by :py:class:`~ray.rllib.env.env_runner.EnvRunner` instances,
 which sit inside a :py:class:`~ray.rllib.env.env_runner_group.EnvRunnerGroup`
 (together with other parallel ``EnvRunners``) in the RLlib :py:class:`~ray.rllib.algorithms.algorithm.Algorithm`
-(under the ``self.workers`` property):
+(under the ``self.env_runner_group`` property):
 
 
 .. https://docs.google.com/drawings/d/1OewMLAu6KZNon7zpDfZnTh9qiT6m-3M9wnkqWkQQMRc/edit
@@ -368,5 +368,3 @@ MultiAgent batch API
     MultiAgentBatch
     MultiAgentBatch.env_steps
     MultiAgentBatch.agent_steps
-
-

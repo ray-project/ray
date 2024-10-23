@@ -141,6 +141,14 @@ void GcsInternalKVManager::HandleInternalKVKeys(
   }
 }
 
+void GcsInternalKVManager::HandleGetInternalConfig(
+    rpc::GetInternalConfigRequest request,
+    rpc::GetInternalConfigReply *reply,
+    rpc::SendReplyCallback send_reply_callback) {
+  reply->set_config(raylet_config_list_);
+  GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
+}
+
 Status GcsInternalKVManager::ValidateKey(const std::string &key) const {
   constexpr std::string_view kNamespacePrefix = "@namespace_";
   if (absl::StartsWith(key, kNamespacePrefix)) {

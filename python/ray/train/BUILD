@@ -6,6 +6,8 @@ doctest(
         exclude=[
             "examples/**",
             "tests/**",
+            "horovod/**",  # CI do not have horovod installed
+            "mosaic/**",  # CI do not have mosaicml installed
             # GPU tests
             "tensorflow/tensorflow_trainer.py",
             "_internal/session.py",
@@ -116,7 +118,7 @@ py_test(
 
 py_test(
     name = "torch_quick_start",
-    size = "small",
+    size = "medium",
     main = "examples/pytorch/torch_quick_start.py",
     srcs = ["examples/pytorch/torch_quick_start.py"],
     tags = ["team:ml", "exclusive"],
@@ -159,7 +161,7 @@ py_test(
     name = "horovod_cifar_pbt_example",
     size = "small",
     srcs = ["examples/horovod/horovod_cifar_pbt_example.py"],
-    tags = ["team:ml", "exlusive"],
+    tags = ["team:ml", "exlusive", "manual"],
     deps = [":train_lib"],
     args = ["--smoke-test"]
 )
@@ -168,7 +170,7 @@ py_test(
     name = "horovod_pytorch_example",
     size = "small",
     srcs = ["examples/horovod/horovod_pytorch_example.py"],
-    tags = ["team:ml", "exclusive"],
+    tags = ["team:ml", "exclusive", "manual"],
     deps = [":train_lib"],
     args = ["--num-epochs=1"]
 )
@@ -177,7 +179,7 @@ py_test(
     name = "horovod_tune_example",
     size = "small",
     srcs = ["examples/horovod/horovod_tune_example.py"],
-    tags = ["team:ml", "exclusive"],
+    tags = ["team:ml", "exclusive", "manual"],
     deps = [":train_lib"],
     args = ["--smoke-test"]
 )
@@ -377,7 +379,7 @@ py_test(
     name = "test_horovod_trainer",
     size = "large",
     srcs = ["tests/test_horovod_trainer.py"],
-    tags = ["team:ml", "exclusive", "ray_air"],
+    tags = ["team:ml", "exclusive", "ray_air", "manual"],
     deps = [":train_lib"]
 )
 
@@ -486,14 +488,6 @@ py_test(
 )
 
 py_test(
-    name = "test_sklearn_predictor",
-    size = "small",
-    srcs = ["tests/test_sklearn_predictor.py"],
-    tags = ["team:ml", "exclusive", "ray_air"],
-    deps = [":train_lib", ":conftest"]
-)
-
-py_test(
     name = "test_storage",
     size = "small",
     srcs = ["tests/test_storage.py"],
@@ -503,7 +497,7 @@ py_test(
 
 py_test(
     name = "test_state",
-    size = "small",
+    size = "medium",
     srcs = ["tests/test_state.py"],
     tags = ["team:ml", "exclusive"],
     deps = [":train_lib", ":conftest"]
@@ -554,6 +548,14 @@ py_test(
     size = "medium",
     srcs = ["tests/test_torch_detection_predictor.py"],
     tags = ["team:ml", "exclusive", "ray_air", "gpu"],
+    deps = [":train_lib", ":conftest"]
+)
+
+py_test(
+    name = "test_torch_device_manager",
+    size = "small",
+    srcs = ["tests/test_torch_device_manager.py"],
+    tags = ["team:ml", "exclusive", "ray_air", "gpu_only"],
     deps = [":train_lib", ":conftest"]
 )
 

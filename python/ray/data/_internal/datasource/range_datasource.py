@@ -28,7 +28,7 @@ class RangeDatasource(Datasource):
 
     def estimate_inmemory_data_size(self) -> Optional[int]:
         if self._block_format == "tensor":
-            element_size = int(np.product(self._tensor_shape))
+            element_size = int(np.prod(self._tensor_shape))
         else:
             element_size = 1
         return 8 * self._n * element_size
@@ -86,7 +86,7 @@ class RangeDatasource(Datasource):
                 count -= num_rows
 
         if block_format == "tensor":
-            element_size = int(np.product(tensor_shape))
+            element_size = int(np.prod(tensor_shape))
         else:
             element_size = 1
 
@@ -96,7 +96,7 @@ class RangeDatasource(Datasource):
             meta = BlockMetadata(
                 num_rows=count,
                 size_bytes=8 * count * element_size,
-                schema=copy(self.schema()),
+                schema=copy(self._schema()),
                 input_files=None,
                 exec_stats=None,
             )
@@ -113,7 +113,7 @@ class RangeDatasource(Datasource):
         return read_tasks
 
     @functools.cache
-    def schema(self):
+    def _schema(self):
         if self._n == 0:
             return None
 
@@ -137,6 +137,3 @@ class RangeDatasource(Datasource):
         else:
             raise ValueError("Unsupported block type", self._block_format)
         return schema
-
-    def num_rows(self):
-        return self._n
