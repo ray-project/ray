@@ -43,8 +43,8 @@ def test_e2e(capsys):
 def test_prometheus_config_content():
     # Test to make sure the content in the hardcoded file
     # (python/ray/dashboard/modules/metrics/export/prometheus/prometheus.yml) will
-    # always be the same as the template (templates.py) used to generate prometheus
-    # config file when ray startup
+    # always be the same as the template (templates.py) used to generate Prometheus
+    # config file when Ray startup
     PROM_DISCOVERY_FILE_PATH = "/tmp/ray/prom_metrics_service_discovery.json"
     template_content = PROMETHEUS_YML_TEMPLATE.format(
         prom_metrics_service_discovery_file_path=PROM_DISCOVERY_FILE_PATH
