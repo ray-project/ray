@@ -306,6 +306,7 @@ class AddStatesFromEpisodesToBatch(ConnectorV2):
                     # state.
                     convert_to_numpy(sa_module.get_initial_state())
                     if sa_episode.t_started == 0
+                    or (Columns.STATE_OUT not in sa_episode.extra_model_outputs)
                     # Episode starts somewhere in the middle (is a cut
                     # continuation chunk) -> Use previous chunk's last
                     # STATE_OUT as initial state.
@@ -315,8 +316,18 @@ class AddStatesFromEpisodesToBatch(ConnectorV2):
                         neg_index_as_lookback=True,
                     )
                 )
-                # state_outs.shape=(T,[state-dim])  T=episode len
-                state_outs = sa_episode.get_extra_model_outputs(key=Columns.STATE_OUT)
+                if Columns.STATE_OUT in sa_episode.extra_model_outputs:
+                    # state_outs.shape=(T,[state-dim])  T=episode len
+                    state_outs = sa_episode.get_extra_model_outputs(
+                        key=Columns.STATE_OUT
+                    )
+                else:
+                    state_outs = tree.map_structure(
+                        lambda a: np.repeat(
+                            a[np.newaxis, ...], len(sa_episode), axis=0
+                        ),
+                        look_back_state,
+                    )
                 self.add_n_batch_items(
                     batch=batch,
                     column=Columns.STATE_IN,
@@ -367,7 +378,11 @@ class AddStatesFromEpisodesToBatch(ConnectorV2):
                     continue
 
                 # Episode just started -> Get initial state from our RLModule.
-                if sa_episode.t_started == 0 and len(sa_episode) == 0:
+                if (
+                    sa_episode.t_started == 0
+                    and len(sa_episode) == 0
+                    or (Columns.STATE_OUT not in sa_episode.extra_model_outputs)
+                ):
                     state = sa_module.get_initial_state()
                 # Episode is already ongoing -> Use most recent STATE_OUT.
                 else:

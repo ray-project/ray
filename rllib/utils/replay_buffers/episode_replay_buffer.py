@@ -426,13 +426,13 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
         num_items: Optional[int] = None,
         *,
         batch_size_B: Optional[int] = None,
-        batch_length_T: Optional[int] = None,
+        batch_length_T: Optional[int] = 0,
         n_step: Optional[Union[int, Tuple]] = None,
         gamma: float = 0.99,
         include_infos: bool = False,
         include_extra_model_outputs: bool = False,
         finalize: bool = False,
-        lookback: Optional[int] = 0,
+        lookback: Optional[int] = 1,
         **kwargs,
     ) -> List[SingleAgentEpisode]:
         """Samples episodes from a buffer in a randomized way.
@@ -493,12 +493,13 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
 
         # Use our default values if no sizes/lengths provided.
         batch_size_B = batch_size_B or self.batch_size_B
-        # TODO (simon): Implement trajectory sampling for RNNs.
-        batch_length_T = batch_length_T or self.batch_length_T
 
-        # Sample the n-step if necessary.
-        actual_n_step = n_step or 1
-        random_n_step = isinstance(n_step, tuple)
+        if batch_length_T == 0:
+            # Sample the n-step if necessary.
+            actual_n_step = n_step
+            random_n_step = isinstance(n_step, tuple)
+        else:
+            actual_n_step = 1
 
         # Keep track of the indices that were sampled last for updating the
         # weights later (see `ray.rllib.utils.replay_buffer.utils.
@@ -520,9 +521,8 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
             )
             episode = self.episodes[episode_idx]
 
-            # if not batch_length_T:
             # If we use random n-step sampling, draw the n-step for this item.
-            if random_n_step:
+            if batch_length_T < 1 and random_n_step:
                 actual_n_step = int(self.rng.integers(n_step[0], n_step[1]))
 
             # Skip, if we are too far to the end and `episode_ts` + n_step would go
@@ -538,40 +538,26 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
                 len_lookback_buffer=lookback,
             )
 
-            # Note, this will be the reward after executing action
-            # `a_(episode_ts-n_step+1)`. For `n_step>1` this will be the discounted
-            # sum of all discounted rewards that were collected over the last n steps.
-            # raw_rewards = sampled_episode.get_rewards(
-            #     slice(-1, None), neg_index_as_lookback=True
-            # )
-            raw_rewards = sampled_episode.get_rewards()
-            # Account for the lookback in case an episode was cut.
-            # TODO (simon): We need actually only the n-step discounted and all steps in
-            # between should be removed. So slicing afterwards should work.
-            rewards = np.concatenate(
-                [
-                    raw_rewards[:1],
-                    scipy.signal.lfilter([1, gamma], [1], raw_rewards[::-1], axis=0)[
-                        ::-1
-                    ],
-                ],
-                axis=0,
-            )
-            # Add the discounted next step rewards back to the sampled episode.
-            sampled_episode.set_rewards(
-                new_data=rewards,
-                # at_indices=slice(-lookback, len(sampled_episode)),
-                # neg_index_as_lookback=bool(lookback),
-            )
+            if batch_length_T < 1:
+                # Note, this will be the reward after executing action
+                # `a_(episode_ts-n_step+1)`. For `n_step>1` this will be the discounted
+                # sum of all discounted rewards that were collected over the last n
+                # steps.
+                raw_rewards = sampled_episode.get_rewards()
+
+                rewards = scipy.signal.lfilter(
+                    [1], [1, -gamma], raw_rewards[::-1], axis=0
+                )[-1]
+                sampled_episode.set_rewards(at_indices=-1, new_data=rewards)
 
             # Add the actually chosen n-step in this episode.
             sampled_episode.set_extra_model_outputs(
-                key="n_step", new_data=np.full_like(rewards, actual_n_step)
+                key="n_step", new_data=np.full((len(sampled_episode),), actual_n_step)
             )
             # Some loss functions need `weights` - which are only relevant when
             # prioritizing.
             sampled_episode.set_extra_model_outputs(
-                key="weights", new_data=np.ones_like(rewards)
+                key="weights", new_data=np.ones((len(sampled_episode),))
             )
 
             # Append the sampled episode.
