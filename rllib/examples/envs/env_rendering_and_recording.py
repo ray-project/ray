@@ -62,6 +62,7 @@ import numpy as np
 from typing import Optional, Sequence
 
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
+from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
 from ray.rllib.env.wrappers.atari_wrappers import wrap_atari_for_new_api_stack
 from ray.rllib.utils.images import resize
 from ray.rllib.utils.test_utils import (
@@ -87,9 +88,17 @@ class EnvRenderCallback(DefaultCallbacks):
     """
 
     def __init__(self, env_runner_indices: Optional[Sequence[int]] = None):
+        """Initializes an EnvRenderCallback instance.
+
+        Args:
+            env_runner_indices: The (optional) EnvRunner indices, for this callback
+                should be active. If None, activates the rendering for all EnvRunners.
+                If a Sequence type, only renders, if the EnvRunner index is found in
+                `env_runner_indices`.
+        """
         super().__init__()
         # Only render and record on certain EnvRunner indices?
-        self.env_runner_indices = env_runner_indices
+        self._env_runner_indices = env_runner_indices
         # Per sample round (on this EnvRunner), we want to only log the best- and
         # worst performing episode's videos in the custom metrics. Otherwise, too much
         # data would be sent to WandB.
@@ -107,13 +116,14 @@ class EnvRenderCallback(DefaultCallbacks):
         rl_module,
         **kwargs,
     ) -> None:
-        """On each env.step(), we add the render image to our Episode instance.
+        """Adds current render image to episode's temporary data.
 
         Note that this would work with MultiAgentEpisodes as well.
         """
+        # Skip, if this EnvRunner's index is not in `self._env_runner_indices`.
         if (
-            self.env_runner_indices is not None
-            and env_runner.worker_index not in self.env_runner_indices
+            self._env_runner_indices is not None
+            and env_runner.worker_index not in self._env_runner_indices
         ):
             return
 
@@ -154,6 +164,12 @@ class EnvRenderCallback(DefaultCallbacks):
         at the very env of sampling (when we know, which episode was the best and
         worst). See `on_sample_end` for the implemented logging logic.
         """
+        if (
+            self._env_runner_indices is not None
+            and env_runner.worker_index not in self._env_runner_indices
+        ):
+            return
+
         # Get the episode's return.
         episode_return = episode.get_return()
 
@@ -274,13 +290,12 @@ if __name__ == "__main__":
 
     if base_config.is_atari:
         base_config.rl_module(
-            model_config_dict={
-                "vf_share_layers": True,
-                "conv_filters": [[16, 4, 2], [32, 4, 2], [64, 4, 2], [128, 4, 2]],
-                "conv_activation": "relu",
-                "post_fcnet_hiddens": [256],
-                "uses_new_env_runners": True,
-            },
+            model_config=DefaultModelConfig(
+                conv_filters=[[16, 4, 2], [32, 4, 2], [64, 4, 2], [128, 4, 2]],
+                conv_activation="relu",
+                head_fcnet_hiddens=[256],
+                vf_share_layers=True,
+            ),
         )
 
     run_rllib_example_script_experiment(base_config, args)

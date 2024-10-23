@@ -642,6 +642,11 @@ class WandbLoggerCallback(LoggerCallback):
     def _start_logging_actor(
         self, trial: "Trial", exclude_results: List[str], **wandb_init_kwargs
     ):
+        # Reuse actor if one already exists.
+        # This can happen if the trial is restarted.
+        if trial in self._trial_logging_futures:
+            return
+
         if not self._remote_logger_class:
             env_vars = {}
             # API key env variable is not set if authenticating through `wandb login`

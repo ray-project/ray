@@ -44,6 +44,7 @@ void NormalSchedulingQueue::Add(
     const std::string &concurrency_group_name,
     const FunctionDescriptor &function_descriptor,
     TaskID task_id,
+    uint64_t attempt_number,
     const std::vector<rpc::ObjectReference> &dependencies) {
   absl::MutexLock lock(&mu_);
   // Normal tasks should not have ordering constraints.
@@ -54,7 +55,8 @@ void NormalSchedulingQueue::Add(
                                                  std::move(reject_request),
                                                  std::move(send_reply_callback),
                                                  task_id,
-                                                 dependencies.size() > 0,
+                                                 attempt_number,
+                                                 dependencies,
                                                  /*concurrency_group_name=*/"",
                                                  function_descriptor));
 }

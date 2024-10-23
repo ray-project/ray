@@ -760,7 +760,13 @@ RAY_CONFIG(bool, isolate_workers_across_resource_types, true)
 RAY_CONFIG(bool, isolate_workers_across_task_types, true)
 
 /// ServerCall instance number of each RPC service handler
-RAY_CONFIG(int64_t, gcs_max_active_rpcs_per_handler, 100)
+///
+/// NOTE: Default value is temporarily pegged at `gcs_server_rpc_server_thread_num * 100`
+///       to keep it at the level it has been prior to
+///       https://github.com/ray-project/ray/pull/47664
+RAY_CONFIG(int64_t,
+           gcs_max_active_rpcs_per_handler,
+           gcs_server_rpc_server_thread_num() * 100)
 
 /// grpc keepalive sent interval for server.
 /// This is only configured in GCS server now.
@@ -828,6 +834,11 @@ RAY_CONFIG(std::string, REDIS_SERVER_NAME, "")
 //  The delay is a random number between the interval. If method equals '*',
 //  it will apply to all methods.
 RAY_CONFIG(std::string, testing_asio_delay_us, "")
+
+///  To use this, simply do
+///      export
+///      RAY_testing_rpc_failure="method1=max_num_failures,method2=max_num_failures"
+RAY_CONFIG(std::string, testing_rpc_failure, "")
 
 /// The following are configs for the health check. They are borrowed
 /// from k8s health probe (shorturl.at/jmTY3)
