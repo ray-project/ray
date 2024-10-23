@@ -35,7 +35,7 @@ class FileReader(abc.ABC):
     def estimate_in_memory_size(self, path: str, file_size: int, *, filesystem) -> int:
         """Estimate the in-memory size of the data at the given path.
 
-        This method is used by the `ExpandPaths` operator to ensure that each read
+        This method is used by the `PartitionFiles` operator to ensure that each read
         task receives an appropriate amount of data.
 
         Args:

@@ -8,8 +8,8 @@ import numpy as np
 import ray
 import ray.data.read_api as oss_read_api
 from ray._private.auto_init_hook import wrap_auto_init
-from ray.anyscale.data._internal.logical.operators.expand_paths_operator import (
-    ExpandPaths,
+from ray.anyscale.data._internal.logical.operators.partition_files_operator import (
+    PartitionFiles,
 )
 from ray.anyscale.data._internal.logical.operators.read_files_operator import ReadFiles
 from ray.anyscale.data._internal.readers import (
@@ -644,7 +644,7 @@ def read_files(
     ray_remote_args: Dict[str, Any],
 ) -> Dataset:
     paths, filesystem = _resolve_paths_and_filesystem(paths, filesystem)
-    expand_paths_op = ExpandPaths(
+    partition_files_op = PartitionFiles(
         paths=paths,
         reader=reader,
         filesystem=filesystem,
@@ -653,7 +653,7 @@ def read_files(
         partition_filter=partition_filter,
     )
     read_files_op = ReadFiles(
-        expand_paths_op,
+        partition_files_op,
         paths=paths,
         reader=reader,
         filesystem=filesystem,

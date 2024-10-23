@@ -1,8 +1,8 @@
 import functools
 from typing import Any, Dict, List, Optional, Protocol
 
-from ray.anyscale.data._internal.logical.operators.expand_paths_operator import (
-    ExpandPaths,
+from ray.anyscale.data._internal.logical.operators.partition_files_operator import (
+    PartitionFiles,
 )
 from ray.anyscale.data._internal.logical.operators.read_files_operator import ReadFiles
 from ray.anyscale.data._internal.logical.operators.streaming_aggregate import (
@@ -93,12 +93,14 @@ class DatasetMixin:
         if isinstance(self._logical_plan.dag, ReadFiles):
             input_dependencies = self._logical_plan.dag.input_dependencies
             assert len(input_dependencies) == 1
-            expand_paths_op = input_dependencies[0]
-            assert isinstance(expand_paths_op, ExpandPaths)
+            partition_files_op = input_dependencies[0]
+            assert isinstance(partition_files_op, PartitionFiles)
             execution_plan = ExecutionPlan(DatasetStats(metadata={}, parent=None))
-            logical_plan = LogicalPlan(expand_paths_op)
+            logical_plan = LogicalPlan(partition_files_op)
             dataset = Dataset(execution_plan, logical_plan)
-            return list({row["path"] for row in dataset.take_all()})
+            return list(
+                {row[PartitionFiles.PATH_COLUMN_NAME] for row in dataset.take_all()}
+            )
         else:
             return self._plan.input_files() or []
 

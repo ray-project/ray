@@ -5,8 +5,8 @@ import numpy as np
 import pyarrow as pa
 
 import ray
-from ray.anyscale.data._internal.logical.operators.expand_paths_operator import (
-    ExpandPaths,
+from ray.anyscale.data._internal.logical.operators.partition_files_operator import (
+    PartitionFiles,
 )
 from ray.data._internal.execution.interfaces import PhysicalOperator, RefBundle
 from ray.data._internal.execution.interfaces.task_context import TaskContext
@@ -35,16 +35,16 @@ MAX_NUM_INPUT_BLOCKS = 200
 NUM_BLOCKS_PER_READ_TASK = 8
 
 
-def plan_expand_paths_op(
-    op: ExpandPaths, physical_children: List[PhysicalOperator]
+def plan_partition_files_op(
+    op: PartitionFiles, physical_children: List[PhysicalOperator]
 ) -> PhysicalOperator:
     assert len(physical_children) == 0
     input_data_buffer = create_input_data_buffer(op)
-    expand_paths_operator = create_expand_paths_operator(input_data_buffer, op)
-    return expand_paths_operator
+    partition_files_operator = create_partition_files_operator(input_data_buffer, op)
+    return partition_files_operator
 
 
-def create_input_data_buffer(logical_op: ExpandPaths) -> InputDataBuffer:
+def create_input_data_buffer(logical_op: PartitionFiles) -> InputDataBuffer:
     path_splits = np.array_split(
         logical_op.paths, min(MAX_NUM_INPUT_BLOCKS, len(logical_op.paths))
     )
@@ -66,11 +66,11 @@ def create_input_data_buffer(logical_op: ExpandPaths) -> InputDataBuffer:
     return InputDataBuffer(input_data=input_data)
 
 
-def create_expand_paths_operator(
+def create_partition_files_operator(
     input_op: PhysicalOperator,
-    logical_op: ExpandPaths,
+    logical_op: PartitionFiles,
 ) -> PhysicalOperator:
-    def expand_paths(blocks: Iterable[Block], _: TaskContext) -> Iterable[Block]:
+    def partition_files(blocks: Iterable[Block], _: TaskContext) -> Iterable[Block]:
         file_paths = []
         running_in_memory_size = 0
         encoding_ratio = None  # Ratio of in-memory size to file size.
@@ -113,22 +113,24 @@ def create_expand_paths_operator(
                         > ray.data.DataContext.get_current().target_max_block_size
                         * NUM_BLOCKS_PER_READ_TASK
                     ):
-                        block = pa.Table.from_pydict({"path": file_paths})
+                        block = pa.Table.from_pydict(
+                            {PartitionFiles.PATH_COLUMN_NAME: file_paths}
+                        )
                         yield block
 
                         file_paths = []
                         running_in_memory_size = 0
 
         if file_paths:
-            block = pa.Table.from_pydict({"path": file_paths})
+            block = pa.Table.from_pydict({PartitionFiles.PATH_COLUMN_NAME: file_paths})
             yield block
 
-    transform_fns: List[MapTransformFn] = [BlockMapTransformFn(expand_paths)]
+    transform_fns: List[MapTransformFn] = [BlockMapTransformFn(partition_files)]
     map_transformer = MapTransformer(transform_fns)
     return MapOperator.create(
         map_transformer,
         input_op,
-        name="ExpandPaths",
+        name="PartitionFiles",
         target_max_block_size=None,
         ray_remote_args={
             "num_cpus": 0.5,
@@ -187,7 +189,7 @@ def _expand_directory(
 
 
 def _estimate_encoding_ratio(
-    path: str, file_size: Optional[int], logical_op: ExpandPaths
+    path: str, file_size: Optional[int], logical_op: PartitionFiles
 ) -> float:
     if file_size is not None and file_size > 0:
         in_memory_size = logical_op.reader.estimate_in_memory_size(

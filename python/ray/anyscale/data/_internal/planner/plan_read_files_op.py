@@ -1,6 +1,9 @@
 import logging
 from typing import Iterable, List
 
+from ray.anyscale.data._internal.logical.operators.partition_files_operator import (
+    PartitionFiles,
+)
 from ray.anyscale.data._internal.logical.operators.read_files_operator import ReadFiles
 from ray.data._internal.compute import TaskPoolStrategy
 from ray.data._internal.execution.interfaces import PhysicalOperator
@@ -26,7 +29,7 @@ def plan_read_files_op(
 
     def read_paths(blocks: Iterable[Block], _: TaskContext) -> Iterable[Block]:
         for block in blocks:
-            paths = list(map(str, list(block["path"])))
+            paths = list(map(str, list(block[PartitionFiles.PATH_COLUMN_NAME])))
             yield from op.reader.read_paths(paths, filesystem=op.filesystem)
 
     transform_fns: List[MapTransformFn] = [

@@ -5,7 +5,16 @@ from ray.data._internal.logical.interfaces import LogicalOperator
 from ray.data.datasource import PathPartitionFilter
 
 
-class ExpandPaths(LogicalOperator):
+class PartitionFiles(LogicalOperator):
+    """List and partition files.
+
+    Physical operators that implement this logical operator should list the files in the
+    specified paths and output blocks with a single column named
+    `PartitionFiles.PATH_COLUMN_NAME`.
+    """
+
+    PATH_COLUMN_NAME = "__path"
+
     def __init__(
         self,
         *,
@@ -16,7 +25,7 @@ class ExpandPaths(LogicalOperator):
         file_extensions: List[str],
         partition_filter: PathPartitionFilter,
     ):
-        super().__init__(name="ExpandPaths", input_dependencies=[])
+        super().__init__(name="PartitionFiles", input_dependencies=[])
 
         if isinstance(paths, str):
             paths = [paths]
