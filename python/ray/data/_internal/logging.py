@@ -11,6 +11,12 @@ DEFAULT_CONFIG_PATH = os.path.abspath(
     os.path.join(os.path.dirname(__file__), "logging.yaml")
 )
 
+# Env. variable to specify the encoding of the file logs when using the default config.
+RAY_DATA_LOG_ENCODING_ENV_VAR_NAME = "RAY_DATA_LOG_ENCODING"
+
+# Env. variable to specify the logging config path use defaults if not set
+RAY_DATA_LOGGING_CONFIG_ENV_VAR_NAME = "RAY_DATA_LOGGING_CONFIG"
+
 # To facilitate debugging, Ray Data writes debug logs to a file. However, if Ray Data
 # logs every scheduler loop, logging might impact performance. So, we add a "TRACE"
 # level where logs aren't written by default.
@@ -89,14 +95,42 @@ class SessionFileHandler(logging.Handler):
 def configure_logging() -> None:
     """Configure the Python logger named 'ray.data'.
 
-    This function loads the configration YAML specified by the "RAY_DATA_LOGGING_CONFIG"
-    environment variable. If the variable isn't set, this function loads the
+    This function loads the configration YAML specified by "RAY_DATA_LOGGING_CONFIG"
+    environment variable. If the variable isn't set, this function loads the default
     "logging.yaml" file that is adjacent to this module.
+
+    If "RAY_DATA_LOG_ENCODING" is specified as "JSON" we will enable JSON logging mode
+    if using the default logging config.
     """
-    config_path = os.environ.get("RAY_DATA_LOGGING_CONFIG", DEFAULT_CONFIG_PATH)
-    with open(config_path) as file:
-        config = yaml.safe_load(file)
+
+    def _load_logging_config(config_path: str):
+        with open(config_path) as file:
+            config = yaml.safe_load(file)
+        return config
+
+    # Dynamically load env vars
+    config_path = os.environ.get(RAY_DATA_LOGGING_CONFIG_ENV_VAR_NAME)
+    log_encoding = os.environ.get(RAY_DATA_LOG_ENCODING_ENV_VAR_NAME)
+
+    if config_path is not None:
+        config = _load_logging_config(config_path)
+    else:
+        config = _load_logging_config(DEFAULT_CONFIG_PATH)
+        if log_encoding is not None and log_encoding.upper() == "JSON":
+            for logger in config["loggers"].values():
+                logger["handlers"].remove("file")
+                logger["handlers"].append("file_json")
+
     logging.config.dictConfig(config)
+
+    # After configuring logger, warn if RAY_DATA_LOGGING_CONFIG is used with
+    # RAY_DATA_LOG_ENCODING, because they are not both supported together.
+    if config_path is not None and log_encoding is not None:
+        logger = logging.getLogger(__name__)
+        logger.warning(
+            "Using `RAY_DATA_LOG_ENCODING` is not supported with "
+            + "`RAY_DATA_LOGGING_CONFIG`"
+        )
 
 
 def reset_logging() -> None:

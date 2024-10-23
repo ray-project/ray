@@ -28,6 +28,7 @@ import ray
 import ray.cloudpickle as pickle
 from ray._private.thirdparty.tabulate.tabulate import tabulate
 from ray._private.usage import usage_lib
+from ray.air.util.tensor_extensions.arrow import ArrowTensorTypeV2
 from ray.air.util.tensor_extensions.utils import _create_possibly_ragged_ndarray
 from ray.data._internal.aggregate import Max, Mean, Min, Std, Sum
 from ray.data._internal.compute import ComputeStrategy
@@ -409,6 +410,10 @@ class Dataset:
         :ref:`Stateful Transforms <stateful_transforms>`.
 
         .. tip::
+            To understand the format of the input to ``fn``, call :meth:`~Dataset.take_batch`
+            on the dataset to get a batch in the same format as will be passed to ``fn``.
+
+        .. tip::
             If ``fn`` doesn't mutate its input, set ``zero_copy_batch=True`` to improve
             performance and decrease memory utilization.
 
@@ -560,6 +565,11 @@ class Dataset:
 
             :meth:`~Dataset.iter_batches`
                 Call this function to iterate over batches of data.
+
+            :meth:`~Dataset.take_batch`
+                Call this function to get a batch of data from the dataset
+                in the same format as will be passed to the `fn` function of
+                :meth:`~Dataset.map_batches`.
 
             :meth:`~Dataset.flat_map`
                 Call this method to create new records from existing ones. Unlike
@@ -853,6 +863,86 @@ class Dataset:
         )
 
     @PublicAPI(api_group=BT_API_GROUP)
+    def rename_columns(
+        self,
+        names: Union[List[str], Dict[str, str]],
+        *,
+        concurrency: Optional[Union[int, Tuple[int, int]]] = None,
+        **ray_remote_args,
+    ):
+        """Rename columns in the dataset.
+
+        Examples:
+
+            >>> import ray
+            >>> ds = ray.data.read_parquet("s3://anonymous@ray-example-data/iris.parquet")
+            >>> ds.schema()
+            Column        Type
+            ------        ----
+            sepal.length  double
+            sepal.width   double
+            petal.length  double
+            petal.width   double
+            variety       string
+
+            You can pass a dictionary mapping old column names to new column names.
+
+            >>> ds.rename_columns({"variety": "category"}).schema()
+            Column        Type
+            ------        ----
+            sepal.length  double
+            sepal.width   double
+            petal.length  double
+            petal.width   double
+            category      string
+
+            Or you can pass a list of new column names.
+
+            >>> ds.rename_columns(
+            ...     ["sepal_length", "sepal_width", "petal_length", "petal_width", "variety"]
+            ... ).schema()
+            Column        Type
+            ------        ----
+            sepal_length  double
+            sepal_width   double
+            petal_length  double
+            petal_width   double
+            variety       string
+
+        Args:
+            mapper: A dictionary that maps old column names to new column names, or a
+                list of new column names.
+            concurrency: The maximum number of Ray workers to use concurrently.
+            ray_remote_args: Additional resource requirements to request from
+                ray (e.g., num_gpus=1 to request GPUs for the map tasks).
+        """  # noqa: E501
+        if concurrency is not None and not isinstance(concurrency, int):
+            raise ValueError(
+                "Expected `concurrency` to be an integer or `None`, but got "
+                f"{concurrency}."
+            )
+
+        def rename_columns(batch: "pyarrow.Table") -> "pyarrow.Table":
+            # Versions of PyArrow before 17 don't support renaming columns with a dict.
+            if isinstance(names, dict):
+                column_names_list = batch.column_names
+                for i, column_name in enumerate(column_names_list):
+                    if column_name in names:
+                        column_names_list[i] = names[column_name]
+            else:
+                column_names_list = names
+
+            return batch.rename_columns(column_names_list)
+
+        return self.map_batches(
+            rename_columns,
+            batch_format="pyarrow",
+            zero_copy_batch=True,
+            concurrency=concurrency,
+            **ray_remote_args,
+        )
+
+    @PublicAPI(api_group=BT_API_GROUP)
     def flat_map(
         self,
         fn: UserDefinedFunction[Dict[str, Any], List[Dict[str, Any]]],
@@ -993,6 +1083,11 @@ class Dataset:
             If you can represent your predicate with NumPy or pandas operations,
             :meth:`Dataset.map_batches` might be faster. You can implement filter by
             dropping rows.
+
+        .. tip::
+            If you're using parquet and the filter is a simple predicate, you might
+            be able to speed it up by using filter pushdown, see
+            :ref:`Parquet row pruning <parquet_row_pruning>`.
 
         Examples:
 
@@ -2572,10 +2667,12 @@ class Dataset:
             schema is not known and fetch_if_missing is False.
         """
 
+        context = self._plan._context
+
         # First check if the schema is already known from materialized blocks.
         base_schema = self._plan.schema(fetch_if_missing=False)
         if base_schema is not None:
-            return Schema(base_schema)
+            return Schema(base_schema, data_context=context)
 
         # Lazily execute only the first block to minimize computation. We achieve this
         # by appending a Limit[1] operation to a copy of this Dataset, which we then
@@ -2583,7 +2680,7 @@ class Dataset:
         base_schema = self.limit(1)._plan.schema(fetch_if_missing=fetch_if_missing)
         if base_schema is not None:
             self._plan.cache_schema(base_schema)
-            return Schema(base_schema)
+            return Schema(base_schema, data_context=context)
         else:
             return None
 
@@ -3612,13 +3709,15 @@ class Dataset:
             datasink.on_write_start()
 
             self._write_ds = Dataset(plan, logical_plan).materialize()
-            blocks = ray.get(self._write_ds._plan.execute().block_refs)
+            # TODO: Get and handle the blocks with an iterator instead of getting
+            # everything in a blocking way, so some blocks can be freed earlier.
+            raw_write_results = ray.get(self._write_ds._plan.execute().block_refs)
             assert all(
-                isinstance(block, pd.DataFrame) and len(block) == 1 for block in blocks
+                isinstance(block, pd.DataFrame) and len(block) == 1
+                for block in raw_write_results
             )
-            write_results = [block["write_result"][0] for block in blocks]
+            datasink.on_write_complete(raw_write_results)
 
-            datasink.on_write_complete(write_results)
         except Exception as e:
             datasink.on_write_failed(e)
             raise
@@ -5171,8 +5270,17 @@ class Schema:
         base_schema: The underlying Arrow or Pandas schema.
     """
 
-    def __init__(self, base_schema: Union["pyarrow.lib.Schema", "PandasBlockSchema"]):
+    def __init__(
+        self,
+        base_schema: Union["pyarrow.lib.Schema", "PandasBlockSchema"],
+        *,
+        data_context: Optional[DataContext] = None,
+    ):
         self.base_schema = base_schema
+
+        # Snapshot the current context, so that the config of Datasets is always
+        # determined by the config at the time it was created.
+        self._context = data_context or copy.deepcopy(DataContext.get_current())
 
     @property
     def names(self) -> List[str]:
@@ -5195,12 +5303,19 @@ class Schema:
         arrow_types = []
         for dtype in self.base_schema.types:
             if isinstance(dtype, TensorDtype):
+
+                if self._context.use_arrow_tensor_v2:
+                    pa_tensor_type_class = ArrowTensorTypeV2
+                else:
+                    pa_tensor_type_class = ArrowTensorType
+
                 # Manually convert our Pandas tensor extension type to Arrow.
                 arrow_types.append(
-                    ArrowTensorType(
+                    pa_tensor_type_class(
                         shape=dtype._shape, dtype=pa.from_numpy_dtype(dtype._dtype)
                     )
                 )
+
             else:
                 try:
                     arrow_types.append(pa.from_numpy_dtype(dtype))

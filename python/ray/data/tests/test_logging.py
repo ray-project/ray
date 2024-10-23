@@ -124,6 +124,49 @@ def test_custom_config(reset_logging, monkeypatch, tmp_path):
     assert isinstance(logger.handlers[0], logging.StreamHandler)
 
 
+def test_json_logging_configuration(
+    capsys, reset_logging, monkeypatch, shutdown_only, propagate_logs
+):
+    monkeypatch.setenv("RAY_DATA_LOG_ENCODING", "JSON")
+    ray.init()
+
+    configure_logging()
+
+    logger = logging.getLogger("ray.data")
+
+    # Ensure handlers correctly setup
+    handlers = logger.handlers
+    assert len(handlers) == 2
+    assert sum(handler.name == "file_json" for handler in handlers) == 1
+    assert sum(handler.name == "console" for handler in handlers) == 1
+
+    logger.info("ham")
+    logger.debug("turkey")
+
+    log_path = os.path.join(get_log_directory(), "ray-data.log")
+    with open(log_path) as file:
+        log_contents = file.read()
+
+    # Validate the log is in JSON format (a basic check for JSON)
+    assert all(
+        log_line.startswith("{") and log_line.endswith("}")
+        for log_line in log_contents.splitlines()
+    )
+
+    assert '"message": "ham"' in log_contents
+    assert '"message": "turkey"' in log_contents
+
+    # Validate console logs are in text mode
+    console_log_output = capsys.readouterr().err
+    assert not any(
+        log_line.startswith("{") and log_line.endswith("}")
+        for log_line in console_log_output.splitlines()
+    )
+
+    assert "ham" in console_log_output
+    assert "turkey" not in console_log_output
+
+
 if __name__ == "__main__":
     import sys
 
