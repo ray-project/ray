@@ -258,7 +258,11 @@ inline void FillTaskInfo(rpc::TaskInfoEntry *task_info,
   }
 
   // Fill in task args
-  task_info->set_task_args(task_spec.GetTaskArgs());
+  for (int i = 0; i < task_spec.NumArgs(); i++) {
+    if (task_spec.ArgByRef(i)) {
+      task_info->add_dependent_args_refs()->CopyFrom(task_spec.ArgRef(i));
+    }
+  }
 }
 
 // Fill task_info for the export API with task specification from task_spec
@@ -312,9 +316,6 @@ inline void FillExportTaskInfo(rpc::ExportTaskEventData::TaskInfoEntry *task_inf
   if (!pg_id.IsNil()) {
     task_info->set_placement_group_id(pg_id.Binary());
   }
-
-  // Fill in task args
-  task_info->set_task_args(task_spec.GetTaskArgs());
 }
 
 /// Generate a RayErrorInfo from ErrorType
