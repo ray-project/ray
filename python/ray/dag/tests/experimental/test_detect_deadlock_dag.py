@@ -64,7 +64,8 @@ def test_invalid_graph_1_actor(ray_start_regular, tensor_transport):
         dag = a.no_op.bind(dag)
 
     if tensor_transport == TorchTensorType.AUTO:
-        dag.experimental_compile()
+        compiled_graph = dag.experimental_compile()
+        compiled_graph.teardown()
     elif tensor_transport == TorchTensorType.NCCL:
         with pytest.raises(ValueError, match=INVALID_GRAPH):
             dag.experimental_compile()
@@ -139,7 +140,8 @@ def test_valid_graph_2_actors_1(ray_start_regular, tensor_transport):
             ]
         )
 
-    dag.experimental_compile()
+    compiled_graph = dag.experimental_compile()
+    compiled_graph.teardown()
 
 
 @pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 2}], indirect=True)
@@ -167,7 +169,8 @@ def test_valid_graph_2_actors_2(ray_start_regular):
         dag.with_type_hint(TorchTensorType(transport="nccl"))
         dag = b.no_op.bind(dag)
 
-    dag.experimental_compile()
+    compiled_dag = dag.experimental_compile()
+    compiled_dag.teardown()
 
 
 @pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 2}], indirect=True)
@@ -204,7 +207,8 @@ def test_invalid_graph_2_actors_1(ray_start_regular, tensor_transport):
         )
 
     if tensor_transport == TorchTensorType.AUTO:
-        dag.experimental_compile()
+        compiled_graph = dag.experimental_compile()
+        compiled_graph.teardown()
     elif tensor_transport == TorchTensorType.NCCL:
         with pytest.raises(ValueError, match=INVALID_GRAPH):
             dag.experimental_compile()
@@ -241,7 +245,8 @@ def test_invalid_graph_2_actors_2(ray_start_regular, tensor_transport):
         )
 
     if tensor_transport == TorchTensorType.AUTO:
-        dag.experimental_compile()
+        compiled_graph = dag.experimental_compile()
+        compiled_graph.teardown()
     elif tensor_transport == TorchTensorType.NCCL:
         with pytest.raises(ValueError, match=INVALID_GRAPH):
             dag.experimental_compile()
@@ -273,7 +278,8 @@ def test_valid_graph_3_actors_1(ray_start_regular, tensor_transport):
             ]
         )
 
-    dag.experimental_compile()
+    compiled_graph = dag.experimental_compile()
+    compiled_graph.teardown()
 
 
 @pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 3}], indirect=True)
@@ -298,7 +304,8 @@ def test_valid_graph_3_actors_2(ray_start_regular):
         branch2.with_type_hint(TorchTensorType(transport="nccl"))
         dag = a.no_op_two.bind(branch1, branch2)
 
-    dag.experimental_compile()
+    compiled_dag = dag.experimental_compile()
+    compiled_dag.teardown()
 
 
 if __name__ == "__main__":
