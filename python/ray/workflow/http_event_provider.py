@@ -47,7 +47,7 @@ class HTTPEventProvider:
 
     Example definition
     ==================
-    -
+    
     ```
     class HTTPEventProvider:
 
