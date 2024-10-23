@@ -1,14 +1,12 @@
 import asyncio
 import concurrent
 import copy
-import sys
 import threading
 import time
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Dict, List, NamedTuple, Optional, Tuple, Union
 
 import ray
-import ray.exceptions
 from ray.experimental.channel.gpu_communicator import GPUCommunicator
 from ray.experimental.channel.serialization_context import _SerializationContext
 from ray.util.annotations import DeveloperAPI, PublicAPI
@@ -19,29 +17,6 @@ _context_lock = threading.Lock()
 
 if TYPE_CHECKING:
     import torch
-
-
-def retry_and_check_interpreter_exit(f) -> bool:
-    """This function is only useful when f contains channel read/write.
-
-    Keep retrying channel read/write inside `f` and check if interpreter exits.
-    It is important in case the read/write happens in a separate thread pool.
-    See https://github.com/ray-project/ray/pull/47702
-    """
-    exiting = False
-    while True:
-        try:
-            # results.append(c.read(timeout=1))
-            f()
-            break
-        except ray.exceptions.RayChannelTimeoutError:
-            if sys.is_finalizing():
-                # Interpreter exits. We should ignore the error and
-                # stop reading so that the thread can join.
-                exiting = True
-                break
-
-    return exiting
 
 
 # Holds the input arguments for an accelerated DAG node.
@@ -381,15 +356,7 @@ class AwaitableBackgroundReader(ReaderInterface):
         self._background_task = asyncio.ensure_future(self.run())
 
     def _run(self):
-        results = []
-        for c in self._input_channels:
-            exiting = retry_and_check_interpreter_exit(
-                lambda: results.append(c.read(timeout=1))
-            )
-            if exiting:
-                break
-
-        return results
+        return [c.read() for c in self._input_channels]
 
     async def run(self):
         loop = asyncio.get_running_loop()
@@ -411,7 +378,6 @@ class AwaitableBackgroundReader(ReaderInterface):
     def close(self):
         super().close()
         self._background_task_executor.shutdown(cancel_futures=True)
-        self._background_task.cancel()
 
 
 @DeveloperAPI
@@ -574,11 +540,7 @@ class AwaitableBackgroundWriter(WriterInterface):
         for i, channel in enumerate(self._output_channels):
             idx = self._output_idxs[i]
             res_i = _adapt(res, idx, self._is_input)
-            exiting = retry_and_check_interpreter_exit(
-                lambda: channel.write(res_i, timeout=1)
-            )
-            if exiting:
-                break
+            channel.write(res_i)
 
     async def run(self):
         loop = asyncio.get_event_loop()
