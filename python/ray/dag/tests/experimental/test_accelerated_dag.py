@@ -10,7 +10,6 @@ import sys
 import time
 import numpy as np
 import torch
-import pydot
 
 import pytest
 
@@ -29,6 +28,10 @@ from ray.experimental.channel.torch_tensor_type import TorchTensorType
 
 logger = logging.getLogger(__name__)
 
+try:
+    import pydot
+except Exception:
+    logging.info("pydot is not installed, visualization tests will be skiped")
 
 pytestmark = [
     pytest.mark.skipif(
