@@ -8,7 +8,7 @@ import logging
 import threading
 from collections import defaultdict
 from dataclasses import dataclass
-from typing import Callable, Dict, Optional, Set
+from typing import Callable, Dict, Optional
 
 import ray
 from ray.exceptions import RayActorError

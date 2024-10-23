@@ -652,12 +652,6 @@ class DeploymentResponseGenerator(_DeploymentResponseBase):
     `DeploymentHandle` call.
     """
 
-    def __init__(
-        self,
-        object_ref_future: concurrent.futures.Future,
-    ):
-        super().__init__(object_ref_future)
-
     def __await__(self):
         raise TypeError(
             "`DeploymentResponseGenerator` cannot be awaited directly. Use `async for` "

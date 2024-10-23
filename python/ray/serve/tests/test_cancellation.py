@@ -8,19 +8,13 @@ from fastapi import FastAPI
 from starlette.requests import Request
 
 import ray
-import ray.util.state as state_api
 from ray import serve
 from ray._private.test_utils import (
     SignalActor,
     async_wait_for_condition,
     wait_for_condition,
 )
-from ray.serve._private.common import DeploymentID, ReplicaState
-from ray.serve._private.test_utils import (
-    get_replica_ids,
-    send_signal_on_cancellation,
-    tlog,
-)
+from ray.serve._private.test_utils import send_signal_on_cancellation, tlog
 
 
 @pytest.mark.parametrize("use_fastapi", [False, True])
