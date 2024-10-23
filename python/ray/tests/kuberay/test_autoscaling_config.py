@@ -108,8 +108,8 @@ def _get_basic_autoscaling_config() -> dict:
             # Same as "small-group" with a TPU resource entry added
             # and modified max_workers and node_config.
             "tpu-group": {
-                "max_workers": 4,
-                "min_workers": 1,
+                "max_workers": 8,
+                "min_workers": 2,
                 "node_config": {},
                 "resources": {
                     "CPU": 1,
@@ -130,7 +130,7 @@ def _get_basic_autoscaling_config() -> dict:
         "head_start_ray_commands": [],
         "idle_timeout_minutes": 1.0,
         "initialization_commands": [],
-        "max_workers": 504,
+        "max_workers": 508,
         "setup_commands": [],
         "upscaling_speed": 1000,
         "worker_setup_commands": [],
