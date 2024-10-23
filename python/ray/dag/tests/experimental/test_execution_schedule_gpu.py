@@ -194,6 +194,8 @@ def test_simulate_pp_2workers_2batches_1f1b(
         for tensor in tensors:
             assert torch.equal(tensor, tensor_cpu)
 
+    compiled_dag.teardown()
+
 
 @pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 4}], indirect=True)
 def test_simulate_pp_4workers_8batches_1f1b(ray_start_regular, monkeypatch):
@@ -216,6 +218,7 @@ def test_simulate_pp_4workers_8batches_1f1b(ray_start_regular, monkeypatch):
     assert len(tensors) == num_microbatches
     for t in tensors:
         assert torch.equal(t, tensor_cpu)
+    compiled_dag.teardown()
 
 
 @pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 3}], indirect=True)
@@ -282,6 +285,8 @@ def test_three_actors_with_nccl_1(ray_start_regular):
     assert len(tensors) == 2
     for t in tensors:
         assert torch.equal(t, tensor_cpu)
+
+    compiled_dag.teardown()
 
 
 @pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 3}], indirect=True)
@@ -363,6 +368,8 @@ def test_three_actors_with_nccl_2(ray_start_regular, single_fetch, monkeypatch):
         assert len(tensors) == 3
         for tensor in tensors:
             assert torch.equal(tensor, tensor_cpu)
+
+    compiled_dag.teardown()
 
 
 if __name__ == "__main__":
