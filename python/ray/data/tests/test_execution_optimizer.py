@@ -1709,6 +1709,7 @@ def test_logical_optimization_e2e():
     # InputDataBuffer[Input]
     # -> TaskPoolMapOperator[ReadRange->MapBatches(<lambda>)]
     # -> AllToAllOperator[RandomizeBlockOrder]
+    
 
     # check that randomize_block_order is pushed to the end
     name = "ReadRange->MapBatches(<lambda>)"
@@ -1721,6 +1722,7 @@ def test_logical_optimization_e2e():
     deduped_third_op = "Operator 3 RandomizeBlockOrder:"
     assert deduped_third_op not in ds.stats()
 
+    _check_usage_record(["ReadRange", "MapBatches", "RandomizeBlockOrder"])
 
 def test_insert_logical_optimization_rules():
     class FakeRule1:
