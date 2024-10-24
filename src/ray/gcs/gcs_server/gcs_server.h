@@ -24,6 +24,7 @@
 #include "ray/gcs/gcs_server/gcs_kv_manager.h"
 #include "ray/gcs/gcs_server/gcs_redis_failure_detector.h"
 #include "ray/gcs/gcs_server/gcs_resource_manager.h"
+#include "ray/gcs/gcs_server/gcs_server_io_context_policy.h"
 #include "ray/gcs/gcs_server/gcs_table_storage.h"
 #include "ray/gcs/gcs_server/gcs_task_manager.h"
 #include "ray/gcs/gcs_server/pubsub_handler.h"
@@ -205,32 +206,6 @@ class GcsServer {
   std::shared_ptr<RedisClient> GetOrConnectRedis();
 
   void TryGlobalGC();
-
-  struct GcsServerIoContextPolicy {
-    // IoContext name for each handler.
-    // If a class needs a dedicated io context, it should be specialized here.
-    // If a class does NOT have a dedicated io context, returns -1;
-    template <typename T>
-    static constexpr int GetDedicatedIoContextIndex() {
-      if constexpr (std::is_same_v<T, GcsTaskManager>) {
-        return 0;
-      } else if constexpr (std::is_same_v<T, GcsPublisher>) {
-        return 1;
-      } else if constexpr (std::is_same_v<T, syncer::RaySyncer>) {
-        return 2;
-      } else {
-        // Due to if-constexpr limitations, this have to be in an else block.
-        // Using this tuple_size_v to put T into compile error message.
-        static_assert(std::tuple_size_v<std::tuple<T>> == 0, "unknown type");
-      }
-    }
-
-    // This list must be unique and complete set of names returned from
-    // GetDedicatedIoContextName. Or you can get runtime crashes when accessing a missing
-    // name, or get leaks by creating unused threads.
-    constexpr static std::string_view kAllDedicatedIoContextNames[] = {
-        "task_io_context", "pubsub_io_context", "ray_syncer_io_context"};
-  };
 
   IoContextProvider<GcsServerIoContextPolicy> io_context_provider_;
 

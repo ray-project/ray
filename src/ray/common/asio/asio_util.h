@@ -14,6 +14,7 @@
 
 #pragma once
 
+#include <array>
 #include <boost/asio.hpp>
 #include <chrono>
 #include <memory>
@@ -104,23 +105,19 @@ class InstrumentedIOContextWithThread {
 ///     // List of all IO Context names. We will create 1 thread + 1
 ///     // instrumented_io_context for each. Must be unique and should not contain empty
 ///     // names.
-///     constexpr static std::string_view kAllDedicatedIoContextNames[];
+///     constexpr static std::array<std::string_view, N> kAllDedicatedIoContextNames;
 ///
 ///     // For a given T, returns an index to kAllDedicatedIoContextNames, or -1 for the
 ///     // default io context.
 ///     constexpr static std::string_view GetDedicatedIoContextIndex<T>();
 /// }
 ///
-/// To define a policy, implement a
-///   constexpr static std::string_view Policy::GetDedicatedIoContextName<T>();
-/// that returns the name of the dedicated `io_context` for type `T`, or an empty
-/// string if `T` should use the default `io_context`. For an example, see
-/// `GcsServerIoContextPolicy`.
+/// For an example, see `GcsServerIoContextPolicy`.
 ///
 /// ## Notes
 ///
 /// - `default_io_context` must outlive the `IoContextProvider` instance.
-/// - Lazy-creates dedicated `io_context` instances on first access.
+/// - Eagerly creates dedicated `io_context` instances in ctor.
 /// - NOT thread-safe. Please always access to this class from the same thread.
 /// - There is no way to remove a dedicated `io_context` once created until destruction.
 template <typename Policy>
@@ -128,9 +125,10 @@ class IoContextProvider {
  public:
   explicit IoContextProvider(instrumented_io_context &default_io_context)
       : default_io_context_(default_io_context) {
-    for (const auto &name : Policy::kAllDedicatedIoContextNames) {
-      dedicated_io_contexts_.push_back(
-          std::make_unique<InstrumentedIOContextWithThread>(std::string(name)));
+    for (size_t i = 0; i < Policy::kAllDedicatedIoContextNames.size(); i++) {
+      const auto &name = Policy::kAllDedicatedIoContextNames[i];
+      dedicated_io_contexts_[i] =
+          std::make_unique<InstrumentedIOContextWithThread>(std::string(name));
     }
   }
 
@@ -140,7 +138,7 @@ class IoContextProvider {
   instrumented_io_context &GetIoContext() const {
     constexpr int index = Policy::template GetDedicatedIoContextIndex<T>();
     static_assert(
-        index >= -1 && index < ray::array_size(Policy::kAllDedicatedIoContextNames),
+        index >= -1 && index < Policy::kAllDedicatedIoContextNames.size(),
         "index out of bound, invalid GetDedicatedIoContextIndex implementation! Index "
         "can only be -1 or within range of kAllDedicatedIoContextNames");
 
@@ -162,7 +160,11 @@ class IoContextProvider {
   }
 
  private:
-  std::vector<std::unique_ptr<InstrumentedIOContextWithThread>> dedicated_io_contexts_;
+  // Using unique_ptr because the class has no default constructor, so it's not easy
+  // to initialize objects directly in the array.
+  std::array<std::unique_ptr<InstrumentedIOContextWithThread>,
+             Policy::kAllDedicatedIoContextNames.size()>
+      dedicated_io_contexts_;
   instrumented_io_context &default_io_context_;
 
   // Validating the Policy is valid.
