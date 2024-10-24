@@ -1,16 +1,20 @@
+import asyncio
 from typing import Callable, Optional
 
 import ray
 from ray._raylet import GcsClient
+from ray.actor import ActorHandle
 from ray.serve._private.cluster_node_info_cache import (
     ClusterNodeInfoCache,
     DefaultClusterNodeInfoCache,
 )
+from ray.serve._private.common import DeploymentID
 from ray.serve._private.deployment_scheduler import (
     DefaultDeploymentScheduler,
     DeploymentScheduler,
 )
 from ray.serve._private.grpc_util import gRPCServer
+from ray.serve._private.router import Router
 from ray.serve._private.utils import get_head_node_id
 
 # NOTE: Please read carefully before changing!
@@ -35,6 +39,34 @@ def create_deployment_scheduler(
         head_node_id,
         create_placement_group_fn=create_placement_group_fn_override
         or ray.util.placement_group,
+    )
+
+
+def create_handle_options():
+    from ray.serve.handle import _HandleOptions
+
+    return _HandleOptions()
+
+
+def create_router(
+    controller_handle: ActorHandle,
+    deployment_id: DeploymentID,
+    handle_id: str,
+    node_id: str,
+    actor_id: str,
+    availability_zone: Optional[str],
+    event_loop: asyncio.BaseEventLoop,
+    handle_options,
+):
+    return Router(
+        controller_handle=controller_handle,
+        deployment_id=deployment_id,
+        handle_id=handle_id,
+        self_node_id=node_id,
+        self_actor_id=actor_id,
+        self_availability_zone=availability_zone,
+        handle_source=handle_options._source,
+        event_loop=event_loop,
     )
 
 
