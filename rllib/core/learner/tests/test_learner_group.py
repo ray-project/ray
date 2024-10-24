@@ -168,39 +168,7 @@ class RemoteTrainingHelper:
         # check(local_learner.get_state(), learner_group.get_state()[COMPONENT_LEARNER])
 
 
-class TestLearnerGroup(unittest.TestCase):
-
-    FAKE_BATCH = {
-        Columns.OBS: np.array(
-            [
-                [0.1, 0.2, 0.3, 0.4],
-                [0.5, 0.6, 0.7, 0.8],
-                [0.9, 1.0, 1.1, 1.2],
-                [1.3, 1.4, 1.5, 1.6],
-            ],
-            dtype=np.float32,
-        ),
-        Columns.NEXT_OBS: np.array(
-            [
-                [0.1, 0.2, 0.3, 0.4],
-                [0.5, 0.6, 0.7, 0.8],
-                [0.9, 1.0, 1.1, 1.2],
-                [1.3, 1.4, 1.5, 1.6],
-            ],
-            dtype=np.float32,
-        ),
-        Columns.ACTIONS: np.array([0, 1, 1, 0]),
-        Columns.REWARDS: np.array([1.0, -1.0, 0.5, 0.6], dtype=np.float32),
-        Columns.TERMINATEDS: np.array([False, False, True, False]),
-        Columns.TRUNCATEDS: np.array([False, False, False, False]),
-        Columns.VF_PREDS: np.array([0.5, 0.6, 0.7, 0.8], dtype=np.float32),
-        Columns.ACTION_DIST_INPUTS: np.array(
-            [[-2.0, 0.5], [-3.0, -0.3], [-0.1, 2.5], [-0.2, 3.5]], dtype=np.float32
-        ),
-        Columns.ACTION_LOGP: np.array([-0.5, -0.1, -0.2, -0.3], dtype=np.float32),
-        Columns.EPS_ID: np.array([0, 0, 0, 0]),
-    }
-
+class TestLearnerGroupSyncUpdate(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
         ray.init()
@@ -347,6 +315,16 @@ class TestLearnerGroup(unittest.TestCase):
             learner_group.shutdown()
             del learner_group
 
+
+class TestLearnerGroupCheckpointRestore(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls) -> None:
+        ray.init()
+
+    @classmethod
+    def tearDownClass(cls) -> None:
+        ray.shutdown()
+
     def test_restore_from_path_multi_rl_module_and_individual_modules(self):
         """Tests whether MultiRLModule- and single RLModule states can be restored."""
         # this is expanded to more scaling modes on the release ci.
@@ -443,6 +421,48 @@ class TestLearnerGroup(unittest.TestCase):
                     check(learner_group.get_weights(), new_multi_rl_module.get_state())
             del learner_group
 
+
+class TestLearnerGroupSaveLoadState(unittest.TestCase):
+
+    FAKE_BATCH = {
+        Columns.OBS: np.array(
+            [
+                [0.1, 0.2, 0.3, 0.4],
+                [0.5, 0.6, 0.7, 0.8],
+                [0.9, 1.0, 1.1, 1.2],
+                [1.3, 1.4, 1.5, 1.6],
+            ],
+            dtype=np.float32,
+        ),
+        Columns.NEXT_OBS: np.array(
+            [
+                [0.1, 0.2, 0.3, 0.4],
+                [0.5, 0.6, 0.7, 0.8],
+                [0.9, 1.0, 1.1, 1.2],
+                [1.3, 1.4, 1.5, 1.6],
+            ],
+            dtype=np.float32,
+        ),
+        Columns.ACTIONS: np.array([0, 1, 1, 0]),
+        Columns.REWARDS: np.array([1.0, -1.0, 0.5, 0.6], dtype=np.float32),
+        Columns.TERMINATEDS: np.array([False, False, True, False]),
+        Columns.TRUNCATEDS: np.array([False, False, False, False]),
+        Columns.VF_PREDS: np.array([0.5, 0.6, 0.7, 0.8], dtype=np.float32),
+        Columns.ACTION_DIST_INPUTS: np.array(
+            [[-2.0, 0.5], [-3.0, -0.3], [-0.1, 2.5], [-0.2, 3.5]], dtype=np.float32
+        ),
+        Columns.ACTION_LOGP: np.array([-0.5, -0.1, -0.2, -0.3], dtype=np.float32),
+        Columns.EPS_ID: np.array([0, 0, 0, 0]),
+    }
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        ray.init()
+
+    @classmethod
+    def tearDownClass(cls) -> None:
+        ray.shutdown()
+
     def test_save_to_path_and_restore_from_path(self):
         """Check that saving and loading learner group state works."""
         # this is expanded to more scaling modes on the release ci.
@@ -526,6 +546,16 @@ class TestLearnerGroup(unittest.TestCase):
                 weights_after_2_updates_without_break,
                 rtol=0.05,
             )
+
+
+class TestLearnerGroupAsyncUpdate(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls) -> None:
+        ray.init()
+
+    @classmethod
+    def tearDown(cls) -> None:
+        ray.shutdown()
 
     def test_async_update(self):
         """Test that async style updates converge to the same result as sync."""
