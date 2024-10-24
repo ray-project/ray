@@ -838,7 +838,7 @@ class ApplicationStatus(str, Enum):
 @PublicAPI(stability="alpha")
 @dataclass
 class ApplicationStatusOverview:
-    """Describes the satus of an application and all its deployments.
+    """Describes the status of an application and all its deployments.
 
     Attributes:
         status: The current status of the application.
