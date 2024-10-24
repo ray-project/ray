@@ -93,7 +93,7 @@ class CoreWorkerClientInterface : public pubsub::SubscriberClientInterface {
   /// \return if the rpc call succeeds
   virtual void PushActorTask(std::unique_ptr<PushTaskRequest> request,
                              bool skip_queue,
-                             const ClientCallback<PushTaskReply> &callback) {}
+                             ClientCallback<PushTaskReply> &&callback) {}
 
   /// Similar to PushActorTask, but sets no ordering constraint. This is used to
   /// push non-actor tasks directly to a worker.
@@ -356,7 +356,7 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>,
 
   void PushActorTask(std::unique_ptr<PushTaskRequest> request,
                      bool skip_queue,
-                     const ClientCallback<PushTaskReply> &callback) override {
+                     ClientCallback<PushTaskReply> &&callback) override {
     if (skip_queue) {
       // Set this value so that the actor does not skip any tasks when
       // processing this request. We could also set it to max_finished_seq_no_,
@@ -373,9 +373,7 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>,
 
     {
       absl::MutexLock lock(&mutex_);
-      send_queue_.emplace_back(std::move(request),
-                               std::move(const_cast<ClientCallback<PushTaskReply> &>(
-                                   callback)));  // TODO(dayshah) remove const casts
+      send_queue_.emplace_back(std::move(request), std::move(callback));
     }
     SendRequests();
   }
