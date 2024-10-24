@@ -219,6 +219,7 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
         include_extra_model_outputs: bool = False,
         sample_episodes: Optional[bool] = False,
         finalize: bool = False,
+        states: Optional[Union[Dict[str, Any], List[Dict[str, Any]]]] = None,
         **kwargs,
     ) -> Union[SampleBatchType, SingleAgentEpisode]:
         """Samples from a buffer in a randomized way.
@@ -264,6 +265,8 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
                 the extra model outputs at the `"obs"` in the batch is included (the
                 timestep at which the action is computed).
             finalize: If episodes should be finalized.
+            states: States of stateful `RLModule` that can be added to the
+                `extra_model_outputs`, in case `state_out` is not available in episodes.
 
         Returns:
             Either a batch with transitions in each row or (if `return_episodes=True`)
@@ -282,6 +285,7 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
                 include_infos=include_infos,
                 include_extra_model_outputs=include_extra_model_outputs,
                 finalize=finalize,
+                states=states,
             )
         else:
             return self._sample_batch(
@@ -428,6 +432,7 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
         include_infos: bool = False,
         include_extra_model_outputs: bool = False,
         finalize: bool = False,
+        states: Optional[Union[Dict[str, Any], List[Dict[str, Any]]]] = None,
         **kwargs,
     ) -> List[SingleAgentEpisode]:
         """Samples episodes from a buffer in a randomized way.
@@ -473,6 +478,8 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
                 the extra model outputs at the `"obs"` in the batch is included (the
                 timestep at which the action is computed).
             finalize: If episodes should be finalized.
+            states: States of stateful `RLModule` that can be added to the
+                `extra_model_outputs`, in case `state_out` is not available in episodes.
 
         Returns:
             A list of 1-step long episodes containing all basic episode data and if
@@ -518,78 +525,82 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
             if random_n_step:
                 actual_n_step = int(self.rng.integers(n_step[0], n_step[1]))
 
+            lookback = int(episode_ts != 0)
             # Skip, if we are too far to the end and `episode_ts` + n_step would go
             # beyond the episode's end.
-            if episode_ts + actual_n_step > len(episode):
+            if episode_ts + actual_n_step + batch_length_T + lookback > len(episode):
                 continue
+
+            sampled_episode = episode.slice(
+                slice(
+                    episode_ts - lookback,
+                    episode_ts + actual_n_step + batch_length_T - 1,
+                ),
+                len_lookback_buffer=lookback,
+            )
 
             # Note, this will be the reward after executing action
             # `a_(episode_ts-n_step+1)`. For `n_step>1` this will be the discounted
             # sum of all discounted rewards that were collected over the last n steps.
-            raw_rewards = episode.get_rewards(
-                slice(episode_ts, episode_ts + actual_n_step)
+            raw_rewards = sampled_episode.get_rewards(
+                slice(-1, None), neg_index_as_lookback=True
             )
-            rewards = scipy.signal.lfilter([1], [1, -gamma], raw_rewards[::-1], axis=0)[
-                -1
-            ]
-
-            # Generate the episode to be returned.
-            sampled_episode = SingleAgentEpisode(
-                # Ensure that each episode contains a tuple of the form:
-                #   (o_t, a_t, sum(r_(t:t+n_step)), o_(t+n_step))
-                # Two observations (t and t+n).
-                observations=[
-                    episode.get_observations(episode_ts),
-                    episode.get_observations(episode_ts + actual_n_step),
+            # Account for the lookback in case an episode was cut.
+            # TODO (simon): We need actually only the n-step discounted and all steps in
+            # between should be removed. So slicing afterwards should work.
+            rewards = np.concatenate(
+                [
+                    raw_rewards[: 1 + lookback],
+                    scipy.signal.lfilter(
+                        [1, gamma], [1], raw_rewards[:lookback:-1], axis=0
+                    )[::-1],
                 ],
-                observation_space=episode.observation_space,
-                infos=(
-                    [
-                        episode.get_infos(episode_ts),
-                        episode.get_infos(episode_ts + actual_n_step),
-                    ]
-                    if include_infos
-                    else None
-                ),
-                actions=[episode.get_actions(episode_ts)],
-                action_space=episode.action_space,
-                rewards=[rewards],
-                # If the sampled time step is the episode's last time step check, if
-                # the episode is terminated or truncated.
-                terminated=(
-                    False
-                    if episode_ts + actual_n_step < len(episode)
-                    else episode.is_terminated
-                ),
-                truncated=(
-                    False
-                    if episode_ts + actual_n_step < len(episode)
-                    else episode.is_truncated
-                ),
-                extra_model_outputs={
-                    # TODO (simon): Check, if we have to correct here for sequences
-                    #  later.
-                    "n_step": [actual_n_step],
-                    **(
-                        {
-                            k: [episode.get_extra_model_outputs(k, episode_ts)]
-                            for k in episode.extra_model_outputs.keys()
-                        }
-                        if include_extra_model_outputs
-                        else {}
-                    ),
-                },
-                # TODO (sven): Support lookback buffers.
-                len_lookback_buffer=0,
-                t_started=episode_ts,
+                axis=0,
             )
-            if finalize:
-                sampled_episode.finalize()
+            # Add the discounted next step rewards back to the sampled episode.
+            sampled_episode.set_rewards(
+                new_data=rewards,
+                at_indices=slice(-lookback, len(sampled_episode)),
+                neg_index_as_lookback=bool(lookback),
+            )
+
+            # Add the actually chosen n-step in this episode.
+            sampled_episode.set_extra_model_outputs(
+                key="n_step", new_data=np.full_like(rewards, actual_n_step)
+            )
+            # Some loss functions need `weights` - which are only relevant when
+            # prioritizing.
+            sampled_episode.set_extra_model_outputs(
+                key="weights", new_data=np.ones_like(rewards)
+            )
+
+            # If states are given (`"state_out"`) add them to the episodes
+            # appropriately.
+            if states:
+                # If multiple states are given, we need to check, if the number of
+                # states fits the length of the episode.
+                if isinstance(states, (list, np.ndarray)):
+                    assert len(states) == len(sampled_episode.observations) - 1
+                # In case of a single state, we repeat it along the episode length.
+                elif isinstance(states, dict):
+                    states = [states for i in range(sampled_episode.observations - 1)]
+                # All other formats cannot be used.
+                else:
+                    raise ValueError(
+                        f"`states must be either a `dict` or `list`, but is {states}."
+                    )
+                # Add the states to the episode.
+                sampled_episode.set_extra_model_outputs(
+                    key="state_out", new_data=states
+                )
+
+            # Append the sampled episode.
             sampled_episodes.append(sampled_episode)
 
             # Increment counter.
-            B += 1
+            B += batch_length_T or 1
 
+        # Update the metric.
         self.sampled_timesteps += batch_size_B
 
         return sampled_episodes
