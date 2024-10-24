@@ -568,7 +568,9 @@ class BaseRouter:
 class Router(BaseRouter):
     def __init__(
         self,
+        controller_handle: ActorHandle,
         deployment_id: DeploymentID,
+        handle_id: str,
         self_node_id: str,
         self_actor_id: str,
         self_availability_zone: Optional[str],
@@ -579,7 +581,6 @@ class Router(BaseRouter):
         enable_strict_max_ongoing_requests: bool = RAY_SERVE_ENABLE_STRICT_MAX_ONGOING_REQUESTS,  # noqa: E501
         *,
         replica_scheduler: Optional[ReplicaScheduler] = None,
-        **kwargs,
     ):
 
         if replica_scheduler is None:
@@ -600,14 +601,15 @@ class Router(BaseRouter):
             )
 
         super().__init__(
+            controller_handle=controller_handle,
             deployment_id=deployment_id,
+            handle_id=handle_id,
             self_actor_id=self_actor_id,
             handle_source=handle_source,
             event_loop=event_loop,
             enable_queue_len_cache=enable_queue_len_cache,
             enable_strict_max_ongoing_requests=enable_strict_max_ongoing_requests,
             replica_scheduler=replica_scheduler,
-            **kwargs,
         )
 
     async def _resolve_deployment_responses(
