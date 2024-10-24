@@ -17,7 +17,6 @@ from ray._private.pydantic_compat import (
 )
 from ray._private.runtime_env.packaging import parse_uri
 from ray.serve._private.common import (
-    ApplicationStatus,
     DeploymentStatus,
     DeploymentStatusTrigger,
     ProxyStatus,
@@ -824,6 +823,18 @@ class DeploymentStatusOverview:
     message: str
 
 
+@PublicAPI(stability="stable")
+class ApplicationStatus(str, Enum):
+    """The current status of the application."""
+
+    NOT_STARTED = "NOT_STARTED"
+    DEPLOYING = "DEPLOYING"
+    DEPLOY_FAILED = "DEPLOY_FAILED"
+    RUNNING = "RUNNING"
+    UNHEALTHY = "UNHEALTHY"
+    DELETING = "DELETING"
+
+
 @PublicAPI(stability="alpha")
 @dataclass
 class ApplicationStatusOverview:
@@ -962,6 +973,15 @@ class DeploymentDetails(BaseModel, extra=Extra.forbid, frozen=True):
         return v
 
 
+@PublicAPI(stability="alpha")
+class APIType(str, Enum):
+    """Tracks the type of API that an application originates from."""
+
+    UNKNOWN = "unknown"
+    IMPERATIVE = "imperative"
+    DECLARATIVE = "declarative"
+
+
 @PublicAPI(stability="stable")
 class ApplicationDetails(BaseModel, extra=Extra.forbid, frozen=True):
     """Detailed info about a Serve application."""
@@ -1010,6 +1030,12 @@ class ApplicationDetails(BaseModel, extra=Extra.forbid, frozen=True):
             "deployed. This config simply avoids cluttering with unspecified fields "
             "for readability."
         )
+    )
+    source: APIType = Field(
+        description=(
+            "The type of API that the application originates from. "
+            "This is a Developer API that is subject to change."
+        ),
     )
     deployments: Dict[str, DeploymentDetails] = Field(
         description="Details about the deployments in this application."
