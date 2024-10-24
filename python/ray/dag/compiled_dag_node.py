@@ -1,7 +1,7 @@
 import asyncio
 from collections import defaultdict
 from dataclasses import dataclass, asdict
-from typing import Any, Dict, List, Tuple, Union, Optional, Set
+from typing import Any, Dict, FrozenSet, List, Tuple, Union, Optional, Set
 import logging
 import threading
 import time
@@ -319,12 +319,19 @@ class ExecutableTask:
                 do not support binding kwargs to other DAG nodes, so the values
                 of the dictionary cannot be Channels.
         """
+        from ray.dag import CollectiveOutputNode
+
         self.method_name = task.dag_node.get_method_name()
         self.bind_index = task.dag_node._get_bind_index()
         self.output_channels = task.output_channels
         self.output_idxs = task.output_idxs
-        self.input_type_hints: List["ChannelOutputType"] = task.arg_type_hints
-        self.output_type_hint: "ChannelOutputType" = task.dag_node.type_hint
+        self.input_type_hints: List[ChannelOutputType] = task.arg_type_hints
+        self.output_type_hint: ChannelOutputType = task.dag_node.type_hint
+
+        # The NCCL collective operation.
+        self.collective_op: Optional["ray.dag.CollectiveOperation"] = None
+        if isinstance(task.dag_node, CollectiveOutputNode):
+            self.collective_op = task.dag_node.collective_op
 
         self.input_channels: List[ChannelInterface] = []
         self.task_inputs: List[_ExecutableTaskInput] = []
@@ -464,7 +471,6 @@ class ExecutableTask:
             True if system error occurs and exit the loop; otherwise, False.
         """
         input_data = self.reset_intermediate_buffer()
-        method = getattr(class_handle, self.method_name)
         try:
             _process_return_vals(input_data, return_single_output=False)
         except Exception as exc:
@@ -479,6 +485,12 @@ class ExecutableTask:
         for task_input in self.task_inputs:
             resolved_inputs.append(task_input.resolve(input_data))
 
+        if self.collective_op is not None:
+            # Run a NCCL collective operation.
+            method = self.collective_op.execute
+        else:
+            # Run an actor method.
+            method = getattr(class_handle, self.method_name)
         try:
             output_val = method(*resolved_inputs, **self.resolved_kwargs)
         except Exception as exc:
@@ -703,14 +715,15 @@ class CompiledDAG:
         # Mapping from the actor handle to the node ID that the actor is on.
         self.actor_to_node_id: Dict["ray.actor.ActorHandle", str] = {}
 
-        # This is set to true when type hint of `transport="nccl"`` is used
+        # This is set to true when type hint of `transport="nccl"` is used.
         self._use_default_nccl_group = False
         # This is set to the specified custom nccl group
-        # if there exists a type hint of `transport=nccl_group`
-        self._custom_nccl_group: Optional[GPUCommunicator] = None
-        # Uniquely identifies the NCCL communicator that will be used within
-        # this DAG, if any.
-        self._nccl_group_id: Optional[str] = None
+        # if there exists a type hint of `transport=nccl_group`.
+        self._custom_nccl_group_p2p: Optional[GPUCommunicator] = None
+        # The NCCL group ID for P2P send/recv operations.
+        self._nccl_group_id_p2p: Optional[str] = None
+        # All the NCCL group IDs for P2P send/recv and collective operations.
+        self._nccl_group_ids: Set[str] = set()
         # The index of the current execution. It is incremented each time
         # the DAG is executed.
         self._execution_index: int = 0
@@ -735,6 +748,14 @@ class CompiledDAG:
             ).remote()
 
         self._proxy_actor = _create_proxy_actor()
+
+    @property
+    def nccl_group_id_p2p(self) -> Optional[str]:
+        return self._nccl_group_id_p2p
+
+    @property
+    def nccl_group_ids(self) -> Set[str]:
+        return self._nccl_group_ids
 
     def increment_max_finished_execution_index(self) -> None:
         """Increment the max finished execution index. It is used to
@@ -767,16 +788,19 @@ class CompiledDAG:
         from ray.dag import (
             DAGNode,
             ClassMethodNode,
+            CollectiveOutputNode,
             FunctionNode,
             InputAttributeNode,
             InputNode,
             MultiOutputNode,
         )
+        from ray.dag.collective_node import _CollectiveOperation
 
         self.input_task_idx, self.output_task_idx = None, None
         self.actor_task_count.clear()
 
-        nccl_actors: Set["ray.actor.ActorHandle"] = set()
+        nccl_actors_p2p: Set["ray.actor.ActorHandle"] = set()
+        nccl_collective_ops: Set[_CollectiveOperation] = set()
 
         # Find the input node to the DAG.
         for idx, task in self.idx_to_task.items():
@@ -849,9 +873,9 @@ class CompiledDAG:
 
                 self.actor_task_count[actor_handle._actor_id] += 1
 
+                # Collect actors for NCCL P2P methods.
                 if dag_node.type_hint.requires_nccl():
-                    # Add all writers to the NCCL group.
-                    nccl_actors.add(actor_handle)
+                    nccl_actors_p2p.add(actor_handle)
                     custom_nccl_group = dag_node.type_hint.get_custom_nccl_group()
                     mixed_nccl_group_error_message = (
                         "Accelerated DAGs do not support mixed usage of "
@@ -863,14 +887,14 @@ class CompiledDAG:
                         "make sure only one type of NCCL transport is specified."
                     )
                     if custom_nccl_group is None:
-                        if self._custom_nccl_group is not None:
+                        if self._custom_nccl_group_p2p is not None:
                             raise ValueError(mixed_nccl_group_error_message)
                         self._use_default_nccl_group = True
                     else:
                         if self._use_default_nccl_group:
                             raise ValueError(mixed_nccl_group_error_message)
-                        if self._custom_nccl_group is not None:
-                            if self._custom_nccl_group != custom_nccl_group:
+                        if self._custom_nccl_group_p2p is not None:
+                            if self._custom_nccl_group_p2p != custom_nccl_group:
                                 raise ValueError(
                                     "Accelerated DAGs currently only support "
                                     "a single custom NCCL group, but multiple "
@@ -878,7 +902,11 @@ class CompiledDAG:
                                     "TorchTensor(transport=nccl_group) type hints "
                                     "to make sure only one NCCL group is used."
                                 )
-                        self._custom_nccl_group = custom_nccl_group
+                        self._custom_nccl_group_p2p = custom_nccl_group
+
+                # Collect NCCL collective operations.
+                if isinstance(dag_node, CollectiveOutputNode):
+                    nccl_collective_ops.add(dag_node.collective_op)
             elif isinstance(dag_node, InputNode):
                 if dag_node.type_hint.requires_nccl():
                     raise ValueError(
@@ -951,16 +979,80 @@ class CompiledDAG:
                 task.arg_type_hints.append(upstream_node.type_hint)
 
                 if upstream_node.type_hint.requires_nccl():
-                    # Add all readers to the NCCL group.
-                    nccl_actors.add(downstream_actor_handle)
+                    # Add all readers to the NCCL actors of P2P.
+                    nccl_actors_p2p.add(downstream_actor_handle)
 
-        # If there were type hints indicating transport via NCCL, initialize
-        # the NCCL group on the participating actors.
-        nccl_actors = list(nccl_actors)
-        if None in nccl_actors:
+        nccl_actors_p2p = list(nccl_actors_p2p)
+        if None in nccl_actors_p2p:
             raise ValueError("Driver cannot participate in the NCCL group.")
-        if nccl_actors and self._nccl_group_id is None:
-            self._nccl_group_id = _init_nccl_group(nccl_actors, self._custom_nccl_group)
+
+        # Initialize and cache a NCCL group for each custom NCCL group. All the
+        # custom NCCL groups are initialized before the default NCCL groups.
+        custom_nccl_group_to_id: Dict[GPUCommunicator, str] = {}
+        # Initialize and cache a NCCL group for each set of actors. A set of actors
+        # can perform P2P send/recv and collective operations. If there are multiple
+        # custom NCCL groups for a set of actors, only one is cached.
+        actors_to_nccl_group_id: Dict[FrozenSet["ray.actor.ActorHandle"], str] = {}
+
+        # If a custom NCCL group is specified for P2P actors, initialize and cache
+        # the NCCL group ID.
+        if nccl_actors_p2p and self._custom_nccl_group_p2p:
+            if not set(nccl_actors_p2p).issubset(
+                set(self._custom_nccl_group_p2p.get_actor_handles())
+            ):
+                raise ValueError(
+                    "Expected P2P actor handles to be a subset of the custom NCCL group"
+                )
+            self._nccl_group_id_p2p = _init_nccl_group(
+                nccl_actors_p2p, self._custom_nccl_group_p2p
+            )
+            custom_nccl_group_to_id[
+                self._custom_nccl_group_p2p
+            ] = self._nccl_group_id_p2p
+            actors = frozenset(nccl_actors_p2p)
+            actors_to_nccl_group_id[actors] = self._nccl_group_id_p2p
+
+        # If a custom NCCL group is specified for collective actors, initialize and
+        # cache the NCCL group ID.
+        for collective_op in nccl_collective_ops:
+            type_hint = collective_op.type_hint
+            custom_nccl_group = type_hint.get_custom_nccl_group()
+            if custom_nccl_group:
+                nccl_group_id = collective_op.init_nccl_group(
+                    custom_nccl_group_to_id.get(custom_nccl_group, None)
+                )
+                custom_nccl_group_to_id[custom_nccl_group] = nccl_group_id
+                actors = frozenset(collective_op.actor_handles)
+                if actors not in actors_to_nccl_group_id:
+                    actors_to_nccl_group_id[actors] = nccl_group_id
+
+        # If a NCCL group for P2P actors is not initialized, initialize and cache
+        # the NCCL group ID.
+        if nccl_actors_p2p and self._nccl_group_id_p2p is None:
+            actors = frozenset(nccl_actors_p2p)
+            if actors in actors_to_nccl_group_id:
+                self._nccl_group_id_p2p = actors_to_nccl_group_id[actors]
+            else:
+                self._nccl_group_id_p2p = _init_nccl_group(
+                    nccl_actors_p2p, self._custom_nccl_group_p2p
+                )
+                actors_to_nccl_group_id[actors] = self._nccl_group_id_p2p
+
+        # If a NCCL group for collective actors is not initialized, initialize and
+        # cache the NCCL group ID.
+        for collective_op in nccl_collective_ops:
+            if collective_op.type_hint.nccl_group_id is None:
+                actors = frozenset(collective_op.actor_handles)
+                nccl_group_id = collective_op.init_nccl_group(
+                    actors_to_nccl_group_id.get(actors, None)
+                )
+                if actors not in actors_to_nccl_group_id:
+                    actors_to_nccl_group_id[actors] = nccl_group_id
+
+        # Store all the NCCL group IDs for P2P send/recv and collective operations.
+        self._nccl_group_ids = set(actors_to_nccl_group_id.values()).union(
+            set(custom_nccl_group_to_id.values())
+        )
 
         if direct_input:
             self._input_num_positional_args = 1
@@ -1035,7 +1127,7 @@ class CompiledDAG:
             task = self.idx_to_task[cur_idx]
             type_hint = task.dag_node.type_hint
             if type_hint.requires_nccl():
-                type_hint.set_nccl_group_id(self._nccl_group_id)
+                type_hint.set_nccl_group_id(self._nccl_group_id_p2p)
 
             if (
                 isinstance(task.dag_node, ClassMethodNode)
@@ -1447,43 +1539,64 @@ class CompiledDAG:
                 ]
             }
         """
+        from ray.dag.collective_node import CollectiveOutputNode, _CollectiveOperation
+
         assert self.idx_to_task
         assert self.actor_to_executable_tasks
 
         actor_to_operation_nodes: Dict[
             "ray.actor.ActorHandle", List[List[_DAGOperationGraphNode]]
         ] = defaultdict(list)
+        collective_op_to_nodes: Dict[
+            _CollectiveOperation, Set[_DAGOperationGraphNode]
+        ] = defaultdict(set)
+        collective_op_to_idxs: Dict[
+            _CollectiveOperation, Tuple[int, _DAGNodeOperationType]
+        ] = defaultdict(set)
 
         for actor_handle, executable_tasks in self.actor_to_executable_tasks.items():
             for exec_task_idx, exec_task in enumerate(executable_tasks):
                 # Divide a DAG node into three _DAGOperationGraphNodes: READ, COMPUTE,
                 # and WRITE. Each _DAGOperationGraphNode has a _DAGNodeOperation.
-                task_index = exec_task.task_idx
-                dag_node = self.idx_to_task[task_index].dag_node
+                task_idx = exec_task.task_idx
+                dag_node = self.idx_to_task[task_idx].dag_node
                 actor_handle = dag_node._get_actor_handle()
                 requires_nccl = dag_node.type_hint.requires_nccl()
 
                 read_node = _DAGOperationGraphNode(
                     _DAGNodeOperation(exec_task_idx, _DAGNodeOperationType.READ),
-                    task_index,
+                    task_idx,
                     actor_handle,
                     requires_nccl,
                 )
                 compute_node = _DAGOperationGraphNode(
                     _DAGNodeOperation(exec_task_idx, _DAGNodeOperationType.COMPUTE),
-                    task_index,
+                    task_idx,
                     actor_handle,
-                    requires_nccl,
+                    isinstance(dag_node, CollectiveOutputNode),
                 )
                 write_node = _DAGOperationGraphNode(
                     _DAGNodeOperation(exec_task_idx, _DAGNodeOperationType.WRITE),
-                    task_index,
+                    task_idx,
                     actor_handle,
                     requires_nccl,
                 )
+
                 actor_to_operation_nodes[actor_handle].append(
                     [read_node, compute_node, write_node]
                 )
+                if isinstance(dag_node, CollectiveOutputNode):
+                    collective_op_to_nodes[dag_node.collective_op].add(compute_node)
+                    collective_op_to_idxs[dag_node.collective_op].add(
+                        (task_idx, _DAGNodeOperationType.COMPUTE)
+                    )
+
+        # Set collective nodes for all the NCCL collective operation nodes.
+        for collective_op, nodes in collective_op_to_nodes.items():
+            idxs = collective_op_to_idxs[collective_op]
+            for node in nodes:
+                node.collective_idxs = idxs
+
         return actor_to_operation_nodes
 
     def _build_execution_schedule(
@@ -1614,7 +1727,7 @@ class CompiledDAG:
                     try:
                         ray.get(ref, timeout=10)
                     except ray.exceptions.GetTimeoutError:
-                        logger.warn(
+                        logger.warning(
                             f"Compiled DAG actor {actor} is still running 10s "
                             "after teardown(). Teardown may hang."
                         )
@@ -1666,8 +1779,8 @@ class CompiledDAG:
                         logger.exception("Error cancelling worker task")
                         pass
 
-                if outer._nccl_group_id is not None:
-                    _destroy_nccl_group(outer._nccl_group_id)
+                for nccl_group_id in outer._nccl_group_ids:
+                    _destroy_nccl_group(nccl_group_id)
 
                 if wait:
                     logger.info("Waiting for worker tasks to exit")
