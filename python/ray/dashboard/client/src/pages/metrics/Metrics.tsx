@@ -150,6 +150,10 @@ const METRICS_CONFIG: MetricsSectionConfig[] = [
         pathParams: "orgId=1&theme=light&panelId=4",
       },
       {
+        title: "Node Memory (Percent)",
+        pathParams: "orgId=1&theme=light&panelId=50",
+      },
+      {
         title: "Node GPU (hardware utilization)",
         pathParams: "orgId=1&theme=light&panelId=8",
       },
