@@ -38,12 +38,12 @@ def create_deployment_scheduler(
     )
 
 
-def add_grpc_address(grpc_server: gRPCServer, server_address: str):
-    """Helper function to add a address to gRPC server."""
-    grpc_server.add_insecure_port(server_address)
-
-
 def create_handle_options():
     from ray.serve.handle import _HandleOptions
 
     return _HandleOptions()
+
+
+def add_grpc_address(grpc_server: gRPCServer, server_address: str):
+    """Helper function to add a address to gRPC server."""
+    grpc_server.add_insecure_port(server_address)
