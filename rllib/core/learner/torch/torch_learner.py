@@ -36,8 +36,10 @@ from ray.rllib.utils.annotations import (
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.metrics import (
     ALL_MODULES,
+    DIFF_NUM_GRAD_UPDATES_VS_SAMPLER_POLICY,
     NUM_TRAINABLE_PARAMETERS,
     NUM_NON_TRAINABLE_PARAMETERS,
+    WEIGHTS_SEQ_NO,
 )
 from ray.rllib.utils.torch_utils import convert_to_torch_tensor, copy_torch_tensors
 from ray.rllib.utils.typing import (
@@ -141,6 +143,18 @@ class TorchLearner(Learner):
         """Performs a single update given a batch of data."""
         # Activate tensor-mode on our MetricsLogger.
         self.metrics.activate_tensor_mode()
+
+        # Log off-policy'ness of this update.
+        self.metrics.log_dict(
+            {
+                (mid, DIFF_NUM_GRAD_UPDATES_VS_SAMPLER_POLICY): torch.mean(
+                    (self._weights_seq_no - module_batch[WEIGHTS_SEQ_NO]).float()
+                )
+                for mid, module_batch in batch.items()
+                if WEIGHTS_SEQ_NO in module_batch
+            },
+            window=1,
+        )
 
         fwd_out = self.module.forward_train(batch)
         loss_per_module = self.compute_losses(fwd_out=fwd_out, batch=batch)
