@@ -585,6 +585,15 @@ class IMPALA(Algorithm):
                 ),
             )
         elif self.config.enable_rl_module_and_learner:
+            # TEST: create a local learner connector to simulate having the batches
+            #  collected and concatenated directly on the local learner process (just
+            #  like on the old API stack).
+            self._learner_connector = self.config.build_learner_connector(
+                input_action_space=None,
+                input_observation_space=None,
+                device="cpu",  # do not move to GPU yet
+            )
+            # END TEST
             self._aggregator_actor_manager = None
         else:
             # Create our local mixin buffer if the num of aggregation workers is 0.
@@ -660,6 +669,16 @@ class IMPALA(Algorithm):
                     data_packages_for_learner_group
                 )
             )
+        # TEST: mimic old stack behavior.
+        else:
+            for data_package in data_packages_for_learner_group:
+                episodes = tree.flatten(ray.get(data_package))
+                train_batch = self._learner_connector(
+                    episodes=episodes,
+                    rl_module=self.env_runner.module,
+                )
+        # END TEST
+
 
         # Call the LearnerGroup's `update_from_episodes` method.
         with self.metrics.log_time((TIMERS, LEARNER_UPDATE_TIMER)):
@@ -671,6 +690,7 @@ class IMPALA(Algorithm):
             last_good_learner_results = None
 
             for batch_ref_or_episode_list_ref in data_packages_for_learner_group:
+                # TEST
                 if self.config.num_aggregation_workers:
                     learner_results = self.learner_group.update_from_batch(
                         batch=batch_ref_or_episode_list_ref,
@@ -686,6 +706,7 @@ class IMPALA(Algorithm):
                         minibatch_size=self.config.minibatch_size,
                         shuffle_batch_per_epoch=self.config.shuffle_batch_per_epoch,
                     )
+                # END TEST
                 else:
                     learner_results = self.learner_group.update_from_episodes(
                         episodes=batch_ref_or_episode_list_ref,
