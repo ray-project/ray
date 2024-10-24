@@ -11,6 +11,9 @@ TIMERS = "timers"
 NUM_TRAINABLE_PARAMETERS = "num_trainable_parameters"
 NUM_NON_TRAINABLE_PARAMETERS = "num_non_trainable_parameters"
 
+# Number of times `training_step()` was called in one iteration.
+NUM_TRAINING_STEP_CALLS_PER_ITERATION = "num_training_step_calls_per_iteration"
+
 # Counters for sampling, sampling (on eval workers) and
 # training steps (env- and agent steps).
 MEAN_NUM_EPISODE_LISTS_RECEIVED = "mean_num_episode_lists_received"
