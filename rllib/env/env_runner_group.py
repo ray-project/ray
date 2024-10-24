@@ -184,7 +184,7 @@ class EnvRunnerGroup:
         # Starting remote workers from ID=1 to avoid conflicts.
         self._worker_manager = FaultTolerantActorManager(
             max_remote_requests_in_flight_per_actor=(
-                config["max_requests_in_flight_per_env_runner"]
+                config.max_requests_in_flight_per_env_runner
             ),
             init_id=1,
         )
@@ -404,11 +404,7 @@ class EnvRunnerGroup:
                         if env_steps_sampled is not None
                         else {}
                     ),
-                    **(
-                        {COMPONENT_RL_MODULE: rl_module_state}
-                        if rl_module_state is not None
-                        else {}
-                    ),
+                    **(rl_module_state if rl_module_state is not None else {}),
                 }
             )
             return
@@ -472,7 +468,7 @@ class EnvRunnerGroup:
 
         # Update the rl_module component of the EnvRunner states, if necessary:
         if rl_module_state:
-            env_runner_states[COMPONENT_RL_MODULE] = rl_module_state
+            env_runner_states.update(rl_module_state)
 
         # If we do NOT want remote EnvRunners to get their Connector states updated,
         # only update the local worker here (with all state components) and then remove
