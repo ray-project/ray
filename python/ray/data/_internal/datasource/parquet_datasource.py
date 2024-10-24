@@ -23,6 +23,7 @@ from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.util import (
     _check_pyarrow_version,
     _is_local_scheme,
+    _split_list,
     call_with_retry,
     iterate_with_retry,
 )
@@ -354,9 +355,9 @@ class ParquetDatasource(Datasource):
 
         read_tasks = []
         for fragments, paths, metadata in zip(
-            np.array_split(pq_fragments, parallelism),
-            np.array_split(pq_paths, parallelism),
-            np.array_split(pq_metadata, parallelism),
+            _split_list(pq_fragments, parallelism),
+            _split_list(pq_paths, parallelism),
+            _split_list(pq_metadata, parallelism),
         ):
             if len(fragments) <= 0:
                 continue
