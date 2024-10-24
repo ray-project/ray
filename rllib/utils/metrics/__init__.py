@@ -6,9 +6,8 @@ LEARNER_GROUP = "learner_group"
 LEARNER_RESULTS = "learners"
 FAULT_TOLERANCE_STATS = "fault_tolerance"
 TIMERS = "timers"
-# ALGORITHM_RESULTS = "algorithm"
 
-# RLModule metrics
+# RLModule metrics.
 NUM_TRAINABLE_PARAMETERS = "num_trainable_parameters"
 NUM_NON_TRAINABLE_PARAMETERS = "num_non_trainable_parameters"
 
@@ -66,7 +65,7 @@ WEIGHTS_SEQ_NO = "weights_seq_no"
 NUM_GRAD_UPDATES_LIFETIME = "num_grad_updates_lifetime"
 # Average difference between the number of grad-updates that the policy/ies had
 # that collected the training batch vs the policy that was just updated (trained).
-# Good measuere for the off-policy'ness of training. Should be 0.0 for PPO and PG,
+# Good measure for the off-policy'ness of training. Should be 0.0 for PPO and PG,
 # small for IMPALA and APPO, and any (larger) value for DQN and other off-policy algos.
 DIFF_NUM_GRAD_UPDATES_VS_SAMPLER_POLICY = "diff_num_grad_updates_vs_sampler_policy"
 
