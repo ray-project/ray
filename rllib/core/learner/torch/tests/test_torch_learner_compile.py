@@ -13,11 +13,11 @@ from ray.rllib.utils.torch_utils import _dynamo_is_available
 
 class TestLearner(unittest.TestCase):
     @classmethod
-    def setUp(cls) -> None:
+    def setUpClass(cls) -> None:
         ray.init()
 
     @classmethod
-    def tearDown(cls) -> None:
+    def tearDownClass(cls) -> None:
         ray.shutdown()
 
     # Todo (rllib-team): Fix for torch 2.0+

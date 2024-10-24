@@ -417,6 +417,14 @@ def check(x, y, decimals=5, atol=None, rtol=None, false=False):
             if isinstance(y, torch.Tensor):
                 y = y.detach().cpu().numpy()
 
+        # Stats objects.
+        from ray.rllib.utils.metrics.stats import Stats
+
+        if isinstance(x, Stats):
+            x = x.peek()
+        if isinstance(y, Stats):
+            y = y.peek()
+
         # Using decimals.
         if atol is None and rtol is None:
             # Assert equality of both values.
@@ -795,8 +803,6 @@ def check_train_results_new_api_stack(train_results: ResultDict) -> None:
         ENV_RUNNER_RESULTS,
         FAULT_TOLERANCE_STATS,
         LEARNER_RESULTS,
-        NUM_AGENT_STEPS_SAMPLED_LIFETIME,
-        NUM_ENV_STEPS_SAMPLED_LIFETIME,
         TIMERS,
     )
 
@@ -805,8 +811,6 @@ def check_train_results_new_api_stack(train_results: ResultDict) -> None:
         ENV_RUNNER_RESULTS,
         FAULT_TOLERANCE_STATS,
         LEARNER_RESULTS,
-        NUM_AGENT_STEPS_SAMPLED_LIFETIME,
-        NUM_ENV_STEPS_SAMPLED_LIFETIME,
         TIMERS,
         TRAINING_ITERATION,
         "config",
@@ -1373,7 +1377,9 @@ def run_rllib_example_script_experiment(
     if stop is None:
         stop = {
             f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": args.stop_reward,
-            f"{NUM_ENV_STEPS_SAMPLED_LIFETIME}": args.stop_timesteps,
+            f"{ENV_RUNNER_RESULTS}/{NUM_ENV_STEPS_SAMPLED_LIFETIME}": (
+                args.stop_timesteps
+            ),
             TRAINING_ITERATION: args.stop_iters,
         }
 
