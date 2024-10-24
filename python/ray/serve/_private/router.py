@@ -326,6 +326,9 @@ class BaseRouter:
         self_actor_id: str,
         handle_source: DeploymentHandleSource,
         event_loop: asyncio.BaseEventLoop = None,
+        enable_queue_len_cache: bool = RAY_SERVE_ENABLE_QUEUE_LENGTH_CACHE,
+        enable_strict_max_ongoing_requests: bool = RAY_SERVE_ENABLE_STRICT_MAX_ONGOING_REQUESTS,  # noqa: E501
+        replica_scheduler: ReplicaScheduler = None,
     ):
         """Used to assign requests to downstream replicas for a deployment.
 
@@ -335,6 +338,18 @@ class BaseRouter:
 
         self._event_loop = event_loop
         self.deployment_id = deployment_id
+        self._replica_scheduler: ReplicaScheduler = replica_scheduler
+
+        if inside_ray_client_context():
+            # Streaming ObjectRefGenerators are not supported in Ray Client, so we need
+            # to override the behavior.
+            self._enable_queue_len_cache = False
+            self._enable_strict_max_ongoing_requests = False
+        else:
+            self._enable_queue_len_cache = enable_queue_len_cache
+            self._enable_strict_max_ongoing_requests = (
+                enable_strict_max_ongoing_requests
+            )
 
         # Flipped to `True` once the router has received a non-empty
         # replica set at least once.
@@ -497,9 +512,6 @@ class BaseRouter:
                 pr, is_retry=True
             )
 
-    @tracing_decorator_factory(
-        trace_name="proxy_route_to_replica",
-    )
     async def assign_request(
         self,
         request_meta: RequestMetadata,
@@ -507,23 +519,6 @@ class BaseRouter:
         **request_kwargs,
     ) -> ReplicaResult:
         """Assign a request to a replica and return the resulting object_ref."""
-
-        trace_attributes = {
-            "request_id": request_meta.request_id,
-            "deployment": self.deployment_id.name,
-            "app": self.deployment_id.app_name,
-            "call_method": request_meta.call_method,
-            "route": request_meta.route,
-            "multiplexed_model_id": request_meta.multiplexed_model_id,
-            "is_streaming": request_meta.is_streaming,
-            "is_http_request": request_meta.is_http_request,
-            "is_grpc_request": request_meta.is_grpc_request,
-        }
-        set_span_attributes(trace_attributes)
-        # Add context to request meta to link
-        # traces collected in the replica.
-        propagate_context = create_propagated_context()
-        request_meta.tracing_context = propagate_context
 
         with self._metrics_manager.wrap_request_assignment(request_meta):
             # Optimization: if there are currently zero replicas for a deployment,
@@ -586,16 +581,6 @@ class Router(BaseRouter):
         replica_scheduler: Optional[ReplicaScheduler] = None,
         **kwargs,
     ):
-        if inside_ray_client_context():
-            # Streaming ObjectRefGenerators are not supported in Ray Client, so we need
-            # to override the behavior.
-            self._enable_queue_len_cache = False
-            self._enable_strict_max_ongoing_requests = False
-        else:
-            self._enable_queue_len_cache = enable_queue_len_cache
-            self._enable_strict_max_ongoing_requests = (
-                enable_strict_max_ongoing_requests
-            )
 
         if replica_scheduler is None:
             replica_scheduler = PowerOfTwoChoicesReplicaScheduler(
@@ -613,13 +598,15 @@ class Router(BaseRouter):
                 use_replica_queue_len_cache=enable_queue_len_cache,
                 create_replica_wrapper_func=lambda r: ActorReplicaWrapper(r),
             )
-        self._replica_scheduler: ReplicaScheduler = replica_scheduler
 
         super().__init__(
             deployment_id=deployment_id,
             self_actor_id=self_actor_id,
             handle_source=handle_source,
             event_loop=event_loop,
+            enable_queue_len_cache=enable_queue_len_cache,
+            enable_strict_max_ongoing_requests=enable_strict_max_ongoing_requests,
+            replica_scheduler=replica_scheduler,
             **kwargs,
         )
 
