@@ -580,26 +580,25 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   /// \param actor The actor to be killed.
   void AddDestroyedActorToCache(const std::shared_ptr<GcsActor> &actor);
 
-  std::shared_ptr<rpc::ActorTableData> GenActorDataOnlyWithStates(
-      const rpc::ActorTableData &actor) {
-    auto actor_delta = std::make_shared<rpc::ActorTableData>();
-    actor_delta->set_state(actor.state());
-    actor_delta->mutable_death_cause()->CopyFrom(actor.death_cause());
-    actor_delta->mutable_address()->CopyFrom(actor.address());
-    actor_delta->set_num_restarts(actor.num_restarts());
-    actor_delta->set_max_restarts(actor.max_restarts());
-    actor_delta->set_timestamp(actor.timestamp());
-    actor_delta->set_pid(actor.pid());
-    actor_delta->set_start_time(actor.start_time());
-    actor_delta->set_end_time(actor.end_time());
-    actor_delta->set_repr_name(actor.repr_name());
-    actor_delta->set_preempted(actor.preempted());
+  rpc::ActorTableData GenActorDataOnlyWithStates(const rpc::ActorTableData &actor) {
+    rpc::ActorTableData actor_delta;
+    actor_delta.set_state(actor.state());
+    actor_delta.mutable_death_cause()->CopyFrom(actor.death_cause());
+    actor_delta.mutable_address()->CopyFrom(actor.address());
+    actor_delta.set_num_restarts(actor.num_restarts());
+    actor_delta.set_max_restarts(actor.max_restarts());
+    actor_delta.set_timestamp(actor.timestamp());
+    actor_delta.set_pid(actor.pid());
+    actor_delta.set_start_time(actor.start_time());
+    actor_delta.set_end_time(actor.end_time());
+    actor_delta.set_repr_name(actor.repr_name());
+    actor_delta.set_preempted(actor.preempted());
     // Acotr's namespace and name are used for removing cached name when it's dead.
     if (!actor.ray_namespace().empty()) {
-      actor_delta->set_ray_namespace(actor.ray_namespace());
+      actor_delta.set_ray_namespace(actor.ray_namespace());
     }
     if (!actor.name().empty()) {
-      actor_delta->set_name(actor.name());
+      actor_delta.set_name(actor.name());
     }
     return actor_delta;
   }

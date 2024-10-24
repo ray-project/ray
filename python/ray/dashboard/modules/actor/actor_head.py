@@ -8,6 +8,7 @@ from typing import Any, Dict, Optional
 
 import aiohttp.web
 
+import ray
 import ray.dashboard.optional_utils as dashboard_optional_utils
 import ray.dashboard.utils as dashboard_utils
 from ray import ActorID
@@ -22,8 +23,9 @@ logger = logging.getLogger(__name__)
 routes = dashboard_optional_utils.DashboardHeadRouteTable
 
 MAX_DELETED_ACTORS_TO_CACHE = max(
-    0, int(os.environ.get("RAY_maximum_gcs_destroyed_actor_cached_count", 1000))
+    0, ray._config.maximum_gcs_destroyed_actor_cached_count()
 )
+
 ACTOR_CLEANUP_FREQUENCY = 1  # seconds
 
 

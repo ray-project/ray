@@ -1113,7 +1113,7 @@ void GcsActorManager::DestroyActor(const ActorID &actor_id,
           done_callback();
         }
         RAY_CHECK_OK(gcs_publisher_->PublishActor(
-            actor_id, *GenActorDataOnlyWithStates(*actor_table_data), nullptr));
+            actor_id, GenActorDataOnlyWithStates(*actor_table_data), nullptr));
         if (!is_restartable) {
           RAY_CHECK_OK(
               gcs_table_storage_->ActorTaskSpecTable().Delete(actor_id, nullptr));
@@ -1346,7 +1346,7 @@ void GcsActorManager::SetPreemptedAndPublish(const NodeID &node_id) {
     RAY_CHECK_OK(gcs_table_storage_->ActorTable().Put(
         actor_id, actor_table_data, [this, actor_id, actor_table_data](Status status) {
           RAY_CHECK_OK(gcs_publisher_->PublishActor(
-              actor_id, *GenActorDataOnlyWithStates(actor_table_data), nullptr));
+              actor_id, GenActorDataOnlyWithStates(actor_table_data), nullptr));
         }));
   }
 }
@@ -1411,7 +1411,7 @@ void GcsActorManager::RestartActor(const ActorID &actor_id,
             done_callback();
           }
           RAY_CHECK_OK(gcs_publisher_->PublishActor(
-              actor_id, *GenActorDataOnlyWithStates(*mutable_actor_table_data), nullptr));
+              actor_id, GenActorDataOnlyWithStates(*mutable_actor_table_data), nullptr));
           actor->WriteActorExportEvent();
         }));
     gcs_actor_scheduler_->Schedule(actor);
@@ -1439,7 +1439,7 @@ void GcsActorManager::RestartActor(const ActorID &actor_id,
             done_callback();
           }
           RAY_CHECK_OK(gcs_publisher_->PublishActor(
-              actor_id, *GenActorDataOnlyWithStates(*mutable_actor_table_data), nullptr));
+              actor_id, GenActorDataOnlyWithStates(*mutable_actor_table_data), nullptr));
           RAY_CHECK_OK(
               gcs_table_storage_->ActorTaskSpecTable().Delete(actor_id, nullptr));
           actor->WriteActorExportEvent();
@@ -1549,7 +1549,7 @@ void GcsActorManager::OnActorCreationSuccess(const std::shared_ptr<GcsActor> &ac
       actor_table_data,
       [this, actor_id, actor_table_data, actor, reply](Status status) {
         RAY_CHECK_OK(gcs_publisher_->PublishActor(
-            actor_id, *GenActorDataOnlyWithStates(actor_table_data), nullptr));
+            actor_id, GenActorDataOnlyWithStates(actor_table_data), nullptr));
         actor->WriteActorExportEvent();
         // Invoke all callbacks for all registration requests of this actor (duplicated
         // requests are included) and remove all of them from
@@ -1648,8 +1648,8 @@ void GcsActorManager::Initialize(const GcsInitData &gcs_init_data) {
   }
 }
 
-const absl::flat_hash_map<NodeID, absl::flat_hash_map<WorkerID, ActorID>>
-    &GcsActorManager::GetCreatedActors() const {
+const absl::flat_hash_map<NodeID, absl::flat_hash_map<WorkerID, ActorID>> &
+GcsActorManager::GetCreatedActors() const {
   return created_actors_;
 }
 
