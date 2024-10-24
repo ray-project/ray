@@ -261,7 +261,7 @@ class GroupedData:
 
         # Change the name of the wrapped function so that users see the name of their
         # function rather than `wrapped_fn` in the progress bar.
-        wrapped_fn.__name__ = fn.__name__
+        wrapped_fn.__name__ = getattr(fn, "__name__", getattr(fn, "__class__").__name__)
 
         # Note we set batch_size=None here, so it will use the entire block as a batch,
         # which ensures that each group will be contained within a batch in entirety.
