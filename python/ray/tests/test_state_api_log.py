@@ -862,7 +862,7 @@ def test_logs_list(ray_start_with_dashboard):
             "worker_out",
             "worker_err",
         ]
-        assert all([cat in logs for cat in worker_log_categories])
+        assert all(cat in logs for cat in worker_log_categories)
         num_workers = len(
             list(filter(lambda w: w["worker_type"] == "WORKER", list_workers()))
         )

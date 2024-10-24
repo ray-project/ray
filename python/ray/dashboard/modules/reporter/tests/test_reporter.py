@@ -720,7 +720,7 @@ def test_reporter_worker_cpu_percent():
         children_pids = {p.pid for p in children}
         workers = ReporterAgent._get_workers(obj)
         # In the first run, the percent should be 0.
-        assert all([worker["cpu_percent"] == 0.0 for worker in workers])
+        assert all(worker["cpu_percent"] == 0.0 for worker in workers)
         for _ in range(10):
             time.sleep(0.1)
             workers = ReporterAgent._get_workers(obj)

@@ -148,10 +148,8 @@ def _update_and_check_proxy_state_manager(
     proxy_state_manager.update(**kwargs)
     proxy_states = proxy_state_manager._proxy_states
     assert all(
-        [
-            proxy_states[node_ids[idx]].status == statuses[idx]
-            for idx in range(len(node_ids))
-        ]
+        proxy_states[node_ids[idx]].status == statuses[idx]
+        for idx in range(len(node_ids))
     ), [proxy_state.status for proxy_state in proxy_states.values()]
     return True
 

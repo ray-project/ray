@@ -441,12 +441,12 @@ while True:
 
     # Validate all children of the worker processes are in a sleeping state.
     processes = [psutil.Process(pid) for pid in pids]
-    assert all([proc.status() == psutil.STATUS_SLEEPING for proc in processes])
+    assert all(proc.status() == psutil.STATUS_SLEEPING for proc in processes)
 
     # Valdiate children of worker process die after SIGINT.
     driver_proc.send_signal(signal.SIGINT)
     wait_for_condition(
-        condition_predictor=lambda: all([not proc.is_running() for proc in processes]),
+        condition_predictor=lambda: all(not proc.is_running() for proc in processes),
         timeout=30,
     )
 
@@ -543,7 +543,7 @@ while True:
 
     # Validate all children of the worker processes are in a sleeping state.
     processes = [psutil.Process(pid) for pid in pids]
-    assert all([proc.status() == psutil.STATUS_SLEEPING for proc in processes])
+    assert all(proc.status() == psutil.STATUS_SLEEPING for proc in processes)
 
     # Obtain psutil handle for raylet process
     raylet_proc = [p for p in psutil.process_iter() if p.name() == "raylet"]
@@ -556,7 +556,7 @@ while True:
 
     print("Waiting for child procs to die")
     wait_for_condition(
-        condition_predictor=lambda: all([not proc.is_running() for proc in processes]),
+        condition_predictor=lambda: all(not proc.is_running() for proc in processes),
         timeout=30,
     )
 

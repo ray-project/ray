@@ -402,11 +402,9 @@ class TestAssignRequest:
         # Unblock the requests, now they should all get scheduled.
         fake_replica_scheduler.unblock_requests(100)
         assert all(
-            [
-                not replica_result._is_generator_object
-                and replica_result._replica_id == r1_id
-                for replica_result in await asyncio.gather(*assign_request_tasks)
-            ]
+            not replica_result._is_generator_object
+            and replica_result._replica_id == r1_id
+            for replica_result in await asyncio.gather(*assign_request_tasks)
         )
 
     async def test_max_queued_requests_limited(
@@ -461,11 +459,9 @@ class TestAssignRequest:
         # Unblock the requests, now they should all get scheduled.
         fake_replica_scheduler.unblock_requests(5)
         assert all(
-            [
-                not replica_result._is_generator_object
-                and replica_result._replica_id == r1_id
-                for replica_result in await asyncio.gather(*assign_request_tasks)
-            ]
+            not replica_result._is_generator_object
+            and replica_result._replica_id == r1_id
+            for replica_result in await asyncio.gather(*assign_request_tasks)
         )
 
     async def test_max_queued_requests_updated(
@@ -533,11 +529,9 @@ class TestAssignRequest:
         done, pending = await asyncio.wait(assign_request_tasks, timeout=0.01)
         assert len(pending) == 5
         assert all(
-            [
-                not replica_result._is_generator_object
-                and replica_result._replica_id == r1_id
-                for replica_result in await asyncio.gather(*done)
-            ]
+            not replica_result._is_generator_object
+            and replica_result._replica_id == r1_id
+            for replica_result in await asyncio.gather(*done)
         )
         assign_request_tasks = list(pending)
 
@@ -550,11 +544,9 @@ class TestAssignRequest:
         # Unblock the requests, now they should all get scheduled.
         fake_replica_scheduler.unblock_requests(5)
         assert all(
-            [
-                not replica_result._is_generator_object
-                and replica_result._replica_id == r1_id
-                for replica_result in await asyncio.gather(*assign_request_tasks)
-            ]
+            not replica_result._is_generator_object
+            and replica_result._replica_id == r1_id
+            for replica_result in await asyncio.gather(*assign_request_tasks)
         )
 
     @pytest.mark.parametrize(

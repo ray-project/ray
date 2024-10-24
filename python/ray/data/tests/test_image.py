@@ -126,7 +126,7 @@ class TestReadImages:
     ):
         # "different-modes" contains 32x32 images with modes "CMYK", "L", and "RGB"
         ds = ray.data.read_images("example://image-datasets/different-modes", mode=mode)
-        assert all([record["image"].shape == expected_shape for record in ds.take()])
+        assert all(record["image"].shape == expected_shape for record in ds.take())
 
     def test_partitioning(
         self, ray_start_regular_shared, enable_automatic_tensor_extension_cast
@@ -178,7 +178,7 @@ class TestReadImages:
         assert not all(all_paths_matched)
         # Check all files are output properly without missing one.
         assert all(
-            [file_paths == sorted(output_paths) for output_paths in output_paths_list]
+            file_paths == sorted(output_paths) for output_paths in output_paths_list
         )
 
     def test_e2e_prediction(self, shutdown_only):
