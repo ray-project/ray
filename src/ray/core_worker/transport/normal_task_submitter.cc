@@ -516,14 +516,13 @@ void NormalTaskSubmitter::RequestNewWorkerIfNeeded(const SchedulingKey &scheduli
           auto &task_spec = tasks_to_fail.front();
           if (task_spec.IsActorCreationTask() &&
               error_type == rpc::ErrorType::TASK_PLACEMENT_GROUP_REMOVED) {
-            RAY_UNUSED(task_finisher_->FailPendingTask(
-                task_spec.TaskId(),
-                rpc::ErrorType::ACTOR_PLACEMENT_GROUP_REMOVED,
-                &error_status,
-                &error_info));
+            task_finisher_->FailPendingTask(task_spec.TaskId(),
+                                            rpc::ErrorType::ACTOR_PLACEMENT_GROUP_REMOVED,
+                                            &error_status,
+                                            &error_info);
           } else {
-            RAY_UNUSED(task_finisher_->FailPendingTask(
-                task_spec.TaskId(), error_type, &error_status, &error_info));
+            task_finisher_->FailPendingTask(
+                task_spec.TaskId(), error_type, &error_status, &error_info);
           }
           tasks_to_fail.pop_front();
         }
@@ -629,8 +628,7 @@ void NormalTaskSubmitter::PushNormalTask(
           if (reply.was_cancelled_before_running()) {
             RAY_LOG(DEBUG) << "Task " << task_id
                            << " was cancelled before it started running.";
-            RAY_UNUSED(
-                task_finisher_->FailPendingTask(task_id, rpc::ErrorType::TASK_CANCELLED));
+            task_finisher_->FailPendingTask(task_id, rpc::ErrorType::TASK_CANCELLED);
           } else if (!task_spec.GetMessage().retry_exceptions() ||
                      !reply.is_retryable_error() ||
                      !task_finisher_->RetryTaskIfPossible(
@@ -727,8 +725,8 @@ Status NormalTaskSubmitter::CancelTask(TaskSpecification task_spec,
           if (scheduling_tasks.empty()) {
             CancelWorkerLeaseIfNeeded(scheduling_key);
           }
-          RAY_UNUSED(task_finisher_->FailPendingTask(task_spec.TaskId(),
-                                                     rpc::ErrorType::TASK_CANCELLED));
+          task_finisher_->FailPendingTask(task_spec.TaskId(),
+                                          rpc::ErrorType::TASK_CANCELLED);
           return Status::OK();
         }
       }
@@ -741,12 +739,17 @@ Status NormalTaskSubmitter::CancelTask(TaskSpecification task_spec,
 
     if (rpc_client == executing_tasks_.end()) {
       // This case is reached for tasks that have unresolved dependencies.
-      // No executing tasks, so cancelling is a noop.
       if (scheduling_key_entry.CanDelete()) {
         // We can safely remove the entry keyed by scheduling_key from the
         // scheduling_key_entries_ hashmap.
         scheduling_key_entries_.erase(scheduling_key);
+        CancelWorkerLeaseIfNeeded(scheduling_key);
+        task_finisher_->FailPendingTask(task_spec.TaskId(),
+                                        rpc::ErrorType::TASK_CANCELLED);
+        // do we also have to come here and call core worker rpc cancel on the tasks it
+        // depends on?
       }
+      // if there is a parent task, need to get it and then cancel it
       return Status::OK();
     }
     // Looks for an RPC handle for the worker executing the task.
@@ -754,7 +757,7 @@ Status NormalTaskSubmitter::CancelTask(TaskSpecification task_spec,
   }
 
   RAY_CHECK(client != nullptr);
-
+  RAY_LOG(INFO) << "Sending rpc to cancel task to core worker: " << task_spec.TaskId();
   auto request = rpc::CancelTaskRequest();
   request.set_intended_task_id(task_spec.TaskId().Binary());
   request.set_force_kill(force_kill);
