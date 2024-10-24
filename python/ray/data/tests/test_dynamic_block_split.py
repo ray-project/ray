@@ -316,6 +316,7 @@ def test_read_large_data(ray_start_regular_shared):
         RandomBytesDatasource(
             num_tasks=1,
             num_batches_per_task=num_blocks_per_task,
+            num_rows_per_batch=None,
             row_size=block_size,
         ),
         override_num_blocks=1,
