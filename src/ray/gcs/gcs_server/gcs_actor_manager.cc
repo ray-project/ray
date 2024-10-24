@@ -1648,8 +1648,8 @@ void GcsActorManager::Initialize(const GcsInitData &gcs_init_data) {
   }
 }
 
-const absl::flat_hash_map<NodeID, absl::flat_hash_map<WorkerID, ActorID>> &
-GcsActorManager::GetCreatedActors() const {
+const absl::flat_hash_map<NodeID, absl::flat_hash_map<WorkerID, ActorID>>
+    &GcsActorManager::GetCreatedActors() const {
   return created_actors_;
 }
 
