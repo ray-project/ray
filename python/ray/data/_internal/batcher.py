@@ -211,10 +211,6 @@ class ShufflingBatcher(BatcherInterface):
             # Round it up internally to `batch_size` since our algorithm requires it.
             # This is harmless since it only offers extra randomization.
             shuffle_buffer_min_size = batch_size
-        self._buffer_capacity = max(
-            2 * shuffle_buffer_min_size,
-            shuffle_buffer_min_size + batch_size,
-        )
         self._buffer_min_size = shuffle_buffer_min_size
         self._builder = DelegatingBlockBuilder()
         self._shuffle_buffer: Block = None
