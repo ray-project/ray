@@ -481,7 +481,7 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
   // Concurrency groups of the actor.
   std::vector<ConcurrencyGroup> ConcurrencyGroups() const;
 
-  std::string ConcurrencyGroupName() const;
+  const std::string &ConcurrencyGroupName() const;
 
   bool ExecuteOutOfOrder() const;
 
