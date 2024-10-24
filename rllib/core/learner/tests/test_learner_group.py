@@ -1,5 +1,4 @@
 import gymnasium as gym
-import itertools
 import numpy as np
 import tempfile
 import unittest
@@ -7,8 +6,8 @@ import pytest
 
 import ray
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
-from ray.rllib.algorithms.ppo.tests.test_ppo_learner import FAKE_BATCH
 from ray.rllib.core import (
+    Columns,
     COMPONENT_LEARNER,
     COMPONENT_MULTI_RL_MODULE_SPEC,
     COMPONENT_RL_MODULE,
@@ -52,13 +51,10 @@ LOCAL_CONFIGS = {
 #  task is not dying after the test is done. This is a bug with ray core.
 @ray.remote(num_gpus=1)
 class RemoteTrainingHelper:
-    def local_training_helper(self, fw, scaling_mode) -> None:
-        if fw == "torch":
-            import torch
+    def local_training_helper(self, scaling_mode) -> None:
+        import torch
 
-            torch.manual_seed(0)
-        else:
-            raise NotImplementedError
+        torch.manual_seed(0)
 
         env = gym.make("CartPole-v1")
 
@@ -172,7 +168,39 @@ class RemoteTrainingHelper:
         # check(local_learner.get_state(), learner_group.get_state()[COMPONENT_LEARNER])
 
 
-class TestLearnerGroupSyncUpdate(unittest.TestCase):
+class TestLearnerGroup(unittest.TestCase):
+
+    FAKE_BATCH = {
+        Columns.OBS: np.array(
+            [
+                [0.1, 0.2, 0.3, 0.4],
+                [0.5, 0.6, 0.7, 0.8],
+                [0.9, 1.0, 1.1, 1.2],
+                [1.3, 1.4, 1.5, 1.6],
+            ],
+            dtype=np.float32,
+        ),
+        Columns.NEXT_OBS: np.array(
+            [
+                [0.1, 0.2, 0.3, 0.4],
+                [0.5, 0.6, 0.7, 0.8],
+                [0.9, 1.0, 1.1, 1.2],
+                [1.3, 1.4, 1.5, 1.6],
+            ],
+            dtype=np.float32,
+        ),
+        Columns.ACTIONS: np.array([0, 1, 1, 0]),
+        Columns.REWARDS: np.array([1.0, -1.0, 0.5, 0.6], dtype=np.float32),
+        Columns.TERMINATEDS: np.array([False, False, True, False]),
+        Columns.TRUNCATEDS: np.array([False, False, False, False]),
+        Columns.VF_PREDS: np.array([0.5, 0.6, 0.7, 0.8], dtype=np.float32),
+        Columns.ACTION_DIST_INPUTS: np.array(
+            [[-2.0, 0.5], [-3.0, -0.3], [-0.1, 2.5], [-0.2, 3.5]], dtype=np.float32
+        ),
+        Columns.ACTION_LOGP: np.array([-0.5, -0.1, -0.2, -0.3], dtype=np.float32),
+        Columns.EPS_ID: np.array([0, 0, 0, 0]),
+    }
+
     @classmethod
     def setUpClass(cls) -> None:
         ray.init()
@@ -208,28 +236,22 @@ class TestLearnerGroupSyncUpdate(unittest.TestCase):
         learner_group.shutdown()
 
     # def test_learner_group_local(self):
-    #    fws = ["torch"]
-
-    #    test_iterator = itertools.product(fws, LOCAL_CONFIGS)
-
     #    # run the logic of this test inside of a ray actor because we want tensorflow
     #    # resources to be gracefully released. Tensorflow blocks the gpu resources
     #    # otherwise between test cases, causing a gpu oom error.
-    #    for fw, scaling_mode in test_iterator:
-    #        print(f"Testing framework: {fw}, scaling_mode: {scaling_mode}")
+    #    for scaling_mode in LOCAL_CONFIGS:
+    #        print(f"Testing scaling_mode: {scaling_mode}")
     #        training_helper = RemoteTrainingHelper.remote()
-    #        ray.get(training_helper.local_training_helper.remote(fw, scaling_mode))
+    #        ray.get(training_helper.local_training_helper.remote(scaling_mode))
     #        del training_helper
 
     def test_update_multi_gpu(self):
         return
 
-        fws = ["torch"]
         scaling_modes = ["multi-gpu-ddp", "remote-gpu"]
-        test_iterator = itertools.product(fws, scaling_modes)
 
-        for fw, scaling_mode in test_iterator:
-            print(f"Testing framework: {fw}, scaling mode: {scaling_mode}.")
+        for scaling_mode in scaling_modes:
+            print(f"Testing scaling mode: {scaling_mode}.")
             env = gym.make("CartPole-v1")
 
             config_overrides = REMOTE_CONFIGS[scaling_mode]
@@ -266,12 +288,10 @@ class TestLearnerGroupSyncUpdate(unittest.TestCase):
             del learner_group
 
     def test_add_module_and_remove_module(self):
-        fws = ["torch"]
         scaling_modes = ["local-cpu", "multi-cpu-ddp"]
-        test_iterator = itertools.product(fws, scaling_modes)
 
-        for fw, scaling_mode in test_iterator:
-            print(f"Testing framework: {fw}, scaling mode: {scaling_mode}.")
+        for scaling_mode in scaling_modes:
+            print(f"Testing scaling mode: {scaling_mode}.")
             env = gym.make("CartPole-v1")
             config_overrides = REMOTE_CONFIGS.get(scaling_mode) or LOCAL_CONFIGS.get(
                 scaling_mode
@@ -327,25 +347,13 @@ class TestLearnerGroupSyncUpdate(unittest.TestCase):
             learner_group.shutdown()
             del learner_group
 
-
-class TestLearnerGroupCheckpointRestore(unittest.TestCase):
-    @classmethod
-    def setUpClass(cls) -> None:
-        ray.init()
-
-    @classmethod
-    def tearDownClass(cls) -> None:
-        ray.shutdown()
-
     def test_restore_from_path_multi_rl_module_and_individual_modules(self):
         """Tests whether MultiRLModule- and single RLModule states can be restored."""
-        fws = ["torch"]
         # this is expanded to more scaling modes on the release ci.
         scaling_modes = ["local-cpu", "multi-gpu-ddp"]
 
-        test_iterator = itertools.product(fws, scaling_modes)
-        for fw, scaling_mode in test_iterator:
-            print(f"Testing framework: {fw}, scaling mode: {scaling_mode}.")
+        for scaling_mode in scaling_modes:
+            print(f"Testing scaling mode: {scaling_mode}.")
             # env will have agent ids 0 and 1
             env = MultiAgentCartPole({"num_agents": 2})
 
@@ -435,25 +443,15 @@ class TestLearnerGroupCheckpointRestore(unittest.TestCase):
                     check(learner_group.get_weights(), new_multi_rl_module.get_state())
             del learner_group
 
-
-class TestLearnerGroupSaveLoadState(unittest.TestCase):
-    @classmethod
-    def setUpClass(cls) -> None:
-        ray.init()
-
-    @classmethod
-    def tearDownClass(cls) -> None:
-        ray.shutdown()
-
     def test_save_to_path_and_restore_from_path(self):
         """Check that saving and loading learner group state works."""
-        fws = ["torch"]
         # this is expanded to more scaling modes on the release ci.
         scaling_modes = ["local-cpu", "multi-gpu-ddp"]
-        test_iterator = itertools.product(fws, scaling_modes)
-        batch = SampleBatch(FAKE_BATCH)
-        for fw, scaling_mode in test_iterator:
-            print(f"Testing framework: {fw}, scaling mode: {scaling_mode}.")
+
+        batch = SampleBatch(self.FAKE_BATCH)
+
+        for scaling_mode in scaling_modes:
+            print(f"Testing scaling mode: {scaling_mode}.")
             env = gym.make("CartPole-v1")
 
             config_overrides = REMOTE_CONFIGS.get(scaling_mode) or LOCAL_CONFIGS.get(
@@ -510,7 +508,7 @@ class TestLearnerGroupSaveLoadState(unittest.TestCase):
             check(initial_weights, weights_after_restore)
             # Perform 2 updates to get to the same state as the previous learners.
             learner_group.update_from_batch(batch.as_multi_agent())
-            results_2nd_without_break = learner_group.update_from_batch(
+            results_2nd_update_without_break = learner_group.update_from_batch(
                 batch=batch.as_multi_agent()
             )
             weights_after_2_updates_without_break = learner_group.get_weights()
@@ -520,7 +518,7 @@ class TestLearnerGroupSaveLoadState(unittest.TestCase):
             # Compare the results of the two updates.
             check(
                 MetricsLogger.peek_results(results_2nd_update_with_break),
-                MetricsLogger.peek_results(results_2nd_without_break),
+                MetricsLogger.peek_results(results_2nd_update_without_break),
                 rtol=0.05,
             )
             check(
@@ -529,26 +527,14 @@ class TestLearnerGroupSaveLoadState(unittest.TestCase):
                 rtol=0.05,
             )
 
-
-class TestLearnerGroupAsyncUpdate(unittest.TestCase):
-    @classmethod
-    def setUpClass(cls) -> None:
-        ray.init()
-
-    @classmethod
-    def tearDown(cls) -> None:
-        ray.shutdown()
-
     def test_async_update(self):
         """Test that async style updates converge to the same result as sync."""
-        fws = ["torch"]
         # async_update only needs to be tested for the most complex case.
         # so we'll only test it for multi-gpu-ddp.
         scaling_modes = ["multi-gpu-ddp", "remote-gpu"]
-        test_iterator = itertools.product(fws, scaling_modes)
 
-        for fw, scaling_mode in test_iterator:
-            print(f"Testing framework: {fw}, scaling mode: {scaling_mode}.")
+        for scaling_mode in scaling_modes:
+            print(f"Testing scaling mode: {scaling_mode}.")
             env = gym.make("CartPole-v1")
             config_overrides = REMOTE_CONFIGS[scaling_mode]
             config = BaseTestingAlgorithmConfig().update_from_dict(config_overrides)

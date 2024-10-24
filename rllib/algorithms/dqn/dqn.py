@@ -55,14 +55,6 @@ from ray.rllib.utils.metrics import (
     NUM_AGENT_STEPS_SAMPLED_LIFETIME,
     NUM_ENV_STEPS_SAMPLED,
     NUM_ENV_STEPS_SAMPLED_LIFETIME,
-    NUM_ENV_STEPS_TRAINED,
-    NUM_ENV_STEPS_TRAINED_LIFETIME,
-    NUM_EPISODES,
-    NUM_EPISODES_LIFETIME,
-    NUM_MODULE_STEPS_SAMPLED,
-    NUM_MODULE_STEPS_SAMPLED_LIFETIME,
-    NUM_MODULE_STEPS_TRAINED,
-    NUM_MODULE_STEPS_TRAINED_LIFETIME,
     NUM_TARGET_UPDATES,
     REPLAY_BUFFER_ADD_DATA_TIMER,
     REPLAY_BUFFER_SAMPLE_TIMER,
@@ -642,7 +634,7 @@ class DQN(Algorithm):
             return DQNTFPolicy
 
     @override(Algorithm)
-    def training_step(self) -> ResultDict:
+    def training_step(self) -> None:
         """DQN training iteration function.
 
         Each training iteration, we:
@@ -657,14 +649,14 @@ class DQN(Algorithm):
         Returns:
             The results dict from executing the training iteration.
         """
-        # New API stack (RLModule, Learner, EnvRunner, ConnectorV2).
-        if self.config.enable_env_runner_and_connector_v2:
-            return self._training_step_new_api_stack(with_noise_reset=True)
-        # Old API stack (Policy, RolloutWorker).
-        else:
+        # Old API stack (Policy, RolloutWorker, Connector).
+        if not self.config.enable_env_runner_and_connector_v2:
             return self._training_step_old_api_stack()
 
-    def _training_step_new_api_stack(self, *, with_noise_reset) -> ResultDict:
+        # New API stack (RLModule, Learner, EnvRunner, ConnectorV2).
+        return self._training_step_new_api_stack(with_noise_reset=True)
+
+    def _training_step_new_api_stack(self, *, with_noise_reset):
         # Alternate between storing and sampling and training.
         store_weight, sample_and_train_weight = calculate_rr_weights(self.config)
 
@@ -688,38 +680,16 @@ class DQN(Algorithm):
             with self.metrics.log_time((TIMERS, REPLAY_BUFFER_ADD_DATA_TIMER)):
                 self.local_replay_buffer.add(episodes)
 
-        self.metrics.log_dict(
-            self.metrics.peek(
-                (ENV_RUNNER_RESULTS, NUM_AGENT_STEPS_SAMPLED), default={}
-            ),
-            key=NUM_AGENT_STEPS_SAMPLED_LIFETIME,
-            reduce="sum",
-        )
-        self.metrics.log_value(
-            NUM_ENV_STEPS_SAMPLED_LIFETIME,
-            self.metrics.peek((ENV_RUNNER_RESULTS, NUM_ENV_STEPS_SAMPLED), default=0),
-            reduce="sum",
-        )
-        self.metrics.log_value(
-            NUM_EPISODES_LIFETIME,
-            self.metrics.peek((ENV_RUNNER_RESULTS, NUM_EPISODES), default=0),
-            reduce="sum",
-        )
-        self.metrics.log_dict(
-            self.metrics.peek(
-                (ENV_RUNNER_RESULTS, NUM_MODULE_STEPS_SAMPLED),
-                default={},
-            ),
-            key=NUM_MODULE_STEPS_SAMPLED_LIFETIME,
-            reduce="sum",
-        )
-
         if self.config.count_steps_by == "agent_steps":
             current_ts = sum(
-                self.metrics.peek(NUM_AGENT_STEPS_SAMPLED_LIFETIME).values()
+                self.metrics.peek(
+                    (ENV_RUNNER_RESULTS, NUM_AGENT_STEPS_SAMPLED_LIFETIME), default={}
+                ).values()
             )
         else:
-            current_ts = self.metrics.peek(NUM_ENV_STEPS_SAMPLED_LIFETIME)
+            current_ts = self.metrics.peek(
+                (ENV_RUNNER_RESULTS, NUM_ENV_STEPS_SAMPLED_LIFETIME), default=0
+            )
 
         # If enough experiences have been sampled start training.
         if current_ts >= self.config.num_steps_sampled_before_learning_starts:
@@ -750,10 +720,17 @@ class DQN(Algorithm):
                         episodes=episodes,
                         timesteps={
                             NUM_ENV_STEPS_SAMPLED_LIFETIME: (
-                                self.metrics.peek(NUM_ENV_STEPS_SAMPLED_LIFETIME)
+                                self.metrics.peek(
+                                    (ENV_RUNNER_RESULTS, NUM_ENV_STEPS_SAMPLED_LIFETIME)
+                                )
                             ),
                             NUM_AGENT_STEPS_SAMPLED_LIFETIME: (
-                                self.metrics.peek(NUM_AGENT_STEPS_SAMPLED_LIFETIME)
+                                self.metrics.peek(
+                                    (
+                                        ENV_RUNNER_RESULTS,
+                                        NUM_AGENT_STEPS_SAMPLED_LIFETIME,
+                                    )
+                                )
                             ),
                         },
                     )
@@ -775,29 +752,6 @@ class DQN(Algorithm):
                     self.metrics.merge_and_log_n_dicts(
                         learner_results, key=LEARNER_RESULTS
                     )
-                    self.metrics.log_value(
-                        NUM_ENV_STEPS_TRAINED_LIFETIME,
-                        self.metrics.peek(
-                            (LEARNER_RESULTS, ALL_MODULES, NUM_ENV_STEPS_TRAINED)
-                        ),
-                        reduce="sum",
-                    )
-                    self.metrics.log_dict(
-                        {
-                            (LEARNER_RESULTS, mid, NUM_MODULE_STEPS_TRAINED_LIFETIME): (
-                                stats[NUM_MODULE_STEPS_TRAINED]
-                            )
-                            for mid, stats in self.metrics.peek(LEARNER_RESULTS).items()
-                            if NUM_MODULE_STEPS_TRAINED in stats
-                        },
-                        reduce="sum",
-                    )
-
-                    # TODO (sven): Uncomment this once agent steps are available in the
-                    #  Learner stats.
-                    # self.metrics.log_dict(self.metrics.peek(
-                    #   (LEARNER_RESULTS, NUM_AGENT_STEPS_TRAINED), default={}
-                    # ), key=NUM_AGENT_STEPS_TRAINED_LIFETIME, reduce="sum")
 
                 # Update replay buffer priorities.
                 with self.metrics.log_time((TIMERS, REPLAY_BUFFER_UPDATE_PRIOS_TIMER)):
@@ -817,8 +771,6 @@ class DQN(Algorithm):
                     global_vars=None,
                     inference_only=True,
                 )
-
-        return self.metrics.reduce()
 
     def _training_step_old_api_stack(self) -> ResultDict:
         """Training step for the old API stack.

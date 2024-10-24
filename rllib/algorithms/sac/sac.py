@@ -18,7 +18,7 @@ from ray.rllib.utils.annotations import override
 from ray.rllib.utils.deprecation import DEPRECATED_VALUE, deprecation_warning
 from ray.rllib.utils.framework import try_import_tf, try_import_tfp
 from ray.rllib.utils.replay_buffers.episode_replay_buffer import EpisodeReplayBuffer
-from ray.rllib.utils.typing import LearningRateOrSchedule, RLModuleSpecType, ResultDict
+from ray.rllib.utils.typing import LearningRateOrSchedule, RLModuleSpecType
 
 tf1, tf, tfv = try_import_tf()
 tfp = try_import_tfp()
@@ -591,7 +591,7 @@ class SAC(DQN):
             return SACTFPolicy
 
     @override(DQN)
-    def training_step(self) -> ResultDict:
+    def training_step(self) -> None:
         """SAC training iteration function.
 
         Each training iteration, we:
@@ -606,10 +606,8 @@ class SAC(DQN):
         Returns:
             The results dict from executing the training iteration.
         """
-        # New API stack (RLModule, Learner, EnvRunner, ConnectorV2).
-        if self.config.enable_env_runner_and_connector_v2:
-            return self._training_step_new_api_stack(with_noise_reset=False)
-        # Old API stack (Policy, RolloutWorker, Connector, maybe RLModule,
-        # maybe Learner).
-        else:
+        # Old API stack (Policy, RolloutWorker, Connector).
+        if not self.config.enable_env_runner_and_connector_v2:
             return self._training_step_old_api_stack()
+
+        return self._training_step_new_api_stack(with_noise_reset=False)
