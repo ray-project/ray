@@ -407,9 +407,9 @@ class TorchLearner(Learner):
         #  API in ray.train but allow for session to be None without any errors raised.
         if self._use_gpu:
             # get_devices() returns a list that contains the 0th device if
-            # it is called from outside of a Ray Train session. Its necessary to give
+            # it is called from outside a Ray Train session. It's necessary to give
             # the user the option to run on the gpu of their choice, so we enable that
-            # option here via the local gpu id scaling config parameter.
+            # option here through the local gpu id scaling config parameter.
             if self._distributed:
                 devices = get_devices()
                 assert len(devices) == 1, (
@@ -459,8 +459,6 @@ class TorchLearner(Learner):
 
             self._possibly_compiled_update = self._uncompiled_update
 
-        self._make_modules_ddp_if_necessary()
-
         # Log number of non-trainable and trainable parameters of our RLModule.
         num_trainable_params = {
             (mid, NUM_TRAINABLE_PARAMETERS): sum(
@@ -476,6 +474,7 @@ class TorchLearner(Learner):
             for mid, rlm in self.module._rl_modules.items()
             if isinstance(rlm, TorchRLModule)
         }
+
         self.metrics.log_dict(
             {
                 **{
@@ -490,6 +489,8 @@ class TorchLearner(Learner):
                 **num_non_trainable_params,
             }
         )
+
+        self._make_modules_ddp_if_necessary()
 
     @override(Learner)
     def _update(self, batch: Dict[str, Any]) -> Tuple[Any, Any, Any]:
