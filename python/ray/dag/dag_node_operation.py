@@ -554,10 +554,10 @@ def _generate_overlapped_execution_schedule(
                         == _DAGNodeOperationType.COMPUTE
                     ):
                         # Found a desired compute operation, make the swap
-                        nccl_read_node = overlapped_schedule[i]
-                        sublist = overlapped_schedule[j:i]
-                        overlapped_schedule[j + 1 : i + 1] = sublist
-                        overlapped_schedule[j] = nccl_read_node
+                        nccl_read_op = overlapped_schedule[i]
+                        prev_ops = overlapped_schedule[j:i]
+                        overlapped_schedule[j + 1 : i + 1] = prev_ops
+                        overlapped_schedule[j] = nccl_read_op
                         break
                     if (
                         overlapped_schedule[j].operation.type

@@ -416,14 +416,14 @@ class ExecutableTask:
         self._recv_stream: Union["cp.cuda.Stream", nullcontext] = nullcontext()
         if self.output_type_hint.requires_nccl():
             nccl_group_id = _get_nccl_group_id(self.output_type_hint)
-            nccl_group = ChannelContext.get_current().nccl_groups[nccl_group_id]
+            nccl_group = ChannelContext.get_current().nccl_groups.get(nccl_group_id)
             assert nccl_group is not None
             self._send_stream = nccl_group.send_stream
         if self.input_type_hints:
             for type_hint in self.input_type_hints:
                 if type_hint.requires_nccl():
                     nccl_group_id = _get_nccl_group_id(type_hint)
-                    nccl_group = ChannelContext.get_current().nccl_groups[nccl_group_id]
+                    nccl_group = ChannelContext.get_current().nccl_groups.get(nccl_group_id)
                     assert nccl_group is not None
                     if not isinstance(self._recv_stream, nullcontext):
                         assert self._recv_stream == nccl_group.recv_stream, (
@@ -457,6 +457,7 @@ class ExecutableTask:
     def reset_and_wait_intermediate_future(self) -> Any:
         """
         Reset the intermediate future and wait for the result.
+
         Returns:
             The result of a READ or COMPUTE operation from the intermediate future.
         """
