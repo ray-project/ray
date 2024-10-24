@@ -210,9 +210,10 @@ def _node_type_from_group_spec(
         # The head node type has no workers because the head is not a worker.
         min_workers = max_workers = 0
     else:
-        # `minReplicas` and `maxReplicas` are required fields for each workerGroupSpec
-        min_workers = group_spec["minReplicas"]
-        max_workers = group_spec["maxReplicas"]
+        # `minReplicas` and `maxReplicas` are required fields for each workerGroupSpec.
+        # numOfHosts specifies the number of workers per replica in KubeRay v1.1+.
+        min_workers = group_spec["minReplicas"] * group_spec.get("numOfHosts", 1)
+        max_workers = group_spec["maxReplicas"] * group_spec.get("numOfHosts", 1)
 
     resources = _get_ray_resources_from_group_spec(group_spec, is_head)
 
