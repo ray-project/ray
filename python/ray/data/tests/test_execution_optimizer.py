@@ -1698,6 +1698,30 @@ def test_zero_copy_fusion_eliminate_build_output_blocks(ray_start_regular_shared
     )
 
 
+def test_logical_optimization_e2e():
+    ds = ray.data.range(10, override_num_blocks=2)
+    ds = ds.randomize_block_order()
+    ds = ds.map_batches(lambda x: x)
+    ds = ds.randomize_block_order()
+    assert set(extract_values("id", ds.take_all())) == set(range(10))
+
+    # Expected execution plan:
+    # InputDataBuffer[Input]
+    # -> TaskPoolMapOperator[ReadRange->MapBatches(<lambda>)]
+    # -> AllToAllOperator[RandomizeBlockOrder]
+
+    # check that randomize_block_order is pushed to the end
+    name = "ReadRange->MapBatches(<lambda>)"
+    assert name in ds.stats()
+
+    # check that Operator 2 is the randomize_block_order operator
+    assert "Operator 2 RandomizeBlockOrder:" in ds.stats()
+
+    # check that randomize_block_order is correctly deduped
+    deduped_third_op = "Operator 3 RandomizeBlockOrder:"
+    assert deduped_third_op not in ds.stats()
+
+
 def test_insert_logical_optimization_rules():
     class FakeRule1:
         pass
