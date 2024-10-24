@@ -22,7 +22,7 @@ class TestLearner(unittest.TestCase):
 
     @classmethod
     def setUp(cls) -> None:
-        ray.init()
+        ray.init(ignore_reinit_error=True)
 
     @classmethod
     def tearDown(cls) -> None:
