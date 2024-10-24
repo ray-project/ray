@@ -1668,7 +1668,8 @@ def test_asyncio_out_of_order_get(ray_start_regular, max_queue_size):
 
 
 @pytest.mark.parametrize("max_queue_size", [None, 2])
-def test_asyncio_multi_output(ray_start_regular, max_queue_size):
+@pytest.mark.parametrize("gather_futs", [True, False])
+def test_asyncio_multi_output(ray_start_regular, max_queue_size, gather_futs):
     a = Actor.remote(0)
     b = Actor.remote(0)
     with InputNode() as i:
@@ -1685,11 +1686,17 @@ def test_asyncio_multi_output(ray_start_regular, max_queue_size):
         # will succeed.
         val = np.ones(100) * i
         futs = await compiled_dag.execute_async(val)
-
         assert len(futs) == 2
-        for fut in futs:
-            result = await fut
-            assert (result == val).all()
+
+        if gather_futs:
+            results = await asyncio.gather(*futs)
+            assert len(results) == 2
+            for result in results:
+                assert (result == val).all()
+        else:
+            for fut in futs:
+                result = await fut
+                assert (result == val).all()
 
     loop.run_until_complete(asyncio.gather(*[main(i) for i in range(10)]))
     # Note: must teardown before starting a new Ray session, otherwise you'll get
