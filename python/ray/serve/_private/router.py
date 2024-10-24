@@ -69,7 +69,6 @@ class RouterMetricsManager:
         self._self_actor_id = self_actor_id
         self._handle_source = handle_source
         self._controller_handle = controller_handle
-        self._self_actor_id = self_actor_id
 
         # Exported metrics
         self.num_router_requests = router_requests_counter
@@ -318,22 +317,18 @@ class RouterMetricsManager:
         self._shutdown = True
 
 
-class Router:
+class BaseRouter:
     def __init__(
         self,
         controller_handle: ActorHandle,
         deployment_id: DeploymentID,
         handle_id: str,
-        self_node_id: str,
         self_actor_id: str,
-        self_availability_zone: Optional[str],
         handle_source: DeploymentHandleSource,
         event_loop: asyncio.BaseEventLoop = None,
-        _prefer_local_node_routing: bool = False,
         enable_queue_len_cache: bool = RAY_SERVE_ENABLE_QUEUE_LENGTH_CACHE,
         enable_strict_max_ongoing_requests: bool = RAY_SERVE_ENABLE_STRICT_MAX_ONGOING_REQUESTS,  # noqa: E501
-        *,
-        replica_scheduler: Optional[ReplicaScheduler] = None,
+        replica_scheduler: ReplicaScheduler = None,
     ):
         """Used to assign requests to downstream replicas for a deployment.
 
@@ -343,6 +338,7 @@ class Router:
 
         self._event_loop = event_loop
         self.deployment_id = deployment_id
+        self._replica_scheduler: ReplicaScheduler = replica_scheduler
 
         if inside_ray_client_context():
             # Streaming ObjectRefGenerators are not supported in Ray Client, so we need
@@ -355,25 +351,6 @@ class Router:
                 enable_strict_max_ongoing_requests
             )
 
-        replica_wrapper_cls = ActorReplicaWrapper
-        if replica_scheduler is None:
-            replica_scheduler = PowerOfTwoChoicesReplicaScheduler(
-                self._event_loop,
-                deployment_id,
-                handle_source,
-                _prefer_local_node_routing,
-                RAY_SERVE_PROXY_PREFER_LOCAL_AZ_ROUTING,
-                self_node_id,
-                self_actor_id,
-                ray.get_runtime_context().current_actor
-                if ray.get_runtime_context().get_actor_id()
-                else None,
-                self_availability_zone,
-                use_replica_queue_len_cache=enable_queue_len_cache,
-                create_replica_wrapper_func=lambda r: replica_wrapper_cls(r),
-            )
-
-        self._replica_scheduler: ReplicaScheduler = replica_scheduler
         # Flipped to `True` once the router has received a non-empty
         # replica set at least once.
         self.running_replicas_populated: bool = False
@@ -446,58 +423,7 @@ class Router:
     async def _resolve_deployment_responses(
         self, request_args: Tuple[Any], request_kwargs: Dict[str, Any]
     ) -> Tuple[Tuple[Any], Dict[str, Any]]:
-        """Replaces top-level `DeploymentResponse` objects with resolved object refs.
-
-        This enables composition without explicitly calling `_to_object_ref`.
-        """
-        from ray.serve.handle import DeploymentResponse, DeploymentResponseGenerator
-
-        generator_not_supported_message = (
-            "Streaming deployment handle results cannot be passed to "
-            "downstream handle calls. If you have a use case requiring "
-            "this feature, please file a feature request on GitHub."
-        )
-
-        new_args = [None for _ in range(len(request_args))]
-        new_kwargs = {}
-
-        arg_tasks = []
-        response_indices = []
-        for i, obj in enumerate(request_args):
-            if isinstance(obj, DeploymentResponseGenerator):
-                raise RuntimeError(generator_not_supported_message)
-            elif isinstance(obj, DeploymentResponse):
-                # Launch async task to convert DeploymentResponse to an object ref, and
-                # keep track of the argument index in the original `request_args`
-                response_indices.append(i)
-                arg_tasks.append(asyncio.create_task(obj._to_object_ref()))
-            else:
-                new_args[i] = obj
-
-        kwarg_tasks = []
-        response_keys = []
-        for k, obj in request_kwargs.items():
-            if isinstance(obj, DeploymentResponseGenerator):
-                raise RuntimeError(generator_not_supported_message)
-            elif isinstance(obj, DeploymentResponse):
-                # Launch async task to convert DeploymentResponse to an object ref, and
-                # keep track of the corresponding key in the original `request_kwargs`
-                response_keys.append(k)
-                kwarg_tasks.append(asyncio.create_task(obj._to_object_ref()))
-            else:
-                new_kwargs[k] = obj
-
-        # Gather `DeploymentResponse` object refs concurrently.
-        arg_obj_refs = await asyncio.gather(*arg_tasks)
-        kwarg_obj_refs = await asyncio.gather(*kwarg_tasks)
-
-        # Update new args and new kwargs with resolved object refs
-        for index, obj_ref in zip(response_indices, arg_obj_refs):
-            new_args[index] = obj_ref
-        new_kwargs.update((zip(response_keys, kwarg_obj_refs)))
-
-        # Return new args and new kwargs
-        return new_args, new_kwargs
+        pass
 
     def _process_finished_request(
         self, replica_id: ReplicaID, result: Union[Any, RayError]
@@ -637,3 +563,107 @@ class Router:
         asyncio.run_coroutine_threadsafe(
             self._metrics_manager.shutdown(), loop=self._event_loop
         ).result()
+
+
+class Router(BaseRouter):
+    def __init__(
+        self,
+        controller_handle: ActorHandle,
+        deployment_id: DeploymentID,
+        handle_id: str,
+        self_node_id: str,
+        self_actor_id: str,
+        self_availability_zone: Optional[str],
+        handle_source: DeploymentHandleSource,
+        event_loop: asyncio.BaseEventLoop = None,
+        _prefer_local_node_routing: bool = False,
+        enable_queue_len_cache: bool = RAY_SERVE_ENABLE_QUEUE_LENGTH_CACHE,
+        enable_strict_max_ongoing_requests: bool = RAY_SERVE_ENABLE_STRICT_MAX_ONGOING_REQUESTS,  # noqa: E501
+        *,
+        replica_scheduler: Optional[ReplicaScheduler] = None,
+    ):
+
+        if replica_scheduler is None:
+            replica_scheduler = PowerOfTwoChoicesReplicaScheduler(
+                event_loop,
+                deployment_id,
+                handle_source,
+                _prefer_local_node_routing,
+                RAY_SERVE_PROXY_PREFER_LOCAL_AZ_ROUTING,
+                self_node_id,
+                self_actor_id,
+                ray.get_runtime_context().current_actor
+                if ray.get_runtime_context().get_actor_id()
+                else None,
+                self_availability_zone,
+                use_replica_queue_len_cache=enable_queue_len_cache,
+                create_replica_wrapper_func=lambda r: ActorReplicaWrapper(r),
+            )
+
+        super().__init__(
+            controller_handle=controller_handle,
+            deployment_id=deployment_id,
+            handle_id=handle_id,
+            self_actor_id=self_actor_id,
+            handle_source=handle_source,
+            event_loop=event_loop,
+            enable_queue_len_cache=enable_queue_len_cache,
+            enable_strict_max_ongoing_requests=enable_strict_max_ongoing_requests,
+            replica_scheduler=replica_scheduler,
+        )
+
+    async def _resolve_deployment_responses(
+        self, request_args: Tuple[Any], request_kwargs: Dict[str, Any]
+    ) -> Tuple[Tuple[Any], Dict[str, Any]]:
+        """Replaces top-level `DeploymentResponse` objects with resolved object refs.
+
+        This enables composition without explicitly calling `_to_object_ref`.
+        """
+        from ray.serve.handle import DeploymentResponse, DeploymentResponseGenerator
+
+        generator_not_supported_message = (
+            "Streaming deployment handle results cannot be passed to "
+            "downstream handle calls. If you have a use case requiring "
+            "this feature, please file a feature request on GitHub."
+        )
+
+        new_args = [None for _ in range(len(request_args))]
+        new_kwargs = {}
+
+        arg_tasks = []
+        response_indices = []
+        for i, obj in enumerate(request_args):
+            if isinstance(obj, DeploymentResponseGenerator):
+                raise RuntimeError(generator_not_supported_message)
+            elif isinstance(obj, DeploymentResponse):
+                # Launch async task to convert DeploymentResponse to an object ref, and
+                # keep track of the argument index in the original `request_args`
+                response_indices.append(i)
+                arg_tasks.append(asyncio.create_task(obj._to_object_ref()))
+            else:
+                new_args[i] = obj
+
+        kwarg_tasks = []
+        response_keys = []
+        for k, obj in request_kwargs.items():
+            if isinstance(obj, DeploymentResponseGenerator):
+                raise RuntimeError(generator_not_supported_message)
+            elif isinstance(obj, DeploymentResponse):
+                # Launch async task to convert DeploymentResponse to an object ref, and
+                # keep track of the corresponding key in the original `request_kwargs`
+                response_keys.append(k)
+                kwarg_tasks.append(asyncio.create_task(obj._to_object_ref()))
+            else:
+                new_kwargs[k] = obj
+
+        # Gather `DeploymentResponse` object refs concurrently.
+        arg_obj_refs = await asyncio.gather(*arg_tasks)
+        kwarg_obj_refs = await asyncio.gather(*kwarg_tasks)
+
+        # Update new args and new kwargs with resolved object refs
+        for index, obj_ref in zip(response_indices, arg_obj_refs):
+            new_args[index] = obj_ref
+        new_kwargs.update((zip(response_keys, kwarg_obj_refs)))
+
+        # Return new args and new kwargs
+        return new_args, new_kwargs

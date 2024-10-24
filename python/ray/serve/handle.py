@@ -21,6 +21,7 @@ from ray.serve._private.default_impl import (
     create_cluster_node_info_cache,
     create_dynamic_handle_options,
     create_init_handle_options,
+    create_router,
 )
 from ray.serve._private.replica_result import ReplicaResult
 from ray.serve._private.router import Router
@@ -184,16 +185,15 @@ class _DeploymentHandleBase:
             except Exception:
                 availability_zone = None
 
-            self._router = Router(
+            self._router = create_router(
                 serve.context._get_global_client()._controller,
                 self.deployment_id,
                 self.handle_id,
                 node_id,
                 get_current_actor_id(),
                 availability_zone,
-                handle_source=self.init_options._source,
-                event_loop=_create_or_get_global_asyncio_event_loop_in_thread(),
-                _prefer_local_node_routing=self.init_options._prefer_local_routing,
+                _create_or_get_global_asyncio_event_loop_in_thread(),
+                handle_options=self.init_options,
             )
 
         return self._router

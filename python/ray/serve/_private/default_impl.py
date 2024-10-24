@@ -1,16 +1,20 @@
+import asyncio
 from typing import Callable, Optional
 
 import ray
 from ray._raylet import GcsClient
+from ray.actor import ActorHandle
 from ray.serve._private.cluster_node_info_cache import (
     ClusterNodeInfoCache,
     DefaultClusterNodeInfoCache,
 )
+from ray.serve._private.common import DeploymentID
 from ray.serve._private.deployment_scheduler import (
     DefaultDeploymentScheduler,
     DeploymentScheduler,
 )
 from ray.serve._private.grpc_util import gRPCServer
+from ray.serve._private.router import Router
 from ray.serve._private.utils import get_head_node_id
 
 # NOTE: Please read carefully before changing!
@@ -48,6 +52,28 @@ def create_init_handle_options(**kwargs):
     from ray.serve.handle import _InitHandleOptions
 
     return _InitHandleOptions.create(**kwargs)
+
+
+def create_router(
+    controller_handle: ActorHandle,
+    deployment_id: DeploymentID,
+    handle_id: str,
+    node_id: str,
+    actor_id: str,
+    availability_zone: Optional[str],
+    event_loop: asyncio.BaseEventLoop,
+    handle_options,
+):
+    return Router(
+        controller_handle=controller_handle,
+        deployment_id=deployment_id,
+        handle_id=handle_id,
+        self_node_id=node_id,
+        self_actor_id=actor_id,
+        self_availability_zone=availability_zone,
+        handle_source=handle_options._source,
+        event_loop=event_loop,
+    )
 
 
 def add_grpc_address(grpc_server: gRPCServer, server_address: str):
