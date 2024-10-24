@@ -66,7 +66,7 @@ def _create_or_get_global_asyncio_event_loop_in_thread():
 
 class _HandleOptionType(str, Enum):
     Normal = "Normal"
-    BeforeRouterInit = "BeforeRouterInit"
+    RouterDependent = "RouterDependent"
 
 
 @dataclass(frozen=True)
@@ -81,7 +81,7 @@ class _HandleOptionsBase:
     stream: bool = field(default=False, metadata=_HandleOptionType.Normal)
     _prefer_local_routing: bool = field(
         default=False,
-        metadata=_HandleOptionType.BeforeRouterInit,
+        metadata=_HandleOptionType.RouterDependent,
     )
     _request_protocol: str = field(
         default=RequestProtocol.UNDEFINED,
@@ -89,7 +89,7 @@ class _HandleOptionsBase:
     )
     _source: DeploymentHandleSource = field(
         default=DeploymentHandleSource.UNKNOWN,
-        metadata=_HandleOptionType.BeforeRouterInit,
+        metadata=_HandleOptionType.RouterDependent,
     )
 
     def copy_and_update(self, **kwargs) -> "_HandleOptionsBase":
@@ -114,7 +114,7 @@ class _HandleOptions(_HandleOptionsBase):
 
     def can_share_router(self, other) -> bool:
         for f in fields(self):
-            if f.metadata == _HandleOptionType.BeforeRouterInit and getattr(
+            if f.metadata == _HandleOptionType.RouterDependent and getattr(
                 self, f.name
             ) != getattr(other, f.name):
                 return False
