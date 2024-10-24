@@ -310,7 +310,7 @@ def test_read_large_data(ray_start_regular_shared):
     block_size = 1024 * 1024 * 1024
 
     def foo(batch):
-        return pd.DataFrame({"one": [1]})
+        return {"one": [1]}
 
     ds = ray.data.read_datasource(
         RandomBytesDatasource(
