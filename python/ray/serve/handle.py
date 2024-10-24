@@ -246,14 +246,24 @@ class _DeploymentHandleBase:
 
         new_handle_options = self.handle_options.copy_and_update(**kwargs)
 
-        # TODO(zcin): pls comment
-        if not new_handle_options.can_share_router(self.handle_options):
+        # The router is dependent on a subset of the handle options. If
+        # none of these handle options were modified, then the new
+        # handle can share a router with the current handle. Otherwise,
+        # the new handle will need to use a new router.
+        if new_handle_options.can_share_router(self.handle_options):
+            router, _ = self._get_or_create_router()
+        else:
             if self._router is not None:
-                logger.warning("")
+                logger.warning(
+                    "You've called `.options()` on a handle that already has an "
+                    "initialized router. This will create a new handle with a new "
+                    "router, which runs on its own thread. To avoid the performance "
+                    "overhead that comes with creating multiple routers, please only "
+                    "call `.options()` on handles that haven't been used to send "
+                    "requests yet."
+                )
 
             router = None
-        else:
-            router, _ = self._get_or_create_router()
 
         return DeploymentHandle(
             self.deployment_name,
