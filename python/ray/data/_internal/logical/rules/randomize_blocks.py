@@ -71,6 +71,9 @@ class ReorderRandomizeBlocksRule(Rule):
 
         # Add RandomizeBlocks operator as the last operator in the DAG if necessary.
         for random_op in operators:
+            # Only add the RandomizeBlocks operator if it is not a duplicate.
+            if isinstance(op, RandomizeBlocks) and op._seed == random_op._seed:
+                continue
             random_op._input_dependencies = [op]
             op = random_op
 
