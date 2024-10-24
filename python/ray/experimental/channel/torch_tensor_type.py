@@ -2,7 +2,7 @@ import logging
 from typing import TYPE_CHECKING, List, Optional, Tuple, Union
 
 import ray
-from ray.experimental.channel import ChannelContext, ChannelOutputType
+from ray.experimental.channel import ChannelContext, ChannelInterface, ChannelOutputType
 from ray.experimental.channel.gpu_communicator import (
     GPUCommunicator,
     TorchTensorAllocator,
@@ -126,8 +126,7 @@ class TorchTensorType(ChannelOutputType):
         reader_and_node_list: List[Tuple["ray.actor.ActorHandle", str]],
         read_by_adag_driver,
         _torch_tensor_allocator: Optional["TorchTensorAllocator"] = None,
-    ) -> type:
-
+    ) -> ChannelInterface:
         if self.requires_nccl():
             from ray.experimental.channel.torch_tensor_nccl_channel import (
                 TorchTensorNcclChannel,
@@ -189,5 +188,21 @@ class TorchTensorType(ChannelOutputType):
         self._nccl_group_id = group_id
 
     @property
-    def nccl_group_id(self) -> str:
+    def nccl_group_id(self) -> Optional[str]:
         return self._nccl_group_id
+
+    def __deepcopy__(self, memo):
+        """
+        Deep copy all the fields except for the custom NCCL group. The custom
+        NCCL group should not be deep copied because it can be shared across
+        `TorchTensorType` instances.
+        """
+        copy = TorchTensorType(
+            _shape=self._shape,
+            _dtype=self._dtype,
+            transport=self.transport,
+            _direct_return=self._direct_return,
+        )
+        copy._custom_nccl_group = self._custom_nccl_group
+        copy._nccl_group_id = self._nccl_group_id
+        return copy
