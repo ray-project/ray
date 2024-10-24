@@ -526,7 +526,8 @@ class Dataset:
             compute: This argument is deprecated. Use ``concurrency`` argument.
             batch_format: If ``"default"`` or ``"numpy"``, batches are
                 ``Dict[str, numpy.ndarray]``. If ``"pandas"``, batches are
-                ``pandas.DataFrame``.
+                ``pandas.DataFrame``. If ``"pyarrow"``, batches are
+                ``pyarrow.Table``.
             zero_copy_batch: Whether ``fn`` should be provided zero-copy, read-only
                 batches. If this is ``True`` and no copy is required for the
                 ``batch_format`` conversion, the batch is a zero-copy, read-only
@@ -697,7 +698,7 @@ class Dataset:
     def add_column(
         self,
         col: str,
-        fn: Callable[["pandas.DataFrame"], "pandas.Series"],
+        fn: Callable[["pyarrow.Table"], "pyarrow.Array"],
         *,
         compute: Optional[str] = None,
         concurrency: Optional[Union[int, Tuple[int, int]]] = None,
@@ -705,13 +706,15 @@ class Dataset:
     ) -> "Dataset":
         """Add the given column to the dataset.
 
-        A function generating the new column values given the batch in pandas
+        A function generating the new column values given the batch in pyarrow
         format must be specified.
 
         Examples:
 
 
             >>> import ray
+            >>> import pyarrow as pa
+            >>> import pyarrow.compute as pc
             >>> ds = ray.data.range(100)
             >>> ds.schema()
             Column  Type
@@ -720,7 +723,7 @@ class Dataset:
 
             Add a new column equal to ``id * 2``.
 
-            >>> ds.add_column("new_id", lambda df: df["id"] * 2).schema()
+            >>> ds.add_column("new_id", lambda x: pc.multiply(x["id"], 2)).schema()
             Column  Type
             ------  ----
             id      int64
@@ -728,7 +731,7 @@ class Dataset:
 
             Overwrite the existing values with zeros.
 
-            >>> ds.add_column("id", lambda df: 0).take(3)
+            >>> ds.add_column("id", lambda x: pa.repeat(0, x.num_rows)).take(3)
             [{'id': 0}, {'id': 0}, {'id': 0}]
 
         Time complexity: O(dataset size / parallelism)
@@ -747,16 +750,26 @@ class Dataset:
                 ray (e.g., num_gpus=1 to request GPUs for the map tasks).
         """
 
-        def add_column(batch: "pandas.DataFrame") -> "pandas.DataFrame":
-            batch.loc[:, col] = fn(batch)
-            return batch
+        def add_column(batch: "pyarrow.Table") -> "pyarrow.Table":
+            # fn can output either a pandas Series or a pyarrow Array
+            column = fn(batch)
+
+            # The index of the column will be -1 if it is missing in which case we'll
+            # want to append it
+            column_idx = batch.schema.get_field_index(col)
+            if column_idx == -1:
+                # Append the column to the table
+                return batch.append_column(col, column)
+            else:
+                # Create a new table with the updated column
+                return batch.set_column(column_idx, col, column)
 
         if not callable(fn):
             raise ValueError("`fn` must be callable, got {}".format(fn))
 
         return self.map_batches(
             add_column,
-            batch_format="pandas",  # TODO(ekl) we should make this configurable.
+            batch_format="pyarrow",
             compute=compute,
             concurrency=concurrency,
             zero_copy_batch=False,
@@ -807,12 +820,16 @@ class Dataset:
                 ray (e.g., num_gpus=1 to request GPUs for the map tasks).
         """  # noqa: E501
 
+        # Historically, we have also accesspted lists with duplicate column names.
+        # This is not tolerated by the underlying pyarrow.Table.drop_columns method.
+        cols_without_duplicates = list(set(cols))
+
         def drop_columns(batch):
-            return batch.drop(columns=cols)
+            return batch.drop_columns(columns=cols_without_duplicates)
 
         return self.map_batches(
             drop_columns,
-            batch_format="pandas",
+            batch_format="pyarrow",
             zero_copy_batch=True,
             compute=compute,
             concurrency=concurrency,
@@ -873,7 +890,7 @@ class Dataset:
 
         return self.map_batches(
             select_columns,
-            batch_format="pandas",
+            batch_format="pyarrow",
             zero_copy_batch=True,
             compute=compute,
             concurrency=concurrency,
@@ -4288,7 +4305,8 @@ class Dataset:
             If your model accepts additional metadata aside from features and label, specify a single additional column or a list of additional columns.
             A common use case is to include sample weights in the data samples and train a ``tf.keras.Model`` with ``tf.keras.Model.fit``.
 
-            >>> ds = ds.add_column("sample weights", lambda df: 1)
+            >>> import pyarrow as pa
+            >>> ds = ds.add_column("sample weights", lambda x: pa.array([1] * x.num_rows))
             >>> ds.to_tf(feature_columns="features", label_columns="target", additional_columns="sample weights")
             <_OptionsDataset element_spec=(TensorSpec(shape=(None, 4), dtype=tf.float64, name='features'), TensorSpec(shape=(None,), dtype=tf.int64, name='target'), TensorSpec(shape=(None,), dtype=tf.int64, name='sample weights'))>
 
