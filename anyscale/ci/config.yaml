@@ -1,0 +1,49 @@
+# CIv2 config file
+
+artifacts_bucket: bk-premerge-first-jawfish-artifacts
+ci_temp: s3://bk-premerge-first-jawfish-artifacts/tmp/runtime/
+ci_work_repo: 830883877497.dkr.ecr.us-west-2.amazonaws.com/anyscale/ci-temp
+forge_prefix: cr.ray.io/rayproject/
+builder_queues:
+  builder: medium
+  builder-arm64: "~"
+  builder-windows: "~"
+runner_queues:
+  default: small
+  small: small
+  medium: medium
+  large: large
+  gpu: "~"
+  gpu-large: "~"
+  trainium: "~"
+  medium-arm64: "~"
+  windows: "~"
+  macos: "~"
+  macos-arm64: "~"
+  release: "~"  # TODO(can-anyscale): maybe also enable release tests on postmerge?
+  release-medium: "~"
+buildkite_dirs:
+  - .buildkite
+  - anyscale/ci/buildkite
+env:
+  BUILDKITE_BAZEL_CACHE_URL: https://bk-premerge-first-jawfish-artifacts.s3.us-west-2.amazonaws.com/bazel/cache/runtime
+  RAYCI_SKIP_UPLOAD: "true"
+  RAYCI_DISABLE_CPP_WHEEL: "true"
+  RAYCI_DISABLE_JAVA: "true"
+  RAYCI_GLOBAL_CONFIG: "ci/ray_ci/runtime_config.yaml"
+tag_filter_command:
+  - ./anyscale/ci/ci_all_tags.sh
+hook_env_keys:
+  - RAYCI_CHECKOUT_DIR
+skip_tags:
+  - disabled
+  - java
+  - arm64
+  - oss
+  - gpu
+  # RLlib tests are too flaky; and not much activity on runtime.
+  # The efforts are also deprioritized.
+  - rllib
+  - rllib_directly
+docker_plugin:
+  allow_mount_buildkite_agent: true

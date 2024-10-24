@@ -11,12 +11,24 @@ from functools import wraps
 from importlib import import_module
 from typing import Any, AsyncGenerator, Callable, Dict, Optional, Tuple, Union
 
+import grpc
 import starlette.responses
 
 import ray
 from ray import cloudpickle
 from ray._private.utils import get_or_create_event_loop
 from ray.actor import ActorClass, ActorHandle
+from ray.anyscale.serve._private.constants import (
+    ANYSCALE_RAY_SERVE_REPLICA_GRPC_MAX_MESSAGE_LENGTH,
+    ANYSCALE_RAY_SERVE_USE_GRPC_BY_DEFAULT,
+)
+from ray.anyscale.serve._private.tracing_utils import (
+    TraceContextManager,
+    extract_propagated_context,
+    set_span_attributes,
+    setup_tracing,
+)
+from ray.anyscale.serve.utils import asyncio_grpc_exception_handler
 from ray.remote_function import RemoteFunction
 from ray.serve import metrics
 from ray.serve._private.common import (
@@ -61,6 +73,7 @@ from ray.serve._private.version import DeploymentVersion
 from ray.serve.config import AutoscalingConfig
 from ray.serve.deployment import Deployment
 from ray.serve.exceptions import RayServeException
+from ray.serve.generated import serve_proprietary_pb2, serve_proprietary_pb2_grpc
 from ray.serve.schema import LoggingConfig
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
@@ -291,6 +304,18 @@ class ReplicaActor:
 
         self._port: Optional[int] = None
 
+        # ===== Begin Anyscale proprietary code ======
+        self._server = grpc.aio.server(
+            options=[
+                (
+                    "grpc.max_receive_message_length",
+                    ANYSCALE_RAY_SERVE_REPLICA_GRPC_MAX_MESSAGE_LENGTH,
+                )
+            ]
+        )
+        self._event_loop.set_exception_handler(asyncio_grpc_exception_handler)
+        # ===== End Anyscale proprietary code ======
+
     def _set_internal_replica_context(self, *, servable_object: Callable = None):
         ray.serve.context._set_internal_replica_context(
             replica_id=self._replica_id,
@@ -301,6 +326,24 @@ class ReplicaActor:
     def _configure_logger_and_profilers(
         self, logging_config: Union[None, Dict, LoggingConfig]
     ):
+
+        # ===== Begin Anyscale proprietary code ======
+        try:
+            is_tracing_setup_successful = setup_tracing(
+                component_type=ServeComponentType.REPLICA,
+                component_name=self._component_name,
+                component_id=self._component_id,
+            )
+            if is_tracing_setup_successful:
+                logger.info("Successfully set up tracing for replica")
+
+        except Exception as e:
+            logger.warning(
+                f"Failed to set up tracing: {e}. "
+                "The replica will continue running, but traces will not be exported."
+            )
+        # ===== End Anyscale proprietary code ======
+
         if logging_config is None:
             logging_config = {}
         if isinstance(logging_config, dict):
@@ -342,6 +385,18 @@ class ReplicaActor:
         2) Records the access log message (if not disabled).
         3) Records per-request metrics via the metrics manager.
         """
+        trace_attributes = {
+            "request_id": request_metadata.request_id,
+            "replica_id": self._replica_id.unique_id,
+            "deployment": self._deployment_id.name,
+            "app": self._deployment_id.app_name,
+            "call_method": request_metadata.call_method,
+            "route": request_metadata.route,
+            "multiplexed_model_id": request_metadata.multiplexed_model_id,
+            "is_streaming": request_metadata.is_streaming,
+        }
+        set_span_attributes(trace_attributes)
+
         ray.serve.context._serve_request_context.set(
             ray.serve.context._RequestContext(
                 route=request_metadata.route,
@@ -468,10 +523,42 @@ class ReplicaActor:
     ) -> Tuple[bytes, Any]:
         """Entrypoint for `stream=False` calls."""
         request_metadata = pickle.loads(pickled_request_metadata)
-        with self._wrap_user_method_call(request_metadata):
+        trace_context = extract_propagated_context(request_metadata.tracing_context)
+        trace_manager = TraceContextManager(
+            trace_name="replica_handle_request",
+            trace_context=trace_context,
+        )
+        with trace_manager, self._wrap_user_method_call(request_metadata):
             return await self._user_callable_wrapper.call_user_method(
                 request_metadata, request_args, request_kwargs
             )
+
+    async def HandleRequest(
+        self,
+        request: serve_proprietary_pb2.ASGIRequest,
+        context: grpc.aio.ServicerContext,
+    ):
+        request_metadata = pickle.loads(request.pickled_request_metadata)
+        trace_context = extract_propagated_context(request_metadata.tracing_context)
+        trace_manager = TraceContextManager(
+            trace_name="replica_handle_request",
+            trace_context=trace_context,
+        )
+        with trace_manager, self._wrap_user_method_call(request_metadata):
+            try:
+                result = await self._user_callable_wrapper.call_user_method(
+                    request_metadata,
+                    cloudpickle.loads(request.request_args),
+                    cloudpickle.loads(request.request_kwargs),
+                )
+                return serve_proprietary_pb2.ASGIResponse(
+                    serialized_message=cloudpickle.dumps(result)
+                )
+            except (Exception, asyncio.CancelledError) as e:
+                return serve_proprietary_pb2.ASGIResponse(
+                    serialized_message=cloudpickle.dumps(e),
+                    is_error=True,
+                )
 
     async def handle_request_streaming(
         self,
@@ -481,13 +568,50 @@ class ReplicaActor:
     ) -> AsyncGenerator[Any, None]:
         """Generator that is the entrypoint for all `stream=True` handle calls."""
         request_metadata = pickle.loads(pickled_request_metadata)
-        with self._wrap_user_method_call(request_metadata):
+        trace_context = extract_propagated_context(request_metadata.tracing_context)
+        trace_manager = TraceContextManager(
+            trace_name="replica_handle_request",
+            trace_context=trace_context,
+        )
+        with trace_manager, self._wrap_user_method_call(request_metadata):
             async for result in self._call_user_generator(
                 request_metadata,
                 request_args,
                 request_kwargs,
             ):
                 yield result
+
+    async def HandleRequestStreaming(
+        self,
+        request: serve_proprietary_pb2.ASGIRequest,
+        context: grpc.aio.ServicerContext,
+    ):
+        request_metadata = pickle.loads(request.pickled_request_metadata)
+        trace_context = extract_propagated_context(request_metadata.tracing_context)
+        trace_manager = TraceContextManager(
+            trace_name="replica_handle_request",
+            trace_context=trace_context,
+        )
+        with trace_manager, self._wrap_user_method_call(request_metadata):
+            try:
+                async for result in self._call_user_generator(
+                    request_metadata,
+                    cloudpickle.loads(request.request_args),
+                    cloudpickle.loads(request.request_kwargs),
+                ):
+                    if request_metadata.is_http_request:
+                        yield serve_proprietary_pb2.ASGIResponse(
+                            serialized_message=result
+                        )
+                    else:
+                        yield serve_proprietary_pb2.ASGIResponse(
+                            serialized_message=cloudpickle.dumps(result)
+                        )
+            except (Exception, asyncio.CancelledError) as e:
+                yield serve_proprietary_pb2.ASGIResponse(
+                    serialized_message=cloudpickle.dumps(e),
+                    is_error=True,
+                )
 
     async def handle_request_with_rejection(
         self,
@@ -508,6 +632,11 @@ class ReplicaActor:
         user request handler (which must be a generator).
         """
         request_metadata = pickle.loads(pickled_request_metadata)
+        trace_context = extract_propagated_context(request_metadata.tracing_context)
+        trace_manager = TraceContextManager(
+            trace_name="replica_handle_request",
+            trace_context=trace_context,
+        )
         limit = self._deployment_config.max_ongoing_requests
         num_ongoing_requests = self.get_num_ongoing_requests()
         if num_ongoing_requests >= limit:
@@ -523,7 +652,7 @@ class ReplicaActor:
             )
             return
 
-        with self._wrap_user_method_call(request_metadata):
+        with trace_manager, self._wrap_user_method_call(request_metadata):
             yield pickle.dumps(
                 ReplicaQueueLengthInfo(
                     accepted=True,
@@ -543,6 +672,83 @@ class ReplicaActor:
             else:
                 yield await self._user_callable_wrapper.call_user_method(
                     request_metadata, request_args, request_kwargs
+                )
+
+    async def HandleRequestWithRejection(
+        self,
+        request: serve_proprietary_pb2.ASGIRequest,
+        context: grpc.aio.ServicerContext,
+    ) -> AsyncGenerator[Any, None]:
+        """gRPC entrypoint for all requests with strict max_ongoing_requests enforcement
+
+        This generator yields a system message indicating if the request was accepted,
+        then the actual response(s).
+
+        If an exception occurred while processing the request, whether it's a user
+        exception or an error intentionally raised by Serve, it will be returned as
+        a gRPC response instead of raised directly.
+        """
+        request_metadata = pickle.loads(request.pickled_request_metadata)
+        limit = self._deployment_config.max_ongoing_requests
+        num_ongoing_requests = self.get_num_ongoing_requests()
+        if num_ongoing_requests >= limit:
+            logger.warning(
+                f"Replica at capacity of max_ongoing_requests={limit}, "
+                f"rejecting request {request_metadata.request_id}.",
+                extra={"log_to_stderr": False},
+            )
+
+            yield serve_proprietary_pb2.ASGIResponse(
+                serialized_message=pickle.dumps(
+                    ReplicaQueueLengthInfo(
+                        accepted=False, num_ongoing_requests=num_ongoing_requests
+                    )
+                )
+            )
+            return
+
+        with self._wrap_user_method_call(request_metadata):
+            yield serve_proprietary_pb2.ASGIResponse(
+                serialized_message=pickle.dumps(
+                    ReplicaQueueLengthInfo(
+                        accepted=True,
+                        # NOTE(edoakes): `_wrap_user_method_call` will
+                        # increment the number of ongoing requests to
+                        # include this one, so re-fetch the value.
+                        num_ongoing_requests=self.get_num_ongoing_requests(),
+                    )
+                )
+            )
+
+            try:
+                if request_metadata.is_streaming:
+                    async for result in self._call_user_generator(
+                        request_metadata,
+                        cloudpickle.loads(request.request_args),
+                        cloudpickle.loads(request.request_kwargs),
+                    ):
+                        if request_metadata.is_http_request:
+                            yield serve_proprietary_pb2.ASGIResponse(
+                                serialized_message=result
+                            )
+                        else:
+                            yield serve_proprietary_pb2.ASGIResponse(
+                                serialized_message=cloudpickle.dumps(result)
+                            )
+
+                else:
+                    result = await self._user_callable_wrapper.call_user_method(
+                        request_metadata,
+                        cloudpickle.loads(request.request_args),
+                        cloudpickle.loads(request.request_kwargs),
+                    )
+                    yield serve_proprietary_pb2.ASGIResponse(
+                        serialized_message=cloudpickle.dumps(result)
+                    )
+            except (Exception, asyncio.CancelledError) as e:
+                yield serve_proprietary_pb2.ASGIResponse(
+                    serialized_message=cloudpickle.dumps(e),
+                    is_error=True,
                 )
 
     async def handle_request_from_java(
@@ -612,6 +818,19 @@ class ReplicaActor:
                 initialization_start_time = time.time()
                 if not self._user_callable_initialized:
                     await self._user_callable_wrapper.initialize_callable()
+
+                    # ===== Begin Anyscale proprietary code ======
+                    # NOTE(zcin): for now, only start the server for buildkite tests.
+                    # When we enable this feature for users to use, we need to
+                    # unconditionally start the server.
+                    if ANYSCALE_RAY_SERVE_USE_GRPC_BY_DEFAULT:
+                        serve_proprietary_pb2_grpc.add_ASGIServiceServicer_to_server(
+                            self, self._server
+                        )
+                        self._port = self._server.add_insecure_port("[::]:0")
+                        await self._server.start()
+                    # ===== End Anyscale proprietary code ======
+
                     self._user_callable_initialized = True
                     self._set_internal_replica_context(
                         servable_object=self._user_callable_wrapper.user_callable

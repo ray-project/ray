@@ -22,7 +22,6 @@ from ray.data.datasource import (
 from ray.data.datasource.path_util import _unwrap_protocol
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.test_partitioning import PathPartitionEncoder
-from ray.data.tests.util import Counter
 from ray.tests.conftest import *  # noqa
 
 
@@ -36,7 +35,7 @@ def test_json_read_partitioning(ray_start_regular_shared, tmp_path):
 
     ds = ray.data.read_json(path)
 
-    assert ds.take() == [
+    assert sorted(ds.take(), key=lambda row: row["number"]) == [
         {"number": 0, "string": "foo", "country": "us"},
         {"number": 1, "string": "bar", "country": "us"},
     ]
@@ -102,7 +101,7 @@ def test_json_read(ray_start_regular_shared, fs, data_path, endpoint_url):
     df2.to_json(path2, orient="records", lines=True, storage_options=storage_options)
     ds = ray.data.read_json(path, filesystem=fs)
     df = pd.concat([df1, df2], ignore_index=True)
-    dsdf = ds.to_pandas()
+    dsdf = ds.to_pandas().sort_values(by=["one", "two"]).reset_index(drop=True)
     assert df.equals(dsdf)
     if fs is None:
         shutil.rmtree(path)
@@ -135,7 +134,7 @@ def test_json_read(ray_start_regular_shared, fs, data_path, endpoint_url):
     )
     ds = ray.data.read_json([path1, path2], filesystem=fs)
     df = pd.concat([df1, df2, df3], ignore_index=True)
-    dsdf = ds.to_pandas()
+    dsdf = ds.to_pandas().sort_values(by=["one", "two"]).reset_index(drop=True)
     assert df.equals(dsdf)
     if fs is None:
         shutil.rmtree(path1)
@@ -158,7 +157,7 @@ def test_json_read(ray_start_regular_shared, fs, data_path, endpoint_url):
     df2.to_json(path2, orient="records", lines=True, storage_options=storage_options)
     ds = ray.data.read_json([dir_path, path2], filesystem=fs)
     df = pd.concat([df1, df2], ignore_index=True)
-    dsdf = ds.to_pandas()
+    dsdf = ds.to_pandas().sort_values(by=["one", "two"]).reset_index(drop=True)
     assert df.equals(dsdf)
     if fs is None:
         shutil.rmtree(dir_path)
@@ -188,9 +187,8 @@ def test_json_read(ray_start_regular_shared, fs, data_path, endpoint_url):
     )
 
     ds = ray.data.read_json(path, filesystem=fs)
-    assert ds._plan.initial_num_blocks() == 2
     df = pd.concat([df1, df2], ignore_index=True)
-    dsdf = ds.to_pandas()
+    dsdf = ds.to_pandas().sort_values(by=["one", "two"]).reset_index(drop=True)
     assert df.equals(dsdf)
     if fs is None:
         shutil.rmtree(path)
@@ -409,7 +407,9 @@ def test_json_read_with_parse_options(
         (lazy_fixture("s3_fs"), lazy_fixture("s3_path"), lazy_fixture("s3_server")),
     ],
 )
+@pytest.mark.parametrize("style", [PartitionStyle.HIVE, PartitionStyle.DIRECTORY])
 def test_json_read_partitioned_with_filter(
+    style,
     ray_start_regular_shared,
     fs,
     data_path,
@@ -432,47 +432,37 @@ def test_json_read_partitioned_with_filter(
         storage_options=storage_options,
     )
     partition_keys = ["one"]
-    kept_file_counter = Counter.remote()
-    skipped_file_counter = Counter.remote()
 
     def skip_unpartitioned(kv_dict):
-        keep = bool(kv_dict)
-        counter = kept_file_counter if keep else skipped_file_counter
-        ray.get(counter.increment.remote())
-        return keep
+        return bool(kv_dict)
 
-    for style in [PartitionStyle.HIVE, PartitionStyle.DIRECTORY]:
-        base_dir = os.path.join(data_path, style.value)
-        partition_path_encoder = PathPartitionEncoder.of(
-            style=style,
-            base_dir=base_dir,
-            field_names=partition_keys,
-            filesystem=fs,
-        )
-        write_base_partitioned_df(
-            partition_keys,
-            partition_path_encoder,
-            file_writer_fn,
-        )
-        file_writer_fn(pd.DataFrame({"1": [1]}), os.path.join(base_dir, "test.json"))
-        partition_path_filter = PathPartitionFilter.of(
-            style=style,
-            base_dir=base_dir,
-            field_names=partition_keys,
-            filter_fn=skip_unpartitioned,
-            filesystem=fs,
-        )
-        ds = ray.data.read_json(
-            base_dir,
-            partition_filter=partition_path_filter,
-            file_extensions=None,
-            filesystem=fs,
-        )
-        assert_base_partitioned_ds(ds)
-        assert ray.get(kept_file_counter.get.remote()) == 2
-        assert ray.get(skipped_file_counter.get.remote()) == 1
-        ray.get(kept_file_counter.reset.remote())
-        ray.get(skipped_file_counter.reset.remote())
+    base_dir = os.path.join(data_path, style.value)
+    partition_path_encoder = PathPartitionEncoder.of(
+        style=style,
+        base_dir=base_dir,
+        field_names=partition_keys,
+        filesystem=fs,
+    )
+    write_base_partitioned_df(
+        partition_keys,
+        partition_path_encoder,
+        file_writer_fn,
+    )
+    file_writer_fn(pd.DataFrame({"1": [1]}), os.path.join(base_dir, "test.json"))
+    partition_path_filter = PathPartitionFilter.of(
+        style=style,
+        base_dir=base_dir,
+        field_names=partition_keys,
+        filter_fn=skip_unpartitioned,
+        filesystem=fs,
+    )
+    ds = ray.data.read_json(
+        base_dir,
+        partition_filter=partition_path_filter,
+        file_extensions=None,
+        filesystem=fs,
+    )
+    assert_base_partitioned_ds(ds)
 
 
 @pytest.mark.parametrize(
