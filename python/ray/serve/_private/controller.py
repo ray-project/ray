@@ -11,7 +11,7 @@ from ray._private.resource_spec import HEAD_NODE_RESOURCE_NAME
 from ray._private.utils import run_background_task
 from ray._raylet import GcsClient
 from ray.actor import ActorHandle
-from ray.serve._private.application_state import ApplicationStateManager
+from ray.serve._private.application_state import ApplicationStateManager, StatusOverview
 from ray.serve._private.autoscaling_state import AutoscalingStateManager
 from ray.serve._private.common import (
     DeploymentHandleSource,
@@ -19,7 +19,6 @@ from ray.serve._private.common import (
     MultiplexedReplicaInfo,
     NodeId,
     RunningReplicaInfo,
-    StatusOverview,
     TargetCapacityDirection,
 )
 from ray.serve._private.constants import (

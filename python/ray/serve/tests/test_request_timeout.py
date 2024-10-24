@@ -13,9 +13,8 @@ import ray
 from ray import serve
 from ray._private.test_utils import SignalActor, wait_for_condition
 from ray.dashboard.modules.serve.sdk import ServeSubmissionClient
-from ray.serve._private.common import ApplicationStatus
 from ray.serve._private.test_utils import send_signal_on_cancellation
-from ray.serve.schema import ServeInstanceDetails
+from ray.serve.schema import ApplicationStatus, ServeInstanceDetails
 from ray.util.state import list_tasks
 
 

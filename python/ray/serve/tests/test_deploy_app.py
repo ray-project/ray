@@ -17,12 +17,7 @@ import ray.actor
 from ray import serve
 from ray._private.test_utils import SignalActor, wait_for_condition
 from ray.serve._private.client import ServeControllerClient
-from ray.serve._private.common import (
-    ApplicationStatus,
-    DeploymentID,
-    DeploymentStatus,
-    ReplicaID,
-)
+from ray.serve._private.common import DeploymentID, DeploymentStatus, ReplicaID
 from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME, SERVE_NAMESPACE
 from ray.serve._private.test_utils import (
     check_num_replicas_eq,
@@ -31,6 +26,7 @@ from ray.serve._private.test_utils import (
 )
 from ray.serve.context import _get_global_client
 from ray.serve.schema import (
+    ApplicationStatus,
     ServeApplicationSchema,
     ServeDeploySchema,
     ServeInstanceDetails,
