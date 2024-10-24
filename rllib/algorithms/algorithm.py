@@ -3803,11 +3803,13 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
         # Fault tolerance stats.
         results[FAULT_TOLERANCE_STATS] = {
             "num_healthy_workers": self.env_runner_group.num_healthy_remote_workers(),
-            "num_in_flight_async_reqs": (
-                self.env_runner_group.num_in_flight_async_reqs()
-            ),
             "num_remote_worker_restarts": (
                 self.env_runner_group.num_remote_worker_restarts()
+            ),
+        }
+        results["env_runner_group"] = {
+            "actor_manager_num_outstanding_async_reqs": (
+                self.env_runner_group.num_in_flight_async_reqs()
             ),
         }
         # Resolve all `Stats` leafs by peeking (get their reduced values).
