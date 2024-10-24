@@ -375,18 +375,16 @@ class IMPALAConfig(AlgorithmConfig):
                 "`config.training(vtrace=True)`."
             )
 
-        # New stack w/ EnvRunners does NOT support aggregation workers yet or a mixin
-        # replay buffer.
+        # New API stack checks.
         if self.enable_env_runner_and_connector_v2:
+            # Does NOT support aggregation workers yet or a mixin replay buffer.
             if self.replay_ratio != 0.0:
                 raise ValueError(
                     "The new API stack in combination with the new EnvRunner API "
                     "does NOT support a mixin replay buffer yet for "
                     f"{self} (set `config.replay_proportion` to 0.0)!"
                 )
-
-        # Entropy coeff schedule checking.
-        if self.enable_rl_module_and_learner:
+            # Entropy coeff schedule checking.
             if self.entropy_coeff_schedule is not None:
                 raise ValueError(
                     "`entropy_coeff_schedule` is deprecated and must be None! Use the "
@@ -397,6 +395,28 @@ class IMPALAConfig(AlgorithmConfig):
                 setting_name="entropy_coeff",
                 description="entropy coefficient",
             )
+            # Learner API specific checks.
+            if self.minibatch_size is not None and not (
+                (self.minibatch_size % self.rollout_fragment_length == 0)
+                and self.minibatch_size <= self.total_train_batch_size
+            ):
+                raise ValueError(
+                    f"`minibatch_size` ({self._minibatch_size}) must either be None "
+                    "or a multiple of `rollout_fragment_length` "
+                    f"({self.rollout_fragment_length}) while at the same time smaller "
+                    "than or equal to `total_train_batch_size` "
+                    f"({self.total_train_batch_size})!"
+                )
+            # Make sure we have >=1 Learner and warn if `num_learners=0` (should only be
+            # used for debugging).
+            if self.num_learners == 0:
+                logger.warning(
+                    f"{self} should only be run with `num_learners` >= 1! A value of 0 "
+                    "(local learner) should only be used for debugging purposes as it "
+                    "makes the algorithm non-asynchronous. When running with "
+                    "`num_learners=0`, expect diminished learning capabilities."
+                )
+
         elif isinstance(self.entropy_coeff, float) and self.entropy_coeff < 0.0:
             raise ValueError("`entropy_coeff` must be >= 0.0")
 
@@ -424,22 +444,6 @@ class IMPALAConfig(AlgorithmConfig):
                 "`_tf_policy_handles_more_than_one_loss` must be set to True, for "
                 "TFPolicy to support more than one loss term/optimizer! Try setting "
                 "config.training(_tf_policy_handles_more_than_one_loss=True)."
-            )
-        # Learner API specific checks.
-        if (
-            self.enable_rl_module_and_learner
-            and self.minibatch_size is not None
-            and not (
-                (self.minibatch_size % self.rollout_fragment_length == 0)
-                and self.minibatch_size <= self.total_train_batch_size
-            )
-        ):
-            raise ValueError(
-                f"`minibatch_size` ({self._minibatch_size}) must either be None "
-                "or a multiple of `rollout_fragment_length` "
-                f"({self.rollout_fragment_length}) while at the same time smaller "
-                "than or equal to `total_train_batch_size` "
-                f"({self.total_train_batch_size})!"
             )
 
     @property

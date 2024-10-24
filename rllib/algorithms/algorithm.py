@@ -821,8 +821,8 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
             rl_module_state = self.learner_group.get_state(
                 components=COMPONENT_LEARNER + "/" + COMPONENT_RL_MODULE,
                 inference_only=True,
-            )[COMPONENT_LEARNER][COMPONENT_RL_MODULE]
-            self.env_runner.set_state({COMPONENT_RL_MODULE: rl_module_state})
+            )[COMPONENT_LEARNER]
+            self.env_runner.set_state(rl_module_state)
             self.env_runner_group.sync_env_runner_states(
                 config=self.config,
                 env_steps_sampled=self.metrics.peek(
