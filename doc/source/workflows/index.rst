@@ -17,7 +17,7 @@ Ray Workflows: Durable Ray Task Graphs
 
 .. warning::
 
-  Ray Workflows is not currently maintained. It will be deprecated in the future. Please use higher level alternatives such as airflow or prefect to ochestrate your workflow. 
+  Ray Workflows is not currently maintained and will be deprecated in the future. Please use higher-level alternatives, such as Airflow or Prefect, to orchestrate your workflow. 
 
 Ray Workflows implements high-performance, *durable* application workflows using
 Ray tasks as the underlying execution engine. It enables task-based Ray jobs
