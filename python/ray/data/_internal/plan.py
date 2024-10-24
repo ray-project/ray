@@ -170,7 +170,7 @@ class ExecutionPlan:
                 else:
                     assert dag.is_read() or not dag.input_dependencies, dag
                     plan = ExecutionPlan(DatasetStats(metadata={}, parent=None))
-                    plan.link_logical_plan(LogicalPlan(dag))
+                    plan.link_logical_plan(LogicalPlan(dag, plan._context))
                     schema = plan.schema()
                     count = plan.meta_count()
         else:
@@ -284,6 +284,7 @@ class ExecutionPlan:
         execution plan.
         """
         self._logical_plan = logical_plan
+        self._logical_plan._context = self._context
 
     def copy(self) -> "ExecutionPlan":
         """Create a shallow copy of this execution plan.

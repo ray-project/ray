@@ -55,4 +55,4 @@ class PushdownCountFiles(Rule):
             zero_copy_batch=True,
         )
 
-        return LogicalPlan(count_rows_op)
+        return LogicalPlan(count_rows_op, plan._context)

@@ -85,7 +85,7 @@ class DatasetMixin:
             agg_fn=agg_fn,
             num_aggregators=num_aggregators,
         )
-        logical_plan = LogicalPlan(agg_op)
+        logical_plan = LogicalPlan(agg_op, self.context)
         return Dataset(plan, logical_plan)
 
     @functools.wraps(Dataset.input_files)
@@ -96,7 +96,7 @@ class DatasetMixin:
             partition_files_op = input_dependencies[0]
             assert isinstance(partition_files_op, PartitionFiles)
             execution_plan = ExecutionPlan(DatasetStats(metadata={}, parent=None))
-            logical_plan = LogicalPlan(partition_files_op)
+            logical_plan = LogicalPlan(partition_files_op, self.context)
             dataset = Dataset(execution_plan, logical_plan)
             return list(
                 {row[PartitionFiles.PATH_COLUMN_NAME] for row in dataset.take_all()}

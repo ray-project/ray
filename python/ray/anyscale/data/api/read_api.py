@@ -660,10 +660,9 @@ def read_files(
         ray_remote_args=ray_remote_args,
         concurrency=concurrency,
     )
-    logical_plan = LogicalPlan(read_files_op)
-    return Dataset(
-        plan=ExecutionPlan(
-            DatasetStats(metadata={"ReadFiles": []}, parent=None),
-        ),
-        logical_plan=logical_plan,
+
+    execution_plan = ExecutionPlan(
+        DatasetStats(metadata={"ReadFiles": []}, parent=None)
     )
+    logical_plan = LogicalPlan(read_files_op, execution_plan._context)
+    return Dataset(plan=execution_plan, logical_plan=logical_plan)
