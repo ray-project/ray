@@ -593,8 +593,8 @@ class CompiledDAG:
                 are allowed to be sent to this DAG. Before submitting more requests,
                 the caller is responsible for calling ray.get to get the result,
                 otherwise, RayAdagCapacityExceeded is raised.
-            custom_nccl_group: The default custom NCCL group to be used for P2P NCCL
-                communications.
+            custom_nccl_group: The custom NCCL group to be used for P2P NCCL
+                communications whose `transport=nccl`.
 
         Returns:
             Channel: A wrapper around ray.ObjectRef.
@@ -684,10 +684,9 @@ class CompiledDAG:
         # Mapping from the actor handle to the node ID that the actor is on.
         self.actor_to_node_id: Dict["ray.actor.ActorHandle", str] = {}
 
-        # This is set to the specified custom nccl group
-        # if there exists a type hint of `transport=nccl_group`.
+        # This is set to the custom nccl group specified in `experimenatal_compile`.
         self._custom_nccl_group_p2p: Optional[GPUCommunicator] = custom_nccl_group
-        # The NCCL group ID for P2P send/recv operations.
+        # The default NCCL group ID for P2P send/recv operations whose `transport=nccl`.
         self._default_nccl_group_id_p2p: Optional[str] = None
         # All the NCCL group IDs for P2P send/recv and collective operations.
         self._nccl_group_ids: Set[str] = set()
@@ -768,7 +767,6 @@ class CompiledDAG:
 
         nccl_actors_p2p: Set["ray.actor.ActorHandle"] = set()
         nccl_dag_nodes_p2p: Set[DAGNode] = set()
-        # custom NCCL group -> DAG nodes
         custom_nccl_group_to_dag_nodes: Dict[
             GPUCommunicator, Set[DAGNode]
         ] = defaultdict(set)
@@ -935,8 +933,8 @@ class CompiledDAG:
                     if custom_nccl_group is None and self._custom_nccl_group_p2p:
                         custom_nccl_group = self._custom_nccl_group_p2p
                     if custom_nccl_group:
-                        # A custom NCCL group is used.
-                        # Check it contains both upstream and downstream actors.
+                        # A custom NCCL group is used. Check it contains both
+                        # upstream and downstream actors.
                         nccl_group_actors = custom_nccl_group.get_actor_handles()
                         assert downstream_actor_handle
                         upstream_actor_handle: Optional[

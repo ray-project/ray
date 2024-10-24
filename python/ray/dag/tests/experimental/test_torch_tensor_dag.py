@@ -322,6 +322,8 @@ def test_torch_tensor_custom_comm(ray_start_regular):
     sender = actor_cls.remote()
     receiver = actor_cls.remote()
 
+    from cupy.cuda import nccl
+
     class TestNcclGroup(GPUCommunicator):
         """
         A custom NCCL group for testing. This is a simple wrapper around `_NcclGroup`.
@@ -393,8 +395,6 @@ def test_torch_tensor_custom_comm(ray_start_regular):
         def destroy(self) -> None:
             return self._inner.destroy()
 
-    from cupy.cuda import nccl
-
     comm_id = nccl.get_unique_id()
     nccl_group = TestNcclGroup(2, comm_id, [sender, receiver])
     with InputNode() as inp:
@@ -415,6 +415,10 @@ def test_torch_tensor_custom_comm(ray_start_regular):
     compiled_dag.teardown()
 
 
+# This test is commented out because previously, a compiled DAG can only have
+# 1 NCCL group for all P2P transportations. The test below tests that an error is
+# thrown in cases where more than 1 NCCL group is specified in the same DAG.
+# This PR now supports multiple NCCL groups so no errors are thrown.
 # @pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
 # def test_torch_tensor_custom_comm_invalid(ray_start_regular):
 #     if not USE_GPU:

@@ -193,8 +193,8 @@ class DAGNode(DAGNodeBase):
                 are allowed to be sent to this DAG. Before submitting more requests,
                 the caller is responsible for calling ray.get to clear finished
                 in-flight requests.
-            _custom_nccl_group: The default custom NCCL group to be used for P2P NCCL
-                communications.
+            _custom_nccl_group: The custom NCCL group to be used for P2P NCCL
+                communications whose `transport=nccl`.
 
         Returns:
             A compiled DAG.
