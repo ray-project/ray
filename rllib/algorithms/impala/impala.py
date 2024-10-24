@@ -593,6 +593,7 @@ class IMPALA(Algorithm):
                 input_observation_space=None,
                 device="cpu",  # do not move to GPU yet
             )
+
             # END TEST
             self._aggregator_actor_manager = None
         else:
@@ -675,10 +676,13 @@ class IMPALA(Algorithm):
                 episodes = tree.flatten(ray.get(data_package))
                 train_batch = self._learner_connector(
                     episodes=episodes,
+                    batch={},
                     rl_module=self.env_runner.module,
                 )
+                self.learner_group._learner._gpu_loader_in_queue.put(
+                    ({"default_policy": SampleBatch(train_batch)}, 500)
+                )
         # END TEST
-
 
         # Call the LearnerGroup's `update_from_episodes` method.
         with self.metrics.log_time((TIMERS, LEARNER_UPDATE_TIMER)):
@@ -691,7 +695,7 @@ class IMPALA(Algorithm):
 
             for batch_ref_or_episode_list_ref in data_packages_for_learner_group:
                 # TEST
-                if self.config.num_aggregation_workers:
+                if True: #self.config.num_aggregation_workers:
                     learner_results = self.learner_group.update_from_batch(
                         batch=batch_ref_or_episode_list_ref,
                         async_update=do_async_updates,
