@@ -5,8 +5,10 @@ can use this state to access metadata or the Serve controller.
 
 import contextvars
 import logging
+import threading
+from collections import defaultdict
 from dataclasses import dataclass
-from typing import Callable, Optional
+from typing import Callable, Dict, Optional
 
 import ray
 from ray.exceptions import RayActorError
@@ -205,3 +207,27 @@ def _set_request_context(
             or current_request_context.multiplexed_model_id,
         )
     )
+
+
+# A map from current request ID to a set of ReplicaResults corresponding
+# to the requests the replica has sent during the current request
+_in_flight_requests: Dict[str, Dict] = defaultdict(dict)
+_global_in_flight_requests_lock = threading.Lock()
+
+
+def _get_in_flight_requests(parent_request_id: str) -> Dict:
+    with _global_in_flight_requests_lock:
+        if parent_request_id in _in_flight_requests:
+            return _in_flight_requests[parent_request_id]
+
+
+def _add_in_flight_request(parent_request_id: str, response_id: str, response):
+    with _global_in_flight_requests_lock:
+        if parent_request_id:
+            _in_flight_requests[parent_request_id][response_id] = response
+
+
+def _remove_in_flight_request(parent_request_id: str, response_id: str):
+    with _global_in_flight_requests_lock:
+        if response_id in _in_flight_requests[parent_request_id]:
+            del _in_flight_requests[parent_request_id][response_id]

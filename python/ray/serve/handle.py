@@ -3,6 +3,7 @@ import concurrent.futures
 import logging
 import threading
 import time
+import uuid
 import warnings
 from dataclasses import dataclass
 from typing import Any, AsyncIterator, Dict, Iterator, Optional, Tuple, Union
@@ -252,7 +253,7 @@ class _DeploymentHandleBase:
         )
 
     def _remote(
-        self, args: Tuple[Any], kwargs: Dict[str, Any]
+        self, response_id: str, args: Tuple[Any], kwargs: Dict[str, Any]
     ) -> concurrent.futures.Future:
         self._record_telemetry_if_needed()
         _request_context = ray.serve.context._serve_request_context.get()
@@ -284,7 +285,7 @@ class _DeploymentHandleBase:
         # loop running in another thread to avoid user code blocking the router, so we
         # use the `concurrent.futures.Future` thread safe API.
         return asyncio.run_coroutine_threadsafe(
-            router.assign_request(request_metadata, *args, **kwargs),
+            router.assign_request(request_metadata, response_id, *args, **kwargs),
             loop=event_loop,
         )
 
@@ -313,10 +314,11 @@ class _DeploymentHandleBase:
 
 
 class _DeploymentResponseBase:
-    def __init__(self, object_ref_future: concurrent.futures.Future):
+    def __init__(self, object_ref_future: concurrent.futures.Future, response_id: str):
         self._cancelled = False
         # The result of `object_ref_future` must be an ObjectRef or ObjectRefGenerator.
         self._object_ref_future = object_ref_future
+        self._response_id: str = response_id
 
         # Cached result of the `object_ref_future`.
         # This is guarded by the below locks for async and sync methods.
@@ -328,6 +330,14 @@ class _DeploymentResponseBase:
         self.__lazy_object_ref_or_gen_asyncio_lock = None
         self._object_ref_or_gen_sync_lock = threading.Lock()
         self._replica_result: Optional[ReplicaResult] = None
+
+        _request_context = ray.serve.context._serve_request_context.get()
+        self._request_id: str = _request_context.request_id
+
+        if self._request_id:
+            ray.serve.context._add_in_flight_request(
+                self._request_id, self._response_id, self
+            )
 
     @property
     def _object_ref_or_gen_asyncio_lock(self) -> asyncio.Lock:
@@ -397,6 +407,8 @@ class _DeploymentResponseBase:
         elif self._object_ref_future.exception() is None:
             self._fetch_future_result_sync()
             self._replica_result.cancel()
+
+        ray.serve.context._remove_in_flight_request(self._request_id, self._response_id)
 
     @DeveloperAPI
     def cancelled(self) -> bool:
@@ -630,12 +642,6 @@ class DeploymentResponseGenerator(_DeploymentResponseBase):
     `DeploymentHandle` call.
     """
 
-    def __init__(
-        self,
-        object_ref_future: concurrent.futures.Future,
-    ):
-        super().__init__(object_ref_future)
-
     def __await__(self):
         raise TypeError(
             "`DeploymentResponseGenerator` cannot be awaited directly. Use `async for` "
@@ -809,10 +815,11 @@ class DeploymentHandle(_DeploymentHandleBase):
             **kwargs: Keyword arguments to be serialized and passed to the
                 remote method call.
         """
-        future = self._remote(args, kwargs)
+        response_id = str(uuid.uuid4())
+        future = self._remote(response_id, args, kwargs)
         if self.handle_options.stream:
             response_cls = DeploymentResponseGenerator
         else:
             response_cls = DeploymentResponse
 
-        return response_cls(future)
+        return response_cls(future, response_id)

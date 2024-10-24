@@ -359,6 +359,13 @@ class ReplicaActor:
             yield
         except asyncio.CancelledError as e:
             user_exception = e
+
+            # Recursively cancel child requests
+            in_flight_requests = ray.serve.context._get_in_flight_requests(
+                request_metadata.request_id
+            )
+            for r in list(in_flight_requests.values()):
+                r.cancel()
         except Exception as e:
             user_exception = e
             logger.error(f"Request failed:\n{e}")
