@@ -96,11 +96,12 @@ class InstrumentedIOContextWithThread {
 /// It provides a method to retrieve the appropriate `io_context` for instances of
 /// different classes.
 ///
-/// @tparam Policy The policy class that defines which types require dedicated
+/// @param Policy The policy class that defines which types require dedicated
 /// `io_context` instances.
 ///
 /// ## The Policy
-/// SYNPOSIS:
+/// SYNOPSIS:
+/// ```
 /// struct YourPolicy {
 ///     // List of all IO Context names. We will create 1 thread + 1
 ///     // instrumented_io_context for each. Must be unique and should not contain empty
@@ -111,6 +112,7 @@ class InstrumentedIOContextWithThread {
 ///     // default io context.
 ///     constexpr static std::string_view GetDedicatedIoContextIndex<T>();
 /// }
+/// ```
 ///
 /// For an example, see `GcsServerIoContextPolicy`.
 ///
