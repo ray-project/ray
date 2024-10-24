@@ -339,6 +339,7 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
                 #  certain env parameter during different episodes (for example for
                 #  benchmarking).
                 extra_model_output = {k: v[env_index] for k, v in to_env.items()}
+                extra_model_output[WEIGHTS_SEQ_NO] = self._weights_seq_no
 
                 # In inference, we have only the action logits.
                 if terminateds[env_index] or truncateds[env_index]:
@@ -539,6 +540,7 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
 
             for env_index in range(self.num_envs):
                 extra_model_output = {k: v[env_index] for k, v in to_env.items()}
+                extra_model_output[WEIGHTS_SEQ_NO] = self._weights_seq_no
 
                 if terminateds[env_index] or truncateds[env_index]:
                     eps += 1
