@@ -40,7 +40,8 @@ from ray.core.generated.common_pb2 import (
     TaskInfoEntry,
     TaskStatus,
     WorkerType,
-    TaskType, ObjectReference,
+    TaskType,
+    ObjectReference,
 )
 from ray.core.generated.gcs_pb2 import (
     TaskEvents,
@@ -1032,7 +1033,7 @@ async def test_api_manager_list_tasks_events(state_api_manager):
             )
         ],
     )
-    
+
     current = 0
     second = int(1e9)
     state_updates = TaskStateUpdate(
@@ -1059,48 +1060,48 @@ async def test_api_manager_list_tasks_events(state_api_manager):
     result = await state_api_manager.list_tasks(option=create_api_options(detail=True))
 
     assert {
-       'state': 'FINISHED',
-       'type': 'NORMAL_TASK',
-       'name': 'f',
-       'error_message': None,
-       'events': [
-            {'state': 'PENDING_ARGS_AVAIL', 'created_ms': 0.0},
-            {'state': 'SUBMITTED_TO_WORKER', 'created_ms': 1000.0},
-            {'state': 'RUNNING', 'created_ms': 2000.0},
-            {'state': 'FINISHED', 'created_ms': 3000.0}
-       ],
-       'runtime_env_info': None,
-       'end_time_ms': 3000.0,
-       'job_id': '30303031',
-       'error_type': None,
-       'func_or_class_name': 'f',
-       'attempt_number': 0,
-       'node_id': node_id.hex(),
-       'required_resources': {},
-       'worker_pid': None,
-       'language': 'PYTHON',
-       'placement_group_id': None,
-       'creation_time_ms': 0.0,
-       'worker_id': None,
-       'task_log_info': None,
-       'profiling_data': {},
-       'actor_id': None,
-       'is_debugger_paused': None,
-       'start_time_ms': 2000.0,
-       'task_id': '31323334',
-       'parent_task_id': '',
-        'dependent_args_refs': [
+        "state": "FINISHED",
+        "type": "NORMAL_TASK",
+        "name": "f",
+        "error_message": None,
+        "events": [
+            {"state": "PENDING_ARGS_AVAIL", "created_ms": 0.0},
+            {"state": "SUBMITTED_TO_WORKER", "created_ms": 1000.0},
+            {"state": "RUNNING", "created_ms": 2000.0},
+            {"state": "FINISHED", "created_ms": 3000.0},
+        ],
+        "runtime_env_info": None,
+        "end_time_ms": 3000.0,
+        "job_id": "30303031",
+        "error_type": None,
+        "func_or_class_name": "f",
+        "attempt_number": 0,
+        "node_id": node_id.hex(),
+        "required_resources": {},
+        "worker_pid": None,
+        "language": "PYTHON",
+        "placement_group_id": None,
+        "creation_time_ms": 0.0,
+        "worker_id": None,
+        "task_log_info": None,
+        "profiling_data": {},
+        "actor_id": None,
+        "is_debugger_paused": None,
+        "start_time_ms": 2000.0,
+        "task_id": "31323334",
+        "parent_task_id": "",
+        "dependent_args_refs": [
             {
-                'call_site': '',
-                'object_id': arg_ref.hex(),
-                'owner_address': {
-                    'ip_address': '',
-                    'port': 0,
-                    'raylet_id': '',
-                    'worker_id': ''
-                }
+                "call_site": "",
+                "object_id": arg_ref.hex(),
+                "owner_address": {
+                    "ip_address": "",
+                    "port": 0,
+                    "raylet_id": "",
+                    "worker_id": "",
+                },
             }
-        ]
+        ],
     } == result.result[0]
 
     """
@@ -2369,8 +2370,8 @@ def test_list_cluster_events(shutdown_only):
         print(events)
         assert len(events) == 1
         assert (
-                   "Error: No available node types can fulfill " "resource request"
-               ) in events[0]["message"]
+            "Error: No available node types can fulfill " "resource request"
+        ) in events[0]["message"]
         return True
 
     wait_for_condition(verify)
