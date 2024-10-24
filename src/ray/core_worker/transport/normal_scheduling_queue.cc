@@ -38,27 +38,16 @@ size_t NormalSchedulingQueue::Size() const {
 void NormalSchedulingQueue::Add(
     int64_t seq_no,
     int64_t client_processed_up_to,
-    std::function<void(rpc::SendReplyCallback)> accept_request,
-    std::function<void(const Status &, rpc::SendReplyCallback)> reject_request,
-    rpc::SendReplyCallback send_reply_callback,
-    const std::string &concurrency_group_name,
-    const FunctionDescriptor &function_descriptor,
-    TaskID task_id,
-    uint64_t attempt_number,
-    const std::vector<rpc::ObjectReference> &dependencies) {
+    std::function<void(const TaskSpecification &)> accept_request,
+    std::function<void(const TaskSpecification &, const Status &)> reject_request,
+    TaskSpecification task_spec) {
   absl::MutexLock lock(&mu_);
   // Normal tasks should not have ordering constraints.
   RAY_CHECK(seq_no == -1);
   // Create a InboundRequest object for the new task, and add it to the queue.
 
-  pending_normal_tasks_.push_back(InboundRequest(std::move(accept_request),
-                                                 std::move(reject_request),
-                                                 std::move(send_reply_callback),
-                                                 task_id,
-                                                 attempt_number,
-                                                 dependencies,
-                                                 /*concurrency_group_name=*/"",
-                                                 function_descriptor));
+  pending_normal_tasks_.push_back(InboundRequest(
+      std::move(accept_request), std::move(reject_request), std::move(task_spec)));
 }
 
 // Search for an InboundRequest associated with the task that we are trying to cancel.
