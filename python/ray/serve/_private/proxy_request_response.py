@@ -7,6 +7,11 @@ from typing import Any, AsyncIterator, Awaitable, Callable, List, Tuple, Union
 import grpc
 from starlette.types import Receive, Scope, Send
 
+from ray.anyscale.serve._private.tracing_utils import (
+    extract_propagated_context,
+    is_tracing_enabled,
+    set_trace_context,
+)
 from ray.serve._private.common import StreamingHTTPRequest, gRPCRequest
 from ray.serve._private.constants import SERVE_LOGGER_NAME
 from ray.serve._private.utils import DEFAULT
@@ -41,6 +46,12 @@ class ProxyRequest(ABC):
     @property
     @abstractmethod
     def is_health_request(self) -> bool:
+        raise NotImplementedError
+
+    @abstractmethod
+    def populate_tracing_context(self):
+        """Implement this method to populate tracing context so the parent and
+        child spans will be connected into a single trace."""
         raise NotImplementedError
 
 
@@ -101,6 +112,22 @@ class ASGIProxyRequest(ProxyRequest):
             pickled_asgi_scope=pickle.dumps(self.scope),
             receive_asgi_messages=receive_asgi_messages,
         )
+
+    def populate_tracing_context(self):
+        """Populate tracing context for ASGI requests.
+
+        This method extracts the "traceparent" header from the request headers and sets
+        the tracing context from it.
+        """
+        if not is_tracing_enabled():
+            return
+
+        for key, value in self.headers:
+            if key.decode() == "traceparent":
+                trace_context = extract_propagated_context(
+                    {key.decode(): value.decode()}
+                )
+                set_trace_context(trace_context)
 
 
 class gRPCProxyRequest(ProxyRequest):
@@ -173,6 +200,20 @@ class gRPCProxyRequest(ProxyRequest):
         return gRPCRequest(
             grpc_user_request=self.user_request,
         )
+
+    def populate_tracing_context(self):
+        """Populate tracing context for gRPC requests.
+
+        This method extracts the "traceparent" metadata from the request headers and
+        sets the tracing context from it.
+        """
+        if not is_tracing_enabled():
+            return
+
+        for key, value in self.context.invocation_metadata():
+            if key == "traceparent":
+                trace_context = extract_propagated_context({key: value})
+                set_trace_context(trace_context)
 
 
 @dataclass(frozen=True)
