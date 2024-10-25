@@ -20,12 +20,10 @@ class TestLearner(unittest.TestCase):
 
     ENV = gym.make("CartPole-v1")
 
-    @classmethod
-    def setUpClass(cls) -> None:
+    def setUp(self) -> None:
         ray.init()
 
-    @classmethod
-    def tearDownClass(cls) -> None:
+    def tearDown(self) -> None:
         ray.shutdown()
 
     def test_end_to_end_update(self):
