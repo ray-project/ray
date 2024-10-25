@@ -38,10 +38,16 @@ def create_deployment_scheduler(
     )
 
 
-def create_handle_options():
-    from ray.serve.handle import _HandleOptions
+def create_dynamic_handle_options():
+    from ray.serve.handle import _DynamicHandleOptions
 
-    return _HandleOptions()
+    return _DynamicHandleOptions()
+
+
+def create_init_handle_options(**kwargs):
+    from ray.serve.handle import _InitHandleOptions
+
+    return _InitHandleOptions.create(**kwargs)
 
 
 def add_grpc_address(grpc_server: gRPCServer, server_address: str):

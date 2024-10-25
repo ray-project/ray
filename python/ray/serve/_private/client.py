@@ -8,7 +8,6 @@ import ray
 from ray.actor import ActorHandle
 from ray.serve._private.common import (
     ApplicationStatus,
-    DeploymentHandleSource,
     DeploymentID,
     DeploymentStatus,
     DeploymentStatusInfo,
@@ -32,7 +31,7 @@ from ray.serve.generated.serve_pb2 import (
     DeploymentStatusInfo as DeploymentStatusInfoProto,
 )
 from ray.serve.generated.serve_pb2 import StatusOverview as StatusOverviewProto
-from ray.serve.handle import DeploymentHandle, _HandleOptions
+from ray.serve.handle import DeploymentHandle
 from ray.serve.schema import LoggingConfig, ServeApplicationSchema, ServeDeploySchema
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
@@ -431,18 +430,7 @@ class ServeControllerClient:
             if deployment_id not in all_deployments:
                 raise KeyError(f"{deployment_id} does not exist.")
 
-        if _get_internal_replica_context() is not None:
-            handle = DeploymentHandle(
-                deployment_name,
-                app_name,
-                handle_options=_HandleOptions(_source=DeploymentHandleSource.REPLICA),
-            )
-        else:
-            handle = DeploymentHandle(
-                deployment_name,
-                app_name,
-            )
-
+        handle = DeploymentHandle(deployment_name, app_name)
         self.handle_cache[cache_key] = handle
         if cache_key in self._evicted_handle_keys:
             logger.warning(

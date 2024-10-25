@@ -108,17 +108,19 @@ class LongestPrefixRouter(ProxyRouter):
             if endpoint in self.handles:
                 existing_handles.remove(endpoint)
             else:
-                handle = self._get_handle(endpoint.name, endpoint.app_name).options(
-                    # Streaming codepath isn't supported for Java.
-                    stream=not info.app_is_cross_language,
-                    _prefer_local_routing=RAY_SERVE_PROXY_PREFER_LOCAL_NODE_ROUTING,
-                    _source=DeploymentHandleSource.PROXY,
-                )
+                handle = self._get_handle(endpoint.name, endpoint.app_name)
+                # NOTE(zcin): since the router is eagerly initialized here,
+                # it will receive the replica set from the controller early.
+                if not handle.is_initialized:
+                    handle.init(
+                        _prefer_local_routing=RAY_SERVE_PROXY_PREFER_LOCAL_NODE_ROUTING,
+                        _source=DeploymentHandleSource.PROXY,
+                    )
                 handle._set_request_protocol(self._protocol)
-                # Eagerly initialize the router for each handle so it can receive
-                # the replica set from the controller.
-                handle._get_or_create_router()
-                self.handles[endpoint] = handle
+                # Streaming codepath isn't supported for Java.
+                self.handles[endpoint] = handle.options(
+                    stream=not info.app_is_cross_language
+                )
 
         # Clean up any handles that are no longer used.
         if len(existing_handles) > 0:
@@ -195,17 +197,19 @@ class EndpointRouter(ProxyRouter):
             if endpoint in self.handles:
                 existing_handles.remove(endpoint)
             else:
-                handle = self._get_handle(endpoint.name, endpoint.app_name).options(
-                    # Streaming codepath isn't supported for Java.
-                    stream=not info.app_is_cross_language,
-                    _prefer_local_routing=RAY_SERVE_PROXY_PREFER_LOCAL_NODE_ROUTING,
-                    _source=DeploymentHandleSource.PROXY,
-                )
+                handle = self._get_handle(endpoint.name, endpoint.app_name)
+                # NOTE(zcin): since the router is eagerly initialized here,
+                # it will receive the replica set from the controller early.
+                if not handle.is_initialized:
+                    handle.init(
+                        _prefer_local_routing=RAY_SERVE_PROXY_PREFER_LOCAL_NODE_ROUTING,
+                        _source=DeploymentHandleSource.PROXY,
+                    )
                 handle._set_request_protocol(self._protocol)
-                # Eagerly initialize the router for each handle so it can receive
-                # the replica set from the controller.
-                handle._get_or_create_router()
-                self.handles[endpoint] = handle
+                # Streaming codepath isn't supported for Java.
+                self.handles[endpoint] = handle.options(
+                    stream=not info.app_is_cross_language
+                )
 
         # Clean up any handles that are no longer used.
         if len(existing_handles) > 0:
