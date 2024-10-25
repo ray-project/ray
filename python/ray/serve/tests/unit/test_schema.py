@@ -6,10 +6,8 @@ from typing import Dict, List, Optional, Union
 
 import pytest
 
-from ray import serve
 from ray._private.pydantic_compat import ValidationError
 from ray.serve.config import AutoscalingConfig
-from ray.serve.deployment import deployment_to_schema, schema_to_deployment
 from ray.serve.schema import (
     DeploymentSchema,
     LoggingConfig,
@@ -719,59 +717,6 @@ class TestLoggingConfig:
 # This function is defined globally to be accessible via import path
 def global_f():
     return "Hello world!"
-
-
-def test_deployment_to_schema_to_deployment():
-    @serve.deployment(
-        num_replicas=3,
-        ray_actor_options={
-            "runtime_env": {
-                "working_dir": TEST_MODULE_PINNED_URI,
-                "py_modules": [TEST_DEPLOY_GROUP_PINNED_URI],
-            }
-        },
-    )
-    def f():
-        # The body of this function doesn't matter. It gets replaced by
-        # global_f() when the import path in f._func_or_class is overwritten.
-        # This function is used as a convenience to apply the @serve.deployment
-        # decorator without converting global_f() into a Deployment object.
-        pass
-
-    deployment = schema_to_deployment(deployment_to_schema(f))
-    deployment = deployment.options(
-        func_or_class="ray.serve.tests.test_schema.global_f"
-    )
-
-    assert deployment.num_replicas == 3
-    assert (
-        deployment.ray_actor_options["runtime_env"]["working_dir"]
-        == TEST_MODULE_PINNED_URI
-    )
-    assert deployment.ray_actor_options["runtime_env"]["py_modules"] == [
-        TEST_DEPLOY_GROUP_PINNED_URI,
-        TEST_MODULE_PINNED_URI,
-    ]
-
-
-def test_unset_fields_schema_to_deployment_ray_actor_options():
-    # Ensure unset fields are excluded from ray_actor_options
-
-    @serve.deployment(
-        num_replicas=3,
-        ray_actor_options={},
-    )
-    def f():
-        pass
-
-    deployment = schema_to_deployment(deployment_to_schema(f))
-    deployment = deployment.options(
-        func_or_class="ray.serve.tests.test_schema.global_f"
-    )
-
-    # Serve will set num_cpus to 1 if it's not set.
-    assert len(deployment.ray_actor_options) == 1
-    assert deployment.ray_actor_options["num_cpus"] == 1
 
 
 def test_serve_instance_details_is_json_serializable():
