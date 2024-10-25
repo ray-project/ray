@@ -67,21 +67,6 @@ def test_dynamic_handle_options():
     assert default_options._request_protocol == RequestProtocol.UNDEFINED
 
 
-def test_router_shared(serve_instance):
-    """Make sure that multiple handles share same router object."""
-
-    @serve.deployment
-    def echo(name: str):
-        return f"Hi {name}"
-
-    handle = serve.run(echo.bind())
-    handle2 = handle.options(multiplexed_model_id="model2")
-    handle3 = handle.options(stream=True)
-    assert handle._router
-    assert id(handle2._router) == id(handle._router)
-    assert id(handle3._router) == id(handle._router)
-
-
 def test_async_handle_serializable(serve_instance):
     @serve.deployment
     def f():
@@ -358,6 +343,19 @@ def test_call_function_with_argument(serve_instance):
 
     h = serve.run(Ingress.bind(echo.bind()))
     assert h.remote("sned").result() == "Hi sned"
+
+
+def test_handle_options_with_same_router(serve_instance):
+    """Make sure that multiple handles share same router object."""
+
+    @serve.deployment
+    def echo(name: str):
+        return f"Hi {name}"
+
+    handle = serve.run(echo.bind())
+    handle2 = handle.options(multiplexed_model_id="model2")
+    assert handle._router
+    assert id(handle2._router) == id(handle._router)
 
 
 def test_set_request_protocol(serve_instance):

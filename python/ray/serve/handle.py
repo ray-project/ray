@@ -66,9 +66,10 @@ def _create_or_get_global_asyncio_event_loop_in_thread():
 
 @dataclass(frozen=True)
 class _InitHandleOptionsBase:
-    """Options for each ServeHandle instance.
+    """Init options for each ServeHandle instance.
 
-    These fields can be changed by calling `.options()` on a handle.
+    These fields can be set by calling `.init()` on a handle before
+    sending the first request.
     """
 
     _prefer_local_routing: bool = False
@@ -96,7 +97,7 @@ class _InitHandleOptions(_InitHandleOptionsBase):
 
 @dataclass(frozen=True)
 class _DynamicHandleOptionsBase:
-    """Options for each ServeHandle instance.
+    """Dynamic options for each ServeHandle instance.
 
     These fields can be changed by calling `.options()` on a handle.
     """
@@ -139,7 +140,7 @@ class _DeploymentHandleBase:
         self.handle_options: _DynamicHandleOptionsBase = (
             handle_options or create_dynamic_handle_options()
         )
-        self.init_handle_options: _InitHandleOptionsBase = None
+        self.init_options: _InitHandleOptionsBase = None
 
         self.handle_id = get_random_string()
         self.request_counter = _request_counter or self._create_request_counter(
@@ -190,11 +191,9 @@ class _DeploymentHandleBase:
                 node_id,
                 get_current_actor_id(),
                 availability_zone,
-                handle_source=self.init_handle_options._source,
+                handle_source=self.init_options._source,
                 event_loop=_create_or_get_global_asyncio_event_loop_in_thread(),
-                _prefer_local_node_routing=(
-                    self.init_handle_options._prefer_local_routing
-                ),
+                _prefer_local_node_routing=self.init_options._prefer_local_routing,
             )
 
         return self._router, self._router._event_loop
@@ -249,7 +248,7 @@ class _DeploymentHandleBase:
         if self._router is not None:
             raise RuntimeError("Handle has already been initialized.")
 
-        self.init_handle_options = create_init_handle_options(**kwargs)
+        self.init_options = create_init_handle_options(**kwargs)
         self._get_or_create_router()
 
     def _options(
@@ -780,7 +779,18 @@ class DeploymentHandle(_DeploymentHandleBase):
         _prefer_local_routing: Union[bool, DEFAULT] = DEFAULT.VALUE,
         _source: Union[bool, DEFAULT] = DEFAULT.VALUE,
     ):
-        """Initialize this handle with arguments."""
+        """Initialize this handle with arguments.
+
+        A handle can only be initialized once. A handle is implicitly
+        initialized when `.options()` or `.remote()` is called.
+
+        Example:
+
+        .. code-block:: python
+
+            if not handle.is_initialized:
+                handle.init(_prefer_local_routing=True)
+        """
         self._init(
             _prefer_local_routing=_prefer_local_routing,
             _source=_source,
