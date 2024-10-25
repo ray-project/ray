@@ -52,11 +52,15 @@ void NodeResourceInstanceSet::Remove(ResourceID resource_id) {
                                        /*for_indexed_resource=*/true);
   if (data) {
     ResourceID original_resource_id(data->original_resource);
-    absl::flat_hash_set<ResourceID> &resource_set =
+    absl::flat_hash_map<std::string, absl::flat_hash_set<ResourceID>> &pg_resource_map =
         pg_indexed_resources_[original_resource_id];
+    absl::flat_hash_set<ResourceID> &resource_set = pg_resource_map[data->group_id];
 
     resource_set.erase(resource_id);
     if (resource_set.empty()) {
+      pg_resource_map.erase(data->group_id);
+    }
+    if (pg_resource_map.empty()) {
       pg_indexed_resources_.erase(original_resource_id);
     }
   }
@@ -92,7 +96,8 @@ NodeResourceInstanceSet &NodeResourceInstanceSet::Set(ResourceID resource_id,
                                          /*for_wildcard_resource=*/false,
                                          /*for_indexed_resource=*/true);
     if (data) {
-      pg_indexed_resources_[ResourceID(data->original_resource)].emplace(resource_id);
+      pg_indexed_resources_[ResourceID(data->original_resource)][data->group_id].emplace(
+          resource_id);
     }
   }
   return *this;
@@ -168,26 +173,33 @@ NodeResourceInstanceSet::TryAllocate(const ResourceSet &resource_demands) {
     // the resource requirement for a single resource type
     std::vector<FixedPoint> wildcard_allocation;
     const ResourceID *wildcard_resource_id = nullptr;
+    const std::string *pg_id = nullptr;
 
     // Allocate indexed resource
     if (resource_id_vector.size() == 1) {
       // The case where no bundle index is specified
-      // Iterate through the bundles to find the first one with enough space
+      // Iterate through the bundles with the same original resource and pg_id to find
+      // the first one with enough space
       bool found = false;
       wildcard_resource_id = &resource_id_vector[0].first;
-      auto index_resources = pg_indexed_resources_.find(original_resource_id);
-      if (index_resources != pg_indexed_resources_.end()) {
-        for (ResourceID indexed_resource_id : index_resources->second) {
-          if (Has(indexed_resource_id)) {
-            auto allocation = TryAllocate(
-                indexed_resource_id, resource_demands.Get(resource_id_vector[0].first));
+      pg_id = &resource_id_vector[0].second.group_id;
 
-            if (allocation) {
-              // Found the allocation in a bundle
-              wildcard_allocation = *allocation;
-              allocations[indexed_resource_id] = std::move(*allocation);
-              found = true;
-              break;
+      auto pg_index_resources = pg_indexed_resources_.find(original_resource_id);
+      if (pg_index_resources != pg_indexed_resources_.end()) {
+        auto index_resources = pg_index_resources->second.find(*pg_id);
+        if (index_resources != pg_index_resources->second.end()) {
+          for (ResourceID indexed_resource_id : index_resources->second) {
+            if (Has(indexed_resource_id)) {
+              auto allocation = TryAllocate(
+                  indexed_resource_id, resource_demands.Get(resource_id_vector[0].first));
+
+              if (allocation) {
+                // Found the allocation in a bundle
+                wildcard_allocation = *allocation;
+                allocations[indexed_resource_id] = std::move(*allocation);
+                found = true;
+                break;
+              }
             }
           }
         }
@@ -202,7 +214,7 @@ NodeResourceInstanceSet::TryAllocate(const ResourceSet &resource_demands) {
       }
     } else {
       // The case where the bundle index is specified
-      // The each resource type, both the wildcard resource and the indexed resource
+      // For each resource type, both the wildcard resource and the indexed resource
       // should be in the resource_demand
       for (const std::pair<ResourceID, PgFormattedResourceData> &pair :
            resource_id_vector) {
@@ -385,7 +397,7 @@ std::vector<FixedPoint> NodeResourceInstanceSet::Subtract(
 
 std::string NodeResourceInstanceSet::DebugString() const {
   std::stringstream buffer;
-  buffer << "{{";
+  buffer << "{resources_:{";
   bool first = true;
   for (const auto &[id, quantity] : resources_) {
     if (!first) {
@@ -394,23 +406,33 @@ std::string NodeResourceInstanceSet::DebugString() const {
     first = false;
     buffer << id.Binary() << ": " << FixedPointVectorToString(quantity);
   }
-  buffer << "}, {";
+  buffer << "}, pg_indexed_resources_:{";
 
   first = true;
-  for (const auto &[original_id, indexed_ids] : pg_indexed_resources_) {
+  for (const auto &[original_id, pg_resource_id_map] : pg_indexed_resources_) {
     if (!first) {
       buffer << ", ";
     }
     first = false;
 
     buffer << original_id.Binary() << ": {";
-    bool firstInSet = true;
-    for (const auto &index_id : indexed_ids) {
-      if (!firstInSet) {
+    bool firstInMap = true;
+    for (const auto &[pg_id, indexed_ids] : pg_resource_id_map) {
+      if (!firstInMap) {
         buffer << ", ";
       }
-      firstInSet = false;
-      buffer << index_id.Binary();
+      firstInMap = false;
+
+      buffer << pg_id << ": {";
+      bool firstInSet = true;
+      for (const auto &index_id : indexed_ids) {
+        if (!firstInSet) {
+          buffer << ", ";
+        }
+        firstInSet = false;
+        buffer << index_id.Binary();
+      }
+      buffer << "}";
     }
     buffer << "}";
   }

@@ -88,7 +88,9 @@ class NodeResourceInstanceSet {
   }
 
   /// Only for testing.
-  const absl::flat_hash_map<ResourceID, absl::flat_hash_set<ResourceID>>
+  const absl::flat_hash_map<
+      ResourceID,
+      absl::flat_hash_map<std::string, absl::flat_hash_set<ResourceID>>>
       &PgIndexedResources() const {
     return pg_indexed_resources_;
   }
@@ -130,10 +132,14 @@ class NodeResourceInstanceSet {
   /// Map from the resource IDs to the resource instance values.
   absl::flat_hash_map<ResourceID, std::vector<FixedPoint>> resources_;
 
-  /// Map from the original resource IDs to the actual resource IDs for all the indexed
-  /// placement group resources. This map should be treated as a derived map from the
-  /// resources_ map and should always be consistent with the _resource map.
-  absl::flat_hash_map<ResourceID, absl::flat_hash_set<ResourceID>> pg_indexed_resources_;
+  /// This is a derived map from the resources_ map. The map aggregates all the current
+  /// placement group indexed resources in resources_ by their original resource id and
+  /// pd id. The key of the map is the original resource id. The value is a map of pg id
+  /// to the corresponding placement group indexed resource ids. This map should always
+  /// be consistent with the _resource map.
+  absl::flat_hash_map<ResourceID,
+                      absl::flat_hash_map<std::string, absl::flat_hash_set<ResourceID>>>
+      pg_indexed_resources_;
 };
 
 }  // namespace ray
