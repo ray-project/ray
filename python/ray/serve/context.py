@@ -6,7 +6,6 @@ can use this state to access metadata or the Serve controller.
 import asyncio
 import contextvars
 import logging
-import threading
 from collections import defaultdict
 from dataclasses import dataclass
 from typing import Callable, Dict, Optional
