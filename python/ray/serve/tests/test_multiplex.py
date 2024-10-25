@@ -315,7 +315,10 @@ def test_multiplexed_replica_info(serve_instance):
     def check_replica_information(
         model_ids: List[str],
     ):
-        replica_scheduler = handle._get_or_create_router()[0]._replica_scheduler
+        if not handle.is_initialized:
+            handle.init()
+
+        replica_scheduler = handle._get_or_create_router()._replica_scheduler
         for replica in replica_scheduler.curr_replicas.values():
             if (
                 replica.replica_id != replica_id
@@ -356,7 +359,7 @@ def check_model_id_in_replicas(handle: DeploymentHandle, model_id: str) -> bool:
     if not handle.is_initialized:
         handle.init()
 
-    replica_scheduler = handle._get_or_create_router()[0]._replica_scheduler
+    replica_scheduler = handle._get_or_create_router()._replica_scheduler
     replica_to_model_ids = {
         tag: replica.multiplexed_model_ids
         for tag, replica in replica_scheduler.curr_replicas.items()
