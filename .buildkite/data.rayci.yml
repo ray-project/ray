@@ -4,8 +4,8 @@ depends_on:
   - oss-ci-base_ml
 steps:
   # builds
-  - name: data6build
-    wanda: ci/docker/data6.build.wanda.yaml
+  - name: data9build
+    wanda: ci/docker/data9.build.wanda.yaml
 
   - name: datalbuild
     wanda: ci/docker/datal.build.wanda.yaml
@@ -28,7 +28,7 @@ steps:
     wanda: ci/docker/datatfxbsl.build.wanda.yaml
 
   # tests
-  - label: ":database: data: arrow 6 tests"
+  - label: ":database: data: arrow 9 tests"
     tags: 
       - python
       - data
@@ -38,9 +38,9 @@ steps:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/data/... //python/ray/air/... data 
         --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" 
         --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 3
-        --build-name data6build
+        --build-name data9build
         --except-tags data_integration,doctest
-    depends_on: data6build
+    depends_on: data9build
 
   - label: ":database: data: arrow 17 tests"
     tags: 

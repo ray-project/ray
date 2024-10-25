@@ -119,8 +119,8 @@ if __name__ == "__main__":
                 or changed_file == "ci/docker/data.build.Dockerfile"
                 or changed_file == "ci/docker/data.build.wanda.yaml"
                 or changed_file == "ci/docker/datan.build.wanda.yaml"
-                or changed_file == "ci/docker/data6.build.wanda.yaml"
-                or changed_file == "ci/docker/data14.build.wanda.yaml"
+                or changed_file == "ci/docker/data9.build.wanda.yaml"
+                or changed_file == "ci/docker/datal.build.wanda.yaml"
             ):
                 RAY_CI_DATA_AFFECTED = 1
                 RAY_CI_ML_AFFECTED = 1
