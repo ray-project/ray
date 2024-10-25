@@ -73,6 +73,8 @@ Policy NOT using curiosity:
 """
 from collections import defaultdict
 
+import numpy as np
+
 from ray import tune
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
@@ -132,9 +134,9 @@ class MeasureMaxDistanceToStart(DefaultCallbacks):
         rl_module,
         **kwargs,
     ):
-        obs = episode.get_observations(-1)
         num_rows = env.envs[0].unwrapped.nrow
         num_cols = env.envs[0].unwrapped.ncol
+        obs = np.argmax(episode.get_observations(-1))
         row = obs // num_cols
         col = obs % num_rows
         curr_dist = (row**2 + col**2) ** 0.5
@@ -298,7 +300,7 @@ if __name__ == "__main__":
 
     success_key = f"{ENV_RUNNER_RESULTS}/max_dist_travelled_across_running_episodes"
     stop = {
-        success_key: 8.0,
+        success_key: 16.0,
         f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": args.stop_reward,
         NUM_ENV_STEPS_SAMPLED_LIFETIME: args.stop_timesteps,
     }

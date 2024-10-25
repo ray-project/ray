@@ -88,8 +88,7 @@ class TestCuriosity(unittest.TestCase):
                         "type": "StochasticSampling",
                     },
                 },
-            )
-            .training(lr=0.001)
+            ).training(lr=0.001)
         )
 
         num_iterations = 10
