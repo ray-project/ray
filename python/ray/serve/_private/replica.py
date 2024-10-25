@@ -361,11 +361,13 @@ class ReplicaActor:
             user_exception = e
 
             # Recursively cancel child requests
-            in_flight_requests = ray.serve.context._get_in_flight_requests(
-                request_metadata.request_id
+            requests_pending_assignment = (
+                ray.serve.context._get_requests_pending_assignment(
+                    request_metadata.request_id
+                )
             )
-            for r in list(in_flight_requests.values()):
-                r.cancel()
+            for t in list(requests_pending_assignment.values()):
+                t.cancel()
         except Exception as e:
             user_exception = e
             logger.error(f"Request failed:\n{e}")

@@ -3,6 +3,7 @@ This file stores global state for a Serve application. Deployment replicas
 can use this state to access metadata or the Serve controller.
 """
 
+import asyncio
 import contextvars
 import logging
 import threading
@@ -211,23 +212,19 @@ def _set_request_context(
 
 # A map from current request ID to a set of ReplicaResults corresponding
 # to the requests the replica has sent during the current request
-_in_flight_requests: Dict[str, Dict] = defaultdict(dict)
-_global_in_flight_requests_lock = threading.Lock()
+_requests_pending_assignment: Dict[str, Dict[str, asyncio.Task]] = defaultdict(dict)
 
 
-def _get_in_flight_requests(parent_request_id: str) -> Dict:
-    with _global_in_flight_requests_lock:
-        if parent_request_id in _in_flight_requests:
-            return _in_flight_requests[parent_request_id]
+def _get_requests_pending_assignment(parent_request_id: str) -> Dict:
+    if parent_request_id in _requests_pending_assignment:
+        return _requests_pending_assignment[parent_request_id]
 
 
-def _add_in_flight_request(parent_request_id: str, response_id: str, response):
-    with _global_in_flight_requests_lock:
-        if parent_request_id:
-            _in_flight_requests[parent_request_id][response_id] = response
+def _add_request_pending_assignment(parent_request_id: str, response_id: str, task):
+    if parent_request_id:
+        _requests_pending_assignment[parent_request_id][response_id] = task
 
 
-def _remove_in_flight_request(parent_request_id: str, response_id: str):
-    with _global_in_flight_requests_lock:
-        if response_id in _in_flight_requests[parent_request_id]:
-            del _in_flight_requests[parent_request_id][response_id]
+def _remove_request_pending_assignment(parent_request_id: str, response_id: str):
+    if response_id in _requests_pending_assignment[parent_request_id]:
+        del _requests_pending_assignment[parent_request_id][response_id]

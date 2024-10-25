@@ -421,6 +421,10 @@ def test_recursive_cancellation_during_assignment(serve_instance):
         async def get_count(self):
             return await self._handle.get_count.remote()
 
+        async def check_requests_pending_assignment_cache(self):
+            requests_pending_assignment = ray.serve.context._requests_pending_assignment
+            return {k: list(v.keys()) for k, v in requests_pending_assignment.items()}
+
     h = serve.run(Ingress.bind(Counter.bind()))
 
     # Send two requests to Ingress. The second should be queued and
@@ -451,6 +455,13 @@ def test_recursive_cancellation_during_assignment(serve_instance):
         assert h.get_count.remote().result() == 1
 
     tlog("Confirmed second request was properly canceled.")
+
+    # Check that cache was cleared so there are no memory leaks
+    requests_pending_assignment = (
+        h.check_requests_pending_assignment_cache.remote().result()
+    )
+    for k, v in requests_pending_assignment.items():
+        assert len(v) == 0, f"Request {k} has in flight requests in cache: {v}"
 
 
 if __name__ == "__main__":
