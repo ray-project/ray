@@ -847,7 +847,7 @@ class Dataset:
         cols_without_duplicates = list(set(cols))
 
         def drop_columns(batch):
-            return batch.drop_columns(columns=cols_without_duplicates)
+            return batch.drop(columns=cols_without_duplicates)
 
         return self.map_batches(
             drop_columns,
