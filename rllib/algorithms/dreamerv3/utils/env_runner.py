@@ -76,7 +76,7 @@ class DreamerV3EnvRunner(EnvRunner):
 
         # Create the gym.vector.Env object.
         # Atari env.
-        if "ALE/" in self.config.env:
+        if self.config.env.startswith("ale_py:ALE/"):
             # TODO (sven): This import currently causes a Tune test to fail. Either way,
             #  we need to figure out how to properly setup the CI environment with
             #  the correct versions of all gymnasium-related packages.
@@ -115,10 +115,12 @@ class DreamerV3EnvRunner(EnvRunner):
 
             gym.register("rllib-single-agent-env-v0", entry_point=_entry_point)
 
-            self.env = gym.vector.make(
+            self.env = gym.make_vec(
                 "rllib-single-agent-env-v0",
                 num_envs=self.config.num_envs_per_env_runner,
-                asynchronous=self.config.remote_worker_envs,
+                vectorization_mode=(
+                    "async" if self.config.remote_worker_envs else "sync"
+                ),
                 wrappers=[
                     partial(gym.wrappers.TimeLimit, max_episode_steps=108000),
                     partial(resize_v1, x_size=64, y_size=64),  # resize to 64x64
@@ -140,11 +142,13 @@ class DreamerV3EnvRunner(EnvRunner):
                     parts[1], parts[2], from_pixels=from_pixels, channels_first=False
                 ),
             )
-            self.env = gym.vector.make(
+            self.env = gym.make_vec(
                 "dmc_env-v0",
                 wrappers=[ActionClip],
                 num_envs=self.config.num_envs_per_env_runner,
-                asynchronous=self.config.remote_worker_envs,
+                vectorization_mode=(
+                    "async" if self.config.remote_worker_envs else "sync"
+                ),
                 **dict(self.config.env_config),
             )
         # All other envs (gym or `tune.register_env()`'d by the user).
