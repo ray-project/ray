@@ -948,39 +948,6 @@ def test_grpc_proxy_model_composition(ray_start_stop):
     ping_fruit_stand(channel, app)
 
 
-@serve.deployment(route_prefix="/foo")
-async def deployment_with_route_prefix(args):
-    return "bar..."
-
-
-route_prefix_app = deployment_with_route_prefix.bind()
-
-
-@pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
-def test_serve_run_mount_to_correct_deployment_route_prefix(ray_start_stop):
-    """Test running serve run with deployment with route_prefix should mount the
-    deployment to the correct route."""
-
-    import_path = "ray.serve.tests.test_cli_2.route_prefix_app"
-    subprocess.Popen(["serve", "run", import_path])
-
-    # /-/routes should show the app having the correct route.
-    wait_for_condition(
-        lambda: requests.get("http://localhost:8000/-/routes").text
-        == '{"/foo":"default"}'
-    )
-
-    # Ping root path directly should 404.
-    wait_for_condition(
-        lambda: requests.get("http://localhost:8000/").status_code == 404
-    )
-
-    # Ping the mounting route should return 200.
-    wait_for_condition(
-        lambda: requests.get("http://localhost:8000/foo").status_code == 200
-    )
-
-
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
 def test_control_c_shutdown_serve_components(ray_start_stop):
     """Test ctrl+c after `serve run` shuts down serve components."""

@@ -11,32 +11,21 @@ from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME
 
 
 def test_path_validation(serve_instance):
+    @serve.deployment
+    class D:
+        pass
+
     # Path prefix must start with /.
     with pytest.raises(ValueError):
-
-        @serve.deployment(route_prefix="hello")
-        class D1:
-            pass
+        serve.run(D.bind(), route_prefix="hello")
 
     # Path prefix must not end with / unless it's the root.
     with pytest.raises(ValueError):
-
-        @serve.deployment(route_prefix="/hello/")
-        class D2:
-            pass
+        serve.run(D.bind(), route_prefix="/hello/")
 
     # Wildcards not allowed with new ingress support.
     with pytest.raises(ValueError):
-
-        @serve.deployment(route_prefix="/{hello}")
-        class D3:
-            pass
-
-    @serve.deployment(route_prefix="/duplicate")
-    class D4:
-        pass
-
-    serve.run(D4.bind())
+        serve.run(D.bind(), route_prefix="/{hello}")
 
 
 def test_routes_healthz(serve_instance):
@@ -72,7 +61,7 @@ def test_routes_endpoint(serve_instance):
 
 
 def test_deployment_without_route(serve_instance):
-    @serve.deployment(route_prefix=None)
+    @serve.deployment
     class D:
         def __call__(self, *args):
             return "1"
@@ -131,7 +120,7 @@ def test_path_prefixing_1(serve_instance):
     check_req("/", text="2")
     check_req("/a", text="2")
 
-    @serve.deployment(route_prefix="/hello/world")
+    @serve.deployment
     class D3:
         def __call__(self, *args):
             return "3"

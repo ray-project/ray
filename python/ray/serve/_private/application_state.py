@@ -37,6 +37,7 @@ from ray.serve._private.utils import (
     DEFAULT,
     check_obj_ref_ready_nowait,
     override_runtime_envs_except_env_vars,
+    validate_route_prefix,
 )
 from ray.serve.config import AutoscalingConfig
 from ray.serve.exceptions import RayServeException
@@ -1306,12 +1307,7 @@ def override_deployment_info(
 
     # Overwrite ingress route prefix
     app_route_prefix = config_dict.get("route_prefix", DEFAULT.VALUE)
-    if app_route_prefix is not DEFAULT.VALUE and not app_route_prefix.startswith("/"):
-        raise ValueError(
-            f"Invalid route_prefix '{app_route_prefix}', "
-            "must start with a forward slash ('/')."
-        )
-
+    validate_route_prefix(app_route_prefix)
     for deployment in list(deployment_infos.values()):
         if (
             app_route_prefix is not DEFAULT.VALUE
