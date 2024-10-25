@@ -6,13 +6,13 @@ from typing import Callable, Dict, Iterable, List, Optional, Tuple, Union
 
 import ray
 from ray.actor import ActorHandle
+from ray.serve._private.application_state import StatusOverview
 from ray.serve._private.common import (
     ApplicationStatus,
     DeploymentID,
     DeploymentStatus,
     DeploymentStatusInfo,
     MultiplexedReplicaInfo,
-    StatusOverview,
 )
 from ray.serve._private.constants import (
     CLIENT_CHECK_CREATION_POLLING_INTERVAL_S,
