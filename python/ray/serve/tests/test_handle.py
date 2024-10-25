@@ -70,25 +70,25 @@ def test_dynamic_handle_options():
 
 def test_init_handle_options():
     default_options = _InitHandleOptions.create()
-    assert default_options._prefer_local_routing == False
+    assert default_options._prefer_local_routing is False
     assert default_options._source == DeploymentHandleSource.UNKNOWN
 
     default1 = _InitHandleOptions.create(_prefer_local_routing=DEFAULT.VALUE)
-    assert default1._prefer_local_routing == False
+    assert default1._prefer_local_routing is False
     assert default1._source == DeploymentHandleSource.UNKNOWN
 
     default2 = _InitHandleOptions.create(_source=DEFAULT.VALUE)
-    assert default2._prefer_local_routing == False
+    assert default2._prefer_local_routing is False
     assert default2._source == DeploymentHandleSource.UNKNOWN
 
     prefer_local = _InitHandleOptions.create(
         _prefer_local_routing=True, _source=DEFAULT.VALUE
     )
-    assert prefer_local._prefer_local_routing == True
+    assert prefer_local._prefer_local_routing is True
     assert prefer_local._source == DeploymentHandleSource.UNKNOWN
 
     proxy_options = _InitHandleOptions.create(_source=DeploymentHandleSource.PROXY)
-    assert proxy_options._prefer_local_routing == False
+    assert proxy_options._prefer_local_routing is False
     assert proxy_options._source == DeploymentHandleSource.PROXY
 
 
