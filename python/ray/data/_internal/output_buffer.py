@@ -82,11 +82,7 @@ class BlockOutputBuffer:
             # this ensures that the last block produced will be at least half
             # the block size.
             num_bytes_per_row = block.size_bytes() // block.num_rows()
-            target_num_rows = self._target_max_block_size // num_bytes_per_row
-            target_num_rows = max(1, target_num_rows)
-
-            # TODO(swang): If the buffer is finalized, try to create even
-            # blocks?
+            target_num_rows = max(1, self._target_max_block_size // num_bytes_per_row)
 
             if target_num_rows < block.num_rows():
                 # NOTE: We're maintaining following protocol of slicing underlying block
