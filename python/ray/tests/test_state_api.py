@@ -1025,12 +1025,8 @@ async def test_api_manager_list_tasks_events(state_api_manager):
         name=func_or_class,
         func_or_class_name=func_or_class,
         type=TaskType.NORMAL_TASK,
-        dependent_args_refs=[
-            ObjectReference(
-                object_id=arg_ref.binary(),
-                owner_address=Address(),
-                call_site=arg_ref.call_site(),
-            )
+        args_object_ids=[
+            arg_ref.binary()
         ],
     )
 
@@ -1090,17 +1086,8 @@ async def test_api_manager_list_tasks_events(state_api_manager):
         "start_time_ms": 2000.0,
         "task_id": "31323334",
         "parent_task_id": "",
-        "dependent_args_refs": [
-            {
-                "call_site": "",
-                "object_id": arg_ref.hex(),
-                "owner_address": {
-                    "ip_address": "",
-                    "port": 0,
-                    "raylet_id": "",
-                    "worker_id": "",
-                },
-            }
+        "args_object_ids": [
+            arg_ref.hex(),
         ],
     } == result.result[0]
 
