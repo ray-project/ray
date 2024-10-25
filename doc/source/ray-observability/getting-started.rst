@@ -236,7 +236,7 @@ Use the Actors view to see the logs for an Actor and which Job created the Actor
         <iframe width="560" height="315" src="https://www.youtube.com/embed/MChn6O1ecEQ" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe>
     </div>
 
-The information for up to 1000 dead Actors is stored.
+The information for up to 100000 dead Actors is stored.
 Override this value with the `RAY_maximum_gcs_destroyed_actor_cached_count` environment variable
 when starting Ray.
 
