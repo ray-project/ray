@@ -64,35 +64,9 @@ Forwarding from [::1]:10001 -> 10001
 ### Get Ray cluster logs
 
 ```shell
-$ kubectl ray log ray-cluster-kuberay
-
+$ kubectl ray logs rayjob-sample-raycluster-kfhl6
 No output directory specified, creating dir under current directory using cluster name.
-Downloading file ./ for Ray Head ray-cluster-kuberay-head-qkrv8
-Downloading file ./old/ for Ray Head ray-cluster-kuberay-head-qkrv8
-Downloading file ./gcs_server.out for Ray Head ray-cluster-kuberay-head-qkrv8
-Downloading file ./gcs_server.err for Ray Head ray-cluster-kuberay-head-qkrv8
-Downloading file ./events/ for Ray Head ray-cluster-kuberay-head-qkrv8
-Downloading file ./events/event_GCS.log for Ray Head ray-cluster-kuberay-head-qkrv8
-Downloading file ./events/event_AUTOSCALER.log for Ray Head ray-cluster-kuberay-head-qkrv8
-Downloading file ./events/event_RAYLET.log for Ray Head ray-cluster-kuberay-head-qkrv8
-Downloading file ./debug_state_gcs.txt for Ray Head ray-cluster-kuberay-head-qkrv8
-Downloading file ./monitor.out for Ray Head ray-cluster-kuberay-head-qkrv8
-Downloading file ./monitor.err for Ray Head ray-cluster-kuberay-head-qkrv8
-Downloading file ./ray_client_server.out for Ray Head ray-cluster-kuberay-head-qkrv8
-Downloading file ./ray_client_server.err for Ray Head ray-cluster-kuberay-head-qkrv8
-Downloading file ./dashboard.err for Ray Head ray-cluster-kuberay-head-qkrv8
-Downloading file ./dashboard.log for Ray Head ray-cluster-kuberay-head-qkrv8
-Downloading file ./monitor.log for Ray Head ray-cluster-kuberay-head-qkrv8
-Downloading file ./raylet.out for Ray Head ray-cluster-kuberay-head-qkrv8
-Downloading file ./raylet.err for Ray Head ray-cluster-kuberay-head-qkrv8
-Downloading file ./log_monitor.err for Ray Head ray-cluster-kuberay-head-qkrv8
-Downloading file ./debug_state.txt for Ray Head ray-cluster-kuberay-head-qkrv8
-Downloading file ./log_monitor.log for Ray Head ray-cluster-kuberay-head-qkrv8
-Downloading file ./dashboard_agent.log for Ray Head ray-cluster-kuberay-head-qkrv8
-Downloading file ./agent-424238335.out for Ray Head ray-cluster-kuberay-head-qkrv8
-Downloading file ./agent-424238335.err for Ray Head ray-cluster-kuberay-head-qkrv8
-Downloading file ./runtime_env_agent.out for Ray Head ray-cluster-kuberay-head-qkrv8
-Downloading file ./runtime_env_agent.err for Ray Head ray-cluster-kuberay-head-qkrv8
-Downloading file ./runtime_env_agent.log for Ray Head ray-cluster-kuberay-head-qkrv8
-Downloading file ./nsight/ for Ray Head ray-cluster-kuberay-head-qkrv8
+Command set to retrieve both head and worker node logs.
+Downloading log for Ray Node rayjob-sample-raycluster-kfhl6-head-87xpb
+Downloading log for Ray Node rayjob-sample-raycluster-kfhl6-small-group-worker-54qfm
 ```
