@@ -1306,6 +1306,12 @@ def override_deployment_info(
 
     # Overwrite ingress route prefix
     app_route_prefix = config_dict.get("route_prefix", DEFAULT.VALUE)
+    if app_route_prefix is not DEFAULT.VALUE and not app_route_prefix.startswith("/"):
+        raise ValueError(
+            f"Invalid route_prefix '{app_route_prefix}', "
+            "must start with a forward slash ('/')."
+        )
+
     for deployment in list(deployment_infos.values()):
         if (
             app_route_prefix is not DEFAULT.VALUE

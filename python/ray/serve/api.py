@@ -438,6 +438,12 @@ def _run(
     if len(name) == 0:
         raise RayServeException("Application name must a non-empty string.")
 
+    if route_prefix is not None and not route_prefix.startswith("/"):
+        raise ValueError(
+            f"Invalid route_prefix '{route_prefix}', "
+            "must start with a forward slash ('/')."
+        )
+
     client = _private_api.serve_start(
         http_options={"location": "EveryNode"},
     )
