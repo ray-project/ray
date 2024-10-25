@@ -832,7 +832,10 @@ class ApplicationStateManager:
         }
 
         for deploy_param in deployment_args:
-            deploy_app_prefix: str = deploy_param["route_prefix"]
+            deploy_app_prefix = deploy_param.get("route_prefix", None)
+            if deploy_app_prefix is None:
+                continue
+
             app_name = live_route_prefixes.get(deploy_app_prefix)
             if app_name is not None:
                 raise RayServeException(
@@ -1111,6 +1114,11 @@ def override_deployment_info(
             options["max_ongoing_requests"] = options.get("max_ongoing_requests")
 
         deployment_name = options["name"]
+        if deployment_name not in deployment_infos:
+            raise ValueError(
+                f"Got config override for nonexistent deployment '{deployment_name}'"
+            )
+
         info = deployment_infos[deployment_name]
         original_options = info.deployment_config.dict()
         original_options["user_configured_option_names"].update(set(options))

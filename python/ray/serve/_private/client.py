@@ -247,8 +247,12 @@ class ServeControllerClient:
         deployments: List[Dict],
         _blocking: bool = True,
     ):
+        ingress_route_prefix = None
         deployment_args_list = []
         for deployment in deployments:
+            if deployment["ingress"]:
+                ingress_route_prefix = deployment["route_prefix"]
+
             deployment_args = get_deploy_args(
                 deployment["name"],
                 replica_config=deployment["replica_config"],
@@ -279,13 +283,11 @@ class ServeControllerClient:
         ray.get(self._controller.deploy_application.remote(name, deployment_args_list))
         if _blocking:
             self._wait_for_application_running(name)
-            for deployment in deployments:
-                deployment_name = deployment["name"]
-                tag = f"component=serve deployment={deployment_name}"
-                url = deployment["url"]
-                version = deployment["version"]
-
-                self.log_deployment_ready(deployment_name, version, url, tag)
+            if ingress_route_prefix is not None:
+                url_part = " at " + self._root_url + ingress_route_prefix
+            else:
+                url_part = ""
+            logger.info(f"Application '{name}' is ready{url_part}.")
 
     @_ensure_connected
     def deploy_apps(
@@ -454,36 +456,6 @@ class ServeControllerClient:
             self.handle_cache.pop(evict_key)
 
         return handle
-
-    @_ensure_connected
-    def log_deployment_update_status(
-        self, name: str, version: str, updating: bool
-    ) -> str:
-        tag = f"component=serve deployment={name}"
-
-        if updating:
-            msg = f"Updating deployment '{name}'"
-            if version is not None:
-                msg += f" to version '{version}'"
-            logger.info(f"{msg}. {tag}")
-        else:
-            logger.info(
-                f"Deployment '{name}' is already at version "
-                f"'{version}', not updating. {tag}"
-            )
-
-        return tag
-
-    @_ensure_connected
-    def log_deployment_ready(self, name: str, version: str, url: str, tag: str) -> None:
-        if url is not None:
-            url_part = f" at `{url}`"
-        else:
-            url_part = ""
-        logger.info(
-            f"Deployment '{name}{':'+version if version else ''}' is ready"
-            f"{url_part}. {tag}"
-        )
 
     @_ensure_connected
     def record_multiplexed_replica_info(self, info: MultiplexedReplicaInfo):
