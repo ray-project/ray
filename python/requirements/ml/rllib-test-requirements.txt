@@ -16,26 +16,13 @@ tinyscaler==1.2.8
 shimmy==2.0.0
 supersuit==3.9.3
 
-# Kaggle envs.
-kaggle_environments==1.7.11
-# Unity3D testing
-# TODO(sven): Add this back to rllib-requirements.txt once mlagents no longer pins torch<1.9.0 version.
-#mlagents==0.28.0
-mlagents_envs==0.28.0
-
 # For tests on minigrid.
-minigrid
-# For tests on RecSim and Kaggle envs.
-# Explicitly depends on `tensorflow` and doesn't accept `tensorflow-macos`
-recsim==0.2.4; (sys_platform != 'darwin' or platform_machine != 'arm64') and python_version < "3.12"
-# recsim depends on dopamine-rl, but dopamine-rl pins gym <= 0.25.2, which break some envs
-dopamine-rl==4.0.5; (sys_platform != 'darwin' or platform_machine != 'arm64') and python_version < "3.12"
+minigrid==2.3.1
 tensorflow_estimator
 # DeepMind's OpenSpiel
 open-spiel==1.4
 
 # Requires libtorrent which is unavailable for arm64
-autorom[accept-rom-license]; platform_machine != "arm64"
 h5py==3.10.0
 
 # Requirements for rendering.
