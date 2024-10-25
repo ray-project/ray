@@ -22,7 +22,7 @@ from ray.dashboard.modules.actor import actor_consts
 logger = logging.getLogger(__name__)
 routes = dashboard_optional_utils.DashboardHeadRouteTable
 
-MAX_DELETED_ACTORS_TO_CACHE = max(
+MAX_DESTROYED_ACTORS_TO_CACHE = max(
     0, ray._config.maximum_gcs_destroyed_actor_cached_count()
 )
 
@@ -310,7 +310,7 @@ class ActorHead(dashboard_utils.DashboardHeadModule):
     async def _cleanup_actors(self):
         while True:
             try:
-                while len(self.destroyed_actors_queue) > MAX_DELETED_ACTORS_TO_CACHE:
+                while len(self.destroyed_actors_queue) > MAX_DESTROYED_ACTORS_TO_CACHE:
                     actor_id = self.destroyed_actors_queue.popleft()
                     if actor_id in DataSource.actors:
                         actor = DataSource.actors.pop(actor_id)
