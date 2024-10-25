@@ -1117,7 +1117,7 @@ msrestazure==0.6.4
     # via
     #   -r /ray/ci/../python/requirements/test-requirements.txt
     #   azure-cli-core
-mujoco==2.3.6 ; python_version < "3.12"
+mujoco==3.2.4
     # via
     #   -r /ray/ci/../python/requirements/ml/rllib-test-requirements.txt
     #   dm-control
