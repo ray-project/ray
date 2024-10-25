@@ -177,6 +177,13 @@ class Deployment:
         return self._deployment_config.max_queued_requests
 
     @property
+    def route_prefix(self):
+        raise ValueError(
+            "`route_prefix` can no longer be specified at the deployment level. "
+            "Pass it to `serve.run` or in the application config instead."
+        )
+
+    @property
     def ray_actor_options(self) -> Optional[Dict]:
         """Actor options such as resources required for each replica."""
         return self._replica_config.ray_actor_options
@@ -249,6 +256,7 @@ class Deployment:
         name: Default[str] = DEFAULT.VALUE,
         version: Default[str] = DEFAULT.VALUE,
         num_replicas: Default[Optional[Union[int, str]]] = DEFAULT.VALUE,
+        route_prefix: Default[Union[str, None]] = DEFAULT.VALUE,
         ray_actor_options: Default[Optional[Dict]] = DEFAULT.VALUE,
         placement_group_bundles: Default[List[Dict[str, float]]] = DEFAULT.VALUE,
         placement_group_strategy: Default[str] = DEFAULT.VALUE,
@@ -275,6 +283,11 @@ class Deployment:
 
         Refer to the `@serve.deployment` decorator docs for available arguments.
         """
+        if route_prefix is not DEFAULT.VALUE:
+            raise ValueError(
+                "`route_prefix` can no longer be specified at the deployment level. "
+                "Pass it to `serve.run` or in the application config instead."
+            )
 
         # Modify max_ongoing_requests and autoscaling_config if
         # `num_replicas="auto"`
