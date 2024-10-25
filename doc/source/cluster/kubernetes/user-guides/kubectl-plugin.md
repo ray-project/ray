@@ -8,6 +8,8 @@ Starting from KubeRay v1.2.2, we have introduced a `kubectl ray` plugin to simpl
 
 Please follow the instructions in the [KubeRay Kubectl Plugin](https://github.com/ray-project/kuberay/tree/master/kubectl-plugin) to install the plugin.
 
+You can install the Kuberay kubectl plugin using one of the following methods:
+
 ### Install using Krew kubectl plugin manager (Recommended)
 
 1. Install [Krew](https://krew.sigs.k8s.io/docs/user-guide/setup/install/).
