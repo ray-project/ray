@@ -3,9 +3,8 @@ import logging
 from copy import deepcopy
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
-from ray.dag.class_node import ClassNode
-from ray.dag.dag_node import DAGNodeBase
-from ray.dag.function_node import FunctionNode
+from ray.dag.py_obj_scanner import _PyObjScanner
+from ray.serve._private.common import DeploymentHandleSource
 from ray.serve._private.config import (
     DeploymentConfig,
     ReplicaConfig,
@@ -15,6 +14,7 @@ from ray.serve._private.constants import SERVE_LOGGER_NAME
 from ray.serve._private.usage import ServeUsageTag
 from ray.serve._private.utils import DEFAULT, Default
 from ray.serve.config import AutoscalingConfig
+from ray.serve.handle import DeploymentHandle, _HandleOptions
 from ray.serve.schema import DeploymentSchema, LoggingConfig, RayActorOptionsSchema
 from ray.util.annotations import PublicAPI
 
@@ -22,7 +22,7 @@ logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 
 @PublicAPI(stability="stable")
-class Application(DAGNodeBase):
+class Application:
     """One or more deployments bound with arguments that can be deployed together.
 
     Can be passed into another `Deployment.bind()` to compose multiple deployments in a
@@ -58,28 +58,81 @@ class Application(DAGNodeBase):
 
     """
 
-    def __init__(
-        self, *, _internal_dag_node: Optional[Union[ClassNode, FunctionNode]] = None
+    def __init__(self, bound_deployment: "Deployment"):
+        self._bound_deployment = bound_deployment
+
+    def _get_deployment_name(
+        self, app: "Application", deployment_names: Dict["Application", str]
     ):
-        if _internal_dag_node is None:
-            raise RuntimeError("This class should not be constructed directly.")
+        if app in deployment_names:
+            return deployment_names[app]
 
-        self._internal_dag_node = _internal_dag_node
+        name = app._bound_deployment.name
+        idx = 1
+        while name in deployment_names.values():
+            name = f"{app._bound_deployment.name}_{idx}"
+            idx += 1
 
-    def _get_internal_dag_node(self) -> Union[ClassNode, FunctionNode]:
-        if self._internal_dag_node is None:
-            raise RuntimeError("Application object should not be constructed directly.")
+        return name
 
-        return self._internal_dag_node
+    def _inject_handles_recursive(
+        self,
+        *,
+        app_name: str,
+        handles: Dict["Application", DeploymentHandle],
+        deployment_names: Dict["Application", str],
+    ) -> List["Deployment"]:
+        deployments = []
+        scanner = _PyObjScanner(source_type=Application)
+        try:
+            apps = scanner.find_nodes(
+                (self._bound_deployment.init_args, self._bound_deployment.init_kwargs)
+            )
+            for app in apps:
+                if app not in handles:
+                    deployment_names[app] = self._get_deployment_name(
+                        app, deployment_names
+                    )
+                    handles[app] = DeploymentHandle(
+                        deployment_names[app],
+                        app_name="default",
+                        handle_options=_HandleOptions(
+                            _source=DeploymentHandleSource.REPLICA
+                        ),
+                    )
 
-    @classmethod
-    def _from_internal_dag_node(cls, dag_node: Union[ClassNode, FunctionNode]):
-        return cls(_internal_dag_node=dag_node)
+                deployments.extend(
+                    app._inject_handles_recursive(
+                        app_name=app_name,
+                        handles=handles,
+                        deployment_names=deployment_names,
+                    )
+                )
 
-    # Proxy all method calls to the underlying DAG node. This allows this class to be
-    # passed in place of the ClassNode or FunctionNode in the DAG building code.
-    def __getattr__(self, name: str) -> Any:
-        return getattr(self._get_internal_dag_node(), name)
+            new_init_args, new_init_kwargs = scanner.replace_nodes(handles)
+            # TODO: update name if necessary.
+            deployment_names[self] = self._get_deployment_name(self, deployment_names)
+            deployments.append(
+                self._bound_deployment.options(
+                    name=deployment_names[self],
+                    _init_args=new_init_args,
+                    _init_kwargs=new_init_kwargs,
+                )
+            )
+            return deployments
+        finally:
+            scanner.clear()
+
+    def _build(self, *, app_name: str = "default") -> Tuple[str, List["Deployment"]]:
+        deployments = self._inject_handles_recursive(
+            app_name=app_name,
+            handles={},
+            deployment_names={},
+        )
+        return self._bound_deployment.name, deployments
+
+    def __hash__(self):
+        return id(self)  # sketchy?
 
 
 @PublicAPI(stability="stable")
@@ -223,32 +276,7 @@ class Deployment:
         The returned Application can be deployed using `serve.run` (or via
         config file) or bound to another deployment for composition.
         """
-
-        schema_shell = deployment_to_schema(self)
-        if inspect.isfunction(self.func_or_class):
-            dag_node = FunctionNode(
-                self.func_or_class,
-                args,  # Used to bind and resolve DAG only, can take user input
-                kwargs,  # Used to bind and resolve DAG only, can take user input
-                self._replica_config.ray_actor_options or dict(),
-                other_args_to_resolve={
-                    "deployment_schema": schema_shell,
-                    "is_from_serve_deployment": True,
-                },
-            )
-        else:
-            dag_node = ClassNode(
-                self.func_or_class,
-                args,
-                kwargs,
-                cls_options=self._replica_config.ray_actor_options or dict(),
-                other_args_to_resolve={
-                    "deployment_schema": schema_shell,
-                    "is_from_serve_deployment": True,
-                },
-            )
-
-        return Application._from_internal_dag_node(dag_node)
+        return Application(self.options(_init_args=args, _init_kwargs=kwargs))
 
     def options(
         self,

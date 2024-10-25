@@ -17,7 +17,6 @@ from ray.serve._private.config import (
     handle_num_replicas_auto,
 )
 from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME, SERVE_LOGGER_NAME
-from ray.serve._private.deployment_graph_build import build as pipeline_build
 from ray.serve._private.http_util import (
     ASGIAppReplicaWrapper,
     make_fastapi_class_based_view,
@@ -449,8 +448,7 @@ def _run(
     ServeUsageTag.API_VERSION.record("v2")
 
     if isinstance(target, Application):
-        deployments = pipeline_build(target._get_internal_dag_node(), name)
-        ingress_deployment_name = deployments[-1].name
+        ingress_deployment_name, deployments = target._build(app_name=name)
     else:
         msg = "`serve.run` expects an `Application` returned by `Deployment.bind()`."
         if isinstance(target, DAGNode):
