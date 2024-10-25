@@ -29,10 +29,27 @@ def test_path_validation(serve_instance):
 
 
 def test_routes_healthz(serve_instance):
+    # Should return 503 until there are any routes populated.
+    resp = requests.get("http://localhost:8000/-/healthz")
+    assert resp.status_code == 503
+    assert resp.text == "Route table is not populated yet."
+
+    @serve.deployment
+    class D1:
+        def __call__(self, *args):
+            return "hi"
+
+    # D1 not exposed over HTTP so should still return 503.
+    serve.run(D1.bind(), route_prefix=None)
+    resp = requests.get("http://localhost:8000/-/healthz")
+    assert resp.status_code == 503
+    assert resp.text == "Route table is not populated yet."
+
+    # D1 not exposed over HTTP so should still return 503.
+    serve.run(D1.bind(), route_prefix="/")
     resp = requests.get("http://localhost:8000/-/healthz")
     assert resp.status_code == 200
-    assert resp.content == b"success"
-
+    assert resp.text == "success"
 
 def test_routes_endpoint(serve_instance):
     @serve.deployment
