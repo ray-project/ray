@@ -98,7 +98,7 @@ def _neuron_compile_extracted_graphs():
         logger.info("Compiling extracted graphs on local rank0 worker")
 
         parallel_compile_workdir = (
-            f"/tmp/{os.environ.get('USER','no-user')}/parallel_compile_workdir/"
+            f"/tmp/{os.environ.get('USER', 'no-user')}/parallel_compile_workdir/"
         )
         if os.path.exists(parallel_compile_workdir):
             shutil.rmtree(parallel_compile_workdir)
