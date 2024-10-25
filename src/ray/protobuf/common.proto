@@ -595,7 +595,7 @@ message TaskInfoEntry {
   //       this task is dependent on and does NOT contain
   //        - Args passed by value (inlined)
   //        - ObjectRefs of the args passed by value
-  repeated ObjectReference dependent_args_refs = 27;
+  repeated bytes args_object_ids = 27;
 }
 
 message Bundle {
