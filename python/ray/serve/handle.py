@@ -823,6 +823,18 @@ class DeploymentHandle(_DeploymentHandleBase):
                 "This argument will be removed in a future version."
             )
 
+        if _prefer_local_routing is not DEFAULT.VALUE:
+            warnings.warn(
+                "Modifying `_prefer_local_routing` with `options()` is "
+                "deprecated. Please use `init()` instead."
+            )
+
+        if _source is not DEFAULT.VALUE:
+            warnings.warn(
+                "Modifying `_source` with `options()` is "
+                "deprecated. Please use `init()` instead."
+            )
+
         return self._options(
             method_name=method_name,
             multiplexed_model_id=multiplexed_model_id,

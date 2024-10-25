@@ -204,6 +204,16 @@ class MockDeploymentHandle:
         self._app_name = app_name
         self._protocol = RequestProtocol.UNDEFINED
         self._running_replicas_populated = False
+        self._initialized = False
+
+    def is_initialized(self):
+        return self._initialized
+
+    def init(self):
+        if self._initialized:
+            raise RuntimeError("already initialized")
+
+        self._initialized = True
 
     def options(self, *args, **kwargs):
         return self
