@@ -2,7 +2,7 @@ import logging
 import random
 import time
 from functools import wraps
-from typing import Callable, Dict, Iterable, List, Optional, Tuple, Union
+from typing import Callable, Dict, List, Optional, Tuple, Union
 
 import ray
 from ray.actor import ActorHandle
