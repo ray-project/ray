@@ -815,7 +815,8 @@ std::string GcsServer::GetDebugState() const {
          << gcs_placement_group_manager_->DebugString() << "\n\n"
          << gcs_publisher_->DebugString() << "\n\n"
          << runtime_env_manager_->DebugString() << "\n\n"
-         << gcs_task_manager_->DebugString() << "\n\n";
+         << gcs_task_manager_->DebugString() << "\n\n"
+         << gcs_autoscaler_state_manager_->DebugString() << "\n\n";
   return stream.str();
 }
 

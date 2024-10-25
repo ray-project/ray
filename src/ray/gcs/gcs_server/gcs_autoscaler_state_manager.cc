@@ -415,5 +415,29 @@ void GcsAutoscalerStateManager::HandleDrainNode(
       });
 }
 
+std::string GcsAutoscalerStateManager::DebugString() const {
+  std::ostringstream stream;
+  stream << "GcsAutoscalerStateManager: "
+         << "\n- last_seen_autoscaler_state_version_: "
+         << last_seen_autoscaler_state_version_
+         << "\n- last_cluster_resource_state_version_: "
+         << last_cluster_resource_state_version_ << "\n- pending demands:\n";
+
+  auto aggregate_load = GetAggregatedResourceLoad();
+  for (const auto &[shape, demand] : aggregate_load) {
+    auto num_pending = demand.num_infeasible_requests_queued() + demand.backlog_size() +
+                       demand.num_ready_requests_queued();
+
+    stream << "\t{";
+    if (num_pending > 0) {
+      for (const auto &[resource, quantity] : shape) {
+        stream << resource << ": " << quantity << ", ";
+      }
+    }
+    stream << "} * " << num_pending << "\n";
+  }
+  return stream.str();
+}
+
 }  // namespace gcs
 }  // namespace ray

@@ -1254,6 +1254,16 @@ void LocalTaskManager::DebugStr(std::stringstream &buffer) const {
            << "\n";
   }
   buffer << "}\n";
+  buffer << "Backlog Size per scheduling descriptor :{workerId: num backlogs}:\n";
+  for (const auto &[sched_cls, worker_to_backlog_size] : backlog_tracker_) {
+    const auto &descriptor = TaskSpecification::GetSchedulingClassDescriptor(sched_cls);
+    buffer << "\t" << descriptor.ResourceSetStr() << ": {\n";
+    for (const auto &[worker_id, backlog_size] : worker_to_backlog_size) {
+      buffer << "\t\t" << worker_id << ": " << backlog_size << "\n";
+    }
+    buffer << "\t}\n";
+  }
+  buffer << "\n";
   buffer << "Running tasks by scheduling class:\n";
 
   for (const auto &pair : info_by_sched_cls_) {

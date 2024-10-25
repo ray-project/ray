@@ -108,6 +108,16 @@ struct SchedulingClassDescriptor {
     buffer << "}}";
     return buffer.str();
   }
+
+  std::string ResourceSetStr() const {
+    std::stringstream buffer;
+    buffer << "{";
+    for (const auto &pair : resource_set.GetResourceMap()) {
+      buffer << pair.first << " : " << pair.second << ", ";
+    }
+    buffer << "}";
+    return buffer.str();
+  }
 };
 }  // namespace ray
 
