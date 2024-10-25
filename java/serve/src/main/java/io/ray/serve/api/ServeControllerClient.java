@@ -163,10 +163,16 @@ public class ServeControllerClient {
    * @param name application name.
    * @param routePrefix route prefix for the application.
    * @param deployments deployment list.
-   * @param ingressDeploymentName name of the ingress deployment (the one that is exposed over HTTP).
+   * @param ingressDeploymentName name of the ingress deployment (the one that is exposed over
+   *     HTTP).
    * @param blocking Wait for the applications to be deployed or not.
    */
-  public void deployApplication(String name, String routePrefix, List<Deployment> deployments, String ingressDeploymentName, boolean blocking) {
+  public void deployApplication(
+      String name,
+      String routePrefix,
+      List<Deployment> deployments,
+      String ingressDeploymentName,
+      boolean blocking) {
 
     Object[] deploymentArgsArray = new Object[deployments.size()];
 

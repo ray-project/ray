@@ -10,7 +10,6 @@ import io.ray.serve.dag.DAGNode;
 import io.ray.serve.handle.DeploymentHandle;
 import java.util.HashMap;
 import java.util.Map;
-import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -37,10 +36,7 @@ public class Deployment {
   // TODO support placement group.
 
   public Deployment(
-      String name,
-      DeploymentConfig deploymentConfig,
-      ReplicaConfig replicaConfig,
-      String version) {
+      String name, DeploymentConfig deploymentConfig, ReplicaConfig replicaConfig, String version) {
 
     Preconditions.checkArgument(
         version != null || deploymentConfig.getAutoscalingConfig() == null,
