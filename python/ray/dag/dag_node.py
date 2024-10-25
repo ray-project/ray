@@ -63,11 +63,13 @@ class DAGNode(DAGNodeBase):
 
         # The list of nodes that use this DAG node as an argument.
         self._downstream_nodes: List["DAGNode"] = []
-        # The list of nodes that this DAG node uses as an argument.
-        self._upstream_nodes: List["DAGNode"] = self._collect_upstream_nodes()
 
         # UUID that is not changed over copies of this node.
         self._stable_uuid = uuid.uuid4().hex
+
+        # The list of nodes that this DAG node uses as an argument.
+        self._upstream_nodes: List["DAGNode"] = self._collect_upstream_nodes()
+
         # Cached values from last call to execute()
         self.cache_from_last_execute = {}
 
