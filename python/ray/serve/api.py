@@ -421,7 +421,7 @@ def _run(
     target: Application,
     _blocking: bool = True,
     name: str = SERVE_DEFAULT_APP_NAME,
-    route_prefix: str = DEFAULT.VALUE,
+    route_prefix: Optional[str] = "/",
     logging_config: Optional[Union[Dict, LoggingConfig]] = None,
 ) -> DeploymentHandle:
     """Run an application and return a handle to its ingress deployment.
@@ -431,10 +431,6 @@ def _run(
     """
     if len(name) == 0:
         raise RayServeException("Application name must a non-empty string.")
-
-    # XXX: just make it "/" and/or support optional[str]
-    if route_prefix is DEFAULT.VALUE:
-        route_prefix = "/"
 
     client = _private_api.serve_start(
         http_options={"location": "EveryNode"},
@@ -490,7 +486,7 @@ def run(
     target: Application,
     blocking: bool = False,
     name: str = SERVE_DEFAULT_APP_NAME,
-    route_prefix: Optional[str] = DEFAULT.VALUE,
+    route_prefix: Optional[str] = "/",
     logging_config: Optional[Union[Dict, LoggingConfig]] = None,
 ) -> DeploymentHandle:
     """Run an application and return a handle to its ingress deployment.

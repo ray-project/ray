@@ -740,6 +740,11 @@ class ServeController:
                     "replica_config_proto_bytes": deployment_args.replica_config,
                     "deployer_job_id": deployment_args.deployer_job_id,
                     "ingress": deployment_args.ingress,
+                    "route_prefix": (
+                        deployment_args.route_prefix
+                        if deployment_args.HasField("route_prefix")
+                        else None
+                    ),
                     "docs_path": (
                         deployment_args.docs_path
                         if deployment_args.HasField("docs_path")
