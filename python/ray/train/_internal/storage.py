@@ -21,6 +21,12 @@ except (ImportError, ModuleNotFoundError) as e:
     ) from e
 # isort: on
 
+try:
+    # check if Arrow has S3 support
+    from pyarrow.fs import S3FileSystem
+except ImportError:
+    S3FileSystem = None
+
 import fnmatch
 import logging
 import os
@@ -98,8 +104,7 @@ class _ExcludingLocalFilesystem(LocalFileSystem):
 def _pyarrow_fs_copy_files(
     source, destination, source_filesystem=None, destination_filesystem=None, **kwargs
 ):
-    # Use type_name as some implementation of PyArrow do not have S3/GCP/Azure support
-    if destination_filesystem.type_name.lower() == "s3":
+    if S3FileSystem and isinstance(destination_filesystem, pyarrow.fs.S3FileSystem):
         # Workaround multi-threading issue with pyarrow. Note that use_threads=True
         # is safe for download, just not for uploads, see:
         # https://github.com/apache/arrow/issues/32372
