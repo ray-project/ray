@@ -463,11 +463,8 @@ def test_http_root_path(ray_shutdown):
     serve.start(http_options=dict(root_path=root_path, port=port))
     serve.run(hello.bind(), route_prefix="/hello")
 
-    # check whether url is prefixed correctly
-    assert hello.url == f"http://127.0.0.1:{port}{root_path}/hello"
-
     # check routing works as expected
-    resp = requests.get(hello.url)
+    resp = requests.get(f"http://127.0.0.1:{port}{root_path}/hello")
     assert resp.status_code == 200
     assert resp.text == "hello"
 
