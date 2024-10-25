@@ -8,11 +8,20 @@ Starting from KubeRay v1.2.2, we have introduced a `kubectl ray` plugin to simpl
 
 Please follow the instructions in the [KubeRay Kubectl Plugin](https://github.com/ray-project/kuberay/tree/master/kubectl-plugin) to install the plugin.
 
-Currently, the recommended way to install the plugin is to download the binary from the [release page](https://github.com/ray-project/kuberay/releases) and add it to your PATH.
+### Install using Krew kubectl plugin manager (Recommended)
 
-For example, to install plugin version 1.2.2 on Linux amd64:
+1. Install [Krew](https://krew.sigs.k8s.io/docs/user-guide/setup/install/).
+2. Download the plugin list by running `kubectl krew update`.
+3. Install the plugin by running `kubectl krew install ray`.
+4. Run `kubectl ray --help` to verify the installation.
 
-```shell
+### Download from GitHub releases
+
+Go to the [releases page](https://github.com/ray-project/kuberay/releases) and download the binary for your platform.
+
+For example, to install kubectl plugin version 1.2.2 on Linux amd64:
+
+```bash
 curl -LO https://github.com/ray-project/kuberay/releases/download/v1.2.2/kubectl-ray_v1.2.2_linux_amd64.tar.gz
 tar -xvf kubectl-ray_v1.2.2_linux_amd64.tar.gz
 cp kubectl-ray ~/.local/bin
