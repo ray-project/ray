@@ -2667,7 +2667,9 @@ class Dataset:
                 f"named '{Count.COLUMN_NAME}'"
             )
             count += batch[Count.COLUMN_NAME].sum()
-        return count
+        # Explicitly cast to int to avoid returning `np.int64`, which is the result
+        # from calculating `sum()` from numpy batches.
+        return int(count)
 
     @ConsumptionAPI(
         if_more_than_read=True,
