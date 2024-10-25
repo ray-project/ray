@@ -188,8 +188,8 @@ def test_single_worker_failure(ray_start_4_cpus):
 
 @pytest.mark.parametrize("num_gpus_per_worker", [0.5, 1, 2])
 def test_tune_torch_get_device_gpu(num_gpus_per_worker):
-    """Tests if GPU ids are set correctly when running train concurrently in nested actors
-    (for example when used with Tune).
+    """Tests if GPU ids are set correctly when running train concurrently in nested
+    actors (for example when used with Tune).
     """
     from ray.train import ScalingConfig
 
