@@ -598,6 +598,5 @@ def validate_route_prefix(route_prefix: Union[DEFAULT, None, str]):
 
     if "{" in route_prefix or "}" in route_prefix:
         raise ValueError(
-            f"Invalid route_prefix '{route_prefix}', "
-            "may not contain wildcards."
+            f"Invalid route_prefix '{route_prefix}', " "may not contain wildcards."
         )
