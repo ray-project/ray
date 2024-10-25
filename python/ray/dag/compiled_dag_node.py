@@ -1805,9 +1805,9 @@ class CompiledDAG:
             execution_index: The execution index corresponding to the result.
             result: The results from all channels to be cached.
         """
-        assert not self._has_execution_results(execution_index)
-        for chan_idx, res in enumerate(result):
-            self._result_buffer[execution_index][chan_idx] = res
+        if not self._has_execution_results(execution_index):
+            for chan_idx, res in enumerate(result):
+                self._result_buffer[execution_index][chan_idx] = res
 
     def _get_execution_results(
         self, execution_index: int, channel_index: Optional[int]
@@ -2026,6 +2026,135 @@ class CompiledDAG:
 
         self._execution_index += 1
         return fut
+
+    def visualize(
+        self, filename="compiled_graph", format="png", view=False, return_dot=False
+    ):
+        """
+        Visualize the compiled graph using Graphviz.
+
+        This method generates a graphical representation of the compiled graph,
+        showing tasks and their dependencies.This method should be called
+        **after** the graph has been compiled using `experimental_compile()`.
+
+        Args:
+            filename: The name of the output file (without extension).
+            format: The format of the output file (e.g., 'png', 'pdf').
+            view: Whether to open the file with the default viewer.
+            return_dot: If True, returns the DOT source as a string instead of figure.
+
+        Raises:
+            ValueError: If the graph is empty or not properly compiled.
+            ImportError: If the `graphviz` package is not installed.
+
+        """
+        import graphviz
+        from ray.dag import (
+            InputAttributeNode,
+            InputNode,
+            MultiOutputNode,
+            ClassMethodNode,
+            DAGNode,
+        )
+
+        # Check that the DAG has been compiled
+        if not hasattr(self, "idx_to_task") or not self.idx_to_task:
+            raise ValueError(
+                "The DAG must be compiled before calling 'visualize()'. "
+                "Please call 'experimental_compile()' first."
+            )
+
+        # Check that each CompiledTask has a valid dag_node
+        for idx, task in self.idx_to_task.items():
+            if not hasattr(task, "dag_node") or not isinstance(task.dag_node, DAGNode):
+                raise ValueError(
+                    f"Task at index {idx} does not have a valid 'dag_node'. "
+                    "Ensure that 'experimental_compile()' completed successfully."
+                )
+
+        # Dot file for debuging
+        dot = graphviz.Digraph(name="compiled_graph", format=format)
+
+        # Add nodes with task information
+        for idx, task in self.idx_to_task.items():
+            dag_node = task.dag_node
+
+            # Initialize the label and attributes
+            label = f"Task {idx}\n"
+            shape = "oval"  # Default shape
+            style = "filled"
+            fillcolor = ""
+
+            # Handle different types of dag_node
+            if isinstance(dag_node, InputNode):
+                label += "InputNode"
+                shape = "rectangle"
+                fillcolor = "lightblue"
+            elif isinstance(dag_node, InputAttributeNode):
+                label += f"InputAttributeNode[{dag_node.key}]"
+                shape = "rectangle"
+                fillcolor = "lightblue"
+            elif isinstance(dag_node, MultiOutputNode):
+                label += "MultiOutputNode"
+                shape = "rectangle"
+                fillcolor = "yellow"
+            elif isinstance(dag_node, ClassMethodNode):
+                if dag_node.is_class_method_call:
+                    # Class Method Call Node
+                    method_name = dag_node.get_method_name()
+                    actor_handle = dag_node._get_actor_handle()
+                    if actor_handle:
+                        actor_id = actor_handle._actor_id.hex()
+                        label += f"Actor: {actor_id[:6]}...\nMethod: {method_name}"
+                    else:
+                        label += f"Method: {method_name}"
+                    shape = "oval"
+                    fillcolor = "lightgreen"
+                elif dag_node.is_class_method_output:
+                    # Class Method Output Node
+                    label += f"ClassMethodOutputNode[{dag_node.output_idx}]"
+                    shape = "rectangle"
+                    fillcolor = "orange"
+                else:
+                    # Unexpected ClassMethodNode
+                    label += "ClassMethodNode"
+                    shape = "diamond"
+                    fillcolor = "red"
+            else:
+                # Unexpected node type
+                label += type(dag_node).__name__
+                shape = "diamond"
+                fillcolor = "red"
+
+            # Add the node to the graph with attributes
+            dot.node(str(idx), label, shape=shape, style=style, fillcolor=fillcolor)
+
+        # Add edges with type hints based on argument mappings
+        for idx, task in self.idx_to_task.items():
+            current_task_idx = idx
+
+            for arg_index, arg in enumerate(task.dag_node.get_args()):
+                if isinstance(arg, DAGNode):
+                    # Get the upstream task index
+                    upstream_task_idx = self.dag_node_to_idx[arg]
+
+                    # Get the type hint for this argument
+                    if arg_index < len(task.arg_type_hints):
+                        type_hint = type(task.arg_type_hints[arg_index]).__name__
+                    else:
+                        type_hint = "UnknownType"
+
+                    # Draw an edge from the upstream task to the
+                    # current task with the type hint
+                    dot.edge(
+                        str(upstream_task_idx), str(current_task_idx), label=type_hint
+                    )
+
+        if return_dot:
+            return dot.source
+        else:
+            # Render the graph to a file
+            dot.render(filename, view=view)
 
     def teardown(self):
         """Teardown and cancel all actor tasks for this DAG. After this
