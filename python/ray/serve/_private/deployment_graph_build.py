@@ -6,7 +6,6 @@ from ray.dag import ClassNode, DAGNode
 from ray.dag.function_node import FunctionNode
 from ray.dag.utils import _DAGNodeNameGenerator
 from ray.experimental.gradio_utils import type_to_string
-from ray.serve._private.common import DeploymentHandleSource
 from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME
 from ray.serve._private.deployment_function_node import DeploymentFunctionNode
 from ray.serve._private.deployment_node import DeploymentNode

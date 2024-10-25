@@ -418,8 +418,6 @@ class ServeControllerClient:
         Returns:
             DeploymentHandle
         """
-        from ray.serve.context import _get_internal_replica_context
-
         deployment_id = DeploymentID(name=deployment_name, app_name=app_name)
         cache_key = (deployment_name, app_name, check_exists)
         if cache_key in self.handle_cache:
