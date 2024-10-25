@@ -170,7 +170,7 @@ def test_new_router_on_gcs_failure(serve_ha, use_proxy: bool):
     h._recorded_telemetry = True
     # Eagerly create router so it receives the replica set instead of
     # waiting for the first request
-    h.init()
+    h._init()
 
     if use_proxy:
         proxy_handles = ray.get(client._controller.get_proxies.remote())

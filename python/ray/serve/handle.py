@@ -4,6 +4,7 @@ import logging
 import threading
 import time
 import warnings
+from abc import ABC, abstractmethod
 from dataclasses import dataclass, fields
 from typing import Any, AsyncIterator, Dict, Iterator, Optional, Tuple, Union
 
@@ -96,7 +97,7 @@ class _InitHandleOptions(_InitHandleOptionsBase):
 
 
 @dataclass(frozen=True)
-class _DynamicHandleOptionsBase:
+class _DynamicHandleOptionsBase(ABC):
     """Dynamic options for each ServeHandle instance.
 
     These fields can be changed by calling `.options()` on a handle.
@@ -108,12 +109,6 @@ class _DynamicHandleOptionsBase:
     _request_protocol: str = RequestProtocol.UNDEFINED
 
     def copy_and_update(self, **kwargs) -> "_DynamicHandleOptionsBase":
-        pass
-
-
-@dataclass(frozen=True)
-class _DynamicHandleOptions(_DynamicHandleOptionsBase):
-    def copy_and_update(self, **kwargs) -> "_DynamicHandleOptionsBase":
         new_kwargs = {}
 
         for f in fields(self):
@@ -123,6 +118,11 @@ class _DynamicHandleOptions(_DynamicHandleOptionsBase):
                 new_kwargs[f.name] = kwargs[f.name]
 
         return _DynamicHandleOptions(**new_kwargs)
+
+
+@dataclass(frozen=True)
+class _DynamicHandleOptions(_DynamicHandleOptionsBase):
+    pass
 
 
 class _DeploymentHandleBase:
@@ -245,15 +245,27 @@ class _DeploymentHandleBase:
         return self._router is not None
 
     def _init(self, **kwargs):
+        """Initialize this handle with arguments.
+
+        A handle can only be initialized once. A handle is implicitly
+        initialized when `.options()` or `.remote()` is called. Therefore
+        to initialize a handle with custom init options, you must do it
+        before calling `.options()` or `.remote()`.
+        """
         if self._router is not None:
-            raise RuntimeError("Handle has already been initialized.")
+            raise RuntimeError(
+                "Handle has already been initialized. Note that a handle is implicitly "
+                "initialized when you call `.options()` or `.remote()`. You either "
+                "tried to call `._init()` twice or called `._init()` after calling "
+                "`.options()` or `.remote()`. If you want to modify the init options, "
+                "please do so before calling `.options()` or `.remote()`. This handle "
+                f"was initialized with {self.init_options}."
+            )
 
         self.init_options = create_init_handle_options(**kwargs)
         self._get_or_create_router()
 
-    def _options(
-        self, _prefer_local_routing=DEFAULT.VALUE, _source=DEFAULT.VALUE, **kwargs
-    ):
+    def _options(self, _prefer_local_routing=DEFAULT.VALUE, **kwargs):
         if kwargs.get("stream") is True and inside_ray_client_context():
             raise RuntimeError(
                 "Streaming DeploymentHandles are not currently supported when "
@@ -262,10 +274,9 @@ class _DeploymentHandleBase:
 
         new_handle_options = self.handle_options.copy_and_update(**kwargs)
 
-        # TODO(zcin): remove when _prefer_local_routing and _source are removed
-        # from options() path
-        if _prefer_local_routing != DEFAULT.VALUE or _source != DEFAULT.VALUE:
-            self._init(_prefer_local_routing=_prefer_local_routing, _source=_source)
+        # TODO(zcin): remove when _prefer_local_routing is removed from options() path
+        if _prefer_local_routing != DEFAULT.VALUE:
+            self._init(_prefer_local_routing=_prefer_local_routing)
 
         if not self.is_initialized:
             self._init()
@@ -774,30 +785,6 @@ class DeploymentHandle(_DeploymentHandleBase):
         assert response.result() == "Hello world!"
     """
 
-    def init(
-        self,
-        _prefer_local_routing: Union[bool, DEFAULT] = DEFAULT.VALUE,
-        _source: Union[bool, DEFAULT] = DEFAULT.VALUE,
-    ):
-        """Initialize this handle with arguments.
-
-        A handle can only be initialized once. A handle is implicitly
-        initialized when `.options()` or `.remote()` is called. Therefore
-        to initialize a handle with custom init options, you must do it
-        before calling `.options()` or `.remote()`.
-
-        Example:
-
-        .. code-block:: python
-
-            if not handle.is_initialized:
-                handle.init(_prefer_local_routing=True)
-        """
-        self._init(
-            _prefer_local_routing=_prefer_local_routing,
-            _source=_source,
-        )
-
     def options(
         self,
         *,
@@ -806,7 +793,6 @@ class DeploymentHandle(_DeploymentHandleBase):
         stream: Union[bool, DEFAULT] = DEFAULT.VALUE,
         use_new_handle_api: Union[bool, DEFAULT] = DEFAULT.VALUE,
         _prefer_local_routing: Union[bool, DEFAULT] = DEFAULT.VALUE,
-        _source: Union[bool, DEFAULT] = DEFAULT.VALUE,
     ) -> "DeploymentHandle":
         """Set options for this handle and return an updated copy of it.
 
@@ -831,18 +817,11 @@ class DeploymentHandle(_DeploymentHandleBase):
                 "deprecated. Please use `init()` instead."
             )
 
-        if _source is not DEFAULT.VALUE:
-            warnings.warn(
-                "Modifying `_source` with `options()` is "
-                "deprecated. Please use `init()` instead."
-            )
-
         return self._options(
             method_name=method_name,
             multiplexed_model_id=multiplexed_model_id,
             stream=stream,
             _prefer_local_routing=_prefer_local_routing,
-            _source=_source,
         )
 
     def remote(
