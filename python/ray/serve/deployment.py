@@ -504,6 +504,5 @@ def schema_to_deployment(s: DeploymentSchema) -> Deployment:
         name=s.name,
         deployment_config=deployment_config,
         replica_config=replica_config,
-        route_prefix=s.route_prefix,
         _internal=True,
     )
