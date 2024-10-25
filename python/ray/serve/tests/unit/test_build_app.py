@@ -1,3 +1,4 @@
+import sys
 from typing import List
 from unittest import mock
 
@@ -296,3 +297,7 @@ def test_multi_deployment_same_app_passed_twice():
             ),
         ],
     )
+
+
+if __name__ == "__main__":
+    sys.exit(pytest.main(["-v", "-s", __file__]))
