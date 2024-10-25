@@ -4,7 +4,7 @@ import logging
 import threading
 import time
 import warnings
-from abc import ABC, abstractmethod
+from abc import ABC
 from dataclasses import dataclass, fields
 from typing import Any, AsyncIterator, Dict, Iterator, Optional, Tuple, Union
 
