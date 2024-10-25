@@ -140,7 +140,7 @@ class _DeploymentHandleBase:
         self.handle_options: _DynamicHandleOptionsBase = (
             handle_options or create_dynamic_handle_options()
         )
-        self.init_options: _InitHandleOptionsBase = None
+        self.init_options: Optional[_InitHandleOptionsBase] = None
 
         self.handle_id = get_random_string()
         self.request_counter = _request_counter or self._create_request_counter(
