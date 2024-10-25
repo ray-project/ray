@@ -454,10 +454,7 @@ class Deployment:
         )
 
     def __str__(self):
-        return (
-            f"Deployment(name={self._name},"
-            f"version={self._version},"
-        )
+        return f"Deployment(name={self._name}," f"version={self._version},"
 
     def __repr__(self):
         return str(self)

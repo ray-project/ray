@@ -20,7 +20,7 @@ from ray.serve._private.constants import (
 from ray.serve._private.controller import ServeController
 from ray.serve.config import HTTPOptions, gRPCOptions
 from ray.serve.context import _get_global_client, _set_global_client
-from ray.serve.deployment import Application, Deployment
+from ray.serve.deployment import Application
 from ray.serve.exceptions import RayServeException
 from ray.serve.schema import LoggingConfig
 

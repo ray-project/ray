@@ -18,9 +18,6 @@ from ray.serve._private.config import (
 )
 from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME, SERVE_LOGGER_NAME
 from ray.serve._private.deployment_graph_build import build as pipeline_build
-from ray.serve._private.deployment_graph_build import (
-    get_and_validate_ingress_deployment,
-)
 from ray.serve._private.http_util import (
     ASGIAppReplicaWrapper,
     make_fastapi_class_based_view,
@@ -246,7 +243,6 @@ def deployment(
     name: Default[str] = DEFAULT.VALUE,
     version: Default[str] = DEFAULT.VALUE,
     num_replicas: Default[Optional[Union[int, str]]] = DEFAULT.VALUE,
-    route_prefix: Default[Union[str, None]] = DEFAULT.VALUE,
     ray_actor_options: Default[Dict] = DEFAULT.VALUE,
     placement_group_bundles: Default[List[Dict[str, float]]] = DEFAULT.VALUE,
     placement_group_strategy: Default[str] = DEFAULT.VALUE,
@@ -282,8 +278,6 @@ def deployment(
             this deployment. Defaults to 1.
         autoscaling_config: Parameters to configure autoscaling behavior. If this
             is set, `num_replicas` cannot be set.
-        route_prefix: [DEPRECATED] Route prefix should be set per-application
-            through `serve.run()` or the config file.
         ray_actor_options: Options to pass to the Ray Actor decorator, such as
             resource requirements. Valid options are: `accelerator_type`, `memory`,
             `num_cpus`, `num_gpus`, `resources`, and `runtime_env`.
@@ -367,13 +361,6 @@ def deployment(
             "Explicitly specifying version will raise an error in the future!"
         )
 
-    if route_prefix is not DEFAULT.VALUE:
-        logger.warning(
-            "DeprecationWarning: `route_prefix` in `@serve.deployment` has been "
-            "deprecated. To specify a route prefix for an application, pass it into "
-            "`serve.run` instead."
-        )
-
     if isinstance(logging_config, LoggingConfig):
         logging_config = logging_config.dict()
 
@@ -421,7 +408,6 @@ def deployment(
             deployment_config,
             replica_config,
             version=(version if version is not DEFAULT.VALUE else None),
-            route_prefix=route_prefix,
             _internal=True,
         )
 
@@ -446,6 +432,10 @@ def _run(
     if len(name) == 0:
         raise RayServeException("Application name must a non-empty string.")
 
+    # XXX: just make it "/" and/or support optional[str]
+    if route_prefix is DEFAULT.VALUE:
+        route_prefix = "/"
+
     client = _private_api.serve_start(
         http_options={"location": "EveryNode"},
     )
@@ -455,7 +445,7 @@ def _run(
 
     if isinstance(target, Application):
         deployments = pipeline_build(target._get_internal_dag_node(), name)
-        ingress = get_and_validate_ingress_deployment(deployments)
+        ingress_deployment_name = deployments[-1].name
     else:
         msg = "`serve.run` expects an `Application` returned by `Deployment.bind()`."
         if isinstance(target, DAGNode):
@@ -466,44 +456,34 @@ def _run(
         raise TypeError(msg)
 
     parameter_group = []
-
     for deployment in deployments:
-        # Overwrite route prefix
-        if route_prefix is not DEFAULT.VALUE and deployment._route_prefix is not None:
-            if route_prefix is not None and not route_prefix.startswith("/"):
-                raise ValueError(
-                    "The route_prefix must start with a forward slash ('/')"
-                )
-
-            deployment._route_prefix = route_prefix
+        is_ingress = deployment._name == ingress_deployment_name
         if deployment.logging_config is None and logging_config:
-            if isinstance(logging_config, dict):
-                logging_config = LoggingConfig(**logging_config)
-            deployment.set_logging_config(logging_config.dict())
+            deployment = deployment.options(logging_config=logging_config)
+
         deployment_parameters = {
             "name": deployment._name,
             "replica_config": deployment._replica_config,
             "deployment_config": deployment._deployment_config,
             "version": deployment._version or get_random_string(),
-            "route_prefix": deployment.route_prefix,
+            "route_prefix": route_prefix if is_ingress else None,
             "url": deployment.url,
             "docs_path": deployment._docs_path,
-            "ingress": deployment._name == ingress._name,
+            "ingress": is_ingress,
         }
         parameter_group.append(deployment_parameters)
+
     client.deploy_application(
         name,
         parameter_group,
         _blocking=_blocking,
     )
 
-    if ingress is not None:
-        # The deployment state is not guaranteed to be created after
-        # deploy_application returns; the application state manager will
-        # need another reconcile iteration to create it.
-        client._wait_for_deployment_created(ingress.name, name)
-        handle = client.get_handle(ingress.name, name, check_exists=False)
-        return handle
+    # The deployment state is not guaranteed to be created after
+    # deploy_application returns; the application state manager will
+    # need another reconcile iteration to create it.
+    client._wait_for_deployment_created(ingress_deployment_name, name)
+    return client.get_handle(ingress_deployment_name, name, check_exists=False)
 
 
 @PublicAPI(stability="stable")
