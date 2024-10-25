@@ -55,7 +55,7 @@ def _build_and_check(
         assert expected_deployment == generated_deployment
 
 
-def test_basic_single_deployment():
+def test_single_deployment_basic():
     @serve.deployment(
         num_replicas=123,
         max_ongoing_requests=10,
@@ -76,7 +76,30 @@ def test_basic_single_deployment():
     )
 
 
-def test_basic_multi_deployment():
+def test_single_deployment_custom_name():
+    @serve.deployment(
+        num_replicas=123,
+        max_ongoing_requests=10,
+        max_queued_requests=10,
+    )
+    class D:
+        pass
+
+    app = D.options(name="foobar123").bind("hello world!", hello="world")
+    _build_and_check(
+        app,
+        expected_ingress_name="foobar123",
+        expected_deployments=[
+            D.options(
+                name="foobar123",
+                _init_args=("hello world!",),
+                _init_kwargs={"hello": "world"},
+            )
+        ],
+    )
+
+
+def test_multi_deployment_basic():
     @serve.deployment(num_replicas=3)
     class Inner:
         pass
@@ -102,6 +125,121 @@ def test_basic_multi_deployment():
                         ),
                     ),
                 ),
+                _init_kwargs={},
+            ),
+        ],
+    )
+
+
+def test_multi_deployment_custom_app_name():
+    @serve.deployment(num_replicas=3)
+    class Inner:
+        pass
+
+    @serve.deployment(num_replicas=1)
+    class Outer:
+        pass
+
+    app = Outer.bind(Inner.bind())
+    _build_and_check(
+        app,
+        app_name="custom",
+        expected_ingress_name="Outer",
+        expected_deployments=[
+            Inner.options(name="Inner", _init_args=tuple(), _init_kwargs={}),
+            Outer.options(
+                name="Outer",
+                _init_args=(
+                    DeploymentHandle(
+                        "Inner",
+                        app_name="custom",
+                        handle_options=_HandleOptions(
+                            _source=DeploymentHandleSource.REPLICA
+                        ),
+                    ),
+                ),
+                _init_kwargs={},
+            ),
+        ],
+    )
+
+
+def test_multi_deployment_name_collision():
+    @serve.deployment
+    class Inner:
+        pass
+
+    @serve.deployment
+    class Outer:
+        pass
+
+    app = Outer.bind(
+        Inner.bind("arg1"),
+        Inner.bind("arg2"),
+    )
+    _build_and_check(
+        app,
+        expected_ingress_name="Outer",
+        expected_deployments=[
+            Inner.options(name="Inner", _init_args=("arg1",), _init_kwargs={}),
+            Inner.options(name="Inner_1", _init_args=("arg2",), _init_kwargs={}),
+            Outer.options(
+                name="Outer",
+                _init_args=(
+                    DeploymentHandle(
+                        "Inner",
+                        app_name="default",
+                        handle_options=_HandleOptions(
+                            _source=DeploymentHandleSource.REPLICA
+                        ),
+                    ),
+                    DeploymentHandle(
+                        "Inner_1",
+                        app_name="default",
+                        handle_options=_HandleOptions(
+                            _source=DeploymentHandleSource.REPLICA
+                        ),
+                    ),
+                ),
+                _init_kwargs={},
+            ),
+        ],
+    )
+
+
+def test_multi_deployment_same_app_passed_twice():
+    @serve.deployment
+    class Shared:
+        pass
+
+    @serve.deployment(num_replicas=3)
+    class Inner:
+        pass
+
+    @serve.deployment(num_replicas=1)
+    class Outer:
+        pass
+
+    shared = Shared.bind()
+    app = Outer.bind(Inner.bind(shared), shared)
+    shared_handle = DeploymentHandle(
+        "Shared",
+        app_name="default",
+        handle_options=_HandleOptions(_source=DeploymentHandleSource.REPLICA),
+    )
+    _build_and_check(
+        app,
+        expected_ingress_name="Outer",
+        expected_deployments=[
+            Shared.options(
+                name="Shared",
+                _init_args=tuple(),
+                _init_kwargs={},
+            ),
+            Inner.options(name="Inner", _init_args=(shared_handle,), _init_kwargs={}),
+            Outer.options(
+                name="Outer",
+                _init_args=(shared_handle,),
                 _init_kwargs={},
             ),
         ],
