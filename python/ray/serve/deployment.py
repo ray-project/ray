@@ -190,6 +190,14 @@ class Deployment:
         return self._replica_config.init_kwargs
 
     @property
+    def url(self) -> Optional[str]:
+        logger.warning(
+            "DeprecationWarning: `Deployment.url` is deprecated "
+            "and will be removed in the future."
+        )
+        return None
+
+    @property
     def logging_config(self) -> Dict:
         return self._deployment_config.logging_config
 
@@ -415,7 +423,7 @@ class Deployment:
         )
 
     def __str__(self):
-        return f"Deployment(name={self._name}," f"version={self._version},"
+        return f"Deployment(name={self._name})"
 
     def __repr__(self):
         return str(self)
