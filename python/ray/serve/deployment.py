@@ -12,7 +12,7 @@ from ray.serve._private.constants import SERVE_LOGGER_NAME
 from ray.serve._private.usage import ServeUsageTag
 from ray.serve._private.utils import DEFAULT, Default
 from ray.serve.config import AutoscalingConfig
-from ray.serve.schema import LoggingConfig
+from ray.serve.schema import DeploymentSchema, LoggingConfig, RayActorOptionsSchema
 from ray.util.annotations import PublicAPI
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
@@ -393,3 +393,117 @@ class Deployment:
 
     def __repr__(self):
         return str(self)
+
+
+def deployment_to_schema(d: Deployment) -> DeploymentSchema:
+    """Converts a live deployment object to a corresponding structured schema.
+
+    Args:
+        d: Deployment object to convert
+    """
+
+    if d.ray_actor_options is not None:
+        ray_actor_options_schema = RayActorOptionsSchema.parse_obj(d.ray_actor_options)
+    else:
+        ray_actor_options_schema = None
+
+    deployment_options = {
+        "name": d.name,
+        "num_replicas": None
+        if d._deployment_config.autoscaling_config
+        else d.num_replicas,
+        "max_ongoing_requests": d.max_ongoing_requests,
+        "max_queued_requests": d.max_queued_requests,
+        "user_config": d.user_config,
+        "autoscaling_config": d._deployment_config.autoscaling_config,
+        "graceful_shutdown_wait_loop_s": d._deployment_config.graceful_shutdown_wait_loop_s,  # noqa: E501
+        "graceful_shutdown_timeout_s": d._deployment_config.graceful_shutdown_timeout_s,
+        "health_check_period_s": d._deployment_config.health_check_period_s,
+        "health_check_timeout_s": d._deployment_config.health_check_timeout_s,
+        "ray_actor_options": ray_actor_options_schema,
+        "placement_group_strategy": d._replica_config.placement_group_strategy,
+        "placement_group_bundles": d._replica_config.placement_group_bundles,
+        "max_replicas_per_node": d._replica_config.max_replicas_per_node,
+        "logging_config": d._deployment_config.logging_config,
+    }
+
+    # Let non-user-configured options be set to defaults. If the schema
+    # is converted back to a deployment, this lets Serve continue tracking
+    # which options were set by the user. Name is a required field in the
+    # schema, so it should be passed in explicitly.
+    for option in list(deployment_options.keys()):
+        if (
+            option != "name"
+            and option not in d._deployment_config.user_configured_option_names
+        ):
+            del deployment_options[option]
+
+    # TODO(Sihan) DeploymentConfig num_replicas and auto_config can be set together
+    # because internally we use these two field for autoscale and deploy.
+    # We can improve the code after we separate the user faced deployment config and
+    # internal deployment config.
+    return DeploymentSchema(**deployment_options)
+
+
+def schema_to_deployment(s: DeploymentSchema) -> Deployment:
+    """Creates a deployment with parameters specified in schema.
+
+    The returned deployment CANNOT be deployed immediately. It's func_or_class
+    value is an empty string (""), which is not a valid import path. The
+    func_or_class value must be overwritten with a valid function or class
+    before the deployment can be deployed.
+    """
+
+    if s.ray_actor_options is DEFAULT.VALUE:
+        ray_actor_options = None
+    else:
+        ray_actor_options = s.ray_actor_options.dict(exclude_unset=True)
+
+    if s.placement_group_bundles is DEFAULT.VALUE:
+        placement_group_bundles = None
+    else:
+        placement_group_bundles = s.placement_group_bundles
+
+    if s.placement_group_strategy is DEFAULT.VALUE:
+        placement_group_strategy = None
+    else:
+        placement_group_strategy = s.placement_group_strategy
+
+    if s.max_replicas_per_node is DEFAULT.VALUE:
+        max_replicas_per_node = None
+    else:
+        max_replicas_per_node = s.max_replicas_per_node
+
+    deployment_config = DeploymentConfig.from_default(
+        num_replicas=s.num_replicas,
+        user_config=s.user_config,
+        max_ongoing_requests=s.max_ongoing_requests,
+        max_queued_requests=s.max_queued_requests,
+        autoscaling_config=s.autoscaling_config,
+        graceful_shutdown_wait_loop_s=s.graceful_shutdown_wait_loop_s,
+        graceful_shutdown_timeout_s=s.graceful_shutdown_timeout_s,
+        health_check_period_s=s.health_check_period_s,
+        health_check_timeout_s=s.health_check_timeout_s,
+        logging_config=s.logging_config,
+    )
+    deployment_config.user_configured_option_names = (
+        s._get_user_configured_option_names()
+    )
+
+    replica_config = ReplicaConfig.create(
+        deployment_def="",
+        init_args=(),
+        init_kwargs={},
+        ray_actor_options=ray_actor_options,
+        placement_group_bundles=placement_group_bundles,
+        placement_group_strategy=placement_group_strategy,
+        max_replicas_per_node=max_replicas_per_node,
+    )
+
+    return Deployment(
+        name=s.name,
+        deployment_config=deployment_config,
+        replica_config=replica_config,
+        route_prefix=s.route_prefix,
+        _internal=True,
+    )

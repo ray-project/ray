@@ -6,8 +6,10 @@ from typing import Dict, List, Optional, Union
 
 import pytest
 
+from ray import serve
 from ray._private.pydantic_compat import ValidationError
 from ray.serve.config import AutoscalingConfig
+from ray.serve.deployment import deployment_to_schema, schema_to_deployment
 from ray.serve.schema import (
     DeploymentSchema,
     LoggingConfig,
@@ -285,6 +287,39 @@ class TestDeploymentSchema:
         deployment_schema["max_queued_requests"] = -100
         with pytest.raises(ValidationError):
             DeploymentSchema.parse_obj(deployment_schema)
+
+    def test_route_prefix(self):
+        # Ensure that route_prefix is validated
+
+        deployment_schema = self.get_minimal_deployment_schema()
+
+        # route_prefix must start with a "/"
+        deployment_schema["route_prefix"] = "hello/world"
+        with pytest.raises(ValueError):
+            DeploymentSchema.parse_obj(deployment_schema)
+
+        # route_prefix must end with a "/"
+        deployment_schema["route_prefix"] = "/hello/world/"
+        with pytest.raises(ValueError):
+            DeploymentSchema.parse_obj(deployment_schema)
+
+        # route_prefix cannot contain wildcards, meaning it can't have
+        # "{" or "}"
+        deployment_schema["route_prefix"] = "/hello/{adjective}/world/"
+        with pytest.raises(ValueError):
+            DeploymentSchema.parse_obj(deployment_schema)
+
+        # Ensure a valid route_prefix works
+        deployment_schema["route_prefix"] = "/hello/wonderful/world"
+        DeploymentSchema.parse_obj(deployment_schema)
+
+        # Ensure route_prefix of "/" works
+        deployment_schema["route_prefix"] = "/"
+        DeploymentSchema.parse_obj(deployment_schema)
+
+        # Ensure route_prefix of None works
+        deployment_schema["route_prefix"] = None
+        DeploymentSchema.parse_obj(deployment_schema)
 
     def test_mutually_exclusive_num_replicas_and_autoscaling_config(self):
         # num_replicas and autoscaling_config cannot be set at the same time
@@ -717,6 +752,62 @@ class TestLoggingConfig:
 # This function is defined globally to be accessible via import path
 def global_f():
     return "Hello world!"
+
+
+def test_deployment_to_schema_to_deployment():
+    @serve.deployment(
+        num_replicas=3,
+        route_prefix="/hello",
+        ray_actor_options={
+            "runtime_env": {
+                "working_dir": TEST_MODULE_PINNED_URI,
+                "py_modules": [TEST_DEPLOY_GROUP_PINNED_URI],
+            }
+        },
+    )
+    def f():
+        # The body of this function doesn't matter. It gets replaced by
+        # global_f() when the import path in f._func_or_class is overwritten.
+        # This function is used as a convenience to apply the @serve.deployment
+        # decorator without converting global_f() into a Deployment object.
+        pass
+
+    deployment = schema_to_deployment(deployment_to_schema(f))
+    deployment = deployment.options(
+        func_or_class="ray.serve.tests.test_schema.global_f"
+    )
+
+    assert deployment.num_replicas == 3
+    assert deployment.route_prefix == "/hello"
+    assert (
+        deployment.ray_actor_options["runtime_env"]["working_dir"]
+        == TEST_MODULE_PINNED_URI
+    )
+    assert deployment.ray_actor_options["runtime_env"]["py_modules"] == [
+        TEST_DEPLOY_GROUP_PINNED_URI,
+        TEST_MODULE_PINNED_URI,
+    ]
+
+
+def test_unset_fields_schema_to_deployment_ray_actor_options():
+    # Ensure unset fields are excluded from ray_actor_options
+
+    @serve.deployment(
+        num_replicas=3,
+        route_prefix="/hello",
+        ray_actor_options={},
+    )
+    def f():
+        pass
+
+    deployment = schema_to_deployment(deployment_to_schema(f))
+    deployment = deployment.options(
+        func_or_class="ray.serve.tests.test_schema.global_f"
+    )
+
+    # Serve will set num_cpus to 1 if it's not set.
+    assert len(deployment.ray_actor_options) == 1
+    assert deployment.ray_actor_options["num_cpus"] == 1
 
 
 def test_serve_instance_details_is_json_serializable():
