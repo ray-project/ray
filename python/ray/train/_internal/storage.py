@@ -19,13 +19,13 @@ except (ImportError, ModuleNotFoundError) as e:
         "pyarrow is a required dependency of Ray Train and Ray Tune. "
         "Please install with: `pip install pyarrow`"
     ) from e
-# isort: on
 
 try:
     # check if Arrow has S3 support
     from pyarrow.fs import S3FileSystem
 except ImportError:
     S3FileSystem = None
+# isort: on
 
 import fnmatch
 import logging
