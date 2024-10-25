@@ -2,11 +2,11 @@ from collections import defaultdict
 from functools import partial
 import logging
 import time
-import tree
 from typing import Collection, DefaultDict, List, Optional, Union
 
 import gymnasium as gym
 from gymnasium.wrappers.vector import DictInfoToList
+from gymnasium.envs.registration import VectorizeMode
 
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
@@ -418,8 +418,15 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
         # Return collected episode data.
         return done_episodes_to_return + ongoing_episodes_to_return
 
-
-    def get_spaces
+    @override(EnvRunner)
+    def get_spaces(self):
+        return {
+            INPUT_ENV_SPACES: (self.env.observation_space, self.env.action_space),
+            DEFAULT_MODULE_ID: (
+                self._env_to_module.observation_space,
+                self.env.single_action_space,
+            ),
+        }
 
     def get_metrics(self) -> ResultDict:
         # Compute per-episode metrics (only on already completed episodes).
@@ -618,7 +625,9 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
                 "rllib-single-agent-env-v0",
                 num_envs=self.config.num_envs_per_env_runner,
                 vectorization_mode=(
-                    "async" if self.config.remote_worker_envs else "sync"
+                    VectorizeMode.ASYNC
+                    if self.config.remote_worker_envs
+                    else VectorizeMode.SYNC
                 ),
             )
         )
@@ -644,8 +653,6 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
 
     def _reset_envs(self, episodes, shared_data, explore):
         # Create n new episodes and make the `on_episode_created` callbacks.
-        # TODO (sven): Add callback `on_episode_created` as soon as
-        # `gymnasium-v1.0.0a2` PR is coming.
         for env_index in range(self.num_envs):
             self._new_episode(env_index, episodes)
 

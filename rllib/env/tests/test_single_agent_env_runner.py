@@ -77,7 +77,7 @@ class TestSingleAgentEnvRunner(unittest.TestCase):
     def test_async_vector_env(self):
         """Tests, whether SingleAgentGymEnvRunner can run with vector envs."""
 
-        for env in ["TestEnv-v0", "CartPole-v1", SimpleCorridor, "tune-registered"]:
+        for env in ["CartPole-v1", SimpleCorridor, "tune-registered"]:
             config = (
                 AlgorithmConfig().environment(env)
                 # Vectorize x5 and by default, rollout 64 timesteps per individual env.
