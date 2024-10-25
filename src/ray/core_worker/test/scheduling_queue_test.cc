@@ -58,6 +58,75 @@ class MockTaskEventBuffer : public worker::TaskEventBuffer {
   std::vector<std::unique_ptr<worker::TaskEvent>> task_events;
 };
 
+TEST(SchedulingQueueTest, TestTaskEvents) {
+  // Test task events are recorded.
+  instrumented_io_context io_service;
+  MockWaiter waiter;
+  MockTaskEventBuffer task_event_buffer;
+  ActorSchedulingQueue queue(io_service,
+                             waiter,
+                             task_event_buffer,
+                             std::make_shared<ConcurrencyGroupManager<BoundedExecutor>>(),
+                             std::make_shared<ConcurrencyGroupManager<FiberState>>(),
+                             /*is_asyncio=*/false,
+                             /*fiber_max_concurrency=*/1,
+                             /*concurrency_groups=*/{});
+  int n_ok = 0;
+  int n_rej = 0;
+  auto fn_ok = [&n_ok](const TaskSpecification &task_spec,
+                       rpc::SendReplyCallback callback) { n_ok++; };
+  auto fn_rej = [&n_rej](const TaskSpecification &task_spec,
+                         const Status &status,
+                         rpc::SendReplyCallback callback) { n_rej++; };
+  JobID job_id = JobID::FromInt(1);
+  TaskID task_id_1 = TaskID::FromRandom(job_id);
+  TaskSpecification task_spec_without_dependency;
+  task_spec_without_dependency.GetMutableMessage().set_job_id(job_id.Binary());
+  task_spec_without_dependency.GetMutableMessage().set_task_id(task_id_1.Binary());
+  task_spec_without_dependency.GetMutableMessage().set_type(TaskType::ACTOR_TASK);
+  task_spec_without_dependency.GetMutableMessage().set_enable_task_events(true);
+
+  queue.Add(0, -1, fn_ok, fn_rej, nullptr, task_spec_without_dependency);
+  ASSERT_EQ(task_event_buffer.task_events.size(), 1UL);
+  rpc::TaskEvents rpc_task_events;
+  task_event_buffer.task_events[0]->ToRpcTaskEvents(&rpc_task_events);
+  ASSERT_TRUE(rpc_task_events.state_updates().state_ts_ns().contains(
+      rpc::TaskStatus::PENDING_ACTOR_TASK_ORDERING_OR_CONCURRENCY));
+  ASSERT_EQ(rpc_task_events.job_id(), job_id.Binary());
+  ASSERT_EQ(rpc_task_events.task_id(), task_id_1.Binary());
+  ASSERT_EQ(rpc_task_events.attempt_number(), 0);
+
+  TaskID task_id_2 = TaskID::FromRandom(job_id);
+  TaskSpecification task_spec_with_dependency;
+  task_spec_with_dependency.GetMutableMessage().set_task_id(task_id_2.Binary());
+  task_spec_with_dependency.GetMutableMessage().set_attempt_number(1);
+  task_spec_with_dependency.GetMutableMessage().set_type(TaskType::ACTOR_TASK);
+  task_spec_with_dependency.GetMutableMessage().set_enable_task_events(true);
+  task_spec_with_dependency.GetMutableMessage()
+      .add_args()
+      ->mutable_object_ref()
+      ->set_object_id(ObjectID::FromRandom().Binary());
+  queue.Add(1, -1, fn_ok, fn_rej, nullptr, task_spec_with_dependency);
+  waiter.Complete(0);
+  ASSERT_EQ(task_event_buffer.task_events.size(), 3UL);
+  task_event_buffer.task_events[1]->ToRpcTaskEvents(&rpc_task_events);
+  ASSERT_TRUE(rpc_task_events.state_updates().state_ts_ns().contains(
+      rpc::TaskStatus::PENDING_ACTOR_TASK_ARGS_FETCH));
+  ASSERT_EQ(rpc_task_events.task_id(), task_id_2.Binary());
+  ASSERT_EQ(rpc_task_events.attempt_number(), 1);
+  task_event_buffer.task_events[2]->ToRpcTaskEvents(&rpc_task_events);
+  ASSERT_TRUE(rpc_task_events.state_updates().state_ts_ns().contains(
+      rpc::TaskStatus::PENDING_ACTOR_TASK_ORDERING_OR_CONCURRENCY));
+  ASSERT_EQ(rpc_task_events.task_id(), task_id_2.Binary());
+  ASSERT_EQ(rpc_task_events.attempt_number(), 1);
+
+  io_service.run();
+  ASSERT_EQ(n_ok, 2);
+  ASSERT_EQ(n_rej, 0);
+
+  queue.Stop();
+}
+
 TEST(SchedulingQueueTest, TestInOrder) {
   instrumented_io_context io_service;
   MockWaiter waiter;
@@ -303,6 +372,76 @@ TEST(SchedulingQueueTest, TestCancelQueuedTask) {
   ASSERT_EQ(n_rej, 1);
 
   queue->Stop();
+}
+
+TEST(OutOfOrderActorSchedulingQueueTest, TestTaskEvents) {
+  // Test task events are recorded.
+  instrumented_io_context io_service;
+  MockWaiter waiter;
+  MockTaskEventBuffer task_event_buffer;
+  OutOfOrderActorSchedulingQueue queue(
+      io_service,
+      waiter,
+      task_event_buffer,
+      std::make_shared<ConcurrencyGroupManager<BoundedExecutor>>(),
+      std::make_shared<ConcurrencyGroupManager<FiberState>>(),
+      /*is_asyncio=*/false,
+      /*fiber_max_concurrency=*/1,
+      /*concurrency_groups=*/{});
+  int n_ok = 0;
+  int n_rej = 0;
+  auto fn_ok = [&n_ok](const TaskSpecification &task_spec,
+                       rpc::SendReplyCallback callback) { n_ok++; };
+  auto fn_rej = [&n_rej](const TaskSpecification &task_spec,
+                         const Status &status,
+                         rpc::SendReplyCallback callback) { n_rej++; };
+  JobID job_id = JobID::FromInt(1);
+  TaskID task_id_1 = TaskID::FromRandom(job_id);
+  TaskSpecification task_spec_without_dependency;
+  task_spec_without_dependency.GetMutableMessage().set_job_id(job_id.Binary());
+  task_spec_without_dependency.GetMutableMessage().set_task_id(task_id_1.Binary());
+  task_spec_without_dependency.GetMutableMessage().set_type(TaskType::ACTOR_TASK);
+  task_spec_without_dependency.GetMutableMessage().set_enable_task_events(true);
+
+  queue.Add(0, -1, fn_ok, fn_rej, nullptr, task_spec_without_dependency);
+  ASSERT_EQ(task_event_buffer.task_events.size(), 1UL);
+  rpc::TaskEvents rpc_task_events;
+  task_event_buffer.task_events[0]->ToRpcTaskEvents(&rpc_task_events);
+  ASSERT_TRUE(rpc_task_events.state_updates().state_ts_ns().contains(
+      rpc::TaskStatus::PENDING_ACTOR_TASK_ORDERING_OR_CONCURRENCY));
+  ASSERT_EQ(rpc_task_events.job_id(), job_id.Binary());
+  ASSERT_EQ(rpc_task_events.task_id(), task_id_1.Binary());
+  ASSERT_EQ(rpc_task_events.attempt_number(), 0);
+
+  TaskID task_id_2 = TaskID::FromRandom(job_id);
+  TaskSpecification task_spec_with_dependency;
+  task_spec_with_dependency.GetMutableMessage().set_task_id(task_id_2.Binary());
+  task_spec_with_dependency.GetMutableMessage().set_attempt_number(1);
+  task_spec_with_dependency.GetMutableMessage().set_type(TaskType::ACTOR_TASK);
+  task_spec_with_dependency.GetMutableMessage().set_enable_task_events(true);
+  task_spec_with_dependency.GetMutableMessage()
+      .add_args()
+      ->mutable_object_ref()
+      ->set_object_id(ObjectID::FromRandom().Binary());
+  queue.Add(1, -1, fn_ok, fn_rej, nullptr, task_spec_with_dependency);
+  waiter.Complete(0);
+  ASSERT_EQ(task_event_buffer.task_events.size(), 3UL);
+  task_event_buffer.task_events[1]->ToRpcTaskEvents(&rpc_task_events);
+  ASSERT_TRUE(rpc_task_events.state_updates().state_ts_ns().contains(
+      rpc::TaskStatus::PENDING_ACTOR_TASK_ARGS_FETCH));
+  ASSERT_EQ(rpc_task_events.task_id(), task_id_2.Binary());
+  ASSERT_EQ(rpc_task_events.attempt_number(), 1);
+  task_event_buffer.task_events[2]->ToRpcTaskEvents(&rpc_task_events);
+  ASSERT_TRUE(rpc_task_events.state_updates().state_ts_ns().contains(
+      rpc::TaskStatus::PENDING_ACTOR_TASK_ORDERING_OR_CONCURRENCY));
+  ASSERT_EQ(rpc_task_events.task_id(), task_id_2.Binary());
+  ASSERT_EQ(rpc_task_events.attempt_number(), 1);
+
+  io_service.run();
+  ASSERT_EQ(n_ok, 2);
+  ASSERT_EQ(n_rej, 0);
+
+  queue.Stop();
 }
 
 TEST(OutOfOrderActorSchedulingQueueTest, TestSameTaskMultipleAttempts) {
