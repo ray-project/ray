@@ -59,11 +59,15 @@ void InlineDependencies(
 
 void LocalDependencyResolver::CancelDependencyResolution(const TaskID &task_id) {
   absl::MutexLock lock(&mu_);
-  pending_tasks_.erase(task_id);
+  absl::erase_if(pending_tasks_, [task_id](const auto &pair) {
+    const auto &[_, task_state] = pair;
+    return task_state->task.TaskId() == task_id;
+  });
 }
 
 void LocalDependencyResolver::ResolveDependencies(
     TaskSpecification &task, std::function<void(Status)> on_dependencies_resolved) {
+  RequestID request_id;
   std::unordered_set<ObjectID> local_dependency_ids;
   std::unordered_set<ActorID> actor_dependency_ids;
   for (size_t i = 0; i < task.NumArgs(); i++) {
@@ -85,12 +89,14 @@ void LocalDependencyResolver::ResolveDependencies(
     return;
   }
 
-  const auto task_id = task.TaskId();
   {
     absl::MutexLock lock(&mu_);
+    request_id = next_request_id_;
+    next_request_id_++;
+
     // This is deleted when the last dependency fetch callback finishes.
     auto inserted = pending_tasks_.emplace(
-        task_id,
+        request_id,
         std::make_unique<TaskState>(
             task, local_dependency_ids, actor_dependency_ids, on_dependencies_resolved));
     RAY_CHECK(inserted.second);
@@ -98,7 +104,7 @@ void LocalDependencyResolver::ResolveDependencies(
 
   for (const auto &obj_id : local_dependency_ids) {
     in_memory_store_.GetAsync(
-        obj_id, [this, task_id, obj_id](std::shared_ptr<RayObject> obj) {
+        obj_id, [this, request_id, obj_id](std::shared_ptr<RayObject> obj) {
           RAY_CHECK(obj != nullptr);
 
           std::unique_ptr<TaskState> resolved_task_state = nullptr;
@@ -107,7 +113,7 @@ void LocalDependencyResolver::ResolveDependencies(
           {
             absl::MutexLock lock(&mu_);
 
-            auto it = pending_tasks_.find(task_id);
+            auto it = pending_tasks_.find(request_id);
             if (it == pending_tasks_.end()) {
               return;
             }
@@ -137,12 +143,12 @@ void LocalDependencyResolver::ResolveDependencies(
 
   for (const auto &actor_id : actor_dependency_ids) {
     actor_creator_.AsyncWaitForActorRegisterFinish(
-        actor_id, [this, task_id, on_dependencies_resolved](const Status &status) {
+        actor_id, [this, request_id, on_dependencies_resolved](const Status &status) {
           std::unique_ptr<TaskState> resolved_task_state = nullptr;
 
           {
             absl::MutexLock lock(&mu_);
-            auto it = pending_tasks_.find(task_id);
+            auto it = pending_tasks_.find(request_id);
             if (it == pending_tasks_.end()) {
               return;
             }

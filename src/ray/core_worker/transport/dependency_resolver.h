@@ -15,6 +15,7 @@
 #pragma once
 
 #include <memory>
+#include <utility>
 
 #include "ray/common/id.h"
 #include "ray/common/task/task_spec.h"
@@ -33,8 +34,7 @@ class LocalDependencyResolver {
                           ActorCreatorInterface &actor_creator)
       : in_memory_store_(store),
         task_finisher_(task_finisher),
-        actor_creator_(actor_creator),
-        num_pending_(0) {}
+        actor_creator_(actor_creator) {}
 
   /// Resolve all local and remote dependencies for the task, calling the specified
   /// callback when done. Direct call ids in the task specification will be resolved
@@ -69,11 +69,10 @@ class LocalDependencyResolver {
               const std::unordered_set<ObjectID> &deps,
               const std::unordered_set<ActorID> &actor_ids,
               std::function<void(Status)> on_dependencies_resolved)
-        : task(t),
-          local_dependencies(),
+        : task(std::move(t)),
           actor_dependencies_remaining(actor_ids.size()),
           status(Status::OK()),
-          on_dependencies_resolved(on_dependencies_resolved) {
+          on_dependencies_resolved(std::move(on_dependencies_resolved)) {
       for (const auto &dep : deps) {
         local_dependencies.emplace(dep, nullptr);
       }
@@ -99,10 +98,14 @@ class LocalDependencyResolver {
   TaskFinisherInterface &task_finisher_;
 
   ActorCreatorInterface &actor_creator_;
-  /// Number of tasks pending dependency resolution.
-  std::atomic<int> num_pending_;
 
-  absl::flat_hash_map<TaskID, std::unique_ptr<TaskState>> pending_tasks_
+  // ID of the dependency resolution request. Used to index pending_tasks_ because a
+  // same TaskID may be requested multiple times and we treat each request independently.
+  using RequestID = size_t;
+
+  RequestID next_request_id_ ABSL_GUARDED_BY(mu_) = 0;
+
+  absl::flat_hash_map<RequestID, std::unique_ptr<TaskState>> pending_tasks_
       ABSL_GUARDED_BY(mu_);
 
   /// Protects against concurrent access to internal state.
