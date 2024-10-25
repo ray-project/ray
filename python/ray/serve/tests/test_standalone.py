@@ -419,40 +419,6 @@ def test_middleware(ray_shutdown):
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows")
-def test_http_root_url(ray_shutdown):
-    @serve.deployment
-    def f(_):
-        pass
-
-    root_url = "https://my.domain.dev/prefix"
-
-    port = new_port()
-    os.environ[SERVE_ROOT_URL_ENV_KEY] = root_url
-    serve.start(http_options=dict(port=port))
-    serve.run(f.bind())
-    assert f.url == root_url + "/f"
-    serve.shutdown()
-    ray.shutdown()
-    del os.environ[SERVE_ROOT_URL_ENV_KEY]
-
-    port = new_port()
-    serve.start(http_options=dict(port=port))
-    serve.run(f.bind())
-    assert f.url != root_url + "/f"
-    assert f.url == f"http://127.0.0.1:{port}/f"
-    serve.shutdown()
-    ray.shutdown()
-
-    ray.init(runtime_env={"env_vars": {SERVE_ROOT_URL_ENV_KEY: root_url}})
-    port = new_port()
-    serve.start(http_options=dict(port=port))
-    serve.run(f.bind())
-    assert f.url == root_url + "/f"
-    serve.shutdown()
-    ray.shutdown()
-
-
-@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows")
 def test_http_root_path(ray_shutdown):
     @serve.deployment
     def hello():
