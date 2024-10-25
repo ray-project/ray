@@ -335,6 +335,11 @@ public class Serve {
       throw new RayServeException("Application name must a non-empty string.");
     }
 
+    if (StringUtils.isNotBlank(routePrefix)) {
+      Preconditions.checkArgument(
+          routePrefix.startsWith("/"), "The route_prefix must start with a forward slash ('/')");
+    }
+
     ServeControllerClient client = serveStart(config);
 
     List<Deployment> deployments = Graph.build(target.getInternalDagNode(), name);
@@ -342,12 +347,6 @@ public class Serve {
 
     for (Deployment deployment : deployments) {
       // Overwrite route prefix
-      if (StringUtils.isNotBlank(deployment.getRoutePrefix())
-          && StringUtils.isNotBlank(routePrefix)) {
-        Preconditions.checkArgument(
-            routePrefix.startsWith("/"), "The route_prefix must start with a forward slash ('/')");
-        deployment.setRoutePrefix(routePrefix);
-      }
       deployment
           .getDeploymentConfig()
           .setVersion(
@@ -356,7 +355,7 @@ public class Serve {
                   : RandomStringUtils.randomAlphabetic(6));
     }
 
-    client.deployApplication(name, deployments, blocking);
+    client.deployApplication(name, routePrefix, deployments, ingressDeployment.getName(), blocking);
 
     return Optional.ofNullable(ingress)
         .map(
