@@ -57,9 +57,9 @@ class InstrumentedIOContextWithThread {
    * @param thread_name The name of the thread.
    */
   explicit InstrumentedIOContextWithThread(const std::string &thread_name)
-      : io_service_(), work_(io_service_), name_(thread_name) {
+      : io_service_(), work_(io_service_), thread_name_(thread_name) {
     io_thread_ = std::thread([this] {
-      SetThreadName(this->name_);
+      SetThreadName(this->thread_name_);
       io_service_.run();
     });
   }
@@ -74,7 +74,7 @@ class InstrumentedIOContextWithThread {
   InstrumentedIOContextWithThread &operator=(InstrumentedIOContextWithThread &&) = delete;
 
   instrumented_io_context &GetIoService() { return io_service_; }
-  const std::string &GetName() const { return name_; }
+  const std::string &GetName() const { return thread_name_; }
 
   // Idempotent. Once it's stopped you can't restart it.
   void Stop() {
@@ -88,10 +88,10 @@ class InstrumentedIOContextWithThread {
   instrumented_io_context io_service_;
   boost::asio::io_service::work work_;  // to keep io_service_ running
   std::thread io_thread_;
-  std::string name_;
+  std::string thread_name_;
 };
 
-/// `IoContextProvider` uses a specified `Policy` to determine whether a type `T`
+/// `IOContextProvider` uses a specified `Policy` to determine whether a type `T`
 /// requires a dedicated `io_context` or should use a shared default `io_context`.
 /// It provides a method to retrieve the appropriate `io_context` for instances of
 /// different classes.
@@ -118,14 +118,14 @@ class InstrumentedIOContextWithThread {
 ///
 /// ## Notes
 ///
-/// - `default_io_context` must outlive the `IoContextProvider` instance.
+/// - `default_io_context` must outlive the `IOContextProvider` instance.
 /// - Eagerly creates dedicated `io_context` instances in ctor.
 /// - NOT thread-safe. Please always access to this class from the same thread.
 /// - There is no way to remove a dedicated `io_context` once created until destruction.
 template <typename Policy>
-class IoContextProvider {
+class IOContextProvider {
  public:
-  explicit IoContextProvider(instrumented_io_context &default_io_context)
+  explicit IOContextProvider(instrumented_io_context &default_io_context)
       : default_io_context_(default_io_context) {
     for (size_t i = 0; i < Policy::kAllDedicatedIoContextNames.size(); i++) {
       const auto &name = Policy::kAllDedicatedIoContextNames[i];
