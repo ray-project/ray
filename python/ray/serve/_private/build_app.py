@@ -42,9 +42,23 @@ def _build_app_recursive(
     app: Application,
     *,
     app_name: str,
-    handles: IDDict[Application, DeploymentHandle],
     deployment_names: IDDict[Application, str],
+    handles: IDDict[Application, DeploymentHandle],
 ) -> List[Deployment]:
+    # This application has already been encountered.
+    # There's no need to recurse into its child args and we don't want to create
+    # a duplicate entry for it in the list of deployments.
+    if app in handles:
+        return []
+
+    # Create the DeploymentHandle that will be used to replace this application
+    # in the arguments of its parent(s).
+    handles[app] = DeploymentHandle(
+        _get_unique_name_memoized(app, deployment_names),
+        app_name=app_name,
+        handle_options=_HandleOptions(_source=DeploymentHandleSource.REPLICA),
+    )
+
     deployments = []
     scanner = _PyObjScanner(source_type=Application)
     try:
@@ -52,15 +66,6 @@ def _build_app_recursive(
             (app._bound_deployment.init_args, app._bound_deployment.init_kwargs)
         )
         for child_app in child_apps:
-            if child_app not in handles:
-                handles[child_app] = DeploymentHandle(
-                    _get_unique_name_memoized(child_app, deployment_names),
-                    app_name=app_name,
-                    handle_options=_HandleOptions(
-                        _source=DeploymentHandleSource.REPLICA
-                    ),
-                )
-
             deployments.extend(
                 _build_app_recursive(
                     child_app,

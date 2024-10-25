@@ -239,7 +239,16 @@ def test_multi_deployment_same_app_passed_twice():
             Inner.options(name="Inner", _init_args=(shared_handle,), _init_kwargs={}),
             Outer.options(
                 name="Outer",
-                _init_args=(shared_handle,),
+                _init_args=(
+                    DeploymentHandle(
+                        "Inner",
+                        app_name="default",
+                        handle_options=_HandleOptions(
+                            _source=DeploymentHandleSource.REPLICA
+                        ),
+                    ),
+                    shared_handle,
+                ),
                 _init_kwargs={},
             ),
         ],
