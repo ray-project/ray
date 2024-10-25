@@ -196,7 +196,7 @@ class _DeploymentHandleBase:
                 _prefer_local_node_routing=self.init_options._prefer_local_routing,
             )
 
-        return self._router, self._router._event_loop
+        return self._router
 
     @staticmethod
     def _gen_handle_tag(app_name: str, deployment_name: str, handle_id: str):
@@ -782,7 +782,9 @@ class DeploymentHandle(_DeploymentHandleBase):
         """Initialize this handle with arguments.
 
         A handle can only be initialized once. A handle is implicitly
-        initialized when `.options()` or `.remote()` is called.
+        initialized when `.options()` or `.remote()` is called. Therefore
+        to initialize a handle with custom init options, you must do it
+        before calling `.options()` or `.remote()`.
 
         Example:
 
