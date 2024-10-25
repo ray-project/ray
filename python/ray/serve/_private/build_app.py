@@ -22,20 +22,29 @@ class IDDict(dict):
         return super().__contains__(id(key))
 
 
-def _get_unique_name_memoized(
-    app: Application, deployment_names: IDDict[Application, str]
-) -> str:
-    if app in deployment_names:
-        return deployment_names[app]
+def build_app(
+    app: Application,
+    *,
+    name: str,
+) -> Tuple[str, List[Deployment]]:
+    """Builds the application into a list of finalized deployments.
 
-    name = app._bound_deployment.name
-    idx = 1
-    while name in deployment_names.values():
-        name = f"{app._bound_deployment.name}_{idx}"
-        idx += 1
+    The following transformations are made:
+        - Application objects in constructor args/kwargs are converted to
+          DeploymentHandles for injection at runtime.
+        - Name conflicts from deployments that use the same class are handled
+          by appending a monotonically increasing suffix (e.g., SomeClass_1).
 
-    deployment_names[app] = name
-    return name
+    Returns:
+        (ingress_deployment_name, deployments)
+    """
+    deployments = _build_app_recursive(
+        app,
+        app_name=name,
+        handles=IDDict(),
+        deployment_names=IDDict(),
+    )
+    return app._bound_deployment.name, deployments
 
 
 def _build_app_recursive(
@@ -88,26 +97,17 @@ def _build_app_recursive(
         scanner.clear()
 
 
-def build_app(
-    app: Application,
-    *,
-    name: str,
-) -> Tuple[str, List[Deployment]]:
-    """Builds the application into a list of finalized deployments.
+def _get_unique_name_memoized(
+    app: Application, deployment_names: IDDict[Application, str]
+) -> str:
+    if app in deployment_names:
+        return deployment_names[app]
 
-    The following transformations are made:
-        - Application objects in constructor args/kwargs are converted to
-          DeploymentHandles for injection at runtime.
-        - Name conflicts from deployments that use the same class are handled
-          by appending a monotonically increasing suffix (e.g., SomeClass_1).
+    name = app._bound_deployment.name
+    idx = 1
+    while name in deployment_names.values():
+        name = f"{app._bound_deployment.name}_{idx}"
+        idx += 1
 
-    Returns:
-        (ingress_deployment_name, deployments)
-    """
-    deployments = _build_app_recursive(
-        app,
-        app_name=name,
-        handles=IDDict(),
-        deployment_names=IDDict(),
-    )
-    return app._bound_deployment.name, deployments
+    deployment_names[app] = name
+    return name

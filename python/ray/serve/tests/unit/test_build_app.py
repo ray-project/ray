@@ -108,12 +108,13 @@ def test_multi_deployment_basic():
     class Outer:
         pass
 
-    app = Outer.bind(Inner.bind())
+    app = Outer.bind(Inner.bind(), other=Inner.options(name="Other").bind())
     _build_and_check(
         app,
         expected_ingress_name="Outer",
         expected_deployments=[
             Inner.options(name="Inner", _init_args=tuple(), _init_kwargs={}),
+            Inner.options(name="Other", _init_args=tuple(), _init_kwargs={}),
             Outer.options(
                 name="Outer",
                 _init_args=(
@@ -124,6 +125,48 @@ def test_multi_deployment_basic():
                             _source=DeploymentHandleSource.REPLICA
                         ),
                     ),
+                ),
+                _init_kwargs={
+                    "other": DeploymentHandle(
+                        "Other",
+                        app_name="default",
+                        handle_options=_HandleOptions(
+                            _source=DeploymentHandleSource.REPLICA
+                        ),
+                    ),
+                },
+            ),
+        ],
+    )
+
+
+def test_multi_deployment_handle_in_nested_obj():
+    @serve.deployment(num_replicas=3)
+    class Inner:
+        pass
+
+    @serve.deployment(num_replicas=1)
+    class Outer:
+        pass
+
+    app = Outer.bind([Inner.bind()])
+    _build_and_check(
+        app,
+        expected_ingress_name="Outer",
+        expected_deployments=[
+            Inner.options(name="Inner", _init_args=tuple(), _init_kwargs={}),
+            Outer.options(
+                name="Outer",
+                _init_args=(
+                    [
+                        DeploymentHandle(
+                            "Inner",
+                            app_name="default",
+                            handle_options=_HandleOptions(
+                                _source=DeploymentHandleSource.REPLICA
+                            ),
+                        ),
+                    ],
                 ),
                 _init_kwargs={},
             ),
