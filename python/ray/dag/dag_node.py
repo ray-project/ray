@@ -99,16 +99,7 @@ class DAGNode(DAGNodeBase):
         return upstream_nodes
 
     def with_type_hint(self, typ: ChannelOutputType):
-        if typ.is_direct_return:
-            old_contains_typ = self._type_hint.contains_type
-            self._type_hint = copy.deepcopy(typ)
-            if old_contains_typ is not None and typ.contains_type is None:
-                # The contained type was set before the return
-                # type, and the new return type doesn't have a
-                # contained type set.
-                self._type_hint.set_contains_type(old_contains_typ)
-        else:
-            self._type_hint.set_contains_type(typ)
+        self._type_hint = copy.deepcopy(typ)
         return self
 
     @property
