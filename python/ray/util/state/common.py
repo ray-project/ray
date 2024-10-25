@@ -762,7 +762,7 @@ class TaskState(StateSchema):
     is_debugger_paused: Optional[bool] = state_column(detail=True, filterable=True)
     # List of objects (passed in by ref as arguments) this task
     # is dependent
-    dependent_args_refs: Optional[dict] = state_column(detail=True, filterable=False)
+    args_object_ids: List[str] = state_column(detail=True, filterable=False)
 
 
 @dataclass(init=not IS_PYDANTIC_2)
@@ -1583,7 +1583,7 @@ def protobuf_to_task_state_dict(message: TaskEvents) -> dict:
                 "runtime_env_info",
                 "parent_task_id",
                 "placement_group_id",
-                "dependent_args_refs",
+                "args_object_ids",
             ],
         ),
         (task_attempt, ["task_id", "attempt_number", "job_id"]),
