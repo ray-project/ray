@@ -1553,6 +1553,7 @@ def protobuf_to_task_state_dict(message: TaskEvents) -> dict:
             "placement_group_id",
             "component_id",
             "object_id",
+            "args_object_ids",
         ],
     )
 
