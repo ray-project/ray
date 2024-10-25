@@ -73,8 +73,10 @@ size_t ActorSchedulingQueue::Size() const {
 void ActorSchedulingQueue::Add(
     int64_t seq_no,
     int64_t client_processed_up_to,
-    std::function<void(const TaskSpecification &)> accept_request,
-    std::function<void(const TaskSpecification &, const Status &)> reject_request,
+    std::function<void(const TaskSpecification &, rpc::SendReplyCallback)> accept_request,
+    std::function<void(const TaskSpecification &, const Status &, rpc::SendReplyCallback)>
+        reject_request,
+    rpc::SendReplyCallback send_reply_callback,
     TaskSpecification task_spec) {
   // A seq_no of -1 means no ordering constraint. Actor tasks must be executed in order.
   RAY_CHECK(seq_no != -1);
@@ -87,8 +89,10 @@ void ActorSchedulingQueue::Add(
   }
   RAY_LOG(DEBUG) << "Enqueue " << seq_no << " cur seqno " << next_seq_no_;
 
-  pending_actor_tasks_[seq_no] =
-      InboundRequest(std::move(accept_request), std::move(reject_request), task_spec);
+  pending_actor_tasks_[seq_no] = InboundRequest(std::move(accept_request),
+                                                std::move(reject_request),
+                                                std::move(send_reply_callback),
+                                                task_spec);
   {
     absl::MutexLock lock(&mu_);
     pending_task_id_to_is_canceled.emplace(task_spec.TaskId(), false);

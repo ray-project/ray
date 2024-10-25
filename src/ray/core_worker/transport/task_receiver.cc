@@ -75,11 +75,9 @@ void TaskReceiver::HandleTask(const rpc::PushTaskRequest &request,
     }
   }
 
-  auto accept_callback = [this,
-                          reply,
-                          resource_ids,
-                          send_reply_callback = std::move(send_reply_callback)](
-                             const TaskSpecification &task_spec) {
+  auto accept_callback = [this, reply, resource_ids](
+                             const TaskSpecification &task_spec,
+                             rpc::SendReplyCallback send_reply_callback) {
     if (task_spec.GetMessage().skip_execution()) {
       send_reply_callback(Status::OK(), nullptr, nullptr);
       return;
@@ -218,8 +216,9 @@ void TaskReceiver::HandleTask(const rpc::PushTaskRequest &request,
     }
   };
 
-  auto cancel_callback = [reply, send_reply_callback = std::move(send_reply_callback)](
-                             const TaskSpecification &task_spec, const Status &status) {
+  auto cancel_callback = [reply](const TaskSpecification &task_spec,
+                                 const Status &status,
+                                 rpc::SendReplyCallback send_reply_callback) {
     if (task_spec.IsActorTask()) {
       // We consider cancellation of actor tasks to be a push task RPC failure.
       send_reply_callback(status, nullptr, nullptr);
@@ -269,6 +268,7 @@ void TaskReceiver::HandleTask(const rpc::PushTaskRequest &request,
                     request.client_processed_up_to(),
                     std::move(accept_callback),
                     std::move(cancel_callback),
+                    std::move(send_reply_callback),
                     std::move(task_spec));
   } else {
     // Add the normal task's callbacks to the non-actor scheduling queue.
@@ -278,6 +278,7 @@ void TaskReceiver::HandleTask(const rpc::PushTaskRequest &request,
                                   request.client_processed_up_to(),
                                   std::move(accept_callback),
                                   std::move(cancel_callback),
+                                  std::move(send_reply_callback),
                                   std::move(task_spec));
   }
 }

@@ -20,17 +20,23 @@ namespace core {
 InboundRequest::InboundRequest() {}
 
 InboundRequest::InboundRequest(
-    std::function<void(const TaskSpecification &)> accept_callback,
-    std::function<void(const TaskSpecification &, const Status &)> reject_callback,
+    std::function<void(const TaskSpecification &, rpc::SendReplyCallback)>
+        accept_callback,
+    std::function<void(const TaskSpecification &, const Status &, rpc::SendReplyCallback)>
+        reject_callback,
+    rpc::SendReplyCallback send_reply_callback,
     TaskSpecification task_spec)
     : accept_callback_(std::move(accept_callback)),
       reject_callback_(std::move(reject_callback)),
+      send_reply_callback_(std::move(send_reply_callback)),
       task_spec_(std::move(task_spec)),
       pending_dependencies_(task_spec_.GetDependencies()) {}
 
-void InboundRequest::Accept() { accept_callback_(task_spec_); }
+void InboundRequest::Accept() {
+  accept_callback_(task_spec_, std::move(send_reply_callback_));
+}
 void InboundRequest::Cancel(const Status &status) {
-  reject_callback_(task_spec_, status);
+  reject_callback_(task_spec_, status, std::move(send_reply_callback_));
 }
 
 bool InboundRequest::CanExecute() const { return pending_dependencies_.empty(); }

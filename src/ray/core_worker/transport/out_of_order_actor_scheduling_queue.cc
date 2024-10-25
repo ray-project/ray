@@ -70,8 +70,10 @@ void OutOfOrderActorSchedulingQueue::ScheduleRequests() {
 void OutOfOrderActorSchedulingQueue::Add(
     int64_t seq_no,
     int64_t client_processed_up_to,
-    std::function<void(const TaskSpecification &)> accept_request,
-    std::function<void(const TaskSpecification &, const Status &)> reject_request,
+    std::function<void(const TaskSpecification &, rpc::SendReplyCallback)> accept_request,
+    std::function<void(const TaskSpecification &, const Status &, rpc::SendReplyCallback)>
+        reject_request,
+    rpc::SendReplyCallback send_reply_callback,
     TaskSpecification task_spec) {
   // Add and execute a task. For different attempts of the same
   // task id, if an attempt is running, the other attempt will
@@ -82,8 +84,10 @@ void OutOfOrderActorSchedulingQueue::Add(
   // code can handle concurrent execution of the same actor method.
   RAY_CHECK(boost::this_thread::get_id() == main_thread_id_);
   auto task_id = task_spec.TaskId();
-  auto request = InboundRequest(
-      std::move(accept_request), std::move(reject_request), std::move(task_spec));
+  auto request = InboundRequest(std::move(accept_request),
+                                std::move(reject_request),
+                                std::move(send_reply_callback),
+                                std::move(task_spec));
   bool run_request = true;
   std::optional<InboundRequest> request_to_cancel;
   {

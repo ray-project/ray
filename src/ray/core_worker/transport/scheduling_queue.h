@@ -27,12 +27,15 @@ namespace core {
 class SchedulingQueue {
  public:
   virtual ~SchedulingQueue() = default;
-  virtual void Add(
-      int64_t seq_no,
-      int64_t client_processed_up_to,
-      std::function<void(const TaskSpecification &)> accept_request,
-      std::function<void(const TaskSpecification &, const Status &)> reject_request,
-      TaskSpecification task_spec) = 0;
+  virtual void Add(int64_t seq_no,
+                   int64_t client_processed_up_to,
+                   std::function<void(const TaskSpecification &, rpc::SendReplyCallback)>
+                       accept_request,
+                   std::function<void(const TaskSpecification &,
+                                      const Status &,
+                                      rpc::SendReplyCallback)> reject_request,
+                   rpc::SendReplyCallback send_reply_callback,
+                   TaskSpecification task_spec) = 0;
   virtual void ScheduleRequests() = 0;
   virtual bool TaskQueueEmpty() const = 0;
   virtual size_t Size() const = 0;
