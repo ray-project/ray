@@ -11,6 +11,8 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 
+from python.ray._private import ray_constants
+
 import ray
 from ray import ObjectRef, cloudpickle
 from ray.actor import ActorHandle
@@ -473,6 +475,19 @@ class ActorReplicaWrapper:
             "enable_task_events": RAY_SERVE_ENABLE_TASK_EVENTS,
         }
         actor_options.update(deployment_info.replica_config.ray_actor_options)
+
+        # Since a replica a defualt max concurrency, setting `max_ongoing_requests`
+        # larger than the replica's max concurrency will not increase the number of
+        # requests the replica can accept. To avoid this unintentional behavior,
+        # override the Actor's `max_concurrency` if it is not explicitly set.
+        if (
+            "max_concurrency" not in actor_options
+            and deployment_info.deployment_config.max_ongoing_requests
+            > ray_constants.DEFAULT_MAX_CONCURRENCY_ASYNC
+        ):
+            actor_options[
+                "max_concurrency"
+            ] = deployment_info.deployment_config.max_ongoing_requests
 
         return ReplicaSchedulingRequest(
             replica_id=self.replica_id,

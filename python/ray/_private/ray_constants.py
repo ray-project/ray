@@ -445,6 +445,12 @@ RAY_WORKER_NICENESS = "RAY_worker_niceness"
 # tasks.
 DEFAULT_TASK_MAX_RETRIES = 3
 
+# Default max_concurrency option in @ray.remote for threaded actors.
+DEFAULT_MAX_CONCURRENCY_THREADED = 1
+
+# Default max_concurrency option in @ray.remote for aysnc actors.
+DEFAULT_MAX_CONCURRENCY_ASYNC = 1000
+
 # Prefix for namespaces which are used internally by ray.
 # Jobs within these namespaces should be hidden from users
 # and should not be considered user activity.
