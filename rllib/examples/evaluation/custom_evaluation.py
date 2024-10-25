@@ -117,7 +117,7 @@ def custom_eval_function(
                 if worker.worker_index == 1
                 else args.corridor_length_eval_worker_2
             )
-            for env in worker.env.envs
+            for env in worker.env.unwrapped.envs
         )
     )
 
