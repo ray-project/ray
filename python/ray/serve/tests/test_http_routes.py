@@ -51,6 +51,7 @@ def test_routes_healthz(serve_instance):
     assert resp.status_code == 200
     assert resp.text == "success"
 
+
 def test_routes_endpoint(serve_instance):
     @serve.deployment
     class D1:

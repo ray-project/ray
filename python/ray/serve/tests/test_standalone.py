@@ -27,7 +27,6 @@ from ray.serve._private.constants import (
     SERVE_DEFAULT_APP_NAME,
     SERVE_NAMESPACE,
     SERVE_PROXY_NAME,
-    SERVE_ROOT_URL_ENV_KEY,
 )
 from ray.serve._private.default_impl import create_cluster_node_info_cache
 from ray.serve._private.http_util import set_socket_reuse_port
