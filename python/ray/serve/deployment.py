@@ -95,7 +95,7 @@ class Application:
                     )
                     handles[app] = DeploymentHandle(
                         deployment_names[app],
-                        app_name="default",
+                        app_name=app_name,
                         handle_options=_HandleOptions(
                             _source=DeploymentHandleSource.REPLICA
                         ),
