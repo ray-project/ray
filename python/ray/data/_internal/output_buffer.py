@@ -90,9 +90,9 @@ class BlockOutputBuffer:
                 #
                 #         - (Finalized) Target blocks sliced from the original one
                 #           are *copied* to avoid holding up original one
-                #         - Temporary remainder of the block should *NOT* be copied such as to
-                #           avoid repeatedly copying the remainder of the block, resulting in
-                #           O(N^2) total bytes being copied
+                #         - Temporary remainder of the block should *NOT* be copied
+                #           such as to avoid repeatedly copying the remainder of the
+                #           block, resulting in O(N^2) total bytes being copied
                 block_to_yield = block.slice(0, target_num_rows, copy=True)
                 block_remainder = block.slice(
                     target_num_rows, block.num_rows(), copy=False
