@@ -203,7 +203,6 @@ public class ServeControllerClient {
         logDeploymentReady(
             deployment.getName(),
             deployment.getVersion(),
-            deployment.getUrl(),
             "component=serve deployment=" + deployment.getName());
       }
     }
@@ -246,13 +245,11 @@ public class ServeControllerClient {
             "Application {} did not become RUNNING after {}s.", name, timeoutS));
   }
 
-  private void logDeploymentReady(String name, String version, String url, String tag) {
-    String urlPart = url != null ? MessageFormatter.format(" at `{}`", url) : "";
+  private void logDeploymentReady(String name, String version, String tag) {
     LOGGER.info(
-        "Deployment '{}{}' is ready {}. {}",
+        "Deployment '{}{}' is ready. {}",
         name,
         StringUtils.isNotBlank(version) ? "':'" + version : "",
-        urlPart,
         tag);
   }
 
