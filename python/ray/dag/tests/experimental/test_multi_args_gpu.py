@@ -68,8 +68,6 @@ def test_multi_args_simulate_pp(ray_start_regular):
     assert torch.equal(tensors[2], tensor_cpu_list[2])
     assert torch.equal(tensors[3], tensor_cpu_list[2])
 
-    compiled_dag.teardown()
-
 
 if __name__ == "__main__":
     if os.environ.get("PARALLEL_CI"):
