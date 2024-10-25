@@ -1335,6 +1335,7 @@ def test_count_with_filter(ray_start_regular_shared):
         "example://iris.parquet", filter=(pds.field("sepal.length") < pds.scalar(0))
     )
     assert ds.count() == 0
+    assert isinstance(ds.count(), int)
 
 
 if __name__ == "__main__":
