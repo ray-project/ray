@@ -1,0 +1,20 @@
+# Kills the head pod every 30 seconds.
+apiVersion: chaos-mesh.org/v1alpha1
+kind: Schedule
+metadata:
+  name: schedule-pod-kill-head-pod
+spec:
+  schedule: '@every 30s'
+  historyLimit: 2
+  concurrencyPolicy: 'Forbid'
+  type: 'PodChaos'
+  podChaos:
+    action: pod-kill
+    mode: all  # kill all such pods, should have only 1 anyway
+    selector:
+      namespaces:
+        - default
+      labelSelectors:
+        'ray.io/cluster': 'raycluster-kuberay'
+        'ray.io/node-type': 'head'
+    duration: '1s'
