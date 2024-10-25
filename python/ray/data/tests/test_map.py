@@ -332,13 +332,32 @@ def test_flat_map_generator(ray_start_regular_shared):
 
 def test_add_column(ray_start_regular_shared):
     """Tests the add column API."""
-    ds = ray.data.range(5).add_column("foo", lambda x: pa.array([1] * x.num_rows))
+
+    # Test with pyarrow batch format
+    ds = ray.data.range(5).add_column(
+        "foo", lambda x: pa.array([1] * x.num_rows), batch_format="pyarrow"
+    )
     assert ds.take(1) == [{"id": 0, "foo": 1}]
 
-    ds = ray.data.range(5).add_column("foo", lambda x: pc.add(x["id"], 1))
+    ds = ray.data.range(5).add_column(
+        "foo", lambda x: pc.add(x["id"], 1), batch_format="pyarrow"
+    )
     assert ds.take(1) == [{"id": 0, "foo": 1}]
 
-    ds = ray.data.range(5).add_column("id", lambda x: pc.add(x["id"], 1))
+    ds = ray.data.range(5).add_column(
+        "id", lambda x: pc.add(x["id"], 1), batch_format="pyarrow"
+    )
+    assert ds.take(2) == [{"id": 1}, {"id": 2}]
+
+    # Test with pandas batch format
+
+    ds = ray.data.range(5).add_column("foo", lambda x: pd.Series([1] * x.shape[0]))
+    assert ds.take(1) == [{"id": 0, "foo": 1}]
+
+    ds = ray.data.range(5).add_column("foo", lambda x: x["id"] + 1)
+    assert ds.take(1) == [{"id": 0, "foo": 1}]
+
+    ds = ray.data.range(5).add_column("id", lambda x: x["id"] + 1)
     assert ds.take(2) == [{"id": 1}, {"id": 2}]
 
     with pytest.raises(ValueError):

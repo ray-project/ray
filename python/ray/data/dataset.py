@@ -701,16 +701,21 @@ class Dataset:
     def add_column(
         self,
         col: str,
-        fn: Callable[["pyarrow.Table"], "pyarrow.Array"],
+        fn: Union[
+            Callable[["pandas.DataFrame"], "pandas.Series"],
+            Callable[["pyarrow.Table"], "pyarrow.Array"],
+        ],
         *,
+        batch_format: Optional[str] = "pandas",
         compute: Optional[str] = None,
         concurrency: Optional[Union[int, Tuple[int, int]]] = None,
         **ray_remote_args,
     ) -> "Dataset":
         """Add the given column to the dataset.
 
-        A function generating the new column values given the batch in pyarrow
-        format must be specified.
+        A function generating the new column values given the batch in pyarrow or pandas
+        format must be specified. This function must operate on batches of
+        `batch_format`.
 
         Examples:
 
@@ -744,6 +749,9 @@ class Dataset:
                 column is overwritten.
             fn: Map function generating the column values given a batch of
                 records in pandas format.
+            batch_format: If ``"pandas"``, batches are
+                ``pandas.DataFrame``. If ``"pyarrow"``, batches are
+                ``pyarrow.Table``.
             compute: This argument is deprecated. Use ``concurrency`` argument.
             concurrency: The number of Ray workers to use concurrently. For a
                 fixed-sized worker pool of size ``n``, specify ``concurrency=n``. For
@@ -754,25 +762,36 @@ class Dataset:
         """
 
         def add_column(batch: "pyarrow.Table") -> "pyarrow.Table":
-            # fn can output either a pandas Series or a pyarrow Array
             column = fn(batch)
-
-            # The index of the column will be -1 if it is missing in which case we'll
-            # want to append it
-            column_idx = batch.schema.get_field_index(col)
-            if column_idx == -1:
-                # Append the column to the table
-                return batch.append_column(col, column)
+            # Historically, this method was written with pandas batch format in mind.
+            # To resolve https://github.com/ray-project/ray/issues/48090, we also allow
+            # pyarrow batch format which is preferred but would be a breaking change
+            # to enforce.
+            if batch_format == "pandas":
+                batch.loc[:, col] = column
+                return batch
             else:
-                # Create a new table with the updated column
-                return batch.set_column(column_idx, col, column)
+                # For pyarrow, the index of the column will be -1 if it is missing in
+                # which case we'll want to append it
+                column_idx = batch.schema.get_field_index(col)
+                if column_idx == -1:
+                    # Append the column to the table
+                    return batch.append_column(col, column)
+                else:
+                    # Create a new table with the updated column
+                    return batch.set_column(column_idx, col, column)
 
         if not callable(fn):
             raise ValueError("`fn` must be callable, got {}".format(fn))
 
+        assert batch_format in [
+            "pandas",
+            "pyarrow",
+        ], f"batch_format argument must be 'pandas' or 'pyarrow', got: {batch_format}"
+
         return self.map_batches(
             add_column,
-            batch_format="pyarrow",
+            batch_format=batch_format,
             compute=compute,
             concurrency=concurrency,
             zero_copy_batch=False,
