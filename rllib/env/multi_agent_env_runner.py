@@ -328,6 +328,7 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
                 ma_dict = ma_dict_list[0]
                 for agent_id, val in ma_dict.items():
                     extra_model_outputs[agent_id][col] = val
+                    extra_model_outputs[agent_id][WEIGHTS_SEQ_NO] = self._weights_seq_no
             extra_model_outputs = dict(extra_model_outputs)
 
             # Record the timestep in the episode instance.
@@ -528,6 +529,7 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
                 ma_dict = ma_dict_list[0]
                 for agent_id, val in ma_dict.items():
                     extra_model_outputs[agent_id][col] = val
+                    extra_model_outputs[agent_id][WEIGHTS_SEQ_NO] = self._weights_seq_no
             extra_model_outputs = dict(extra_model_outputs)
 
             # Record the timestep in the episode instance.
