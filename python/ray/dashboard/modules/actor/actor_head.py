@@ -168,7 +168,7 @@ class ActorHead(dashboard_utils.DashboardHeadModule):
         self._gcs_actor_channel_subscriber = None
         self.get_all_actor_info_client = None
         # A queue of dead actors in order of when they died
-        self.dead_actors_queue = deque()
+        self.destroyed_actors_queue = deque()
 
         # -- Internal state --
         self._loop = get_or_create_event_loop()
@@ -284,7 +284,7 @@ class ActorHead(dashboard_utils.DashboardHeadModule):
         node_id = actor_table_data["address"]["rayletId"]
 
         if actor_table_data["state"] == "DEAD":
-            self.dead_actors_queue.append(actor_id)
+            self.destroyed_actors_queue.append(actor_id)
 
         # Update actors.
         DataSource.actors[actor_id] = actor_table_data
@@ -310,8 +310,8 @@ class ActorHead(dashboard_utils.DashboardHeadModule):
     async def _cleanup_actors(self):
         while True:
             try:
-                while len(self.dead_actors_queue) > MAX_DELETED_ACTORS_TO_CACHE:
-                    actor_id = self.dead_actors_queue.popleft()
+                while len(self.destroyed_actors_queue) > MAX_DELETED_ACTORS_TO_CACHE:
+                    actor_id = self.destroyed_actors_queue.popleft()
                     if actor_id in DataSource.actors:
                         actor = DataSource.actors.pop(actor_id)
                         node_id = actor["address"].get("rayletId")
