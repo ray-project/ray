@@ -347,6 +347,8 @@ OBJECT_METADATA_DEBUG_PREFIX = b"DEBUG:"
 
 AUTOSCALER_RESOURCE_REQUEST_CHANNEL = b"autoscaler_resource_request"
 
+REDIS_DEFAULT_USERNAME = ""
+
 REDIS_DEFAULT_PASSWORD = ""
 
 # The default ip address to bind to.

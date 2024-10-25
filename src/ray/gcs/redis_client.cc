@@ -39,6 +39,7 @@ Status RedisClient::Connect(instrumented_io_context &io_service) {
 
   RAY_CHECK_OK(primary_context_->Connect(options_.server_ip_,
                                          options_.server_port_,
+                                         /*username=*/options_.username_,
                                          /*password=*/options_.password_,
                                          /*enable_ssl=*/options_.enable_ssl_));
 

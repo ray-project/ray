@@ -27,9 +27,10 @@ extern "C" {
 #endif
 JNIEXPORT jlong JNICALL
 Java_io_ray_runtime_gcs_GlobalStateAccessor_nativeCreateGlobalStateAccessor(
-    JNIEnv *env, jobject o, jstring j_bootstrap_address, jstring j_redis_passowrd) {
+    JNIEnv *env, jobject o, jstring j_bootstrap_address, jstring j_redis_username, jstring j_redis_password) {
   std::string bootstrap_address = JavaStringToNativeString(env, j_bootstrap_address);
-  std::string redis_password = JavaStringToNativeString(env, j_redis_passowrd);
+  std::string redis_username = JavaStringToNativeString(env, j_redis_username);
+  std::string redis_password = JavaStringToNativeString(env, j_redis_password);
   gcs::GlobalStateAccessor *gcs_accessor = nullptr;
   ray::gcs::GcsClientOptions client_options(bootstrap_address,
                                             ray::ClusterID::Nil(),

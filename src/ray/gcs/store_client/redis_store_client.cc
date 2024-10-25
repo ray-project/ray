@@ -483,10 +483,11 @@ Status RedisStoreClient::AsyncExists(const std::string &table_name,
 // Returns True if at least 1 key is deleted, False otherwise.
 bool RedisDelKeyPrefixSync(const std::string &host,
                            int32_t port,
+                           const std::string &username,
                            const std::string &password,
                            bool use_ssl,
                            const std::string &external_storage_namespace) {
-  RedisClientOptions options(host, port, password, use_ssl);
+  RedisClientOptions options(host, port, username, password, use_ssl);
   auto cli = std::make_unique<RedisClient>(options);
 
   instrumented_io_context io_service;
