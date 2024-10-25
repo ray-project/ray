@@ -799,7 +799,7 @@ def build(
         deployments = pipeline_build(app, name)
         schema = ServeApplicationSchema(
             name=name,
-            route_prefix="/",
+            route_prefix="/" if len(import_paths) == 1 else f"/{name}",
             import_path=import_path,
             runtime_env={},
             deployments=[deployment_to_schema(d) for d in deployments],
