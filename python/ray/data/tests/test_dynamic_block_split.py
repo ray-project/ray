@@ -319,7 +319,7 @@ def test_read_large_data(ray_start_regular_shared):
             num_rows_per_batch=None,
             row_size=block_size,
         ),
-        override_num_blocks=1,
+        override_num_blocks=num_blocks_per_task,
     )
 
     ds = ds.map_batches(foo)
