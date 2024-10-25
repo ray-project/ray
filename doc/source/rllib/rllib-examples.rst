@@ -64,9 +64,8 @@ Algorithms
 ----------
 
 - |new_stack| `How to write a custom Algorith.training_step() method combining on- and off-policy training <https://github.com/ray-project/ray/blob/master/rllib/examples/algorithms/custom_training_step_on_and_off_policy_combined.py>`__:
-   Example of how to override the :py:meth:`~ray.rllib.algorithms.algorithm.training_step` method of the
-   :py:class:`~ray.rllib.algorithms.algorithm.Algorithm` class to train two different policies in parallel
-   (also using multi-agent API).
+   Example of how to override the :py:meth:`~ray.rllib.algorithms.algorithm.Algorithm.training_step` method
+   to train two different policies in parallel (also using multi-agent API).
 
 Checkpoints
 -----------
@@ -255,12 +254,8 @@ RLModules
 - |old_stack| `How to using the "Repeated" space of RLlib for variable lengths observations <https://github.com/ray-project/ray/blob/master/rllib/examples/_old_api_stack/complex_struct_space.py>`__:
    How to use RLlib's `Repeated` space to handle variable length observations.
 - |old_stack| `How to write a custom Keras model <https://github.com/ray-project/ray/blob/master/rllib/examples/_old_api_stack/custom_keras_model.py>`__:
-   Example of using a custom Keras model.
-- |old_stack| `How to register a custom model with supervised loss <https://github.com/ray-project/ray/blob/master/rllib/examples/custom_model_loss_and_metrics.py>`__:
    Example of defining and registering a custom model with a supervised loss.
 - |old_stack| `How to train with batch normalization <https://github.com/ray-project/ray/blob/master/rllib/examples/_old_api_stack/models/batch_norm_model.py>`__:
-   Example of adding batch norm layers to a custom model.
-- |old_stack| `How to write a custom model with its custom API <https://github.com/ray-project/ray/blob/master/rllib/examples/custom_model_api.py>`__:
    Shows how to define a custom Model API in RLlib, such that it can be used inside certain algorithms.
 - |old_stack| `How to write a "trajectory ciew API" utilizing model <https://github.com/ray-project/ray/blob/master/rllib/examples/_old_api_stack/models/trajectory_view_utilizing_models.py>`__:
    An example on how a model can use the trajectory view API to specify its own input.

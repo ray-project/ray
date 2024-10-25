@@ -1,13 +1,22 @@
+from typing import Iterator
+
 import numpy as np
 import pandas as pd
 import pyarrow as pa
 import pytest
 
 import ray
+from ray.data._internal.execution.interfaces.ref_bundle import RefBundle
+from ray.data.block import Block
 from ray.data.extensions import ArrowTensorArray, ArrowTensorType, TensorDtype
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.mock_http_server import *  # noqa
 from ray.tests.conftest import *  # noqa
+from ray.types import ObjectRef
+
+
+def _get_first_block(bundles: Iterator[RefBundle]) -> ObjectRef[Block]:
+    return next(bundles).block_refs[0]
 
 
 @pytest.mark.parametrize("enable_pandas_block", [False, True])
@@ -19,7 +28,7 @@ def test_from_pandas(ray_start_regular_shared, enable_pandas_block):
         df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
         df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
         ds = ray.data.from_pandas([df1, df2])
-        block = ray.get(ds.get_internal_block_refs()[0])
+        block = ray.get(_get_first_block(ds.iter_internal_ref_bundles()))
         assert (
             isinstance(block, pd.DataFrame)
             if enable_pandas_block
@@ -33,7 +42,7 @@ def test_from_pandas(ray_start_regular_shared, enable_pandas_block):
 
         # test from single pandas dataframe
         ds = ray.data.from_pandas(df1)
-        block = ray.get(ds.get_internal_block_refs()[0])
+        block = ray.get(_get_first_block(ds.iter_internal_ref_bundles()))
         assert (
             isinstance(block, pd.DataFrame)
             if enable_pandas_block
@@ -46,22 +55,6 @@ def test_from_pandas(ray_start_regular_shared, enable_pandas_block):
         assert "FromPandas" in ds.stats()
     finally:
         ctx.enable_pandas_block = old_enable_pandas_block
-
-
-def test_from_pandas_default_num_blocks(ray_start_regular_shared, restore_data_context):
-    ray.data.DataContext.get_current().target_max_block_size = 8 * 1024 * 1024  # 8 MiB
-
-    record = {"number": 0, "string": "\0"}
-    record_size_bytes = 8 + 1  # 8 bytes for int64 and 1 byte for char
-    dataframe_size_bytes = 64 * 1024 * 1024  # 64 MiB
-    num_records = int(dataframe_size_bytes / record_size_bytes)
-    df = pd.DataFrame.from_records([record] * num_records)
-
-    ds = ray.data.from_pandas(df)
-
-    # If the target block size is 8 MiB, the DataFrame should be split into
-    # 64 MiB / (8 MiB / block) = 8 blocks.
-    assert ds.materialize().num_blocks() == 8
 
 
 @pytest.mark.parametrize("num_inputs", [1, 2])
@@ -82,7 +75,7 @@ def test_from_pandas_refs(ray_start_regular_shared, enable_pandas_block):
         df1 = pd.DataFrame({"one": [1, 2, 3], "two": ["a", "b", "c"]})
         df2 = pd.DataFrame({"one": [4, 5, 6], "two": ["e", "f", "g"]})
         ds = ray.data.from_pandas_refs([ray.put(df1), ray.put(df2)])
-        block = ray.get(ds.get_internal_block_refs()[0])
+        block = ray.get(_get_first_block(ds.iter_internal_ref_bundles()))
         assert (
             isinstance(block, pd.DataFrame)
             if enable_pandas_block
@@ -96,7 +89,7 @@ def test_from_pandas_refs(ray_start_regular_shared, enable_pandas_block):
 
         # test from single pandas dataframe ref
         ds = ray.data.from_pandas_refs(ray.put(df1))
-        block = ray.get(ds.get_internal_block_refs()[0])
+        block = ray.get(_get_first_block(ds.iter_internal_ref_bundles()))
         assert (
             isinstance(block, pd.DataFrame)
             if enable_pandas_block

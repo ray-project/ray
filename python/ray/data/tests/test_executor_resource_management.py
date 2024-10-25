@@ -123,14 +123,18 @@ def test_resource_canonicalization(ray_start_10_cpus_shared):
     )
     assert op._ray_remote_args == {"num_gpus": 2}
 
-    with pytest.raises(ValueError):
-        MapOperator.create(
-            _mul2_map_data_prcessor,
-            input_op=input_op,
-            name="TestMapper",
-            compute_strategy=TaskPoolStrategy(),
-            ray_remote_args={"num_gpus": 2, "num_cpus": 1},
-        )
+    op = MapOperator.create(
+        _mul2_map_data_prcessor,
+        input_op=input_op,
+        name="TestMapper",
+        compute_strategy=TaskPoolStrategy(),
+        ray_remote_args={"num_gpus": 2, "num_cpus": 1},
+    )
+    assert op.base_resource_usage() == ExecutionResources()
+    assert op.incremental_resource_usage() == ExecutionResources(
+        cpu=1, gpu=2, object_store_memory=inc_obj_store_mem
+    )
+    assert op._ray_remote_args == {"num_gpus": 2, "num_cpus": 1}
 
 
 def test_execution_options_resource_limit():
@@ -313,7 +317,8 @@ def test_actor_pool_resource_reporting(ray_start_10_cpus_shared, restore_data_co
         assert op.metrics.obj_store_mem_pending_task_outputs == 0
 
     # Wait for actors to start.
-    assert op.num_active_tasks() == 2
+    assert op.num_active_tasks() == 0
+    assert op._actor_pool.num_pending_actors() == 2
     run_op_tasks_sync(op, only_existing=True)
 
     # Actors have now started and the pool is actively running tasks.
@@ -411,7 +416,8 @@ def test_actor_pool_resource_reporting_with_bundling(ray_start_10_cpus_shared):
     assert op.metrics.obj_store_mem_pending_task_outputs == 0
 
     # Wait for actors to start.
-    assert op.num_active_tasks() == 2
+    assert op.num_active_tasks() == 0
+    assert op._actor_pool.num_pending_actors() == 2
     run_op_tasks_sync(op, only_existing=True)
 
     # Actors have now started and the pool is actively running tasks.

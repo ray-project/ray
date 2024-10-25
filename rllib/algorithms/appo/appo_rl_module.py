@@ -1,26 +1,46 @@
-"""
-This file holds framework-agnostic components for APPO's RLModules.
-"""
-
 import abc
+from typing import Any, Dict, List, Tuple
 
 from ray.rllib.algorithms.ppo.ppo_rl_module import PPORLModule
-from ray.rllib.utils.annotations import ExperimentalAPI
+from ray.rllib.algorithms.appo.appo import OLD_ACTION_DIST_LOGITS_KEY
+from ray.rllib.core.learner.utils import make_target_network
+from ray.rllib.core.models.base import ACTOR
+from ray.rllib.core.models.tf.encoder import ENCODER_OUT
+from ray.rllib.core.rl_module.apis import TargetNetworkAPI
+from ray.rllib.utils.typing import NetworkType
 
-# TODO (simon): Write a light-weight version of this class for the `TFRLModule`
+from ray.rllib.utils.annotations import (
+    override,
+    OverrideToImplementCustomLogic_CallToSuperRecommended,
+)
 
 
-@ExperimentalAPI
-class APPORLModule(PPORLModule, abc.ABC):
-    def setup(self):
-        super().setup()
+class APPORLModule(PPORLModule, TargetNetworkAPI, abc.ABC):
+    @override(TargetNetworkAPI)
+    def make_target_networks(self):
+        self._old_encoder = make_target_network(self.encoder)
+        self._old_pi = make_target_network(self.pi)
 
-        # If the module is not for inference only, set up the target networks.
-        if not self.inference_only:
-            catalog = self.config.get_catalog()
-            # Old pi and old encoder are the "target networks" that are used for
-            # the stabilization of the updates of the current pi and encoder.
-            self.old_pi = catalog.build_pi_head(framework=self.framework)
-            self.old_encoder = catalog.build_actor_critic_encoder(
-                framework=self.framework
-            )
+    @override(TargetNetworkAPI)
+    def get_target_network_pairs(self) -> List[Tuple[NetworkType, NetworkType]]:
+        return [
+            (self.encoder, self._old_encoder),
+            (self.pi, self._old_pi),
+        ]
+
+    @override(TargetNetworkAPI)
+    def forward_target(self, batch: Dict[str, Any]) -> Dict[str, Any]:
+        old_pi_inputs_encoded = self._old_encoder(batch)[ENCODER_OUT][ACTOR]
+        old_action_dist_logits = self._old_pi(old_pi_inputs_encoded)
+        return {OLD_ACTION_DIST_LOGITS_KEY: old_action_dist_logits}
+
+    @OverrideToImplementCustomLogic_CallToSuperRecommended
+    @override(PPORLModule)
+    def get_non_inference_attributes(self) -> List[str]:
+        # Get the NON inference-only attributes from the parent class
+        # `PPOTorchRLModule`.
+        ret = super().get_non_inference_attributes()
+        # Add the two (APPO) target networks to it (NOT needed in
+        # inference-only mode).
+        ret += ["_old_encoder", "_old_pi"]
+        return ret

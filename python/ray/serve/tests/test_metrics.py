@@ -122,6 +122,9 @@ def check_sum_metric_eq(
     expected: float,
     tags: Optional[Dict[str, str]] = None,
 ) -> bool:
+    if tags is None:
+        tags = {}
+
     metrics = fetch_prometheus_metrics([f"localhost:{TEST_METRICS_EXPORT_PORT}"])
     metric_samples = metrics.get(metric_name, None)
     if metric_samples is None:
@@ -133,8 +136,8 @@ def check_sum_metric_eq(
         metric_sum = sum(sample.value for sample in metric_samples)
 
     # Check the metrics sum to the expected number
-    assert (
-        metric_sum == expected
+    assert float(metric_sum) == float(
+        expected
     ), f"The following metrics don't sum to {expected}: {metric_samples}. {metrics}"
 
     # # For debugging
@@ -322,7 +325,6 @@ def test_proxy_metrics_not_found(serve_start_shutdown):
 
     # Ping gPRC proxy
     channel = grpc.insecure_channel("localhost:9000")
-    wait_for_condition(ping_grpc_list_applications, channel=channel, app_names=[])
     ping_grpc_call_method(channel=channel, app_name="foo", test_not_found=True)
 
     # Ensure all expected metrics are present.
@@ -600,26 +602,34 @@ def test_replica_metrics_fields(serve_start_shutdown):
     assert "hello" == requests.get(url_f).text
     assert "world" == requests.get(url_g).text
 
-    def verify_metrics(metric, expected_output):
-        for key in expected_output:
-            assert metric[key] == expected_output[key]
-
     wait_for_condition(
-        lambda: len(get_metric_dictionaries("serve_deployment_request_counter")) == 2,
+        lambda: len(get_metric_dictionaries("serve_deployment_request_counter_total"))
+        == 2,
         timeout=40,
     )
 
-    num_requests = get_metric_dictionaries("serve_deployment_request_counter")
-    assert len(num_requests) == 2
-    expected_output = {"route": "/f", "deployment": "f", "application": "app1"}
-    verify_metrics(num_requests[0], expected_output)
+    metrics = get_metric_dictionaries("serve_deployment_request_counter_total")
+    assert len(metrics) == 2
+    expected_output = {
+        ("/f", "f", "app1"),
+        ("/g", "g", "app2"),
+    }
+    assert {
+        (
+            metric["route"],
+            metric["deployment"],
+            metric["application"],
+        )
+        for metric in metrics
+    } == expected_output
 
-    start_metrics = get_metric_dictionaries("serve_deployment_replica_starts")
+    start_metrics = get_metric_dictionaries("serve_deployment_replica_starts_total")
     assert len(start_metrics) == 2
-    expected_output = {"deployment": "f", "application": "app1"}
-    verify_metrics(start_metrics[0], expected_output)
-    expected_output = {"deployment": "g", "application": "app2"}
-    verify_metrics(start_metrics[1], expected_output)
+    expected_output = {("f", "app1"), ("g", "app2")}
+    assert {
+        (start_metric["deployment"], start_metric["application"])
+        for start_metric in start_metrics
+    } == expected_output
 
     # Latency metrics
     wait_for_condition(
@@ -636,19 +646,21 @@ def test_replica_metrics_fields(serve_start_shutdown):
         latency_metrics = get_metric_dictionaries(metric_name)
         print(f"checking metric {metric_name}, {latency_metrics}")
         assert len(latency_metrics) == 2
-        expected_output1 = {"deployment": "f", "application": "app1"}
-        expected_output2 = {"deployment": "g", "application": "app2"}
-        verify_metrics(latency_metrics[0], expected_output1)
-        verify_metrics(latency_metrics[1], expected_output2)
+        expected_output = {("f", "app1"), ("g", "app2")}
+        assert {
+            (latency_metric["deployment"], latency_metric["application"])
+            for latency_metric in latency_metrics
+        } == expected_output
 
     wait_for_condition(
         lambda: len(get_metric_dictionaries("serve_replica_processing_queries")) == 2
     )
     processing_queries = get_metric_dictionaries("serve_replica_processing_queries")
-    expected_output1 = {"deployment": "f", "application": "app1"}
-    expected_output2 = {"deployment": "g", "application": "app2"}
-    verify_metrics(processing_queries[0], expected_output1)
-    verify_metrics(processing_queries[1], expected_output2)
+    expected_output = {("f", "app1"), ("g", "app2")}
+    assert {
+        (processing_query["deployment"], processing_query["application"])
+        for processing_query in processing_queries
+    } == expected_output
 
     @serve.deployment
     def h():
@@ -657,23 +669,30 @@ def test_replica_metrics_fields(serve_start_shutdown):
     serve.run(h.bind(), name="app3", route_prefix="/h")
     assert 500 == requests.get("http://127.0.0.1:8000/h").status_code
     wait_for_condition(
-        lambda: len(get_metric_dictionaries("serve_deployment_error_counter")) == 1,
+        lambda: len(get_metric_dictionaries("serve_deployment_error_counter_total"))
+        == 1,
         timeout=40,
     )
-    err_requests = get_metric_dictionaries("serve_deployment_error_counter")
+    err_requests = get_metric_dictionaries("serve_deployment_error_counter_total")
     assert len(err_requests) == 1
-    expected_output = {"route": "/h", "deployment": "h", "application": "app3"}
-    verify_metrics(err_requests[0], expected_output)
+    expected_output = ("/h", "h", "app3")
+    assert (
+        err_requests[0]["route"],
+        err_requests[0]["deployment"],
+        err_requests[0]["application"],
+    ) == expected_output
 
     health_metrics = get_metric_dictionaries("serve_deployment_replica_healthy")
     assert len(health_metrics) == 3, health_metrics
-    expected_outputs = [
-        {"deployment": "f", "application": "app1"},
-        {"deployment": "g", "application": "app2"},
-        {"deployment": "h", "application": "app3"},
-    ]
-    for i in range(len(health_metrics)):
-        verify_metrics(health_metrics[i], expected_outputs[i])
+    expected_output = {
+        ("f", "app1"),
+        ("g", "app2"),
+        ("h", "app3"),
+    }
+    assert {
+        (health_metric["deployment"], health_metric["application"])
+        for health_metric in health_metrics
+    } == expected_output
 
 
 class TestRequestContextMetrics:
@@ -1330,7 +1349,9 @@ class TestHandleMetrics:
             check_metric_float_eq,
             timeout=15,
             metric="ray_serve_num_scheduling_tasks",
-            expected=-1,  # -1 means not expected to be present yet.
+            # Router is eagerly created on HTTP proxy, so there are metrics emitted
+            # from proxy router
+            expected=0,
             # TODO(zcin): this tag shouldn't be necessary, there shouldn't be a mix of
             # metrics from new and old sessions.
             expected_tags={
@@ -1342,7 +1363,9 @@ class TestHandleMetrics:
             check_metric_float_eq,
             timeout=15,
             metric="serve_num_scheduling_tasks_in_backoff",
-            expected=-1,  # -1 means not expected to be present yet.
+            # Router is eagerly created on HTTP proxy, so there are metrics emitted
+            # from proxy router
+            expected=0,
             # TODO(zcin): this tag shouldn't be necessary, there shouldn't be a mix of
             # metrics from new and old sessions.
             expected_tags={
@@ -1365,9 +1388,9 @@ class TestHandleMetrics:
 
         print("First request is executing.")
         wait_for_condition(
-            check_metric_float_eq,
+            check_sum_metric_eq,
             timeout=15,
-            metric="ray_serve_num_ongoing_http_requests",
+            metric_name="ray_serve_num_ongoing_http_requests",
             expected=1,
         )
         print("ray_serve_num_ongoing_http_requests updated successfully.")
@@ -1378,16 +1401,16 @@ class TestHandleMetrics:
 
         # First request should be processing. All others should be queued.
         wait_for_condition(
-            check_metric_float_eq,
+            check_sum_metric_eq,
             timeout=15,
-            metric="ray_serve_deployment_queued_queries",
+            metric_name="ray_serve_deployment_queued_queries",
             expected=num_queued_requests,
         )
         print("ray_serve_deployment_queued_queries updated successfully.")
         wait_for_condition(
-            check_metric_float_eq,
+            check_sum_metric_eq,
             timeout=15,
-            metric="ray_serve_num_ongoing_http_requests",
+            metric_name="ray_serve_num_ongoing_http_requests",
             expected=num_queued_requests + 1,
         )
         print("ray_serve_num_ongoing_http_requests updated successfully.")
@@ -1395,16 +1418,16 @@ class TestHandleMetrics:
         # There should be 2 scheduling tasks (which is the max, since
         # 2 = 2 * 1 replica) that are attempting to schedule the hanging requests.
         wait_for_condition(
-            check_metric_float_eq,
+            check_sum_metric_eq,
             timeout=15,
-            metric="ray_serve_num_scheduling_tasks",
+            metric_name="ray_serve_num_scheduling_tasks",
             expected=2,
         )
         print("ray_serve_num_scheduling_tasks updated successfully.")
         wait_for_condition(
-            check_metric_float_eq,
+            check_sum_metric_eq,
             timeout=15,
-            metric="serve_num_scheduling_tasks_in_backoff",
+            metric_name="ray_serve_num_scheduling_tasks_in_backoff",
             expected=2,
         )
         print("serve_num_scheduling_tasks_in_backoff updated successfully.")
@@ -1414,33 +1437,33 @@ class TestHandleMetrics:
         print("Cancelled all HTTP requests.")
 
         wait_for_condition(
-            check_metric_float_eq,
+            check_sum_metric_eq,
             timeout=15,
-            metric="ray_serve_deployment_queued_queries",
+            metric_name="ray_serve_deployment_queued_queries",
             expected=0,
         )
         print("ray_serve_deployment_queued_queries updated successfully.")
 
         # Task should get cancelled.
         wait_for_condition(
-            check_metric_float_eq,
+            check_sum_metric_eq,
             timeout=15,
-            metric="ray_serve_num_ongoing_http_requests",
+            metric_name="ray_serve_num_ongoing_http_requests",
             expected=0,
         )
         print("ray_serve_num_ongoing_http_requests updated successfully.")
 
         wait_for_condition(
-            check_metric_float_eq,
+            check_sum_metric_eq,
             timeout=15,
-            metric="ray_serve_num_scheduling_tasks",
+            metric_name="ray_serve_num_scheduling_tasks",
             expected=0,
         )
         print("ray_serve_num_scheduling_tasks updated successfully.")
         wait_for_condition(
-            check_metric_float_eq,
+            check_sum_metric_eq,
             timeout=15,
-            metric="serve_num_scheduling_tasks_in_backoff",
+            metric_name="ray_serve_num_scheduling_tasks_in_backoff",
             expected=0,
         )
         print("serve_num_scheduling_tasks_in_backoff updated successfully.")

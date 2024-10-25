@@ -41,6 +41,10 @@ def gen_expected_metrics(
 ):
     if is_map:
         metrics = [
+            "'average_num_outputs_per_task': N",
+            "'average_bytes_per_output': N",
+            "'average_bytes_inputs_per_task': N",
+            "'average_bytes_outputs_per_task': N",
             "'num_inputs_received': N",
             "'bytes_inputs_received': N",
             "'num_task_inputs_processed': N",
@@ -531,6 +535,10 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "   base_name=ReadRange,\n"
         "   number=N,\n"
         "   extra_metrics={\n"
+        "      average_num_outputs_per_task: N,\n"
+        "      average_bytes_per_output: N,\n"
+        "      average_bytes_inputs_per_task: N,\n"
+        "      average_bytes_outputs_per_task: N,\n"
         "      num_inputs_received: N,\n"
         "      bytes_inputs_received: N,\n"
         "      num_task_inputs_processed: N,\n"
@@ -641,6 +649,10 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "   base_name=MapBatches(<lambda>),\n"
         "   number=N,\n"
         "   extra_metrics={\n"
+        "      average_num_outputs_per_task: N,\n"
+        "      average_bytes_per_output: N,\n"
+        "      average_bytes_inputs_per_task: N,\n"
+        "      average_bytes_outputs_per_task: N,\n"
         "      num_inputs_received: N,\n"
         "      bytes_inputs_received: N,\n"
         "      num_task_inputs_processed: N,\n"
@@ -706,6 +718,10 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "         base_name=ReadRange,\n"
         "         number=N,\n"
         "         extra_metrics={\n"
+        "            average_num_outputs_per_task: N,\n"
+        "            average_bytes_per_output: N,\n"
+        "            average_bytes_inputs_per_task: N,\n"
+        "            average_bytes_outputs_per_task: N,\n"
         "            num_inputs_received: N,\n"
         "            bytes_inputs_received: N,\n"
         "            num_task_inputs_processed: N,\n"
@@ -910,13 +926,11 @@ def test_dataset_stats_from_items(ray_start_regular_shared):
     assert "FromItems" in stats, stats
 
 
-def test_dataset_stats_read_parquet(ray_start_regular_shared, tmp_path):
-    ds = ray.data.range(1000, override_num_blocks=10)
-    ds.write_parquet(str(tmp_path))
-    ds = ray.data.read_parquet(str(tmp_path)).map(lambda x: x)
+def test_dataset_stats_range(ray_start_regular_shared, tmp_path):
+    ds = ray.data.range(1000, override_num_blocks=10).map(lambda x: x)
     stats = canonicalize(ds.materialize().stats())
     assert stats == (
-        f"Operator N ReadParquet->Map(<lambda>): {EXECUTION_STRING}\n"
+        f"Operator N ReadRange->Map(<lambda>): {EXECUTION_STRING}\n"
         f"* Remote wall time: T min, T max, T mean, T total\n"
         f"* Remote cpu time: T min, T max, T mean, T total\n"
         f"* UDF time: T min, T max, T mean, T total\n"

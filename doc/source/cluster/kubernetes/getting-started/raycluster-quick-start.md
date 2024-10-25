@@ -26,8 +26,8 @@ Deploy the KubeRay operator with the [Helm chart repository](https://github.com/
 helm repo add kuberay https://ray-project.github.io/kuberay-helm/
 helm repo update
 
-# Install both CRDs and KubeRay operator v1.1.1.
-helm install kuberay-operator kuberay/kuberay-operator --version 1.1.1
+# Install both CRDs and KubeRay operator v1.2.2.
+helm install kuberay-operator kuberay/kuberay-operator --version 1.2.2
 
 # Confirm that the operator is running in the namespace `default`.
 kubectl get pods
@@ -46,14 +46,14 @@ Once the KubeRay operator is running, we are ready to deploy a RayCluster. To do
   :::{tab-item} ARM64 (Apple Silicon)
   ```sh
   # Deploy a sample RayCluster CR from the KubeRay Helm chart repo:
-  helm install raycluster kuberay/ray-cluster --version 1.1.1 --set 'image.tag=2.9.0-aarch64'
+  helm install raycluster kuberay/ray-cluster --version 1.2.2 --set 'image.tag=2.9.0-aarch64'
   ```
   :::
 
   :::{tab-item} x86-64 (Intel/Linux)
   ```sh
   # Deploy a sample RayCluster CR from the KubeRay Helm chart repo:
-  helm install raycluster kuberay/ray-cluster --version 1.1.1
+  helm install raycluster kuberay/ray-cluster --version 1.2.2
   ```
   :::
 
@@ -85,7 +85,7 @@ Note that in production scenarios, you will want to use larger Ray pods. In fact
 
 ## Step 4: Run an application on a RayCluster
 
-Now, let's interact with the RayCluster we've deployed. 
+Now, let's interact with the RayCluster we've deployed.
 
 ### Method 1: Execute a Ray job in the head Pod
 
@@ -102,7 +102,7 @@ kubectl exec -it $HEAD_POD -- python -c "import ray; ray.init(); print(ray.clust
 
 # 2023-04-07 10:57:46,472 INFO worker.py:1243 -- Using address 127.0.0.1:6379 set in the environment variable RAY_ADDRESS
 # 2023-04-07 10:57:46,472 INFO worker.py:1364 -- Connecting to existing Ray cluster at address: 10.244.0.6:6379...
-# 2023-04-07 10:57:46,482 INFO worker.py:1550 -- Connected to Ray cluster. View the dashboard at http://10.244.0.6:8265 
+# 2023-04-07 10:57:46,482 INFO worker.py:1550 -- Connected to Ray cluster. View the dashboard at http://10.244.0.6:8265
 # {'object_store_memory': 802572287.0, 'memory': 3000000000.0, 'node:10.244.0.6': 1.0, 'CPU': 2.0, 'node:10.244.0.7': 1.0}
 ```
 

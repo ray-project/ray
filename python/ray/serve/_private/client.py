@@ -6,20 +6,20 @@ from typing import Callable, Dict, Iterable, List, Optional, Tuple, Union
 
 import ray
 from ray.actor import ActorHandle
+from ray.serve._private.application_state import StatusOverview
 from ray.serve._private.common import (
-    ApplicationStatus,
     DeploymentHandleSource,
     DeploymentID,
     DeploymentStatus,
     DeploymentStatusInfo,
     MultiplexedReplicaInfo,
-    StatusOverview,
 )
 from ray.serve._private.constants import (
     CLIENT_CHECK_CREATION_POLLING_INTERVAL_S,
     CLIENT_POLLING_INTERVAL_S,
     MAX_CACHED_HANDLES,
     SERVE_DEFAULT_APP_NAME,
+    SERVE_LOGGER_NAME,
 )
 from ray.serve._private.controller import ServeController
 from ray.serve._private.deploy_utils import get_deploy_args
@@ -32,9 +32,14 @@ from ray.serve.generated.serve_pb2 import (
 )
 from ray.serve.generated.serve_pb2 import StatusOverview as StatusOverviewProto
 from ray.serve.handle import DeploymentHandle, _HandleOptions
-from ray.serve.schema import LoggingConfig, ServeApplicationSchema, ServeDeploySchema
+from ray.serve.schema import (
+    ApplicationStatus,
+    LoggingConfig,
+    ServeApplicationSchema,
+    ServeDeploySchema,
+)
 
-logger = logging.getLogger(__file__)
+logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 
 def _ensure_connected(f: Callable) -> Callable:
@@ -378,11 +383,6 @@ class ServeControllerClient:
             DeploymentInfo.from_proto(deployment_route.deployment_info),
             deployment_route.route if deployment_route.route != "" else None,
         )
-
-    @_ensure_connected
-    def get_app_config(self, name: str = SERVE_DEFAULT_APP_NAME) -> Dict:
-        """Returns the most recently requested Serve config."""
-        return ray.get(self._controller.get_app_config.remote(name))
 
     @_ensure_connected
     def get_serve_status(self, name: str = SERVE_DEFAULT_APP_NAME) -> StatusOverview:

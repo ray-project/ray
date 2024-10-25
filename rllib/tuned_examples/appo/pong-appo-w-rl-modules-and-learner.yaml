@@ -26,7 +26,7 @@ appo-pongnoframeskip-v5:
         broadcast_interval: 1
         max_sample_requests_in_flight_per_worker: 1
         num_envs_per_env_runner: 8
-        num_sgd_iter: 2
+        num_epochs: 2
         vf_loss_coeff: 1.0
         clip_param: 0.3
 

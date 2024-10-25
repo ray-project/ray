@@ -13,12 +13,16 @@ from ray.exceptions import RayActorError
 from ray.serve._private.client import ServeControllerClient
 from ray.serve._private.common import ReplicaID
 from ray.serve._private.config import DeploymentConfig
-from ray.serve._private.constants import SERVE_CONTROLLER_NAME, SERVE_NAMESPACE
+from ray.serve._private.constants import (
+    SERVE_CONTROLLER_NAME,
+    SERVE_LOGGER_NAME,
+    SERVE_NAMESPACE,
+)
 from ray.serve.exceptions import RayServeException
 from ray.serve.grpc_util import RayServegRPCContext
 from ray.util.annotations import DeveloperAPI
 
-logger = logging.getLogger(__file__)
+logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 _INTERNAL_REPLICA_CONTEXT: "ReplicaContext" = None
 _global_client: ServeControllerClient = None
@@ -171,6 +175,7 @@ class _RequestContext:
     app_name: str = ""
     multiplexed_model_id: str = ""
     grpc_context: Optional[RayServegRPCContext] = None
+    is_http_request: bool = False
 
 
 _serve_request_context = contextvars.ContextVar(

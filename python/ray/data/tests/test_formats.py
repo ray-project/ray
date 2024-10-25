@@ -1,5 +1,6 @@
 import os
-from typing import Any, Iterable, List
+import sys
+from typing import Iterable, List
 
 import pandas as pd
 import pyarrow as pa
@@ -10,10 +11,10 @@ from fsspec.implementations.http import HTTPFileSystem
 from fsspec.implementations.local import LocalFileSystem
 
 import ray
-from ray._private.test_utils import wait_for_condition
 from ray.data._internal.execution.interfaces import TaskContext
 from ray.data.block import Block, BlockAccessor
 from ray.data.datasource import Datasink, DummyOutputDatasink
+from ray.data.datasource.datasink import WriteResult
 from ray.data.datasource.file_meta_provider import _handle_read_os_error
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.mock_http_server import *  # noqa
@@ -85,6 +86,23 @@ def test_get_internal_block_refs(ray_start_regular_shared):
     assert out == list(range(10)), out
 
 
+def test_iter_internal_ref_bundles(ray_start_regular_shared):
+    n = 10
+    ds = ray.data.range(n, override_num_blocks=n)
+    iter_ref_bundles = ds.iter_internal_ref_bundles()
+
+    out = []
+    ref_bundle_count = 0
+    for ref_bundle in iter_ref_bundles:
+        for block_ref, block_md in ref_bundle.blocks:
+            b = ray.get(block_ref)
+            out.extend(extract_values("id", BlockAccessor.for_block(b).iter_rows(True)))
+        ref_bundle_count += 1
+    out = sorted(out)
+    assert ref_bundle_count == n
+    assert out == list(range(n)), out
+
+
 def test_fsspec_filesystem(ray_start_regular_shared, tmp_path):
     """Same as `test_parquet_write` but using a custom, fsspec filesystem.
 
@@ -115,11 +133,9 @@ def test_fsspec_filesystem(ray_start_regular_shared, tmp_path):
     ds._set_uuid("data")
     ds.write_parquet(out_path)
 
-    ds_df1 = pd.read_parquet(os.path.join(out_path, "data_000000_000000.parquet"))
-    ds_df2 = pd.read_parquet(os.path.join(out_path, "data_000001_000000.parquet"))
-    ds_df = pd.concat([ds_df1, ds_df2])
-    df = pd.concat([df1, df2])
-    assert ds_df.equals(df)
+    actual_data = set(pd.read_parquet(out_path).itertuples(index=False))
+    expected_data = set(pd.concat([df1, df2]).itertuples(index=False))
+    assert actual_data == expected_data, (actual_data, expected_data)
 
 
 def test_fsspec_http_file_system(ray_start_regular_shared, http_server, http_file):
@@ -161,6 +177,10 @@ def test_write_datasink(ray_start_regular_shared):
     assert ray.get(output.data_sink.get_rows_written.remote()) == 10
 
 
+@pytest.mark.skipif(
+    sys.version_info >= (3, 12),
+    reason="Skip due to incompatibility tensorflow with Python 3.12+",
+)
 def test_from_tf(ray_start_regular_shared):
     import tensorflow as tf
     import tensorflow_datasets as tfds
@@ -220,7 +240,6 @@ class NodeLoggerOutputDatasink(Datasink):
                 block = BlockAccessor.for_block(block)
                 self.rows_written += block.num_rows()
                 self.node_ids.add(node_id)
-                return "ok"
 
             def get_rows_written(self):
                 return self.rows_written
@@ -236,7 +255,7 @@ class NodeLoggerOutputDatasink(Datasink):
         self,
         blocks: Iterable[Block],
         ctx: TaskContext,
-    ) -> Any:
+    ) -> None:
         data_sink = self.data_sink
 
         def write(b):
@@ -247,11 +266,11 @@ class NodeLoggerOutputDatasink(Datasink):
         for b in blocks:
             tasks.append(write(b))
         ray.get(tasks)
-        return "ok"
 
-    def on_write_complete(self, write_results: List[Any]) -> None:
-        assert all(w == "ok" for w in write_results), write_results
+    def on_write_complete(self, write_result_blocks: List[Block]) -> WriteResult:
         self.num_ok += 1
+        aggregated_results = super().on_write_complete(write_result_blocks)
+        return aggregated_results
 
     def on_write_failed(self, error: Exception) -> None:
         self.num_failed += 1
@@ -307,32 +326,6 @@ def test_read_s3_file_error(shutdown_only, s3_path):
 
 # NOTE: All tests above share a Ray cluster, while the tests below do not. These
 # tests should only be carefully reordered to retain this invariant!
-
-
-def test_get_reader(shutdown_only):
-    # Note: if you get TimeoutErrors here, try installing required dependencies
-    # with `pip install -U "ray[default]"`.
-    ray.init()
-
-    head_node_id = ray.get_runtime_context().get_node_id()
-
-    # Issue read so `_get_datasource_or_legacy_reader` being executed.
-    ray.data.range(10).materialize()
-
-    # Verify `_get_datasource_or_legacy_reader` being executed on same node (head node).
-    def verify_get_reader():
-        from ray.util.state import list_tasks
-
-        task_states = list_tasks(
-            filters=[("name", "=", "_get_datasource_or_legacy_reader")]
-        )
-        # Verify only one task being executed on same node.
-        assert len(task_states) == 1
-        assert task_states[0]["name"] == "_get_datasource_or_legacy_reader"
-        assert task_states[0]["node_id"] == head_node_id
-        return True
-
-    wait_for_condition(verify_get_reader, timeout=20)
 
 
 if __name__ == "__main__":

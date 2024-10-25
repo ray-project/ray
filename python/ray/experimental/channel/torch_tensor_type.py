@@ -2,13 +2,15 @@ import logging
 from typing import TYPE_CHECKING, List, Optional, Tuple, Union
 
 import ray
-from ray.experimental.channel import ChannelContext, ChannelOutputType
+from ray.experimental.channel import ChannelContext, ChannelInterface, ChannelOutputType
+from ray.experimental.channel.gpu_communicator import (
+    GPUCommunicator,
+    TorchTensorAllocator,
+)
 from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
     import torch
-
-    from ray.experimental.channel.torch_tensor_nccl_channel import TorchTensorAllocator
 
 logger = logging.getLogger(__name__)
 
@@ -19,19 +21,6 @@ logger = logging.getLogger(__name__)
 TENSOR_METADATA_SIZE_BYTES = 100_000
 
 
-def _get_default_torch_device() -> "torch.device":
-    from ray.air._internal import torch_utils
-
-    if not ray.get_gpu_ids():
-        import torch
-
-        # torch_utils defaults to returning GPU 0 if no GPU IDs were assigned
-        # by Ray. We instead want the default to be CPU.
-        return torch.device("cpu")
-
-    return torch_utils.get_devices()[0]
-
-
 @PublicAPI(stability="alpha")
 class TorchTensorType(ChannelOutputType):
     AUTO = "auto"
@@ -39,10 +28,10 @@ class TorchTensorType(ChannelOutputType):
 
     def __init__(
         self,
-        shape: Union[int, Tuple[int], str] = AUTO,
-        dtype: "torch.dtype" = AUTO,
-        transport: Optional[str] = AUTO,
-        direct_return: Optional[bool] = False,
+        _shape: Union[int, Tuple[int], str] = AUTO,
+        _dtype: "torch.dtype" = AUTO,
+        transport: Optional[Union[str, GPUCommunicator]] = AUTO,
+        _direct_return: Optional[bool] = False,
     ):
         """
         A type hint that can be used to annotate DAG nodes that return a
@@ -55,7 +44,7 @@ class TorchTensorType(ChannelOutputType):
         using ray.util.serialization.deregister_serializer(torch.Tensor).
 
         Args:
-            shape: The expected shape of the torch.Tensor. "auto" (default)
+            _shape: The expected shape of the torch.Tensor. "auto" (default)
                 means that the shape will be dynamically inferred. For tensors
                 passed via host memory (default), the shape is a hint for the
                 maximum size of the tensor. If a DAG node's returned serialized
@@ -64,27 +53,32 @@ class TorchTensorType(ChannelOutputType):
                 shape; if it does not match, the task will error. Specifying
                 the shape and dtype ahead of time will eliminate the
                 performance overhead from an additional metadata transfer.
-            dtype: The expected dtype of the torch.Tensor. Similar to the
+            _dtype: The expected dtype of the torch.Tensor. Similar to the
                 shape, this may be statically or dynamically declared.
             transport: "auto" (default) means that tensors will be passed via
                 host memory, using numpy as the serialization format. Pass
                 TorchTensorType.NCCL or "nccl" to use NCCL instead, avoiding
                 the host memory copy.
-            direct_return: Whether the tensor is sent directly or inside of
+            _direct_return: Whether the tensor is sent directly or inside of
                 other data. If a non-default `transport` is used, this allows
                 the sender and receiver to eliminate performance overhead from
                 an additional data transfer.
         """
         super().__init__()
 
-        if isinstance(shape, str):
-            shape = shape.lower()
-        if isinstance(dtype, str):
-            dtype = dtype.lower()
+        if isinstance(_shape, str):
+            _shape = _shape.lower()
+        if isinstance(_dtype, str):
+            _dtype = _dtype.lower()
 
-        self.shape = shape
-        self.dtype = dtype
-        self.direct_return = direct_return
+        self._shape = _shape
+        self._dtype = _dtype
+        self._direct_return = _direct_return
+
+        self._custom_nccl_group: Optional[GPUCommunicator] = None
+        if isinstance(transport, GPUCommunicator):
+            self._custom_nccl_group = transport
+            transport = self.NCCL
 
         if transport not in [self.AUTO, self.NCCL]:
             raise ValueError(
@@ -94,15 +88,15 @@ class TorchTensorType(ChannelOutputType):
 
         self._nccl_group_id: Optional[str] = None
 
-        if self.direct_return and self.transport == self.AUTO:
+        if self._direct_return and self.transport == self.AUTO:
             logger.info(
-                "TorchTensorType(direct_return=True) has no effect when "
+                "TorchTensorType(_direct_return=True) has no effect when "
                 "`transport` is TorchTensorType.AUTO (default)."
             )
 
     @property
     def is_direct_return(self) -> bool:
-        return self.direct_return
+        return self._direct_return
 
     def register_custom_serializer(self) -> None:
         super().register_custom_serializer()
@@ -129,16 +123,20 @@ class TorchTensorType(ChannelOutputType):
     def create_channel(
         self,
         writer: Optional["ray.actor.ActorHandle"],
-        readers: List[Optional["ray.actor.ActorHandle"]],
+        reader_and_node_list: List[Tuple["ray.actor.ActorHandle", str]],
+        read_by_adag_driver,
         _torch_tensor_allocator: Optional["TorchTensorAllocator"] = None,
-    ) -> type:
+    ) -> ChannelInterface:
         if self.requires_nccl():
             from ray.experimental.channel.torch_tensor_nccl_channel import (
                 TorchTensorNcclChannel,
             )
 
             return TorchTensorNcclChannel(
-                writer, readers, self, _torch_tensor_allocator=_torch_tensor_allocator
+                writer,
+                reader_and_node_list,
+                self,
+                _torch_tensor_allocator=_torch_tensor_allocator,
             )
 
         # Transfer via host memory using a shared-memory channel.
@@ -164,25 +162,47 @@ class TorchTensorType(ChannelOutputType):
             torch.double: 8,
         }
 
-        shape = self.shape
+        shape = self._shape
         if isinstance(shape, int):
             shape = (shape,)
 
         num_elements = 1
         for dim in shape:
             num_elements *= dim
-        element_size_bytes = TORCH_DTYPE_ITEMSIZE_MAP[self.dtype]
+        element_size_bytes = TORCH_DTYPE_ITEMSIZE_MAP[self._dtype]
         buffer_size_bytes = int(num_elements * element_size_bytes)
         buffer_size_bytes += TENSOR_METADATA_SIZE_BYTES
 
-        return Channel(writer, readers, buffer_size_bytes)
+        return Channel(writer, reader_and_node_list, buffer_size_bytes)
 
     def requires_nccl(self) -> bool:
         return self.transport == self.NCCL
+
+    def get_custom_nccl_group(self) -> Optional[GPUCommunicator]:
+        """
+        Return the custom NCCL group if one is specified.
+        """
+        return self._custom_nccl_group
 
     def set_nccl_group_id(self, group_id: str) -> None:
         self._nccl_group_id = group_id
 
     @property
-    def nccl_group_id(self) -> str:
+    def nccl_group_id(self) -> Optional[str]:
         return self._nccl_group_id
+
+    def __deepcopy__(self, memo):
+        """
+        Deep copy all the fields except for the custom NCCL group. The custom
+        NCCL group should not be deep copied because it can be shared across
+        `TorchTensorType` instances.
+        """
+        copy = TorchTensorType(
+            _shape=self._shape,
+            _dtype=self._dtype,
+            transport=self.transport,
+            _direct_return=self._direct_return,
+        )
+        copy._custom_nccl_group = self._custom_nccl_group
+        copy._nccl_group_id = self._nccl_group_id
+        return copy

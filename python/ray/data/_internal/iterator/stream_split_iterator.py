@@ -68,14 +68,10 @@ class StreamSplitDataIterator(DataIterator):
         self._world_size = world_size
         self._iter_stats = DatasetStats(metadata={}, parent=None)
 
-    def _to_block_iterator(
+    def _to_ref_bundle_iterator(
         self,
-    ) -> Tuple[
-        Iterator[Tuple[ObjectRef[Block], BlockMetadata]],
-        Optional[DatasetStats],
-        bool,
-    ]:
-        def gen_blocks() -> Iterator[Tuple[ObjectRef[Block], BlockMetadata]]:
+    ) -> Tuple[Iterator[RefBundle], Optional[DatasetStats], bool]:
+        def gen_blocks() -> Iterator[RefBundle]:
             cur_epoch = ray.get(
                 self._coord_actor.start_epoch.remote(self._output_split_idx)
             )
@@ -83,16 +79,16 @@ class StreamSplitDataIterator(DataIterator):
                 Optional[ObjectRef[Block]]
             ] = self._coord_actor.get.remote(cur_epoch, self._output_split_idx)
             while True:
-                block_ref: Optional[Tuple[ObjectRef[Block], BlockMetadata]] = ray.get(
-                    future
-                )
-                if not block_ref:
+                block_ref_and_md: Optional[
+                    Tuple[ObjectRef[Block], BlockMetadata]
+                ] = ray.get(future)
+                if not block_ref_and_md:
                     break
                 else:
                     future = self._coord_actor.get.remote(
                         cur_epoch, self._output_split_idx
                     )
-                    yield block_ref
+                    yield RefBundle(blocks=(block_ref_and_md,), owns_blocks=False)
 
         return gen_blocks(), self._iter_stats, False
 
@@ -175,16 +171,14 @@ class SplitCoordinator:
                 output_iterator = execute_to_legacy_bundle_iterator(
                     executor,
                     dataset._plan,
-                    True,
-                    dataset._plan._dataset_uuid,
                     dag_rewrite=add_split_op,
                 )
                 yield output_iterator
 
         self._next_epoch = gen_epochs()
         self._output_iterator = None
-        # Used for debugging https://github.com/ray-project/ray/issues/45225
-        self._debug_info = {}
+        # Store the error raised from the `gen_epoch` call.
+        self._gen_epoch_error: Optional[Exception] = None
 
     def stats(self) -> DatasetStats:
         """Returns stats from the base dataset."""
@@ -251,11 +245,9 @@ class SplitCoordinator:
     def _barrier(self, split_idx: int) -> int:
         """Arrive and block until the start of the given epoch."""
 
-        self._debug_info[split_idx] = {}
         # Decrement and await all clients to arrive here.
         with self._lock:
             starting_epoch = self._cur_epoch
-            self._debug_info[split_idx]["starting_epoch"] = starting_epoch
             self._unfinished_clients_in_epoch -= 1
 
         start_time = time.time()
@@ -275,31 +267,19 @@ class SplitCoordinator:
             time.sleep(0.1)
 
         # Advance to the next epoch.
-        self._debug_info[split_idx]["entering_lock"] = (
-            self._cur_epoch,
-            self._output_iterator is None,
-            time.time(),
-        )
         with self._lock:
-            self._debug_info[split_idx]["entered_lock"] = (
-                self._cur_epoch,
-                self._output_iterator is None,
-                time.time(),
-            )
             if self._cur_epoch == starting_epoch:
                 self._cur_epoch += 1
                 self._unfinished_clients_in_epoch = self._n
-                self._output_iterator = next(self._next_epoch)
-                self._debug_info[split_idx]["set_iter"] = (
-                    self._cur_epoch,
-                    self._output_iterator is None,
-                    time.time(),
-                )
-            self._debug_info[split_idx]["leaving_lock"] = (
-                self._cur_epoch,
-                self._output_iterator is None,
-                time.time(),
-            )
+                try:
+                    self._output_iterator = next(self._next_epoch)
+                except Exception as e:
+                    self._gen_epoch_error = e
 
-        assert self._output_iterator is not None, self._debug_info
+        if self._gen_epoch_error is not None:
+            # If there was an error when advancing to the next epoch,
+            # re-raise it for all threads.
+            raise self._gen_epoch_error
+
+        assert self._output_iterator is not None
         return starting_epoch + 1

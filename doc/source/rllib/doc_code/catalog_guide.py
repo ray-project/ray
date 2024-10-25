@@ -102,7 +102,7 @@ env.step(actions[0])
 # __sphinx_doc_algo_configs_begin__
 from ray.rllib.algorithms.ppo.ppo_catalog import PPOCatalog
 from ray.rllib.algorithms.ppo import PPOConfig
-from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
+from ray.rllib.core.rl_module.rl_module import RLModuleSpec
 
 
 class MyPPOCatalog(PPOCatalog):
@@ -113,15 +113,16 @@ class MyPPOCatalog(PPOCatalog):
 
 config = (
     PPOConfig()
-    .api_stack(enable_rl_module_and_learner=True)
+    .api_stack(
+        enable_rl_module_and_learner=True,
+        enable_env_runner_and_connector_v2=True,
+    )
     .environment("CartPole-v1")
     .framework("torch")
 )
 
 # Specify the catalog to use for the PPORLModule.
-config = config.rl_module(
-    rl_module_spec=SingleAgentRLModuleSpec(catalog_class=MyPPOCatalog)
-)
+config = config.rl_module(rl_module_spec=RLModuleSpec(catalog_class=MyPPOCatalog))
 # This is how RLlib constructs a PPORLModule
 # It will say "Hi from within PPORLModule!".
 ppo = config.build()

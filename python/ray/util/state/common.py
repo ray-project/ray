@@ -90,7 +90,7 @@ class Humanify:
     convert units into a human readable string."""
 
     def timestamp(x: float):
-        """Converts miliseconds to a datetime object."""
+        """Converts milliseconds to a datetime object."""
         return str(datetime.datetime.fromtimestamp(x / 1000))
 
     def memory(x: int):
@@ -104,7 +104,7 @@ class Humanify:
         return str(format(x, ".3f")) + " B"
 
     def duration(x: int):
-        """Converts miliseconds to a human readable duration."""
+        """Converts milliseconds to a human readable duration."""
         return str(datetime.timedelta(milliseconds=x))
 
     def events(events: List[dict]):
@@ -282,7 +282,7 @@ class StateSchema(ABC):
     @classmethod
     def columns(cls) -> Set[str]:
         """Return a set of all columns."""
-        return set(cls.list_columns())
+        return set(cls.list_columns(detail=True))
 
     @classmethod
     def filterable_columns(cls) -> Set[str]:
@@ -461,6 +461,12 @@ class ActorState(StateSchema):
     placement_group_id: Optional[str] = state_column(detail=True, filterable=True)
     #: Actor's repr name if a customized __repr__ method exists, else empty string.
     repr_name: Optional[str] = state_column(detail=True, filterable=True)
+    #: Number of restarts that has been tried on this actor.
+    num_restarts: int = state_column(filterable=False, detail=True)
+    #: Number of times this actor is restarted due to lineage reconstructions.
+    num_restarts_due_to_lineage_reconstruction: int = state_column(
+        filterable=False, detail=True
+    )
 
 
 @dataclass(init=not IS_PYDANTIC_2)
@@ -550,7 +556,7 @@ class JobState(StateSchema, JobDetails if JobDetails is not None else object):
         return state
 
     @classmethod
-    def list_columns(cls, detail: bool = False) -> List[str]:
+    def list_columns(cls, detail: bool = True) -> List[str]:
         if not detail:
             return [
                 "job_id",
@@ -562,7 +568,7 @@ class JobState(StateSchema, JobDetails if JobDetails is not None else object):
                 "error_type",
                 "driver_info",
             ]
-        if isinstance(JobDetails, object):
+        if JobDetails is None:
             # We don't have pydantic in the dashboard. This is because
             # we call this method at module import time, so we need to
             # check if the class is a pydantic model.
@@ -571,9 +577,9 @@ class JobState(StateSchema, JobDetails if JobDetails is not None else object):
         # TODO(aguo): Once we only support pydantic 2, we can remove this if check.
         # In pydantic 2.0, `__fields__` has been renamed to `model_fields`.
         return (
-            JobDetails.model_fields
+            list(JobDetails.model_fields.keys())
             if hasattr(JobDetails, "model_fields")
-            else JobDetails.__fields__
+            else list(JobDetails.__fields__.keys())
         )
 
     def asdict(self):
@@ -630,12 +636,16 @@ class WorkerState(StateSchema):
     #: -> start_time_ms (worker is ready to be used).
     #: -> end_time_ms (worker is destroyed).
     worker_launch_time_ms: Optional[int] = state_column(
-        filterable=False, detail=True, format_fn=Humanify.timestamp
+        filterable=False,
+        detail=True,
+        format_fn=lambda x: "" if x == -1 else Humanify.timestamp(x),
     )
     #: The time worker is succesfully launched
     #: -1 if the value doesn't exist.
     worker_launched_time_ms: Optional[int] = state_column(
-        filterable=False, detail=True, format_fn=Humanify.timestamp
+        filterable=False,
+        detail=True,
+        format_fn=lambda x: "" if x == -1 else Humanify.timestamp(x),
     )
     #: The time when the worker is started and initialized.
     #: 0 if the value doesn't exist.
@@ -777,6 +787,8 @@ class ObjectState(StateSchema):
     #:   to the remote worker + queueing time from the execution side.
     #: - RUNNING: The task that is running.
     task_status: TypeTaskStatus = state_column(filterable=True)
+    #: The number of times the task has been executed (including the current execution)
+    attempt_number: int = state_column(filterable=True)
     #: The reference type of the object.
     #: See :ref:`Debugging with Ray Memory <debug-with-ray-memory>` for more details.
     #:
@@ -1364,6 +1376,9 @@ class ObjectSummaryPerKey:
     #: State name to the count dict. State name is equivalent to
     #: ObjectState.
     task_state_counts: Dict[TypeTaskStatus, int] = field(default_factory=dict)
+    #: Attempt number to the count dict. The attempt number include the current
+    #: execution
+    task_attempt_number_counts: Dict[str, int] = field(default_factory=dict)
     #: Ref count type to the count dict. State name is equivalent to
     #: ObjectState.
     ref_type_counts: Dict[TypeReferenceType, int] = field(default_factory=dict)
@@ -1412,6 +1427,11 @@ class ObjectSummaries:
             if task_state not in object_summary.task_state_counts:
                 object_summary.task_state_counts[task_state] = 0
             object_summary.task_state_counts[task_state] += 1
+
+            attempt_number = str(object["attempt_number"])
+            if attempt_number not in object_summary.task_attempt_number_counts:
+                object_summary.task_attempt_number_counts[attempt_number] = 0
+            object_summary.task_attempt_number_counts[attempt_number] += 1
 
             ref_type = object["reference_type"]
             if ref_type not in object_summary.ref_type_counts:
@@ -1583,24 +1603,27 @@ def protobuf_to_task_state_dict(message: TaskEvents) -> dict:
     task_state["end_time_ms"] = None
     events = []
 
-    for state in TaskStatus.keys():
-        key = f"{state.lower()}_ts"
-        if key in state_updates:
-            # timestamp is recorded as nanosecond from the backend.
-            # We need to convert it to the second.
-            ts_ms = int(state_updates[key]) // 1e6
-            events.append(
-                {
-                    "state": state,
-                    "created_ms": ts_ms,
-                }
-            )
-            if state == "PENDING_ARGS_AVAIL":
-                task_state["creation_time_ms"] = ts_ms
-            if state == "RUNNING":
-                task_state["start_time_ms"] = ts_ms
-            if state == "FINISHED" or state == "FAILED":
-                task_state["end_time_ms"] = ts_ms
+    if "state_ts_ns" in state_updates:
+        state_ts_ns = state_updates["state_ts_ns"]
+        for state_name, state in TaskStatus.items():
+            # state_ts_ns is Map[str, str] after protobuf MessageToDict
+            key = str(state)
+            if key in state_ts_ns:
+                # timestamp is recorded as nanosecond from the backend.
+                # We need to convert it to the second.
+                ts_ms = int(state_ts_ns[key]) // 1e6
+                events.append(
+                    {
+                        "state": state_name,
+                        "created_ms": ts_ms,
+                    }
+                )
+                if state == TaskStatus.PENDING_ARGS_AVAIL:
+                    task_state["creation_time_ms"] = ts_ms
+                if state == TaskStatus.RUNNING:
+                    task_state["start_time_ms"] = ts_ms
+                if state == TaskStatus.FINISHED or state == TaskStatus.FAILED:
+                    task_state["end_time_ms"] = ts_ms
 
     task_state["events"] = events
     if len(events) > 0:
@@ -1644,17 +1667,19 @@ def remove_ansi_escape_codes(text: str) -> str:
     return re.sub(r"\x1b[^m]*m", "", text)
 
 
-def dict_to_state(d: Dict, state_schema: StateSchema) -> StateSchema:
+def dict_to_state(d: Dict, state_resource: StateResource) -> StateSchema:
+
     """Convert a dict to a state schema.
 
     Args:
         d: a dict to convert.
-        state_schema: a schema to convert to.
+        state_resource: the state resource to convert to.
 
     Returns:
         A state schema.
     """
     try:
-        return resource_to_schema(state_schema)(**d)
+        return resource_to_schema(state_resource)(**d)
+
     except Exception as e:
         raise RayStateApiException(f"Failed to convert {d} to StateSchema: {e}") from e

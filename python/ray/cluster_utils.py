@@ -220,7 +220,6 @@ class Cluster:
             "object_store_memory": 150 * 1024 * 1024,  # 150 MiB
             "min_worker_port": 0,
             "max_worker_port": 0,
-            "dashboard_port": None,
         }
         ray_params = ray._private.parameter.RayParams(**node_args)
         ray_params.update_if_absent(**default_kwargs)
@@ -239,7 +238,12 @@ class Cluster:
                 )
                 self.webui_url = self.head_node.webui_url
                 # Init global state accessor when creating head node.
-                gcs_options = GcsClientOptions.from_gcs_address(node.gcs_address)
+                gcs_options = GcsClientOptions.create(
+                    node.gcs_address,
+                    None,
+                    allow_cluster_id_nil=True,
+                    fetch_cluster_id_if_nil=False,
+                )
                 self.global_state._initialize_global_state(gcs_options)
                 # Write the Ray cluster address for convenience in unit
                 # testing. ray.init() and ray.init(address="auto") will connect
@@ -252,6 +256,10 @@ class Cluster:
                 ray_params.update_if_absent(include_log_monitor=False)
                 # Let grpc pick a port.
                 ray_params.update_if_absent(node_manager_port=0)
+                if "dashboard_agent_listen_port" not in node_args:
+                    # Pick a random one to not conflict
+                    # with the head node dashboard agent
+                    ray_params.dashboard_agent_listen_port = None
 
                 node = ray._private.node.Node(
                     ray_params,

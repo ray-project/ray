@@ -14,7 +14,7 @@ apiVersion: v1
 kind: ConfigMap
 metadata:
   name: tls
-data: 
+data:
   gencert_head.sh: |
     #!/bin/sh
     ## Create tls.key

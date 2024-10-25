@@ -107,6 +107,17 @@ examples:
       - large language models
     contributor: community
     link: examples/intel_gaudi/llama
+  - title: "Pre-train Llama-2 with Intel Gaudi"
+    frameworks:
+      - accelerate
+      - transformers
+      - deepspeed
+    skill_level: intermediate
+    use_cases:
+      - natural language processing
+      - large language models
+    contributor: community
+    link: examples/intel_gaudi/llama_pretrain
 
   - title: Fine-tune a Llama-2 text generation models with DeepSpeed and Hugging Face Accelerate
     frameworks:

@@ -64,15 +64,16 @@ Results to expect
 |---------------------+------------+----------------+--------+------------------+
 | PPO_env_a2fd6_00000 | TERMINATED | 127.0.0.1:7409 |     25 |          24.1426 |
 +---------------------+------------+----------------+--------+------------------+
-------------------------+------------------------+------------------------+
-   num_env_steps_sample |   num_env_steps_traine |   episode_return_mean  |
-             d_lifetime |             d_lifetime |                        |
-------------------------+------------------------+------------------------|
-                 100000 |                 100000 |                 421.42 |
-------------------------+------------------------+------------------------+
++------------------------+------------------------+------------------------+
+|   num_env_steps_sample |   num_env_steps_traine |   episode_return_mean  |
+|             d_lifetime |             d_lifetime |                        |
++------------------------+------------------------+------------------------|
+|                 100000 |                 100000 |                 421.42 |
++------------------------+------------------------+------------------------+
 """
 from ray.tune.registry import register_env
 from ray.rllib.connectors.env_to_module import FlattenObservations
+from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
 from ray.rllib.examples.envs.classes.cartpole_with_dict_observation_space import (
     CartPoleWithDictObservationSpace,
 )
@@ -88,14 +89,11 @@ from ray.tune.registry import get_trainable_cls
 
 # Read in common example script command line arguments.
 parser = add_rllib_example_script_args(default_timesteps=200000, default_reward=400.0)
+parser.set_defaults(enable_new_api_stack=True)
 
 
 if __name__ == "__main__":
     args = parser.parse_args()
-
-    assert (
-        args.enable_new_api_stack
-    ), "Must set --enable-new-api-stack when running this script!"
 
     # Define env-to-module-connector pipeline for the new stack.
     def _env_to_module_pipeline(env):
@@ -113,7 +111,7 @@ if __name__ == "__main__":
         register_env("env", lambda _: CartPoleWithDictObservationSpace())
 
     # Define the AlgorithmConfig used.
-    config = (
+    base_config = (
         get_trainable_cls(args.algo)
         .get_default_config()
         .environment("env")
@@ -122,36 +120,35 @@ if __name__ == "__main__":
             gamma=0.99,
             lr=0.0003,
         )
+        .rl_module(
+            model_config=DefaultModelConfig(
+                fcnet_hiddens=[32],
+                fcnet_activation="linear",
+                vf_share_layers=True,
+            ),
+        )
     )
-    if args.enable_new_api_stack:
-        config = config.rl_module(
-            model_config_dict={
-                "fcnet_hiddens": [32],
-                "fcnet_activation": "linear",
-                "vf_share_layers": True,
-                "uses_new_env_runners": True,
-            },
-        )
-    else:
-        config = config.training(
-            model=dict(
-                fcnet_hiddens=[32], fcnet_activation="linear", vf_share_layers=True
-            )
-        )
 
     # Add a simple multi-agent setup.
     if args.num_agents > 0:
-        config = config.multi_agent(
+        base_config.multi_agent(
             policies={f"p{i}" for i in range(args.num_agents)},
             policy_mapping_fn=lambda aid, *a, **kw: f"p{aid}",
         )
 
-    # Fix some PPO-specific settings.
+    # PPO-specific settings (for better learning behavior only).
     if args.algo == "PPO":
-        config = config.training(
-            num_sgd_iter=6,
+        base_config.training(
+            num_epochs=6,
             vf_loss_coeff=0.01,
+        )
+    # IMPALA-specific settings (for better learning behavior only).
+    elif args.algo == "IMPALA":
+        base_config.training(
+            lr=0.0005,
+            vf_loss_coeff=0.05,
+            entropy_coeff=0.0,
         )
 
     # Run everything as configured.
-    run_rllib_example_script_experiment(config, args)
+    run_rllib_example_script_experiment(base_config, args)

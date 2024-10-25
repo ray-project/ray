@@ -14,6 +14,7 @@ from ray.rllib.common import (
     example_help,
     _download_example_file,
 )
+from ray.rllib.utils.deprecation import deprecation_warning
 
 # Main Typer CLI app
 app = typer.Typer()
@@ -234,6 +235,15 @@ def main_helper():
 def cli():
     # Keep this function here, it's referenced in the setup.py file, and exposes
     # the CLI as entry point ("rllib" command).
+    deprecation_warning(
+        old="RLlib CLI (`rllib train` and `rllib evaluate`)",
+        help="The RLlib CLI scripts will be deprecated soon! "
+        "Use RLlib's python API instead, which is more flexible and offers a more "
+        "unified approach to running RL experiments, evaluating policies, and "
+        "creating checkpoints for later deployments. See here for a quick intro: "
+        "https://docs.ray.io/en/latest/rllib/rllib-training.html#using-the-python-api",
+        error=False,
+    )
     app()
 
 

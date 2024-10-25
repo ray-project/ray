@@ -40,7 +40,7 @@ from ray.rllib.utils.metrics import (
     NUM_AGENT_STEPS_TRAINED,
     EPISODE_RETURN_MEAN,
 )
-from ray.rllib.utils.test_utils import check, framework_iterator
+from ray.rllib.utils.test_utils import check
 from ray.tune.registry import register_env
 
 
@@ -102,6 +102,15 @@ class TestRolloutWorker(unittest.TestCase):
     @classmethod
     def tearDownClass(cls):
         ray.shutdown()
+
+    @staticmethod
+    def _from_existing_env_runner(local_env_runner, remote_workers=None):
+        workers = EnvRunnerGroup(
+            env_creator=None, default_policy_class=None, config=None, _setup=False
+        )
+        workers.reset(remote_workers or [])
+        workers._local_env_runner = local_env_runner
+        return workers
 
     def test_basic(self):
         ev = RolloutWorker(
@@ -168,33 +177,26 @@ class TestRolloutWorker(unittest.TestCase):
             # lr = 0.1 - [(0.1 - 0.000001) / 100000] * ts
             .training(lr_schedule=[[0, 0.1], [100000, 0.000001]])
         )
-        for fw in framework_iterator(config, frameworks=("tf2", "tf")):
-            algo = config.build()
-            policy = algo.get_policy()
-            for i in range(3):
-                result = algo.train()
-                print(
-                    "{}={}".format(
-                        NUM_AGENT_STEPS_TRAINED, result["info"][NUM_AGENT_STEPS_TRAINED]
-                    )
+        algo = config.build()
+        policy = algo.get_policy()
+        for i in range(3):
+            result = algo.train()
+            print(
+                "{}={}".format(
+                    NUM_AGENT_STEPS_TRAINED, result["info"][NUM_AGENT_STEPS_TRAINED]
                 )
-                print(
-                    "{}={}".format(
-                        NUM_AGENT_STEPS_SAMPLED, result["info"][NUM_AGENT_STEPS_SAMPLED]
-                    )
+            )
+            print(
+                "{}={}".format(
+                    NUM_AGENT_STEPS_SAMPLED, result["info"][NUM_AGENT_STEPS_SAMPLED]
                 )
-                global_timesteps = (
-                    policy.global_timestep
-                    if fw == "tf"
-                    else policy.global_timestep.numpy()
-                )
-                print("global_timesteps={}".format(global_timesteps))
-                expected_lr = 0.1 - ((0.1 - 0.000001) / 100000) * global_timesteps
-                lr = policy.cur_lr
-                if fw == "tf":
-                    lr = policy.get_session().run(lr)
-                check(lr, expected_lr, rtol=0.05)
-            algo.stop()
+            )
+            global_timesteps = policy.global_timestep
+            print("global_timesteps={}".format(global_timesteps))
+            expected_lr = 0.1 - ((0.1 - 0.000001) / 100000) * global_timesteps
+            lr = policy.cur_lr
+            check(lr, expected_lr, rtol=0.05)
+        algo.stop()
 
     def test_query_evaluators(self):
         register_env("test", lambda _: gym.make("CartPole-v1"))
@@ -206,23 +208,22 @@ class TestRolloutWorker(unittest.TestCase):
                 num_envs_per_env_runner=2,
                 create_env_on_local_worker=True,
             )
-            .training(train_batch_size=20, sgd_minibatch_size=5, num_sgd_iter=1)
+            .training(train_batch_size=20, minibatch_size=5, num_epochs=1)
         )
-        for _ in framework_iterator(config, frameworks=("torch", "tf")):
-            algo = config.build()
-            results = algo.workers.foreach_worker(
-                lambda w: w.total_rollout_fragment_length
-            )
-            results2 = algo.workers.foreach_worker_with_id(
-                lambda i, w: (i, w.total_rollout_fragment_length)
-            )
-            results3 = algo.workers.foreach_worker(
-                lambda w: w.foreach_env(lambda env: 1)
-            )
-            self.assertEqual(results, [10, 10, 10])
-            self.assertEqual(results2, [(0, 10), (1, 10), (2, 10)])
-            self.assertEqual(results3, [[1, 1], [1, 1], [1, 1]])
-            algo.stop()
+        algo = config.build()
+        results = algo.env_runner_group.foreach_worker(
+            lambda w: w.total_rollout_fragment_length
+        )
+        results2 = algo.env_runner_group.foreach_worker_with_id(
+            lambda i, w: (i, w.total_rollout_fragment_length)
+        )
+        results3 = algo.env_runner_group.foreach_worker(
+            lambda w: w.foreach_env(lambda env: 1)
+        )
+        self.assertEqual(results, [10, 10, 10])
+        self.assertEqual(results2, [(0, 10), (1, 10), (2, 10)])
+        self.assertEqual(results3, [[1, 1], [1, 1], [1, 1]])
+        algo.stop()
 
     def test_action_clipping(self):
         action_space = gym.spaces.Box(-2.0, 1.0, (3,))
@@ -486,8 +487,8 @@ class TestRolloutWorker(unittest.TestCase):
             config=config,
         )
         sample = convert_ma_batch_to_sample_batch(ev.sample())
-        ws = EnvRunnerGroup._from_existing(
-            local_worker=ev,
+        ws = self._from_existing_env_runner(
+            local_env_runner=ev,
             remote_workers=[],
         )
         self.assertEqual(max(sample["rewards"]), 1)
@@ -532,8 +533,8 @@ class TestRolloutWorker(unittest.TestCase):
             .environment(clip_rewards=False),
         )
         sample = convert_ma_batch_to_sample_batch(ev2.sample())
-        ws2 = EnvRunnerGroup._from_existing(
-            local_worker=ev2,
+        ws2 = self._from_existing_env_runner(
+            local_env_runner=ev2,
             remote_workers=[],
         )
         self.assertEqual(max(sample["rewards"]), 100)
@@ -560,8 +561,8 @@ class TestRolloutWorker(unittest.TestCase):
                 batch_mode="complete_episodes",
             ),
         )
-        ws = EnvRunnerGroup._from_existing(
-            local_worker=ev,
+        ws = self._from_existing_env_runner(
+            local_env_runner=ev,
             remote_workers=[remote_ev],
         )
         ev.sample()
@@ -582,8 +583,8 @@ class TestRolloutWorker(unittest.TestCase):
                 batch_mode="truncate_episodes",
             ),
         )
-        ws = EnvRunnerGroup._from_existing(
-            local_worker=ev,
+        ws = self._from_existing_env_runner(
+            local_env_runner=ev,
             remote_workers=[],
         )
         for _ in range(8):
@@ -614,8 +615,8 @@ class TestRolloutWorker(unittest.TestCase):
                 batch_mode="truncate_episodes",
             ),
         )
-        ws = EnvRunnerGroup._from_existing(
-            local_worker=ev,
+        ws = self._from_existing_env_runner(
+            local_env_runner=ev,
             remote_workers=[],
         )
         batch = ev.sample()
@@ -639,13 +640,14 @@ class TestRolloutWorker(unittest.TestCase):
                 batch_mode="truncate_episodes",
             ),
         )
-        ws = EnvRunnerGroup._from_existing(
-            local_worker=ev,
+        ws = self._from_existing_env_runner(
+            local_env_runner=ev,
             remote_workers=[],
         )
         for _ in range(8):
             batch = ev.sample()
             self.assertEqual(batch.count, 10)
+
         result = collect_metrics(ws, [])
         self.assertEqual(result["episodes_this_iter"], 0)
         for _ in range(8):
@@ -666,8 +668,8 @@ class TestRolloutWorker(unittest.TestCase):
                 batch_mode="truncate_episodes",
             ),
         )
-        ws = EnvRunnerGroup._from_existing(
-            local_worker=ev,
+        ws = self._from_existing_env_runner(
+            local_env_runner=ev,
             remote_workers=[],
         )
         for _ in range(8):
@@ -895,9 +897,6 @@ class TestRolloutWorker(unittest.TestCase):
             """A mock testing MultiAgentEnv that doesn't call super.__init__()."""
 
             def __init__(self):
-                # Intentinoally don't call super().__init__(),
-                # so this env doesn't have
-                # `self._[action|observation]_space_in_preferred_format`attributes.
                 self.observation_space = gym.spaces.Discrete(2)
                 self.action_space = gym.spaces.Discrete(2)
 

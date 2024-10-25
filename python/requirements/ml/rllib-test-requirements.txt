@@ -3,18 +3,18 @@
 # Environment adapters.
 # ---------------------
 # Atari
-imageio==2.31.1
-ale_py==0.9.0
+imageio==2.31.1; python_version < "3.12"
+ale_py==0.9.0; python_version < "3.12"
 # For testing MuJoCo envs with gymnasium.
-mujoco==2.3.6
-dm_control==1.0.12
+mujoco==2.3.6; python_version < "3.12"
+dm_control==1.0.12; python_version < "3.12"
 
 # For tests on PettingZoo's multi-agent envs.
 pettingzoo==1.24.3
 pymunk==6.2.1
-tinyscaler==1.2.6
+tinyscaler==1.2.6; python_version < "3.12"
 shimmy
-supersuit==3.9.0
+supersuit==3.9.0 ; python_version < "3.12"
 
 # Kaggle envs.
 kaggle_environments==1.7.11
@@ -25,6 +25,12 @@ mlagents_envs==0.28.0
 
 # For tests on minigrid.
 minigrid
+# For tests on RecSim and Kaggle envs.
+# Explicitly depends on `tensorflow` and doesn't accept `tensorflow-macos`
+recsim==0.2.4; (sys_platform != 'darwin' or platform_machine != 'arm64') and python_version < "3.12"
+# recsim depends on dopamine-rl, but dopamine-rl pins gym <= 0.25.2, which break some envs
+dopamine-rl==4.0.5; (sys_platform != 'darwin' or platform_machine != 'arm64') and python_version < "3.12"
+tensorflow_estimator
 # DeepMind's OpenSpiel
 open-spiel==1.4
 

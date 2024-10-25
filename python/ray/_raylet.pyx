@@ -106,6 +106,7 @@ from ray.includes.common cimport (
     CJobConfig,
     CConcurrencyGroup,
     CGrpcStatusCode,
+    CLineageReconstructionTask,
     move,
     LANGUAGE_CPP,
     LANGUAGE_JAVA,
@@ -133,7 +134,6 @@ from ray.includes.common cimport (
     kResourceUnitScaling,
     kImplicitResourcePrefix,
     kWorkerSetupHookKeyName,
-    PythonCheckGcsHealth,
     PythonGetNodeLabels,
     PythonGetResourcesTotal,
 )
@@ -156,11 +156,15 @@ from ray.includes.libcoreworker cimport (
     CFiberEvent,
     CActorHandle,
     CGeneratorBackpressureWaiter,
+    CReaderRefInfo,
 )
 
 from ray.includes.ray_config cimport RayConfig
 from ray.includes.global_state_accessor cimport CGlobalStateAccessor
-from ray.includes.global_state_accessor cimport RedisDelKeySync, RedisGetKeySync
+from ray.includes.global_state_accessor cimport (
+    RedisDelKeyPrefixSync,
+    RedisGetKeySync
+)
 from ray.includes.optional cimport (
     optional, nullopt
 )
@@ -180,6 +184,8 @@ from ray.exceptions import (
     PendingCallsLimitExceeded,
     RpcError,
     ObjectRefStreamEndOfStreamError,
+    RayChannelError,
+    RayChannelTimeoutError,
 )
 from ray._private import external_storage
 from ray.util.scheduling_strategies import (
@@ -194,12 +200,13 @@ from ray.util.scheduling_strategies import (
 import ray._private.ray_constants as ray_constants
 import ray.cloudpickle as ray_pickle
 from ray.core.generated.common_pb2 import ActorDiedErrorContext
-from ray.core.generated.gcs_pb2 import JobTableData
+from ray.core.generated.gcs_pb2 import JobTableData, GcsNodeInfo, ActorTableData
 from ray.core.generated.gcs_service_pb2 import GetAllResourceUsageReply
 from ray._private.async_compat import (
     sync_to_async,
     get_new_event_loop,
-    is_async_func
+    is_async_func,
+    has_async_methods,
 )
 from ray._private.client_mode_hook import disable_client_hook
 import ray.core.generated.common_pb2 as common_pb2
@@ -216,6 +223,7 @@ include "includes/ray_config.pxi"
 include "includes/function_descriptor.pxi"
 include "includes/buffer.pxi"
 include "includes/common.pxi"
+include "includes/gcs_client.pxi"
 include "includes/serialization.pxi"
 include "includes/libcoreworker.pxi"
 include "includes/global_state_accessor.pxi"
@@ -552,46 +560,6 @@ class ObjectRefGenerator:
 # For backward compatibility.
 StreamingObjectRefGenerator = ObjectRefGenerator
 
-cdef int check_status(const CRayStatus& status) nogil except -1:
-    if status.ok():
-        return 0
-
-    with gil:
-        message = status.message().decode()
-
-    if status.IsObjectStoreFull():
-        raise ObjectStoreFullError(message)
-    elif status.IsInvalidArgument():
-        raise ValueError(message)
-    elif status.IsOutOfDisk():
-        raise OutOfDiskError(message)
-    elif status.IsObjectRefEndOfStream():
-        raise ObjectRefStreamEndOfStreamError(message)
-    elif status.IsInterrupted():
-        raise KeyboardInterrupt()
-    elif status.IsTimedOut():
-        raise GetTimeoutError(message)
-    elif status.IsNotFound():
-        raise ValueError(message)
-    elif status.IsObjectNotFound():
-        raise ValueError(message)
-    elif status.IsObjectUnknownOwner():
-        raise ValueError(message)
-    elif status.IsIOError():
-        raise IOError(message)
-    elif status.IsRpcError():
-        raise RpcError(message, rpc_code=status.rpc_code())
-    elif status.IsIntentionalSystemExit():
-        with gil:
-            raise_sys_exit_with_custom_error_message(message)
-    elif status.IsUnexpectedSystemExit():
-        with gil:
-            raise_sys_exit_with_custom_error_message(
-                message, exit_code=1)
-    else:
-        raise RaySystemError(message)
-
-
 cdef c_bool is_plasma_object(shared_ptr[CRayObject] obj):
     """Return True if the given object is a plasma object."""
     assert obj.get() != NULL
@@ -892,6 +860,9 @@ cdef prepare_args_internal(
     total_inlined = 0
     rpc_inline_threshold = RayConfig.instance().task_rpc_inlined_bytes_limit()
     for arg in args:
+        from ray.experimental.compiled_dag_ref import CompiledDAGRef
+        if isinstance(arg, CompiledDAGRef):
+            raise TypeError("CompiledDAGRef cannot be used as Ray task/actor argument.")
         if isinstance(arg, ObjectRef):
             c_arg = (<ObjectRef>arg).native()
             op_status = CCoreWorkerProcess.GetCoreWorker().GetOwnerAddress(
@@ -1798,9 +1769,7 @@ cdef void execute_task(
             function = execution_info.function
 
             if core_worker.current_actor_is_asyncio():
-                if len(inspect.getmembers(
-                        actor.__class__,
-                        predicate=is_async_func)) == 0:
+                if not has_async_methods(actor.__class__):
                     error_message = (
                         "Failed to create actor. You set the async flag, "
                         "but the actor does not "
@@ -2586,15 +2555,12 @@ def maybe_initialize_job_config():
         print(job_id_magic_token, file=sys.stderr, end="")
 
         # Configure worker process's Python logging.
-        log_config_dict = {}
         serialized_py_logging_config = \
             core_worker.get_job_config().serialized_py_logging_config
         if serialized_py_logging_config:
             logging_config = pickle.loads(serialized_py_logging_config)
-            log_config_dict = logging_config._get_dict_config()
-        if log_config_dict:
             try:
-                logging.config.dictConfig(log_config_dict)
+                logging_config._apply()
             except Exception as e:
                 backtrace = \
                     "".join(traceback.format_exception(type(e), e, e.__traceback__))
@@ -2680,10 +2646,9 @@ def _auto_reconnect(f):
             try:
                 return f(self, *args, **kwargs)
             except RpcError as e:
-                import grpc
                 if e.rpc_code in [
-                    grpc.StatusCode.UNAVAILABLE.value[0],
-                    grpc.StatusCode.UNKNOWN.value[0],
+                    GRPC_STATUS_CODE_UNAVAILABLE,
+                    GRPC_STATUS_CODE_UNKNOWN,
                 ]:
                     if remaining_retry <= 0:
                         logger.error(
@@ -2707,7 +2672,51 @@ def _auto_reconnect(f):
 
 
 cdef class GcsClient:
-    """Cython wrapper class of C++ `ray::gcs::GcsClient`."""
+    """
+    Client to the GCS server. Only contains synchronous methods.
+
+    This class is in transition to use the new C++ GcsClient binding. The old
+    PythonGcsClient binding is not deleted until we are confident that the new
+    binding is stable.
+
+    Defaults to the new binding. If you want to use the old binding, please
+    set the environment variable `RAY_USE_OLD_GCS_CLIENT=1`.
+    """
+
+    cdef object inner  # OldGcsClient or NewGcsClient
+    cdef c_bool use_old_client
+
+    def __cinit__(self, address,
+                  nums_reconnect_retry=RayConfig.instance().nums_py_gcs_reconnect_retry(
+                  ),
+                  cluster_id: str = None):
+        self.use_old_client = os.getenv("RAY_USE_OLD_GCS_CLIENT") == "1"
+        if self.use_old_client:
+            self.inner = OldGcsClient(address, nums_reconnect_retry, cluster_id)
+        else:
+            # For timeout (DEADLINE_EXCEEDED): Both OldGcsClient and NewGcsClient
+            # tries once with timeout_ms.
+            #
+            # For other RpcError (UNAVAILABLE, UNKNOWN): OldGcsClient tries this for
+            # (nums_reconnect_retry + 1) times, each time for timeous_ms (+1s sleep
+            # between each retry). NewGcsClient tries indefinitely until it thinks GCS
+            # is down and kills itself.
+            timeout_ms = RayConfig.instance().py_gcs_connect_timeout_s() * 1000
+            self.inner = NewGcsClient.standalone(address, cluster_id, timeout_ms)
+        logger.debug(f"Created GcsClient. inner {self.inner}")
+
+    def __getattr__(self, name):
+        if self.use_old_client:
+            return getattr(self.inner, name)
+        # For new client, we collect the frequency of each method call.
+        # For old client, that is done in @_auto_reconnect.
+        if "TEST_RAY_COLLECT_KV_FREQUENCY" in os.environ:
+            with ray._private.utils._CALLED_FREQ_LOCK:
+                ray._private.utils._CALLED_FREQ[name] += 1
+        return getattr(self.inner, name)
+
+cdef class OldGcsClient:
+    """Old Cython wrapper class of C++ `ray::gcs::PythonGcsClient`."""
     cdef:
         shared_ptr[CPythonGcsClient] inner
         object address
@@ -2715,10 +2724,16 @@ cdef class GcsClient:
         ClusterID cluster_id
 
     def __cinit__(self, address,
-                  nums_reconnect_retry=RayConfig.instance().nums_py_gcs_reconnect_retry(
-                  ),
+                  nums_reconnect_retry,
                   cluster_id: str = None):
-        cdef GcsClientOptions gcs_options = GcsClientOptions.from_gcs_address(address)
+        cdef GcsClientOptions gcs_options
+        if cluster_id:
+            gcs_options = GcsClientOptions.create(
+                address, cluster_id, allow_cluster_id_nil=False,
+                fetch_cluster_id_if_nil=False)
+        else:
+            gcs_options = GcsClientOptions.create(
+                address, None, allow_cluster_id_nil=True, fetch_cluster_id_if_nil=True)
         self.inner.reset(new CPythonGcsClient(dereference(gcs_options.native())))
         self.address = address
         self._nums_reconnect_retry = nums_reconnect_retry
@@ -2732,9 +2747,8 @@ cdef class GcsClient:
         cdef:
             int64_t timeout_ms = round(1000 * timeout_s) if timeout_s else -1
             size_t num_retries = self._nums_reconnect_retry
-            CClusterID c_cluster_id = self.cluster_id.native()
         with nogil:
-            status = self.inner.get().Connect(c_cluster_id, timeout_ms, num_retries)
+            status = self.inner.get().Connect(timeout_ms, num_retries)
 
         check_status(status)
 
@@ -2877,45 +2891,57 @@ cdef class GcsClient:
                 c_uri, expiration_s, timeout_ms))
 
     @_auto_reconnect
-    def get_all_node_info(self, timeout=None):
+    def get_all_node_info(self, timeout=None) -> Dict[NodeID, GcsNodeInfo]:
         cdef:
             int64_t timeout_ms = round(1000 * timeout) if timeout else -1
-            CGcsNodeInfo node_info
-            c_vector[CGcsNodeInfo] node_infos
+            CGcsNodeInfo c_node_info
+            c_vector[CGcsNodeInfo] c_node_infos
+            c_vector[c_string] serialized_node_infos
         with nogil:
-            check_status(self.inner.get().GetAllNodeInfo(timeout_ms, node_infos))
+            check_status(self.inner.get().GetAllNodeInfo(timeout_ms, c_node_infos))
+            for c_node_info in c_node_infos:
+                serialized_node_infos.push_back(c_node_info.SerializeAsString())
 
         result = {}
-        for node_info in node_infos:
-            c_resources = PythonGetResourcesTotal(node_info)
-            result[node_info.node_id()] = {
-                "node_name": node_info.node_name(),
-                "state": node_info.state(),
-                "labels": PythonGetNodeLabels(node_info),
-                "resources": {key.decode(): value for key, value in c_resources}
-            }
+        for serialized in serialized_node_infos:
+            node_info = GcsNodeInfo()
+            node_info.ParseFromString(serialized)
+            result[NodeID.from_binary(node_info.node_id)] = node_info
         return result
 
     @_auto_reconnect
-    def get_all_job_info(self, timeout=None) -> Dict[bytes, JobTableData]:
+    def get_all_job_info(
+        self, *, job_or_submission_id: str = None, skip_submission_job_info_field=False,
+        skip_is_running_tasks_field=False, timeout=None
+    ) -> Dict[JobID, JobTableData]:
         # Ideally we should use json_format.MessageToDict(job_info),
         # but `job_info` is a cpp pb message not a python one.
         # Manually converting each and every protobuf field is out of question,
         # so we serialize the pb to string to cross the FFI interface.
         cdef:
+            c_string c_job_or_submission_id
+            optional[c_string] c_optional_job_or_submission_id = nullopt
             int64_t timeout_ms = round(1000 * timeout) if timeout else -1
+            c_bool c_skip_submission_job_info_field = skip_submission_job_info_field
+            c_bool c_skip_is_running_tasks_field = skip_is_running_tasks_field
             CJobTableData c_job_info
             c_vector[CJobTableData] c_job_infos
             c_vector[c_string] serialized_job_infos
+        if job_or_submission_id:
+            c_job_or_submission_id = job_or_submission_id
+            c_optional_job_or_submission_id = \
+                make_optional[c_string](c_job_or_submission_id)
         with nogil:
-            check_status(self.inner.get().GetAllJobInfo(timeout_ms, c_job_infos))
+            check_status(self.inner.get().GetAllJobInfo(
+                c_optional_job_or_submission_id, c_skip_submission_job_info_field,
+                c_skip_is_running_tasks_field, timeout_ms, c_job_infos))
             for c_job_info in c_job_infos:
                 serialized_job_infos.push_back(c_job_info.SerializeAsString())
         result = {}
         for serialized in serialized_job_infos:
             job_info = JobTableData()
             job_info.ParseFromString(serialized)
-            result[job_info.job_id] = job_info
+            result[JobID.from_binary(job_info.job_id)] = job_info
         return result
 
     @_auto_reconnect
@@ -3247,53 +3273,10 @@ cdef class _TestOnly_GcsActorSubscriber(_GcsSubscriber):
             check_status(self.inner.get().PollActor(
                 &key_id, timeout_ms, &actor_data))
 
-        from ray.core.generated import gcs_pb2
-
-        info = gcs_pb2.ActorTableData.FromString(
+        info = ActorTableData.FromString(
             actor_data.SerializeAsString())
 
         return [(key_id, info)]
-
-
-def check_health(address: str, timeout=2, skip_version_check=False):
-    """Checks Ray cluster health, before / without actually connecting to the
-    cluster via ray.init().
-
-    Args:
-        address: Ray cluster / GCS address string, e.g. ip:port.
-        timeout: request timeout.
-        skip_version_check: If True, will skip comparision of GCS Ray version with local
-            Ray version. If False (default), will raise exception on mismatch.
-    Returns:
-        Returns True if the cluster is running and has matching Ray version.
-        Returns False if no service is running.
-        Raises an exception otherwise.
-    """
-
-    tokens = address.rsplit(":", 1)
-    if len(tokens) != 2:
-        raise ValueError("Invalid address: {}. Expect 'ip:port'".format(address))
-    gcs_address, gcs_port = tokens
-
-    cdef:
-        c_string c_gcs_address = gcs_address
-        int c_gcs_port = int(gcs_port)
-        int64_t timeout_ms = round(1000 * timeout) if timeout else -1
-        c_string c_ray_version = ray.__version__
-        c_bool c_skip_version_check = skip_version_check
-        c_bool c_is_healthy = True
-
-    try:
-        with nogil:
-            check_status(PythonCheckGcsHealth(
-                c_gcs_address, c_gcs_port, timeout_ms, c_ray_version,
-                c_skip_version_check, c_is_healthy))
-    except RpcError:
-        traceback.print_exc()
-    except RaySystemError as e:
-        raise RuntimeError(str(e))
-
-    return c_is_healthy
 
 
 cdef class CoreWorker:
@@ -3636,13 +3619,15 @@ cdef class CoreWorker:
 
     def experimental_channel_put_serialized(self, serialized_object,
                                             ObjectRef object_ref,
-                                            num_readers):
+                                            num_readers,
+                                            timeout_ms):
         cdef:
             CObjectID c_object_id = object_ref.native()
             shared_ptr[CBuffer] data
             unique_ptr[CAddress] null_owner_address
             uint64_t data_size = serialized_object.total_bytes
             int64_t c_num_readers = num_readers
+            int64_t c_timeout_ms = timeout_ms
 
         metadata = string_to_buffer(serialized_object.metadata)
         with nogil:
@@ -3652,6 +3637,7 @@ cdef class CoreWorker:
                              metadata,
                              data_size,
                              c_num_readers,
+                             c_timeout_ms,
                              &data,
                              ))
         if data_size > 0:
@@ -3676,37 +3662,37 @@ cdef class CoreWorker:
 
     def experimental_channel_register_writer(self,
                                              ObjectRef writer_ref,
-                                             ObjectRef reader_ref,
-                                             writer_node,
-                                             reader_node,
-                                             ActorID reader,
-                                             int64_t num_readers):
+                                             remote_reader_ref_info):
         cdef:
             CObjectID c_writer_ref = writer_ref.native()
-            CObjectID c_reader_ref = reader_ref.native()
-            CNodeID c_reader_node = CNodeID.FromHex(reader_node)
-            CNodeID *c_reader_node_id = NULL
-            CActorID c_reader_actor = reader.native()
+            c_vector[CNodeID] c_remote_reader_nodes
+            c_vector[CReaderRefInfo] c_remote_reader_ref_info
+            CReaderRefInfo c_reader_ref_info
 
-        if num_readers == 0:
-            return
-        if writer_node != reader_node:
-            c_reader_node_id = &c_reader_node
+        for node_id, reader_ref_info in remote_reader_ref_info.items():
+            c_reader_ref_info = CReaderRefInfo()
+            c_reader_ref_info.reader_ref_id = (
+                <ObjectRef>reader_ref_info.reader_ref).native()
+            c_reader_ref_info.owner_reader_actor_id = (
+                <ActorID>reader_ref_info.ref_owner_actor_id).native()
+            num_reader_actors = reader_ref_info.num_reader_actors
+            assert num_reader_actors != 0
+            c_reader_ref_info.num_reader_actors = num_reader_actors
+            c_remote_reader_ref_info.push_back(c_reader_ref_info)
+            c_remote_reader_nodes.push_back(CNodeID.FromHex(node_id))
 
         with nogil:
             check_status(CCoreWorkerProcess.GetCoreWorker()
-                         .ExperimentalRegisterMutableObjectWriter(c_writer_ref,
-                                                                  c_reader_node_id,
-                                                                  ))
-        if writer_node != reader_node:
-            with nogil:
-                check_status(
-                        CCoreWorkerProcess.GetCoreWorker()
-                        .ExperimentalRegisterMutableObjectReaderRemote(c_writer_ref,
-                                                                       c_reader_actor,
-                                                                       num_readers,
-                                                                       c_reader_ref
-                                                                       ))
+                         .ExperimentalRegisterMutableObjectWriter(
+                            c_writer_ref,
+                            c_remote_reader_nodes,
+                        ))
+            check_status(
+                    CCoreWorkerProcess.GetCoreWorker()
+                    .ExperimentalRegisterMutableObjectReaderRemote(
+                        c_writer_ref,
+                        c_remote_reader_ref_info,
+                    ))
 
     def experimental_channel_register_reader(self, ObjectRef object_ref):
         cdef:
@@ -3847,6 +3833,25 @@ cdef class CoreWorker:
         with nogil:
             check_status(CCoreWorkerProcess.GetCoreWorker().Delete(
                 free_ids, local_only))
+
+    def get_local_ongoing_lineage_reconstruction_tasks(self):
+        cdef:
+            unordered_map[CLineageReconstructionTask, uint64_t] tasks
+            unordered_map[CLineageReconstructionTask, uint64_t].iterator it
+
+        with nogil:
+            tasks = (CCoreWorkerProcess.GetCoreWorker().
+                     GetLocalOngoingLineageReconstructionTasks())
+
+        result = []
+        it = tasks.begin()
+        while it != tasks.end():
+            task = common_pb2.LineageReconstructionTask()
+            task.ParseFromString(dereference(it).first.SerializeAsString())
+            result.append((task, dereference(it).second))
+            postincrement(it)
+
+        return result
 
     def get_local_object_locations(self, object_refs):
         cdef:
@@ -4363,6 +4368,16 @@ cdef class CoreWorker:
         CCoreWorkerProcess.GetCoreWorker().RemoveActorHandleReference(
             c_actor_id)
 
+    def get_local_actor_state(self, ActorID actor_id):
+        cdef:
+            CActorID c_actor_id = actor_id.native()
+            optional[int] state = nullopt
+        state = CCoreWorkerProcess.GetCoreWorker().GetLocalActorState(c_actor_id)
+        if state.has_value():
+            return state.value()
+        else:
+            return None
+
     cdef make_actor_handle(self, ActorHandleSharedPtr c_actor_handle,
                            c_bool weak_ref):
         worker = ray._private.worker.global_worker
@@ -4576,9 +4591,9 @@ cdef class CoreWorker:
             return True
         else:
             with nogil:
-                success = (CCoreWorkerProcess.GetCoreWorker()
-                           .PinExistingReturnObject(
-                                   return_id, return_ptr, generator_id))
+                success = (
+                    CCoreWorkerProcess.GetCoreWorker().PinExistingReturnObject(
+                        return_id, return_ptr, generator_id, caller_address))
             return success
 
     cdef store_task_outputs(self,
@@ -5154,14 +5169,20 @@ cdef void async_callback(shared_ptr[CRayObject] obj,
 
         user_callback = <object>user_callback_ptr
         user_callback(result)
+    except Exception:
+        # Only log the error here because this calllback is called from Cpp
+        # and Cython will ignore the exception anyway
+        logger.exception(f"failed to run async callback (user func)")
     finally:
         # NOTE: we manually increment the Python reference count of the callback when
         # registering it in the core worker, so we must decrement here to avoid a leak.
         cpython.Py_DECREF(user_callback)
 
 
-def del_key_from_storage(host, port, password, use_ssl, key):
-    return RedisDelKeySync(host, port, password, use_ssl, key)
+# Note this deletes keys with prefix `RAY{key_prefix}@`
+# Example: with key_prefix = `default`, we remove all `RAYdefault@...` keys.
+def del_key_prefix_from_storage(host, port, password, use_ssl, key_prefix):
+    return RedisDelKeyPrefixSync(host, port, password, use_ssl, key_prefix)
 
 
 def get_session_key_from_storage(host, port, password, use_ssl, config, key):

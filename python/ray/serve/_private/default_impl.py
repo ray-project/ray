@@ -10,6 +10,7 @@ from ray.serve._private.deployment_scheduler import (
     DefaultDeploymentScheduler,
     DeploymentScheduler,
 )
+from ray.serve._private.grpc_util import gRPCServer
 from ray.serve._private.utils import get_head_node_id
 
 # NOTE: Please read carefully before changing!
@@ -35,3 +36,8 @@ def create_deployment_scheduler(
         create_placement_group_fn=create_placement_group_fn_override
         or ray.util.placement_group,
     )
+
+
+def add_grpc_address(grpc_server: gRPCServer, server_address: str):
+    """Helper function to add a address to gRPC server."""
+    grpc_server.add_insecure_port(server_address)
