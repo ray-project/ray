@@ -476,10 +476,10 @@ class ActorReplicaWrapper:
         }
         actor_options.update(deployment_info.replica_config.ray_actor_options)
 
-        # Since a replica a defualt max concurrency, setting `max_ongoing_requests`
-        # larger than the replica's max concurrency will not increase the number of
-        # requests the replica can accept. To avoid this unintentional behavior,
-        # override the Actor's `max_concurrency` if it is not explicitly set.
+        # A replica's default `max_concurrency` value may prevent it from
+        # respecting the configured `max_ongoing_requests`. To avoid this
+        # unintentional behavior, use `max_ongoing_requests` to override
+        # the Actor's `max_concurrency` if it is not explicitly set.
         if (
             "max_concurrency" not in actor_options
             and deployment_info.deployment_config.max_ongoing_requests
