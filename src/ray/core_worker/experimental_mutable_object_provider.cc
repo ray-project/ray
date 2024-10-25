@@ -61,8 +61,7 @@ void MutableObjectProvider::RegisterWriterChannel(
   // them via RPC to the remote reader.
   // Disables the lag probe because we can have unbounded number of io contexts which
   // can overwhelm the metrics system.
-  io_contexts_.push_back(
-      std::make_unique<instrumented_io_context>(/*enable_lag_probe=*/false));
+  io_contexts_.push_back(std::make_unique<instrumented_io_context>);
   instrumented_io_context &io_context = *io_contexts_.back();
   io_works_.push_back(
       std::make_unique<

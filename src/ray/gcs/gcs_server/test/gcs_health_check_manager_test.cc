@@ -131,7 +131,7 @@ class GcsHealthCheckManagerTest : public ::testing::Test {
     }
   }
 
-  instrumented_io_context io_service{/*enable_lag_probe=*/false};
+  instrumented_io_context io_service;
   std::unique_ptr<gcs::GcsHealthCheckManager> health_check;
   std::unordered_map<NodeID, std::shared_ptr<rpc::GrpcServer>> servers;
   std::unordered_set<NodeID> dead_nodes;

@@ -74,7 +74,7 @@ int main(int argc, char *argv[]) {
 
   // IO Service for main loop.
   SetThreadName("gcs_server_main");
-  instrumented_io_context main_service;
+  instrumented_io_context main_service(/*enable_lag_probe=*/true);
   // Ensure that the IO service keeps running. Without this, the main_service will exit
   // as soon as there is no more work to be processed.
   boost::asio::io_service::work work(main_service);

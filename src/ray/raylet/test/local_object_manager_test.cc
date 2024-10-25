@@ -396,7 +396,7 @@ class LocalObjectManagerTestWithMinSpillingSize {
     }
   }
 
-  instrumented_io_context io_service_{/*enable_lag_probe=*/false};
+  instrumented_io_context io_service_;
   size_t free_objects_batch_size = 3;
   size_t object_size = 4;
   std::shared_ptr<MockSubscriber> subscriber_;

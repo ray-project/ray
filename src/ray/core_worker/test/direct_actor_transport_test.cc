@@ -136,7 +136,7 @@ class ActorTaskSubmitterTest : public ::testing::TestWithParam<bool> {
   std::shared_ptr<MockWorkerClient> worker_client_;
   std::shared_ptr<CoreWorkerMemoryStore> store_;
   std::shared_ptr<MockTaskFinisherInterface> task_finisher_;
-  instrumented_io_context io_context{/*enable_lag_probe=*/false};
+  instrumented_io_context io_context;
   boost::asio::io_service::work io_work;
   std::shared_ptr<MockReferenceCounter> reference_counter_;
   ActorTaskSubmitter submitter_;
@@ -844,7 +844,7 @@ class TaskReceiverTest : public ::testing::Test {
  private:
   rpc::Address rpc_address_;
   MockWorkerContext worker_context_;
-  instrumented_io_context main_io_service_{/*enable_lag_probe=*/false};
+  instrumented_io_context main_io_service_;
   std::shared_ptr<MockWorkerClient> worker_client_;
   std::shared_ptr<DependencyWaiter> dependency_waiter_;
 };

@@ -51,8 +51,9 @@ class InstrumentedIOContextWithThread {
    * Constructor.
    * @param thread_name The name of the thread.
    */
-  explicit InstrumentedIOContextWithThread(const std::string &thread_name)
-      : io_service_(), work_(io_service_) {
+  explicit InstrumentedIOContextWithThread(const std::string &thread_name,
+                                           bool enable_lag_probe = false)
+      : io_service_(enable_lag_probe), work_(io_service_) {
     io_thread_ = std::thread([this, thread_name] {
       SetThreadName(thread_name);
       io_service_.run();
