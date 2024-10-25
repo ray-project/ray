@@ -7,7 +7,11 @@ from ray.serve.handle import DeploymentHandle, _HandleOptions
 
 
 class IDDict(dict):
-    """TODO"""
+    """Dictionary that uses id() for keys instead of hash().
+
+    This is necessary because Application objects aren't hashable and we want each
+    instance to map to a unique key.
+    """
 
     def __getitem__(self, key: Any) -> Any:
         return super().__getitem__(id(key))
@@ -54,6 +58,14 @@ def _build_app_recursive(
     deployment_names: IDDict[Application, str],
     handles: IDDict[Application, DeploymentHandle],
 ) -> List[Deployment]:
+    """Recursively traverses the graph of Application objects.
+
+    Each Application will have an associated DeploymentHandle created that will replace
+    it in any occurrences in other Applications' args or kwargs.
+
+    Also collects a list of the unique Applications encountered and returns them as
+    deployable Deployment objects.
+    """
     # This application has already been encountered.
     # There's no need to recurse into its child args and we don't want to create
     # a duplicate entry for it in the list of deployments.
@@ -100,6 +112,17 @@ def _build_app_recursive(
 def _get_unique_name_memoized(
     app: Application, deployment_names: IDDict[Application, str]
 ) -> str:
+    """Generates a name for the deployment.
+
+    This is used to handle collisions when the user does not specify a name
+    explicitly, so typically we'd use the class name as the default.
+
+    In that case, we append a monotonically increasing suffix to the name, e.g.,
+    Deployment, then Deployment_1, then Deployment_2, ...
+
+    Names are memoized in the `deployment_names` dict, which should be passed to
+    subsequent calls to this function.
+    """
     if app in deployment_names:
         return deployment_names[app]
 
