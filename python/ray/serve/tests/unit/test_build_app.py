@@ -50,7 +50,7 @@ def _build_and_check(
         assert generated_deployment is not None, (
             f"Expected a deployment with name '{expected_deployment.name}' "
             "to be generated but none was found. All generated names: "
-            str([d.name for d in deployments])
+            + str([d.name for d in deployments])
         )
 
         assert expected_deployment == generated_deployment
