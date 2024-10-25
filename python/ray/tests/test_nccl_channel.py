@@ -81,18 +81,18 @@ class Worker:
         self.tensor_chan.write(t)
 
     def receive(self):
-        t = self.chan.read()
-        data = (t[0].clone(), t.shape, t.dtype)
+        t = self.tensor_chan.read()
+        data = (t[0].item(), t.shape, t.dtype)
         return data
 
     def send_dict(self, tensor_dict):
         self.tensor_chan.write(tensor_dict)
 
     def receive_dict(self):
-        tensor_dict = self.tensor_chan.begin_read()
+        tensor_dict = self.tensor_chan.read()
         vals = []
         for key, t in tensor_dict.items():
-            vals.append((key, t[0].clone(), t.shape, t.dtype))
+            vals.append((key, t[0].item(), t.shape, t.dtype))
         return vals
 
 
@@ -112,7 +112,7 @@ def test_p2p(ray_start_cluster):
     Test simple sender -> receiver pattern. Check that receiver receives
     correct results.
     """
-    # Barrier name should be barrier-{sender rank}-{receiver rank}.
+    # Barrier name should be barrier-{lower rank}-{higher rank}.
     barrier = Barrier.options(name="barrier-0-1").remote()  # noqa
 
     sender = Worker.remote()
@@ -230,7 +230,7 @@ def test_static_shape(ray_start_cluster):
     first operation. Afterwards, we reuse the same shape and dtype for future
     tensors. Sending a tensor of the wrong shape or dtype throws an error.
     """
-    # Barrier name should be barrier-{sender rank}-{receiver rank}.
+    # Barrier name should be barrier-{lower rank}-{higher rank}.
     barrier = Barrier.options(name="barrier-0-1").remote()  # noqa
 
     sender = Worker.remote()
@@ -250,11 +250,12 @@ def test_static_shape(ray_start_cluster):
         _static_shape=True,
     )
     chan_typ.set_nccl_group_id(nccl_id)
-    sender.create_traced_channel.remote("tensor_metadata", [receiver])
-    sender.create_traced_channel.remote("cpu_data", [receiver])
+    receiver_to_node = [(receiver, get_actor_node_id(receiver))]
+    sender.create_traced_channel.remote("tensor_metadata", receiver_to_node)
+    sender.create_traced_channel.remote("cpu_data", receiver_to_node)
     chan_ref = sender.create_nccl_channel.remote(
         chan_typ,
-        [receiver],
+        receiver_to_node,
         "tensor_metadata",
         "cpu_data",
     )
@@ -318,7 +319,7 @@ def test_direct_return(ray_start_cluster):
     """
     Test that when _direct_return=True is passed, we never send metadata.
     """
-    # Barrier name should be barrier-{sender rank}-{receiver rank}.
+    # Barrier name should be barrier-{lower rank}-{higher rank}.
     barrier = Barrier.options(name="barrier-0-1").remote()  # noqa
 
     sender = Worker.remote()
@@ -338,18 +339,19 @@ def test_direct_return(ray_start_cluster):
         _direct_return=True,
     )
     chan_typ.set_nccl_group_id(nccl_id)
-    sender.create_traced_channel.remote("tensor_metadata", [receiver])
-    sender.create_traced_channel.remote("cpu_data", [receiver])
+    receiver_to_node = [(receiver, get_actor_node_id(receiver))]
+    sender.create_traced_channel.remote("tensor_metadata", receiver_to_node)
+    sender.create_traced_channel.remote("cpu_data", receiver_to_node)
     chan_ref = sender.create_nccl_channel.remote(
         chan_typ,
-        [receiver],
+        receiver_to_node,
         "tensor_metadata",
         "cpu_data",
     )
     receiver_ready = receiver.set_nccl_channel.remote(chan_typ, chan_ref)
     ray.get([chan_ref, receiver_ready])
 
-    shape = 10
+    shape = (10,)
     dtype = torch.float16
 
     # Sending tensors of different shapes is okay as long as the non-tensor
@@ -357,9 +359,8 @@ def test_direct_return(ray_start_cluster):
     refs = []
     values = []
     for i in range(1, 4):
-        t = torch.ones(i * shape, dtype=dtype) * i
-        sender.send.remote(t)
-        values.append([(t[0], t.shape, t.dtype)])
+        sender.send.remote(i, shape, dtype)
+        values.append((i, shape, dtype))
         refs.append(receiver.receive.remote())
     assert ray.get(refs) == values
 
@@ -385,9 +386,8 @@ def test_direct_return(ray_start_cluster):
         )
 
     # The channel is still usable for valid tensors after errors occur.
-    val = torch.ones(shape, dtype=dtype)
-    sender.send.remote(val)
-    assert ray.get(receiver.receive.remote()) == [(val[0], val.shape, val.dtype)]
+    sender.send.remote(1, shape, dtype)
+    assert ray.get(receiver.receive.remote()) == (1, shape, dtype)
 
 
 @pytest.mark.parametrize(
@@ -406,7 +406,7 @@ def test_static_shape_and_direct_return(ray_start_cluster):
     Test that when static_shape=True and direct_return=True are passed, we only
     send metadata for the first operation.
     """
-    # Barrier name should be barrier-{sender rank}-{receiver rank}.
+    # Barrier name should be barrier-{lower rank}-{higher rank}.
     barrier = Barrier.options(name="barrier-0-1").remote()  # noqa
 
     sender = Worker.remote()
@@ -424,14 +424,15 @@ def test_static_shape_and_direct_return(ray_start_cluster):
     chan_typ = TorchTensorType(
         transport="nccl",
         _static_shape=True,
-        _static_cpu_data=True,
+        _direct_return=True,
     )
     chan_typ.set_nccl_group_id(nccl_id)
-    sender.create_traced_channel.remote("tensor_metadata", [receiver])
-    sender.create_traced_channel.remote("cpu_data", [receiver])
+    receiver_to_node = [(receiver, get_actor_node_id(receiver))]
+    sender.create_traced_channel.remote("tensor_metadata", receiver_to_node)
+    sender.create_traced_channel.remote("cpu_data", receiver_to_node)
     chan_ref = sender.create_nccl_channel.remote(
         chan_typ,
-        [receiver],
+        receiver_to_node,
         "tensor_metadata",
         "cpu_data",
     )

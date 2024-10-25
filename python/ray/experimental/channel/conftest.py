@@ -68,14 +68,15 @@ class MockNcclGroup(ray_channel.nccl_group._NcclGroup):
         # We use the op index to synchronize the sender and receiver at the
         # barrier.
         self.num_ops = defaultdict(int)
-        self.barrier = None
+        self.barriers = set()
 
     def send(self, tensor: torch.Tensor, peer_rank: int):
         # "Send" the tensor to the barrier actor.
-        barrier_key = f"barrier-{self.get_self_rank()}-{peer_rank}"
-        if self.barrier is None:
-            self.barrier = ray.get_actor(name=barrier_key)
-        ray.get(self.barrier.wait.remote(self.num_ops[barrier_key], tensor))
+        barrier_key = sorted([self.get_self_rank(), peer_rank])
+        barrier_key = f"barrier-{barrier_key[0]}-{barrier_key[1]}"
+        barrier = ray.get_actor(name=barrier_key)
+        self.barriers.add(barrier)
+        ray.get(barrier.wait.remote(self.num_ops[barrier_key], tensor))
         self.num_ops[barrier_key] += 1
 
     def recv(
@@ -86,10 +87,11 @@ class MockNcclGroup(ray_channel.nccl_group._NcclGroup):
         allocator: Optional[TorchTensorAllocator] = None,
     ):
         # "Receive" the tensor from the barrier actor.
-        barrier_key = f"barrier-{peer_rank}-{self.get_self_rank()}"
-        if self.barrier is None:
-            self.barrier = ray.get_actor(name=barrier_key)
-        received_tensor = ray.get(self.barrier.wait.remote(self.num_ops[barrier_key]))
+        barrier_key = sorted([self.get_self_rank(), peer_rank])
+        barrier_key = f"barrier-{barrier_key[0]}-{barrier_key[1]}"
+        barrier = ray.get_actor(name=barrier_key)
+        self.barriers.add(barrier)
+        received_tensor = ray.get(barrier.wait.remote(self.num_ops[barrier_key]))
         assert (
             allocator is not None
         ), "torch tensor allocator is required for MockNcclGroup"
@@ -99,8 +101,8 @@ class MockNcclGroup(ray_channel.nccl_group._NcclGroup):
         return buf
 
     def destroy(self) -> None:
-        if self.barrier is not None:
-            ray.kill(self.barrier)
+        for barrier in self.barriers:
+            ray.kill(barrier)
 
 
 def start_nccl_mock():
