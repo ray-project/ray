@@ -731,7 +731,7 @@ class Dataset:
 
             Add a new column equal to ``id * 2``.
 
-            >>> ds.add_column("new_id", lambda x: pc.multiply(x["id"], 2)).schema()
+            >>> ds.add_column("new_id", lambda df: df["id"] * 2).schema()
             Column  Type
             ------  ----
             id      int64
@@ -739,7 +739,7 @@ class Dataset:
 
             Overwrite the existing values with zeros.
 
-            >>> ds.add_column("id", lambda x: pa.repeat(0, x.num_rows)).take(3)
+            >>> ds.add_column("id", lambda df: 0).take(3)
             [{'id': 0}, {'id': 0}, {'id': 0}]
 
         Time complexity: O(dataset size / parallelism)
