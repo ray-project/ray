@@ -338,6 +338,11 @@ def test_report_stats():
         print(record.gauge.name)
         print(record)
     assert len(records) == 36
+    # Verify IsHeadNode tag
+    for record in records:
+        if record.gauge.name.startswith("node_"):
+            assert "IsHeadNode" in record.tags
+            assert record.tags["IsHeadNode"] == "true"
     # Test stats without raylets
     STATS_TEMPLATE["raylet"] = {}
     records = agent._to_records(STATS_TEMPLATE, cluster_stats)
@@ -442,13 +447,14 @@ def test_report_stats_gpu():
         index = 0
         for record in records:
             if record.tags["GpuIndex"] == "3":
-                assert record.tags == {"ip": ip, "GpuIndex": "3"}
+                assert record.tags == {"ip": ip, "GpuIndex": "3", "IsHeadNode": "true"}
             else:
                 assert record.tags == {
                     "ip": ip,
                     # The tag value must be string for prometheus.
                     "GpuIndex": str(index),
                     "GpuDeviceName": "NVIDIA A10G",
+                    "IsHeadNode": "true",
                 }
 
             if name == "node_gram_available":
