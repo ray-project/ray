@@ -360,15 +360,6 @@ class ServeControllerClient:
         self.delete_apps(all_apps, blocking)
 
     @_ensure_connected
-    def delete_deployments(self, names: Iterable[str], blocking: bool = True) -> None:
-        """Delete 1.x deployments."""
-
-        ray.get(self._controller.delete_deployments.remote(names))
-        if blocking:
-            for name in names:
-                self._wait_for_deployment_deleted(name, "")
-
-    @_ensure_connected
     def get_deployment_info(
         self, name: str, app_name: str
     ) -> Tuple[DeploymentInfo, str]:

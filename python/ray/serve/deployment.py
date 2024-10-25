@@ -236,44 +236,6 @@ class Deployment:
 
         return Application._from_internal_dag_node(dag_node)
 
-    def _deploy(self, *init_args, _blocking=True, **init_kwargs):
-        """Deploy or update this deployment.
-
-        Args:
-            init_args: args to pass to the class __init__
-                method. Not valid if this deployment wraps a function.
-            init_kwargs: kwargs to pass to the class __init__
-                method. Not valid if this deployment wraps a function.
-        """
-        if len(init_args) == 0 and self._replica_config.init_args is not None:
-            init_args = self._replica_config.init_args
-        if len(init_kwargs) == 0 and self._replica_config.init_kwargs is not None:
-            init_kwargs = self._replica_config.init_kwargs
-
-        replica_config = ReplicaConfig.create(
-            self._replica_config.deployment_def,
-            init_args=init_args,
-            init_kwargs=init_kwargs,
-            ray_actor_options=self._replica_config.ray_actor_options,
-            placement_group_bundles=self._replica_config.placement_group_bundles,
-            placement_group_strategy=self._replica_config.placement_group_strategy,
-            max_replicas_per_node=self._replica_config.max_replicas_per_node,
-        )
-
-        return _get_global_client().deploy(
-            self._name,
-            replica_config=replica_config,
-            deployment_config=self._deployment_config,
-            version=self._version,
-            url=self.url,
-            _blocking=_blocking,
-        )
-
-    def _delete(self):
-        """Delete this deployment."""
-
-        return _get_global_client().delete_deployments([self._name])
-
     def options(
         self,
         func_or_class: Optional[Callable] = None,

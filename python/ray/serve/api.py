@@ -467,7 +467,6 @@ def _run(
             "deployment_config": deployment._deployment_config,
             "version": deployment._version or get_random_string(),
             "route_prefix": route_prefix if is_ingress else None,
-            "url": deployment.url,
             "docs_path": deployment._docs_path,
             "ingress": is_ingress,
         }
