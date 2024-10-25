@@ -41,7 +41,6 @@ from ray.core.generated.common_pb2 import (
     TaskStatus,
     WorkerType,
     TaskType,
-    ObjectReference,
 )
 from ray.core.generated.gcs_pb2 import (
     TaskEvents,
@@ -1025,9 +1024,7 @@ async def test_api_manager_list_tasks_events(state_api_manager):
         name=func_or_class,
         func_or_class_name=func_or_class,
         type=TaskType.NORMAL_TASK,
-        args_object_ids=[
-            arg_ref.binary()
-        ],
+        args_object_ids=[arg_ref.binary()],
     )
 
     current = 0

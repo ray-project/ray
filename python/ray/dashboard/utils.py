@@ -11,7 +11,7 @@ from abc import ABCMeta, abstractmethod
 from base64 import b64decode
 from collections import namedtuple
 from collections.abc import Mapping, MutableMapping, Sequence
-from typing import Optional, Iterable
+from typing import Optional
 
 import aiosignal  # noqa: F401
 from frozenlist import FrozenList  # noqa: F401
