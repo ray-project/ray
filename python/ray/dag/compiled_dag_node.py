@@ -1,4 +1,3 @@
-import time
 import weakref
 import asyncio
 from collections import defaultdict
