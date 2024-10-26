@@ -447,7 +447,6 @@ def _run(
     # Record after Ray has been started.
     ServeUsageTag.API_VERSION.record("v2")
 
-<<<<<<< HEAD
     if not isinstance(target, Application):
         raise TypeError(
             "`serve.run` expects an `Application` returned by `Deployment.bind()`."
