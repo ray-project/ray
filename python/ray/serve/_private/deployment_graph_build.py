@@ -92,34 +92,8 @@ def build(
             "you're using the DAG API, the function should be bound to a DAGDriver."
         )
 
-    # Validate and only expose HTTP for the endpoint.
-    deployments_with_http = process_ingress_deployment_in_serve_dag(deployments)
-    return deployments_with_http
-
-
-def get_and_validate_ingress_deployment(
-    deployments: List[Deployment],
-) -> Deployment:
-    """Validation for http route prefixes for a list of deployments in pipeline.
-
-    Ensures:
-        1) One and only one ingress deployment with given route prefix.
-        2) All other not ingress deployments should have prefix of None.
-    """
-
-    ingress_deployments = []
-    for deployment in deployments:
-        if deployment.route_prefix is not None:
-            ingress_deployments.append(deployment)
-
-    if len(ingress_deployments) != 1:
-        raise ValueError(
-            "Only one deployment in an Serve Application or DAG can have "
-            f"non-None route prefix. {len(ingress_deployments)} ingress "
-            f"deployments found: {ingress_deployments}"
-        )
-
-    return ingress_deployments[0]
+    # The last deployment in the list is the ingress.
+    return deployments
 
 
 def transform_ray_dag_to_serve_dag(
@@ -168,20 +142,9 @@ def transform_ray_dag_to_serve_dag(
         ):
             deployment_name = deployment_shell.name
 
-        # Set the route prefix, prefer the one user supplied,
-        # otherwise set it to /deployment_name
-        if (
-            deployment_shell.route_prefix is None
-            or deployment_shell.route_prefix != f"/{deployment_shell.name}"
-        ):
-            route_prefix = deployment_shell.route_prefix
-        else:
-            route_prefix = f"/{deployment_name}"
-
         deployment = deployment_shell.options(
             func_or_class=dag_node._body,
             name=deployment_name,
-            route_prefix=route_prefix,
             _init_args=replaced_deployment_init_args,
             _init_kwargs=replaced_deployment_init_kwargs,
             _internal=True,
@@ -257,44 +220,3 @@ def extract_deployments_from_serve_dag(
     serve_dag_root.apply_recursive(extractor)
 
     return list(deployments.values())
-
-
-def process_ingress_deployment_in_serve_dag(
-    deployments: List[Deployment],
-) -> List[Deployment]:
-    """Mark the last fetched deployment in a serve dag as exposed with default
-    prefix.
-    """
-    if len(deployments) == 0:
-        return deployments
-
-    # Last element of the list is the root deployment if it's applicable type
-    # that wraps an deployment, given Ray DAG traversal is done bottom-up.
-    ingress_deployment = deployments[-1]
-    if ingress_deployment.route_prefix in [None, f"/{ingress_deployment.name}"]:
-        # Override default prefix to "/" on the ingress deployment, if user
-        # didn't provide anything in particular.
-        new_ingress_deployment = ingress_deployment.options(
-            route_prefix="/",
-            _internal=True,
-        )
-        deployments[-1] = new_ingress_deployment
-
-    # Erase all non ingress deployment route prefix
-    for i, deployment in enumerate(deployments[:-1]):
-        if (
-            deployment.route_prefix is not None
-            and deployment.route_prefix != f"/{deployment.name}"
-        ):
-            raise ValueError(
-                "Route prefix is only configurable on the ingress deployment. "
-                "Please do not set non-default route prefix: "
-                f"{deployment.route_prefix} on non-ingress deployment of the "
-                "serve DAG. "
-            )
-        else:
-            # Erase all default prefix to None for non-ingress deployments to
-            # disable HTTP
-            deployments[i] = deployment.options(route_prefix=None, _internal=True)
-
-    return deployments
