@@ -87,9 +87,10 @@ class CompiledDAGRef:
         # If the dag is already teardown, it should do nothing.
         if self._dag.is_teardown:
             return
+
         # If not yet, get the result and discard to avoid execution result leak.
-        if not self._ray_get_called:
-            self.get()
+        # if not self._ray_get_called:
+        # self.get()
 
     def get(self, timeout: Optional[float] = None):
         if self._ray_get_called:

@@ -1724,7 +1724,7 @@ class CompiledDAG:
                     except Exception:
                         pass
 
-            def teardown(self, wait: bool, kill_actors: bool = False):
+            def teardown(self, kill_actors: bool = False):
                 do_teardown = False
                 with self.in_teardown_lock:
                     if self._teardown_done:
@@ -1736,9 +1736,14 @@ class CompiledDAG:
 
                 if not do_teardown:
                     # Teardown is already being performed.
-                    if wait:
-                        self.wait_teardown(kill_actors)
-                    return
+                    # self.wait_teardown(kill_actors)
+                    while True:
+                        with self.in_teardown_lock:
+                            if self._teardown_done:
+                                return
+                        import time
+
+                        time.sleep(0.1)
 
                 logger.info("Tearing down compiled DAG")
                 outer._dag_submitter.close()
@@ -1765,10 +1770,9 @@ class CompiledDAG:
                 for nccl_group_id in outer._nccl_group_ids:
                     _destroy_nccl_group(nccl_group_id)
 
-                if wait:
-                    logger.info("Waiting for worker tasks to exit")
-                    self.wait_teardown()
-                    logger.info("Teardown complete")
+                logger.info("Waiting for worker tasks to exit")
+                self.wait_teardown()
+                logger.info("Teardown complete")
 
                 with self.in_teardown_lock:
                     self._teardown_done = True
@@ -1778,7 +1782,7 @@ class CompiledDAG:
                     ray.get(list(outer.worker_task_refs.values()))
                 except Exception as e:
                     logger.debug(f"Handling exception from worker tasks: {e}")
-                    self.teardown(wait=True)
+                    self.teardown()
 
         monitor = Monitor()
         monitor.start()
@@ -2182,9 +2186,12 @@ class CompiledDAG:
         """Teardown and cancel all actor tasks for this DAG. After this
         function returns, the actors should be available to execute new tasks
         or compile a new DAG."""
+        if self._is_teardown:
+            return
+
         monitor = getattr(self, "_monitor", None)
         if monitor is not None:
-            monitor.teardown(wait=True, kill_actors=kill_actors)
+            monitor.teardown(kill_actors=kill_actors)
         self._is_teardown = True
 
     def __del__(self):
