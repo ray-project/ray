@@ -731,10 +731,16 @@ class CompiledDAG:
             ).remote()
 
         self._proxy_actor = _create_proxy_actor()
+        # Set to True when `teardown` API is called.
+        self._is_teardown = False
 
     @property
     def nccl_group_id_p2p(self) -> Optional[str]:
         return self._nccl_group_id_p2p
+    
+    @property
+    def is_teardown(self) -> bool:
+        return self._is_teardown
 
     @property
     def nccl_group_ids(self) -> Set[str]:
@@ -2163,11 +2169,10 @@ class CompiledDAG:
         monitor = getattr(self, "_monitor", None)
         if monitor is not None:
             monitor.teardown(wait=True)
+        self._is_teardown = True
 
     def __del__(self):
-        monitor = getattr(self, "_monitor", None)
-        if monitor is not None:
-            monitor.teardown(wait=True)
+        self.teardown()
 
 
 @DeveloperAPI

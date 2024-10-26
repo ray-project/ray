@@ -776,10 +776,8 @@ def test_torch_tensor_nccl_direct_return_error(ray_start_regular):
 
     sender = actor_cls.remote()
     receiver = actor_cls.remote()
-
     shape = (10,)
     dtype = torch.float16
-
     # Passing a non-tensor value when _direct_return=True and tranport="nccl"
     # fails.
     with InputNode() as inp:
@@ -791,6 +789,7 @@ def test_torch_tensor_nccl_direct_return_error(ray_start_regular):
             )
         )
         dag = receiver.recv.bind(dag)
+
 
     compiled_dag = dag.experimental_compile()
 
@@ -915,8 +914,6 @@ def test_torch_tensor_nccl_all_reduce(ray_start_regular):
         reduced_val = sum(i + idx for idx in range(num_workers))
         assert result == [(reduced_val, shape, dtype) for _ in workers]
 
-    compiled_dag.teardown()
-
 
 @pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
 def test_torch_tensor_nccl_all_reduce_get_partial(ray_start_regular):
@@ -961,8 +958,6 @@ def test_torch_tensor_nccl_all_reduce_get_partial(ray_start_regular):
         tensor = tensor.to("cpu")
         expected_tensor_val = torch.ones(shape, dtype=dtype) * reduced_val
         assert torch.equal(tensor, expected_tensor_val)
-
-    compiled_dag.teardown()
 
 
 @pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
@@ -1016,8 +1011,6 @@ def test_torch_tensor_nccl_all_reduce_wrong_shape(ray_start_regular):
     with pytest.raises(RayChannelError):
         ref = compiled_dag.execute([((20,), dtype, 1) for _ in workers])
 
-    compiled_dag.teardown()
-
 
 @pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
 def test_torch_tensor_nccl_all_reduce_custom_comm(ray_start_regular):
@@ -1065,8 +1058,6 @@ def test_torch_tensor_nccl_all_reduce_custom_comm(ray_start_regular):
         # The custom communicator adds 1 to the tensor after the all-reduce.
         reduced_val += 1
         assert result == [(reduced_val, shape, dtype) for _ in workers]
-
-    compiled_dag.teardown()
 
 
 @pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
@@ -1122,8 +1113,6 @@ def test_torch_tensor_nccl_all_reduce_scheduling(ray_start_regular):
     assert torch.equal(result[0], expected_tensor_val)
     assert torch.equal(result[1], expected_tensor_val)
     assert result[2] == (value, shape, dtype)
-
-    compiled_dag.teardown()
 
 
 if __name__ == "__main__":
