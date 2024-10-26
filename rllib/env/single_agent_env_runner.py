@@ -230,7 +230,7 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
         random_actions: bool = False,
         force_reset: bool = False,
     ) -> List[SingleAgentEpisode]:
-        """Helper method to sample n timesteps."""
+        """Helper method to sample n timesteps or m episodes."""
 
         done_episodes_to_return: List[SingleAgentEpisode] = []
 
