@@ -435,6 +435,7 @@ def deploy(
     "--route-prefix",
     required=False,
     type=str,
+    default="/",
     help=(
         "Route prefix for the application. This should only be used "
         "when running an application specified by import path and "
@@ -462,11 +463,9 @@ def run(
     address: str,
     blocking: bool,
     reload: bool,
-    route_prefix: Optional[str],
+    route_prefix: str,
     name: str,
 ):
-    if route_prefix is None:
-        route_prefix = DEFAULT.VALUE
     sys.path.insert(0, app_dir)
     args_dict = convert_args_to_dict(arguments)
     final_runtime_env = parse_runtime_env_args(
