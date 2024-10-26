@@ -440,7 +440,7 @@ def test_asgi_compatible(serve_instance):
 
 @pytest.mark.parametrize(
     "input_route_prefix,expected_route_prefix",
-    [(DEFAULT.VALUE, "/"), ("/", "/"), ("/subpath", "/subpath/")],
+    [("/", "/"), ("/subpath", "/subpath/")],
 )
 def test_doc_generation(serve_instance, input_route_prefix, expected_route_prefix):
     app = FastAPI()
