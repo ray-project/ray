@@ -3,8 +3,6 @@ import logging
 from copy import deepcopy
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
-from ray.dag.py_obj_scanner import _PyObjScanner
-from ray.serve._private.common import DeploymentHandleSource
 from ray.serve._private.config import (
     DeploymentConfig,
     ReplicaConfig,
@@ -14,7 +12,6 @@ from ray.serve._private.constants import SERVE_LOGGER_NAME
 from ray.serve._private.usage import ServeUsageTag
 from ray.serve._private.utils import DEFAULT, Default
 from ray.serve.config import AutoscalingConfig
-from ray.serve.handle import DeploymentHandle, _HandleOptions
 from ray.serve.schema import DeploymentSchema, LoggingConfig, RayActorOptionsSchema
 from ray.util.annotations import PublicAPI
 
@@ -59,80 +56,8 @@ class Application:
     """
 
     def __init__(self, bound_deployment: "Deployment"):
+        # This is used by `build_app`, but made private so users don't use it.
         self._bound_deployment = bound_deployment
-
-    def _get_deployment_name(
-        self, app: "Application", deployment_names: Dict["Application", str]
-    ):
-        if app in deployment_names:
-            return deployment_names[app]
-
-        name = app._bound_deployment.name
-        idx = 1
-        while name in deployment_names.values():
-            name = f"{app._bound_deployment.name}_{idx}"
-            idx += 1
-
-        return name
-
-    def _inject_handles_recursive(
-        self,
-        *,
-        app_name: str,
-        handles: Dict["Application", DeploymentHandle],
-        deployment_names: Dict["Application", str],
-    ) -> List["Deployment"]:
-        deployments = []
-        scanner = _PyObjScanner(source_type=Application)
-        try:
-            apps = scanner.find_nodes(
-                (self._bound_deployment.init_args, self._bound_deployment.init_kwargs)
-            )
-            for app in apps:
-                if app not in handles:
-                    deployment_names[app] = self._get_deployment_name(
-                        app, deployment_names
-                    )
-                    handles[app] = DeploymentHandle(
-                        deployment_names[app],
-                        app_name=app_name,
-                        handle_options=_HandleOptions(
-                            _source=DeploymentHandleSource.REPLICA
-                        ),
-                    )
-
-                deployments.extend(
-                    app._inject_handles_recursive(
-                        app_name=app_name,
-                        handles=handles,
-                        deployment_names=deployment_names,
-                    )
-                )
-
-            new_init_args, new_init_kwargs = scanner.replace_nodes(handles)
-            # TODO: update name if necessary.
-            deployment_names[self] = self._get_deployment_name(self, deployment_names)
-            deployments.append(
-                self._bound_deployment.options(
-                    name=deployment_names[self],
-                    _init_args=new_init_args,
-                    _init_kwargs=new_init_kwargs,
-                )
-            )
-            return deployments
-        finally:
-            scanner.clear()
-
-    def _build(self, *, app_name: str = "default") -> Tuple[str, List["Deployment"]]:
-        deployments = self._inject_handles_recursive(
-            app_name=app_name,
-            handles={},
-            deployment_names={},
-        )
-        return self._bound_deployment.name, deployments
-
-    def __hash__(self):
-        return id(self)  # sketchy?
 
 
 @PublicAPI(stability="stable")

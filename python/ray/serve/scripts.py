@@ -19,6 +19,7 @@ from ray.autoscaler._private.cli_logger import cli_logger
 from ray.dashboard.modules.dashboard_sdk import parse_runtime_env_args
 from ray.dashboard.modules.serve.sdk import ServeSubmissionClient
 from ray.serve._private import api as _private_api
+from ray.serve._private.build_app import build_app
 from ray.serve._private.constants import (
     DEFAULT_GRPC_PORT,
     DEFAULT_HTTP_HOST,
@@ -26,7 +27,6 @@ from ray.serve._private.constants import (
     SERVE_DEFAULT_APP_NAME,
     SERVE_NAMESPACE,
 )
-from ray.serve._private.deployment_graph_build import build as pipeline_build
 from ray.serve.config import DeploymentMode, ProxyLocation, gRPCOptions
 from ray.serve.deployment import Application, deployment_to_schema
 from ray.serve.schema import (
@@ -794,7 +794,7 @@ def build(
                 f"Expected '{import_path}' to be an Application but got {type(app)}."
             )
 
-        deployments = pipeline_build(app, name)
+        _, deployments = build_app(app, name=name)
         schema = ServeApplicationSchema(
             name=name,
             route_prefix="/" if len(import_paths) == 1 else f"/{name}",

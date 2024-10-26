@@ -10,7 +10,7 @@ from fastapi import APIRouter, FastAPI
 import ray
 from ray import cloudpickle
 from ray._private.serialization import pickle_dumps
-from ray.dag import DAGNode
+from ray.serve._private.build_app import build_app
 from ray.serve._private.config import (
     DeploymentConfig,
     ReplicaConfig,
@@ -447,20 +447,16 @@ def _run(
     # Record after Ray has been started.
     ServeUsageTag.API_VERSION.record("v2")
 
-    if isinstance(target, Application):
-        ingress_deployment_name, deployments = target._build(app_name=name)
-    else:
-        msg = "`serve.run` expects an `Application` returned by `Deployment.bind()`."
-        if isinstance(target, DAGNode):
-            msg += (
-                " If you are using the DAG API, you must bind the DAG node to a "
-                "deployment like: `app = Deployment.bind(my_dag_output)`. "
-            )
-        raise TypeError(msg)
+    if not isinstance(target, Application):
+        raise TypeError(
+            "`serve.run` expects an `Application` returned by `Deployment.bind()`."
+        )
+
+    ingress_deployment_name, deployments = build_app(target, name=name)
 
     parameter_group = []
     for deployment in deployments:
-        is_ingress = deployment._name == ingress_deployment_name
+        is_ingress = deployment.name == ingress_deployment_name
         if deployment.logging_config is None and logging_config:
             deployment = deployment.options(logging_config=logging_config)
 
