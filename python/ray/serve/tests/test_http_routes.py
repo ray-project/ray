@@ -45,7 +45,7 @@ def test_routes_healthz(serve_instance):
     assert resp.status_code == 503
     assert resp.text == "Route table is not populated yet."
 
-    # D1 not exposed over HTTP so should still return 503.
+    # D1 exposed over HTTP, should return 200 OK.
     serve.run(D1.bind(), route_prefix="/")
     resp = requests.get("http://localhost:8000/-/healthz")
     assert resp.status_code == 200
