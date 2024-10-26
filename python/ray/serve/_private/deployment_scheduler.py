@@ -603,9 +603,7 @@ class DeploymentScheduler(ABC):
         except Exception:
             # We add a defensive exception here, so the controller can
             # make progress even if the actor options are misconfigured.
-            logger.exception(
-                f"Failed to create an actor for {replica_id}."
-            )
+            logger.exception(f"Failed to create an actor for {replica_id}.")
             scheduling_request.status = (
                 ReplicaSchedulingRequestStatus.ACTOR_CREATION_FAILED
             )
