@@ -57,7 +57,7 @@ logger = logging.getLogger(__name__)
 # Keep tracking of every compiled dag created during the lifetime of
 # this process. It tracks them as weakref meaning when the compiled dag
 # is GC'ed, it is automatically removed from here. It is used to teardown
-# compiled dags at interpret shutdown time.
+# compiled dags at interpreter shutdown time.
 _compiled_dags = weakref.WeakValueDictionary()
 
 
@@ -66,10 +66,12 @@ _compiled_dags = weakref.WeakValueDictionary()
 # upon `ray.worker.shutdown` which is registered to atexit handler
 # so that teardown is properly called before objects are destructed.
 def _shutdown_all_compiled_dags():
+    global _compiled_dags
     for _, compiled_dag in _compiled_dags.items():
         # Kill DAG actors to avoid hanging during shutdown if the actor tasks
         # cannot be cancelled.
         compiled_dag.teardown(kill_actors=True)
+    _compiled_dags = weakref.WeakValueDictionary()
 
 
 @DeveloperAPI
