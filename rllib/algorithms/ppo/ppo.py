@@ -149,6 +149,12 @@ class PPOConfig(AlgorithmConfig):
         # Override some of AlgorithmConfig's default values with PPO-specific values.
         self.num_env_runners = 2
         self.model["vf_share_layers"] = False
+
+        # `.api_stack()`
+        self.api_stack(
+            enable_rl_module_and_learner=True,
+            enable_env_runner_and_connector_v2=True,
+        )
         # __sphinx_doc_end__
         # fmt: on
 
@@ -303,6 +309,17 @@ class PPOConfig(AlgorithmConfig):
     def validate(self) -> None:
         # Call super's validation method.
         super().validate()
+
+        # Warn about new API stack on by default.
+        if self.enable_rl_module_and_learner:
+            logger.warning(
+                f"You are running {self.algo_class.__name__} on the new API stack! "
+                "This is the new default behavior for this algorithm. If you don't "
+                "want to use the new API stack, set `config.api_stack("
+                "enable_rl_module_and_learner=False,"
+                "enable_env_runner_and_connector_v2=False)`. For a detailed migration "
+                "guide, see here: https://docs.ray.io/en/master/rllib/new-api-stack-migration-guide.html"  # noqa
+            )
 
         # Synchronous sampling, on-policy/PPO algos -> Check mismatches between
         # `rollout_fragment_length` and `train_batch_size_per_learner` to avoid user

@@ -773,37 +773,6 @@ py_test(
     args = ["--as-test", "--enable-new-api-stack", "--num-agents=2", "--num-gpus=2"]
 )
 
-#@OldAPIStack
-py_test(
-    name = "learning_tests_pendulum_ppo_old_api_stack",
-    main = "tests/run_regression_tests.py",
-    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_continuous", "no_tf_static_graph"],
-    size = "large", # bazel may complain about it being too long sometimes - large is on purpose as some frameworks take longer
-    srcs = ["tests/run_regression_tests.py"],
-    data = ["tuned_examples/ppo/pendulum-ppo.yaml"],
-    args = ["--dir=tuned_examples/ppo"]
-)
-#@OldAPIStack
-py_test(
-    name = "learning_tests_transformed_actions_pendulum_ppo_old_api_stack",
-    main = "tests/run_regression_tests.py",
-    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_continuous", "no_tf_static_graph"],
-    size = "large", # bazel may complain about it being too long sometimes - large is on purpose as some frameworks take longer
-    srcs = ["tests/run_regression_tests.py"],
-    data = ["tuned_examples/ppo/pendulum-transformed-actions-ppo.yaml"],
-    args = ["--dir=tuned_examples/ppo"]
-)
-#@OldAPIStack
-py_test(
-    name = "learning_tests_repeat_after_me_ppo_old_api_stack",
-    main = "tests/run_regression_tests.py",
-    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_discrete"],
-    size = "medium",
-    srcs = ["tests/run_regression_tests.py"],
-    data = ["tuned_examples/ppo/repeatafterme-ppo-lstm.yaml"],
-    args = ["--dir=tuned_examples/ppo"]
-)
-
 # SAC
 # Pendulum
 py_test(

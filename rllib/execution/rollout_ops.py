@@ -63,12 +63,22 @@ def synchronous_parallel_sample(
 
         # Define an RLlib Algorithm.
         from ray.rllib.algorithms.ppo import PPO, PPOConfig
-        config = PPOConfig().environment("CartPole-v1")
-        algorithm = PPO(config=config)
-        # 2 remote workers (num_workers=2):
-        batches = synchronous_parallel_sample(worker_set=algorithm.env_runner_group,
-            concat=False)
-        print(len(batches))
+        config = (
+            PPOConfig()
+            .api_stack(
+                enable_env_runner_and_connector_v2=True,
+                enable_rl_module_and_learner=True,
+            )
+            .environment("CartPole-v1")
+        )
+        algorithm = config.build()
+        # 2 remote EnvRunners (num_env_runners=2):
+        episodes = synchronous_parallel_sample(
+            worker_set=algorithm.env_runner_group,
+            _uses_new_env_runners=True,
+            concat=False,
+        )
+        print(len(episodes))
 
     .. testoutput::
 

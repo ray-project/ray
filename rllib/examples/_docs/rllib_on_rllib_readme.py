@@ -1,4 +1,5 @@
 import gymnasium as gym
+import torch
 from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.utils.metrics import (
     ENV_RUNNER_RESULTS,
@@ -56,7 +57,12 @@ class ParrotEnv(gym.Env):
 # Create an RLlib Algorithm instance from a PPOConfig to learn how to
 # act in the above environment.
 config = (
-    PPOConfig().environment(
+    PPOConfig()
+    .api_stack(
+        enable_rl_module_and_learner=True,
+        enable_env_runner_and_connector_v2=True,
+    )
+    .environment(
         # Env class to use (here: our gym.Env sub-class from above).
         env=ParrotEnv,
         # Config dict to be passed to our custom env's constructor.
@@ -88,7 +94,10 @@ total_reward = 0.0
 while not done:
     # Compute a single action, given the current observation
     # from the environment.
-    action = algo.compute_single_action(obs)
+    model_outputs = algo.env_runner.model.forward_inference(
+        {"obs": torch.from_numpy(obs)}
+    )
+    action = model_outputs["action_dist_inputs"][0]
     # Apply the computed action in the environment.
     obs, reward, done, truncated, info = env.step(action)
     # Sum up rewards for reporting purposes.

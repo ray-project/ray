@@ -38,6 +38,10 @@ class TestPreprocessors(unittest.TestCase):
     def test_preprocessing_disabled_modelv2(self):
         config = (
             ppo.PPOConfig()
+            .api_stack(
+                enable_env_runner_and_connector_v2=False,
+                enable_rl_module_and_learner=False,
+            )
             .environment(
                 "ray.rllib.examples.envs.classes.random_env.RandomEnv",
                 env_config={

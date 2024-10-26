@@ -131,6 +131,10 @@ if __name__ == "__main__":
 
     config = (
         PPOConfig()
+        .api_stack(
+            enable_env_runner_and_connector_v2=False,
+            enable_rl_module_and_learner=False,
+        )
         .environment(TwoStepGame)
         .framework(args.framework)
         .env_runners(

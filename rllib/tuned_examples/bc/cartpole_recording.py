@@ -15,7 +15,7 @@ args = parser.parse_args()
 
 config = (
     PPOConfig()
-    # Enable new API stack and use EnvRunner.
+    # Enable new API stack.
     .api_stack(
         enable_rl_module_and_learner=True,
         enable_env_runner_and_connector_v2=True,

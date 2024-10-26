@@ -18,7 +18,15 @@ class TestGPUs(unittest.TestCase):
         actual_gpus = torch.cuda.device_count()
         print(f"Actual GPUs found (by torch): {actual_gpus}")
 
-        config = PPOConfig().env_runners(num_env_runners=2).environment("CartPole-v1")
+        config = (
+            PPOConfig()
+            .api_stack(
+                enable_env_runner_and_connector_v2=False,
+                enable_rl_module_and_learner=False,
+            )
+            .env_runners(num_env_runners=2)
+            .environment("CartPole-v1")
+        )
 
         # Expect errors when we run a config w/ num_gpus>0 w/o a GPU
         # and _fake_gpus=False.
