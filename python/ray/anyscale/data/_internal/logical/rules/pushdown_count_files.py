@@ -1,3 +1,6 @@
+from ray.anyscale.data._internal.logical.operators.list_files_operator import (
+    PATH_COLUMN_NAME,
+)
 from ray.anyscale.data._internal.logical.operators.partition_files_operator import (
     PartitionFiles,
 )
@@ -38,11 +41,9 @@ class PushdownCountFiles(Rule):
         assert isinstance(partition_files, PartitionFiles), partition_files
 
         def count_rows(batch: DataBatch) -> DataBatch:
-            assert (
-                PartitionFiles.PATH_COLUMN_NAME in batch.column_names
-            ), batch.column_names
+            assert PATH_COLUMN_NAME in batch.column_names, batch.column_names
             num_rows = read_files.reader.count_rows(
-                list(map(str, list(batch[PartitionFiles.PATH_COLUMN_NAME]))),
+                batch[PATH_COLUMN_NAME].to_pylist(),
                 filesystem=read_files.filesystem,
             )
             return {Count.COLUMN_NAME: [num_rows]}

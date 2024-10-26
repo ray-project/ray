@@ -1,8 +1,10 @@
 import logging
 from typing import Iterable, List
 
-from ray.anyscale.data._internal.logical.operators.partition_files_operator import (
-    PartitionFiles,
+import pyarrow as pa
+
+from ray.anyscale.data._internal.logical.operators.list_files_operator import (
+    PATH_COLUMN_NAME,
 )
 from ray.anyscale.data._internal.logical.operators.read_files_operator import ReadFiles
 from ray.data._internal.compute import TaskPoolStrategy
@@ -29,16 +31,16 @@ def plan_read_files_op(
 
     def read_paths(blocks: Iterable[Block], _: TaskContext) -> Iterable[Block]:
         for block in blocks:
-            paths = list(map(str, list(block[PartitionFiles.PATH_COLUMN_NAME])))
+            assert isinstance(block, pa.Table), type(block)
+            paths = block[PATH_COLUMN_NAME].to_pylist()
             yield from op.reader.read_paths(paths, filesystem=op.filesystem)
 
     transform_fns: List[MapTransformFn] = [
-        BlocksToBatchesMapTransformFn(),
+        BlocksToBatchesMapTransformFn(batch_format=None),
         BatchMapTransformFn(read_paths),
         BuildOutputBlocksMapTransformFn.for_batches(),
     ]
     map_transformer = MapTransformer(transform_fns)
-
     return MapOperator.create(
         map_transformer,
         input_op,

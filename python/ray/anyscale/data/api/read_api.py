@@ -1,13 +1,14 @@
 import functools
 import inspect
 import warnings
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Any, Dict, List, Literal, Optional, Tuple, Union
 
 import numpy as np
 
 import ray
 import ray.data.read_api as oss_read_api
 from ray._private.auto_init_hook import wrap_auto_init
+from ray.anyscale.data._internal.logical.operators.list_files_operator import ListFiles
 from ray.anyscale.data._internal.logical.operators.partition_files_operator import (
     PartitionFiles,
 )
@@ -31,13 +32,14 @@ from ray.data._internal.datasource.image_datasource import ImageDatasource
 from ray.data._internal.datasource.json_datasource import JSONDatasource
 from ray.data._internal.datasource.numpy_datasource import NumpyDatasource
 from ray.data._internal.logical.interfaces import LogicalPlan
+from ray.data._internal.logical.operators.all_to_all_operator import RandomShuffle
 from ray.data._internal.plan import ExecutionPlan
 from ray.data._internal.stats import DatasetStats
 from ray.data._internal.util import _is_local_scheme
 from ray.data.dataset import Dataset
 from ray.data.datasource import Partitioning, PathPartitionFilter
 from ray.data.datasource.path_util import _resolve_paths_and_filesystem
-from ray.data.read_api import _resolve_parquet_args
+from ray.data.read_api import _resolve_parquet_args, _validate_shuffle_arg
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 if TYPE_CHECKING:
@@ -85,6 +87,7 @@ def read_parquet(
     partitioning: Partitioning = Partitioning("hive"),
     include_paths: bool = False,
     file_extensions: Optional[List[str]] = None,
+    shuffle: Union[Literal["files"], None] = None,
     concurrency: Optional[int] = None,
     **arrow_parquet_args,
 ) -> Dataset:
@@ -152,6 +155,7 @@ def read_parquet(
         partition_filter=partition_filter,
         ignore_missing_paths=False,
         file_extensions=file_extensions,
+        shuffle=shuffle,
         concurrency=concurrency,
         ray_remote_args=ray_remote_args,
     )
@@ -168,6 +172,7 @@ def read_audio(
     include_paths: bool = False,
     ignore_missing_paths: bool = False,
     file_extensions: Optional[List[str]] = None,
+    shuffle: Union[Literal["files"], None] = None,
     concurrency: Optional[int] = None,
     ray_remote_args: Optional[Dict[str, Any]] = None,
 ):
@@ -230,6 +235,7 @@ def read_audio(
         partition_filter=partition_filter,
         ignore_missing_paths=ignore_missing_paths,
         file_extensions=file_extensions,
+        shuffle=shuffle,
         concurrency=concurrency,
         ray_remote_args=ray_remote_args,
     )
@@ -246,6 +252,7 @@ def read_videos(
     include_paths: bool = False,
     ignore_missing_paths: bool = False,
     file_extensions: Optional[List[str]] = None,
+    shuffle: Union[Literal["files"], None] = None,
     concurrency: Optional[int] = None,
     ray_remote_args: Optional[Dict[str, Any]] = None,
 ):
@@ -309,6 +316,7 @@ def read_videos(
         partition_filter=partition_filter,
         ignore_missing_paths=ignore_missing_paths,
         file_extensions=file_extensions,
+        shuffle=shuffle,
         concurrency=concurrency,
         ray_remote_args=ray_remote_args,
     )
@@ -374,6 +382,7 @@ def read_webdataset(
     verbose_open: bool = False,
     include_paths: bool = False,
     file_extensions: Optional[List[str]] = None,
+    shuffle: Union[Literal["files"], None] = None,
     concurrency: Optional[int] = None,
 ) -> Dataset:
     reader = WebDatasetReader(
@@ -396,6 +405,7 @@ def read_webdataset(
         ignore_missing_paths=False,
         file_extensions=file_extensions,
         concurrency=concurrency,
+        shuffle=shuffle,
         # TODO: `read_webdataset` doesn't support `ray_remote_args` yet.
         ray_remote_args=None,
     )
@@ -413,6 +423,7 @@ def read_avro(
     include_paths: bool = False,
     ignore_missing_paths: bool = False,
     file_extensions: Optional[List[str]] = None,
+    shuffle: Union[Literal["files"], None] = None,
     concurrency: Optional[int] = None,
 ) -> Dataset:
     reader = AvroReader(
@@ -427,6 +438,7 @@ def read_avro(
         partition_filter=partition_filter,
         ignore_missing_paths=ignore_missing_paths,
         file_extensions=file_extensions,
+        shuffle=shuffle,
         concurrency=concurrency,
         ray_remote_args=ray_remote_args,
     )
@@ -444,6 +456,7 @@ def read_json(
     include_paths: bool = False,
     ignore_missing_paths: bool = False,
     file_extensions: Optional[List[str]] = JSONDatasource._FILE_EXTENSIONS,
+    shuffle: Union[Literal["files"], None] = None,
     concurrency: Optional[int] = None,
     **arrow_json_args,
 ) -> Dataset:
@@ -460,6 +473,7 @@ def read_json(
         partition_filter=partition_filter,
         ignore_missing_paths=ignore_missing_paths,
         file_extensions=file_extensions,
+        shuffle=shuffle,
         concurrency=concurrency,
         ray_remote_args=ray_remote_args,
     )
@@ -476,6 +490,7 @@ def read_numpy(
     include_paths: bool = False,
     ignore_missing_paths: bool = False,
     file_extensions: Optional[List[str]] = NumpyDatasource._FILE_EXTENSIONS,
+    shuffle: Union[Literal["files"], None] = None,
     concurrency: Optional[int] = None,
     **numpy_load_args,
 ) -> Dataset:
@@ -492,6 +507,7 @@ def read_numpy(
         partition_filter=partition_filter,
         ignore_missing_paths=ignore_missing_paths,
         file_extensions=file_extensions,
+        shuffle=shuffle,
         concurrency=concurrency,
         ray_remote_args={},
     )
@@ -509,6 +525,7 @@ def read_binary_files(
     partitioning: Partitioning = None,
     ignore_missing_paths: bool = False,
     file_extensions: Optional[List[str]] = None,
+    shuffle: Union[Literal["files"], None] = None,
     concurrency: Optional[int] = None,
 ) -> Dataset:
     reader = BinaryReader(
@@ -523,6 +540,7 @@ def read_binary_files(
         partition_filter=partition_filter,
         ignore_missing_paths=ignore_missing_paths,
         file_extensions=file_extensions,
+        shuffle=shuffle,
         concurrency=concurrency,
         ray_remote_args=ray_remote_args,
     )
@@ -542,6 +560,7 @@ def read_images(
     include_paths: bool = False,
     ignore_missing_paths: bool = False,
     file_extensions: Optional[List[str]] = ImageDatasource._FILE_EXTENSIONS,
+    shuffle: Union[Literal["files"], None] = None,
     concurrency: Optional[int] = None,
 ) -> Dataset:
     reader = ImageReader(
@@ -558,6 +577,7 @@ def read_images(
         partition_filter=partition_filter,
         ignore_missing_paths=ignore_missing_paths,
         file_extensions=file_extensions,
+        shuffle=shuffle,
         concurrency=concurrency,
         ray_remote_args=ray_remote_args,
     )
@@ -577,6 +597,7 @@ def read_text(
     include_paths: bool = False,
     ignore_missing_paths: bool = False,
     file_extensions: Optional[List[str]] = None,
+    shuffle: Union[Literal["files"], None] = None,
     concurrency: Optional[int] = None,
 ) -> Dataset:
     reader = TextReader(
@@ -593,6 +614,7 @@ def read_text(
         partition_filter=partition_filter,
         ignore_missing_paths=ignore_missing_paths,
         file_extensions=file_extensions,
+        shuffle=shuffle,
         concurrency=concurrency,
         ray_remote_args=ray_remote_args,
     )
@@ -610,6 +632,7 @@ def read_csv(
     include_paths: bool = False,
     ignore_missing_paths: bool = False,
     file_extensions: Optional[List[str]] = None,
+    shuffle: Union[Literal["files"], None] = None,
     concurrency: Optional[int] = None,
     **arrow_csv_args,
 ) -> Dataset:
@@ -626,6 +649,7 @@ def read_csv(
         partition_filter=partition_filter,
         ignore_missing_paths=ignore_missing_paths,
         file_extensions=file_extensions,
+        shuffle=shuffle,
         concurrency=concurrency,
         ray_remote_args=ray_remote_args,
     )
@@ -640,21 +664,30 @@ def read_files(
     partition_filter: Optional[PathPartitionFilter],
     ignore_missing_paths: bool,
     file_extensions: Optional[List[str]],
+    shuffle: Union[Literal["files"], None],
     concurrency: Optional[int],
     ray_remote_args: Dict[str, Any],
 ) -> Dataset:
+    _validate_shuffle_arg(shuffle)
+
     paths, filesystem = _resolve_paths_and_filesystem(paths, filesystem)
-    partition_files_op = PartitionFiles(
+
+    list_files_op = ListFiles(
         paths=paths,
-        reader=reader,
         filesystem=filesystem,
         ignore_missing_paths=ignore_missing_paths,
         file_extensions=file_extensions,
         partition_filter=partition_filter,
     )
+    if shuffle == "files":
+        list_files_op = RandomShuffle(list_files_op)
+    partition_files_op = PartitionFiles(
+        list_files_op,
+        reader=reader,
+        filesystem=filesystem,
+    )
     read_files_op = ReadFiles(
         partition_files_op,
-        paths=paths,
         reader=reader,
         filesystem=filesystem,
         ray_remote_args=ray_remote_args,

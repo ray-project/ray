@@ -1,38 +1,26 @@
-from typing import List, Union
-
 from ray.anyscale.data._internal.readers import FileReader
 from ray.data._internal.logical.interfaces import LogicalOperator
-from ray.data.datasource import PathPartitionFilter
 
 
 class PartitionFiles(LogicalOperator):
-    """List and partition files.
+    """Partition file paths for reading.
 
-    Physical operators that implement this logical operator should list the files in the
-    specified paths and output blocks with a single column named
-    `PartitionFiles.PATH_COLUMN_NAME`.
+    This operator ensures that each read task reads an appropriate amount of data.
+
+    Physical operators that implement this logical operator should receive input blocks
+    that contain two columns named `PATH_COLUMN_NAME` and `FILE_SIZE_COLUMN_NAME`. The
+    physical operator should output blocks with a single column named
+    `PATH_COLUMN_NAME`.
     """
-
-    PATH_COLUMN_NAME = "__path"
 
     def __init__(
         self,
+        input_dependency: LogicalOperator,
         *,
-        paths: Union[str, List[str]],
         reader: FileReader,
         filesystem,
-        ignore_missing_paths: bool,
-        file_extensions: List[str],
-        partition_filter: PathPartitionFilter,
     ):
-        super().__init__(name="PartitionFiles", input_dependencies=[])
+        super().__init__(name="PartitionFiles", input_dependencies=[input_dependency])
 
-        if isinstance(paths, str):
-            paths = [paths]
-
-        self.paths = paths
         self.reader = reader
         self.filesystem = filesystem
-        self.ignore_missing_paths = ignore_missing_paths
-        self.file_extensions = file_extensions
-        self.partition_filter = partition_filter

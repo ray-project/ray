@@ -1,6 +1,9 @@
 import functools
 from typing import Any, Dict, List, Optional, Protocol
 
+from ray.anyscale.data._internal.logical.operators.list_files_operator import (
+    PATH_COLUMN_NAME,
+)
 from ray.anyscale.data._internal.logical.operators.partition_files_operator import (
     PartitionFiles,
 )
@@ -98,9 +101,7 @@ class DatasetMixin:
             execution_plan = ExecutionPlan(DatasetStats(metadata={}, parent=None))
             logical_plan = LogicalPlan(partition_files_op, self.context)
             dataset = Dataset(execution_plan, logical_plan)
-            return list(
-                {row[PartitionFiles.PATH_COLUMN_NAME] for row in dataset.take_all()}
-            )
+            return list({row[PATH_COLUMN_NAME] for row in dataset.take_all()})
         else:
             return self._plan.input_files() or []
 
