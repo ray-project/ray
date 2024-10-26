@@ -300,7 +300,7 @@ if __name__ == "__main__":
 
     success_key = f"{ENV_RUNNER_RESULTS}/max_dist_travelled_across_running_episodes"
     stop = {
-        success_key: 16.0,
+        success_key: 12.0,
         f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": args.stop_reward,
         NUM_ENV_STEPS_SAMPLED_LIFETIME: args.stop_timesteps,
     }

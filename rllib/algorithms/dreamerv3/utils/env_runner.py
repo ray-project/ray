@@ -362,7 +362,7 @@ class DreamerV3EnvRunner(EnvRunner):
             for env_index in range(self.num_envs):
                 # Episode has no data in it yet -> Was just reset and needs to be called
                 # with its `add_env_reset()` method.
-                if not self._episodes[env_index].is_reset:
+                if not episodes[env_index].is_reset:
                     episodes[env_index].add_env_reset(
                         observation=observations[env_index],
                         infos=infos[env_index],
@@ -388,10 +388,12 @@ class DreamerV3EnvRunner(EnvRunner):
             # `while`-iteration.
             if self.module is not None:
                 is_first = np.zeros((self.num_envs,))
-                for i, eps in enumerate(self._episodes):
-                    if self._states[i] is None:
-                        is_first[i] = 1.0
-                        self._states[i] = {k: s[i] for k, s in initial_states.items()}
+                for env_index, episode in enumerate(episodes):
+                    if self._states[env_index] is None:
+                        is_first[env_index] = 1.0
+                        self._states[env_index] = {
+                            k: s[env_index] for k, s in initial_states.items()
+                        }
                 self._cached_to_module = {
                     Columns.STATE_IN: tree.map_structure(
                         lambda s: self.convert_to_tensor(s), batch(self._states)
@@ -434,19 +436,19 @@ class DreamerV3EnvRunner(EnvRunner):
         # episode and continue building it on the next call to `sample()`.
         if num_timesteps is not None:
             ongoing_episodes_continuations = [
-                eps.cut(len_lookback_buffer=self.config.episode_lookback_horizon)
-                for eps in self._episodes
+                episode.cut(len_lookback_buffer=self.config.episode_lookback_horizon)
+                for episode in episodes
             ]
 
-            for eps in self._episodes:
+            for episode in episodes:
                 # Just started Episodes do not have to be returned. There is no data
                 # in them anyway.
-                if eps.t == 0:
+                if episode.t == 0:
                     continue
-                eps.validate()
-                self._ongoing_episodes_for_metrics[eps.id_].append(eps)
+                episode.validate()
+                self._ongoing_episodes_for_metrics[episode.id_].append(episode)
                 # Return finalized (numpy'ized) Episodes.
-                ongoing_episodes_to_return.append(eps.finalize())
+                ongoing_episodes_to_return.append(episode.finalize())
 
             # Continue collecting into the cut Episode chunks.
             self._episodes = ongoing_episodes_continuations

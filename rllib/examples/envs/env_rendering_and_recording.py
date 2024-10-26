@@ -73,7 +73,10 @@ from ray.tune.registry import get_trainable_cls, register_env
 from ray import tune
 
 parser = add_rllib_example_script_args(default_reward=20.0)
-parser.set_defaults(env="ale_py:ALE/Pong-v5")
+parser.set_defaults(
+    enable_new_api_stack=True,
+    env="ale_py:ALE/Pong-v5",
+)
 
 
 class EnvRenderCallback(DefaultCallbacks):
@@ -129,10 +132,10 @@ class EnvRenderCallback(DefaultCallbacks):
 
         # If we have a vector env, only render the sub-env at index 0.
         if isinstance(env.unwrapped, gym.vector.VectorEnv):
-            image = env.envs[0].render()
+            image = env.unwrapped.envs[0].render()
         # Render the gym.Env.
         else:
-            image = env.render()
+            image = env.unwrapped.render()
 
         # Original render images for CartPole are 400x600 (hxw). We'll downsize here to
         # a very small dimension (to save space and bandwidth).
@@ -239,14 +242,10 @@ class EnvRenderCallback(DefaultCallbacks):
 if __name__ == "__main__":
     args = parser.parse_args()
 
-    assert (
-        args.enable_new_api_stack
-    ), "Must set --enable-new-api-stack when running this script!"
-
     # Register our environment with tune.
     def _env_creator(cfg):
         cfg.update({"render_mode": "rgb_array"})
-        if args.env.startswith("ale_py:ALE/") or args.env.startswith("ale_py:"):
+        if args.env.startswith("ale_py:ALE/"):
             cfg.update(
                 {
                     # Make analogous to old v4 + NoFrameskip.
