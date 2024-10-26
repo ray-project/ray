@@ -1,3 +1,4 @@
+import time
 import weakref
 import asyncio
 from collections import defaultdict
@@ -1736,12 +1737,10 @@ class CompiledDAG:
 
                 if not do_teardown:
                     # Teardown is already being performed.
-                    # self.wait_teardown(kill_actors)
                     while True:
                         with self.in_teardown_lock:
                             if self._teardown_done:
                                 return
-                        import time
 
                         time.sleep(0.1)
 
