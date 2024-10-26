@@ -9,18 +9,19 @@ from ray.serve._private.common import DeploymentHandleSource
 from ray.serve.deployment import Application, Deployment
 from ray.serve.handle import DeploymentHandle, _HandleOptions
 
+
 @pytest.fixture(autouse=True)
 def patch_handle_eq():
     """Patch DeploymentHandle.__eq__ to compare options we care about."""
-    def _patched_handle_eq(self, other):
-        if type(self) != type(other):
-            return False
 
-        return all([
-            type(self) == type(other),
-            self.deployment_id == other.deployment_id,
-            self.handle_options == other.handle_options,
-        ])
+    def _patched_handle_eq(self, other):
+        return all(
+            [
+                isinstance(other, type(self)),
+                self.deployment_id == other.deployment_id,
+                self.handle_options == other.handle_options,
+            ]
+        )
 
     with mock.patch(
         "ray.serve.handle._DeploymentHandleBase.__eq__", _patched_handle_eq
