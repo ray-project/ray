@@ -739,7 +739,7 @@ class CompiledDAG:
     @property
     def nccl_group_id_p2p(self) -> Optional[str]:
         return self._nccl_group_id_p2p
-    
+
     @property
     def is_teardown(self) -> bool:
         return self._is_teardown
