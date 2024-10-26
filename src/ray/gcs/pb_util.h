@@ -258,7 +258,7 @@ inline void FillTaskInfo(rpc::TaskInfoEntry *task_info,
   }
 
   // Fill in task args
-  for (int i = 0; i < task_spec.NumArgs(); i++) {
+  for (size_t i = 0; i < task_spec.NumArgs(); i++) {
     if (task_spec.ArgByRef(i)) {
       task_info->add_args_object_ids(task_spec.ArgRef(i).object_id());
     }
