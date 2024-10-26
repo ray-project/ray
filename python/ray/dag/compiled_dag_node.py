@@ -67,7 +67,9 @@ _compiled_dags = weakref.WeakValueDictionary()
 # so that teardown is properly called before objects are destructed.
 def _shutdown_all_compiled_dags():
     for _, compiled_dag in _compiled_dags.items():
-        compiled_dag.teardown()
+        # Kill DAG actors to avoid hanging during shutdown if the actor tasks
+        # cannot be cancelled.
+        compiled_dag.teardown(kill_actors=True)
 
 
 @DeveloperAPI
@@ -636,7 +638,7 @@ class CompiledDAG:
             self._buffer_size_bytes = ctx.buffer_size_bytes
 
         self._default_type_hint: ChannelOutputType = SharedMemoryType(
-            self._buffer_size_bytes,
+            buffer_size_bytes=self._buffer_size_bytes,
             # We conservatively set num_shm_buffers to _max_inflight_executions.
             # It means that the DAG can be underutilized, but it guarantees there's
             # no false positive timeouts.
@@ -1683,16 +1685,28 @@ class CompiledDAG:
                 self.name = "CompiledGraphMonitorThread"
                 self._teardown_done = False
 
-            def wait_teardown(self):
+            def wait_teardown(self, kill_actors: bool = False):
+                from ray.dag import DAGContext
+
+                ctx = DAGContext.get_current()
+                teardown_timeout = ctx.retrieval_timeout
+
                 for actor, ref in outer.worker_task_refs.items():
                     timeout = False
                     try:
-                        ray.get(ref, timeout=10)
+                        ray.get(ref, timeout=teardown_timeout)
                     except ray.exceptions.GetTimeoutError:
-                        logger.warning(
-                            f"Compiled DAG actor {actor} is still running 10s "
-                            "after teardown(). Teardown may hang."
+                        msg = (
+                            f"Compiled DAG actor {actor} is still running "
+                            f"{teardown_timeout}s after teardown()."
                         )
+                        if kill_actors:
+                            msg += " Force-killing actor."
+                            ray.kill(actor)
+                        else:
+                            msg += " Teardown may hang."
+
+                        logger.warning(msg)
                         timeout = True
                     except Exception:
                         # We just want to check that the task has finished so
@@ -1708,7 +1722,7 @@ class CompiledDAG:
                     except Exception:
                         pass
 
-            def teardown(self, wait: bool):
+            def teardown(self, wait: bool, kill_actors: bool = False):
                 do_teardown = False
                 with self.in_teardown_lock:
                     if self._teardown_done:
@@ -1721,7 +1735,7 @@ class CompiledDAG:
                 if not do_teardown:
                     # Teardown is already being performed.
                     if wait:
-                        self.wait_teardown()
+                        self.wait_teardown(kill_actors)
                     return
 
                 logger.info("Tearing down compiled DAG")
@@ -2162,13 +2176,13 @@ class CompiledDAG:
             # Render the graph to a file
             dot.render(filename, view=view)
 
-    def teardown(self):
+    def teardown(self, kill_actors: bool = False):
         """Teardown and cancel all actor tasks for this DAG. After this
         function returns, the actors should be available to execute new tasks
         or compile a new DAG."""
         monitor = getattr(self, "_monitor", None)
         if monitor is not None:
-            monitor.teardown(wait=True)
+            monitor.teardown(wait=True, kill_actors=kill_actors)
         self._is_teardown = True
 
     def __del__(self):
