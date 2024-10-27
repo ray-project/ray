@@ -2,29 +2,28 @@
 
 .. |single_agent| image:: /rllib/images/sigils/single-agent.svg
     :class: inline-figure
-    :width: 64
+    :width: 72
 
 .. |multi_agent| image:: /rllib/images/sigils/multi-agent.svg
     :class: inline-figure
-    :width: 64
+    :width: 72
 
 .. |discr_act| image:: /rllib/images/sigils/discr-actions.svg
     :class: inline-figure
-    :width: 64
+    :width: 72
 
 .. |cont_act| image:: /rllib/images/sigils/cont-actions.svg
     :class: inline-figure
-    :width: 64
+    :width: 72
 
 .. |multi_gpu| image:: /rllib/images/sigils/multi-gpu.svg
     :class: inline-figure
-    :width: 64
+    :width: 72
 
 .. |multi_node_multi_gpu| image:: /rllib/images/sigils/multi-node-multi-gpu.svg
     :class: inline-figure
     :alt: Only on the Anyscale Platform!
-    :width: 64
-
+    :width: 72
 
 .. _rllib-index:
 
@@ -75,10 +74,7 @@ RLlib in 60 seconds
 .. figure:: images/rllib-index-header.svg
 
 It only takes a few steps to get your first RLlib workload up and running on your laptop.
-
-RLlib doesn't automatically install a deep-learning framework, but supports `PyTorch <https://pytorch.org>`__.
-
-Make sure to install one of these (or both), as shown below:
+Install RLlib and `PyTorch <https://pytorch.org>`__, as shown below:
 
 .. code-block:: bash
 
@@ -91,17 +87,16 @@ Make sure to install one of these (or both), as shown below:
 
 .. note::
 
-    To be able to run our Atari and/or MuJoCo examples, you should also install
-    `pip install "gymnasium[atari,accept-rom-license,mujoco]" ale_py`.
+    To be able to run our Atari or MuJoCo examples, you also need to run:
+    `pip install "gymnasium[atari,accept-rom-license,mujoco]"`.
 
-This is all you need to start coding against RLlib.
-Here is an example of running the PPO Algorithm on the
-`Taxi domain <https://gymnasium.farama.org/environments/toy_text/taxi/>`_.
+This is all! You can now start coding against RLlib. Here is an example for running the PPO Algorithm on the
+`Taxi domain <https://gymnasium.farama.org/environments/toy_text/taxi/>`__.
 You first create a `config` for the algorithm, which defines the RL environment (taxi) and
 any other needed settings and parameters.
 
-Next, `build` the algorithm and `train` it for a total of `5` iterations.
-One training iteration includes distributed (parallel) sample collection by the :py:class:`~ray.rllib.env.env_runner.EnvRunner` actors,
+Next, `build` the algorithm and `train` it for a total of 5 iterations.
+One training iteration includes parallel (distributed) sample collection by the :py:class:`~ray.rllib.env.env_runner.EnvRunner` actors,
 followed by loss calculation on the collected data, and a model update step.
 
 At the end of your script, the trained Algorithm is evaluated:
@@ -111,13 +106,14 @@ At the end of your script, the trained Algorithm is evaluated:
     :start-after: __rllib-in-60s-begin__
     :end-before: __rllib-in-60s-end__
 
-Note that you can use any `Farama-Foundation Gymnasium <https://github.com/Farama-Foundation/Gymnasium>`__ environment as `env`.
+You can use any `Farama-Foundation Gymnasium <https://github.com/Farama-Foundation/Gymnasium>`__ registered environment
+with the `env` argument.
 
 In `config.env_runners()` you can specify - amongst many other things - the number of parallel
 :py:class:`~ray.rllib.env.env_runner.EnvRunner` actors to collect samples from the environment.
 
-You can also tweak RLlib's default `rl_module` config, and set up a separate config for the
-evaluation :py:class:`~ray.rllib.env.env_runner.EnvRunner` actors through the `config.evaluation()` method.
+You can also tweak the NN architecture used by by tweaking RLlib's `DefaultModelConfig`, as well as, set up a separate
+config for the evaluation :py:class:`~ray.rllib.env.env_runner.EnvRunner` actors through the `config.evaluation()` method.
 
 `See here <rllib-training.html#using-the-python-api>`_, if you want to learn more about the RLlib training APIs.
 Also, `see here <https://github.com/ray-project/ray/blob/master/rllib/examples/inference/policy_inference_after_training.py>`__
@@ -246,12 +242,11 @@ Why chose RLlib?
 .. dropdown:: **Offline RL**
     :animate: fade-in-slide-down
 
-    RLlib is now integrated with Ray.Data, enabling high-scale data ingestion for offline RL and behavior
+    **Ray.Data** has been integrated into RLlib, enabling **large-scale data ingestion** for offline RL and behavior
     cloning (BC) workloads.
 
-    See here for a simple `behavior cloning tuned example <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/bc/cartpole_bc.py>`__ and
-    here for how to
-    `pre-train a policy with BC, then finetuning it with online PPO <https://github.com/ray-project/ray/blob/master/rllib/examples/offline_rl/train_w_bc_finetune_w_ppo.py>`__.
+    See here for a basic `tuned example for the behavior cloning algo <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/bc/cartpole_bc.py>`__
+    and here for how to `pre-train a policy with BC, then finetuning it with online PPO <https://github.com/ray-project/ray/blob/master/rllib/examples/offline_rl/train_w_bc_finetune_w_ppo.py>`__.
 
 
 Learn More
@@ -260,6 +255,20 @@ Learn More
 .. grid:: 1 2 3 3
     :gutter: 1
     :class-container: container pb-4
+
+    .. grid-item-card::
+
+        **RLlib Environments**
+        ^^^
+        Get started with environments supported by RLlib, such as Farama foundation's Gymnasium, Petting Zoo,
+        and many custom formats for vectorized and multi-agent environments.
+        +++
+        .. button-ref:: rllib-environments-doc
+            :color: primary
+            :outline:
+            :expand:
+
+            Environments
 
     .. grid-item-card::
 
@@ -289,25 +298,12 @@ Learn More
 
             Algorithms
 
-    .. grid-item-card::
-
-        **RLlib Environments**
-        ^^^
-        Get started with environments supported by RLlib, such as Farama foundation's Gymnasium, Petting Zoo,
-        and many custom formats for vectorized and multi-agent environments.
-        +++
-        .. button-ref:: rllib-environments-doc
-            :color: primary
-            :outline:
-            :expand:
-
-            Environments
-
 
 Customizing RLlib
 -----------------
 
-RLlib provides simple APIs to customize all aspects of your training- and experimental workflows.
+RLlib provides powerful, yet easy to use APIs for customizing all aspects of your experimental- and
+production training-workflows.
 For example, you may code your own `environments <rllib-env.html#configuring-environments>`__
 in python using the `Farama Foundation's gymnasium <https://farama.org>`__ or DeepMind's OpenSpiel,
 provide custom `PyTorch models <https://github.com/ray-project/ray/blob/master/rllib/examples/rl_modules/custom_cnn_rl_module.py>`_,
