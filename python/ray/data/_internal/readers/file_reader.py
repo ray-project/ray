@@ -7,13 +7,10 @@ if TYPE_CHECKING:
     import pyarrow
 
 
-# TODO(@bveeramani): Consolidate this with `FileBasedDatasource` so that there aren't
-# two divergent code paths.
 class FileReader(abc.ABC):
     """Base class for reading files.
 
-    The `ReadFiles` operator uses implementations of this interface to read data from
-    files.
+    `FileDatasource` uses implementations of this interface to read data from files.
     """
 
     @abc.abstractmethod
