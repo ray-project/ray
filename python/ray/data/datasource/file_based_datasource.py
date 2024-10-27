@@ -10,6 +10,7 @@ from typing import (
     List,
     Literal,
     Optional,
+    Tuple,
     Union,
 )
 
@@ -38,7 +39,7 @@ from ray.data.datasource.path_util import (
     _has_file_extension,
     _resolve_paths_and_filesystem,
 )
-from ray.util.annotations import DeveloperAPI
+from ray.util.annotations import Deprecated
 
 if TYPE_CHECKING:
     import pandas as pd
@@ -61,17 +62,13 @@ OPEN_FILE_RETRY_MAX_BACKOFF_SECONDS = 32
 OPEN_FILE_MAX_ATTEMPTS = 10
 
 
-@DeveloperAPI
+@Deprecated
 class FileBasedDatasource(Datasource):
     """File-based datasource for reading files.
 
     Don't use this class directly. Instead, subclass it and implement `_read_stream()`.
     """
 
-    # If `_WRITE_FILE_PER_ROW` is `True`, this datasource calls `_write_row` and writes
-    # each row to a file. Otherwise, this datasource calls `_write_block` and writes
-    # each block to a file.
-    _WRITE_FILE_PER_ROW = False
     _FILE_EXTENSIONS: Optional[Union[str, List[str]]] = None
     # Number of threads for concurrent reading within each read task.
     # If zero or negative, reading will be performed in the main thread.
@@ -108,52 +105,21 @@ class FileBasedDatasource(Datasource):
         self._partition_filter = partition_filter
         self._partitioning = partitioning
         self._ignore_missing_paths = ignore_missing_paths
+        self._shuffle = shuffle
         self._include_paths = include_paths
+
         paths, self._filesystem = _resolve_paths_and_filesystem(paths, filesystem)
-        paths, file_sizes = map(
-            list,
-            zip(
-                *meta_provider.expand_paths(
-                    paths,
-                    self._filesystem,
-                    partitioning,
-                    ignore_missing_paths=ignore_missing_paths,
-                )
-            ),
+        paths, file_sizes = _list_files(
+            paths,
+            filesystem=self._filesystem,
+            meta_provider=meta_provider,
+            partition_filter=partition_filter,
+            partitioning=partitioning,
+            file_extensions=file_extensions,
+            ignore_missing_paths=ignore_missing_paths,
         )
 
-        if ignore_missing_paths and len(paths) == 0:
-            raise ValueError(
-                "None of the provided paths exist. "
-                "The 'ignore_missing_paths' field is set to True."
-            )
-
-        if self._partition_filter is not None:
-            # Use partition filter to skip files which are not needed.
-            path_to_size = dict(zip(paths, file_sizes))
-            paths = self._partition_filter(paths)
-            file_sizes = [path_to_size[p] for p in paths]
-            if len(paths) == 0:
-                raise ValueError(
-                    "No input files found to read. Please double check that "
-                    "'partition_filter' field is set properly."
-                )
-
-        if file_extensions is not None:
-            path_to_size = dict(zip(paths, file_sizes))
-            paths = [p for p in paths if _has_file_extension(p, file_extensions)]
-            file_sizes = [path_to_size[p] for p in paths]
-            if len(paths) == 0:
-                raise ValueError(
-                    "No input files found to read with the following file extensions: "
-                    f"{file_extensions}. Please double check that "
-                    "'file_extensions' field is set properly."
-                )
-
         _validate_shuffle_arg(shuffle)
-        self._file_metadata_shuffler = None
-        if shuffle == "files":
-            self._file_metadata_shuffler = np.random.default_rng()
 
         # Read tasks serialize `FileBasedDatasource` instances, and the list of paths
         # can be large. To avoid slow serialization speeds, we store a reference to
@@ -184,13 +150,8 @@ class FileBasedDatasource(Datasource):
         paths = self._paths()
         file_sizes = self._file_sizes()
 
-        if self._file_metadata_shuffler is not None:
-            files_metadata = list(zip(paths, file_sizes))
-            shuffled_files_metadata = [
-                files_metadata[i]
-                for i in self._file_metadata_shuffler.permutation(len(files_metadata))
-            ]
-            paths, file_sizes = list(map(list, zip(*shuffled_files_metadata)))
+        if self._shuffle == "files":
+            paths, file_sizes = _shuffle_files(paths, file_sizes)
 
         read_stream = self._read_stream
         filesystem = _wrap_s3_serialization_workaround(self._filesystem)
@@ -528,3 +489,87 @@ def _validate_shuffle_arg(shuffle: Optional[str]) -> None:
             f"Invalid value for 'shuffle': {shuffle}. "
             "Valid values are None, 'files'."
         )
+
+
+def _list_files(
+    paths: List[str],
+    *,
+    meta_provider: BaseFileMetadataProvider,
+    filesystem: "pyarrow.fs.FileSystem",
+    partition_filter: Optional[PathPartitionFilter],
+    partitioning: Optional[Partitioning],
+    file_extensions: Optional[List[str]],
+    ignore_missing_paths: bool,
+) -> List[str]:
+    # TODO: Replace this function with the 'ListFiles' operator once we remove metadata
+    # providers.
+
+    # Step 1: List all of the files and their sizes using the metadata provider.
+    paths, file_sizes = map(
+        list,
+        zip(
+            *meta_provider.expand_paths(
+                paths,
+                filesystem,
+                partitioning,
+                ignore_missing_paths=ignore_missing_paths,
+            )
+        ),
+    )
+    if ignore_missing_paths and not paths:
+        raise ValueError(
+            "None of the provided paths exist. The 'ignore_missing_paths' field is set "
+            "to 'True'."
+        )
+
+    # Step 2: If applicable, filter the paths based on the partition filter.
+    if partition_filter is not None:
+        paths, file_sizes = _apply_partition_filter(paths, file_sizes, partition_filter)
+
+    # Step 3: If applicable, filter the paths based on the file extensions.
+    if file_extensions is not None:
+        paths, file_sizes = _filter_by_extension(paths, file_sizes, file_extensions)
+
+    return paths, file_sizes
+
+
+def _apply_partition_filter(
+    paths: List[str], file_sizes: List[int], partition_filter: PathPartitionFilter
+) -> Tuple[List[str], List[int]]:
+    path_to_file_size = dict(zip(paths, file_sizes))
+    paths = partition_filter(paths)
+    file_sizes = [path_to_file_size[path] for path in paths]
+
+    if len(paths) == 0:
+        raise ValueError(
+            "No input files found to read. Check that you set the 'partition_filter' "
+            "argument properly."
+        )
+
+    return paths, file_sizes
+
+
+def _filter_by_extension(
+    paths: List[str], file_sizes: List[int], file_extensions: List[str]
+) -> Tuple[List[str], List[int]]:
+    path_to_file_size = dict(zip(paths, file_sizes))
+    paths = [path for path in paths if _has_file_extension(path, file_extensions)]
+    file_sizes = [path_to_file_size[path] for path in paths]
+
+    if len(paths) == 0:
+        raise ValueError(
+            "No input files found to read with the following file extensions: "
+            f"{file_extensions}. Check that you sets the 'file_extensions' argument "
+            "properly."
+        )
+
+    return paths, file_sizes
+
+
+def _shuffle_files(
+    paths: List[str], file_sizes: List[int]
+) -> Tuple[List[str], List[int]]:
+    paths_and_file_sizes: List[Tuple[str, int]] = list(zip(paths, file_sizes))
+    np.random.shuffle(paths_and_file_sizes)
+    paths, file_sizes = tuple(map(list, zip(*paths_and_file_sizes)))
+    return paths, file_sizes

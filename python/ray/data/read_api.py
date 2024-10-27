@@ -23,10 +23,10 @@ from ray.air.util.tensor_extensions.utils import _create_possibly_ragged_ndarray
 from ray.data._internal.datasource.avro_datasource import AvroDatasource
 from ray.data._internal.datasource.bigquery_datasource import BigQueryDatasource
 from ray.data._internal.datasource.binary_datasource import BinaryDatasource
-from ray.data._internal.datasource.csv_datasource import CSVDatasource
 from ray.data._internal.datasource.delta_sharing_datasource import (
     DeltaSharingDatasource,
 )
+from ray.data._internal.datasource.file_datasource import FileDatasource
 from ray.data._internal.datasource.iceberg_datasource import IcebergDatasource
 from ray.data._internal.datasource.image_datasource import (
     ImageDatasource,
@@ -55,6 +55,7 @@ from ray.data._internal.logical.operators.from_operators import (
 from ray.data._internal.logical.operators.read_operator import Read
 from ray.data._internal.logical.optimizers import LogicalPlan
 from ray.data._internal.plan import ExecutionPlan
+from ray.data._internal.readers import CSVReader
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.stats import DatasetStats
 from ray.data._internal.util import (
@@ -1337,17 +1338,22 @@ def read_csv(
     if meta_provider is None:
         meta_provider = DefaultFileMetadataProvider()
 
-    datasource = CSVDatasource(
-        paths,
+    reader = CSVReader(
+        include_paths=include_paths,
+        partitioning=partitioning,
+        open_args=arrow_open_stream_args,
         arrow_csv_args=arrow_csv_args,
+    )
+    datasource = FileDatasource(
+        paths,
+        reader=reader,
         filesystem=filesystem,
-        open_stream_args=arrow_open_stream_args,
+        schema=None,
         meta_provider=meta_provider,
         partition_filter=partition_filter,
         partitioning=partitioning,
         ignore_missing_paths=ignore_missing_paths,
         shuffle=shuffle,
-        include_paths=include_paths,
         file_extensions=file_extensions,
     )
     return read_datasource(
