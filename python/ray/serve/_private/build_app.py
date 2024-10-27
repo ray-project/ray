@@ -3,11 +3,12 @@ from typing import Any, List, Tuple
 
 from ray.dag.py_obj_scanner import _PyObjScanner
 from ray.serve._private.common import DeploymentHandleSource
+from ray.serve._private.constants import SERVE_LOGGER_NAME
 from ray.serve.deployment import Application, Deployment
 from ray.serve.handle import DeploymentHandle, _HandleOptions
-from ray.serve._private.constants import SERVE_LOGGER_NAME
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
+
 
 class IDDict(dict):
     """Dictionary that uses id() for keys instead of hash().
