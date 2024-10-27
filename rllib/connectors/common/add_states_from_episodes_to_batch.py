@@ -346,6 +346,17 @@ class AddStatesFromEpisodesToBatch(ConnectorV2):
                     num_items=int(math.ceil(len(sa_episode) / max_seq_len)),
                     single_agent_episode=sa_episode,
                 )
+                if Columns.NEXT_OBS in batch:
+                    self.add_n_batch_items(
+                        batch=batch,
+                        column="new_state_in",
+                        items_to_add=tree.map_structure(
+                            lambda i, m=max_seq_len: i[::m],
+                            state_outs,
+                        ),
+                        num_items=int(math.ceil(len(sa_episode) / max_seq_len)),
+                        single_agent_episode=sa_episode,
+                    )
 
                 # Also, create the loss mask (b/c of our now possibly zero-padded data)
                 # as well as the seq_lens array and add these to `data` as well.

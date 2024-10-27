@@ -78,6 +78,9 @@ class DQNRainbowTorchRLModule(TorchRLModule, DQNRainbowRLModule):
         # Q-network forward pass.
         qf_outs = self._qf(batch)
 
+        if Columns.STATE_OUT in qf_outs:
+            output[Columns.STATE_OUT] = qf_outs[Columns.STATE_OUT]
+
         # Get action distribution.
         action_dist_cls = self.get_exploration_action_dist_cls()
         action_dist = action_dist_cls.from_logits(qf_outs[QF_PREDS])
@@ -159,8 +162,8 @@ class DQNRainbowTorchRLModule(TorchRLModule, DQNRainbowRLModule):
         batch_target = {Columns.OBS: batch[Columns.NEXT_OBS]}
 
         # Stateful encoder?
-        if Columns.STATE_IN in batch:
-            batch_target.update({Columns.STATE_IN: batch[Columns.STATE_IN]})
+        if "new_state_in" in batch:
+            batch_target.update({Columns.STATE_IN: batch["new_state_in"]})
 
         # Q-network forward passes.
         qf_outs = self._qf(batch_base)
