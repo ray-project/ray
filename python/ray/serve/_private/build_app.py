@@ -1,10 +1,13 @@
+import logging
 from typing import Any, List, Tuple
 
 from ray.dag.py_obj_scanner import _PyObjScanner
 from ray.serve._private.common import DeploymentHandleSource
 from ray.serve.deployment import Application, Deployment
 from ray.serve.handle import DeploymentHandle, _HandleOptions
+from ray.serve._private.constants import SERVE_LOGGER_NAME
 
+logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 class IDDict(dict):
     """Dictionary that uses id() for keys instead of hash().
@@ -126,11 +129,17 @@ def _get_unique_name_memoized(
     if app in deployment_names:
         return deployment_names[app]
 
-    name = app._bound_deployment.name
     idx = 1
+    name = app._bound_deployment.name
     while name in deployment_names.values():
         name = f"{app._bound_deployment.name}_{idx}"
         idx += 1
+
+    if idx != 1:
+        logger.warning(
+            "There are multiple deployments with the same name "
+            f"'{app._bound_deployment.name}'. Renaming one to '{name}'."
+        )
 
     deployment_names[app] = name
     return name
