@@ -7,7 +7,7 @@ import socket
 import time
 from abc import ABC, abstractmethod
 from functools import partial
-from typing import Any, Callable, Dict, Generator, List, Optional, Tuple, Type
+from typing import Any, Callable, Dict, Generator, List, Optional, Set, Tuple, Type
 
 import grpc
 import starlette
@@ -27,6 +27,7 @@ from ray.serve._private.common import (
     DeploymentID,
     EndpointInfo,
     NodeId,
+    ReplicaID,
     RequestMetadata,
     RequestProtocol,
 )
@@ -40,6 +41,7 @@ from ray.serve._private.constants import (
     SERVE_MULTIPLEXED_MODEL_ID,
     SERVE_NAMESPACE,
 )
+from ray.serve._private.default_impl import add_grpc_address
 from ray.serve._private.grpc_util import DummyServicer, create_serve_grpc_server
 from ray.serve._private.http_util import (
     MessageQueue,
@@ -72,7 +74,11 @@ from ray.serve._private.proxy_router import (
     ProxyRouter,
 )
 from ray.serve._private.usage import ServeUsageTag
-from ray.serve._private.utils import call_function_from_import_path, generate_request_id
+from ray.serve._private.utils import (
+    call_function_from_import_path,
+    generate_request_id,
+    get_head_node_id,
+)
 from ray.serve.config import gRPCOptions
 from ray.serve.exceptions import BackPressureError
 from ray.serve.generated.serve_pb2 import HealthzResponse, ListApplicationsResponse
@@ -125,7 +131,6 @@ MAX_BACKOFF_PERIOD_SEC = 5
 
 HEALTHY_MESSAGE = "success"
 DRAINING_MESSAGE = "This node is being drained."
-NO_ROUTES_MESSAGE = "Route table is not populated yet."
 
 
 class GenericProxy(ABC):
@@ -145,24 +150,25 @@ class GenericProxy(ABC):
         self,
         node_id: NodeId,
         node_ip_address: str,
+        is_head: bool,
         proxy_router_class: Type[ProxyRouter],
         request_timeout_s: Optional[float] = None,
+        get_handle_override: Optional[Callable] = None,
     ):
         self.request_timeout_s = request_timeout_s
         if self.request_timeout_s is not None and self.request_timeout_s < 0:
             self.request_timeout_s = None
 
         self._node_id = node_id
-
-        # Flipped to `True` once the route table has been updated at least once.
-        # Health checks will not pass until the route table is populated.
-        self._route_table_populated = False
+        self._is_head = is_head
 
         # Used only for displaying the route table.
         self.route_info: Dict[str, DeploymentID] = dict()
 
         self.proxy_router = proxy_router_class(
-            partial(serve.get_deployment_handle, _record_telemetry=False), self.protocol
+            get_handle_override
+            or partial(serve.get_deployment_handle, _record_telemetry=False),
+            self.protocol,
         )
         self.request_counter = metrics.Counter(
             f"serve_num_{self.protocol.lower()}_requests",
@@ -245,8 +251,6 @@ class GenericProxy(ABC):
         return self._draining_start_time is not None
 
     def update_routes(self, endpoints: Dict[DeploymentID, EndpointInfo]):
-        self._route_table_populated = True
-
         self.route_info: Dict[str, DeploymentID] = dict()
         for deployment_id, info in endpoints.items():
             route = info.route
@@ -334,12 +338,15 @@ class GenericProxy(ABC):
         If the proxy is draining or has not yet received a route table update from the
         controller, both will return a non-OK status.
         """
-        if not self._route_table_populated:
-            healthy = False
-            message = NO_ROUTES_MESSAGE
-        elif self._is_draining():
+        router_ready_for_traffic, router_msg = self.proxy_router.ready_for_traffic(
+            self._is_head
+        )
+        if self._is_draining():
             healthy = False
             message = DRAINING_MESSAGE
+        elif not router_ready_for_traffic:
+            healthy = False
+            message = router_msg
         else:
             healthy = True
             message = HEALTHY_MESSAGE
@@ -765,15 +772,19 @@ class HTTPProxy(GenericProxy):
         self,
         node_id: NodeId,
         node_ip_address: str,
+        is_head: bool,
         proxy_router_class: Type[ProxyRouter],
         request_timeout_s: Optional[float] = None,
         proxy_actor: Optional[ActorHandle] = None,
+        get_handle_override: Optional[Callable] = None,
     ):
         super().__init__(
             node_id,
             node_ip_address,
+            is_head,
             proxy_router_class,
             request_timeout_s=request_timeout_s,
+            get_handle_override=get_handle_override,
         )
         self.self_actor_handle = proxy_actor or ray.get_runtime_context().current_actor
         self.asgi_receive_queues: Dict[str, MessageQueue] = dict()
@@ -904,6 +915,7 @@ class HTTPProxy(GenericProxy):
             "route": route_path,
             "app_name": app_name,
             "_internal_request_id": internal_request_id,
+            "is_http_request": True,
         }
         for key, value in proxy_request.headers:
             if key.decode() == SERVE_MULTIPLEXED_MODEL_ID:
@@ -1207,9 +1219,11 @@ class ProxyActor:
 
             http_middlewares.extend(middlewares)
 
+        is_head = node_id == get_head_node_id()
         self.http_proxy = HTTPProxy(
             node_id=node_id,
             node_ip_address=node_ip_address,
+            is_head=is_head,
             proxy_router_class=LongestPrefixRouter,
             request_timeout_s=(
                 request_timeout_s or RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S
@@ -1219,6 +1233,7 @@ class ProxyActor:
             gRPCProxy(
                 node_id=node_id,
                 node_ip_address=node_ip_address,
+                is_head=is_head,
                 proxy_router_class=EndpointRouter,
                 request_timeout_s=(
                     request_timeout_s or RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S
@@ -1275,6 +1290,10 @@ class ProxyActor:
             if isinstance(handler, logging.handlers.RotatingFileHandler):
                 log_file_path = handler.baseFilename
         return log_file_path
+
+    def _dump_ingress_replicas_for_testing(self, route: str) -> Set[ReplicaID]:
+        _, handle, _ = self.http_proxy.proxy_router.match_route(route)
+        return handle._router._replica_scheduler._replica_id_set
 
     def should_start_grpc_service(self) -> bool:
         """Determine whether gRPC service should be started.
@@ -1395,7 +1414,7 @@ class ProxyActor:
             service_handler_factory=self.grpc_proxy.service_handler_factory,
         )
 
-        grpc_server.add_insecure_port(f"[::]:{self.grpc_port}")
+        add_grpc_address(grpc_server, f"[::]:{self.grpc_port}")
 
         # Dummy servicer is used to be callable for the gRPC server. Serve have a
         # custom gRPC server implementation to redirect calls into gRPCProxy.

@@ -21,7 +21,7 @@ py_library(
 py_test_module_list(
     files = glob(["tests/block_batching/test_*.py"]),
     size = "medium",
-    tags = ["team:ml", "exclusive"],
+    tags = ["team:data", "exclusive"],
     deps = ["//:ray_lib", ":conftest"],
 )
 
@@ -387,6 +387,14 @@ py_test(
 )
 
 py_test(
+    name = "test_iceberg",
+    size = "medium",
+    srcs = ["tests/test_iceberg.py"],
+    tags = ["team:data", "exclusive"],
+    deps = ["//:ray_lib", ":conftest"],
+)
+
+py_test(
     name = "test_mars",
     size = "medium",
     srcs = ["tests/test_mars.py"],
@@ -591,6 +599,30 @@ py_test(
     name = "test_lance",
     size = "small",
     srcs = ["tests/test_lance.py"],
+    tags = ["team:data", "exclusive"],
+    deps = ["//:ray_lib", ":conftest"],
+)
+
+py_test(
+    name = "test_logical_plan",
+    size = "small",
+    srcs = ["tests/test_logical_plan.py"],
+    tags = ["team:data", "exclusive"],
+    deps = ["//:ray_lib", ":conftest"],
+)
+
+py_test(
+    name = "test_delta_sharing",
+    size = "small",
+    srcs = ["tests/test_delta_sharing.py"],
+    tags = ["team:data", "exclusive"],
+    deps = ["//:ray_lib", ":conftest"],
+)
+
+py_test(
+    name = "test_context",
+    size = "small",
+    srcs = ["tests/test_context.py"],
     tags = ["team:data", "exclusive"],
     deps = ["//:ray_lib", ":conftest"],
 )

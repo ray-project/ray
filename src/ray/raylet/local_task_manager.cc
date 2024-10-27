@@ -138,6 +138,108 @@ void LocalTaskManager::DispatchScheduledTasksToWorkers() {
     }
     auto &sched_cls_info = info_by_sched_cls_.at(scheduling_class);
 
+    // Fair scheduling is applied only when the total CPU requests exceed the node's
+    // capacity. This skips scheduling classes whose number of running tasks exceeds the
+    // average number of tasks per scheduling class.
+
+    // The purpose of fair scheduling is to ensure that each scheduling class has an
+    // equal chance of being selected for dispatch. For instance, in a pipeline with both
+    // data producers and consumers, we aim for consumers to have the same chance to be
+    // dispatched as producers. This prevents memory peak caused by dispatching all
+    // producer tasks first.
+    // A scheduling class is skipped from dispatching if its number of running tasks
+    // exceeds the fair_share, which is the average number of running tasks among all
+    // scheduling classes. For example, consider a scenario where we have 3 CPUs and 2
+    // scheduling classes, `f` and `g`, each with 4 tasks.
+    // Status 1: The queue init with [f, f, f, f, g, g, g, g], and 0 running tasks.
+    // Status 2: We dispatch 3 `f` tasks. Now the queue is [f, g, g, g, g],
+    //           with 3 `f` tasks running.
+    // Status 3: Suppose 1 `f` task finishes. When choosing the next task to dispatch,
+    //           the queue is [f, g, g, g, g], and there are 2 `f` tasks running.
+    //           We calculate fair_share as follows:
+    //           fair_share = number of running tasks / number of scheduling classes
+    //                       = 2 / 2 = 1.
+    //           Since the number of running `f` tasks (2) is greater than the
+    //           fair_share (1), we skip `f` and choose to dispatch `g`.
+    // Note 1: Fair_share is calculated as (total number of running tasks with >0 CPU)
+    //         / (number of scheduling classes in tasks_to_dispatch_).
+    // Note 2: The decision to skip a scheduling class happens when loop through the
+    //         scheduling classes (keys of tasks_to_dispatch_). This means we check for
+    //         fair dispatching when looping through the scheduling classes rather than
+    //         for each individual task, reducing the number of checks required.
+    //         This is why in Status 2 of the example, we dispatch 3 `f` tasks because
+    //         we chose `f` for dispatch,and we continue dispatching all `f`
+    //         tasks until resources are fully utilized.
+
+    // Currently, fair dispatching is implemented only for tasks that require CPU
+    // resources. CPU. For details, see https://github.com/ray-project/ray/pull/44733.
+
+    // Calculate the total CPU requests for all tasks in the tasks_to_dispatch queue.
+    double total_cpu_requests_ = 0.0;
+
+    // Count the number of scheduling classes that require CPU and sum their total CPU
+    // requests.
+    size_t num_classes_with_cpu = 0;
+    for (const auto &entry : tasks_to_dispatch_) {
+      const auto &dispatch_queue = entry.second;
+      for (const auto &work : dispatch_queue) {
+        const auto &task_spec = work->task.GetTaskSpecification();
+        auto cpu_request_ =
+            task_spec.GetRequiredResources().Get(scheduling::ResourceID::CPU()).Double();
+        if (cpu_request_ > 0) {
+          num_classes_with_cpu++;
+          total_cpu_requests_ += dispatch_queue.size() * cpu_request_;
+          break;
+        }
+      }
+    }
+    const auto &sched_cls_desc =
+        TaskSpecification::GetSchedulingClassDescriptor(scheduling_class);
+    double total_cpus =
+        cluster_resource_scheduler_->GetLocalResourceManager().GetNumCpus();
+
+    // Compare total CPU requests with the node's total CPU capacity. If the requests
+    // exceed the capacity, check if fair dispatching is needed.
+    if (sched_cls_desc.resource_set.Get(scheduling::ResourceID::CPU()).Double() > 0 &&
+        total_cpu_requests_ > total_cpus) {
+      RAY_LOG(DEBUG)
+          << "Applying fairness policy. Total CPU requests in tasks_to_dispatch_ ("
+          << total_cpu_requests_ << ") exceed total CPUs available (" << total_cpus
+          << ").";
+      // Get the total number of running tasks requires CPU.
+      size_t total_cpu_running_tasks = 0;
+      for (auto &entry : info_by_sched_cls_) {
+        // Only consider CPU requests
+        const auto &sched_cls_desc =
+            TaskSpecification::GetSchedulingClassDescriptor(entry.first);
+        if (sched_cls_desc.resource_set.Get(scheduling::ResourceID::CPU()).Double() > 0) {
+          total_cpu_running_tasks += entry.second.running_tasks.size();
+        }
+      }
+
+      // 1. We have confirmed that this is a scheduling class that requires CPU resources,
+      //    hence num_classes_with_cpu >= 1 (cannot be 0) as this scheduling class is in
+      //    tasks_to_dispatch_.
+      // 2. We will compute fair_share as the ideal distribution of tasks among all
+      //    scheduling classes in tasks_to_dispatch_. Then, we will check if the number of
+      //    running tasks for this scheduling class exceeds its ideal fair_share.
+      // 3. Note: We should get the num_classes_with_cpu from tasks_to_dispatch_
+      //    instead of the info_by_sched_cls_ although total_cpu_running_tasks gets from
+      //    the task running. First, info_by_sched_cls_ may not be initialized yet for
+      //    some scheduling classes (as we initialize it in the loop). Second, we expect
+      //    the number of running tasks for this scheduling class to not be much. However,
+      //    if no tasks of this scheduling class are running, it will not be skipped.
+
+      size_t fair_share = total_cpu_running_tasks / num_classes_with_cpu;
+      if (sched_cls_info.running_tasks.size() > fair_share) {
+        RAY_LOG(DEBUG) << "Skipping dispatch for scheduling class " << scheduling_class
+                       << ". Running tasks (" << sched_cls_info.running_tasks.size()
+                       << ") exceed fair share (" << fair_share << ").";
+        shapes_it++;
+        continue;
+      }
+    }
+
     /// We cap the maximum running tasks of a scheduling class to avoid
     /// scheduling too many tasks of a single type/depth, when there are
     /// deeper/other functions that should be run. We need to apply back
@@ -270,10 +372,6 @@ void LocalTaskManager::DispatchScheduledTasksToWorkers() {
         sched_cls_info.running_tasks.insert(spec.TaskId());
         // The local node has the available resources to run the task, so we should run
         // it.
-        std::string allocated_instances_serialized_json = "{}";
-        if (RayConfig::instance().worker_resource_limits_enabled()) {
-          allocated_instances_serialized_json = allocated_instances->SerializeAsJson();
-        }
         work->allocated_instances = allocated_instances;
         work->SetStateWaitingForWorker();
         bool is_detached_actor = spec.IsDetachedActor();
@@ -294,8 +392,7 @@ void LocalTaskManager::DispatchScheduledTasksToWorkers() {
                                          is_detached_actor,
                                          owner_address,
                                          runtime_env_setup_error_message);
-            },
-            allocated_instances_serialized_json);
+            });
         work_it++;
       }
     }
@@ -433,7 +530,6 @@ bool LocalTaskManager::PoppedWorkerHandler(
   const auto &callback = work->callback;
   bool canceled = work->GetState() == internal::WorkStatus::CANCELLED;
   const auto &task = work->task;
-  const auto &spec = task.GetTaskSpecification();
   bool dispatched = false;
 
   // Check whether owner worker or owner node dead.
@@ -444,24 +540,26 @@ bool LocalTaskManager::PoppedWorkerHandler(
     not_detached_with_owner_failed = true;
   }
 
-  const auto &required_resource =
-      task.GetTaskSpecification().GetRequiredResources().GetResourceMap();
-  for (auto &entry : required_resource) {
-    if (!cluster_resource_scheduler_->GetLocalResourceManager().ResourcesExist(
-            scheduling::ResourceID(entry.first))) {
-      RAY_CHECK(task.GetTaskSpecification().PlacementGroupBundleId().first !=
-                PlacementGroupID::Nil());
-      RAY_LOG(DEBUG) << "The placement group: "
-                     << task.GetTaskSpecification().PlacementGroupBundleId().first
-                     << " was removed when poping workers for task: " << task_id
-                     << ", will cancel the task.";
-      CancelTask(
-          task_id,
-          rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_PLACEMENT_GROUP_REMOVED);
-      canceled = true;
+  if (!canceled) {
+    const auto &required_resource =
+        task.GetTaskSpecification().GetRequiredResources().GetResourceMap();
+    for (auto &entry : required_resource) {
+      // This is to make sure PG resource is not deleted during popping worker
+      // unless the lease request is cancelled.
+      RAY_CHECK(cluster_resource_scheduler_->GetLocalResourceManager().ResourcesExist(
+          scheduling::ResourceID(entry.first)))
+          << entry.first;
     }
   }
 
+  // Erases the work from task_to_dispatch_ queue, also removes the task dependencies.
+  //
+  // IDEA(ryw): Make an RAII class to wrap the a shared_ptr<internal::Work> and
+  // requests task dependency upon ctor, and remove task dependency upon dtor.
+  // I tried this, it works, but we expose the map via GetTaskToDispatch() used in
+  // scheduler_resource_reporter.cc. Maybe we can use `boost::any_range` to only expose
+  // a view of the Work ptrs, but I got dependency issues
+  // (can't include boost/range/any_range.hpp).
   auto erase_from_dispatch_queue_fn = [this](const std::shared_ptr<internal::Work> &work,
                                              const SchedulingClass &scheduling_class) {
     auto shapes_it = tasks_to_dispatch_.find(scheduling_class);
@@ -480,6 +578,12 @@ bool LocalTaskManager::PoppedWorkerHandler(
       tasks_to_dispatch_.erase(shapes_it);
     }
     RAY_CHECK(erased);
+
+    const auto &task = work->task;
+    if (!task.GetDependencies().empty()) {
+      task_dependency_manager_.RemoveTaskDependencies(
+          task.GetTaskSpecification().TaskId());
+    }
   };
 
   if (canceled) {
@@ -541,8 +645,6 @@ bool LocalTaskManager::PoppedWorkerHandler(
                          << status;
         }
         work->SetStateWaiting(cause);
-        // Return here because we shouldn't remove task dependencies.
-        return dispatched;
       }
     } else if (not_detached_with_owner_failed) {
       // The task owner failed.
@@ -550,7 +652,6 @@ bool LocalTaskManager::PoppedWorkerHandler(
       RAY_LOG(DEBUG) << "Call back to an owner failed task, task id = " << task_id;
       erase_from_dispatch_queue_fn(work, scheduling_class);
     }
-
   } else {
     // A worker has successfully popped for a valid task. Dispatch the task to
     // the worker.
@@ -560,11 +661,6 @@ bool LocalTaskManager::PoppedWorkerHandler(
     Dispatch(worker, leased_workers_, work->allocated_instances, task, reply, callback);
     erase_from_dispatch_queue_fn(work, scheduling_class);
     dispatched = true;
-  }
-
-  // Remove task dependencies.
-  if (!spec.GetDependencies().empty()) {
-    task_dependency_manager_.RemoveTaskDependencies(task.GetTaskSpecification().TaskId());
   }
 
   return dispatched;
@@ -753,7 +849,7 @@ void LocalTaskManager::ReleaseTaskArgs(const TaskID &task_id) {
 }
 
 namespace {
-void ReplyCancelled(std::shared_ptr<internal::Work> &work,
+void ReplyCancelled(const std::shared_ptr<internal::Work> &work,
                     rpc::RequestWorkerLeaseReply::SchedulingFailureType failure_type,
                     const std::string &scheduling_failure_message) {
   auto reply = work->reply;
@@ -765,55 +861,67 @@ void ReplyCancelled(std::shared_ptr<internal::Work> &work,
 }
 }  // namespace
 
+bool LocalTaskManager::CancelTasks(
+    std::function<bool(const std::shared_ptr<internal::Work> &)> predicate,
+    rpc::RequestWorkerLeaseReply::SchedulingFailureType failure_type,
+    const std::string &scheduling_failure_message) {
+  bool tasks_cancelled = false;
+
+  ray::erase_if<SchedulingClass, std::shared_ptr<internal::Work>>(
+      tasks_to_dispatch_, [&](const std::shared_ptr<internal::Work> &work) {
+        if (predicate(work)) {
+          const TaskID task_id = work->task.GetTaskSpecification().TaskId();
+          RAY_LOG(DEBUG) << "Canceling task " << task_id << " from dispatch queue.";
+          ReplyCancelled(work, failure_type, scheduling_failure_message);
+          if (work->GetState() == internal::WorkStatus::WAITING_FOR_WORKER) {
+            // We've already acquired resources so we need to release them.
+            cluster_resource_scheduler_->GetLocalResourceManager().ReleaseWorkerResources(
+                work->allocated_instances);
+            // Release pinned task args.
+            ReleaseTaskArgs(task_id);
+          }
+          if (!work->task.GetTaskSpecification().GetDependencies().empty()) {
+            task_dependency_manager_.RemoveTaskDependencies(
+                work->task.GetTaskSpecification().TaskId());
+          }
+          RemoveFromRunningTasksIfExists(work->task);
+          work->SetStateCancelled();
+          tasks_cancelled = true;
+          return true;
+        } else {
+          return false;
+        }
+      });
+
+  ray::erase_if<std::shared_ptr<internal::Work>>(
+      waiting_task_queue_, [&](const std::shared_ptr<internal::Work> &work) {
+        if (predicate(work)) {
+          ReplyCancelled(work, failure_type, scheduling_failure_message);
+          if (!work->task.GetTaskSpecification().GetDependencies().empty()) {
+            task_dependency_manager_.RemoveTaskDependencies(
+                work->task.GetTaskSpecification().TaskId());
+          }
+          waiting_tasks_index_.erase(work->task.GetTaskSpecification().TaskId());
+          tasks_cancelled = true;
+          return true;
+        } else {
+          return false;
+        }
+      });
+
+  return tasks_cancelled;
+}
+
 bool LocalTaskManager::CancelTask(
     const TaskID &task_id,
     rpc::RequestWorkerLeaseReply::SchedulingFailureType failure_type,
     const std::string &scheduling_failure_message) {
-  for (auto shapes_it = tasks_to_dispatch_.begin(); shapes_it != tasks_to_dispatch_.end();
-       shapes_it++) {
-    auto &work_queue = shapes_it->second;
-    for (auto work_it = work_queue.begin(); work_it != work_queue.end(); work_it++) {
-      const auto &task = (*work_it)->task;
-      if (task.GetTaskSpecification().TaskId() == task_id) {
-        RAY_LOG(DEBUG) << "Canceling task " << task_id << " from dispatch queue.";
-        ReplyCancelled(*work_it, failure_type, scheduling_failure_message);
-        if ((*work_it)->GetState() == internal::WorkStatus::WAITING_FOR_WORKER) {
-          // We've already acquired resources so we need to release them.
-          cluster_resource_scheduler_->GetLocalResourceManager().ReleaseWorkerResources(
-              (*work_it)->allocated_instances);
-          // Release pinned task args.
-          ReleaseTaskArgs(task_id);
-        }
-        if (!task.GetTaskSpecification().GetDependencies().empty()) {
-          task_dependency_manager_.RemoveTaskDependencies(
-              task.GetTaskSpecification().TaskId());
-        }
-        RemoveFromRunningTasksIfExists(task);
-        (*work_it)->SetStateCancelled();
-        work_queue.erase(work_it);
-        if (work_queue.empty()) {
-          tasks_to_dispatch_.erase(shapes_it);
-        }
-        return true;
-      }
-    }
-  }
-
-  auto iter = waiting_tasks_index_.find(task_id);
-  if (iter != waiting_tasks_index_.end()) {
-    const auto &task = (*iter->second)->task;
-    ReplyCancelled(*iter->second, failure_type, scheduling_failure_message);
-    if (!task.GetTaskSpecification().GetDependencies().empty()) {
-      task_dependency_manager_.RemoveTaskDependencies(
-          task.GetTaskSpecification().TaskId());
-    }
-    waiting_task_queue_.erase(iter->second);
-    waiting_tasks_index_.erase(iter);
-
-    return true;
-  }
-
-  return false;
+  return CancelTasks(
+      [task_id](const std::shared_ptr<internal::Work> &work) {
+        return work->task.GetTaskSpecification().TaskId() == task_id;
+      },
+      failure_type,
+      scheduling_failure_message);
 }
 
 bool LocalTaskManager::AnyPendingTasksForResourceAcquisition(
@@ -872,16 +980,12 @@ void LocalTaskManager::Dispatch(
     std::function<void(void)> send_reply_callback) {
   const auto &task_spec = task.GetTaskSpecification();
 
-  worker->SetJobId(task_spec.JobId());
-  worker->SetBundleId(task_spec.PlacementGroupBundleId());
-  worker->SetOwnerAddress(task_spec.CallerAddress());
   if (task_spec.IsActorCreationTask()) {
     // The actor belongs to this worker now.
     worker->SetLifetimeAllocatedInstances(allocated_instances);
   } else {
     worker->SetAllocatedInstances(allocated_instances);
   }
-  worker->AssignTaskId(task_spec.TaskId());
   worker->SetAssignedTask(task);
 
   // Pass the contact info of the worker to use.
@@ -1137,12 +1241,12 @@ void LocalTaskManager::DebugStr(std::stringstream &buffer) const {
                                          .GetTaskSpecification()
                                          .FunctionDescriptor()
                                          ->CallString();
-    buffer << "    - ("
-           << "language="
+    buffer << "    - (language="
            << rpc::Language_descriptor()->FindValueByNumber(worker->GetLanguage())->name()
            << " "
            << "actor_or_task=" << task_or_actor_name << " "
-           << "pid=" << worker->GetProcess().GetId() << "): "
+           << "pid=" << worker->GetProcess().GetId() << " "
+           << "worker_id=" << worker->WorkerId() << "): "
            << worker->GetAssignedTask()
                   .GetTaskSpecification()
                   .GetRequiredResources()
@@ -1150,6 +1254,16 @@ void LocalTaskManager::DebugStr(std::stringstream &buffer) const {
            << "\n";
   }
   buffer << "}\n";
+  buffer << "Backlog Size per scheduling descriptor :{workerId: num backlogs}:\n";
+  for (const auto &[sched_cls, worker_to_backlog_size] : backlog_tracker_) {
+    const auto &descriptor = TaskSpecification::GetSchedulingClassDescriptor(sched_cls);
+    buffer << "\t" << descriptor.ResourceSetStr() << ": {\n";
+    for (const auto &[worker_id, backlog_size] : worker_to_backlog_size) {
+      buffer << "\t\t" << worker_id << ": " << backlog_size << "\n";
+    }
+    buffer << "\t}\n";
+  }
+  buffer << "\n";
   buffer << "Running tasks by scheduling class:\n";
 
   for (const auto &pair : info_by_sched_cls_) {

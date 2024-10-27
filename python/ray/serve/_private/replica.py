@@ -16,7 +16,7 @@ import starlette.responses
 import ray
 from ray import cloudpickle
 from ray._private.utils import get_or_create_event_loop
-from ray.actor import ActorClass
+from ray.actor import ActorClass, ActorHandle
 from ray.remote_function import RemoteFunction
 from ray.serve import metrics
 from ray.serve._private.common import (
@@ -289,6 +289,8 @@ class ReplicaActor:
             self._deployment_config.autoscaling_config,
         )
 
+        self._port: Optional[int] = None
+
     def _set_internal_replica_context(self, *, servable_object: Callable = None):
         ray.serve.context._set_internal_replica_context(
             replica_id=self._replica_id,
@@ -320,6 +322,9 @@ class ReplicaActor:
             component_name=self._component_name,
             component_id=self._component_id,
         )
+
+    def push_proxy_handle(self, handle: ActorHandle):
+        pass
 
     def get_num_ongoing_requests(self) -> int:
         """Fetch the number of ongoing requests at this replica (queue length).
@@ -388,19 +393,6 @@ class ReplicaActor:
         if user_exception is not None:
             raise user_exception from None
 
-    async def handle_request(
-        self,
-        pickled_request_metadata: bytes,
-        *request_args,
-        **request_kwargs,
-    ) -> Tuple[bytes, Any]:
-        """Entrypoint for `stream=False` calls."""
-        request_metadata = pickle.loads(pickled_request_metadata)
-        with self._wrap_user_method_call(request_metadata):
-            return await self._user_callable_wrapper.call_user_method(
-                request_metadata, request_args, request_kwargs
-            )
-
     async def _call_user_generator(
         self,
         request_metadata: RequestMetadata,
@@ -467,6 +459,19 @@ class ReplicaActor:
 
             if wait_for_message_task is not None and not wait_for_message_task.done():
                 wait_for_message_task.cancel()
+
+    async def handle_request(
+        self,
+        pickled_request_metadata: bytes,
+        *request_args,
+        **request_kwargs,
+    ) -> Tuple[bytes, Any]:
+        """Entrypoint for `stream=False` calls."""
+        request_metadata = pickle.loads(pickled_request_metadata)
+        with self._wrap_user_method_call(request_metadata):
+            return await self._user_callable_wrapper.call_user_method(
+                request_metadata, request_args, request_kwargs
+            )
 
     async def handle_request_streaming(
         self,
@@ -590,7 +595,7 @@ class ReplicaActor:
         self,
         deployment_config: DeploymentConfig = None,
         _after: Optional[Any] = None,
-    ) -> Tuple[DeploymentConfig, DeploymentVersion, Optional[float]]:
+    ) -> Tuple[DeploymentConfig, DeploymentVersion, Optional[float], Optional[int]]:
         """Handles initializing the replica.
 
         Returns: 3-tuple containing
@@ -633,7 +638,7 @@ class ReplicaActor:
     async def reconfigure(
         self,
         deployment_config: DeploymentConfig,
-    ) -> Tuple[DeploymentConfig, DeploymentVersion, Optional[float]]:
+    ) -> Tuple[DeploymentConfig, DeploymentVersion, Optional[float], Optional[int]]:
         try:
             user_config_changed = (
                 deployment_config.user_config != self._deployment_config.user_config
@@ -670,11 +675,12 @@ class ReplicaActor:
 
     def _get_metadata(
         self,
-    ) -> Tuple[DeploymentConfig, DeploymentVersion, Optional[float]]:
+    ) -> Tuple[DeploymentConfig, DeploymentVersion, Optional[float], Optional[int]]:
         return (
             self._version.deployment_config,
             self._version,
             self._initialization_latency,
+            self._port,
         )
 
     def _save_cpu_profile_data(self) -> str:
@@ -727,7 +733,19 @@ class ReplicaActor:
         # can skip the wait period.
         if self._user_callable_initialized:
             await self._drain_ongoing_requests()
+
+        try:
             await self._user_callable_wrapper.call_destructor()
+        except:  # noqa: E722
+            # We catch a blanket exception since the constructor may still be
+            # running, so instance variables used by the destructor may not exist.
+            if self._user_callable_initialized:
+                logger.exception(
+                    "__del__ ran before replica finished initializing, and "
+                    "raised an exception."
+                )
+            else:
+                logger.exception("__del__ raised an exception.")
 
         await self._metrics_manager.shutdown()
 
@@ -1159,10 +1177,15 @@ class UserCallableWrapper:
     async def call_destructor(self):
         """Explicitly call the `__del__` method of the user callable.
 
-        Calling this multiple times has no effect; only the first call will actually
-        call the destructor.
+        Calling this multiple times has no effect; only the first call will
+        actually call the destructor.
         """
-        self._raise_if_not_initialized("call_destructor")
+        if self._callable is None:
+            logger.info(
+                "This replica has not yet started running user code. "
+                "Skipping __del__."
+            )
+            return
 
         # Only run the destructor once. This is safe because there is no `await` between
         # checking the flag here and flipping it to `True` below.

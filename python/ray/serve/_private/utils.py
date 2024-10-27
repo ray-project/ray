@@ -580,26 +580,23 @@ def get_component_file_name(
     return file_name
 
 
-class FakeObjectRefOrGen:
-    def __init__(self, replica_id):
-        self._replica_id = replica_id
+def validate_route_prefix(route_prefix: Union[DEFAULT, None, str]):
+    if route_prefix is DEFAULT.VALUE or route_prefix is None:
+        return
 
-    @property
-    def replica_id(self):
-        return self._replica_id
+    if not route_prefix.startswith("/"):
+        raise ValueError(
+            f"Invalid route_prefix '{route_prefix}', "
+            "must start with a forward slash ('/')."
+        )
 
+    if route_prefix != "/" and route_prefix.endswith("/"):
+        raise ValueError(
+            f"Invalid route_prefix '{route_prefix}', "
+            "may not end with a trailing '/'."
+        )
 
-class FakeObjectRef(FakeObjectRefOrGen):
-    def __await__(self):
-        raise NotImplementedError
-
-    def _on_completed(self, callback: Callable):
-        pass
-
-
-class FakeObjectRefGen(FakeObjectRefOrGen):
-    def __anext__(self):
-        raise NotImplementedError
-
-    def completed(self):
-        return FakeObjectRef(self._replica_id)
+    if "{" in route_prefix or "}" in route_prefix:
+        raise ValueError(
+            f"Invalid route_prefix '{route_prefix}', " "may not contain wildcards."
+        )

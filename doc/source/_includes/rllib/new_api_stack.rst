@@ -14,7 +14,5 @@
     documentation to the new code base thereby incrementally replacing the "old API stack"
     (tagged in the docs with |old_stack_small|) throughout the subsequent minor releases leading up to Ray 3.0.
 
-    So far, PPO, SAC, DQN (all single- and multi-agent), and DreamerV3 (single-agent only)
-    support the "new API stack", but - by default - continue to run with the old APIs.
     :doc:`See here </rllib/rllib-new-api-stack>` for more details on how to activate and use the
-    new API stack for these algorithms.
+    new API stack.

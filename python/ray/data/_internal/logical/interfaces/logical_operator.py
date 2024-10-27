@@ -1,9 +1,10 @@
-from typing import TYPE_CHECKING, Iterator, List, Optional, Union
+from typing import TYPE_CHECKING, Iterator, List, Optional
 
 from .operator import Operator
+from ray.data.block import BlockMetadata
 
 if TYPE_CHECKING:
-    import pyarrow
+    from ray.data._internal.execution.interfaces import RefBundle
 
 
 class LogicalOperator(Operator):
@@ -55,22 +56,24 @@ class LogicalOperator(Operator):
     def post_order_iter(self) -> Iterator["LogicalOperator"]:
         return super().post_order_iter()  # type: ignore
 
-    def schema(self) -> Optional[Union[type, "pyarrow.lib.Schema"]]:
-        """The schema of operator outputs, or ``None`` if not known.
+    def output_data(self) -> Optional[List["RefBundle"]]:
+        """The output data of this operator, or ``None`` if not known."""
+        return None
 
-        This method is used to get the dataset schema without performing actual
-        computation.
+    def aggregate_output_metadata(self) -> BlockMetadata:
+        """A ``BlockMetadata`` that represents the aggregate metadata of the outputs.
+
+        This method is used by methods like :meth:`~ray.data.Dataset.schema` to
+        efficiently return metadata.
         """
-        return None
+        return BlockMetadata(None, None, None, None, None)
 
-    def num_rows(self) -> Optional[int]:
-        """The number of rows outputted by this operator, or ``None`` if not known.
+    def is_lineage_serializable(self) -> bool:
+        """Returns whether the lineage of this operator can be serialized.
 
-        This method is used to count the number of rows in a dataset without performing
-        actual computation.
+        An operator is lineage serializable if you can serialize it on one machine and
+        deserialize it on another without losing information. Operators that store
+        object references (e.g., ``InputData``) aren't lineage serializable because the
+        objects aren't available on the deserialized machine.
         """
-        return None
-
-    def input_files(self) -> Optional[List[str]]:
-        """The input files of this operator, or ``None`` if not known."""
-        return None
+        return True

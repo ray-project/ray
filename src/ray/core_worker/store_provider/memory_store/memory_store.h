@@ -39,7 +39,7 @@ class CoreWorkerMemoryStore;
 
 /// The class provides implementations for local process memory store.
 /// An example usage for this is to retrieve the returned objects from direct
-/// actor call (see direct_actor_transport.cc).
+/// actor call (see task_receiver.cc).
 class CoreWorkerMemoryStore {
  public:
   /// Create a memory store.

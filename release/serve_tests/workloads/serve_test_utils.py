@@ -265,6 +265,7 @@ def run_wrk_on_all_nodes(
     http_port: str,
     all_endpoints: List[str] = None,
     ignore_output: bool = False,
+    exclude_head: bool = False,
     debug: bool = False,
 ):
     """
@@ -281,6 +282,9 @@ def run_wrk_on_all_nodes(
     all_wrk_stdout = []
     rst_ray_refs = []
     for node in ray.nodes():
+        if exclude_head and node["Resources"].get("node:__internal_head__") == 1.0:
+            continue
+
         if node["Alive"]:
             node_resource = f"node:{node['NodeManagerAddress']}"
             # Randomly pick one from all available endpoints in ray cluster

@@ -15,8 +15,15 @@ source/data/api/doc/
 source/cluster/running-applications/job-submission/doc/
 source/serve/api/doc/
 source/workflows/api/doc/
+source/data/api/ray.data.*.rst
 
 # Ignore generated examples files
 source/data/examples.rst
 source/train/examples.rst
 source/serve/examples.rst
+
+# Ignore generated versions
+source/_static/versions.json
+
+# Ignore doc/serve
+serve/

@@ -46,6 +46,7 @@ RLlib: Industry-Grade, Scalable Reinforcement Learning
     user-guides
     rllib-examples
     rllib-new-api-stack
+    new-api-stack-migration-guide
     package_ref/index
 
 
@@ -87,7 +88,7 @@ Depending on your requirements, make sure to install one of these (or both), as 
 
 .. code-block:: bash
 
-    pip install "ray[rllib]" torch tensorflow
+    pip install "ray[rllib]" torch
 
 .. note::
 
@@ -144,7 +145,7 @@ click the dropdowns below:
     +-------------------------------------------------------------------------+----------------+---------------+-------------+-------------+-------------+------------------------+
     | :ref:`DQN/Rainbow (Deep Q Networks) <dqn>`                              | |single_agent| | |multi_agent| | |new_stack| | |old_stack| | |multi_gpu| | |multi_node_multi_gpu| |
     +-------------------------------------------------------------------------+----------------+---------------+-------------+-------------+-------------+------------------------+
-    | **High-throughput on- and off policy**                                                                                                                                      |
+    | **High-throughput Architectures**                                                                                                                                      |
     +-------------------------------------------------------------------------+----------------+---------------+-------------+-------------+-------------+------------------------+
     | :ref:`IMPALA (Importance Weighted Actor-Learner Architecture) <impala>` | |single_agent| | |multi_agent| | |new_stack| | |old_stack| | |multi_gpu| | |multi_node_multi_gpu| |
     +-------------------------------------------------------------------------+----------------+---------------+-------------+-------------+-------------+------------------------+
@@ -152,7 +153,7 @@ click the dropdowns below:
     +-------------------------------------------------------------------------+----------------+---------------+-------------+-------------+-------------+------------------------+
     | **Model-based RL**                                                                                                                                                          |
     +-------------------------------------------------------------------------+----------------+---------------+-------------+-------------+-------------+------------------------+
-    | :ref:`DreamerV3 <dreamerv3>`                                           | |single_agent| |               | |new_stack| |             | |multi_gpu| | |multi_node_multi_gpu| |
+    | :ref:`DreamerV3 <dreamerv3>`                                            | |single_agent| |               | |new_stack| |             | |multi_gpu| | |multi_node_multi_gpu| |
     +-------------------------------------------------------------------------+----------------+---------------+-------------+-------------+-------------+------------------------+
     | **Offline RL and Imitation Learning**                                                                                                                                       |
     +-------------------------------------------------------------------------+----------------+---------------+-------------+-------------+-------------+------------------------+

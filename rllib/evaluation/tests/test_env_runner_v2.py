@@ -14,8 +14,8 @@ from ray.tune import register_env
 from ray.rllib.policy.sample_batch import convert_ma_batch_to_sample_batch
 
 # The new RLModule / Learner API
-from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
-from ray.rllib.core.rl_module.marl_module import MultiAgentRLModuleSpec
+from ray.rllib.core.rl_module.rl_module import RLModuleSpec
+from ray.rllib.core.rl_module.multi_rl_module import MultiRLModuleSpec
 from ray.rllib.env.tests.test_multi_agent_env import BasicMultiAgent
 from ray.rllib.examples.rl_modules.classes.random_rlm import RandomRLModule
 
@@ -68,7 +68,7 @@ class TestEnvRunnerV2(unittest.TestCase):
 
         algo = PPO(config)
 
-        rollout_worker = algo.workers.local_worker()
+        rollout_worker = algo.env_runner
         sample_batch = rollout_worker.sample()
         sample_batch = convert_ma_batch_to_sample_batch(sample_batch)
 
@@ -95,7 +95,7 @@ class TestEnvRunnerV2(unittest.TestCase):
 
         algo = PPO(config)
 
-        rollout_worker = algo.workers.local_worker()
+        rollout_worker = algo.env_runner
         sample_batch = rollout_worker.sample()
 
         # 2 agents. So the multi-agent SampleBatch should have
@@ -170,10 +170,10 @@ class TestEnvRunnerV2(unittest.TestCase):
             # placeholder RLModule, since the compute_actions() method is
             # directly overridden in the policy class.
             .rl_module(
-                rl_module_spec=MultiAgentRLModuleSpec(
-                    module_specs={
-                        "pol1": SingleAgentRLModuleSpec(module_class=RandomRLModule),
-                        "pol2": SingleAgentRLModuleSpec(module_class=RandomRLModule),
+                rl_module_spec=MultiRLModuleSpec(
+                    rl_module_specs={
+                        "pol1": RLModuleSpec(module_class=RandomRLModule),
+                        "pol2": RLModuleSpec(module_class=RandomRLModule),
                     }
                 ),
             )
@@ -182,7 +182,7 @@ class TestEnvRunnerV2(unittest.TestCase):
 
         algo = PPO(config)
 
-        rollout_worker = algo.workers.local_worker()
+        rollout_worker = algo.env_runner
         sample_batch = rollout_worker.sample()
         pol1_batch = sample_batch.policy_batches["pol1"]
 
@@ -237,17 +237,17 @@ class TestEnvRunnerV2(unittest.TestCase):
                 count_steps_by="agent_steps",
             )
             .rl_module(
-                rl_module_spec=MultiAgentRLModuleSpec(
-                    module_specs={
-                        "one": SingleAgentRLModuleSpec(module_class=RandomRLModule),
-                        "two": SingleAgentRLModuleSpec(module_class=RandomRLModule),
+                rl_module_spec=MultiRLModuleSpec(
+                    rl_module_specs={
+                        "one": RLModuleSpec(module_class=RandomRLModule),
+                        "two": RLModuleSpec(module_class=RandomRLModule),
                     }
                 ),
             )
         )
 
         algo = PPO(config)
-        local_worker = algo.workers.local_worker()
+        local_worker = algo.env_runner
         env = local_worker.env
 
         obs, rewards, terminateds, truncateds, infos = local_worker.env.step(
@@ -301,7 +301,7 @@ class TestEnvRunnerV2(unittest.TestCase):
 
         algo = PPO(config)
 
-        rollout_worker = algo.workers.local_worker()
+        rollout_worker = algo.env_runner
         # As long as we can successfully sample(), things should be good.
         _ = rollout_worker.sample()
 
@@ -334,10 +334,10 @@ class TestEnvRunnerV2(unittest.TestCase):
                 count_steps_by="agent_steps",
             )
             .rl_module(
-                rl_module_spec=MultiAgentRLModuleSpec(
-                    module_specs={
-                        "one": SingleAgentRLModuleSpec(module_class=RandomRLModule),
-                        "two": SingleAgentRLModuleSpec(module_class=RandomRLModule),
+                rl_module_spec=MultiRLModuleSpec(
+                    rl_module_specs={
+                        "one": RLModuleSpec(module_class=RandomRLModule),
+                        "two": RLModuleSpec(module_class=RandomRLModule),
                     }
                 ),
             )
@@ -345,7 +345,7 @@ class TestEnvRunnerV2(unittest.TestCase):
 
         algo = PPO(config)
 
-        local_worker = algo.workers.local_worker()
+        local_worker = algo.env_runner
 
         env_runner = local_worker.sampler._env_runner_obj
 
@@ -390,10 +390,10 @@ class TestEnvRunnerV2(unittest.TestCase):
                 count_steps_by="agent_steps",
             )
             .rl_module(
-                rl_module_spec=MultiAgentRLModuleSpec(
-                    module_specs={
-                        "one": SingleAgentRLModuleSpec(module_class=RandomRLModule),
-                        "two": SingleAgentRLModuleSpec(module_class=RandomRLModule),
+                rl_module_spec=MultiRLModuleSpec(
+                    rl_module_specs={
+                        "one": RLModuleSpec(module_class=RandomRLModule),
+                        "two": RLModuleSpec(module_class=RandomRLModule),
                     }
                 ),
             )
@@ -401,7 +401,7 @@ class TestEnvRunnerV2(unittest.TestCase):
 
         algo = PPO(config)
 
-        local_worker = algo.workers.local_worker()
+        local_worker = algo.env_runner
 
         env_runner = local_worker.sampler._env_runner_obj
 
@@ -449,10 +449,10 @@ class TestEnvRunnerV2(unittest.TestCase):
                 count_steps_by="agent_steps",
             )
             .rl_module(
-                rl_module_spec=MultiAgentRLModuleSpec(
-                    module_specs={
-                        "one": SingleAgentRLModuleSpec(module_class=RandomRLModule),
-                        "two": SingleAgentRLModuleSpec(module_class=RandomRLModule),
+                rl_module_spec=MultiRLModuleSpec(
+                    rl_module_specs={
+                        "one": RLModuleSpec(module_class=RandomRLModule),
+                        "two": RLModuleSpec(module_class=RandomRLModule),
                     }
                 ),
             )
@@ -463,7 +463,7 @@ class TestEnvRunnerV2(unittest.TestCase):
 
         algo = PPO(config)
 
-        local_worker = algo.workers.local_worker()
+        local_worker = algo.env_runner
 
         env_runner = local_worker.sampler._env_runner_obj
 

@@ -2,24 +2,24 @@ import logging
 import random
 import time
 from functools import wraps
-from typing import Callable, Dict, Iterable, List, Optional, Tuple, Union
+from typing import Callable, Dict, List, Optional, Tuple, Union
 
 import ray
 from ray.actor import ActorHandle
+from ray.serve._private.application_state import StatusOverview
 from ray.serve._private.common import (
-    ApplicationStatus,
     DeploymentHandleSource,
     DeploymentID,
     DeploymentStatus,
     DeploymentStatusInfo,
     MultiplexedReplicaInfo,
-    StatusOverview,
 )
 from ray.serve._private.constants import (
     CLIENT_CHECK_CREATION_POLLING_INTERVAL_S,
     CLIENT_POLLING_INTERVAL_S,
     MAX_CACHED_HANDLES,
     SERVE_DEFAULT_APP_NAME,
+    SERVE_LOGGER_NAME,
 )
 from ray.serve._private.controller import ServeController
 from ray.serve._private.deploy_utils import get_deploy_args
@@ -32,9 +32,14 @@ from ray.serve.generated.serve_pb2 import (
 )
 from ray.serve.generated.serve_pb2 import StatusOverview as StatusOverviewProto
 from ray.serve.handle import DeploymentHandle, _HandleOptions
-from ray.serve.schema import LoggingConfig, ServeApplicationSchema, ServeDeploySchema
+from ray.serve.schema import (
+    ApplicationStatus,
+    LoggingConfig,
+    ServeApplicationSchema,
+    ServeDeploySchema,
+)
 
-logger = logging.getLogger(__file__)
+logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 
 def _ensure_connected(f: Callable) -> Callable:
@@ -246,8 +251,12 @@ class ServeControllerClient:
         deployments: List[Dict],
         _blocking: bool = True,
     ):
+        ingress_route_prefix = None
         deployment_args_list = []
         for deployment in deployments:
+            if deployment["ingress"]:
+                ingress_route_prefix = deployment["route_prefix"]
+
             deployment_args = get_deploy_args(
                 deployment["name"],
                 replica_config=deployment["replica_config"],
@@ -278,13 +287,11 @@ class ServeControllerClient:
         ray.get(self._controller.deploy_application.remote(name, deployment_args_list))
         if _blocking:
             self._wait_for_application_running(name)
-            for deployment in deployments:
-                deployment_name = deployment["name"]
-                tag = f"component=serve deployment={deployment_name}"
-                url = deployment["url"]
-                version = deployment["version"]
-
-                self.log_deployment_ready(deployment_name, version, url, tag)
+            if ingress_route_prefix is not None:
+                url_part = " at " + self._root_url + ingress_route_prefix
+            else:
+                url_part = ""
+            logger.info(f"Application '{name}' is ready{url_part}.")
 
     @_ensure_connected
     def deploy_apps(
@@ -359,15 +366,6 @@ class ServeControllerClient:
         self.delete_apps(all_apps, blocking)
 
     @_ensure_connected
-    def delete_deployments(self, names: Iterable[str], blocking: bool = True) -> None:
-        """Delete 1.x deployments."""
-
-        ray.get(self._controller.delete_deployments.remote(names))
-        if blocking:
-            for name in names:
-                self._wait_for_deployment_deleted(name, "")
-
-    @_ensure_connected
     def get_deployment_info(
         self, name: str, app_name: str
     ) -> Tuple[DeploymentInfo, str]:
@@ -378,11 +376,6 @@ class ServeControllerClient:
             DeploymentInfo.from_proto(deployment_route.deployment_info),
             deployment_route.route if deployment_route.route != "" else None,
         )
-
-    @_ensure_connected
-    def get_app_config(self, name: str = SERVE_DEFAULT_APP_NAME) -> Dict:
-        """Returns the most recently requested Serve config."""
-        return ray.get(self._controller.get_app_config.remote(name))
 
     @_ensure_connected
     def get_serve_status(self, name: str = SERVE_DEFAULT_APP_NAME) -> StatusOverview:
@@ -467,36 +460,6 @@ class ServeControllerClient:
             self.handle_cache.pop(evict_key)
 
         return handle
-
-    @_ensure_connected
-    def log_deployment_update_status(
-        self, name: str, version: str, updating: bool
-    ) -> str:
-        tag = f"component=serve deployment={name}"
-
-        if updating:
-            msg = f"Updating deployment '{name}'"
-            if version is not None:
-                msg += f" to version '{version}'"
-            logger.info(f"{msg}. {tag}")
-        else:
-            logger.info(
-                f"Deployment '{name}' is already at version "
-                f"'{version}', not updating. {tag}"
-            )
-
-        return tag
-
-    @_ensure_connected
-    def log_deployment_ready(self, name: str, version: str, url: str, tag: str) -> None:
-        if url is not None:
-            url_part = f" at `{url}`"
-        else:
-            url_part = ""
-        logger.info(
-            f"Deployment '{name}{':'+version if version else ''}' is ready"
-            f"{url_part}. {tag}"
-        )
 
     @_ensure_connected
     def record_multiplexed_replica_info(self, info: MultiplexedReplicaInfo):

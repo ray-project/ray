@@ -81,7 +81,6 @@ class TestDeploymentOptions:
         "name": "test",
         "version": "abcd",
         "num_replicas": 1,
-        "route_prefix": "/",
         "ray_actor_options": {},
         "user_config": {},
         "max_ongoing_requests": 10,
@@ -178,7 +177,6 @@ class TestDeploymentOptions:
         "option",
         [
             "num_replicas",
-            "route_prefix",
             "autoscaling_config",
             "user_config",
         ],
@@ -193,7 +191,7 @@ class TestDeploymentOptions:
             deployment_options["autoscaling_config"] = {
                 "min_replicas": 1,
                 "max_replicas": 5,
-                "target_num_ongoing_requests": 5,
+                "target_ongoing_requests": 5,
             }
         elif option == "autoscaling_config":
             deployment_options["num_replicas"] = 5

@@ -93,8 +93,10 @@ ray_cc_library(
         "src/ray/rpc/common.cc",
         "src/ray/rpc/grpc_server.cc",
         "src/ray/rpc/server_call.cc",
+        "src/ray/rpc/rpc_chaos.cc",
     ],
     hdrs = glob([
+        "src/ray/rpc/rpc_chaos.h",
         "src/ray/rpc/client_call.h",
         "src/ray/rpc/common.h",
         "src/ray/rpc/grpc_client.h",
@@ -513,6 +515,7 @@ ray_cc_library(
         "@boost//:bimap",
         "@com_github_grpc_grpc//src/proto/grpc/health/v1:health_proto",
         "@com_google_absl//absl/container:btree",
+        "//src/ray/util:thread_checker",
     ],
 )
 
@@ -856,21 +859,9 @@ ray_cc_test(
 )
 
 ray_cc_test(
-    name = "direct_task_transport_test",
+    name = "normal_task_submitter_test",
     size = "small",
-    srcs = ["src/ray/core_worker/test/direct_task_transport_test.cc"],
-    tags = ["team:core"],
-    deps = [
-        ":core_worker_lib",
-        ":ray_mock",
-        "@com_google_googletest//:gtest_main",
-    ],
-)
-
-ray_cc_test(
-    name = "direct_task_transport_mock_test",
-    size = "small",
-    srcs = ["src/ray/core_worker/test/direct_task_transport_mock_test.cc"],
+    srcs = ["src/ray/core_worker/test/normal_task_submitter_test.cc"],
     tags = ["team:core"],
     deps = [
         ":core_worker_lib",
@@ -969,6 +960,21 @@ ray_cc_test(
 )
 
 ray_cc_test(
+    name = "task_event_buffer_export_event_test",
+    size = "small",
+    srcs = ["src/ray/core_worker/test/task_event_buffer_export_event_test.cc"],
+    tags = [
+        "team:core",
+        "no_windows"
+    ],
+    deps = [
+        ":core_worker_lib",
+        ":ray_mock",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+ray_cc_test(
     name = "actor_creator_test",
     size = "small",
     srcs = ["src/ray/core_worker/test/actor_creator_test.cc"],
@@ -1003,6 +1009,7 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         ":core_worker_lib",
+        ":ray_mock",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -1388,6 +1395,18 @@ ray_cc_test(
 )
 
 ray_cc_test(
+    name = "local_task_manager_test",
+    size = "small",
+    srcs = ["src/ray/raylet/local_task_manager_test.cc"],
+    tags = ["team:core"],
+    deps = [
+        ":ray_mock",
+        ":raylet_lib",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+ray_cc_test(
     name = "wait_manager_test",
     size = "small",
     srcs = ["src/ray/raylet/wait_manager_test.cc"],
@@ -1531,6 +1550,19 @@ ray_cc_test(
     deps = [
         ":grpc_common_lib",
         ":test_service_cc_grpc",
+    ],
+)
+
+ray_cc_test(
+    name = "rpc_chaos_test",
+    size = "small",
+    srcs = [
+        "src/ray/rpc/test/rpc_chaos_test.cc",
+    ],
+    tags = ["team:core"],
+    deps = [
+        ":grpc_common_lib",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -1876,17 +1908,33 @@ ray_cc_test(
     ],
 )
 
+
+ray_cc_test(
+    name = "usage_stats_client_test",
+    size = "small",
+    srcs = [
+        "src/ray/gcs/gcs_server/test/usage_stats_client_test.cc",
+    ],
+    tags = ["team:core"],
+    deps = [
+        ":gcs_server_lib",
+        ":gcs_server_test_util",
+        ":gcs_test_util_lib",
+        ":ray_mock",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+
 ray_cc_library(
     name = "gcs_client_lib",
     srcs = [
         "src/ray/gcs/gcs_client/accessor.cc",
         "src/ray/gcs/gcs_client/gcs_client.cc",
-        "src/ray/gcs/gcs_client/usage_stats_client.cc",
     ],
     hdrs = [
         "src/ray/gcs/gcs_client/accessor.h",
         "src/ray/gcs/gcs_client/gcs_client.h",
-        "src/ray/gcs/gcs_client/usage_stats_client.h",
     ],
     deps = [
         ":gcs",
@@ -1997,20 +2045,6 @@ ray_cc_test(
         "no_windows",
         "team:core",
     ],
-    deps = [
-        ":gcs_client_lib",
-        ":gcs_server_lib",
-        ":gcs_test_util_lib",
-        "@com_google_googletest//:gtest_main",
-    ],
-)
-
-ray_cc_test(
-    name = "usage_stats_client_test",
-    srcs = [
-        "src/ray/gcs/gcs_client/test/usage_stats_client_test.cc",
-    ],
-    tags = ["team:core"],
     deps = [
         ":gcs_client_lib",
         ":gcs_server_lib",
@@ -2342,11 +2376,37 @@ ray_cc_test(
     ],
 )
 
+ray_cc_test(
+    name = "gcs_export_event_test",
+    size = "small",
+    srcs = glob([
+        "src/ray/gcs/gcs_server/test/export_api/*.cc",
+    ]),
+    tags = [
+        "no_windows",
+        "team:core"
+    ],
+    deps = [
+        ":gcs_server_lib",
+        ":gcs_server_test_util",
+        ":gcs_test_util_lib",
+        ":ray_mock",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 flatbuffer_cc_library(
     name = "node_manager_fbs",
     srcs = ["src/ray/raylet/format/node_manager.fbs"],
     flatc_args = FLATC_ARGS,
     out_prefix = "ray/raylet/format/",
+)
+
+ray_cc_library(
+    name = "python_callbacks",
+    hdrs = [
+        "src/ray/gcs/gcs_client/python_callbacks.h",
+    ],
 )
 
 pyx_library(
@@ -2377,6 +2437,7 @@ pyx_library(
         linkstatic = 1,
     ),
     deps = [
+        ":python_callbacks",
         "//:core_worker_lib",
         "//:exported_internal",
         "//:gcs_server_lib",
@@ -2480,6 +2541,7 @@ filegroup(
         "//src/ray/protobuf:runtime_env_agent_py_proto",
         "//src/ray/protobuf:runtime_env_common_py_proto",
         "//src/ray/protobuf:usage_py_proto",
+        "//src/ray/protobuf:export_event_py_proto",
     ],
 )
 
@@ -2573,6 +2635,9 @@ genrule(
         # of experimental.
         autoscale_files=(`ls python/ray/core/generated/instance_manager_pb2*.py`)
         sed -i -E 's/from ..experimental/from ./' "$${autoscale_files[@]}"
+        # Help the generated export api files to have the correct module
+        export_api_files=(`ls python/ray/core/generated/export*_pb2*.py`)
+        sed -i -E 's/from ..export_api/from ./' "$${export_api_files[@]}"
         echo "$${PWD}" > $@
     """,
     local = 1,

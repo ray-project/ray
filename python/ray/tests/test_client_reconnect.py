@@ -4,14 +4,13 @@ import os
 import threading
 import sys
 import grpc
-from mock import Mock
 import numpy as np
 
 import time
 import random
 import pytest
 from typing import Any, Callable, Optional
-from unittest.mock import patch
+from unittest.mock import patch, Mock
 
 import ray
 from ray._private.utils import get_or_create_event_loop

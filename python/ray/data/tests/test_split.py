@@ -13,6 +13,9 @@ import ray
 from ray.data._internal.block_list import BlockList
 from ray.data._internal.equalize import _equalize
 from ray.data._internal.execution.interfaces import RefBundle
+from ray.data._internal.execution.interfaces.ref_bundle import (
+    _ref_bundles_iterator_to_block_refs_list,
+)
 from ray.data._internal.logical.interfaces import LogicalPlan
 from ray.data._internal.logical.operators.input_data_operator import InputData
 from ray.data._internal.plan import ExecutionPlan
@@ -26,6 +29,7 @@ from ray.data._internal.split import (
 )
 from ray.data._internal.stats import DatasetStats
 from ray.data.block import Block, BlockAccessor, BlockMetadata
+from ray.data.context import DataContext
 from ray.data.dataset import Dataset
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.util import extract_values
@@ -86,6 +90,8 @@ def test_equal_split_balanced(ray_start_regular_shared, block_sizes, num_splits)
 
 
 def _test_equal_split_balanced(block_sizes, num_splits):
+    ctx = DataContext.get_current()
+
     blocks = []
     metadata = []
     ref_bundles = []
@@ -97,12 +103,11 @@ def _test_equal_split_balanced(block_sizes, num_splits):
         blk = (blocks[-1], metadata[-1])
         ref_bundles.append(RefBundle((blk,), owns_blocks=True))
         total_rows += block_size
-    block_list = BlockList(blocks, metadata, owned_by_consumer=True)
 
-    logical_plan = LogicalPlan(InputData(input_data=ref_bundles))
+    logical_plan = LogicalPlan(InputData(input_data=ref_bundles), ctx)
     stats = DatasetStats(metadata={"TODO": []}, parent=None)
     ds = Dataset(
-        ExecutionPlan(block_list, stats, run_by_consumer=True),
+        ExecutionPlan(stats),
         logical_plan,
     )
 
@@ -389,8 +394,9 @@ def test_split_hints(ray_start_regular_shared):
                 datasets[1] contains block 2.
         """
         num_blocks = len(block_node_ids)
-        ds = ray.data.range(num_blocks, override_num_blocks=num_blocks)
-        blocks = ds.get_internal_block_refs()
+        ds = ray.data.range(num_blocks, override_num_blocks=num_blocks).materialize()
+        bundles = ds.iter_internal_ref_bundles()
+        blocks = _ref_bundles_iterator_to_block_refs_list(bundles)
         assert len(block_node_ids) == len(blocks)
         actors = [Actor.remote() for i in range(len(actor_node_ids))]
         with patch("ray.experimental.get_object_locations") as location_mock:
@@ -413,7 +419,9 @@ def test_split_hints(ray_start_regular_shared):
                 assert len(datasets) == len(actors)
                 for i in range(len(actors)):
                     assert {blocks[j] for j in expected_split_result[i]} == set(
-                        datasets[i].get_internal_block_refs()
+                        _ref_bundles_iterator_to_block_refs_list(
+                            datasets[i].iter_internal_ref_bundles()
+                        )
                     )
 
     assert_split_assignment(

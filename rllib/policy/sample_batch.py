@@ -16,6 +16,7 @@ from ray.rllib.utils.deprecation import Deprecated, deprecation_warning
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.torch_utils import convert_to_torch_tensor
 from ray.rllib.utils.typing import (
+    ModuleID,
     PolicyID,
     TensorType,
     SampleBatchType,
@@ -353,7 +354,7 @@ class SampleBatch(dict):
         Returns:
             A deep or shallow copy of this SampleBatch object.
         """
-        copy_ = {k: v for k, v in self.items()}
+        copy_ = dict(self)
         data = tree.map_structure(
             lambda v: (
                 np.array(v, copy=not shallow) if isinstance(v, np.ndarray) else v
@@ -403,11 +404,11 @@ class SampleBatch(dict):
 
         seq_lens = None if self.get(SampleBatch.SEQ_LENS, 1) is None else 1
 
-        self_as_dict = {k: v for k, v in self.items()}
+        self_as_dict = dict(self)
 
         for i in range(self.count):
             yield tree.map_structure_with_path(
-                lambda p, v: v[i] if p[0] != self.SEQ_LENS else seq_lens,
+                lambda p, v, i=i: v[i] if p[0] != self.SEQ_LENS else seq_lens,
                 self_as_dict,
             )
 
@@ -461,23 +462,34 @@ class SampleBatch(dict):
 
             {"a": [4, 1, 3, 2]}
         """
+        has_time_rank = self.get(SampleBatch.SEQ_LENS) is not None
 
         # Shuffling the data when we have `seq_lens` defined is probably
         # a bad idea!
-        if self.get(SampleBatch.SEQ_LENS) is not None:
+        if has_time_rank and not self.zero_padded:
             raise ValueError(
                 "SampleBatch.shuffle not possible when your data has "
-                "`seq_lens` defined!"
+                "`seq_lens` defined AND is not zero-padded yet!"
             )
 
         # Get a permutation over the single items once and use the same
         # permutation for all the data (otherwise, data would become
         # meaningless).
-        permutation = np.random.permutation(self.count)
+        # - Shuffle by individual item.
+        if not has_time_rank:
+            permutation = np.random.permutation(self.count)
+        # - Shuffle along batch axis (leave axis=1/time-axis as-is).
+        else:
+            permutation = np.random.permutation(len(self[SampleBatch.SEQ_LENS]))
 
-        self_as_dict = {k: v for k, v in self.items()}
+        self_as_dict = dict(self)
+        infos = self_as_dict.pop(Columns.INFOS, None)
         shuffled = tree.map_structure(lambda v: v[permutation], self_as_dict)
+        if infos is not None:
+            self_as_dict[Columns.INFOS] = [infos[i] for i in permutation]
+
         self.update(shuffled)
+
         # Flush cache such that intercepted values are recalculated after the
         # shuffling.
         self.intercepted_values = {}
@@ -721,7 +733,12 @@ class SampleBatch(dict):
         infos = self.pop(SampleBatch.INFOS, None)
         data = tree.map_structure(lambda value: value[start:stop], self)
         if infos is not None:
-            data[SampleBatch.INFOS] = infos[start:stop]
+            # Slice infos according to SEQ_LENS.
+            info_slice_start = int(sum(self[SampleBatch.SEQ_LENS][:start]))
+            info_slice_stop = int(sum(self[SampleBatch.SEQ_LENS][start:stop]))
+            data[SampleBatch.INFOS] = infos[info_slice_start:info_slice_stop]
+            # Put infos back into `self`.
+            self[Columns.INFOS] = infos
 
         return SampleBatch(
             data,
@@ -864,7 +881,7 @@ class SampleBatch(dict):
                     curr[p] = f_pad
                 curr = curr[p]
 
-        self_as_dict = {k: v for k, v in self.items()}
+        self_as_dict = dict(self)
         tree.map_structure_with_path(_zero_pad_in_place, self_as_dict)
 
         # Set flags to indicate, we are now zero-padded (and to what extend).
@@ -907,14 +924,20 @@ class SampleBatch(dict):
             return default
 
     @PublicAPI
-    def as_multi_agent(self) -> "MultiAgentBatch":
-        """Returns the respective MultiAgentBatch using DEFAULT_POLICY_ID.
+    def as_multi_agent(self, module_id: Optional[ModuleID] = None) -> "MultiAgentBatch":
+        """Returns the respective MultiAgentBatch
+
+        Note, if `module_id` is not provided uses `DEFAULT_POLICY`_ID`.
+
+        Args;
+            module_id: An optional module ID. If `None` the `DEFAULT_POLICY_ID`
+                is used.
 
         Returns:
             The MultiAgentBatch (using DEFAULT_POLICY_ID) corresponding
             to this SampleBatch.
         """
-        return MultiAgentBatch({DEFAULT_POLICY_ID: self}, self.count)
+        return MultiAgentBatch({module_id or DEFAULT_POLICY_ID: self}, self.count)
 
     @PublicAPI
     def __getitem__(self, key: Union[str, slice]) -> TensorType:
@@ -1315,8 +1338,8 @@ class MultiAgentBatch:
     """A batch of experiences from multiple agents in the environment.
 
     Attributes:
-        policy_batches (Dict[PolicyID, SampleBatch]): Mapping from policy
-            ids to SampleBatches of experiences.
+        policy_batches (Dict[PolicyID, SampleBatch]): Dict mapping policy IDs to
+            SampleBatches of experiences.
         count: The number of env steps in this batch.
     """
 
@@ -1325,8 +1348,7 @@ class MultiAgentBatch:
         """Initialize a MultiAgentBatch instance.
 
         Args:
-            policy_batches: Mapping from policy
-                ids to SampleBatches of experiences.
+            policy_batches: Dict mapping policy IDs to SampleBatches of experiences.
             env_steps: The number of environment steps in the environment
                 this batch contains. This will be less than the number of
                 transitions this batch contains across all policies in total.
@@ -1467,6 +1489,19 @@ class MultiAgentBatch:
         return MultiAgentBatch(
             {k: v.copy() for (k, v) in self.policy_batches.items()}, self.count
         )
+
+    @ExperimentalAPI
+    def to_device(self, device, framework="torch"):
+        """TODO: transfer batch to given device as framework tensor."""
+        if framework == "torch":
+            assert torch is not None
+            for pid, policy_batch in self.policy_batches.items():
+                self.policy_batches[pid] = policy_batch.to_device(
+                    device, framework=framework
+                )
+        else:
+            raise NotImplementedError
+        return self
 
     @PublicAPI
     def size_bytes(self) -> int:
