@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING, List, Literal, Optional, Tuple, Union
+from typing import TYPE_CHECKING, List, Literal, Optional, Union
 
 import numpy as np
 
@@ -13,10 +13,7 @@ from ray.data.datasource.file_based_datasource import (
 )
 from ray.data.datasource.file_meta_provider import BaseFileMetadataProvider
 from ray.data.datasource.partitioning import Partitioning, PathPartitionFilter
-from ray.data.datasource.path_util import (
-    _has_file_extension,
-    _resolve_paths_and_filesystem,
-)
+from ray.data.datasource.path_util import _resolve_paths_and_filesystem
 
 if TYPE_CHECKING:
     import pyarrow
