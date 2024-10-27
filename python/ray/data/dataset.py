@@ -2657,7 +2657,7 @@ class Dataset:
 
         plan = self._plan.copy()
         count_op = Count([self._logical_plan.dag])
-        logical_plan = LogicalPlan(count_op)
+        logical_plan = LogicalPlan(count_op, self.context)
         count_ds = Dataset(plan, logical_plan)
 
         count = 0
@@ -2667,7 +2667,9 @@ class Dataset:
                 f"named '{Count.COLUMN_NAME}'"
             )
             count += batch[Count.COLUMN_NAME].sum()
-        return count
+        # Explicitly cast to int to avoid returning `np.int64`, which is the result
+        # from calculating `sum()` from numpy batches.
+        return int(count)
 
     @ConsumptionAPI(
         if_more_than_read=True,
@@ -2877,10 +2879,12 @@ class Dataset:
                 instead of ``arrow_parquet_args`` if any of your write arguments
                 can't pickled, or if you'd like to lazily resolve the write
                 arguments for each dataset block.
-            num_rows_per_file: The target number of rows to write to each file. If
-                ``None``, Ray Data writes a system-chosen number of rows to each file.
-                The specified value is a hint, not a strict limit. Ray Data might write
-                more or fewer rows to each file.
+            num_rows_per_file: [Experimental] The target number of rows to write to each
+                file. If ``None``, Ray Data writes a system-chosen number of rows to
+                each file. The specified value is a hint, not a strict limit. Ray Data
+                might write more or fewer rows to each file. In specific, if the number
+                of rows per block is larger than the specified value, Ray Data writes
+                the number of rows per block to each file.
             ray_remote_args: Kwargs passed to :meth:`~ray.remote` in the write tasks.
             concurrency: The maximum number of Ray tasks to run concurrently. Set this
                 to control number of tasks to run concurrently. This doesn't change the
@@ -2988,10 +2992,12 @@ class Dataset:
                 instead of ``pandas_json_args`` if any of your write arguments
                 can't be pickled, or if you'd like to lazily resolve the write
                 arguments for each dataset block.
-            num_rows_per_file: The target number of rows to write to each file. If
-                ``None``, Ray Data writes a system-chosen number of rows to each file.
-                The specified value is a hint, not a strict limit. Ray Data might write
-                more or fewer rows to each file.
+            num_rows_per_file: [Experimental] The target number of rows to write to each
+                file. If ``None``, Ray Data writes a system-chosen number of rows to
+                each file. The specified value is a hint, not a strict limit. Ray Data
+                might write more or fewer rows to each file. In specific, if the number
+                of rows per block is larger than the specified value, Ray Data writes
+                the number of rows per block to each file.
             ray_remote_args: kwargs passed to :meth:`~ray.remote` in the write tasks.
             concurrency: The maximum number of Ray tasks to run concurrently. Set this
                 to control number of tasks to run concurrently. This doesn't change the
@@ -3172,10 +3178,12 @@ class Dataset:
                 Use this argument instead of ``arrow_csv_args`` if any of your write
                 arguments cannot be pickled, or if you'd like to lazily resolve the
                 write arguments for each dataset block.
-            num_rows_per_file: The target number of rows to write to each file. If
-                ``None``, Ray Data writes a system-chosen number of rows to each file.
-                The specified value is a hint, not a strict limit. Ray Data might write
-                more or fewer rows to each file.
+            num_rows_per_file: [Experimental] The target number of rows to write to each
+                file. If ``None``, Ray Data writes a system-chosen number of rows to
+                each file. The specified value is a hint, not a strict limit. Ray Data
+                might write more or fewer rows to each file. In specific, if the number
+                of rows per block is larger than the specified value, Ray Data writes
+                the number of rows per block to each file.
             ray_remote_args: kwargs passed to :meth:`~ray.remote` in the write tasks.
             concurrency: The maximum number of Ray tasks to run concurrently. Set this
                 to control number of tasks to run concurrently. This doesn't change the
@@ -3275,10 +3283,12 @@ class Dataset:
             filename_provider: A :class:`~ray.data.datasource.FilenameProvider`
                 implementation. Use this parameter to customize what your filenames
                 look like.
-            num_rows_per_file: The target number of rows to write to each file. If
-                ``None``, Ray Data writes a system-chosen number of rows to each file.
-                The specified value is a hint, not a strict limit. Ray Data might write
-                more or fewer rows to each file.
+            num_rows_per_file: [Experimental] The target number of rows to write to each
+                file. If ``None``, Ray Data writes a system-chosen number of rows to
+                each file. The specified value is a hint, not a strict limit. Ray Data
+                might write more or fewer rows to each file. In specific, if the number
+                of rows per block is larger than the specified value, Ray Data writes
+                the number of rows per block to each file.
             ray_remote_args: kwargs passed to :meth:`~ray.remote` in the write tasks.
             concurrency: The maximum number of Ray tasks to run concurrently. Set this
                 to control number of tasks to run concurrently. This doesn't change the
@@ -3360,10 +3370,12 @@ class Dataset:
             filename_provider: A :class:`~ray.data.datasource.FilenameProvider`
                 implementation. Use this parameter to customize what your filenames
                 look like.
-            num_rows_per_file: The target number of rows to write to each file. If
-                ``None``, Ray Data writes a system-chosen number of rows to each file.
-                The specified value is a hint, not a strict limit. Ray Data might write
-                more or fewer rows to each file.
+            num_rows_per_file: [Experimental] The target number of rows to write to each
+                file. If ``None``, Ray Data writes a system-chosen number of rows to
+                each file. The specified value is a hint, not a strict limit. Ray Data
+                might write more or fewer rows to each file. In specific, if the number
+                of rows per block is larger than the specified value, Ray Data writes
+                the number of rows per block to each file.
             ray_remote_args: Kwargs passed to ``ray.remote`` in the write tasks.
             concurrency: The maximum number of Ray tasks to run concurrently. Set this
                 to control number of tasks to run concurrently. This doesn't change the
@@ -3448,10 +3460,12 @@ class Dataset:
             filename_provider: A :class:`~ray.data.datasource.FilenameProvider`
                 implementation. Use this parameter to customize what your filenames
                 look like.
-            num_rows_per_file: The target number of rows to write to each file. If
-                ``None``, Ray Data writes a system-chosen number of rows to each file.
-                The specified value is a hint, not a strict limit. Ray Data might write
-                more or fewer rows to each file.
+            num_rows_per_file: [Experimental] The target number of rows to write to each
+                file. If ``None``, Ray Data writes a system-chosen number of rows to
+                each file. The specified value is a hint, not a strict limit. Ray Data
+                might write more or fewer rows to each file. In specific, if the number
+                of rows per block is larger than the specified value, Ray Data writes
+                the number of rows per block to each file.
             ray_remote_args: kwargs passed to :meth:`~ray.remote` in the write tasks.
             concurrency: The maximum number of Ray tasks to run concurrently. Set this
                 to control number of tasks to run concurrently. This doesn't change the
