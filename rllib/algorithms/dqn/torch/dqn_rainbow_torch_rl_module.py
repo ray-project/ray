@@ -153,7 +153,8 @@ class DQNRainbowTorchRLModule(TorchRLModule, DQNRainbowRLModule):
         # Otherwise we can just use the current observations.
         else:
             batch_base = {Columns.OBS: batch[Columns.OBS]}
-            batch_base.update({Columns.STATE_IN: batch[Columns.STATE_IN]})
+            if Columns.STATE_IN in batch:
+                batch_base.update({Columns.STATE_IN: batch[Columns.STATE_IN]})
 
         batch_target = {Columns.OBS: batch[Columns.NEXT_OBS]}
 
@@ -284,7 +285,9 @@ class DQNRainbowTorchRLModule(TorchRLModule, DQNRainbowRLModule):
                 ].mean(dim=-1, keepdim=True)
                 # Calculate the Q-value distribution by adding advantage and
                 # value stream.
-                qf_logits = centered_af_logits + vf_outs  # .unsqueeze(dim=-1)
+                qf_logits = centered_af_logits + vf_outs.view(
+                    -1, *((1,) * (centered_af_logits.dim() - 1))
+                )  # .unsqueeze(dim=-1)
                 # Calculate probabilites for the Q-value distribution along
                 # the support given by the atoms.
                 qf_probs = nn.functional.softmax(qf_logits, dim=-1)
@@ -301,9 +304,13 @@ class DQNRainbowTorchRLModule(TorchRLModule, DQNRainbowRLModule):
                 # https://discuss.pytorch.org/t/gradient-computation-issue-due-to-
                 # inplace-operation-unsure-how-to-debug-for-custom-model/170133
                 # Has to be a mean for each batch element.
-                af_outs_mean = torch.unsqueeze(
-                    torch.nan_to_num(qf_outs, neginf=torch.nan).nanmean(dim=1), dim=1
+                # af_outs_mean = torch.unsqueeze(
+                #     torch.nan_to_num(qf_outs, neginf=torch.nan).nanmean(dim=-1), dim=1
+                # )
+                af_outs_mean = torch.nan_to_num(qf_outs, neginf=torch.nan).nanmean(
+                    dim=-1, keepdim=True
                 )
+
                 qf_outs = qf_outs - af_outs_mean
                 # Add advantage and value stream. Note, we broadcast here.
                 output[QF_PREDS] = qf_outs + vf_outs

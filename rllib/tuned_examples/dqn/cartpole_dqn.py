@@ -30,7 +30,7 @@ config = (
         n_step=(2, 5),
         double_q=True,
         dueling=True,
-        num_atoms=10,
+        num_atoms=1,
         epsilon=[(0, 1.0), (10000, 0.02)],
     )
     .rl_module(
@@ -45,8 +45,6 @@ config = (
     )
 )
 
-args.no_tune = True
-args.local_mode = True
 if __name__ == "__main__":
     from ray.rllib.utils.test_utils import run_rllib_example_script_experiment
 

@@ -538,6 +538,8 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
                 len_lookback_buffer=lookback,
             )
 
+            del episode
+
             if batch_length_T < 1:
                 # Note, this will be the reward after executing action
                 # `a_(episode_ts-n_step+1)`. For `n_step>1` this will be the discounted
