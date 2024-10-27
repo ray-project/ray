@@ -530,17 +530,13 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
             if episode_ts + batch_length_T + (actual_n_step - 1) > len(episode):
                 continue
 
-            sampled_episode = episode.slice(
-                slice(
-                    episode_ts,
-                    episode_ts + batch_length_T + (actual_n_step - 1),
-                ),
-                len_lookback_buffer=lookback,
-            )
-
-            del episode
-
-            if batch_length_T < 1:
+            if batch_length_T == 0:
+                sampled_episode = episode.slice(
+                    slice(
+                        episode_ts,
+                        episode_ts + batch_length_T + actual_n_step,
+                    )
+                )
                 # Note, this will be the reward after executing action
                 # `a_(episode_ts-n_step+1)`. For `n_step>1` this will be the discounted
                 # sum of all discounted rewards that were collected over the last n
@@ -550,7 +546,48 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
                 rewards = scipy.signal.lfilter(
                     [1], [1, -gamma], raw_rewards[::-1], axis=0
                 )[-1]
-                sampled_episode.set_rewards(at_indices=-1, new_data=rewards)
+
+                sampled_episode = SingleAgentEpisode(
+                    id_=sampled_episode.id_,
+                    agent_id=sampled_episode.agent_id,
+                    module_id=sampled_episode.module_id,
+                    observation_space=sampled_episode.observation_space,
+                    action_space=sampled_episode.action_space,
+                    observations=[
+                        sampled_episode.get_observations(0),
+                        sampled_episode.get_observations(-1),
+                    ],
+                    actions=[sampled_episode.get_actions(0)],
+                    rewards=[rewards],
+                    infos=[
+                        sampled_episode.get_infos(0),
+                        sampled_episode.get_infos(-1),
+                    ],
+                    terminated=sampled_episode.is_terminated,
+                    truncated=sampled_episode.is_truncated,
+                    extra_model_outputs={
+                        **(
+                            {
+                                k: [episode.get_extra_model_outputs(k, 0)]
+                                for k in episode.extra_model_outputs.keys()
+                            }
+                            if include_extra_model_outputs
+                            else {}
+                        ),
+                    },
+                    t_started=episode_ts,
+                    len_lookback_buffer=0,
+                )
+            else:
+                sampled_episode = episode.slice(
+                    slice(
+                        episode_ts,
+                        episode_ts + batch_length_T + (actual_n_step - 1),
+                    ),
+                    len_lookback_buffer=lookback,
+                )
+
+            del episode
 
             # Add the actually chosen n-step in this episode.
             sampled_episode.set_extra_model_outputs(
