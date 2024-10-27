@@ -328,6 +328,31 @@ Behavior Cloning (BC)
    :members: training
 
 
+.. _cql:
+
+Conservative Q-Learning (CQL)
+-----------------------------
+`[paper] <https://arxiv.org/abs/2006.04779>`__
+`[implementation] <https://github.com/ray-project/ray/blob/master/rllib/algorithms/cql/cql.py>`__
+
+.. figure:: images/algos/cql-architecture.svg
+    :width: 750
+
+    **CQL architecture:** CQL (Conservative Q-Learning) is an offline RL algorithm that mitigates the overestimation of Q-values
+    outside the dataset distribution through a conservative critic estimate. It adds a simple Q regularizer loss to the standard
+    Bellman update loss, ensuring that the critic does not output overly-optimistic Q-values. This conservative
+    correction term can be added on top of any off-policy Q-learning algorithm (here, we provide this for SAC).
+
+
+**Tuned examples:**
+`Pendulum-v1 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/cql/pendulum_cql.py>`__
+
+**CQL-specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
+
+.. autoclass:: ray.rllib.algorithms.cql.cql.CQLConfig
+   :members: training
+
+
 .. _marwil:
 
 Monotonic Advantage Re-Weighted Imitation Learning (MARWIL)
@@ -340,15 +365,14 @@ Monotonic Advantage Re-Weighted Imitation Learning (MARWIL)
 
     **MARWIL architecture:** MARWIL is a hybrid imitation learning and policy gradient algorithm suitable for training on
     batched historical data. When the ``beta`` hyperparameter is set to zero, the MARWIL objective reduces to plain
-    imitation learning (see `BC`_). MARWIL uses Ray Data to tap into its parallel data
-    processing capabilities. In one training iteration, episodes are parallelly read in from
-    offline (ex. JSON) files by the n DataWorkers. These episodes are then preprocessed into train
-    batches and sent as data iterators directly to the n Learners, which perform the forward- and backward passes
-    as well as the optimizer step.
+    imitation learning (see `BC`_). MARWIL uses Ray.Data to tap into its parallel data
+    processing capabilities. In one training iteration, episodes are read in parallel from offline files
+    (ex. `parquet <https://parquet.apache.org/>`__) by the n DataWorkers, then preprocessed into train batches and
+    sent as data iterators directly to the n Learners, which perform the forward/backward passes and optimizer step.
 
 
 **Tuned examples:**
-`CartPole-v1 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/marwil/cartpole-marwil.yaml>`__
+`CartPole-v1 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/marwil/cartpole_marwil.py>`__
 
 **MARWIL-specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
 
