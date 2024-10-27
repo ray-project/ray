@@ -684,7 +684,7 @@ class CompiledDAG:
         # Mapping from the actor handle to the node ID that the actor is on.
         self.actor_to_node_id: Dict["ray.actor.ActorHandle", str] = {}
 
-        # This is set to the custom nccl group specified in `experimenatal_compile`.
+        # The `custom_nccl_group` specified in `experimental_compile`.
         self._custom_nccl_group_p2p: Optional[GPUCommunicator] = custom_nccl_group
         # The default NCCL group ID for P2P send/recv operations whose `transport=nccl`.
         self._default_nccl_group_id_p2p: Optional[str] = None
@@ -765,9 +765,16 @@ class CompiledDAG:
         self.input_task_idx, self.output_task_idx = None, None
         self.actor_task_count.clear()
 
-        nccl_actors_p2p: Set["ray.actor.ActorHandle"] = set()
-        nccl_dag_nodes_p2p: Set[DAGNode] = set()
-        custom_nccl_group_to_dag_nodes: Dict[
+        # Actors and DAG nodes involved in NCCL P2P send/recv with `transport=nccl`,
+        # in which case the default NCCL group is used. The default NCCL group is the
+        # `custom_nccl_group` in `experimental_compile` if specified. If not, we
+        # first try borrowing another NCCL group in the DAG that is already
+        # initialized. A `_NcclGroup` is created if we can't borrow.
+        default_nccl_actors_p2p: Set["ray.actor.ActorHandle"] = set()
+        default_nccl_nodes_p2p: Set[DAGNode] = set()
+        # Maps each custom NCCL group to the DAG nodes that use it as their P2P
+        # communicator.
+        custom_nccl_group_to_nodes_p2p: Dict[
             GPUCommunicator, Set[DAGNode]
         ] = defaultdict(set)
         nccl_collective_ops: Set[_CollectiveOperation] = set()
@@ -849,10 +856,10 @@ class CompiledDAG:
                     if custom_nccl_group is None and self._custom_nccl_group_p2p:
                         custom_nccl_group = self._custom_nccl_group_p2p
                     if custom_nccl_group:
-                        custom_nccl_group_to_dag_nodes[custom_nccl_group].add(dag_node)
+                        custom_nccl_group_to_nodes_p2p[custom_nccl_group].add(dag_node)
                     else:
-                        nccl_actors_p2p.add(actor_handle)
-                        nccl_dag_nodes_p2p.add(dag_node)
+                        default_nccl_actors_p2p.add(actor_handle)
+                        default_nccl_nodes_p2p.add(dag_node)
 
                 # Collect NCCL collective operations.
                 if isinstance(dag_node, CollectiveOutputNode):
@@ -937,9 +944,9 @@ class CompiledDAG:
                         # upstream and downstream actors.
                         nccl_group_actors = custom_nccl_group.get_actor_handles()
                         assert downstream_actor_handle
-                        upstream_actor_handle: Optional[
-                            "ray.actor.ActorHandle"
-                        ] = upstream_task.dag_node._get_actor_handle()
+                        upstream_actor_handle = (
+                            upstream_task.dag_node._get_actor_handle()
+                        )
                         assert upstream_actor_handle
                         if (
                             upstream_actor_handle not in nccl_group_actors
@@ -947,14 +954,14 @@ class CompiledDAG:
                         ):
                             raise ValueError(
                                 "Custom NCCL group for P2P send/recv must contain "
-                                "both the upstream and downstream actors."
+                                "both the upstream and downstream actors"
                             )
                     else:
                         # Add all readers to the NCCL group.
-                        nccl_actors_p2p.add(downstream_actor_handle)
+                        default_nccl_actors_p2p.add(downstream_actor_handle)
 
-        nccl_actors_p2p = list(nccl_actors_p2p)
-        if None in nccl_actors_p2p:
+        default_nccl_actors_p2p = list(default_nccl_actors_p2p)
+        if None in default_nccl_actors_p2p:
             raise ValueError("Driver cannot participate in the NCCL group.")
 
         # Initialize and cache a NCCL group for each custom NCCL group. All the
@@ -965,12 +972,14 @@ class CompiledDAG:
         # custom NCCL groups for a set of actors, only one is cached.
         actors_to_nccl_group_id: Dict[FrozenSet["ray.actor.ActorHandle"], str] = {}
 
-        for custom_nccl_group, dag_nodes in custom_nccl_group_to_dag_nodes.items():
+        # If a custom NCCL group is specified for P2P actors, initialize and
+        # cache the NCCL group ID.
+        for custom_nccl_group, nodes in custom_nccl_group_to_nodes_p2p.items():
             nccl_group_id = _init_nccl_group(
                 custom_nccl_group.get_actor_handles(), custom_nccl_group
             )
-            for dag_node in dag_nodes:
-                dag_node.type_hint.set_nccl_group_id(nccl_group_id)
+            for node in nodes:
+                node.type_hint.set_nccl_group_id(nccl_group_id)
             actors = frozenset(custom_nccl_group.get_actor_handles())
             actors_to_nccl_group_id[actors] = nccl_group_id
             custom_nccl_group_to_id[custom_nccl_group] = nccl_group_id
@@ -995,16 +1004,18 @@ class CompiledDAG:
 
         # If a NCCL group for P2P actors is not initialized, initialize and cache
         # the NCCL group ID.
-        if nccl_actors_p2p and self._default_nccl_group_id_p2p is None:
+        if default_nccl_actors_p2p and self._default_nccl_group_id_p2p is None:
             assert self._custom_nccl_group_p2p is None
-            actors = frozenset(nccl_actors_p2p)
+            actors = frozenset(default_nccl_actors_p2p)
             if actors in actors_to_nccl_group_id:
                 self._default_nccl_group_id_p2p = actors_to_nccl_group_id[actors]
             else:
-                self._default_nccl_group_id_p2p = _init_nccl_group(nccl_actors_p2p)
+                self._default_nccl_group_id_p2p = _init_nccl_group(
+                    default_nccl_actors_p2p
+                )
                 actors_to_nccl_group_id[actors] = self._default_nccl_group_id_p2p
-            for dag_node in nccl_dag_nodes_p2p:
-                dag_node.type_hint.set_nccl_group_id(self._default_nccl_group_id_p2p)
+            for node in default_nccl_nodes_p2p:
+                node.type_hint.set_nccl_group_id(self._default_nccl_group_id_p2p)
 
         # If a NCCL group for collective actors is not initialized, initialize and
         # cache the NCCL group ID.
