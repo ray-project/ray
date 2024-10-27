@@ -35,8 +35,8 @@ class FileReader(abc.ABC):
     def estimate_in_memory_size(self, path: str, file_size: int, *, filesystem) -> int:
         """Estimate the in-memory size of the data at the given path.
 
-        This method is used by the `PartitionFiles` operator to ensure that each read
-        task receives an appropriate amount of data.
+        This method can be used to partition files so that each read task receives an
+        appropriate amount of data.
 
         Args:
             path: The path to the file.
@@ -50,9 +50,6 @@ class FileReader(abc.ABC):
 
     def count_rows(self, paths: List[str], *, filesystem) -> int:
         """Count the number of rows in the files at the given paths.
-
-        This method is used by the `PushdownCountFiles` rule to avoid reading the entire
-        file when only the number of rows is needed.
 
         Overriding this method is optional. If you do override it, also override
         `supports_count_rows` to return `True`.
