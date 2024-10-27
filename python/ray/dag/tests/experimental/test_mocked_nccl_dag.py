@@ -15,7 +15,7 @@ from ray.experimental.channel.conftest import (
 )
 from ray.tests.conftest import *  # noqa
 from ray.tests.conftest import wait_for_condition
-from ray.dag import InputNode
+from ray.dag import InputNode, MultiOutputNode
 
 
 def error_logged(capsys, msg):
@@ -414,6 +414,59 @@ def test_p2p_static_shape_and_direct_return(
             "Task annotated with _direct_return=True must " "return a CUDA torch.Tensor"
         )
     wait_for_condition(lambda: error_logged(capsys, msg))
+
+
+@pytest.mark.parametrize(
+    "ray_start_cluster",
+    [
+        {
+            "num_cpus": 3,
+            "num_gpus": 3,
+            "num_nodes": 1,
+        }
+    ],
+    indirect=True,
+)
+@pytest.mark.parametrize("overlap_gpu_communication", [False])
+def test_overlap_gpu_communication(ray_start_cluster, overlap_gpu_communication):
+    sender1 = MockedWorker.remote()
+    sender2 = MockedWorker.remote()
+    receiver = MockedWorker.remote()
+
+    ray.get(
+        [
+            sender1.start_mock.remote(),
+            sender2.start_mock.remote(),
+            receiver.start_mock.remote(),
+        ]
+    )
+
+    shape = (10,)
+    dtype = torch.float16
+
+    with InputNode() as inp:
+        branch1 = sender1.send.bind(shape, dtype, inp)
+        branch1 = branch1.with_type_hint(
+            TorchTensorType(transport="nccl", _static_shape=True, _direct_return=True)
+        )
+        branch2 = sender2.send.bind(shape, dtype, inp)
+        branch2 = branch2.with_type_hint(
+            TorchTensorType(transport="nccl", _static_shape=True, _direct_return=True)
+        )
+        branch1 = receiver.recv.bind(branch1)
+        branch2 = receiver.recv.bind(branch2)
+        dag = MultiOutputNode([branch1, branch2])
+
+    compiled_dag = dag.experimental_compile(
+        _overlap_gpu_communication=overlap_gpu_communication
+    )
+
+    for i in range(3):
+        ref = compiled_dag.execute(i)
+        result = ray.get(ref)
+        assert result == [(i, shape, dtype)] * 2
+
+    compiled_dag.teardown()
 
 
 if __name__ == "__main__":

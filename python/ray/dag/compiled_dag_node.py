@@ -37,8 +37,8 @@ from ray.util.annotations import DeveloperAPI
 
 from ray.experimental.channel.shared_memory_channel import (
     SharedMemoryType,
-    TorchTensorType,
 )
+from ray.experimental.channel.torch_tensor_type import TorchTensorType
 
 from ray.experimental.channel.torch_tensor_nccl_channel import (
     _init_nccl_group,
@@ -451,7 +451,9 @@ class ExecutableTask:
             for type_hint in self.input_type_hints:
                 if type_hint.requires_nccl():
                     nccl_group_id = _get_nccl_group_id(type_hint)
-                    nccl_group = ChannelContext.get_current().nccl_groups.get(nccl_group_id)
+                    nccl_group = ChannelContext.get_current().nccl_groups.get(
+                        nccl_group_id
+                    )
                     assert nccl_group is not None
                     if not isinstance(self._recv_stream, nullcontext):
                         assert self._recv_stream == nccl_group.recv_stream, (
@@ -1096,7 +1098,9 @@ class CompiledDAG:
                     "Expected P2P actor handles to be a subset of the custom NCCL group"
                 )
             self._nccl_group_id_p2p = _init_nccl_group(
-                nccl_actors_p2p, self._custom_nccl_group_p2p, self._overlap_gpu_communication
+                nccl_actors_p2p,
+                self._custom_nccl_group_p2p,
+                self._overlap_gpu_communication,
             )
             custom_nccl_group_to_id[
                 self._custom_nccl_group_p2p
@@ -1126,7 +1130,9 @@ class CompiledDAG:
                 self._nccl_group_id_p2p = actors_to_nccl_group_id[actors]
             else:
                 self._nccl_group_id_p2p = _init_nccl_group(
-                    nccl_actors_p2p, self._custom_nccl_group_p2p, self._overlap_gpu_communication
+                    nccl_actors_p2p,
+                    self._custom_nccl_group_p2p,
+                    self._overlap_gpu_communication,
                 )
                 actors_to_nccl_group_id[actors] = self._nccl_group_id_p2p
 
@@ -1624,8 +1630,8 @@ class CompiledDAG:
             for exec_task_idx, exec_task in enumerate(executable_tasks):
                 # Divide a DAG node into three _DAGOperationGraphNodes: READ, COMPUTE,
                 # and WRITE. Each _DAGOperationGraphNode has a _DAGNodeOperation.
-                task_index = exec_task.task_idx
-                dag_node = self.idx_to_task[task_index].dag_node
+                task_idx = exec_task.task_idx
+                dag_node = self.idx_to_task[task_idx].dag_node
                 method_name = exec_task.method_name
                 actor_handle = dag_node._get_actor_handle()
                 requires_nccl = dag_node.type_hint.requires_nccl()
@@ -1639,7 +1645,7 @@ class CompiledDAG:
                     _DAGNodeOperation(
                         exec_task_idx, _DAGNodeOperationType.READ, method_name
                     ),
-                    task_index,
+                    task_idx,
                     actor_handle,
                     upstream_requires_nccl,
                 )
@@ -1647,7 +1653,7 @@ class CompiledDAG:
                     _DAGNodeOperation(
                         exec_task_idx, _DAGNodeOperationType.COMPUTE, method_name
                     ),
-                    task_index,
+                    task_idx,
                     actor_handle,
                     False,
                 )
@@ -1655,7 +1661,7 @@ class CompiledDAG:
                     _DAGNodeOperation(
                         exec_task_idx, _DAGNodeOperationType.WRITE, method_name
                     ),
-                    task_index,
+                    task_idx,
                     actor_handle,
                     requires_nccl,
                 )
@@ -1714,22 +1720,22 @@ class CompiledDAG:
         # Step 2: Generate an execution schedule for each actor using topological sort
         actor_to_execution_schedule = _generate_actor_to_execution_schedule(graph)
 
-        # Step 3: Optimize the execution schedule if configured
-        if self._optimize_execution_schedule:
+        # Step 3: Overlap GPU communication for the execution schedule if configured
+        if self._overlap_gpu_communication:
             actor_to_overlapped_schedule = _generate_overlapped_execution_schedule(
                 actor_to_execution_schedule
             )
+
+            from ray.dag.constants import RAY_ADAG_VISUALIZE_SCHEDULE
+
+            if RAY_ADAG_VISUALIZE_SCHEDULE:
+                _visualize_execution_schedule(
+                    actor_to_execution_schedule, actor_to_overlapped_schedule, graph
+                )
+            return _extract_execution_schedule(actor_to_overlapped_schedule)
         else:
             actor_to_overlapped_schedule = None
-
-        from ray.dag.constants import RAY_ADAG_VISUALIZE_SCHEDULE
-
-        if RAY_ADAG_VISUALIZE_SCHEDULE:
-            _visualize_execution_schedule(
-                actor_to_execution_schedule, actor_to_overlapped_schedule, graph
-            )
-
-        return _extract_execution_schedule(actor_to_overlapped_schedule)
+            return _extract_execution_schedule(actor_to_execution_schedule)
 
     def _detect_deadlock(self) -> bool:
         """

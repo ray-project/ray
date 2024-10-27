@@ -1,7 +1,6 @@
 from functools import total_ordering
 from enum import Enum
 from typing import Set, Tuple, List, Dict, Optional
-from typing import Optional, Tuple, List, Dict
 import copy
 import logging
 import ray

@@ -10,10 +10,10 @@ import ray
 import ray.cluster_utils
 import ray.experimental.collective as collective
 import torch
+import time
 from ray.air._internal import torch_utils
-from ray.dag import InputNode, MultiOutputNode
+from ray.dag import InputNode
 from ray.exceptions import RayChannelError
-from python.ray.dag.compiled_dag_node import GPUFuture
 from ray.dag.output_node import MultiOutputNode
 from ray.experimental.channel.gpu_communicator import (
     GPUCommunicator,
@@ -227,55 +227,55 @@ def test_torch_tensor_nccl(ray_start_regular):
         assert ray.get(ref) == (i, shape, dtype)
 
 
-@pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
-def test_torch_tensor_nccl_overlap(ray_start_regular, monkeypatch):
-    if not USE_GPU:
-        pytest.skip("NCCL tests require GPUs")
+# @pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
+# def test_torch_tensor_nccl_overlap(ray_start_regular, monkeypatch):
+#     if not USE_GPU:
+#         pytest.skip("NCCL tests require GPUs")
 
-    assert (
-        sum(node["Resources"].get("GPU", 0) for node in ray.nodes()) >= 3
-    ), "This test requires at least 3 GPUs"
+#     assert (
+#         sum(node["Resources"].get("GPU", 0) for node in ray.nodes()) >= 3
+#     ), "This test requires at least 3 GPUs"
 
-    original_gpu_future_init = GPUFuture.__init__
-    def mock_gpu_future_init(self, *args, **kwargs):
-        init_ts = time.monotonic()
-        original_gpu_future_init(self, *args, **kwargs)
+#     original_gpu_future_init = GPUFuture.__init__
+#     def mock_gpu_future_init(self, *args, **kwargs):
+#         init_ts = time.monotonic()
+#         original_gpu_future_init(self, *args, **kwargs)
 
-    monkeypatch.setattr(GPUFuture, "__init__", mock_gpu_future_init)
+#     monkeypatch.setattr(GPUFuture, "__init__", mock_gpu_future_init)
 
-    worker_cls = TorchTensorWorker.options(num_cpus=0, num_gpus=1)
-    sender1 = worker_cls.remote()
-    sender2 = worker_cls.remote()
-    receiver = worker_cls.remote()
+#     worker_cls = TorchTensorWorker.options(num_cpus=0, num_gpus=1)
+#     sender1 = worker_cls.remote()
+#     sender2 = worker_cls.remote()
+#     receiver = worker_cls.remote()
 
-    shape = (10000, )
-    dtype = torch.float16
+#     shape = (10000, )
+#     dtype = torch.float16
 
-    with InputNode() as inp:
-        branches = [sender.send.bind(shape, dtype, inp) for sender in senders]
-        branches = [
-            branch.with_type_hint(
-                TorchTensorType(shape, dtype, transport="nccl", _direct_return=True)
-            )
-            for branch in branches
-        ]
-        branches = [receiver.recv_and_matmul.bind(branch) for branch in branches]
-        dag = MultiOutputNode(branches)
+#     with InputNode() as inp:
+#         branches = [sender.send.bind(shape, dtype, inp) for sender in senders]
+#         branches = [
+#             branch.with_type_hint(
+#                 TorchTensorType(shape, dtype, transport="nccl", _direct_return=True)
+#             )
+#             for branch in branches
+#         ]
+#         branches = [receiver.recv_and_matmul.bind(branch) for branch in branches]
+#         dag = MultiOutputNode(branches)
 
-    # Test normal execution.
-    compiled_dag = dag.experimental_compile(
-        _overlap_gpu_communication=overlap_gpu_communication
-    )
+#     # Test normal execution.
+#     compiled_dag = dag.experimental_compile(
+#         _overlap_gpu_communication=overlap_gpu_communication
+#     )
 
-    start = time.monotonic()
-    for i in range(5):
-        ref = compiled_dag.execute(i)
-        result = ray.get(ref)
-        assert result == [(i, shape, dtype)] * num_senders
-    duration = time.monotonic() - start
-    print(f"{overlap_gpu_communication=}, {duration=}")
+#     start = time.monotonic()
+#     for i in range(5):
+#         ref = compiled_dag.execute(i)
+#         result = ray.get(ref)
+#         assert result == [(i, shape, dtype)] * num_senders
+#     duration = time.monotonic() - start
+#     print(f"{overlap_gpu_communication=}, {duration=}")
 
-    compiled_dag.teardown()
+#     compiled_dag.teardown()
 
 
 @pytest.mark.parametrize(
@@ -967,7 +967,10 @@ def test_torch_tensor_nccl_direct_return_error(ray_start_regular):
 
 @pytest.mark.parametrize("static_shape", [False, True])
 @pytest.mark.parametrize("direct_return", [False, True])
-def test_torch_tensor_exceptions(ray_start_regular, static_shape, direct_return):
+@pytest.mark.parametrize("overlap_gpu_communication", [False, True])
+def test_torch_tensor_exceptions(
+    ray_start_regular, static_shape, direct_return, overlap_gpu_communication
+):
     """
     Test exceptions being thrown by a NCCL sending task.
     """

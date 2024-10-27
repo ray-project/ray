@@ -74,6 +74,7 @@ def set_ready_collective_idxs(
             _DAGNodeOperationType.COMPUTE
         ].ready_collective_idxs = ready_collective_idxs
 
+
 def _generate_and_extract_execution_schedule(graph):
     return _extract_execution_schedule(_generate_actor_to_execution_schedule(graph))
 
