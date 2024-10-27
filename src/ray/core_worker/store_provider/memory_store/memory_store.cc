@@ -341,7 +341,6 @@ Status CoreWorkerMemoryStore::GetImpl(const std::vector<ObjectID> &object_ids,
   // Only send block/unblock IPCs for non-actor tasks on the main thread.
   bool should_notify_raylet =
       (raylet_client_ != nullptr && ctx.ShouldReleaseResourcesOnBlockingCalls());
-
   // Wait for remaining objects (or timeout).
   if (should_notify_raylet) {
     RAY_CHECK_OK(raylet_client_->NotifyDirectCallTaskBlocked(/*release_resources=*/true));
@@ -353,6 +352,7 @@ Status CoreWorkerMemoryStore::GetImpl(const std::vector<ObjectID> &object_ids,
   int64_t remaining_timeout = timeout_ms;
   int64_t iteration_timeout =
       std::min(timeout_ms, RayConfig::instance().get_timeout_milliseconds());
+
   if (timeout_ms == -1) {
     iteration_timeout = RayConfig::instance().get_timeout_milliseconds();
   }
