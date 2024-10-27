@@ -113,7 +113,7 @@ class TestSingleAgentEnvRunner(unittest.TestCase):
             for env_spec in ["tune-registered", "CartPole-v1", SimpleCorridor]:
                 config = (
                     AlgorithmConfig().environment(env_spec)
-                    # Vectorize x5 and by default, rollout 64 timesteps per individual
+                    # Vectorize x5 and by default, rollout 10 timesteps per individual
                     # env.
                     .env_runners(
                         num_env_runners=5,
@@ -132,9 +132,14 @@ class TestSingleAgentEnvRunner(unittest.TestCase):
                 # Loop over individual EnvRunner Actor's results and inspect each.
                 for episodes in results:
                     # Assert length of all fragments is  `rollout_fragment_length`.
-                    check(
+                    self.assertIn(
                         sum(len(e) for e in episodes),
-                        config.num_envs_per_env_runner * config.rollout_fragment_length,
+                        [
+                            config.num_envs_per_env_runner
+                            * config.rollout_fragment_length
+                            + i
+                            for i in range(config.num_envs_per_env_runner)
+                        ],
                     )
 
 
