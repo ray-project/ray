@@ -12,7 +12,6 @@ from .video_reader import VideoReader
 from .webdataset_reader import WebDatasetReader
 
 __all__ = [
-    "AudioReader",
     "AvroReader",
     "BinaryReader",
     "CSVReader",
@@ -22,6 +21,5 @@ __all__ = [
     "NumpyReader",
     "ParquetReader",
     "TextReader",
-    "VideoReader",
     "WebDatasetReader",
 ]
