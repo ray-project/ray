@@ -66,6 +66,9 @@ class ConnectorPipelineV2(ConnectorV2):
             if isinstance(conn, ConnectorV2):
                 self.connectors.append(conn)
             # If, we have a class with `args` and `kwargs`, build the instance.
+            # Note that this way of constructing a pipeline should only be
+            # used internally when restoring the pipeline state from a
+            # checkpoint.
             elif isinstance(conn, tuple) and len(conn) == 3:
                 self.connectors.append(conn[0](*conn[1], **conn[2]))
 
