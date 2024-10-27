@@ -30,6 +30,10 @@ from ray.experimental.channel.torch_tensor_type import TorchTensorType
 
 logger = logging.getLogger(__name__)
 
+try:
+    import pydot
+except Exception:
+    logging.info("pydot is not installed, visualization tests will be skiped")
 
 pytestmark = [
     pytest.mark.skipif(
@@ -1561,7 +1565,8 @@ def test_asyncio_out_of_order_get(ray_start_regular, max_queue_size):
 
 
 @pytest.mark.parametrize("max_queue_size", [None, 2])
-def test_asyncio_multi_output(ray_start_regular, max_queue_size):
+@pytest.mark.parametrize("gather_futs", [True, False])
+def test_asyncio_multi_output(ray_start_regular, max_queue_size, gather_futs):
     a = Actor.remote(0)
     b = Actor.remote(0)
     with InputNode() as i:
@@ -1578,11 +1583,17 @@ def test_asyncio_multi_output(ray_start_regular, max_queue_size):
         # will succeed.
         val = np.ones(100) * i
         futs = await compiled_dag.execute_async(val)
-
         assert len(futs) == 2
-        for fut in futs:
-            result = await fut
-            assert (result == val).all()
+
+        if gather_futs:
+            results = await asyncio.gather(*futs)
+            assert len(results) == 2
+            for result in results:
+                assert (result == val).all()
+        else:
+            for fut in futs:
+                result = await fut
+                assert (result == val).all()
 
     loop.run_until_complete(asyncio.gather(*[main(i) for i in range(10)]))
 
@@ -2400,6 +2411,173 @@ def test_multi_arg_exception_async(shutdown_only):
 
     loop = get_or_create_event_loop()
     loop.run_until_complete(main())
+
+
+class TestVisualization:
+
+    """Tests for the visualize method of compiled DAGs."""
+
+    # TODO(zhilong): "pip intsall pydot"
+    # and "sudo apt-get install graphviz " to run test.
+    @pytest.fixture(autouse=True)
+    def skip_if_pydot_graphviz_not_available(self):
+        # Skip the test if pydot or graphviz is not available
+        pytest.importorskip("pydot")
+        pytest.importorskip("graphviz")
+
+    def test_visualize_basic(self, ray_start_regular):
+        """
+        Expect output or dot_source:
+            MultiOutputNode" fillcolor=yellow shape=rectangle style=filled]
+                0 -> 1 [label=SharedMemoryType]
+                1 -> 2 [label=SharedMemoryType]
+        """
+
+        @ray.remote
+        class Actor:
+            def echo(self, x):
+                return x
+
+        actor = Actor.remote()
+
+        with InputNode() as i:
+            dag = actor.echo.bind(i)
+
+        compiled_dag = dag.experimental_compile()
+
+        # Call the visualize method
+        dot_source = compiled_dag.visualize(return_dot=True)
+
+        graphs = pydot.graph_from_dot_data(dot_source)
+        graph = graphs[0]
+
+        node_names = {node.get_name() for node in graph.get_nodes()}
+        edge_pairs = {
+            (edge.get_source(), edge.get_destination()) for edge in graph.get_edges()
+        }
+
+        expected_nodes = {"0", "1", "2"}
+        assert expected_nodes.issubset(
+            node_names
+        ), f"Expected nodes {expected_nodes} not found."
+
+        expected_edges = {("0", "1"), ("1", "2")}
+        assert expected_edges.issubset(
+            edge_pairs
+        ), f"Expected edges {expected_edges} not found."
+
+        compiled_dag.teardown()
+
+    def test_visualize_multi_return(self, ray_start_regular):
+        """
+        Expect output or dot_source:
+            MultiOutputNode" fillcolor=yellow shape=rectangle style=filled]
+                0 -> 1 [label=SharedMemoryType]
+                1 -> 2 [label=SharedMemoryType]
+                1 -> 3 [label=SharedMemoryType]
+                2 -> 4 [label=SharedMemoryType]
+                3 -> 4 [label=SharedMemoryType]
+        """
+
+        @ray.remote
+        class Actor:
+            @ray.method(num_returns=2)
+            def return_two(self, x):
+                return x, x + 1
+
+        actor = Actor.remote()
+
+        with InputNode() as i:
+            o1, o2 = actor.return_two.bind(i)
+            dag = MultiOutputNode([o1, o2])
+
+        compiled_dag = dag.experimental_compile()
+
+        # Get the DOT source
+        dot_source = compiled_dag.visualize(return_dot=True)
+
+        graphs = pydot.graph_from_dot_data(dot_source)
+        graph = graphs[0]
+
+        node_names = {node.get_name() for node in graph.get_nodes()}
+        edge_pairs = {
+            (edge.get_source(), edge.get_destination()) for edge in graph.get_edges()
+        }
+
+        expected_nodes = {"0", "1", "2", "3", "4"}
+        assert expected_nodes.issubset(
+            node_names
+        ), f"Expected nodes {expected_nodes} not found."
+
+        expected_edges = {("0", "1"), ("1", "2"), ("1", "3"), ("2", "4"), ("3", "4")}
+        assert expected_edges.issubset(
+            edge_pairs
+        ), f"Expected edges {expected_edges} not found."
+
+        compiled_dag.teardown()
+
+    def test_visualize_multi_return2(self, ray_start_regular):
+        """
+        Expect output or dot_source:
+            MultiOutputNode" fillcolor=yellow shape=rectangle style=filled]
+                0 -> 1 [label=SharedMemoryType]
+                1 -> 2 [label=SharedMemoryType]
+                1 -> 3 [label=SharedMemoryType]
+                2 -> 4 [label=SharedMemoryType]
+                3 -> 5 [label=SharedMemoryType]
+                4 -> 6 [label=SharedMemoryType]
+                5 -> 6 [label=SharedMemoryType]
+        """
+
+        @ray.remote
+        class Actor:
+            @ray.method(num_returns=2)
+            def return_two(self, x):
+                return x, x + 1
+
+            def echo(self, x):
+                return x
+
+        a = Actor.remote()
+        b = Actor.remote()
+        with InputNode() as i:
+            o1, o2 = a.return_two.bind(i)
+            o3 = b.echo.bind(o1)
+            o4 = b.echo.bind(o2)
+            dag = MultiOutputNode([o3, o4])
+
+        compiled_dag = dag.experimental_compile()
+
+        # Get the DOT source
+        dot_source = compiled_dag.visualize(return_dot=True)
+
+        graphs = pydot.graph_from_dot_data(dot_source)
+        graph = graphs[0]
+
+        node_names = {node.get_name() for node in graph.get_nodes()}
+        edge_pairs = {
+            (edge.get_source(), edge.get_destination()) for edge in graph.get_edges()
+        }
+
+        expected_nodes = {"0", "1", "2", "3", "4", "5", "6"}
+        assert expected_nodes.issubset(
+            node_names
+        ), f"Expected nodes {expected_nodes} not found."
+
+        expected_edges = {
+            ("0", "1"),
+            ("1", "2"),
+            ("1", "3"),
+            ("2", "4"),
+            ("3", "5"),
+            ("4", "6"),
+            ("5", "6"),
+        }
+        assert expected_edges.issubset(
+            edge_pairs
+        ), f"Expected edges {expected_edges} not found."
+
+        compiled_dag.teardown()
 
 
 if __name__ == "__main__":

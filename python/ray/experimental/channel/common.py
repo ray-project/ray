@@ -1,6 +1,5 @@
 import asyncio
 import concurrent
-import copy
 import sys
 import threading
 import time
@@ -53,9 +52,6 @@ class RayDAGArgs(NamedTuple):
 
 @PublicAPI(stability="alpha")
 class ChannelOutputType:
-    def __init__(self):
-        self._contains_type: Optional["ChannelOutputType"] = None
-
     def register_custom_serializer(self) -> None:
         """
         Register any custom serializers needed to pass data of this type. This
@@ -69,41 +65,7 @@ class ChannelOutputType:
         default device. Instead, these should be extracted from the
         worker-local _SerializationContext.
         """
-        if self._contains_type is not None:
-            self._contains_type.register_custom_serializer()
-
-    @property
-    def is_direct_return(self) -> bool:
-        """
-        Some channels may contain other values that should be sent via a
-        different channel. This returns whether the value is a direct return or
-        if it is "nested" inside a different channel.
-        """
-        return True
-
-    @property
-    def contains_type(self) -> "ChannelOutputType":
-        """
-        Some channel values may contain an object that should be sent through a
-        different channel. For example, a Python object containing a GPU tensor
-        may be sent over two channels, one to serialize the Python data on CPU
-        memory and another to transfer the GPU data over NCCL. This function
-        returns the type of this nested value, if any.
-        """
-        return self._contains_type
-
-    def set_contains_type(self, typ: "ChannelOutputType") -> None:
-        """
-        Mark that values sent on this channel may contain objects that should
-        be sent through a different channel.
-        """
-        from ray.experimental.channel.torch_tensor_type import TorchTensorType
-
-        if typ is not None:
-            assert isinstance(
-                typ, TorchTensorType
-            ), "Contained type must be of type TorchTensorType"
-        self._contains_type = copy.deepcopy(typ)
+        pass
 
     def create_channel(
         self,
@@ -128,10 +90,6 @@ class ChannelOutputType:
         raise NotImplementedError
 
     def requires_nccl(self) -> bool:
-        if self._contains_type is not None:
-            if self._contains_type.requires_nccl():
-                return True
-
         # By default, channels do not require NCCL.
         return False
 
