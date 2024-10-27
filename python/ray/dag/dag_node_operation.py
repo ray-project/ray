@@ -70,6 +70,12 @@ class _DAGOperationGraphNode:
         self.task_idx = task_idx
         self.actor_handle = actor_handle
         self.requires_nccl = requires_nccl
+        self.requires_nccl_write = (
+            self.operation.type == _DAGNodeOperationType.WRITE and self.requires_nccl
+        )
+        self.requires_nccl_collective = (
+            self.operation.type == _DAGNodeOperationType.COMPUTE and self.requires_nccl
+        )
         # The in_edges and out_edges are sets of tuples. Each tuple contains
         # an integer `task_idx`, which can be used to index into `idx_to_task`
         # to get the corresponding task, and a `_DAGNodeOperationType`, which can
@@ -114,10 +120,10 @@ class _DAGOperationGraphNode:
         if self.actor_handle == other.actor_handle:
             # When both nodes belong to the same actor, use the default comparison.
             return compare(self, other)
-        elif self.is_nccl_op != other.is_nccl_op:
+        elif self.requires_nccl_op != other.requires_nccl_op:
             # When one node is a NCCL operation and the other is not, prioritize
             # the non-NCCL operation.
-            return not self.is_nccl_op
+            return not self.requires_nccl_op
         else:
             # When either both nodes are NCCL operations or both nodes are not
             # NCCL operations, use the default comparison.
@@ -160,24 +166,8 @@ class _DAGOperationGraphNode:
         return self.operation.type == _DAGNodeOperationType.READ
 
     @property
-    def is_nccl_collective(self) -> bool:
-        """
-        A node is a NCCL collective if it is a compute node and requires NCCL.
-        """
-        return (
-            self.operation.type == _DAGNodeOperationType.COMPUTE and self.requires_nccl
-        )
-
-    @property
-    def is_nccl_write(self) -> bool:
-        """
-        A node is a NCCL write if it is a write node and requires NCCL.
-        """
-        return self.operation.type == _DAGNodeOperationType.WRITE and self.requires_nccl
-
-    @property
-    def is_nccl_op(self) -> bool:
-        return self.is_nccl_collective or self.is_nccl_write
+    def requires_nccl_op(self) -> bool:
+        return self.requires_nccl_write or self.requires_nccl_collective
 
 
 def _add_edge(from_node: _DAGOperationGraphNode, to_node: _DAGOperationGraphNode):
@@ -196,7 +186,7 @@ def _push_candidate_node_if_ready(
 ) -> None:
     # Collective operations are ready when all the collective nodes have zero
     # in-degrees. Only one node per collective will be added as ready.
-    if node.is_nccl_collective:
+    if node.requires_nccl_collective:
         for collective_node_metadata in node.collective_idxs:
             task_idx, op_type = collective_node_metadata
             collective_node = graph[task_idx][op_type]
@@ -262,10 +252,10 @@ def _select_next_nodes(
         heapq.heappop(actor_to_candidates[top_priority_node.actor_handle._actor_id])
     ]
 
-    if not top_priority_node.is_nccl_op:
+    if not top_priority_node.requires_nccl_op:
         # A non-NCCL operation node is picked.
         assert len(next_nodes) == 1
-    elif top_priority_node.is_nccl_write:
+    elif top_priority_node.requires_nccl_write:
         # a NCCL write node is picked. NCCL is a blocking operation, so we need
         # to pick all the corresponding NCCL read nodes to avoid a deadlock.
         for downstream_node_metadata in top_priority_node.out_edges:
@@ -274,14 +264,14 @@ def _select_next_nodes(
             assert downstream_node.is_read
             next_nodes.append(downstream_node)
         assert len(next_nodes) == 1 + len(top_priority_node.out_edges)
-    elif top_priority_node.is_nccl_collective:
+    elif top_priority_node.requires_nccl_collective:
         # a NCCL collective node is picked. NCCL is a blocking operation, so we need
         # to pick all the corresponding NCCL collective nodes in its collective
         # operation to avoid a deadlock.
         for collective_node_metadata in top_priority_node.collective_idxs:
             task_idx, op_type = collective_node_metadata
             collective_node = graph[task_idx][op_type]
-            assert collective_node.is_nccl_collective and collective_node.is_ready
+            assert collective_node.requires_nccl_collective and collective_node.is_ready
             if collective_node != top_priority_node:
                 next_nodes.append(collective_node)
         assert len(next_nodes) == len(top_priority_node.collective_idxs)

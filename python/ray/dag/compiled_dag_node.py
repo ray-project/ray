@@ -501,6 +501,16 @@ class ExecutableTask:
             exit = True
         return exit
 
+    # [TODO]
+    def _compute_aio(self, class_handle) -> bool:
+        if self._read():
+            return True
+        if self._compute(class_handle):
+            return True
+        if self._write():
+            return True
+        return False
+
     def exec_operation(
         self,
         class_handle,
@@ -520,12 +530,16 @@ class ExecutableTask:
         Returns:
             True if the next operation should not be executed; otherwise, False.
         """
+        """[FT]
         if op_type == _DAGNodeOperationType.READ:
             return self._read()
         elif op_type == _DAGNodeOperationType.COMPUTE:
             return self._compute(class_handle)
         elif op_type == _DAGNodeOperationType.WRITE:
             return self._write()
+        """
+        if op_type == _DAGNodeOperationType.COMPUTE:
+            return self._compute_aio(class_handle)
 
 
 @dataclass
@@ -1519,6 +1533,7 @@ class CompiledDAG:
                 actor_handle = dag_node._get_actor_handle()
                 requires_nccl = dag_node.type_hint.requires_nccl()
 
+                # [TODO] Remove `read` and `write`.
                 read_node = _DAGOperationGraphNode(
                     _DAGNodeOperation(exec_task_idx, _DAGNodeOperationType.READ),
                     task_idx,
