@@ -71,7 +71,9 @@ def plan_all_to_all_op(
                 "debug_limit_shuffle_execution_to_num_blocks", None
             )
         )
-        fn = generate_sort_fn(op._sort_key, debug_limit_shuffle_execution_to_num_blocks)
+        fn = generate_sort_fn(
+            op._sort_key, op._batch_format, debug_limit_shuffle_execution_to_num_blocks
+        )
         target_max_block_size = DataContext.get_current().target_shuffle_max_block_size
     elif isinstance(op, Aggregate):
         debug_limit_shuffle_execution_to_num_blocks = (

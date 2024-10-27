@@ -195,6 +195,7 @@ class GroupedData:
             The return type is determined by the return type of ``fn``, and the return
             value is combined from results of all groups.
         """
+        self._dataset._batch_format = batch_format
         # Globally sort records by key.
         # Note that sort() will ensure that records of the same key partitioned
         # into the same block.

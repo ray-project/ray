@@ -229,6 +229,9 @@ class Dataset:
         self._current_executor: Optional["Executor"] = None
         self._write_ds = None
 
+        # Handle sort on empty blocks and still carry the correct batch_format
+        self._batch_format = "default"
+
         self._set_uuid(StatsManager.get_dataset_id_from_stats_actor())
 
     @staticmethod
@@ -2397,8 +2400,7 @@ class Dataset:
         sort_key = SortKey(key, descending, boundaries)
         plan = self._plan.copy()
         op = Sort(
-            self._logical_plan.dag,
-            sort_key=sort_key,
+            self._logical_plan.dag, sort_key=sort_key, batch_format=self._batch_format
         )
         logical_plan = LogicalPlan(op, self.context)
         return Dataset(plan, logical_plan)

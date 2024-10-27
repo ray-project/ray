@@ -1172,6 +1172,30 @@ def test_sort_validate_keys(ray_start_regular_shared):
         ds_named.sort(invalid_col_name).take_all()
 
 
+def test_sort_on_group_data(ray_start_regular_shared):
+    ds = ray.data.from_items(
+        [
+            {"col1": 1, "col2": 2},
+            {"col1": 1, "col2": 4},
+            {"col1": 5, "col2": 6},
+            {"col1": 7, "col2": 8},
+        ]
+    )
+    df_expected = pd.DataFrame(
+        {
+            "col1": [7, 5, 1, 1],
+            "col2": [8, 6, 4, 2],
+        }
+    )
+    df_actual = (
+        ds.groupby("col1")
+        .map_groups(lambda g: g, batch_format="pandas")
+        .sort("col2", descending=True)
+        .to_pandas()
+    )
+    pd.testing.assert_frame_equal(df_actual, df_expected)
+
+
 def test_aggregate_operator(ray_start_regular_shared):
     ctx = DataContext.get_current()
 

@@ -120,6 +120,7 @@ class Sort(AbstractAllToAll):
         self,
         input_op: LogicalOperator,
         sort_key: SortKey,
+        batch_format: Optional[str] = "default",
     ):
         super().__init__(
             "Sort",
@@ -131,6 +132,7 @@ class Sort(AbstractAllToAll):
             ],
         )
         self._sort_key = sort_key
+        self._batch_format = batch_format
 
     def aggregate_output_metadata(self) -> BlockMetadata:
         assert len(self._input_dependencies) == 1, len(self._input_dependencies)
