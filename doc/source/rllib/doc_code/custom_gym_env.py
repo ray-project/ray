@@ -29,7 +29,14 @@ class SimpleCorridor(gym.Env):
 
 ray.init()
 
-config = PPOConfig().environment(SimpleCorridor, env_config={"corridor_length": 5})
+config = (
+    PPOConfig()
+    .api_stack(
+        enable_rl_module_and_learner=True,
+        enable_env_runner_and_connector_v2=True,
+    )
+    .environment(SimpleCorridor, env_config={"corridor_length": 5})
+)
 algo = config.build()
 
 for _ in range(3):

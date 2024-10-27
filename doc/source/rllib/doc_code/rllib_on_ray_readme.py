@@ -55,9 +55,14 @@ class SimpleCorridor(gym.Env):
 
 # Create an RLlib Algorithm instance from a PPOConfig object.
 config = (
-    PPOConfig().environment(
+    PPOConfig()
+    .api_stack(
+        enable_rl_module_and_learner=True,
+        enable_env_runner_and_connector_v2=True,
+    )
+    .environment(
         # Env class to use (here: our gym.Env sub-class from above).
-        env=SimpleCorridor,
+        SimpleCorridor,
         # Config dict to be passed to our custom env's constructor.
         # Use corridor with 20 fields (including S and G).
         env_config={"corridor_length": 28},
