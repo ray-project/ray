@@ -23,7 +23,7 @@ public class ManagePythonDeployment {
             .setDeploymentDef("counter.Counter")
             .setNumReplicas(1)
             .bind("1");
-    DeploymentHandle handle = Serve.run(deployment);
+    DeploymentHandle handle = Serve.run(deployment).get();
 
     System.out.println(handle.method("increase").remote("2").result());
   }
