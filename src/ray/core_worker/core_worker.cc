@@ -637,6 +637,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
         [this] {
           RAY_LOG(INFO) << "Event stats:\n\n"
                         << io_service_.stats().StatsString() << "\n\n"
+                        << task_execution_service_.stats().StatsString() << "\n\n"
                         << "-----------------\n"
                         << "Task Event stats:\n"
                         << task_event_buffer_->DebugString() << "\n";
