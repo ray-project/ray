@@ -11,6 +11,7 @@ from ray.serve._private.cluster_node_info_cache import (
 from ray.serve._private.common import DeploymentID
 from ray.serve._private.constants import (
     RAY_SERVE_ENABLE_QUEUE_LENGTH_CACHE,
+    RAY_SERVE_ENABLE_STRICT_MAX_ONGOING_REQUESTS,
     RAY_SERVE_PROXY_PREFER_LOCAL_AZ_ROUTING,
 )
 from ray.serve._private.deployment_scheduler import (
@@ -23,7 +24,11 @@ from ray.serve._private.replica_scheduler import (
     PowerOfTwoChoicesReplicaScheduler,
 )
 from ray.serve._private.router import Router
-from ray.serve._private.utils import get_head_node_id, resolve_request_args
+from ray.serve._private.utils import (
+    get_head_node_id,
+    inside_ray_client_context,
+    resolve_request_args,
+)
 
 # NOTE: Please read carefully before changing!
 #
@@ -72,7 +77,8 @@ def create_router(
     event_loop: asyncio.BaseEventLoop,
     handle_options,
 ):
-    replica_wrapper_cls = ActorReplicaWrapper
+    is_inside_ray_client_context = inside_ray_client_context()
+
     replica_scheduler = PowerOfTwoChoicesReplicaScheduler(
         event_loop,
         deployment_id,
@@ -85,8 +91,11 @@ def create_router(
         if ray.get_runtime_context().get_actor_id()
         else None,
         availability_zone,
-        use_replica_queue_len_cache=RAY_SERVE_ENABLE_QUEUE_LENGTH_CACHE,
-        create_replica_wrapper_func=lambda r: replica_wrapper_cls(r),
+        # Streaming ObjectRefGenerators are not supported in Ray Client
+        use_replica_queue_len_cache=(
+            not is_inside_ray_client_context and RAY_SERVE_ENABLE_QUEUE_LENGTH_CACHE
+        ),
+        create_replica_wrapper_func=lambda r: ActorReplicaWrapper(r),
     )
 
     return Router(
@@ -97,6 +106,11 @@ def create_router(
         handle_source=handle_options._source,
         event_loop=event_loop,
         replica_scheduler=replica_scheduler,
+        # Streaming ObjectRefGenerators are not supported in Ray Client
+        enable_strict_max_ongoing_requests=(
+            not is_inside_ray_client_context
+            and RAY_SERVE_ENABLE_STRICT_MAX_ONGOING_REQUESTS
+        ),
         resolve_request_args_func=resolve_request_args,
     )
 

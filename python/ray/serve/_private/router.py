@@ -2,13 +2,11 @@ import asyncio
 import logging
 import threading
 import time
-from abc import ABC, abstractmethod
 from collections import defaultdict
 from contextlib import contextmanager
 from functools import partial
-from typing import Any, Callable, DefaultDict, Dict, List, Optional, Tuple, Union
+from typing import Any, Callable, DefaultDict, List, Optional, Tuple, Union
 
-import ray
 from ray.actor import ActorHandle
 from ray.exceptions import ActorDiedError, ActorUnavailableError, RayError
 from ray.serve._private.common import (
@@ -22,22 +20,13 @@ from ray.serve._private.config import DeploymentConfig
 from ray.serve._private.constants import (
     HANDLE_METRIC_PUSH_INTERVAL_S,
     RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE,
-    RAY_SERVE_ENABLE_QUEUE_LENGTH_CACHE,
-    RAY_SERVE_ENABLE_STRICT_MAX_ONGOING_REQUESTS,
     RAY_SERVE_HANDLE_AUTOSCALING_METRIC_RECORD_PERIOD_S,
-    RAY_SERVE_PROXY_PREFER_LOCAL_AZ_ROUTING,
     SERVE_LOGGER_NAME,
 )
 from ray.serve._private.long_poll import LongPollClient, LongPollNamespace
 from ray.serve._private.metrics_utils import InMemoryMetricsStore, MetricsPusher
 from ray.serve._private.replica_result import ReplicaResult
-from ray.serve._private.replica_scheduler import (
-    PendingRequest,
-    PowerOfTwoChoicesReplicaScheduler,
-    ReplicaScheduler,
-)
-from ray.serve._private.replica_scheduler.replica_wrapper import ActorReplicaWrapper
-from ray.serve._private.utils import inside_ray_client_context
+from ray.serve._private.replica_scheduler import PendingRequest, ReplicaScheduler
 from ray.serve.config import AutoscalingConfig
 from ray.serve.exceptions import BackPressureError
 from ray.util import metrics
@@ -328,8 +317,7 @@ class Router:
         handle_source: DeploymentHandleSource,
         event_loop: asyncio.BaseEventLoop,
         replica_scheduler: Optional[ReplicaScheduler],
-        enable_queue_len_cache: bool = RAY_SERVE_ENABLE_QUEUE_LENGTH_CACHE,
-        enable_strict_max_ongoing_requests: bool = RAY_SERVE_ENABLE_STRICT_MAX_ONGOING_REQUESTS,  # noqa: E501
+        enable_strict_max_ongoing_requests: bool,
         resolve_request_args_func: Callable = None,
     ):
         """Used to assign requests to downstream replicas for a deployment.
@@ -340,20 +328,13 @@ class Router:
 
         self._event_loop = event_loop
         self.deployment_id = deployment_id
-
-        if inside_ray_client_context():
-            # Streaming ObjectRefGenerators are not supported in Ray Client, so we need
-            # to override the behavior.
-            self._enable_queue_len_cache = False
-            self._enable_strict_max_ongoing_requests = False
-        else:
-            self._enable_queue_len_cache = enable_queue_len_cache
-            self._enable_strict_max_ongoing_requests = (
-                enable_strict_max_ongoing_requests
-            )
+        self._enable_strict_max_ongoing_requests = enable_strict_max_ongoing_requests
 
         self._replica_scheduler: ReplicaScheduler = replica_scheduler
-        self._resolve_request_args = resolve_request_args_func
+        self._resolve_request_args = resolve_request_args_func or (
+            lambda args, kwargs: (args, kwargs)
+        )
+
         # Flipped to `True` once the router has received a non-empty
         # replica set at least once.
         self.running_replicas_populated: bool = False
@@ -470,10 +451,9 @@ class Router:
                     replica_result,
                     queue_len_info,
                 ) = await replica.send_request_with_rejection(pr)
-                if self._enable_queue_len_cache:
-                    self._replica_scheduler.replica_queue_len_cache.update(
-                        replica.replica_id, queue_len_info.num_ongoing_requests
-                    )
+                self._replica_scheduler.on_new_queue_len_info(
+                    replica.replica_id, queue_len_info
+                )
                 if queue_len_info.accepted:
                     return replica_result, replica.replica_id
             except asyncio.CancelledError:
