@@ -10,7 +10,7 @@ from fastapi import APIRouter, FastAPI
 import ray
 from ray import cloudpickle
 from ray._private.serialization import pickle_dumps
-from ray.serve._private.build_app import BuiltApplication, build_app
+from ray.serve._private.build_app import build_app
 from ray.serve._private.config import (
     DeploymentConfig,
     ReplicaConfig,
@@ -27,7 +27,6 @@ from ray.serve._private.utils import (
     Default,
     ensure_serialization_context,
     extract_self_if_method_call,
-    get_random_string,
     validate_route_prefix,
 )
 from ray.serve.config import (
@@ -452,36 +451,11 @@ def _run(
             "`serve.run` expects an `Application` returned by `Deployment.bind()`."
         )
 
-    parameter_group = []
-    built_app: BuiltApplication = build_app(target, name=name)
-    for deployment in built_app.deployments:
-        is_ingress = deployment.name == built_app.ingress_deployment_name
-        if deployment.logging_config is None and logging_config:
-            deployment = deployment.options(logging_config=logging_config)
-
-        deployment_parameters = {
-            "name": deployment._name,
-            "replica_config": deployment._replica_config,
-            "deployment_config": deployment._deployment_config,
-            "version": deployment._version or get_random_string(),
-            "route_prefix": route_prefix if is_ingress else None,
-            "docs_path": deployment._docs_path,
-            "ingress": is_ingress,
-        }
-        parameter_group.append(deployment_parameters)
-
-    client.deploy_application(
-        name,
-        parameter_group,
-        _blocking=_blocking,
-    )
-
-    # The deployment state is not guaranteed to be created after
-    # deploy_application returns; the application state manager will
-    # need another reconcile iteration to create it.
-    client._wait_for_deployment_created(built_app.ingress_deployment_name, name)
-    return client.get_handle(
-        built_app.ingress_deployment_name, name, check_exists=False
+    return client.deploy_application(
+        build_app(target, name=name),
+        blocking=_blocking,
+        route_prefix=route_prefix,
+        logging_config=logging_config,
     )
 
 

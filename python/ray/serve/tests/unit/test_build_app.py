@@ -38,6 +38,7 @@ def _build_and_check(
     app_name: str = "default",
 ):
     built_app: BuiltApplication = build_app(app, name=app_name)
+    assert built_app.name == app_name
     assert built_app.ingress_deployment_name == expected_ingress_name
     assert len(built_app.deployments) == len(expected_deployments)
 
