@@ -360,7 +360,7 @@ class GenericProxy(ABC):
         return ResponseHandlerInfo(
             response_generator=response_generator,
             metadata=HandlerMetadata(
-                route_prefix=proxy_request.route_path,
+                route=proxy_request.route_path,
             ),
             should_record_access_log=False,
             should_increment_ongoing_requests=False,
@@ -387,7 +387,7 @@ class GenericProxy(ABC):
                     # Don't include the invalid route prefix because it can blow up our
                     # metrics' cardinality.
                     # See: https://github.com/ray-project/ray/issues/47999
-                    route_prefix="",
+                    route="",
                 ),
                 should_record_access_log=True,
                 should_increment_ongoing_requests=False,
@@ -432,7 +432,11 @@ class GenericProxy(ABC):
                 metadata=HandlerMetadata(
                     application_name=handle.deployment_id.app_name,
                     deployment_name=handle.deployment_id.name,
-                    route_prefix=route_prefix,
+                    route=(
+                        route_prefix
+                        if self.protocol == RequestProtocol.HTTP
+                        else handle.deployment_id.app_name
+                    ),
                 ),
                 should_record_access_log=True,
                 should_increment_ongoing_requests=True,
@@ -493,8 +497,8 @@ class GenericProxy(ABC):
         self.processing_latency_tracker.observe(
             latency_ms,
             tags={
-                "method": proxy_request.method,
                 "route": response_handler_info.metadata.route,
+                "method": proxy_request.method,
                 "application": response_handler_info.metadata.application_name,
                 "status_code": str(status.code),
             },
@@ -503,18 +507,18 @@ class GenericProxy(ABC):
             self.request_error_counter.inc(
                 tags={
                     "route": response_handler_info.metadata.route,
-                    "error_code": str(status.code),
                     "method": proxy_request.method,
                     "application": response_handler_info.metadata.application_name,
+                    "error_code": str(status.code),
                 }
             )
             self.deployment_request_error_counter.inc(
                 tags={
-                    "deployment": response_handler_info.metadata.deployment_name,
-                    "error_code": str(status.code),
-                    "method": proxy_request.method,
                     "route": response_handler_info.metadata.route,
+                    "method": proxy_request.method,
                     "application": response_handler_info.metadata.application_name,
+                    "error_code": str(status.code),
+                    "deployment": response_handler_info.metadata.deployment_name,
                 }
             )
 

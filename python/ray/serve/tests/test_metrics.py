@@ -493,7 +493,7 @@ def test_proxy_metrics_fields_not_found(serve_start_shutdown):
 
     num_requests = get_metric_dictionaries("serve_num_http_requests")
     assert len(num_requests) == 1
-    assert num_requests[0]["route"] == "/fake_route"
+    assert num_requests[0]["route"] == ""
     assert num_requests[0]["method"] == "GET"
     assert num_requests[0]["application"] == ""
     assert num_requests[0]["status_code"] == "404"
@@ -501,7 +501,7 @@ def test_proxy_metrics_fields_not_found(serve_start_shutdown):
 
     num_requests = get_metric_dictionaries("serve_num_grpc_requests")
     assert len(num_requests) == 1
-    assert num_requests[0]["route"] == fake_app_name
+    assert num_requests[0]["route"] == ""
     assert num_requests[0]["method"] == "/ray.serve.UserDefinedService/__call__"
     assert num_requests[0]["application"] == ""
     assert num_requests[0]["status_code"] == str(grpc.StatusCode.NOT_FOUND)
@@ -509,14 +509,14 @@ def test_proxy_metrics_fields_not_found(serve_start_shutdown):
 
     num_errors = get_metric_dictionaries("serve_num_http_error_requests")
     assert len(num_errors) == 1
-    assert num_errors[0]["route"] == "/fake_route"
+    assert num_errors[0]["route"] == ""
     assert num_errors[0]["error_code"] == "404"
     assert num_errors[0]["method"] == "GET"
     print("serve_num_http_error_requests working as expected.")
 
     num_errors = get_metric_dictionaries("serve_num_grpc_error_requests")
     assert len(num_errors) == 1
-    assert num_errors[0]["route"] == fake_app_name
+    assert num_errors[0]["route"] == ""
     assert num_errors[0]["error_code"] == str(grpc.StatusCode.NOT_FOUND)
     assert num_errors[0]["method"] == "/ray.serve.UserDefinedService/__call__"
     print("serve_num_grpc_error_requests working as expected.")

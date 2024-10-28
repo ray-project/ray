@@ -47,7 +47,7 @@ def _get_route_name(
             child_scope = {**scope, **child_scope}
             if isinstance(route, Mount) and route.routes:
                 child_route_name = _get_route_name(
-                    child_scope, route.routes, route_name
+                    child_scope, route.routes, route_name=route_name
                 )
                 if child_route_name is None:
                     route_name = None

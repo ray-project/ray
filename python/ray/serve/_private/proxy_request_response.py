@@ -190,7 +190,7 @@ ResponseGenerator = AsyncIterator[Union[Any, ResponseStatus]]
 class HandlerMetadata:
     application_name: str = ""
     deployment_name: str = ""
-    route_prefix: str = ""
+    route: str = ""
 
 
 @dataclass(frozen=True)
