@@ -485,7 +485,6 @@ class GenericProxy(ABC):
                 extra={"log_to_stderr": False, "serve_access_log": True},
             )
 
-        print("REQUEST COUNTER ROUTE:", response_handler_info.metadata.route)
         self.request_counter.inc(
             tags={
                 "route": response_handler_info.metadata.route,

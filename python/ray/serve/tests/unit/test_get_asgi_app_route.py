@@ -140,6 +140,27 @@ def test_mounted_app():
     )
 
 
+def test_root_path():
+    app = FastAPI(root_path="/some/root")
+
+    @app.get("/subpath")
+    def subpath():
+        pass
+
+    assert (
+        get_asgi_route_name(
+            app,
+            {
+                "type": "http",
+                "method": "GET",
+                "path": "/subpath",
+                "root_path": "/some/root",
+            },
+        )
+        == "/some/root/subpath"
+    )
+
+
 @pytest.mark.parametrize("redirect_slashes", [False, True])
 def test_redirect_slashes(redirect_slashes: bool):
     app = FastAPI(redirect_slashes=redirect_slashes)

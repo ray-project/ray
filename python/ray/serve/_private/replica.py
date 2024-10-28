@@ -360,7 +360,6 @@ class ReplicaActor:
             if matched_route is not None:
                 route = matched_route
 
-        print("CALCULATED ROUTE:", route)
         return route
 
     @contextmanager
