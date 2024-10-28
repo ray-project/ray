@@ -50,7 +50,7 @@ inline bool ConvertValue<bool>(const std::string &type_string, const std::string
 template <>
 inline std::vector<std::string> ConvertValue<std::vector<std::string>>(
     const std::string &type_string, const std::string &value) {
-  std::vector<std::string> split = absl::StrSplit(value, ",");
+  std::vector<std::string> split = absl::StrSplit(value, ',');
   for (auto &value : split) {
     boost::algorithm::trim(value);
   }
@@ -98,7 +98,9 @@ class RayConfig {
   RayConfig();
 
   template <typename T>
-  T ReadEnv(const std::string &name, const std::string &type_string, T default_value) {
+  T ReadEnv(const std::string &name,
+            const std::string &type_string,
+            const T &default_value) {
     auto value = std::getenv(name.c_str());
     if (value == nullptr) {
       return default_value;

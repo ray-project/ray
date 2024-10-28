@@ -53,7 +53,7 @@ When you start a single-node Ray Cluster on your laptop, access the dashboard wi
 
 .. note::
 
-    If you start Ray in a docker container, ``--dashboard-host`` is a required parameter. For example, ``ray start --head --dashboard-host=0.0.0.0``.  
+    If you start Ray in a docker container, ``--dashboard-host`` is a required parameter. For example, ``ray start --head --dashboard-host=0.0.0.0``.
 
 
 
@@ -235,9 +235,9 @@ Use the Actors view to see the logs for an Actor and which Job created the Actor
     <div style="position: relative; height: 0; overflow: hidden; max-width: 100%; height: auto;">
         <iframe width="560" height="315" src="https://www.youtube.com/embed/MChn6O1ecEQ" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe>
     </div>
-    
-The information for up to 1000 dead Actors is stored.
-Override this value with the `RAY_DASHBOARD_MAX_ACTORS_TO_CACHE` environment variable
+
+The information for up to 100000 dead Actors is stored.
+Override this value with the `RAY_maximum_gcs_destroyed_actor_cached_count` environment variable
 when starting Ray.
 
 Actor profiling
@@ -287,8 +287,8 @@ There is also a convenient button to open the Grafana UI from the dashboard. The
 Analyze the CPU and memory usage of Tasks and Actors
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-The :ref:`Metrics view <dash-metrics-view>` in the Dashboard provides a "per-component CPU/memory usage graph" that displays CPU and memory usage over time for each Task and Actor in the application (as well as system components). 
-You can identify Tasks and Actors that may be consuming more resources than expected and optimize the performance of the application. 
+The :ref:`Metrics view <dash-metrics-view>` in the Dashboard provides a "per-component CPU/memory usage graph" that displays CPU and memory usage over time for each Task and Actor in the application (as well as system components).
+You can identify Tasks and Actors that may be consuming more resources than expected and optimize the performance of the application.
 
 .. image:: https://raw.githubusercontent.com/ray-project/Images/master/docs/new-dashboard-v2/dashboard-pics/node_cpu_by_comp.png
     :align: center
@@ -311,7 +311,7 @@ Additionally, users can see a snapshot of hardware utilization from the :ref:`Cl
 View the resource utilization
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Ray requires users to specify the number of :ref:`resources <logical-resources>` their Tasks and Actors to use through arguments such as ``num_cpus``, ``num_gpus``, ``memory``, and ``resource``. 
+Ray requires users to specify the number of :ref:`resources <logical-resources>` their Tasks and Actors to use through arguments such as ``num_cpus``, ``num_gpus``, ``memory``, and ``resource``.
 These values are used for scheduling, but may not always match the actual resource utilization (physical resource utilization).
 
 - See the logical and physical resource utilization over time from the :ref:`Metrics view <dash-metrics-view>`.
@@ -337,7 +337,7 @@ Logs view
     <div style="position: relative; height: 0; overflow: hidden; max-width: 100%; height: auto;">
         <iframe width="560" height="315" src="https://www.youtube.com/embed/8V187F2DsN0" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe>
     </div>
- 
+
 The Logs view lists the Ray logs in your Cluster. It is organized by node and log file name. Many log links in the other pages link to this view and filter the list so the relevant logs appear.
 
 To understand the logging structure of Ray, see :ref:`logging directory and file structure <logging-directory-structure>`.
