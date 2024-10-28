@@ -215,7 +215,9 @@ class FileBasedDatasource(Datasource):
 
                 with _open_file_with_retry(
                     read_path,
-                    lambda: open_input_source(fs, read_path, **open_stream_args),
+                    lambda read_path=read_path: open_input_source(
+                        fs, read_path, **open_stream_args
+                    ),
                 ) as f:
                     for block in read_stream(f, read_path):
                         if partitions:
@@ -259,9 +261,10 @@ class FileBasedDatasource(Datasource):
         parallelism = min(parallelism, len(paths))
 
         read_tasks = []
-        for read_paths, file_sizes in zip(
-            np.array_split(paths, parallelism), np.array_split(file_sizes, parallelism)
-        ):
+        split_paths = np.array_split(paths, parallelism)
+        split_file_sizes = np.array_split(file_sizes, parallelism)
+
+        for read_paths, file_sizes in zip(split_paths, split_file_sizes):
             if len(read_paths) <= 0:
                 continue
 
