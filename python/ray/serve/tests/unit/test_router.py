@@ -196,9 +196,6 @@ def setup_router(request) -> Tuple[Router, FakeReplicaScheduler]:
     if not hasattr(request, "param"):
         request.param = {}
 
-    async def id(args, kwargs):
-        return args, kwargs
-
     fake_replica_scheduler = FakeReplicaScheduler(
         request.param.get("enable_queue_len_cache", False)
     )
@@ -214,7 +211,6 @@ def setup_router(request) -> Tuple[Router, FakeReplicaScheduler]:
             "enable_strict_max_ongoing_requests", False
         ),
         replica_scheduler=fake_replica_scheduler,
-        resolve_request_args_func=id,
     )
     return router, fake_replica_scheduler
 

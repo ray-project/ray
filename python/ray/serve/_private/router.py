@@ -5,7 +5,7 @@ import time
 from collections import defaultdict
 from contextlib import contextmanager
 from functools import partial
-from typing import Any, Callable, Coroutine, DefaultDict, List, Optional, Tuple, Union
+from typing import Any, Coroutine, DefaultDict, List, Optional, Tuple, Union
 
 from ray.actor import ActorHandle
 from ray.exceptions import ActorDiedError, ActorUnavailableError, RayError
@@ -27,6 +27,7 @@ from ray.serve._private.long_poll import LongPollClient, LongPollNamespace
 from ray.serve._private.metrics_utils import InMemoryMetricsStore, MetricsPusher
 from ray.serve._private.replica_result import ReplicaResult
 from ray.serve._private.replica_scheduler import PendingRequest, ReplicaScheduler
+from ray.serve._private.utils import resolve_request_args
 from ray.serve.config import AutoscalingConfig
 from ray.serve.exceptions import BackPressureError
 from ray.util import metrics
@@ -318,7 +319,7 @@ class Router:
         event_loop: asyncio.BaseEventLoop,
         replica_scheduler: Optional[ReplicaScheduler],
         enable_strict_max_ongoing_requests: bool,
-        resolve_request_args_func: Coroutine,
+        resolve_request_args_func: Coroutine = resolve_request_args,
     ):
         """Used to assign requests to downstream replicas for a deployment.
 
