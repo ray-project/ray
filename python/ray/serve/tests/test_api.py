@@ -349,7 +349,7 @@ def test_deploy_application_basic(serve_instance):
     def g():
         return "got g"
 
-    @serve.deployment
+    @serve.deployment(route_prefix="/my_prefix")
     def h():
         return "got h"
 
@@ -360,7 +360,7 @@ def test_deploy_application_basic(serve_instance):
 
     app = FastAPI()
 
-    @serve.deployment
+    @serve.deployment(route_prefix="/hello")
     @serve.ingress(app)
     class MyFastAPIDeployment:
         @app.get("/")
@@ -379,12 +379,12 @@ def test_deploy_application_basic(serve_instance):
 
     # Test function deployment with app name and route_prefix set in deployment
     # decorator
-    h_handle = serve.run(h.bind(), name="app_h", route_prefix="/my_prefix")
+    h_handle = serve.run(h.bind(), name="app_h")
     assert h_handle.remote().result() == "got h"
     assert requests.get("http://127.0.0.1:8000/my_prefix").text == "got h"
 
     # Test FastAPI
-    serve.run(MyFastAPIDeployment.bind(), name="FastAPI", route_prefix="/hello")
+    serve.run(MyFastAPIDeployment.bind(), name="FastAPI")
     assert requests.get("http://127.0.0.1:8000/hello").text == '"Hello, world!"'
 
 
@@ -549,6 +549,55 @@ def test_deploy_application_with_route_prefix_conflict(serve_instance):
 
     # The "app" application should still work properly
     assert requests.get("http://127.0.0.1:8000/").text == "got model"
+
+
+@pytest.mark.parametrize(
+    "ingress_route,app_route",
+    [
+        ("/hello", "/"),
+        ("/hello", "/override"),
+        ("/", "/override"),
+        (None, "/override"),
+        ("/hello", None),
+        (None, None),
+    ],
+)
+def test_application_route_prefix_override(serve_instance, ingress_route, app_route):
+    """
+    Set route prefix in serve.run to a non-None value, check it overrides correctly.
+    """
+
+    @serve.deployment
+    def f():
+        return "hello"
+
+    node = f.options(route_prefix=ingress_route).bind()
+    serve.run(node, route_prefix=app_route)
+    if app_route is None:
+        routes = requests.get("http://localhost:8000/-/routes").json()
+        assert len(routes) == 0
+    else:
+        assert requests.get(f"http://localhost:8000{app_route}").text == "hello"
+
+
+@pytest.mark.parametrize("ingress_route", ["/hello", "/"])
+def test_application_route_prefix_override1(serve_instance, ingress_route):
+    """
+    Don't set route prefix in serve.run, check it always uses the ingress deployment
+    route.
+    """
+
+    @serve.deployment
+    def f():
+        return "hello"
+
+    node = f.options(route_prefix=ingress_route).bind()
+    serve.run(node)
+    if ingress_route is None:
+        routes = requests.get("http://localhost:8000/-/routes").json()
+        assert len(routes) == 0
+    else:
+        assert requests.get(f"http://localhost:8000{ingress_route}").text == "hello"
 
 
 class TestAppBuilder:
@@ -758,11 +807,7 @@ def test_no_slash_route_prefix(serve_instance):
         pass
 
     with pytest.raises(
-        ValueError,
-        match=(
-            r"Invalid route_prefix 'no_slash', "
-            "must start with a forward slash \('/'\)"
-        ),
+        ValueError, match=r"The route_prefix must start with a forward slash \('/'\)"
     ):
         serve.run(f.bind(), route_prefix="no_slash")
 
