@@ -13,6 +13,7 @@ logger = logging.getLogger(SERVE_LOGGER_NAME)
 K = TypeVar("K")
 V = TypeVar("V")
 
+
 class IDDict(dict, Generic[K, V]):
     """Dictionary that uses id() for keys instead of hash().
 
