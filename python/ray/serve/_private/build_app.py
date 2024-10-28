@@ -94,7 +94,7 @@ def _build_app_recursive(
     # Create the DeploymentHandle that will be used to replace this application
     # in the arguments of its parent(s).
     handles[app] = DeploymentHandle(
-        _get_unique_name_memoized(app, deployment_names),
+        _get_unique_deployment_name_memoized(app, deployment_names),
         app_name=app_name,
         handle_options=_HandleOptions(_source=DeploymentHandleSource.REPLICA),
     )
@@ -102,6 +102,7 @@ def _build_app_recursive(
     deployments = []
     scanner = _PyObjScanner(source_type=Application)
     try:
+        # Recursively traverse any Application objects bound to init args/kwargs.
         child_apps = scanner.find_nodes(
             (app._bound_deployment.init_args, app._bound_deployment.init_kwargs)
         )
@@ -115,10 +116,11 @@ def _build_app_recursive(
                 )
             )
 
+        # Replace Application objects with their corresponding DeploymentHandles.
         new_init_args, new_init_kwargs = scanner.replace_nodes(handles)
         deployments.append(
             app._bound_deployment.options(
-                name=_get_unique_name_memoized(app, deployment_names),
+                name=_get_unique_deployment_name_memoized(app, deployment_names),
                 _init_args=new_init_args,
                 _init_kwargs=new_init_kwargs,
             )
@@ -128,7 +130,7 @@ def _build_app_recursive(
         scanner.clear()
 
 
-def _get_unique_name_memoized(
+def _get_unique_deployment_name_memoized(
     app: Application, deployment_names: IDDict[Application, str]
 ) -> str:
     """Generates a name for the deployment.
