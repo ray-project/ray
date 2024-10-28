@@ -11,7 +11,6 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 
-
 import ray
 from ray import ObjectRef, cloudpickle
 from ray._private import ray_constants
