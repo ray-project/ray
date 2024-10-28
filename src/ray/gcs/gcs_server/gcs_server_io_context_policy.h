@@ -24,8 +24,8 @@
 namespace ray {
 namespace gcs {
 
-struct GcsServerIoContextPolicy {
-  GcsServerIoContextPolicy() = delete;
+struct GcsServerIOContextPolicy {
+  GcsServerIOContextPolicy() = delete;
 
   // IoContext name for each handler.
   // If a class needs a dedicated io context, it should be specialized here.
@@ -48,11 +48,11 @@ struct GcsServerIoContextPolicy {
   // This list must be unique and complete set of names returned from
   // GetDedicatedIoContextName. Or you can get runtime crashes when accessing a missing
   // name, or get leaks by creating unused threads.
-  constexpr static std::array<std::string_view, 3> kAllDedicatedIoContextNames{
+  constexpr static std::array<std::string_view, 3> kAllDedicatedIOContextNames{
       "task_io_context", "pubsub_io_context", "ray_syncer_io_context"};
 
   constexpr static size_t index_of(std::string_view name) {
-    return ray::index_of(kAllDedicatedIoContextNames, name);
+    return ray::index_of(kAllDedicatedIOContextNames, name);
   }
 };
 

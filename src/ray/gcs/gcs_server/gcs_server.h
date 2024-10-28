@@ -207,7 +207,7 @@ class GcsServer {
 
   void TryGlobalGC();
 
-  IOContextProvider<GcsServerIoContextPolicy> io_context_provider_;
+  IOContextProvider<GcsServerIOContextPolicy> io_context_provider_;
 
   /// Gcs server configuration.
   const GcsServerConfig config_;
