@@ -1,4 +1,5 @@
 import asyncio
+import time
 from collections import defaultdict
 from typing import Optional, Tuple
 from unittest import mock
@@ -6,6 +7,7 @@ from unittest import mock
 import torch
 
 import ray
+import ray.dag
 import ray.experimental.channel as ray_channel
 from ray.experimental.channel.gpu_communicator import TorchTensorAllocator
 
@@ -105,6 +107,21 @@ class MockNcclGroup(ray_channel.nccl_group._NcclGroup):
             ray.kill(barrier)
 
 
+class MockGPUFuture:
+    def __init__(self, buf, stream=None):
+        from ray.dag.dag_operation_future import GPUFuture
+
+        self._inner = GPUFuture(buf, stream)
+        self._init_ts = time.monotonic()
+        print(f"Created GPUFuture at {self._init_ts}")
+
+        def wait(self):
+            result = self._inner.wait()
+            self._wait_ts = time.monotonic()
+            print(f"Waited for {self._wait_ts - self._init_ts} seconds")
+            return result
+
+
 def start_nccl_mock():
     """
     Patch methods that require CUDA.
@@ -130,6 +147,10 @@ def start_nccl_mock():
         "torch.cuda.current_stream", new_callable=lambda: MockCudaStream
     )
     stream_patcher.start()
+    new_stream_patcher = mock.patch(
+        "torch.cuda.Stream", new_callable=lambda: MockCudaStream
+    )
+    new_stream_patcher.start()
     tensor_patcher = mock.patch("torch.Tensor.device", torch.device("cuda"))
     tensor_patcher.start()
     tensor_patcher = mock.patch("torch.Tensor.is_cuda", True)
@@ -139,6 +160,10 @@ def start_nccl_mock():
         lambda shape, dtype: torch.zeros(shape, dtype=dtype),
     )
     tensor_allocator_patcher.start()
+
+    # Mock GPUFuture
+    ray.dag.dag_operation_future.GPUFuture = MockGPUFuture
+    print(f"{ray.dag.dag_operation_future.GPUFuture=}")
 
     ctx = ray_channel.ChannelContext.get_current()
     ctx.set_torch_device(torch.device("cuda"))

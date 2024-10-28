@@ -427,8 +427,18 @@ def test_p2p_static_shape_and_direct_return(
     ],
     indirect=True,
 )
-@pytest.mark.parametrize("overlap_gpu_communication", [False])
+@pytest.mark.parametrize("overlap_gpu_communication", [True])
 def test_overlap_gpu_communication(ray_start_cluster, overlap_gpu_communication):
+    # Barrier name should be barrier-{sender rank}-{receiver rank}.
+    # Create a barrier in both directions because we don't know which rank will
+    # get assigned to sender and receiver.
+    barriers = [  # noqa
+        Barrier.options(name=f"barrier-{i}-{j}").remote()
+        for i in range(3)
+        for j in range(3)
+        if i != j
+    ]
+
     sender1 = MockedWorker.remote()
     sender2 = MockedWorker.remote()
     receiver = MockedWorker.remote()

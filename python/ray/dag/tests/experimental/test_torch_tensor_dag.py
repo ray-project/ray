@@ -227,57 +227,6 @@ def test_torch_tensor_nccl(ray_start_regular):
         assert ray.get(ref) == (i, shape, dtype)
 
 
-# @pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
-# def test_torch_tensor_nccl_overlap(ray_start_regular, monkeypatch):
-#     if not USE_GPU:
-#         pytest.skip("NCCL tests require GPUs")
-
-#     assert (
-#         sum(node["Resources"].get("GPU", 0) for node in ray.nodes()) >= 3
-#     ), "This test requires at least 3 GPUs"
-
-#     original_gpu_future_init = GPUFuture.__init__
-#     def mock_gpu_future_init(self, *args, **kwargs):
-#         init_ts = time.monotonic()
-#         original_gpu_future_init(self, *args, **kwargs)
-
-#     monkeypatch.setattr(GPUFuture, "__init__", mock_gpu_future_init)
-
-#     worker_cls = TorchTensorWorker.options(num_cpus=0, num_gpus=1)
-#     sender1 = worker_cls.remote()
-#     sender2 = worker_cls.remote()
-#     receiver = worker_cls.remote()
-
-#     shape = (10000, )
-#     dtype = torch.float16
-
-#     with InputNode() as inp:
-#         branches = [sender.send.bind(shape, dtype, inp) for sender in senders]
-#         branches = [
-#             branch.with_type_hint(
-#                 TorchTensorType(shape, dtype, transport="nccl", _direct_return=True)
-#             )
-#             for branch in branches
-#         ]
-#         branches = [receiver.recv_and_matmul.bind(branch) for branch in branches]
-#         dag = MultiOutputNode(branches)
-
-#     # Test normal execution.
-#     compiled_dag = dag.experimental_compile(
-#         _overlap_gpu_communication=overlap_gpu_communication
-#     )
-
-#     start = time.monotonic()
-#     for i in range(5):
-#         ref = compiled_dag.execute(i)
-#         result = ray.get(ref)
-#         assert result == [(i, shape, dtype)] * num_senders
-#     duration = time.monotonic() - start
-#     print(f"{overlap_gpu_communication=}, {duration=}")
-
-#     compiled_dag.teardown()
-
-
 @pytest.mark.parametrize(
     "ray_start_regular, overlap_gpu_communication",
     [({"num_cpus": 4}, False), ({"num_cpus": 4}, True)],
@@ -455,73 +404,6 @@ def test_torch_tensor_custom_comm(ray_start_regular):
             return self._inner.destroy()
 
     from cupy.cuda import nccl
-
-    class TestNcclGroup(GPUCommunicator):
-        """
-        A custom NCCL group for testing. This is a simple wrapper around `_NcclGroup`.
-        """
-
-        def __init__(self, world_size, comm_id, actor_handles):
-            self._world_size = world_size
-            self._comm_id = comm_id
-            self._actor_handles = actor_handles
-            self._inner = None
-
-        def initialize(self, rank: int) -> None:
-            self._inner = _NcclGroup(
-                self._world_size,
-                self._comm_id,
-                rank,
-                self._actor_handles,
-                torch.cuda.current_stream().cuda_stream,
-            )
-
-        def get_rank(self, actor: ray.actor.ActorHandle) -> int:
-            # Implement this without forwarding to `_inner` to allow the method
-            # to be called before initialization.
-            actor_ids = [a._ray_actor_id for a in self._actor_handles]
-            try:
-                rank = actor_ids.index(actor._ray_actor_id)
-            except ValueError:
-                raise ValueError("Actor is not in the NCCL group.")
-            return rank
-
-        def get_world_size(self) -> int:
-            # Implement this without forwarding to `_inner` to allow the method
-            # to be called before initialization.
-            return self._world_size
-
-        def get_self_rank(self) -> Optional[int]:
-            if self._inner is None:
-                return None
-            return self._inner.get_self_rank()
-
-        def get_actor_handles(self) -> List["ray.actor.ActorHandle"]:
-            return self._actor_handles
-
-        def send(self, value: "torch.Tensor", peer_rank: int) -> None:
-            return self._inner.send(value, peer_rank)
-
-        def recv(
-            self,
-            shape: Tuple[int],
-            dtype: "torch.dtype",
-            peer_rank: int,
-            allocator: Optional[TorchTensorAllocator] = None,
-        ) -> "torch.Tensor":
-            return self._inner.recv(shape, dtype, peer_rank, allocator=allocator)
-
-        def allreduce(
-            self,
-            send_buf: "torch.Tensor",
-            recv_buf: "torch.Tensor",
-            op: ReduceOp = ReduceOp.SUM,
-        ) -> None:
-            self._inner.allreduce(send_buf, recv_buf, op)
-            recv_buf += 1
-
-        def destroy(self) -> None:
-            return self._inner.destroy()
 
     comm_id = nccl.get_unique_id()
     nccl_group = TestNcclGroup(2, comm_id, [sender, receiver])
