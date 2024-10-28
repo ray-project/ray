@@ -2,6 +2,7 @@ import asyncio
 import logging
 import threading
 import time
+from abc import ABC, abstractmethod
 from collections import defaultdict
 from contextlib import contextmanager
 from functools import partial
@@ -317,7 +318,7 @@ class RouterMetricsManager:
         self._shutdown = True
 
 
-class BaseRouter:
+class BaseRouter(ABC):
     def __init__(
         self,
         controller_handle: ActorHandle,
@@ -420,10 +421,11 @@ class BaseRouter:
             curr_num_replicas=len(self._replica_scheduler.curr_replicas),
         )
 
+    @abstractmethod
     async def _resolve_deployment_responses(
         self, request_args: Tuple[Any], request_kwargs: Dict[str, Any]
     ) -> Tuple[Tuple[Any], Dict[str, Any]]:
-        pass
+        raise NotImplementedError
 
     def _process_finished_request(
         self, replica_id: ReplicaID, result: Union[Any, RayError]
