@@ -761,7 +761,7 @@ class TaskState(StateSchema):
     # Is task paused by the debugger
     is_debugger_paused: Optional[bool] = state_column(detail=True, filterable=True)
     # List of objects (passed in by ref as arguments) this task
-    # is dependent
+    # is dependent on
     args_object_ids: List[str] = state_column(detail=True, filterable=False)
 
 
