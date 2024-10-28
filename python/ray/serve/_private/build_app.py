@@ -1,6 +1,6 @@
 import logging
 from dataclasses import dataclass
-from typing import Any, Generic, List, TypeVar
+from typing import Generic, List, TypeVar
 
 from ray.dag.py_obj_scanner import _PyObjScanner
 from ray.serve._private.common import DeploymentHandleSource
