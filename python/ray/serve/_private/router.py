@@ -326,10 +326,10 @@ class BaseRouter(ABC):
         handle_id: str,
         self_actor_id: str,
         handle_source: DeploymentHandleSource,
-        event_loop: asyncio.BaseEventLoop = None,
-        enable_queue_len_cache: bool = RAY_SERVE_ENABLE_QUEUE_LENGTH_CACHE,
-        enable_strict_max_ongoing_requests: bool = RAY_SERVE_ENABLE_STRICT_MAX_ONGOING_REQUESTS,  # noqa: E501
-        replica_scheduler: ReplicaScheduler = None,
+        event_loop: asyncio.BaseEventLoop,
+        enable_queue_len_cache: bool,
+        enable_strict_max_ongoing_requests: bool,
+        replica_scheduler: ReplicaScheduler,
     ):
         """Used to assign requests to downstream replicas for a deployment.
 

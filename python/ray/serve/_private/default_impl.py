@@ -73,6 +73,7 @@ def create_router(
         self_availability_zone=availability_zone,
         handle_source=handle_options._source,
         event_loop=event_loop,
+        _prefer_local_node_routing=handle_options._prefer_local_routing,
     )
 
 

@@ -785,30 +785,6 @@ class DeploymentHandle(_DeploymentHandleBase):
         assert response.result() == "Hello world!"
     """
 
-    def init(
-        self,
-        _prefer_local_routing: Union[bool, DEFAULT] = DEFAULT.VALUE,
-        _source: Union[bool, DEFAULT] = DEFAULT.VALUE,
-    ):
-        """Initialize this handle with arguments.
-
-        A handle can only be initialized once. A handle is implicitly
-        initialized when `.options()` or `.remote()` is called. Therefore
-        to initialize a handle with custom init options, you must do it
-        before calling `.options()` or `.remote()`.
-
-        Example:
-
-        .. code-block:: python
-
-            if not handle.is_initialized:
-                handle.init(_prefer_local_routing=True)
-        """
-        self._init(
-            _prefer_local_routing=_prefer_local_routing,
-            _source=_source,
-        )
-
     def options(
         self,
         *,
