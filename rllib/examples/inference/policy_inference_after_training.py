@@ -150,7 +150,7 @@ if __name__ == "__main__":
         )
     )
 
-    # Create a env to do inference in.
+    # Create an env to do inference in.
     env = gym.make(args.env)
     obs, info = env.reset()
 
