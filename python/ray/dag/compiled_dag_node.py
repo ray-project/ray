@@ -57,7 +57,7 @@ logger = logging.getLogger(__name__)
 # Keep tracking of every compiled dag created during the lifetime of
 # this process. It tracks them as weakref meaning when the compiled dag
 # is GC'ed, it is automatically removed from here. It is used to teardown
-# compiled dags at interpret shutdown time.
+# compiled dags at interpreter shutdown time.
 _compiled_dags = weakref.WeakValueDictionary()
 
 
@@ -66,8 +66,12 @@ _compiled_dags = weakref.WeakValueDictionary()
 # upon `ray.worker.shutdown` which is registered to atexit handler
 # so that teardown is properly called before objects are destructed.
 def _shutdown_all_compiled_dags():
+    global _compiled_dags
     for _, compiled_dag in _compiled_dags.items():
-        compiled_dag.teardown()
+        # Kill DAG actors to avoid hanging during shutdown if the actor tasks
+        # cannot be cancelled.
+        compiled_dag.teardown(kill_actors=True)
+    _compiled_dags = weakref.WeakValueDictionary()
 
 
 @DeveloperAPI
@@ -636,7 +640,7 @@ class CompiledDAG:
             self._buffer_size_bytes = ctx.buffer_size_bytes
 
         self._default_type_hint: ChannelOutputType = SharedMemoryType(
-            self._buffer_size_bytes,
+            buffer_size_bytes=self._buffer_size_bytes,
             # We conservatively set num_shm_buffers to _max_inflight_executions.
             # It means that the DAG can be underutilized, but it guarantees there's
             # no false positive timeouts.
@@ -731,10 +735,16 @@ class CompiledDAG:
             ).remote()
 
         self._proxy_actor = _create_proxy_actor()
+        # Set to True when `teardown` API is called.
+        self._is_teardown = False
 
     @property
     def nccl_group_id_p2p(self) -> Optional[str]:
         return self._nccl_group_id_p2p
+
+    @property
+    def is_teardown(self) -> bool:
+        return self._is_teardown
 
     @property
     def nccl_group_ids(self) -> Set[str]:
@@ -1677,16 +1687,28 @@ class CompiledDAG:
                 self.name = "CompiledGraphMonitorThread"
                 self._teardown_done = False
 
-            def wait_teardown(self):
+            def wait_teardown(self, kill_actors: bool = False):
+                from ray.dag import DAGContext
+
+                ctx = DAGContext.get_current()
+                teardown_timeout = ctx.retrieval_timeout
+
                 for actor, ref in outer.worker_task_refs.items():
                     timeout = False
                     try:
-                        ray.get(ref, timeout=10)
+                        ray.get(ref, timeout=teardown_timeout)
                     except ray.exceptions.GetTimeoutError:
-                        logger.warning(
-                            f"Compiled DAG actor {actor} is still running 10s "
-                            "after teardown(). Teardown may hang."
+                        msg = (
+                            f"Compiled DAG actor {actor} is still running "
+                            f"{teardown_timeout}s after teardown()."
                         )
+                        if kill_actors:
+                            msg += " Force-killing actor."
+                            ray.kill(actor)
+                        else:
+                            msg += " Teardown may hang."
+
+                        logger.warning(msg)
                         timeout = True
                     except Exception:
                         # We just want to check that the task has finished so
@@ -1702,7 +1724,7 @@ class CompiledDAG:
                     except Exception:
                         pass
 
-            def teardown(self, wait: bool):
+            def teardown(self, kill_actors: bool = False):
                 do_teardown = False
                 with self.in_teardown_lock:
                     if self._teardown_done:
@@ -1714,9 +1736,12 @@ class CompiledDAG:
 
                 if not do_teardown:
                     # Teardown is already being performed.
-                    if wait:
-                        self.wait_teardown()
-                    return
+                    while True:
+                        with self.in_teardown_lock:
+                            if self._teardown_done:
+                                return
+
+                        time.sleep(0.1)
 
                 logger.info("Tearing down compiled DAG")
                 outer._dag_submitter.close()
@@ -1743,10 +1768,9 @@ class CompiledDAG:
                 for nccl_group_id in outer._nccl_group_ids:
                     _destroy_nccl_group(nccl_group_id)
 
-                if wait:
-                    logger.info("Waiting for worker tasks to exit")
-                    self.wait_teardown()
-                    logger.info("Teardown complete")
+                logger.info("Waiting for worker tasks to exit")
+                self.wait_teardown()
+                logger.info("Teardown complete")
 
                 with self.in_teardown_lock:
                     self._teardown_done = True
@@ -1756,7 +1780,7 @@ class CompiledDAG:
                     ray.get(list(outer.worker_task_refs.values()))
                 except Exception as e:
                     logger.debug(f"Handling exception from worker tasks: {e}")
-                    self.teardown(wait=True)
+                    self.teardown()
 
         monitor = Monitor()
         monitor.start()
@@ -2156,18 +2180,20 @@ class CompiledDAG:
             # Render the graph to a file
             dot.render(filename, view=view)
 
-    def teardown(self):
+    def teardown(self, kill_actors: bool = False):
         """Teardown and cancel all actor tasks for this DAG. After this
         function returns, the actors should be available to execute new tasks
         or compile a new DAG."""
+        if self._is_teardown:
+            return
+
         monitor = getattr(self, "_monitor", None)
         if monitor is not None:
-            monitor.teardown(wait=True)
+            monitor.teardown(kill_actors=kill_actors)
+        self._is_teardown = True
 
     def __del__(self):
-        monitor = getattr(self, "_monitor", None)
-        if monitor is not None:
-            monitor.teardown(wait=True)
+        self.teardown()
 
 
 @DeveloperAPI
