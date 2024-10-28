@@ -47,7 +47,9 @@ from ray.serve._private.http_util import (
     ASGIReceiveProxy,
     MessageQueue,
     Response,
-    get_route_name,
+)
+from ray.serve._private.vendored.get_asgi_route_name import (
+    get_asgi_route_name,
 )
 from ray.serve._private.logging_utils import (
     access_log_msg,
@@ -355,8 +357,8 @@ class ReplicaActor:
                 request_args[0], StreamingHTTPRequest
             )
             scope = request_args[0].asgi_scope
-            # TODO: add the route prefix.
-            route = get_route_name(self._user_callable_asgi_app, scope)
+            # TODO: add the route prefix? or added already from root_path?
+            route = get_asgi_route_name(self._user_callable_asgi_app, scope)
             print("CALCULATED ROUTE:", route)
         else:
             print("NO ROUTE CALCULATION")
