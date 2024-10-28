@@ -1,6 +1,6 @@
 import logging
 from dataclasses import dataclass
-from typing import Any, List
+from typing import Any, Generic, List, TypeVar
 
 from ray.dag.py_obj_scanner import _PyObjScanner
 from ray.serve._private.common import DeploymentHandleSource
@@ -10,24 +10,26 @@ from ray.serve.handle import DeploymentHandle, _HandleOptions
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
+K = TypeVar("K")
+V = TypeVar("V")
 
-class IDDict(dict):
+class IDDict(dict, Generic[K, V]):
     """Dictionary that uses id() for keys instead of hash().
 
     This is necessary because Application objects aren't hashable and we want each
     instance to map to a unique key.
     """
 
-    def __getitem__(self, key: Any) -> Any:
+    def __getitem__(self, key: K) -> Any:
         return super().__getitem__(id(key))
 
-    def __setitem__(self, key: Any, value: Any):
+    def __setitem__(self, key: K, value: V):
         return super().__setitem__(id(key), value)
 
-    def __delitem__(self, key: Any):
+    def __delitem__(self, key: K):
         return super().__delitem__(id(key))
 
-    def __contains__(self, key: Any):
+    def __contains__(self, key: object):
         return super().__contains__(id(key))
 
 
