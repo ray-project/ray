@@ -942,12 +942,20 @@ class IMPALA(Algorithm):
                     # from RolloutWorkers (n rollout workers map to m
                     # aggregation workers, where m < n) and always use 1 CPU
                     # each.
-                    "CPU": max(
-                        cf.num_cpus_for_main_process,
-                        cf.num_cpus_per_learner if cf.num_learners == 0 else 0,
-                    )
-                    + cf.num_aggregation_workers,
-                    "GPU": 0 if cf._fake_gpus else cf.num_gpus,
+                    "CPU": (
+                        max(
+                            cf.num_cpus_for_main_process,
+                            cf.num_cpus_per_learner if cf.num_learners == 0 else 0,
+                        )
+                        + cf.num_aggregation_workers
+                    ),
+                    "GPU": (
+                        (
+                            cf.num_gpus_per_learner if cf.num_learners == 0 else 0
+                        ) if cf.enable_rl_module_and_learner else (
+                            0 if cf._fake_gpus else cf.num_gpus
+                        )
+                    ),
                 }
             ]
             + [
