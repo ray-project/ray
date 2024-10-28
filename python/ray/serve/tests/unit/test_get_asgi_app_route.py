@@ -3,7 +3,7 @@ import sys
 import pytest
 from fastapi import FastAPI
 
-from ray.serve._private.vendored.get_asgi_route_name import get_asgi_route_name
+from ray.serve._private.thirdparty.get_asgi_route_name import get_asgi_route_name
 
 
 def test_single_path():
