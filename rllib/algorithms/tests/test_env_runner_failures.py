@@ -272,6 +272,7 @@ class TestWorkerFailures(unittest.TestCase):
         config.env = "multi_agent_fault_env" if config.is_multi_agent() else "fault_env"
         # Make both worker idx=1 and 2 fail.
         config.env_config = {"bad_indices": [1, 2]}
+        config.restart_failed_env_runners = False
         if fail_eval:
             config.evaluation_num_env_runners = 2
             config.evaluation_interval = 1
@@ -281,6 +282,7 @@ class TestWorkerFailures(unittest.TestCase):
                     "bad_indices": [1],
                     "evaluation": True,
                 },
+                "restart_failed_env_runners": False,
             }
 
         algo = config.build()
@@ -582,7 +584,7 @@ class TestWorkerFailures(unittest.TestCase):
     def test_eval_workers_failing_fatal(self):
         # Test the case where all eval workers fail (w/o recovery).
         self._do_test_failing_fatal(
-            PPOConfig().training(model={"fcnet_hiddens": [4]}),
+            (PPOConfig().training(model={"fcnet_hiddens": [4]})),
             fail_eval=True,
         )
 
