@@ -252,7 +252,9 @@ def test_torch_tensor_nccl_overlap_timed(ray_start_regular, overlap_gpu_communic
         branches = [sender.send.bind(shape, dtype, inp) for sender in senders]
         branches = [
             branch.with_type_hint(
-                TorchTensorType(shape, dtype, transport="nccl", _direct_return=True)
+                TorchTensorType(
+                    transport="nccl", _static_shape=True, _direct_return=True
+                )
             )
             for branch in branches
         ]

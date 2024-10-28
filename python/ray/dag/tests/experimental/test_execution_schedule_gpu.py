@@ -392,13 +392,13 @@ def test_overlap_gpu_communication(ray_start_regular, overlap_gpu_communication)
         branch1 = sender1.send.bind(shape, dtype, inp)
 
         branch1 = branch1.with_type_hint(
-            TorchTensorType(shape, dtype, transport="nccl", _direct_return=True)
+            TorchTensorType(transport="nccl", _static_shape=True, _direct_return=True)
         )
         branch1 = receiver.recv.bind(branch1)
 
         branch2 = sender2.send.bind(shape, dtype, inp)
         branch2 = branch2.with_type_hint(
-            TorchTensorType(shape, dtype, transport="nccl", _direct_return=True)
+            TorchTensorType(transport="nccl", _static_shape=True, _direct_return=True)
         )
         branch2 = receiver.recv.bind(branch2)
         dag = MultiOutputNode([branch1, branch2])
