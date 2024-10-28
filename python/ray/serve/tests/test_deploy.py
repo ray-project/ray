@@ -610,7 +610,6 @@ def test_deployment_properties():
         num_replicas=2,
         user_config="hi",
         max_ongoing_requests=100,
-        route_prefix="/hello",
         ray_actor_options={"num_cpus": 2},
     )(DClass)
 
@@ -619,15 +618,12 @@ def test_deployment_properties():
     assert D.num_replicas == 2
     assert D.user_config == "hi"
     assert D.max_ongoing_requests == 100
-    assert D.route_prefix == "/hello"
     assert D.ray_actor_options == {"num_cpus": 2}
 
     D = serve.deployment(
         version=None,
-        route_prefix=None,
     )(DClass)
     assert D.version is None
-    assert D.route_prefix is None
 
 
 if __name__ == "__main__":

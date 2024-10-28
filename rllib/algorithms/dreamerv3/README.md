@@ -49,7 +49,7 @@ in combination with the following scripts and command lines in order to run RLli
 ### [Atari100k](../../tuned_examples/dreamerv3/atari_100k.py)
 ```shell
 $ cd ray/rllib/tuned_examples/dreamerv3/
-$ python atari_100k.py --env ALE/Pong-v5 
+$ python atari_100k.py --env ale_py:ALE/Pong-v5 
 ```
 
 ### [DeepMind Control Suite (vision)](../../tuned_examples/dreamerv3/dm_control_suite_vision.py)
