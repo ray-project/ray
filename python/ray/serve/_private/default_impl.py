@@ -42,10 +42,10 @@ def create_deployment_scheduler(
     )
 
 
-def create_dynamic_handle_options():
+def create_dynamic_handle_options(**kwargs):
     from ray.serve.handle import _DynamicHandleOptions
 
-    return _DynamicHandleOptions()
+    return _DynamicHandleOptions(**kwargs)
 
 
 def create_init_handle_options(**kwargs):

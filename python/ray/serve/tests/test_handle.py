@@ -101,7 +101,7 @@ def test_init_handle_options_replica(serve_instance):
     class Router:
         def __init__(self, handle):
             self.handle = handle
-            self.handle.init()
+            self.handle._init()
 
         def check(self):
             return self.handle.init_options._source == DeploymentHandleSource.REPLICA
@@ -438,7 +438,7 @@ def test_init(serve_instance):
         return "hi"
 
     h = serve.run(f.bind())
-    h.init(_prefer_local_routing=True)
+    h._init(_prefer_local_routing=True)
     for _ in range(10):
         assert h.remote().result() == "hi"
 
@@ -449,10 +449,10 @@ def test_init_twice_fails(serve_instance):
         return "hi"
 
     h = serve.run(f.bind())
-    h.init()
+    h._init()
 
     with pytest.raises(RuntimeError):
-        h.init()
+        h._init()
 
 
 def test_init_after_options_fails(serve_instance):
@@ -463,7 +463,7 @@ def test_init_after_options_fails(serve_instance):
     h = serve.run(f.bind())
 
     with pytest.raises(RuntimeError):
-        h.options(stream=True).init(_prefer_local_routing=True)
+        h.options(stream=True)._init(_prefer_local_routing=True)
 
 
 def test_init_after_request_fails(serve_instance):
@@ -475,7 +475,7 @@ def test_init_after_request_fails(serve_instance):
     assert h.remote().result() == "hi"
 
     with pytest.raises(RuntimeError):
-        h.init(_prefer_local_routing=True)
+        h._init(_prefer_local_routing=True)
 
 
 if __name__ == "__main__":

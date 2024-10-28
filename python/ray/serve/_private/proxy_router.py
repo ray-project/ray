@@ -112,7 +112,7 @@ class LongestPrefixRouter(ProxyRouter):
                 # NOTE(zcin): since the router is eagerly initialized here,
                 # it will receive the replica set from the controller early.
                 if not handle.is_initialized:
-                    handle.init(
+                    handle._init(
                         _prefer_local_routing=RAY_SERVE_PROXY_PREFER_LOCAL_NODE_ROUTING,
                         _source=DeploymentHandleSource.PROXY,
                     )
@@ -202,6 +202,7 @@ class EndpointRouter(ProxyRouter):
                 # it will receive the replica set from the controller early.
                 if not handle.is_initialized:
                     handle.init(
+                    handle._init(
                         _prefer_local_routing=RAY_SERVE_PROXY_PREFER_LOCAL_NODE_ROUTING,
                         _source=DeploymentHandleSource.PROXY,
                     )
