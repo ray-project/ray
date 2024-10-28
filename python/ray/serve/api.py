@@ -10,7 +10,7 @@ from fastapi import APIRouter, FastAPI
 import ray
 from ray import cloudpickle
 from ray._private.serialization import pickle_dumps
-from ray.serve._private.build_app import build_app
+from ray.serve._private.build_app import BuiltApplication, build_app
 from ray.serve._private.config import (
     DeploymentConfig,
     ReplicaConfig,
@@ -452,11 +452,10 @@ def _run(
             "`serve.run` expects an `Application` returned by `Deployment.bind()`."
         )
 
-    ingress_deployment_name, deployments = build_app(target, name=name)
-
     parameter_group = []
-    for deployment in deployments:
-        is_ingress = deployment.name == ingress_deployment_name
+    built_app: BuiltApplication = build_app(target, name=name)
+    for deployment in built_app.deployments:
+        is_ingress = deployment.name == built_app.ingress_deployment_name
         if deployment.logging_config is None and logging_config:
             deployment = deployment.options(logging_config=logging_config)
 
@@ -480,8 +479,10 @@ def _run(
     # The deployment state is not guaranteed to be created after
     # deploy_application returns; the application state manager will
     # need another reconcile iteration to create it.
-    client._wait_for_deployment_created(ingress_deployment_name, name)
-    return client.get_handle(ingress_deployment_name, name, check_exists=False)
+    client._wait_for_deployment_created(built_app.ingress_deployment_name, name)
+    return client.get_handle(
+        built_app.ingress_deployment_name, name, check_exists=False
+    )
 
 
 @PublicAPI(stability="stable")

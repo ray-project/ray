@@ -5,7 +5,7 @@ from unittest import mock
 import pytest
 
 from ray import serve
-from ray.serve._private.build_app import build_app
+from ray.serve._private.build_app import BuiltApplication, build_app
 from ray.serve._private.common import DeploymentHandleSource
 from ray.serve.deployment import Application, Deployment
 from ray.serve.handle import DeploymentHandle, _HandleOptions
@@ -37,20 +37,20 @@ def _build_and_check(
     expected_deployments: List[Deployment],
     app_name: str = "default",
 ):
-    ingress_name, deployments = build_app(app, name=app_name)
-    assert ingress_name == expected_ingress_name
-    assert len(deployments) == len(expected_deployments)
+    built_app: BuiltApplication = build_app(app, name=app_name)
+    assert built_app.ingress_deployment_name == expected_ingress_name
+    assert len(built_app.deployments) == len(expected_deployments)
 
     for expected_deployment in expected_deployments:
         generated_deployment = None
-        for d in deployments:
+        for d in built_app.deployments:
             if d.name == expected_deployment.name:
                 generated_deployment = d
 
         assert generated_deployment is not None, (
             f"Expected a deployment with name '{expected_deployment.name}' "
             "to be generated but none was found. All generated names: "
-            + str([d.name for d in deployments])
+            + str([d.name for d in built_app.deployments])
         )
 
         assert expected_deployment == generated_deployment

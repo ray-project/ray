@@ -1,5 +1,6 @@
 import logging
-from typing import Any, List, Tuple
+from dataclasses import dataclass
+from typing import Any, List
 
 from ray.dag.py_obj_scanner import _PyObjScanner
 from ray.serve._private.common import DeploymentHandleSource
@@ -30,11 +31,22 @@ class IDDict(dict):
         return super().__contains__(id(key))
 
 
+@dataclass(frozen=True)
+class BuiltApplication:
+    # Name of the application.
+    name: str
+    # Name of the application's 'ingress' deployment
+    # (the one exposed over gRPC/HTTP/handle).
+    ingress_deployment_name: str
+    # List of unique deployments comprising the app.
+    deployments: List[Deployment]
+
+
 def build_app(
     app: Application,
     *,
     name: str,
-) -> Tuple[str, List[Deployment]]:
+) -> BuiltApplication:
     """Builds the application into a list of finalized deployments.
 
     The following transformations are made:
@@ -43,8 +55,7 @@ def build_app(
         - Name conflicts from deployments that use the same class are handled
           by appending a monotonically increasing suffix (e.g., SomeClass_1).
 
-    Returns:
-        (ingress_deployment_name, deployments)
+    Returns: BuiltApplication
     """
     deployments = _build_app_recursive(
         app,
@@ -52,7 +63,11 @@ def build_app(
         handles=IDDict(),
         deployment_names=IDDict(),
     )
-    return app._bound_deployment.name, deployments
+    return BuiltApplication(
+        name=name,
+        ingress_deployment_name=app._bound_deployment.name,
+        deployments=deployments,
+    )
 
 
 def _build_app_recursive(
