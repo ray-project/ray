@@ -95,7 +95,7 @@ def test_message_format(configure_logging, reset_logging, shutdown_only):
 def test_custom_config(reset_logging, monkeypatch, tmp_path):
     config_path = tmp_path / "logging.yaml"
     monkeypatch.setattr(
-        ray.train._internal.logging, "RAY_TRAIN_LOG_CONFIG_PATH", config_path
+        ray.train._internal.logging, "DEFAULT_LOG_CONFIG_PATH", config_path
     )
 
     handlers = {
