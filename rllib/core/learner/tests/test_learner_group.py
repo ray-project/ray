@@ -554,7 +554,7 @@ class TestLearnerGroupAsyncUpdate(unittest.TestCase):
         ray.init()
 
     @classmethod
-    def tearDownClass(cls) -> None:
+    def tearDown(cls) -> None:
         ray.shutdown()
 
     def test_async_update(self):
