@@ -90,7 +90,7 @@ if __name__ == "__main__":
         .environment("CartPole-v1")
         .rl_module(
             # Use a different number of hidden units for the pre-trained module.
-            model_config_dict={"fcnet_hiddens": [64]},
+            model_config={"fcnet_hiddens": [64]},
         )
     )
 
@@ -108,7 +108,7 @@ if __name__ == "__main__":
             module_class=PPOTorchRLModule,
             observation_space=env.observation_space,
             action_space=env.action_space,
-            model_config_dict={"fcnet_hiddens": [32]},
+            model_config={"fcnet_hiddens": [32]},
             catalog_class=PPOCatalog,
         )
 
@@ -117,12 +117,12 @@ if __name__ == "__main__":
         module_class=PPOTorchRLModule,
         observation_space=env.observation_space,
         action_space=env.action_space,
-        model_config_dict={"fcnet_hiddens": [64]},
+        model_config={"fcnet_hiddens": [64]},
         catalog_class=PPOCatalog,
         # Note, we load here the module directly from the checkpoint.
         load_state_path=module_chkpt_path,
     )
-    multi_rl_module_spec = MultiRLModuleSpec(module_specs=module_specs)
+    multi_rl_module_spec = MultiRLModuleSpec(rl_module_specs=module_specs)
 
     # Register our environment with tune if we use multiple agents.
     register_env(

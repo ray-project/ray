@@ -589,6 +589,13 @@ message TaskInfoEntry {
   // If the task/actor is created within a placement group,
   // this value is configured.
   optional bytes placement_group_id = 26;
+  // Tasks arguments passed in as (object) references.
+  //
+  // NOTE: This list only contains `ObjectReference`s passed in as arguments
+  //       this task is dependent on and does NOT contain
+  //        - Args passed by value (inlined)
+  //        - ObjectRefs of the args passed by value
+  repeated bytes args_object_ids = 27;
 }
 
 message Bundle {
@@ -710,6 +717,7 @@ message ActorCreationTaskSpec {
   // The dynamic options used in the worker command when starting a worker process for
   // an actor creation task. If the list isn't empty, the options will be used to replace
   // the placeholder string `RAY_WORKER_DYNAMIC_OPTION_PLACEHOLDER` in the worker command.
+  // Used by Java workers for JVM options.
   repeated string dynamic_worker_options = 5;
   // The max number of concurrent calls for default concurrency group of this actor.
   int32 max_concurrency = 6;

@@ -1,7 +1,6 @@
 import abc
 from collections import defaultdict
 import copy
-from dataclasses import dataclass
 from functools import partial
 import logging
 import numpy
@@ -55,6 +54,7 @@ from ray.rllib.utils.metrics import (
     NUM_MODULE_STEPS_TRAINED,
     LEARNER_CONNECTOR_TIMER,
     MODULE_TRAIN_BATCH_SIZE_MEAN,
+    WEIGHTS_SEQ_NO,
 )
 from ray.rllib.utils.metrics.metrics_logger import MetricsLogger
 from ray.rllib.utils.minibatch_utils import (
@@ -98,21 +98,6 @@ ENTROPY_KEY = "entropy"
 LR_KEY = "learning_rate"
 
 
-@dataclass
-class LearnerHyperparameters:
-    def __init_subclass__(cls, **kwargs):
-        raise ValueError(
-            "All `LearnerHyperparameters` classes have been deprecated! Instead, "
-            "the AlgorithmConfig object of your experiment is passed into the `Learner`"
-            " constructor as the `config` arg. Make sure that your custom `Learner` "
-            "class(es) can read information from this config object (e.g. instead of "
-            "using `LearnerHyperparameters.entropy_coeff`, now read the value from "
-            "`config.entropy_coeff`). All `Learner` methods that used to accept a "
-            "(module specific) `hps` argument, now take a (module specific) `config` "
-            "argument instead."
-        )
-
-
 @PublicAPI(stability="alpha")
 class Learner(Checkpointable):
     """Base class for Learners.
@@ -154,6 +139,7 @@ class Learner(Checkpointable):
                 PPOTorchRLModule
             )
             from ray.rllib.core import COMPONENT_RL_MODULE, DEFAULT_MODULE_ID
+            from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
             from ray.rllib.core.rl_module.rl_module import RLModuleSpec
 
             env = gym.make("CartPole-v1")
@@ -180,7 +166,7 @@ class Learner(Checkpointable):
                     module_class=PPOTorchRLModule,
                     observation_space=env.observation_space,
                     action_space=env.action_space,
-                    model_config_dict={"fcnet_hiddens": [64, 64]},
+                    model_config=DefaultModelConfig(fcnet_hiddens=[64, 64]),
                     catalog_class=PPOCatalog,
                 )
             )
@@ -255,6 +241,7 @@ class Learner(Checkpointable):
 
         # The actual MultiRLModule used by this Learner.
         self._module: Optional[MultiRLModule] = None
+        self._weights_seq_no = 0
         # Our Learner connector pipeline.
         self._learner_connector: Optional[LearnerConnectorPipeline] = None
         # These are set for properly applying optimizers and adding or removing modules.
@@ -777,6 +764,7 @@ class Learner(Checkpointable):
                 algorithm_config_overrides_per_module={module_id: config_overrides}
             )
         self.config.rl_module(rl_module_spec=MultiRLModuleSpec.from_module(self.module))
+        self._module_spec = self.config.rl_module_spec
         if new_should_module_be_updated is not None:
             self.config.multi_agent(policies_to_train=new_should_module_be_updated)
 
@@ -1221,6 +1209,7 @@ class Learner(Checkpointable):
                 ),
                 **kwargs,
             )
+            state[WEIGHTS_SEQ_NO] = self._weights_seq_no
         if self._check_component(COMPONENT_OPTIMIZER, components, not_components):
             state[COMPONENT_OPTIMIZER] = self._get_optimizer_state()
 
@@ -1231,7 +1220,14 @@ class Learner(Checkpointable):
         self._check_is_built()
 
         if COMPONENT_RL_MODULE in state:
-            self.module.set_state(state[COMPONENT_RL_MODULE])
+            weights_seq_no = state.get(WEIGHTS_SEQ_NO, 0)
+
+            if weights_seq_no == 0 or self._weights_seq_no < weights_seq_no:
+                self.module.set_state(state[COMPONENT_RL_MODULE])
+
+            # Update our weights_seq_no, if the new one is > 0.
+            if weights_seq_no > 0:
+                self._weights_seq_no = weights_seq_no
 
         if COMPONENT_OPTIMIZER in state:
             self._set_optimizer_state(state[COMPONENT_OPTIMIZER])
@@ -1411,6 +1407,8 @@ class Learner(Checkpointable):
                     value=loss,
                     window=1,
                 )
+
+        self._weights_seq_no += 1
 
         self._set_slicing_by_batch_id(batch, value=False)
 
