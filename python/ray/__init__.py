@@ -256,7 +256,6 @@ __all__ += [
     "actor",
     "autoscaler",
     "data",
-    "train",
     "internal",
     "util",
     "widgets",
@@ -285,7 +284,7 @@ __all__ += [
 def __getattr__(name: str):
     import importlib
 
-    if name in ["data", "workflow", "autoscaler", "train"]:
+    if name in ["data", "workflow", "autoscaler"]:
         return importlib.import_module("." + name, __name__)
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
