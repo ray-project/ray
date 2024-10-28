@@ -41,6 +41,18 @@ def create_deployment_scheduler(
     )
 
 
+def create_dynamic_handle_options(**kwargs):
+    from ray.serve.handle import _DynamicHandleOptions
+
+    return _DynamicHandleOptions(**kwargs)
+
+
+def create_init_handle_options(**kwargs):
+    from ray.serve.handle import _InitHandleOptions
+
+    return _InitHandleOptions.create(**kwargs)
+
+
 def add_grpc_address(grpc_server: gRPCServer, server_address: str):
     """Helper function to add a address to gRPC server."""
     grpc_server.add_insecure_port(server_address)
