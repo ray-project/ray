@@ -30,7 +30,7 @@ openai-whisper
 openskill
 petastorm
 protobuf
-pyarrow
+pyarrow<18
 pydantic>=2.5.0
 pytest
 pytorch-lightning
