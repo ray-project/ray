@@ -28,7 +28,10 @@ def test_send_recv_text_and_binary(serve_instance, route_prefix: str):
             bytes = await ws.receive_bytes()
             await ws.send_bytes(bytes)
 
-    serve.run(WebSocketServer.bind(), route_prefix=route_prefix or "/")
+    if route_prefix is not None:
+        WebSocketServer = WebSocketServer.options(route_prefix=route_prefix)
+
+    serve.run(WebSocketServer.bind())
 
     msg = "Hello world!"
     if route_prefix:

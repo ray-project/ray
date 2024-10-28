@@ -27,6 +27,10 @@ from ray.serve._private.constants import (
     SERVE_NAMESPACE,
 )
 from ray.serve._private.deployment_graph_build import build as pipeline_build
+from ray.serve._private.deployment_graph_build import (
+    get_and_validate_ingress_deployment,
+)
+from ray.serve._private.utils import DEFAULT
 from ray.serve.config import DeploymentMode, ProxyLocation, gRPCOptions
 from ray.serve.deployment import Application, deployment_to_schema
 from ray.serve.schema import (
@@ -434,7 +438,6 @@ def deploy(
     "--route-prefix",
     required=False,
     type=str,
-    default="/",
     help=(
         "Route prefix for the application. This should only be used "
         "when running an application specified by import path and "
@@ -462,9 +465,11 @@ def run(
     address: str,
     blocking: bool,
     reload: bool,
-    route_prefix: str,
+    route_prefix: Optional[str],
     name: str,
 ):
+    if route_prefix is None:
+        route_prefix = DEFAULT.VALUE
     sys.path.insert(0, app_dir)
     args_dict = convert_args_to_dict(arguments)
     final_runtime_env = parse_runtime_env_args(
@@ -795,12 +800,15 @@ def build(
             )
 
         deployments = pipeline_build(app, name)
+        ingress = get_and_validate_ingress_deployment(deployments)
         schema = ServeApplicationSchema(
             name=name,
-            route_prefix="/" if len(import_paths) == 1 else f"/{name}",
+            route_prefix=ingress.route_prefix,
             import_path=import_path,
             runtime_env={},
-            deployments=[deployment_to_schema(d) for d in deployments],
+            deployments=[
+                deployment_to_schema(d, include_route_prefix=False) for d in deployments
+            ],
         )
 
         return schema.dict(exclude_unset=True)

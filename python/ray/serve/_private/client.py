@@ -2,7 +2,7 @@ import logging
 import random
 import time
 from functools import wraps
-from typing import Callable, Dict, List, Optional, Tuple, Union
+from typing import Callable, Dict, Iterable, List, Optional, Tuple, Union
 
 import ray
 from ray.actor import ActorHandle
@@ -251,12 +251,8 @@ class ServeControllerClient:
         deployments: List[Dict],
         _blocking: bool = True,
     ):
-        ingress_route_prefix = None
         deployment_args_list = []
         for deployment in deployments:
-            if deployment["ingress"]:
-                ingress_route_prefix = deployment["route_prefix"]
-
             deployment_args = get_deploy_args(
                 deployment["name"],
                 replica_config=deployment["replica_config"],
@@ -287,11 +283,13 @@ class ServeControllerClient:
         ray.get(self._controller.deploy_application.remote(name, deployment_args_list))
         if _blocking:
             self._wait_for_application_running(name)
-            if ingress_route_prefix is not None:
-                url_part = " at " + self._root_url + ingress_route_prefix
-            else:
-                url_part = ""
-            logger.info(f"Application '{name}' is ready{url_part}.")
+            for deployment in deployments:
+                deployment_name = deployment["name"]
+                tag = f"component=serve deployment={deployment_name}"
+                url = deployment["url"]
+                version = deployment["version"]
+
+                self.log_deployment_ready(deployment_name, version, url, tag)
 
     @_ensure_connected
     def deploy_apps(
@@ -364,6 +362,15 @@ class ServeControllerClient:
             status = StatusOverview.from_proto(proto)
             all_apps.append(status.name)
         self.delete_apps(all_apps, blocking)
+
+    @_ensure_connected
+    def delete_deployments(self, names: Iterable[str], blocking: bool = True) -> None:
+        """Delete 1.x deployments."""
+
+        ray.get(self._controller.delete_deployments.remote(names))
+        if blocking:
+            for name in names:
+                self._wait_for_deployment_deleted(name, "")
 
     @_ensure_connected
     def get_deployment_info(
@@ -460,6 +467,36 @@ class ServeControllerClient:
             self.handle_cache.pop(evict_key)
 
         return handle
+
+    @_ensure_connected
+    def log_deployment_update_status(
+        self, name: str, version: str, updating: bool
+    ) -> str:
+        tag = f"component=serve deployment={name}"
+
+        if updating:
+            msg = f"Updating deployment '{name}'"
+            if version is not None:
+                msg += f" to version '{version}'"
+            logger.info(f"{msg}. {tag}")
+        else:
+            logger.info(
+                f"Deployment '{name}' is already at version "
+                f"'{version}', not updating. {tag}"
+            )
+
+        return tag
+
+    @_ensure_connected
+    def log_deployment_ready(self, name: str, version: str, url: str, tag: str) -> None:
+        if url is not None:
+            url_part = f" at `{url}`"
+        else:
+            url_part = ""
+        logger.info(
+            f"Deployment '{name}{':'+version if version else ''}' is ready"
+            f"{url_part}. {tag}"
+        )
 
     @_ensure_connected
     def record_multiplexed_replica_info(self, info: MultiplexedReplicaInfo):

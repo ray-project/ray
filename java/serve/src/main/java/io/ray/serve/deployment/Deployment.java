@@ -10,6 +10,7 @@ import io.ray.serve.dag.DAGNode;
 import io.ray.serve.handle.DeploymentHandle;
 import java.util.HashMap;
 import java.util.Map;
+import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -31,12 +32,30 @@ public class Deployment {
 
   private final String version;
 
+  private String routePrefix;
+
+  private final String url;
+
   private boolean ingress;
 
   // TODO support placement group.
 
   public Deployment(
-      String name, DeploymentConfig deploymentConfig, ReplicaConfig replicaConfig, String version) {
+      String name,
+      DeploymentConfig deploymentConfig,
+      ReplicaConfig replicaConfig,
+      String version,
+      String routePrefix) {
+
+    if (StringUtils.isNotBlank(routePrefix)) {
+      Preconditions.checkArgument(routePrefix.startsWith("/"), "route_prefix must start with '/'.");
+      Preconditions.checkArgument(
+          routePrefix.equals("/") || !routePrefix.endsWith("/"),
+          "route_prefix must not end with '/' unless it's the root.");
+      Preconditions.checkArgument(
+          !routePrefix.contains("{") && !routePrefix.contains("}"),
+          "route_prefix may not contain wildcards.");
+    }
 
     Preconditions.checkArgument(
         version != null || deploymentConfig.getAutoscalingConfig() == null,
@@ -46,6 +65,8 @@ public class Deployment {
     this.version = version;
     this.deploymentConfig = deploymentConfig;
     this.replicaConfig = replicaConfig;
+    this.routePrefix = routePrefix;
+    this.url = routePrefix != null ? Serve.getGlobalClient().getRootUrl() + routePrefix : null;
   }
 
   /**
@@ -76,6 +97,7 @@ public class Deployment {
         .setVersion(this.version)
         .setNumReplicas(this.deploymentConfig.getNumReplicas())
         .setInitArgs(this.replicaConfig.getInitArgs())
+        .setRoutePrefix(this.routePrefix)
         .setRayActorOptions(this.replicaConfig.getRayActorOptions())
         .setUserConfig(this.deploymentConfig.getUserConfig())
         .setMaxOngoingRequests(this.deploymentConfig.getMaxOngoingRequests())
@@ -123,6 +145,18 @@ public class Deployment {
 
   public String getVersion() {
     return version;
+  }
+
+  public String getRoutePrefix() {
+    return routePrefix;
+  }
+
+  public String getUrl() {
+    return url;
+  }
+
+  public void setRoutePrefix(String routePrefix) {
+    this.routePrefix = routePrefix;
   }
 
   public boolean isIngress() {

@@ -36,9 +36,20 @@ class DeploymentFunctionNode(DAGNode):
             ]
             deployment_shell = schema_to_deployment(deployment_schema)
 
+            # Set the route prefix, prefer the one user supplied,
+            # otherwise set it to /deployment_name
+            if (
+                deployment_shell.route_prefix is None
+                or deployment_shell.route_prefix != f"/{deployment_shell.name}"
+            ):
+                route_prefix = deployment_shell.route_prefix
+            else:
+                route_prefix = f"/{deployment_name}"
+
             self._deployment = deployment_shell.options(
                 func_or_class=func_body,
                 name=self._deployment_name,
+                route_prefix=route_prefix,
                 _init_args=(),
                 _init_kwargs={},
                 _internal=True,
