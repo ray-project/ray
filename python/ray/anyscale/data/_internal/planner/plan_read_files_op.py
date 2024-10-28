@@ -18,7 +18,7 @@ from ray.data._internal.execution.operators.map_transformer import (
     MapTransformer,
     MapTransformFn,
 )
-from ray.data.block import Block
+from ray.data.block import Block, DataBatch
 
 logger = logging.getLogger(__name__)
 
@@ -29,7 +29,7 @@ def plan_read_files_op(
     assert len(physical_children) == 1
     input_op = physical_children[0]
 
-    def read_paths(blocks: Iterable[Block], _: TaskContext) -> Iterable[Block]:
+    def read_paths(blocks: Iterable[Block], _: TaskContext) -> Iterable[DataBatch]:
         for block in blocks:
             assert isinstance(block, pa.Table), type(block)
             paths = block[PATH_COLUMN_NAME].to_pylist()
@@ -40,6 +40,7 @@ def plan_read_files_op(
         BatchMapTransformFn(read_paths),
         BuildOutputBlocksMapTransformFn.for_batches(),
     ]
+
     map_transformer = MapTransformer(transform_fns)
     return MapOperator.create(
         map_transformer,
