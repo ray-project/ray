@@ -1,5 +1,5 @@
 # This code is adapted from:
-# https://github.com/elastic/apm-agent-python/blob/main/elasticapm/contrib/starlette/__init__.py
+# https://github.com/elastic/apm-agent-python/blob/f570e8c2b68a8714628acac815aebcc3518b44c7/elasticapm/contrib/starlette/__init__.py
 #
 #  BSD 3-Clause License
 #
