@@ -11,10 +11,10 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 
-from python.ray._private import ray_constants
 
 import ray
 from ray import ObjectRef, cloudpickle
+from ray._private import ray_constants
 from ray.actor import ActorHandle
 from ray.exceptions import RayActorError, RayError, RayTaskError, RuntimeEnvSetupError
 from ray.serve import metrics
