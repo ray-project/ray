@@ -362,7 +362,6 @@ class SingleAgentEpisode:
             observation: The initial observation returned by `env.reset()`.
             infos: An (optional) info dict returned by `env.reset()`.
         """
-        assert not self.is_reset
         assert not self.is_done
         assert len(self.observations) == 0
         # Assume that this episode is completely empty and has not stepped yet.
@@ -485,11 +484,6 @@ class SingleAgentEpisode:
             )
             for k, v in self.extra_model_outputs.items():
                 assert len(v) == len(self.observations) - 1
-
-    @property
-    def is_reset(self) -> bool:
-        """Returns True if `self.add_env_reset()` has already been called."""
-        return len(self.observations) > 0
 
     @property
     def is_finalized(self) -> bool:

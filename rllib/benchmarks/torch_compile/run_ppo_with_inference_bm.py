@@ -29,7 +29,7 @@ def main(pargs):
     config = (
         PPOConfig()
         .environment(
-            "ale_py:ALE/Breakout-v5",
+            "ALE/Breakout-v5",
             clip_rewards=True,
             env_config={
                 "frameskip": 1,

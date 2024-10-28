@@ -98,7 +98,7 @@ class TestPPO(unittest.TestCase):
             # "CliffWalking-v0",
             "CartPole-v1",
             "Pendulum-v1",
-        ]:  # "ale_py:ALE/Breakout-v5"]:
+        ]:  # "ALE/Breakout-v5"]:
             print("Env={}".format(env))
             for lstm in [False]:
                 print("LSTM={}".format(lstm))
