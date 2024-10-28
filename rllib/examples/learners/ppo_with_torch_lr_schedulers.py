@@ -49,8 +49,13 @@ With `--lr-const-factor=0.1`, `--lr-const-iters=10, and `--lr-exp_decay=0.3`.
 +------------------------+------------------------+------------------------+
 """
 import functools
+from typing import Optional
 
+from ray.rllib.algorithms.algorithm import Algorithm
+from ray.rllib.algorithms.callbacks import DefaultCallbacks
 from ray.rllib.algorithms.ppo import PPOConfig
+from ray.rllib.core import DEFAULT_MODULE_ID
+from ray.rllib.core.learner.learner import DEFAULT_OPTIMIZER
 from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
 from ray.rllib.utils.metrics import (
     ENV_RUNNER_RESULTS,
@@ -58,10 +63,27 @@ from ray.rllib.utils.metrics import (
     EVALUATION_RESULTS,
     NUM_ENV_STEPS_SAMPLED_LIFETIME,
 )
+from ray.rllib.utils.metrics.metrics_logger import MetricsLogger
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.test_utils import add_rllib_example_script_args
 
 torch, _ = try_import_torch()
+
+
+class LRChecker(DefaultCallbacks):
+    def on_train_result(
+        self,
+        *,
+        algorithm: "Algorithm",
+        metrics_logger: Optional[MetricsLogger] = None,
+        result: dict,
+        **kwargs,
+    ) -> None:
+        if algorithm.training_iteration <= 2:
+            assert algorithm.learner_group._learner.get_optimizer(
+                DEFAULT_MODULE_ID, DEFAULT_OPTIMIZER
+            ).param_groups[0]["lr"] == [0.003]
+
 
 parser = add_rllib_example_script_args(default_reward=450.0, default_timesteps=200000)
 parser.set_defaults(enable_new_api_stack=True)
@@ -128,6 +150,9 @@ if __name__ == "__main__":
                     torch.optim.lr_scheduler.ExponentialLR, gamma=args.lr_exp_decay
                 ),
             ]
+        )
+        .callbacks(
+            LRChecker,
         )
     )
 

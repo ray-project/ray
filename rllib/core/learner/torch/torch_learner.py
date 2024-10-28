@@ -295,38 +295,37 @@ class TorchLearner(Learner):
                 `NUM_ENV_STEPS_SAMPLED_LIFETIME`.
                 # TODO (sven): Make this a more formal structure with its own type.
         """
-        # If we have `torch.optim.lr_scheduler.LRScheduler` we need to step them here
-        # and report learning rates.
-        if self._lr_schedulers:
-            # Only update this optimizer's lr, if a scheduler has been registered
-            # along with it.
-            for module_id, optimizer_names in self._module_optimizers.items():
-                for optimizer_name in optimizer_names:
-                    # If learning rate schedulers are provided step them here. Note,
-                    # stepping them in `TorchLearner.apply_gradients` updates the
-                    # learning rates during minibatch updates; we want to update
-                    # between whole batch updates.
-                    if (
-                        module_id in self._lr_schedulers
-                        and optimizer_name in self._lr_schedulers[module_id]
-                    ):
-                        for scheduler in self._lr_schedulers[module_id][optimizer_name]:
-                            scheduler.step()
-                    optimizer = self.get_optimizer(module_id, optimizer_name)
-                    self.metrics.log_value(
-                        # Cut out the module ID from the beginning since it's already
-                        # part of the key sequence: (ModuleID, "[optim name]_lr").
-                        key=(
-                            module_id,
-                            f"{optimizer_name[len(module_id) + 1:]}_{LR_KEY}",
-                        ),
-                        value=convert_to_numpy(self._get_optimizer_lr(optimizer)),
-                        window=1,
-                    )
-        # Otherwise call the `super()`'s method to update RLlib's learning rate
-        # schedules.
-        else:
+
+        # If we have no `torch.optim.lr_scheduler.LRScheduler` registered call the
+        # `super()`'s method to update RLlib's learning rate schedules.
+        if not self._lr_schedulers:
             return super().after_gradient_based_update(timesteps=timesteps)
+
+        # Only update this optimizer's lr, if a scheduler has been registered
+        # along with it.
+        for module_id, optimizer_names in self._module_optimizers.items():
+            for optimizer_name in optimizer_names:
+                # If learning rate schedulers are provided step them here. Note,
+                # stepping them in `TorchLearner.apply_gradients` updates the
+                # learning rates during minibatch updates; we want to update
+                # between whole batch updates.
+                if (
+                    module_id in self._lr_schedulers
+                    and optimizer_name in self._lr_schedulers[module_id]
+                ):
+                    for scheduler in self._lr_schedulers[module_id][optimizer_name]:
+                        scheduler.step()
+                optimizer = self.get_optimizer(module_id, optimizer_name)
+                self.metrics.log_value(
+                    # Cut out the module ID from the beginning since it's already
+                    # part of the key sequence: (ModuleID, "[optim name]_lr").
+                    key=(
+                        module_id,
+                        f"{optimizer_name[len(module_id) + 1:]}_{LR_KEY}",
+                    ),
+                    value=convert_to_numpy(self._get_optimizer_lr(optimizer)),
+                    window=1,
+                )
 
     @override(Learner)
     def _get_optimizer_state(self) -> StateDict:
