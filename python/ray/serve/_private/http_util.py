@@ -10,7 +10,6 @@ from typing import Any, Awaitable, Callable, List, Optional, Tuple, Type
 
 import starlette
 from fastapi.encoders import jsonable_encoder
-from starlette.routing import Match, Mount, Route
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 from uvicorn.config import Config
 from uvicorn.lifespan.on import LifespanOn

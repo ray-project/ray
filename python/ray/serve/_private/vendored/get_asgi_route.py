@@ -31,12 +31,15 @@
 #  CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
 #  OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 
-from typing import Optional
+from typing import List, Optional
 
 from starlette.routing import Match, Mount, Route
 from starlette.types import ASGIApp, Scope
 
-def _get_route_name(scope: Scope, routes: List[Route], *, route_name: Optional[str] = None) -> Optional[str]:
+
+def _get_route_name(
+    scope: Scope, routes: List[Route], *, route_name: Optional[str] = None
+) -> Optional[str]:
     for route in routes:
         match, child_scope = route.matches(scope)
         if match == Match.FULL:

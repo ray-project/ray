@@ -48,9 +48,6 @@ from ray.serve._private.http_util import (
     MessageQueue,
     Response,
 )
-from ray.serve._private.vendored.get_asgi_route_name import (
-    get_asgi_route_name,
-)
 from ray.serve._private.logging_utils import (
     access_log_msg,
     configure_component_cpu_profiler,
@@ -61,6 +58,7 @@ from ray.serve._private.logging_utils import (
 from ray.serve._private.metrics_utils import InMemoryMetricsStore, MetricsPusher
 from ray.serve._private.utils import get_component_file_name  # noqa: F401
 from ray.serve._private.utils import parse_import_path, wrap_to_ray_error
+from ray.serve._private.vendored.get_asgi_route_name import get_asgi_route_name
 from ray.serve._private.version import DeploymentVersion
 from ray.serve.config import AutoscalingConfig
 from ray.serve.deployment import Deployment
