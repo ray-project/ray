@@ -90,7 +90,15 @@ class TestGPUs(unittest.TestCase):
 
         actual_gpus_available = torch.cuda.device_count()
 
-        config = PPOConfig().env_runners(num_env_runners=2).environment("CartPole-v1")
+        config = (
+            PPOConfig()
+            .api_stack(
+                enable_rl_module_and_learner=False,
+                enable_env_runner_and_connector_v2=False,
+            )
+            .env_runners(num_env_runners=2)
+            .environment("CartPole-v1")
+        )
 
         # Expect no errors in local mode.
         for num_gpus in [0, 0.1, 1, actual_gpus_available + 4]:

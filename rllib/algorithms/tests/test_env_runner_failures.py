@@ -910,10 +910,10 @@ class TestWorkerFailures(unittest.TestCase):
         config = (
             PPOConfig()
             .api_stack(
-                enable_rl_module_and_learner=True,
-                enable_env_runner_and_connector_v2=True,
+                enable_rl_module_and_learner=False,
+                enable_env_runner_and_connector_v2=False,
             )
-            .environment(env=RandomEnv, env_config={"p_terminated": 0.0})
+            .environment(RandomEnv, env_config={"p_terminated": 0.0})
             .training(train_batch_size_per_learner=200)
             .evaluation(
                 evaluation_num_env_runners=1,

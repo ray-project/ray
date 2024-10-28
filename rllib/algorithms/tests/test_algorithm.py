@@ -213,6 +213,10 @@ class TestAlgorithm(unittest.TestCase):
     def test_add_policy_and_remove_policy(self):
         config = (
             ppo.PPOConfig()
+            .api_stack(
+                enable_env_runner_and_connector_v2=False,
+                enable_rl_module_and_learner=False,
+            )
             .environment(
                 env=MultiAgentCartPole,
                 env_config={
@@ -485,6 +489,10 @@ class TestAlgorithm(unittest.TestCase):
         # configured exact number of episodes per evaluation.
         config = (
             ppo.PPOConfig()
+            .api_stack(
+                enable_env_runner_and_connector_v2=False,
+                enable_rl_module_and_learner=False,
+            )
             .environment(env="CartPole-v1")
             .callbacks(callbacks_class=AssertEvalCallback)
         )
@@ -570,7 +578,14 @@ class TestAlgorithm(unittest.TestCase):
     def test_counters_after_checkpoint(self):
         # We expect algorithm to no start counters from zero after loading a
         # checkpoint on a fresh Algorithm instance
-        config = ppo.PPOConfig().environment(env="CartPole-v1")
+        config = (
+            ppo.PPOConfig()
+            .api_stack(
+                enable_rl_module_and_learner=False,
+                enable_env_runner_and_connector_v2=False,
+            )
+            .environment(env="CartPole-v1")
+        )
         algo = config.build()
 
         self.assertTrue(all(c == 0 for c in algo._counters.values()))
