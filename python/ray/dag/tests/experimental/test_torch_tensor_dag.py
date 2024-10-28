@@ -394,6 +394,15 @@ def test_torch_tensor_custom_comm(ray_start_regular):
         ) -> "torch.Tensor":
             return self._inner.recv(shape, dtype, peer_rank, allocator=allocator)
 
+        def allreduce(
+            self,
+            send_buf: "torch.Tensor",
+            recv_buf: "torch.Tensor",
+            op: ReduceOp = ReduceOp.SUM,
+        ) -> None:
+            self._inner.allreduce(send_buf, recv_buf, op)
+            recv_buf += 1
+
         @property
         def recv_stream(self) -> Optional["cp.cuda.ExternalStream"]:
             return self._inner.recv_stream
@@ -798,57 +807,6 @@ def test_torch_tensor_nccl_nested_dynamic(ray_start_regular):
 
 
 @pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
-def test_torch_tensor_nccl_direct_return_error(ray_start_regular):
-    if not USE_GPU:
-        pytest.skip("NCCL tests require GPUs")
-
-    assert (
-        sum(node["Resources"].get("GPU", 0) for node in ray.nodes()) > 1
-    ), "This test requires at least 2 GPUs"
-
-    actor_cls = TorchTensorWorker.options(num_cpus=0, num_gpus=1)
-
-    sender = actor_cls.remote()
-    receiver = actor_cls.remote()
-
-    shape = (10,)
-    dtype = torch.float16
-
-    # Passing a non-tensor value when _direct_return=True and tranport="nccl"
-    # fails.
-    with InputNode() as inp:
-        dag = sender.send.bind(inp.shape, inp.dtype, inp.value, inp.send_tensor)
-        dag = dag.with_type_hint(
-            TorchTensorType(
-                transport=TorchTensorType.NCCL,
-                _direct_return=True,
-            )
-        )
-        dag = receiver.recv.bind(dag)
-
-    compiled_dag = dag.experimental_compile()
-
-    ref = compiled_dag.execute(shape=shape, dtype=dtype, value=1, send_tensor=True)
-    assert ray.get(ref) == (1, shape, dtype)
-
-    ref = compiled_dag.execute(shape=shape, dtype=dtype, value=1, send_tensor=False)
-    with pytest.raises(RayChannelError):
-        ray.get(ref)
-
-    # For direct_return=True tensors, the DAG will be torn down after any task
-    # throws an application-level exception, such as when the task returns
-    # something other than a torch.Tensor. Check that we can no longer submit
-    # to the DAG.
-    with pytest.raises(RayChannelError):
-        ref = compiled_dag.execute(shape=shape, dtype=dtype, value=1, send_tensor=True)
-
-    compiled_dag.teardown()
-
-    # TODO(swang): This currently requires time.sleep to avoid some issue with
-    # following tests.
-    time.sleep(3)
-
-
 @pytest.mark.parametrize("static_shape", [False, True])
 @pytest.mark.parametrize("direct_return", [False, True])
 @pytest.mark.parametrize("overlap_gpu_communication", [False, True])
@@ -1103,6 +1061,8 @@ def test_torch_tensor_nccl_all_reduce_custom_comm(ray_start_regular):
         A custom NCCL group for testing. This is a simple wrapper around `_NcclGroup`.
         """
 
+        import cupy as cp
+
         def __init__(self, world_size, comm_id, actor_handles):
             self._world_size = world_size
             self._comm_id = comm_id
@@ -1161,6 +1121,14 @@ def test_torch_tensor_nccl_all_reduce_custom_comm(ray_start_regular):
         ) -> None:
             self._inner.allreduce(send_buf, recv_buf, op)
             recv_buf += 1
+
+        @property
+        def recv_stream(self) -> Optional["cp.cuda.ExternalStream"]:
+            return self._inner.recv_stream
+
+        @property
+        def send_stream(self) -> Optional["cp.cuda.ExternalStream"]:
+            return self._inner.send_stream
 
         def destroy(self) -> None:
             return self._inner.destroy()

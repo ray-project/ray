@@ -1655,7 +1655,7 @@ class CompiledDAG:
                     ),
                     task_idx,
                     actor_handle,
-                    False,
+                    isinstance(dag_node, CollectiveOutputNode),
                 )
                 write_node = _DAGOperationGraphNode(
                     _DAGNodeOperation(
