@@ -7,6 +7,14 @@ py_test_module_list(
     deps = ["//:ray_lib", ":conftest"],
 )
 
+py_test(
+    name = "test_checkpoint",
+    size = "medium",
+    srcs = ["tests/test_checkpoint.py"],
+    tags = ["team:data", "exclusive"],
+    deps = ["//:ray_lib", ":conftest"],
+)
+
 py_library(
     name = "conftest",
     srcs = ["tests/conftest.py"],

@@ -13,7 +13,13 @@ if TYPE_CHECKING:
 class CheckpointBackend(Enum):
     """Supported backends for storing and reading checkpoint files."""
 
-    pass
+    # AWS S3
+    S3 = "S3"
+
+    # Disk/Filesystem
+    # Note: if the job is running on multiple nodes, the
+    # path must be a network-mounted filesystem (e.g. `/mnt/cluster_storage/`)
+    DISK = "DISK"
 
 
 @dataclass
@@ -99,6 +105,11 @@ class CheckpointFilter:
         return filtered_batch
 
     def generate_id_column_for_block(self, block: Block) -> Block:
+        """For the given block, add a new column containing a deterministically
+        generated ID for each row, and return the resulting block.
+
+        This is useful for generating IDs 'on the fly' if the input dataset
+        does not already have an ID column."""
         if not self.generate_id_column_fn:
             return block
 
@@ -111,6 +122,11 @@ class CheckpointFilter:
         return id_block
 
     def generate_id_column_for_batch(self, batch: DataBatch) -> DataBatch:
+        """For the given block, add a new column containing a deterministically
+        generated ID for each row, and return the resulting block.
+
+        Note that this method calls `generate_id_column_for_block()` under the hood,
+        so it is preferred to call that method directly if you already have a block."""
         arrow_block = BlockAccessor.batch_to_block(batch)
         id_block = self.generate_id_column_for_block(arrow_block)
         id_batch = BlockAccessor.for_block(id_block).to_batch_format(None)
@@ -127,6 +143,17 @@ class CheckpointFilter:
             config = DataContext.get_current().checkpoint_config
 
         backend = config.backend
+
+        if backend == CheckpointBackend.S3:
+            from ray.anyscale.data.checkpoint.checkpoint_s3 import S3CheckpointFilter
+
+            return S3CheckpointFilter(config)
+        if backend == CheckpointBackend.DISK:
+            from ray.anyscale.data.checkpoint.checkpoint_disk import (
+                DiskCheckpointFilter,
+            )
+
+            return DiskCheckpointFilter(config)
 
         raise InvalidCheckpointingConfig(f"Backend {backend} not implemented")
 
@@ -151,7 +178,7 @@ class CheckpointWriter:
         """Write a checkpoint for all rows in a single block to the checkpoint
         output directory given by `self.output_path`.
 
-         Subclasses of `CheckpointWriter` must implement this method."""
+        Subclasses of `CheckpointWriter` must implement this method."""
         raise NotImplementedError()
 
     @staticmethod
@@ -165,5 +192,15 @@ class CheckpointWriter:
             config = DataContext.get_current().checkpoint_config
 
         backend = config.backend
+        if backend == CheckpointBackend.S3:
+            from ray.anyscale.data.checkpoint.checkpoint_s3 import S3CheckpointWriter
+
+            return S3CheckpointWriter(config)
+        if backend == CheckpointBackend.DISK:
+            from ray.anyscale.data.checkpoint.checkpoint_disk import (
+                DiskCheckpointWriter,
+            )
+
+            return DiskCheckpointWriter(config)
 
         raise InvalidCheckpointingConfig(f"Backend {backend} not implemented")

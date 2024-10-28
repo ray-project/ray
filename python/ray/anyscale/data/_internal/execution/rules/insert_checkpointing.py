@@ -92,7 +92,7 @@ class InsertCheckpointingLayerRule(Rule):
         plan = self._insert_write_checkpoint(plan, config)
 
         # If the plan doesn't terminate in a `Write` op,
-        # skip inserting the checkpoint write process.
+        # skip inserting the checkpoint filter step.
         if not plan._context._skip_checkpoint_temp:
             plan = self._insert_read_filter_checkpoint(plan)
         return plan

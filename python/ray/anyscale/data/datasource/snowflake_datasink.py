@@ -1,9 +1,9 @@
 from typing import Any, Dict, Iterable, Optional, Tuple
 
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
+from ray.data._internal.execution.interfaces.task_context import TaskContext
 from ray.data._internal.util import _check_import, call_with_retry
 from ray.data.block import Block, BlockAccessor
-from ray.data.context import DataContext
 from ray.data.datasource import Datasink
 
 
@@ -14,7 +14,7 @@ class SnowflakeDatasink(Datasink):
         self._table = table
         self._connection_parameters = connection_parameters
 
-    def write(self, blocks: Iterable[Block], ctx: DataContext) -> Any:
+    def write(self, blocks: Iterable[Block], ctx: TaskContext) -> None:
         from snowflake.connector import connect
         from snowflake.connector.pandas_tools import write_pandas
 
@@ -42,8 +42,6 @@ class SnowflakeDatasink(Datasink):
                 ),
                 description="write block to Snowflake",
             )
-
-        return "ok"
 
 
 def _resolve_object_name(name) -> Tuple[Optional[str], Optional[str], str]:
