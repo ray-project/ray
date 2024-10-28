@@ -746,10 +746,7 @@ Status NormalTaskSubmitter::CancelTask(TaskSpecification task_spec,
         CancelWorkerLeaseIfNeeded(scheduling_key);
         task_finisher_->FailPendingTask(task_spec.TaskId(),
                                         rpc::ErrorType::TASK_CANCELLED);
-        // do we also have to come here and call core worker rpc cancel on the tasks it
-        // depends on?
       }
-      // if there is a parent task, need to get it and then cancel it
       return Status::OK();
     }
     // Looks for an RPC handle for the worker executing the task.
@@ -757,7 +754,6 @@ Status NormalTaskSubmitter::CancelTask(TaskSpecification task_spec,
   }
 
   RAY_CHECK(client != nullptr);
-  RAY_LOG(INFO) << "Sending rpc to cancel task to core worker: " << task_spec.TaskId();
   auto request = rpc::CancelTaskRequest();
   request.set_intended_task_id(task_spec.TaskId().Binary());
   request.set_force_kill(force_kill);
