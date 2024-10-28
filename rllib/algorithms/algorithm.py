@@ -807,7 +807,7 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
             rl_module_ckpt_dirs = {}
             multi_rl_module_ckpt_dir = module_spec.load_state_path
             modules_to_load = module_spec.modules_to_load
-            for module_id, sub_module_spec in module_spec.module_specs.items():
+            for module_id, sub_module_spec in module_spec.rl_module_specs.items():
                 if sub_module_spec.load_state_path:
                     rl_module_ckpt_dirs[module_id] = sub_module_spec.load_state_path
             if multi_rl_module_ckpt_dir or rl_module_ckpt_dirs:
@@ -821,8 +821,8 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
             rl_module_state = self.learner_group.get_state(
                 components=COMPONENT_LEARNER + "/" + COMPONENT_RL_MODULE,
                 inference_only=True,
-            )[COMPONENT_LEARNER][COMPONENT_RL_MODULE]
-            self.env_runner.set_state({COMPONENT_RL_MODULE: rl_module_state})
+            )[COMPONENT_LEARNER]
+            self.env_runner.set_state(rl_module_state)
             self.env_runner_group.sync_env_runner_states(
                 config=self.config,
                 env_steps_sampled=self.metrics.peek(

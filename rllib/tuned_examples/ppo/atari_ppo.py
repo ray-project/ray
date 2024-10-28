@@ -4,6 +4,7 @@ from ray import tune
 from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.connectors.env_to_module.frame_stacking import FrameStackingEnvToModule
 from ray.rllib.connectors.learner.frame_stacking import FrameStackingLearner
+from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
 from ray.rllib.env.wrappers.atari_wrappers import wrap_atari_for_new_api_stack
 from ray.rllib.utils.test_utils import add_rllib_example_script_args
 
@@ -13,7 +14,10 @@ parser = add_rllib_example_script_args(
     default_timesteps=3000000,
     default_iters=100000000000,
 )
-parser.set_defaults(enable_new_api_stack=True)
+parser.set_defaults(
+    enable_new_api_stack=True,
+    env="ale_py:ALE/Pong-v5",
+)
 # Use `parser` to add your own custom command line options to this script
 # and (if needed) use their values toset up `config` below.
 args = parser.parse_args()
@@ -71,12 +75,12 @@ config = (
         grad_clip_by="global_norm",
     )
     .rl_module(
-        model_config_dict={
-            "vf_share_layers": True,
-            "conv_filters": [[16, 4, 2], [32, 4, 2], [64, 4, 2], [128, 4, 2]],
-            "conv_activation": "relu",
-            "post_fcnet_hiddens": [256],
-        }
+        model_config=DefaultModelConfig(
+            conv_filters=[[16, 4, 2], [32, 4, 2], [64, 4, 2], [128, 4, 2]],
+            conv_activation="relu",
+            head_fcnet_hiddens=[256],
+            vf_share_layers=True,
+        ),
     )
 )
 

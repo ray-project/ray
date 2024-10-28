@@ -54,8 +54,8 @@ class MARWILCatalog(Catalog):
             shared=self._model_config_dict["vf_share_layers"],
         )
 
-        self.pi_and_vf_hiddens = self._model_config_dict["post_fcnet_hiddens"]
-        self.pi_and_vf_activation = self._model_config_dict["post_fcnet_activation"]
+        self.pi_and_vf_hiddens = self._model_config_dict["head_fcnet_hiddens"]
+        self.pi_and_vf_activation = self._model_config_dict["head_fcnet_activation"]
 
         # At this time we do not have information about the exact (framework-specific)
         # action distribution class, yet. We postpone the configuration of the output

@@ -311,8 +311,7 @@ class MockWorkerClient : public MockCoreWorkerClientInterface {
             publisher_.get(),
             subscriber_.get(),
             [](const NodeID &node_id) { return true; },
-            /*lineage_pinning_enabled=*/false,
-            client_factory) {}
+            /*lineage_pinning_enabled=*/false) {}
 
   ~MockWorkerClient() override {
     if (!failed_) {
