@@ -50,6 +50,8 @@ class InstrumentedIOContextWithThread {
   /**
    * Constructor.
    * @param thread_name The name of the thread.
+   * @param enable_lag_probe If true, enables the lag probe. It posts tasks to the
+   * io_context so that a run() will never return.
    */
   explicit InstrumentedIOContextWithThread(const std::string &thread_name,
                                            bool enable_lag_probe = false)
