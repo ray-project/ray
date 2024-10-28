@@ -21,7 +21,7 @@ class IDDict(dict, Generic[K, V]):
     instance to map to a unique key.
     """
 
-    def __getitem__(self, key: K) -> Any:
+    def __getitem__(self, key: K) -> V:
         return super().__getitem__(id(key))
 
     def __setitem__(self, key: K, value: V):
