@@ -63,7 +63,7 @@ class TestPPO(unittest.TestCase):
 
     def test_rollouts(self):
         # TODO: Add FrozenLake-v1 to cover LSTM case.
-        env_names = ["CartPole-v1", "Pendulum-v1", "ALE/Breakout-v5"]
+        env_names = ["CartPole-v1", "Pendulum-v1", "ale_py:ALE/Breakout-v5"]
         fwd_fns = ["forward_exploration", "forward_inference"]
         lstm = [True, False]
         config_combinations = [env_names, fwd_fns, lstm]
@@ -98,7 +98,7 @@ class TestPPO(unittest.TestCase):
 
     def test_forward_train(self):
         # TODO: Add FrozenLake-v1 to cover LSTM case.
-        env_names = ["CartPole-v1", "Pendulum-v1", "ALE/Breakout-v5"]
+        env_names = ["CartPole-v1", "Pendulum-v1", "ale_py:ALE/Breakout-v5"]
         lstm = [False, True]
         config_combinations = [env_names, lstm]
         for config in itertools.product(*config_combinations):

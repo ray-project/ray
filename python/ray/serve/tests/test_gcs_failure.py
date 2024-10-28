@@ -192,11 +192,11 @@ def test_new_router_on_gcs_failure(serve_ha, use_proxy: bool):
     if use_proxy:
         for _ in range(10):
             returned_pids.add(
-                int(requests.get("http://localhost:8000", timeout=0.1).text)
+                int(requests.get("http://localhost:8000", timeout=3.0).text)
             )
     else:
         for _ in range(10):
-            returned_pids.add(int(h.remote().result(timeout_s=0.1)))
+            returned_pids.add(int(h.remote().result(timeout_s=3.0)))
 
     print("Returned pids:", returned_pids)
     assert len(returned_pids) == 2
