@@ -782,14 +782,33 @@ class MockWorkerContext : public WorkerContext {
   }
 };
 
+class MockTaskEventBuffer : public worker::TaskEventBuffer {
+ public:
+  void AddTaskEvent(std::unique_ptr<worker::TaskEvent> task_event) override {}
+
+  void FlushEvents(bool forced) override {}
+
+  Status Start(bool auto_flush = true) override { return Status::OK(); }
+
+  void Stop() override {}
+
+  bool Enabled() const override { return true; }
+
+  const std::string DebugString() override { return ""; }
+};
+
 class MockTaskReceiver : public TaskReceiver {
  public:
   MockTaskReceiver(WorkerContext &worker_context,
                    instrumented_io_context &main_io_service,
+                   worker::TaskEventBuffer &task_event_buffer,
                    const TaskHandler &task_handler,
                    const OnActorCreationTaskDone &actor_creation_task_done_)
-      : TaskReceiver(
-            worker_context, main_io_service, task_handler, actor_creation_task_done_) {}
+      : TaskReceiver(worker_context,
+                     main_io_service,
+                     task_event_buffer,
+                     task_handler,
+                     actor_creation_task_done_) {}
 
   void UpdateConcurrencyGroupsCache(const ActorID &actor_id,
                                     const std::vector<ConcurrencyGroup> &cgs) {
@@ -812,7 +831,9 @@ class TaskReceiverTest : public ::testing::Test {
                                   std::placeholders::_5,
                                   std::placeholders::_6);
     receiver_ = std::make_unique<MockTaskReceiver>(
-        worker_context_, main_io_service_, execute_task, [] { return Status::OK(); });
+        worker_context_, main_io_service_, task_event_buffer_, execute_task, [] {
+          return Status::OK();
+        });
     receiver_->Init(std::make_shared<rpc::CoreWorkerClientPool>(
                         [&](const rpc::Address &addr) { return worker_client_; }),
                     rpc_address_,
@@ -845,6 +866,7 @@ class TaskReceiverTest : public ::testing::Test {
   rpc::Address rpc_address_;
   MockWorkerContext worker_context_;
   instrumented_io_context main_io_service_;
+  MockTaskEventBuffer task_event_buffer_;
   std::shared_ptr<MockWorkerClient> worker_client_;
   std::shared_ptr<DependencyWaiter> dependency_waiter_;
 };
