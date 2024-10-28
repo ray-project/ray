@@ -5,7 +5,7 @@ import time
 from collections import defaultdict
 from contextlib import contextmanager
 from functools import partial
-from typing import Any, Callable, DefaultDict, List, Optional, Tuple, Union
+from typing import Any, Callable, Coroutine, DefaultDict, List, Optional, Tuple, Union
 
 from ray.actor import ActorHandle
 from ray.exceptions import ActorDiedError, ActorUnavailableError, RayError
@@ -318,7 +318,7 @@ class Router:
         event_loop: asyncio.BaseEventLoop,
         replica_scheduler: Optional[ReplicaScheduler],
         enable_strict_max_ongoing_requests: bool,
-        resolve_request_args_func: Callable = None,
+        resolve_request_args_func: Coroutine,
     ):
         """Used to assign requests to downstream replicas for a deployment.
 
@@ -331,9 +331,7 @@ class Router:
         self._enable_strict_max_ongoing_requests = enable_strict_max_ongoing_requests
 
         self._replica_scheduler: ReplicaScheduler = replica_scheduler
-        self._resolve_request_args = resolve_request_args_func or (
-            lambda args, kwargs: (args, kwargs)
-        )
+        self._resolve_request_args = resolve_request_args_func
 
         # Flipped to `True` once the router has received a non-empty
         # replica set at least once.

@@ -262,7 +262,7 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
     ):
         """Update queue length cache with new info received from replica."""
         if self._use_replica_queue_len_cache:
-            self.replica_queue_len_cache.update(
+            self._replica_queue_len_cache.update(
                 replica_id, queue_len_info.num_ongoing_requests
             )
 
