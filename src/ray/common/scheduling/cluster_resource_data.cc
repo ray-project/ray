@@ -92,13 +92,21 @@ bool NodeResources::IsAvailable(const ResourceRequest &resource_request,
     RAY_LOG(DEBUG) << "At pull manager capacity";
     return false;
   }
-
+  auto available_resources = this->available;
   if (!this->normal_task_resources.IsEmpty()) {
-    auto available_resources = this->available;
     available_resources -= this->normal_task_resources;
-    return available_resources >= resource_request.GetResourceSet();
   }
-  return this->available >= resource_request.GetResourceSet();
+  if (!this->available_resources_instance_set.IsEmpty() &&
+      available_resources >= resource_request.GetResourceSet()) {
+    NodeResourceInstanceSet available_set = this->available_resources_instance_set;
+    auto allocation = available_set.TryAllocate(resource_request.GetResourceSet());
+    if (allocation) {
+      return true;
+    } else {
+      return false;
+    }
+  }
+  return available_resources >= resource_request.GetResourceSet();
 }
 
 bool NodeResources::IsFeasible(const ResourceRequest &resource_request) const {
