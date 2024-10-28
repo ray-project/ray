@@ -186,7 +186,7 @@ NodeResourceInstanceSet::TryAllocate(const ResourceSet &resource_demands) {
 
       auto pg_index_resources_it = pg_indexed_resources_.find(original_resource_id);
       if (pg_index_resources != pg_indexed_resources_.end()) {
-        auto index_resources = pg_index_resources->second.find(*pg_id);
+        auto index_resources_it = pg_index_resources->second.find(*pg_id);
         if (index_resources != pg_index_resources->second.end()) {
           for (ResourceID indexed_resource_id : index_resources->second) {
             if (Has(indexed_resource_id)) {
