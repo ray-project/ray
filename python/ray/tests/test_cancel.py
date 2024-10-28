@@ -592,17 +592,16 @@ def test_cancel_with_dependency(shutdown_only, use_force):
     ray.init(num_cpus=4)
 
     @ray.remote(num_cpus=1)
-    def inner():
+    def wait_forever_task():
         while True:
-            time.sleep(0.1)
-        return 1
+            time.sleep(1000)
 
     @ray.remote(num_cpus=1)
     def square(x):
         return x * x
 
-    wait_forever = inner.remote()
-    wait_forever_as_dep = square.remote(wait_forever)
+    wait_forever_obj = wait_forever_task.remote()
+    wait_forever_as_dep = square.remote(wait_forever_obj)
     ray.cancel(wait_forever_as_dep)
     with pytest.raises(valid_exceptions(use_force)):
         ray.get(wait_forever_as_dep)
