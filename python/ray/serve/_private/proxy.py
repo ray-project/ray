@@ -360,7 +360,7 @@ class GenericProxy(ABC):
         return ResponseHandlerInfo(
             response_generator=response_generator,
             metadata=HandlerMetadata(
-                route=proxy_request.route_path,
+                route_prefix=proxy_request.route_path,
             ),
             should_record_access_log=False,
             should_increment_ongoing_requests=False,
@@ -384,7 +384,10 @@ class GenericProxy(ABC):
             return ResponseHandlerInfo(
                 response_generator=self.not_found_response(proxy_request),
                 metadata=HandlerMetadata(
-                    route=None,
+                    # Don't include the invalid route prefix because it can blow up our
+                    # metrics' cardinality.
+                    # See: https://github.com/ray-project/ray/issues/47999
+                    route_prefix="",
                 ),
                 should_record_access_log=True,
                 should_increment_ongoing_requests=False,
@@ -408,7 +411,10 @@ class GenericProxy(ABC):
             handle, request_id = self.setup_request_context_and_handle(
                 app_name=handle.deployment_id.app_name,
                 handle=handle,
-                route_path=route_prefix,
+                # NOTE(edoakes): we use the route_prefix instead of the full HTTP path
+                # for logs & metrics to avoid high cardinality.
+                # See: https://github.com/ray-project/ray/issues/47999
+                route_prefix=route_prefix,
                 proxy_request=proxy_request,
                 internal_request_id=internal_request_id,
             )
@@ -426,7 +432,7 @@ class GenericProxy(ABC):
                 metadata=HandlerMetadata(
                     application_name=handle.deployment_id.app_name,
                     deployment_name=handle.deployment_id.name,
-                    route=route_prefix,
+                    route_prefix=route_prefix,
                 ),
                 should_record_access_log=True,
                 should_increment_ongoing_requests=True,
@@ -517,7 +523,7 @@ class GenericProxy(ABC):
         self,
         app_name: str,
         handle: DeploymentHandle,
-        route_path: str,
+        route_prefix: str,
         proxy_request: ProxyRequest,
         internal_request_id: str,
     ) -> Tuple[DeploymentHandle, str]:
@@ -673,7 +679,7 @@ class gRPCProxy(GenericProxy):
         self,
         app_name: str,
         handle: DeploymentHandle,
-        route_path: str,
+        route_prefix: str,
         proxy_request: ProxyRequest,
         internal_request_id: str,
     ) -> Tuple[DeploymentHandle, str]:
@@ -695,7 +701,7 @@ class gRPCProxy(GenericProxy):
         )
 
         request_context_info = {
-            "route": route_path,
+            "route": route_prefix,
             "request_id": request_id,
             "_internal_request_id": internal_request_id,
             "app_name": app_name,
@@ -903,7 +909,7 @@ class HTTPProxy(GenericProxy):
         self,
         app_name: str,
         handle: DeploymentHandle,
-        route_path: str,
+        route_prefix: str,
         proxy_request: ProxyRequest,
         internal_request_id: str,
     ) -> Tuple[DeploymentHandle, str]:
@@ -913,7 +919,7 @@ class HTTPProxy(GenericProxy):
         handle.
         """
         request_context_info = {
-            "route": route_path,
+            "route": route_prefix,
             "app_name": app_name,
             "_internal_request_id": internal_request_id,
             "is_http_request": True,
