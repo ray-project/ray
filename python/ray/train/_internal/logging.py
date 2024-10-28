@@ -8,7 +8,7 @@ import yaml
 import ray
 from ray.train.constants import (
     DEFAULT_JSON_LOG_ENCODING_FORMAT,
-    DEFAULT_LOG_CONFIG_PATH,
+    DEFAULT_LOG_CONFIG_YAML_STRING,
     LOG_CONFIG_PATH_ENV,
     LOG_ENCODING_ENV,
 )
@@ -101,7 +101,7 @@ def configure_logging() -> None:
     if ray_train_log_config_path is not None:
         config = _load_logging_config(ray_train_log_config_path)
     else:
-        config = _load_logging_config(DEFAULT_LOG_CONFIG_PATH)
+        config = yaml.safe_load(DEFAULT_LOG_CONFIG_YAML_STRING)
         if ray_train_log_encoding == DEFAULT_JSON_LOG_ENCODING_FORMAT:
             for logger in config["loggers"].values():
                 logger["handlers"].remove("file_text")

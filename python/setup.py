@@ -809,11 +809,7 @@ setuptools.setup(
         ]
     },
     package_data={
-        "ray": [
-            "includes/*.pxd",
-            "*.pxd",
-            "train/_internal/logging.yaml",
-        ],
+        "ray": ["includes/*.pxd", "*.pxd"],
     },
     include_package_data=True,
     exclude_package_data={
