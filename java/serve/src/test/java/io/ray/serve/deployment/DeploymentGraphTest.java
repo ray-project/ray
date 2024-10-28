@@ -68,7 +68,7 @@ public class DeploymentGraphTest extends BaseServeTest2 {
     Application deployment =
         Serve.deployment().setDeploymentDef(Counter.class.getName()).setNumReplicas(1).bind("2");
 
-    DeploymentHandle handle = Serve.run(deployment);
+    DeploymentHandle handle = Serve.run(deployment).get();
     Assert.assertEquals(handle.remote("2").result(), "4");
   }
 
@@ -108,7 +108,7 @@ public class DeploymentGraphTest extends BaseServeTest2 {
 
     Application driver =
         Serve.deployment().setDeploymentDef(Combiner.class.getName()).bind(modelA, modelB);
-    DeploymentHandle handle = Serve.run(driver);
+    DeploymentHandle handle = Serve.run(driver).get();
     Assert.assertEquals(handle.remote("test").result(), "A:test,B:test");
   }
 
