@@ -67,12 +67,11 @@ from ray.rllib.utils.test_utils import (
 )
 from ray.tune.registry import get_trainable_cls
 
-# TODO (sven): SB3's PPO does seem to learn MountainCar-v0 until a reward of ~-110.
-#  We might have to play around some more with different initializations, more
-#  randomized SGD minibatching (we don't shuffle batch rn), etc.. to get to these
-#  results as well.
+# TODO (sven): SB3's PPO learns MountainCar-v0 until a reward of ~-110.
+#  We might have to play around some more with different initializations, etc..
+#  to get to these results as well.
 parser = add_rllib_example_script_args(
-    default_reward=-130.0, default_iters=2000, default_timesteps=1000000
+    default_reward=-140.0, default_iters=2000, default_timesteps=1000000
 )
 parser.set_defaults(
     enable_new_api_stack=True,

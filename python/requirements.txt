@@ -38,7 +38,7 @@ colorful
 rich
 opentelemetry-sdk
 fastapi
-gymnasium==0.28.1
+gymnasium==1.0.0
 virtualenv!=20.21.1,>=20.0.24
 opentelemetry-api
 opencensus
