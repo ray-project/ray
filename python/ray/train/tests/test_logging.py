@@ -9,6 +9,7 @@ import yaml
 import ray
 from ray.tests.conftest import *  # noqa
 from ray.train._internal.logging import configure_logging, get_log_directory
+from ray.train.constants import LOG_CONFIG_PATH_ENV, LOG_ENCODING_ENV
 
 
 @pytest.fixture(name="configure_logging")
@@ -94,9 +95,7 @@ def test_message_format(configure_logging, reset_logging, shutdown_only):
 
 def test_custom_config(reset_logging, monkeypatch, tmp_path):
     config_path = tmp_path / "logging.yaml"
-    monkeypatch.setattr(
-        ray.train._internal.logging, "DEFAULT_LOG_CONFIG_PATH", config_path
-    )
+    monkeypatch.setenv(LOG_CONFIG_PATH_ENV, config_path)
 
     handlers = {
         "console": {"class": "logging.StreamHandler", "stream": "ext://sys.stdout"}
@@ -130,7 +129,7 @@ def test_json_logging_configuration(
 ):
     import json
 
-    monkeypatch.setenv("RAY_TRAIN_LOG_ENCODING", "JSON")
+    monkeypatch.setenv(LOG_ENCODING_ENV, "JSON")
     ray.init()
 
     configure_logging()
