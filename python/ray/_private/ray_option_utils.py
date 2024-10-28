@@ -319,7 +319,11 @@ def validate_task_options(options: Dict[str, Any], in_options: bool):
             )
         task_options[k].validate(k, v)
     if in_options and "max_calls" in options:
-        raise ValueError("Setting 'max_calls' is not supported in '.options()'.")
+        warnings.warn(
+            "Setting 'max_calls' is not supported in '.options()'.",
+            DeprecationWarning,
+            stacklevel=1,
+        )
     _check_deprecate_placement_group(options)
 
 
