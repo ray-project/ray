@@ -28,7 +28,7 @@ def test_deploy_zero_cpus(serve_instance):
             return "hello"
 
     h = serve.run(D.bind())
-    assert h.remote().result() == "hello"
+    assert h.hello.remote().result() == "hello"
 
 
 def test_deployment_error_handling(serve_instance):
