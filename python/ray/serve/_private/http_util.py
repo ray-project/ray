@@ -471,6 +471,10 @@ class ASGIAppReplicaWrapper:
         # Replace uvicorn logger with our own.
         self._serve_asgi_lifespan.logger = logger
 
+    @property
+    def app(self) -> ASGIApp:
+        return self._asgi_app
+
     async def _run_asgi_lifespan_startup(self):
         # LifespanOn's logger logs in INFO level thus becomes spammy
         # Within this block we temporarily uplevel for cleaner logging

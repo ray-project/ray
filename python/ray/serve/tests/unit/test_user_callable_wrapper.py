@@ -601,7 +601,7 @@ async def test_http_handler(callable: Callable, monkeypatch):
         return pickle.dumps(asgi_messages)
 
     http_request = StreamingHTTPRequest(
-        pickled_asgi_scope=pickle.dumps(asgi_scope),
+        asgi_scope=asgi_scope,
         receive_asgi_messages=receive_asgi_messages,
     )
 
