@@ -209,7 +209,7 @@ class MockDeploymentHandle:
     def is_initialized(self):
         return self._initialized
 
-    def init(self):
+    def _init(self):
         if self._initialized:
             raise RuntimeError("already initialized")
 
