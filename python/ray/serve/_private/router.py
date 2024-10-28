@@ -602,11 +602,11 @@ class Router:
         response_id = uuid.uuid4()
         assign_request_task = asyncio.current_task()
         ray.serve.context._add_request_pending_assignment(
-            request_meta.request_id, response_id, assign_request_task
+            request_meta.internal_request_id, response_id, assign_request_task
         )
         assign_request_task.add_done_callback(
             lambda _: ray.serve.context._remove_request_pending_assignment(
-                request_meta.request_id, response_id
+                request_meta.internal_request_id, response_id
             )
         )
 

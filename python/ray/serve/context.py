@@ -209,21 +209,40 @@ def _set_request_context(
     )
 
 
-# A map from current request ID to a set of ReplicaResults corresponding
-# to the requests the replica has sent during the current request
+# `_requests_pending_assignment` is a map from request ID to a
+# dictionary of asyncio tasks.
+# The request ID points to an ongoing request that is executing on the
+# current replica, and the asyncio tasks are ongoing tasks started on
+# the router to assign child requests to downstream replicas.
+
+# A dictionary is used over a set to track the asyncio tasks for more
+# efficient addition and deletion time complexity. A uniquely generated
+# `response_id` is used to identify each task.
+
 _requests_pending_assignment: Dict[str, Dict[str, asyncio.Task]] = defaultdict(dict)
 
 
-def _get_requests_pending_assignment(parent_request_id: str) -> Dict:
+# Note that the functions below that manipulate
+# `_requests_pending_assignment` are NOT thread-safe. They are only
+# expected to be called from the same thread/asyncio event-loop.
+
+
+def _get_requests_pending_assignment(parent_request_id: str) -> Dict[str, asyncio.Task]:
     if parent_request_id in _requests_pending_assignment:
         return _requests_pending_assignment[parent_request_id]
 
+    return {}
+
 
 def _add_request_pending_assignment(parent_request_id: str, response_id: str, task):
-    if parent_request_id:
-        _requests_pending_assignment[parent_request_id][response_id] = task
+    # NOTE: `parent_request_id` is the `internal_request_id` corresponding
+    # to an ongoing Serve request, so it is always non-empty.
+    _requests_pending_assignment[parent_request_id][response_id] = task
 
 
 def _remove_request_pending_assignment(parent_request_id: str, response_id: str):
     if response_id in _requests_pending_assignment[parent_request_id]:
         del _requests_pending_assignment[parent_request_id][response_id]
+
+    if len(_requests_pending_assignment[parent_request_id]) == 0:
+        del _requests_pending_assignment[parent_request_id]

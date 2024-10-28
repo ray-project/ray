@@ -366,8 +366,8 @@ class ReplicaActor:
                     request_metadata.request_id
                 )
             )
-            for t in list(requests_pending_assignment.values()):
-                t.cancel()
+            for task in requests_pending_assignment.values():
+                task.cancel()
         except Exception as e:
             user_exception = e
             logger.error(f"Request failed:\n{e}")
