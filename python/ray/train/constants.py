@@ -45,12 +45,12 @@ TUNE_CHECKPOINT_ID = "_current_checkpoint_id"
 _DEPRECATED_VALUE = "DEPRECATED"
 
 # Default structured logging config file path used by Ray Train
-DEFAULT_RAY_TRAIN_LOG_CONFIG_PATH = (
-    Path(__file__).parent / "_internal/logging.yaml"
+DEFAULT_LOG_CONFIG_PATH = (
+    Path(ray.train._internal.__file__).parent / "logging.yaml"
 ).as_posix()
 
 # JSON Encoding format for Ray Train structured logging
-RAY_TRAIN_JSON_LOG_ENCODING_FORMAT = "JSON"
+DEFAULT_JSON_LOG_ENCODING_FORMAT = "JSON"
 
 # ==================================================
 #               Environment Variables
@@ -95,10 +95,10 @@ RAY_TRAIN_COUNT_PREEMPTION_AS_FAILURE = "RAY_TRAIN_COUNT_PREEMPTION_AS_FAILURE"
 RAY_TRAIN_ENABLE_STATE_TRACKING = "RAY_TRAIN_ENABLE_STATE_TRACKING"
 
 # Env. variable to specify the encoding of the file logs when using the default config.
-RAY_TRAIN_LOG_ENCODING_ENV = "RAY_TRAIN_LOG_ENCODING"
+LOG_ENCODING_ENV = "RAY_TRAIN_LOG_ENCODING"
 
 # Env. variable to specify the logging config path use defaults if not set
-RAY_TRAIN_LOG_CONFIG_PATH_ENV = "RAY_TRAIN_LOG_CONFIG_PATH"
+LOG_CONFIG_PATH_ENV = "RAY_TRAIN_LOG_CONFIG_PATH"
 
 # NOTE: When adding a new environment variable, please track it in this list.
 TRAIN_ENV_VARS = {
@@ -107,11 +107,11 @@ TRAIN_ENV_VARS = {
     ENABLE_SHARE_NEURON_CORES_ACCELERATOR_ENV,
     TRAIN_PLACEMENT_GROUP_TIMEOUT_S_ENV,
     TRAIN_ENABLE_WORKER_SPREAD_ENV,
+    LOG_ENCODING_ENV,
+    LOG_CONFIG_PATH_ENV,
     RAY_CHDIR_TO_TRIAL_DIR,
     RAY_TRAIN_COUNT_PREEMPTION_AS_FAILURE,
     RAY_TRAIN_ENABLE_STATE_TRACKING,
-    RAY_TRAIN_LOG_ENCODING_ENV,
-    RAY_TRAIN_LOG_CONFIG_PATH_ENV,
 }
 
 # Key for AIR Checkpoint metadata in TrainingResult metadata

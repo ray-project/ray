@@ -21,10 +21,10 @@ def configure_logging_fixture():
 
 @pytest.fixture(name="reset_logging")
 def reset_logging_fixture():
-    from ray.train._internal.logging import reset_logging
-
     yield
-    reset_logging()
+    logger = logging.getLogger("ray.train")
+    logger.handlers.clear()
+    logger.setLevel(logging.NOTSET)
 
 
 def test_messages_logged_to_file(configure_logging, reset_logging, shutdown_only):

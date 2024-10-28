@@ -14,7 +14,7 @@ filters:
     (): ray._private.ray_logging.filters.CoreContextFilter
 
 handlers:
-  file:
+  file_text:
     class: ray.train._internal.logging.SessionFileHandler
     formatter: ray
     filename: ray-train.log
@@ -32,5 +32,5 @@ handlers:
 loggers:
   ray.train:
     level: DEBUG
-    handlers: [file, console]
+    handlers: [file_text, console]
     propagate: False

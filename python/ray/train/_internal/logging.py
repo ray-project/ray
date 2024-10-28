@@ -7,16 +7,11 @@ import yaml
 
 import ray
 from ray.train.constants import (
-    DEFAULT_RAY_TRAIN_LOG_CONFIG_PATH,
-    RAY_TRAIN_JSON_LOG_ENCODING_FORMAT,
-    RAY_TRAIN_LOG_CONFIG_PATH_ENV,
-    RAY_TRAIN_LOG_ENCODING_ENV,
+    DEFAULT_JSON_LOG_ENCODING_FORMAT,
+    DEFAULT_LOG_CONFIG_PATH,
+    LOG_CONFIG_PATH_ENV,
+    LOG_ENCODING_ENV,
 )
-
-# Env. variable to specify the encoding of the file logs when using the default config.
-RAY_TRAIN_LOG_ENCODING = os.environ.get(RAY_TRAIN_LOG_ENCODING_ENV, "").upper()
-# Env. variable to specify the logging config path use defaults if not set
-RAY_TRAIN_LOG_CONFIG_PATH = os.environ.get(RAY_TRAIN_LOG_CONFIG_PATH_ENV)
 
 
 class HiddenRecordFilter(logging.Filter):
@@ -99,35 +94,31 @@ def configure_logging() -> None:
             config = yaml.safe_load(file)
         return config
 
-    if RAY_TRAIN_LOG_CONFIG_PATH is not None:
-        config = _load_logging_config(RAY_TRAIN_LOG_CONFIG_PATH)
+    # Dynamically configure the logger based on the environment variables.
+    ray_train_log_encoding = os.environ.get(LOG_ENCODING_ENV)
+    ray_train_log_config_path = os.environ.get(LOG_CONFIG_PATH_ENV)
+
+    if ray_train_log_config_path is not None:
+        config = _load_logging_config(ray_train_log_config_path)
     else:
-        config = _load_logging_config(DEFAULT_RAY_TRAIN_LOG_CONFIG_PATH)
-        if RAY_TRAIN_LOG_ENCODING == RAY_TRAIN_JSON_LOG_ENCODING_FORMAT:
+        config = _load_logging_config(DEFAULT_LOG_CONFIG_PATH)
+        if ray_train_log_encoding == DEFAULT_JSON_LOG_ENCODING_FORMAT:
             for logger in config["loggers"].values():
-                logger["handlers"].remove("file")
+                logger["handlers"].remove("file_text")
                 logger["handlers"].append("file_json")
 
     logging.config.dictConfig(config)
 
     # After configuring logger, warn if RAY_TRAIN_LOGGING_CONFIG_PATH is used with
     # RAY_TRAIN_LOG_ENCODING, because they are not both supported together.
-    if RAY_TRAIN_LOG_CONFIG_PATH is not None and RAY_TRAIN_LOG_ENCODING is not None:
+    if ray_train_log_config_path is not None and ray_train_log_encoding is not None:
         logger = logging.getLogger("ray.train")
         logger.warning(
-            f"Using {RAY_TRAIN_LOG_ENCODING_ENV} is not supported with "
-            f"{RAY_TRAIN_LOG_CONFIG_PATH_ENV}."
+            f"Using {LOG_ENCODING_ENV} is not supported with "
+            f"{LOG_CONFIG_PATH_ENV}."
+            "If you are already specifying a custom config yaml file, "
+            "please configure your desired encoding in the yaml file as well."
         )
-
-
-def reset_logging() -> None:
-    """Reset the logger named 'ray.train' to its initial state.
-
-    Used for testing.
-    """
-    logger = logging.getLogger("ray.train")
-    logger.handlers.clear()
-    logger.setLevel(logging.NOTSET)
 
 
 def get_log_directory() -> Optional[str]:
