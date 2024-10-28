@@ -620,7 +620,7 @@ class StreamingHTTPRequest:
             "receive_asgi_messages": self.receive_asgi_messages,
         }
 
-    def __setstate__(self, state: Dict[str, Any]): 
+    def __setstate__(self, state: Dict[str, Any]):
         """Custom deserializer to use vanilla `pickle` for the ASGI scope.
 
         This is possible because we know the scope is a dictionary containing
@@ -628,6 +628,7 @@ class StreamingHTTPRequest:
         """
         self.asgi_scope = pickle.loads(state["pickled_asgi_scope"])
         self.receive_asgi_messages = state["receive_asgi_messages"]
+
 
 class TargetCapacityDirection(str, Enum):
     """Determines what direction the target capacity is scaling."""

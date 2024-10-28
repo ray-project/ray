@@ -338,14 +338,19 @@ class ReplicaActor:
         return self._metrics_manager.get_num_ongoing_requests()
 
     @contextmanager
-    def _wrap_user_method_call(self, request_metadata: RequestMetadata, request_args: Tuple[Any]):
+    def _wrap_user_method_call(
+        self, request_metadata: RequestMetadata, request_args: Tuple[Any]
+    ):
         """Context manager that wraps user method calls.
 
         1) Sets the request context var with appropriate metadata.
         2) Records the access log message (if not disabled).
         3) Records per-request metrics via the metrics manager.
         """
-        if request_metadata.is_http_request and self._user_callable_asgi_app is not None:
+        if (
+            request_metadata.is_http_request
+            and self._user_callable_asgi_app is not None
+        ):
             assert len(request_args) == 1 and isinstance(
                 request_args[0], StreamingHTTPRequest
             )
@@ -942,7 +947,11 @@ class UserCallableWrapper:
             extra={"log_to_stderr": False},
         )
 
-        return self._callable.app if isinstance(self._callable, ASGIAppReplicaWrapper) else None
+        return (
+            self._callable.app
+            if isinstance(self._callable, ASGIAppReplicaWrapper)
+            else None
+        )
 
     @_run_on_user_code_event_loop
     async def _call_user_health_check(self):

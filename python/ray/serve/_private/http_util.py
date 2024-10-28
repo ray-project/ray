@@ -543,9 +543,8 @@ def validate_http_proxy_callback_return(
 
 # XXX: TODO.
 
-def _get_route_name(
-    scope: Scope, routes: List[Route]
-) -> Optional[str]:
+
+def _get_route_name(scope: Scope, routes: List[Route]) -> Optional[str]:
     """Gets route name for given scope taking mounts into account."""
 
     for route in routes:
@@ -554,7 +553,9 @@ def _get_route_name(
             route_name = route.path
             child_scope = {**scope, **child_scope}
             if isinstance(route, Mount) and route.routes:
-                child_route_name = _get_route_name(child_scope, route.routes, route_name)
+                child_route_name = _get_route_name(
+                    child_scope, route.routes, route_name
+                )
                 if child_route_name is None:
                     route_name = None
                 else:
