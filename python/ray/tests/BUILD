@@ -455,7 +455,6 @@ py_test_module_list(
     "test_actor_resources.py",
     "test_failure.py",
     "test_multi_node.py",
-    "test_threaded_actor.py",
     "test_generators.py",
     "test_stress_failure.py",
     "test_state_api.py",
@@ -532,6 +531,7 @@ py_test_module_list(
   files = [
     "test_plasma_unlimited.py",
     "test_implicit_resource.py",
+    "test_threaded_actor.py",
   ],
   size = "enormous",
   tags = ["exclusive", "large_size_python_tests_shard_1", "team:core"],

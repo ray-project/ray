@@ -6,14 +6,12 @@ from typing import Callable, Dict, Iterable, List, Optional, Tuple, Union
 
 import ray
 from ray.actor import ActorHandle
+from ray.serve._private.application_state import StatusOverview
 from ray.serve._private.common import (
-    ApplicationStatus,
-    DeploymentHandleSource,
     DeploymentID,
     DeploymentStatus,
     DeploymentStatusInfo,
     MultiplexedReplicaInfo,
-    StatusOverview,
 )
 from ray.serve._private.constants import (
     CLIENT_CHECK_CREATION_POLLING_INTERVAL_S,
@@ -32,8 +30,13 @@ from ray.serve.generated.serve_pb2 import (
     DeploymentStatusInfo as DeploymentStatusInfoProto,
 )
 from ray.serve.generated.serve_pb2 import StatusOverview as StatusOverviewProto
-from ray.serve.handle import DeploymentHandle, _HandleOptions
-from ray.serve.schema import LoggingConfig, ServeApplicationSchema, ServeDeploySchema
+from ray.serve.handle import DeploymentHandle
+from ray.serve.schema import (
+    ApplicationStatus,
+    LoggingConfig,
+    ServeApplicationSchema,
+    ServeDeploySchema,
+)
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
@@ -419,8 +422,6 @@ class ServeControllerClient:
         Returns:
             DeploymentHandle
         """
-        from ray.serve.context import _get_internal_replica_context
-
         deployment_id = DeploymentID(name=deployment_name, app_name=app_name)
         cache_key = (deployment_name, app_name, check_exists)
         if cache_key in self.handle_cache:
@@ -431,18 +432,7 @@ class ServeControllerClient:
             if deployment_id not in all_deployments:
                 raise KeyError(f"{deployment_id} does not exist.")
 
-        if _get_internal_replica_context() is not None:
-            handle = DeploymentHandle(
-                deployment_name,
-                app_name,
-                handle_options=_HandleOptions(_source=DeploymentHandleSource.REPLICA),
-            )
-        else:
-            handle = DeploymentHandle(
-                deployment_name,
-                app_name,
-            )
-
+        handle = DeploymentHandle(deployment_name, app_name)
         self.handle_cache[cache_key] = handle
         if cache_key in self._evicted_handle_keys:
             logger.warning(
