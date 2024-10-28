@@ -49,7 +49,8 @@ class TestCuriosity(unittest.TestCase):
     def test_curiosity_on_frozen_lake(self):
 
         config = (
-            ppo.PPOConfig().api_stack(
+            ppo.PPOConfig()
+            .api_stack(
                 enable_env_runner_and_connector_v2=False,
                 enable_rl_module_and_learner=False,
             )
@@ -91,7 +92,8 @@ class TestCuriosity(unittest.TestCase):
                         "type": "StochasticSampling",
                     },
                 },
-            ).training(lr=0.001)
+            )
+            .training(lr=0.001)
         )
 
         num_iterations = 10
