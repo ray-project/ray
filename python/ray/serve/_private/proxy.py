@@ -407,14 +407,19 @@ class GenericProxy(ABC):
                 if version.parse(starlette.__version__) < version.parse("0.33.0"):
                     proxy_request.set_path(route_path.replace(route_prefix, "", 1))
 
+            # NOTE(edoakes): we use the route_prefix instead of the full HTTP path
+            # for logs & metrics to avoid high cardinality.
+            # See: https://github.com/ray-project/ray/issues/47999
+            logs_and_metrics_route = (
+                route_prefix
+                if self.protocol == RequestProtocol.HTTP
+                else handle.deployment_id.app_name
+            )
             internal_request_id = generate_request_id()
             handle, request_id = self.setup_request_context_and_handle(
                 app_name=handle.deployment_id.app_name,
                 handle=handle,
-                # NOTE(edoakes): we use the route_prefix instead of the full HTTP path
-                # for logs & metrics to avoid high cardinality.
-                # See: https://github.com/ray-project/ray/issues/47999
-                route_prefix=route_prefix,
+                route=logs_and_metrics_route,
                 proxy_request=proxy_request,
                 internal_request_id=internal_request_id,
             )
@@ -432,11 +437,7 @@ class GenericProxy(ABC):
                 metadata=HandlerMetadata(
                     application_name=handle.deployment_id.app_name,
                     deployment_name=handle.deployment_id.name,
-                    route=(
-                        route_prefix
-                        if self.protocol == RequestProtocol.HTTP
-                        else handle.deployment_id.app_name
-                    ),
+                    route=logs_and_metrics_route,
                 ),
                 should_record_access_log=True,
                 should_increment_ongoing_requests=True,
@@ -527,7 +528,7 @@ class GenericProxy(ABC):
         self,
         app_name: str,
         handle: DeploymentHandle,
-        route_prefix: str,
+        route: str,
         proxy_request: ProxyRequest,
         internal_request_id: str,
     ) -> Tuple[DeploymentHandle, str]:
@@ -683,7 +684,7 @@ class gRPCProxy(GenericProxy):
         self,
         app_name: str,
         handle: DeploymentHandle,
-        route_prefix: str,
+        route: str,
         proxy_request: ProxyRequest,
         internal_request_id: str,
     ) -> Tuple[DeploymentHandle, str]:
@@ -705,7 +706,7 @@ class gRPCProxy(GenericProxy):
         )
 
         request_context_info = {
-            "route": route_prefix,
+            "route": route,
             "request_id": request_id,
             "_internal_request_id": internal_request_id,
             "app_name": app_name,
@@ -913,7 +914,7 @@ class HTTPProxy(GenericProxy):
         self,
         app_name: str,
         handle: DeploymentHandle,
-        route_prefix: str,
+        route: str,
         proxy_request: ProxyRequest,
         internal_request_id: str,
     ) -> Tuple[DeploymentHandle, str]:
@@ -923,7 +924,7 @@ class HTTPProxy(GenericProxy):
         handle.
         """
         request_context_info = {
-            "route": route_prefix,
+            "route": route,
             "app_name": app_name,
             "_internal_request_id": internal_request_id,
             "is_http_request": True,

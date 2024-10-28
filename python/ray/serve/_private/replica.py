@@ -340,7 +340,11 @@ class ReplicaActor:
     def _maybe_get_asgi_route(
         self, request_metadata: RequestMetadata, request_args: Tuple[Any]
     ) -> Optional[str]:
-        """TODO."""
+        """Get the matched route string for ASGI apps to be used in logs & metrics.
+
+        If this replica does not wrap an ASGI app or there is no matching for the
+        request, returns the existing route from the request metadata.
+        """
         route = request_metadata.route
         if (
             request_metadata.is_http_request
