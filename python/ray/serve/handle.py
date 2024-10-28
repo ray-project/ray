@@ -4,7 +4,8 @@ import logging
 import threading
 import time
 import warnings
-from dataclasses import dataclass
+from abc import ABC
+from dataclasses import dataclass, fields
 from typing import Any, AsyncIterator, Dict, Iterator, Optional, Tuple, Union
 
 import ray
@@ -17,7 +18,11 @@ from ray.serve._private.common import (
     RequestProtocol,
 )
 from ray.serve._private.constants import SERVE_LOGGER_NAME
-from ray.serve._private.default_impl import create_cluster_node_info_cache
+from ray.serve._private.default_impl import (
+    create_cluster_node_info_cache,
+    create_dynamic_handle_options,
+    create_init_handle_options,
+)
 from ray.serve._private.replica_result import ReplicaResult
 from ray.serve._private.router import Router
 from ray.serve._private.usage import ServeUsageTag
@@ -61,8 +66,39 @@ def _create_or_get_global_asyncio_event_loop_in_thread():
 
 
 @dataclass(frozen=True)
-class _HandleOptions:
-    """Options for each ServeHandle instance.
+class _InitHandleOptionsBase:
+    """Init options for each ServeHandle instance.
+
+    These fields can be set by calling `.init()` on a handle before
+    sending the first request.
+    """
+
+    _prefer_local_routing: bool = False
+    _source: DeploymentHandleSource = DeploymentHandleSource.UNKNOWN
+
+
+@dataclass(frozen=True)
+class _InitHandleOptions(_InitHandleOptionsBase):
+    @classmethod
+    def create(cls, **kwargs) -> "_InitHandleOptions":
+        for k in list(kwargs.keys()):
+            if kwargs[k] == DEFAULT.VALUE:
+                # Use default value
+                del kwargs[k]
+
+        # Detect replica source for handles
+        if (
+            "_source" not in kwargs
+            and ray.serve.context._get_internal_replica_context() is not None
+        ):
+            kwargs["_source"] = DeploymentHandleSource.REPLICA
+
+        return cls(**kwargs)
+
+
+@dataclass(frozen=True)
+class _DynamicHandleOptionsBase(ABC):
+    """Dynamic options for each ServeHandle instance.
 
     These fields can be changed by calling `.options()` on a handle.
     """
@@ -70,37 +106,23 @@ class _HandleOptions:
     method_name: str = "__call__"
     multiplexed_model_id: str = ""
     stream: bool = False
-    _prefer_local_routing: bool = False
     _request_protocol: str = RequestProtocol.UNDEFINED
-    _source: DeploymentHandleSource = DeploymentHandleSource.UNKNOWN
 
-    def copy_and_update(
-        self,
-        method_name: Union[str, DEFAULT] = DEFAULT.VALUE,
-        multiplexed_model_id: Union[str, DEFAULT] = DEFAULT.VALUE,
-        stream: Union[bool, DEFAULT] = DEFAULT.VALUE,
-        _prefer_local_routing: Union[bool, DEFAULT] = DEFAULT.VALUE,
-        _request_protocol: Union[str, DEFAULT] = DEFAULT.VALUE,
-        _source: Union[DeploymentHandleSource, DEFAULT] = DEFAULT.VALUE,
-    ) -> "_HandleOptions":
-        return _HandleOptions(
-            method_name=(
-                self.method_name if method_name == DEFAULT.VALUE else method_name
-            ),
-            multiplexed_model_id=(
-                self.multiplexed_model_id
-                if multiplexed_model_id == DEFAULT.VALUE
-                else multiplexed_model_id
-            ),
-            stream=self.stream if stream == DEFAULT.VALUE else stream,
-            _prefer_local_routing=self._prefer_local_routing
-            if _prefer_local_routing == DEFAULT.VALUE
-            else _prefer_local_routing,
-            _request_protocol=self._request_protocol
-            if _request_protocol == DEFAULT.VALUE
-            else _request_protocol,
-            _source=self._source if _source == DEFAULT.VALUE else _source,
-        )
+    def copy_and_update(self, **kwargs) -> "_DynamicHandleOptionsBase":
+        new_kwargs = {}
+
+        for f in fields(self):
+            if f.name not in kwargs or kwargs[f.name] == DEFAULT.VALUE:
+                new_kwargs[f.name] = getattr(self, f.name)
+            else:
+                new_kwargs[f.name] = kwargs[f.name]
+
+        return _DynamicHandleOptions(**new_kwargs)
+
+
+@dataclass(frozen=True)
+class _DynamicHandleOptions(_DynamicHandleOptionsBase):
+    pass
 
 
 class _DeploymentHandleBase:
@@ -109,19 +131,22 @@ class _DeploymentHandleBase:
         deployment_name: str,
         app_name: str,
         *,
-        handle_options: Optional[_HandleOptions] = None,
+        handle_options: Optional[_DynamicHandleOptionsBase] = None,
         _router: Optional[Router] = None,
         _request_counter: Optional[metrics.Counter] = None,
         _recorded_telemetry: bool = False,
     ):
         self.deployment_id = DeploymentID(name=deployment_name, app_name=app_name)
-        self.handle_options = handle_options or _HandleOptions()
-        self._recorded_telemetry = _recorded_telemetry
+        self.handle_options: _DynamicHandleOptionsBase = (
+            handle_options or create_dynamic_handle_options()
+        )
+        self.init_options: Optional[_InitHandleOptionsBase] = None
 
         self.handle_id = get_random_string()
         self.request_counter = _request_counter or self._create_request_counter(
             app_name, deployment_name, self.handle_id
         )
+        self._recorded_telemetry = _recorded_telemetry
 
         self._router: Optional[Router] = _router
 
@@ -147,8 +172,7 @@ class _DeploymentHandleBase:
             _request_protocol=request_protocol
         )
 
-    def _get_or_create_router(self) -> Tuple[Router, asyncio.AbstractEventLoop]:
-
+    def _get_or_create_router(self) -> Router:
         if self._router is None:
             node_id = ray.get_runtime_context().get_node_id()
             try:
@@ -167,12 +191,12 @@ class _DeploymentHandleBase:
                 node_id,
                 get_current_actor_id(),
                 availability_zone,
-                handle_source=self.handle_options._source,
+                handle_source=self.init_options._source,
                 event_loop=_create_or_get_global_asyncio_event_loop_in_thread(),
-                _prefer_local_node_routing=self.handle_options._prefer_local_routing,
+                _prefer_local_node_routing=self.init_options._prefer_local_routing,
             )
 
-        return self._router, self._router._event_loop
+        return self._router
 
     @staticmethod
     def _gen_handle_tag(app_name: str, deployment_name: str, handle_id: str):
@@ -216,31 +240,46 @@ class _DeploymentHandleBase:
     def app_name(self) -> str:
         return self.deployment_id.app_name
 
-    def _options(
-        self,
-        *,
-        method_name: Union[str, DEFAULT] = DEFAULT.VALUE,
-        multiplexed_model_id: Union[str, DEFAULT] = DEFAULT.VALUE,
-        stream: Union[bool, DEFAULT] = DEFAULT.VALUE,
-        _prefer_local_routing: Union[bool, DEFAULT] = DEFAULT.VALUE,
-        _source: Union[DeploymentHandleSource, DEFAULT] = DEFAULT.VALUE,
-    ):
-        if stream is True and inside_ray_client_context():
+    @property
+    def is_initialized(self) -> bool:
+        return self._router is not None
+
+    def _init(self, **kwargs):
+        """Initialize this handle with arguments.
+
+        A handle can only be initialized once. A handle is implicitly
+        initialized when `.options()` or `.remote()` is called. Therefore
+        to initialize a handle with custom init options, you must do it
+        before calling `.options()` or `.remote()`.
+        """
+        if self._router is not None:
+            raise RuntimeError(
+                "Handle has already been initialized. Note that a handle is implicitly "
+                "initialized when you call `.options()` or `.remote()`. You either "
+                "tried to call `._init()` twice or called `._init()` after calling "
+                "`.options()` or `.remote()`. If you want to modify the init options, "
+                "please do so before calling `.options()` or `.remote()`. This handle "
+                f"was initialized with {self.init_options}."
+            )
+
+        self.init_options = create_init_handle_options(**kwargs)
+        self._get_or_create_router()
+
+    def _options(self, _prefer_local_routing=DEFAULT.VALUE, **kwargs):
+        if kwargs.get("stream") is True and inside_ray_client_context():
             raise RuntimeError(
                 "Streaming DeploymentHandles are not currently supported when "
                 "connected to a remote Ray cluster using Ray Client."
             )
 
-        new_handle_options = self.handle_options.copy_and_update(
-            method_name=method_name,
-            multiplexed_model_id=multiplexed_model_id,
-            stream=stream,
-            _prefer_local_routing=_prefer_local_routing,
-            _source=_source,
-        )
+        new_handle_options = self.handle_options.copy_and_update(**kwargs)
 
-        if self._router is None and _prefer_local_routing == DEFAULT.VALUE:
-            self._get_or_create_router()
+        # TODO(zcin): remove when _prefer_local_routing is removed from options() path
+        if _prefer_local_routing != DEFAULT.VALUE:
+            self._init(_prefer_local_routing=_prefer_local_routing)
+
+        if not self.is_initialized:
+            self._init()
 
         return DeploymentHandle(
             self.deployment_name,
@@ -278,14 +317,16 @@ class _DeploymentHandleBase:
                 "application": _request_context.app_name,
             }
         )
-        router, event_loop = self._get_or_create_router()
+
+        if not self.is_initialized:
+            self._init()
 
         # Schedule the coroutine to run on the router loop. This is always a separate
         # loop running in another thread to avoid user code blocking the router, so we
         # use the `concurrent.futures.Future` thread safe API.
         return asyncio.run_coroutine_threadsafe(
-            router.assign_request(request_metadata, *args, **kwargs),
-            loop=event_loop,
+            self._router.assign_request(request_metadata, *args, **kwargs),
+            loop=self._router._event_loop,
         )
 
     def __getattr__(self, name):
@@ -752,7 +793,6 @@ class DeploymentHandle(_DeploymentHandleBase):
         stream: Union[bool, DEFAULT] = DEFAULT.VALUE,
         use_new_handle_api: Union[bool, DEFAULT] = DEFAULT.VALUE,
         _prefer_local_routing: Union[bool, DEFAULT] = DEFAULT.VALUE,
-        _source: Union[bool, DEFAULT] = DEFAULT.VALUE,
     ) -> "DeploymentHandle":
         """Set options for this handle and return an updated copy of it.
 
@@ -771,12 +811,17 @@ class DeploymentHandle(_DeploymentHandleBase):
                 "This argument will be removed in a future version."
             )
 
+        if _prefer_local_routing is not DEFAULT.VALUE:
+            warnings.warn(
+                "Modifying `_prefer_local_routing` with `options()` is "
+                "deprecated. Please use `init()` instead."
+            )
+
         return self._options(
             method_name=method_name,
             multiplexed_model_id=multiplexed_model_id,
             stream=stream,
             _prefer_local_routing=_prefer_local_routing,
-            _source=_source,
         )
 
     def remote(

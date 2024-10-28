@@ -7,14 +7,15 @@ import requests
 
 import ray
 from ray import serve
-from ray.serve._private.common import RequestProtocol
+from ray.serve._private.common import DeploymentHandleSource, RequestProtocol
 from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME
+from ray.serve._private.utils import DEFAULT
 from ray.serve.exceptions import RayServeException
-from ray.serve.handle import DeploymentHandle, _HandleOptions
+from ray.serve.handle import DeploymentHandle, _DynamicHandleOptions, _InitHandleOptions
 
 
-def test_handle_options():
-    default_options = _HandleOptions()
+def test_dynamic_handle_options():
+    default_options = _DynamicHandleOptions()
     assert default_options.method_name == "__call__"
     assert default_options.multiplexed_model_id == ""
     assert default_options.stream is False
@@ -65,6 +66,48 @@ def test_handle_options():
     assert set_multiple.multiplexed_model_id == ""
     assert set_multiple.stream is True
     assert default_options._request_protocol == RequestProtocol.UNDEFINED
+
+
+def test_init_handle_options():
+    default_options = _InitHandleOptions.create()
+    assert default_options._prefer_local_routing is False
+    assert default_options._source == DeploymentHandleSource.UNKNOWN
+
+    default1 = _InitHandleOptions.create(_prefer_local_routing=DEFAULT.VALUE)
+    assert default1._prefer_local_routing is False
+    assert default1._source == DeploymentHandleSource.UNKNOWN
+
+    default2 = _InitHandleOptions.create(_source=DEFAULT.VALUE)
+    assert default2._prefer_local_routing is False
+    assert default2._source == DeploymentHandleSource.UNKNOWN
+
+    prefer_local = _InitHandleOptions.create(
+        _prefer_local_routing=True, _source=DEFAULT.VALUE
+    )
+    assert prefer_local._prefer_local_routing is True
+    assert prefer_local._source == DeploymentHandleSource.UNKNOWN
+
+    proxy_options = _InitHandleOptions.create(_source=DeploymentHandleSource.PROXY)
+    assert proxy_options._prefer_local_routing is False
+    assert proxy_options._source == DeploymentHandleSource.PROXY
+
+
+def test_init_handle_options_replica(serve_instance):
+    @serve.deployment
+    def f():
+        return "hi"
+
+    @serve.deployment
+    class Router:
+        def __init__(self, handle):
+            self.handle = handle
+            self.handle._init()
+
+        def check(self):
+            return self.handle.init_options._source == DeploymentHandleSource.REPLICA
+
+    h = serve.run(Router.bind(f.bind()))
+    assert h.check.remote().result()
 
 
 def test_async_handle_serializable(serve_instance):
@@ -387,6 +430,52 @@ def test_set_request_protocol(serve_instance):
     new_handle._set_request_protocol(RequestProtocol.GRPC)
     assert new_handle.handle_options._request_protocol == RequestProtocol.GRPC
     assert handle.handle_options._request_protocol == RequestProtocol.HTTP
+
+
+def test_init(serve_instance):
+    @serve.deployment
+    def f():
+        return "hi"
+
+    h = serve.run(f.bind())
+    h._init(_prefer_local_routing=True)
+    for _ in range(10):
+        assert h.remote().result() == "hi"
+
+
+def test_init_twice_fails(serve_instance):
+    @serve.deployment
+    def f():
+        return "hi"
+
+    h = serve.run(f.bind())
+    h._init()
+
+    with pytest.raises(RuntimeError):
+        h._init()
+
+
+def test_init_after_options_fails(serve_instance):
+    @serve.deployment
+    def f():
+        return "hi"
+
+    h = serve.run(f.bind())
+
+    with pytest.raises(RuntimeError):
+        h.options(stream=True)._init(_prefer_local_routing=True)
+
+
+def test_init_after_request_fails(serve_instance):
+    @serve.deployment
+    def f():
+        return "hi"
+
+    h = serve.run(f.bind())
+    assert h.remote().result() == "hi"
+
+    with pytest.raises(RuntimeError):
+        h._init(_prefer_local_routing=True)
 
 
 if __name__ == "__main__":
