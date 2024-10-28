@@ -392,7 +392,7 @@ class LearnerGroup(Checkpointable):
             if _return_state:
                 result["_rl_module_state_after_update"] = _learner.get_state(
                     components=COMPONENT_RL_MODULE, inference_only=True
-                )[COMPONENT_RL_MODULE]
+                )
 
             return result
 
