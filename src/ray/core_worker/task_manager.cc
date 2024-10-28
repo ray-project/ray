@@ -706,7 +706,7 @@ bool TaskManager::HandleReportGeneratorItemReturns(
     HandleTaskReturn(object_id,
                      return_object,
                      NodeID::FromBinary(request.worker_addr().raylet_id()),
-                     /*store_in_plasma*/ store_in_plasma_ids.contains(object_id));
+                     /*store_in_plasma=*/store_in_plasma_ids.contains(object_id));
   }
 
   // Handle backpressure if needed.
