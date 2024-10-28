@@ -9,13 +9,21 @@ from ray.serve._private.cluster_node_info_cache import (
     DefaultClusterNodeInfoCache,
 )
 from ray.serve._private.common import DeploymentID
+from ray.serve._private.constants import (
+    RAY_SERVE_ENABLE_QUEUE_LENGTH_CACHE,
+    RAY_SERVE_PROXY_PREFER_LOCAL_AZ_ROUTING,
+)
 from ray.serve._private.deployment_scheduler import (
     DefaultDeploymentScheduler,
     DeploymentScheduler,
 )
 from ray.serve._private.grpc_util import gRPCServer
+from ray.serve._private.replica_scheduler import (
+    ActorReplicaWrapper,
+    PowerOfTwoChoicesReplicaScheduler,
+)
 from ray.serve._private.router import Router
-from ray.serve._private.utils import get_head_node_id
+from ray.serve._private.utils import get_head_node_id, resolve_request_args
 
 # NOTE: Please read carefully before changing!
 #
@@ -64,16 +72,32 @@ def create_router(
     event_loop: asyncio.BaseEventLoop,
     handle_options,
 ):
+    replica_wrapper_cls = ActorReplicaWrapper
+    replica_scheduler = PowerOfTwoChoicesReplicaScheduler(
+        event_loop,
+        deployment_id,
+        handle_options._source,
+        handle_options._prefer_local_routing,
+        RAY_SERVE_PROXY_PREFER_LOCAL_AZ_ROUTING,
+        node_id,
+        actor_id,
+        ray.get_runtime_context().current_actor
+        if ray.get_runtime_context().get_actor_id()
+        else None,
+        availability_zone,
+        use_replica_queue_len_cache=RAY_SERVE_ENABLE_QUEUE_LENGTH_CACHE,
+        create_replica_wrapper_func=lambda r: replica_wrapper_cls(r),
+    )
+
     return Router(
         controller_handle=controller_handle,
         deployment_id=deployment_id,
         handle_id=handle_id,
-        self_node_id=node_id,
         self_actor_id=actor_id,
-        self_availability_zone=availability_zone,
         handle_source=handle_options._source,
         event_loop=event_loop,
-        _prefer_local_node_routing=handle_options._prefer_local_routing,
+        replica_scheduler=replica_scheduler,
+        resolve_request_args_func=resolve_request_args,
     )
 
 
