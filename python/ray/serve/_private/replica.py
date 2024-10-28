@@ -337,6 +337,28 @@ class ReplicaActor:
         """
         return self._metrics_manager.get_num_ongoing_requests()
 
+    def _maybe_get_asgi_route(
+        self, request_metadata: RequestMetadata, request_args: Tuple[Any]
+    ) -> Optional[str]:
+        """TODO."""
+        route = request_metadata.route
+        if (
+            request_metadata.is_http_request
+            and self._user_callable_asgi_app is not None
+        ):
+            req: StreamingHTTPRequest = request_args[0]
+            matched_route = get_asgi_route_name(
+                self._user_callable_asgi_app, req.asgi_scope
+            )
+
+            # If there is no match in the ASGI app, don't overwrite the route_prefix
+            # from the proxy.
+            if matched_route is not None:
+                route = matched_route
+
+        print("CALCULATED ROUTE:", route)
+        return route
+
     @contextmanager
     def _wrap_user_method_call(
         self, request_metadata: RequestMetadata, request_args: Tuple[Any]
@@ -347,21 +369,7 @@ class ReplicaActor:
         2) Records the access log message (if not disabled).
         3) Records per-request metrics via the metrics manager.
         """
-        if (
-            request_metadata.is_http_request
-            and self._user_callable_asgi_app is not None
-        ):
-            assert len(request_args) == 1 and isinstance(
-                request_args[0], StreamingHTTPRequest
-            )
-            scope = request_args[0].asgi_scope
-            # TODO: add the route prefix? or added already from root_path?
-            route = get_asgi_route_name(self._user_callable_asgi_app, scope)
-            print("CALCULATED ROUTE:", route)
-        else:
-            print("NO ROUTE CALCULATION")
-            route = request_metadata.route
-
+        route = self._maybe_get_asgi_route(request_metadata, request_args)
         ray.serve.context._serve_request_context.set(
             ray.serve.context._RequestContext(
                 route=route,
