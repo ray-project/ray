@@ -16,8 +16,6 @@
 
 #include "ray/common/buffer.h"
 #include "ray/common/common_protocol.h"
-#include "ray/common/constants.h"
-#include "ray/core_worker/common.h"
 #include "ray/gcs/pb_util.h"
 #include "ray/util/exponential_backoff.h"
 #include "ray/util/util.h"
@@ -237,7 +235,9 @@ std::vector<rpc::ObjectReference> TaskManager::AddPendingTask(
   // Add new owned objects for the return values of the task.
   size_t num_returns = spec.NumReturns();
   std::vector<rpc::ObjectReference> returned_refs;
+  returned_refs.reserve(num_returns);
   std::vector<ObjectID> return_ids;
+  return_ids.reserve(num_returns);
   for (size_t i = 0; i < num_returns; i++) {
     auto return_id = spec.ReturnId(i);
     if (!spec.IsActorCreationTask()) {
@@ -252,7 +252,7 @@ std::vector<rpc::ObjectReference> TaskManager::AddPendingTask(
       // language frontend. Note that the language bindings should set
       // skip_adding_local_ref=True to avoid double referencing the object.
       reference_counter_->AddOwnedObject(return_id,
-                                         /*inner_ids=*/{},
+                                         /*contained_ids=*/{},
                                          caller_address,
                                          call_site,
                                          -1,
@@ -479,6 +479,7 @@ bool TaskManager::HandleTaskReturn(const ObjectID &object_id,
   rpc::Address owner_address;
   if (reference_counter_->GetOwner(object_id, &owner_address) && !nested_refs.empty()) {
     std::vector<ObjectID> nested_ids;
+    nested_ids.reserve(nested_refs.size());
     for (const auto &nested_ref : nested_refs) {
       nested_ids.emplace_back(ObjectRefToId(nested_ref));
     }
@@ -705,7 +706,7 @@ bool TaskManager::HandleReportGeneratorItemReturns(
     HandleTaskReturn(object_id,
                      return_object,
                      NodeID::FromBinary(request.worker_addr().raylet_id()),
-                     /*store_in_plasma*/ store_in_plasma_ids.count(object_id));
+                     /*store_in_plasma*/ store_in_plasma_ids.contains(object_id));
   }
 
   // Handle backpressure if needed.
@@ -792,7 +793,7 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
       if (!HandleTaskReturn(object_id,
                             return_object,
                             NodeID::FromBinary(worker_addr.raylet_id()),
-                            store_in_plasma_ids.count(object_id))) {
+                            store_in_plasma_ids.contains(object_id))) {
         if (first_execution) {
           dynamic_returns_in_plasma.push_back(object_id);
         }
@@ -805,7 +806,7 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
     if (HandleTaskReturn(object_id,
                          return_object,
                          NodeID::FromBinary(worker_addr.raylet_id()),
-                         store_in_plasma_ids.count(object_id))) {
+                         store_in_plasma_ids.contains(object_id))) {
       direct_return_ids.push_back(object_id);
     }
   }
@@ -931,7 +932,7 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
           HandleTaskReturn(generator_return_id,
                            return_object,
                            NodeID::FromBinary(worker_addr.raylet_id()),
-                           store_in_plasma_ids.count(generator_return_id));
+                           store_in_plasma_ids.contains(generator_return_id));
         }
       }
     }
@@ -1045,18 +1046,18 @@ void TaskManager::FailPendingTask(const TaskID &task_id,
         << "Tried to fail task that was not pending " << task_id;
     spec = it->second.spec;
 
-    if (status && status->IsIntentionalSystemExit()) {
+    if ((status != nullptr) && status->IsIntentionalSystemExit()) {
       // We don't mark intentional system exit as failures, such as tasks that
       // exit by exit_actor(), exit by ray.shutdown(), etc. These tasks are expected
       // to exit and not be marked as failure.
       SetTaskStatus(it->second, rpc::TaskStatus::FINISHED);
     } else {
-      SetTaskStatus(
-          it->second,
-          rpc::TaskStatus::FAILED,
-          (ray_error_info == nullptr
-               ? gcs::GetRayErrorInfo(error_type, (status ? status->ToString() : ""))
-               : *ray_error_info));
+      SetTaskStatus(it->second,
+                    rpc::TaskStatus::FAILED,
+                    (ray_error_info == nullptr
+                         ? gcs::GetRayErrorInfo(
+                               error_type, (status != nullptr ? status->ToString() : ""))
+                         : *ray_error_info));
     }
     submissible_tasks_.erase(it);
     num_pending_tasks_--;
@@ -1306,7 +1307,7 @@ void TaskManager::MarkTaskReturnObjectsFailed(
   int64_t num_returns = spec.NumReturns();
   for (int i = 0; i < num_returns; i++) {
     const auto object_id = ObjectID::FromIndex(task_id, /*index=*/i + 1);
-    if (store_in_plasma_ids.count(object_id)) {
+    if (store_in_plasma_ids.contains(object_id)) {
       put_in_local_plasma_callback_(error, object_id);
     } else {
       in_memory_store_->Put(error, object_id);
@@ -1314,7 +1315,7 @@ void TaskManager::MarkTaskReturnObjectsFailed(
   }
   if (spec.ReturnsDynamic()) {
     for (const auto &dynamic_return_id : spec.DynamicReturnIds()) {
-      if (store_in_plasma_ids.count(dynamic_return_id)) {
+      if (store_in_plasma_ids.contains(dynamic_return_id)) {
         put_in_local_plasma_callback_(error, dynamic_return_id);
       } else {
         in_memory_store_->Put(error, dynamic_return_id);
@@ -1339,7 +1340,7 @@ void TaskManager::MarkTaskReturnObjectsFailed(
     auto num_streaming_generator_returns = spec.NumStreamingGeneratorReturns();
     for (size_t i = 0; i < num_streaming_generator_returns; i++) {
       const auto generator_return_id = spec.StreamingGeneratorReturnId(i);
-      if (store_in_plasma_ids.count(generator_return_id)) {
+      if (store_in_plasma_ids.contains(generator_return_id)) {
         put_in_local_plasma_callback_(error, generator_return_id);
       } else {
         in_memory_store_->Put(error, generator_return_id);
