@@ -1141,7 +1141,19 @@ class TestOverrideDeploymentInfo:
         assert updated_info.deployment_config.autoscaling_config.initial_replicas == 12
         assert updated_info.deployment_config.autoscaling_config.max_replicas == 79
 
-    def test_override_route_prefix(self, info):
+    def test_override_route_prefix_1(self, info):
+        config = ServeApplicationSchema(
+            name="default",
+            import_path="test.import.path",
+            deployments=[DeploymentSchema(name="A", route_prefix="/alice")],
+        )
+
+        updated_infos = override_deployment_info({"A": info}, config)
+        updated_info = updated_infos["A"]
+        assert updated_info.route_prefix == "/alice"
+        assert updated_info.version == "123"
+
+    def test_override_route_prefix_2(self, info):
         config = ServeApplicationSchema(
             name="default",
             import_path="test.import.path",
@@ -1151,6 +1163,19 @@ class TestOverrideDeploymentInfo:
                     name="A",
                 )
             ],
+        )
+
+        updated_infos = override_deployment_info({"A": info}, config)
+        updated_info = updated_infos["A"]
+        assert updated_info.route_prefix == "/bob"
+        assert updated_info.version == "123"
+
+    def test_override_route_prefix_3(self, info):
+        config = ServeApplicationSchema(
+            name="default",
+            import_path="test.import.path",
+            route_prefix="/bob",
+            deployments=[DeploymentSchema(name="A", route_prefix="/alice")],
         )
 
         updated_infos = override_deployment_info({"A": info}, config)
