@@ -827,7 +827,8 @@ enum TaskStatus {
   // to the worker. It will be executed shortly. For actor tasks, execution may be
   // delayed to satisfy ordering constraints or argument fetching.
   SUBMITTED_TO_WORKER = 5;
-  // The actor task is fetching arguments.
+  // The actor task is fetching arguments. This happens after the actor worker
+  // receives the task and the actor task has object refs as arguments.
   PENDING_ACTOR_TASK_ARGS_FETCH = 6;
   // The actor task is waiting due to ordering or concurrency constraints.
   PENDING_ACTOR_TASK_ORDERING_OR_CONCURRENCY = 7;
