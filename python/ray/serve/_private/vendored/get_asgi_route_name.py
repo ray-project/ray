@@ -83,7 +83,9 @@ def get_asgi_route_name(app: ASGIApp, scope: Scope) -> Optional[str]:
         if route_name is not None:
             route_name = route_name + "/" if trim else route_name[:-1]
 
-    root_path = scope.get("root_path", "")
-    if root_path:
-        route_name = root_path.rstrip("/") + "/" + route_name.lstrip("/")
+    if route_name:
+        root_path = scope.get("root_path", "")
+        if root_path:
+            route_name = root_path.rstrip("/") + "/" + route_name.lstrip("/")
+
     return route_name

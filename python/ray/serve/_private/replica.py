@@ -354,9 +354,17 @@ class ReplicaActor:
             and self._user_callable_asgi_app is not None
         ):
             req: StreamingHTTPRequest = request_args[0]
-            matched_route = get_asgi_route_name(
-                self._user_callable_asgi_app, req.asgi_scope
-            )
+            try:
+                matched_route = get_asgi_route_name(
+                    self._user_callable_asgi_app, req.asgi_scope
+                )
+            except Exception:
+                matched_route = None
+                logger.exception(
+                    "Failed unexpectedly trying to get route name for request. "
+                    "Routes in metric tags and log messages may be inaccurate. "
+                    "Please file a GitHub issue containing this traceback."
+                )
 
             # If there is no match in the ASGI app, don't overwrite the route_prefix
             # from the proxy.
