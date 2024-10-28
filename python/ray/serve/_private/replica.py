@@ -346,6 +346,7 @@ class ReplicaActor:
             ray.serve.context._RequestContext(
                 route=request_metadata.route,
                 request_id=request_metadata.request_id,
+                _internal_request_id=request_metadata.internal_request_id,
                 app_name=self._deployment_id.app_name,
                 multiplexed_model_id=request_metadata.multiplexed_model_id,
                 grpc_context=request_metadata.grpc_context,
@@ -363,7 +364,7 @@ class ReplicaActor:
             # Recursively cancel child requests
             requests_pending_assignment = (
                 ray.serve.context._get_requests_pending_assignment(
-                    request_metadata.request_id
+                    request_metadata.internal_request_id
                 )
             )
             for task in requests_pending_assignment.values():
