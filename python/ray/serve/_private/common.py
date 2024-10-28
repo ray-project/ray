@@ -520,7 +520,6 @@ class ServeDeployMode(str, Enum):
     MULTI_APP = "MULTI_APP"
 
 
-
 class ServeComponentType(str, Enum):
     REPLICA = "replica"
 
