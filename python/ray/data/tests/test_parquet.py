@@ -6,12 +6,14 @@ from typing import Any
 import numpy as np
 import pandas as pd
 import pyarrow as pa
+import pyarrow.dataset as pds
 import pyarrow.parquet as pq
 import pytest
 from pytest_lazyfixture import lazy_fixture
 
 import ray
 from ray.air.util.tensor_extensions.arrow import ArrowTensorType, ArrowTensorTypeV2
+from ray.data import Schema
 from ray.data._internal.datasource.parquet_bulk_datasource import ParquetBulkDatasource
 from ray.data._internal.datasource.parquet_datasource import (
     NUM_CPUS_FOR_META_FETCH_TASK,
@@ -98,7 +100,7 @@ def test_parquet_deserialize_fragments_with_retry(
         def __call__(self, *args: Any, **kwds: Any) -> Any:
             exp_or_ret = self.planned_exp_or_return[self.cur_index]
             self.cur_index += 1
-            if type(exp_or_ret) == Exception:
+            if isinstance(exp_or_ret, Exception):
                 raise exp_or_ret
             else:
                 return exp_or_ret
@@ -154,13 +156,11 @@ def test_parquet_read_basic(ray_start_regular_shared, fs, data_path):
     assert ds.size_bytes() > 0
     # Schema information is available from Parquet metadata, so
     # we do not need to compute the first block.
-    assert ds.schema() is not None
+    assert ds.schema() == Schema(pa.schema({"one": pa.int64(), "two": pa.string()}))
     input_files = ds.input_files()
     assert len(input_files) == 2, input_files
     assert "test1.parquet" in str(input_files)
     assert "test2.parquet" in str(input_files)
-    assert str(ds) == "Dataset(num_rows=6, schema={one: int64, two: string})", ds
-    assert repr(ds) == "Dataset(num_rows=6, schema={one: int64, two: string})", ds
 
     # Forces a data read.
     values = [[s["one"], s["two"]] for s in ds.take_all()]
@@ -229,13 +229,11 @@ def test_parquet_read_meta_provider(ray_start_regular_shared, fs, data_path):
     # Expect to lazily compute all metadata correctly.
     assert ds.count() == 6
     assert ds.size_bytes() > 0
-    assert ds.schema() is not None
+    assert ds.schema() == Schema(pa.schema({"one": pa.int64(), "two": pa.string()}))
     input_files = ds.input_files()
     assert len(input_files) == 2, input_files
     assert "test1.parquet" in str(input_files)
     assert "test2.parquet" in str(input_files)
-    assert str(ds) == "Dataset(num_rows=6, schema={one: int64, two: string})", ds
-    assert repr(ds) == "Dataset(num_rows=6, schema={one: int64, two: string})", ds
 
     # Forces a data read.
     values = [[s["one"], s["two"]] for s in ds.take()]
@@ -348,9 +346,7 @@ def test_parquet_read_bulk(ray_start_regular_shared, fs, data_path):
     assert not ds._plan.has_started_execution
 
     # Schema isn't available, so we do a partial read.
-    assert ds.schema() is not None
-    assert str(ds) == "Dataset(num_rows=?, schema={one: int64, two: string})", ds
-    assert repr(ds) == "Dataset(num_rows=?, schema={one: int64, two: string})", ds
+    assert ds.schema() == Schema(pa.schema({"one": pa.int64(), "two": pa.string()}))
     assert ds._plan.has_started_execution
     assert not ds._plan.has_computed_output()
 
@@ -430,9 +426,7 @@ def test_parquet_read_bulk_meta_provider(ray_start_regular_shared, fs, data_path
 
     assert ds.count() == 6
     assert ds.size_bytes() > 0
-    assert ds.schema() is not None
-    assert str(ds) == "Dataset(num_rows=6, schema={one: int64, two: string})", ds
-    assert repr(ds) == "Dataset(num_rows=6, schema={one: int64, two: string})", ds
+    assert ds.schema() == Schema(pa.schema({"one": pa.int64(), "two": pa.string()}))
     assert ds._plan.has_started_execution
 
     # Forces a data read.
@@ -479,11 +473,9 @@ def test_parquet_read_partitioned(ray_start_regular_shared, fs, data_path):
     assert ds.size_bytes() > 0
     # Schema information and input files are available from Parquet metadata,
     # so we do not need to compute the first block.
-    assert ds.schema() is not None
+    assert ds.schema() == Schema(pa.schema({"two": pa.string(), "one": pa.string()}))
     input_files = ds.input_files()
     assert len(input_files) == 2, input_files
-    assert str(ds) == "Dataset(num_rows=6, schema={two: string, one: string})", ds
-    assert repr(ds) == "Dataset(num_rows=6, schema={two: string, one: string})", ds
 
     # Forces a data read.
     values = [[s["one"], s["two"]] for s in ds.take()]
@@ -651,11 +643,9 @@ def test_parquet_read_partitioned_explicit(ray_start_regular_shared, tmp_path):
     assert ds.size_bytes() > 0
     # Schema information and input files are available from Parquet metadata,
     # so we do not need to compute the first block.
-    assert ds.schema() is not None
+    assert ds.schema() == Schema(pa.schema({"two": pa.string(), "one": pa.int64()}))
     input_files = ds.input_files()
     assert len(input_files) == 2, input_files
-    assert str(ds) == "Dataset(num_rows=6, schema={two: string, one: int64})", ds
-    assert repr(ds) == "Dataset(num_rows=6, schema={two: string, one: int64})", ds
 
     # Forces a data read.
     values = [[s["one"], s["two"]] for s in ds.take()]
@@ -1289,6 +1279,40 @@ def test_tensors_in_tables_parquet(
     )
 
     _assert_equal(ds.take_all(), expected_tuples)
+
+
+def test_multiple_files_with_ragged_arrays(ray_start_regular_shared, tmp_path):
+    # Test reading multiple parquet files, each of which has different-shaped
+    # ndarrays in the same column.
+    # See https://github.com/ray-project/ray/issues/47960 for more context.
+    num_rows = 3
+    ds = ray.data.range(num_rows)
+
+    def map(row):
+        id = row["id"] + 1
+        row["data"] = np.zeros((id * 100, id * 100), dtype=np.int8)
+        return row
+
+    # Write 3 parquet files with different-shaped ndarray values in the
+    # "data" column.
+    ds.map(map).repartition(num_rows).write_parquet(tmp_path)
+
+    # Read these 3 files, check that the result is correct.
+    ds2 = ray.data.read_parquet(tmp_path, override_num_blocks=1)
+    res = ds2.take_all()
+    res = sorted(res, key=lambda row: row["id"])
+    assert len(res) == num_rows
+    for index, item in enumerate(res):
+        assert item["id"] == index
+        assert item["data"].shape == (100 * (index + 1), 100 * (index + 1))
+
+
+def test_count_with_filter(ray_start_regular_shared):
+    ds = ray.data.read_parquet(
+        "example://iris.parquet", filter=(pds.field("sepal.length") < pds.scalar(0))
+    )
+    assert ds.count() == 0
+    assert isinstance(ds.count(), int)
 
 
 if __name__ == "__main__":

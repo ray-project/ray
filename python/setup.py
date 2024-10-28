@@ -812,7 +812,6 @@ setuptools.setup(
         "ray": [
             "includes/*.pxd",
             "*.pxd",
-            "data/_internal/logging.yaml",
             "train/_internal/logging.yaml",
         ],
     },

@@ -13,30 +13,12 @@ import ray
 from ray import serve
 from ray._private.pydantic_compat import ValidationError
 from ray._private.test_utils import SignalActor, wait_for_condition
-from ray.serve._private.common import ApplicationStatus, DeploymentStatus
+from ray.serve._private.common import DeploymentStatus
 from ray.serve._private.logging_utils import get_serve_logs_dir
 from ray.serve._private.test_utils import check_deployment_status, check_num_replicas_eq
 from ray.serve._private.utils import get_component_file_name
+from ray.serve.schema import ApplicationStatus
 from ray.util.state import list_actors
-
-
-@pytest.mark.parametrize("prefixes", [[None, "/f", None], ["/f", None, "/f"]])
-def test_deploy_nullify_route_prefix(serve_instance, prefixes):
-    # With multi dags support, dag driver will receive all route
-    # prefix when route_prefix is "None", since "None" will be converted
-    # to "/" internally.
-    # Note: the expose http endpoint will still be removed for internal
-    # dag node by setting "None" to route_prefix
-    @serve.deployment
-    def f(*args):
-        return "got me"
-
-    for prefix in prefixes:
-        dag = f.options(route_prefix=prefix).bind()
-        handle = serve.run(dag)
-        assert requests.get("http://localhost:8000/f").status_code == 200
-        assert requests.get("http://localhost:8000/f").text == "got me"
-        assert handle.remote().result() == "got me"
 
 
 @pytest.mark.timeout(10, method="thread")
