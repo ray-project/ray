@@ -277,10 +277,13 @@ class ReplicaActor:
         )
 
         # Guards against calling the user's callable constructor multiple times.
-        self._user_callable_asgi_app: Optional[ASGIApp] = None
         self._user_callable_initialized = False
         self._user_callable_initialized_lock = asyncio.Lock()
         self._initialization_latency: Optional[float] = None
+
+        # Will be populated with the wrapped ASGI app if the user callable is an
+        # `ASGIAppReplicaWrapper` (i.e., they are using the FastAPI integration).
+        self._user_callable_asgi_app: Optional[ASGIApp] = None
 
         # Set metadata for logs and metrics.
         # servable_object will be populated in `initialize_and_get_metadata`.

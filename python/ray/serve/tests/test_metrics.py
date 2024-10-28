@@ -970,6 +970,48 @@ class TestRequestContextMetrics:
         assert requests_metrics_app_name["g1"] == "app"
         assert requests_metrics_app_name["g2"] == "app"
 
+    @pytest.mark.parametrize("route_prefix", ["", "/prefix"])
+    def test_fastapi_route_metrics(self, serve_start_shutdown, route_prefix: str):
+        app = FastAPI()
+
+        @serve.deployment
+        @serve.ingress(app)
+        class A:
+            @app.get("/api")
+            def route1(self):
+                return "ok1"
+
+            @app.get("/api2/{user_id}")
+            def route2(self):
+                return "ok2"
+
+        if route_prefix:
+            serve.run(A.bind(), route_prefix=route_prefix)
+        else:
+            serve.run(A.bind())
+
+        base_url = "http://127.0.0.1:8000" + route_prefix
+        resp = requests.get(base_url + "/api")
+        assert resp.text == '"ok1"'
+        resp = requests.get(base_url + "/api2/abc123")
+        assert resp.text == '"ok2"'
+
+        wait_for_condition(
+            lambda: len(get_metric_dictionaries("serve_deployment_request_counter"))
+            == 2,
+            timeout=40,
+        )
+        (
+            requests_metrics_route,
+            requests_metrics_app_name,
+        ) = self._generate_metrics_summary(
+            get_metric_dictionaries("serve_deployment_request_counter")
+        )
+        assert requests_metrics_route["A"] == {
+            route_prefix + "/api",
+            route_prefix + "/api2/{user_id}",
+        }
+
     def test_customer_metrics_with_context(self, serve_start_shutdown):
         @serve.deployment
         class Model:
