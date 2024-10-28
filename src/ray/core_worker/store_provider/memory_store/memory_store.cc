@@ -326,7 +326,8 @@ Status CoreWorkerMemoryStore::GetImpl(const std::vector<ObjectID> &object_ids,
       }
     }
 
-    // Return if all the objects are obtained.
+    // Return if all the objects are obtained, or any existing objects are known to have
+    // exception.
     if (remaining_ids.empty() || count >= num_objects || existing_objects_has_exception) {
       return Status::OK();
     }
