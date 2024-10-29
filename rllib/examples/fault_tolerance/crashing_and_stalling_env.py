@@ -12,7 +12,7 @@ the faulty object), garbage collected, and finally recreated from scratch. Note 
 during this process, the containing EnvRunner remaing up and running and sampling
 simply continues after the env recycling. This is the lightest and fastest form of
 fault tolerance and should be attempted first.
-2) `config.fault_tolerance(recreate_failed_env_runners=True)` causes the entire
+2) `config.fault_tolerance(restart_failed_env_runners=True)` causes the entire
 EnvRunner (a Ray remote actor) to be restarted. This restart logically includes the
 gymnasium environment, the RLModule, and all connector pipelines on the EnvRunner.
 Use this option only if you face problems with the first option
@@ -146,7 +146,7 @@ config = (
     # Switch on resiliency.
     .fault_tolerance(
         # Recreate any failed EnvRunners.
-        recreate_failed_env_runners=True,
+        restart_failed_env_runners=True,
         # Restart any failed environment (w/o recreating the EnvRunner). Note that this
         # is the much faster option.
         restart_failed_sub_environments=args.restart_failed_envs,
