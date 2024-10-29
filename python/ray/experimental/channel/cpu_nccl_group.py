@@ -110,8 +110,7 @@ class CPUNcclGroup(ray_channel.nccl_group._NcclGroup):
 
     def send(self, tensor: torch.Tensor, peer_rank: int):
         # "Send" the tensor to the barrier actor.
-        barrier_key = sorted([self.get_self_rank(), peer_rank])
-        barrier_key = f"barrier-{barrier_key[0]}-{barrier_key[1]}"
+        barrier_key = f"barrier-{self.get_self_rank()}-{peer_rank}"
         barrier = ray.get_actor(name=barrier_key)
         self.barriers.add(barrier)
         ray.get(barrier.wait.remote(self.num_ops[barrier_key], tensor))
@@ -125,8 +124,7 @@ class CPUNcclGroup(ray_channel.nccl_group._NcclGroup):
         allocator: Optional[TorchTensorAllocator] = None,
     ):
         # "Receive" the tensor from the barrier actor.
-        barrier_key = sorted([self.get_self_rank(), peer_rank])
-        barrier_key = f"barrier-{barrier_key[0]}-{barrier_key[1]}"
+        barrier_key = f"barrier-{peer_rank}-{self.get_self_rank()}"
         barrier = ray.get_actor(name=barrier_key)
         self.barriers.add(barrier)
         received_tensor = ray.get(barrier.wait.remote(self.num_ops[barrier_key]))
