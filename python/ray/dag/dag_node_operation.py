@@ -473,6 +473,26 @@ def _visualize_execution_schedule(
     """
     Visualize the execution schedule for each actor.
 
+    The visualization will be saved as a PNG file named `compiled_graph_schedule.png`.
+    Details of the visualization: # noqa
+
+        Node description format:
+            <actor_name>_<actor_id> [<task_index>] <method_name> <operation> <orig_index>, <overlap_index>
+
+        Node description fields:
+            actor_id: is abbreviated, only the first 4 characters are shown
+            operation: is R(READ), C(COMPUTE), or W(WRITE)
+            orig_index: the index in the original execution schedule
+            overlap_index: the index in the overlap-communication optimized execution schedule
+            If this is different from orig_index, the node is highlighted in red color
+
+        Node grouping:
+            The nodes belonging to the same actor are grouped in the same rectangular
+
+        Edges:
+            blue color: indicates NCCL channel
+            black color: indicates shared memory channel
+
     Args:
         actor_to_execution_schedule: A dictionary that maps an actor handle to
             the execution schedule which is a list of operation nodes.
