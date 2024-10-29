@@ -448,7 +448,7 @@ DEFAULT_TASK_MAX_RETRIES = 3
 # Default max_concurrency option in @ray.remote for threaded actors.
 DEFAULT_MAX_CONCURRENCY_THREADED = 1
 
-# Default max_concurrency option in @ray.remote for aysnc actors.
+# Default max_concurrency option in @ray.remote for async actors.
 DEFAULT_MAX_CONCURRENCY_ASYNC = 1000
 
 # Prefix for namespaces which are used internally by ray.
