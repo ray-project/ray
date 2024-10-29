@@ -341,8 +341,8 @@ Conservative Q-Learning (CQL)
 
     **CQL architecture:** CQL (Conservative Q-Learning) is an offline RL algorithm that mitigates the overestimation of Q-values
     outside the dataset distribution through a conservative critic estimate. It adds a simple Q regularizer loss to the standard
-    Bellman update loss, ensuring that the critic doesn't output overly optimistic Q-values. This conservative
-    correction term to any off-policy Q-learning algorithm. The Ray team provides this for SAC.
+    Bellman update loss, ensuring that the critic doesn't output overly optimistic Q-values.
+    The `SACLearner` adds this conservative correction term to the TD-based Q-learning loss.
 
 
 **Tuned examples:**
