@@ -35,11 +35,11 @@ struct GcsServerIOContextPolicy {
   template <typename T>
   static constexpr int GetDedicatedIoContextIndex() {
     if constexpr (std::is_same_v<T, GcsTaskManager>) {
-      return index_of("task_io_context");
+      return IndexOf("task_io_context");
     } else if constexpr (std::is_same_v<T, GcsPublisher>) {
-      return index_of("pubsub_io_context");
+      return IndexOf("pubsub_io_context");
     } else if constexpr (std::is_same_v<T, syncer::RaySyncer>) {
-      return index_of("ray_syncer_io_context");
+      return IndexOf("ray_syncer_io_context");
     } else {
       // Due to if-constexpr limitations, this have to be in an else block.
       // Using this tuple_size_v to put T into compile error message.
@@ -53,8 +53,8 @@ struct GcsServerIOContextPolicy {
   constexpr static std::array<std::string_view, 3> kAllDedicatedIOContextNames{
       "task_io_context", "pubsub_io_context", "ray_syncer_io_context"};
 
-  constexpr static size_t index_of(std::string_view name) {
-    return ray::index_of(kAllDedicatedIOContextNames, name);
+  constexpr static size_t IndexOf(std::string_view name) {
+    return ray::IndexOf(kAllDedicatedIOContextNames, name);
   }
 };
 

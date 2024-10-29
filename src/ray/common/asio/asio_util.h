@@ -172,7 +172,7 @@ class IOContextProvider {
   }
   static_assert(CheckNoEmpty(),
                 "kAllDedicatedIOContextNames must not contain empty strings.");
-  static_assert(ray::array_is_unique(Policy::kAllDedicatedIOContextNames),
+  static_assert(ray::ArrayIsUnique(Policy::kAllDedicatedIOContextNames),
                 "kAllDedicatedIOContextNames must not contain duplicate elements.");
 
   // Using unique_ptr because the class has no default constructor, so it's not easy

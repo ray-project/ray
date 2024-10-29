@@ -22,7 +22,7 @@ namespace ray {
 // Warning: O(n^2) complexity. Only use in constexpr context.
 // Returns true if there are no 2 elements in the array that are equal.
 template <typename T, size_t N>
-constexpr bool array_is_unique(const std::array<T, N> &arr) {
+constexpr bool ArrayIsUnique(const std::array<T, N> &arr) {
   for (size_t i = 0; i < N; ++i) {
     for (size_t j = i + 1; j < N; ++j) {
       if (arr[i] == arr[j]) {
@@ -36,7 +36,7 @@ constexpr bool array_is_unique(const std::array<T, N> &arr) {
 // Returns the index of the first occurrence of value in the array. If value is not found,
 // it's a compile error.
 template <typename T, size_t N>
-constexpr size_t index_of(const std::array<T, N> &arr, const T &value) {
+constexpr size_t IndexOf(const std::array<T, N> &arr, const T &value) {
   for (size_t i = 0; i < N; ++i) {
     if (arr[i] == value) {
       return i;
