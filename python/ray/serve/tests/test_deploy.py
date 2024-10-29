@@ -92,7 +92,7 @@ def test_reconfigure_with_exception(serve_instance):
         def __call__(self, *args):
             return self.config
 
-    with pytest.raises(ValidationError):
+    with pytest.raises(RuntimeError):
         serve.run(A.options(user_config="hi").bind())
 
 

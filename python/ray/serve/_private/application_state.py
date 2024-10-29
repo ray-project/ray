@@ -12,6 +12,7 @@ import ray
 from ray import cloudpickle
 from ray._private.utils import import_attr
 from ray.exceptions import RuntimeEnvSetupError
+from ray.serve._private.build_app import BuiltApplication, build_app
 from ray.serve._private.common import (
     DeploymentID,
     DeploymentStatus,
@@ -1141,20 +1142,20 @@ def build_serve_application(
     )
 
     try:
-        from ray.serve._private.api import call_app_builder_with_args_if_necessary
-        from ray.serve._private.deployment_graph_build import build as pipeline_build
+        from ray.serve._private.api import call_user_app_builder_with_args_if_necessary
 
         # Import and build the application.
         args_info_str = f" with arguments {args}" if args else ""
         logger.info(f"Importing application '{name}'{args_info_str}.")
 
-        app = call_app_builder_with_args_if_necessary(import_attr(import_path), args)
-        deployments = pipeline_build(app._get_internal_dag_node(), name)
-        ingress = deployments[-1]
+        app = call_user_app_builder_with_args_if_necessary(
+            import_attr(import_path), args
+        )
 
         deploy_args_list = []
-        for deployment in deployments:
-            is_ingress = deployment.name == ingress.name
+        built_app: BuiltApplication = build_app(app, name=name)
+        for deployment in built_app.deployments:
+            is_ingress = deployment.name == built_app.ingress_deployment_name
             deploy_args_list.append(
                 get_deploy_args(
                     name=deployment._name,
