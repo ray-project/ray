@@ -103,7 +103,7 @@ bool FileSystemMonitor::OverCapacityImpl(
   }
 
   // Convert bytes to GB
-  double available_gb = static_cast<double>(space_info->available) / (1024 * 1024 * 1024);
+  const double available_gb = static_cast<double>(space_info->available) / (1024 * 1024 * 1024);
   double capacity_gb = static_cast<double>(space_info->capacity) / (1024 * 1024 * 1024);
 
   std::ostringstream ostr;
