@@ -30,6 +30,7 @@ py_test_module_list(
         "test_persistence.py",
         "test_proxy.py",
         "test_proxy_actor_wrapper.py",
+        "test_replica_request_context.py",
         "test_util.py",
         "test_websockets.py",
     ],
