@@ -580,6 +580,28 @@ def get_component_file_name(
     return file_name
 
 
+def validate_route_prefix(route_prefix: Union[DEFAULT, None, str]):
+    if route_prefix is DEFAULT.VALUE or route_prefix is None:
+        return
+
+    if not route_prefix.startswith("/"):
+        raise ValueError(
+            f"Invalid route_prefix '{route_prefix}', "
+            "must start with a forward slash ('/')."
+        )
+
+    if route_prefix != "/" and route_prefix.endswith("/"):
+        raise ValueError(
+            f"Invalid route_prefix '{route_prefix}', "
+            "may not end with a trailing '/'."
+        )
+
+    if "{" in route_prefix or "}" in route_prefix:
+        raise ValueError(
+            f"Invalid route_prefix '{route_prefix}', " "may not contain wildcards."
+        )
+
+
 async def resolve_request_args(
     request_args: Tuple[Any], request_kwargs: Dict[str, Any]
 ) -> Tuple[Tuple[Any], Dict[str, Any]]:
