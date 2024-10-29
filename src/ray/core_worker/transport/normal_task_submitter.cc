@@ -740,12 +740,12 @@ Status NormalTaskSubmitter::CancelTask(TaskSpecification task_spec,
     if (rpc_client == executing_tasks_.end()) {
       // This case is reached for tasks that have unresolved dependencies.
       if (scheduling_key_entry.CanDelete()) {
-        // We can safely remove the entry keyed by scheduling_key from the
-        // scheduling_key_entries_ hashmap.
-        scheduling_key_entries_.erase(scheduling_key);
         CancelWorkerLeaseIfNeeded(scheduling_key);
         task_finisher_->FailPendingTask(task_spec.TaskId(),
                                         rpc::ErrorType::TASK_CANCELLED);
+        // We can safely remove the entry keyed by scheduling_key from the
+        // scheduling_key_entries_ hashmap.
+        scheduling_key_entries_.erase(scheduling_key);
       }
       return Status::OK();
     }
