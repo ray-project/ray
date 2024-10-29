@@ -168,6 +168,9 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
 #endif
   }
 
+  task_event_buffer_ = std::make_unique<worker::TaskEventBufferImpl>(
+      std::make_shared<gcs::GcsClient>(options_.gcs_options));
+
   // Initialize task receivers.
   if (options_.worker_type == WorkerType::WORKER || options_.is_local_mode) {
     RAY_CHECK(options_.task_execution_callback != nullptr);
@@ -182,9 +185,11 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
                                   std::placeholders::_7,
                                   std::placeholders::_8);
     task_receiver_ = std::make_unique<TaskReceiver>(
-        worker_context_, task_execution_service_, execute_task, [this] {
-          return local_raylet_client_->ActorCreationTaskDone();
-        });
+        worker_context_,
+        task_execution_service_,
+        *task_event_buffer_,
+        execute_task,
+        [this] { return local_raylet_client_->ActorCreationTaskDone(); });
   }
 
   // Initialize raylet client.
@@ -281,9 +286,6 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
   RAY_CHECK_OK(gcs_client_->Connect(io_service_));
   RegisterToGcs(options_.worker_launch_time_ms, options_.worker_launched_time_ms);
 
-  // Initialize the task state event buffer.
-  task_event_buffer_ = std::make_unique<worker::TaskEventBufferImpl>(
-      std::make_shared<gcs::GcsClient>(options_.gcs_options));
   if (RayConfig::instance().task_events_report_interval_ms() > 0) {
     if (!task_event_buffer_->Start().ok()) {
       RAY_CHECK(!task_event_buffer_->Enabled()) << "TaskEventBuffer should be disabled.";
@@ -325,11 +327,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
       /*object_info_publisher=*/object_info_publisher_.get(),
       /*object_info_subscriber=*/object_info_subscriber_.get(),
       check_node_alive_fn,
-      RayConfig::instance().lineage_pinning_enabled(),
-      [this](const rpc::Address &addr) {
-        return std::shared_ptr<rpc::CoreWorkerClient>(
-            new rpc::CoreWorkerClient(addr, *client_call_manager_));
-      });
+      RayConfig::instance().lineage_pinning_enabled());
 
   if (RayConfig::instance().max_pending_lease_requests_per_scheduling_category() > 0) {
     lease_request_rate_limiter_ = std::make_shared<StaticLeaseRequestRateLimiter>(
@@ -641,6 +639,10 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
         [this] {
           RAY_LOG(INFO) << "Event stats:\n\n"
                         << io_service_.stats().StatsString() << "\n\n"
+                        << task_execution_service_.stats().StatsString() << "\n\n"
+                        << "-----------------\n"
+                        << "Task execution event stats:\n"
+                        << task_execution_service_.stats().StatsString() << "\n\n"
                         << "-----------------\n"
                         << "Task Event stats:\n"
                         << task_event_buffer_->DebugString() << "\n";
@@ -2945,13 +2947,13 @@ Status CoreWorker::ExecuteTask(
             ? worker::TaskStatusEvent::TaskStateUpdate(actor_repr_name, pid_)
             : worker::TaskStatusEvent::TaskStateUpdate(pid_);
     RAY_UNUSED(
-        task_manager_->RecordTaskStatusEventIfNeeded(task_spec.TaskId(),
-                                                     worker_context_.GetCurrentJobID(),
-                                                     task_spec.AttemptNumber(),
-                                                     task_spec,
-                                                     rpc::TaskStatus::RUNNING,
-                                                     /* include_task_info */ false,
-                                                     update));
+        task_event_buffer_->RecordTaskStatusEventIfNeeded(task_spec.TaskId(),
+                                                          task_spec.JobId(),
+                                                          task_spec.AttemptNumber(),
+                                                          task_spec,
+                                                          rpc::TaskStatus::RUNNING,
+                                                          /* include_task_info */ false,
+                                                          update));
 
     worker_context_.SetCurrentTask(task_spec);
     SetCurrentTaskId(task_spec.TaskId(), task_spec.AttemptNumber(), task_spec.GetName());
@@ -4681,7 +4683,7 @@ void CoreWorker::RecordTaskLogStart(const TaskID &task_id,
   auto current_task = worker_context_.GetCurrentTask();
   RAY_CHECK(current_task)
       << "We should have set the current task spec while executing the task.";
-  RAY_UNUSED(task_manager_->RecordTaskStatusEventIfNeeded(
+  RAY_UNUSED(task_event_buffer_->RecordTaskStatusEventIfNeeded(
       task_id,
       worker_context_.GetCurrentJobID(),
       attempt_number,
@@ -4705,7 +4707,7 @@ void CoreWorker::RecordTaskLogEnd(const TaskID &task_id,
   auto current_task = worker_context_.GetCurrentTask();
   RAY_CHECK(current_task)
       << "We should have set the current task spec before executing the task.";
-  RAY_UNUSED(task_manager_->RecordTaskStatusEventIfNeeded(
+  RAY_UNUSED(task_event_buffer_->RecordTaskStatusEventIfNeeded(
       task_id,
       worker_context_.GetCurrentJobID(),
       attempt_number,
@@ -4723,7 +4725,7 @@ void CoreWorker::UpdateTaskIsDebuggerPaused(const TaskID &task_id,
       << "We should have set the current task spec before executing the task.";
   RAY_LOG(DEBUG).WithField(current_task_it->second.TaskId())
       << "Task is paused by debugger set to " << is_debugger_paused;
-  RAY_UNUSED(task_manager_->RecordTaskStatusEventIfNeeded(
+  RAY_UNUSED(task_event_buffer_->RecordTaskStatusEventIfNeeded(
       task_id,
       worker_context_.GetCurrentJobID(),
       current_task_it->second.AttemptNumber(),

@@ -594,10 +594,10 @@ def test_drop_empty_block_split():
 
 def verify_splits(splits, blocks_by_split):
     assert len(splits) == len(blocks_by_split)
-    for blocks, (block_refs, meta) in zip(blocks_by_split, splits):
+    for blocks, (block_refs, metas) in zip(blocks_by_split, splits):
         assert len(blocks) == len(block_refs)
-        assert len(blocks) == len(meta)
-        for block, block_ref, meta in zip(blocks, block_refs, meta):
+        assert len(blocks) == len(metas)
+        for block, block_ref, meta in zip(blocks, block_refs, metas):
             assert list(ray.get(block_ref)["id"]) == block
             assert meta.num_rows == len(block)
 
