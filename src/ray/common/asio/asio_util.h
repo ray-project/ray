@@ -134,11 +134,6 @@ class IOContextProvider {
     }
   }
 
-  template <int N>
-  struct Wrapper {
-    static constexpr int value = N;
-  };
-
   // Gets IOContext registered for type T. If the type is not registered in
   // Policy::kAllDedicatedIOContextNames, it's a compile error.
   template <typename T>
@@ -151,7 +146,7 @@ class IOContextProvider {
             // To show index in compile error...
             ray::AlwaysFalseValue<index>,
         "index out of bound, invalid GetDedicatedIOContextIndex implementation! Index "
-        "can only be -1 or within range of kAllDedicatedIOContextNames: ");
+        "can only be -1 or within range of kAllDedicatedIOContextNames");
 
     if constexpr (index == -1) {
       return default_io_context_;
