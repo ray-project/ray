@@ -10,8 +10,6 @@ from ray.serve._private.cluster_node_info_cache import (
 )
 from ray.serve._private.common import DeploymentID
 from ray.serve._private.constants import (
-    RAY_SERVE_ENABLE_QUEUE_LENGTH_CACHE,
-    RAY_SERVE_ENABLE_STRICT_MAX_ONGOING_REQUESTS,
     RAY_SERVE_PROXY_PREFER_LOCAL_AZ_ROUTING,
 )
 from ray.serve._private.deployment_scheduler import (
@@ -109,7 +107,6 @@ def create_router(
         # Streaming ObjectRefGenerators are not supported in Ray Client
         enable_strict_max_ongoing_requests=(
             not is_inside_ray_client_context
-            and RAY_SERVE_ENABLE_STRICT_MAX_ONGOING_REQUESTS
         ),
         resolve_request_args_func=resolve_request_args,
     )

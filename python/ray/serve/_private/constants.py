@@ -284,19 +284,6 @@ RAY_SERVE_MAX_QUEUE_LENGTH_RESPONSE_DEADLINE_S = float(
     os.environ.get("RAY_SERVE_MAX_QUEUE_LENGTH_RESPONSE_DEADLINE_S", 1.0)
 )
 
-# Feature flag for caching queue lengths for faster routing in each handle.
-RAY_SERVE_ENABLE_QUEUE_LENGTH_CACHE = (
-    os.environ.get("RAY_SERVE_ENABLE_QUEUE_LENGTH_CACHE", "1") == "1"
-)
-
-# Feature flag for strictly enforcing max_ongoing_requests (replicas will reject
-# requests).
-RAY_SERVE_ENABLE_STRICT_MAX_ONGOING_REQUESTS = (
-    os.environ.get("RAY_SERVE_ENABLE_STRICT_MAX_ONGOING_REQUESTS", "0") == "1"
-    # Strict enforcement path must be enabled for the queue length cache.
-    or RAY_SERVE_ENABLE_QUEUE_LENGTH_CACHE
-)
-
 # Length of time to respect entries in the queue length cache when scheduling requests.
 RAY_SERVE_QUEUE_LENGTH_CACHE_TIMEOUT_S = float(
     os.environ.get("RAY_SERVE_QUEUE_LENGTH_CACHE_TIMEOUT_S", 10.0)

@@ -284,53 +284,6 @@ py_test(
     ],
 )
 
-# Tests disabling queue len caching feature flag.
-# TODO(edoakes): remove this after the FF is removed.
-py_test_module_list(
-    size = "medium",
-    data = glob(["test_config_files/**/*"]),
-    env = {"RAY_SERVE_ENABLE_QUEUE_LENGTH_CACHE": "0"},
-    files = [
-        "test_cancellation.py",
-        "test_handle.py",
-        "test_handle_api.py",
-        "test_handle_streaming.py",
-        "test_multiplex.py",
-        "test_request_timeout.py",
-    ],
-    name_suffix = "_with_queue_len_cache_disabled",
-    tags = [
-        "exclusive",
-        "no_windows",
-        "team:serve",
-    ],
-    deps = [
-        ":common",
-        ":conftest",
-        "//python/ray/serve:serve_lib",
-    ],
-)
-
-# Tests autoscaling when queue len caching is disabled.
-py_test_module_list(
-    size = "large",
-    env = {"RAY_SERVE_ENABLE_QUEUE_LENGTH_CACHE": "0"},
-    files = [
-        "test_autoscaling_policy.py",
-    ],
-    name_suffix = "_with_queue_len_cache_disabled",
-    tags = [
-        "exclusive",
-        "no_windows",
-        "team:serve",
-    ],
-    deps = [
-        ":common",
-        ":conftest",
-        "//python/ray/serve:serve_lib",
-    ],
-)
-
 # Test old stop-fully-then-start behavior.
 # TODO(zcin): remove this after the old behavior is completely removed
 py_test_module_list(
