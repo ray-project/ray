@@ -53,6 +53,7 @@ py_test_module_list(
         "test_cancellation.py",
         "test_cluster.py",
         "test_controller_recovery.py",
+        "test_deployment_scheduler.py",
         "test_failure.py",
         "test_grpc.py",
         "test_handle.py",
