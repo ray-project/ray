@@ -8,6 +8,7 @@ from typing import Any, Dict, Optional
 
 import aiohttp.web
 
+import ray
 import ray.dashboard.optional_utils as dashboard_optional_utils
 import ray.dashboard.utils as dashboard_utils
 from ray import ActorID
@@ -21,7 +22,10 @@ from ray.dashboard.modules.actor import actor_consts
 logger = logging.getLogger(__name__)
 routes = dashboard_optional_utils.DashboardHeadRouteTable
 
-MAX_ACTORS_TO_CACHE = int(os.environ.get("RAY_DASHBOARD_MAX_ACTORS_TO_CACHE", 1000))
+MAX_DESTROYED_ACTORS_TO_CACHE = max(
+    0, ray._config.maximum_gcs_destroyed_actor_cached_count()
+)
+
 ACTOR_CLEANUP_FREQUENCY = 1  # seconds
 
 
@@ -164,11 +168,9 @@ class ActorHead(dashboard_utils.DashboardHeadModule):
         self._gcs_actor_channel_subscriber = None
         self.get_all_actor_info_client = None
         # A queue of dead actors in order of when they died
-        self.dead_actors_queue = deque()
+        self.destroyed_actors_queue = deque()
 
         # -- Internal state --
-        self.total_published_events = 0
-
         self._loop = get_or_create_event_loop()
         # NOTE: This executor is intentionally constrained to just 1 thread to
         #       limit its concurrency, therefore reducing potential for GIL contention
@@ -235,8 +237,6 @@ class ActorHead(dashboard_utils.DashboardHeadModule):
                 ) in updated_actor_table_entries.items():
                     self._process_updated_actor_table(actor_id, updated_actor_table)
 
-                self.total_published_events += len(updated_actor_table_entries)
-
                 # TODO emit metrics
                 logger.debug(
                     f"Total events processed: {len(updated_actor_table_entries)}, "
@@ -284,7 +284,7 @@ class ActorHead(dashboard_utils.DashboardHeadModule):
         node_id = actor_table_data["address"]["rayletId"]
 
         if actor_table_data["state"] == "DEAD":
-            self.dead_actors_queue.append(actor_id)
+            self.destroyed_actors_queue.append(actor_id)
 
         # Update actors.
         DataSource.actors[actor_id] = actor_table_data
@@ -310,21 +310,13 @@ class ActorHead(dashboard_utils.DashboardHeadModule):
     async def _cleanup_actors(self):
         while True:
             try:
-                if len(DataSource.actors) > MAX_ACTORS_TO_CACHE:
-                    logger.debug("Cleaning up dead actors from GCS")
-                    while len(DataSource.actors) > MAX_ACTORS_TO_CACHE:
-                        if not self.dead_actors_queue:
-                            logger.warning(
-                                f"More than {MAX_ACTORS_TO_CACHE} "
-                                "live actors are cached"
-                            )
-                            break
-                        actor_id = self.dead_actors_queue.popleft()
-                        if actor_id in DataSource.actors:
-                            actor = DataSource.actors.pop(actor_id)
-                            node_id = actor["address"].get("rayletId")
-                            if node_id and node_id != actor_consts.NIL_NODE_ID:
-                                del DataSource.node_actors[node_id][actor_id]
+                while len(self.destroyed_actors_queue) > MAX_DESTROYED_ACTORS_TO_CACHE:
+                    actor_id = self.destroyed_actors_queue.popleft()
+                    if actor_id in DataSource.actors:
+                        actor = DataSource.actors.pop(actor_id)
+                        node_id = actor["address"].get("rayletId")
+                        if node_id and node_id != actor_consts.NIL_NODE_ID:
+                            del DataSource.node_actors[node_id][actor_id]
                 await asyncio.sleep(ACTOR_CLEANUP_FREQUENCY)
             except Exception:
                 logger.exception("Error cleaning up actor info from GCS.")

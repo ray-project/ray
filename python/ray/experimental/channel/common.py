@@ -1,12 +1,23 @@
 import asyncio
 import concurrent
-import copy
+import sys
 import threading
 import time
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Dict, List, NamedTuple, Optional, Tuple, Union
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Callable,
+    Dict,
+    List,
+    NamedTuple,
+    Optional,
+    Tuple,
+    Union,
+)
 
 import ray
+import ray.exceptions
 from ray.experimental.channel.gpu_communicator import GPUCommunicator
 from ray.experimental.channel.serialization_context import _SerializationContext
 from ray.util.annotations import DeveloperAPI, PublicAPI
@@ -19,6 +30,30 @@ if TYPE_CHECKING:
     import torch
 
 
+def retry_and_check_interpreter_exit(f: Callable[[], None]) -> bool:
+    """This function is only useful when f contains channel read/write.
+
+    Keep retrying channel read/write inside `f` and check if interpreter exits.
+    It is important in case the read/write happens in a separate thread pool.
+    See https://github.com/ray-project/ray/pull/47702
+
+    f should a function that doesn't receive any input and return nothing.
+    """
+    exiting = False
+    while True:
+        try:
+            f()
+            break
+        except ray.exceptions.RayChannelTimeoutError:
+            if sys.is_finalizing():
+                # Interpreter exits. We should ignore the error and
+                # stop reading so that the thread can join.
+                exiting = True
+                break
+
+    return exiting
+
+
 # Holds the input arguments for an accelerated DAG node.
 @PublicAPI(stability="alpha")
 class RayDAGArgs(NamedTuple):
@@ -28,9 +63,6 @@ class RayDAGArgs(NamedTuple):
 
 @PublicAPI(stability="alpha")
 class ChannelOutputType:
-    def __init__(self):
-        self._contains_type: Optional["ChannelOutputType"] = None
-
     def register_custom_serializer(self) -> None:
         """
         Register any custom serializers needed to pass data of this type. This
@@ -44,41 +76,7 @@ class ChannelOutputType:
         default device. Instead, these should be extracted from the
         worker-local _SerializationContext.
         """
-        if self._contains_type is not None:
-            self._contains_type.register_custom_serializer()
-
-    @property
-    def is_direct_return(self) -> bool:
-        """
-        Some channels may contain other values that should be sent via a
-        different channel. This returns whether the value is a direct return or
-        if it is "nested" inside a different channel.
-        """
-        return True
-
-    @property
-    def contains_type(self) -> "ChannelOutputType":
-        """
-        Some channel values may contain an object that should be sent through a
-        different channel. For example, a Python object containing a GPU tensor
-        may be sent over two channels, one to serialize the Python data on CPU
-        memory and another to transfer the GPU data over NCCL. This function
-        returns the type of this nested value, if any.
-        """
-        return self._contains_type
-
-    def set_contains_type(self, typ: "ChannelOutputType") -> None:
-        """
-        Mark that values sent on this channel may contain objects that should
-        be sent through a different channel.
-        """
-        from ray.experimental.channel.torch_tensor_type import TorchTensorType
-
-        if typ is not None:
-            assert isinstance(
-                typ, TorchTensorType
-            ), "Contained type must be of type TorchTensorType"
-        self._contains_type = copy.deepcopy(typ)
+        pass
 
     def create_channel(
         self,
@@ -103,10 +101,6 @@ class ChannelOutputType:
         raise NotImplementedError
 
     def requires_nccl(self) -> bool:
-        if self._contains_type is not None:
-            if self._contains_type.requires_nccl():
-                return True
-
         # By default, channels do not require NCCL.
         return False
 
@@ -240,6 +234,7 @@ class ChannelInterface:
             Any: The deserialized value. If the deserialized value is an
             Exception, it will be returned directly instead of being raised.
         """
+        raise NotImplementedError
 
     def close(self) -> None:
         """
@@ -355,7 +350,15 @@ class AwaitableBackgroundReader(ReaderInterface):
         self._background_task = asyncio.ensure_future(self.run())
 
     def _run(self):
-        return [c.read() for c in self._input_channels]
+        results = []
+        for c in self._input_channels:
+            exiting = retry_and_check_interpreter_exit(
+                lambda: results.append(c.read(timeout=1))
+            )
+            if exiting:
+                break
+
+        return results
 
     async def run(self):
         loop = asyncio.get_running_loop()
@@ -377,6 +380,7 @@ class AwaitableBackgroundReader(ReaderInterface):
     def close(self):
         super().close()
         self._background_task_executor.shutdown(cancel_futures=True)
+        self._background_task.cancel()
 
 
 @DeveloperAPI
@@ -539,7 +543,11 @@ class AwaitableBackgroundWriter(WriterInterface):
         for i, channel in enumerate(self._output_channels):
             idx = self._output_idxs[i]
             res_i = _adapt(res, idx, self._is_input)
-            channel.write(res_i)
+            exiting = retry_and_check_interpreter_exit(
+                lambda: channel.write(res_i, timeout=1)
+            )
+            if exiting:
+                break
 
     async def run(self):
         loop = asyncio.get_event_loop()
