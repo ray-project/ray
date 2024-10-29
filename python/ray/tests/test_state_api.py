@@ -2646,7 +2646,7 @@ def test_list_actor_tasks(shutdown_only):
     ray.init(num_cpus=2)
     job_id = ray.get_runtime_context().get_job_id()
 
-    @ray.remote
+    @ray.remote(max_concurrency=2)
     class Actor:
         def call(self):
             import time
@@ -2664,18 +2664,19 @@ def test_list_actor_tasks(shutdown_only):
         for task in tasks:
             assert task["actor_id"] == actor_id
         # Actor.__init__: 1 finished
-        # Actor.call: 1 running, 9 waiting for execution (queued).
+        # Actor.call: 2 running, 8 waiting for execution (queued).
         assert len(tasks) == 11
         assert (
             len(
                 list(
                     filter(
-                        lambda task: task["state"] == "SUBMITTED_TO_WORKER",
+                        lambda task: task["state"]
+                        == "PENDING_ACTOR_TASK_ORDERING_OR_CONCURRENCY",
                         tasks,
                     )
                 )
             )
-            == 9
+            == 8
         )
         assert (
             len(
@@ -2708,7 +2709,7 @@ def test_list_actor_tasks(shutdown_only):
                     )
                 )
             )
-            == 1
+            == 2
         )
 
         # Filters with actor id.

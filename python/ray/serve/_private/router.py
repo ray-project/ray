@@ -2,12 +2,12 @@ import asyncio
 import logging
 import threading
 import time
+import uuid
 from collections import defaultdict
 from contextlib import contextmanager
 from functools import partial
-from typing import Any, DefaultDict, Dict, List, Optional, Tuple, Union
+from typing import Any, Coroutine, DefaultDict, List, Optional, Tuple, Union
 
-import ray
 from ray.actor import ActorHandle
 from ray.exceptions import ActorDiedError, ActorUnavailableError, RayError
 from ray.serve._private.common import (
@@ -21,22 +21,14 @@ from ray.serve._private.config import DeploymentConfig
 from ray.serve._private.constants import (
     HANDLE_METRIC_PUSH_INTERVAL_S,
     RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE,
-    RAY_SERVE_ENABLE_QUEUE_LENGTH_CACHE,
-    RAY_SERVE_ENABLE_STRICT_MAX_ONGOING_REQUESTS,
     RAY_SERVE_HANDLE_AUTOSCALING_METRIC_RECORD_PERIOD_S,
-    RAY_SERVE_PROXY_PREFER_LOCAL_AZ_ROUTING,
     SERVE_LOGGER_NAME,
 )
 from ray.serve._private.long_poll import LongPollClient, LongPollNamespace
 from ray.serve._private.metrics_utils import InMemoryMetricsStore, MetricsPusher
 from ray.serve._private.replica_result import ReplicaResult
-from ray.serve._private.replica_scheduler import (
-    PendingRequest,
-    PowerOfTwoChoicesReplicaScheduler,
-    ReplicaScheduler,
-)
-from ray.serve._private.replica_scheduler.replica_wrapper import ActorReplicaWrapper
-from ray.serve._private.utils import inside_ray_client_context
+from ray.serve._private.replica_scheduler import PendingRequest, ReplicaScheduler
+from ray.serve._private.utils import resolve_request_args
 from ray.serve.config import AutoscalingConfig
 from ray.serve.exceptions import BackPressureError
 from ray.util import metrics
@@ -69,7 +61,6 @@ class RouterMetricsManager:
         self._self_actor_id = self_actor_id
         self._handle_source = handle_source
         self._controller_handle = controller_handle
-        self._self_actor_id = self_actor_id
 
         # Exported metrics
         self.num_router_requests = router_requests_counter
@@ -324,16 +315,12 @@ class Router:
         controller_handle: ActorHandle,
         deployment_id: DeploymentID,
         handle_id: str,
-        self_node_id: str,
         self_actor_id: str,
-        self_availability_zone: Optional[str],
         handle_source: DeploymentHandleSource,
-        event_loop: asyncio.BaseEventLoop = None,
-        _prefer_local_node_routing: bool = False,
-        enable_queue_len_cache: bool = RAY_SERVE_ENABLE_QUEUE_LENGTH_CACHE,
-        enable_strict_max_ongoing_requests: bool = RAY_SERVE_ENABLE_STRICT_MAX_ONGOING_REQUESTS,  # noqa: E501
-        *,
-        replica_scheduler: Optional[ReplicaScheduler] = None,
+        event_loop: asyncio.BaseEventLoop,
+        replica_scheduler: Optional[ReplicaScheduler],
+        enable_strict_max_ongoing_requests: bool,
+        resolve_request_args_func: Coroutine = resolve_request_args,
     ):
         """Used to assign requests to downstream replicas for a deployment.
 
@@ -343,37 +330,11 @@ class Router:
 
         self._event_loop = event_loop
         self.deployment_id = deployment_id
-
-        if inside_ray_client_context():
-            # Streaming ObjectRefGenerators are not supported in Ray Client, so we need
-            # to override the behavior.
-            self._enable_queue_len_cache = False
-            self._enable_strict_max_ongoing_requests = False
-        else:
-            self._enable_queue_len_cache = enable_queue_len_cache
-            self._enable_strict_max_ongoing_requests = (
-                enable_strict_max_ongoing_requests
-            )
-
-        replica_wrapper_cls = ActorReplicaWrapper
-        if replica_scheduler is None:
-            replica_scheduler = PowerOfTwoChoicesReplicaScheduler(
-                self._event_loop,
-                deployment_id,
-                handle_source,
-                _prefer_local_node_routing,
-                RAY_SERVE_PROXY_PREFER_LOCAL_AZ_ROUTING,
-                self_node_id,
-                self_actor_id,
-                ray.get_runtime_context().current_actor
-                if ray.get_runtime_context().get_actor_id()
-                else None,
-                self_availability_zone,
-                use_replica_queue_len_cache=enable_queue_len_cache,
-                create_replica_wrapper_func=lambda r: replica_wrapper_cls(r),
-            )
+        self._enable_strict_max_ongoing_requests = enable_strict_max_ongoing_requests
 
         self._replica_scheduler: ReplicaScheduler = replica_scheduler
+        self._resolve_request_args = resolve_request_args_func
+
         # Flipped to `True` once the router has received a non-empty
         # replica set at least once.
         self.running_replicas_populated: bool = False
@@ -443,64 +404,12 @@ class Router:
             curr_num_replicas=len(self._replica_scheduler.curr_replicas),
         )
 
-    async def _resolve_deployment_responses(
-        self, request_args: Tuple[Any], request_kwargs: Dict[str, Any]
-    ) -> Tuple[Tuple[Any], Dict[str, Any]]:
-        """Replaces top-level `DeploymentResponse` objects with resolved object refs.
-
-        This enables composition without explicitly calling `_to_object_ref`.
-        """
-        from ray.serve.handle import DeploymentResponse, DeploymentResponseGenerator
-
-        generator_not_supported_message = (
-            "Streaming deployment handle results cannot be passed to "
-            "downstream handle calls. If you have a use case requiring "
-            "this feature, please file a feature request on GitHub."
-        )
-
-        new_args = [None for _ in range(len(request_args))]
-        new_kwargs = {}
-
-        arg_tasks = []
-        response_indices = []
-        for i, obj in enumerate(request_args):
-            if isinstance(obj, DeploymentResponseGenerator):
-                raise RuntimeError(generator_not_supported_message)
-            elif isinstance(obj, DeploymentResponse):
-                # Launch async task to convert DeploymentResponse to an object ref, and
-                # keep track of the argument index in the original `request_args`
-                response_indices.append(i)
-                arg_tasks.append(asyncio.create_task(obj._to_object_ref()))
-            else:
-                new_args[i] = obj
-
-        kwarg_tasks = []
-        response_keys = []
-        for k, obj in request_kwargs.items():
-            if isinstance(obj, DeploymentResponseGenerator):
-                raise RuntimeError(generator_not_supported_message)
-            elif isinstance(obj, DeploymentResponse):
-                # Launch async task to convert DeploymentResponse to an object ref, and
-                # keep track of the corresponding key in the original `request_kwargs`
-                response_keys.append(k)
-                kwarg_tasks.append(asyncio.create_task(obj._to_object_ref()))
-            else:
-                new_kwargs[k] = obj
-
-        # Gather `DeploymentResponse` object refs concurrently.
-        arg_obj_refs = await asyncio.gather(*arg_tasks)
-        kwarg_obj_refs = await asyncio.gather(*kwarg_tasks)
-
-        # Update new args and new kwargs with resolved object refs
-        for index, obj_ref in zip(response_indices, arg_obj_refs):
-            new_args[index] = obj_ref
-        new_kwargs.update((zip(response_keys, kwarg_obj_refs)))
-
-        # Return new args and new kwargs
-        return new_args, new_kwargs
-
     def _process_finished_request(
-        self, replica_id: ReplicaID, result: Union[Any, RayError]
+        self,
+        replica_id: ReplicaID,
+        parent_request_id: str,
+        response_id: str,
+        result: Union[Any, RayError],
     ):
         self._metrics_manager.dec_num_running_requests_for_replica(replica_id)
         if isinstance(result, ActorDiedError):
@@ -546,10 +455,9 @@ class Router:
                     replica_result,
                     queue_len_info,
                 ) = await replica.send_request_with_rejection(pr)
-                if self._enable_queue_len_cache:
-                    self._replica_scheduler.replica_queue_len_cache.update(
-                        replica.replica_id, queue_len_info.num_ongoing_requests
-                    )
+                self._replica_scheduler.on_new_queue_len_info(
+                    replica.replica_id, queue_len_info
+                )
                 if queue_len_info.accepted:
                     return replica_result, replica.replica_id
             except asyncio.CancelledError:
@@ -594,6 +502,17 @@ class Router:
     ) -> ReplicaResult:
         """Assign a request to a replica and return the resulting object_ref."""
 
+        response_id = uuid.uuid4()
+        assign_request_task = asyncio.current_task()
+        ray.serve.context._add_request_pending_assignment(
+            request_meta.internal_request_id, response_id, assign_request_task
+        )
+        assign_request_task.add_done_callback(
+            lambda _: ray.serve.context._remove_request_pending_assignment(
+                request_meta.internal_request_id, response_id
+            )
+        )
+
         with self._metrics_manager.wrap_request_assignment(request_meta):
             # Optimization: if there are currently zero replicas for a deployment,
             # push handle metric to controller to allow for fast cold start time.
@@ -602,12 +521,12 @@ class Router:
             ):
                 self._metrics_manager.push_autoscaling_metrics_to_controller()
 
-            ref = None
+            replica_result = None
             try:
-                request_args, request_kwargs = await self._resolve_deployment_responses(
+                request_args, request_kwargs = await self._resolve_request_args(
                     request_args, request_kwargs
                 )
-                ref, replica_id = await self.schedule_and_send_request(
+                replica_result, replica_id = await self.schedule_and_send_request(
                     PendingRequest(
                         args=list(request_args),
                         kwargs=request_kwargs,
@@ -617,19 +536,26 @@ class Router:
 
                 # Keep track of requests that have been sent out to replicas
                 if RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE:
+                    _request_context = ray.serve.context._serve_request_context.get()
+                    request_id: str = _request_context.request_id
                     self._metrics_manager.inc_num_running_requests_for_replica(
                         replica_id
                     )
-                    callback = partial(self._process_finished_request, replica_id)
-                    ref.add_callback(callback)
+                    callback = partial(
+                        self._process_finished_request,
+                        replica_id,
+                        request_id,
+                        response_id,
+                    )
+                    replica_result.add_done_callback(callback)
 
-                return ref
+                return replica_result
             except asyncio.CancelledError:
                 # NOTE(edoakes): this is not strictly necessary because
                 # there are currently no `await` statements between
                 # getting the ref and returning, but I'm adding it defensively.
-                if ref is not None:
-                    ref.cancel()
+                if replica_result is not None:
+                    replica_result.cancel()
 
                 raise
 

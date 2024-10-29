@@ -23,6 +23,7 @@ from ray.serve._private.common import (
     DeploymentHandleSource,
     DeploymentID,
     ReplicaID,
+    ReplicaQueueLengthInfo,
     RequestMetadata,
     RunningReplicaInfo,
 )
@@ -244,6 +245,26 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
         self, replica_info: RunningReplicaInfo
     ) -> ReplicaWrapper:
         return self._create_replica_wrapper_func(replica_info)
+
+    def on_replica_actor_died(self, replica_id: ReplicaID):
+        """Drop replica from replica set so it's not considered for future requests."""
+        self._replicas.pop(replica_id, None)
+        self._replica_id_set.discard(replica_id)
+        for id_set in self._colocated_replica_ids.values():
+            id_set.discard(replica_id)
+
+    def on_replica_actor_unavailable(self, replica_id: ReplicaID):
+        """Invalidate cache entry so active probing is required for the next request."""
+        self._replica_queue_len_cache.invalidate_key(replica_id)
+
+    def on_new_queue_len_info(
+        self, replica_id: ReplicaID, queue_len_info: ReplicaQueueLengthInfo
+    ):
+        """Update queue length cache with new info received from replica."""
+        if self._use_replica_queue_len_cache:
+            self._replica_queue_len_cache.update(
+                replica_id, queue_len_info.num_ongoing_requests
+            )
 
     def update_replicas(self, replicas: List[ReplicaWrapper]):
         """Update the set of available replicas to be considered for scheduling.
@@ -472,19 +493,6 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
                 self.num_scheduling_tasks_in_backoff_gauge.set(
                     self.num_scheduling_tasks_in_backoff
                 )
-
-    def on_replica_actor_died(self, replica_id: ReplicaID):
-        """Drop replica from replica set so it's not considered for future requests."""
-
-        self._replicas.pop(replica_id, None)
-        self._replica_id_set.discard(replica_id)
-        for id_set in self._colocated_replica_ids.values():
-            id_set.discard(replica_id)
-
-    def on_replica_actor_unavailable(self, replica_id: ReplicaID):
-        """Invalidate cache entry so active probing is required for the next request."""
-
-        self._replica_queue_len_cache.invalidate_key(replica_id)
 
     async def _probe_queue_lens(
         self,
