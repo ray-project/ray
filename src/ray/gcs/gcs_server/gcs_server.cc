@@ -20,7 +20,6 @@
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/network_util.h"
 #include "ray/common/ray_config.h"
-#include "ray/gcs/gcs_client/gcs_client.h"
 #include "ray/gcs/gcs_server/gcs_actor_manager.h"
 #include "ray/gcs/gcs_server/gcs_autoscaler_state_manager.h"
 #include "ray/gcs/gcs_server/gcs_job_manager.h"
@@ -55,6 +54,9 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
     : config_(config),
       storage_type_(GetStorageType()),
       main_service_(main_service),
+      pubsub_io_context_("pubsub_io_context"),
+      task_io_context_("task_io_context"),
+      ray_syncer_io_context_("ray_syncer_io_context"),
       rpc_server_(config.grpc_server_name,
                   config.grpc_server_port,
                   config.node_ip_address == "127.0.0.1",
@@ -66,7 +68,7 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
                            RayConfig::instance().gcs_server_rpc_client_thread_num()),
       raylet_client_pool_(
           std::make_shared<rpc::NodeManagerClientPool>(client_call_manager_)),
-      pubsub_periodical_runner_(pubsub_io_service_),
+      pubsub_periodical_runner_(pubsub_io_context_.GetIoService()),
       periodical_runner_(main_service),
       is_started_(false),
       is_stopped_(false) {
@@ -231,19 +233,14 @@ void GcsServer::DoStart(const GcsInitData &gcs_init_data) {
   // Init autoscaling manager
   InitGcsAutoscalerStateManager(gcs_init_data);
 
+  // Init usage stats client.
+  InitUsageStatsClient();
+
+  RecordMetrics();
+
   // Start RPC server when all tables have finished loading initial
   // data.
   rpc_server_.Run();
-
-  // Init usage stats client
-  // This is done after the RPC server starts
-  // since we need to know the port the rpc server listens on.
-  InitUsageStatsClient();
-  gcs_worker_manager_->SetUsageStatsClient(usage_stats_client_.get());
-  gcs_actor_manager_->SetUsageStatsClient(usage_stats_client_.get());
-  gcs_placement_group_manager_->SetUsageStatsClient(usage_stats_client_.get());
-  gcs_task_manager_->SetUsageStatsClient(usage_stats_client_.get());
-  RecordMetrics();
 
   periodical_runner_.RunFnPeriodically(
       [this] {
@@ -270,13 +267,12 @@ void GcsServer::DoStart(const GcsInitData &gcs_init_data) {
 void GcsServer::Stop() {
   if (!is_stopped_) {
     RAY_LOG(INFO) << "Stopping GCS server.";
-    ray_syncer_io_context_.stop();
-    ray_syncer_thread_->join();
+
+    ray_syncer_io_context_.Stop();
+    task_io_context_.Stop();
+    pubsub_io_context_.Stop();
+
     ray_syncer_.reset();
-
-    gcs_task_manager_->Stop();
-
-    pubsub_handler_->Stop();
     pubsub_handler_.reset();
 
     // Shutdown the rpc server
@@ -366,7 +362,7 @@ void GcsServer::InitGcsResourceManager(const GcsInitData &gcs_init_data) {
                            << ". Skip this round of pulling for resource load";
           } else {
             // GetResourceLoad will also get usage. Historically it didn't.
-            raylet_client->GetResourceLoad([this](auto &status, auto &load_and_usage) {
+            raylet_client->GetResourceLoad([this](auto &status, auto &&load_and_usage) {
               if (status.ok()) {
                 // TODO(vitsai): Remove duplicate reporting to GcsResourceManager
                 // after verifying that non-autoscaler paths are taken care of.
@@ -537,16 +533,12 @@ GcsServer::StorageType GcsServer::GetStorageType() const {
 }
 
 void GcsServer::InitRaySyncer(const GcsInitData &gcs_init_data) {
-  ray_syncer_ =
-      std::make_unique<syncer::RaySyncer>(ray_syncer_io_context_, kGCSNodeID.Binary());
+  ray_syncer_ = std::make_unique<syncer::RaySyncer>(ray_syncer_io_context_.GetIoService(),
+                                                    kGCSNodeID.Binary());
   ray_syncer_->Register(
       syncer::MessageType::RESOURCE_VIEW, nullptr, gcs_resource_manager_.get());
   ray_syncer_->Register(
       syncer::MessageType::COMMANDS, nullptr, gcs_resource_manager_.get());
-  ray_syncer_thread_ = std::make_unique<std::thread>([this]() {
-    boost::asio::io_service::work work(ray_syncer_io_context_);
-    ray_syncer_io_context_.run();
-  });
   ray_syncer_service_ = std::make_unique<syncer::RaySyncerService>(*ray_syncer_);
   rpc_server_.RegisterService(*ray_syncer_service_);
 }
@@ -556,8 +548,12 @@ void GcsServer::InitFunctionManager() {
 }
 
 void GcsServer::InitUsageStatsClient() {
-  usage_stats_client_ = std::make_unique<UsageStatsClient>(
-      "127.0.0.1:" + std::to_string(GetPort()), main_service_);
+  usage_stats_client_ = std::make_unique<UsageStatsClient>(kv_manager_->GetInstance());
+
+  gcs_worker_manager_->SetUsageStatsClient(usage_stats_client_.get());
+  gcs_actor_manager_->SetUsageStatsClient(usage_stats_client_.get());
+  gcs_placement_group_manager_->SetUsageStatsClient(usage_stats_client_.get());
+  gcs_task_manager_->SetUsageStatsClient(usage_stats_client_.get());
 }
 
 void GcsServer::InitKVManager() {
@@ -577,7 +573,8 @@ void GcsServer::InitKVManager() {
     RAY_LOG(FATAL) << "Unexpected storage type! " << storage_type_;
   }
 
-  kv_manager_ = std::make_unique<GcsInternalKVManager>(std::move(instance));
+  kv_manager_ = std::make_unique<GcsInternalKVManager>(std::move(instance),
+                                                       config_.raylet_config_list);
 }
 
 void GcsServer::InitKVService() {
@@ -588,10 +585,10 @@ void GcsServer::InitKVService() {
 }
 
 void GcsServer::InitPubSubHandler() {
-  pubsub_handler_ =
-      std::make_unique<InternalPubSubHandler>(pubsub_io_service_, gcs_publisher_);
-  pubsub_service_ = std::make_unique<rpc::InternalPubSubGrpcService>(pubsub_io_service_,
-                                                                     *pubsub_handler_);
+  pubsub_handler_ = std::make_unique<InternalPubSubHandler>(
+      pubsub_io_context_.GetIoService(), gcs_publisher_);
+  pubsub_service_ = std::make_unique<rpc::InternalPubSubGrpcService>(
+      pubsub_io_context_.GetIoService(), *pubsub_handler_);
   // Register service.
   rpc_server_.RegisterService(*pubsub_service_);
 }
@@ -685,10 +682,10 @@ void GcsServer::InitGcsAutoscalerStateManager(const GcsInitData &gcs_init_data) 
 }
 
 void GcsServer::InitGcsTaskManager() {
-  gcs_task_manager_ = std::make_unique<GcsTaskManager>();
+  gcs_task_manager_ = std::make_unique<GcsTaskManager>(task_io_context_.GetIoService());
   // Register service.
-  task_info_service_.reset(new rpc::TaskInfoGrpcService(gcs_task_manager_->GetIoContext(),
-                                                        *gcs_task_manager_));
+  task_info_service_.reset(
+      new rpc::TaskInfoGrpcService(task_io_context_.GetIoService(), *gcs_task_manager_));
   rpc_server_.RegisterService(*task_info_service_);
 }
 
@@ -792,6 +789,7 @@ void GcsServer::RecordMetrics() const {
   gcs_actor_manager_->RecordMetrics();
   gcs_placement_group_manager_->RecordMetrics();
   gcs_task_manager_->RecordMetrics();
+  gcs_job_manager_->RecordMetrics();
   execute_after(
       main_service_,
       [this] { RecordMetrics(); },
@@ -810,13 +808,15 @@ void GcsServer::DumpDebugStateToFile() const {
 
 std::string GcsServer::GetDebugState() const {
   std::ostringstream stream;
-  stream << gcs_node_manager_->DebugString() << "\n\n"
+  stream << "Gcs Debug state:\n\n"
+         << gcs_node_manager_->DebugString() << "\n\n"
          << gcs_actor_manager_->DebugString() << "\n\n"
          << gcs_resource_manager_->DebugString() << "\n\n"
          << gcs_placement_group_manager_->DebugString() << "\n\n"
          << gcs_publisher_->DebugString() << "\n\n"
          << runtime_env_manager_->DebugString() << "\n\n"
-         << gcs_task_manager_->DebugString() << "\n\n";
+         << gcs_task_manager_->DebugString() << "\n\n"
+         << gcs_autoscaler_state_manager_->DebugString() << "\n\n";
   return stream.str();
 }
 
@@ -841,9 +841,15 @@ void GcsServer::PrintAsioStats() {
   const auto event_stats_print_interval_ms =
       RayConfig::instance().event_stats_print_interval_ms();
   if (event_stats_print_interval_ms != -1 && RayConfig::instance().event_stats()) {
-    RAY_LOG(INFO) << "Event stats:\n\n" << main_service_.stats().StatsString() << "\n\n";
-    RAY_LOG(INFO) << "GcsTaskManager Event stats:\n\n"
-                  << gcs_task_manager_->GetIoContext().stats().StatsString() << "\n\n";
+    RAY_LOG(INFO) << "main_service_ Event stats:\n\n"
+                  << main_service_.stats().StatsString() << "\n\n";
+    RAY_LOG(INFO) << "pubsub_io_context_ Event stats:\n\n"
+                  << pubsub_io_context_.GetIoService().stats().StatsString() << "\n\n";
+    RAY_LOG(INFO) << "task_io_context_ Event stats:\n\n"
+                  << task_io_context_.GetIoService().stats().StatsString() << "\n\n";
+    RAY_LOG(INFO) << "ray_syncer_io_context_ Event stats:\n\n"
+                  << ray_syncer_io_context_.GetIoService().stats().StatsString()
+                  << "\n\n";
   }
 }
 

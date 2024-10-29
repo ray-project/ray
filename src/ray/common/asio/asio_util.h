@@ -16,8 +16,10 @@
 
 #include <boost/asio.hpp>
 #include <chrono>
+#include <thread>
 
 #include "ray/common/asio/instrumented_io_context.h"
+#include "ray/util/util.h"
 
 template <typename Duration>
 std::shared_ptr<boost::asio::deadline_timer> execute_after(
@@ -37,3 +39,47 @@ std::shared_ptr<boost::asio::deadline_timer> execute_after(
 
   return timer;
 }
+
+/**
+ * A class that manages an instrumented_io_context and a std::thread.
+ * The constructor takes a thread name and starts the thread.
+ * The destructor stops the io_service and joins the thread.
+ */
+class InstrumentedIOContextWithThread {
+ public:
+  /**
+   * Constructor.
+   * @param thread_name The name of the thread.
+   */
+  explicit InstrumentedIOContextWithThread(const std::string &thread_name)
+      : io_service_(), work_(io_service_) {
+    io_thread_ = std::thread([this, thread_name] {
+      SetThreadName(thread_name);
+      io_service_.run();
+    });
+  }
+
+  ~InstrumentedIOContextWithThread() { Stop(); }
+
+  // Non-movable and non-copyable.
+  InstrumentedIOContextWithThread(const InstrumentedIOContextWithThread &) = delete;
+  InstrumentedIOContextWithThread &operator=(const InstrumentedIOContextWithThread &) =
+      delete;
+  InstrumentedIOContextWithThread(InstrumentedIOContextWithThread &&) = delete;
+  InstrumentedIOContextWithThread &operator=(InstrumentedIOContextWithThread &&) = delete;
+
+  instrumented_io_context &GetIoService() { return io_service_; }
+
+  // Idempotent. Once it's stopped you can't restart it.
+  void Stop() {
+    io_service_.stop();
+    if (io_thread_.joinable()) {
+      io_thread_.join();
+    }
+  }
+
+ private:
+  instrumented_io_context io_service_;
+  boost::asio::io_service::work work_;  // to keep io_service_ running
+  std::thread io_thread_;
+};

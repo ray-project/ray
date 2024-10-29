@@ -199,8 +199,8 @@ void GcsAutoscalerStateManager::UpdateResourceLoadAndUsage(
   NodeID node_id = NodeID::FromBinary(data.node_id());
   auto iter = node_resource_info_.find(node_id);
   if (iter == node_resource_info_.end()) {
-    RAY_LOG(WARNING) << "Ignoring resource usage for node that is not alive: "
-                     << node_id.Hex() << ".";
+    RAY_LOG(WARNING).WithField(node_id)
+        << "Ignoring resource usage for node that is not alive.";
     return;
   }
 
@@ -355,9 +355,9 @@ void GcsAutoscalerStateManager::HandleDrainNode(
     rpc::autoscaler::DrainNodeReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
   const NodeID node_id = NodeID::FromBinary(request.node_id());
-  RAY_LOG(INFO) << "HandleDrainNode " << node_id.Hex()
-                << ", reason: " << request.reason_message()
-                << ", deadline: " << request.deadline_timestamp_ms();
+  RAY_LOG(INFO).WithField(node_id)
+      << "HandleDrainNode, reason: " << request.reason_message()
+      << ", deadline: " << request.deadline_timestamp_ms();
 
   int64_t draining_deadline_timestamp_ms = request.deadline_timestamp_ms();
   if (draining_deadline_timestamp_ms < 0) {
@@ -379,7 +379,7 @@ void GcsAutoscalerStateManager::HandleDrainNode(
       // Since gcs only stores limit number of dead nodes
       // so we don't know whether the node is dead or doesn't exist.
       // Since it's not running so still treat it as drained.
-      RAY_LOG(WARNING) << "Request to drain an unknown node " << node_id;
+      RAY_LOG(WARNING).WithField(node_id) << "Request to drain an unknown node";
       reply->set_is_accepted(true);
     }
     send_reply_callback(ray::Status::OK(), nullptr, nullptr);
@@ -413,6 +413,30 @@ void GcsAutoscalerStateManager::HandleDrainNode(
         }
         send_reply_callback(status, nullptr, nullptr);
       });
+}
+
+std::string GcsAutoscalerStateManager::DebugString() const {
+  std::ostringstream stream;
+  stream << "GcsAutoscalerStateManager: "
+         << "\n- last_seen_autoscaler_state_version_: "
+         << last_seen_autoscaler_state_version_
+         << "\n- last_cluster_resource_state_version_: "
+         << last_cluster_resource_state_version_ << "\n- pending demands:\n";
+
+  auto aggregate_load = GetAggregatedResourceLoad();
+  for (const auto &[shape, demand] : aggregate_load) {
+    auto num_pending = demand.num_infeasible_requests_queued() + demand.backlog_size() +
+                       demand.num_ready_requests_queued();
+
+    stream << "\t{";
+    if (num_pending > 0) {
+      for (const auto &[resource, quantity] : shape) {
+        stream << resource << ": " << quantity << ", ";
+      }
+    }
+    stream << "} * " << num_pending << "\n";
+  }
+  return stream.str();
 }
 
 }  // namespace gcs

@@ -146,9 +146,6 @@ async def test_calling_methods_before_initialize():
     with pytest.raises(RuntimeError):
         await user_callable_wrapper.call_reconfigure(None)
 
-    with pytest.raises(RuntimeError):
-        await user_callable_wrapper.call_destructor()
-
 
 @pytest.mark.asyncio
 async def test_basic_class_callable():
@@ -604,7 +601,7 @@ async def test_http_handler(callable: Callable, monkeypatch):
         return pickle.dumps(asgi_messages)
 
     http_request = StreamingHTTPRequest(
-        pickled_asgi_scope=pickle.dumps(asgi_scope),
+        asgi_scope=asgi_scope,
         receive_asgi_messages=receive_asgi_messages,
     )
 

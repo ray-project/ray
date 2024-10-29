@@ -1,6 +1,7 @@
 import copy
 import functools
 import itertools
+import logging
 from abc import ABC, abstractmethod
 from collections import defaultdict, deque
 from typing import Any, Callable, Deque, Dict, Iterator, List, Optional, Set, Union
@@ -37,6 +38,8 @@ from ray.data.block import Block, BlockAccessor, BlockExecStats, BlockMetadata
 from ray.data.context import DataContext
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
+logger = logging.getLogger(__name__)
+
 
 class MapOperator(OneToOneOperator, ABC):
     """A streaming operator that maps input bundles 1:1 to output bundles.
@@ -52,6 +55,7 @@ class MapOperator(OneToOneOperator, ABC):
         name: str,
         target_max_block_size: Optional[int],
         min_rows_per_bundle: Optional[int],
+        supports_fusion: bool,
         ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]],
         ray_remote_args: Optional[Dict[str, Any]],
     ):
@@ -60,6 +64,7 @@ class MapOperator(OneToOneOperator, ABC):
         # NOTE: This constructor must be called by subclasses.
 
         self._map_transformer = map_transformer
+        self._supports_fusion = supports_fusion
         self._ray_remote_args = _canonicalize_ray_remote_args(ray_remote_args or {})
         self._ray_remote_args_fn = ray_remote_args_fn
         self._ray_remote_args_factory_actor_locality = None
@@ -113,6 +118,7 @@ class MapOperator(OneToOneOperator, ABC):
         # config and not contain implementation code.
         compute_strategy: Optional[ComputeStrategy] = None,
         min_rows_per_bundle: Optional[int] = None,
+        supports_fusion: bool = True,
         ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
         ray_remote_args: Optional[Dict[str, Any]] = None,
     ) -> "MapOperator":
@@ -135,6 +141,7 @@ class MapOperator(OneToOneOperator, ABC):
                 transform_fn, or None to use the block size. Setting the batch size is
                 important for the performance of GPU-accelerated transform functions.
                 The actual rows passed may be less if the dataset is small.
+            supports_fusion: Whether this operator supports fusion with other operators.
             ray_remote_args_fn: A function that returns a dictionary of remote args
                 passed to each map worker. The purpose of this argument is to generate
                 dynamic arguments for each actor/task, and will be called each time
@@ -158,6 +165,7 @@ class MapOperator(OneToOneOperator, ABC):
                 target_max_block_size=target_max_block_size,
                 min_rows_per_bundle=min_rows_per_bundle,
                 concurrency=compute_strategy.size,
+                supports_fusion=supports_fusion,
                 ray_remote_args_fn=ray_remote_args_fn,
                 ray_remote_args=ray_remote_args,
             )
@@ -173,6 +181,7 @@ class MapOperator(OneToOneOperator, ABC):
                 compute_strategy=compute_strategy,
                 name=name,
                 min_rows_per_bundle=min_rows_per_bundle,
+                supports_fusion=supports_fusion,
                 ray_remote_args_fn=ray_remote_args_fn,
                 ray_remote_args=ray_remote_args,
             )
@@ -310,17 +319,25 @@ class MapOperator(OneToOneOperator, ABC):
         def _task_done_callback(task_index: int, exception: Optional[Exception]):
             self._metrics.on_task_finished(task_index, exception)
 
-            # Estimate number of tasks from inputs received and tasks submitted so far
-            estimated_num_tasks = (
-                self.input_dependencies[0].num_outputs_total()
-                / self._metrics.num_inputs_received
-                * self._next_data_task_idx
-            )
-            self._estimated_output_blocks = round(
-                estimated_num_tasks
-                * self._metrics.num_outputs_of_finished_tasks
-                / self._metrics.num_tasks_finished
-            )
+            # Estimate number of tasks and rows from inputs received and tasks
+            # submitted so far
+            upstream_op_num_outputs = self.input_dependencies[0].num_outputs_total()
+            if upstream_op_num_outputs:
+                estimated_num_tasks = (
+                    upstream_op_num_outputs
+                    / self._metrics.num_inputs_received
+                    * self._next_data_task_idx
+                )
+                self._estimated_num_output_bundles = round(
+                    estimated_num_tasks
+                    * self._metrics.num_outputs_of_finished_tasks
+                    / self._metrics.num_tasks_finished
+                )
+                self._estimated_output_num_rows = round(
+                    estimated_num_tasks
+                    * self._metrics.rows_task_outputs_generated
+                    / self._metrics.num_tasks_finished
+                )
 
             self._data_tasks.pop(task_index)
             # Notify output queue that this task is complete.
@@ -395,6 +412,10 @@ class MapOperator(OneToOneOperator, ABC):
         raise NotImplementedError
 
     @abstractmethod
+    def pending_processor_usage(self) -> ExecutionResources:
+        raise NotImplementedError
+
+    @abstractmethod
     def base_resource_usage(self) -> ExecutionResources:
         raise NotImplementedError
 
@@ -404,6 +425,20 @@ class MapOperator(OneToOneOperator, ABC):
 
     def implements_accurate_memory_accounting(self) -> bool:
         return True
+
+    def supports_fusion(self) -> bool:
+        return self._supports_fusion
+
+    def num_active_tasks(self) -> int:
+        # Override `num_active_tasks` to only include data tasks and exclude
+        # metadata tasks, which are used by the actor-pool map operator to
+        # check if a newly created actor is ready.
+        # The reasons are because:
+        # 1. `PhysicalOperator.completed` checks `num_active_tasks`. The operator
+        #   should be considered completed if there are still pending actors.
+        # 2. The number of active tasks in the progress bar will be more accurate
+        #   to reflect the actual data processing tasks.
+        return len(self._data_tasks)
 
 
 def _map_task(
@@ -613,16 +648,16 @@ def _canonicalize_ray_remote_args(ray_remote_args: Dict[str, Any]) -> Dict[str, 
     and should not be a serious limitation for users.
     """
     ray_remote_args = ray_remote_args.copy()
+
+    if ray_remote_args.get("num_cpus") and ray_remote_args.get("num_gpus"):
+        logger.warning(
+            "Specifying both num_cpus and num_gpus for map tasks is experimental, "
+            "and may result in scheduling or stability issues. "
+            "Please report any issues to the Ray team: "
+            "https://github.com/ray-project/ray/issues/new/choose"
+        )
+
     if "num_cpus" not in ray_remote_args and "num_gpus" not in ray_remote_args:
         ray_remote_args["num_cpus"] = 1
-    if ray_remote_args.get("num_gpus", 0) > 0:
-        if ray_remote_args.get("num_cpus", 0) != 0:
-            raise ValueError(
-                "It is not allowed to specify both num_cpus and num_gpus for map tasks."
-            )
-    elif ray_remote_args.get("num_cpus", 0) > 0:
-        if ray_remote_args.get("num_gpus", 0) != 0:
-            raise ValueError(
-                "It is not allowed to specify both num_cpus and num_gpus for map tasks."
-            )
+
     return ray_remote_args

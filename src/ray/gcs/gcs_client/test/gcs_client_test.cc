@@ -91,8 +91,6 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
     }
 
     // Create GCS client.
-    gcs::GcsClientOptions options("127.0.0.1:5397");
-    gcs_client_ = std::make_unique<gcs::GcsClient>(options);
     ReconnectClient();
   }
 
@@ -113,9 +111,17 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
     rpc::ResetServerCallExecutor();
   }
 
+  // Each GcsClient has its own const cluster_id, so to reconnect we re-create the client.
   void ReconnectClient() {
-    ClusterID cluster_id = gcs_server_->GetClusterId();
-    RAY_CHECK_OK(gcs_client_->Connect(*client_io_service_, cluster_id));
+    // Reconnecting a client happens when the server restarts with a different cluster
+    // id. So we nede to re-create the client with the new cluster id.
+    gcs::GcsClientOptions options("127.0.0.1",
+                                  5397,
+                                  gcs_server_->GetClusterId(),
+                                  /*allow_cluster_id_nil=*/false,
+                                  /*fetch_cluster_id_if_nil=*/false);
+    gcs_client_ = std::make_unique<gcs::GcsClient>(options);
+    RAY_CHECK_OK(gcs_client_->Connect(*client_io_service_));
   }
 
   void StampContext(grpc::ClientContext &context) {
@@ -238,7 +244,7 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
     message.mutable_actor_creation_task_spec()->set_actor_id(actor_id.Binary());
     message.mutable_actor_creation_task_spec()->set_is_detached(is_detached);
     message.mutable_actor_creation_task_spec()->set_ray_namespace("test");
-    // If the actor is non-detached, the `WaitForActorOutOfScope` function of the core
+    // If the actor is non-detached, the `WaitForActorRefDeleted` function of the core
     // worker client is called during the actor registration process. In order to simulate
     // the scenario of registration failure, we set the address to an illegal value.
     if (!is_detached) {
@@ -272,8 +278,8 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
     rpc::ActorTableData actor_table_data;
     RAY_CHECK_OK(gcs_client_->Actors().AsyncGet(
         actor_id,
-        [&actor_table_data, &promise](
-            Status status, const boost::optional<rpc::ActorTableData> &result) {
+        [&actor_table_data, &promise](Status status,
+                                      const std::optional<rpc::ActorTableData> &result) {
           assert(result);
           actor_table_data.CopyFrom(*result);
           promise.set_value(true);
@@ -341,7 +347,8 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
           assert(!result.empty());
           nodes = std::move(result);
           promise.set_value(status.ok());
-        }));
+        },
+        gcs::GetGcsTimeoutMs()));
     EXPECT_TRUE(WaitReady(promise.get_future(), timeout_ms_));
     return nodes;
   }
@@ -736,7 +743,7 @@ TEST_P(GcsClientTest, TestActorTableResubscribe) {
   auto expected_num_subscribe_one_notifications = num_subscribe_one_notifications + 1;
 
   // NOTE: In the process of actor registration, if the callback function of
-  // `WaitForActorOutOfScope` is executed first, and then the callback function of
+  // `WaitForActorRefDeleted` is executed first, and then the callback function of
   // `ActorTable().Put` is executed, the actor registration fails, we will receive one
   // notification message; otherwise, the actor registration succeeds, we will receive
   // two notification messages. So we can't assert whether the actor is registered

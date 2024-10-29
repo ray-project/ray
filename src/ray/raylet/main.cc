@@ -193,10 +193,13 @@ int main(int argc, char *argv[]) {
 
   // Initialize gcs client
   std::shared_ptr<ray::gcs::GcsClient> gcs_client;
-  ray::gcs::GcsClientOptions client_options(FLAGS_gcs_address);
+  ray::gcs::GcsClientOptions client_options(FLAGS_gcs_address,
+                                            cluster_id,
+                                            /*allow_cluster_id_nil=*/false,
+                                            /*fetch_cluster_id_if_nil=*/false);
   gcs_client = std::make_shared<ray::gcs::GcsClient>(client_options);
 
-  RAY_CHECK_OK(gcs_client->Connect(main_service, cluster_id));
+  RAY_CHECK_OK(gcs_client->Connect(main_service));
   std::unique_ptr<ray::raylet::Raylet> raylet;
 
   // Enable subreaper. This is called in `AsyncGetInternalConfig` below, but MSVC does
@@ -266,12 +269,13 @@ int main(int argc, char *argv[]) {
         "shutdown_raylet_gracefully_internal");
   };
 
-  RAY_CHECK_OK(gcs_client->Nodes().AsyncGetInternalConfig(
-      [&](::ray::Status status,
-          const boost::optional<std::string> &stored_raylet_config) {
+  RAY_CHECK_OK(gcs_client->InternalKV().AsyncGetInternalConfig(
+      [&](::ray::Status status, const std::optional<std::string> &stored_raylet_config) {
         RAY_CHECK_OK(status);
         RAY_CHECK(stored_raylet_config.has_value());
-        RayConfig::instance().initialize(stored_raylet_config.get());
+        RayConfig::instance().initialize(*stored_raylet_config);
+        ray::asio::testing::init();
+        ray::rpc::testing::init();
 
         // Core worker tries to kill child processes when it exits. But they can't do
         // it perfectly: if the core worker is killed by SIGKILL, the child processes
@@ -308,7 +312,7 @@ int main(int argc, char *argv[]) {
                            ? static_cast<int>(num_cpus_it->second)
                            : 0;
 
-        node_manager_config.raylet_config = stored_raylet_config.get();
+        node_manager_config.raylet_config = *stored_raylet_config;
         node_manager_config.resource_config = ray::ResourceSet(static_resource_conf);
         RAY_LOG(DEBUG) << "Starting raylet with static resource configuration: "
                        << node_manager_config.resource_config.DebugString();
@@ -410,8 +414,8 @@ int main(int argc, char *argv[]) {
             {ray::stats::SessionNameKey, session_name}};
         ray::stats::Init(global_tags, metrics_agent_port, WorkerID::Nil());
 
-        RAY_LOG(INFO) << "Setting node ID to: " << node_id;
         ray::NodeID raylet_node_id = ray::NodeID::FromHex(node_id);
+        RAY_LOG(INFO).WithField(raylet_node_id) << "Setting node ID";
 
         node_manager_config.AddDefaultLabels(raylet_node_id.Hex());
         // Initialize the node manager.
@@ -429,7 +433,9 @@ int main(int argc, char *argv[]) {
 
         // Initialize event framework.
         if (RayConfig::instance().event_log_reporter_enabled() && !log_dir.empty()) {
-          ray::RayEventInit(ray::rpc::Event_SourceType::Event_SourceType_RAYLET,
+          const std::vector<ray::SourceTypeVariant> source_types = {
+              ray::rpc::Event_SourceType::Event_SourceType_RAYLET};
+          ray::RayEventInit(source_types,
                             {{"node_id", raylet->GetNodeId().Hex()}},
                             log_dir,
                             RayConfig::instance().event_level(),

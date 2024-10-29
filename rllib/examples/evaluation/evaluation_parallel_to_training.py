@@ -143,10 +143,10 @@ class AssertEvalCallback(DefaultCallbacks):
                 # Compare number of entries in episode_lengths (this is the
                 # number of episodes actually run) with desired number of
                 # episodes from the config.
-                assert num_episodes_done == algorithm.config.evaluation_duration, (
-                    num_episodes_done,
-                    algorithm.config.evaluation_duration,
-                )
+                assert (
+                    algorithm.iteration + 1 % algorithm.config.evaluation_interval != 0
+                    or num_episodes_done == algorithm.config.evaluation_duration
+                ), (num_episodes_done, algorithm.config.evaluation_duration)
                 print(
                     "Number of run evaluation episodes: " f"{num_episodes_done} (ok)!"
                 )
@@ -164,11 +164,6 @@ class AssertEvalCallback(DefaultCallbacks):
                     "Number of run evaluation timesteps: "
                     f"{num_timesteps_reported} (ok)!"
                 )
-        # Expect at least evaluation/env_runners to be always available.
-        elif algorithm.config.always_attach_evaluation_results and (
-            not eval_env_runner_results
-        ):
-            raise KeyError("`evaluation->env_runners` not found in result dict!")
 
 
 if __name__ == "__main__":

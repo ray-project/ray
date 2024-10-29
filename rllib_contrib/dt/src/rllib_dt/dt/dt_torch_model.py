@@ -35,7 +35,7 @@ class DTTorchModel(TorchModelV2, nn.Module):
         if isinstance(action_space, Discrete):
             self.action_dim = action_space.n
         elif isinstance(action_space, Box):
-            self.action_dim = np.product(action_space.shape)
+            self.action_dim = np.prod(action_space.shape)
         else:
             raise NotImplementedError
 

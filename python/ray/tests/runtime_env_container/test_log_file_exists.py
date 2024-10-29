@@ -2,7 +2,7 @@ import ray
 from pathlib import Path
 import re
 from ray.util.state import list_tasks
-from ray._private.test_utils import wait_for_condition, get_ray_default_worker_file_path
+from ray._private.test_utils import wait_for_condition
 import argparse
 
 parser = argparse.ArgumentParser()
@@ -13,8 +13,6 @@ parser.add_argument(
     help="Whether to use the new `image_uri` API instead of the old `container` API.",
 )
 args = parser.parse_args()
-
-worker_pth = get_ray_default_worker_file_path()
 
 ray.init(num_cpus=1)
 
@@ -35,7 +33,7 @@ def task_finished():
 if args.use_image_uri_api:
     runtime_env = {"image_uri": args.image}
 else:
-    runtime_env = {"container": {"image": args.image, "worker_path": worker_pth}}
+    runtime_env = {"container": {"image": args.image}}
 
 
 # Run a basic workload.

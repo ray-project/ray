@@ -2,11 +2,10 @@ import os
 import sys
 import unittest
 from collections import defaultdict
+from unittest.mock import MagicMock
 
 # coding: utf-8
 import pytest
-
-from mock import MagicMock
 
 from ray.autoscaler.v2.instance_manager.instance_manager import InstanceManager
 from ray.autoscaler.v2.instance_manager.instance_storage import InstanceStorage

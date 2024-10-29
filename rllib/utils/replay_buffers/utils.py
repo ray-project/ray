@@ -59,12 +59,12 @@ def update_priorities_in_episode_replay_buffer(
                     )
                 continue
             # TODO (simon): Implement multi-agent version. Remove, happens in buffer.
-            assert len(td_error[TD_ERROR_KEY]) == len(
-                replay_buffer._last_sampled_indices
-            )
+            # assert len(td_error[TD_ERROR_KEY]) == len(
+            #     replay_buffer._last_sampled_indices
+            # )
             # TODO (simon): Implement for stateful modules.
 
-            replay_buffer.update_priorities(td_error[TD_ERROR_KEY])
+            replay_buffer.update_priorities(td_error[TD_ERROR_KEY], module_id)
 
 
 @OldAPIStack

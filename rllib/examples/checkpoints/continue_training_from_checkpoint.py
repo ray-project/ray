@@ -4,15 +4,16 @@ Use the setup shown in this script if your experiments tend to crash after some 
 and you would therefore like to make your setup more robust and fault-tolerant.
 
 This example:
-- runs a single- or multi-agent CartPole experiment (for multi-agent, we use different
-learning rates) thereby checkpointing the state of the Algorithm every n iterations.
-- stops the experiment due to an expected crash in the algorithm's main process after
-a certain number of iterations.
-- just for testing purposes, restores the entire algorithm from the latest checkpoint
-and checks, whether the state of the restored algo exactly match the state of the
-crashed one.
-- then continues training with the restored algorithm until the desired final episode
-return is reached.
+    - runs a single- or multi-agent CartPole experiment (for multi-agent, we use
+    different learning rates) thereby checkpointing the state of the Algorithm every n
+    iterations.
+    - stops the experiment due to an expected crash in the algorithm's main process
+    after a certain number of iterations.
+    - just for testing purposes, restores the entire algorithm from the latest
+    checkpoint and checks, whether the state of the restored algo exactly match the
+    state of the crashed one.
+    - then continues training with the restored algorithm until the desired final
+    episode return is reached.
 
 
 How to run this script
@@ -234,13 +235,13 @@ if __name__ == "__main__":
     assert (
         test_eval_results[ENV_RUNNER_RESULTS][EPISODE_RETURN_MEAN]
         >= args.stop_reward_crash
-    )
+    ), test_eval_results[ENV_RUNNER_RESULTS][EPISODE_RETURN_MEAN]
     # Train one iteration to make sure, the performance does not collapse (e.g. due
     # to the optimizer weights not having been restored properly).
     test_results = test_algo.train()
     assert (
         test_results[ENV_RUNNER_RESULTS][EPISODE_RETURN_MEAN] >= args.stop_reward_crash
-    )
+    ), test_results[ENV_RUNNER_RESULTS][EPISODE_RETURN_MEAN]
     # Stop the test algorithm again.
     test_algo.stop()
 

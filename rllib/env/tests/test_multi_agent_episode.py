@@ -2,7 +2,7 @@ import gymnasium as gym
 import numpy as np
 import unittest
 
-from typing import List, Optional, Tuple
+from typing import Optional, Tuple
 
 import ray
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
@@ -124,12 +124,6 @@ class MultiAgentTestEnv(MultiAgentEnv):
 
         return obs, reward, is_terminated, is_truncated, info
 
-    def action_space_sample(self, agent_ids: List[str] = None) -> MultiAgentDict:
-        # Actually not used at this stage.
-        return {
-            agent_id: self.action_space[agent_id].sample() for agent_id in agent_ids
-        }
-
 
 # TODO (simon): Test `get_state()` and `from_state()`.
 class TestMultiAgentEpisode(unittest.TestCase):
@@ -229,7 +223,6 @@ class TestMultiAgentEpisode(unittest.TestCase):
             ]
             action = {agent_id: i + 1 for agent_id in agents_to_step_next}
 
-            # action = env.action_space_sample(agents_stepped)
             obs, reward, terminated, truncated, info = env.step(action)
 
             # If "agent_0" is part of the reset obs, it steps in the first ts.
@@ -270,7 +263,7 @@ class TestMultiAgentEpisode(unittest.TestCase):
         self.assertTrue(episode.agent_episodes["agent_1"].is_terminated)
         self.assertTrue(episode.agent_episodes["agent_5"].is_terminated)
         # Assert that the other agents are neither terminated nor truncated.
-        for agent_id in env.get_agent_ids():
+        for agent_id in env.agents:
             if agent_id != "agent_1" and agent_id != "agent_5":
                 self.assertFalse(episode.agent_episodes[agent_id].is_done)
 
@@ -362,7 +355,7 @@ class TestMultiAgentEpisode(unittest.TestCase):
         self.assertTrue(episode.env_t == episode.env_t_started == 0)
         # Assert that the agents with initial observations have their single-agent
         # episodes in place.
-        for agent_id in env.get_agent_ids():
+        for agent_id in env.agents:
             # Ensure that all agents have a single env_ts=0 -> agent_ts=0
             # entry in their env- to agent-timestep mappings.
             if agent_id in obs:
@@ -586,12 +579,12 @@ class TestMultiAgentEpisode(unittest.TestCase):
         )
 
         # Return two observations in lookback buffers for the entire env using
-        # `neg_indices_left_of_zero=True` and an index list.
+        # `neg_index_as_lookback=True` and an index list.
         # w/ fill
         obs = episode.get_observations(
             indices=[-2, -1],
             fill=-10,
-            neg_indices_left_of_zero=True,
+            neg_index_as_lookback=True,
         )
         check(
             obs,
@@ -603,7 +596,7 @@ class TestMultiAgentEpisode(unittest.TestCase):
             },
         )
         # Same, but w/o fill
-        obs = episode.get_observations(indices=[-2, -1], neg_indices_left_of_zero=True)
+        obs = episode.get_observations(indices=[-2, -1], neg_index_as_lookback=True)
         check(
             obs,
             {"agent_1": [0, 1], "agent_2": [0], "agent_3": [0, 1], "agent_4": [1]},
@@ -663,7 +656,7 @@ class TestMultiAgentEpisode(unittest.TestCase):
             slice(-1, 1),
             return_list=True,
             fill=-8,
-            neg_indices_left_of_zero=True,
+            neg_index_as_lookback=True,
         )
         check(
             obs,
@@ -809,12 +802,12 @@ class TestMultiAgentEpisode(unittest.TestCase):
         )
 
         # Return two infos in lookback buffers for the entire env using
-        # `neg_indices_left_of_zero=True` and an index list.
+        # `neg_index_as_lookback=True` and an index list.
         # w/ fill
         inf = episode.get_infos(
             indices=[-2, -1],
             fill=-10,
-            neg_indices_left_of_zero=True,
+            neg_index_as_lookback=True,
         )
         check(
             inf,
@@ -826,7 +819,7 @@ class TestMultiAgentEpisode(unittest.TestCase):
             },
         )
         # Same, but w/o fill
-        inf = episode.get_infos(indices=[-2, -1], neg_indices_left_of_zero=True)
+        inf = episode.get_infos(indices=[-2, -1], neg_index_as_lookback=True)
         check(
             inf,
             {
@@ -901,7 +894,7 @@ class TestMultiAgentEpisode(unittest.TestCase):
             slice(-1, 1),
             return_list=True,
             fill=-8,
-            neg_indices_left_of_zero=True,
+            neg_index_as_lookback=True,
         )
         check(
             inf,
@@ -1166,12 +1159,12 @@ class TestMultiAgentEpisode(unittest.TestCase):
         )
 
         # Return two actions in lookback buffers for the entire env using
-        # `neg_indices_left_of_zero=True` and an index list.
+        # `neg_index_as_lookback=True` and an index list.
         # w/ fill
         act = episode.get_actions(
             indices=[-2, -1],
             fill=-10,
-            neg_indices_left_of_zero=True,
+            neg_index_as_lookback=True,
         )
         check(
             act,
@@ -1183,7 +1176,7 @@ class TestMultiAgentEpisode(unittest.TestCase):
             },
         )
         # Same, but w/o fill.
-        act = episode.get_actions(indices=[-2, -1], neg_indices_left_of_zero=True)
+        act = episode.get_actions(indices=[-2, -1], neg_index_as_lookback=True)
         check(
             act,
             {
@@ -1235,7 +1228,7 @@ class TestMultiAgentEpisode(unittest.TestCase):
         # From the last ts in lookback buffer to first actual ts (empty as all data is
         # in lookback buffer, but we fill).
         act = episode.get_actions(
-            slice(-1, 1), return_list=True, fill=-8, neg_indices_left_of_zero=True
+            slice(-1, 1), return_list=True, fill=-8, neg_index_as_lookback=True
         )
         check(
             act,
@@ -1406,12 +1399,12 @@ class TestMultiAgentEpisode(unittest.TestCase):
         )
 
         # Return two rewards in lookback buffers for the entire env using
-        # `neg_indices_left_of_zero=True` and an index list.
+        # `neg_index_as_lookback=True` and an index list.
         # w/ fill
         rew = episode.get_rewards(
             indices=[-2, -1],
             fill=-10,
-            neg_indices_left_of_zero=True,
+            neg_index_as_lookback=True,
         )
         check(
             rew,
@@ -1423,7 +1416,7 @@ class TestMultiAgentEpisode(unittest.TestCase):
             },
         )
         # Same, but w/o fill.
-        episode.get_rewards(indices=[-2, -1], neg_indices_left_of_zero=True)
+        episode.get_rewards(indices=[-2, -1], neg_index_as_lookback=True)
 
         # Get last rewards for each individual agent.
         rew = episode.get_rewards(indices=-1, env_steps=False)
@@ -1475,7 +1468,7 @@ class TestMultiAgentEpisode(unittest.TestCase):
             slice(-1, 1),
             return_list=True,
             fill=-8,
-            neg_indices_left_of_zero=True,
+            neg_index_as_lookback=True,
         )
         check(
             rew,
@@ -2548,7 +2541,7 @@ class TestMultiAgentEpisode(unittest.TestCase):
                     agent_obs,
                     episode_2.get_observations(
                         -1,
-                        neg_indices_left_of_zero=True,
+                        neg_index_as_lookback=True,
                         env_steps=False,
                         agent_ids=agent_id,
                     ),
@@ -3440,7 +3433,7 @@ class TestMultiAgentEpisode(unittest.TestCase):
             self.assertTrue(batch[agent_id]["truncateds"][-1])
 
         # Finally, test that an empty episode, gives an empty batch.
-        episode = MultiAgentEpisode(agent_ids=env.get_agent_ids())
+        episode = MultiAgentEpisode(agent_ids=env.agents)
         # Convert now to sample batch.
         batch = episode.get_sample_batch()
         # Ensure that this batch is empty.

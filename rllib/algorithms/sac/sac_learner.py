@@ -16,10 +16,11 @@ QF_MEAN_KEY = "qf_mean"
 QF_MAX_KEY = "qf_max"
 QF_MIN_KEY = "qf_min"
 QF_PREDS = "qf_preds"
-QF_TARGET_PREDS = "qf_target_preds"
 QF_TWIN_LOSS_KEY = "qf_twin_loss"
 QF_TWIN_PREDS = "qf_twin_preds"
 TD_ERROR_MEAN_KEY = "td_error_mean"
+CRITIC_TARGET = "critic_target"
+ACTION_DIST_INPUTS_NEXT = "action_dist_inputs_next"
 
 
 class SACLearner(DQNRainbowLearner):
@@ -30,7 +31,11 @@ class SACLearner(DQNRainbowLearner):
         self.curr_log_alpha: Dict[ModuleID, TensorType] = LambdaDefaultDict(
             lambda module_id: self._get_tensor_variable(
                 # Note, we want to train the temperature parameter.
-                [np.log(self.config.get_config_for_module(module_id).initial_alpha)],
+                [
+                    np.log(
+                        self.config.get_config_for_module(module_id).initial_alpha
+                    ).astype(np.float32)
+                ],
                 trainable=True,
             )
         )
@@ -51,7 +56,6 @@ class SACLearner(DQNRainbowLearner):
             """
             target_entropy = self.config.get_config_for_module(module_id).target_entropy
             if target_entropy is None or target_entropy == "auto":
-                # TODO (sven): Do we always have the `config.action_space` here?
                 target_entropy = -np.prod(
                     self._module_spec.module_specs[module_id].action_space.shape
                 )
