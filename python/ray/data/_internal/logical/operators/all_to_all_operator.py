@@ -147,6 +147,7 @@ class Aggregate(AbstractAllToAll):
         input_op: LogicalOperator,
         key: Optional[str],
         aggs: List[AggregateFn],
+        batch_format: Optional[str] = "default",
     ):
         super().__init__(
             "Aggregate",
@@ -159,3 +160,4 @@ class Aggregate(AbstractAllToAll):
         )
         self._key = key
         self._aggs = aggs
+        self._batch_format = batch_format

@@ -82,7 +82,10 @@ def plan_all_to_all_op(
             )
         )
         fn = generate_aggregate_fn(
-            op._key, op._aggs, debug_limit_shuffle_execution_to_num_blocks
+            op._key,
+            op._aggs,
+            op._batch_format,
+            debug_limit_shuffle_execution_to_num_blocks,
         )
         target_max_block_size = DataContext.get_current().target_shuffle_max_block_size
     else:
