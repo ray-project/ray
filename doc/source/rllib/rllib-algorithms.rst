@@ -341,13 +341,13 @@ Conservative Q-Learning (CQL)
     **CQL architecture:** CQL (Conservative Q-Learning) is an offline RL algorithm that mitigates the overestimation of Q-values
     outside the dataset distribution through a conservative critic estimate. It adds a simple Q regularizer loss to the standard
     Bellman update loss, ensuring that the critic doesn't output overly optimistic Q-values. This conservative
-    correction term can be added on top of any off-policy Q-learning algorithm (here, we provide this for SAC).
+    correction term to any off-policy Q-learning algorithm. The Ray team provides this for SAC.
 
 
 **Tuned examples:**
 `Pendulum-v1 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/cql/pendulum_cql.py>`__
 
-**CQL-specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
+**CQL-specific configs** and `common configs <rllib-training.html#common-parameters>`__):
 
 .. autoclass:: ray.rllib.algorithms.cql.cql.CQLConfig
    :members: training
@@ -365,10 +365,10 @@ Monotonic Advantage Re-Weighted Imitation Learning (MARWIL)
 
     **MARWIL architecture:** MARWIL is a hybrid imitation learning and policy gradient algorithm suitable for training on
     batched historical data. When the ``beta`` hyperparameter is set to zero, the MARWIL objective reduces to plain
-    imitation learning (see `BC`_). MARWIL uses Ray.Data to tap into its parallel data
-    processing capabilities. In one training iteration, episodes are read in parallel from offline files
+    imitation learning. See `BC`_. MARWIL uses Ray.Data to tap into its parallel data
+    processing capabilities. In one training iteration, RLlib reads episodes in parallel from offline files,
     (ex. `parquet <https://parquet.apache.org/>`__) by the n DataWorkers, then preprocessed into train batches and
-    sent as data iterators directly to the n Learners, which perform the forward/backward passes and optimizer step.
+    sends them as data iterators directly to the n Learners, which perform the forward and backward passes and the optimizer step.
 
 
 **Tuned examples:**
@@ -396,7 +396,8 @@ Curiosity-driven Exploration by Self-supervised Prediction
 
     **Intrinsic Curiosity Model (ICM) architecture:** The main idea behind ICM is to train a world-model
     (in parallel to the "main" policy) to predict the environment's dynamics. The loss of
-    the world model is the intrinsic reward that's added to the env's reward. This makes sure
+    the world model is the intrinsic reward that the `ICMLearner` adds to the env's
+    (extrinsic) reward. This makes sure
     that when in regions of the environment that are relatively unknown (world model performs
     badly in predicting what happens next), the artificial intrinsic reward is large and the
     agent is motivated to go and explore these unknown regions.
