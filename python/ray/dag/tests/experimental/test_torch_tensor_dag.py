@@ -864,7 +864,7 @@ def test_torch_tensor_nccl_all_reduce_get_partial(ray_start_regular):
         collectives = collective.allreduce.bind(computes, ReduceOp.SUM)
         recv = workers[0].recv.bind(collectives[0])
         tensor = workers[1].recv_tensor.bind(collectives[0])
-        dag = MultiOutputNode([recv, tensor])
+        dag = MultiOutputNode([recv, tensor, collectives[1]])
 
     compiled_dag = dag.experimental_compile()
 
@@ -873,7 +873,7 @@ def test_torch_tensor_nccl_all_reduce_get_partial(ray_start_regular):
             [(shape, dtype, i + idx + 1) for idx in range(num_workers)]
         )
         result = ray.get(ref)
-        metadata, tensor = result
+        metadata, tensor, _ = result
         reduced_val = sum(i + idx + 1 for idx in range(num_workers))
         assert metadata == (reduced_val, shape, dtype)
         tensor = tensor.to("cpu")
