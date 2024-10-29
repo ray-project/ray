@@ -2055,7 +2055,7 @@ class CompiledDAG:
         """
         Visualize the compiled graph using Graphviz.
 
-        his method provides two modes for visualization:
+        This method provides two modes for visualization:
         1. **Graphviz PNG/PDF**: Generates a graphical file representing tasks as
             nodes with edges representing dependencies.
         2. **ASCII Format**: Prints a detailed text-based visualization of the CG,
