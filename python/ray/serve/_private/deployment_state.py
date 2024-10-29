@@ -2764,6 +2764,16 @@ class DeploymentStateManager:
                     f"group for replica {scheduling_request.replica_id}. "
                     "See Serve controller logs for more details."
                 )
+            elif (
+                scheduling_request.status
+                == ReplicaSchedulingRequestStatus.ACTOR_CREATION_FAILED
+            ):
+                failed_replicas.append(scheduling_request.replica_id)
+                self._deployment_states[deployment_id].record_replica_startup_failure(
+                    "Replica scheduling failed. Failed to create an actor "
+                    f"for replica {scheduling_request.replica_id}. "
+                    "See Serve controller logs for more details."
+                )
         if failed_replicas:
             self._deployment_states[deployment_id].stop_replicas(failed_replicas)
             self._deployment_states[deployment_id].update_replica_startup_backoff_time()
