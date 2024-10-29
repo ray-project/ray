@@ -23,7 +23,13 @@ class _DAGNodeOperationType(Enum):
     COMPUTE = "COMPUTE"
     WRITE = "WRITE"
 
-    def __str__(self):
+    def short_str(self):
+        """
+        A short string representation of the operation type.
+
+        Used in scenarios that conciseness is preferred, e.g.,
+        in visualization of the execution schedule.
+        """
         if self == _DAGNodeOperationType.READ:
             return "R"
         elif self == _DAGNodeOperationType.COMPUTE:
@@ -220,7 +226,7 @@ class _DAGOperationGraphNode:
             + "_"
             + actor_id_abbv
             + f" [{self.operation.exec_task_idx}] "
-            + f"{self.operation.method_name} {self.operation.type}"
+            + f"{self.operation.method_name} {self.operation.type.short_str()}"
         )
 
     @property
