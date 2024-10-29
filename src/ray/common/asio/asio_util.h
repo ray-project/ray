@@ -23,6 +23,7 @@
 
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/util/array.h"
+#include "ray/util/type_traits.h"
 #include "ray/util/util.h"
 
 template <typename Duration>
@@ -133,15 +134,24 @@ class IOContextProvider {
     }
   }
 
+  template <int N>
+  struct Wrapper {
+    static constexpr int value = N;
+  };
+
   // Gets IOContext registered for type T. If the type is not registered in
   // Policy::kAllDedicatedIOContextNames, it's a compile error.
   template <typename T>
   instrumented_io_context &GetIOContext() const {
     constexpr int index = Policy::template GetDedicatedIOContextIndex<T>();
     static_assert(
-        index >= -1 && index < Policy::kAllDedicatedIOContextNames.size(),
+        (index == -1) ||
+            (index >= 0 &&
+             static_cast<size_t>(index) < Policy::kAllDedicatedIOContextNames.size()) ||
+            // To show index in compile error...
+            ray::AlwaysFalseValue<index>,
         "index out of bound, invalid GetDedicatedIOContextIndex implementation! Index "
-        "can only be -1 or within range of kAllDedicatedIOContextNames");
+        "can only be -1 or within range of kAllDedicatedIOContextNames: ");
 
     if constexpr (index == -1) {
       return default_io_context_;
