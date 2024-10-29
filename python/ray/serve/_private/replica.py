@@ -12,6 +12,7 @@ from importlib import import_module
 from typing import Any, AsyncGenerator, Callable, Dict, Optional, Tuple, Union
 
 import starlette.responses
+from starlette.types import ASGIApp
 
 import ray
 from ray import cloudpickle
@@ -55,6 +56,7 @@ from ray.serve._private.logging_utils import (
     get_component_logger_file_path,
 )
 from ray.serve._private.metrics_utils import InMemoryMetricsStore, MetricsPusher
+from ray.serve._private.thirdparty.get_asgi_route_name import get_asgi_route_name
 from ray.serve._private.utils import get_component_file_name  # noqa: F401
 from ray.serve._private.utils import parse_import_path, wrap_to_ray_error
 from ray.serve._private.version import DeploymentVersion
@@ -279,6 +281,10 @@ class ReplicaActor:
         self._user_callable_initialized_lock = asyncio.Lock()
         self._initialization_latency: Optional[float] = None
 
+        # Will be populated with the wrapped ASGI app if the user callable is an
+        # `ASGIAppReplicaWrapper` (i.e., they are using the FastAPI integration).
+        self._user_callable_asgi_app: Optional[ASGIApp] = None
+
         # Set metadata for logs and metrics.
         # servable_object will be populated in `initialize_and_get_metadata`.
         self._set_internal_replica_context(servable_object=None)
@@ -334,18 +340,55 @@ class ReplicaActor:
         """
         return self._metrics_manager.get_num_ongoing_requests()
 
+    def _maybe_get_asgi_route(
+        self, request_metadata: RequestMetadata, request_args: Tuple[Any]
+    ) -> Optional[str]:
+        """Get the matched route string for ASGI apps to be used in logs & metrics.
+
+        If this replica does not wrap an ASGI app or there is no matching for the
+        request, returns the existing route from the request metadata.
+        """
+        route = request_metadata.route
+        if (
+            request_metadata.is_http_request
+            and self._user_callable_asgi_app is not None
+        ):
+            req: StreamingHTTPRequest = request_args[0]
+            try:
+                matched_route = get_asgi_route_name(
+                    self._user_callable_asgi_app, req.asgi_scope
+                )
+            except Exception:
+                matched_route = None
+                logger.exception(
+                    "Failed unexpectedly trying to get route name for request. "
+                    "Routes in metric tags and log messages may be inaccurate. "
+                    "Please file a GitHub issue containing this traceback."
+                )
+
+            # If there is no match in the ASGI app, don't overwrite the route_prefix
+            # from the proxy.
+            if matched_route is not None:
+                route = matched_route
+
+        return route
+
     @contextmanager
-    def _wrap_user_method_call(self, request_metadata: RequestMetadata):
+    def _wrap_user_method_call(
+        self, request_metadata: RequestMetadata, request_args: Tuple[Any]
+    ):
         """Context manager that wraps user method calls.
 
         1) Sets the request context var with appropriate metadata.
         2) Records the access log message (if not disabled).
         3) Records per-request metrics via the metrics manager.
         """
+        route = self._maybe_get_asgi_route(request_metadata, request_args)
         ray.serve.context._serve_request_context.set(
             ray.serve.context._RequestContext(
-                route=request_metadata.route,
+                route=route,
                 request_id=request_metadata.request_id,
+                _internal_request_id=request_metadata.internal_request_id,
                 app_name=self._deployment_id.app_name,
                 multiplexed_model_id=request_metadata.multiplexed_model_id,
                 grpc_context=request_metadata.grpc_context,
@@ -359,6 +402,15 @@ class ReplicaActor:
             yield
         except asyncio.CancelledError as e:
             user_exception = e
+
+            # Recursively cancel child requests
+            requests_pending_assignment = (
+                ray.serve.context._get_requests_pending_assignment(
+                    request_metadata.internal_request_id
+                )
+            )
+            for task in requests_pending_assignment.values():
+                task.cancel()
         except Exception as e:
             user_exception = e
             logger.error(f"Request failed:\n{e}")
@@ -384,7 +436,7 @@ class ReplicaActor:
             extra={"serve_access_log": True},
         )
         self._metrics_manager.record_request_metrics(
-            route=request_metadata.route,
+            route=route,
             status_str=status_str,
             latency_ms=latency_ms,
             was_error=user_exception is not None,
@@ -468,7 +520,7 @@ class ReplicaActor:
     ) -> Tuple[bytes, Any]:
         """Entrypoint for `stream=False` calls."""
         request_metadata = pickle.loads(pickled_request_metadata)
-        with self._wrap_user_method_call(request_metadata):
+        with self._wrap_user_method_call(request_metadata, request_args):
             return await self._user_callable_wrapper.call_user_method(
                 request_metadata, request_args, request_kwargs
             )
@@ -481,7 +533,7 @@ class ReplicaActor:
     ) -> AsyncGenerator[Any, None]:
         """Generator that is the entrypoint for all `stream=True` handle calls."""
         request_metadata = pickle.loads(pickled_request_metadata)
-        with self._wrap_user_method_call(request_metadata):
+        with self._wrap_user_method_call(request_metadata, request_args):
             async for result in self._call_user_generator(
                 request_metadata,
                 request_args,
@@ -523,7 +575,7 @@ class ReplicaActor:
             )
             return
 
-        with self._wrap_user_method_call(request_metadata):
+        with self._wrap_user_method_call(request_metadata, request_args):
             yield pickle.dumps(
                 ReplicaQueueLengthInfo(
                     accepted=True,
@@ -564,7 +616,7 @@ class ReplicaActor:
             multiplexed_model_id=proto.multiplexed_model_id,
             route=proto.route,
         )
-        with self._wrap_user_method_call(request_metadata):
+        with self._wrap_user_method_call(request_metadata, request_args):
             return await self._user_callable_wrapper.call_user_method(
                 request_metadata, request_args, request_kwargs
             )
@@ -611,7 +663,9 @@ class ReplicaActor:
             async with self._user_callable_initialized_lock:
                 initialization_start_time = time.time()
                 if not self._user_callable_initialized:
-                    await self._user_callable_wrapper.initialize_callable()
+                    self._user_callable_asgi_app = (
+                        await self._user_callable_wrapper.initialize_callable()
+                    )
                     self._user_callable_initialized = True
                     self._set_internal_replica_context(
                         servable_object=self._user_callable_wrapper.user_callable
@@ -881,7 +935,12 @@ class UserCallableWrapper:
         return self._callable
 
     @_run_on_user_code_event_loop
-    async def initialize_callable(self):
+    async def initialize_callable(self) -> Optional[ASGIApp]:
+        """Initialize the user callable.
+
+        If the callable is an ASGI app wrapper (e.g., using @serve.ingress), returns
+        the ASGI app object, which may be used *read only* by the caller.
+        """
         if self._callable is not None:
             raise RuntimeError("initialize_callable should only be called once.")
 
@@ -918,6 +977,12 @@ class UserCallableWrapper:
         logger.info(
             "Finished initializing replica.",
             extra={"log_to_stderr": False},
+        )
+
+        return (
+            self._callable.app
+            if isinstance(self._callable, ASGIAppReplicaWrapper)
+            else None
         )
 
     @_run_on_user_code_event_loop
@@ -979,7 +1044,7 @@ class UserCallableWrapper:
 
         The returned `receive_task` should be cancelled when the user method exits.
         """
-        scope = pickle.loads(request.pickled_asgi_scope)
+        scope = request.asgi_scope
         receive = ASGIReceiveProxy(
             scope,
             request_metadata,
