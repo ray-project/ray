@@ -14,7 +14,7 @@ from ray._private.test_utils import (
     async_wait_for_condition,
     wait_for_condition,
 )
-from ray.serve._private.test_utils import send_signal_on_cancellation
+from ray.serve._private.test_utils import send_signal_on_cancellation, tlog
 
 
 @pytest.mark.parametrize("use_fastapi", [False, True])
@@ -363,6 +363,105 @@ def test_out_of_band_task_is_not_cancelled(serve_instance):
     # cancelled.
     ray.get(signal_actor.send.remote())
     assert h.get_out_of_band_response.remote().result() == "ok"
+
+
+def test_recursive_cancellation_during_execution(serve_instance):
+    inner_signal_actor = SignalActor.remote()
+    outer_signal_actor = SignalActor.remote()
+
+    @serve.deployment
+    async def inner():
+        await send_signal_on_cancellation(inner_signal_actor)
+
+    @serve.deployment
+    class Ingress:
+        def __init__(self, handle):
+            self._handle = handle
+
+        async def __call__(self):
+            _ = self._handle.remote()
+            await send_signal_on_cancellation(outer_signal_actor)
+
+    h = serve.run(Ingress.bind(inner.bind()))
+
+    resp = h.remote()
+    with pytest.raises(TimeoutError):
+        resp.result(timeout_s=0.5)
+
+    resp.cancel()
+    ray.get(inner_signal_actor.wait.remote(), timeout=10)
+    ray.get(outer_signal_actor.wait.remote(), timeout=10)
+
+
+def test_recursive_cancellation_during_assignment(serve_instance):
+    signal = SignalActor.remote()
+
+    @serve.deployment(max_ongoing_requests=1)
+    class Counter:
+        def __init__(self):
+            self._count = 0
+
+        async def __call__(self):
+            self._count += 1
+            await signal.wait.remote()
+
+        def get_count(self):
+            return self._count
+
+    @serve.deployment
+    class Ingress:
+        def __init__(self, handle):
+            self._handle = handle
+
+        async def __call__(self):
+            self._handle.remote()
+            await signal.wait.remote()
+            return "hi"
+
+        async def get_count(self):
+            return await self._handle.get_count.remote()
+
+        async def check_requests_pending_assignment_cache(self):
+            requests_pending_assignment = ray.serve.context._requests_pending_assignment
+            return {k: list(v.keys()) for k, v in requests_pending_assignment.items()}
+
+    h = serve.run(Ingress.bind(Counter.bind()))
+
+    # Send two requests to Ingress. The second should be queued and
+    # pending assignment at Ingress because max ongoing requests for
+    # Counter is only 1.
+    tlog("Sending two requests to Ingress.")
+    resp1 = h.remote()
+    with pytest.raises(TimeoutError):
+        resp1.result(timeout_s=0.5)
+    resp2 = h.remote()
+    with pytest.raises(TimeoutError):
+        resp2.result(timeout_s=0.5)
+
+    # Cancel second request, which should be pending assignment.
+    tlog("Canceling second request.")
+    resp2.cancel()
+
+    # Release signal so that the first request can complete, and any new
+    # requests to Counter can be let through
+    tlog("Releasing signal.")
+    ray.get(signal.send.remote())
+    assert resp1.result() == "hi"
+
+    # The second request, even though it was pending assignment to a
+    # Counter replica, should have been properly canceled. Confirm this
+    # by making sure that no more calls to __call__ were made
+    for _ in range(10):
+        assert h.get_count.remote().result() == 1
+
+    tlog("Confirmed second request was properly canceled.")
+
+    # Check that cache was cleared so there are no memory leaks
+    requests_pending_assignment = (
+        h.check_requests_pending_assignment_cache.remote().result()
+    )
+    for k, v in requests_pending_assignment.items():
+        assert len(v) == 0, f"Request {k} has in flight requests in cache: {v}"
 
 
 if __name__ == "__main__":

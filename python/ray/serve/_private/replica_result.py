@@ -25,7 +25,7 @@ class ReplicaResult(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def add_callback(self, callback: Callable):
+    def add_done_callback(self, callback: Callable):
         raise NotImplementedError
 
     @abstractmethod
@@ -133,7 +133,7 @@ class ActorReplicaResult(ReplicaResult):
         next_obj_ref = await self._obj_ref_gen.__anext__()
         return await next_obj_ref
 
-    def add_callback(self, callback: Callable):
+    def add_done_callback(self, callback: Callable):
         if self._obj_ref_gen is not None:
             self._obj_ref_gen.completed()._on_completed(callback)
         else:
