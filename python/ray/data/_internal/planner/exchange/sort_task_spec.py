@@ -117,7 +117,7 @@ class SortTaskSpec(ExchangeTaskSpec):
         self,
         boundaries: List[T],
         sort_key: SortKey,
-        batch_format: Optional[str] = "default",
+        batch_format: Optional[str],
     ):
         super().__init__(
             map_args=[boundaries, sort_key],
