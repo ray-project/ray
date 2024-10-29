@@ -18,14 +18,13 @@ from aiohttp.web import Request, Response
 
 import ray
 import ray.dashboard.consts as dashboard_consts
-import ray.util.browser_detection as browser_detection
 from ray._private.ray_constants import RAY_INTERNAL_DASHBOARD_NAMESPACE, env_bool
 
 # All third-party dependencies that are not included in the minimal Ray
 # installation must be included in this file. This allows us to determine if
 # the agent has the necessary dependencies to be started.
 from ray.dashboard.optional_deps import PathLike, RouteDef, aiohttp, hdrs
-from ray.dashboard.utils import CustomEncoder, to_google_style
+from ray.dashboard.utils import CustomEncoder, is_browser_request, to_google_style
 
 try:
     create_task = asyncio.create_task
@@ -267,7 +266,7 @@ def deny_browser_requests() -> Callable:
     def decorator_factory(f: Callable) -> Callable:
         @functools.wraps(f)
         async def decorator(self, req: Request):
-            if browser_detection.is_browser_request(req):
+            if is_browser_request(req):
                 return Response(
                     text="Browser requests not allowed",
                     status=aiohttp.web.HTTPNotAllowed.status_code,
