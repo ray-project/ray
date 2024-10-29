@@ -18,6 +18,12 @@ from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
 from ray.rllib.algorithms.dqn.dqn_tf_policy import DQNTFPolicy
 from ray.rllib.algorithms.dqn.dqn_torch_policy import DQNTorchPolicy
+from ray.rllib.connectors.common.add_observations_from_episodes_to_batch import (
+    AddObservationsFromEpisodesToBatch,
+)
+from ray.rllib.connectors.learner.add_next_observations_from_episodes_to_train_batch import (  # noqa
+    AddNextObservationsFromEpisodesToTrainBatch,
+)
 from ray.rllib.core.learner import Learner
 from ray.rllib.core.rl_module.rl_module import RLModuleSpec
 from ray.rllib.execution.rollout_ops import (
@@ -58,6 +64,7 @@ from ray.rllib.utils.metrics import (
     NUM_MODULE_STEPS_TRAINED,
     NUM_MODULE_STEPS_TRAINED_LIFETIME,
     NUM_TARGET_UPDATES,
+    REPLAY_BUFFER_ADD_DATA_TIMER,
     REPLAY_BUFFER_SAMPLE_TIMER,
     REPLAY_BUFFER_UPDATE_PRIOS_TIMER,
     SAMPLE_TIMER,
@@ -82,37 +89,39 @@ class DQNConfig(AlgorithmConfig):
     .. testcode::
 
         from ray.rllib.algorithms.dqn.dqn import DQNConfig
-        config = DQNConfig()
 
-        replay_config = {
-                "type": "MultiAgentPrioritizedReplayBuffer",
+        config = (
+            DQNConfig()
+            .environment("CartPole-v1")
+            .training(replay_buffer_config={
+                "type": "PrioritizedEpisodeReplayBuffer",
                 "capacity": 60000,
-                "prioritized_replay_alpha": 0.5,
-                "prioritized_replay_beta": 0.5,
-                "prioritized_replay_eps": 3e-6,
-            }
-
-        config = config.training(replay_buffer_config=replay_config)
-        config = config.resources(num_gpus=0)
-        config = config.env_runners(num_env_runners=1)
-        config = config.environment("CartPole-v1")
-        algo = DQN(config=config)
+                "alpha": 0.5,
+                "beta": 0.5,
+            })
+            .env_runners(num_env_runners=1)
+        )
+        algo = config.build()
         algo.train()
-        del algo
+        algo.stop()
 
     .. testcode::
 
         from ray.rllib.algorithms.dqn.dqn import DQNConfig
         from ray import air
         from ray import tune
-        config = DQNConfig()
-        config = config.training(
-            num_atoms=tune.grid_search([1,]))
-        config = config.environment(env="CartPole-v1")
+
+        config = (
+            DQNConfig()
+            .environment("CartPole-v1")
+            .training(
+                num_atoms=tune.grid_search([1,])
+            )
+        )
         tune.Tuner(
             "DQN",
             run_config=air.RunConfig(stop={"training_iteration":1}),
-            param_space=config.to_dict()
+            param_space=config,
         ).fit()
 
     .. testoutput::
@@ -186,28 +195,23 @@ class DQNConfig(AlgorithmConfig):
 
         # Replay buffer configuration.
         self.replay_buffer_config = {
-            "type": "MultiAgentPrioritizedReplayBuffer",
-            # Specify prioritized replay by supplying a buffer type that supports
-            # prioritization, for example: MultiAgentPrioritizedReplayBuffer.
-            "prioritized_replay": DEPRECATED_VALUE,
+            "type": "PrioritizedEpisodeReplayBuffer",
             # Size of the replay buffer. Note that if async_updates is set,
             # then each worker will have a replay buffer of this size.
             "capacity": 50000,
-            "prioritized_replay_alpha": 0.6,
+            "alpha": 0.6,
             # Beta parameter for sampling from prioritized replay buffer.
-            "prioritized_replay_beta": 0.4,
-            # Epsilon to add to the TD errors when updating priorities.
-            "prioritized_replay_eps": 1e-6,
-            # The number of continuous environment steps to replay at once. This may
-            # be set to greater than 1 to support recurrent models.
-            "replay_sequence_length": 1,
-            # Whether to compute priorities on workers.
-            "worker_side_prioritization": False,
+            "beta": 0.4,
         }
+        # `.api_stack()`
+        self.api_stack(
+            enable_rl_module_and_learner=True,
+            enable_env_runner_and_connector_v2=True,
+        )
         # fmt: on
         # __sphinx_doc_end__
 
-        # Deprecated.
+        # Deprecated
         self.buffer_size = DEPRECATED_VALUE
         self.prioritized_replay = DEPRECATED_VALUE
         self.learning_starts = DEPRECATED_VALUE
@@ -420,6 +424,16 @@ class DQNConfig(AlgorithmConfig):
         # Call super's validation method.
         super().validate()
 
+        # Warn about new API stack on by default.
+        if self.enable_rl_module_and_learner:
+            logger.warning(
+                "You are running DQN on the new API stack! This is the new default "
+                "behavior for this algorithm. If you don't want to use the new API "
+                "stack, set `config.api_stack(enable_rl_module_and_learner=False, "
+                "enable_env_runner_and_connector_v2=False)`. For a detailed "
+                "migration guide, see here: https://docs.ray.io/en/master/rllib/new-api-stack-migration-guide.html"  # noqa
+            )
+
         if (
             not self.enable_rl_module_and_learner
             and self.exploration_config["type"] == "ParameterNoise"
@@ -484,6 +498,23 @@ class DQNConfig(AlgorithmConfig):
                 "When using the new `EnvRunner API` the replay buffer must be of type "
                 "`EpisodeReplayBuffer`."
             )
+        elif not self.enable_env_runner_and_connector_v2 and (
+            (
+                isinstance(self.replay_buffer_config["type"], str)
+                and "Episode" in self.replay_buffer_config["type"]
+            )
+            or issubclass(self.replay_buffer_config["type"], EpisodeReplayBuffer)
+        ):
+            raise ValueError(
+                "When using the old API stack the replay buffer must not be of type "
+                "`EpisodeReplayBuffer`! We suggest you use the following config to run "
+                "DQN on the old API stack: `config.training(replay_buffer_config={"
+                "'type': 'MultiAgentPrioritizedReplayBuffer', "
+                "'prioritized_replay_alpha': [alpha], "
+                "'prioritized_replay_beta': [beta], "
+                "'prioritized_replay_eps': [eps], "
+                "})`."
+            )
 
     @override(AlgorithmConfig)
     def get_rollout_fragment_length(self, worker_index: int = 0) -> int:
@@ -508,8 +539,7 @@ class DQNConfig(AlgorithmConfig):
             return RLModuleSpec(
                 module_class=DQNRainbowTorchRLModule,
                 catalog_class=DQNRainbowCatalog,
-                model_config_dict=self.model_config,
-                # model_config_dict=self.model,
+                model_config=self.model_config,
             )
         else:
             raise ValueError(
@@ -545,6 +575,28 @@ class DQNConfig(AlgorithmConfig):
                 "Use `config.framework('torch')` instead."
             )
 
+    @override(AlgorithmConfig)
+    def build_learner_connector(
+        self,
+        input_observation_space,
+        input_action_space,
+        device=None,
+    ):
+        pipeline = super().build_learner_connector(
+            input_observation_space=input_observation_space,
+            input_action_space=input_action_space,
+            device=device,
+        )
+
+        # Prepend the "add-NEXT_OBS-from-episodes-to-train-batch" connector piece (right
+        # after the corresponding "add-OBS-..." default piece).
+        pipeline.insert_after(
+            AddObservationsFromEpisodesToBatch,
+            AddNextObservationsFromEpisodesToTrainBatch(),
+        )
+
+        return pipeline
+
 
 def calculate_rr_weights(config: AlgorithmConfig) -> List[float]:
     """Calculate the round robin weights for the rollout and train steps"""
@@ -556,7 +608,7 @@ def calculate_rr_weights(config: AlgorithmConfig) -> List[float]:
     # This is to set freshly rollout-collected data in relation to
     # the data we pull from the replay buffer (which also contains old
     # samples).
-    native_ratio = config.train_batch_size / (
+    native_ratio = config.total_train_batch_size / (
         config.get_rollout_fragment_length()
         * config.num_envs_per_env_runner
         # Add one to workers because the local
@@ -608,10 +660,9 @@ class DQN(Algorithm):
         # New API stack (RLModule, Learner, EnvRunner, ConnectorV2).
         if self.config.enable_env_runner_and_connector_v2:
             return self._training_step_new_api_stack(with_noise_reset=True)
-        # Old and hybrid API stacks (Policy, RolloutWorker, Connector, maybe RLModule,
-        # maybe Learner).
+        # Old API stack (Policy, RolloutWorker).
         else:
-            return self._training_step_old_and_hybrid_api_stack()
+            return self._training_step_old_api_stack()
 
     def _training_step_new_api_stack(self, *, with_noise_reset) -> ResultDict:
         # Alternate between storing and sampling and training.
@@ -628,12 +679,14 @@ class DQN(Algorithm):
                     _uses_new_env_runners=True,
                     _return_metrics=True,
                 )
-            # Add the sampled experiences to the replay buffer.
-            self.local_replay_buffer.add(episodes)
             # Reduce EnvRunner metrics over the n EnvRunners.
             self.metrics.merge_and_log_n_dicts(
                 env_runner_results, key=ENV_RUNNER_RESULTS
             )
+
+            # Add the sampled experiences to the replay buffer.
+            with self.metrics.log_time((TIMERS, REPLAY_BUFFER_ADD_DATA_TIMER)):
+                self.local_replay_buffer.add(episodes)
 
         self.metrics.log_dict(
             self.metrics.peek(
@@ -684,10 +737,11 @@ class DQN(Algorithm):
                 # Sample a list of episodes used for learning from the replay buffer.
                 with self.metrics.log_time((TIMERS, REPLAY_BUFFER_SAMPLE_TIMER)):
                     episodes = self.local_replay_buffer.sample(
-                        num_items=self.config.train_batch_size,
+                        num_items=self.config.total_train_batch_size,
                         n_step=self.config.n_step,
                         gamma=self.config.gamma,
                         beta=self.config.replay_buffer_config.get("beta"),
+                        sample_episodes=True,
                     )
 
                 # Perform an update on the buffer-sampled train batch.
@@ -707,14 +761,16 @@ class DQN(Algorithm):
                     # disk or WandB, they might be very large).
                     td_errors = defaultdict(list)
                     for res in learner_results:
-                        for mid, m_res in res.items():
-                            if TD_ERROR_KEY in m_res:
-                                td_errors[mid].extend(
-                                    convert_to_numpy(m_res.pop(TD_ERROR_KEY).peek())
+                        for module_id, module_results in res.items():
+                            if TD_ERROR_KEY in module_results:
+                                td_errors[module_id].extend(
+                                    convert_to_numpy(
+                                        module_results.pop(TD_ERROR_KEY).peek()
+                                    )
                                 )
                     td_errors = {
-                        mid: {TD_ERROR_KEY: np.concatenate(s, axis=0)}
-                        for mid, s in td_errors.items()
+                        module_id: {TD_ERROR_KEY: np.concatenate(s, axis=0)}
+                        for module_id, s in td_errors.items()
                     }
                     self.metrics.merge_and_log_n_dicts(
                         learner_results, key=LEARNER_RESULTS
@@ -764,8 +820,8 @@ class DQN(Algorithm):
 
         return self.metrics.reduce()
 
-    def _training_step_old_and_hybrid_api_stack(self) -> ResultDict:
-        """Training step for the old and hybrid training stacks.
+    def _training_step_old_api_stack(self) -> ResultDict:
+        """Training step for the old API stack.
 
         More specifically this training step relies on `RolloutWorker`.
         """
@@ -812,7 +868,7 @@ class DQN(Algorithm):
                 # Sample training batch (MultiAgentBatch) from replay buffer.
                 train_batch = sample_min_n_steps_from_buffer(
                     self.local_replay_buffer,
-                    self.config.train_batch_size,
+                    self.config.total_train_batch_size,
                     count_by_agent_steps=self.config.count_steps_by == "agent_steps",
                 )
 

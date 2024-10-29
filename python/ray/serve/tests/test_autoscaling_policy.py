@@ -16,7 +16,6 @@ import ray.util.state as state_api
 from ray import serve
 from ray._private.test_utils import SignalActor, wait_for_condition
 from ray.serve._private.common import (
-    ApplicationStatus,
     DeploymentID,
     DeploymentStatus,
     DeploymentStatusTrigger,
@@ -38,7 +37,7 @@ from ray.serve._private.test_utils import (
 )
 from ray.serve.config import AutoscalingConfig
 from ray.serve.handle import DeploymentHandle
-from ray.serve.schema import ServeDeploySchema
+from ray.serve.schema import ApplicationStatus, ServeDeploySchema
 from ray.util.state import list_actors
 
 
@@ -533,6 +532,9 @@ def test_cold_start_time(serve_instance):
         return True
 
     wait_for_condition(check_running)
+
+    assert requests.post("http://localhost:8000/-/healthz").status_code == 200
+    assert requests.post("http://localhost:8000/-/routes").status_code == 200
 
     start = time.time()
     result = handle.remote().result()
@@ -1098,9 +1100,7 @@ app = g.bind()
     )
 
     # Step 7: Make sure original replica is still running (lightweight change)
-    pids = set()
-    for _ in range(15):
-        pids.add(int(ray.get(send_request.remote())))
+    pids = {int(pid) for pid in ray.get([send_request.remote() for _ in range(20)])}
     assert existing_pid in pids
 
 

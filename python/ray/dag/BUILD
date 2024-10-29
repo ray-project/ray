@@ -104,7 +104,10 @@ py_test_module_list(
     files = [
         "tests/experimental/test_detect_deadlock_dag.py",
         "tests/experimental/test_multi_node_dag.py",
+        "tests/experimental/test_mocked_nccl_dag.py",
         "tests/experimental/test_torch_tensor_dag.py",
+        "tests/experimental/test_collective_dag.py",
+        "tests/experimental/test_execution_schedule.py",
     ],
     tags = [
         "accelerated_dag",
@@ -116,7 +119,7 @@ py_test_module_list(
 )
 
 py_test_module_list(
-    size = "large",
+    size = "enormous",
     files = [
         "tests/experimental/test_accelerated_dag.py",
     ],
@@ -131,7 +134,7 @@ py_test_module_list(
 
 py_test(
     name = "test_torch_tensor_dag_gpu",
-    size = "medium",
+    size = "large",
     srcs = [
         "tests/experimental/test_torch_tensor_dag.py",
     ],

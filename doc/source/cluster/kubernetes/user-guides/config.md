@@ -171,7 +171,7 @@ the same Ray version as the CR's `spec.rayVersion`.
 If you are using a nightly or development Ray image, you can specify Ray's
 latest release version under `spec.rayVersion`.
 
-For Apple M1 or M2 MacBooks, see [Use ARM-based docker images for Apple M1 or M2 MacBooks](docker-image-for-apple-macbooks) to specify the 
+For Apple M1 or M2 MacBooks, see [Use ARM-based docker images for Apple M1 or M2 MacBooks](docker-image-for-apple-macbooks) to specify the
 correct image.
 
 You must install code dependencies for a given Ray task or actor on each Ray node that

@@ -17,6 +17,7 @@
 #include "ray/common/buffer.h"
 #include "ray/common/common_protocol.h"
 #include "ray/common/constants.h"
+#include "ray/core_worker/common.h"
 #include "ray/gcs/pb_util.h"
 #include "ray/util/exponential_backoff.h"
 #include "ray/util/util.h"
@@ -290,12 +291,13 @@ std::vector<rpc::ObjectReference> TaskManager::AddPendingTask(
     num_pending_tasks_++;
   }
 
-  RAY_UNUSED(RecordTaskStatusEventIfNeeded(spec.TaskId(),
-                                           spec.JobId(),
-                                           spec.AttemptNumber(),
-                                           spec,
-                                           rpc::TaskStatus::PENDING_ARGS_AVAIL,
-                                           /* include_task_info */ true));
+  RAY_UNUSED(task_event_buffer_.RecordTaskStatusEventIfNeeded(
+      spec.TaskId(),
+      spec.JobId(),
+      spec.AttemptNumber(),
+      spec,
+      rpc::TaskStatus::PENDING_ARGS_AVAIL,
+      /* include_task_info */ true));
 
   return returned_refs;
 }
@@ -1407,7 +1409,7 @@ void TaskManager::MarkTaskWaitingForExecution(const TaskID &task_id,
       << ", task ID = " << it->first << ", status = " << it->second.GetStatus();
   it->second.SetNodeId(node_id);
   it->second.SetStatus(rpc::TaskStatus::SUBMITTED_TO_WORKER);
-  RAY_UNUSED(RecordTaskStatusEventIfNeeded(
+  RAY_UNUSED(task_event_buffer_.RecordTaskStatusEventIfNeeded(
       it->second.spec.TaskId(),
       it->second.spec.JobId(),
       it->second.spec.AttemptNumber(),
@@ -1419,11 +1421,12 @@ void TaskManager::MarkTaskWaitingForExecution(const TaskID &task_id,
 
 void TaskManager::MarkTaskRetryOnResubmit(TaskEntry &task_entry) {
   // Record the old attempt status as FINISHED.
-  RAY_UNUSED(RecordTaskStatusEventIfNeeded(task_entry.spec.TaskId(),
-                                           task_entry.spec.JobId(),
-                                           task_entry.spec.AttemptNumber(),
-                                           task_entry.spec,
-                                           rpc::TaskStatus::FINISHED));
+  RAY_UNUSED(
+      task_event_buffer_.RecordTaskStatusEventIfNeeded(task_entry.spec.TaskId(),
+                                                       task_entry.spec.JobId(),
+                                                       task_entry.spec.AttemptNumber(),
+                                                       task_entry.spec,
+                                                       rpc::TaskStatus::FINISHED));
   task_entry.MarkRetryOnResubmit();
 
   // Mark the new status and also include task spec info for the new attempt.
@@ -1431,18 +1434,19 @@ void TaskManager::MarkTaskRetryOnResubmit(TaskEntry &task_entry) {
   // NOTE(rickyx): We only increment the AttemptNumber on the task spec when
   // `retry_task_callback_` is invoked. In order to record the correct status change for
   // the new task attempt, we pass the the attempt number explicitly.
-  RAY_UNUSED(RecordTaskStatusEventIfNeeded(task_entry.spec.TaskId(),
-                                           task_entry.spec.JobId(),
-                                           task_entry.spec.AttemptNumber() + 1,
-                                           task_entry.spec,
-                                           rpc::TaskStatus::PENDING_ARGS_AVAIL,
-                                           /* include_task_info */ true));
+  RAY_UNUSED(task_event_buffer_.RecordTaskStatusEventIfNeeded(
+      task_entry.spec.TaskId(),
+      task_entry.spec.JobId(),
+      task_entry.spec.AttemptNumber() + 1,
+      task_entry.spec,
+      rpc::TaskStatus::PENDING_ARGS_AVAIL,
+      /* include_task_info */ true));
 }
 
 void TaskManager::MarkTaskRetryOnFailed(TaskEntry &task_entry,
                                         const rpc::RayErrorInfo &error_info) {
   // Record the old attempt status as FAILED.
-  RAY_UNUSED(RecordTaskStatusEventIfNeeded(
+  RAY_UNUSED(task_event_buffer_.RecordTaskStatusEventIfNeeded(
       task_entry.spec.TaskId(),
       task_entry.spec.JobId(),
       task_entry.spec.AttemptNumber(),
@@ -1454,12 +1458,13 @@ void TaskManager::MarkTaskRetryOnFailed(TaskEntry &task_entry,
 
   // Mark the new status and also include task spec info for the new attempt.
   task_entry.SetStatus(rpc::TaskStatus::PENDING_ARGS_AVAIL);
-  RAY_UNUSED(RecordTaskStatusEventIfNeeded(task_entry.spec.TaskId(),
-                                           task_entry.spec.JobId(),
-                                           task_entry.spec.AttemptNumber() + 1,
-                                           task_entry.spec,
-                                           rpc::TaskStatus::PENDING_ARGS_AVAIL,
-                                           /* include_task_info */ true));
+  RAY_UNUSED(task_event_buffer_.RecordTaskStatusEventIfNeeded(
+      task_entry.spec.TaskId(),
+      task_entry.spec.JobId(),
+      task_entry.spec.AttemptNumber() + 1,
+      task_entry.spec,
+      rpc::TaskStatus::PENDING_ARGS_AVAIL,
+      /* include_task_info */ true));
 }
 
 void TaskManager::SetTaskStatus(
@@ -1467,7 +1472,7 @@ void TaskManager::SetTaskStatus(
     rpc::TaskStatus status,
     const absl::optional<const rpc::RayErrorInfo> &error_info) {
   task_entry.SetStatus(status);
-  RAY_UNUSED(RecordTaskStatusEventIfNeeded(
+  RAY_UNUSED(task_event_buffer_.RecordTaskStatusEventIfNeeded(
       task_entry.spec.TaskId(),
       task_entry.spec.JobId(),
       task_entry.spec.AttemptNumber(),
@@ -1475,6 +1480,37 @@ void TaskManager::SetTaskStatus(
       status,
       /* include_task_info */ false,
       worker::TaskStatusEvent::TaskStateUpdate(error_info)));
+}
+
+std::unordered_map<rpc::LineageReconstructionTask, uint64_t>
+TaskManager::GetOngoingLineageReconstructionTasks() const {
+  absl::MutexLock lock(&mu_);
+  std::unordered_map<rpc::LineageReconstructionTask, uint64_t> result;
+  for (const auto &task_it : submissible_tasks_) {
+    const auto &task_entry = task_it.second;
+    if (!task_entry.IsPending()) {
+      continue;
+    }
+
+    if (task_entry.num_successful_executions == 0) {
+      // Not lineage reconstruction task
+      continue;
+    }
+
+    rpc::LineageReconstructionTask task;
+    task.set_name(task_entry.spec.GetName());
+    auto resources = task_entry.spec.GetRequiredResources().GetResourceUnorderedMap();
+    task.mutable_resources()->insert(resources.begin(), resources.end());
+    task.set_status(task_entry.GetStatus());
+
+    if (result.find(task) != result.end()) {
+      result[task] += 1;
+    } else {
+      result[task] = 1;
+    }
+  }
+
+  return result;
 }
 
 void TaskManager::FillTaskInfo(rpc::GetCoreWorkerStatsReply *reply,
@@ -1527,34 +1563,6 @@ void TaskManager::RecordMetrics() {
   absl::MutexLock lock(&mu_);
   ray::stats::STATS_total_lineage_bytes.Record(total_lineage_footprint_bytes_);
   task_counter_.FlushOnChangeCallbacks();
-}
-
-bool TaskManager::RecordTaskStatusEventIfNeeded(
-    const TaskID &task_id,
-    const JobID &job_id,
-    int32_t attempt_number,
-    const TaskSpecification &spec,
-    rpc::TaskStatus status,
-    bool include_task_info,
-    absl::optional<const worker::TaskStatusEvent::TaskStateUpdate> state_update) {
-  if (!task_event_buffer_.Enabled()) {
-    return false;
-  }
-  if (!spec.EnableTaskEvents()) {
-    return false;
-  }
-
-  auto task_event = std::make_unique<worker::TaskStatusEvent>(
-      task_id,
-      job_id,
-      attempt_number,
-      status,
-      /* timestamp */ absl::GetCurrentTimeNanos(),
-      include_task_info ? std::make_shared<const TaskSpecification>(spec) : nullptr,
-      std::move(state_update));
-
-  task_event_buffer_.AddTaskEvent(std::move(task_event));
-  return true;
 }
 
 ObjectID TaskManager::TaskGeneratorId(const TaskID &task_id) const {

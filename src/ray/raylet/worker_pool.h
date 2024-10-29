@@ -73,7 +73,7 @@ enum PopWorkerStatus {
 /// \return true if the worker was used. Otherwise, return false
 /// and the worker will be returned to the worker pool.
 using PopWorkerCallback =
-    std::function<bool(const std::shared_ptr<WorkerInterface> worker,
+    std::function<bool(const std::shared_ptr<WorkerInterface> &worker,
                        PopWorkerStatus status,
                        const std::string &runtime_env_setup_error_message)>;
 
@@ -99,15 +99,9 @@ class WorkerPoolInterface {
   /// Case 1: An suitable worker was found in idle worker pool.
   /// Case 2: An suitable worker registered to raylet.
   /// The corresponding PopWorkerStatus will be passed to the callback.
-  /// \param allocated_instances_serialized_json The allocated resource instances
-  /// json string, it contains resource ID which assigned to this worker.
-  /// Instance resource value will be like {"GPU":[10000,0,10000]}, non-instance
-  /// resource value will be {"CPU":20000}.
   /// \return Void.
-  virtual void PopWorker(
-      const TaskSpecification &task_spec,
-      const PopWorkerCallback &callback,
-      const std::string &allocated_instances_serialized_json = "{}") = 0;
+  virtual void PopWorker(const TaskSpecification &task_spec,
+                         const PopWorkerCallback &callback) = 0;
   /// Add an idle worker to the pool.
   ///
   /// \param The idle worker to add.
@@ -151,6 +145,27 @@ class IOWorkerPoolInterface {
 
 class WorkerInterface;
 class Worker;
+
+enum class WorkerUnfitForTaskReason {
+  NONE = 0,                      // OK
+  ROOT_MISMATCH = 1,             // job ID or root detached actor ID mismatch
+  RUNTIME_ENV_MISMATCH = 2,      // runtime env hash mismatch
+  DYNAMIC_OPTIONS_MISMATCH = 3,  // dynamic options mismatch
+  OTHERS = 4,                    // reasons we don't do stats for (e.g. language)
+};
+static constexpr absl::string_view kWorkerUnfitForTaskReasonDebugName[] = {
+    "NONE",
+    "ROOT_MISMATCH",
+    "RUNTIME_ENV_MISMATCH",
+    "DYNAMIC_OPTIONS_MISMATCH",
+    "OTHERS",
+};
+
+inline std::ostream &operator<<(std::ostream &os,
+                                const WorkerUnfitForTaskReason &reason) {
+  os << kWorkerUnfitForTaskReasonDebugName[static_cast<int>(reason)];
+  return os;
+}
 
 /// \class WorkerPool
 ///
@@ -345,9 +360,7 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   void PushWorker(const std::shared_ptr<WorkerInterface> &worker);
 
   /// See interface.
-  void PopWorker(const TaskSpecification &task_spec,
-                 const PopWorkerCallback &callback,
-                 const std::string &allocated_instances_serialized_json = "{}");
+  void PopWorker(const TaskSpecification &task_spec, const PopWorkerCallback &callback);
 
   /// Try to prestart a number of workers suitable the given task spec. Prestarting
   /// is needed since core workers request one lease at a time, if starting is slow,
@@ -424,11 +437,11 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   /// we didn't start a process.
   std::tuple<Process, StartupToken> StartWorkerProcess(
       const Language &language,
-      const rpc::WorkerType worker_type,
+      rpc::WorkerType worker_type,
       const JobID &job_id,
       PopWorkerStatus *status /*output*/,
       const std::vector<std::string> &dynamic_options = {},
-      const int runtime_env_hash = 0,
+      int runtime_env_hash = 0,
       const std::string &serialized_runtime_env_context = "{}",
       const rpc::RuntimeEnvInfo &runtime_env_info = rpc::RuntimeEnvInfo());
 
@@ -447,8 +460,7 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   virtual void WarnAboutSize();
 
   /// Make this synchronized function for unit test.
-  void PopWorkerCallbackInternal(const TaskSpecification &task_spec,
-                                 const PopWorkerCallback &callback,
+  void PopWorkerCallbackInternal(const PopWorkerCallback &callback,
                                  std::shared_ptr<WorkerInterface> worker,
                                  PopWorkerStatus status);
 
@@ -491,19 +503,43 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
     std::vector<std::string> dynamic_options;
   };
 
-  struct TaskWaitingForWorkerInfo {
-    /// The spec of task.
-    TaskSpecification task_spec;
-    /// The callback function which should be called when worker registered.
+  struct PopWorkerRequest {
+    rpc::Language language;
+    rpc::WorkerType worker_type;
+    JobID job_id;                    // can be Nil
+    ActorID root_detached_actor_id;  // can be Nil
+    std::optional<bool> is_gpu;
+    std::optional<bool> is_actor_worker;
+    rpc::RuntimeEnvInfo runtime_env_info;
+    int runtime_env_hash;
+    std::vector<std::string> dynamic_options;
+
     PopWorkerCallback callback;
+
+    PopWorkerRequest(rpc::Language lang,
+                     rpc::WorkerType worker_type,
+                     JobID job,
+                     ActorID root_actor_id,
+                     std::optional<bool> gpu,
+                     std::optional<bool> actor_worker,
+                     rpc::RuntimeEnvInfo runtime_env_info,
+                     int runtime_hash,
+                     std::vector<std::string> options,
+                     PopWorkerCallback callback)
+        : language(lang),
+          worker_type(worker_type),
+          job_id(job),
+          root_detached_actor_id(root_actor_id),
+          is_gpu(gpu),
+          is_actor_worker(actor_worker),
+          runtime_env_info(std::move(runtime_env_info)),
+          runtime_env_hash(runtime_hash),
+          dynamic_options(std::move(options)),
+          callback(std::move(callback)) {}
   };
 
-  /// Represents a PopWorker call.
-  struct PopWorkerRequest {
-    TaskSpecification task_spec;
-    PopWorkerCallback callback;
-    std::string allocated_instances_serialized_json;
-  };
+  // Starts a new worker that fulfills `pop_worker_request`.
+  void StartNewWorker(const std::shared_ptr<PopWorkerRequest> &pop_worker_request);
 
   /// An internal data structure that maintains the pool state per language.
   struct State {
@@ -526,10 +562,13 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
     /// the extra information of the process. Note that the shim process PID is the
     /// same with worker process PID, except worker process in container.
     absl::flat_hash_map<StartupToken, WorkerProcessInfo> worker_processes;
-    /// A map for looking up the task by the startup token of starting worker process.
-    absl::flat_hash_map<StartupToken, TaskWaitingForWorkerInfo> starting_workers_to_tasks;
-    /// Pop worker requests that are pending due to maximum_startup_concurrency_.
-    std::deque<PopWorkerRequest> pending_pop_worker_requests;
+    /// FIFO queue of pending requests with workers STARTED but pending registration.
+    /// If a request stays in this status for >= worker_register_timeout_seconds, we'll
+    /// fail the request and kill the worker process.
+    std::deque<std::shared_ptr<PopWorkerRequest>> pending_registration_requests;
+    /// FIFO queue of pending requests with workers NOT STARTED due to
+    /// maximum_startup_concurrency_.
+    std::deque<std::shared_ptr<PopWorkerRequest>> pending_start_requests;
     /// We'll push a warning to the user every time a multiple of this many
     /// worker processes has been started.
     int multiple_for_warning;
@@ -557,10 +596,17 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   /// (due to worker process crash or any other reasons), remove them
   /// from `worker_processes`. Otherwise if we'll mistakenly
   /// think there are unregistered workers, and won't start new workers.
-  void MonitorStartingWorkerProcess(const Process &proc,
-                                    StartupToken proc_startup_token,
+  void MonitorStartingWorkerProcess(StartupToken proc_startup_token,
                                     const Language &language,
-                                    const rpc::WorkerType worker_type);
+                                    rpc::WorkerType worker_type);
+
+  /// Start a timer to monitor the starting worker process.
+  /// Called when a worker process is started and waiting for registration for the
+  /// request. If the registration is not finished within the timeout, we'll failed the
+  /// request. Note we don't do anything to the worker process itself, as it's timed out
+  /// by MonitorStartingWorkerProcess.
+  void MonitorPopWorkerRequestForRegistration(
+      std::shared_ptr<PopWorkerRequest> pop_worker_request);
 
   /// Get the next unallocated port in the free ports list. If a port range isn't
   /// configured, returns 0.
@@ -586,10 +632,10 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   /// worker.
   void TryStartIOWorkers(const Language &language, const rpc::WorkerType &worker_type);
 
-  /// Try to fulfill pending PopWorker requests.
+  /// Try to fulfill pending_start_requests by trying to start more workers.
   /// This happens when we have more room to start workers or an idle worker is pushed.
   /// \param language The language of the PopWorker requests.
-  void TryPendingPopWorkerRequests(const Language &language);
+  void TryPendingStartRequests(const Language &language);
 
   /// Get either restore or spill worker state from state based on worker_type.
   ///
@@ -614,29 +660,9 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
 
   /// Call the `PopWorkerCallback` function asynchronously to make sure executed in
   /// different stack.
-  virtual void PopWorkerCallbackAsync(const TaskSpecification &task_spec,
-                                      const PopWorkerCallback &callback,
+  virtual void PopWorkerCallbackAsync(PopWorkerCallback callback,
                                       std::shared_ptr<WorkerInterface> worker,
-                                      PopWorkerStatus status = PopWorkerStatus::OK);
-
-  /// Try to find a task that is associated with the given worker process from the given
-  /// queue. If found, invoke its PopWorkerCallback.
-  /// \param workers_to_tasks The queue of tasks which waiting for workers.
-  /// \param startup_token The startup token representing the worker.
-  /// \param worker A new idle worker. If the worker is empty, we could also callback
-  /// to the task.
-  /// \param status The pop worker status which will be forwarded to
-  /// `PopWorkerCallback`.
-  /// \param found  Whether the related task found or not.
-  /// \param worker_used Whether the worker is used by the task, only valid when found is
-  /// true.
-  void InvokePopWorkerCallbackForProcess(
-      absl::flat_hash_map<StartupToken, TaskWaitingForWorkerInfo> &workers_to_tasks,
-      StartupToken startup_token,
-      const std::shared_ptr<WorkerInterface> &worker,
-      const PopWorkerStatus &status,
-      bool *found /* output */,
-      bool *worker_used /* output */);
+                                      PopWorkerStatus status);
 
   /// We manage all runtime env resources locally by the two methods:
   /// `GetOrCreateRuntimeEnv` and `DeleteRuntimeEnvIfPossible`.
@@ -670,12 +696,10 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   /// assume that the worker process has tree worker instances totally.
 
   /// Create runtime env asynchronously by runtime env agent.
-  void GetOrCreateRuntimeEnv(
-      const std::string &serialized_runtime_env,
-      const rpc::RuntimeEnvConfig &runtime_env_config,
-      const JobID &job_id,
-      const GetOrCreateRuntimeEnvCallback &callback,
-      const std::string &serialized_allocated_resource_instances = "{}");
+  void GetOrCreateRuntimeEnv(const std::string &serialized_runtime_env,
+                             const rpc::RuntimeEnvConfig &runtime_env_config,
+                             const JobID &job_id,
+                             const GetOrCreateRuntimeEnvCallback &callback);
 
   /// Delete runtime env asynchronously by runtime env agent.
   void DeleteRuntimeEnvIfPossible(const std::string &serialized_runtime_env);
@@ -696,14 +720,18 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   std::pair<std::vector<std::string>, ProcessEnvironment> BuildProcessCommandArgs(
       const Language &language,
       rpc::JobConfig *job_config,
-      const rpc::WorkerType worker_type,
+      rpc::WorkerType worker_type,
       const JobID &job_id,
       const std::vector<std::string> &dynamic_options,
-      const int runtime_env_hash,
+      int runtime_env_hash,
       const std::string &serialized_runtime_env_context,
       const WorkerPool::State &state) const;
 
   void ExecuteOnPrestartWorkersStarted(std::function<void()> callback);
+
+  // If this worker can serve the task.
+  WorkerUnfitForTaskReason WorkerFitsForTask(
+      const WorkerInterface &worker, const PopWorkerRequest &pop_worker_request) const;
 
   /// For Process class for managing subprocesses (e.g. reaping zombies).
   instrumented_io_context *io_service_;

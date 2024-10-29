@@ -1,6 +1,7 @@
 import copy
 import functools
 import itertools
+import logging
 from abc import ABC, abstractmethod
 from collections import defaultdict, deque
 from typing import Any, Callable, Deque, Dict, Iterator, List, Optional, Set, Union
@@ -36,6 +37,8 @@ from ray.data._internal.stats import StatsDict
 from ray.data.block import Block, BlockAccessor, BlockExecStats, BlockMetadata
 from ray.data.context import DataContext
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
+
+logger = logging.getLogger(__name__)
 
 
 class MapOperator(OneToOneOperator, ABC):
@@ -330,7 +333,7 @@ class MapOperator(OneToOneOperator, ABC):
                     * self._metrics.num_outputs_of_finished_tasks
                     / self._metrics.num_tasks_finished
                 )
-                self._estimated_num_output_rows = round(
+                self._estimated_output_num_rows = round(
                     estimated_num_tasks
                     * self._metrics.rows_task_outputs_generated
                     / self._metrics.num_tasks_finished
@@ -406,6 +409,10 @@ class MapOperator(OneToOneOperator, ABC):
 
     @abstractmethod
     def current_processor_usage(self) -> ExecutionResources:
+        raise NotImplementedError
+
+    @abstractmethod
+    def pending_processor_usage(self) -> ExecutionResources:
         raise NotImplementedError
 
     @abstractmethod
@@ -641,16 +648,16 @@ def _canonicalize_ray_remote_args(ray_remote_args: Dict[str, Any]) -> Dict[str, 
     and should not be a serious limitation for users.
     """
     ray_remote_args = ray_remote_args.copy()
+
+    if ray_remote_args.get("num_cpus") and ray_remote_args.get("num_gpus"):
+        logger.warning(
+            "Specifying both num_cpus and num_gpus for map tasks is experimental, "
+            "and may result in scheduling or stability issues. "
+            "Please report any issues to the Ray team: "
+            "https://github.com/ray-project/ray/issues/new/choose"
+        )
+
     if "num_cpus" not in ray_remote_args and "num_gpus" not in ray_remote_args:
         ray_remote_args["num_cpus"] = 1
-    if ray_remote_args.get("num_gpus", 0) > 0:
-        if ray_remote_args.get("num_cpus", 0) != 0:
-            raise ValueError(
-                "It is not allowed to specify both num_cpus and num_gpus for map tasks."
-            )
-    elif ray_remote_args.get("num_cpus", 0) > 0:
-        if ray_remote_args.get("num_gpus", 0) != 0:
-            raise ValueError(
-                "It is not allowed to specify both num_cpus and num_gpus for map tasks."
-            )
+
     return ray_remote_args

@@ -2,7 +2,7 @@
 
 # Serve a StableDiffusion text-to-image model on Kubernetes
 
-> **Note:** The Python files for the Ray Serve application and its client are in the [ray-project/serve_config_examples](https://github.com/ray-project/serve_config_examples) repo 
+> **Note:** The Python files for the Ray Serve application and its client are in the [ray-project/serve_config_examples](https://github.com/ray-project/serve_config_examples) repo
 and [the Ray documentation](https://docs.ray.io/en/latest/serve/tutorials/stable-diffusion.html).
 
 ## Step 1: Create a Kubernetes cluster with GPUs
@@ -18,7 +18,7 @@ Please note that the YAML file in this example uses `serveConfigV2`, which is su
 
 ```sh
 # Step 3.1: Download `ray-service.stable-diffusion.yaml`
-curl -LO https://raw.githubusercontent.com/ray-project/kuberay/v1.0.0/ray-operator/config/samples/ray-service.stable-diffusion.yaml
+curl -LO https://raw.githubusercontent.com/ray-project/kuberay/v1.2.2/ray-operator/config/samples/ray-service.stable-diffusion.yaml
 
 # Step 3.2: Create a RayService
 kubectl apply -f ray-service.stable-diffusion.yaml
@@ -56,7 +56,7 @@ Note that the RayService's Kubernetes service will be created after the Serve ap
 ## Step 5: Send a request to the text-to-image model
 
 ```sh
-# Step 5.1: Download `stable_diffusion_req.py` 
+# Step 5.1: Download `stable_diffusion_req.py`
 curl -LO https://raw.githubusercontent.com/ray-project/serve_config_examples/master/stable_diffusion/stable_diffusion_req.py
 
 # Step 5.2: Set your `prompt` in `stable_diffusion_req.py`.

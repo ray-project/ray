@@ -92,6 +92,7 @@ from ray.rllib.connectors.env_to_module import (
 )
 from ray.rllib.core import DEFAULT_MODULE_ID
 from ray.rllib.core.columns import Columns
+from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
 from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.env.single_agent_episode import SingleAgentEpisode
 from ray.rllib.examples.envs.classes.stateless_cartpole import StatelessCartPole
@@ -118,13 +119,13 @@ register_env("stateless-cart", _env_creator)
 
 parser = add_rllib_example_script_args(default_reward=200.0)
 parser.set_defaults(
+    # Script only runs on new API stack.
+    enable_new_api_stack=True,
     # Make sure that - by default - we produce checkpoints during training.
     checkpoint_freq=1,
     checkpoint_at_end=True,
     # Use StatelessCartPole by default.
     env="stateless-cart",
-    # Script only runs on new API stack.
-    enable_new_api_stack=True,
 )
 parser.add_argument(
     "--explore-during-inference",
@@ -151,12 +152,12 @@ if __name__ == "__main__":
         get_trainable_cls(args.algo)
         .get_default_config()
         .training(
-            num_sgd_iter=6,
+            num_epochs=6,
             lr=0.0003,
             vf_loss_coeff=0.01,
         )
         # Add an LSTM setup to the default RLModule used.
-        .rl_module(model_config_dict={"use_lstm": True})
+        .rl_module(model_config=DefaultModelConfig(use_lstm=True))
     )
 
     print("Training LSTM-policy until desired reward/timesteps/iterations. ...")
@@ -190,7 +191,8 @@ if __name__ == "__main__":
     best_result = results.get_best_result(
         metric=f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}", mode="max"
     )
-    # Create new Algorithm and restore its state from the last checkpoint.
+
+    # Create RLModule from a checkpoint.
     rl_module = RLModule.from_checkpoint(
         os.path.join(
             best_result.checkpoint.path,
@@ -233,7 +235,7 @@ if __name__ == "__main__":
             rl_module_out = rl_module.forward_exploration(input_dict)
 
         to_env = module_to_env(
-            data=rl_module_out,
+            batch=rl_module_out,
             episodes=[episode],  # ConnectorV2 pipelines operate on lists of episodes.
             rl_module=rl_module,
             explore=args.explore_during_inference,

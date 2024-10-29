@@ -11,6 +11,7 @@ import pandas as pd
 import pyarrow as pa
 
 import ray
+from ray._private.utils import get_or_create_event_loop
 from ray.data._internal.compute import get_compute
 from ray.data._internal.execution.interfaces import PhysicalOperator
 from ray.data._internal.execution.interfaces.task_context import TaskContext
@@ -65,7 +66,7 @@ class _MapActorContext:
 
     def _init_async(self):
         # Only used for callable class with async generator `__call__` method.
-        loop = asyncio.new_event_loop()
+        loop = get_or_create_event_loop()
 
         def run_loop():
             asyncio.set_event_loop(loop)
@@ -203,8 +204,8 @@ def _handle_debugger_exception(e: Exception):
     """If the Ray Debugger is enabled, keep the full stack trace unmodified
     so that the debugger can stop at the initial unhandled exception.
     Otherwise, clear the stack trace to omit noisy internal code path."""
-
-    if _is_ray_debugger_enabled():
+    ctx = ray.data.DataContext.get_current()
+    if _is_ray_debugger_enabled() or ctx.raise_original_map_exception:
         raise e
     else:
         raise UserCodeException() from e
@@ -320,11 +321,16 @@ def _generate_transform_fn_for_async_map_batches(
         output_batch_queue = queue.Queue()
 
         async def process_batch(batch: DataBatch):
-            output_batch_iterator = await fn(batch)
-            # As soon as results become available from the async generator,
-            # put them into the result queue so they can be yielded.
-            async for output_batch in output_batch_iterator:
-                output_batch_queue.put(output_batch)
+            try:
+                output_batch_iterator = await fn(batch)
+                # As soon as results become available from the async generator,
+                # put them into the result queue so they can be yielded.
+                async for output_batch in output_batch_iterator:
+                    output_batch_queue.put(output_batch)
+            except Exception as e:
+                output_batch_queue.put(
+                    e
+                )  # Put the exception into the queue to signal an error
 
         async def process_all_batches():
             loop = ray.data._map_actor_context.udf_map_asyncio_loop
@@ -343,11 +349,15 @@ def _generate_transform_fn_for_async_map_batches(
         future = asyncio.run_coroutine_threadsafe(process_all_batches(), loop)
 
         # Yield results as they become available.
-        while not future.done():
+        # After all futures are completed, drain the queue to
+        # yield any remaining results.
+        while not future.done() or not output_batch_queue.empty():
             # Here, `out_batch` is a one-row output batch
             # from the async generator, corresponding to a
             # single row from the input batch.
             out_batch = output_batch_queue.get()
+            if isinstance(out_batch, Exception):
+                raise out_batch
             _validate_batch_output(out_batch)
             yield out_batch
 
@@ -448,7 +458,7 @@ def _create_map_transformer_for_row_based_map_op(
 
 def generate_map_rows_fn(
     target_max_block_size: int,
-) -> (Callable[[Iterator[Block], TaskContext, UserDefinedFunction], Iterator[Block]]):
+) -> Callable[[Iterator[Block], TaskContext, UserDefinedFunction], Iterator[Block]]:
     """Generate function to apply the UDF to each record of blocks."""
     context = DataContext.get_current()
 
@@ -468,7 +478,7 @@ def generate_map_rows_fn(
 
 def generate_flat_map_fn(
     target_max_block_size: int,
-) -> (Callable[[Iterator[Block], TaskContext, UserDefinedFunction], Iterator[Block]]):
+) -> Callable[[Iterator[Block], TaskContext, UserDefinedFunction], Iterator[Block]]:
     """Generate function to apply the UDF to each record of blocks,
     and then flatten results.
     """
@@ -491,7 +501,7 @@ def generate_flat_map_fn(
 
 def generate_filter_fn(
     target_max_block_size: int,
-) -> (Callable[[Iterator[Block], TaskContext, UserDefinedFunction], Iterator[Block]]):
+) -> Callable[[Iterator[Block], TaskContext, UserDefinedFunction], Iterator[Block]]:
     """Generate function to apply the UDF to each record of blocks,
     and filter out records that do not satisfy the given predicate.
     """

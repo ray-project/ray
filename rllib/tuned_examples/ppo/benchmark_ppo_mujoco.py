@@ -104,12 +104,11 @@ config = (
     # TODO (simon): Adjust to new model_config_dict.
     .training(
         # Following the paper.
-        gamma=0.99,
         lambda_=0.95,
         lr=0.0003,
-        num_sgd_iter=15,
+        num_epochs=15,
         train_batch_size=32 * 512,
-        sgd_minibatch_size=4096,
+        minibatch_size=4096,
         vf_loss_coeff=0.01,
         model={
             "fcnet_hiddens": [64, 64],

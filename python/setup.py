@@ -229,6 +229,16 @@ if setup_spec.type == SetupType.RAY:
     numpy_dep = "numpy >= 1.20"
     pyarrow_dep = "pyarrow >= 6.0.1"
     setup_spec.extras = {
+        "adag": [
+            "cupy-cuda12x; sys_platform != 'darwin'",
+        ],
+        "client": [
+            # The Ray client needs a specific range of gRPC to work:
+            # Tracking issues: https://github.com/grpc/grpc/issues/33714
+            "grpcio != 1.56.0"
+            if sys.platform == "darwin"
+            else "grpcio",
+        ],
         "data": [
             numpy_dep,
             pandas_dep,
@@ -252,12 +262,10 @@ if setup_spec.type == SetupType.RAY:
             "virtualenv >=20.0.24, !=20.21.1",  # For pip runtime env.
             "memray; sys_platform != 'win32'",
         ],
-        "client": [
-            # The Ray client needs a specific range of gRPC to work:
-            # Tracking issues: https://github.com/grpc/grpc/issues/33714
-            "grpcio != 1.56.0"
-            if sys.platform == "darwin"
-            else "grpcio",
+        "observability": [
+            "opentelemetry-api",
+            "opentelemetry-sdk",
+            "opentelemetry-exporter-otlp",
         ],
         "serve": [
             "uvicorn[standard]",
@@ -267,11 +275,6 @@ if setup_spec.type == SetupType.RAY:
             "watchfiles",
         ],
         "tune": ["pandas", "tensorboardX>=1.9", "requests", pyarrow_dep, "fsspec"],
-        "observability": [
-            "opentelemetry-api",
-            "opentelemetry-sdk",
-            "opentelemetry-exporter-otlp",
-        ],
     }
 
     # Ray Serve depends on the Ray dashboard components.
@@ -286,6 +289,7 @@ if setup_spec.type == SetupType.RAY:
             + [
                 "grpcio >= 1.32.0; python_version < '3.10'",  # noqa:E501
                 "grpcio >= 1.42.0; python_version >= '3.10'",  # noqa:E501
+                "pyOpenSSL",
             ]
         )
     )
@@ -782,12 +786,12 @@ setuptools.setup(
         "ray distributed parallel machine-learning hyperparameter-tuning"
         "reinforcement-learning deep-learning serving python"
     ),
-    python_requires=">=3.8",
+    python_requires=">=3.9",
     classifiers=[
-        "Programming Language :: Python :: 3.8",
         "Programming Language :: Python :: 3.9",
         "Programming Language :: Python :: 3.10",
         "Programming Language :: Python :: 3.11",
+        "Programming Language :: Python :: 3.12",
     ],
     packages=setup_spec.get_packages(),
     cmdclass={"build_ext": build_ext},
@@ -805,7 +809,7 @@ setuptools.setup(
         ]
     },
     package_data={
-        "ray": ["includes/*.pxd", "*.pxd", "data/_internal/logging.yaml"],
+        "ray": ["includes/*.pxd", "*.pxd"],
     },
     include_package_data=True,
     exclude_package_data={

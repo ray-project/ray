@@ -1,4 +1,5 @@
 from ray.rllib.algorithms.ppo import PPOConfig
+from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
 from ray.rllib.utils.metrics import (
     ENV_RUNNER_RESULTS,
     EPISODE_RETURN_MEAN,
@@ -24,18 +25,16 @@ config = (
     )
     .environment("CartPole-v1")
     .rl_module(
-        model_config_dict={
-            "fcnet_hiddens": [32],
-            "fcnet_activation": "linear",
-            "vf_share_layers": True,
-        }
+        model_config=DefaultModelConfig(
+            fcnet_hiddens=[32],
+            fcnet_activation="linear",
+            vf_share_layers=True,
+        ),
     )
     .training(
-        gamma=0.99,
         lr=0.0003,
-        num_sgd_iter=6,
+        num_epochs=6,
         vf_loss_coeff=0.01,
-        use_kl_loss=True,
     )
     .evaluation(
         evaluation_num_env_runners=1,
@@ -45,8 +44,13 @@ config = (
     )
     .offline_data(
         output="local:///tmp/cartpole/",
-        output_write_episodes=True,
+        output_write_episodes=False,
         output_max_rows_per_file=1000,
+        # LZ4-compress columns 'obs', 'new_obs', and 'actions' to
+        # save disk space and increase performance. Note, this means
+        # that you have to use `input_compress_columns` in the same
+        # way when using the data for training in `RLlib`.
+        output_compress_columns=["obs", "new_obs", "actions"],
     )
 )
 

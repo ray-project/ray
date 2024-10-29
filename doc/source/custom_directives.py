@@ -776,8 +776,8 @@ def setup_context(app, pagename, templatename, context, doctree):
         soup.append(page_text)
 
         container = soup.new_tag("div", attrs={"class": "example-index"})
-        for group, examples in examples.items():
-            if not examples:
+        for group, group_examples in examples.items():
+            if not group_examples:
                 continue
 
             header = soup.new_tag("h2", attrs={"class": "example-header"})
@@ -810,7 +810,7 @@ def setup_context(app, pagename, templatename, context, doctree):
                 table.append(thead)
 
             tbody = soup.new_tag("tbody")
-            for example in examples:
+            for example in group_examples:
                 tr = soup.new_tag("tr")
 
                 # The columns specify which attributes of each example to show;
@@ -1256,14 +1256,6 @@ def pregenerate_example_rsts(
             )
 
 
-ray_prefix = "ray-"
-min_version = "1.11.0"
-repo_url = "https://github.com/ray-project/ray.git"
-static_dir_name = "_static"
-version_json_filename = "versions.json"
-dereference_suffix = "^{}"
-
-
 def generate_version_url(version):
     return f"https://docs.ray.io/en/{version}/"
 
@@ -1272,6 +1264,13 @@ def generate_versions_json():
     """Gets the releases from the remote repo, sorts them in semver order,
     and generates the JSON needed for the version switcher
     """
+
+    ray_prefix = "ray-"
+    min_version = "1.11.0"
+    repo_url = "https://github.com/ray-project/ray.git"
+    static_dir_name = "_static"
+    version_json_filename = "versions.json"
+    dereference_suffix = "^{}"
 
     version_json_data = []
 

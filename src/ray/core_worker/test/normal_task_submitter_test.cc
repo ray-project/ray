@@ -102,7 +102,7 @@ class MockWorkerClient : public rpc::CoreWorkerClientInterface {
     if (was_cancelled_before_running) {
       reply.set_was_cancelled_before_running(true);
     }
-    callback(status, reply);
+    callback(status, std::move(reply));
     callbacks.pop_front();
     return true;
   }
@@ -200,7 +200,7 @@ class MockRayletClient : public WorkerLeaseInterface {
       const ray::rpc::ClientCallback<ray::rpc::GetTaskFailureCauseReply> &callback)
       override {
     ray::rpc::GetTaskFailureCauseReply reply;
-    callback(Status::OK(), reply);
+    callback(Status::OK(), std::move(reply));
     num_get_task_failure_causes += 1;
   }
 
@@ -275,7 +275,7 @@ class MockRayletClient : public WorkerLeaseInterface {
       return false;
     } else {
       auto callback = callbacks.front();
-      callback(Status::OK(), reply);
+      callback(Status::OK(), std::move(reply));
       callbacks.pop_front();
       return true;
     }
@@ -287,7 +287,8 @@ class MockRayletClient : public WorkerLeaseInterface {
       return false;
     } else {
       auto callback = callbacks.front();
-      callback(Status::RpcError("unavailable", grpc::StatusCode::UNAVAILABLE), reply);
+      callback(Status::RpcError("unavailable", grpc::StatusCode::UNAVAILABLE),
+               std::move(reply));
       callbacks.pop_front();
       return true;
     }
@@ -300,7 +301,7 @@ class MockRayletClient : public WorkerLeaseInterface {
       return false;
     } else {
       auto callback = cancel_callbacks.front();
-      callback(Status::OK(), reply);
+      callback(Status::OK(), std::move(reply));
       cancel_callbacks.pop_front();
       return true;
     }
@@ -334,6 +335,18 @@ class MockActorCreator : public ActorCreatorInterface {
 
   Status AsyncRegisterActor(const TaskSpecification &task_spec,
                             gcs::StatusCallback callback) override {
+    return Status::OK();
+  }
+
+  Status AsyncRestartActor(const ActorID &actor_id,
+                           uint64_t num_restarts,
+                           gcs::StatusCallback callback) override {
+    return Status::OK();
+  }
+
+  Status AsyncReportActorOutOfScope(const ActorID &actor_id,
+                                    uint64_t num_restarts_due_to_lineage_reconstruction,
+                                    gcs::StatusCallback callback) override {
     return Status::OK();
   }
 

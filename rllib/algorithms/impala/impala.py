@@ -19,7 +19,6 @@ from ray.rllib.core import (
     COMPONENT_MODULE_TO_ENV_CONNECTOR,
 )
 from ray.rllib.core.rl_module.rl_module import RLModuleSpec
-from ray.rllib.env.env_runner_group import _handle_remote_call_result_errors
 from ray.rllib.execution.buffers.mixin_replay_buffer import MixInMultiAgentReplayBuffer
 from ray.rllib.execution.learner_thread import LearnerThread
 from ray.rllib.execution.multi_gpu_learner_thread import MultiGPULearnerThread
@@ -134,12 +133,11 @@ class IMPALAConfig(AlgorithmConfig):
         self.vtrace_clip_pg_rho_threshold = 1.0
         self.num_multi_gpu_tower_stacks = 1  # @OldAPIstack
         self.minibatch_buffer_size = 1  # @OldAPIstack
-        self.num_sgd_iter = 1
         self.replay_proportion = 0.0  # @OldAPIstack
         self.replay_buffer_num_slots = 0  # @OldAPIstack
         self.learner_queue_size = 3
         self.learner_queue_timeout = 300  # @OldAPIstack
-        self.max_requests_in_flight_per_sampler_worker = 2
+        self.max_requests_in_flight_per_env_runner = 2
         self.max_requests_in_flight_per_aggregator_worker = 2
         self.timeout_s_sampler_manager = 0.0
         self.timeout_s_aggregator_manager = 0.0
@@ -168,10 +166,10 @@ class IMPALAConfig(AlgorithmConfig):
         self._lr_vf = 0.0005  # @OldAPIstack
 
         # Override some of AlgorithmConfig's default values with IMPALA-specific values.
+        self.num_learners = 1
         self.rollout_fragment_length = 50
         self.train_batch_size = 500  # @OldAPIstack
         self.train_batch_size_per_learner = 500
-        self._minibatch_size = "auto"
         self.num_env_runners = 2
         self.num_gpus = 1  # @OldAPIstack
         self.lr = 0.0005
@@ -200,8 +198,6 @@ class IMPALAConfig(AlgorithmConfig):
         num_gpu_loader_threads: Optional[int] = NotProvided,
         num_multi_gpu_tower_stacks: Optional[int] = NotProvided,
         minibatch_buffer_size: Optional[int] = NotProvided,
-        minibatch_size: Optional[Union[int, str]] = NotProvided,
-        num_sgd_iter: Optional[int] = NotProvided,
         replay_proportion: Optional[float] = NotProvided,
         replay_buffer_num_slots: Optional[int] = NotProvided,
         learner_queue_size: Optional[int] = NotProvided,
@@ -252,15 +248,7 @@ class IMPALAConfig(AlgorithmConfig):
                 - This enables us to preload data into these stacks while another stack
                 is performing gradient calculations.
             minibatch_buffer_size: How many train batches should be retained for
-                minibatching. This conf only has an effect if `num_sgd_iter > 1`.
-            minibatch_size: The size of minibatches that are trained over during
-                each SGD iteration. If "auto", will use the same value as
-                `train_batch_size`.
-                Note that this setting only has an effect if
-                `enable_rl_module_and_learner=True` and it must be a multiple of
-                `rollout_fragment_length` or `sequence_length` and smaller than or equal
-                to `train_batch_size`.
-            num_sgd_iter: Number of passes to make over each train batch.
+                minibatching. This conf only has an effect if `num_epochs > 1`.
             replay_proportion: Set >0 to enable experience replay. Saved samples will
                 be replayed with a p:1 proportion to new data samples.
             replay_buffer_num_slots: Number of sample batches to store for replay.
@@ -330,8 +318,6 @@ class IMPALAConfig(AlgorithmConfig):
             self.num_multi_gpu_tower_stacks = num_multi_gpu_tower_stacks
         if minibatch_buffer_size is not NotProvided:
             self.minibatch_buffer_size = minibatch_buffer_size
-        if num_sgd_iter is not NotProvided:
-            self.num_sgd_iter = num_sgd_iter
         if replay_proportion is not NotProvided:
             self.replay_proportion = replay_proportion
         if replay_buffer_num_slots is not NotProvided:
@@ -374,8 +360,6 @@ class IMPALAConfig(AlgorithmConfig):
             self._separate_vf_optimizer = _separate_vf_optimizer
         if _lr_vf is not NotProvided:
             self._lr_vf = _lr_vf
-        if minibatch_size is not NotProvided:
-            self._minibatch_size = minibatch_size
 
         return self
 
@@ -391,26 +375,16 @@ class IMPALAConfig(AlgorithmConfig):
                 "`config.training(vtrace=True)`."
             )
 
-        # New stack w/ EnvRunners does NOT support aggregation workers yet or a mixin
-        # replay buffer.
+        # New API stack checks.
         if self.enable_env_runner_and_connector_v2:
+            # Does NOT support aggregation workers yet or a mixin replay buffer.
             if self.replay_ratio != 0.0:
                 raise ValueError(
                     "The new API stack in combination with the new EnvRunner API "
                     "does NOT support a mixin replay buffer yet for "
                     f"{self} (set `config.replay_proportion` to 0.0)!"
                 )
-
-        # Entropy coeff schedule checking.
-        if self.enable_rl_module_and_learner:
-            if not self.enable_env_runner_and_connector_v2:
-                raise ValueError(
-                    "Setting `enable_rl_module_and_learner` to True and "
-                    "`enable_env_runner_and_connector_v2` to False ('hybrid API stack'"
-                    ") is not longer supported! Set both to True or both to False, "
-                    "instead."
-                )
-
+            # Entropy coeff schedule checking.
             if self.entropy_coeff_schedule is not None:
                 raise ValueError(
                     "`entropy_coeff_schedule` is deprecated and must be None! Use the "
@@ -421,6 +395,28 @@ class IMPALAConfig(AlgorithmConfig):
                 setting_name="entropy_coeff",
                 description="entropy coefficient",
             )
+            # Learner API specific checks.
+            if self.minibatch_size is not None and not (
+                (self.minibatch_size % self.rollout_fragment_length == 0)
+                and self.minibatch_size <= self.total_train_batch_size
+            ):
+                raise ValueError(
+                    f"`minibatch_size` ({self._minibatch_size}) must either be None "
+                    "or a multiple of `rollout_fragment_length` "
+                    f"({self.rollout_fragment_length}) while at the same time smaller "
+                    "than or equal to `total_train_batch_size` "
+                    f"({self.total_train_batch_size})!"
+                )
+            # Make sure we have >=1 Learner and warn if `num_learners=0` (should only be
+            # used for debugging).
+            if self.num_learners == 0:
+                logger.warning(
+                    f"{self} should only be run with `num_learners` >= 1! A value of 0 "
+                    "(local learner) should only be used for debugging purposes as it "
+                    "makes the algorithm non-asynchronous. When running with "
+                    "`num_learners=0`, expect diminished learning capabilities."
+                )
+
         elif isinstance(self.entropy_coeff, float) and self.entropy_coeff < 0.0:
             raise ValueError("`entropy_coeff` must be >= 0.0")
 
@@ -449,22 +445,6 @@ class IMPALAConfig(AlgorithmConfig):
                 "TFPolicy to support more than one loss term/optimizer! Try setting "
                 "config.training(_tf_policy_handles_more_than_one_loss=True)."
             )
-        # Learner API specific checks.
-        if (
-            self.enable_rl_module_and_learner
-            and self._minibatch_size != "auto"
-            and not (
-                (self.minibatch_size % self.rollout_fragment_length == 0)
-                and self.minibatch_size <= self.total_train_batch_size
-            )
-        ):
-            raise ValueError(
-                f"`minibatch_size` ({self._minibatch_size}) must either be 'auto' "
-                "or a multiple of `rollout_fragment_length` "
-                f"({self.rollout_fragment_length}) while at the same time smaller "
-                "than or equal to `total_train_batch_size` "
-                f"({self.total_train_batch_size})!"
-            )
 
     @property
     def replay_ratio(self) -> float:
@@ -474,20 +454,6 @@ class IMPALAConfig(AlgorithmConfig):
         """
         return (1 / self.replay_proportion) if self.replay_proportion > 0 else 0.0
 
-    @property
-    def minibatch_size(self):
-        # If 'auto', use the train_batch_size (meaning each SGD iter is a single pass
-        # through the entire train batch). Otherwise, use user provided setting.
-        return (
-            (
-                self.train_batch_size_per_learner
-                if self.enable_env_runner_and_connector_v2
-                else self.train_batch_size
-            )
-            if self._minibatch_size == "auto"
-            else self._minibatch_size
-        )
-
     @override(AlgorithmConfig)
     def get_default_learner_class(self):
         if self.framework_str == "torch":
@@ -496,14 +462,15 @@ class IMPALAConfig(AlgorithmConfig):
             )
 
             return IMPALATorchLearner
-        elif self.framework_str == "tf2":
-            from ray.rllib.algorithms.impala.tf.impala_tf_learner import IMPALATfLearner
-
-            return IMPALATfLearner
+        elif self.framework_str in ["tf2", "tf"]:
+            raise ValueError(
+                "TensorFlow is no longer supported on the new API stack! "
+                "Use `framework='torch'`."
+            )
         else:
             raise ValueError(
                 f"The framework {self.framework_str} is not supported. "
-                "Use either 'torch' or 'tf2'."
+                "Use `framework='torch'`."
             )
 
     @override(AlgorithmConfig)
@@ -539,7 +506,7 @@ class IMPALA(Algorithm):
     2. If enabled, the replay buffer stores and produces batches of size
        `rollout_fragment_length * num_envs_per_env_runner`.
     3. If enabled, the minibatch ring buffer stores and replays batches of
-       size `train_batch_size` up to `num_sgd_iter` times per batch.
+       size `train_batch_size` up to `num_epochs` times per batch.
     4. The learner thread executes data parallel SGD across `num_gpus` GPUs
        on batches of size `train_batch_size`.
     """
@@ -648,7 +615,7 @@ class IMPALA(Algorithm):
 
     @override(Algorithm)
     def training_step(self) -> ResultDict:
-        # Old- and hybrid API stacks.
+        # Old API stack.
         if not self.config.enable_rl_module_and_learner:
             return self._training_step_old_api_stack()
 
@@ -734,6 +701,9 @@ class IMPALA(Algorithm):
                                 NUM_ENV_STEPS_SAMPLED_LIFETIME, default=0
                             ),
                         },
+                        num_epochs=self.config.num_epochs,
+                        minibatch_size=self.config.minibatch_size,
+                        shuffle_batch_per_epoch=self.config.shuffle_batch_per_epoch,
                     )
                 else:
                     learner_results = self.learner_group.update_from_episodes(
@@ -745,6 +715,9 @@ class IMPALA(Algorithm):
                                 NUM_ENV_STEPS_SAMPLED_LIFETIME, default=0
                             ),
                         },
+                        num_epochs=self.config.num_epochs,
+                        minibatch_size=self.config.minibatch_size,
+                        shuffle_batch_per_epoch=self.config.shuffle_batch_per_epoch,
                     )
                 if not do_async_updates:
                     learner_results = [learner_results]
@@ -936,9 +909,12 @@ class IMPALA(Algorithm):
                 timeout_seconds=self.config.timeout_s_aggregator_manager,
             )
         )
-        _handle_remote_call_result_errors(
+        FaultTolerantActorManager.handle_remote_call_result_errors(
             waiting_processed_sample_batches,
-            self.config.ignore_env_runner_failures,
+            ignore_ray_errors=(
+                self.config.ignore_env_runner_failures
+                or self.config.restart_failed_env_runners
+            ),
         )
 
         return list(waiting_processed_sample_batches.ignore_errors())
@@ -1026,10 +1002,8 @@ class IMPALA(Algorithm):
 
         # Get sampled SampleBatches from our workers (by ray references if we use
         # tree-aggregation).
-        unprocessed_sample_batches = (
-            self._get_samples_from_workers_old_and_hybrid_api_stack(
-                return_object_refs=use_tree_aggregation,
-            )
+        unprocessed_sample_batches = self._get_samples_from_workers_old_api_stack(
+            return_object_refs=use_tree_aggregation,
         )
         # Tag workers that actually produced ready sample batches this iteration.
         # Those workers will have to get updated at the end of the iteration.
@@ -1073,12 +1047,13 @@ class IMPALA(Algorithm):
         if self._aggregator_actor_manager:
             self._aggregator_actor_manager.probe_unhealthy_actors(
                 timeout_seconds=self.config.env_runner_health_probe_timeout_s,
+                mark_healthy=True,
             )
 
         return train_results
 
     @OldAPIStack
-    def _get_samples_from_workers_old_and_hybrid_api_stack(
+    def _get_samples_from_workers_old_api_stack(
         self,
         return_object_refs: Optional[bool] = False,
     ) -> List[Tuple[int, Union[ObjectRef, SampleBatchType]]]:
@@ -1174,9 +1149,12 @@ class IMPALA(Algorithm):
                 timeout_seconds=self.config.timeout_s_aggregator_manager,
             )
         )
-        _handle_remote_call_result_errors(
+        FaultTolerantActorManager.handle_remote_call_result_errors(
             waiting_processed_sample_batches,
-            self.config.ignore_env_runner_failures,
+            ignore_ray_errors=(
+                self.config.ignore_env_runner_failures
+                or self.config.restart_failed_env_runners
+            ),
         )
 
         return [b.get() for b in waiting_processed_sample_batches.ignore_errors()]
@@ -1245,7 +1223,7 @@ class IMPALA(Algorithm):
             if (
                 self.config.batch_mode == "truncate_episodes"
                 and self.config.enable_connectors
-                and self.config.recreate_failed_env_runners
+                and self.config.restart_failed_env_runners
             ):
                 if any(
                     SampleBatch.VF_PREDS in pb
@@ -1291,7 +1269,7 @@ class IMPALA(Algorithm):
                     ),
                 },
                 async_update=async_update,
-                num_iters=self.config.num_sgd_iter,
+                num_epochs=self.config.num_epochs,
                 minibatch_size=self.config.minibatch_size,
             )
             if not async_update:
@@ -1436,10 +1414,8 @@ class IMPALA(Algorithm):
             )
 
     @override(Algorithm)
-    def _compile_iteration_results_old_and_hybrid_api_stacks(self, *args, **kwargs):
-        result = super()._compile_iteration_results_old_and_hybrid_api_stacks(
-            *args, **kwargs
-        )
+    def _compile_iteration_results_old_api_stack(self, *args, **kwargs):
+        result = super()._compile_iteration_results_old_api_stack(*args, **kwargs)
         if not self.config.enable_rl_module_and_learner:
             result = self._learner_thread.add_learner_metrics(
                 result, overwrite_learner_info=False
@@ -1530,7 +1506,7 @@ def make_learner_thread(local_worker, config):
             lr=config["lr"],
             train_batch_size=config["train_batch_size"],
             num_multi_gpu_tower_stacks=config["num_multi_gpu_tower_stacks"],
-            num_sgd_iter=config["num_sgd_iter"],
+            num_sgd_iter=config["num_epochs"],
             learner_queue_size=config["learner_queue_size"],
             learner_queue_timeout=config["learner_queue_timeout"],
             num_data_load_threads=config["num_gpu_loader_threads"],
@@ -1539,7 +1515,7 @@ def make_learner_thread(local_worker, config):
         learner_thread = LearnerThread(
             local_worker,
             minibatch_buffer_size=config["minibatch_buffer_size"],
-            num_sgd_iter=config["num_sgd_iter"],
+            num_sgd_iter=config["num_epochs"],
             learner_queue_size=config["learner_queue_size"],
             learner_queue_timeout=config["learner_queue_timeout"],
         )
