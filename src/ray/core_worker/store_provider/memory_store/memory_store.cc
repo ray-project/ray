@@ -260,8 +260,11 @@ bool CoreWorkerMemoryStore::Put(const RayObject &object, const ObjectID &object_
   }
 
   // It's important for performance to run the callbacks outside the lock.
+  // Posting the callbacks to the io_context_ ensures that the callbacks are run without
+  // any locks held from the caller of Put(). See
+  // https://github.com/ray-project/ray/issues/47649 for more details.
   io_context_.post(
-      [async_callbacks, object_entry]() {
+      [async_callbacks = std::move(async_callbacks), object_entry]() {
         for (const auto &cb : async_callbacks) {
           cb(object_entry);
         }
