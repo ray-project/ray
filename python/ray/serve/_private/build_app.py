@@ -6,7 +6,7 @@ from ray.dag.py_obj_scanner import _PyObjScanner
 from ray.serve._private.common import DeploymentHandleSource
 from ray.serve._private.constants import SERVE_LOGGER_NAME
 from ray.serve.deployment import Application, Deployment
-from ray.serve.handle import DeploymentHandle, _HandleOptions
+from ray.serve.handle import DeploymentHandle
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
@@ -99,7 +99,6 @@ def _build_app_recursive(
     handles[app] = DeploymentHandle(
         _get_unique_deployment_name_memoized(app, deployment_names),
         app_name=app_name,
-        handle_options=_HandleOptions(_source=DeploymentHandleSource.REPLICA),
     )
 
     deployments = []

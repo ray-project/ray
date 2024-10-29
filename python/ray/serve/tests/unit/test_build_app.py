@@ -8,7 +8,7 @@ from ray import serve
 from ray.serve._private.build_app import BuiltApplication, build_app
 from ray.serve._private.common import DeploymentHandleSource
 from ray.serve.deployment import Application, Deployment
-from ray.serve.handle import DeploymentHandle, _HandleOptions
+from ray.serve.handle import DeploymentHandle
 
 
 @pytest.fixture(autouse=True)
@@ -123,18 +123,12 @@ def test_multi_deployment_basic():
                     DeploymentHandle(
                         "Inner",
                         app_name="default",
-                        handle_options=_HandleOptions(
-                            _source=DeploymentHandleSource.REPLICA
-                        ),
                     ),
                 ),
                 _init_kwargs={
                     "other": DeploymentHandle(
                         "Other",
                         app_name="default",
-                        handle_options=_HandleOptions(
-                            _source=DeploymentHandleSource.REPLICA
-                        ),
                     ),
                 },
             ),
@@ -164,9 +158,6 @@ def test_multi_deployment_handle_in_nested_obj():
                         DeploymentHandle(
                             "Inner",
                             app_name="default",
-                            handle_options=_HandleOptions(
-                                _source=DeploymentHandleSource.REPLICA
-                            ),
                         ),
                     ],
                 ),
@@ -198,9 +189,6 @@ def test_multi_deployment_custom_app_name():
                     DeploymentHandle(
                         "Inner",
                         app_name="custom",
-                        handle_options=_HandleOptions(
-                            _source=DeploymentHandleSource.REPLICA
-                        ),
                     ),
                 ),
                 _init_kwargs={},
@@ -234,16 +222,10 @@ def test_multi_deployment_name_collision():
                     DeploymentHandle(
                         "Inner",
                         app_name="default",
-                        handle_options=_HandleOptions(
-                            _source=DeploymentHandleSource.REPLICA
-                        ),
                     ),
                     DeploymentHandle(
                         "Inner_1",
                         app_name="default",
-                        handle_options=_HandleOptions(
-                            _source=DeploymentHandleSource.REPLICA
-                        ),
                     ),
                 ),
                 _init_kwargs={},
@@ -270,7 +252,6 @@ def test_multi_deployment_same_app_passed_twice():
     shared_handle = DeploymentHandle(
         "Shared",
         app_name="default",
-        handle_options=_HandleOptions(_source=DeploymentHandleSource.REPLICA),
     )
     _build_and_check(
         app,
@@ -288,9 +269,6 @@ def test_multi_deployment_same_app_passed_twice():
                     DeploymentHandle(
                         "Inner",
                         app_name="default",
-                        handle_options=_HandleOptions(
-                            _source=DeploymentHandleSource.REPLICA
-                        ),
                     ),
                     shared_handle,
                 ),
