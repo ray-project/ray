@@ -763,11 +763,7 @@ def test_csv_read_filter_non_csv_file(ray_start_regular_shared, tmp_path):
     assert ds.to_pandas().equals(df)
 
 
-# NOTE: The last test using the shared ray_start_regular_shared cluster must use the
-# shutdown_only fixture so the shared cluster is shut down, otherwise the below
-# test_write_datasink_ray_remote_args test, which uses a cluster_utils cluster, will
-# fail with a double-init.
-def test_csv_read_no_header(shutdown_only, tmp_path):
+def test_csv_read_no_header(ray_start_regular_shared, tmp_path):
     from pyarrow import csv
 
     file_path = os.path.join(tmp_path, "test.csv")
@@ -781,7 +777,7 @@ def test_csv_read_no_header(shutdown_only, tmp_path):
     assert df.equals(out_df)
 
 
-def test_csv_read_with_column_type_specified(shutdown_only, tmp_path):
+def test_csv_read_with_column_type_specified(ray_start_regular_shared, tmp_path):
     from pyarrow import csv
 
     file_path = os.path.join(tmp_path, "test.csv")
