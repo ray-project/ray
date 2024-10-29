@@ -254,12 +254,8 @@ RLModules
 - |old_stack| `How to using the "Repeated" space of RLlib for variable lengths observations <https://github.com/ray-project/ray/blob/master/rllib/examples/_old_api_stack/complex_struct_space.py>`__:
    How to use RLlib's `Repeated` space to handle variable length observations.
 - |old_stack| `How to write a custom Keras model <https://github.com/ray-project/ray/blob/master/rllib/examples/_old_api_stack/custom_keras_model.py>`__:
-   Example of using a custom Keras model.
-- |old_stack| `How to register a custom model with supervised loss <https://github.com/ray-project/ray/blob/master/rllib/examples/custom_model_loss_and_metrics.py>`__:
    Example of defining and registering a custom model with a supervised loss.
 - |old_stack| `How to train with batch normalization <https://github.com/ray-project/ray/blob/master/rllib/examples/_old_api_stack/models/batch_norm_model.py>`__:
-   Example of adding batch norm layers to a custom model.
-- |old_stack| `How to write a custom model with its custom API <https://github.com/ray-project/ray/blob/master/rllib/examples/custom_model_api.py>`__:
    Shows how to define a custom Model API in RLlib, such that it can be used inside certain algorithms.
 - |old_stack| `How to write a "trajectory ciew API" utilizing model <https://github.com/ray-project/ray/blob/master/rllib/examples/_old_api_stack/models/trajectory_view_utilizing_models.py>`__:
    An example on how a model can use the trajectory view API to specify its own input.
@@ -284,7 +280,7 @@ in roughly 5min. It can be run like this on a single g5.24xlarge (or g6.24xlarge
 .. code-block:: bash
 
     $ cd ray/rllib/tuned_examples/ppo
-    $ python atari_ppo.py --env ALE/Pong-v5 --num-gpus=4 --num-env-runners=95
+    $ python atari_ppo.py --env=ale_py:ALE/Pong-v5 --num-gpus=4 --num-env-runners=95
 
 Note that some of the files in this folder are used for RLlib's daily or weekly
 release tests as well.

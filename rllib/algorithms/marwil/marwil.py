@@ -245,12 +245,12 @@ class MARWILConfig(AlgorithmConfig):
     @override(AlgorithmConfig)
     def get_default_rl_module_spec(self) -> RLModuleSpecType:
         if self.framework_str == "torch":
-            from ray.rllib.algorithms.marwil.torch.marwil_torch_rl_module import (
-                MARWILTorchRLModule,
+            from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import (
+                PPOTorchRLModule,
             )
 
             return RLModuleSpec(
-                module_class=MARWILTorchRLModule,
+                module_class=PPOTorchRLModule,
                 catalog_class=MARWILCatalog,
             )
         else:
@@ -431,14 +431,6 @@ class MARWIL(Algorithm):
     def training_step(self) -> ResultDict:
         if self.config.enable_env_runner_and_connector_v2:
             return self._training_step_new_api_stack()
-        elif self.config.enable_rl_module_and_learner:
-            raise ValueError(
-                "`enable_rl_module_and_learner=True`. Hybrid stack is not "
-                "supported for MARWIL. Either use the old stack with "
-                "`ModelV2` or the new stack with `RLModule`. You can enable "
-                "the new stack by setting both, `enable_rl_module_and_learner` "
-                "and `enable_env_runner_and_connector_v2` to `True`."
-            )
         else:
             return self._training_step_old_api_stack()
 

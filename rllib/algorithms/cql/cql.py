@@ -107,6 +107,12 @@ class CQLConfig(SACConfig):
         }
 
         # Changes to Algorithm's/SACConfig's default:
+
+        # `.api_stack()`
+        self.api_stack(
+            enable_rl_module_and_learner=False,
+            enable_env_runner_and_connector_v2=False,
+        )
         # .reporting()
         self.min_sample_timesteps_per_iteration = 0
         self.min_train_timesteps_per_iteration = 100
@@ -308,13 +314,6 @@ class CQL(SAC):
     def training_step(self) -> ResultDict:
         if self.config.enable_env_runner_and_connector_v2:
             return self._training_step_new_api_stack()
-        elif self.config.enable_rl_module_and_learner:
-            raise ValueError(
-                "Hybrid API stack is not supported. Either set "
-                "`enable_rl_module_and_learner=True` and "
-                "`enable_env_runner_and_connector_v2=True` or set both "
-                "attributed to `False`."
-            )
         else:
             return self._training_step_old_api_stack()
 

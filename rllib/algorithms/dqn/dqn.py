@@ -424,23 +424,15 @@ class DQNConfig(AlgorithmConfig):
         # Call super's validation method.
         super().validate()
 
-        # Disallow hybrid API stack for DQN/SAC.
+        # Warn about new API stack on by default.
         if self.enable_rl_module_and_learner:
-            if not self.enable_env_runner_and_connector_v2:
-                raise ValueError(
-                    "Hybrid API stack (`enable_rl_module_and_learner=True` and "
-                    "`enable_env_runner_and_connector_v2=False`) no longer supported "
-                    "for DQN! Set both to True (recommended new API stack) or both to "
-                    "False (old API stack)."
-                )
-            else:
-                logger.warning(
-                    "You are running DQN on the new API stack! This is the new default "
-                    "behavior for this algorithm. If you don't want to use the new API "
-                    "stack, set `config.api_stack(enable_rl_module_and_learner=False, "
-                    "enable_env_runner_and_connector_v2=False)`. For a detailed "
-                    "migration guide, see here: https://docs.ray.io/en/master/rllib/new-api-stack-migration-guide.html"  # noqa
-                )
+            logger.warning(
+                "You are running DQN on the new API stack! This is the new default "
+                "behavior for this algorithm. If you don't want to use the new API "
+                "stack, set `config.api_stack(enable_rl_module_and_learner=False, "
+                "enable_env_runner_and_connector_v2=False)`. For a detailed "
+                "migration guide, see here: https://docs.ray.io/en/master/rllib/new-api-stack-migration-guide.html"  # noqa
+            )
 
         if (
             not self.enable_rl_module_and_learner
@@ -547,8 +539,7 @@ class DQNConfig(AlgorithmConfig):
             return RLModuleSpec(
                 module_class=DQNRainbowTorchRLModule,
                 catalog_class=DQNRainbowCatalog,
-                model_config_dict=self.model_config,
-                # model_config_dict=self.model,
+                model_config=self.model_config,
             )
         else:
             raise ValueError(

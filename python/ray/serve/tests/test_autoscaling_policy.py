@@ -16,7 +16,6 @@ import ray.util.state as state_api
 from ray import serve
 from ray._private.test_utils import SignalActor, wait_for_condition
 from ray.serve._private.common import (
-    ApplicationStatus,
     DeploymentID,
     DeploymentStatus,
     DeploymentStatusTrigger,
@@ -38,7 +37,7 @@ from ray.serve._private.test_utils import (
 )
 from ray.serve.config import AutoscalingConfig
 from ray.serve.handle import DeploymentHandle
-from ray.serve.schema import ServeDeploySchema
+from ray.serve.schema import ApplicationStatus, ServeDeploySchema
 from ray.util.state import list_actors
 
 

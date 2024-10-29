@@ -256,6 +256,25 @@ def test_actor_task_failure(shutdown_only, restore_data_context):
     ds.map_batches(Mapper, concurrency=1).materialize()
 
 
+def test_gpu_workers_not_reused(shutdown_only):
+    """By default, in Ray Core if `num_gpus` is specified workers will not be reused
+    for tasks invocation.
+
+    For more context check out https://github.com/ray-project/ray/issues/29624"""
+
+    ray.init(num_gpus=1)
+
+    total_blocks = 5
+    ds = ray.data.range(5, override_num_blocks=total_blocks)
+
+    def _get_worker_id(_):
+        return {"worker_id": ray.get_runtime_context().get_worker_id()}
+
+    unique_worker_ids = ds.map(_get_worker_id, num_gpus=1).unique("worker_id")
+
+    assert len(unique_worker_ids) == total_blocks
+
+
 def test_concurrency(shutdown_only):
     ray.init(num_cpus=6)
     ds = ray.data.range(10, override_num_blocks=10)
@@ -322,6 +341,15 @@ def test_add_column(ray_start_regular_shared):
 
     with pytest.raises(ValueError):
         ds = ray.data.range(5).add_column("id", 0)
+
+
+@pytest.mark.parametrize("names", (["foo", "bar"], {"spam": "foo", "ham": "bar"}))
+def test_rename_columns(ray_start_regular_shared, names):
+    ds = ray.data.from_items([{"spam": 0, "ham": 0}])
+
+    renamed_ds = ds.rename_columns(names)
+
+    assert renamed_ds.schema().names == ["foo", "bar"]
 
 
 def test_drop_columns(ray_start_regular_shared, tmp_path):

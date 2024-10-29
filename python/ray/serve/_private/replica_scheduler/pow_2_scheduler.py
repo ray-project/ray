@@ -23,6 +23,7 @@ from ray.serve._private.common import (
     DeploymentHandleSource,
     DeploymentID,
     ReplicaID,
+    ReplicaQueueLengthInfo,
     RequestMetadata,
     RunningReplicaInfo,
 )
@@ -244,6 +245,26 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
         self, replica_info: RunningReplicaInfo
     ) -> ReplicaWrapper:
         return self._create_replica_wrapper_func(replica_info)
+
+    def on_replica_actor_died(self, replica_id: ReplicaID):
+        """Drop replica from replica set so it's not considered for future requests."""
+        self._replicas.pop(replica_id, None)
+        self._replica_id_set.discard(replica_id)
+        for id_set in self._colocated_replica_ids.values():
+            id_set.discard(replica_id)
+
+    def on_replica_actor_unavailable(self, replica_id: ReplicaID):
+        """Invalidate cache entry so active probing is required for the next request."""
+        self._replica_queue_len_cache.invalidate_key(replica_id)
+
+    def on_new_queue_len_info(
+        self, replica_id: ReplicaID, queue_len_info: ReplicaQueueLengthInfo
+    ):
+        """Update queue length cache with new info received from replica."""
+        if self._use_replica_queue_len_cache:
+            self._replica_queue_len_cache.update(
+                replica_id, queue_len_info.num_ongoing_requests
+            )
 
     def update_replicas(self, replicas: List[ReplicaWrapper]):
         """Update the set of available replicas to be considered for scheduling.
@@ -473,19 +494,6 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
                     self.num_scheduling_tasks_in_backoff
                 )
 
-    def on_replica_actor_died(self, replica_id: ReplicaID):
-        """Drop replica from replica set so it's not considered for future requests."""
-
-        self._replicas.pop(replica_id, None)
-        self._replica_id_set.discard(replica_id)
-        for id_set in self._colocated_replica_ids.values():
-            id_set.discard(replica_id)
-
-    def on_replica_actor_unavailable(self, replica_id: ReplicaID):
-        """Invalidate cache entry so active probing is required for the next request."""
-
-        self._replica_queue_len_cache.invalidate_key(replica_id)
-
     async def _probe_queue_lens(
         self,
         replicas: List[ReplicaWrapper],
@@ -647,7 +655,6 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
 
     def _get_pending_request_matching_metadata(
         self,
-        replica: ReplicaWrapper,
         request_metadata: Optional[RequestMetadata] = None,
     ) -> Optional[PendingRequest]:
         if request_metadata is None or not request_metadata.multiplexed_model_id:
@@ -676,7 +683,7 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
         # First try to match a pending request based on the request metadata (currently
         # this only looks at the multiplexed model ID).
         matched_pending_request = self._get_pending_request_matching_metadata(
-            replica, request_metadata
+            request_metadata
         )
         if matched_pending_request is not None:
             matched_pending_request.future.set_result(replica)
@@ -718,6 +725,18 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
                 async for candidates in self.choose_two_replicas_with_backoff(
                     request_metadata
                 ):
+                    # Clear out pending requests at the front of the
+                    # queue that have been cancelled, then reevaluate
+                    # if we need to continue this scheduling task.
+                    while (
+                        len(self._pending_requests_to_fulfill) > 0
+                        and self._pending_requests_to_fulfill[0].future.done()
+                    ):
+                        self._pending_requests_to_fulfill.popleft()
+
+                    if len(self._scheduling_tasks) > self.target_num_scheduling_tasks:
+                        break
+
                     replica = await self.select_from_candidate_replicas(
                         candidates, backoff_index
                     )

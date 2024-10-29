@@ -97,6 +97,7 @@ class ConnectorV2(Checkpointable, abc.ABC):
         self._action_space = None
         self._input_observation_space = None
         self._input_action_space = None
+        self._kwargs = kwargs
 
         self.input_action_space = input_action_space
         self.input_observation_space = input_observation_space
@@ -320,7 +321,7 @@ class ConnectorV2(Checkpointable, abc.ABC):
         list_indices = defaultdict(int)
 
         # Single-agent case.
-        if isinstance(episodes[0], SingleAgentEpisode):
+        if episodes and isinstance(episodes[0], SingleAgentEpisode):
             if zip_with_batch_column is not None:
                 if len(zip_with_batch_column) != len(episodes):
                     raise ValueError(
@@ -949,7 +950,7 @@ class ConnectorV2(Checkpointable, abc.ABC):
     def get_ctor_args_and_kwargs(self) -> Tuple[Tuple, Dict[str, Any]]:
         return (
             (self.input_observation_space, self.input_action_space),  # *args
-            {},  # **kwargs
+            self._kwargs,  # **kwargs
         )
 
     def reset_state(self) -> None:
