@@ -14,6 +14,8 @@
 
 #pragma once
 
+#include <array>
+#include <string_view>
 #include <type_traits>
 
 #include "ray/common/ray_syncer/ray_syncer.h"
