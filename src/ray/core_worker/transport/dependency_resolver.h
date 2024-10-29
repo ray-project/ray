@@ -99,13 +99,11 @@ class LocalDependencyResolver {
 
   ActorCreatorInterface &actor_creator_;
 
-  // ID of the dependency resolution request. Used to index pending_tasks_ because a
-  // same TaskID may be requested multiple times and we treat each request independently.
-  using RequestID = size_t;
-
-  RequestID next_request_id_ ABSL_GUARDED_BY(mu_) = 0;
-
-  absl::flat_hash_map<RequestID, std::unique_ptr<TaskState>> pending_tasks_
+  // Pending tasks for a TaskID. There may be multiple dependency resolution requests for
+  // a TaskID registered. On CancelDependencyResolution all requests for a TaskID are
+  // removed. Each TaskState is owned by this map, its shared_ptr only because we use
+  // a weak_ptr in the async callback to track if it's cancelled already.
+  absl::flat_hash_map<TaskID, std::vector<std::shared_ptr<TaskState>>> pending_tasks_
       ABSL_GUARDED_BY(mu_);
 
   /// Protects against concurrent access to internal state.

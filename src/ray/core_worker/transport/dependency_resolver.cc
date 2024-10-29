@@ -59,15 +59,12 @@ void InlineDependencies(
 
 void LocalDependencyResolver::CancelDependencyResolution(const TaskID &task_id) {
   absl::MutexLock lock(&mu_);
-  absl::erase_if(pending_tasks_, [task_id](const auto &pair) {
-    const auto &[_, task_state] = pair;
-    return task_state->task.TaskId() == task_id;
-  });
+  pending_tasks_.erase(task_id);
 }
 
 void LocalDependencyResolver::ResolveDependencies(
     TaskSpecification &task, std::function<void(Status)> on_dependencies_resolved) {
-  RequestID request_id;
+  const TaskID task_id = task.TaskId();
   std::unordered_set<ObjectID> local_dependency_ids;
   std::unordered_set<ActorID> actor_dependency_ids;
   for (size_t i = 0; i < task.NumArgs(); i++) {
@@ -89,35 +86,40 @@ void LocalDependencyResolver::ResolveDependencies(
     return;
   }
 
+  std::weak_ptr<TaskState> weak_task_state;
   {
     absl::MutexLock lock(&mu_);
-    request_id = next_request_id_;
-    next_request_id_++;
-
-    // This is deleted when the last dependency fetch callback finishes.
-    auto inserted = pending_tasks_.emplace(
-        request_id,
-        std::make_unique<TaskState>(
-            task, local_dependency_ids, actor_dependency_ids, on_dependencies_resolved));
-    RAY_CHECK(inserted.second);
+    pending_tasks_[task_id].push_back(
+        std::make_shared<TaskState>(task,
+                                    local_dependency_ids,
+                                    actor_dependency_ids,
+                                    std::move(on_dependencies_resolved)));
+    weak_task_state = pending_tasks_[task_id].back();
   }
 
   for (const auto &obj_id : local_dependency_ids) {
     in_memory_store_.GetAsync(
-        obj_id, [this, request_id, obj_id](std::shared_ptr<RayObject> obj) {
+        obj_id, [this, weak_task_state, task_id, obj_id](std::shared_ptr<RayObject> obj) {
           RAY_CHECK(obj != nullptr);
 
-          std::unique_ptr<TaskState> resolved_task_state = nullptr;
           std::vector<ObjectID> inlined_dependency_ids;
           std::vector<ObjectID> contained_ids;
+          bool resolved = false;  // If all objects are resolved.
+          std::shared_ptr<TaskState> state;
           {
             absl::MutexLock lock(&mu_);
-
-            auto it = pending_tasks_.find(request_id);
-            if (it == pending_tasks_.end()) {
+            state = weak_task_state.lock();
+            if (!state) {
+              // Dependency resolution was cancelled.
               return;
             }
-            auto &state = it->second;
+
+            auto &pending_tasks_for_id = pending_tasks_.at(task_id);
+            auto it = std::find(
+                pending_tasks_for_id.begin(), pending_tasks_for_id.end(), state);
+            // Checks the dependency resolution still exists since it's not cancelled.
+            RAY_CHECK(it != pending_tasks_for_id.end());
+
             state->local_dependencies[obj_id] = std::move(obj);
             if (--state->obj_dependencies_remaining == 0) {
               InlineDependencies(state->local_dependencies,
@@ -125,8 +127,8 @@ void LocalDependencyResolver::ResolveDependencies(
                                  &inlined_dependency_ids,
                                  &contained_ids);
               if (state->actor_dependencies_remaining == 0) {
-                resolved_task_state = std::move(state);
-                pending_tasks_.erase(it);
+                pending_tasks_for_id.erase(it);
+                resolved = true;
               }
             }
           }
@@ -135,37 +137,38 @@ void LocalDependencyResolver::ResolveDependencies(
             task_finisher_.OnTaskDependenciesInlined(inlined_dependency_ids,
                                                      contained_ids);
           }
-          if (resolved_task_state) {
-            resolved_task_state->on_dependencies_resolved(resolved_task_state->status);
+          if (resolved) {
+            state->on_dependencies_resolved(state->status);
           }
         });
   }
 
   for (const auto &actor_id : actor_dependency_ids) {
     actor_creator_.AsyncWaitForActorRegisterFinish(
-        actor_id, [this, request_id, on_dependencies_resolved](const Status &status) {
-          std::unique_ptr<TaskState> resolved_task_state = nullptr;
+        actor_id,
+        [this, weak_task_state, task_id, on_dependencies_resolved](const Status &status) {
+          std::shared_ptr<TaskState> state;
+          bool resolved = false;
 
           {
             absl::MutexLock lock(&mu_);
-            auto it = pending_tasks_.find(request_id);
-            if (it == pending_tasks_.end()) {
-              return;
-            }
+            state = weak_task_state.lock();
+            auto &pending_tasks_for_id = pending_tasks_.at(task_id);
+            auto it = std::find(
+                pending_tasks_for_id.begin(), pending_tasks_for_id.end(), state);
+            RAY_CHECK(it != pending_tasks_for_id.end());
 
-            auto &state = it->second;
             if (!status.ok()) {
               state->status = status;
             }
             if (--state->actor_dependencies_remaining == 0 &&
                 state->obj_dependencies_remaining == 0) {
-              resolved_task_state = std::move(state);
-              pending_tasks_.erase(it);
+              resolved = true;
+              pending_tasks_for_id.erase(it);
             }
           }
-
-          if (resolved_task_state) {
-            resolved_task_state->on_dependencies_resolved(resolved_task_state->status);
+          if (resolved) {
+            state->on_dependencies_resolved(state->status);
           }
         });
   }
