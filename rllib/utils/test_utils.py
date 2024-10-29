@@ -302,7 +302,7 @@ def add_rllib_example_script_args(
     )
     parser.add_argument(
         "--num-gpus-per-learner",
-        type=int,
+        type=float,
         default=None,
         help="The number of GPUs per Learner to use. If none and there are enough GPUs "
         "for all required Learners (--num-learners), use a value of 1, otherwise 0.",
