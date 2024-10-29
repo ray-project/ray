@@ -2090,7 +2090,6 @@ class CompiledDAG:
             # Print the CG structure in ASCII format
             print(compiled_dag.visualize(format='ascii'))
         """
-        import graphviz
         from ray.dag import (
             InputAttributeNode,
             InputNode,
@@ -2295,6 +2294,8 @@ class CompiledDAG:
             return ascii_visualization
 
         else:
+            import graphviz
+
             # Dot file for debuging
             dot = graphviz.Digraph(name="compiled_graph", format=format)
 
