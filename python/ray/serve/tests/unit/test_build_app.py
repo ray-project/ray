@@ -6,7 +6,6 @@ import pytest
 
 from ray import serve
 from ray.serve._private.build_app import BuiltApplication, build_app
-from ray.serve._private.common import DeploymentHandleSource
 from ray.serve.deployment import Application, Deployment
 from ray.serve.handle import DeploymentHandle
 

@@ -3,7 +3,6 @@ from dataclasses import dataclass
 from typing import Generic, List, TypeVar
 
 from ray.dag.py_obj_scanner import _PyObjScanner
-from ray.serve._private.common import DeploymentHandleSource
 from ray.serve._private.constants import SERVE_LOGGER_NAME
 from ray.serve.deployment import Application, Deployment
 from ray.serve.handle import DeploymentHandle
