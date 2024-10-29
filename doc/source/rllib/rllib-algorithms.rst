@@ -176,7 +176,7 @@ Importance Weighted Actor-Learner Architecture (IMPALA)
     are returned to the main algorithm process as Ray references rather than actual objects available on the local process.
     IMPALA then passes these episode references to the Learners for asynchronous updates of the model.
     RLlib doesn't always synch back the weights to the EnvRunners right after a new model version is available.
-    To account for the resulting off-policy'ness on the EnvRunners, IMPALA uses a procedure called v-trace,
+    To account for the EnvRunners being off-policy, IMPALA uses a procedure called v-trace,
     `described in the paper <https://arxiv.org/abs/1802.01561>`__.
     IMPALA scales out on both axes, supporting multiple EnvRunners for sample collection and multiple GPU- or CPU-based Learners
     for updating the model.
@@ -221,7 +221,7 @@ Asynchronous Proximal Policy Optimization (APPO)
     samples are returned to the main algorithm process as Ray references rather than actual objects available on the local process.
     APPO then passes these episode references to the Learners for asynchronous updates of the model.
     RLlib doesn't always synch back the weights to the EnvRunners right after a new model version is available.
-    To account for the resulting off-policy'ness on the EnvRunners, APPO uses a procedure called v-trace,
+    To account for the EnvRunners being off-policy, APPO uses a procedure called v-trace,
     `described in the IMPALA paper <https://arxiv.org/abs/1802.01561>`__.
     APPO scales out on both axes, supporting multiple EnvRunners for sample collection and multiple GPU- or CPU-based Learners
     for updating the model.
