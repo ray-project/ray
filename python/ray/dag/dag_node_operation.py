@@ -214,8 +214,7 @@ class _DAGOperationGraphNode:
         class_name = (
             self.actor_handle._ray_actor_creation_function_descriptor.class_name
         )
-        actor_id = self._actor_id.hex()
-        actor_id_abbv = actor_id[:4] + "..."
+        actor_id_abbv = self._actor_id[:4] + "..."
         return (
             class_name
             + "_"
@@ -523,6 +522,36 @@ def _visualize_execution_schedule(
                 out_node_repr = node_to_repr[out_node]
                 color = "blue" if label == "nccl" else "black"
                 dot.edge(node_repr, out_node_repr, label=label, color=color)
+
+    # Add legend
+    with dot.subgraph(name="cluster_legend") as legend:
+        legend.attr(label="Legend", labelloc="t", fontsize="20", bgcolor="lightgrey")
+
+        # Single node and its explanation
+        legend.node("example_node", "Worker_3c6a... [0] bwd C 10,10\n")
+        explanation = (
+            '<<TABLE BORDER="0" CELLBORDER="0" CELLSPACING="0">'  # noqa
+            '<TR><TD ALIGN="LEFT"><B>Node description format:</B></TD></TR>'
+            '<TR><TD ALIGN="LEFT">&lt;actor_name&gt;_&lt;actor_id&gt; [&lt;task_index&gt;] &lt;method_name&gt; &lt;operation&gt; &lt;orig_index&gt;, &lt;overlap_index&gt;</TD></TR>'  # noqa
+            "<TR><TD></TD></TR>"
+            '<TR><TD ALIGN="LEFT"><B>Node description fields:</B></TD></TR>'
+            '<TR><TD ALIGN="LEFT">actor_id: is abbreviated, only the first 4 characters are shown</TD></TR>'  # noqa
+            '<TR><TD ALIGN="LEFT">operation: is R(READ), C(COMPUTE), or W(WRITE)</TD></TR>'  # noqa
+            '<TR><TD ALIGN="LEFT">orig_index: the index in the original execution schedule</TD></TR>'  # noqa
+            '<TR><TD ALIGN="LEFT">overlap_index: the index in the overlap-communication optimized execution schedule</TD></TR>'  # noqa
+            '<TR><TD ALIGN="LEFT">If this is different from orig_index, the node is highlighted in <FONT COLOR="red">red color</FONT></TD></TR>'  # noqa
+            "<TR><TD></TD></TR>"
+            '<TR><TD ALIGN="LEFT"><B>Node grouping:</B></TD></TR>'
+            '<TR><TD ALIGN="LEFT">The nodes belonging to the same actor are grouped in the same rectangular</TD></TR>'  # noqa
+            "<TR><TD></TD></TR>"
+            '<TR><TD ALIGN="LEFT"><B>Edges:</B></TD></TR>'
+            '<TR><TD ALIGN="LEFT"><FONT COLOR="blue">blue color</FONT>: indicates NCCL channel</TD></TR>'  # noqa
+            '<TR><TD ALIGN="LEFT">black color: indicates shared memory channel</TD></TR>'  # noqa
+            "</TABLE>>"
+        )
+
+        legend.node("example_explanation", explanation, shape="plaintext")
+        legend.edge("example_node", "example_explanation", style="invis")
 
     logger.info(
         "Writing compiled graph schedule visualization "
