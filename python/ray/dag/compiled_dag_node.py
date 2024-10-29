@@ -2066,7 +2066,7 @@ class CompiledDAG:
 
 
         Args:
-            format (str): The output format for the visualization. Options:
+            format: The output format for the visualization. Options:
                 - `"png"` (default): Generates a PNG file using Graphviz.
                 - `"pdf"`: Generates a PDF file using Graphviz.
                 - `"ascii"`: Prints the CG structure in ASCII format to the console.
