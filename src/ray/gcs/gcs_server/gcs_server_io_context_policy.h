@@ -29,11 +29,11 @@ namespace gcs {
 struct GcsServerIOContextPolicy {
   GcsServerIOContextPolicy() = delete;
 
-  // IoContext name for each handler.
+  // IOContext name for each handler.
   // If a class needs a dedicated io context, it should be specialized here.
   // If a class does NOT have a dedicated io context, returns -1;
   template <typename T>
-  static constexpr int GetDedicatedIoContextIndex() {
+  static constexpr int GetDedicatedIOContextIndex() {
     if constexpr (std::is_same_v<T, GcsTaskManager>) {
       return IndexOf("task_io_context");
     } else if constexpr (std::is_same_v<T, GcsPublisher>) {
@@ -48,7 +48,7 @@ struct GcsServerIOContextPolicy {
   }
 
   // This list must be unique and complete set of names returned from
-  // GetDedicatedIoContextName. Or you can get runtime crashes when accessing a missing
+  // GetDedicatedIOContextIndex. Or you can get runtime crashes when accessing a missing
   // name, or get leaks by creating unused threads.
   constexpr static std::array<std::string_view, 3> kAllDedicatedIOContextNames{
       "task_io_context", "pubsub_io_context", "ray_syncer_io_context"};

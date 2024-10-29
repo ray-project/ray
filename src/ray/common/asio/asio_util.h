@@ -109,7 +109,7 @@ class InstrumentedIOContextWithThread {
 ///
 ///     // For a given T, returns an index to kAllDedicatedIOContextNames, or -1 for the
 ///     // default io context.
-///     constexpr static std::string_view GetDedicatedIoContextIndex<T>();
+///     constexpr static std::string_view GetDedicatedIOContextIndex<T>();
 /// }
 /// ```
 ///
@@ -133,14 +133,14 @@ class IOContextProvider {
     }
   }
 
-  // Gets IoContext registered for type T. If the type is not registered in
+  // Gets IOContext registered for type T. If the type is not registered in
   // Policy::kAllDedicatedIOContextNames, it's a compile error.
   template <typename T>
-  instrumented_io_context &GetIoContext() const {
-    constexpr int index = Policy::template GetDedicatedIoContextIndex<T>();
+  instrumented_io_context &GetIOContext() const {
+    constexpr int index = Policy::template GetDedicatedIOContextIndex<T>();
     static_assert(
         index >= -1 && index < Policy::kAllDedicatedIOContextNames.size(),
-        "index out of bound, invalid GetDedicatedIoContextIndex implementation! Index "
+        "index out of bound, invalid GetDedicatedIOContextIndex implementation! Index "
         "can only be -1 or within range of kAllDedicatedIOContextNames");
 
     if constexpr (index == -1) {
@@ -150,11 +150,11 @@ class IOContextProvider {
     }
   }
 
-  instrumented_io_context &GetDefaultIoContext() const { return default_io_context_; }
+  instrumented_io_context &GetDefaultIOContext() const { return default_io_context_; }
   // Used for inspections, e.g. print stats.
-  const auto &GetAllDedicatedIoContexts() const { return dedicated_io_contexts_; }
+  const auto &GetAllDedicatedIOContexts() const { return dedicated_io_contexts_; }
 
-  void StopAllDedicatedIoContexts() {
+  void StopAllDedicatedIOContexts() {
     for (auto &io_ctx : dedicated_io_contexts_) {
       io_ctx->Stop();
     }

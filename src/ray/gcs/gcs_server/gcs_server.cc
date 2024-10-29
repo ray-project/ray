@@ -65,8 +65,8 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
                            RayConfig::instance().gcs_server_rpc_client_thread_num()),
       raylet_client_pool_(
           std::make_shared<rpc::NodeManagerClientPool>(client_call_manager_)),
-      pubsub_periodical_runner_(io_context_provider_.GetIoContext<GcsPublisher>()),
-      periodical_runner_(io_context_provider_.GetDefaultIoContext()),
+      pubsub_periodical_runner_(io_context_provider_.GetIOContext<GcsPublisher>()),
+      periodical_runner_(io_context_provider_.GetDefaultIOContext()),
       is_started_(false),
       is_stopped_(false) {
   // Init GCS table storage.
@@ -74,7 +74,7 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
   switch (storage_type_) {
   case StorageType::IN_MEMORY:
     gcs_table_storage_ = std::make_shared<InMemoryGcsTableStorage>(
-        io_context_provider_.GetDefaultIoContext());
+        io_context_provider_.GetDefaultIOContext());
     break;
   case StorageType::REDIS_PERSIST:
     gcs_table_storage_ = std::make_shared<gcs::RedisGcsTableStorage>(GetOrConnectRedis());
@@ -85,7 +85,7 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
 
   auto on_done = [this](const ray::Status &status) {
     RAY_CHECK(status.ok()) << "Failed to put internal config";
-    this->io_context_provider_.GetDefaultIoContext().stop();
+    this->io_context_provider_.GetDefaultIOContext().stop();
   };
 
   ray::rpc::StoredConfig stored_config;
@@ -97,10 +97,10 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
   // to block current thread.
   // This will run async operations from InternalConfigTable().Put() above
   // inline.
-  io_context_provider_.GetDefaultIoContext().run();
+  io_context_provider_.GetDefaultIOContext().run();
   // Reset the main service to the initial status otherwise, the signal handler
   // will be called.
-  io_context_provider_.GetDefaultIoContext().restart();
+  io_context_provider_.GetDefaultIOContext().restart();
 
   // Init GCS publisher instance.
   std::unique_ptr<pubsub::Publisher> inner_publisher;
@@ -266,7 +266,7 @@ void GcsServer::Stop() {
   if (!is_stopped_) {
     RAY_LOG(INFO) << "Stopping GCS server.";
 
-    io_context_provider_.StopAllDedicatedIoContexts();
+    io_context_provider_.StopAllDedicatedIOContexts();
 
     ray_syncer_.reset();
     pubsub_handler_.reset();
@@ -295,20 +295,20 @@ void GcsServer::InitGcsNodeManager(const GcsInitData &gcs_init_data) {
   gcs_node_manager_->Initialize(gcs_init_data);
   // Register service.
   node_info_service_.reset(new rpc::NodeInfoGrpcService(
-      io_context_provider_.GetDefaultIoContext(), *gcs_node_manager_));
+      io_context_provider_.GetDefaultIOContext(), *gcs_node_manager_));
   rpc_server_.RegisterService(*node_info_service_);
 }
 
 void GcsServer::InitGcsHealthCheckManager(const GcsInitData &gcs_init_data) {
   RAY_CHECK(gcs_node_manager_);
   auto node_death_callback = [this](const NodeID &node_id) {
-    this->io_context_provider_.GetDefaultIoContext().post(
+    this->io_context_provider_.GetDefaultIOContext().post(
         [this, node_id] { return gcs_node_manager_->OnNodeFailure(node_id, nullptr); },
         "GcsServer.NodeDeathCallback");
   };
 
   gcs_healthcheck_manager_ = std::make_unique<GcsHealthCheckManager>(
-      io_context_provider_.GetDefaultIoContext(), node_death_callback);
+      io_context_provider_.GetDefaultIOContext(), node_death_callback);
   for (const auto &item : gcs_init_data.Nodes()) {
     if (item.second.state() == rpc::GcsNodeInfo::ALIVE) {
       rpc::Address remote_address;
@@ -324,7 +324,7 @@ void GcsServer::InitGcsHealthCheckManager(const GcsInitData &gcs_init_data) {
 void GcsServer::InitGcsResourceManager(const GcsInitData &gcs_init_data) {
   RAY_CHECK(cluster_resource_scheduler_ && cluster_task_manager_);
   gcs_resource_manager_ = std::make_shared<GcsResourceManager>(
-      io_context_provider_.GetDefaultIoContext(),
+      io_context_provider_.GetDefaultIOContext(),
       cluster_resource_scheduler_->GetClusterResourceManager(),
       *gcs_node_manager_,
       kGCSNodeID,
@@ -334,7 +334,7 @@ void GcsServer::InitGcsResourceManager(const GcsInitData &gcs_init_data) {
   gcs_resource_manager_->Initialize(gcs_init_data);
   // Register service.
   node_resource_info_service_.reset(new rpc::NodeResourceInfoGrpcService(
-      io_context_provider_.GetDefaultIoContext(), *gcs_resource_manager_));
+      io_context_provider_.GetDefaultIOContext(), *gcs_resource_manager_));
   rpc_server_.RegisterService(*node_resource_info_service_);
 
   periodical_runner_.RunFnPeriodically(
@@ -385,7 +385,7 @@ void GcsServer::InitGcsResourceManager(const GcsInitData &gcs_init_data) {
 
 void GcsServer::InitClusterResourceScheduler() {
   cluster_resource_scheduler_ = std::make_shared<ClusterResourceScheduler>(
-      io_context_provider_.GetDefaultIoContext(),
+      io_context_provider_.GetDefaultIOContext(),
       scheduling::NodeID(kGCSNodeID.Binary()),
       NodeResources(),
       /*is_node_available_fn=*/
@@ -424,7 +424,7 @@ void GcsServer::InitGcsJobManager(const GcsInitData &gcs_init_data) {
 
   // Register service.
   job_info_service_ = std::make_unique<rpc::JobInfoGrpcService>(
-      io_context_provider_.GetDefaultIoContext(), *gcs_job_manager_);
+      io_context_provider_.GetDefaultIOContext(), *gcs_job_manager_);
   rpc_server_.RegisterService(*job_info_service_);
 }
 
@@ -452,7 +452,7 @@ void GcsServer::InitGcsActorManager(const GcsInitData &gcs_init_data) {
 
   RAY_CHECK(gcs_resource_manager_ && cluster_task_manager_);
   scheduler = std::make_unique<GcsActorScheduler>(
-      io_context_provider_.GetDefaultIoContext(),
+      io_context_provider_.GetDefaultIOContext(),
       gcs_table_storage_->ActorTable(),
       *gcs_node_manager_,
       cluster_task_manager_,
@@ -481,21 +481,21 @@ void GcsServer::InitGcsActorManager(const GcsInitData &gcs_init_data) {
   gcs_actor_manager_->Initialize(gcs_init_data);
   // Register service.
   actor_info_service_.reset(new rpc::ActorInfoGrpcService(
-      io_context_provider_.GetDefaultIoContext(), *gcs_actor_manager_));
+      io_context_provider_.GetDefaultIOContext(), *gcs_actor_manager_));
   rpc_server_.RegisterService(*actor_info_service_);
 }
 
 void GcsServer::InitGcsPlacementGroupManager(const GcsInitData &gcs_init_data) {
   RAY_CHECK(gcs_table_storage_ && gcs_node_manager_);
   gcs_placement_group_scheduler_ = std::make_shared<GcsPlacementGroupScheduler>(
-      io_context_provider_.GetDefaultIoContext(),
+      io_context_provider_.GetDefaultIOContext(),
       gcs_table_storage_,
       *gcs_node_manager_,
       *cluster_resource_scheduler_,
       raylet_client_pool_);
 
   gcs_placement_group_manager_ = std::make_shared<GcsPlacementGroupManager>(
-      io_context_provider_.GetDefaultIoContext(),
+      io_context_provider_.GetDefaultIOContext(),
       gcs_placement_group_scheduler_,
       gcs_table_storage_,
       *gcs_resource_manager_,
@@ -506,7 +506,7 @@ void GcsServer::InitGcsPlacementGroupManager(const GcsInitData &gcs_init_data) {
   gcs_placement_group_manager_->Initialize(gcs_init_data);
   // Register service.
   placement_group_info_service_.reset(new rpc::PlacementGroupInfoGrpcService(
-      io_context_provider_.GetDefaultIoContext(), *gcs_placement_group_manager_));
+      io_context_provider_.GetDefaultIOContext(), *gcs_placement_group_manager_));
   rpc_server_.RegisterService(*placement_group_info_service_);
 }
 
@@ -530,7 +530,7 @@ GcsServer::StorageType GcsServer::GetStorageType() const {
 
 void GcsServer::InitRaySyncer(const GcsInitData &gcs_init_data) {
   ray_syncer_ = std::make_unique<syncer::RaySyncer>(
-      io_context_provider_.GetIoContext<syncer::RaySyncer>(), kGCSNodeID.Binary());
+      io_context_provider_.GetIOContext<syncer::RaySyncer>(), kGCSNodeID.Binary());
   ray_syncer_->Register(
       syncer::MessageType::RESOURCE_VIEW, nullptr, gcs_resource_manager_.get());
   ray_syncer_->Register(
@@ -563,7 +563,7 @@ void GcsServer::InitKVManager() {
   case (StorageType::IN_MEMORY):
     instance = std::make_unique<StoreClientInternalKV>(
         std::make_unique<ObservableStoreClient>(std::make_unique<InMemoryStoreClient>(
-            io_context_provider_.GetDefaultIoContext())));
+            io_context_provider_.GetDefaultIOContext())));
     break;
   default:
     RAY_LOG(FATAL) << "Unexpected storage type! " << storage_type_;
@@ -576,13 +576,13 @@ void GcsServer::InitKVManager() {
 void GcsServer::InitKVService() {
   RAY_CHECK(kv_manager_);
   kv_service_ = std::make_unique<rpc::InternalKVGrpcService>(
-      io_context_provider_.GetDefaultIoContext(), *kv_manager_);
+      io_context_provider_.GetDefaultIOContext(), *kv_manager_);
   // Register service.
   rpc_server_.RegisterService(*kv_service_, false /* token_auth */);
 }
 
 void GcsServer::InitPubSubHandler() {
-  auto &io_context = io_context_provider_.GetIoContext<GcsPublisher>();
+  auto &io_context = io_context_provider_.GetIOContext<GcsPublisher>();
   pubsub_handler_ = std::make_unique<InternalPubSubHandler>(io_context, gcs_publisher_);
   pubsub_service_ =
       std::make_unique<rpc::InternalPubSubGrpcService>(io_context, *pubsub_handler_);
@@ -616,15 +616,15 @@ void GcsServer::InitRuntimeEnvManager() {
         }
       });
   runtime_env_handler_ = std::make_unique<RuntimeEnvHandler>(
-      io_context_provider_.GetDefaultIoContext(),
+      io_context_provider_.GetDefaultIOContext(),
       *runtime_env_manager_, /*delay_executor=*/
       [this](std::function<void()> task, uint32_t delay_ms) {
-        return execute_after(io_context_provider_.GetDefaultIoContext(),
+        return execute_after(io_context_provider_.GetDefaultIOContext(),
                              task,
                              std::chrono::milliseconds(delay_ms));
       });
   runtime_env_service_ = std::make_unique<rpc::RuntimeEnvGrpcService>(
-      io_context_provider_.GetDefaultIoContext(), *runtime_env_handler_);
+      io_context_provider_.GetDefaultIOContext(), *runtime_env_handler_);
   // Register service.
   rpc_server_.RegisterService(*runtime_env_service_);
 }
@@ -634,7 +634,7 @@ void GcsServer::InitGcsWorkerManager() {
       std::make_unique<GcsWorkerManager>(gcs_table_storage_, gcs_publisher_);
   // Register service.
   worker_info_service_.reset(new rpc::WorkerInfoGrpcService(
-      io_context_provider_.GetDefaultIoContext(), *gcs_worker_manager_));
+      io_context_provider_.GetDefaultIOContext(), *gcs_worker_manager_));
   rpc_server_.RegisterService(*worker_info_service_);
 }
 
@@ -675,13 +675,13 @@ void GcsServer::InitGcsAutoscalerStateManager(const GcsInitData &gcs_init_data) 
   gcs_autoscaler_state_manager_->Initialize(gcs_init_data);
 
   autoscaler_state_service_.reset(new rpc::autoscaler::AutoscalerStateGrpcService(
-      io_context_provider_.GetDefaultIoContext(), *gcs_autoscaler_state_manager_));
+      io_context_provider_.GetDefaultIOContext(), *gcs_autoscaler_state_manager_));
 
   rpc_server_.RegisterService(*autoscaler_state_service_);
 }
 
 void GcsServer::InitGcsTaskManager() {
-  auto &io_context = io_context_provider_.GetIoContext<GcsTaskManager>();
+  auto &io_context = io_context_provider_.GetIOContext<GcsTaskManager>();
   gcs_task_manager_ = std::make_unique<GcsTaskManager>(io_context);
   // Register service.
   task_info_service_.reset(new rpc::TaskInfoGrpcService(io_context, *gcs_task_manager_));
@@ -761,7 +761,7 @@ void GcsServer::InstallEventListeners() {
   // Install scheduling event listeners.
   if (RayConfig::instance().gcs_actor_scheduling_enabled()) {
     gcs_resource_manager_->AddResourcesChangedListener([this] {
-      io_context_provider_.GetDefaultIoContext().post(
+      io_context_provider_.GetDefaultIOContext().post(
           [this] {
             // Because resources have been changed, we need to try to schedule the
             // pending placement groups and actors.
@@ -772,7 +772,7 @@ void GcsServer::InstallEventListeners() {
     });
 
     gcs_placement_group_scheduler_->AddResourcesChangedListener([this] {
-      io_context_provider_.GetDefaultIoContext().post(
+      io_context_provider_.GetDefaultIOContext().post(
           [this] {
             // Because some placement group resources have been committed or deleted, we
             // need to try to schedule the pending placement groups and actors.
@@ -790,7 +790,7 @@ void GcsServer::RecordMetrics() const {
   gcs_task_manager_->RecordMetrics();
   gcs_job_manager_->RecordMetrics();
   execute_after(
-      io_context_provider_.GetDefaultIoContext(),
+      io_context_provider_.GetDefaultIOContext(),
       [this] { RecordMetrics(); },
       std::chrono::milliseconds(RayConfig::instance().metrics_report_interval_ms() /
                                 2) /* milliseconds */);
@@ -801,7 +801,7 @@ void GcsServer::DumpDebugStateToFile() const {
   fs.open(config_.log_dir + "/debug_state_gcs.txt",
           std::fstream::out | std::fstream::trunc);
   fs << GetDebugState() << "\n\n";
-  fs << io_context_provider_.GetDefaultIoContext().stats().StatsString();
+  fs << io_context_provider_.GetDefaultIOContext().stats().StatsString();
   fs.close();
 }
 
@@ -821,12 +821,12 @@ std::string GcsServer::GetDebugState() const {
 std::shared_ptr<RedisClient> GcsServer::GetOrConnectRedis() {
   if (redis_client_ == nullptr) {
     redis_client_ = std::make_shared<RedisClient>(GetRedisClientOptions());
-    auto status = redis_client_->Connect(io_context_provider_.GetDefaultIoContext());
+    auto status = redis_client_->Connect(io_context_provider_.GetDefaultIOContext());
     RAY_CHECK(status.ok()) << "Failed to init redis gcs client as " << status;
 
     // Init redis failure detector.
     gcs_redis_failure_detector_ = std::make_shared<GcsRedisFailureDetector>(
-        io_context_provider_.GetDefaultIoContext(), redis_client_, []() {
+        io_context_provider_.GetDefaultIOContext(), redis_client_, []() {
           RAY_LOG(FATAL) << "Redis connection failed. Shutdown GCS.";
         });
     gcs_redis_failure_detector_->Start();
@@ -840,9 +840,9 @@ void GcsServer::PrintAsioStats() {
       RayConfig::instance().event_stats_print_interval_ms();
   if (event_stats_print_interval_ms != -1 && RayConfig::instance().event_stats()) {
     RAY_LOG(INFO) << "Main service Event stats:\n\n"
-                  << io_context_provider_.GetDefaultIoContext().stats().StatsString()
+                  << io_context_provider_.GetDefaultIOContext().stats().StatsString()
                   << "\n\n";
-    for (const auto &io_context : io_context_provider_.GetAllDedicatedIoContexts()) {
+    for (const auto &io_context : io_context_provider_.GetAllDedicatedIOContexts()) {
       RAY_LOG(INFO) << io_context->GetName() << " Event stats:\n\n"
                     << io_context->GetIoService().stats().StatsString() << "\n\n";
     }
