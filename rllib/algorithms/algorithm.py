@@ -1362,7 +1362,7 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
                 " too unstable, b) you have enough evaluation workers "
                 "(`config.evaluation(evaluation_num_env_runners=...)`) to cover for "
                 "occasional losses, and c) you use the `config.fault_tolerance("
-                "recreate_failed_env_runners=True)` setting."
+                "restart_failed_env_runners=True)` setting."
             )
 
         if not self.config.enable_env_runner_and_connector_v2:
@@ -1552,7 +1552,7 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
                 " too unstable, b) you have enough evaluation workers "
                 "(`config.evaluation(evaluation_num_env_runners=...)`) to cover for "
                 "occasional losses, and c) you use the `config.fault_tolerance("
-                "recreate_failed_env_runners=True)` setting."
+                "restart_failed_env_runners=True)` setting."
             )
 
         if not self.config.enable_env_runner_and_connector_v2:
