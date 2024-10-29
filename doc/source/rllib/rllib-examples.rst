@@ -115,7 +115,7 @@ Environments
 - `How to register a custom gymnasium environment <https://github.com/ray-project/ray/blob/master/rllib/examples/envs/custom_gym_env.py>`__:
    Example showing how to write your own RL environment using ``gymnasium`` and register it to run train your algorithm against this env with RLlib.
 
-- `How to set up rendering (and recording) of the environment trajectories during training with WandB <https://github.com/ray-project/ray/blob/master/rllib/examples/envs/env_rendering_and_recording.py>`__:
+- `How to set up rendering and recording of the environment trajectories during training with W&B <https://github.com/ray-project/ray/blob/master/rllib/examples/envs/env_rendering_and_recording.py>`__:
    Example showing how you can render and record episode trajectories of your gymnasium envs and log the videos to WandB.
 
 Evaluation
@@ -151,15 +151,15 @@ Multi-Agent RL
    Set up RLlib to run any algorithm in (independent) multi-agent mode against a multi-agent environment.
 - `How to set up shared-parameter multi-agent training <https://github.com/ray-project/ray/blob/master/rllib/examples/multi_agent/pettingzoo_parameter_sharing.py>`__:
    Set up RLlib to run any algorithm in (shared-parameter) multi-agent mode against a multi-agent environment.
-- `How to compare a heuristic policy vs a trained one on rock-paper-scissors <https://github.com/ray-project/ray/blob/master/rllib/examples/multi_agent/rock_paper_scissors_heuristic_vs_learned.py>`__ and `Rock-paper-scissors learned vs learned <https://github.com/ray-project/ray/blob/master/rllib/examples/multi_agent/rock_paper_scissors_learned_vs_learned.py>`__:
+- `How to compare a heuristic policy versus a trained one on rock-paper-scissors <https://github.com/ray-project/ray/blob/master/rllib/examples/multi_agent/rock_paper_scissors_heuristic_vs_learned.py>`__ and `Rock-paper-scissors learned vs learned <https://github.com/ray-project/ray/blob/master/rllib/examples/multi_agent/rock_paper_scissors_learned_vs_learned.py>`__:
    Two examples of different heuristic and learned policies competing against each other in the rock-paper-scissors environment.
 - `How to use agent grouping in a multi-agent environment (two-step game) <https://github.com/ray-project/ray/blob/master/rllib/examples/multi_agent/two_step_game_with_grouped_agents.py>`__:
    Example on how to use agent grouping in a multi-agent environment (the two-step game from the `QMIX paper <https://arxiv.org/pdf/1803.11485.pdf>`__).
-- `How to set up multi-agent training vs a PettingZoo environment <https://github.com/Farama-Foundation/PettingZoo/blob/master/tutorials/Ray/rllib_pistonball.py>`__:
+- `How to set up multi-agent training versus a PettingZoo environment <https://github.com/Farama-Foundation/PettingZoo/blob/master/tutorials/Ray/rllib_pistonball.py>`__:
    Example on how to use RLlib to learn in `PettingZoo <https://www.pettingzoo.ml>`__ multi-agent environments.
 - `How to hand-code a (heuristic) policy <https://github.com/ray-project/ray/blob/master/rllib/examples/multi_agent/custom_heuristic_policy.py>`__:
    Example of running a custom hand-coded policy alongside trainable policies.
-- `How to train a single policy (weight sharing) controlling more than one agents <https://github.com/ray-project/ray/blob/master/rllib/examples/multi_agent/multi_agent_cartpole.py>`__:
+- `How to train a single policy (weight sharing) controlling more than one agent <https://github.com/ray-project/ray/blob/master/rllib/examples/multi_agent/multi_agent_cartpole.py>`__:
    Example of how to define weight-sharing layers between two different policies.
 
 Ray Serve and RLlib
@@ -177,7 +177,7 @@ Ray Tune and RLlib
 - `How to define and plug in your custom logger into Ray Tune and RLlib <https://github.com/ray-project/ray/blob/master/rllib/examples/ray_tune/custom_logger.py>`__:
    How to setup a custom Logger object in RLlib and use it with Ray Tune.
 
-- `How to Custom tune experiment <https://github.com/ray-project/ray/blob/master/rllib/examples/ray_tune/custom_experiment.py>`__:
+- `How to custom tune an experiment <https://github.com/ray-project/ray/blob/master/rllib/examples/ray_tune/custom_experiment.py>`__:
    How to run a custom Ray Tune experiment with RLlib with custom training- and evaluation phases.
 
 RLModules
