@@ -181,7 +181,7 @@ void CoreWorkerMemoryStore::GetAsync(
   // It's important for performance to run the callback outside the lock.
   if (ptr != nullptr) {
     io_context_.post([callback, ptr]() { callback(ptr); },
-                     "CoreWorkerMemoryStore.GetAsync");
+                     "CoreWorkerMemoryStore.GetAsync.Callback");
   }
 }
 
