@@ -63,11 +63,13 @@ class DAGNode(DAGNodeBase):
 
         # The list of nodes that use this DAG node as an argument.
         self._downstream_nodes: List["DAGNode"] = []
-        # The list of nodes that this DAG node uses as an argument.
-        self._upstream_nodes: List["DAGNode"] = self._collect_upstream_nodes()
 
         # UUID that is not changed over copies of this node.
         self._stable_uuid = uuid.uuid4().hex
+
+        # The list of nodes that this DAG node uses as an argument.
+        self._upstream_nodes: List["DAGNode"] = self._collect_upstream_nodes()
+
         # Cached values from last call to execute()
         self.cache_from_last_execute = {}
 
@@ -84,14 +86,31 @@ class DAGNode(DAGNodeBase):
         them up instead of reference counting. We should consider using weak references
         to avoid circular references.
         """
+        upstream_nodes: List["DAGNode"] = []
+
+        assert hasattr(self._bound_args, "__iter__")
+        for arg in self._bound_args:
+            if isinstance(arg, DAGNode):
+                upstream_nodes.append(arg)
+            else:
+                scanner = _PyObjScanner()
+                dag_nodes = scanner.find_nodes([arg])
+                s = (
+                    f"Found {len(dag_nodes)} DAGNodes from the arg {arg} in {self}. "
+                    "Please ensure that the argument is a single DAGNode and that a "
+                    "DAGNode is not allowed to be placed inside any type of container."
+                )
+                scanner.clear()
+                assert len(dag_nodes) == 0, s
+
         scanner = _PyObjScanner()
-        upstream_nodes: List["DAGNode"] = scanner.find_nodes(
+        other_upstream_nodes: List["DAGNode"] = scanner.find_nodes(
             [
-                self._bound_args,
                 self._bound_kwargs,
                 self._bound_other_args_to_resolve,
             ]
         )
+        upstream_nodes.extend(other_upstream_nodes)
         scanner.clear()
         # Update dependencies.
         for upstream_node in upstream_nodes:

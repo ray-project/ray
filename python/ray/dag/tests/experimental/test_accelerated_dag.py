@@ -519,6 +519,40 @@ def test_actor_method_bind_diff_input_attr_3(ray_start_regular):
     assert ray.get(ref) == 9
 
 
+class TestDAGNodeInsideContainer:
+    regex = r"Found \d+ DAGNodes from the arg .*? in .*?\.\s*"
+    r"Please ensure that the argument is a single DAGNode and that a "
+    r"DAGNode is not allowed to be placed inside any type of container\."
+
+    def test_dag_node_in_list(self, ray_start_regular):
+        actor = Actor.remote(0)
+        with pytest.raises(Exception) as exc_info:
+            with InputNode() as inp:
+                actor.echo.bind([inp])
+        assert re.search(self.regex, str(exc_info.value), re.DOTALL)
+
+    def test_dag_node_in_tuple(self, ray_start_regular):
+        actor = Actor.remote(0)
+        with pytest.raises(Exception) as exc_info:
+            with InputNode() as inp:
+                actor.echo.bind((inp,))
+        assert re.search(self.regex, str(exc_info.value), re.DOTALL)
+
+    def test_dag_node_in_dict(self, ray_start_regular):
+        actor = Actor.remote(0)
+        with pytest.raises(Exception) as exc_info:
+            with InputNode() as inp:
+                actor.echo.bind({"inp": inp})
+        assert re.search(self.regex, str(exc_info.value), re.DOTALL)
+
+    def test_two_dag_nodes_in_list(self, ray_start_regular):
+        actor = Actor.remote(0)
+        with pytest.raises(Exception) as exc_info:
+            with InputNode() as inp:
+                actor.echo.bind([inp, inp])
+        assert re.search(self.regex, str(exc_info.value), re.DOTALL)
+
+
 def test_actor_method_bind_diff_input_attr_4(ray_start_regular):
     actor = Actor.remote(0)
     c = Collector.remote()
