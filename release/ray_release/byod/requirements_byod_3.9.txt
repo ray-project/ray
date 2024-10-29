@@ -116,7 +116,7 @@ aiosignal==1.3.1 \
     # via
     #   -c release/ray_release/byod/requirements_compiled.txt
     #   aiohttp
-ale-py==0.9.0 \
+ale-py==0.8.1 \
     --hash=sha256:0006d80dfe7745eb5a93444492337203c8bc7eb594a2c24c6a651c5c5b0eaf09 \
     --hash=sha256:0856ca777473ec4ae8a59f3af9580259adb0fd4a47d586a125a440c62e82fc10 \
     --hash=sha256:0ffecb5c956749596030e464827642945162170a132d093c3d4fa2d7e5725c18 \
@@ -1242,6 +1242,17 @@ gsutil==5.27 \
     # via
     #   -c release/ray_release/byod/requirements_compiled.txt
     #   -r release/ray_release/byod/requirements_byod_3.9.in
+gym[atari]==0.26.2 \
+    --hash=sha256:e0d882f4b54f0c65f203104c24ab8a38b039f1289986803c7d02cdbe214fbcc4
+    # via
+    #   -c release/ray_release/byod/requirements_compiled.txt
+    #   -r release/ray_release/byod/requirements_byod_3.9.in
+gym-notices==0.0.8 \
+    --hash=sha256:ad25e200487cafa369728625fe064e88ada1346618526102659b4640f2b4b911 \
+    --hash=sha256:e5f82e00823a166747b4c2a07de63b6560b1acb880638547e0cabf825a01e463
+    # via
+    #   -c release/ray_release/byod/requirements_compiled.txt
+    #   gym
 h5py==3.10.0 \
     --hash=sha256:012ab448590e3c4f5a8dd0f3533255bc57f80629bf7c5054cf4c87b30085063c \
     --hash=sha256:212bb997a91e6a895ce5e2f365ba764debeaef5d2dca5c6fb7098d66607adf99 \
@@ -1728,6 +1739,7 @@ numpy==1.26.4 \
     #   ale-py
     #   bokeh
     #   dask
+    #   gym
     #   h5py
     #   lightgbm
     #   ml-dtypes
