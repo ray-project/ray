@@ -2377,13 +2377,8 @@ def connect(
         job_config.set_ray_namespace(namespace)
 
     # Make sure breakpoint() in the user's code will
-    # invoke the Ray debugger if we are in a worker or actor process
-    # (but not on the driver).
-    if mode == WORKER_MODE:
-        os.environ["PYTHONBREAKPOINT"] = "ray.util.debugpy.set_trace"
-    else:
-        # Add hook to suppress worker logs during breakpoint.
-        os.environ["PYTHONBREAKPOINT"] = "ray.util.debugpy._driver_set_trace"
+    # invoke the distributed Ray debugger.
+    os.environ["PYTHONBREAKPOINT"] = "ray.util.debugpy.set_trace"
 
     worker.ray_debugger_external = ray_debugger_external
 
