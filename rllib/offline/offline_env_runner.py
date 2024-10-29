@@ -164,6 +164,8 @@ class OfflineSingleAgentEnvRunner(SingleAgentEnvRunner):
                 # TODO (simon): Find a better way to write these data.
                 self._samples = self._samples[self.output_max_rows_per_file :]
                 samples_ds = ray.data.from_items(samples_to_write)
+                # Delete reference to free memory.
+                del samples_to_write
             # Otherwise, write the complete data.
             else:
                 samples_ds = ray.data.from_items(self._samples)
@@ -182,6 +184,8 @@ class OfflineSingleAgentEnvRunner(SingleAgentEnvRunner):
                 logger.info(f"Wrote samples to storage at {path}.")
             except Exception as e:
                 logger.error(e)
+            # Delete dataset reference to free memory.
+            del samples_ds
 
         # Finally return the samples as usual.
         return samples
@@ -200,7 +204,7 @@ class OfflineSingleAgentEnvRunner(SingleAgentEnvRunner):
             # Convert them to a `ray.data.Dataset`.
             samples_ds = ray.data.from_items(self._samples)
             # Increase the sample counter for the folder/file name.
-            self._sample_counter += 1.0
+            self._sample_counter += 1
             # Try to write the dataset to disk/cloud storage.
             try:
                 # Setup the path for writing data. Each run will be written to
