@@ -148,8 +148,13 @@ class DQNRainbowTorchRLModule(TorchRLModule, DQNRainbowRLModule):
             if Columns.STATE_IN in batch:
                 batch_base.update(
                     {
+                        # Columns.STATE_IN: tree.map_structure(
+                        #     lambda t: t.repeat(2, 1, 1), batch[Columns.STATE_IN]
+                        # )
                         Columns.STATE_IN: tree.map_structure(
-                            lambda t: t.repeat(2, 1, 1), batch[Columns.STATE_IN]
+                            lambda t1, t2: torch.cat([t1, t2], dim=0),
+                            batch[Columns.STATE_IN],
+                            batch["new_state_in"],
                         )
                     }
                 )
