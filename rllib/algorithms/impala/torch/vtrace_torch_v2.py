@@ -120,7 +120,7 @@ def vtrace_torch(
             importance weights (rho) when calculating the baseline targets (vs).
             rho^bar in the paper.
         clip_pg_rho_threshold: A scalar float32 tensor with the clipping threshold
-            on rho_s in \rho_s \delta log \pi(a|x) (r + \gamma v_{s+1} - V(x_s)).
+            on rho_s in \rho_s \\delta log \\pi(a|x) (r + \\gamma v_{s+1} - V(x_s)).
     """
     log_rhos = target_action_log_probs - behaviour_action_log_probs
 

@@ -46,7 +46,7 @@ class FeatureHasher(Preprocessor):
         >>> ds = ray.data.from_pandas(df)  # doctest: +SKIP
 
         :class:`FeatureHasher` hashes each token to determine its index. For example,
-        the index of ``"I"`` is :math:`hash(\\texttt{"I"}) \pmod 8 = 5`.
+        the index of ``"I"`` is :math:`hash(\\texttt{"I"}) \\pmod 8 = 5`.
 
         >>> hasher = FeatureHasher(columns=["I", "like", "dislike", "Python"], num_features=8)
         >>> hasher.fit_transform(ds).to_pandas().to_numpy()  # doctest: +SKIP

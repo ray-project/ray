@@ -95,7 +95,7 @@ class TestAppHandleStreaming:
             TypeError,
             match=(
                 "Method '__call__' returned a generator. You must use "
-                "`handle.options\(stream=True\)` to call generators on a deployment."
+                r"`handle.options\(stream=True\)` to call generators on a deployment."
             ),
         ):
             h.remote(5).result()
@@ -104,7 +104,7 @@ class TestAppHandleStreaming:
             TypeError,
             match=(
                 "Method 'call_inner_generator' returned a generator. You must use "
-                "`handle.options\(stream=True\)` to call generators on a deployment."
+                r"`handle.options\(stream=True\)` to call generators on a deployment."
             ),
         ):
             h.call_inner_generator.remote(5).result()
@@ -174,7 +174,7 @@ class TestDeploymentHandleStreaming:
                     TypeError,
                     match=(
                         "Method '__call__' returned a generator. You must use "
-                        "`handle.options\(stream=True\)` to call generators on a "
+                        r"`handle.options\(stream=True\)` to call generators on a "
                         "deployment."
                     ),
                 ):
@@ -184,7 +184,7 @@ class TestDeploymentHandleStreaming:
                     TypeError,
                     match=(
                         "Method 'call_inner_generator' returned a generator. You must "
-                        "use `handle.options\(stream=True\)` to call generators on a "
+                        r"use `handle.options\(stream=True\)` to call generators on a "
                         "deployment."
                     ),
                 ):
