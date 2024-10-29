@@ -24,19 +24,19 @@ class EpisodeAndSampleCallbacks(DefaultCallbacks):
     def on_episode_start(self, *args, env_runner, metrics_logger, env, **kwargs):
         assert isinstance(env_runner, EnvRunner)
         assert isinstance(metrics_logger, MetricsLogger)
-        assert isinstance(env, gym.Env)
+        assert isinstance(env, (gym.Env, gym.vector.VectorEnv))
         self.counts.update({"start": 1})
 
     def on_episode_step(self, *args, env_runner, metrics_logger, env, **kwargs):
         assert isinstance(env_runner, EnvRunner)
         assert isinstance(metrics_logger, MetricsLogger)
-        assert isinstance(env, gym.Env)
+        assert isinstance(env, (gym.Env, gym.vector.VectorEnv))
         self.counts.update({"step": 1})
 
     def on_episode_end(self, *args, env_runner, metrics_logger, env, **kwargs):
         assert isinstance(env_runner, EnvRunner)
         assert isinstance(metrics_logger, MetricsLogger)
-        assert isinstance(env, gym.Env)
+        assert isinstance(env, (gym.Env, gym.vector.VectorEnv))
         self.counts.update({"end": 1})
 
     def on_sample_end(self, *args, env_runner, metrics_logger, **kwargs):
