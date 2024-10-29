@@ -91,7 +91,7 @@ def create_router(
         availability_zone,
         # Streaming ObjectRefGenerators are not supported in Ray Client
         use_replica_queue_len_cache=(
-            not is_inside_ray_client_context and RAY_SERVE_ENABLE_QUEUE_LENGTH_CACHE
+            not is_inside_ray_client_context
         ),
         create_replica_wrapper_func=lambda r: ActorReplicaWrapper(r),
     )
