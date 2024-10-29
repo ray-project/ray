@@ -90,9 +90,7 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
         self.make_env()
 
         # Create the env-to-module connector pipeline.
-        self._env_to_module = self.config.build_env_to_module_connector(
-            self.env.unwrapped
-        )
+        self._env_to_module = self.config.build_env_to_module_connector(self.env)
         # Cached env-to-module results taken at the end of a `_sample_timesteps()`
         # call to make sure the final observation (before an episode cut) gets properly
         # processed (and maybe postprocessed and re-stored into the episode).
@@ -106,7 +104,7 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
         # Construct the MultiRLModule.
         try:
             module_spec: MultiRLModuleSpec = self.config.get_multi_rl_module_spec(
-                env=self.env.unwrapped, spaces=self.get_spaces(), inference_only=True
+                env=self.env, spaces=self.get_spaces(), inference_only=True
             )
             # Build the module from its spec.
             self.module = module_spec.build()
@@ -116,9 +114,7 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
             self.module = None
 
         # Create the two connector pipelines: env-to-module and module-to-env.
-        self._module_to_env = self.config.build_module_to_env_connector(
-            self.env.unwrapped
-        )
+        self._module_to_env = self.config.build_module_to_env_connector(self.env)
 
         self._needs_initial_reset: bool = True
         self._episode: Optional[MultiAgentEpisode] = None
@@ -263,7 +259,7 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
                 to_env = {
                     Columns.ACTIONS: [
                         {
-                            aid: self.env.unwrapped.get_action_space(aid).sample()
+                            aid: self.env.get_action_space(aid).sample()
                             for aid in self._episode.get_agents_to_act()
                         }
                     ]
@@ -465,7 +461,7 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
                 to_env = {
                     Columns.ACTIONS: [
                         {
-                            aid: self.env.unwrapped.get_action_space(aid).sample()
+                            aid: self.env.get_action_space(aid).sample()
                             for aid in self._episode.get_agents_to_act()
                         }
                     ]
@@ -873,7 +869,7 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
         self._callbacks.on_environment_created(
             env_runner=self,
             metrics_logger=self.metrics,
-            env=self.env.unwrapped,
+            env=self.env,
             env_context=env_ctx,
         )
 
@@ -893,12 +889,11 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
     def _new_episode(self):
         return MultiAgentEpisode(
             observation_space={
-                aid: self.env.unwrapped.get_observation_space(aid)
-                for aid in self.env.unwrapped.possible_agents
+                aid: self.env.get_observation_space(aid)
+                for aid in self.env.possible_agents
             },
             action_space={
-                aid: self.env.unwrapped.get_action_space(aid)
-                for aid in self.env.unwrapped.possible_agents
+                aid: self.env.get_action_space(aid) for aid in self.env.possible_agents
             },
             agent_to_module_mapping_fn=self.config.policy_mapping_fn,
         )
@@ -909,7 +904,7 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
             episode=episode,
             env_runner=self,
             metrics_logger=self.metrics,
-            env=self.env.unwrapped,
+            env=self.env,
             rl_module=self.module,
             env_index=0,
         )

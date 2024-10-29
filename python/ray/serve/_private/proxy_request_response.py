@@ -109,7 +109,7 @@ class ASGIProxyRequest(ProxyRequest):
         self, receive_asgi_messages: Callable[[str], Awaitable[bytes]]
     ) -> StreamingHTTPRequest:
         return StreamingHTTPRequest(
-            pickled_asgi_scope=pickle.dumps(self.scope),
+            asgi_scope=self.scope,
             receive_asgi_messages=receive_asgi_messages,
         )
 
