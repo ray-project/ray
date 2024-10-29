@@ -266,7 +266,7 @@ bool CoreWorkerMemoryStore::Put(const RayObject &object, const ObjectID &object_
           cb(object_entry);
         }
       },
-      "CoreWorkerMemoryStore.Put.async_callbacks");
+      "CoreWorkerMemoryStore.Put.get_async_callbacks");
 
   return true;
 }
