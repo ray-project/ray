@@ -89,10 +89,13 @@ class BlockOutputBuffer:
                 #       into appropriately sized ones:
                 #
                 #         - (Finalized) Target blocks sliced from the original one
-                #           are *copied* to avoid holding up original one
+                #           and are *copied* to avoid referencing original blocks
                 #         - Temporary remainder of the block should *NOT* be copied
-                #           such as to avoid repeatedly copying the remainder of the
-                #           block, resulting in O(N^2) total bytes being copied
+                #           such as to avoid repeatedly copying the remainder bytes
+                #           of the block, resulting in O(M * N) total bytes being
+                #           copied, where N is the total number of bytes in the original
+                #           block and M is the number of blocks that will be produced by
+                #           this iterator
                 block_to_yield = block.slice(0, target_num_rows, copy=True)
                 block_remainder = block.slice(
                     target_num_rows, block.num_rows(), copy=False
