@@ -184,7 +184,7 @@ int main(int argc, char *argv[]) {
   ray::raylet::NodeManagerConfig node_manager_config;
   absl::flat_hash_map<std::string, double> static_resource_conf;
 
-  SetThreadName("raylet_main");
+  SetThreadName("raylet");
   // IO Service for node manager.
   instrumented_io_context main_service;
 
