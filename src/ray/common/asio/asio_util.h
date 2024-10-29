@@ -109,6 +109,8 @@ class InstrumentedIOContextWithThread {
 ///     // instrumented_io_context for each. Must be unique and should not contain empty
 ///     // names.
 ///     constexpr static std::array<std::string_view, N> kAllDedicatedIOContextNames;
+///     // List of bools to enable lag probe for each dedicated io context.
+///     constexpr static std::array<bool, N> kAllDedicatedIOContextEnableLagProbe;
 ///
 ///     // For a given T, returns an index to kAllDedicatedIOContextNames, or -1 for the
 ///     // default io context.

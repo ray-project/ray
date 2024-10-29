@@ -51,9 +51,7 @@ struct GcsServerIOContextPolicy {
   // GetDedicatedIOContextIndex. Or you can get runtime crashes when accessing a missing
   // name, or get leaks by creating unused threads.
   constexpr static std::array<std::string_view, 3> kAllDedicatedIOContextNames{
-      {"task_io_context", true},
-      {"pubsub_io_context", true},
-      {"ray_syncer_io_context", true}};
+      "task_io_context", "pubsub_io_context", "ray_syncer_io_context"};
   constexpr static std::array<bool, 3> kAllDedicatedIOContextEnableLagProbe{
       true, true, true};
 
