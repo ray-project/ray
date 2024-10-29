@@ -589,6 +589,13 @@ message TaskInfoEntry {
   // If the task/actor is created within a placement group,
   // this value is configured.
   optional bytes placement_group_id = 26;
+  // Tasks arguments passed in as (object) references.
+  //
+  // NOTE: This list only contains `ObjectReference`s passed in as arguments
+  //       this task is dependent on and does NOT contain
+  //        - Args passed by value (inlined)
+  //        - ObjectRefs of the args passed by value
+  repeated bytes args_object_ids = 27;
 }
 
 message Bundle {
@@ -827,18 +834,23 @@ enum TaskStatus {
   // to the worker. It will be executed shortly. For actor tasks, execution may be
   // delayed to satisfy ordering constraints or argument fetching.
   SUBMITTED_TO_WORKER = 5;
+  // The actor task is fetching arguments. This happens after the actor worker
+  // receives the task and the actor task has object refs as arguments.
+  PENDING_ACTOR_TASK_ARGS_FETCH = 6;
+  // The actor task is waiting due to ordering or concurrency constraints.
+  PENDING_ACTOR_TASK_ORDERING_OR_CONCURRENCY = 7;
   // The task is running on a worker.
-  RUNNING = 6;
+  RUNNING = 8;
   // The task is running on a worker, but is blocked in a ray.get() call.
   // This state is a sub-state of RUNNING and used for metrics only.
-  RUNNING_IN_RAY_GET = 7;
+  RUNNING_IN_RAY_GET = 9;
   // The task is running on a worker, but is blocked in a ray.wait() call.
   // This state is a sub-state of RUNNING and used for metrics only.
-  RUNNING_IN_RAY_WAIT = 8;
+  RUNNING_IN_RAY_WAIT = 10;
   // The task has finished.
-  FINISHED = 9;
+  FINISHED = 11;
   // The task has finished but failed with an Exception or system error.
-  FAILED = 10;
+  FAILED = 12;
 }
 
 // Debug info for a referenced object.
