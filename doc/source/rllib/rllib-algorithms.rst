@@ -63,9 +63,10 @@ Proximal Policy Optimization (PPO)
 .. figure:: images/algos/ppo-architecture.svg
     :width: 750
 
-    **PPO architecture:** In a training iteration, PPO performs three major steps: sampling a set of episodes or episode fragments (1),
-    converting these into a train batch and updating the model using a clipped objective and multiple SGD passes over this batch (2),
-    and synching the weights from the Learners back to the EnvRunners (3).
+    **PPO architecture:** In a training iteration, PPO performs three major steps:
+    1. Sampling a set of episodes or episode fragments
+    1. Converting these into a train batch and updating the model using a clipped objective and multiple SGD passes over this batch
+    1. Synching the weights from the Learners back to the EnvRunners
     PPO scales out on both axes, supporting multiple EnvRunners for sample collection and multiple GPU- or CPU-based Learners
     for updating the model.
 
@@ -95,7 +96,7 @@ Deep Q Networks (DQN, Rainbow, Parametric DQN)
 .. figure:: images/algos/dqn-architecture.svg
     :width: 650
 
-    **DQN architecture:** DQN uses a replay buffer to temporarily store episode samples collected from the environment.
+    **DQN architecture:** DQN uses a replay buffer to temporarily store episode samples that RLlib collects from the environment.
     Throughout different training iterations, these episodes and episode fragments are re-sampled from the buffer and re-used
     for updating the model, before eventually being discarded when the buffer has reached capacity and new samples keep coming in (FIFO).
     This reuse of training data makes DQN very sample-efficient and off-policy.
@@ -140,7 +141,7 @@ Soft Actor Critic (SAC)
 .. figure:: images/algos/sac-architecture.svg
     :width: 750
 
-    **SAC architecture:** SAC uses a replay buffer to temporarily store episode samples collected from the environment.
+    **SAC architecture:** SAC uses a replay buffer to temporarily store episode samples that RLlib collects from the environment.
     Throughout different training iterations, these episodes and episode fragments are re-sampled from the buffer and re-used
     for updating the model, before eventually being discarded when the buffer has reached capacity and new samples keep coming in (FIFO).
     This reuse of training data makes DQN very sample-efficient and off-policy.
@@ -171,8 +172,8 @@ Importance Weighted Actor-Learner Architecture (IMPALA)
 .. figure:: images/algos/impala-architecture.svg
     :width: 750
 
-    **IMPALA architecture:** In a training iteration, IMPALA requests samples from all EnvRunners asynchronously and the collected episode
-    samples are returned to the main algorithm process as ray references (rather than actual objects available on the local process).
+    **IMPALA architecture:** In a training iteration, IMPALA requests samples from all EnvRunners asynchronously and the collected episodes
+    are returned to the main algorithm process as Ray references rather than actual objects available on the local process.
     IMPALA then passes these episode references to the Learners for asynchronous updates of the model.
     RLlib doesn't always synch back the weights to the EnvRunners right after a new model version is available.
     To account for the resulting off-policy'ness on the EnvRunners, IMPALA uses a procedure called v-trace,
@@ -217,12 +218,12 @@ Asynchronous Proximal Policy Optimization (APPO)
     **APPO architecture:** APPO is an asynchronous variant of :ref:`Proximal Policy Optimization (PPO) <ppo>` based on the IMPALA architecture,
     but using a surrogate policy loss with clipping, allowing for multiple SGD passes per collected train batch.
     In a training iteration, APPO requests samples from all EnvRunners asynchronously and the collected episode
-    samples are returned to the main algorithm process as ray references (rather than actual objects available on the local process).
-    These episode references are then passed to the Learner for asynchronous updates of the model.
+    samples are returned to the main algorithm process as Ray references rather than actual objects available on the local process.
+    APPO then passes these episode references to the Learners for asynchronous updates of the model.
     RLlib doesn't always synch back the weights to the EnvRunners right after a new model version is available.
     To account for the resulting off-policy'ness on the EnvRunners, APPO uses a procedure called v-trace,
     `described in the IMPALA paper <https://arxiv.org/abs/1802.01561>`__.
-    IMPALA scales out on both axes, supporting multiple EnvRunners for sample collection and multiple GPU- or CPU-based Learners
+    APPO scales out on both axes, supporting multiple EnvRunners for sample collection and multiple GPU- or CPU-based Learners
     for updating the model.
 
 
@@ -250,10 +251,10 @@ DreamerV3
     :width: 850
 
     **DreamerV3 architecture:** DreamerV3 trains a recurrent WORLD_MODEL in supervised fashion
-    using real environment interactions (sampled from a replay buffer). The world model's objective
+    using real environment interactions sampled from a replay buffer. The world model's objective
     is to correctly predict the transition dynamics of the RL environment: next observation, reward,
     and a boolean continuation flag.
-    The actor- and critic-networks are subsequently trained on synthesized trajectories only,
+    DreamerV3 trains the actor- and critic-networks on synthesized trajectories only,
     which are "dreamed" by the world model.
     DreamerV3 scales out on both axes, supporting multiple EnvRunners for sample collection and
     multiple GPU- or CPU-based Learners for updating the model.
@@ -311,9 +312,10 @@ Behavior Cloning (BC)
 
     **BC architecture:** RLlib's behavioral cloning (BC) uses Ray Data to tap into its parallel data
     processing capabilities. In one training iteration, BC reads episodes in parallel from
-    offline (ex. parquet or JSON) files by the n DataWorkers. Connector pipelines then preprocess these episodes into
-    train batches and send these as data iterators directly to the n Learners for updating the model.
-    RLlib's  (BC) implementation is directly derived from the `MARWIL`_ implementation,
+    offline files, for example `parquet <https://parquet.apache.org/>`__, by the n DataWorkers.
+    Connector pipelines then preprocess these episodes into train batches and send these as
+    data iterators directly to the n Learners for updating the model.
+    RLlib's  (BC) implementation is directly derived from its `MARWIL`_ implementation,
     with the only difference being the ``beta`` parameter (set to 0.0). This makes
     BC try to match the behavior policy, which generated the offline data, disregarding any resulting rewards.
 
@@ -365,8 +367,8 @@ Monotonic Advantage Re-Weighted Imitation Learning (MARWIL)
     **MARWIL architecture:** MARWIL is a hybrid imitation learning and policy gradient algorithm suitable for training on
     batched historical data. When the ``beta`` hyperparameter is set to zero, the MARWIL objective reduces to plain
     imitation learning (see `BC`_). MARWIL uses Ray.Data to tap into its parallel data
-    processing capabilities. In one training iteration, episodes are read in parallel from offline files
-    for example, `parquet <https://parquet.apache.org/>`__, by the n DataWorkers. Connector pipelines preprocess these
+    processing capabilities. In one training iteration, MARWIL reads episodes in parallel from offline files,
+    for example `parquet <https://parquet.apache.org/>`__, by the n DataWorkers. Connector pipelines preprocess these
     episodes into train batches and send these as data iterators directly to the n Learners for updating the model.
 
 
