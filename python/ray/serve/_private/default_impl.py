@@ -9,9 +9,7 @@ from ray.serve._private.cluster_node_info_cache import (
     DefaultClusterNodeInfoCache,
 )
 from ray.serve._private.common import DeploymentID
-from ray.serve._private.constants import (
-    RAY_SERVE_PROXY_PREFER_LOCAL_AZ_ROUTING,
-)
+from ray.serve._private.constants import RAY_SERVE_PROXY_PREFER_LOCAL_AZ_ROUTING
 from ray.serve._private.deployment_scheduler import (
     DefaultDeploymentScheduler,
     DeploymentScheduler,
@@ -90,9 +88,7 @@ def create_router(
         else None,
         availability_zone,
         # Streaming ObjectRefGenerators are not supported in Ray Client
-        use_replica_queue_len_cache=(
-            not is_inside_ray_client_context
-        ),
+        use_replica_queue_len_cache=(not is_inside_ray_client_context),
         create_replica_wrapper_func=lambda r: ActorReplicaWrapper(r),
     )
 
@@ -105,9 +101,7 @@ def create_router(
         event_loop=event_loop,
         replica_scheduler=replica_scheduler,
         # Streaming ObjectRefGenerators are not supported in Ray Client
-        enable_strict_max_ongoing_requests=(
-            not is_inside_ray_client_context
-        ),
+        enable_strict_max_ongoing_requests=(not is_inside_ray_client_context),
         resolve_request_args_func=resolve_request_args,
     )
 
