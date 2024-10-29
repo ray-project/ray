@@ -25,7 +25,7 @@ grpcio == 1.54.2; sys_platform == "darwin"
 grpcio >= 1.54.2; sys_platform != "darwin"
 numpy>=1.20
 
-pyarrow >= 6.0.1
+pyarrow >= 6.0.1,<18
 
 # ray[all]
 smart_open
