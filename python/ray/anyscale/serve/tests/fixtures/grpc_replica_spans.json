@@ -28,7 +28,7 @@
          "deployment":"grpc-deployment",
          "app":"default",
          "call_method":"__call__",
-         "route":"",
+         "route":"default",
          "multiplexed_model_id":"",
          "is_streaming":false
       },

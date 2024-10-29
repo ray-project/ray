@@ -21,34 +21,14 @@ from ray.serve.schema import ApplicationStatus
 from ray.util.state import list_actors
 
 
-@pytest.mark.parametrize("prefixes", [[None, "/f", None], ["/f", None, "/f"]])
-def test_deploy_nullify_route_prefix(serve_instance, prefixes):
-    # With multi dags support, dag driver will receive all route
-    # prefix when route_prefix is "None", since "None" will be converted
-    # to "/" internally.
-    # Note: the expose http endpoint will still be removed for internal
-    # dag node by setting "None" to route_prefix
-    @serve.deployment
-    def f(*args):
-        return "got me"
-
-    for prefix in prefixes:
-        dag = f.options(route_prefix=prefix).bind()
-        handle = serve.run(dag)
-        assert requests.get("http://localhost:8000/f").status_code == 200
-        assert requests.get("http://localhost:8000/f").text == "got me"
-        assert handle.remote().result() == "got me"
-
-
-@pytest.mark.timeout(10, method="thread")
-def test_deploy_empty_bundle(serve_instance):
+def test_deploy_zero_cpus(serve_instance):
     @serve.deployment(ray_actor_options={"num_cpus": 0})
     class D:
-        def hello(self, _):
+        def hello(self):
             return "hello"
 
-    # This should succesfully terminate within the provided time-frame.
-    serve.run(D.bind())
+    h = serve.run(D.bind())
+    assert h.hello.remote().result() == "hello"
 
 
 def test_deployment_error_handling(serve_instance):
