@@ -21,14 +21,14 @@ def prepare_mnist():
 
     print("Preparing Torch benchmark: Downloading MNIST")
 
-    @ray.remote(num_cpus=0)
+    @ray.remote
     def _download_data():
         import torchvision
 
         torchvision.datasets.FashionMNIST("/tmp/data_fashion_mnist", download=True)
         return True
 
-    ray.get(schedule_remote_fn_on_all_nodes(_download_data, exclude_head=False))
+    ray.get(schedule_remote_fn_on_all_nodes(_download_data))
 
 
 def get_trainer(
