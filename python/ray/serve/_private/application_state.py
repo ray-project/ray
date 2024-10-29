@@ -37,6 +37,7 @@ from ray.serve._private.utils import (
     DEFAULT,
     check_obj_ref_ready_nowait,
     override_runtime_envs_except_env_vars,
+    validate_route_prefix,
 )
 from ray.serve.config import AutoscalingConfig
 from ray.serve.exceptions import RayServeException
@@ -931,7 +932,10 @@ class ApplicationStateManager:
         }
 
         for deploy_param in deployment_args:
-            deploy_app_prefix: str = deploy_param["route_prefix"]
+            deploy_app_prefix = deploy_param.get("route_prefix", None)
+            if deploy_app_prefix is None:
+                continue
+
             app_name = live_route_prefixes.get(deploy_app_prefix)
             if app_name is not None:
                 raise RayServeException(
@@ -1139,9 +1143,6 @@ def build_serve_application(
     try:
         from ray.serve._private.api import call_app_builder_with_args_if_necessary
         from ray.serve._private.deployment_graph_build import build as pipeline_build
-        from ray.serve._private.deployment_graph_build import (
-            get_and_validate_ingress_deployment,
-        )
 
         # Import and build the application.
         args_info_str = f" with arguments {args}" if args else ""
@@ -1149,7 +1150,7 @@ def build_serve_application(
 
         app = call_app_builder_with_args_if_necessary(import_attr(import_path), args)
         deployments = pipeline_build(app._get_internal_dag_node(), name)
-        ingress = get_and_validate_ingress_deployment(deployments)
+        ingress = deployments[-1]
 
         deploy_args_list = []
         for deployment in deployments:
@@ -1161,7 +1162,7 @@ def build_serve_application(
                     ingress=is_ingress,
                     deployment_config=deployment._deployment_config,
                     version=code_version,
-                    route_prefix=deployment.route_prefix,
+                    route_prefix="/" if is_ingress else None,
                     docs_path=deployment._docs_path,
                 )
             )
@@ -1213,6 +1214,11 @@ def override_deployment_info(
             options["max_ongoing_requests"] = options.get("max_ongoing_requests")
 
         deployment_name = options["name"]
+        if deployment_name not in deployment_infos:
+            raise ValueError(
+                f"Got config override for nonexistent deployment '{deployment_name}'"
+            )
+
         info = deployment_infos[deployment_name]
         original_options = info.deployment_config.dict()
         original_options["user_configured_option_names"].update(set(options))
@@ -1238,11 +1244,6 @@ def override_deployment_info(
 
         # What to pass to info.update
         override_options = dict()
-
-        # Override route prefix if specified in deployment config
-        deployment_route_prefix = options.pop("route_prefix", DEFAULT.VALUE)
-        if deployment_route_prefix is not DEFAULT.VALUE:
-            override_options["route_prefix"] = deployment_route_prefix
 
         # Merge app-level and deployment-level runtime_envs.
         replica_config = info.replica_config
@@ -1306,6 +1307,7 @@ def override_deployment_info(
 
     # Overwrite ingress route prefix
     app_route_prefix = config_dict.get("route_prefix", DEFAULT.VALUE)
+    validate_route_prefix(app_route_prefix)
     for deployment in list(deployment_infos.values()):
         if (
             app_route_prefix is not DEFAULT.VALUE

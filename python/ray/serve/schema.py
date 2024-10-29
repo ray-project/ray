@@ -278,13 +278,6 @@ class DeploymentSchema(BaseModel, allow_population_by_field_name=True):
             "(experimental)."
         ),
     )
-    # route_prefix of None means the deployment is not exposed over HTTP.
-    route_prefix: Union[str, None] = Field(
-        default=DEFAULT.VALUE,
-        description=(
-            "[DEPRECATED] Please use route_prefix under ServeApplicationSchema instead."
-        ),
-    )
     max_ongoing_requests: int = Field(
         default=DEFAULT.VALUE,
         description=(
@@ -444,10 +437,6 @@ class DeploymentSchema(BaseModel, allow_population_by_field_name=True):
 
         return values
 
-    deployment_schema_route_prefix_format = validator("route_prefix", allow_reuse=True)(
-        _route_prefix_format
-    )
-
     def _get_user_configured_option_names(self) -> Set[str]:
         """Get set of names for all user-configured options.
 
@@ -460,12 +449,7 @@ class DeploymentSchema(BaseModel, allow_population_by_field_name=True):
 
 
 def _deployment_info_to_schema(name: str, info: DeploymentInfo) -> DeploymentSchema:
-    """Converts a DeploymentInfo object to DeploymentSchema.
-
-    Route_prefix will not be set in the returned DeploymentSchema, since starting in 2.x
-    route_prefix is an application-level concept. (This should only be used on the 2.x
-    codepath)
-    """
+    """Converts a DeploymentInfo object to DeploymentSchema."""
 
     schema = DeploymentSchema(
         name=name,
@@ -956,21 +940,6 @@ class DeploymentDetails(BaseModel, extra=Extra.forbid, frozen=True):
     replicas: List[ReplicaDetails] = Field(
         description="Details about the live replicas of this deployment."
     )
-
-    @validator("deployment_config")
-    def deployment_route_prefix_not_set(cls, v: DeploymentSchema):
-        # Route prefix should not be set at the deployment level. Deployment-level route
-        # prefix is outdated, there should be one route prefix per application
-        if (
-            "route_prefix" in v.__fields_set__
-        ):  # in Pydantic v2, this becomes `in v.model_fields_set`
-            raise ValueError(
-                "Unexpectedly found a deployment-level route_prefix in the "
-                f'deployment_config for deployment "{v.name}". The route_prefix in '
-                "deployment_config within DeploymentDetails should not be set; please "
-                "set it at the application level."
-            )
-        return v
 
 
 @PublicAPI(stability="alpha")
