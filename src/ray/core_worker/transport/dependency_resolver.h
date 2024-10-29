@@ -15,7 +15,6 @@
 #pragma once
 
 #include <memory>
-#include <utility>
 
 #include "ray/common/id.h"
 #include "ray/common/task/task_spec.h"
@@ -69,10 +68,11 @@ class LocalDependencyResolver {
               const std::unordered_set<ObjectID> &deps,
               const std::unordered_set<ActorID> &actor_ids,
               std::function<void(Status)> on_dependencies_resolved)
-        : task(std::move(t)),
+        : task(t),
+          local_dependencies(),
           actor_dependencies_remaining(actor_ids.size()),
           status(Status::OK()),
-          on_dependencies_resolved(std::move(on_dependencies_resolved)) {
+          on_dependencies_resolved(on_dependencies_resolved) {
       for (const auto &dep : deps) {
         local_dependencies.emplace(dep, nullptr);
       }
@@ -99,11 +99,7 @@ class LocalDependencyResolver {
 
   ActorCreatorInterface &actor_creator_;
 
-  // Pending tasks for a TaskID. There may be multiple dependency resolution requests for
-  // a TaskID registered. On CancelDependencyResolution all requests for a TaskID are
-  // removed. Each TaskState is owned by this map, its shared_ptr only because we use
-  // a weak_ptr in the async callback to track if it's cancelled already.
-  absl::flat_hash_map<TaskID, std::vector<std::shared_ptr<TaskState>>> pending_tasks_
+  absl::flat_hash_map<TaskID, std::unique_ptr<TaskState>> pending_tasks_
       ABSL_GUARDED_BY(mu_);
 
   /// Protects against concurrent access to internal state.

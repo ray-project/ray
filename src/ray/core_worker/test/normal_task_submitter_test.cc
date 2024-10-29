@@ -429,6 +429,12 @@ TaskSpecification BuildEmptyTaskSpec() {
   return BuildTaskSpec(empty_resources, empty_descriptor);
 }
 
+TaskSpecification WithRandomTaskId(const TaskSpecification &task_spec) {
+  auto copied_proto = task_spec.GetMessage();
+  *copied_proto.mutable_task_id() = TaskID::FromRandom(JobID::Nil()).Binary();
+  return TaskSpecification(std::move(copied_proto));
+}
+
 TEST(NormalTaskSubmitterTest, TestLocalityAwareSubmitOneTask) {
   rpc::Address address;
   auto raylet_client = std::make_shared<MockRayletClient>();
@@ -1898,18 +1904,18 @@ TEST(NormalTaskSubmitterTest, TestBacklogReport) {
   TaskSpecification task3 = BuildTaskSpec(resources1, descriptor1);
   task3.GetMutableMessage().add_args()->mutable_object_ref()->set_object_id(
       plasma2.Binary());
-  TestSchedulingKey(store, task2, task2, task3);
+  TestSchedulingKey(store, WithRandomTaskId(task2), WithRandomTaskId(task2), task3);
 
   TaskSpecification task4 = BuildTaskSpec(resources2, descriptor2);
 
   ASSERT_TRUE(submitter.SubmitTask(task1).ok());
   // One is requested and one is in the backlog for each SchedulingKey
-  ASSERT_TRUE(submitter.SubmitTask(task2).ok());
-  ASSERT_TRUE(submitter.SubmitTask(task2).ok());
-  ASSERT_TRUE(submitter.SubmitTask(task3).ok());
-  ASSERT_TRUE(submitter.SubmitTask(task3).ok());
-  ASSERT_TRUE(submitter.SubmitTask(task4).ok());
-  ASSERT_TRUE(submitter.SubmitTask(task4).ok());
+  ASSERT_TRUE(submitter.SubmitTask(WithRandomTaskId(task2)).ok());
+  ASSERT_TRUE(submitter.SubmitTask(WithRandomTaskId(task2)).ok());
+  ASSERT_TRUE(submitter.SubmitTask(WithRandomTaskId(task3)).ok());
+  ASSERT_TRUE(submitter.SubmitTask(WithRandomTaskId(task3)).ok());
+  ASSERT_TRUE(submitter.SubmitTask(WithRandomTaskId(task4)).ok());
+  ASSERT_TRUE(submitter.SubmitTask(WithRandomTaskId(task4)).ok());
 
   std::this_thread::sleep_for(std::chrono::seconds(1));
   submitter.ReportWorkerBacklog();
