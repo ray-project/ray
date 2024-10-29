@@ -63,9 +63,10 @@ Proximal Policy Optimization (PPO)
 .. figure:: images/algos/ppo-architecture.svg
     :width: 750
 
-    **PPO architecture:** In a training iteration, PPO performs three major steps: sampling a set of episodes or episode fragments (1),
-    converting these into a train batch and updating the model using a clipped objective and multiple SGD passes over this batch (2),
-    and synching the weights from the Learners back to the EnvRunners (3).
+    **PPO architecture:** In a training iteration, PPO performs three major steps: 
+    1. Sampling a set of episodes or episode fragments
+    1. Converting these into a train batch and updating the model using a clipped objective and multiple SGD passes over this batch
+    1. Synching the weights from the Learners back to the EnvRunners
     PPO scales out on both axes, supporting multiple EnvRunners for sample collection and multiple GPU- or CPU-based Learners
     for updating the model.
 
@@ -95,7 +96,7 @@ Deep Q Networks (DQN, Rainbow, Parametric DQN)
 .. figure:: images/algos/dqn-architecture.svg
     :width: 650
 
-    **DQN architecture:** DQN uses a replay buffer to temporarily store episode samples collected from the environment.
+    **DQN architecture:** DQN uses a replay buffer to temporarily store episode samples that RLlib collects from the environment.
     Throughout different training iterations, these episodes and episode fragments are re-sampled from the buffer and re-used
     for updating the model, before eventually being discarded when the buffer has reached capacity and new samples keep coming in (FIFO).
     This reuse of training data makes DQN very sample-efficient and off-policy.
@@ -140,7 +141,7 @@ Soft Actor Critic (SAC)
 .. figure:: images/algos/sac-architecture.svg
     :width: 750
 
-    **SAC architecture:** SAC uses a replay buffer to temporarily store episode samples collected from the environment.
+    **SAC architecture:** SAC uses a replay buffer to temporarily store episode samples that RLlib collects from the environment.
     Throughout different training iterations, these episodes and episode fragments are re-sampled from the buffer and re-used
     for updating the model, before eventually being discarded when the buffer has reached capacity and new samples keep coming in (FIFO).
     This reuse of training data makes DQN very sample-efficient and off-policy.
@@ -172,7 +173,7 @@ Importance Weighted Actor-Learner Architecture (IMPALA)
     :width: 750
 
     **IMPALA architecture:** In a training iteration, IMPALA requests samples from all EnvRunners asynchronously and the collected episode
-    samples are returned to the main algorithm process as ray references (rather than actual objects available on the local process).
+    samples to the main algorithm process as Ray references rather than actual objects available on the local process.
     These episode references are then passed to the Learners for asynchronous updates of the model.
     To account for the fact that this asynchronous design leads to some degree of off-policiness
     on the EnvRunners (models aren't always synched back to EnvRunners right after a new version of the weights is available), IMPALA uses
@@ -250,10 +251,10 @@ DreamerV3
     :width: 850
 
     **DreamerV3 architecture:** DreamerV3 trains a recurrent WORLD_MODEL in supervised fashion
-    using real environment interactions (sampled from a replay buffer). The world model's objective
+    using real environment interactions sampled from a replay buffer. The world model's objective
     is to correctly predict the transition dynamics of the RL environment: next observation, reward,
     and a boolean continuation flag.
-    The actor- and critic-networks are subsequently trained on synthesized trajectories only,
+    RLlib trains the actor- and critic-networks on synthesized trajectories only,
     which are "dreamed" by the world model.
     DreamerV3 scales out on both axes, supporting multiple EnvRunners for sample collection and
     multiple GPU- or CPU-based Learners for updating the model.
