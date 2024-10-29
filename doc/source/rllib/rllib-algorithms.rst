@@ -173,10 +173,10 @@ Importance Weighted Actor-Learner Architecture (IMPALA)
 
     **IMPALA architecture:** In a training iteration, IMPALA requests samples from all EnvRunners asynchronously and the collected episode
     samples are returned to the main algorithm process as ray references (rather than actual objects available on the local process).
-    These episode references are then passed to the Learners for asynchronous updates of the model.
-    To account for the fact that this asynchronous design leads to some degree of off-policiness
-    on the EnvRunners (models aren't always synched back to EnvRunners right after a new version of the weights is available), IMPALA uses
-    a procedure called v-trace, `described in the paper <https://arxiv.org/abs/1802.01561>`__.
+    IMPALA then passes these episode references to the Learners for asynchronous updates of the model.
+    RLlib doesn't always synch back the weights to the EnvRunners right after a new model version is available.
+    To account for the resulting off-policy'ness on the EnvRunners, IMPALA uses a procedure called v-trace,
+    `described in the paper <https://arxiv.org/abs/1802.01561>`__.
     IMPALA scales out on both axes, supporting multiple EnvRunners for sample collection and multiple GPU- or CPU-based Learners
     for updating the model.
 
@@ -217,12 +217,12 @@ Asynchronous Proximal Policy Optimization (APPO)
     **APPO architecture:** APPO is an asynchronous variant of :ref:`Proximal Policy Optimization (PPO) <ppo>` based on the IMPALA architecture,
     but using a surrogate policy loss with clipping, allowing for multiple SGD passes per collected train batch.
     In a training iteration, APPO requests samples from all EnvRunners asynchronously and the collected episode
-    samples are returned to the main algorithm process as ray references (rather than actual objects available on the local algo process).
+    samples are returned to the main algorithm process as ray references (rather than actual objects available on the local process).
     These episode references are then passed to the Learner for asynchronous updates of the model.
-    To account for the fact that this asynchronous design leads to some degree of off-policiness
-    on the EnvRunners (models aren't always synched back to EnvRunners right after a new version of the weights is available), APPO uses
-    a procedure called v-trace, `described in the IMPALA paper here <https://arxiv.org/abs/1802.01561>`__.
-    APPO scales out on both axes, supporting multiple EnvRunners for sample collection and multiple GPU- or CPU-based Learners
+    RLlib doesn't always synch back the weights to the EnvRunners right after a new model version is available.
+    To account for the resulting off-policy'ness on the EnvRunners, APPO uses a procedure called v-trace,
+    `described in the IMPALA paper <https://arxiv.org/abs/1802.01561>`__.
+    IMPALA scales out on both axes, supporting multiple EnvRunners for sample collection and multiple GPU- or CPU-based Learners
     for updating the model.
 
 
@@ -310,10 +310,9 @@ Behavior Cloning (BC)
     :width: 750
 
     **BC architecture:** RLlib's behavioral cloning (BC) uses Ray Data to tap into its parallel data
-    processing capabilities. In one training iteration, episodes are read in parallel from
-    offline (ex. JSON) files by the n DataWorkers. These episodes are then preprocessed into train
-    batches and sent as data iterators directly to the n Learners, which perform the forward- and backward passes
-    as well as the optimizer step.
+    processing capabilities. In one training iteration, BC reads episodes in parallel from
+    offline (ex. parquet or JSON) files by the n DataWorkers. Connector pipelines then preprocess these episodes into
+    train batches and send these as data iterators directly to the n Learners for updating the model.
     RLlib's  (BC) implementation is directly derived from the `MARWIL`_ implementation,
     with the only difference being the ``beta`` parameter (set to 0.0). This makes
     BC try to match the behavior policy, which generated the offline data, disregarding any resulting rewards.
@@ -367,8 +366,8 @@ Monotonic Advantage Re-Weighted Imitation Learning (MARWIL)
     batched historical data. When the ``beta`` hyperparameter is set to zero, the MARWIL objective reduces to plain
     imitation learning (see `BC`_). MARWIL uses Ray.Data to tap into its parallel data
     processing capabilities. In one training iteration, episodes are read in parallel from offline files
-    (ex. `parquet <https://parquet.apache.org/>`__) by the n DataWorkers, then preprocessed into train batches and
-    sent as data iterators directly to the n Learners, which perform the forward/backward passes and optimizer step.
+    for example, `parquet <https://parquet.apache.org/>`__, by the n DataWorkers. Connector pipelines preprocess these
+    episodes into train batches and send these as data iterators directly to the n Learners for updating the model.
 
 
 **Tuned examples:**
