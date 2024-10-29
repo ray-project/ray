@@ -10,7 +10,7 @@ This examples:
     - Uses this `RLModule` in a PPO training run on a simple environment
         that rewards synchronized actions.
     - Stops the training after 100k steps or when the mean episode return
-        exceeds 0.01 in evaluation, i.e. if the agent has learned to
+        exceeds -0.012 in evaluation, i.e. if the agent has learned to
         synchronize its actions.
 
 How to run this script
@@ -90,6 +90,13 @@ if __name__ == "__main__":
                 catalog_class=Catalog,
             ),
         )
+        .env_runners(
+            num_env_runners=0,
+        )
+        .api_stack(
+            enable_env_runner_and_connector_v2=True,
+            enable_rl_module_and_learner=True,
+        )
         .evaluation(
             evaluation_num_env_runners=1,
             evaluation_interval=1,
@@ -99,7 +106,7 @@ if __name__ == "__main__":
     )
 
     # Let's stop the training after 100k steps or when the mean episode return
-    # exceeds 150 in evaluation.
+    # exceeds -0.012 in evaluation.
     stop = {
         f"{NUM_ENV_STEPS_SAMPLED_LIFETIME}": 100000,
         f"{EVALUATION_RESULTS}/{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": -0.012,
