@@ -20,7 +20,7 @@ memray
 openskill
 petastorm
 protobuf
-pyarrow<18
+pyarrow
 pydantic>=2.5.0
 pytest
 requests>=2.31.0
