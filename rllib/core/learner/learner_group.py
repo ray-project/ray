@@ -38,6 +38,7 @@ from ray.rllib.utils.actor_manager import (
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.checkpoints import Checkpointable
 from ray.rllib.utils.deprecation import Deprecated
+from ray.rllib.utils.metrics import ALL_MODULES
 from ray.rllib.utils.minibatch_utils import (
     ShardBatchIterator,
     ShardEpisodesIterator,
@@ -391,7 +392,14 @@ class LearnerGroup(Checkpointable):
                 )
             if _return_state:
                 result["_rl_module_state_after_update"] = _learner.get_state(
-                    components=COMPONENT_RL_MODULE, inference_only=True
+                    # Only return the state of those RLModules that actually returned
+                    # results and thus got probably updated.
+                    components=[
+                        COMPONENT_RL_MODULE + "/" + mid
+                        for mid in result
+                        if mid != ALL_MODULES
+                    ],
+                    inference_only=True,
                 )
 
             return result

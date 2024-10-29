@@ -407,15 +407,6 @@ class IMPALAConfig(AlgorithmConfig):
                     "than or equal to `total_train_batch_size` "
                     f"({self.total_train_batch_size})!"
                 )
-            # Make sure we have >=1 Learner and warn if `num_learners=0` (should only be
-            # used for debugging).
-            if self.num_learners == 0:
-                logger.warning(
-                    f"{self} should only be run with `num_learners` >= 1! A value of 0 "
-                    "(local learner) should only be used for debugging purposes as it "
-                    "makes the algorithm non-asynchronous. When running with "
-                    "`num_learners=0`, expect diminished learning capabilities."
-                )
 
         elif isinstance(self.entropy_coeff, float) and self.entropy_coeff < 0.0:
             raise ValueError("`entropy_coeff` must be >= 0.0")
@@ -613,6 +604,10 @@ class IMPALA(Algorithm):
             self._learner_thread = make_learner_thread(self.env_runner, self.config)
             self._learner_thread.start()
 
+        else:
+            # Set of EnvRunner indices to be weight-synched next.
+            self._env_runner_indices_to_update = set()
+
     @override(Algorithm)
     def training_step(self) -> ResultDict:
         # Old API stack.
@@ -631,6 +626,7 @@ class IMPALA(Algorithm):
                 env_runner_metrics,
                 env_runner_indices_to_update,
             ) = self._sample_and_get_connector_states()
+            self._env_runner_indices_to_update |= env_runner_indices_to_update
             # Reduce EnvRunner metrics over the n EnvRunners.
             self.metrics.merge_and_log_n_dicts(
                 env_runner_metrics, key=ENV_RUNNER_RESULTS
@@ -748,10 +744,12 @@ class IMPALA(Algorithm):
         # Figure out, whether we should sync/broadcast the (remote) EnvRunner states.
         # Note: `learner_results` is a List of n (num async calls) Lists of m
         # (num Learner workers) ResultDicts each.
-        self.metrics.log_value(
-            NUM_TRAINING_STEP_CALLS_SINCE_LAST_SYNCH_WORKER_WEIGHTS, 1, reduce="sum"
-        )
         if last_good_learner_results:
+            # TODO (sven): Rename this metric into a more fitting name: ex.
+            #  `NUM_LEARNER_UPDATED_SINCE_LAST_WEIGHTS_SYNC`
+            self.metrics.log_value(
+                NUM_TRAINING_STEP_CALLS_SINCE_LAST_SYNCH_WORKER_WEIGHTS, 1, reduce="sum"
+            )
             # Merge available EnvRunner states into local worker's EnvRunner state.
             # Broadcast merged EnvRunner state AND new model weights back to all remote
             # EnvRunners that - in this call - had returned samples.
@@ -768,13 +766,16 @@ class IMPALA(Algorithm):
                 with self.metrics.log_time((TIMERS, SYNCH_WORKER_WEIGHTS_TIMER)):
                     self.env_runner_group.sync_env_runner_states(
                         config=self.config,
-                        env_runner_indices_to_update=env_runner_indices_to_update,
+                        env_runner_indices_to_update=list(
+                            self._env_runner_indices_to_update
+                        ),
                         env_steps_sampled=self.metrics.peek(
                             NUM_ENV_STEPS_SAMPLED_LIFETIME, default=0
                         ),
                         connector_states=connector_states,
                         rl_module_state=rl_module_state,
                     )
+                    self._env_runner_indices_to_update.clear()
 
         if env_runner_metrics or last_good_learner_results:
             return self.metrics.reduce()
@@ -841,7 +842,7 @@ class IMPALA(Algorithm):
             episode_refs,
             connector_states,
             env_runner_metrics,
-            list(env_runner_indices_to_update),
+            env_runner_indices_to_update,
         )
 
     def _pre_queue_episode_refs(
@@ -949,12 +950,11 @@ class IMPALA(Algorithm):
                         )
                         + cf.num_aggregation_workers
                     ),
+                    # Use n GPUs if we have a local Learner (num_learners=0).
                     "GPU": (
-                        (
-                            cf.num_gpus_per_learner if cf.num_learners == 0 else 0
-                        ) if cf.enable_rl_module_and_learner else (
-                            0 if cf._fake_gpus else cf.num_gpus
-                        )
+                        (cf.num_gpus_per_learner if cf.num_learners == 0 else 0)
+                        if cf.enable_rl_module_and_learner
+                        else (0 if cf._fake_gpus else cf.num_gpus)
                     ),
                 }
             ]
