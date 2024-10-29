@@ -18,11 +18,6 @@ drop into a PDB session that you can then use to:
 Getting Started
 ---------------
 
-.. note::
-
-    On Python 3.6, the ``breakpoint()`` function is not supported and you need to use
-    ``ray.util.pdb.set_trace()`` instead.
-
 Take the following example:
 
 .. testcode::
@@ -32,7 +27,7 @@ Take the following example:
 
     @ray.remote
     def f(x):
-        breakpoint()
+        ray.util.pdb.set_trace()
         return x * x
 
     futures = [f.remote(i) for i in range(2)]
@@ -46,7 +41,7 @@ Put the program into a file named ``debugging.py`` and execute it using:
 
 
 Each of the 2 executed tasks will drop into a breakpoint when the line
-``breakpoint()`` is executed. You can attach to the debugger by running
+``ray.util.pdb.set_trace()`` is executed. You can attach to the debugger by running
 the following command on the head node of the cluster:
 
 .. code-block:: bash
@@ -128,7 +123,7 @@ following recursive function as an example:
 
     @ray.remote
     def compute():
-        breakpoint()
+        ray.util.pdb.set_trace()
         result_ref = fact.remote(5)
         result = ray.get(result_ref)
 

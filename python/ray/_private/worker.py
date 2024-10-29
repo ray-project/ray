@@ -2380,10 +2380,10 @@ def connect(
     # invoke the Ray debugger if we are in a worker or actor process
     # (but not on the driver).
     if mode == WORKER_MODE:
-        os.environ["PYTHONBREAKPOINT"] = "ray.util.rpdb.set_trace"
+        os.environ["PYTHONBREAKPOINT"] = "ray.util.debugpy.set_trace"
     else:
         # Add hook to suppress worker logs during breakpoint.
-        os.environ["PYTHONBREAKPOINT"] = "ray.util.rpdb._driver_set_trace"
+        os.environ["PYTHONBREAKPOINT"] = "ray.util.debugpy._driver_set_trace"
 
     worker.ray_debugger_external = ray_debugger_external
 

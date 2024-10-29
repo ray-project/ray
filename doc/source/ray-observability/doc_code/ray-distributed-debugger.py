@@ -1,7 +1,7 @@
 import ray
 import sys
 
-# Add RAY_DEBUG environment variable to enable Ray Debugger.
+# Add the RAY_DEBUG=1 environment variable if you want to use the post-mortem debugging.
 ray.init(
     runtime_env={
         "env_vars": {"RAY_DEBUG": "1"},
