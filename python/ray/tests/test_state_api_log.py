@@ -4,6 +4,7 @@ import sys
 import asyncio
 from typing import List
 import urllib
+import re
 from unittest.mock import MagicMock, AsyncMock
 
 import pytest
@@ -1001,7 +1002,9 @@ def test_log_list(ray_start_cluster):
     with pytest.raises(requests.HTTPError) as e:
         list_logs(node_id=node_id)
 
-    e.match(f"Given node id {node_id} is not available")
+    assert re.match(
+        f"Given node id {node_id} is not available", e.value.response.json()["msg"]
+    )
 
 
 @pytest.mark.skipif(
