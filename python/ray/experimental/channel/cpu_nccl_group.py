@@ -23,7 +23,7 @@ class Barrier:
         # Buffer for the data that is "sent" between the actors, each entry is
         # one p2p op.
         self.data = {}
-        self.collective_data = {}
+        self.collective_data = defaultdict(list)
         # Buffer for the number of actors seen, each entry is one p2p op.
         self.num_actors_seen = defaultdict(int)
 
@@ -60,9 +60,7 @@ class Barrier:
         """
         async with self.condition:
             if op_id not in self.collective_data:
-                self.collective_data[op_id] = []
-            self.collective_data[op_id].append(data)
-
+                self.collective_data[op_id].append(data)
             self.num_actors_seen[op_id] += 1
 
             if self.num_actors_seen[op_id] == self.num_actors:
@@ -93,6 +91,9 @@ class Barrier:
                 result = torch.min(result, tensor)
         elif op == ReduceOp.AVG:
             result = sum(tensors) / len(tensors)
+        else:
+            # reserve a place for future ops to be added
+            assert False, "current operation not supported"
         return result
 
 class CPUNcclGroup(ray_channel.nccl_group._NcclGroup):
@@ -137,17 +138,18 @@ class CPUNcclGroup(ray_channel.nccl_group._NcclGroup):
         return buf
 
     def allreduce(self, send_buf: torch.Tensor, recv_buf: torch.Tensor, op: ReduceOp = ReduceOp.SUM):
-        barrier_key = f"barrier-allreduce-{self.num_ops['allreduce']}"
+        # different collective communications can use same barrier as long as the participants are the same
+        barrier_key = "barrier-"+"-".join(map(str, sorted(peer_rank + [self.get_self_rank()])))
         barrier = ray.get_actor(name=barrier_key)
         self.barriers.add(barrier)
 
-        result = ray.get(barrier.wait_collective.remote(self.num_ops['allreduce'], send_buf, op))
+        result = ray.get(barrier.wait_collective.remote(self.num_ops[barrier_key], send_buf, op))
 
         assert (
             recv_buf is not None
         ), "Receiving buffer required for CPUNcclGroup"
         recv_buf[:] = result[:]
-        self.num_ops['allreduce'] += 1
+        self.num_ops[barrier_key] += 1
 
     def destroy(self) -> None:
         for barrier in self.barriers:
