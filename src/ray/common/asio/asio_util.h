@@ -21,10 +21,8 @@
 #include <string>
 #include <thread>
 
-#include "absl/container/flat_hash_map.h"
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/util/array.h"
-#include "ray/util/thread_checker.h"
 #include "ray/util/util.h"
 
 template <typename Duration>
@@ -121,14 +119,13 @@ class InstrumentedIOContextWithThread {
 ///
 /// - `default_io_context` must outlive the `IOContextProvider` instance.
 /// - Eagerly creates dedicated `io_context` instances in ctor.
-/// - Can only be used in a same thread. CHECK-fails if used in multiple threads.
+/// - Thread safe.
 /// - There is no way to remove a dedicated `io_context` once created until destruction.
 template <typename Policy>
 class IOContextProvider {
  public:
   explicit IOContextProvider(instrumented_io_context &default_io_context)
       : default_io_context_(default_io_context) {
-    RAY_CHECK(thread_checker_.IsOnSameThread());
     for (size_t i = 0; i < Policy::kAllDedicatedIOContextNames.size(); i++) {
       const auto &name = Policy::kAllDedicatedIOContextNames[i];
       dedicated_io_contexts_[i] =
@@ -140,7 +137,6 @@ class IOContextProvider {
   // Policy::kAllDedicatedIOContextNames, it's a compile error.
   template <typename T>
   instrumented_io_context &GetIoContext() const {
-    RAY_CHECK(thread_checker_.IsOnSameThread());
     constexpr int index = Policy::template GetDedicatedIoContextIndex<T>();
     static_assert(
         index >= -1 && index < Policy::kAllDedicatedIOContextNames.size(),
@@ -154,32 +150,17 @@ class IOContextProvider {
     }
   }
 
-  instrumented_io_context &GetDefaultIoContext() const {
-    RAY_CHECK(thread_checker_.IsOnSameThread());
-    return default_io_context_;
-  }
+  instrumented_io_context &GetDefaultIoContext() const { return default_io_context_; }
   // Used for inspections, e.g. print stats.
-  const auto &GetAllDedicatedIoContexts() const {
-    RAY_CHECK(thread_checker_.IsOnSameThread());
-    return dedicated_io_contexts_;
-  }
+  const auto &GetAllDedicatedIoContexts() const { return dedicated_io_contexts_; }
 
   void StopAllDedicatedIoContexts() {
-    RAY_CHECK(thread_checker_.IsOnSameThread());
     for (auto &io_ctx : dedicated_io_contexts_) {
       io_ctx->Stop();
     }
   }
 
  private:
-  // Using unique_ptr because the class has no default constructor, so it's not easy
-  // to initialize objects directly in the array.
-  std::array<std::unique_ptr<InstrumentedIOContextWithThread>,
-             Policy::kAllDedicatedIOContextNames.size()>
-      dedicated_io_contexts_;
-  instrumented_io_context &default_io_context_;
-  ray::ThreadChecker thread_checker_;
-
   // Validating the Policy is valid.
   static constexpr bool CheckNoEmpty() {
     for (const auto &name : Policy::kAllDedicatedIOContextNames) {
@@ -193,4 +174,11 @@ class IOContextProvider {
                 "kAllDedicatedIOContextNames must not contain empty strings.");
   static_assert(ray::array_is_unique(Policy::kAllDedicatedIOContextNames),
                 "kAllDedicatedIOContextNames must not contain duplicate elements.");
+
+  // Using unique_ptr because the class has no default constructor, so it's not easy
+  // to initialize objects directly in the array.
+  std::array<std::unique_ptr<InstrumentedIOContextWithThread>,
+             Policy::kAllDedicatedIOContextNames.size()>
+      dedicated_io_contexts_;
+  instrumented_io_context &default_io_context_;
 };

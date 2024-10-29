@@ -20,6 +20,7 @@
 namespace ray {
 
 // Warning: O(n^2) complexity. Only use in constexpr context.
+// Returns true if there are no 2 elements in the array that are equal.
 template <typename T, size_t N>
 constexpr bool array_is_unique(const std::array<T, N> &arr) {
   for (size_t i = 0; i < N; ++i) {
