@@ -81,7 +81,7 @@ Start debugging
 ~~~~~~~~~~~~~~~
 
 Debug your Ray app as you would when developing locally. After you are done debugging this particular
-breakpoint, click the "Disconnect" button in the debugging toolbar so you can join another breakpoint
+breakpoint, click the "Disconnect" button in the debugging toolbar so you can join another task
 in the "Paused Tasks" list.
 
 
