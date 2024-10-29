@@ -49,6 +49,7 @@ With `--lr-const-factor=0.1`, `--lr-const-iters=10, and `--lr-exp_decay=0.3`.
 +------------------------+------------------------+------------------------+
 """
 import functools
+import numpy as np
 from typing import Optional
 
 from ray.rllib.algorithms.algorithm import Algorithm
@@ -71,6 +72,32 @@ torch, _ = try_import_torch()
 
 
 class LRChecker(DefaultCallbacks):
+    def on_algorithm_init(
+        self,
+        *,
+        algorithm: "Algorithm",
+        metrics_logger: Optional[MetricsLogger] = None,
+        **kwargs,
+    ) -> None:
+        # Store the expected learning rates for each iteration.
+        self.lr = []
+        # Retrieve the chosen configuration parameters from the config.
+        lr_factor = algorithm.config._torch_lr_scheduler_classes[0].keywords["factor"]
+        lr_total_iters = algorithm.config._torch_lr_scheduler_classes[0].keywords[
+            "total_iters"
+        ]
+        lr_gamma = algorithm.config._torch_lr_scheduler_classes[1].keywords["gamma"]
+        # Compute the learning rates for all iterations up to `lr_const_iters`.
+        for i in range(1, lr_total_iters + 1):
+            # The initial learning rate.
+            lr = algorithm.config.lr
+            # In the first 10 iterations we multiply by `lr_const_factor`.
+            if i < lr_total_iters:
+                lr *= lr_factor
+            # Finally, we have an exponential decay of `lr_exp_decay`.
+            lr *= lr_gamma**i
+            self.lr.append(lr)
+
     def on_train_result(
         self,
         *,
@@ -79,10 +106,24 @@ class LRChecker(DefaultCallbacks):
         result: dict,
         **kwargs,
     ) -> None:
-        if algorithm.training_iteration <= 2:
-            assert algorithm.learner_group._learner.get_optimizer(
+
+        # Check for the first `lr_total_iters + 1` iterations, if expected
+        # and actual learning rates correspond.
+        if (
+            algorithm.training_iteration
+            <= algorithm.config._torch_lr_scheduler_classes[0].keywords["total_iters"]
+            + 1
+        ):
+            actual_lr = algorithm.learner_group._learner.get_optimizer(
                 DEFAULT_MODULE_ID, DEFAULT_OPTIMIZER
-            ).param_groups[0]["lr"] == [0.003]
+            ).param_groups[0]["lr"]
+            # Assert the learning rates are close enough.
+            assert np.isclose(
+                actual_lr,
+                self.lr[algorithm.training_iteration - 1],
+                atol=1e-9,
+                rtol=1e-9,
+            )
 
 
 parser = add_rllib_example_script_args(default_reward=450.0, default_timesteps=200000)
