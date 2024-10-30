@@ -1917,7 +1917,14 @@ TEST(NormalTaskSubmitterTest, TestBacklogReport) {
   ASSERT_TRUE(submitter.SubmitTask(WithRandomTaskId(task4)).ok());
   ASSERT_TRUE(submitter.SubmitTask(WithRandomTaskId(task4)).ok());
 
-  std::this_thread::sleep_for(std::chrono::seconds(1));
+  // Waits for the async callbacks in submitter.SubmitTask to finish, before we call
+  // ReportWorkerBacklog.
+  std::promise<bool> wait_for_io_ctx_empty;
+  io_context.GetIoService().post(
+      [&wait_for_io_ctx_empty]() { wait_for_io_ctx_empty.set_value(true); },
+      "wait_for_io_ctx_empty");
+  wait_for_io_ctx_empty.get_future().get();
+
   submitter.ReportWorkerBacklog();
   ASSERT_EQ(raylet_client->reported_backlogs.size(), 3);
   ASSERT_EQ(raylet_client->reported_backlogs[task1.GetSchedulingClass()], 0);
