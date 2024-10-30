@@ -87,14 +87,6 @@ class NodeResourceInstanceSet {
     return resources_;
   }
 
-  /// Only for testing.
-  const absl::flat_hash_map<
-      ResourceID,
-      absl::flat_hash_map<std::string, absl::flat_hash_set<ResourceID>>>
-      &PgIndexedResources() const {
-    return pg_indexed_resources_;
-  }
-
  private:
   /// Allocate enough capacity across the instances of a resource to satisfy "demand".
   ///
@@ -108,6 +100,44 @@ class NodeResourceInstanceSet {
   /// As a result remaining available capacities will be (0., 1., .7, .3).
   /// Thus, we will allocate a bunch of full instances and
   /// at most a fractional instance.
+  ///
+  /// During resource allocation with a placement group, no matter whether the
+  /// allocation requirement specifies a bundle index, we generate the
+  /// allocation on both the wildcard resource and the indexed resource. The
+  /// resource_demand won't be assigned across bundles. And If no bundle index is
+  /// specified, we will iterate through the bundles and find the first bundle that can
+  /// fit the required resources. In addition, for unit resources, we make sure
+  /// that the allocation on the wildcard resource and the indexed resource are
+  /// consistent, meaning the same instance ids should be allocated.
+  ///
+  /// For example, considering the GPU resource on a host. Assuming the host has 3 GPUs
+  /// and 1 placement group with 2 bundles. The bundle with index 1 contains 1 GPU and
+  /// the bundle with index 2 contains 2 GPU.
+  ///
+  /// The current node resource can be as follows:
+  /// resource id: total, available
+  /// GPU: [1, 1, 1], [0, 0, 0]
+  /// GPU_<pg_id>: [1, 1, 1], [1, 1, 1]
+  /// GPU_1_<pg_id>: [1, 0, 0], [1, 0, 0]
+  /// GPU_2_<pg_id>: [0, 1, 1], [0, 1, 1]
+  ///
+  /// Now, we want to allocate a task with 2 GPUs and in the placement group <pg_id>,
+  /// reflecting in the following resource demand:
+  /// GPU_<pg_id> : 2
+  ///
+  /// We will iterate though all the bundles in the placement group and bundle with
+  /// index=2 has the required capacity. So we will allocate the task to the 2 GPUs in
+  /// bundle 2 in placement group <pg_id> and the same allocation should be reflected in
+  /// the wildcard GPU resource. So the allocation will be:
+  /// GPU_<pg_id> : [0, 1, 1]
+  /// GPU_2_<pg_id> : [0, 1, 1]
+  ///
+  /// And as a result, after the allocation, current node resource will be:
+  /// resource id: total, available
+  /// GPU: [1, 1, 1], [0, 0, 0]
+  /// GPU_<pg_id>: [1, 1, 1], [1, 0, 0]
+  /// GPU_1_<pg_id>: [1, 0, 0], [1, 0, 0]
+  /// GPU_2_<pg_id>: [0, 1, 1], [0, 0, 0]
   ///
   /// \param resource_id: The id of the resource to be allocated.
   /// \param demand: The resource amount to be allocated.

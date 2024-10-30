@@ -52,16 +52,20 @@ void NodeResourceInstanceSet::Remove(ResourceID resource_id) {
                                        /*for_indexed_resource=*/true);
   if (data) {
     ResourceID original_resource_id(data->original_resource);
-    absl::flat_hash_map<std::string, absl::flat_hash_set<ResourceID>> &pg_resource_map =
-        pg_indexed_resources_[original_resource_id];
-    absl::flat_hash_set<ResourceID> &resource_set = pg_resource_map[data->group_id];
 
-    resource_set.erase(resource_id);
-    if (resource_set.empty()) {
-      pg_resource_map.erase(data->group_id);
-    }
-    if (pg_resource_map.empty()) {
-      pg_indexed_resources_.erase(original_resource_id);
+    auto pg_resource_map_it = pg_indexed_resources_.find(original_resource_id);
+    if (pg_resource_map_it != pg_indexed_resources_.end()) {
+      auto resource_set_it = pg_resource_map_it->second.find(data->group_id);
+
+      if (resource_set_it != pg_resource_map_it->second.end()) {
+        resource_set_it->second.erase(resource_id);
+        if (resource_set_it->second.empty()) {
+          pg_resource_map_it->second.erase(data->group_id);
+        }
+        if (pg_resource_map_it->second.empty()) {
+          pg_indexed_resources_.erase(original_resource_id);
+        }
+      }
     }
   }
 }
@@ -92,6 +96,13 @@ NodeResourceInstanceSet &NodeResourceInstanceSet::Set(ResourceID resource_id,
     resources_[resource_id] = std::move(instances);
 
     // Popluate the pg_indexed_resources_map_
+    // TODO: The parsing of the resource_id String can be costly and impact the task
+    // creation throughput if the parting is required every time we allocate resources
+    // for a task and updating the available resources. The current benchmark shows no
+    // observable impact for now but in the furture, an idea of improvement is to add
+    // the placement group id as well as the bundle index inside the ResourceID class.
+    // And instead of parse the String, leveraging the fields in the ResourceID class
+    // directly.
     auto data = ParsePgFormattedResource(resource_id.Binary(),
                                          /*for_wildcard_resource=*/false,
                                          /*for_indexed_resource=*/true);
@@ -125,19 +136,46 @@ NodeResourceInstanceSet::TryAllocate(const ResourceSet &resource_demands) {
   absl::flat_hash_map<ResourceID, std::vector<FixedPoint>> allocations;
 
   // During resource allocation with a placement group, no matter whether the allocation
-  // requirement specifies a bundle index, we need to generate the allocation on both
+  // requirement specifies a bundle index, we generate the allocation on both
   // the wildcard resource and the indexed resource. The resource_demand shouldn't be
   // assigned across bundles. And If no bundle index is specified, we will iterate
   // through the bundles and find the first bundle that can fit the required resources.
-  // In addition, for unit resources, we need to make sure that the allocation on the
+  // In addition, for unit resources, we make sure that the allocation on the
   // wildcard resource and the indexed resource are consistent, meaning the same
   // instance ids should be allocated.
+  //
+  // For example, considering the GPU resource on a host. Assuming the host has 3 GPUs
+  // and 1 placement group with 2 bundles. The bundle with index 1 contains 1 GPU and
+  // the bundle with index 2 contains 2 GPU.
+  //
+  // The current node resource can be as follows:
+  // resource id: total, available
+  // GPU: [1, 1, 1], [0, 0, 0]
+  // GPU_<pg_id>: [1, 1, 1], [1, 1, 1]
+  // GPU_1_<pg_id>: [1, 0, 0], [1, 0, 0]
+  // GPU_2_<pg_id>: [0, 1, 1], [0, 1, 1]
+  //
+  // Now, we want to allocate a task with 2 GPUs and in the placement group <pg_id>,
+  // reflecting in the following resource demand:
+  // GPU_<pg_id> : 2
+  //
+  // We will iterate though all the bundles in the placement group and bundle with
+  // index=2 has the required capacity. So we will allocate the task to the 2 GPUs in
+  // bundle 2 in placement group <pg_id> and the same allocation should be reflected in
+  // the wildcard GPU resource. So the allocation will be:
+  // GPU_<pg_id> : [0, 1, 1]
+  // GPU_2_<pg_id> : [0, 1, 1]
+  //
+  // And as a result, after the allocation, current node resource will be:
+  // resource id: total, available
+  // GPU: [1, 1, 1], [0, 0, 0]
+  // GPU_<pg_id>: [1, 1, 1], [1, 0, 0]
+  // GPU_1_<pg_id>: [1, 0, 0], [1, 0, 0]
+  // GPU_2_<pg_id>: [0, 1, 1], [0, 0, 0]
 
-  // In the format of:
-  // key: original resource id,
-  // value: [resource id, parsed pg format resource data]
-  absl::flat_hash_map<ResourceID,
-                      std::vector<std::pair<ResourceID, PgFormattedResourceData>>>
+  absl::flat_hash_map</* original resource id (GPU, CPU, etc.) */ ResourceID,
+                      std::vector<std::pair</* actual resource id */ ResourceID,
+                                            PgFormattedResourceData>>>
       pg_resource_map;
 
   for (const auto &[resource_id, demand] : resource_demands.Resources()) {
@@ -171,7 +209,9 @@ NodeResourceInstanceSet::TryAllocate(const ResourceSet &resource_demands) {
   for (const auto &[original_resource_id, resource_id_vector] : pg_resource_map) {
     // Assuming exactly 1 placement group and at most 1 bundle index can be specified in
     // the resource requirement for a single resource type
-    std::vector<FixedPoint> wildcard_allocation;
+    // Also assuming the wildcard resource id will always exist in the resource_demands
+    // no matter how the resource requirement is specified in task
+    std::optional<std::vector<FixedPoint>> wildcard_allocation;
     const ResourceID *wildcard_resource_id = nullptr;
     const std::string *pg_id = nullptr;
 
@@ -185,10 +225,10 @@ NodeResourceInstanceSet::TryAllocate(const ResourceSet &resource_demands) {
       pg_id = &resource_id_vector[0].second.group_id;
 
       auto pg_index_resources_it = pg_indexed_resources_.find(original_resource_id);
-      if (pg_index_resources != pg_indexed_resources_.end()) {
-        auto index_resources_it = pg_index_resources->second.find(*pg_id);
-        if (index_resources != pg_index_resources->second.end()) {
-          for (ResourceID indexed_resource_id : index_resources->second) {
+      if (pg_index_resources_it != pg_indexed_resources_.end()) {
+        auto index_resources_it = pg_index_resources_it->second.find(*pg_id);
+        if (index_resources_it != pg_index_resources_it->second.end()) {
+          for (ResourceID indexed_resource_id : index_resources_it->second) {
             if (Has(indexed_resource_id)) {
               auto allocation = TryAllocate(
                   indexed_resource_id, resource_demands.Get(resource_id_vector[0].first));
@@ -220,11 +260,10 @@ NodeResourceInstanceSet::TryAllocate(const ResourceSet &resource_demands) {
            resource_id_vector) {
         if (pair.second.bundle_index != -1) {
           // This is the indexed resource
-          auto allocation = TryAllocate(pair.first, resource_demands.Get(pair.first));
+          wildcard_allocation = TryAllocate(pair.first, resource_demands.Get(pair.first));
 
-          if (allocation) {
-            wildcard_allocation = *allocation;
-            allocations[pair.first] = std::move(*allocation);
+          if (wildcard_allocation) {
+            allocations[pair.first] = *wildcard_allocation;
           } else {
             // The corresponding bundle cannot hold the required resources.
             // Allocation failed
@@ -242,9 +281,9 @@ NodeResourceInstanceSet::TryAllocate(const ResourceSet &resource_demands) {
 
     // Allocate wildcard resource, should be consistent with the indexed resource
     RAY_CHECK(wildcard_resource_id != nullptr);
-    RAY_CHECK(!wildcard_allocation.empty());
-    AllocateWithReference(wildcard_allocation, *wildcard_resource_id);
-    allocations[*wildcard_resource_id] = std::move(wildcard_allocation);
+    RAY_CHECK(!(*wildcard_allocation).empty());
+    AllocateWithReference(*wildcard_allocation, *wildcard_resource_id);
+    allocations[*wildcard_resource_id] = std::move(*wildcard_allocation);
   }
 
   return std::make_optional<absl::flat_hash_map<ResourceID, std::vector<FixedPoint>>>(
@@ -397,7 +436,7 @@ std::vector<FixedPoint> NodeResourceInstanceSet::Subtract(
 
 std::string NodeResourceInstanceSet::DebugString() const {
   std::stringstream buffer;
-  buffer << "{resources_:{";
+  buffer << "{";
   bool first = true;
   for (const auto &[id, quantity] : resources_) {
     if (!first) {
@@ -406,37 +445,7 @@ std::string NodeResourceInstanceSet::DebugString() const {
     first = false;
     buffer << id.Binary() << ": " << FixedPointVectorToString(quantity);
   }
-  buffer << "}, pg_indexed_resources_:{";
-
-  first = true;
-  for (const auto &[original_id, pg_resource_id_map] : pg_indexed_resources_) {
-    if (!first) {
-      buffer << ", ";
-    }
-    first = false;
-
-    buffer << original_id.Binary() << ": {";
-    bool firstInMap = true;
-    for (const auto &[pg_id, indexed_ids] : pg_resource_id_map) {
-      if (!firstInMap) {
-        buffer << ", ";
-      }
-      firstInMap = false;
-
-      buffer << pg_id << ": {";
-      bool firstInSet = true;
-      for (const auto &index_id : indexed_ids) {
-        if (!firstInSet) {
-          buffer << ", ";
-        }
-        firstInSet = false;
-        buffer << index_id.Binary();
-      }
-      buffer << "}";
-    }
-    buffer << "}";
-  }
-  buffer << "}}";
+  buffer << "}";
   return buffer.str();
 }
 
