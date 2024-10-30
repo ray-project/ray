@@ -192,7 +192,7 @@ if __name__ == "__main__":
             ),
             entropy_coeff=0.01,
             # Linearly adjust learning rate based on number of GPUs.
-            lr=0.00015 * (args.num_gpus or 1),
+            lr=0.00015 * (args.num_learners or 1),
             grad_clip=100.0,
             grad_clip_by="global_norm",
         )

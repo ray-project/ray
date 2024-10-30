@@ -137,7 +137,7 @@ class IMPALAConfig(AlgorithmConfig):
         self.replay_buffer_num_slots = 0  # @OldAPIstack
         self.learner_queue_size = 3
         self.learner_queue_timeout = 300  # @OldAPIstack
-        self.max_requests_in_flight_per_env_runner = 2
+        self.max_requests_in_flight_per_env_runner = 1
         self.max_requests_in_flight_per_aggregator_worker = 2
         self.timeout_s_sampler_manager = 0.0
         self.timeout_s_aggregator_manager = 0.0
@@ -719,7 +719,10 @@ class IMPALA(Algorithm):
                         key=LEARNER_RESULTS,
                     )
                     last_good_learner_results = results_from_n_learners
-                    #print(rl_module_state)
+            self.metrics.log_value(
+                key="mean_num_learner_group_results_received",
+                value=len(learner_results),
+            )
 
         # Update LearnerGroup's own stats.
         self.metrics.log_dict(self.learner_group.get_stats(), key=LEARNER_GROUP)

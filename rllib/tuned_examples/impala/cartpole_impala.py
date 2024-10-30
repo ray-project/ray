@@ -19,16 +19,14 @@ config = (
         enable_rl_module_and_learner=True,
         enable_env_runner_and_connector_v2=True,
     )
-    #.env_runners(max_requests_in_flight_per_env_runner=1)
     .environment("CartPole-v1")
     .training(
         train_batch_size_per_learner=500,
         grad_clip=40.0,
         grad_clip_by="global_norm",
-        lr=0.0005 * ((args.num_gpus or 1) ** 0.5),
+        lr=0.0005 * ((args.num_learners or 1) ** 0.5),
         vf_loss_coeff=0.05,
         entropy_coeff=0.0,
-        #broadcast_interval=1,
     )
     .rl_module(
         model_config=DefaultModelConfig(
