@@ -9,7 +9,7 @@ https://arxiv.org/pdf/2010.02193.pdf
 """
 
 # Run with:
-# python [this script name].py --env ale_py:ALE/[gym ID e.g. Pong-v5]
+# python [this script name].py --env ALE/[gym ID e.g. Pong-v5]
 
 # To see all available options:
 # python [this script name].py --help
