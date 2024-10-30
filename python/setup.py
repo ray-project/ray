@@ -227,7 +227,7 @@ ray_files += [
 if setup_spec.type == SetupType.RAY:
     pandas_dep = "pandas >= 1.3"
     numpy_dep = "numpy >= 1.20"
-    pyarrow_dep = "pyarrow >= 6.0.1"
+    pyarrow_dep = "pyarrow >= 6.0.1,<18"
     setup_spec.extras = {
         "adag": [
             "cupy-cuda12x; sys_platform != 'darwin'",
@@ -299,7 +299,7 @@ if setup_spec.type == SetupType.RAY:
 
     setup_spec.extras["rllib"] = setup_spec.extras["tune"] + [
         "dm_tree",
-        "gymnasium==1.0.0",
+        "gymnasium==0.28.1",
         "lz4",
         "scikit-image",
         "pyyaml",
