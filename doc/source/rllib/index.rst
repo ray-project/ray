@@ -158,9 +158,9 @@ click the dropdowns below:
 .. dropdown:: **RLlib Environments**
     :animate: fade-in-slide-down
 
-    +-------------------------------------------------------------------------------------------|
+    +-------------------------------------------------------------------------------------------+
     | **Farama-Foundation Environments**                                                        |
-    +-------------------------------------------------------------------------------------------|
+    +-------------------------------------------------------------------------------------------+
     | `gymnasium <https://gymnasium.farama.org/index.html>`__ |single_agent|                    |
     |                                                                                           |
     | .. code-block:: bash                                                                      |
@@ -172,7 +172,7 @@ click the dropdowns below:
     |     config.environment("CartPole-v1")  # Classic Control                                  |
     |     config.environment("ale_py:ALE/Pong-v5")  # Atari                                     |
     |     config.environment("Hopper-v5")  # MuJoCo                                             |
-    +-------------------------------------------------------------------------------------------|
+    +-------------------------------------------------------------------------------------------+
     | `PettingZoo <https://pettingzoo.farama.org/index.html>`__ |multi_agent|                   |
     |                                                                                           |
     | .. code-block:: bash                                                                      |
