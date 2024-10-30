@@ -6,13 +6,12 @@ import pytest
 
 from ray._private.test_utils import wait_for_condition
 from ray.serve._private.cluster_node_info_cache import ClusterNodeInfoCache
-from ray.serve._private.common import ProxyStatus
 from ray.serve._private.constants import PROXY_HEALTH_CHECK_UNHEALTHY_THRESHOLD
 from ray.serve._private.proxy_state import ProxyState, ProxyStateManager, ProxyWrapper
 from ray.serve._private.test_utils import MockTimer
 from ray.serve._private.utils import Timer
 from ray.serve.config import DeploymentMode, HTTPOptions
-from ray.serve.schema import LoggingConfig
+from ray.serve.schema import LoggingConfig, ProxyStatus
 
 HEAD_NODE_ID = "node_id-index-head"
 

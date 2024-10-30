@@ -15,12 +15,11 @@ from ray import serve
 from ray._private.test_utils import SignalActor, wait_for_condition
 from ray.cluster_utils import AutoscalingCluster, Cluster
 from ray.exceptions import RayActorError
-from ray.serve._private.common import ProxyStatus
 from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME, SERVE_LOGGER_NAME
 from ray.serve._private.logging_utils import get_serve_logs_dir
 from ray.serve._private.utils import get_head_node_id
 from ray.serve.context import _get_global_client
-from ray.serve.schema import ServeInstanceDetails
+from ray.serve.schema import ProxyStatus, ServeInstanceDetails
 from ray.tests.conftest import call_ray_stop_only  # noqa: F401
 
 
