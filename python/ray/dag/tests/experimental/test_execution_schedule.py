@@ -373,7 +373,6 @@ class TestBuildDAGNodeOperationGraph:
     in the doc string of `_build_dag_node_operation_graph`.
     """
 
-    # [CL]
     def check_edge_between_compute_nodes(
         self,
         graph: Dict[int, Dict[_DAGNodeOperationType, _DAGOperationGraphNode]],
@@ -534,7 +533,7 @@ class TestGenerateActorToExecutionSchedule:
 
     def add_data_dependeny(
         self,
-        ops_writer: Dict[_DAGNodeOperationType, _DAGOperationGraphNode],  # [CL]
+        ops_writer: Dict[_DAGNodeOperationType, _DAGOperationGraphNode],
         ops_reader: Dict[_DAGNodeOperationType, _DAGOperationGraphNode],
     ):
         """

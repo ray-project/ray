@@ -471,8 +471,8 @@ def _generate_actor_to_execution_schedule(
                     # to the execution schedule. They are the NCCL read nodes in
                     # case 2.
                     _push_candidate_node_if_ready(actor_to_candidates, graph, out_node)
-    # [CL]
-    # assert len(visited_nodes) == len(graph) * 3, "Expected all nodes to be visited"
+    num_nodes = sum([len(nodes) for nodes in graph.values()])
+    assert len(visited_nodes) == num_nodes, "Expected all nodes to be visited"
     for node in visited_nodes:
         assert node.is_ready, f"Expected {node} to be ready"
     for _, candidates in actor_to_candidates.items():
