@@ -32,6 +32,7 @@
 #include <iosfwd>
 #include <string>
 
+#include "ray/common/macros.h"
 #include "ray/util/logging.h"
 #include "ray/util/macros.h"
 #include "ray/util/visibility.h"
@@ -47,34 +48,35 @@ class error_code;
 }  // namespace boost
 
 // Return the given status if it is not OK.
-#define RAY_RETURN_NOT_OK(s)           \
-  do {                                 \
-    const ::ray::Status &_s = (s);     \
-    if (RAY_PREDICT_FALSE(!_s.ok())) { \
-      return _s;                       \
-    }                                  \
+#define RAY_RETURN_NOT_OK(s)                                \
+  do {                                                      \
+    const ::ray::Status &RAY_UNIQUE_VARIABLE(_s) = (s);     \
+    if (RAY_PREDICT_FALSE(!RAY_UNIQUE_VARIABLE(_s).ok())) { \
+      return RAY_UNIQUE_VARIABLE(_s);                       \
+    }                                                       \
   } while (0)
 
-#define RAY_RETURN_NOT_OK_ELSE(s, else_) \
-  do {                                   \
-    ::ray::Status _s = (s);              \
-    if (!_s.ok()) {                      \
-      else_;                             \
-      return _s;                         \
-    }                                    \
+#define RAY_RETURN_NOT_OK_ELSE(s, else_)                \
+  do {                                                  \
+    const ::ray::Status &RAY_UNIQUE_VARIABLE(_s) = (s); \
+    if (!RAY_UNIQUE_VARIABLE(_s).ok()) {                \
+      else_;                                            \
+      return RAY_UNIQUE_VARIABLE(_s);                   \
+    }                                                   \
   } while (0)
 
 // If 'to_call' returns a bad status, CHECK immediately with a logged message
 // of 'msg' followed by the status.
-#define RAY_CHECK_OK_PREPEND(to_call, msg)                \
-  do {                                                    \
-    ::ray::Status _s = (to_call);                         \
-    RAY_CHECK(_s.ok()) << (msg) << ": " << _s.ToString(); \
+#define RAY_CHECK_OK_PREPEND(to_call, msg)                      \
+  do {                                                          \
+    const ::ray::Status &RAY_UNIQUE_VARIABLE(_s) = (to_call);   \
+    RAY_CHECK(RAY_UNIQUE_VARIABLE(_s).ok())                     \
+        << (msg) << ": " << RAY_UNIQUE_VARIABLE(_s).ToString(); \
   } while (0)
 
 // If the status is bad, CHECK immediately, appending the status to the
 // logged message.
-#define RAY_CHECK_OK(s) RAY_CHECK_OK_PREPEND(s, "Bad status")
+#define RAY_CHECK_OK(s) RAY_CHECK_OK_PREPEND((s), "Bad status")
 
 namespace ray {
 
