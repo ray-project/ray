@@ -151,12 +151,15 @@ class ActorReplicaWrapper(ReplicaWrapper):
     def send_request(self, pr: PendingRequest) -> ReplicaResult:
         if self._replica_info.is_cross_language:
             return ActorReplicaResult(
-                self._send_request_java(pr), is_streaming=pr.metadata.is_streaming
+                self._send_request_java(pr),
+                is_streaming=pr.metadata.is_streaming,
+                request_id=pr.metadata.request_id,
             )
         else:
             return ActorReplicaResult(
                 self._send_request_python(pr, with_rejection=False),
                 is_streaming=pr.metadata.is_streaming,
+                request_id=pr.metadata.request_id,
             )
 
     async def send_request_with_rejection(
@@ -176,7 +179,9 @@ class ActorReplicaWrapper(ReplicaWrapper):
             else:
                 return (
                     ActorReplicaResult(
-                        obj_ref_gen, is_streaming=pr.metadata.is_streaming
+                        obj_ref_gen,
+                        is_streaming=pr.metadata.is_streaming,
+                        request_id=pr.metadata.request_id,
                     ),
                     queue_len_info,
                 )
