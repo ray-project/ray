@@ -467,11 +467,13 @@ class ReplicaActor:
             async def _enqueue_thread_safe(item: Any):
                 self._event_loop.call_soon_threadsafe(result_queue.put_nowait, item)
 
-            call_user_method_future = self._user_callable_wrapper.call_user_method(
-                request_metadata,
-                request_args,
-                request_kwargs,
-                generator_result_callback=_enqueue_thread_safe,
+            call_user_method_future = asyncio.wrap_future(
+                self._user_callable_wrapper.call_user_method(
+                    request_metadata,
+                    request_args,
+                    request_kwargs,
+                    generator_result_callback=_enqueue_thread_safe,
+                )
             )
 
             while True:
@@ -817,7 +819,9 @@ class ReplicaActor:
     async def check_health(self):
         # If there's no user-defined health check, nothing runs on the user code event
         # loop and no future is returned.
-        f: Optional[concurrent.futures.Future] = self._user_callable_wrapper.call_user_health_check()
+        f: Optional[
+            concurrent.futures.Future
+        ] = self._user_callable_wrapper.call_user_health_check()
         if f is not None:
             await asyncio.wrap_future(f)
 

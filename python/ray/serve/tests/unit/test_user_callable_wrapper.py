@@ -1,8 +1,8 @@
 import asyncio
+import concurrent.futures
 import pickle
 import sys
 import threading
-import concurrent.futures
 from dataclasses import dataclass
 from typing import Any, AsyncGenerator, Callable, Generator, Optional
 
@@ -298,11 +298,15 @@ def test_basic_function_callable(fn: Callable):
     # Call non-generator function with is_streaming.
     request_metadata = _make_request_metadata(is_streaming=True)
     with pytest.raises(RayTaskError, match="did not return a generator."):
-        user_callable_wrapper.call_user_method(request_metadata, tuple(), dict()).result()
+        user_callable_wrapper.call_user_method(
+            request_metadata, tuple(), dict()
+        ).result()
 
     request_metadata = _make_request_metadata()
     assert (
-        user_callable_wrapper.call_user_method(request_metadata, tuple(), dict()).result()
+        user_callable_wrapper.call_user_method(
+            request_metadata, tuple(), dict()
+        ).result()
     ) == "hi"
     assert (
         user_callable_wrapper.call_user_method(
@@ -412,7 +416,9 @@ def test_callable_with_async_init():
     user_callable_wrapper.initialize_callable().result()
     request_metadata = _make_request_metadata()
     assert (
-        user_callable_wrapper.call_user_method(request_metadata, tuple(), dict()).result()
+        user_callable_wrapper.call_user_method(
+            request_metadata, tuple(), dict()
+        ).result()
     ) == msg
 
 
@@ -441,7 +447,9 @@ def test_destructor_only_called_once(async_del: bool):
 
     # Call `call_destructor` many times in parallel; only the first one should actually
     # run the `__del__` method.
-    concurrent.futures.wait([user_callable_wrapper.call_destructor() for _ in range(100)])
+    concurrent.futures.wait(
+        [user_callable_wrapper.call_destructor() for _ in range(100)]
+    )
     assert num_destructor_calls == 1
 
 
