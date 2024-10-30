@@ -808,6 +808,7 @@ ray_cc_test(
     srcs = ["src/ray/core_worker/test/memory_store_test.cc"],
     tags = ["team:core"],
     deps = [
+        ":ray_mock",
         ":core_worker_lib",
         "@com_google_googletest//:gtest_main",
     ],

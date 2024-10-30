@@ -370,7 +370,8 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
       (options_.worker_type != WorkerType::SPILL_WORKER &&
        options_.worker_type != WorkerType::RESTORE_WORKER),
       /*get_current_call_site=*/boost::bind(&CoreWorker::CurrentCallSite, this)));
-  memory_store_.reset(new CoreWorkerMemoryStore(
+  memory_store_ = std::make_shared<CoreWorkerMemoryStore>(
+      io_service_,
       reference_counter_,
       local_raylet_client_,
       options_.check_signals,
@@ -391,7 +392,7 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
               }
             },
             "CoreWorker.HandleException");
-      }));
+      });
 
 #if defined(__APPLE__) || defined(__linux__)
   // TODO(jhumphri): Combine with implementation in NodeManager.
@@ -4479,29 +4480,17 @@ void CoreWorker::GetAsync(const ObjectID &object_id,
 
   memory_store_->GetAsync(
       object_id,
-      [this,
-       object_id,
+      // This callback is posted to io_service_ by memory store.
+      [object_id,
        python_user_callback,
        success_callback = std::move(success_callback),
        fallback_callback =
            std::move(fallback_callback)](std::shared_ptr<RayObject> ray_object) {
-        // Post the callback to the io_service_ to avoid deadlocks.
-        // The user callback can make arbitrary Ray API calls and will be called
-        // immediately when the object is `Put` into the in-memory store. This can
-        // cause deadlocks if the callers of `Put` is holding a lock.
-        io_service_.post(
-            [object_id,
-             python_user_callback,
-             success_callback = std::move(success_callback),
-             fallback_callback = std::move(fallback_callback),
-             ray_object = std::move(ray_object)]() {
-              if (ray_object->IsInPlasmaError()) {
-                fallback_callback(ray_object, object_id, python_user_callback);
-              } else {
-                success_callback(ray_object, object_id, python_user_callback);
-              }
-            },
-            "CoreWorker.GetAsync.Callback");
+        if (ray_object->IsInPlasmaError()) {
+          fallback_callback(ray_object, object_id, python_user_callback);
+        } else {
+          success_callback(ray_object, object_id, python_user_callback);
+        }
       });
 }
 

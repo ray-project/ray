@@ -480,6 +480,7 @@ bool TaskManager::HandleTaskReturn(const ObjectID &object_id,
   rpc::Address owner_address;
   if (reference_counter_->GetOwner(object_id, &owner_address) && !nested_refs.empty()) {
     std::vector<ObjectID> nested_ids;
+    nested_ids.reserve(nested_refs.size());
     for (const auto &nested_ref : nested_refs) {
       nested_ids.emplace_back(ObjectRefToId(nested_ref));
     }
@@ -793,7 +794,7 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
       if (!HandleTaskReturn(object_id,
                             return_object,
                             NodeID::FromBinary(worker_addr.raylet_id()),
-                            store_in_plasma_ids.count(object_id))) {
+                            store_in_plasma_ids.contains(object_id))) {
         if (first_execution) {
           dynamic_returns_in_plasma.push_back(object_id);
         }
