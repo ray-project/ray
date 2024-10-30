@@ -119,7 +119,6 @@ class ActorReplicaWrapper(ReplicaWrapper):
         return self._actor_handle.handle_request.remote(
             RequestMetadataProto(
                 request_id=pr.metadata.request_id,
-                endpoint=pr.metadata.endpoint,
                 # Default call method in java is "call," not "__call__" like Python.
                 call_method="call"
                 if pr.metadata.call_method == "__call__"

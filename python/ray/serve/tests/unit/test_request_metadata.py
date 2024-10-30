@@ -14,16 +14,13 @@ def test_request_metadata():
     """
     request_id = "request-id"
     internal_request_id = "internal-request-id"
-    endpoint = "endpoint"
     request_metadata = RequestMetadata(
         request_id=request_id,
         internal_request_id=internal_request_id,
-        endpoint=endpoint,
     )
 
     # Ensure the default values are set correctly.
     assert request_metadata.request_id == request_id
-    assert request_metadata.endpoint == endpoint
     assert request_metadata.call_method == "__call__"
     assert request_metadata.route == ""
     assert request_metadata.app_name == ""
