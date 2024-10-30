@@ -268,11 +268,5 @@ ray_cc_library(
     hdrs = ["status.h"],
     deps = [
         "//src/ray/util",
-        "//src/ray/common:macros",
     ],
-)
-
-ray_cc_library(
-    name = "macros",
-    hdrs = ["macros.h"],
 )
