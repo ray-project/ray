@@ -169,30 +169,6 @@ def test_basic(ray_start_regular):
         del result
 
 
-def test_two_returns_first(ray_start_regular):
-    a = Actor.remote(0)
-    with InputNode() as i:
-        o1, o2 = a.return_two.bind(i)
-        dag = o1
-
-    compiled_dag = dag.experimental_compile()
-    for _ in range(3):
-        res = ray.get(compiled_dag.execute(1))
-        assert res == 1
-
-
-def test_two_returns_second(ray_start_regular):
-    a = Actor.remote(0)
-    with InputNode() as i:
-        o1, o2 = a.return_two.bind(i)
-        dag = o2
-
-    compiled_dag = dag.experimental_compile()
-    for _ in range(3):
-        res = ray.get(compiled_dag.execute(1))
-        assert res == 2
-
-
 @pytest.mark.parametrize("single_fetch", [True, False])
 def test_two_returns_one_reader(ray_start_regular, single_fetch):
     a = Actor.remote(0)
@@ -1257,7 +1233,7 @@ class TestDAGExceptionCompileMultipleTimes:
         with InputNode() as i:
             branch1 = a.echo.bind(i)
             branch2 = b.echo.bind(i)
-            dag = MultiOutputNode([branch1])
+            dag = MultiOutputNode([branch1, branch2])
         compiled_dag = dag.experimental_compile()
         compiled_dag.teardown()
         with pytest.raises(
@@ -1265,7 +1241,7 @@ class TestDAGExceptionCompileMultipleTimes:
             match="The DAG was compiled more than once. The following two "
             "nodes call `experimental_compile`: ",
         ):
-            compiled_dag = branch2.experimental_compile()
+            branch2.experimental_compile()
 
 
 def test_exceed_max_buffered_results(ray_start_regular):
@@ -1777,15 +1753,22 @@ class TestCompositeChannel:
 
 
 class TestLeafNode:
+    """
+    Leaf nodes are not allowed right now because the exception thrown by the leaf
+    node will not be propagated to the driver and silently ignored, which is undesired.
+    """
+
+    LEAF_NODE_EXCEPTION_TEMPLATE = (
+        "Compiled DAG doesn't support leaf nodes, i.e., nodes that don't have "
+        "downstream nodes and are not output nodes. There are {num_leaf_nodes} "
+        "leaf nodes in the DAG. Please add the outputs of"
+    )
+
     def test_leaf_node_one_actor(self, ray_start_regular):
         """
         driver -> a.inc
                |
                -> a.inc -> driver
-
-        The upper branch (branch 1) is a leaf node, and it will be executed
-        before the lower `a.inc` task because of the control dependency. Hence,
-        the result will be [20] because `a.inc` will be executed twice.
         """
         a = Actor.remote(0)
         with InputNode() as i:
@@ -1794,10 +1777,11 @@ class TestLeafNode:
             branch2 = a.inc.bind(input_data)
             dag = MultiOutputNode([branch2])
 
-        compiled_dag = dag.experimental_compile()
-
-        ref = compiled_dag.execute(10)
-        assert ray.get(ref) == [20]
+        with pytest.raises(
+            ValueError,
+            match=TestLeafNode.LEAF_NODE_EXCEPTION_TEMPLATE.format(num_leaf_nodes=1),
+        ):
+            dag.experimental_compile()
 
     def test_leaf_node_two_actors(self, ray_start_regular):
         """
@@ -1806,9 +1790,6 @@ class TestLeafNode:
                |        -> b.inc ----> driver
                |
                -> a.inc (branch 1)
-
-        The lower branch (branch 1) is a leaf node, and it will be executed
-        before the upper `a.inc` task because of the control dependency.
         """
         a = Actor.remote(0)
         b = Actor.remote(100)
@@ -1816,10 +1797,55 @@ class TestLeafNode:
             a.inc.bind(i)  # branch1: leaf node
             branch2 = b.inc.bind(i)
             dag = MultiOutputNode([a.inc.bind(branch2), b.inc.bind(branch2)])
-        compiled_dag = dag.experimental_compile()
+        with pytest.raises(
+            ValueError,
+            match=TestLeafNode.LEAF_NODE_EXCEPTION_TEMPLATE.format(num_leaf_nodes=1),
+        ):
+            dag.experimental_compile()
 
-        ref = compiled_dag.execute(10)
-        assert ray.get(ref) == [120, 220]
+    def test_multi_leaf_nodes(self, ray_start_regular):
+        """
+        driver -> a.inc -> a.inc (branch 1, leaf node)
+               |        |
+               |        -> a.inc -> driver
+               |
+               -> a.inc (branch 2, leaf node)
+        """
+        a = Actor.remote(0)
+        with InputNode() as i:
+            dag = a.inc.bind(i)
+            a.inc.bind(dag)  # branch1: leaf node
+            a.inc.bind(i)  # branch2: leaf node
+            dag = MultiOutputNode([a.inc.bind(dag)])
+
+        with pytest.raises(
+            ValueError,
+            match=TestLeafNode.LEAF_NODE_EXCEPTION_TEMPLATE.format(num_leaf_nodes=2),
+        ):
+            dag.experimental_compile()
+
+    def test_two_returns_first(self, ray_start_regular):
+        a = Actor.remote(0)
+        with InputNode() as i:
+            o1, o2 = a.return_two.bind(i)
+            dag = o1
+
+        with pytest.raises(
+            ValueError,
+            match=TestLeafNode.LEAF_NODE_EXCEPTION_TEMPLATE.format(num_leaf_nodes=1),
+        ):
+            dag.experimental_compile()
+
+    def test_two_returns_second(self, ray_start_regular):
+        a = Actor.remote(0)
+        with InputNode() as i:
+            o1, o2 = a.return_two.bind(i)
+            dag = o2
+        with pytest.raises(
+            ValueError,
+            match=TestLeafNode.LEAF_NODE_EXCEPTION_TEMPLATE.format(num_leaf_nodes=1),
+        ):
+            dag.experimental_compile()
 
 
 def test_output_node(ray_start_regular):
