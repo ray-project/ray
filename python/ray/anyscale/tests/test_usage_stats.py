@@ -58,6 +58,9 @@ provider:
         ray_usage_lib.record_extra_usage_tag(
             ray_usage_lib.TagKey.RAYLLM_COMMIT, "fake_commit"
         )
+        ray_usage_lib.record_extra_usage_tag(
+            ray_usage_lib.TagKey.LLMFORGE_VERSION, "fake_version"
+        )
 
         """
         Verify the usage stats are reported to the server.
@@ -74,6 +77,7 @@ provider:
 
         assert payload["extra_usage_tags"]["rayllm_version"] == "fake_version"
         assert payload["extra_usage_tags"]["rayllm_commit"] == "fake_commit"
+        assert payload["extra_usage_tags"]["llmforge_version"] == "fake_version"
         validate(instance=payload, schema=schema)
 
 
