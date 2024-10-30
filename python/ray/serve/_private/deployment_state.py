@@ -13,6 +13,7 @@ from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 
 import ray
 from ray import ObjectRef, cloudpickle
+from ray._private import ray_constants
 from ray.actor import ActorHandle
 from ray.exceptions import RayActorError, RayError, RayTaskError, RuntimeEnvSetupError
 from ray.serve import metrics
@@ -473,6 +474,18 @@ class ActorReplicaWrapper:
             "enable_task_events": RAY_SERVE_ENABLE_TASK_EVENTS,
         }
         actor_options.update(deployment_info.replica_config.ray_actor_options)
+
+        # A replica's default `max_concurrency` value can prevent it from
+        # respecting the configured `max_ongoing_requests`. To avoid this
+        # unintentional behavior, use `max_ongoing_requests` to override
+        # the Actor's `max_concurrency` if it is larger.
+        if (
+            deployment_info.deployment_config.max_ongoing_requests
+            > ray_constants.DEFAULT_MAX_CONCURRENCY_ASYNC
+        ):
+            actor_options[
+                "max_concurrency"
+            ] = deployment_info.deployment_config.max_ongoing_requests
 
         return ReplicaSchedulingRequest(
             replica_id=self.replica_id,
