@@ -1,6 +1,6 @@
 import logging
 from dataclasses import dataclass
-from typing import Generic, List, TypeVar
+from typing import Callable, Dict, Generic, List, Optional, TypeVar
 
 from ray.dag.py_obj_scanner import _PyObjScanner
 from ray.serve._private.constants import SERVE_LOGGER_NAME
@@ -21,16 +21,24 @@ class IDDict(dict, Generic[K, V]):
     """
 
     def __getitem__(self, key: K) -> V:
-        return super().__getitem__(id(key))
+        if not isinstance(key, int):
+            key = id(key)
+        return super().__getitem__(key)
 
     def __setitem__(self, key: K, value: V):
-        return super().__setitem__(id(key), value)
+        if not isinstance(key, int):
+            key = id(key)
+        return super().__setitem__(key, value)
 
     def __delitem__(self, key: K):
-        return super().__delitem__(id(key))
+        if not isinstance(key, int):
+            key = id(key)
+        return super().__delitem__(key)
 
     def __contains__(self, key: object):
-        return super().__contains__(id(key))
+        if not isinstance(key, int):
+            key = id(key)
+        return super().__contains__(key)
 
 
 @dataclass(frozen=True)
@@ -42,12 +50,26 @@ class BuiltApplication:
     ingress_deployment_name: str
     # List of unique deployments comprising the app.
     deployments: List[Deployment]
+    # Dict of DeploymentHandles that replaced composed deployments in init args/kwargs.
+    deployment_handles: Dict[str, DeploymentHandle]
+
+
+def _make_deployment_handle_default(
+    deployment: Deployment, app_name: str
+) -> DeploymentHandle:
+    return DeploymentHandle(
+        deployment.name,
+        app_name=app_name,
+    )
 
 
 def build_app(
     app: Application,
     *,
     name: str,
+    make_deployment_handle: Optional[
+        Callable[[Deployment, str], DeploymentHandle]
+    ] = None,
 ) -> BuiltApplication:
     """Builds the application into a list of finalized deployments.
 
@@ -59,16 +81,25 @@ def build_app(
 
     Returns: BuiltApplication
     """
+    if make_deployment_handle is None:
+        make_deployment_handle = _make_deployment_handle_default
+
+    handles = IDDict()
+    deployment_names = IDDict()
     deployments = _build_app_recursive(
         app,
         app_name=name,
-        handles=IDDict(),
-        deployment_names=IDDict(),
+        handles=handles,
+        deployment_names=deployment_names,
+        make_deployment_handle=make_deployment_handle,
     )
     return BuiltApplication(
         name=name,
         ingress_deployment_name=app._bound_deployment.name,
         deployments=deployments,
+        deployment_handles={
+            deployment_names[app]: handle for app, handle in handles.items()
+        },
     )
 
 
@@ -78,6 +109,7 @@ def _build_app_recursive(
     app_name: str,
     deployment_names: IDDict[Application, str],
     handles: IDDict[Application, DeploymentHandle],
+    make_deployment_handle: Callable[[Deployment, str], DeploymentHandle],
 ) -> List[Deployment]:
     """Recursively traverses the graph of Application objects.
 
@@ -93,13 +125,6 @@ def _build_app_recursive(
     if app in handles:
         return []
 
-    # Create the DeploymentHandle that will be used to replace this application
-    # in the arguments of its parent(s).
-    handles[app] = DeploymentHandle(
-        _get_unique_deployment_name_memoized(app, deployment_names),
-        app_name=app_name,
-    )
-
     deployments = []
     scanner = _PyObjScanner(source_type=Application)
     try:
@@ -114,19 +139,26 @@ def _build_app_recursive(
                     app_name=app_name,
                     handles=handles,
                     deployment_names=deployment_names,
+                    make_deployment_handle=make_deployment_handle,
                 )
             )
 
         # Replace Application objects with their corresponding DeploymentHandles.
         new_init_args, new_init_kwargs = scanner.replace_nodes(handles)
-        deployments.append(
-            app._bound_deployment.options(
-                name=_get_unique_deployment_name_memoized(app, deployment_names),
-                _init_args=new_init_args,
-                _init_kwargs=new_init_kwargs,
-            )
+        final_deployment = app._bound_deployment.options(
+            name=_get_unique_deployment_name_memoized(app, deployment_names),
+            _init_args=new_init_args,
+            _init_kwargs=new_init_kwargs,
         )
-        return deployments
+
+        # Create the DeploymentHandle that will be used to replace this application
+        # in the arguments of its parent(s).
+        handles[app] = make_deployment_handle(
+            final_deployment,
+            app_name,
+        )
+
+        return deployments + [final_deployment]
     finally:
         scanner.clear()
 

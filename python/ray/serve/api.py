@@ -45,6 +45,7 @@ from ray.serve.context import (
 from ray.serve.deployment import Application, Deployment
 from ray.serve.exceptions import RayServeException
 from ray.serve.handle import DeploymentHandle
+from ray.serve.local_deployment_handle import LocalDeploymentHandle
 from ray.serve.multiplex import _ModelMultiplexWrapper
 from ray.serve.schema import LoggingConfig, ServeInstanceDetails, ServeStatus
 from ray.util.annotations import DeveloperAPI, PublicAPI
@@ -424,10 +425,12 @@ def deployment(
 @PublicAPI(stability="stable")
 def _run(
     target: Application,
+    *,
     _blocking: bool = True,
     name: str = SERVE_DEFAULT_APP_NAME,
     route_prefix: Optional[str] = "/",
     logging_config: Optional[Union[Dict, LoggingConfig]] = None,
+    local_testing_mode: bool = False,
 ) -> DeploymentHandle:
     """Run an application and return a handle to its ingress deployment.
 
@@ -451,12 +454,20 @@ def _run(
             "`serve.run` expects an `Application` returned by `Deployment.bind()`."
         )
 
-    return client.deploy_application(
-        build_app(target, name=name),
-        blocking=_blocking,
-        route_prefix=route_prefix,
-        logging_config=logging_config,
-    )
+    if local_testing_mode:
+        built_app = build_app(
+            target,
+            name=name,
+            make_handle=lambda d, app_name: LocalDeploymentHandle(d),
+        )
+        assert built_app
+    else:
+        return client.deploy_application(
+            build_app(target, name=name),
+            blocking=_blocking,
+            route_prefix=route_prefix,
+            logging_config=logging_config,
+        )
 
 
 @PublicAPI(stability="stable")
@@ -466,6 +477,7 @@ def run(
     name: str = SERVE_DEFAULT_APP_NAME,
     route_prefix: Optional[str] = "/",
     logging_config: Optional[Union[Dict, LoggingConfig]] = None,
+    local_testing_mode: bool = False,
 ) -> DeploymentHandle:
     """Run an application and return a handle to its ingress deployment.
 
@@ -489,6 +501,7 @@ def run(
             gRPC or a `DeploymentHandle`).
         logging_config: Application logging config. If provided, the config will
             be applied to all deployments which doesn't have logging config.
+        local_testing_mode: TODO!
 
     Returns:
         DeploymentHandle: A handle that can be used to call the application.
@@ -498,6 +511,7 @@ def run(
         name=name,
         route_prefix=route_prefix,
         logging_config=logging_config,
+        local_testing_mode=local_testing_mode,
     )
     logger.info(f"Deployed app '{name}' successfully.")
 
