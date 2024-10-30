@@ -54,9 +54,12 @@ class InstrumentedIOContextWithThread {
   /**
    * Constructor.
    * @param thread_name The name of the thread.
+   * @param enable_lag_probe If true, enables the lag probe. It posts tasks to the
+   * io_context so that a run() will never return.
    */
-  explicit InstrumentedIOContextWithThread(const std::string &thread_name)
-      : io_service_(), work_(io_service_), thread_name_(thread_name) {
+  explicit InstrumentedIOContextWithThread(const std::string &thread_name,
+                                           bool enable_lag_probe = false)
+      : io_service_(enable_lag_probe), work_(io_service_), thread_name_(thread_name) {
     io_thread_ = std::thread([this] {
       SetThreadName(this->thread_name_);
       io_service_.run();
@@ -106,6 +109,8 @@ class InstrumentedIOContextWithThread {
 ///     // instrumented_io_context for each. Must be unique and should not contain empty
 ///     // names.
 ///     constexpr static std::array<std::string_view, N> kAllDedicatedIOContextNames;
+///     // List of bools to enable lag probe for each dedicated io context.
+///     constexpr static std::array<bool, N> kAllDedicatedIOContextEnableLagProbe;
 ///
 ///     // For a given T, returns an index to kAllDedicatedIOContextNames, or -1 for the
 ///     // default io context.
@@ -128,8 +133,9 @@ class IOContextProvider {
       : default_io_context_(default_io_context) {
     for (size_t i = 0; i < Policy::kAllDedicatedIOContextNames.size(); i++) {
       const auto &name = Policy::kAllDedicatedIOContextNames[i];
-      dedicated_io_contexts_[i] =
-          std::make_unique<InstrumentedIOContextWithThread>(std::string(name));
+      bool enable_lag_probe = Policy::kAllDedicatedIOContextEnableLagProbe[i];
+      dedicated_io_contexts_[i] = std::make_unique<InstrumentedIOContextWithThread>(
+          std::string(name), enable_lag_probe);
     }
   }
 
@@ -174,6 +180,10 @@ class IOContextProvider {
                 "kAllDedicatedIOContextNames must not contain empty strings.");
   static_assert(ray::ArrayIsUnique(Policy::kAllDedicatedIOContextNames),
                 "kAllDedicatedIOContextNames must not contain duplicate elements.");
+  static_assert(Policy::kAllDedicatedIOContextNames.size() ==
+                    Policy::kAllDedicatedIOContextEnableLagProbe.size(),
+                "kAllDedicatedIOContextNames and kAllDedicatedIOContextEnableLagProbe "
+                "must have the same size.");
 
   // Using unique_ptr because the class has no default constructor, so it's not easy
   // to initialize objects directly in the array.
