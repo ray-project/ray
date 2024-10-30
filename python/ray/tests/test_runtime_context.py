@@ -1,7 +1,6 @@
 import ray
 import os
 import signal
-import time
 import sys
 import pytest
 import warnings
@@ -40,7 +39,7 @@ def test_was_current_actor_reconstructed(shutdown_only):
 
     pid = ray.get(a.get_pid.remote())
     os.kill(pid, signal.SIGKILL)
-    time.sleep(2)
+    os.waitpid(pid, 0)
     # These 2 methods should be return True because
     # this actor failed and restored.
     assert ray.get(a.get_was_reconstructed.remote()) is True
