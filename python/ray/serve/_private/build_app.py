@@ -50,7 +50,8 @@ class BuiltApplication:
     ingress_deployment_name: str
     # List of unique deployments comprising the app.
     deployments: List[Deployment]
-    # Dict of DeploymentHandles that replaced composed deployments in init args/kwargs.
+    # Dict[name, DeploymentHandle] mapping deployment names to the handles that replaced
+    # them in other deployments' init args/kwargs.
     deployment_handles: Dict[str, DeploymentHandle]
 
 
