@@ -445,7 +445,6 @@ class ExecutableTask:
         if self.output_type_hint.requires_nccl():
             nccl_group_id = _get_nccl_group_id(self.output_type_hint)
             nccl_group = ChannelContext.get_current().nccl_groups.get(nccl_group_id)
-            assert nccl_group is not None
             self._send_stream = nccl_group.send_stream
         if self.input_type_hints:
             for type_hint in self.input_type_hints:
