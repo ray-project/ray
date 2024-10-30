@@ -1,4 +1,4 @@
-from abc import ABC
+from abc import ABC, abstractmethod
 from dataclasses import dataclass, fields
 
 import ray
@@ -7,7 +7,7 @@ from ray.serve._private.utils import DEFAULT
 
 
 @dataclass(frozen=True)
-class InitHandleOptionsBase:
+class InitHandleOptionsBase(ABC):
     """Init options for each ServeHandle instance.
 
     These fields can be set by calling `.init()` on a handle before
@@ -16,6 +16,11 @@ class InitHandleOptionsBase:
 
     _prefer_local_routing: bool = False
     _source: DeploymentHandleSource = DeploymentHandleSource.UNKNOWN
+
+    @classmethod
+    @abstractmethod
+    def create(cls, **kwargs) -> "InitHandleOptionsBase":
+        raise NotImplementedError
 
 
 @dataclass(frozen=True)
