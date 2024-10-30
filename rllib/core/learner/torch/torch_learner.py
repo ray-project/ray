@@ -156,31 +156,6 @@ class TorchLearner(Learner):
             window=1,
         )
 
-        #TEST
-        self.metrics.log_dict(
-            {
-                (mid, DIFF_NUM_GRAD_UPDATES_VS_SAMPLER_POLICY+"_min"): torch.mean(
-                    (self._weights_seq_no - module_batch[WEIGHTS_SEQ_NO]).float()
-                )
-                for mid, module_batch in batch.items()
-                if WEIGHTS_SEQ_NO in module_batch
-            },
-            reduce="min",
-            window=1,
-        )
-        self.metrics.log_dict(
-            {
-                (mid, DIFF_NUM_GRAD_UPDATES_VS_SAMPLER_POLICY+"_max"): torch.mean(
-                    (self._weights_seq_no - module_batch[WEIGHTS_SEQ_NO]).float()
-                )
-                for mid, module_batch in batch.items()
-                if WEIGHTS_SEQ_NO in module_batch
-            },
-            reduce="max",
-            window=1,
-        )
-        #END: TEST
-
         fwd_out = self.module.forward_train(batch)
         loss_per_module = self.compute_losses(fwd_out=fwd_out, batch=batch)
 

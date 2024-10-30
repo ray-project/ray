@@ -39,6 +39,7 @@ from ray.rllib.utils.metrics import (
     LEARNER_RESULTS,
     LEARNER_UPDATE_TIMER,
     MEAN_NUM_EPISODE_LISTS_RECEIVED,
+    MEAN_NUM_LEARNER_GROUP_RESULTS_RECEIVED,
     MEAN_NUM_LEARNER_GROUP_UPDATE_CALLED,
     NUM_AGENT_STEPS_SAMPLED,
     NUM_AGENT_STEPS_SAMPLED_LIFETIME,
@@ -708,8 +709,6 @@ class IMPALA(Algorithm):
                 for results_from_n_learners in learner_results:
                     if not results_from_n_learners[0]:
                         continue
-                    #if "_rl_module_state_after_update" in results_from_n_learners[0] and len(results_from_n_learners[0]) == 1:
-                    #    raise ValueError(results_from_n_learners)
                     for r in results_from_n_learners:
                         rl_module_state = r.pop(
                             "_rl_module_state_after_update", rl_module_state
@@ -720,7 +719,7 @@ class IMPALA(Algorithm):
                     )
                     last_good_learner_results = results_from_n_learners
             self.metrics.log_value(
-                key="mean_num_learner_group_results_received",
+                key=MEAN_NUM_LEARNER_GROUP_RESULTS_RECEIVED,
                 value=len(learner_results),
             )
 
@@ -763,9 +762,6 @@ class IMPALA(Algorithm):
                 with self.metrics.log_time((TIMERS, SYNCH_WORKER_WEIGHTS_TIMER)):
                     self.env_runner_group.sync_env_runner_states(
                         config=self.config,
-                        #env_runner_indices_to_update=list(
-                        #    self._env_runner_indices_to_update
-                        #),
                         env_steps_sampled=self.metrics.peek(
                             NUM_ENV_STEPS_SAMPLED_LIFETIME, default=0
                         ),

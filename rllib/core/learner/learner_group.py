@@ -606,8 +606,6 @@ class LearnerGroup(Checkpointable):
             for same tags.
 
         """
-        #print(tags_to_get)
-
         unprocessed_results = defaultdict(list)
         for tag in tags_to_get:
             results = self._update_request_results[tag]
