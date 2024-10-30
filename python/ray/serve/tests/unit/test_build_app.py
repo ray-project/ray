@@ -1,32 +1,28 @@
 import sys
-from typing import List
-from unittest import mock
+from typing import Any, List
 
 import pytest
 
 from ray import serve
 from ray.serve._private.build_app import BuiltApplication, build_app
+from ray.serve._private.common import DeploymentID
 from ray.serve.deployment import Application, Deployment
 from ray.serve.handle import DeploymentHandle
 
 
-@pytest.fixture(autouse=True)
-def patch_handle_eq():
-    """Patch DeploymentHandle.__eq__ to compare options we care about."""
+class FakeDeploymentHandle:
+    def __init__(self, deployment_name: str, app_name: str):
+        self.deployment_id = DeploymentID(deployment_name, app_name)
 
-    def _patched_handle_eq(self, other):
-        return all(
-            [
-                isinstance(other, type(self)),
-                self.deployment_id == other.deployment_id,
-                self.handle_options == other.handle_options,
-            ]
+    @classmethod
+    def from_deployment(cls, deployment, app_name: str) -> "FakeDeploymentHandle":
+        return cls(deployment.name, app_name)
+
+    def __eq__(self, other: Any) -> bool:
+        return (
+            isinstance(other, FakeDeploymentHandle)
+            and self.deployment_id == other.deployment_id
         )
-
-    with mock.patch(
-        "ray.serve.handle._DeploymentHandleBase.__eq__", _patched_handle_eq
-    ):
-        yield
 
 
 def _build_and_check(
@@ -36,10 +32,24 @@ def _build_and_check(
     expected_deployments: List[Deployment],
     app_name: str = "default",
 ):
-    built_app: BuiltApplication = build_app(app, name=app_name)
+    built_app: BuiltApplication = build_app(
+        app,
+        name=app_name,
+        # Each real DeploymentHandle has a unique ID (intentionally), so the below
+        # equality checks don't work. Use a fake implementation instead.
+        make_deployment_handle=FakeDeploymentHandle.from_deployment,
+    )
     assert built_app.name == app_name
     assert built_app.ingress_deployment_name == expected_ingress_name
     assert len(built_app.deployments) == len(expected_deployments)
+
+    # Check that the returned deployment_handles are populated properly.
+    assert len(built_app.deployment_handles) == len(expected_deployments)
+    for d in expected_deployments:
+        h = built_app.deployment_handles.get(d.name, None)
+        assert h is not None, f"No handle returned for deployment {d.name}."
+        assert isinstance(h, FakeDeploymentHandle)
+        assert h.deployment_id == DeploymentID(d.name, app_name=app_name)
 
     for expected_deployment in expected_deployments:
         generated_deployment = None
@@ -54,6 +64,25 @@ def _build_and_check(
         )
 
         assert expected_deployment == generated_deployment
+
+
+def test_real_deployment_handle_default():
+    """Other tests inject a FakeDeploymentHandle, so check the default behavior."""
+
+    @serve.deployment
+    class D:
+        pass
+
+    built_app: BuiltApplication = build_app(
+        D.bind(D.options(name="Inner").bind()),
+        name="app-name",
+    )
+    assert len(built_app.deployments) == 2
+    assert len(built_app.deployments[1].init_args) == 1
+    assert isinstance(built_app.deployments[1].init_args[0], DeploymentHandle)
+    assert built_app.deployments[1].init_args[0].deployment_id == DeploymentID(
+        "Inner", app_name="app-name"
+    )
 
 
 def test_single_deployment_basic():
@@ -119,13 +148,13 @@ def test_multi_deployment_basic():
             Outer.options(
                 name="Outer",
                 _init_args=(
-                    DeploymentHandle(
+                    FakeDeploymentHandle(
                         "Inner",
                         app_name="default",
                     ),
                 ),
                 _init_kwargs={
-                    "other": DeploymentHandle(
+                    "other": FakeDeploymentHandle(
                         "Other",
                         app_name="default",
                     ),
@@ -154,7 +183,7 @@ def test_multi_deployment_handle_in_nested_obj():
                 name="Outer",
                 _init_args=(
                     [
-                        DeploymentHandle(
+                        FakeDeploymentHandle(
                             "Inner",
                             app_name="default",
                         ),
@@ -185,7 +214,7 @@ def test_multi_deployment_custom_app_name():
             Outer.options(
                 name="Outer",
                 _init_args=(
-                    DeploymentHandle(
+                    FakeDeploymentHandle(
                         "Inner",
                         app_name="custom",
                     ),
@@ -218,11 +247,11 @@ def test_multi_deployment_name_collision():
             Outer.options(
                 name="Outer",
                 _init_args=(
-                    DeploymentHandle(
+                    FakeDeploymentHandle(
                         "Inner",
                         app_name="default",
                     ),
-                    DeploymentHandle(
+                    FakeDeploymentHandle(
                         "Inner_1",
                         app_name="default",
                     ),
@@ -248,7 +277,7 @@ def test_multi_deployment_same_app_passed_twice():
 
     shared = Shared.bind()
     app = Outer.bind(Inner.bind(shared), shared)
-    shared_handle = DeploymentHandle(
+    shared_handle = FakeDeploymentHandle(
         "Shared",
         app_name="default",
     )
@@ -265,7 +294,7 @@ def test_multi_deployment_same_app_passed_twice():
             Outer.options(
                 name="Outer",
                 _init_args=(
-                    DeploymentHandle(
+                    FakeDeploymentHandle(
                         "Inner",
                         app_name="default",
                     ),
