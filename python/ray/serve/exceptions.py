@@ -28,6 +28,8 @@ class BackPressureError(RayServeException):
 
 @PublicAPI(stability="alpha")
 class RequestCancelledError(RayServeException, TaskCancelledError):
+    """Raise when a Serve request is cancelled."""
+
     def __init__(self, request_id: Optional[str] = None):
         self._request_id: Optional[str] = request_id
 
