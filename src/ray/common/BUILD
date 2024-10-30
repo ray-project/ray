@@ -1,4 +1,4 @@
-load("//bazel:ray.bzl", "ray_cc_library")
+load("//bazel:ray.bzl", "ray_cc_library", "ray_cc_test")
 
 ray_cc_library(
     name = "constants",
@@ -272,5 +272,26 @@ ray_cc_library(
     ],
     deps = [
         "//src/ray/util",
+        ":source_location",
+    ],
+)
+
+ray_cc_library(
+    name = "source_location",
+    srcs = ["source_location.cc"],
+    hdrs = ["source_location.h"],
+    deps = [
+        "@com_google_absl//absl/strings:str_format",
+    ],
+)
+
+ray_cc_test(
+    name = "source_location_test",
+    size = "small",
+    srcs = ["source_location_test.cc"],
+    tags = ["team:core"],
+    deps = [
+        ":source_location",
+        "@com_google_googletest//:gtest_main",
     ],
 )
