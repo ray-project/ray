@@ -378,6 +378,7 @@ Content-Type: application/json
    schema.ApplicationDetails
    schema.DeploymentDetails
    schema.ReplicaDetails
+   schema.ProxyStatus
 ```
 
 ## Observability
