@@ -21,7 +21,6 @@ from ray._private.utils import get_or_create_event_loop
 from ray.actor import ActorClass, ActorHandle
 from ray.anyscale.serve._private.constants import (
     ANYSCALE_RAY_SERVE_REPLICA_GRPC_MAX_MESSAGE_LENGTH,
-    ANYSCALE_RAY_SERVE_USE_GRPC_BY_DEFAULT,
 )
 from ray.anyscale.serve._private.tracing_utils import (
     TraceContextManager,
@@ -591,17 +590,19 @@ class ReplicaActor:
         context: grpc.aio.ServicerContext,
     ):
         request_metadata = pickle.loads(request.pickled_request_metadata)
+        request_args = cloudpickle.loads(request.request_args)
+        request_kwargs = cloudpickle.loads(request.request_kwargs)
         trace_context = extract_propagated_context(request_metadata.tracing_context)
         trace_manager = TraceContextManager(
             trace_name="replica_handle_request",
             trace_context=trace_context,
         )
-        with trace_manager, self._wrap_user_method_call(request_metadata):
+        with trace_manager, self._wrap_user_method_call(request_metadata, request_args):
             try:
                 result = await self._user_callable_wrapper.call_user_method(
                     request_metadata,
-                    cloudpickle.loads(request.request_args),
-                    cloudpickle.loads(request.request_kwargs),
+                    request_args,
+                    request_kwargs,
                 )
                 return serve_proprietary_pb2.ASGIResponse(
                     serialized_message=cloudpickle.dumps(result)
@@ -639,17 +640,19 @@ class ReplicaActor:
         context: grpc.aio.ServicerContext,
     ):
         request_metadata = pickle.loads(request.pickled_request_metadata)
+        request_args = cloudpickle.loads(request.request_args)
+        request_kwargs = cloudpickle.loads(request.request_kwargs)
         trace_context = extract_propagated_context(request_metadata.tracing_context)
         trace_manager = TraceContextManager(
             trace_name="replica_handle_request",
             trace_context=trace_context,
         )
-        with trace_manager, self._wrap_user_method_call(request_metadata):
+        with trace_manager, self._wrap_user_method_call(request_metadata, request_args):
             try:
                 async for result in self._call_user_generator(
                     request_metadata,
-                    cloudpickle.loads(request.request_args),
-                    cloudpickle.loads(request.request_kwargs),
+                    request_args,
+                    request_kwargs,
                 ):
                     if request_metadata.is_http_request:
                         yield serve_proprietary_pb2.ASGIResponse(
@@ -741,6 +744,8 @@ class ReplicaActor:
         a gRPC response instead of raised directly.
         """
         request_metadata = pickle.loads(request.pickled_request_metadata)
+        request_args = cloudpickle.loads(request.request_args)
+        request_kwargs = cloudpickle.loads(request.request_kwargs)
         limit = self._deployment_config.max_ongoing_requests
         num_ongoing_requests = self.get_num_ongoing_requests()
         if num_ongoing_requests >= limit:
@@ -759,7 +764,7 @@ class ReplicaActor:
             )
             return
 
-        with self._wrap_user_method_call(request_metadata):
+        with self._wrap_user_method_call(request_metadata, request_args):
             yield serve_proprietary_pb2.ASGIResponse(
                 serialized_message=pickle.dumps(
                     ReplicaQueueLengthInfo(
@@ -776,8 +781,8 @@ class ReplicaActor:
                 if request_metadata.is_streaming:
                     async for result in self._call_user_generator(
                         request_metadata,
-                        cloudpickle.loads(request.request_args),
-                        cloudpickle.loads(request.request_kwargs),
+                        request_args,
+                        request_kwargs,
                     ):
                         if request_metadata.is_http_request:
                             yield serve_proprietary_pb2.ASGIResponse(
@@ -791,8 +796,8 @@ class ReplicaActor:
                 else:
                     result = await self._user_callable_wrapper.call_user_method(
                         request_metadata,
-                        cloudpickle.loads(request.request_args),
-                        cloudpickle.loads(request.request_kwargs),
+                        request_args,
+                        request_kwargs,
                     )
                     yield serve_proprietary_pb2.ASGIResponse(
                         serialized_message=cloudpickle.dumps(result)
@@ -874,15 +879,11 @@ class ReplicaActor:
                     )
 
                     # ===== Begin Anyscale proprietary code ======
-                    # NOTE(zcin): for now, only start the server for buildkite tests.
-                    # When we enable this feature for users to use, we need to
-                    # unconditionally start the server.
-                    if ANYSCALE_RAY_SERVE_USE_GRPC_BY_DEFAULT:
-                        serve_proprietary_pb2_grpc.add_ASGIServiceServicer_to_server(
-                            self, self._server
-                        )
-                        self._port = self._server.add_insecure_port("[::]:0")
-                        await self._server.start()
+                    serve_proprietary_pb2_grpc.add_ASGIServiceServicer_to_server(
+                        self, self._server
+                    )
+                    self._port = self._server.add_insecure_port("[::]:0")
+                    await self._server.start()
                     # ===== End Anyscale proprietary code ======
 
                     self._user_callable_initialized = True
