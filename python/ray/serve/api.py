@@ -45,7 +45,9 @@ from ray.serve.context import (
 from ray.serve.deployment import Application, Deployment
 from ray.serve.exceptions import RayServeException
 from ray.serve.handle import DeploymentHandle
-from ray.serve.local_deployment_handle import LocalDeploymentHandle
+from ray.serve._private.local_testing_mode import (
+    LocalDeploymentHandle,
+)
 from ray.serve.multiplex import _ModelMultiplexWrapper
 from ray.serve.schema import LoggingConfig, ServeInstanceDetails, ServeStatus
 from ray.util.annotations import DeveloperAPI, PublicAPI
@@ -440,34 +442,37 @@ def _run(
     if len(name) == 0:
         raise RayServeException("Application name must a non-empty string.")
 
-    validate_route_prefix(route_prefix)
-
-    client = _private_api.serve_start(
-        http_options={"location": "EveryNode"},
-    )
-
-    # Record after Ray has been started.
-    ServeUsageTag.API_VERSION.record("v2")
-
     if not isinstance(target, Application):
         raise TypeError(
             "`serve.run` expects an `Application` returned by `Deployment.bind()`."
         )
 
+    validate_route_prefix(route_prefix)
+
     if local_testing_mode:
         built_app = build_app(
             target,
             name=name,
-            make_handle=lambda d, app_name: LocalDeploymentHandle(d),
+            make_deployment_handle=lambda d, app_name: LocalDeploymentHandle(d),
         )
-        assert built_app
+        for local_deployment_handle in built_app.deployment_handles.values():
+            local_deployment_handle.do_init()
+
+        handle = built_app.deployment_handles[built_app.ingress_deployment_name]
     else:
-        return client.deploy_application(
+        client = _private_api.serve_start(
+            http_options={"location": "EveryNode"},
+        )
+        handle = client.deploy_application(
             build_app(target, name=name),
             blocking=_blocking,
             route_prefix=route_prefix,
             logging_config=logging_config,
         )
+
+    # Record after Ray has been started.
+    ServeUsageTag.API_VERSION.record("v2")
+    return handle
 
 
 @PublicAPI(stability="stable")

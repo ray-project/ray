@@ -876,7 +876,7 @@ class UserCallableWrapper:
             )
             self._user_code_event_loop_thread.start()
 
-    def _run_on_user_code_event_loop(f: Callable):
+    def _run_on_user_code_event_loop(f: Callable) -> Callable:
         """Decorator to run a coroutine method on the user code event loop.
 
         The method will be modified to be a sync function that returns a

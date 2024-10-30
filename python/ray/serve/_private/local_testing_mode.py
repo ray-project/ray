@@ -12,7 +12,7 @@ class LocalDeploymentHandleResponse:
 
 class LocalDeploymentHandle:
     def __init__(self, deployment: Deployment):
-        # TODO: validate things and yell if options aren't respected.
+        # TODO: validate things and yell if options aren't respected?
         self._deployment = deployment
         self._user_callable = None
         self._method = "__call__"
@@ -45,3 +45,6 @@ class LocalDeploymentHandle:
 
     def __reduce__(self):
         return self.__class__._deserialize, ({"deployment": self._deployment},)
+
+    def __repr__(self) -> str:
+        return f"LocalDeploymentHandle({self._deployment.name})"
