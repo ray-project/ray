@@ -783,7 +783,8 @@ def test_immutable_types():
     d["list"][0] = {str(i): i for i in range(1000)}
     d["dict"] = {str(i): i for i in range(1000)}
     immutable_dict = dashboard_utils.make_immutable(d)
-    assert isinstance(immutable_dict, dashboard_utils.ImmutableDict)
+    # TODO: Remove noqa after flake8 being upgraded to 7.1.1
+    assert type(immutable_dict) is dashboard_utils.ImmutableDict  # noqa E721
     assert immutable_dict == dashboard_utils.ImmutableDict(d)
     assert immutable_dict == d
     assert dashboard_utils.ImmutableDict(immutable_dict) == immutable_dict
@@ -818,9 +819,10 @@ def test_immutable_types():
     assert isinstance(immutable_default_value, dashboard_utils.ImmutableList)
 
     # Test recursive immutable
-    assert isinstance(immutable_dict["list"], dashboard_utils.ImmutableList)
-    assert isinstance(immutable_dict["dict"], dashboard_utils.ImmutableDict)
-    assert isinstance(immutable_dict["list"][0], dashboard_utils.ImmutableDict)
+    # TODO: Remove noqa after flake8 being upgraded to 7.1.1
+    assert type(immutable_dict["list"]) is dashboard_utils.ImmutableList  # noqa E721
+    assert type(immutable_dict["dict"]) is dashboard_utils.ImmutableDict  # noqa E721
+    assert type(immutable_dict["list"][0]) is dashboard_utils.ImmutableDict  # noqa E721
 
     # Test exception
     with pytest.raises(TypeError):

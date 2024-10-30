@@ -51,7 +51,8 @@ def test_client(address):
     if address in ("local", None):
         assert isinstance(builder, client_builder._LocalClientBuilder)
     else:
-        assert isinstance(builder, client_builder.ClientBuilder)
+        # TODO: Remove noqa after flake8 being upgraded to 7.1.1
+        assert type(builder) is client_builder.ClientBuilder  # noqa E721
         assert builder.address == address.replace("ray://", "")
 
 

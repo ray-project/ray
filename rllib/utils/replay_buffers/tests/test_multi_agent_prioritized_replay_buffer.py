@@ -186,7 +186,8 @@ class TestMultiAgentPrioritizedReplayBuffer(unittest.TestCase):
 
         # Fetch records, their indices and weights.
         mabatch = buffer.sample(3)
-        assert isinstance(mabatch, MultiAgentBatch)
+        # TODO: Remove noqa after flake8 being upgraded to 7.1.1
+        assert type(mabatch) is MultiAgentBatch  # noqa E721
         samplebatch = mabatch.policy_batches[DEFAULT_POLICY_ID]
 
         weights = samplebatch["weights"]
@@ -211,9 +212,11 @@ class TestMultiAgentPrioritizedReplayBuffer(unittest.TestCase):
         # (which still has a weight of 1.0).
         for _ in range(10):
             mabatch = buffer.sample(1000)
-            assert isinstance(mabatch, MultiAgentBatch)
+            # TODO: Remove noqa after flake8 being upgraded to 7.1.1
+            assert type(mabatch) is MultiAgentBatch  # noqa E721
             samplebatch = mabatch.policy_batches[DEFAULT_POLICY_ID]
-            assert isinstance(mabatch, MultiAgentBatch)
+            # TODO: Remove noqa after flake8 being upgraded to 7.1.1
+            assert type(mabatch) is MultiAgentBatch  # noqa E721
             indices = samplebatch["batch_indexes"]
             self.assertTrue(1900 < np.sum(indices) < 2200)
         # Test get_state/set_state.
