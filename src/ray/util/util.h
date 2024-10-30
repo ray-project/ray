@@ -353,9 +353,6 @@ class ThreadPrivate {
 
  private:
   T t_;
-  mutable std::string thread_name_;
-  mutable std::thread::id id_;
-  mutable std::mutex mutex_;
   mutable ThreadChecker thread_checker_;
 };
 
