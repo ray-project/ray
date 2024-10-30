@@ -453,7 +453,7 @@ def _run(
         built_app = build_app(
             target,
             name=name,
-            make_deployment_handle=lambda d, app_name: LocalDeploymentHandle(d),
+            make_deployment_handle=LocalDeploymentHandle,
         )
         for local_deployment_handle in built_app.deployment_handles.values():
             local_deployment_handle.do_init()

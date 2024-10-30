@@ -15,8 +15,8 @@ def test_basic():
         def __init__(self, my_name: str):
             self._my_name = my_name
 
-        def say_hi(self, name: str):
+        def __call__(self, name: str):
             return f"Hello {name} from {self._my_name}!"
 
     h = serve.run(D.bind("Theodore"), local_testing_mode=True)
-    assert h.say_hi.remote("Edith").result() == "Hello Edith from Theodore!"
+    assert h.remote("Edith").result() == "Hello Edith from Theodore!"

@@ -618,7 +618,6 @@ class ReplicaActor:
         request_metadata: RequestMetadata = RequestMetadata(
             request_id=proto.request_id,
             internal_request_id=proto.internal_request_id,
-            endpoint=proto.endpoint,
             call_method=proto.call_method,
             multiplexed_model_id=proto.multiplexed_model_id,
             route=proto.route,
@@ -829,14 +828,6 @@ class ReplicaActor:
 class UserCallableWrapper:
     """Wraps a user-provided callable that is used to handle requests to a replica."""
 
-    # All interactions with user code run on this loop to avoid blocking the replica's
-    # main event loop.
-    # NOTE(edoakes): this is a class variable rather than an instance variable to
-    # enable writing the `_run_on_user_code_event_loop` decorator method (the decorator
-    # doesn't have access to `self` at class definition time).
-    _user_code_event_loop: asyncio.AbstractEventLoop = asyncio.new_event_loop()
-    _user_code_event_loop_thread: Optional[threading.Thread] = None
-
     def __init__(
         self,
         deployment_def: Callable,
@@ -861,20 +852,21 @@ class UserCallableWrapper:
         # Will be populated in `initialize_callable`.
         self._callable = None
 
-        # Start the `_user_code_event_loop_thread` singleton if needed.
-        if self._user_code_event_loop_thread is None:
+        # All interactions with user code run on this loop to avoid blocking the replica's
+        # main event loop.
+        self._user_code_event_loop: asyncio.AbstractEventLoop = asyncio.new_event_loop()
 
-            def _run_user_code_event_loop():
-                # Required so that calls to get the current running event loop work
-                # properly in user code.
-                asyncio.set_event_loop(self._user_code_event_loop)
-                self._user_code_event_loop.run_forever()
+        def _run_user_code_event_loop():
+            # Required so that calls to get the current running event loop work
+            # properly in user code.
+            asyncio.set_event_loop(self._user_code_event_loop)
+            self._user_code_event_loop.run_forever()
 
-            self._user_code_event_loop_thread = threading.Thread(
-                daemon=True,
-                target=_run_user_code_event_loop,
-            )
-            self._user_code_event_loop_thread.start()
+        self._user_code_event_loop_thread = threading.Thread(
+            daemon=True,
+            target=_run_user_code_event_loop,
+        )
+        self._user_code_event_loop_thread.start()
 
     def _run_on_user_code_event_loop(f: Callable) -> Callable:
         """Decorator to run a coroutine method on the user code event loop.
@@ -887,10 +879,10 @@ class UserCallableWrapper:
         ), "_run_on_user_code_event_loop can only be used on coroutine functions."
 
         @wraps(f)
-        def wrapper(*args, **kwargs) -> concurrent.futures.Future:
+        def wrapper(self, *args, **kwargs) -> concurrent.futures.Future:
             return asyncio.run_coroutine_threadsafe(
-                f(*args, **kwargs),
-                UserCallableWrapper._user_code_event_loop,
+                f(self, *args, **kwargs),
+                self._user_code_event_loop,
             )
 
         return wrapper
