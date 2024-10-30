@@ -28,8 +28,8 @@ def assertDictAlmostEqual(a, b):
     for k, v in a.items():
         assert k in b, f"Key {k} not found in {b}"
         w = b[k]
-
-        assert isinstance(v, type(w)), f"Type {type(v)} is not {type(w)}"
+        # TODO: Remove noqa after flake8 being upgraded to 7.1.1
+        assert type(v) is type(w), f"Type {type(v)} is not {type(w)}"  # noqa E721
 
         if isinstance(v, dict):
             assert assertDictAlmostEqual(v, w), f"Subdict {v} != {w}"

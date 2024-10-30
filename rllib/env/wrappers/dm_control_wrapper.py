@@ -24,6 +24,7 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 """
+
 from gymnasium import core, spaces
 
 try:
@@ -47,10 +48,12 @@ def _spec_to_box(spec):
     def extract_min_max(s):
         assert s.dtype == np.float64 or s.dtype == np.float32
         dim = np.int_(np.prod(s.shape))
-        if isinstance(s, specs.Array):
+        # TODO: Remove noqa after flake8 being upgraded to 7.1.1
+        if type(s) is specs.Array:  # noqa E721
             bound = np.inf * np.ones(dim, dtype=np.float32)
             return -bound, bound
-        elif isinstance(s, specs.BoundedArray):
+        # TODO: Remove noqa after flake8 being upgraded to 7.1.1F
+        elif type(s) is specs.BoundedArray:  # noqa E721
             zeros = np.zeros(dim, dtype=np.float32)
             return s.minimum + zeros, s.maximum + zeros
 

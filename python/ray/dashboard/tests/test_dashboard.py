@@ -816,7 +816,8 @@ def test_immutable_types():
 
     # Test get default immutable
     immutable_default_value = immutable_dict.get("not exist list", [1, 2])
-    assert isinstance(immutable_default_value, dashboard_utils.ImmutableList)
+    # TODO: Remove noqa after flake8 being upgraded to 7.1.1
+    assert type(immutable_default_value) is dashboard_utils.ImmutableList  # noqa E721
 
     # Test recursive immutable
     # TODO: Remove noqa after flake8 being upgraded to 7.1.1

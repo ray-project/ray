@@ -95,8 +95,9 @@ def test_simple_serialization(ray_start_regular):
         # TODO(rkn): The numpy dtypes currently come back as regular integers
         # or floats.
         if type(obj).__module__ != "numpy":
-            assert isinstance(obj, type(new_obj_1))
-            assert isinstance(obj, type(new_obj_2))
+            # TODO: Remove noqa after flake8 being upgraded to 7.1.1
+            assert type(obj) is type(new_obj_1)  # noqa E721
+            assert type(obj) is type(new_obj_2)  # noqa E721
 
 
 @pytest.mark.parametrize(
