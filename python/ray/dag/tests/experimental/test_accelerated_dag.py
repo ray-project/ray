@@ -2112,7 +2112,6 @@ def test_buffered_inputs(shutdown_only, temporary_change_timeout):
     loop.run_until_complete(main())
 
 
-"""[TODO]
 def test_event_profiling(ray_start_regular, monkeypatch):
     monkeypatch.setattr(ray.dag.constants, "RAY_ADAG_ENABLE_PROFILING", True)
 
@@ -2129,9 +2128,7 @@ def test_event_profiling(ray_start_regular, monkeypatch):
     a_events = ray.get(a.get_events.remote())
     b_events = ray.get(b.get_events.remote())
 
-    # a: 1 x READ, 1 x COMPUTE, 1 x WRITE
     assert len(a_events) == 1
-    # a: 2 x READ, 2 x COMPUTE, 2 x WRITE
     assert len(b_events) == 2
 
     for event in a_events + b_events:
@@ -2139,7 +2136,6 @@ def test_event_profiling(ray_start_regular, monkeypatch):
         assert event.actor_name in ["a", "b"]
         assert event.method_name == "inc"
         assert event.operation in ["READ", "COMPUTE", "WRITE"]
-"""
 
 
 @ray.remote

@@ -75,6 +75,32 @@ class DAGNode(DAGNodeBase):
         # Whether this node calls `experimental_compile`.
         self.is_adag_output_node = False
 
+        # [CL]
+        self._requires_nccl_read = False
+        self._requires_nccl_write = False
+        self._requires_nccl_collective = False
+
+    @property
+    def requires_nccl_read(self) -> bool:
+        return self._requires_nccl_read
+
+    def set_requires_nccl_read(self, value: bool) -> None:
+        self._requires_nccl_read = value
+
+    @property
+    def requires_nccl_write(self) -> bool:
+        return self._requires_nccl_write
+
+    def set_requires_nccl_write(self, value: bool) -> None:
+        self._requires_nccl_write = value
+
+    @property
+    def requires_nccl_collective(self) -> bool:
+        return self._requires_nccl_collective
+
+    def set_requires_nccl_collective(self, value: bool) -> None:
+        self._requires_nccl_collective = value
+
     def _collect_upstream_nodes(self) -> List["DAGNode"]:
         """
         Retrieve upstream nodes and update their downstream dependencies.

@@ -144,6 +144,14 @@ class CollectiveOutputNode(ClassMethodNode):
         method_options: Dict[str, Any],
         other_args_to_resolve: Dict[str, Any],
     ):
+        super().__init__(
+            method_name,
+            method_args,
+            method_kwargs,
+            method_options,
+            other_args_to_resolve,
+        )
+
         # Parse the input node.
         if not (
             isinstance(method_args, tuple)
@@ -158,14 +166,7 @@ class CollectiveOutputNode(ClassMethodNode):
         )
         if self._collective_op is None:
             raise ValueError("Expected a collective operation")
-
-        super().__init__(
-            method_name,
-            method_args,
-            method_kwargs,
-            method_options,
-            other_args_to_resolve,
-        )
+        self.set_requires_nccl_collective(True)
 
     def _copy_impl(
         self,
