@@ -426,7 +426,7 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
         num_items: Optional[int] = None,
         *,
         batch_size_B: Optional[int] = None,
-        batch_length_T: Optional[int] = 0,
+        batch_length_T: Optional[int] = None,
         n_step: Optional[Union[int, Tuple]] = None,
         gamma: float = 0.99,
         include_infos: bool = False,
@@ -453,8 +453,8 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
                 buffer.
             batch_size_B: The number of rows (transitions) to return in the
                 batch
-            batch_length_T: THe sequence length to sample. At this point in time
-                only sequences of length 1 are possible.
+            batch_length_T: The sequence length to sample. Can be either `None`
+                (the default) or any positive integer.
             n_step: The n-step to apply. For the default the batch contains in
                 `"new_obs"` the observation and in `"obs"` the observation `n`
                 time steps before. The reward will be the sum of rewards
@@ -478,7 +478,7 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
                 the extra model outputs at the `"obs"` in the batch is included (the
                 timestep at which the action is computed).
             finalize: If episodes should be finalized.
-            lookback: A desired lookback.
+            lookback: A desired lookback. Any non-negative integer is valid.
 
         Returns:
             A list of 1-step long episodes containing all basic episode data and if
@@ -494,10 +494,12 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
         # Use our default values if no sizes/lengths provided.
         batch_size_B = batch_size_B or self.batch_size_B
 
-        if batch_length_T == 0:
-            # Sample the n-step if necessary.
+        # If no sequence should be sampled, we sample n-steps.
+        if not batch_length_T:
+            # Sample the `n_step`` itself, if necessary.
             actual_n_step = n_step
             random_n_step = isinstance(n_step, tuple)
+        # Otherwise we use an n-step of 1.
         else:
             actual_n_step = 1
 
@@ -522,19 +524,20 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
             episode = self.episodes[episode_idx]
 
             # If we use random n-step sampling, draw the n-step for this item.
-            if batch_length_T < 1 and random_n_step:
+            if not batch_length_T and random_n_step:
                 actual_n_step = int(self.rng.integers(n_step[0], n_step[1]))
 
             # Skip, if we are too far to the end and `episode_ts` + n_step would go
             # beyond the episode's end.
-            if episode_ts + batch_length_T + (actual_n_step - 1) > len(episode):
+            if episode_ts + (batch_length_T or 0) + (actual_n_step - 1) > len(episode):
                 continue
 
-            if batch_length_T == 0:
+            # If no sequence should be sampled, we sample here the n-step.
+            if not batch_length_T:
                 sampled_episode = episode.slice(
                     slice(
                         episode_ts,
-                        episode_ts + batch_length_T + actual_n_step,
+                        episode_ts + actual_n_step,
                     )
                 )
                 # Note, this will be the reward after executing action
@@ -578,15 +581,17 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
                     t_started=episode_ts,
                     len_lookback_buffer=0,
                 )
+            # Otherwise we simply slice the episode.
             else:
                 sampled_episode = episode.slice(
                     slice(
                         episode_ts,
-                        episode_ts + batch_length_T + (actual_n_step - 1),
+                        episode_ts + (batch_length_T or 0) + (actual_n_step - 1),
                     ),
                     len_lookback_buffer=lookback,
                 )
 
+            # Remove reference to sampled episode.
             del episode
 
             # Add the actually chosen n-step in this episode.

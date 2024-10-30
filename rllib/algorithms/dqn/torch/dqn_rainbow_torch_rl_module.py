@@ -312,9 +312,6 @@ class DQNRainbowTorchRLModule(TorchRLModule, DQNRainbowRLModule):
                 # https://discuss.pytorch.org/t/gradient-computation-issue-due-to-
                 # inplace-operation-unsure-how-to-debug-for-custom-model/170133
                 # Has to be a mean for each batch element.
-                # af_outs_mean = torch.unsqueeze(
-                #     torch.nan_to_num(qf_outs, neginf=torch.nan).nanmean(dim=-1), dim=1
-                # )
                 af_outs_mean = torch.nan_to_num(qf_outs, neginf=torch.nan).nanmean(
                     dim=-1, keepdim=True
                 )

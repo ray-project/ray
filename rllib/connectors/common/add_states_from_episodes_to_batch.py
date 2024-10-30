@@ -316,12 +316,18 @@ class AddStatesFromEpisodesToBatch(ConnectorV2):
                         neg_index_as_lookback=True,
                     )
                 )
+                # If we have `"state_out"`s (e.g. from rollouts) use them for the
+                # `"state_in"`s.
                 if Columns.STATE_OUT in sa_episode.extra_model_outputs:
                     # state_outs.shape=(T,[state-dim])  T=episode len
                     state_outs = sa_episode.get_extra_model_outputs(
                         key=Columns.STATE_OUT
                     )
+                # Otherwise, we have no `"state_out"` (e.g. because we are sampling
+                # from offline data and the expert policy was not stateful).
                 else:
+                    # Then simply use the `look_back_state`, i.e. in this case the
+                    # initial state as `"state_in` in training.
                     state_outs = tree.map_structure(
                         lambda a: np.repeat(
                             a[np.newaxis, ...], len(sa_episode), axis=0
@@ -349,7 +355,7 @@ class AddStatesFromEpisodesToBatch(ConnectorV2):
                 if Columns.NEXT_OBS in batch:
                     self.add_n_batch_items(
                         batch=batch,
-                        column="new_state_in",
+                        column=Columns.NEXT_STATE_IN,
                         items_to_add=tree.map_structure(
                             lambda i, m=max_seq_len: i[::m],
                             state_outs,
@@ -388,11 +394,10 @@ class AddStatesFromEpisodesToBatch(ConnectorV2):
                 if not sa_module.is_stateful():
                     continue
 
-                # Episode just started -> Get initial state from our RLModule.
-                if (
-                    sa_episode.t_started == 0
-                    and len(sa_episode) == 0
-                    or (Columns.STATE_OUT not in sa_episode.extra_model_outputs)
+                # Episode just started or has no `"state_out"` (e.g. in offline
+                # sampling) -> Get initial state from our RLModule.
+                if (sa_episode.t_started == 0 and len(sa_episode) == 0) or (
+                    Columns.STATE_OUT not in sa_episode.extra_model_outputs
                 ):
                     state = sa_module.get_initial_state()
                 # Episode is already ongoing -> Use most recent STATE_OUT.
