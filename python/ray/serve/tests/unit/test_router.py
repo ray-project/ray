@@ -51,7 +51,7 @@ class FakeReplicaResult(ReplicaResult):
     async def __anext__(self):
         raise NotImplementedError
 
-    def add_callback(self, callback: Callable):
+    def add_done_callback(self, callback: Callable):
         pass
 
     def cancel(self):
