@@ -374,9 +374,11 @@ Content-Type: application/json
 
    schema.ServeInstanceDetails
    schema.APIType
+   schema.ApplicationStatus
    schema.ApplicationDetails
    schema.DeploymentDetails
    schema.ReplicaDetails
+   schema.ProxyStatus
 ```
 
 ## Observability

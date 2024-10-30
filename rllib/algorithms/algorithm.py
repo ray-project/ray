@@ -821,8 +821,8 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
             rl_module_state = self.learner_group.get_state(
                 components=COMPONENT_LEARNER + "/" + COMPONENT_RL_MODULE,
                 inference_only=True,
-            )[COMPONENT_LEARNER][COMPONENT_RL_MODULE]
-            self.env_runner.set_state({COMPONENT_RL_MODULE: rl_module_state})
+            )[COMPONENT_LEARNER]
+            self.env_runner.set_state(rl_module_state)
             self.env_runner_group.sync_env_runner_states(
                 config=self.config,
                 env_steps_sampled=self.metrics.peek(
@@ -1362,7 +1362,7 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
                 " too unstable, b) you have enough evaluation workers "
                 "(`config.evaluation(evaluation_num_env_runners=...)`) to cover for "
                 "occasional losses, and c) you use the `config.fault_tolerance("
-                "recreate_failed_env_runners=True)` setting."
+                "restart_failed_env_runners=True)` setting."
             )
 
         if not self.config.enable_env_runner_and_connector_v2:
@@ -1552,7 +1552,7 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
                 " too unstable, b) you have enough evaluation workers "
                 "(`config.evaluation(evaluation_num_env_runners=...)`) to cover for "
                 "occasional losses, and c) you use the `config.fault_tolerance("
-                "recreate_failed_env_runners=True)` setting."
+                "restart_failed_env_runners=True)` setting."
             )
 
         if not self.config.enable_env_runner_and_connector_v2:

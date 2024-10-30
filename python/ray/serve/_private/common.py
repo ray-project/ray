@@ -1,25 +1,20 @@
 import json
+import pickle
 from dataclasses import asdict, dataclass, field
 from enum import Enum
-from typing import Awaitable, Callable, List, Optional
+from typing import Any, Awaitable, Callable, Dict, List, Optional
+
+from starlette.types import Scope
 
 from ray.actor import ActorHandle
 from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME
-from ray.serve.generated.serve_pb2 import ApplicationStatus as ApplicationStatusProto
-from ray.serve.generated.serve_pb2 import (
-    ApplicationStatusInfo as ApplicationStatusInfoProto,
-)
 from ray.serve.generated.serve_pb2 import DeploymentStatus as DeploymentStatusProto
 from ray.serve.generated.serve_pb2 import (
     DeploymentStatusInfo as DeploymentStatusInfoProto,
 )
 from ray.serve.generated.serve_pb2 import (
-    DeploymentStatusInfoList as DeploymentStatusInfoListProto,
-)
-from ray.serve.generated.serve_pb2 import (
     DeploymentStatusTrigger as DeploymentStatusTriggerProto,
 )
-from ray.serve.generated.serve_pb2 import StatusOverview as StatusOverviewProto
 from ray.serve.grpc_util import RayServegRPCContext
 
 REPLICA_ID_FULL_ID_STR_PREFIX = "SERVE_REPLICA::"
@@ -113,41 +108,6 @@ class ReplicaState(str, Enum):
     RUNNING = "RUNNING"
     STOPPING = "STOPPING"
     PENDING_MIGRATION = "PENDING_MIGRATION"
-
-
-class ApplicationStatus(str, Enum):
-    NOT_STARTED = "NOT_STARTED"
-    DEPLOYING = "DEPLOYING"
-    DEPLOY_FAILED = "DEPLOY_FAILED"
-    RUNNING = "RUNNING"
-    UNHEALTHY = "UNHEALTHY"
-    DELETING = "DELETING"
-
-
-@dataclass(eq=True)
-class ApplicationStatusInfo:
-    status: ApplicationStatus
-    message: str = ""
-    deployment_timestamp: float = 0
-
-    def debug_string(self):
-        return json.dumps(asdict(self), indent=4)
-
-    def to_proto(self):
-        return ApplicationStatusInfoProto(
-            status=f"APPLICATION_STATUS_{self.status.name}",
-            message=self.message,
-            deployment_timestamp=self.deployment_timestamp,
-        )
-
-    @classmethod
-    def from_proto(cls, proto: ApplicationStatusInfoProto):
-        status = ApplicationStatusProto.Name(proto.status)[len("APPLICATION_STATUS_") :]
-        return cls(
-            status=ApplicationStatus(status),
-            message=proto.message,
-            deployment_timestamp=proto.deployment_timestamp,
-        )
 
 
 class DeploymentStatus(str, Enum):
@@ -508,71 +468,6 @@ class DeploymentStatusInfo:
         )
 
 
-@dataclass(eq=True)
-class StatusOverview:
-    app_status: ApplicationStatusInfo
-    name: str = ""
-    deployment_statuses: List[DeploymentStatusInfo] = field(default_factory=list)
-
-    def debug_string(self):
-        return json.dumps(asdict(self), indent=4)
-
-    def get_deployment_status(self, name: str) -> Optional[DeploymentStatusInfo]:
-        """Get a deployment's status by name.
-
-        Args:
-            name: Deployment's name.
-
-        Return (Optional[DeploymentStatusInfo]): Status with a name matching
-            the argument, if one exists. Otherwise, returns None.
-        """
-
-        for deployment_status in self.deployment_statuses:
-            if name == deployment_status.name:
-                return deployment_status
-
-        return None
-
-    def to_proto(self):
-        # Create a protobuf for the Serve Application info
-        app_status_proto = self.app_status.to_proto()
-
-        # Create protobufs for all individual deployment statuses
-        deployment_status_protos = map(
-            lambda status: status.to_proto(), self.deployment_statuses
-        )
-
-        # Create a protobuf list containing all the deployment status protobufs
-        deployment_status_proto_list = DeploymentStatusInfoListProto()
-        deployment_status_proto_list.deployment_status_infos.extend(
-            deployment_status_protos
-        )
-
-        # Return protobuf encapsulating application and deployment protos
-        return StatusOverviewProto(
-            name=self.name,
-            app_status=app_status_proto,
-            deployment_statuses=deployment_status_proto_list,
-        )
-
-    @classmethod
-    def from_proto(cls, proto: StatusOverviewProto) -> "StatusOverview":
-        # Recreate Serve Application info
-        app_status = ApplicationStatusInfo.from_proto(proto.app_status)
-
-        # Recreate deployment statuses
-        deployment_statuses = []
-        for info_proto in proto.deployment_statuses.deployment_status_infos:
-            deployment_statuses.append(DeploymentStatusInfo.from_proto(info_proto))
-
-        # Recreate StatusInfo
-        return cls(
-            app_status=app_status,
-            deployment_statuses=deployment_statuses,
-            name=proto.name,
-        )
-
-
 @dataclass(frozen=True)
 class RunningReplicaInfo:
     replica_id: ReplicaID
@@ -623,19 +518,6 @@ class RunningReplicaInfo:
 
 class ServeDeployMode(str, Enum):
     MULTI_APP = "MULTI_APP"
-
-
-# Keep in sync with ServeSystemActorStatus in
-# python/ray/dashboard/client/src/type/serve.ts
-class ProxyStatus(str, Enum):
-    STARTING = "STARTING"
-    HEALTHY = "HEALTHY"
-    UNHEALTHY = "UNHEALTHY"
-    DRAINING = "DRAINING"
-    # The DRAINED status is a momentary state
-    # just before the proxy is removed
-    # so this status won't show up on the dashboard.
-    DRAINED = "DRAINED"
 
 
 class ServeComponentType(str, Enum):
@@ -710,9 +592,29 @@ class RequestMetadata:
 class StreamingHTTPRequest:
     """Sent from the HTTP proxy to replicas on the streaming codepath."""
 
-    pickled_asgi_scope: bytes
+    asgi_scope: Scope
     # Takes request metadata, returns a pickled list of ASGI messages.
     receive_asgi_messages: Callable[[RequestMetadata], Awaitable[bytes]]
+
+    def __getstate__(self) -> Dict[str, Any]:
+        """Custom serializer to use vanilla `pickle` for the ASGI scope.
+
+        This is possible because we know the scope is a dictionary containing
+        only Python primitive types. Vanilla `pickle` is much faster than cloudpickle.
+        """
+        return {
+            "pickled_asgi_scope": pickle.dumps(self.asgi_scope),
+            "receive_asgi_messages": self.receive_asgi_messages,
+        }
+
+    def __setstate__(self, state: Dict[str, Any]):
+        """Custom deserializer to use vanilla `pickle` for the ASGI scope.
+
+        This is possible because we know the scope is a dictionary containing
+        only Python primitive types. Vanilla `pickle` is much faster than cloudpickle.
+        """
+        self.asgi_scope = pickle.loads(state["pickled_asgi_scope"])
+        self.receive_asgi_messages = state["receive_asgi_messages"]
 
 
 class TargetCapacityDirection(str, Enum):
