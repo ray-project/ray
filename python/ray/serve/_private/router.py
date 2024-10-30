@@ -8,6 +8,7 @@ from contextlib import contextmanager
 from functools import partial
 from typing import Any, Coroutine, DefaultDict, List, Optional, Tuple, Union
 
+import ray
 from ray.actor import ActorHandle
 from ray.exceptions import ActorDiedError, ActorUnavailableError, RayError
 from ray.serve._private.common import (
