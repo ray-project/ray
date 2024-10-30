@@ -122,6 +122,8 @@ def parse_and_validate_pip(pip: Union[str, List[str], Dict]) -> Optional[Dict]:
                the package name 'pip' in front of the `pip_version` to form the final
                requirement string, the syntax of a requirement specifier is defined in
                full in PEP 508.
+            d) uv_version (optional, str): if specified (i.e. uv==0.4.28), ray will
+               leverage uv for package installation; no `pip_version` is expected.
 
     The returned parsed value will be a list of pip packages. If a Ray library
     (e.g. "ray[serve]") is specified, it will be deleted and replaced by its
@@ -149,10 +151,10 @@ def parse_and_validate_pip(pip: Union[str, List[str], Dict]) -> Optional[Dict]:
     elif isinstance(pip, list) and all(isinstance(dep, str) for dep in pip):
         result = dict(packages=pip, pip_check=False)
     elif isinstance(pip, dict):
-        if set(pip.keys()) - {"packages", "pip_check", "pip_version"}:
+        if set(pip.keys()) - {"packages", "pip_check", "pip_version", "uv_version"}:
             raise ValueError(
                 "runtime_env['pip'] can only have these fields: "
-                "packages, pip_check and pip_version, but got: "
+                "packages, pip_check, pip_version and uv_version, but got: "
                 f"{list(pip.keys())}"
             )
 
@@ -167,6 +169,20 @@ def parse_and_validate_pip(pip: Union[str, List[str], Dict]) -> Optional[Dict]:
                     "runtime_env['pip']['pip_version'] must be of type str, "
                     f"got {type(pip['pip_version'])}"
                 )
+        if "uv_version" in pip:
+            if not isinstance(pip["uv_version"], str):
+                raise TypeError(
+                    "runtime_env['pip']['uv_version'] must be of type str, "
+                    f"got {type(pip['uv_version'])}"
+                )
+            # With `uv_version`, uv will be used as package manager, we don't
+            # expect `pip_version` at the same time.
+            if "pip_version" in pip:
+                raise ValueError(
+                    "When `uv_version` specified, we should have `pip_version` "
+                    "at the same time."
+                )
+
         result = pip.copy()
         result["pip_check"] = pip.get("pip_check", False)
         if "packages" not in pip:
