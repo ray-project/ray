@@ -441,6 +441,7 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
                         # If the timeout is up and we've already tried the candidates
                         # with the fewest models loaded, fall back to all replicas.
                         candidate_replica_ids = self._replica_id_set
+                    should_backoff = True
                 elif (
                     self._prefer_local_node_routing
                     and not tried_same_node
@@ -452,6 +453,7 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
                         LocalityScope.NODE
                     ]
                     tried_same_node = True
+                    should_backoff = False
                 elif (
                     self._prefer_local_az_routing
                     and not tried_same_az
@@ -466,10 +468,12 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
                         LocalityScope.AVAILABILITY_ZONE
                     ]
                     tried_same_az = True
+                    should_backoff = False
                 else:
                     # On subsequent iterations or when there are no replicas on the same
                     # node or AZ, consider all available replicas.
                     candidate_replica_ids = self._replica_id_set
+                    should_backoff = True
 
                 if candidate_replica_ids:
                     chosen_ids = random.sample(
@@ -477,6 +481,15 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
                         k=min(2, len(candidate_replica_ids)),
                     )
                     yield [self._replicas[chosen_id] for chosen_id in chosen_ids]
+
+                # We have a slight unintended behavior when enabled locality routing
+                # for both node and AZ. The intention is to try same node first,
+                # then try same AZ if node fails, then try everything else until a
+                # replica is found. These sequence should only help to reduce the
+                # latency of the request. No backoff and sleep should be applied, until
+                # we have fall into the case trying on all available replicas.
+                if not should_backoff:
+                    continue
 
                 if not entered_backoff:
                     entered_backoff = True
