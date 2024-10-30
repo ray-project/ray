@@ -5,6 +5,7 @@ from ray.serve._private.constants import SERVE_LOGGER_NAME
 from ray.serve._private.replica import UserCallableWrapper
 from ray.serve.deployment import Deployment
 
+# TODO: figure out how to get logs to all go to stderr.
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 
