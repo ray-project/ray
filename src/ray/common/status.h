@@ -56,15 +56,6 @@ class error_code;
     }                                                       \
   } while (0)
 
-#define RAY_RETURN_NOT_OK_ELSE(s, else_)                \
-  do {                                                  \
-    const ::ray::Status &RAY_UNIQUE_VARIABLE(_s) = (s); \
-    if (!RAY_UNIQUE_VARIABLE(_s).ok()) {                \
-      else_;                                            \
-      return RAY_UNIQUE_VARIABLE(_s);                   \
-    }                                                   \
-  } while (0)
-
 // If 'to_call' returns a bad status, CHECK immediately with a logged message
 // of 'msg' followed by the status.
 #define RAY_CHECK_OK_PREPEND(to_call, msg)                      \
