@@ -19,6 +19,7 @@ from ray.serve._private.deployment_scheduler import (
     DeploymentScheduler,
 )
 from ray.serve._private.grpc_util import gRPCServer
+from ray.serve._private.handle_options import DynamicHandleOptions, InitHandleOptions
 from ray.serve._private.replica_scheduler import (
     ActorReplicaWrapper,
     PowerOfTwoChoicesReplicaScheduler,
@@ -29,7 +30,6 @@ from ray.serve._private.utils import (
     inside_ray_client_context,
     resolve_request_args,
 )
-from ray.serve.handle_options import _DynamicHandleOptions, _InitHandleOptions
 
 # NOTE: Please read carefully before changing!
 #
@@ -57,11 +57,11 @@ def create_deployment_scheduler(
 
 
 def create_dynamic_handle_options(**kwargs):
-    return _DynamicHandleOptions(**kwargs)
+    return DynamicHandleOptions(**kwargs)
 
 
 def create_init_handle_options(**kwargs):
-    return _InitHandleOptions.create(**kwargs)
+    return InitHandleOptions.create(**kwargs)
 
 
 def create_router(

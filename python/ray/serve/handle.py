@@ -17,6 +17,10 @@ from ray.serve._private.default_impl import (
     create_init_handle_options,
     create_router,
 )
+from ray.serve._private.handle_options import (
+    DynamicHandleOptionsBase,
+    InitHandleOptionsBase,
+)
 from ray.serve._private.replica_result import ReplicaResult
 from ray.serve._private.router import Router
 from ray.serve._private.usage import ServeUsageTag
@@ -30,7 +34,6 @@ from ray.serve._private.utils import (
     is_running_in_asyncio_loop,
 )
 from ray.serve.exceptions import RayServeException
-from ray.serve.handle_options import _DynamicHandleOptionsBase, _InitHandleOptionsBase
 from ray.util import metrics
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
@@ -66,16 +69,16 @@ class _DeploymentHandleBase:
         deployment_name: str,
         app_name: str,
         *,
-        handle_options: Optional[_DynamicHandleOptionsBase] = None,
+        handle_options: Optional[DynamicHandleOptionsBase] = None,
         _router: Optional[Router] = None,
         _request_counter: Optional[metrics.Counter] = None,
         _recorded_telemetry: bool = False,
     ):
         self.deployment_id = DeploymentID(name=deployment_name, app_name=app_name)
-        self.handle_options: _DynamicHandleOptionsBase = (
+        self.handle_options: DynamicHandleOptionsBase = (
             handle_options or create_dynamic_handle_options()
         )
-        self.init_options: Optional[_InitHandleOptionsBase] = None
+        self.init_options: Optional[InitHandleOptionsBase] = None
 
         self.handle_id = get_random_string()
         self.request_counter = _request_counter or self._create_request_counter(
