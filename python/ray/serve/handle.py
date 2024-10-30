@@ -4,19 +4,12 @@ import logging
 import threading
 import time
 import warnings
-from abc import ABC
-from dataclasses import dataclass, fields
 from typing import Any, AsyncIterator, Dict, Iterator, Optional, Tuple, Union
 
 import ray
 from ray import serve
 from ray._raylet import GcsClient, ObjectRefGenerator
-from ray.serve._private.common import (
-    DeploymentHandleSource,
-    DeploymentID,
-    RequestMetadata,
-    RequestProtocol,
-)
+from ray.serve._private.common import DeploymentID, RequestMetadata, RequestProtocol
 from ray.serve._private.constants import SERVE_LOGGER_NAME
 from ray.serve._private.default_impl import (
     create_cluster_node_info_cache,
@@ -37,6 +30,7 @@ from ray.serve._private.utils import (
     is_running_in_asyncio_loop,
 )
 from ray.serve.exceptions import RayServeException
+from ray.serve.handle_options import _DynamicHandleOptionsBase, _InitHandleOptionsBase
 from ray.util import metrics
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
@@ -64,66 +58,6 @@ def _create_or_get_global_asyncio_event_loop_in_thread():
             thread.start()
 
     return _global_async_loop
-
-
-@dataclass(frozen=True)
-class _InitHandleOptionsBase:
-    """Init options for each ServeHandle instance.
-
-    These fields can be set by calling `.init()` on a handle before
-    sending the first request.
-    """
-
-    _prefer_local_routing: bool = False
-    _source: DeploymentHandleSource = DeploymentHandleSource.UNKNOWN
-
-
-@dataclass(frozen=True)
-class _InitHandleOptions(_InitHandleOptionsBase):
-    @classmethod
-    def create(cls, **kwargs) -> "_InitHandleOptions":
-        for k in list(kwargs.keys()):
-            if kwargs[k] == DEFAULT.VALUE:
-                # Use default value
-                del kwargs[k]
-
-        # Detect replica source for handles
-        if (
-            "_source" not in kwargs
-            and ray.serve.context._get_internal_replica_context() is not None
-        ):
-            kwargs["_source"] = DeploymentHandleSource.REPLICA
-
-        return cls(**kwargs)
-
-
-@dataclass(frozen=True)
-class _DynamicHandleOptionsBase(ABC):
-    """Dynamic options for each ServeHandle instance.
-
-    These fields can be changed by calling `.options()` on a handle.
-    """
-
-    method_name: str = "__call__"
-    multiplexed_model_id: str = ""
-    stream: bool = False
-    _request_protocol: str = RequestProtocol.UNDEFINED
-
-    def copy_and_update(self, **kwargs) -> "_DynamicHandleOptionsBase":
-        new_kwargs = {}
-
-        for f in fields(self):
-            if f.name not in kwargs or kwargs[f.name] == DEFAULT.VALUE:
-                new_kwargs[f.name] = getattr(self, f.name)
-            else:
-                new_kwargs[f.name] = kwargs[f.name]
-
-        return _DynamicHandleOptions(**new_kwargs)
-
-
-@dataclass(frozen=True)
-class _DynamicHandleOptions(_DynamicHandleOptionsBase):
-    pass
 
 
 class _DeploymentHandleBase:
