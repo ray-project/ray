@@ -7,6 +7,7 @@ from typing import Callable, Dict, List, Optional, Tuple, Union
 import ray
 from ray.actor import ActorHandle
 from ray.serve._private.application_state import StatusOverview
+from ray.serve._private.build_app import BuiltApplication
 from ray.serve._private.common import (
     DeploymentID,
     DeploymentStatus,
@@ -23,6 +24,7 @@ from ray.serve._private.constants import (
 from ray.serve._private.controller import ServeController
 from ray.serve._private.deploy_utils import get_deploy_args
 from ray.serve._private.deployment_info import DeploymentInfo
+from ray.serve._private.utils import get_random_string
 from ray.serve.config import HTTPOptions
 from ray.serve.exceptions import RayServeException
 from ray.serve.generated.serve_pb2 import DeploymentArgs, DeploymentRoute
@@ -246,24 +248,26 @@ class ServeControllerClient:
     @_ensure_connected
     def deploy_application(
         self,
-        name,
-        deployments: List[Dict],
-        _blocking: bool = True,
-    ):
-        ingress_route_prefix = None
+        built_app: BuiltApplication,
+        *,
+        blocking: bool,
+        route_prefix: Optional[str],
+        logging_config: Optional[Union[Dict, LoggingConfig]],
+    ) -> DeploymentHandle:
         deployment_args_list = []
-        for deployment in deployments:
-            if deployment["ingress"]:
-                ingress_route_prefix = deployment["route_prefix"]
+        for deployment in built_app.deployments:
+            if deployment.logging_config is None and logging_config:
+                deployment = deployment.options(logging_config=logging_config)
 
+            is_ingress = deployment.name == built_app.ingress_deployment_name
             deployment_args = get_deploy_args(
-                deployment["name"],
-                replica_config=deployment["replica_config"],
-                ingress=deployment["ingress"],
-                deployment_config=deployment["deployment_config"],
-                version=deployment["version"],
-                route_prefix=deployment["route_prefix"],
-                docs_path=deployment["docs_path"],
+                deployment.name,
+                ingress=is_ingress,
+                replica_config=deployment._replica_config,
+                deployment_config=deployment._deployment_config,
+                version=deployment._version or get_random_string(),
+                route_prefix=route_prefix if is_ingress else None,
+                docs_path=deployment._docs_path,
             )
 
             deployment_args_proto = DeploymentArgs()
@@ -283,14 +287,31 @@ class ServeControllerClient:
 
             deployment_args_list.append(deployment_args_proto.SerializeToString())
 
-        ray.get(self._controller.deploy_application.remote(name, deployment_args_list))
-        if _blocking:
-            self._wait_for_application_running(name)
-            if ingress_route_prefix is not None:
-                url_part = " at " + self._root_url + ingress_route_prefix
+        ray.get(
+            self._controller.deploy_application.remote(
+                built_app.name, deployment_args_list
+            )
+        )
+
+        # The deployment state is not guaranteed to be created after
+        # deploy_application returns; the application state manager will
+        # need another reconcile iteration to create it.
+        self._wait_for_deployment_created(
+            built_app.ingress_deployment_name, built_app.name
+        )
+        handle = self.get_handle(
+            built_app.ingress_deployment_name, built_app.name, check_exists=False
+        )
+
+        if blocking:
+            self._wait_for_application_running(built_app.name)
+            if route_prefix is not None:
+                url_part = " at " + self._root_url + route_prefix
             else:
                 url_part = ""
-            logger.info(f"Application '{name}' is ready{url_part}.")
+            logger.info(f"Application '{built_app.name}' is ready{url_part}.")
+
+        return handle
 
     @_ensure_connected
     def deploy_apps(

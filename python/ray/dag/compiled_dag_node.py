@@ -974,6 +974,27 @@ class CompiledDAG:
                     # Add all readers to the NCCL actors of P2P.
                     nccl_actors_p2p.add(downstream_actor_handle)
 
+        # Collect all leaf nodes.
+        leaf_nodes: DAGNode = []
+        for idx, task in self.idx_to_task.items():
+            if not isinstance(task.dag_node, ClassMethodNode):
+                continue
+            if (
+                len(task.downstream_task_idxs) == 0
+                and not task.dag_node.is_adag_output_node
+            ):
+                leaf_nodes.append(task.dag_node)
+        # Leaf nodes are not allowed because the exception thrown by the leaf
+        # node will not be propagated to the driver.
+        if len(leaf_nodes) != 0:
+            raise ValueError(
+                "Compiled DAG doesn't support leaf nodes, i.e., nodes that don't have "
+                "downstream nodes and are not output nodes. There are "
+                f"{len(leaf_nodes)} leaf nodes in the DAG. Please add the outputs of "
+                f"{[leaf_node.get_method_name() for leaf_node in leaf_nodes]} to the "
+                f"the MultiOutputNode."
+            )
+
         nccl_actors_p2p = list(nccl_actors_p2p)
         if None in nccl_actors_p2p:
             raise ValueError("Driver cannot participate in the NCCL group.")
