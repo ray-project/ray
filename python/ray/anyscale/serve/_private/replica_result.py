@@ -204,7 +204,7 @@ class gRPCReplicaResult(ReplicaResult):
             )
             return await asyncio.wrap_future(fut)
 
-    def add_callback(self, callback: Callable):
+    def add_done_callback(self, callback: Callable):
         self._call.add_done_callback(callback)
 
     def cancel(self):

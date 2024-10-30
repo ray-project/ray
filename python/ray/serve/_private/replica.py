@@ -443,6 +443,7 @@ class ReplicaActor:
             ray.serve.context._RequestContext(
                 route=route,
                 request_id=request_metadata.request_id,
+                _internal_request_id=request_metadata.internal_request_id,
                 app_name=self._deployment_id.app_name,
                 multiplexed_model_id=request_metadata.multiplexed_model_id,
                 grpc_context=request_metadata.grpc_context,
@@ -456,6 +457,15 @@ class ReplicaActor:
             yield
         except asyncio.CancelledError as e:
             user_exception = e
+
+            # Recursively cancel child requests
+            requests_pending_assignment = (
+                ray.serve.context._get_requests_pending_assignment(
+                    request_metadata.internal_request_id
+                )
+            )
+            for task in requests_pending_assignment.values():
+                task.cancel()
         except Exception as e:
             user_exception = e
             logger.error(f"Request failed:\n{e}")
