@@ -15,6 +15,7 @@ from ray._private.test_utils import (
     wait_for_condition,
 )
 from ray.serve._private.test_utils import send_signal_on_cancellation, tlog
+from ray.serve.exceptions import RequestCancelledError
 
 
 @pytest.mark.parametrize("use_fastapi", [False, True])
@@ -120,7 +121,7 @@ def test_cancel_sync_handle_call_during_execution(serve_instance):
     r.cancel()
     ray.get(cancelled_signal_actor.wait.remote(), timeout=10)
 
-    with pytest.raises(ray.exceptions.TaskCancelledError):
+    with pytest.raises(RequestCancelledError):
         r.result()
 
 
@@ -185,7 +186,7 @@ def test_cancel_async_handle_call_during_execution(serve_instance):
             r.cancel()
             await cancelled_signal_actor.wait.remote()
 
-            with pytest.raises(ray.exceptions.TaskCancelledError):
+            with pytest.raises(RequestCancelledError):
                 await r
 
     h = serve.run(Ingress.bind(Downstream.bind()))
@@ -259,7 +260,7 @@ def test_cancel_generator_sync(serve_instance):
     # Cancel it and verify that it is cancelled via signal.
     g.cancel()
 
-    with pytest.raises(ray.exceptions.TaskCancelledError):
+    with pytest.raises(RequestCancelledError):
         next(g)
 
     ray.get(signal_actor.wait.remote(), timeout=10)
@@ -288,7 +289,7 @@ def test_cancel_generator_async(serve_instance):
             # Cancel it and verify that it is cancelled via signal.
             g.cancel()
 
-            with pytest.raises(ray.exceptions.TaskCancelledError):
+            with pytest.raises(RequestCancelledError):
                 assert await g.__anext__() == "hi"
 
             await signal_actor.wait.remote()
@@ -316,7 +317,7 @@ def test_only_relevant_task_is_cancelled(serve_instance):
     wait_for_condition(lambda: ray.get(signal_actor.cur_num_waiters.remote()) == 2)
 
     r1.cancel()
-    with pytest.raises(ray.exceptions.TaskCancelledError):
+    with pytest.raises(RequestCancelledError):
         r1.result()
 
     # Now signal r2 to run to completion and check that it wasn't cancelled.
@@ -356,7 +357,7 @@ def test_out_of_band_task_is_not_cancelled(serve_instance):
     wait_for_condition(lambda: ray.get(signal_actor.cur_num_waiters.remote()) == 2)
 
     r1.cancel()
-    with pytest.raises(ray.exceptions.TaskCancelledError):
+    with pytest.raises(RequestCancelledError):
         r1.result()
 
     # Now signal out of band request to run to completion and check that it wasn't
