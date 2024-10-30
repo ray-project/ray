@@ -1409,6 +1409,11 @@ class Learner(Checkpointable):
                 )
 
         self._weights_seq_no += 1
+        self.metrics.log_value(
+            key=WEIGHTS_SEQ_NO,
+            value=self._weights_seq_no,
+            window=1,
+        )
 
         self._set_slicing_by_batch_id(batch, value=False)
 

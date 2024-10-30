@@ -390,7 +390,7 @@ class LearnerGroup(Checkpointable):
                     num_total_minibatches=_num_total_minibatches,
                     **_kwargs,
                 )
-            if _return_state:
+            if _return_state and result:
                 result["_rl_module_state_after_update"] = _learner.get_state(
                     # Only return the state of those RLModules that actually returned
                     # results and thus got probably updated.
@@ -542,7 +542,9 @@ class LearnerGroup(Checkpointable):
                         break
                     tags_to_get.append(tag)
 
-                # Send out new request(s), if there is still capacity on the actors.
+                # Send out new request(s), if there is still capacity on the actors
+                # (each actor is allowed only some number of max in-flight requests
+                # at the same time).
                 update_tag = self._update_request_tag
                 self._update_request_tag += 1
                 num_sent_requests = self._worker_manager.foreach_actor_async(
@@ -553,7 +555,6 @@ class LearnerGroup(Checkpointable):
 
                 # Some requests were dropped, record lost ts/data.
                 if num_sent_requests != len(self._workers):
-                    # assert num_sent_requests == 0, num_sent_requests
                     factor = 1 - (num_sent_requests / len(self._workers))
                     # Batch: Measure its length.
                     if episodes is None:
@@ -597,7 +598,7 @@ class LearnerGroup(Checkpointable):
                 raise result_or_error
         return processed_results
 
-    def _get_async_results(self, tags_to_get):  # results):
+    def _get_async_results(self, tags_to_get):
         """Get results from the worker manager and group them by tag.
 
         Returns:
@@ -605,8 +606,7 @@ class LearnerGroup(Checkpointable):
             for same tags.
 
         """
-        # if results is None:
-        #    return []
+        #print(tags_to_get)
 
         unprocessed_results = defaultdict(list)
         for tag in tags_to_get:

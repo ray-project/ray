@@ -634,18 +634,6 @@ class IMPALA(Algorithm):
 
             # Log the average number of sample results (list of episodes) received.
             self.metrics.log_value(MEAN_NUM_EPISODE_LISTS_RECEIVED, len(episode_refs))
-            self.metrics.log_value(
-                "_mean_num_episode_ts_received",
-                len(episode_refs)
-                * self.config.num_envs_per_env_runner
-                * self.config.get_rollout_fragment_length(),
-            )
-            self.metrics.log_value(
-                "_mean_num_episode_ts_received_using_reduced_metrics",
-                self.metrics.peek(
-                    (ENV_RUNNER_RESULTS, NUM_ENV_STEPS_SAMPLED), default=0
-                ),
-            )
 
         # Log lifetime counts for env- and agent steps.
         if env_runner_metrics:
@@ -718,6 +706,10 @@ class IMPALA(Algorithm):
                 if not do_async_updates:
                     learner_results = [learner_results]
                 for results_from_n_learners in learner_results:
+                    if not results_from_n_learners[0]:
+                        continue
+                    #if "_rl_module_state_after_update" in results_from_n_learners[0] and len(results_from_n_learners[0]) == 1:
+                    #    raise ValueError(results_from_n_learners)
                     for r in results_from_n_learners:
                         rl_module_state = r.pop(
                             "_rl_module_state_after_update", rl_module_state
@@ -727,6 +719,7 @@ class IMPALA(Algorithm):
                         key=LEARNER_RESULTS,
                     )
                     last_good_learner_results = results_from_n_learners
+                    #print(rl_module_state)
 
         # Update LearnerGroup's own stats.
         self.metrics.log_dict(self.learner_group.get_stats(), key=LEARNER_GROUP)
@@ -744,6 +737,7 @@ class IMPALA(Algorithm):
         # Figure out, whether we should sync/broadcast the (remote) EnvRunner states.
         # Note: `learner_results` is a List of n (num async calls) Lists of m
         # (num Learner workers) ResultDicts each.
+        print(last_good_learner_results)
         if last_good_learner_results:
             # TODO (sven): Rename this metric into a more fitting name: ex.
             #  `NUM_LEARNER_UPDATED_SINCE_LAST_WEIGHTS_SYNC`
@@ -766,9 +760,9 @@ class IMPALA(Algorithm):
                 with self.metrics.log_time((TIMERS, SYNCH_WORKER_WEIGHTS_TIMER)):
                     self.env_runner_group.sync_env_runner_states(
                         config=self.config,
-                        env_runner_indices_to_update=list(
-                            self._env_runner_indices_to_update
-                        ),
+                        #env_runner_indices_to_update=list(
+                        #    self._env_runner_indices_to_update
+                        #),
                         env_steps_sampled=self.metrics.peek(
                             NUM_ENV_STEPS_SAMPLED_LIFETIME, default=0
                         ),
@@ -804,14 +798,14 @@ class IMPALA(Algorithm):
 
         # Perform asynchronous sampling on all (healthy) remote rollout workers.
         if num_healthy_remote_workers > 0:
-            self.env_runner_group.foreach_worker_async(
-                _remote_sample_get_state_and_metrics
-            )
             async_results: List[
                 Tuple[int, ObjectRef]
             ] = self.env_runner_group.fetch_ready_async_reqs(
                 timeout_seconds=self.config.timeout_s_sampler_manager,
                 return_obj_refs=False,
+            )
+            self.env_runner_group.foreach_worker_async(
+                _remote_sample_get_state_and_metrics
             )
             # Get results from the n different async calls and store those EnvRunner
             # indices we should update.
