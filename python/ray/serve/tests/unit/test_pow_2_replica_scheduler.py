@@ -1819,7 +1819,7 @@ async def test_replicas_actor_unavailable_error(
     ],
     indirect=True,
 )
-async def test_not_to_backoff_sleep_for_locally_failed_schedule(pow_2_scheduler):
+async def test_locality_aware_backoff_skips_sleeps(pow_2_scheduler):
     """
     When the scheduler fails to schedule a request to a replica on the same node, and
     the same zone, it should not sleep before retrying and add additional latency.
