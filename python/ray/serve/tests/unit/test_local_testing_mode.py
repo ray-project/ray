@@ -9,6 +9,7 @@ from ray.serve._private.local_testing_mode import LocalDeploymentHandle
 # - support http.
 # - make LocalDeploymentHandle a public import?
 
+
 def test_basic():
     @serve.deployment
     class D:
@@ -19,4 +20,5 @@ def test_basic():
             return f"Hello {name} from {self._my_name}!"
 
     h = serve.run(D.bind("Theodore"), local_testing_mode=True)
+    assert isinstance(h, LocalDeploymentHandle)
     assert h.remote("Edith").result() == "Hello Edith from Theodore!"

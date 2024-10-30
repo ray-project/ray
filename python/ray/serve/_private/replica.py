@@ -852,8 +852,8 @@ class UserCallableWrapper:
         # Will be populated in `initialize_callable`.
         self._callable = None
 
-        # All interactions with user code run on this loop to avoid blocking the replica's
-        # main event loop.
+        # All interactions with user code run on this loop to avoid blocking the
+        # replica's main event loop.
         self._user_code_event_loop: asyncio.AbstractEventLoop = asyncio.new_event_loop()
 
         def _run_user_code_event_loop():

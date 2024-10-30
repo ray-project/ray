@@ -1,9 +1,9 @@
 import logging
 
+from ray.serve._private.common import DeploymentID, RequestMetadata
 from ray.serve._private.constants import SERVE_LOGGER_NAME
 from ray.serve._private.replica import UserCallableWrapper
 from ray.serve.deployment import Deployment
-from ray.serve._private.common import DeploymentID, RequestMetadata
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
@@ -40,7 +40,10 @@ class LocalDeploymentHandle:
 
     def remote(self, *args, **kwargs):
         f = self._user_callable_wrapper.call_user_method(
-            RequestMetadata(request_id="test-request-id", internal_request_id="test-internal-request-id"),
+            RequestMetadata(
+                request_id="test-request-id",
+                internal_request_id="test-internal-request-id",
+            ),
             args,
             kwargs,
         )
