@@ -330,6 +330,28 @@ with open(r"{ray_version_path}", "wt") as f:
         await check_output_cmd(create_venv_cmd, logger=logger, cwd=cwd, env=env)
 
     @classmethod
+    async def _install_uv(path: str, cwd: str, pip_env: Dict, logger: logging.Logger):
+        """`uv` shows much better performance than `pip` to install packages, so
+        leverage `uv` to for runtime env setup.
+        Before package install, make sure `uv` is installed.
+        """
+        virtualenv_path = _PathHelper.get_virtualenv_path(path)
+        python = _PathHelper.get_virtualenv_python(path)
+
+        uv_install_cmd = [
+            python,
+            "-m",
+            "pip",
+            "install",
+            "--disable-pip-version-check",
+            "--no-cache-dir",
+            "uv",
+        ]
+        logger.info("Installing package uv to %s", virtualenv_path)
+
+        await check_output_cmd(uv_install_cmd, logger=logger, cwd=cwd, env=pip_env)
+
+    @classmethod
     async def _install_pip_packages(
         cls,
         path: str,
@@ -352,6 +374,9 @@ with open(r"{ray_version_path}", "wt") as f:
         loop = get_running_loop()
         await loop.run_in_executor(None, _gen_requirements_txt)
 
+        # Install uv, which acts as the default package manager.
+        await cls._install_uv(path, cwd, pip_env, logger)
+
         # pip options
         #
         # --disable-pip-version-check
@@ -364,6 +389,7 @@ with open(r"{ray_version_path}", "wt") as f:
         pip_install_cmd = [
             python,
             "-m",
+            "uv",
             "pip",
             "install",
             "--disable-pip-version-check",
@@ -456,7 +482,7 @@ class PipPlugin(RuntimeEnvPlugin):
     ) -> int:
         """Delete URI and return the number of bytes deleted."""
         logger.info("Got request to delete pip URI %s", uri)
-        protocol, hash = parse_uri(uri)
+        protocol, hash_val = parse_uri(uri)
         if protocol != Protocol.PIP:
             raise ValueError(
                 "PipPlugin can only delete URIs with protocol "
@@ -464,13 +490,13 @@ class PipPlugin(RuntimeEnvPlugin):
             )
 
         # Cancel running create task.
-        task = self._creating_task.pop(hash, None)
+        task = self._creating_task.pop(hash_val, None)
         if task is not None:
             task.cancel()
 
-        del self._created_hash_bytes[hash]
+        del self._created_hash_bytes[hash_val]
 
-        pip_env_path = self._get_path_from_hash(hash)
+        pip_env_path = self._get_path_from_hash(hash_val)
         local_dir_size = get_directory_size_bytes(pip_env_path)
         del self._create_locks[uri]
         try:
@@ -491,8 +517,8 @@ class PipPlugin(RuntimeEnvPlugin):
         if not runtime_env.has_pip():
             return 0
 
-        protocol, hash = parse_uri(uri)
-        target_dir = self._get_path_from_hash(hash)
+        protocol, hash_val = parse_uri(uri)
+        target_dir = self._get_path_from_hash(hash_val)
 
         async def _create_for_hash():
             await PipProcessor(
@@ -511,13 +537,13 @@ class PipPlugin(RuntimeEnvPlugin):
             self._create_locks[uri] = asyncio.Lock()
 
         async with self._create_locks[uri]:
-            if hash in self._created_hash_bytes:
-                return self._created_hash_bytes[hash]
-            self._creating_task[hash] = task = create_task(_create_for_hash())
-            task.add_done_callback(lambda _: self._creating_task.pop(hash, None))
-            bytes = await task
-            self._created_hash_bytes[hash] = bytes
-            return bytes
+            if hash_val in self._created_hash_bytes:
+                return self._created_hash_bytes[hash_val]
+            self._creating_task[hash_val] = task = create_task(_create_for_hash())
+            task.add_done_callback(lambda _: self._creating_task.pop(hash_val, None))
+            task_ret = await task
+            self._created_hash_bytes[hash_val] = task_ret
+            return task_ret
 
     def modify_context(
         self,
@@ -531,8 +557,8 @@ class PipPlugin(RuntimeEnvPlugin):
         # PipPlugin only uses a single URI.
         uri = uris[0]
         # Update py_executable.
-        protocol, hash = parse_uri(uri)
-        target_dir = self._get_path_from_hash(hash)
+        protocol, hash_val = parse_uri(uri)
+        target_dir = self._get_path_from_hash(hash_val)
         virtualenv_python = _PathHelper.get_virtualenv_python(target_dir)
 
         if not os.path.exists(virtualenv_python):
