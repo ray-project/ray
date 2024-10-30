@@ -136,7 +136,7 @@ def do_exec_tasks(
     """
     try:
         for task in tasks:
-            task.prepare()
+            task.prepare(overlap_gpu_communication)
 
         done = False
         while True:
@@ -427,7 +427,7 @@ class ExecutableTask:
         self.input_reader.close()
         self.output_writer.close()
 
-    def prepare(self):
+    def prepare(self, overlap_gpu_communication: bool = False):
         """
         Prepare the task for execution. The `exec_operation` function can only
         be called after `prepare` has been called.
@@ -442,9 +442,15 @@ class ExecutableTask:
 
         self._send_stream: Union["cp.cuda.Stream", nullcontext] = nullcontext()
         self._recv_stream: Union["cp.cuda.Stream", nullcontext] = nullcontext()
+        if not overlap_gpu_communication:
+            return
+
+        # Set up send_stream and recv_stream when overlap_gpu_communication
+        # is configured
         if self.output_type_hint.requires_nccl():
             nccl_group_id = _get_nccl_group_id(self.output_type_hint)
             nccl_group = ChannelContext.get_current().nccl_groups.get(nccl_group_id)
+            assert nccl_group is not None
             self._send_stream = nccl_group.send_stream
         if self.input_type_hints:
             for type_hint in self.input_type_hints:

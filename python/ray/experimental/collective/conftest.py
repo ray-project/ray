@@ -1,14 +1,16 @@
 import copy
-from typing import Dict, FrozenSet, List, Optional, Set, Tuple
 import uuid
+from typing import Dict, FrozenSet, List, Optional, Set, Tuple
+
 import torch
+
 import ray
+from ray.experimental.channel.common import ChannelContext
 from ray.experimental.channel.gpu_communicator import (
     GPUCommunicator,
     ReduceOp,
     TorchTensorAllocator,
 )
-from ray.experimental.channel.common import ChannelContext
 
 
 class AbstractNcclGroup(GPUCommunicator):
@@ -56,7 +58,7 @@ class AbstractNcclGroup(GPUCommunicator):
         op: ReduceOp = ReduceOp.SUM,
     ) -> None:
         raise NotImplementedError
-    
+
     @property
     def recv_stream(self) -> Optional["cp.cuda.ExternalStream"]:
         return None
@@ -164,6 +166,7 @@ class MockNcclGroupSet:
             assert nccl_group_id not in self.ids_to_actors_and_custom_comms
             assert nccl_group_id not in ctx.nccl_groups
 
+
 @ray.remote
 class CPUTorchTensorWorker:
     def __init__(self):
@@ -175,7 +178,6 @@ class CPUTorchTensorWorker:
     def recv(self, tensor: torch.Tensor) -> Tuple[int, int]:
         assert tensor.device == self.device
         return tensor.shape, tensor[0]
-
 
 
 def mock_do_init_nccl_group(
