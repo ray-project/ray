@@ -26,7 +26,7 @@ def run(smoke_test=False, storage_path: str = None):
 
     config = (
         APPOConfig()
-        .environment("ale_py:ALE/Pong-v5", clip_rewards=True)
+        .environment("ALE/Pong-v5", clip_rewards=True)
         .framework(tune.grid_search(["tf", "torch"]))
         .rollouts(
             rollout_fragment_length=50,

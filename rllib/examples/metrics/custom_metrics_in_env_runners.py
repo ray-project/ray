@@ -301,7 +301,7 @@ if __name__ == "__main__":
     register_env(
         "env",
         lambda cfg: wrap_atari_for_new_api_stack(
-            gym.make("ale_py:ALE/MsPacman-v5", **cfg, **{"render_mode": "rgb_array"}),
+            gym.make("ALE/MsPacman-v5", **cfg, **{"render_mode": "rgb_array"}),
             framestack=4,
         ),
     )

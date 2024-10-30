@@ -90,12 +90,12 @@ class TestPreprocessors(unittest.TestCase):
         p2 = ModelCatalog.get_preprocessor(gym.make("FrozenLake-v1"))
         self.assertEqual(type(p2), OneHotPreprocessor)
 
-        p3 = ModelCatalog.get_preprocessor(gym.make("ale_py:ALE/MsPacman-ram-v5"))
+        p3 = ModelCatalog.get_preprocessor(gym.make("ALE/MsPacman-ram-v5"))
         self.assertEqual(type(p3), AtariRamPreprocessor)
 
         p4 = ModelCatalog.get_preprocessor(
             gym.make(
-                "ale_py:ALE/MsPacman-v5",
+                "ALE/MsPacman-v5",
                 frameskip=1,
             )
         )

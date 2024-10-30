@@ -15,7 +15,7 @@ from ray.tune.schedulers.pb2 import PB2
 from ray import tune
 
 parser = add_rllib_example_script_args()
-parser.set_defaults(env="ale_py:ALE/Pong-v5")
+parser.set_defaults(env="ALE/Pong-v5")
 parser.add_argument(
     "--use-tiny-cnn",
     action="store_true",

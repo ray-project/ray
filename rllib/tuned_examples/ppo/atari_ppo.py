@@ -14,10 +14,7 @@ parser = add_rllib_example_script_args(
     default_timesteps=3000000,
     default_iters=100000000000,
 )
-parser.set_defaults(
-    enable_new_api_stack=True,
-    env="ale_py:ALE/Pong-v5",
-)
+parser.set_defaults(enable_new_api_stack=True)
 # Use `parser` to add your own custom command line options to this script
 # and (if needed) use their values toset up `config` below.
 args = parser.parse_args()
