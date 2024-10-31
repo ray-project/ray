@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import List, Optional, Tuple
+from typing import Iterator, List, Optional, Tuple
 
 import ray
 from .common import NodeIdStr
@@ -59,7 +59,7 @@ class RefBundle:
         object.__setattr__(self, key, value)
 
     @property
-    def block_refs(self) -> List[BlockMetadata]:
+    def block_refs(self) -> List[ObjectRef[Block]]:
         """List of block references in this bundle."""
         return [block_ref for block_ref, _ in self.blocks]
 
@@ -125,3 +125,12 @@ class RefBundle:
 
     def __len__(self) -> int:
         return len(self.blocks)
+
+
+def _ref_bundles_iterator_to_block_refs_list(
+    ref_bundles: Iterator[RefBundle],
+) -> List[ObjectRef[Block]]:
+    """Convert an iterator of RefBundles to a list of Block object references."""
+    return [
+        block_ref for ref_bundle in ref_bundles for block_ref in ref_bundle.block_refs
+    ]

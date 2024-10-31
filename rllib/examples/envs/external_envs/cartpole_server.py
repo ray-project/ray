@@ -33,7 +33,7 @@ import ray
 from ray import air, tune
 from ray.air.constants import TRAINING_ITERATION
 from ray.rllib.env.policy_server_input import PolicyServerInput
-from ray.rllib.examples.custom_metrics_and_callbacks import MyCallbacks
+from ray.rllib.examples.metrics.custom_metrics_and_callbacks import MyCallbacks
 from ray.rllib.utils.metrics import (
     ENV_RUNNER_RESULTS,
     EPISODE_RETURN_MEAN,
@@ -190,9 +190,6 @@ if __name__ == "__main__":
         .debugging(log_level="INFO")
     )
     # Disable RLModules because they need connectors
-    # TODO (Sven): Deprecate ExternalEnv (via EnvRunner path) and reenable connectors
-    #  and RL Modules here.
-    config.api_stack(enable_rl_module_and_learner=False)
 
     # DQN.
     if args.run == "DQN" or args.run == "APEX" or args.run == "R2D2":

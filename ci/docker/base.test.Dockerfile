@@ -41,7 +41,7 @@ ln -s /usr/bin/clang-12 /usr/bin/clang
 
 EOF
 
-RUN curl -o- https://get.docker.com | sh
+RUN curl -o- https://get.docker.com | sh -s -- --version 27.2
 
 # System conf for tests
 RUN locale -a
@@ -53,7 +53,7 @@ RUN echo "ulimit -c 0" >> /root/.bashrc
 RUN mkdir /ray
 WORKDIR /ray
 
-# Below should be re-run each time
 COPY . .
 
+RUN ./ci/env/install-miniconda.sh
 RUN ./ci/env/install-bazel.sh

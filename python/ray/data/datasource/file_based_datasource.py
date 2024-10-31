@@ -38,7 +38,7 @@ from ray.data.datasource.path_util import (
     _has_file_extension,
     _resolve_paths_and_filesystem,
 )
-from ray.util.annotations import Deprecated, DeveloperAPI, PublicAPI
+from ray.util.annotations import DeveloperAPI
 
 if TYPE_CHECKING:
     import pandas as pd
@@ -54,28 +54,11 @@ FILE_SIZE_FETCH_PARALLELIZATION_THRESHOLD = 16
 # 16 file size fetches from S3 takes ~1.5 seconds with Arrow's S3FileSystem.
 PATHS_PER_FILE_SIZE_FETCH_TASK = 16
 
-# The errors to retry for opening file.
-OPEN_FILE_RETRY_ON_ERRORS = ["AWS Error SLOW_DOWN", "AWS Error ACCESS_DENIED"]
-
 # The max retry backoff in seconds for opening file.
 OPEN_FILE_RETRY_MAX_BACKOFF_SECONDS = 32
 
 # The max number of attempts for opening file.
 OPEN_FILE_MAX_ATTEMPTS = 10
-
-
-@Deprecated
-@PublicAPI(stability="beta")
-class FileExtensionFilter(PathPartitionFilter):
-    def __init__(
-        self,
-        file_extensions: Union[str, List[str]],
-        allow_if_no_extension: bool = False,
-    ):
-        raise DeprecationWarning(
-            "`FileExtensionFilter` is deprecated. Instead, set the `file_extensions` "
-            "parameter of `read_xxx()` APIs."
-        )
 
 
 @DeveloperAPI
@@ -167,6 +150,7 @@ class FileBasedDatasource(Datasource):
                     "'file_extensions' field is set properly."
                 )
 
+        _validate_shuffle_arg(shuffle)
         self._file_metadata_shuffler = None
         if shuffle == "files":
             self._file_metadata_shuffler = np.random.default_rng()
@@ -231,7 +215,9 @@ class FileBasedDatasource(Datasource):
 
                 with _open_file_with_retry(
                     read_path,
-                    lambda: open_input_source(fs, read_path, **open_stream_args),
+                    lambda read_path=read_path: open_input_source(
+                        fs, read_path, **open_stream_args
+                    ),
                 ) as f:
                     for block in read_stream(f, read_path):
                         if partitions:
@@ -246,6 +232,11 @@ class FileBasedDatasource(Datasource):
         def create_read_task_fn(read_paths, num_threads):
             def read_task_fn():
                 nonlocal num_threads, read_paths
+
+                # TODO: We should refactor the code so that we can get the results in
+                # order even when using multiple threads.
+                if ctx.execution_options.preserve_order:
+                    num_threads = 0
 
                 if num_threads > 0:
                     if len(read_paths) < num_threads:
@@ -270,9 +261,10 @@ class FileBasedDatasource(Datasource):
         parallelism = min(parallelism, len(paths))
 
         read_tasks = []
-        for read_paths, file_sizes in zip(
-            np.array_split(paths, parallelism), np.array_split(file_sizes, parallelism)
-        ):
+        split_paths = np.array_split(paths, parallelism)
+        split_file_sizes = np.array_split(file_sizes, parallelism)
+
+        for read_paths, file_sizes in zip(split_paths, split_file_sizes):
             if len(read_paths) <= 0:
                 continue
 
@@ -309,6 +301,8 @@ class FileBasedDatasource(Datasource):
         import pyarrow as pa
         from pyarrow.fs import HadoopFileSystem
 
+        ctx = DataContext.get_current()
+
         compression = open_args.get("compression", None)
         if compression is None:
             try:
@@ -328,7 +322,6 @@ class FileBasedDatasource(Datasource):
 
         buffer_size = open_args.pop("buffer_size", None)
         if buffer_size is None:
-            ctx = DataContext.get_current()
             buffer_size = ctx.streaming_read_buffer_size
 
         if compression == "snappy":
@@ -339,7 +332,13 @@ class FileBasedDatasource(Datasource):
         else:
             open_args["compression"] = compression
 
-        file = filesystem.open_input_stream(path, buffer_size=buffer_size, **open_args)
+        file = call_with_retry(
+            lambda: filesystem.open_input_stream(
+                path, buffer_size=buffer_size, **open_args
+            ),
+            description=f"open file {path}",
+            match=ctx.retried_io_errors,
+        )
 
         if compression == "snappy":
             import snappy
@@ -520,7 +519,15 @@ def _open_file_with_retry(
     return call_with_retry(
         open_file,
         description=f"open file {file_path}",
-        match=OPEN_FILE_RETRY_ON_ERRORS,
+        match=DataContext.get_current().retried_io_errors,
         max_attempts=OPEN_FILE_MAX_ATTEMPTS,
         max_backoff_s=OPEN_FILE_RETRY_MAX_BACKOFF_SECONDS,
     )
+
+
+def _validate_shuffle_arg(shuffle: Optional[str]) -> None:
+    if shuffle not in [None, "files"]:
+        raise ValueError(
+            f"Invalid value for 'shuffle': {shuffle}. "
+            "Valid values are None, 'files'."
+        )

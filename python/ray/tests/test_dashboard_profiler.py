@@ -17,6 +17,7 @@ from ray._private.test_utils import (
     reason="This test is not supposed to work for minimal installation.",
 )
 @pytest.mark.skipif(sys.platform == "win32", reason="No py-spy on Windows.")
+@pytest.mark.skipif(sys.version_info >= (3, 12), reason="No py-spy on python 3.12.")
 @pytest.mark.skipif(
     sys.platform == "darwin",
     reason="Fails on OSX: https://github.com/ray-project/ray/issues/30114",
@@ -97,6 +98,7 @@ def test_profiler_endpoints(ray_start_with_dashboard, native):
     reason="This test is not supposed to work for minimal installation.",
 )
 @pytest.mark.skipif(sys.platform == "win32", reason="No memray on Windows.")
+@pytest.mark.skipif(sys.version_info >= (3, 12), reason="No memray on python 3.12")
 @pytest.mark.skipif(
     sys.platform == "darwin",
     reason="Fails on OSX, requires memray & lldb installed in osx image",
@@ -178,6 +180,7 @@ def test_memory_profiler_endpoint(ray_start_with_dashboard, leaks):
     reason="This test is not supposed to work for minimal installation.",
 )
 @pytest.mark.skipif(sys.platform == "win32", reason="No py-spy on Windows.")
+@pytest.mark.skipif(sys.version_info >= (3, 12), reason="No py-spy on python 3.12.")
 @pytest.mark.skipif(
     sys.platform == "darwin",
     reason="Fails on OSX, requires memray & lldb installed in osx image",

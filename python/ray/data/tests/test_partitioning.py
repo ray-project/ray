@@ -14,10 +14,7 @@ import ray
 from ray.data.block import Block
 from ray.data.dataset import Dataset
 from ray.data.datasource import FileBasedDatasource, PathPartitionParser
-from ray.data.datasource.file_based_datasource import (
-    FileExtensionFilter,
-    _resolve_paths_and_filesystem,
-)
+from ray.data.datasource.file_based_datasource import _resolve_paths_and_filesystem
 from ray.data.datasource.partitioning import (
     Partitioning,
     PartitionStyle,
@@ -66,11 +63,6 @@ def read_csv(
     return ray.data.read_datasource(datasource)
 
 
-def test_file_extension_filter_is_deprecated():
-    with pytest.raises(DeprecationWarning):
-        FileExtensionFilter("csv")
-
-
 class PathPartitionEncoder:
     """Callable that generates directory path strings for path-based partition formats.
     Path-based partition formats embed all partition keys and values directly in
@@ -105,7 +97,7 @@ class PathPartitionEncoder:
         Returns:
             The new partition path encoder.
         """
-        scheme = Partitioning(style, base_dir, field_names, filesystem)
+        scheme = Partitioning(style, base_dir, field_names, None, filesystem)
         return PathPartitionEncoder(scheme)
 
     def __init__(self, partitioning: Partitioning):
@@ -883,6 +875,25 @@ def test_path_partition_filter_directory(fs, base_dir):
         posixpath.join(base_dir, "1/2/"),
         posixpath.join(base_dir, "1/2/3"),
     ]
+
+
+@pytest.mark.parametrize(
+    "partition_value,expected_type",
+    [
+        ("1", int),
+        ("1.0", float),
+        ("spam", str),
+        ("true", bool),
+    ],
+)
+def test_field_types(partition_value, expected_type):
+    partitioning = Partitioning(style="hive", field_types={"key": expected_type})
+    parse = PathPartitionParser(partitioning)
+
+    partitions = parse(f"key={partition_value}/data.parquet")
+
+    assert set(partitions.keys()) == {"key"}
+    assert isinstance(partitions["key"], expected_type)
 
 
 if __name__ == "__main__":

@@ -172,7 +172,6 @@ class VTraceOptimizer:
     def __init__(self):
         pass
 
-    @override(TorchPolicyV2)
     def optimizer(
         self,
     ) -> Union[List["torch.optim.Optimizer"], "torch.optim.Optimizer"]:
@@ -231,34 +230,33 @@ class ImpalaTorchPolicy(
     ValueNetworkMixin,
     TorchPolicyV2,
 ):
-    """PyTorch policy class used with Impala."""
+    """PyTorch policy class used with IMPALA."""
 
     def __init__(self, observation_space, action_space, config):
         config = dict(
-            ray.rllib.algorithms.impala.impala.ImpalaConfig().to_dict(), **config
+            ray.rllib.algorithms.impala.impala.IMPALAConfig().to_dict(), **config
         )
 
         # If Learner API is used, we don't need any loss-specific mixins.
         # However, we also would like to avoid creating special Policy-subclasses
         # for this as the entire Policy concept will soon not be used anymore with
         # the new Learner- and RLModule APIs.
-        if not config.get("enable_rl_module_and_learner"):
-            VTraceOptimizer.__init__(self)
-            # Need to initialize learning rate variable before calling
-            # TorchPolicyV2.__init__.
-            lr_schedule_additional_args = []
-            if config.get("_separate_vf_optimizer"):
-                lr_schedule_additional_args = (
-                    [config["_lr_vf"][0][1], config["_lr_vf"]]
-                    if isinstance(config["_lr_vf"], (list, tuple))
-                    else [config["_lr_vf"], None]
-                )
-            LearningRateSchedule.__init__(
-                self, config["lr"], config["lr_schedule"], *lr_schedule_additional_args
+        VTraceOptimizer.__init__(self)
+        # Need to initialize learning rate variable before calling
+        # TorchPolicyV2.__init__.
+        lr_schedule_additional_args = []
+        if config.get("_separate_vf_optimizer"):
+            lr_schedule_additional_args = (
+                [config["_lr_vf"][0][1], config["_lr_vf"]]
+                if isinstance(config["_lr_vf"], (list, tuple))
+                else [config["_lr_vf"], None]
             )
-            EntropyCoeffSchedule.__init__(
-                self, config["entropy_coeff"], config["entropy_coeff_schedule"]
-            )
+        LearningRateSchedule.__init__(
+            self, config["lr"], config["lr_schedule"], *lr_schedule_additional_args
+        )
+        EntropyCoeffSchedule.__init__(
+            self, config["entropy_coeff"], config["entropy_coeff_schedule"]
+        )
 
         TorchPolicyV2.__init__(
             self,

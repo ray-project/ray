@@ -42,6 +42,8 @@ def get_or_create_state_actor() -> ActorHandle:
             get_if_exists=True,
             lifetime="detached",
             resources={"node:__internal_head__": 0.001},
+            # Escape from the parent's placement group
+            scheduling_strategy="DEFAULT",
         ).remote()
 
     # Ensure the state actor is ready

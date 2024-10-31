@@ -1,4 +1,4 @@
-# TODO (sven): Move this example script into the new API stack.
+# @OldAPIStack
 
 from packaging.version import Version
 import numpy as np
@@ -11,13 +11,7 @@ import torch
 
 if __name__ == "__main__":
     # Configure our PPO Algorithm.
-    config = (
-        ppo.PPOConfig()
-        # ONNX is not supported by RLModule API yet.
-        .api_stack(enable_rl_module_and_learner=False)
-        .env_runners(num_env_runners=1)
-        .framework("torch")
-    )
+    config = ppo.PPOConfig().env_runners(num_env_runners=1).framework("torch")
 
     outdir = "export_torch"
     if os.path.exists(outdir):

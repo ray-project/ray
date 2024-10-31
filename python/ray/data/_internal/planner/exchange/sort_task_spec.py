@@ -75,8 +75,9 @@ class SortKey:
             return
 
         if self._columns and len(schema.names) > 0:
+            schema_names_set = set(schema.names)
             for column in self._columns:
-                if column not in schema.names:
+                if column not in schema_names_set:
                     raise ValueError(
                         "The column '{}' does not exist in the "
                         "schema '{}'.".format(column, schema)
@@ -146,7 +147,10 @@ class SortTaskSpec(ExchangeTaskSpec):
 
     @staticmethod
     def sample_boundaries(
-        blocks: List[ObjectRef[Block]], sort_key: SortKey, num_reducers: int
+        blocks: List[ObjectRef[Block]],
+        sort_key: SortKey,
+        num_reducers: int,
+        sample_bar: Optional[ProgressBar] = None,
     ) -> List[T]:
         """
         Return (num_reducers - 1) items in ascending order from the blocks that
@@ -161,40 +165,39 @@ class SortTaskSpec(ExchangeTaskSpec):
         sample_results = [
             sample_block.remote(block, n_samples, sort_key) for block in blocks
         ]
-        sample_bar = ProgressBar(
-            SortTaskSpec.SORT_SAMPLE_SUB_PROGRESS_BAR_NAME, len(sample_results)
-        )
+        if sample_bar is None:
+            sample_bar = ProgressBar(
+                SortTaskSpec.SORT_SAMPLE_SUB_PROGRESS_BAR_NAME,
+                len(blocks) * n_samples,
+                unit="rows",
+            )
+        # TODO(zhilong): Update sort sample bar before finished.
         samples = sample_bar.fetch_until_complete(sample_results)
-        sample_bar.close()
         del sample_results
-        samples = [s for s in samples if len(s) > 0]
+        samples: List[Block] = [s for s in samples if len(s) > 0]
         # The dataset is empty
         if len(samples) == 0:
             return [None] * (num_reducers - 1)
+
+        # Convert samples to a sorted list[tuple[...]] where each tuple represents a
+        # sample.
+        # TODO: Once we deprecate pandas blocks, we can avoid this conversion and
+        # directly sort the samples.
         builder = DelegatingBlockBuilder()
         for sample in samples:
             builder.add_block(sample)
-        samples = builder.build()
+        samples_table = builder.build()
+        samples_dict = BlockAccessor.for_block(samples_table).to_numpy(columns=columns)
+        # This zip does the transposition from list of column values to list of tuples.
+        samples_list = sorted(zip(*samples_dict.values()))
 
-        sample_dict = BlockAccessor.for_block(samples).to_numpy(columns=columns)
-        # Compute sorted indices of the samples. In np.lexsort last key is the
-        # primary key hence have to reverse the order.
-        indices = np.lexsort(list(reversed(list(sample_dict.values()))))
-        # Sort each column by indices, and calculate q-ths quantile items.
-        # Ignore the 1st item as it's not required for the boundary
-        for k, v in sample_dict.items():
-            sorted_v = v[indices]
-            sample_dict[k] = list(
-                np.quantile(
-                    sorted_v, np.linspace(0, 1, num_reducers), interpolation="nearest"
-                )[1:]
-            )
-        # Return the list of boundaries as tuples
-        # of a form (col1_value, col2_value, ...)
-        return [
-            tuple(sample_dict[k][i] for k in sample_dict)
-            for i in range(num_reducers - 1)
+        # Each boundary corresponds to a quantile of the data.
+        quantile_indices = [
+            int(q * (len(samples_list) - 1))
+            for q in np.linspace(0, 1, num_reducers + 1)
         ]
+        # Exclude the first and last quantiles because they're 0 and 1.
+        return [samples_list[i] for i in quantile_indices[1:-1]]
 
 
 def _sample_block(block: Block, n_samples: int, sort_key: SortKey) -> Block:

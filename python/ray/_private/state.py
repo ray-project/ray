@@ -181,7 +181,9 @@ class GlobalState:
         """
         self._check_connected()
 
-        job_table = self.global_state_accessor.get_job_table()
+        job_table = self.global_state_accessor.get_job_table(
+            skip_submission_job_info_field=True, skip_is_running_tasks_field=True
+        )
 
         results = []
         for i in range(len(job_table)):
@@ -317,6 +319,8 @@ class GlobalState:
         def get_state(state):
             if state == gcs_pb2.PlacementGroupTableData.PENDING:
                 return "PENDING"
+            elif state == gcs_pb2.PlacementGroupTableData.PREPARED:
+                return "PREPARED"
             elif state == gcs_pb2.PlacementGroupTableData.CREATED:
                 return "CREATED"
             elif state == gcs_pb2.PlacementGroupTableData.RESCHEDULING:
@@ -731,18 +735,17 @@ class GlobalState:
         """
         self._check_connected()
 
-        resources = defaultdict(int)
-        nodes = self.node_table()
-        for node in nodes:
-            # Only count resources from latest entries of live nodes.
-            if node["Alive"]:
-                for key, value in node["Resources"].items():
-                    resources[key] += value
-        return dict(resources)
+        # Calculate total resources.
+        total_resources = defaultdict(int)
+        for node_total_resources in self.total_resources_per_node().values():
+            for resource_id, value in node_total_resources.items():
+                total_resources[resource_id] += value
+
+        return dict(total_resources)
 
     def _live_node_ids(self):
         """Returns a set of node IDs corresponding to nodes still alive."""
-        return {node["NodeID"] for node in self.node_table() if (node["Alive"])}
+        return set(self.total_resources_per_node().keys())
 
     def available_resources_per_node(self):
         """Returns a dictionary mapping node id to avaiable resources."""
@@ -764,6 +767,24 @@ class GlobalState:
 
         return available_resources_by_id
 
+    # returns a dict that maps node_id(hex string) to a dict of {resource_id: capacity}
+    def total_resources_per_node(self) -> Dict[str, Dict[str, int]]:
+        self._check_connected()
+        total_resources_by_node = {}
+
+        all_total_resources = self.global_state_accessor.get_all_total_resources()
+        for node_total_resources in all_total_resources:
+            message = gcs_pb2.TotalResources.FromString(node_total_resources)
+            # Calculate total resources for this node.
+            node_resources = {}
+            for resource_id, capacity in message.resources_total.items():
+                node_resources[resource_id] = capacity
+            # Update total resources for this node.
+            node_id = ray._private.utils.binary_to_hex(message.node_id)
+            total_resources_by_node[node_id] = node_resources
+
+        return total_resources_by_node
+
     def available_resources(self):
         """Get the current available cluster resources.
 
@@ -774,7 +795,9 @@ class GlobalState:
 
         Returns:
             A dictionary mapping resource name to the total quantity of that
-                resource in the cluster.
+                resource in the cluster. Note that if a resource (e.g., "CPU")
+                is currently not available (i.e., quantity is 0), it will not
+                be included in this dictionary.
         """
         self._check_connected()
 
@@ -886,10 +909,13 @@ def node_ids():
         List of the node resource ids.
     """
     node_ids = []
-    for node in nodes():
-        for k, v in node["Resources"].items():
-            if k.startswith(NODE_ID_PREFIX) and k != HEAD_NODE_RESOURCE_NAME:
-                node_ids.append(k)
+    for node_total_resources in state.total_resources_per_node().values():
+        for resource_id in node_total_resources.keys():
+            if (
+                resource_id.startswith(NODE_ID_PREFIX)
+                and resource_id != HEAD_NODE_RESOURCE_NAME
+            ):
+                node_ids.append(resource_id)
     return node_ids
 
 
@@ -986,7 +1012,9 @@ def available_resources():
 
     Returns:
         A dictionary mapping resource name to the total quantity of that
-            resource in the cluster.
+            resource in the cluster. Note that if a resource (e.g., "CPU")
+            is currently not available (i.e., quantity is 0), it will not
+            be included in this dictionary.
     """
     return state.available_resources()
 
@@ -1002,6 +1030,19 @@ def available_resources_per_node():
     """
 
     return state.available_resources_per_node()
+
+
+@DeveloperAPI
+def total_resources_per_node():
+    """Get the current total resources of each live node.
+
+    Note that this information can grow stale as tasks start and finish.
+
+    Returns:
+        A dictionary mapping node hex id to total resources dictionary.
+    """
+
+    return state.total_resources_per_node()
 
 
 def update_worker_debugger_port(worker_id, debugger_port):

@@ -1,16 +1,16 @@
 """Example extracting a checkpoint from n trials using one or more custom criteria.
 
 This example:
-- runs a CartPole experiment with three different learning rates (three tune
-"trials"). During the experiment, for each trial, we create a checkpoint at each
-iteration.
-- at the end of the experiment, we compare the trials and pick the one that performed
-best, based on the criterion: Lowest episode count per single iteration (for CartPole,
-a low episode count means the episodes are very long and thus the reward is also very
-high).
-- from that best trial (with the lowest episode count), we then pick those checkpoints
-that a) have the lowest policy loss (good) and b) have the highest value function loss
-(bad).
+    - runs a CartPole experiment with three different learning rates (three tune
+    "trials"). During the experiment, for each trial, we create a checkpoint at each
+    iteration.
+    - at the end of the experiment, we compare the trials and pick the one that
+    performed best, based on the criterion: Lowest episode count per single iteration
+    (for CartPole, a low episode count means the episodes are very long and thus the
+    reward is also very high).
+    - from that best trial (with the lowest episode count), we then pick those
+    checkpoints that a) have the lowest policy loss (good) and b) have the highest value
+    function loss (bad).
 
 
 How to run this script

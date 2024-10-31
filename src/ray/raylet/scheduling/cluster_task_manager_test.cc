@@ -49,9 +49,7 @@ class MockWorkerPool : public WorkerPoolInterface {
  public:
   MockWorkerPool() : num_pops(0) {}
 
-  void PopWorker(const TaskSpecification &task_spec,
-                 const PopWorkerCallback &callback,
-                 const std::string &allocated_instances_serialized_json) {
+  void PopWorker(const TaskSpecification &task_spec, const PopWorkerCallback &callback) {
     num_pops++;
     const int runtime_env_hash = task_spec.GetRuntimeEnvHash();
     callbacks[runtime_env_hash].push_back(callback);
@@ -240,14 +238,13 @@ testing::Environment *const env =
 
 class ClusterTaskManagerTest : public ::testing::Test {
  public:
-  ClusterTaskManagerTest(double num_cpus_at_head = 8.0, double num_gpus_at_head = 0.0)
+  explicit ClusterTaskManagerTest(double num_cpus_at_head = 8.0,
+                                  double num_gpus_at_head = 0.0)
       : gcs_client_(std::make_unique<gcs::MockGcsClient>()),
         id_(NodeID::FromRandom()),
         scheduler_(CreateSingleNodeScheduler(
             id_.Binary(), num_cpus_at_head, num_gpus_at_head, *gcs_client_)),
         is_owner_alive_(true),
-        node_info_calls_(0),
-        announce_infeasible_task_calls_(0),
         dependency_manager_(missing_objects_),
         local_task_manager_(std::make_shared<LocalTaskManager>(
             id_,
@@ -379,11 +376,11 @@ class ClusterTaskManagerTest : public ::testing::Test {
   absl::flat_hash_map<WorkerID, std::shared_ptr<WorkerInterface>> leased_workers_;
   std::unordered_set<ObjectID> missing_objects_;
 
-  bool is_owner_alive_;
+  bool is_owner_alive_ = false;
   int default_arg_size_ = 10;
 
-  int node_info_calls_;
-  int announce_infeasible_task_calls_;
+  int node_info_calls_ = 0;
+  int announce_infeasible_task_calls_ = 0;
   absl::flat_hash_map<NodeID, rpc::GcsNodeInfo> node_info_;
   int64_t current_time_ms_ = 0;
 
@@ -544,10 +541,8 @@ TEST_F(ClusterTaskManagerTest, DispatchQueueNonBlockingTest) {
   pool_.TriggerCallbacks();
 
   // Push a worker that can only run task A.
-  const WorkerCacheKey env_A = {serialized_runtime_env_A, {}, false, false, false};
-  const int runtime_env_hash_A = env_A.IntHash();
-  std::shared_ptr<MockWorker> worker_A =
-      std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234, runtime_env_hash_A);
+  std::shared_ptr<MockWorker> worker_A = std::make_shared<MockWorker>(
+      WorkerID::FromRandom(), 1234, CalculateRuntimeEnvHash(serialized_runtime_env_A));
   pool_.PushWorker(std::static_pointer_cast<WorkerInterface>(worker_A));
   pool_.TriggerCallbacks();
 
@@ -1218,7 +1213,6 @@ TEST_F(ClusterTaskManagerTest, TaskCancellationTest) {
   callback_called = false;
   reply.Clear();
   ASSERT_FALSE(task_manager_.CancelTask(task2.GetTaskSpecification().TaskId()));
-  // Task2 will not execute.
   ASSERT_FALSE(reply.canceled());
   ASSERT_FALSE(callback_called);
   ASSERT_EQ(pool_.workers.size(), 0);
@@ -1228,6 +1222,22 @@ TEST_F(ClusterTaskManagerTest, TaskCancellationTest) {
   local_task_manager_->TaskFinished(leased_workers_.begin()->second, &finished_task);
   ASSERT_EQ(finished_task.GetTaskSpecification().TaskId(),
             task2.GetTaskSpecification().TaskId());
+
+  RayTask task3 = CreateTask({{ray::kCPU_ResourceLabel, 2}});
+  rpc::RequestWorkerLeaseReply reply3;
+  RayTask task4 = CreateTask({{ray::kCPU_ResourceLabel, 200}});
+  rpc::RequestWorkerLeaseReply reply4;
+  // Task 3 should be popping worker
+  task_manager_.QueueAndScheduleTask(task3, false, false, &reply3, callback);
+  // Task 4 is infeasible
+  task_manager_.QueueAndScheduleTask(task4, false, false, &reply4, callback);
+  pool_.TriggerCallbacks();
+  ASSERT_TRUE(task_manager_.CancelTasks(
+      [](const std::shared_ptr<internal::Work> &work) { return true; },
+      rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_INTENDED,
+      ""));
+  ASSERT_TRUE(reply3.canceled());
+  ASSERT_TRUE(reply4.canceled());
 
   AssertNoLeaks();
 }

@@ -1,3 +1,4 @@
+# @OldAPIStack
 import argparse
 import numpy as np
 import onnxruntime
@@ -22,13 +23,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     # Configure our PPO Algorithm.
-    config = (
-        ppo.PPOConfig()
-        # ONNX is not supported by RLModule API yet.
-        .api_stack(enable_rl_module_and_learner=False)
-        .env_runners(num_env_runners=1)
-        .framework(args.framework)
-    )
+    config = ppo.PPOConfig().env_runners(num_env_runners=1).framework(args.framework)
 
     outdir = "export_tf"
     if os.path.exists(outdir):

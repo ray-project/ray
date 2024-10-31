@@ -240,7 +240,7 @@ def ensure_str(s, encoding="utf-8", errors="strict"):
     if isinstance(s, str):
         return s
     else:
-        assert isinstance(s, bytes)
+        assert isinstance(s, bytes), f"Expected str or bytes, got {type(s)}"
         return s.decode(encoding, errors)
 
 
@@ -1726,7 +1726,6 @@ def get_or_create_event_loop() -> asyncio.AbstractEventLoop:
         # This follows the implementation of the deprecating `get_event_loop`
         # in python3.10's asyncio. See python3.10/asyncio/events.py
         # _get_event_loop()
-        loop = None
         try:
             loop = asyncio.get_running_loop()
             assert loop is not None

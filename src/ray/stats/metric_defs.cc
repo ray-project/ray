@@ -59,12 +59,28 @@ DEFINE_stats(
 DEFINE_stats(actors,
              "Current number of actors currently in a particular state.",
              // State: the actor state, which is from rpc::ActorTableData::ActorState,
-             // but can also be RUNNING_TASK, RUNNING_IN_RAY_GET, and RUNNING_IN_RAY_WAIT.
+             // For ALIVE actor the sub-state can be IDLE, RUNNING_TASK,
+             // RUNNING_IN_RAY_GET, and RUNNING_IN_RAY_WAIT.
              // Name: the name of actor class.
              // Source: component reporting, e.g., "gcs" or "executor".
              ("State", "Name", "Source", "JobId"),
              (),
              ray::stats::GAUGE);
+
+/// Job related stats.
+DEFINE_stats(running_jobs,
+             "Number of jobs currently running.",
+             /*tags=*/(),
+             /*buckets=*/(),
+             ray::stats::GAUGE);
+
+DEFINE_stats(finished_jobs,
+             "Number of jobs finished.",
+             // TODO(hjiang): Consider adding task completion status, for example, failed,
+             // completed in tags.
+             /*tags=*/(),
+             /*buckets=*/(),
+             ray::stats::COUNT);
 
 /// Logical resource usage reported by raylets.
 DEFINE_stats(resources,
@@ -129,6 +145,12 @@ DEFINE_stats(placement_groups,
 /// ===================== INTERNAL SYSTEM METRICS =================================
 /// ===============================================================================
 
+DEFINE_stats(io_context_event_loop_lag_ms,
+             "Latency of a task from post to execution",
+             ("Name"),  // Name of the instrumented_io_context.
+             (),
+             ray::stats::GAUGE);
+
 /// Event stats
 DEFINE_stats(operation_count, "operation count", ("Method"), (), ray::stats::GAUGE);
 DEFINE_stats(
@@ -145,8 +167,8 @@ DEFINE_stats(operation_active_count,
 DEFINE_stats(grpc_server_req_process_time_ms,
              "Request latency in grpc server",
              ("Method"),
-             (),
-             ray::stats::GAUGE);
+             ({0.1, 1, 10, 100, 1000, 10000}, ),
+             ray::stats::HISTOGRAM);
 DEFINE_stats(grpc_server_req_new,
              "New request number in grpc server",
              ("Method"),
@@ -356,6 +378,15 @@ DEFINE_stats(
     ("Type", "Name"),
     (),
     ray::stats::COUNT);
+
+/// Core Worker Task Manager
+DEFINE_stats(
+    total_lineage_bytes,
+    "Total amount of memory used to store task specs for lineage reconstruction.",
+    (),
+    (),
+    ray::stats::GAUGE);
+
 }  // namespace stats
 
 }  // namespace ray

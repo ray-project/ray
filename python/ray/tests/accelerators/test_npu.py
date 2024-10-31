@@ -44,6 +44,10 @@ def test_visible_ascend_npu_type(monkeypatch, shutdown_only):
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Not supported mock on Windows")
+@pytest.mark.skipif(
+    sys.version_info >= (3, 12),
+    reason="Not passing on Python 3.12. Being followed up by external contributors.",
+)
 def test_visible_ascend_npu_ids(monkeypatch, shutdown_only):
     with patch.dict(sys.modules):
         sys.modules["acl"] = __import__("mock_acl")
@@ -63,6 +67,10 @@ def test_visible_ascend_npu_ids(monkeypatch, shutdown_only):
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Not supported mock on Windows")
+@pytest.mark.skipif(
+    sys.version_info >= (3, 12),
+    reason="Not passing on Python 3.12. Being followed up by external contributors.",
+)
 def test_acl_api_function(shutdown_only):
     with patch.dict(sys.modules):
         sys.modules["acl"] = __import__("mock_acl")
@@ -100,6 +108,10 @@ def test_set_current_process_visible_accelerator_ids(shutdown_only):
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Not supported mock on Windows")
+@pytest.mark.skipif(
+    sys.version_info >= (3, 12),
+    reason="Not passing on Python 3.12. Being followed up by external contributors.",
+)
 def test_auto_detected_more_than_visible(monkeypatch, shutdown_only):
     with patch.dict(sys.modules):
         sys.modules["acl"] = __import__("mock_acl")

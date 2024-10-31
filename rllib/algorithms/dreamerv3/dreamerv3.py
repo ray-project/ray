@@ -26,7 +26,7 @@ from ray.rllib.algorithms.dreamerv3.utils.summaries import (
 )
 from ray.rllib.core import DEFAULT_MODULE_ID
 from ray.rllib.core.columns import Columns
-from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
+from ray.rllib.core.rl_module.rl_module import RLModuleSpec
 from ray.rllib.execution.rollout_ops import synchronous_parallel_sample
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils import deep_update
@@ -152,6 +152,12 @@ class DreamerV3Config(AlgorithmConfig):
         # Dreamer only runs on the new API stack.
         self.enable_rl_module_and_learner = True
         self.enable_env_runner_and_connector_v2 = True
+        # TODO (sven): DreamerV3 still uses its own EnvRunner class. This env-runner
+        #  does not use connectors. We therefore should not attempt to merge/broadcast
+        #  the connector states between EnvRunners (if >0). Note that this is only
+        #  relevant if num_env_runners > 0, which is normally not the case when using
+        #  this algo.
+        self.use_worker_filter_stats = False
         # __sphinx_doc_end__
         # fmt: on
 
@@ -431,13 +437,13 @@ class DreamerV3Config(AlgorithmConfig):
             raise ValueError(f"The framework {self.framework_str} is not supported.")
 
     @override(AlgorithmConfig)
-    def get_default_rl_module_spec(self) -> SingleAgentRLModuleSpec:
+    def get_default_rl_module_spec(self) -> RLModuleSpec:
         if self.framework_str == "tf2":
             from ray.rllib.algorithms.dreamerv3.tf.dreamerv3_tf_rl_module import (
                 DreamerV3TfRLModule,
             )
 
-            return SingleAgentRLModuleSpec(
+            return RLModuleSpec(
                 module_class=DreamerV3TfRLModule, catalog_class=DreamerV3Catalog
             )
         else:
@@ -488,14 +494,14 @@ class DreamerV3(Algorithm):
         # Share RLModule between EnvRunner and single (local) Learner instance.
         # To avoid possibly expensive weight synching step.
         if self.config.share_module_between_env_runner_and_learner:
-            assert self.workers.local_worker().module is None
-            self.workers.local_worker().module = self.learner_group._learner.module[
+            assert self.env_runner.module is None
+            self.env_runner.module = self.learner_group._learner.module[
                 DEFAULT_MODULE_ID
             ]
 
         # Summarize (single-agent) RLModule (only once) here.
         if self.config.framework_str == "tf2":
-            self.workers.local_worker().module.dreamer_model.summary(expand_nested=True)
+            self.env_runner.module.dreamer_model.summary(expand_nested=True)
 
         # Create a replay buffer for storing actual env samples.
         self.replay_buffer = EpisodeReplayBuffer(
@@ -506,8 +512,6 @@ class DreamerV3(Algorithm):
 
     @override(Algorithm)
     def training_step(self) -> ResultDict:
-        env_runner = self.workers.local_worker()
-
         # Push enough samples into buffer initially before we start training.
         if self.training_iteration == 0:
             logger.info(
@@ -534,7 +538,7 @@ class DreamerV3(Algorithm):
             ):
                 # Sample using the env runner's module.
                 episodes, env_runner_results = synchronous_parallel_sample(
-                    worker_set=self.workers,
+                    worker_set=self.env_runner_group,
                     max_agent_steps=(
                         self.config.rollout_fragment_length
                         * self.config.num_envs_per_env_runner
@@ -561,7 +565,7 @@ class DreamerV3(Algorithm):
                 # recovered from a checkpoint), sample B random actions first.
                 if self.metrics.peek(NUM_ENV_STEPS_SAMPLED_LIFETIME, default=0) == 0:
                     _episodes, _env_runner_results = synchronous_parallel_sample(
-                        worker_set=self.workers,
+                        worker_set=self.env_runner_group,
                         max_agent_steps=(
                             self.config.batch_size_B * self.config.batch_length_T
                             - env_steps_last_regular_sample
@@ -624,11 +628,13 @@ class DreamerV3(Algorithm):
                 replayed_steps = self.config.batch_size_B * self.config.batch_length_T
                 replayed_steps_this_iter += replayed_steps
 
-                if isinstance(env_runner.env.single_action_space, gym.spaces.Discrete):
+                if isinstance(
+                    self.env_runner.env.single_action_space, gym.spaces.Discrete
+                ):
                     sample["actions_ints"] = sample[Columns.ACTIONS]
                     sample[Columns.ACTIONS] = one_hot(
                         sample["actions_ints"],
-                        depth=env_runner.env.single_action_space.n,
+                        depth=self.env_runner.env.single_action_space.n,
                     )
 
                 # Perform the actual update via our learner group.
@@ -663,7 +669,7 @@ class DreamerV3(Algorithm):
             batch_size_B=self.config.batch_size_B,
             batch_length_T=self.config.batch_length_T,
             symlog_obs=do_symlog_obs(
-                env_runner.env.single_observation_space,
+                self.env_runner.env.single_observation_space,
                 self.config.symlog_obs,
             ),
             do_report=(
@@ -682,9 +688,9 @@ class DreamerV3(Algorithm):
             sample=sample,
             burn_in_T=0,
             dreamed_T=self.config.horizon_H + 1,
-            dreamer_model=self.workers.local_worker().module.dreamer_model,
+            dreamer_model=self.env_runner.module.dreamer_model,
             symlog_obs=do_symlog_obs(
-                env_runner.env.single_observation_space,
+                self.env_runner.env.single_observation_space,
                 self.config.symlog_obs,
             ),
             do_report=(
@@ -700,7 +706,7 @@ class DreamerV3(Algorithm):
             # (local) Learner.
             if not self.config.share_module_between_env_runner_and_learner:
                 self.metrics.log_value(NUM_SYNCH_WORKER_WEIGHTS, 1, reduce="sum")
-                self.workers.sync_weights(
+                self.env_runner_group.sync_weights(
                     from_worker_or_learner_group=self.learner_group,
                     inference_only=True,
                 )
@@ -747,13 +753,13 @@ class DreamerV3(Algorithm):
         super().__setstate__(state=state)
 
         # Assign the module to the local `EnvRunner` if sharing is enabled.
-        # Note, in `Learner.load_state()` the module is first deleted
+        # Note, in `Learner.restore_from_path()` the module is first deleted
         # and then a new one is built - therefore the worker has no
         # longer a copy of the learner.
         if self.config.share_module_between_env_runner_and_learner:
-            assert id(self.workers.local_worker().module) != id(
+            assert id(self.env_runner.module) != id(
                 self.learner_group._learner.module[DEFAULT_MODULE_ID]
             )
-            self.workers.local_worker().module = self.learner_group._learner.module[
+            self.env_runner.module = self.learner_group._learner.module[
                 DEFAULT_MODULE_ID
             ]

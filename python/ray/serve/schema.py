@@ -17,10 +17,8 @@ from ray._private.pydantic_compat import (
 )
 from ray._private.runtime_env.packaging import parse_uri
 from ray.serve._private.common import (
-    ApplicationStatus,
     DeploymentStatus,
     DeploymentStatusTrigger,
-    ProxyStatus,
     ReplicaState,
     ServeDeployMode,
 )
@@ -99,12 +97,12 @@ class LoggingConfig(BaseModel):
             from ray import serve
             from ray.serve.schema import LoggingConfig
             # Set log level for the deployment.
-            @serve.deployment(LoggingConfig(log_level="DEBUG")
+            @serve.deployment(LoggingConfig(log_level="DEBUG"))
             class MyDeployment:
                 def __call__(self) -> str:
                     return "Hello world!"
             # Set log directory for the deployment.
-            @serve.deployment(LoggingConfig(logs_dir="/my_dir")
+            @serve.deployment(LoggingConfig(logs_dir="/my_dir"))
             class MyDeployment:
                 def __call__(self) -> str:
                     return "Hello world!"
@@ -222,14 +220,6 @@ class RayActorOptionsSchema(BaseModel):
         ),
         ge=0,
     )
-    object_store_memory: float = Field(
-        default=None,
-        description=(
-            "Restrict the object store memory used per replica when "
-            "creating objects. Uses a default if null."
-        ),
-        ge=0,
-    )
     resources: Dict = Field(
         default={},
         description=("The custom resources required by each replica."),
@@ -286,21 +276,6 @@ class DeploymentSchema(BaseModel, allow_population_by_field_name=True):
             "`auto` for a default autoscaling configuration "
             "(experimental)."
         ),
-    )
-    # route_prefix of None means the deployment is not exposed over HTTP.
-    route_prefix: Union[str, None] = Field(
-        default=DEFAULT.VALUE,
-        description=(
-            "[DEPRECATED] Please use route_prefix under ServeApplicationSchema instead."
-        ),
-    )
-    max_concurrent_queries: int = Field(
-        default=DEFAULT.VALUE,
-        description=(
-            "[DEPRECATED] The max number of requests that will be executed at once in "
-            f"each replica. Defaults to {DEFAULT_MAX_ONGOING_REQUESTS}."
-        ),
-        gt=0,
     )
     max_ongoing_requests: int = Field(
         default=DEFAULT.VALUE,
@@ -461,10 +436,6 @@ class DeploymentSchema(BaseModel, allow_population_by_field_name=True):
 
         return values
 
-    deployment_schema_route_prefix_format = validator("route_prefix", allow_reuse=True)(
-        _route_prefix_format
-    )
-
     def _get_user_configured_option_names(self) -> Set[str]:
         """Get set of names for all user-configured options.
 
@@ -477,16 +448,10 @@ class DeploymentSchema(BaseModel, allow_population_by_field_name=True):
 
 
 def _deployment_info_to_schema(name: str, info: DeploymentInfo) -> DeploymentSchema:
-    """Converts a DeploymentInfo object to DeploymentSchema.
-
-    Route_prefix will not be set in the returned DeploymentSchema, since starting in 2.x
-    route_prefix is an application-level concept. (This should only be used on the 2.x
-    codepath)
-    """
+    """Converts a DeploymentInfo object to DeploymentSchema."""
 
     schema = DeploymentSchema(
         name=name,
-        max_concurrent_queries=info.deployment_config.max_ongoing_requests,
         max_ongoing_requests=info.deployment_config.max_ongoing_requests,
         max_queued_requests=info.deployment_config.max_queued_requests,
         user_config=info.deployment_config.user_config,
@@ -822,6 +787,22 @@ class ServeDeploySchema(BaseModel):
         return {"applications": []}
 
 
+# Keep in sync with ServeSystemActorStatus in
+# python/ray/dashboard/client/src/type/serve.ts
+@PublicAPI(stability="stable")
+class ProxyStatus(str, Enum):
+    """The current status of the proxy."""
+
+    STARTING = "STARTING"
+    HEALTHY = "HEALTHY"
+    UNHEALTHY = "UNHEALTHY"
+    DRAINING = "DRAINING"
+    # The DRAINED status is a momentary state
+    # just before the proxy is removed
+    # so this status won't show up on the dashboard.
+    DRAINED = "DRAINED"
+
+
 @PublicAPI(stability="alpha")
 @dataclass
 class DeploymentStatusOverview:
@@ -839,6 +820,18 @@ class DeploymentStatusOverview:
     status_trigger: DeploymentStatusTrigger
     replica_states: Dict[ReplicaState, int]
     message: str
+
+
+@PublicAPI(stability="stable")
+class ApplicationStatus(str, Enum):
+    """The current status of the application."""
+
+    NOT_STARTED = "NOT_STARTED"
+    DEPLOYING = "DEPLOYING"
+    DEPLOY_FAILED = "DEPLOY_FAILED"
+    RUNNING = "RUNNING"
+    UNHEALTHY = "UNHEALTHY"
+    DELETING = "DELETING"
 
 
 @PublicAPI(stability="alpha")
@@ -881,6 +874,18 @@ class ServeStatus:
 
 @PublicAPI(stability="stable")
 class ServeActorDetails(BaseModel, frozen=True):
+    """Detailed info about a Ray Serve actor.
+
+    Attributes:
+        node_id: ID of the node that the actor is running on.
+        node_ip: IP address of the node that the actor is running on.
+        actor_id: Actor ID.
+        actor_name: Actor name.
+        worker_id: Worker ID.
+        log_file_path: The relative path to the Serve actor's log file from the ray logs
+            directory.
+    """
+
     node_id: Optional[str] = Field(
         description="ID of the node that the actor is running on."
     )
@@ -951,18 +956,14 @@ class DeploymentDetails(BaseModel, extra=Extra.forbid, frozen=True):
         description="Details about the live replicas of this deployment."
     )
 
-    @validator("deployment_config")
-    def deployment_route_prefix_not_set(cls, v: DeploymentSchema):
-        # Route prefix should not be set at the deployment level. Deployment-level route
-        # prefix is outdated, there should be one route prefix per application
-        if "route_prefix" in v.dict(exclude_unset=True):
-            raise ValueError(
-                "Unexpectedly found a deployment-level route_prefix in the "
-                f'deployment_config for deployment "{cls.name}". The route_prefix in '
-                "deployment_config within DeploymentDetails should not be set; please "
-                "set it at the application level."
-            )
-        return v
+
+@PublicAPI(stability="alpha")
+class APIType(str, Enum):
+    """Tracks the type of API that an application originates from."""
+
+    UNKNOWN = "unknown"
+    IMPERATIVE = "imperative"
+    DECLARATIVE = "declarative"
 
 
 @PublicAPI(stability="stable")
@@ -1014,6 +1015,12 @@ class ApplicationDetails(BaseModel, extra=Extra.forbid, frozen=True):
             "for readability."
         )
     )
+    source: APIType = Field(
+        description=(
+            "The type of API that the application originates from. "
+            "This is a Developer API that is subject to change."
+        ),
+    )
     deployments: Dict[str, DeploymentDetails] = Field(
         description="Details about the deployments in this application."
     )
@@ -1025,6 +1032,12 @@ class ApplicationDetails(BaseModel, extra=Extra.forbid, frozen=True):
 
 @PublicAPI(stability="stable")
 class ProxyDetails(ServeActorDetails, frozen=True):
+    """Detailed info about a Ray Serve ProxyActor.
+
+    Attributes:
+        status: The current status of the proxy.
+    """
+
     status: ProxyStatus = Field(description="Current status of the proxy.")
 
 

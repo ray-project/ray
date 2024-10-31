@@ -131,12 +131,12 @@ class OneHotEncoder(Preprocessor):
     """`One-hot encode <https://en.wikipedia.org/wiki/One-hot#Machine_learning_and_statistics>`_
     categorical data.
 
-    This preprocessor creates a column named ``{column}_{category}``
-    for each unique ``{category}`` in ``{column}``. The value of a column is
-    1 if the category matches and 0 otherwise.
+    This preprocessor transforms each specified column into a one-hot encoded vector.
+    Each element in the vector corresponds to a unique category in the column, with a
+    value of 1 if the category matches and 0 otherwise.
 
-    If you encode an infrequent category (see ``max_categories``) or a category
-    that isn't in the fitted dataset, then the category is encoded as all 0s.
+    If a category is infrequent (based on ``max_categories``) or not present in the
+    fitted dataset, it is encoded as all 0s.
 
     Columns must contain hashable objects or lists of hashable objects.
 
@@ -219,8 +219,6 @@ class OneHotEncoder(Preprocessor):
     def _transform_pandas(self, df: pd.DataFrame):
         _validate_df(df, *self.columns)
 
-        columns_to_drop = set(self.columns)
-
         # Compute new one-hot encoded columns
         for column in self.columns:
             column_values = self.stats_[f"unique_values({column})"]
@@ -230,8 +228,15 @@ class OneHotEncoder(Preprocessor):
                 df[f"{column}_{column_value}"] = (df[column] == column_value).astype(
                     int
                 )
-        # Drop original unencoded columns.
-        df = df.drop(columns=list(columns_to_drop))
+            # Concatenate the value columns
+            value_columns = [
+                f"{column}_{column_value}" for column_value in column_values
+            ]
+            concatenated = df[value_columns].to_numpy()
+            df = df.drop(columns=value_columns)
+            # Use a Pandas Series for column assignment to get more consistent
+            # behavior across Pandas versions.
+            df.loc[:, column] = pd.Series(list(concatenated))
         return df
 
     def __repr__(self):
@@ -522,7 +527,7 @@ class Categorizer(Preprocessor):
 
     def _fit(self, dataset: Dataset) -> Preprocessor:
         columns_to_get = [
-            column for column in self.columns if column not in self.dtypes
+            column for column in self.columns if column not in set(self.dtypes)
         ]
         if columns_to_get:
             unique_indices = _get_unique_value_indices(
@@ -561,8 +566,9 @@ def _get_unique_value_indices(
 
     if max_categories is None:
         max_categories = {}
+    columns_set = set(columns)
     for column in max_categories:
-        if column not in columns:
+        if column not in columns_set:
             raise ValueError(
                 f"You set `max_categories` for {column}, which is not present in "
                 f"{columns}."

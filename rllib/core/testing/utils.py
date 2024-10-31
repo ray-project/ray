@@ -18,7 +18,7 @@ def add_module_to_learner_or_learner_group(
 ):
     learner_group_or_learner.add_module(
         module_id=module_id,
-        module_spec=config.get_marl_module_spec(env=env).module_specs[
+        module_spec=config.get_multi_rl_module_spec(env=env).module_specs[
             DEFAULT_MODULE_ID
         ],
     )
