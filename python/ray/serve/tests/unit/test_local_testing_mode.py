@@ -1,9 +1,14 @@
+import sys
+
+import pytest
+
 from ray import serve
 from ray.serve.handle import DeploymentHandle
 
 # TODO:
 # - support local http client.
 # - support composing DeploymentResponse objects.
+
 
 def test_ingress_handle():
     @serve.deployment
@@ -43,3 +48,7 @@ def test_composed_deployment_handle():
     h = serve.run(Outer.bind("Theodore", Inner.bind("Kevin")), local_testing_mode=True)
     assert isinstance(h, DeploymentHandle)
     assert h.remote("Edith").result() == "Hello Edith from Theodore and Kevin!"
+
+
+if __name__ == "__main__":
+    sys.exit(pytest.main(["-v", "-s", __file__]))
