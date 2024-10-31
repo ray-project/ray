@@ -19,6 +19,7 @@ grpc_common_cpp_lib = static_library(
         'common.cc',
         'grpc_server.cc',
         'server_call.cc',
+        'rpc_chaos.cc'
     ],
     dependencies: grpc_common_cpp_lib_dependencies,
     install: false
