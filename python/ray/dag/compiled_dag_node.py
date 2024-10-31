@@ -14,6 +14,7 @@ import ray.exceptions
 from ray.dag.dag_operation_future import GPUFuture, DAGOperationFuture, ResolvedFuture
 from ray.experimental.channel.cached_channel import CachedChannel
 from ray.experimental.channel.gpu_communicator import GPUCommunicator
+from ray.dag.constants import RAY_ADAG_VISUALIZE_SCHEDULE
 import ray
 from ray.exceptions import RayTaskError, RayChannelError
 from ray.experimental.compiled_dag_ref import (
@@ -136,7 +137,7 @@ def do_exec_tasks(
     """
     try:
         for task in tasks:
-            task.prepare(overlap_gpu_communication)
+            task.prepare(overlap_gpu_communication=overlap_gpu_communication)
 
         done = False
         while True:
@@ -1736,21 +1737,20 @@ class CompiledDAG:
         actor_to_execution_schedule = _generate_actor_to_execution_schedule(graph)
 
         # Step 3: Overlap GPU communication for the execution schedule if configured
+        actor_to_overlapped_schedule = None
         if self._overlap_gpu_communication:
             actor_to_overlapped_schedule = _generate_overlapped_execution_schedule(
                 actor_to_execution_schedule
             )
 
-            from ray.dag.constants import RAY_ADAG_VISUALIZE_SCHEDULE
+        if RAY_ADAG_VISUALIZE_SCHEDULE:
+            _visualize_execution_schedule(
+                actor_to_execution_schedule, actor_to_overlapped_schedule, graph
+            )
 
-            if RAY_ADAG_VISUALIZE_SCHEDULE:
-                _visualize_execution_schedule(
-                    actor_to_execution_schedule, actor_to_overlapped_schedule, graph
-                )
+        if actor_to_overlapped_schedule is not None:
             return _extract_execution_schedule(actor_to_overlapped_schedule)
         else:
-            if RAY_ADAG_VISUALIZE_SCHEDULE:
-                _visualize_execution_schedule(actor_to_execution_schedule, None, graph)
             return _extract_execution_schedule(actor_to_execution_schedule)
 
     def _detect_deadlock(self) -> bool:

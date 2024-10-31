@@ -62,7 +62,7 @@ class GPUFuture(DAGOperationFuture[Any]):
     on the given stream, or it could be CPU data. Then the future guarantees
     that when the wait() returns, the buffer is ready on the current stream.
 
-    The future does not block CPU.
+    The `wait()` does not block CPU.
     """
 
     def __init__(self, buf: Any, stream: Optional["cp.cuda.Stream"] = None):
