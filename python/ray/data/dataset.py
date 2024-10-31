@@ -874,6 +874,8 @@ class Dataset:
         """Select one or more columns from the dataset.
 
         Specified columns must be in the dataset schema.
+        If `cols` contains duplicate column names, the resulting dataset will
+        contain only one copy of each column.
 
         .. tip::
             If you're reading parquet files with :meth:`ray.data.read_parquet`,
