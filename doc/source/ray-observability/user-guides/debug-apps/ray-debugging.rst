@@ -14,6 +14,8 @@ drop into a PDB session that you can then use to:
 .. warning::
 
     The Ray Debugger is deprecated. Use the :doc:`Ray Distributed Debugger <../../ray-distributed-debugger>` instead.
+    Starting with Ray 2.39, the new debugger is the default and you need to set the environment variable `RAY_DEBUG=0` to
+    use the old debugger (e.g. by using a runtime environment).
 
 Getting Started
 ---------------
@@ -25,9 +27,11 @@ Take the following example:
 
     import ray
 
+    ray.init(runtime_env={"env_vars": {"RAY_DEBUG": "0"})
+
     @ray.remote
     def f(x):
-        ray.util.pdb.set_trace()
+        breakpoint()
         return x * x
 
     futures = [f.remote(i) for i in range(2)]
@@ -41,7 +45,7 @@ Put the program into a file named ``debugging.py`` and execute it using:
 
 
 Each of the 2 executed tasks will drop into a breakpoint when the line
-``ray.util.pdb.set_trace()`` is executed. You can attach to the debugger by running
+``breakpoint()`` is executed. You can attach to the debugger by running
 the following command on the head node of the cluster:
 
 .. code-block:: bash
@@ -113,6 +117,8 @@ following recursive function as an example:
 
     import ray
 
+    ray.init(runtime_env={"env_vars": {"RAY_DEBUG": "0"})
+
     @ray.remote
     def fact(n):
         if n == 1:
@@ -123,7 +129,7 @@ following recursive function as an example:
 
     @ray.remote
     def compute():
-        ray.util.pdb.set_trace()
+        breakpoint()
         result_ref = fact.remote(5)
         result = ray.get(result_ref)
 
@@ -236,7 +242,7 @@ Next, copy the following code into a file called ``serve_debugging.py``:
     import ray
     from ray import serve
 
-    serve.start()
+    ray.init(runtime_env={"env_vars": {"RAY_DEBUG": "0"})
 
     # Train model
     iris_dataset = load_iris()
