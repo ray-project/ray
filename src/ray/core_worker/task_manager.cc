@@ -1421,14 +1421,10 @@ void TaskManager::MarkTaskWaitingForExecution(const TaskID &task_id,
 }
 
 void TaskManager::MarkTaskRetryOnResubmit(TaskEntry &task_entry) {
-  // Record the old attempt status as FINISHED.
-  RAY_UNUSED(
-      task_event_buffer_.RecordTaskStatusEventIfNeeded(task_entry.spec.TaskId(),
-                                                       task_entry.spec.JobId(),
-                                                       task_entry.spec.AttemptNumber(),
-                                                       task_entry.spec,
-                                                       rpc::TaskStatus::FINISHED));
-  task_entry.MarkRetryOnResubmit();
+  RAY_CHECK(!task_entry.IsPending())
+      << "Only finished tasks can be resubmitted: " << task_entry.spec.TaskId();
+
+  task_entry.MarkRetry();
 
   // Mark the new status and also include task spec info for the new attempt.
   task_entry.SetStatus(rpc::TaskStatus::PENDING_ARGS_AVAIL);
@@ -1446,16 +1442,11 @@ void TaskManager::MarkTaskRetryOnResubmit(TaskEntry &task_entry) {
 
 void TaskManager::MarkTaskRetryOnFailed(TaskEntry &task_entry,
                                         const rpc::RayErrorInfo &error_info) {
+  RAY_CHECK(task_entry.IsPending());
+
   // Record the old attempt status as FAILED.
-  RAY_UNUSED(task_event_buffer_.RecordTaskStatusEventIfNeeded(
-      task_entry.spec.TaskId(),
-      task_entry.spec.JobId(),
-      task_entry.spec.AttemptNumber(),
-      task_entry.spec,
-      rpc::TaskStatus::FAILED,
-      /* include_task_info */ false,
-      worker::TaskStatusEvent::TaskStateUpdate(error_info)));
-  task_entry.MarkRetryOnFailed();
+  SetTaskStatus(task_entry, rpc::TaskStatus::FAILED, error_info);
+  task_entry.MarkRetry();
 
   // Mark the new status and also include task spec info for the new attempt.
   task_entry.SetStatus(rpc::TaskStatus::PENDING_ARGS_AVAIL);
