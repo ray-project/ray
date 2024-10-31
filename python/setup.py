@@ -228,8 +228,8 @@ if setup_spec.type == SetupType.RAY:
     pandas_dep = "pandas >= 1.3"
     numpy_dep = "numpy >= 1.20"
     pyarrow_deps = [
-        "pyarrow >= 6.0.1,<18; sys_platform == 'darwin'",
-        "pyarrow >= 6.0.1; sys_platform != 'darwin'",
+        "pyarrow >= 6.0.1",
+        "pyarrow <18; sys_platform == 'darwin' and platform_machine == 'x86_64'",
     ]
     setup_spec.extras = {
         "adag": [
