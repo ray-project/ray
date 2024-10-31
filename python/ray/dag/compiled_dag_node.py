@@ -1749,6 +1749,8 @@ class CompiledDAG:
                 )
             return _extract_execution_schedule(actor_to_overlapped_schedule)
         else:
+            if RAY_ADAG_VISUALIZE_SCHEDULE:
+                _visualize_execution_schedule(actor_to_execution_schedule, None, graph)
             return _extract_execution_schedule(actor_to_execution_schedule)
 
     def _detect_deadlock(self) -> bool:

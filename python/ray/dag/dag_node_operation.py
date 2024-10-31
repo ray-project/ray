@@ -510,8 +510,9 @@ def _visualize_execution_schedule(
             The nodes belonging to the same actor are grouped in the same rectangular
 
         Edges:
-            blue color: indicates NCCL channel
-            black color: indicates shared memory channel
+            black color: indicates shared memory channel (also annotated with "shm")
+            blue color: indicates NCCL channel (also annotated with "nccl")
+            dashed edge: indicates a control dependency between compute nodes
 
     Args:
         actor_to_execution_schedule: A dictionary that maps an actor handle to
@@ -535,8 +536,9 @@ def _visualize_execution_schedule(
     dot = graphviz.Digraph(comment="DAG")
     node_to_viz: Dict[_DAGOperationGraphNode, str] = {}
 
-    # TODO: only visualize the execution schedule if the overlapped schedule is None.
     if actor_to_overlapped_schedule is None:
+        # TODO(rui): make the visualization more concise by only displaying
+        # the original schedule
         actor_to_overlapped_schedule = actor_to_execution_schedule
     for actor, execution_nodes in actor_to_execution_schedule.items():
         overlapped_schedule = actor_to_overlapped_schedule[actor]
@@ -556,12 +558,14 @@ def _visualize_execution_schedule(
     for actor, execution_nodes in actor_to_execution_schedule.items():
         for i, node in enumerate(execution_nodes):
             node_viz = node_to_viz[node]
-            for out_edge, label in node.out_edges.items():
+            for out_edge, viz_info in node.out_edges.items():
+                label, control_dependency = viz_info
                 out_task_idx, out_op_type = out_edge
                 out_node = graph[out_task_idx][out_op_type]
                 out_node_repr = node_to_viz[out_node]
                 color = "blue" if label == "nccl" else "black"
-                dot.edge(node_viz, out_node_repr, label=label, color=color)
+                style = "dashed" if control_dependency else "solid"
+                dot.edge(node_viz, out_node_repr, label=label, color=color, style=style)
 
     # Add legend
     with dot.subgraph(name="cluster_legend") as legend:
@@ -585,8 +589,9 @@ def _visualize_execution_schedule(
             '<TR><TD ALIGN="LEFT">The nodes belonging to the same actor are grouped in the same rectangular</TD></TR>'  # noqa
             "<TR><TD></TD></TR>"
             '<TR><TD ALIGN="LEFT"><B>Edges:</B></TD></TR>'
-            '<TR><TD ALIGN="LEFT"><FONT COLOR="blue">blue color</FONT>: indicates NCCL channel</TD></TR>'  # noqa
-            '<TR><TD ALIGN="LEFT">black color: indicates shared memory channel</TD></TR>'  # noqa
+            '<TR><TD ALIGN="LEFT">black color: indicates shared memory channel (also annotated with "shm")</TD></TR>'  # noqa
+            '<TR><TD ALIGN="LEFT"><FONT COLOR="blue">blue color</FONT>: indicates NCCL channel (also annotated with "nccl")</TD></TR>'  # noqa
+            '<TR><TD ALIGN="LEFT">dashed edge: indicates a control dependency between compute nodes</TD></TR>'  # noqa
             "</TABLE>>"
         )
 
@@ -695,6 +700,8 @@ def _generate_overlapped_execution_schedule(
     For each NCCL read operation (i.e., recv), scan backwards to find the nearest
     compute node to swap with so that the NCCL read operation can be overlapped
     with computation.
+
+    Collective operations are not yet supported.
 
     Args:
         actor_to_execution_schedule: A dictionary that maps an actor handle to

@@ -80,7 +80,6 @@ class GPUCommunicator(ABC):
             value: The torch.Tensor to send. It should already be on this
                 actor's default device.
             peer_rank: The rank of the actor to send to.
-            future: An optional future to wait on before sending.
         """
         raise NotImplementedError
 
