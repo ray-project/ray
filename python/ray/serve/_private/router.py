@@ -589,39 +589,42 @@ class AsyncioRouter:
 
 
 class SingletonThreadRouter(Router):
-    _singleton_thread_asyncio_loop: Optional[asyncio.AbstractEventLoop] = None
-    _singleton_thread_asyncio_loop_creation_lock = threading.Lock()
+    """Wrapper class that runs an AsyncioRouter on a separate thread.
+
+    The motivation for this is to avoid user code blocking the event loop and
+    preventing the router from making progress.
+
+    Maintains a singleton event loop running in a daemon thread that is shared by
+    all AsyncioRouters.
+    """
+
+    _asyncio_loop: Optional[asyncio.AbstractEventLoop] = None
+    _asyncio_loop_creation_lock = threading.Lock()
 
     def __init__(self, asyncio_router: AsyncioRouter):
-        self._asyncio_router = asyncio_router
-        # Initialize singleton thread if needed.
-        self.get_singleton_thread_asyncio_loop()
+        assert (
+            self._asyncio_loop is not None
+            and asyncio_router._event_loop == self._asyncio_loop
+        ), "AsyncioRouter must use the SingletonThreadRouter event loop."
 
-        # TODO: update this comment and make it a docstring.
-        # Schedule the coroutine to run on the router loop. This is always a separate
-        # loop running in another thread to avoid user code blocking the router, so we
-        # use the `concurrent.futures.Future` thread safe API.
+        self._asyncio_router = asyncio_router
 
     @classmethod
     def get_singleton_thread_asyncio_loop(cls) -> asyncio.AbstractEventLoop:
-        """Provides a global singleton asyncio event loop running in a daemon thread.
-
-        TODO: cleanup.
-
-        This thread is shared by all routers.
+        """Get singleton asyncio loop running in a daemon thread.
 
         This method is thread safe.
         """
-        with cls._singleton_thread_asyncio_loop_creation_lock:
-            if cls._singleton_thread_asyncio_loop is None:
-                cls._singleton_thread_asyncio_loop = asyncio.new_event_loop()
+        with cls._asyncio_loop_creation_lock:
+            if cls._asyncio_loop is None:
+                cls._asyncio_loop = asyncio.new_event_loop()
                 thread = threading.Thread(
                     daemon=True,
-                    target=cls._singleton_thread_asyncio_loop.run_forever,
+                    target=cls._asyncio_loop.run_forever,
                 )
                 thread.start()
 
-        return cls._singleton_thread_asyncio_loop
+        return cls._asyncio_loop
 
     def running_replicas_populated(self) -> bool:
         return self._asyncio_router.running_replicas_populated()
@@ -636,10 +639,10 @@ class SingletonThreadRouter(Router):
             self._asyncio_router.assign_request(
                 request_meta, *request_args, **request_kwargs
             ),
-            loop=self._singleton_thread_asyncio_loop,
+            loop=self._asyncio_loop,
         )
 
     def shutdown(self):
         asyncio.run_coroutine_threadsafe(
-            self._asyncio_router.shutdown(), loop=self._singleton_thread_asyncio_loop
+            self._asyncio_router.shutdown(), loop=self._asyncio_loop
         ).result()
