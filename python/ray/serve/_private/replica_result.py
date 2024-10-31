@@ -173,3 +173,52 @@ class ActorReplicaResult(ReplicaResult):
             ray.cancel(self._obj_ref_gen)
         else:
             ray.cancel(self._obj_ref)
+
+
+class LocalReplicaResult(ReplicaResult):
+    def __init__(self, future: concurrent.futures.Future, is_streaming: bool):
+        self._future = future
+        self._is_streaming: bool = is_streaming
+
+    def get(self, timeout_s: Optional[float]):
+        assert (
+            self._is_streaming
+        ), "get() can only be called on a non-streaming LocalReplicaResult"
+
+        start_time_s = time.time()
+        self.resolve_gen_to_ref_if_necessary_sync(timeout_s)
+
+        remaining_timeout_s = calculate_remaining_timeout(
+            timeout_s=timeout_s,
+            start_time_s=start_time_s,
+            curr_time_s=time.time(),
+        )
+        return ray.get(self._obj_ref, timeout=remaining_timeout_s)
+
+    async def get_async(self):
+        assert (
+            not self._is_streaming
+        ), "get_async() can only be called on a non-streaming LocalReplicaResult"
+
+        await self.resolve_gen_to_ref_if_necessary_async()
+        return await self._obj_ref
+
+    def __next__(self):
+        assert self._streaming, (
+            "next() can only be called on a streaming LocalReplicaResult."
+        )
+
+        raise NotImplementedError("Streaming not implemented yet.")
+
+    async def __anext__(self):
+        assert self._obj_ref_gen is not None, (
+            "anext() can only be called on a streaming LocalReplicaResult."
+        )
+
+        raise NotImplementedError("Streaming not implemented yet.")
+
+    def add_done_callback(self, callback: Callable):
+        self._future.add_done_callback(callback)
+
+    def cancel(self):
+        self._future.cancel()
