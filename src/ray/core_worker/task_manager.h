@@ -632,27 +632,18 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
 
     void SetStatus(rpc::TaskStatus new_status) {
       auto new_tuple = std::make_tuple(spec.GetName(), new_status, is_retry_);
-      counter.Swap(status, new_tuple);
+      if (IsPending()) {
+        counter.Swap(status, new_tuple);
+      } else {
+        // FINISHED and FAILED are monotonically increasing.
+        // TODO(jjyao): We should use Counter instead of Gauge
+        // for FINISHED and FAILED tasks.
+        counter.Increment(new_tuple);
+      }
       status = new_tuple;
     }
 
-    void MarkRetryOnFailed() {
-      // Record a separate counter increment for retries. This means that if a task
-      // is retried N times, we show it as N separate task counts.
-      // Note that the increment is for the "previous" task attempt. From now on, this
-      // task entry will report metrics or the "current" task attempt.
-      counter.Increment({spec.GetName(), rpc::TaskStatus::FAILED, is_retry_});
-      is_retry_ = true;
-    }
-
-    void MarkRetryOnResubmit() {
-      // Record a separate counter increment for resubmits. This means that if a task
-      // is resubmitted N times, we show it as N separate task counts.
-      // Note that the increment is for the "previous" task attempt. From now on, this
-      // task entry will report metrics or the "current" task attempt.
-      counter.Increment({spec.GetName(), rpc::TaskStatus::FINISHED, is_retry_});
-      is_retry_ = true;
-    }
+    void MarkRetry() { is_retry_ = true; }
 
     rpc::TaskStatus GetStatus() const { return std::get<1>(status); }
 
