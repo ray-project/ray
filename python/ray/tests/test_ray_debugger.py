@@ -343,7 +343,7 @@ def test_env_var_enables_ray_debugger():
     with unittest.mock.patch.dict(os.environ):
         os.environ["RAY_PDB"] = "1"
         assert (
-            ray.util.pdb._is_ray_debugger_enabled()
+            ray.util.pdb._is_ray_debugger_post_mortem_enabled()
         ), "Expected Ray Debugger to be enabled when RAY_PDB env var is present."
 
     with unittest.mock.patch.dict(os.environ):
@@ -351,7 +351,7 @@ def test_env_var_enables_ray_debugger():
             del os.environ["RAY_PDB"]
 
         assert (
-            not ray.util.pdb._is_ray_debugger_enabled()
+            not ray.util.pdb._is_ray_debugger_post_mortem_enabled()
         ), "Expected Ray Debugger to be disabled when RAY_PDB env var is absent."
 
 
