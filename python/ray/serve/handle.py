@@ -9,8 +9,7 @@ from dataclasses import dataclass, fields
 from typing import Any, AsyncIterator, Dict, Iterator, Optional, Tuple, Union
 
 import ray
-from ray import serve
-from ray._raylet import GcsClient, ObjectRefGenerator
+from ray._raylet import ObjectRefGenerator
 from ray.serve._private.common import (
     DeploymentHandleSource,
     DeploymentID,
@@ -19,7 +18,6 @@ from ray.serve._private.common import (
 )
 from ray.serve._private.constants import SERVE_LOGGER_NAME
 from ray.serve._private.default_impl import (
-    create_cluster_node_info_cache,
     create_dynamic_handle_options,
     create_init_handle_options,
     create_router,
@@ -31,7 +29,6 @@ from ray.serve._private.utils import (
     DEFAULT,
     calculate_remaining_timeout,
     generate_request_id,
-    get_current_actor_id,
     get_random_string,
     inside_ray_client_context,
     is_running_in_asyncio_loop,
@@ -40,30 +37,7 @@ from ray.serve.exceptions import RayServeException
 from ray.util import metrics
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
-_global_async_loop = None
-_global_async_loop_creation_lock = threading.Lock()
 logger = logging.getLogger(SERVE_LOGGER_NAME)
-
-
-def _create_or_get_global_asyncio_event_loop_in_thread():
-    """Provides a global singleton asyncio event loop running in a daemon thread.
-
-    Thread-safe.
-    """
-    global _global_async_loop
-    if _global_async_loop is None:
-        with _global_async_loop_creation_lock:
-            if _global_async_loop is not None:
-                return _global_async_loop
-
-            _global_async_loop = asyncio.new_event_loop()
-            thread = threading.Thread(
-                daemon=True,
-                target=_global_async_loop.run_forever,
-            )
-            thread.start()
-
-    return _global_async_loop
 
 
 @dataclass(frozen=True)
@@ -175,24 +149,9 @@ class _DeploymentHandleBase:
 
     def _get_or_create_router(self) -> Router:
         if self._router is None:
-            node_id = ray.get_runtime_context().get_node_id()
-            try:
-                cluster_node_info_cache = create_cluster_node_info_cache(
-                    GcsClient(address=ray.get_runtime_context().gcs_address)
-                )
-                cluster_node_info_cache.update()
-                availability_zone = cluster_node_info_cache.get_node_az(node_id)
-            except Exception:
-                availability_zone = None
-
             self._router = create_router(
-                serve.context._get_global_client()._controller,
-                self.deployment_id,
-                self.handle_id,
-                node_id,
-                get_current_actor_id(),
-                availability_zone,
-                _create_or_get_global_asyncio_event_loop_in_thread(),
+                handle_id=self.handle_id,
+                deployment_id=self.deployment_id,
                 handle_options=self.init_options,
             )
 
