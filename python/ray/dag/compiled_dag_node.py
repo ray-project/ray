@@ -238,12 +238,8 @@ def _get_nccl_group_id(type_hint: ChannelOutputType) -> Optional[str]:
         The NCCL group ID if the type hint requires NCCL, otherwise None.
     """
     if type_hint.requires_nccl():
-        if isinstance(type_hint, SharedMemoryType):
-            assert type_hint._contains_type.requires_nccl()
-            return _get_nccl_group_id(type_hint._contains_type)
-        else:
-            assert isinstance(type_hint, TorchTensorType)
-            return type_hint.nccl_group_id
+        assert isinstance(type_hint, TorchTensorType)
+        return type_hint.nccl_group_id
     return None
 
 
@@ -431,6 +427,10 @@ class ExecutableTask:
         """
         Prepare the task for execution. The `exec_operation` function can only
         be called after `prepare` has been called.
+
+        Args:
+            overlap_gpu_communication: Whether to overlap GPU communication with
+                computation during DAG execution to improve performance
         """
         for typ_hint in self.input_type_hints:
             typ_hint.register_custom_serializer()
@@ -492,6 +492,11 @@ class ExecutableTask:
     def reset_and_wait_intermediate_future(self) -> Any:
         """
         Reset the intermediate future and wait for the result.
+
+        This does not block the CPU because:
+        - If the future is a ResolvedFuture, the result is immediately returned.
+        - If the future is a GPUFuture, the result is only waited by the current
+            CUDA stream, and the CPU is not blocked.
 
         Returns:
             The result of a READ or COMPUTE operation from the intermediate future.
@@ -1008,6 +1013,11 @@ class CompiledDAG:
                 # Collect NCCL collective operations.
                 if isinstance(dag_node, CollectiveOutputNode):
                     nccl_collective_ops.add(dag_node.collective_op)
+                    assert not self._overlap_gpu_communication, (
+                        "Currently, the overlap_gpu_communication option is not "
+                        "supported for NCCL collective operations. Please set "
+                        "overlap_gpu_communication=False."
+                    )
             elif isinstance(dag_node, InputNode):
                 if dag_node.type_hint.requires_nccl():
                     raise ValueError(

@@ -23,9 +23,9 @@ class _DAGNodeOperationType(Enum):
     COMPUTE = "COMPUTE"
     WRITE = "WRITE"
 
-    def short_str(self):
+    def viz_str(self):
         """
-        A short string representation of the operation type.
+        A string representation of the operation type to be used in visualization.
 
         Used in scenarios that conciseness is preferred, e.g.,
         in visualization of the execution schedule.
@@ -216,7 +216,10 @@ class _DAGOperationGraphNode:
     def is_nccl_op(self) -> bool:
         return self.is_nccl_collective or self.is_nccl_write
 
-    def __str__(self):
+    def viz_str(self):
+        """
+        A string representation of the node to be used in visualization.
+        """
         class_name = (
             self.actor_handle._ray_actor_creation_function_descriptor.class_name
         )
@@ -226,7 +229,7 @@ class _DAGOperationGraphNode:
             + "_"
             + actor_id_abbv
             + f" [{self.operation.exec_task_idx}] "
-            + f"{self.operation.method_name} {self.operation.type.short_str()}"
+            + f"{self.operation.method_name} {self.operation.type.viz_str()}"
         )
 
     @property
@@ -455,16 +458,16 @@ def _build_dag_node_operation_graph(
     return graph
 
 
-def _node_repr(node: _DAGOperationGraphNode, idx: int, optimized_index: int):
+def _node_viz_str(node: _DAGOperationGraphNode, idx: int, optimized_index: int):
     """
-    Representation of a node in the visualization of the execution schedule.
+    A string representation of a node in the visualization of the execution schedule.
 
     Args:
         node: The node to be represented.
         idx: The index of the node in the execution schedule.
         optimized_index: The index of the node in the optimized execution schedule.
     """
-    return str(node) + f" {idx},{optimized_index}"
+    return node.viz_str() + f" {idx},{optimized_index}"
 
 
 def _visualize_execution_schedule(
@@ -519,7 +522,7 @@ def _visualize_execution_schedule(
         )
 
     dot = graphviz.Digraph(comment="DAG")
-    node_to_repr: Dict[_DAGOperationGraphNode, str] = {}
+    node_to_viz: Dict[_DAGOperationGraphNode, str] = {}
 
     # TODO: only visualize the execution schedule if the overlapped schedule is None.
     if actor_to_overlapped_schedule is None:
@@ -534,20 +537,20 @@ def _visualize_execution_schedule(
             subgraph.attr(rank=execution_nodes[0]._actor_id)
             for i, node in enumerate(execution_nodes):
                 optimized_index = node_to_optimized_index.get(node)
-                node_repr = _node_repr(node, i, optimized_index)
+                node_viz = _node_viz_str(node, i, optimized_index)
                 color = "red" if optimized_index != i else "black"
-                subgraph.node(node_repr, node_repr, color=color)
-                node_to_repr[node] = node_repr
+                subgraph.node(node_viz, node_viz, color=color)
+                node_to_viz[node] = node_viz
 
     for actor, execution_nodes in actor_to_execution_schedule.items():
         for i, node in enumerate(execution_nodes):
-            node_repr = node_to_repr[node]
+            node_viz = node_to_viz[node]
             for out_edge, label in node.out_edges.items():
                 out_task_idx, out_op_type = out_edge
                 out_node = graph[out_task_idx][out_op_type]
-                out_node_repr = node_to_repr[out_node]
+                out_node_repr = node_to_viz[out_node]
                 color = "blue" if label == "nccl" else "black"
-                dot.edge(node_repr, out_node_repr, label=label, color=color)
+                dot.edge(node_viz, out_node_repr, label=label, color=color)
 
     # Add legend
     with dot.subgraph(name="cluster_legend") as legend:

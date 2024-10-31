@@ -1,10 +1,9 @@
 from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING, Generic, Optional, TypeVar
+from typing import TYPE_CHECKING, Any, Generic, Optional, TypeVar
 from ray.util.annotations import DeveloperAPI
 
 
 if TYPE_CHECKING:
-    import torch
     import cupy as cp
 
 T = TypeVar("T")
@@ -51,19 +50,29 @@ class ResolvedFuture(DAGOperationFuture):
 
 
 @DeveloperAPI
-class GPUFuture(DAGOperationFuture["torch.Tensor"]):
+class GPUFuture(DAGOperationFuture[Any]):
     """
-    A future that represents a GPU operation.
+    A future for a GPU event on a CUDA stream.
+
+    This future wraps a buffer, and records an event on the given stream
+    when it is created. When the future is waited on, it makes the current
+    CUDA stream wait on the event, then returns the buffer.
+
+    The buffer must be a GPU tensor produced by an earlier operation launched
+    on the given stream, or it could be CPU data. Then the future guarantees
+    that when the wait() returns, the buffer is ready on the current stream.
+
+    The future does not block CPU.
     """
 
-    def __init__(self, buf: "torch.Tensor", stream: Optional["cp.cuda.Stream"] = None):
+    def __init__(self, buf: Any, stream: Optional["cp.cuda.Stream"] = None):
         """
-        Initialize a GPU future.
+        Initialize a GPU future on the given stream.
 
         Args:
             buf: The buffer to return when the future is resolved.
-            stream: The CUDA stream to record the event on. If None, the current
-                stream is used.
+            stream: The CUDA stream to record the event on, this event is waited
+                on when the future is resolved. If None, the current stream is used.
         """
         import cupy as cp
 
@@ -74,13 +83,13 @@ class GPUFuture(DAGOperationFuture["torch.Tensor"]):
         self._event = cp.cuda.Event()
         self._event.record(stream)
 
-    def wait(self) -> "torch.Tensor":
+    def wait(self) -> Any:
         """
-        Wait for the future and return the result from the GPU operation.
+        Wait for the future on the current CUDA stream and return the result from
+        the GPU operation. This operation does not block CPU.
         """
         import cupy as cp
 
-        if self._event is not None:
-            current_stream = cp.cuda.get_current_stream()
-            current_stream.wait_event(self._event)
+        current_stream = cp.cuda.get_current_stream()
+        current_stream.wait_event(self._event)
         return self._buf
