@@ -190,7 +190,7 @@ class ServerCallImpl : public ServerCall {
         cluster_id_(cluster_id),
         start_time_(0),
         record_metrics_(record_metrics) {
-    reply_ = google::protobuf::Arena::CreateMessage<Reply>(&arena_);
+    reply_ = google::protobuf::Arena::Create<Reply>(&arena_);
     // TODO call_name_ sometimes get corrunpted due to memory issues.
     RAY_CHECK(!call_name_.empty()) << "Call name is empty";
     if (record_metrics_) {
