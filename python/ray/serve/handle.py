@@ -1,7 +1,6 @@
 import asyncio
 import concurrent.futures
 import logging
-import threading
 import time
 import warnings
 from abc import ABC
@@ -18,6 +17,7 @@ from ray.serve._private.common import (
 )
 from ray.serve._private.constants import SERVE_LOGGER_NAME
 from ray.serve._private.default_impl import (
+    CreateRouterCallable,
     create_dynamic_handle_options,
     create_init_handle_options,
     create_router,
@@ -108,6 +108,7 @@ class _DeploymentHandleBase:
         *,
         handle_options: Optional[_DynamicHandleOptionsBase] = None,
         _router: Optional[Router] = None,
+        _create_router: Optional[CreateRouterCallable] = None,
         _request_counter: Optional[metrics.Counter] = None,
         _recorded_telemetry: bool = False,
     ):
@@ -124,6 +125,10 @@ class _DeploymentHandleBase:
         self._recorded_telemetry = _recorded_telemetry
 
         self._router: Optional[Router] = _router
+        if _create_router is None:
+            self._create_router = create_router
+        else:
+            self._create_router = _create_router
 
         logger.info(
             f"Created DeploymentHandle '{self.handle_id}' for {self.deployment_id}.",
@@ -149,7 +154,7 @@ class _DeploymentHandleBase:
 
     def _get_or_create_router(self) -> Router:
         if self._router is None:
-            self._router = create_router(
+            self._router = self._create_router(
                 handle_id=self.handle_id,
                 deployment_id=self.deployment_id,
                 handle_options=self.init_options,
@@ -189,7 +194,7 @@ class _DeploymentHandleBase:
         if self._router is None:
             return False
 
-        return self._router.running_replicas_populated
+        return self._router.running_replicas_populated()
 
     @property
     def deployment_name(self) -> str:
@@ -245,6 +250,7 @@ class _DeploymentHandleBase:
             self.app_name,
             handle_options=new_handle_options,
             _router=self._router,
+            _create_router=self._create_router,
             _request_counter=self.request_counter,
             _recorded_telemetry=self._recorded_telemetry,
         )
@@ -279,13 +285,7 @@ class _DeploymentHandleBase:
         if not self.is_initialized:
             self._init()
 
-        # Schedule the coroutine to run on the router loop. This is always a separate
-        # loop running in another thread to avoid user code blocking the router, so we
-        # use the `concurrent.futures.Future` thread safe API.
-        return asyncio.run_coroutine_threadsafe(
-            self._router.assign_request(request_metadata, *args, **kwargs),
-            loop=self._router._event_loop,
-        )
+        return self._router.assign_request(request_metadata, *args, **kwargs)
 
     def __getattr__(self, name):
         return self.options(method_name=name)
