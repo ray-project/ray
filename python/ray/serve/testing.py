@@ -1,7 +1,6 @@
 import asyncio
 import concurrent.futures
 import logging
-import time
 from typing import Any, Callable, Optional
 
 from ray.serve._private.common import DeploymentID, RequestMetadata
@@ -9,18 +8,21 @@ from ray.serve._private.constants import SERVE_LOGGER_NAME
 from ray.serve._private.replica import UserCallableWrapper
 from ray.serve._private.replica_result import ReplicaResult
 from ray.serve._private.router import Router
-from ray.serve.handle import DeploymentHandle
 from ray.serve.deployment import Deployment
+from ray.serve.handle import DeploymentHandle
 
 # TODO: figure out how to get logs to all go to stderr.
 logger = logging.getLogger(SERVE_LOGGER_NAME)
+
 
 def make_local_deployment_handle(
     deployment: Deployment,
     app_name: str,
 ) -> DeploymentHandle:
     # XXX: comment.
-    def _create_local_router(handle_id: str, deployment_id: DeploymentID, handle_options: Any) -> Router:
+    def _create_local_router(
+        handle_id: str, deployment_id: DeploymentID, handle_options: Any
+    ) -> Router:
         return _LocalRouter(
             UserCallableWrapper(
                 deployment.func_or_class,
@@ -38,8 +40,11 @@ def make_local_deployment_handle(
         _create_router=_create_local_router,
     )
 
+
 class _LocalReplicaResult(ReplicaResult):
-    def __init__(self, future: concurrent.futures.Future, *, is_streaming: bool = False):
+    def __init__(
+        self, future: concurrent.futures.Future, *, is_streaming: bool = False
+    ):
         self._future = future
         self._is_streaming: bool = is_streaming
 
@@ -58,16 +63,16 @@ class _LocalReplicaResult(ReplicaResult):
         return await asyncio.wrap_future(self._future)
 
     def __next__(self):
-        assert self._streaming, (
-            "next() can only be called on a streaming _LocalReplicaResult."
-        )
+        assert (
+            self._streaming
+        ), "next() can only be called on a streaming _LocalReplicaResult."
 
         raise NotImplementedError("Streaming not implemented yet.")
 
     async def __anext__(self):
-        assert self._obj_ref_gen is not None, (
-            "anext() can only be called on a streaming _LocalReplicaResult."
-        )
+        assert (
+            self._obj_ref_gen is not None
+        ), "anext() can only be called on a streaming _LocalReplicaResult."
 
         raise NotImplementedError("Streaming not implemented yet.")
 
@@ -77,8 +82,14 @@ class _LocalReplicaResult(ReplicaResult):
     def cancel(self):
         self._future.cancel()
 
+
 class _LocalRouter(Router):
-    def __init__(self, user_callable_wrapper: UserCallableWrapper, deployment_id: DeploymentID, handle_options: Any):
+    def __init__(
+        self,
+        user_callable_wrapper: UserCallableWrapper,
+        deployment_id: DeploymentID,
+        handle_options: Any,
+    ):
         logger.info(f"Initializing local replica for '{deployment_id}'")
         self._deployment_id = deployment_id
         self._user_callable_wrapper = user_callable_wrapper
