@@ -124,7 +124,7 @@ def _debugpy_excepthook():
 
 
 def _is_ray_debugger_post_mortem_enabled():
-    return "RAY_DEBUG" in os.environ
+    return os.environ.get("RAY_DEBUG", "1") == "2"
 
 
 def _post_mortem():
