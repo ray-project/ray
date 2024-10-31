@@ -30,7 +30,6 @@ from ray.serve._private.utils import (
     inside_ray_client_context,
     resolve_request_args,
 )
-from ray.serve.context import _get_global_client
 
 # NOTE: Please read carefully before changing!
 #
@@ -114,6 +113,9 @@ def create_router(
     deployment_id: DeploymentID,
     handle_options: Any,
 ) -> Router:
+    # NOTE(edoakes): this is lazy due to a nasty circular import that should be fixed.
+    from ray.serve.context import _get_global_client
+
     actor_id = get_current_actor_id()
     node_id, availability_zone = _get_node_id_and_az()
     controller_handle = _get_global_client()._controller
