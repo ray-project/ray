@@ -21,7 +21,6 @@ from ray.serve._private.http_util import (
     ASGIAppReplicaWrapper,
     make_fastapi_class_based_view,
 )
-from ray.serve.testing import make_local_deployment_handle
 from ray.serve._private.usage import ServeUsageTag
 from ray.serve._private.utils import (
     DEFAULT,
@@ -48,6 +47,7 @@ from ray.serve.exceptions import RayServeException
 from ray.serve.handle import DeploymentHandle
 from ray.serve.multiplex import _ModelMultiplexWrapper
 from ray.serve.schema import LoggingConfig, ServeInstanceDetails, ServeStatus
+from ray.serve.testing import make_local_deployment_handle
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
 from ray.serve._private import api as _private_api  # isort:skip

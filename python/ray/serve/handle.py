@@ -39,6 +39,7 @@ from ray.util.annotations import DeveloperAPI, PublicAPI
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
+
 @dataclass(frozen=True)
 class _InitHandleOptionsBase:
     """Init options for each ServeHandle instance.
