@@ -1,5 +1,4 @@
 import asyncio
-import concurrent.futures
 import pickle
 import sys
 import threading
@@ -124,102 +123,93 @@ def _make_request_metadata(
     )
 
 
-def test_calling_initialize_twice():
+@pytest.mark.asyncio
+async def test_calling_initialize_twice():
     user_callable_wrapper = _make_user_callable_wrapper()
 
-    user_callable_wrapper.initialize_callable().result()
+    await user_callable_wrapper.initialize_callable()
     assert isinstance(user_callable_wrapper.user_callable, BasicClass)
     with pytest.raises(RuntimeError):
-        user_callable_wrapper.initialize_callable().result()
+        await user_callable_wrapper.initialize_callable()
 
 
-def test_calling_methods_before_initialize():
+@pytest.mark.asyncio
+async def test_calling_methods_before_initialize():
     user_callable_wrapper = _make_user_callable_wrapper()
 
     with pytest.raises(RuntimeError):
-        user_callable_wrapper.call_user_method(None, tuple(), dict()).result()
+        await user_callable_wrapper.call_user_method(None, tuple(), dict())
 
     with pytest.raises(RuntimeError):
-        user_callable_wrapper.call_user_health_check().result()
+        await user_callable_wrapper.call_user_health_check()
 
     with pytest.raises(RuntimeError):
-        user_callable_wrapper.call_reconfigure(None).result()
+        await user_callable_wrapper.call_reconfigure(None)
 
 
-def test_basic_class_callable():
+@pytest.mark.asyncio
+async def test_basic_class_callable():
     user_callable_wrapper = _make_user_callable_wrapper()
 
-    user_callable_wrapper.initialize_callable().result()
+    await user_callable_wrapper.initialize_callable()
 
     # Call non-generator method with is_streaming.
     request_metadata = _make_request_metadata(is_streaming=True)
     with pytest.raises(RayTaskError, match="did not return a generator."):
-        user_callable_wrapper.call_user_method(
-            request_metadata, tuple(), dict()
-        ).result()
+        await user_callable_wrapper.call_user_method(request_metadata, tuple(), dict())
 
     # Test calling default sync `__call__` method.
     request_metadata = _make_request_metadata()
     assert (
-        user_callable_wrapper.call_user_method(
-            request_metadata, tuple(), dict()
-        ).result()
+        await user_callable_wrapper.call_user_method(request_metadata, tuple(), dict())
     ) == "hi"
     assert (
-        user_callable_wrapper.call_user_method(
+        await user_callable_wrapper.call_user_method(
             request_metadata, ("-arg",), dict()
-        ).result()
-        == "hi-arg"
-    )
+        )
+    ) == "hi-arg"
     assert (
-        user_callable_wrapper.call_user_method(
+        await user_callable_wrapper.call_user_method(
             request_metadata, tuple(), {"suffix": "-kwarg"}
-        ).result()
-        == "hi-kwarg"
-    )
+        )
+    ) == "hi-kwarg"
     with pytest.raises(RayTaskError, match="uh-oh"):
-        user_callable_wrapper.call_user_method(
+        await user_callable_wrapper.call_user_method(
             request_metadata, tuple(), {"raise_exception": True}
-        ).result()
+        )
 
     # Call non-generator async method with is_streaming.
     request_metadata = _make_request_metadata(
         call_method="call_async", is_streaming=True
     )
     with pytest.raises(RayTaskError, match="did not return a generator."):
-        user_callable_wrapper.call_user_method(
-            request_metadata, tuple(), dict()
-        ).result()
+        await user_callable_wrapper.call_user_method(request_metadata, tuple(), dict())
 
     # Test calling `call_async` method.
     request_metadata = _make_request_metadata(call_method="call_async")
     assert (
-        user_callable_wrapper.call_user_method(
-            request_metadata, tuple(), dict()
-        ).result()
-        == "hi"
-    )
+        await user_callable_wrapper.call_user_method(request_metadata, tuple(), dict())
+    ) == "hi"
     assert (
-        user_callable_wrapper.call_user_method(
+        await user_callable_wrapper.call_user_method(
             request_metadata, ("-arg",), dict()
-        ).result()
-        == "hi-arg"
-    )
+        )
+    ) == "hi-arg"
     assert (
-        user_callable_wrapper.call_user_method(
+        await user_callable_wrapper.call_user_method(
             request_metadata, tuple(), {"suffix": "-kwarg"}
-        ).result()
-        == "hi-kwarg"
-    )
+        )
+    ) == "hi-kwarg"
     with pytest.raises(RayTaskError, match="uh-oh"):
-        user_callable_wrapper.call_user_method(
+        await user_callable_wrapper.call_user_method(
             request_metadata, tuple(), {"raise_exception": True}
-        ).result()
+        )
 
 
-def test_basic_class_callable_generators():
+@pytest.mark.asyncio
+async def test_basic_class_callable_generators():
     user_callable_wrapper = _make_user_callable_wrapper()
-    user_callable_wrapper.initialize_callable().result()
+    await user_callable_wrapper.initialize_callable()
 
     result_list = []
 
@@ -233,28 +223,28 @@ def test_basic_class_callable_generators():
     with pytest.raises(
         RayTaskError, match="Method 'call_generator' returned a generator."
     ):
-        user_callable_wrapper.call_user_method(
+        await user_callable_wrapper.call_user_method(
             request_metadata, (10,), dict(), generator_result_callback=append_to_list
-        ).result()
+        )
 
     # Call sync generator.
     request_metadata = _make_request_metadata(
         call_method="call_generator", is_streaming=True
     )
-    user_callable_wrapper.call_user_method(
+    await user_callable_wrapper.call_user_method(
         request_metadata, (10,), dict(), generator_result_callback=append_to_list
-    ).result()
+    )
     assert result_list == list(range(10))
     result_list.clear()
 
     # Call sync generator raising exception.
     with pytest.raises(RayTaskError, match="uh-oh"):
-        user_callable_wrapper.call_user_method(
+        await user_callable_wrapper.call_user_method(
             request_metadata,
             (10,),
             {"raise_exception": True},
             generator_result_callback=append_to_list,
-        ).result()
+        )
     assert result_list == [0]
     result_list.clear()
 
@@ -265,69 +255,67 @@ def test_basic_class_callable_generators():
     with pytest.raises(
         RayTaskError, match="Method 'call_async_generator' returned a generator."
     ):
-        user_callable_wrapper.call_user_method(
+        await user_callable_wrapper.call_user_method(
             request_metadata, (10,), dict(), generator_result_callback=append_to_list
-        ).result()
+        )
 
     # Call async generator.
     request_metadata = _make_request_metadata(
         call_method="call_async_generator", is_streaming=True
     )
-    user_callable_wrapper.call_user_method(
+    await user_callable_wrapper.call_user_method(
         request_metadata, (10,), dict(), generator_result_callback=append_to_list
-    ).result()
+    )
     assert result_list == list(range(10))
     result_list.clear()
 
     # Call async generator raising exception.
     with pytest.raises(RayTaskError, match="uh-oh"):
-        user_callable_wrapper.call_user_method(
+        await user_callable_wrapper.call_user_method(
             request_metadata,
             (10,),
             {"raise_exception": True},
             generator_result_callback=append_to_list,
-        ).result()
+        )
     assert result_list == [0]
 
 
+@pytest.mark.asyncio
 @pytest.mark.parametrize("fn", [basic_sync_function, basic_async_function])
-def test_basic_function_callable(fn: Callable):
+async def test_basic_function_callable(fn: Callable):
     user_callable_wrapper = _make_user_callable_wrapper(fn)
-    user_callable_wrapper.initialize_callable().result()
+    await user_callable_wrapper.initialize_callable()
 
     # Call non-generator function with is_streaming.
     request_metadata = _make_request_metadata(is_streaming=True)
     with pytest.raises(RayTaskError, match="did not return a generator."):
-        user_callable_wrapper.call_user_method(
-            request_metadata, tuple(), dict()
-        ).result()
+        await user_callable_wrapper.call_user_method(request_metadata, tuple(), dict())
 
     request_metadata = _make_request_metadata()
     assert (
-        user_callable_wrapper.call_user_method(
-            request_metadata, tuple(), dict()
-        ).result()
+        await user_callable_wrapper.call_user_method(request_metadata, tuple(), dict())
     ) == "hi"
     assert (
-        user_callable_wrapper.call_user_method(
+        await user_callable_wrapper.call_user_method(
             request_metadata, ("-arg",), dict()
-        ).result()
+        )
     ) == "hi-arg"
     assert (
-        user_callable_wrapper.call_user_method(
+        await user_callable_wrapper.call_user_method(
             request_metadata, tuple(), {"suffix": "-kwarg"}
-        ).result()
+        )
     ) == "hi-kwarg"
     with pytest.raises(RayTaskError, match="uh-oh"):
-        user_callable_wrapper.call_user_method(
+        await user_callable_wrapper.call_user_method(
             request_metadata, tuple(), {"raise_exception": True}
-        ).result()
+        )
 
 
+@pytest.mark.asyncio
 @pytest.mark.parametrize("fn", [basic_sync_generator, basic_async_generator])
-def test_basic_function_callable_generators(fn: Callable):
+async def test_basic_function_callable_generators(fn: Callable):
     user_callable_wrapper = _make_user_callable_wrapper(fn)
-    user_callable_wrapper.initialize_callable().result()
+    await user_callable_wrapper.initialize_callable()
 
     result_list = []
 
@@ -339,28 +327,28 @@ def test_basic_function_callable_generators(fn: Callable):
     with pytest.raises(
         RayTaskError, match=f"Method '{fn.__name__}' returned a generator."
     ):
-        user_callable_wrapper.call_user_method(
+        await user_callable_wrapper.call_user_method(
             request_metadata, (10,), dict(), generator_result_callback=append_to_list
-        ).result()
+        )
 
     # Call generator function.
     request_metadata = _make_request_metadata(
         call_method="call_generator", is_streaming=True
     )
-    user_callable_wrapper.call_user_method(
+    await user_callable_wrapper.call_user_method(
         request_metadata, (10,), dict(), generator_result_callback=append_to_list
-    ).result()
+    )
     assert result_list == list(range(10))
     result_list.clear()
 
     # Call generator function raising exception.
     with pytest.raises(RayTaskError, match="uh-oh"):
-        user_callable_wrapper.call_user_method(
+        await user_callable_wrapper.call_user_method(
             request_metadata,
             (10,),
             {"raise_exception": True},
             generator_result_callback=append_to_list,
-        ).result()
+        )
     assert result_list == [0]
 
 
@@ -387,19 +375,20 @@ async def test_user_code_runs_on_separate_loop():
             return user_method_loop
 
     user_callable_wrapper = _make_user_callable_wrapper(GetLoop)
-    user_callable_wrapper.initialize_callable().result()
+    await user_callable_wrapper.initialize_callable()
     request_metadata = _make_request_metadata()
-    user_code_loop = user_callable_wrapper.call_user_method(
+    user_code_loop = await user_callable_wrapper.call_user_method(
         request_metadata, tuple(), dict()
-    ).result()
+    )
     assert isinstance(user_code_loop, asyncio.AbstractEventLoop)
     assert user_code_loop != main_loop
 
     # `check_health` method asserts that it runs on the correct loop.
-    user_callable_wrapper.call_user_health_check().result()
+    await user_callable_wrapper.call_user_health_check()
 
 
-def test_callable_with_async_init():
+@pytest.mark.asyncio
+async def test_callable_with_async_init():
     class AsyncInitializer:
         async def __init__(self, msg: str):
             await asyncio.sleep(0.001)
@@ -413,17 +402,16 @@ def test_callable_with_async_init():
         AsyncInitializer,
         msg,
     )
-    user_callable_wrapper.initialize_callable().result()
+    await user_callable_wrapper.initialize_callable()
     request_metadata = _make_request_metadata()
     assert (
-        user_callable_wrapper.call_user_method(
-            request_metadata, tuple(), dict()
-        ).result()
+        await user_callable_wrapper.call_user_method(request_metadata, tuple(), dict())
     ) == msg
 
 
+@pytest.mark.asyncio
 @pytest.mark.parametrize("async_del", [False, True])
-def test_destructor_only_called_once(async_del: bool):
+async def test_destructor_only_called_once(async_del: bool):
     num_destructor_calls = 0
 
     if async_del:
@@ -443,12 +431,15 @@ def test_destructor_only_called_once(async_del: bool):
     user_callable_wrapper = _make_user_callable_wrapper(
         DestroyerOfNothing,
     )
-    user_callable_wrapper.initialize_callable().result()
+    await user_callable_wrapper.initialize_callable()
 
     # Call `call_destructor` many times in parallel; only the first one should actually
     # run the `__del__` method.
-    concurrent.futures.wait(
-        [user_callable_wrapper.call_destructor() for _ in range(100)]
+    await asyncio.gather(
+        *[
+            asyncio.ensure_future(user_callable_wrapper.call_destructor())
+            for _ in range(100)
+        ]
     )
     assert num_destructor_calls == 1
 
@@ -470,22 +461,20 @@ async def test_no_user_health_check_not_blocked():
     user_callable_wrapper = _make_user_callable_wrapper(
         LoopBlocker,
     )
-    user_callable_wrapper.initialize_callable().result()
+    await user_callable_wrapper.initialize_callable()
     request_metadata = _make_request_metadata()
     blocked_future = user_callable_wrapper.call_user_method(
         request_metadata, tuple(), dict()
     )
-    _, pending = concurrent.futures.wait([blocked_future], timeout=0.01)
+    _, pending = await asyncio.wait([blocked_future], timeout=0.01)
     assert len(pending) == 1
 
     for _ in range(100):
         # If this called something on the event loop, it'd be blocked.
-        # Instead, `user_callable_wrapper.call_user_health_check` returns None
-        # when there's no user health check configured.
-        assert user_callable_wrapper.call_user_health_check() is None
+        await user_callable_wrapper.call_user_health_check()
 
     sync_event.set()
-    assert blocked_future.result() == "Sorry I got stuck!"
+    assert await blocked_future == "Sorry I got stuck!"
 
 
 class gRPCClass:
@@ -497,18 +486,19 @@ class gRPCClass:
             yield serve_pb2.UserDefinedResponse(greeting=f"Hello {msg.greeting} {i}!")
 
 
-def test_grpc_unary_request():
+@pytest.mark.asyncio
+async def test_grpc_unary_request():
     user_callable_wrapper = _make_user_callable_wrapper(gRPCClass)
-    user_callable_wrapper.initialize_callable().result()
+    await user_callable_wrapper.initialize_callable()
 
     grpc_request = gRPCRequest(
         pickle.dumps(serve_pb2.UserDefinedResponse(greeting="world"))
     )
 
     request_metadata = _make_request_metadata(call_method="greet", is_grpc_request=True)
-    _, result_bytes = user_callable_wrapper.call_user_method(
+    _, result_bytes = await user_callable_wrapper.call_user_method(
         request_metadata, (grpc_request,), dict()
-    ).result()
+    )
     assert isinstance(result_bytes, bytes)
 
     result = serve_pb2.UserDefinedResponse()
@@ -517,9 +507,9 @@ def test_grpc_unary_request():
 
 
 @pytest.mark.asyncio
-def test_grpc_streaming_request():
+async def test_grpc_streaming_request():
     user_callable_wrapper = _make_user_callable_wrapper(gRPCClass)
-    user_callable_wrapper.initialize_callable()
+    await user_callable_wrapper.initialize_callable()
 
     grpc_request = gRPCRequest(
         pickle.dumps(serve_pb2.UserDefinedResponse(greeting="world"))
@@ -533,12 +523,12 @@ def test_grpc_streaming_request():
     request_metadata = _make_request_metadata(
         call_method="stream", is_grpc_request=True, is_streaming=True
     )
-    user_callable_wrapper.call_user_method(
+    await user_callable_wrapper.call_user_method(
         request_metadata,
         (grpc_request,),
         dict(),
         generator_result_callback=append_to_list,
-    ).result()
+    )
 
     assert len(result_list) == 10
     for i, (_, result_bytes) in enumerate(result_list):
@@ -566,10 +556,11 @@ class FastAPIRequestHandler:
         return PlainTextResponse(f"Hello {msg}!")
 
 
+@pytest.mark.asyncio
 @pytest.mark.parametrize("callable", [RawRequestHandler, FastAPIRequestHandler])
-def test_http_handler(callable: Callable, monkeypatch):
+async def test_http_handler(callable: Callable, monkeypatch):
     user_callable_wrapper = _make_user_callable_wrapper(callable)
-    user_callable_wrapper.initialize_callable().result()
+    await user_callable_wrapper.initialize_callable()
 
     @dataclass
     class MockReplicaContext:
@@ -620,12 +611,12 @@ def test_http_handler(callable: Callable, monkeypatch):
         result_list.append(item)
 
     request_metadata = _make_request_metadata(is_http_request=True, is_streaming=True)
-    user_callable_wrapper.call_user_method(
+    await user_callable_wrapper.call_user_method(
         request_metadata,
         (http_request,),
         dict(),
         generator_result_callback=append_to_list,
-    ).result()
+    )
 
     assert result_list[0]["type"] == "http.response.start"
     assert result_list[0]["status"] == 200
