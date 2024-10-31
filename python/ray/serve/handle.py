@@ -18,6 +18,7 @@ from ray.serve._private.common import (
 )
 from ray.serve._private.constants import SERVE_LOGGER_NAME
 from ray.serve._private.default_impl import (
+    CreateRouterCallable,
     create_dynamic_handle_options,
     create_init_handle_options,
     create_router,
@@ -108,6 +109,7 @@ class _DeploymentHandleBase:
         *,
         handle_options: Optional[_DynamicHandleOptionsBase] = None,
         _router: Optional[Router] = None,
+        _create_router: Optional[CreateRouterCallable] = None,
         _request_counter: Optional[metrics.Counter] = None,
         _recorded_telemetry: bool = False,
     ):
@@ -124,6 +126,10 @@ class _DeploymentHandleBase:
         self._recorded_telemetry = _recorded_telemetry
 
         self._router: Optional[Router] = _router
+        if _create_router is None:
+            self._create_router = create_router
+        else:
+            self._create_router = _create_router
 
         logger.info(
             f"Created DeploymentHandle '{self.handle_id}' for {self.deployment_id}.",
@@ -149,7 +155,7 @@ class _DeploymentHandleBase:
 
     def _get_or_create_router(self) -> Router:
         if self._router is None:
-            self._router = create_router(
+            self._router = self._create_router(
                 handle_id=self.handle_id,
                 deployment_id=self.deployment_id,
                 handle_options=self.init_options,
@@ -245,6 +251,7 @@ class _DeploymentHandleBase:
             self.app_name,
             handle_options=new_handle_options,
             _router=self._router,
+            _create_router=self._create_router,
             _request_counter=self.request_counter,
             _recorded_telemetry=self._recorded_telemetry,
         )

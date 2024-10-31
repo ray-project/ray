@@ -109,8 +109,11 @@ def _get_node_id_and_az() -> Tuple[str, Optional[str]]:
     return node_id, az
 
 
+# Interface definition for create_router.
+CreateRouterCallable = Callable[[str, DeploymentID, Any], Router]
+
+
 def create_router(
-    *,
     handle_id: str,
     deployment_id: DeploymentID,
     handle_options: Any,
