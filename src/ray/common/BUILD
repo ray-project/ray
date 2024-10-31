@@ -280,9 +280,6 @@ ray_cc_library(
     name = "source_location",
     srcs = ["source_location.cc"],
     hdrs = ["source_location.h"],
-    deps = [
-        "@com_google_absl//absl/strings:str_format",
-    ],
 )
 
 ray_cc_test(

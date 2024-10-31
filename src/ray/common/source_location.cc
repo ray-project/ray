@@ -1,4 +1,4 @@
-// Copyright 2017 The Ray Authors.
+// Copyright 2024 The Ray Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -14,15 +14,13 @@
 
 #include "ray/common/source_location.h"
 
-#include "absl/strings/str_format.h"
-
 namespace ray {
 
 bool IsValidSourceLoc(const SourceLocation &loc) { return !loc.filename.empty(); }
 
 std::ostream &operator<<(std::ostream &os, const SourceLocation &loc) {
   if (IsValidSourceLoc(loc)) {
-    os << absl::StreamFormat("%s:%d", loc.filename, loc.line_no);
+    os << loc.filename << ":" << loc.line_no;
   }
   return os;
 }
