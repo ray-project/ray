@@ -784,10 +784,14 @@ class Dataset:
         if not callable(fn):
             raise ValueError("`fn` must be callable, got {}".format(fn))
 
-        assert batch_format in [
+        if batch_format not in [
             "pandas",
             "pyarrow",
-        ], f"batch_format argument must be 'pandas' or 'pyarrow', got: {batch_format}"
+        ]:
+            raise ValueError(
+                f"batch_format argument must be 'pandas' or 'pyarrow', "
+                f"got: {batch_format}"
+            )
 
         return self.map_batches(
             add_column,
@@ -842,12 +846,12 @@ class Dataset:
                 ray (e.g., num_gpus=1 to request GPUs for the map tasks).
         """  # noqa: E501
 
-        # Historically, we have also accesspted lists with duplicate column names.
+        # Historically, we have also accepted lists with duplicate column names.
         # This is not tolerated by the underlying pyarrow.Table.drop_columns method.
         cols_without_duplicates = list(set(cols))
 
         def drop_columns(batch):
-            return batch.drop(columns=cols_without_duplicates)
+            return batch.drop_columns(columns=cols_without_duplicates)
 
         return self.map_batches(
             drop_columns,
