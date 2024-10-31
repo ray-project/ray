@@ -1,3 +1,4 @@
+import asyncio
 import concurrent.futures
 import logging
 import time
@@ -54,7 +55,7 @@ class _LocalReplicaResult(ReplicaResult):
             not self._is_streaming
         ), "get_async() can only be called on a non-streaming _LocalReplicaResult"
 
-        raise NotImplementedError("async not implemented yet.")
+        return await asyncio.wrap_future(self._future)
 
     def __next__(self):
         assert self._streaming, (
