@@ -50,6 +50,7 @@ from ray.data._internal.logical.operators.n_ary_operator import Union, Zip
 from ray.data._internal.logical.operators.write_operator import Write
 from ray.data._internal.logical.optimizers import (
     PhysicalOptimizer,
+    get_execution_plan,
     get_logical_rules,
     get_physical_rules,
     register_logical_rule,
@@ -1698,7 +1699,7 @@ def test_zero_copy_fusion_eliminate_build_output_blocks(ray_start_regular_shared
     )
 
 
-def test_logical_optimization_e2e():
+def test_logical_optimization_e2e(ray_start_regular_shared):
     ds = ray.data.range(10, override_num_blocks=2)
     ds = ds.randomize_block_order()
     ds = ds.map_batches(lambda x: x)
@@ -1706,9 +1707,14 @@ def test_logical_optimization_e2e():
     assert set(extract_values("id", ds.take_all())) == set(range(10))
 
     # Expected execution plan:
-    # InputDataBuffer[Input]
-    # -> TaskPoolMapOperator[ReadRange->MapBatches(<lambda>)]
-    # -> AllToAllOperator[RandomizeBlockOrder]
+    expected_execution_plan = (
+        "InputDataBuffer[Input] -> "
+        "TaskPoolMapOperator[ReadRange->MapBatches(<lambda>)] -> "
+        "AllToAllOperator[RandomizeBlockOrder]"
+    )
+    assert str(get_execution_plan(ds._plan._logical_plan).dag) == str(
+        expected_execution_plan
+    )
 
     # check that randomize_block_order is pushed to the end
     name = "ReadRange->MapBatches(<lambda>)"
