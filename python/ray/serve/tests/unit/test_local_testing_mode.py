@@ -1,5 +1,5 @@
 from ray import serve
-from ray.serve.testing import LocalDeploymentHandle
+from ray.serve.handle import DeploymentHandle
 
 # TODO:
 # - assert that serve is *not* initialized?? or at least warn.
@@ -7,7 +7,6 @@ from ray.serve.testing import LocalDeploymentHandle
 # - implement better response types.
 # - inherit from regular types (or shared ABC).
 # - support http.
-# - make LocalDeploymentHandle a public import?
 
 
 def test_basic():
@@ -20,5 +19,5 @@ def test_basic():
             return f"Hello {name} from {self._my_name}!"
 
     h = serve.run(D.bind("Theodore"), local_testing_mode=True)
-    assert isinstance(h, LocalDeploymentHandle)
+    assert isinstance(h, DeploymentHandle)
     assert h.remote("Edith").result() == "Hello Edith from Theodore!"

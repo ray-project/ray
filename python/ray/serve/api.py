@@ -21,7 +21,7 @@ from ray.serve._private.http_util import (
     ASGIAppReplicaWrapper,
     make_fastapi_class_based_view,
 )
-from ray.serve.testing import LocalDeploymentHandle
+from ray.serve.testing import make_local_deployment_handle
 from ray.serve._private.usage import ServeUsageTag
 from ray.serve._private.utils import (
     DEFAULT,
@@ -451,10 +451,11 @@ def _run(
         built_app = build_app(
             target,
             name=name,
-            make_deployment_handle=LocalDeploymentHandle,
+            make_deployment_handle=make_local_deployment_handle,
         )
         for local_deployment_handle in built_app.deployment_handles.values():
-            local_deployment_handle.do_init()
+            # TODO: do this lazily?
+            local_deployment_handle._init()
 
         handle = built_app.deployment_handles[built_app.ingress_deployment_name]
     else:
