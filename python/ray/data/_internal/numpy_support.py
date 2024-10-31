@@ -1,4 +1,5 @@
 import collections
+import logging
 from datetime import datetime
 from typing import Any, Dict, List, Union
 
@@ -6,6 +7,9 @@ import numpy as np
 
 from ray.air.util.tensor_extensions.utils import create_ragged_ndarray
 from ray.data._internal.util import _truncated_repr
+
+
+logger = logging.getLogger(__file__)
 
 
 def is_array_like(value: Any) -> bool:
@@ -128,6 +132,8 @@ def convert_udf_returns_to_numpy(udf_return_col: Any) -> Any:
             else:
                 udf_return_col = np.array(udf_return_col)
         except Exception as e:
+            logger.error(f"Failed to convert column values to numpy array: {_truncated_repr(udf_return_col)}", exc_info=e)
+
             raise ValueError(
                 "Failed to convert column values to numpy array: "
                 f"({_truncated_repr(udf_return_col)}): {e}."
@@ -137,6 +143,8 @@ def convert_udf_returns_to_numpy(udf_return_col: Any) -> Any:
         try:
             udf_return_col = np.array(udf_return_col)
         except Exception as e:
+            logger.error(f"Failed to convert column values to numpy array: {_truncated_repr(udf_return_col)}", exc_info=e)
+
             raise ValueError(
                 "Failed to convert column values to numpy array: "
                 f"({_truncated_repr(udf_return_col)}): {e}."
