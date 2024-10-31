@@ -907,7 +907,7 @@ class IMPALA(Algorithm):
             waiting_processed_sample_batches,
             ignore_ray_errors=(
                 self.config.ignore_env_runner_failures
-                or self.config.recreate_failed_env_runners
+                or self.config.restart_failed_env_runners
             ),
         )
 
@@ -1154,7 +1154,7 @@ class IMPALA(Algorithm):
             waiting_processed_sample_batches,
             ignore_ray_errors=(
                 self.config.ignore_env_runner_failures
-                or self.config.recreate_failed_env_runners
+                or self.config.restart_failed_env_runners
             ),
         )
 
@@ -1224,7 +1224,7 @@ class IMPALA(Algorithm):
             if (
                 self.config.batch_mode == "truncate_episodes"
                 and self.config.enable_connectors
-                and self.config.recreate_failed_env_runners
+                and self.config.restart_failed_env_runners
             ):
                 if any(
                     SampleBatch.VF_PREDS in pb

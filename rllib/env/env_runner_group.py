@@ -133,7 +133,7 @@ class EnvRunnerGroup:
             "resources": self._remote_config.custom_resources_per_env_runner,
             "max_restarts": (
                 config.max_num_env_runner_restarts
-                if config.recreate_failed_env_runners
+                if config.restart_failed_env_runners
                 else 0
             ),
         }
@@ -176,7 +176,7 @@ class EnvRunnerGroup:
 
         self._logdir = logdir
         self._ignore_ray_errors_on_env_runners = (
-            config.ignore_env_runner_failures or config.recreate_failed_env_runners
+            config.ignore_env_runner_failures or config.restart_failed_env_runners
         )
 
         # Create remote worker manager.
