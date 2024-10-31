@@ -76,7 +76,7 @@ class ParquetDatasink(_FileDatasink):
         def write_blocks_to_path():
             with self.open_output_stream(write_path) as file:
                 tables = [BlockAccessor.for_block(block).to_arrow() for block in blocks]
-                schema = self._merge_nullable_fields(tables)
+                schema = self._try_merge_nullable_fields(tables)
                 with pq.ParquetWriter(file, schema, **write_kwargs) as writer:
                     for table in tables:
                         if not table.schema.equals(schema):
@@ -96,14 +96,23 @@ class ParquetDatasink(_FileDatasink):
     def num_rows_per_write(self) -> Optional[int]:
         return self.num_rows_per_file
 
-    def _merge_nullable_fields(
+    def _try_merge_nullable_fields(
         self, tables: List["pyarrow.Table"]
     ) -> "pyarrow.lib.Schema":
         """
         Merge the nullable fields of the list of tables from multiple blocks.
 
         If blocks's schema differ only by nullable status on a field,
-        we will make a "relaxed" schema that's compatible
+        we will make a "relaxed" schema that's compatible.
+
+        NOTE that this function only merges on nullable fields, not
+        on anything else.
+
+        Raises:
+            ValueError: If the schemas differ on anything other than nullable fields.
+
+        Returns:
+            The merged schema.
         """
         merged_schema = tables[0].schema
         import pyarrow
