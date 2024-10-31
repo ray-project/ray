@@ -20,6 +20,7 @@
 #include <boost/asio/io_service.hpp>
 #include <boost/functional/hash.hpp>
 #include <queue>
+#include <string_view>
 #include <unordered_set>
 #include <utility>
 #include <vector>
@@ -116,7 +117,7 @@ class WorkerPoolInterface {
   virtual const std::vector<std::shared_ptr<WorkerInterface>> GetAllRegisteredWorkers(
       bool filter_dead_workers = false, bool filter_io_workers = false) const = 0;
 
-  virtual ~WorkerPoolInterface(){};
+  virtual ~WorkerPoolInterface() = default;
 };
 
 /// \class IOWorkerPoolInterface
@@ -139,7 +140,7 @@ class IOWorkerPoolInterface {
   virtual void PopDeleteWorker(
       std::function<void(std::shared_ptr<WorkerInterface>)> callback) = 0;
 
-  virtual ~IOWorkerPoolInterface(){};
+  virtual ~IOWorkerPoolInterface() = default;
 };
 
 class WorkerInterface;
@@ -152,7 +153,7 @@ enum class WorkerUnfitForTaskReason {
   DYNAMIC_OPTIONS_MISMATCH = 3,  // dynamic options mismatch
   OTHERS = 4,                    // reasons we don't do stats for (e.g. language)
 };
-static constexpr absl::string_view kWorkerUnfitForTaskReasonDebugName[] = {
+static constexpr std::string_view kWorkerUnfitForTaskReasonDebugName[] = {
     "NONE",
     "ROOT_MISMATCH",
     "RUNTIME_ENV_MISMATCH",
@@ -217,7 +218,7 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
              const std::function<double()> get_time);
 
   /// Destructor responsible for freeing a set of workers owned by this class.
-  virtual ~WorkerPool();
+  virtual ~WorkerPool() override;
 
   /// Start the worker pool. Could only be called once.
   void Start();
@@ -316,7 +317,7 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   /// Add an idle spill I/O worker to the pool.
   ///
   /// \param worker The idle spill I/O worker to add.
-  void PushSpillWorker(const std::shared_ptr<WorkerInterface> &worker);
+  void PushSpillWorker(const std::shared_ptr<WorkerInterface> &worker) override;
 
   /// Pop an idle spill I/O worker from the pool and trigger a callback when
   /// an spill I/O worker is available.
@@ -324,12 +325,13 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   /// pool once the worker has completed its work.
   ///
   /// \param callback The callback that returns an available spill I/O worker.
-  void PopSpillWorker(std::function<void(std::shared_ptr<WorkerInterface>)> callback);
+  void PopSpillWorker(
+      std::function<void(std::shared_ptr<WorkerInterface>)> callback) override;
 
   /// Add an idle restore I/O worker to the pool.
   ///
   /// \param worker The idle I/O worker to add.
-  void PushRestoreWorker(const std::shared_ptr<WorkerInterface> &worker);
+  void PushRestoreWorker(const std::shared_ptr<WorkerInterface> &worker) override;
 
   /// Pop an idle restore I/O worker from the pool and trigger a callback when
   /// an restore I/O worker is available.
@@ -337,7 +339,8 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   /// pool once the worker has completed its work.
   ///
   /// \param callback The callback that returns an available restore I/O worker.
-  void PopRestoreWorker(std::function<void(std::shared_ptr<WorkerInterface>)> callback);
+  void PopRestoreWorker(
+      std::function<void(std::shared_ptr<WorkerInterface>)> callback) override;
 
   /// Add an idle delete I/O worker to the pool.
   ///
@@ -346,20 +349,22 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   /// This method is just a higher level abstraction to hide that implementation detail.
   ///
   /// \param worker The idle I/O worker. It could be either spill or restore I/O worker.
-  void PushDeleteWorker(const std::shared_ptr<WorkerInterface> &worker);
+  void PushDeleteWorker(const std::shared_ptr<WorkerInterface> &worker) override;
 
   /// Pop an idle delete I/O worker from the pool and trigger a callback when
   /// when delete I/O worker is available.
   /// NOTE: There's currently no concept of delete workers or delete worker pools.
   /// This method just finds more available I/O workers from either spill or restore pool
   /// and pop them out.
-  void PopDeleteWorker(std::function<void(std::shared_ptr<WorkerInterface>)> callback);
+  void PopDeleteWorker(
+      std::function<void(std::shared_ptr<WorkerInterface>)> callback) override;
 
   /// See interface.
-  void PushWorker(const std::shared_ptr<WorkerInterface> &worker);
+  void PushWorker(const std::shared_ptr<WorkerInterface> &worker) override;
 
   /// See interface.
-  void PopWorker(const TaskSpecification &task_spec, const PopWorkerCallback &callback);
+  void PopWorker(const TaskSpecification &task_spec,
+                 const PopWorkerCallback &callback) override;
 
   /// Try to prestart a number of workers suitable the given task spec. Prestarting
   /// is needed since core workers request one lease at a time, if starting is slow,
@@ -389,7 +394,7 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   ///
   /// \return A list containing all the workers.
   const std::vector<std::shared_ptr<WorkerInterface>> GetAllRegisteredWorkers(
-      bool filter_dead_workers = false, bool filter_io_workers = false) const;
+      bool filter_dead_workers = false, bool filter_io_workers = false) const override;
 
   /// Get all the registered drivers.
   ///
