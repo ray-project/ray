@@ -1,6 +1,6 @@
 import logging
 import posixpath
-from typing import TYPE_CHECKING, Any, Callable, Dict, Iterable, Optional
+from typing import TYPE_CHECKING, Any, Callable, Dict, Iterable, List, Optional
 
 from ray.data._internal.execution.interfaces import TaskContext
 from ray.data._internal.util import call_with_retry
@@ -75,10 +75,12 @@ class ParquetDatasink(_FileDatasink):
 
         def write_blocks_to_path():
             with self.open_output_stream(write_path) as file:
-                schema = BlockAccessor.for_block(blocks[0]).to_arrow().schema
+                tables = [BlockAccessor.for_block(block).to_arrow() for block in blocks]
+                schema = self._merge_nullable_fields(tables)
                 with pq.ParquetWriter(file, schema, **write_kwargs) as writer:
-                    for block in blocks:
-                        table = BlockAccessor.for_block(block).to_arrow()
+                    for table in tables:
+                        if not table.schema.equals(schema):
+                            table = table.cast(schema)
                         writer.write_table(table)
 
         logger.debug(f"Writing {write_path} file.")
@@ -93,3 +95,58 @@ class ParquetDatasink(_FileDatasink):
     @property
     def num_rows_per_write(self) -> Optional[int]:
         return self.num_rows_per_file
+
+    def _merge_nullable_fields(
+        self, tables: List["pyarrow.Table"]
+    ) -> "pyarrow.lib.Schema":
+        """
+        Merge the nullable fields of the list of tables from multiple blocks.
+
+        If blocks's schema differ only by nullable status on a field,
+        we will make a "relaxed" schema that's compatible
+        """
+        merged_schema = tables[0].schema
+        import pyarrow
+
+        for table in tables[1:]:
+            table_schema = table.schema
+            if merged_schema.equals(table_schema):
+                continue
+
+            # Schema mismatch found. If fields only differ by nullable status,
+            # we can continue.
+            n_merged_schema = len(merged_schema.names)
+            n_table_schema = len(table_schema.names)
+            if n_merged_schema != n_table_schema:
+                raise ValueError(
+                    f"Schema mismatch found: {merged_schema} vs {table_schema}"
+                )
+
+            for field_idx in range(n_merged_schema):
+                field = merged_schema.field(field_idx)
+                table_field = table_schema.field(field_idx)
+
+                if field.equals(table_field):
+                    continue
+
+                if field.name != table_field.name:
+                    raise ValueError(
+                        f"Schema mismatch found: {merged_schema} vs {table_schema}"
+                    )
+
+                # Check if fields only differ by nullable status.
+                if field.type == pyarrow.null() and table_field.nullable:
+                    # Make the merged schema nullable on the field.
+                    merged_schema = merged_schema.set(field_idx, table_field)
+
+                if table_field.type == pyarrow.null() and field.nullable:
+                    # Make the table schema nullable on the field.
+                    table_schema = table_schema.set(field_idx, field)
+
+            # This makes sure we are only merging on nullable fields.
+            if not merged_schema.equals(table_schema):
+                raise ValueError(
+                    f"Schema mismatch found: {merged_schema} vs {table_schema}"
+                )
+
+        return merged_schema
