@@ -145,12 +145,15 @@ class ParquetDatasink(_FileDatasink):
 
                 # Check if fields only differ by nullable status.
                 if field.type == pyarrow.null() and table_field.nullable:
-                    # Make the merged schema nullable on the field.
-                    merged_schema = merged_schema.set(field_idx, table_field)
+                    merged_schema = merged_schema.set(
+                        field_idx, field.with_type(table_field.type)
+                    )
 
                 if table_field.type == pyarrow.null() and field.nullable:
                     # Make the table schema nullable on the field.
-                    table_schema = table_schema.set(field_idx, field)
+                    table_schema = table_schema.set(
+                        field_idx, table_field.with_type(field.type)
+                    )
 
             # This makes sure we are only merging on nullable fields.
             if not merged_schema.equals(table_schema):
