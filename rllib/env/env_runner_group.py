@@ -841,7 +841,7 @@ class EnvRunnerGroup:
         *,
         local_env_runner: bool = True,
         healthy_only: bool = True,
-        remote_worker_ids: Optional[List[int]] = None,
+        remote_worker_ids: List[int] = None,
         timeout_seconds: Optional[float] = None,
         return_obj_refs: bool = False,
         mark_healthy: bool = False,

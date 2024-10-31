@@ -605,10 +605,6 @@ class IMPALA(Algorithm):
             self._learner_thread = make_learner_thread(self.env_runner, self.config)
             self._learner_thread.start()
 
-        else:
-            # Set of EnvRunner indices to be weight-synched next.
-            self._env_runner_indices_to_update = set()
-
     @override(Algorithm)
     def training_step(self) -> ResultDict:
         # Old API stack.
@@ -627,7 +623,6 @@ class IMPALA(Algorithm):
                 env_runner_metrics,
                 env_runner_indices_to_update,
             ) = self._sample_and_get_connector_states()
-            self._env_runner_indices_to_update |= env_runner_indices_to_update
             # Reduce EnvRunner metrics over the n EnvRunners.
             self.metrics.merge_and_log_n_dicts(
                 env_runner_metrics, key=ENV_RUNNER_RESULTS
@@ -770,7 +765,6 @@ class IMPALA(Algorithm):
                         connector_states=connector_states,
                         rl_module_state=rl_module_state,
                     )
-                    self._env_runner_indices_to_update.clear()
 
         if env_runner_metrics or last_good_learner_results:
             return self.metrics.reduce()

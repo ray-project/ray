@@ -128,7 +128,7 @@ def _make_learner_connector(observation_space, action_space):
 # in the collection of the `rl_unplugged` data.
 def _env_creator(cfg):
     return wrap_atari_for_new_api_stack(
-        gym.make("ale_py:ALE/Pong-v5", **cfg),
+        gym.make("ALE/Pong-v5", **cfg),
         # Perform frame-stacking through ConnectorV2 API.
         framestack=4,
         dim=84,
