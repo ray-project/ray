@@ -114,16 +114,19 @@ class PandasBlockBuilder(TableBlockBuilder):
     def _table_from_pydict(columns: Dict[str, List[Any]]) -> "pandas.DataFrame":
         pandas = lazy_import_pandas()
 
+        pd_columns: Dict[str, Any] = dict()
+
         for column_name, column_values in columns.items():
             np_column_values = convert_udf_returns_to_numpy(column_values)
 
-            if column_name == TENSOR_COLUMN_NAME or isinstance(
-                next(iter(np_column_values), None), np.ndarray
-            ):
+            if column_name == TENSOR_COLUMN_NAME or np_column_values.ndim > 1:
                 from ray.data.extensions.tensor_extension import TensorArray
 
-                columns[column_name] = TensorArray(np_column_values)
-        return pandas.DataFrame(columns)
+                pd_columns[column_name] = TensorArray(np_column_values)
+            else:
+                pd_columns[column_name] = np_column_values
+
+        return pandas.DataFrame(pd_columns)
 
     @staticmethod
     def _concat_tables(tables: List["pandas.DataFrame"]) -> "pandas.DataFrame":
