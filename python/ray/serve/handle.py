@@ -150,8 +150,8 @@ class _DeploymentHandleBase:
     def _get_or_create_router(self) -> Router:
         if self._router is None:
             self._router = create_router(
-                self.handle_id,
-                self.deployment_id,
+                handle_id=self.handle_id,
+                deployment_id=self.deployment_id,
                 handle_options=self.init_options,
             )
 

@@ -68,29 +68,31 @@ def create_init_handle_options(**kwargs):
     return _InitHandleOptions.create(**kwargs)
 
 
-_global_async_loop = None
-_global_async_loop_creation_lock = threading.Lock()
+_router_thread_singleton_async_loop = None
+_router_thread_singleton_async_loop_creation_lock = threading.Lock()
 
 
-def _create_or_get_global_asyncio_event_loop_in_thread():
+def _get_router_thread_singleton_event_loop() -> asyncio.AbstractEventLoop:
     """Provides a global singleton asyncio event loop running in a daemon thread.
 
-    Thread-safe.
-    """
-    global _global_async_loop
-    if _global_async_loop is None:
-        with _global_async_loop_creation_lock:
-            if _global_async_loop is not None:
-                return _global_async_loop
+    This thread is shared by all routers.
 
-            _global_async_loop = asyncio.new_event_loop()
+    This method is thread safe.
+    """
+    global _router_thread_singleton_async_loop
+    if _router_thread_singleton_async_loop is None:
+        with _router_thread_singleton_async_loop_creation_lock:
+            if _router_thread_singleton_async_loop is not None:
+                return _router_thread_singleton_async_loop
+
+            _router_thread_singleton_async_loop = asyncio.new_event_loop()
             thread = threading.Thread(
                 daemon=True,
-                target=_global_async_loop.run_forever,
+                target=_router_thread_singleton_async_loop.run_forever,
             )
             thread.start()
 
-    return _global_async_loop
+    return _router_thread_singleton_async_loop
 
 
 def _get_node_id_and_az() -> Tuple[str, Optional[str]]:
@@ -119,7 +121,7 @@ def create_router(
     actor_id = get_current_actor_id()
     node_id, availability_zone = _get_node_id_and_az()
     controller_handle = _get_global_client()._controller
-    event_loop = _create_or_get_global_asyncio_event_loop_in_thread()
+    event_loop = _get_router_thread_singleton_event_loop()
     is_inside_ray_client_context = inside_ray_client_context()
 
     replica_scheduler = PowerOfTwoChoicesReplicaScheduler(
