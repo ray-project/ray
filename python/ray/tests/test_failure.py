@@ -19,7 +19,7 @@ from ray._private.test_utils import (
     init_error_pubsub,
     wait_for_condition,
 )
-from ray.exceptions import GetTimeoutError, RayActorError, RayTaskError
+from ray.exceptions import GetTimeoutError, RayActorError, RayTaskError, ActorDiedError
 
 
 def test_unhandled_errors(ray_start_regular):
@@ -306,6 +306,68 @@ def test_actor_scope_or_intentionally_killed_message(ray_start_regular, error_pu
     assert len(errors) == 0, "Should not have propogated an error - {}".format(errors)
 
 
+def test_mixed_hanging_and_exception_should_not_hang(ray_start_regular):
+    @ray.remote
+    class Actor:
+        def __init__(self, _id):
+            self._id = _id
+
+        def execute(self, fn) -> None:
+            return fn(self._id)
+
+    def print_and_raise_error(i):
+        print(i)
+        raise ValueError
+
+    def print_and_sleep_forever(i):
+        import time
+
+        print(i)
+        while True:
+            time.sleep(3600)
+
+    actors = [Actor.remote(i) for i in range(10)]
+    refs = [actor.execute.remote(print_and_raise_error) for actor in actors[:2]]
+
+    with pytest.raises(ValueError):
+        ray.get(refs)
+
+    refs.extend([actor.execute.remote(print_and_sleep_forever) for actor in actors[2:]])
+
+    with pytest.raises(ValueError):
+        ray.get(refs)
+
+
+def test_mixed_hanging_and_died_actor_should_not_hang(ray_start_regular):
+    @ray.remote
+    class Actor:
+        def __init__(self, _id):
+            self._id = _id
+
+        def execute(self, fn) -> None:
+            return fn(self._id)
+
+        def exit(self):
+            ray.actor.exit_actor()
+
+    def print_and_sleep_forever(i):
+        import time
+
+        print(i)
+        while True:
+            time.sleep(3600)
+
+    actors = [Actor.remote(i) for i in range(10)]
+    ray.get([actor.__ray_ready__.remote() for actor in actors])
+    error_refs = [actor.exit.remote() for actor in actors[:2]]
+
+    with pytest.raises(ActorDiedError):
+        ray.get(error_refs)
+
+    with pytest.raises(ActorDiedError):
+        ray.get([actor.execute.remote(print_and_sleep_forever) for actor in actors])
+
+
 def test_exception_chain(ray_start_regular):
     @ray.remote
     def bar():
@@ -337,7 +399,7 @@ def test_baseexception_actor(ray_start_regular):
         def f(self):
             raise BaseException("abc")
 
-    with pytest.raises(ray.exceptions.ActorDiedError):
+    with pytest.raises(ActorDiedError):
         a = Actor.remote()
         ray.get(a.f.remote())
 
