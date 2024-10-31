@@ -113,13 +113,16 @@ class PandasBlockBuilder(TableBlockBuilder):
     @staticmethod
     def _table_from_pydict(columns: Dict[str, List[Any]]) -> "pandas.DataFrame":
         pandas = lazy_import_pandas()
-        for key, value in columns.items():
-            if key == TENSOR_COLUMN_NAME or isinstance(
-                next(iter(value), None), np.ndarray
+
+        for column_name, column_values in columns.items():
+            np_column_values = convert_udf_returns_to_numpy(column_values)
+
+            if column_name == TENSOR_COLUMN_NAME or isinstance(
+                next(iter(np_column_values), None), np.ndarray
             ):
                 from ray.data.extensions.tensor_extension import TensorArray
 
-                columns[key] = TensorArray(value)
+                columns[column_name] = TensorArray(np_column_values)
         return pandas.DataFrame(columns)
 
     @staticmethod
@@ -282,10 +285,6 @@ class PandasBlockAccessor(TableBlockAccessor):
     ) -> "pandas.DataFrame":
         validate_numpy_batch(batch)
 
-        batch = {
-            column_name: convert_udf_returns_to_numpy(column)
-            for column_name, column in batch.items()
-        }
         block = PandasBlockBuilder._table_from_pydict(batch)
         return block
 
