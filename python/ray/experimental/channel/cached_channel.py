@@ -112,4 +112,4 @@ class CachedChannel(ChannelInterface):
         """
         Return the number of readers for this channel.
         """
-        return self._num_reads
+        return self._inner_channel.num_readers() if self._inner_channel else 0
