@@ -3,7 +3,17 @@ import asyncio
 from collections import defaultdict
 from contextlib import nullcontext
 from dataclasses import dataclass, asdict
-from typing import Any, Dict, FrozenSet, List, Tuple, Union, Optional, Set
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Dict,
+    FrozenSet,
+    List,
+    Tuple,
+    Union,
+    Optional,
+    Set,
+)
 import logging
 import threading
 import time
@@ -59,6 +69,8 @@ from ray.dag.dag_node_operation import (
 
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
+if TYPE_CHECKING:
+    import cupy as cp
 
 logger = logging.getLogger(__name__)
 
@@ -438,8 +450,6 @@ class ExecutableTask:
         self.output_type_hint.register_custom_serializer()
         self.input_reader.start()
         self.output_writer.start()
-
-        import cupy as cp
 
         self._send_stream: Union["cp.cuda.Stream", nullcontext] = nullcontext()
         self._recv_stream: Union["cp.cuda.Stream", nullcontext] = nullcontext()
