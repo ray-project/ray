@@ -66,3 +66,9 @@ class IntraProcessChannel(ChannelInterface):
     def close(self) -> None:
         ctx = ChannelContext.get_current().serialization_context
         ctx.reset_data(self._channel_id)
+
+    def num_readers(self) -> int:
+        """
+        Return the number of readers for this channel.
+        """
+        return self._num_readers

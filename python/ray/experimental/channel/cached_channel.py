@@ -107,3 +107,9 @@ class CachedChannel(ChannelInterface):
             self._inner_channel.close()
         ctx = ChannelContext.get_current().serialization_context
         ctx.reset_data(self._channel_id)
+
+    def num_readers(self) -> int:
+        """
+        Return the number of readers for this channel.
+        """
+        return self._num_reads

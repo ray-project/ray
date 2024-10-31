@@ -257,6 +257,9 @@ class TorchTensorNcclChannel(ChannelInterface):
         if self._cpu_data_channel is not None:
             self._cpu_data_channel.close()
 
+    def num_readers(self) -> int:
+        return len(self._reader_and_node_list)
+
 
 def _torch_zeros_allocator(
     shape: Union[int, Tuple[int]],
@@ -539,6 +542,9 @@ class _TorchTensorNcclChannel(ChannelInterface):
         ctx = ChannelContext.get_current()
         if self._nccl_group_id in ctx.nccl_groups:
             del ctx.nccl_groups[self._nccl_group_id]
+
+    def num_readers(self) -> int:
+        return len(self._reader_and_node_list)
 
 
 def _do_init_nccl_group(

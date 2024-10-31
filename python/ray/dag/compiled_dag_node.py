@@ -2052,7 +2052,12 @@ class CompiledDAG:
         return fut
 
     def visualize(
-        self, filename="compiled_graph", format="png", view=False, return_dot=False
+        self,
+        filename="compiled_graph",
+        format="png",
+        view=False,
+        return_dot=False,
+        extra_channel_detail=False,
     ):
         """
         Visualize the compiled graph using Graphviz.
@@ -2164,14 +2169,21 @@ class CompiledDAG:
 
                     # Get the type hint for this argument
                     if arg_index < len(task.arg_type_hints):
-                        type_hint = type(task.arg_type_hints[arg_index]).__name__
+                        edge_label = type(task.arg_type_hints[arg_index]).__name__
                     else:
-                        type_hint = "UnknownType"
+                        edge_label = "UnknownType"
+
+                    if extra_channel_detail and arg_index < len(task.output_channels):
+                        edge_label += (
+                            f"\n{type(task.output_channels[arg_index]).__name__}\n"
+                            "# of Readers: "
+                            f"{task.output_channels[arg_index].num_readers()}"
+                        )
 
                     # Draw an edge from the upstream task to the
                     # current task with the type hint
                     dot.edge(
-                        str(upstream_task_idx), str(current_task_idx), label=type_hint
+                        str(upstream_task_idx), str(current_task_idx), label=edge_label
                     )
 
         if return_dot:

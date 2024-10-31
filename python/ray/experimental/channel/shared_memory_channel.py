@@ -522,6 +522,9 @@ class Channel(ChannelInterface):
                 reader_ref_info.reader_ref
             )
 
+    def num_readers(self) -> int:
+        return len(self._reader_and_node_list)
+
 
 @DeveloperAPI
 class BufferedSharedMemoryChannel(ChannelInterface):
@@ -556,6 +559,7 @@ class BufferedSharedMemoryChannel(ChannelInterface):
             Channel(writer, reader_and_node_list, typ)
             for _ in range(num_shm_buffers)
         ]
+        self._num_readers = len(reader_and_node_list)
         # The next index to write from self._buffers.
         self._next_write_index = 0
         # The next index to read from self._buffers.
@@ -617,6 +621,9 @@ class BufferedSharedMemoryChannel(ChannelInterface):
     def next_read_index(self):
         # Testing only
         return self._next_read_index
+
+    def num_readers(self) -> int:
+        return self._num_readers
 
 
 @PublicAPI(stability="alpha")
@@ -753,3 +760,6 @@ class CompositeChannel(ChannelInterface):
     def close(self) -> None:
         for channel in self._channels:
             channel.close()
+
+    def num_readers(self) -> int:
+        return len(self._reader_and_node_list)
