@@ -179,7 +179,6 @@ std::string Status::ToString() const {
     ss << state_->loc;
     result += " at ";
     result += ss.str();
-    ;
   }
   return result;
 }
