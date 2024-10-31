@@ -8,7 +8,6 @@ import ray
 from ray import serve
 from ray._private.test_utils import SignalActor, async_wait_for_condition
 from ray._private.utils import get_or_create_event_loop
-from ray.serve._private.constants import RAY_SERVE_ENABLE_STRICT_MAX_ONGOING_REQUESTS
 from ray.serve.exceptions import RayServeException
 from ray.serve.handle import (
     DeploymentHandle,
@@ -380,10 +379,6 @@ def test_handle_eager_execution(serve_instance):
     r.result() == "OK"
 
 
-@pytest.mark.skipif(
-    not RAY_SERVE_ENABLE_STRICT_MAX_ONGOING_REQUESTS,
-    reason="Strict enforcement must be enabled.",
-)
 @pytest.mark.asyncio
 async def test_max_ongoing_requests_enforced(serve_instance):
     """Handles should respect max_ongoing_requests enforcement."""
