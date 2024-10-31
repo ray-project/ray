@@ -81,8 +81,3 @@ class DummyServicer:
     def __getattr__(self, attr):
         # No-op pass through. Just need this to act as the callable.
         pass
-
-
-def add_grpc_address(grpc_server: gRPCServer, server_address: str):
-    """Helper function to add a address to gRPC server."""
-    grpc_server.add_insecure_port(server_address)
