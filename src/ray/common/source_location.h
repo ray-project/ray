@@ -11,9 +11,6 @@
 // WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 // See the License for the specific language governing permissions and
 // limitations under the License.
-//
-// A struct which represents source code location (aka. filename and line
-// number).
 
 #pragma once
 
@@ -22,7 +19,10 @@
 
 namespace ray {
 
+// A struct which represents source code location (aka. filename and line
+// number), expected to use only via internal macros.
 struct SourceLocation {
+  // Via `__FILE__` macros, memory ownership lies in data segment and never destructs.
   std::string_view filename;
   int line_no = 0;
 };
