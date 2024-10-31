@@ -1,9 +1,9 @@
 import asyncio
-from typing import Callable, Optional
+import threading
+from typing import Any, Callable, Optional, Tuple
 
 import ray
 from ray._raylet import GcsClient
-from ray.actor import ActorHandle
 from ray.serve._private.cluster_node_info_cache import (
     ClusterNodeInfoCache,
     DefaultClusterNodeInfoCache,
@@ -25,10 +25,12 @@ from ray.serve._private.replica_scheduler import (
 )
 from ray.serve._private.router import Router
 from ray.serve._private.utils import (
+    get_current_actor_id,
     get_head_node_id,
     inside_ray_client_context,
     resolve_request_args,
 )
+from ray.serve.context import _get_global_client
 
 # NOTE: Please read carefully before changing!
 #
@@ -67,16 +69,55 @@ def create_init_handle_options(**kwargs):
     return _InitHandleOptions.create(**kwargs)
 
 
+_global_async_loop = None
+_global_async_loop_creation_lock = threading.Lock()
+
+
+def _create_or_get_global_asyncio_event_loop_in_thread():
+    """Provides a global singleton asyncio event loop running in a daemon thread.
+
+    Thread-safe.
+    """
+    global _global_async_loop
+    if _global_async_loop is None:
+        with _global_async_loop_creation_lock:
+            if _global_async_loop is not None:
+                return _global_async_loop
+
+            _global_async_loop = asyncio.new_event_loop()
+            thread = threading.Thread(
+                daemon=True,
+                target=_global_async_loop.run_forever,
+            )
+            thread.start()
+
+    return _global_async_loop
+
+
+def _get_node_id_and_az() -> Tuple[str, Optional[str]]:
+    node_id = ray.get_runtime_context().get_node_id()
+    try:
+        cluster_node_info_cache = create_cluster_node_info_cache(
+            GcsClient(address=ray.get_runtime_context().gcs_address)
+        )
+        cluster_node_info_cache.update()
+        az = cluster_node_info_cache.get_node_az(node_id)
+    except Exception:
+        az = None
+
+    return node_id, az
+
+
 def create_router(
-    controller_handle: ActorHandle,
-    deployment_id: DeploymentID,
+    *,
     handle_id: str,
-    node_id: str,
-    actor_id: str,
-    availability_zone: Optional[str],
-    event_loop: asyncio.BaseEventLoop,
-    handle_options,
-):
+    deployment_id: DeploymentID,
+    handle_options: Any,
+) -> Router:
+    actor_id = get_current_actor_id()
+    node_id, availability_zone = _get_node_id_and_az()
+    controller_handle = _get_global_client()._controller
+    event_loop = _create_or_get_global_asyncio_event_loop_in_thread()
     is_inside_ray_client_context = inside_ray_client_context()
 
     replica_scheduler = PowerOfTwoChoicesReplicaScheduler(
