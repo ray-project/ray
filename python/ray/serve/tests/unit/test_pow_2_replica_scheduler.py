@@ -187,7 +187,6 @@ def fake_pending_request(
             metadata=RequestMetadata(
                 request_id=str(uuid.uuid4()),
                 internal_request_id=str(uuid.uuid4()),
-                endpoint="endpoint",
                 multiplexed_model_id=model_id,
             ),
             created_at=created_at,
@@ -199,7 +198,6 @@ def fake_pending_request(
             metadata=RequestMetadata(
                 request_id=str(uuid.uuid4()),
                 internal_request_id=str(uuid.uuid4()),
-                endpoint="endpoint",
                 multiplexed_model_id=model_id,
             ),
         )
