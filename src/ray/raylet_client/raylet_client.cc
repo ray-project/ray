@@ -339,8 +339,9 @@ void raylet::RayletClient::RequestWorkerLease(
     const int64_t backlog_size,
     const bool is_selected_based_on_locality) {
   google::protobuf::Arena arena;
+  // @TODO+:Eugo
   auto request =
-      google::protobuf::Arena::CreateMessage<rpc::RequestWorkerLeaseRequest>(&arena);
+      google::protobuf::Arena::Create<rpc::RequestWorkerLeaseRequest>(&arena);
   // The unsafe allocating here is actually safe because the life-cycle of
   // task_spec is longer than request.
   // Request will be sent before the end of this call, and after that, it won't be
