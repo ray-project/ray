@@ -223,7 +223,6 @@ def dummy_request_metadata(is_streaming: bool = False) -> RequestMetadata:
     return RequestMetadata(
         request_id="test-request-1",
         internal_request_id="test-internal-request-1",
-        endpoint="",
         is_streaming=is_streaming,
     )
 
@@ -247,7 +246,6 @@ class TestAssignRequest:
         request_metadata = RequestMetadata(
             request_id="test-request-1",
             internal_request_id="test-internal-request-1",
-            endpoint="",
             is_streaming=is_streaming,
         )
         replica_result = await router.assign_request(request_metadata)
@@ -294,7 +292,6 @@ class TestAssignRequest:
         request_metadata = RequestMetadata(
             request_id="test-request-1",
             internal_request_id="test-internal-request-1",
-            endpoint="",
             is_streaming=is_streaming,
         )
         replica_result = await router.assign_request(request_metadata)
@@ -351,7 +348,6 @@ class TestAssignRequest:
         request_metadata = RequestMetadata(
             request_id="test-request-1",
             internal_request_id="test-internal-request-1",
-            endpoint="",
             is_streaming=is_streaming,
         )
         replica_result = await router.assign_request(request_metadata)
@@ -381,7 +377,6 @@ class TestAssignRequest:
         request_metadata = RequestMetadata(
             request_id="test-request-1",
             internal_request_id="test-internal-request-1",
-            endpoint="",
         )
         replica_result = await router.assign_request(request_metadata)
         assert not replica_result._is_generator_object
@@ -403,7 +398,6 @@ class TestAssignRequest:
         request_metadata = RequestMetadata(
             request_id="test-request-1",
             internal_request_id="test-internal-request-1",
-            endpoint="",
         )
 
         # Queued a bunch of tasks. None should error because there's no limit.
@@ -441,7 +435,6 @@ class TestAssignRequest:
         request_metadata = RequestMetadata(
             request_id="test-request-1",
             internal_request_id="test-internal-request-1",
-            endpoint="",
         )
 
         # Queued `max_queued_requests` tasks. None should fail.
@@ -500,7 +493,6 @@ class TestAssignRequest:
         request_metadata = RequestMetadata(
             request_id="test-request-1",
             internal_request_id="test-internal-request-1",
-            endpoint="",
         )
 
         # Queued `max_queued_requests` tasks. None should fail.
