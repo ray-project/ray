@@ -851,7 +851,7 @@ class Dataset:
         cols_without_duplicates = list(set(cols))
 
         def drop_columns(batch):
-            return batch.drop_columns(columns=cols_without_duplicates)
+            return batch.drop(columns=cols_without_duplicates)
 
         return self.map_batches(
             drop_columns,
@@ -4359,7 +4359,7 @@ class Dataset:
             A common use case is to include sample weights in the data samples and train a ``tf.keras.Model`` with ``tf.keras.Model.fit``.
 
             >>> import pyarrow as pa
-            >>> ds = ds.add_column("sample weights", lambda x: pa.array([1] * x.num_rows))
+            >>> ds = ds.add_column("sample weights", lambda df: 1)
             >>> ds.to_tf(feature_columns="features", label_columns="target", additional_columns="sample weights")
             <_OptionsDataset element_spec=(TensorSpec(shape=(None, 4), dtype=tf.float64, name='features'), TensorSpec(shape=(None,), dtype=tf.int64, name='target'), TensorSpec(shape=(None,), dtype=tf.int64, name='sample weights'))>
 

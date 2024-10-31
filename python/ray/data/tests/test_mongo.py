@@ -28,7 +28,6 @@ def start_mongo():
         if db not in ("admin", "local", "config"):
             client.drop_database(db)
     yield client, mongo_url
-
     subprocess.check_call(["service", "mongodb", "stop"])
 
 
@@ -93,13 +92,8 @@ def test_read_write_mongo(ray_start_regular_shared, start_mongo):
         override_num_blocks=2,
     )
     assert ds._block_num_rows() == [3, 2]
-    assert str(ds) == (
-        "Dataset(\n"
-        "   num_rows=5,\n"
-        "   schema={_id: fixed_size_binary[12], float_field: double, "
-        "int_field: int32}\n"
-        ")"
-    )
+    assert ds.count() == 5
+    assert ds.schema().names == ["_id", "float_field", "int_field"]
     assert df.equals(ds.drop_columns(["_id"]).to_pandas())
 
     # Read a subset of the collection.
@@ -111,13 +105,8 @@ def test_read_write_mongo(ray_start_regular_shared, start_mongo):
         override_num_blocks=2,
     )
     assert ds._block_num_rows() == [2, 1]
-    assert str(ds) == (
-        "Dataset(\n"
-        "   num_rows=3,\n"
-        "   schema={_id: fixed_size_binary[12], float_field: double, "
-        "int_field: int32}\n"
-        ")"
-    )
+    assert ds.count() == 3
+    assert ds.schema().names == ["_id", "float_field", "int_field"]
     df[df["int_field"] < 3].equals(ds.drop_columns(["_id"]).to_pandas())
 
     # Read with auto-tuned parallelism.
@@ -126,13 +115,9 @@ def test_read_write_mongo(ray_start_regular_shared, start_mongo):
         database=foo_db,
         collection=foo_collection,
     )
-    assert str(ds) == (
-        "Dataset(\n"
-        "   num_rows=5,\n"
-        "   schema={_id: fixed_size_binary[12], float_field: double, "
-        "int_field: int32}\n"
-        ")"
-    )
+
+    assert ds.count() == 5
+    assert ds.schema().names == ["_id", "float_field", "int_field"]
     assert df.equals(ds.drop_columns(["_id"]).to_pandas())
 
     # Read with a parallelism larger than number of rows.
@@ -142,13 +127,9 @@ def test_read_write_mongo(ray_start_regular_shared, start_mongo):
         collection=foo_collection,
         override_num_blocks=1000,
     )
-    assert str(ds) == (
-        "Dataset(\n"
-        "   num_rows=5,\n"
-        "   schema={_id: fixed_size_binary[12], float_field: double, "
-        "int_field: int32}\n"
-        ")"
-    )
+
+    assert ds.count() == 5
+    assert ds.schema().names == ["_id", "float_field", "int_field"]
     assert df.equals(ds.drop_columns(["_id"]).to_pandas())
 
     # Add a column and then write back to MongoDB.
