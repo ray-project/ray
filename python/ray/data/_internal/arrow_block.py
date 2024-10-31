@@ -150,27 +150,32 @@ class ArrowBlockBuilder(TableBlockBuilder):
 
     @staticmethod
     def _table_from_pydict(columns: Dict[str, List[Any]]) -> Block:
-        for col_name, col in columns.items():
+        pa_columns: Dict[str, pyarrow.Array] = dict()
+
+        for column_name, column_values in columns.items():
+            np_column_values = convert_udf_returns_to_numpy(column_values)
+
             try:
-                if col_name == TENSOR_COLUMN_NAME or isinstance(
-                    next(iter(col), None), np.ndarray
-                ):
+                if column_name == TENSOR_COLUMN_NAME or np_column_values.ndim > 1:
                     from ray.data.extensions.tensor_extension import ArrowTensorArray
 
-                    columns[col_name] = ArrowTensorArray.from_numpy(col, col_name)
+                    pa_columns[column_name] = ArrowTensorArray.from_numpy(np_column_values, column_name)
                 else:
-                    columns[col_name] = convert_list_to_pyarrow_array(col, columns)
+                    pa_columns[column_name] = convert_list_to_pyarrow_array(np_column_values)
             except ArrowConversionError as e:
+                logger.warning(f"Failed to convert column '{column_name}' into pyarrow array due to: {e}", exc_info=e)
+
                 from ray.data.extensions.object_extension import (
                     ArrowPythonObjectArray,
                     object_extension_type_allowed,
                 )
 
                 if object_extension_type_allowed() and is_object_fixable_error(e):
-                    columns[col_name] = ArrowPythonObjectArray.from_objects(col)
+                    pa_columns[column_name] = ArrowPythonObjectArray.from_objects(np_column_values)
                 else:
                     raise
-        return pyarrow_table_from_pydict(columns)
+
+        return pyarrow_table_from_pydict(pa_columns)
 
     @staticmethod
     def _concat_tables(tables: List[Block]) -> Block:
