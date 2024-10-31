@@ -27,7 +27,7 @@ def reset_logging_fixture():
     logger.setLevel(logging.NOTSET)
 
 
-def test_messages_logged_to_file():
+def test_messages_logged_to_file(configure_logging, reset_logging, shutdown_only):
     ray.init()
     logger = logging.getLogger("ray.train.spam")
 
@@ -38,7 +38,12 @@ def test_messages_logged_to_file():
     assert "ham" in log_contents
 
 
-def test_messages_printed_to_console(capsys):
+def test_messages_printed_to_console(
+    capsys,
+    configure_logging,
+    reset_logging,
+    propagate_logs,
+):
     logger = logging.getLogger("ray.train.spam")
 
     logger.info("ham")
@@ -46,7 +51,12 @@ def test_messages_printed_to_console(capsys):
     assert "ham" in capsys.readouterr().err
 
 
-def test_hidden_messages_not_printed_to_console(capsys):
+def test_hidden_messages_not_printed_to_console(
+    capsys,
+    configure_logging,
+    reset_logging,
+    propagate_logs,
+):
     logger = logging.getLogger("ray.train.spam")
 
     logger.info("ham", extra={"hide": True})
@@ -54,7 +64,7 @@ def test_hidden_messages_not_printed_to_console(capsys):
     assert "ham" not in capsys.readouterr().err
 
 
-def test_message_format():
+def test_message_format(configure_logging, reset_logging, shutdown_only):
     ray.init()
     logger = logging.getLogger("ray.train.spam")
 
@@ -82,7 +92,7 @@ def test_message_format():
     assert logged_msg == "ham"
 
 
-def test_custom_config(monkeypatch, tmp_path):
+def test_custom_config(reset_logging, monkeypatch, tmp_path):
     config_path = tmp_path / "logging.yaml"
     monkeypatch.setenv(LOG_CONFIG_PATH_ENV, config_path)
 
@@ -113,7 +123,9 @@ def test_custom_config(monkeypatch, tmp_path):
     assert isinstance(logger.handlers[0], logging.StreamHandler)
 
 
-def test_json_logging_configuration(capsys, monkeypatch):
+def test_json_logging_configuration(
+    capsys, reset_logging, monkeypatch, shutdown_only, propagate_logs
+):
     import json
 
     monkeypatch.setenv(LOG_ENCODING_ENV, "JSON")
