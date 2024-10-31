@@ -110,10 +110,6 @@ class RetryableGrpcClient : public std::enable_shared_from_this<RetryableGrpcCli
                                 server_unavailable_timeout_seconds,
                                 server_unavailable_timeout_callback,
                                 server_name));
-    // SetupCheckTimer() MUST be called after we have the shard_ptr of
-    // RetryableGrpcClient since it calls shared_from_this()
-    // which requires a shared_ptr of this to exist.
-    retryable_grpc_client->SetupCheckTimer();
     return retryable_grpc_client;
   }
 
@@ -139,14 +135,16 @@ class RetryableGrpcClient : public std::enable_shared_from_this<RetryableGrpcCli
       } else {
         // In case of transient network error, we queue the request and these requests
         // will be executed once network is recovered.
-        self->server_is_unavailable_ = true;
+        if (!self->server_unavailable_time_.has_value()) {
+          self->server_unavailable_time_ = absl::Now();
+        }
         auto request_bytes = request.ByteSizeLong();
         if (self->pending_requests_bytes_ + request_bytes >
             self->max_pending_requests_bytes_) {
           RAY_LOG(WARNING)
               << "Pending queue for failed request has reached the "
               << "limit. Blocking the current thread until network is recovered";
-          while (self->server_is_unavailable_ && !self->shutdown_) {
+          while (self->server_unavailable_time_.has_value() && !self->shutdown_) {
             self->CheckChannelStatus(false);
             std::this_thread::sleep_for(std::chrono::milliseconds(
                 self->check_channel_status_interval_milliseconds_));
@@ -159,6 +157,7 @@ class RetryableGrpcClient : public std::enable_shared_from_this<RetryableGrpcCli
           }
         } else {
           bool shutdown = false;
+          bool is_first_pending_request = false;
           {
             absl::MutexLock lock(&self->mu_);
             if (!self->shutdown_) {
@@ -168,6 +167,7 @@ class RetryableGrpcClient : public std::enable_shared_from_this<RetryableGrpcCli
                                  : absl::Now() + absl::Milliseconds(timeout_ms);
               self->pending_requests_.emplace(timeout,
                                               std::make_pair(executor, request_bytes));
+              is_first_pending_request = self->pending_requests_.size() == 1;
             } else {
               shutdown = true;
             }
@@ -176,6 +176,8 @@ class RetryableGrpcClient : public std::enable_shared_from_this<RetryableGrpcCli
             // Run the callback outside of the lock.
             callback(Status::Disconnected("GRPC client has been shutdown."), Reply());
             delete executor;
+          } else if (is_first_pending_request) {
+            self->SetupCheckTimer();
           }
         }
       }
@@ -264,6 +266,10 @@ class RetryableGrpcClient : public std::enable_shared_from_this<RetryableGrpcCli
       return;
     }
 
+    RAY_CHECK(server_unavailable_time_.has_value())
+        << "Only check channel status when the server is unavailable and there are "
+           "pending requests";
+
     {
       absl::MutexLock lock(&mu_);
       // We need to cleanup all the pending requests which are timeout.
@@ -280,6 +286,11 @@ class RetryableGrpcClient : public std::enable_shared_from_this<RetryableGrpcCli
         delete executor;
         pending_requests_.erase(iter);
       }
+
+      if (pending_requests_.empty()) {
+        server_unavailable_time_ = std::nullopt;
+        return;
+      }
     }
 
     auto status = channel_->GetState(false);
@@ -291,27 +302,29 @@ class RetryableGrpcClient : public std::enable_shared_from_this<RetryableGrpcCli
 
     switch (status) {
     case GRPC_CHANNEL_TRANSIENT_FAILURE:
-    case GRPC_CHANNEL_CONNECTING:
-      if (!server_is_unavailable_) {
-        server_is_unavailable_ = true;
-      } else {
-        uint64_t server_unavailable_duration_seconds = static_cast<uint64_t>(
-            std::max(absl::ToInt64Seconds(absl::Now() - server_last_available_time_),
-                     static_cast<int64_t>(0)));
-        if (server_unavailable_duration_seconds >= server_unavailable_timeout_seconds_) {
-          RAY_LOG(WARNING) << server_name_ << " has been unavailable for "
-                           << server_unavailable_duration_seconds << " seconds";
-          server_unavailable_timeout_callback_();
-        }
+    case GRPC_CHANNEL_CONNECTING: {
+      uint64_t server_unavailable_duration_seconds = static_cast<uint64_t>(
+          std::max(absl::ToInt64Seconds(absl::Now() - server_unavailable_time_.value()),
+                   static_cast<int64_t>(0)));
+      if (server_unavailable_duration_seconds >= server_unavailable_timeout_seconds_) {
+        RAY_LOG(WARNING) << server_name_ << " has been unavailable for "
+                         << server_unavailable_duration_seconds << " seconds";
+        server_unavailable_timeout_callback_();
       }
+
+      if (reset_timer) {
+        SetupCheckTimer();
+      }
+
       break;
-    case GRPC_CHANNEL_SHUTDOWN:
+    }
+    case GRPC_CHANNEL_SHUTDOWN: {
       RAY_CHECK(shutdown_) << "Channel shoud never go to this status.";
       break;
+    }
     case GRPC_CHANNEL_READY:
-    case GRPC_CHANNEL_IDLE:
-      server_last_available_time_ = absl::Now();
-      server_is_unavailable_ = false;
+    case GRPC_CHANNEL_IDLE: {
+      server_unavailable_time_ = std::nullopt;
       {
         absl::MutexLock lock(&mu_);
         // Retry the ones queued.
@@ -322,11 +335,11 @@ class RetryableGrpcClient : public std::enable_shared_from_this<RetryableGrpcCli
         pending_requests_bytes_ = 0;
       }
       break;
-    default:
+    }
+    default: {
       RAY_LOG(FATAL) << "Not covered status: " << status;
     }
-
-    SetupCheckTimer();
+    }
   }
 
   instrumented_io_context &io_context_;
@@ -344,8 +357,7 @@ class RetryableGrpcClient : public std::enable_shared_from_this<RetryableGrpcCli
   const std::string server_name_;
 
   // Only accessed by the io_context_ thread, no mutext needed.
-  bool server_is_unavailable_ = false;
-  absl::Time server_last_available_time_ = absl::Now();
+  std::optional<absl::Time> server_unavailable_time_;
 
   std::atomic<bool> shutdown_ = false;
   // Pending requests can be accessed from either the io_context_ thread, or the
