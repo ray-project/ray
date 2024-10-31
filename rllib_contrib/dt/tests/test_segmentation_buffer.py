@@ -89,11 +89,9 @@ def _get_internal_buffer(
     """Get the internal buffer list from the buffer. If MultiAgent then return the
     internal buffer corresponding to the given policy_id.
     """
-    # TODO: Remove noqa after flake8 being upgraded to 7.1.1
-    if type(buffer) is SegmentationBuffer:  # noqa E721
+    if isinstance(buffer, SegmentationBuffer):
         return buffer._buffer
-    # TODO: Remove noqa after flake8 being upgraded to 7.1.1
-    elif type(buffer) is MultiAgentSegmentationBuffer:  # noqa E721
+    elif isinstance(buffer, MultiAgentSegmentationBuffer):
         return buffer.buffers[policy_id]._buffer
     else:
         raise NotImplementedError
@@ -106,11 +104,9 @@ def _as_sample_batch(
     """Returns a SampleBatch. If MultiAgentBatch then return the SampleBatch
     corresponding to the given policy_id.
     """
-    # TODO: Remove noqa after flake8 being upgraded to 7.1.1
-    if type(batch) is SampleBatch:  # noqa E721
+    if isinstance(batch, SampleBatch):
         return batch
-    # TODO: Remove noqa after flake8 being upgraded to 7.1.1
-    elif type(batch) is MultiAgentBatch:  # noqa E721
+    elif isinstance(batch, MultiAgentBatch):
         return batch.policy_batches[policy_id]
     else:
         raise NotImplementedError

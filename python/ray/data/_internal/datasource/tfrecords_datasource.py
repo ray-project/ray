@@ -355,8 +355,7 @@ def _cast_large_list_to_list(batch: pyarrow.Table):
 
     for column_name in old_schema.names:
         field_type = old_schema.field(column_name).type
-        # TODO: Remove noqa after flake8 being upgraded to 7.1.1
-        if type(field_type) is pyarrow.lib.LargeListType:  # noqa E721
+        if isinstance(field_type, pyarrow.lib.LargeListType):
             value_type = field_type.value_type
 
             if value_type == pyarrow.large_binary():

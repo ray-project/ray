@@ -48,12 +48,10 @@ def _spec_to_box(spec):
     def extract_min_max(s):
         assert s.dtype == np.float64 or s.dtype == np.float32
         dim = np.int_(np.prod(s.shape))
-        # TODO: Remove noqa after flake8 being upgraded to 7.1.1
-        if type(s) is specs.Array:  # noqa E721
+        if isinstance(s, specs.Array):
             bound = np.inf * np.ones(dim, dtype=np.float32)
             return -bound, bound
-        # TODO: Remove noqa after flake8 being upgraded to 7.1.1F
-        elif type(s) is specs.BoundedArray:  # noqa E721
+        elif isinstance(s, specs.BoundedArray):
             zeros = np.zeros(dim, dtype=np.float32)
             return s.minimum + zeros, s.maximum + zeros
 
