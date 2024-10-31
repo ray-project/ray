@@ -21,7 +21,7 @@ from ray.serve._private.http_util import (
     ASGIAppReplicaWrapper,
     make_fastapi_class_based_view,
 )
-from ray.serve._private.local_testing_mode import LocalDeploymentHandle
+from ray.serve.testing import LocalDeploymentHandle
 from ray.serve._private.usage import ServeUsageTag
 from ray.serve._private.utils import (
     DEFAULT,

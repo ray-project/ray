@@ -1,5 +1,5 @@
 from ray import serve
-from ray.serve._private.local_testing_mode import LocalDeploymentHandle
+from ray.serve.testing import LocalDeploymentHandle
 
 # TODO:
 # - assert that serve is *not* initialized?? or at least warn.
