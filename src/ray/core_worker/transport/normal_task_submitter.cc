@@ -82,10 +82,6 @@ Status NormalTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
         RequestNewWorkerIfNeeded(scheduling_key);
       }
     }
-    if (!keep_executing) {
-      RAY_UNUSED(task_finisher_->FailOrRetryPendingTask(
-          task_spec.TaskId(), rpc::ErrorType::TASK_CANCELLED, nullptr));
-    }
   });
   return Status::OK();
 }
@@ -743,6 +739,8 @@ Status NormalTaskSubmitter::CancelTask(TaskSpecification task_spec,
         CancelWorkerLeaseIfNeeded(scheduling_key);
         task_finisher_->FailPendingTask(task_spec.TaskId(),
                                         rpc::ErrorType::TASK_CANCELLED);
+        // we want to remove from resolver's pending task as well
+        resolver_.CancelDependencyResolution(task_spec.TaskId());
         // We can safely remove the entry keyed by scheduling_key from the
         // scheduling_key_entries_ hashmap.
         scheduling_key_entries_.erase(scheduling_key);
