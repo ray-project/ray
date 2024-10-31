@@ -157,7 +157,7 @@ class TorchTensorType(ChannelOutputType):
 
         # Data does not require NCCL. Transfer via host memory using a
         # shared-memory channel.
-        # TODO(swang): Allow the initial max buffer size to bereaders overridden.
+        # TODO(swang): Allow the initial max buffer size to be overridden.
         typ = SharedMemoryType()
         return typ.create_channel(writer, reader_and_node_list, read_by_adag_driver)
 
