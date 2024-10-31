@@ -6,12 +6,54 @@ from typing import Optional
 import yaml
 
 import ray
-from ray.train.constants import (
-    DEFAULT_JSON_LOG_ENCODING_FORMAT,
-    DEFAULT_LOG_CONFIG_YAML_STRING,
-    LOG_CONFIG_PATH_ENV,
-    LOG_ENCODING_ENV,
-)
+from ray.train.constants import LOG_CONFIG_PATH_ENV, LOG_ENCODING_ENV
+
+# JSON Encoding format for Ray Train structured logging
+DEFAULT_JSON_LOG_ENCODING_FORMAT = "JSON"
+
+# Default logging configuration for Ray Train
+DEFAULT_LOG_CONFIG_JSON_STRING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "formatters": {
+        "ray": {
+            "format": "%(asctime)s\t%(levelname)s %(filename)s:%(lineno)s -- %(message)s"  # noqa: E501
+        },
+        "ray_json": {"class": "ray._private.ray_logging.formatters.JSONFormatter"},
+    },
+    "filters": {
+        "console_filter": {"()": "ray.train._internal.logging.HiddenRecordFilter"},
+        "core_context_filter": {
+            "()": "ray._private.ray_logging.filters.CoreContextFilter"
+        },
+    },
+    "handlers": {
+        "file_text": {
+            "class": "ray.train._internal.logging.SessionFileHandler",
+            "formatter": "ray",
+            "filename": "ray-train.log",
+        },
+        "file_json": {
+            "class": "ray.train._internal.logging.SessionFileHandler",
+            "formatter": "ray_json",
+            "filename": "ray-train.log",
+            "filters": ["core_context_filter"],
+        },
+        "console": {
+            "class": "ray._private.log.PlainRayHandler",
+            "formatter": "ray",
+            "level": "INFO",
+            "filters": ["console_filter"],
+        },
+    },
+    "loggers": {
+        "ray.train": {
+            "level": "DEBUG",
+            "handlers": ["file_text", "console"],
+            "propagate": False,
+        },
+    },
+}
 
 
 class HiddenRecordFilter(logging.Filter):
@@ -101,7 +143,7 @@ def configure_logging() -> None:
     if ray_train_log_config_path is not None:
         config = _load_logging_config(ray_train_log_config_path)
     else:
-        config = yaml.safe_load(DEFAULT_LOG_CONFIG_YAML_STRING)
+        config = DEFAULT_LOG_CONFIG_JSON_STRING
         if ray_train_log_encoding == DEFAULT_JSON_LOG_ENCODING_FORMAT:
             for logger in config["loggers"].values():
                 logger["handlers"].remove("file_text")

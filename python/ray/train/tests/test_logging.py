@@ -7,7 +7,6 @@ import pytest
 import yaml
 
 import ray
-from ray.tests.conftest import *  # noqa
 from ray.train._internal.logging import configure_logging, get_log_directory
 from ray.train.constants import LOG_CONFIG_PATH_ENV, LOG_ENCODING_ENV
 
@@ -28,7 +27,7 @@ def reset_logging_fixture():
     logger.setLevel(logging.NOTSET)
 
 
-def test_messages_logged_to_file(configure_logging, reset_logging, shutdown_only):
+def test_messages_logged_to_file():
     ray.init()
     logger = logging.getLogger("ray.train.spam")
 
@@ -39,12 +38,7 @@ def test_messages_logged_to_file(configure_logging, reset_logging, shutdown_only
     assert "ham" in log_contents
 
 
-def test_messages_printed_to_console(
-    capsys,
-    configure_logging,
-    reset_logging,
-    propagate_logs,
-):
+def test_messages_printed_to_console(capsys):
     logger = logging.getLogger("ray.train.spam")
 
     logger.info("ham")
@@ -52,12 +46,7 @@ def test_messages_printed_to_console(
     assert "ham" in capsys.readouterr().err
 
 
-def test_hidden_messages_not_printed_to_console(
-    capsys,
-    configure_logging,
-    reset_logging,
-    propagate_logs,
-):
+def test_hidden_messages_not_printed_to_console(capsys):
     logger = logging.getLogger("ray.train.spam")
 
     logger.info("ham", extra={"hide": True})
@@ -65,7 +54,7 @@ def test_hidden_messages_not_printed_to_console(
     assert "ham" not in capsys.readouterr().err
 
 
-def test_message_format(configure_logging, reset_logging, shutdown_only):
+def test_message_format():
     ray.init()
     logger = logging.getLogger("ray.train.spam")
 
@@ -93,7 +82,7 @@ def test_message_format(configure_logging, reset_logging, shutdown_only):
     assert logged_msg == "ham"
 
 
-def test_custom_config(reset_logging, monkeypatch, tmp_path):
+def test_custom_config(monkeypatch, tmp_path):
     config_path = tmp_path / "logging.yaml"
     monkeypatch.setenv(LOG_CONFIG_PATH_ENV, config_path)
 
@@ -124,9 +113,7 @@ def test_custom_config(reset_logging, monkeypatch, tmp_path):
     assert isinstance(logger.handlers[0], logging.StreamHandler)
 
 
-def test_json_logging_configuration(
-    capsys, reset_logging, monkeypatch, shutdown_only, propagate_logs
-):
+def test_json_logging_configuration(capsys, monkeypatch):
     import json
 
     monkeypatch.setenv(LOG_ENCODING_ENV, "JSON")
