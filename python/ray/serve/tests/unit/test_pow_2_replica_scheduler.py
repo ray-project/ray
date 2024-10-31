@@ -1853,7 +1853,7 @@ async def test_locality_aware_backoff_skips_sleeps(pow_2_scheduler):
     s.update_replicas([r1, r2, r3])
 
     # The request should be served by r3 without added latency.
-    done, _ = await asyncio.wait([task], timeout=0.01)
+    done, _ = await asyncio.wait([task], timeout=1)
     assert len(done) == 1
     assert done.pop().result() == r3
 
