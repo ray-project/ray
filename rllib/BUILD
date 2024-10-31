@@ -78,7 +78,6 @@ doctest(
             "utils/memory.py",
             "offline/off_policy_estimator.py",
             "offline/estimators/feature_importance.py",
-            "env/wrappers/recsim_wrapper.py",
             "env/remote_vector_env.py",
             # Missing imports
             "algorithms/dreamerv3/**",
