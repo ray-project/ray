@@ -158,6 +158,7 @@ class DAGNode(DAGNodeBase):
         _asyncio_max_queue_size: Optional[int] = None,
         _max_buffered_results: Optional[int] = None,
         _max_inflight_executions: Optional[int] = None,
+        _overlap_gpu_communication: Optional[bool] = None,
     ) -> "ray.dag.CompiledDAG":
         """Compile an accelerated execution path for this DAG.
 
@@ -182,6 +183,11 @@ class DAGNode(DAGNodeBase):
                 are allowed to be sent to this DAG. Before submitting more requests,
                 the caller is responsible for calling ray.get to clear finished
                 in-flight requests.
+            overlap_gpu_communication: Whether to overlap GPU communication with
+                computation during DAG execution. If True, the communication
+                and computation can be overlapped, which can improve the
+                performance of the DAG execution. If None, the default value
+                will be used.
 
         Returns:
             A compiled DAG.
@@ -215,6 +221,7 @@ class DAGNode(DAGNodeBase):
             _asyncio_max_queue_size,
             _max_buffered_results,
             _max_inflight_executions,
+            _overlap_gpu_communication,
         )
 
     def execute(
