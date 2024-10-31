@@ -1,7 +1,7 @@
 from typing import Any, Dict, Iterable, List, Optional, Tuple, Union
 
 from ray.data._internal.aggregate import Count, Max, Mean, Min, Std, Sum
-from ray.data._internal.boundaries import get_key_boundaries
+from ray.data._internal.boundaries import get_block_boundaries
 from ray.data._internal.compute import ComputeStrategy
 from ray.data._internal.logical.interfaces import LogicalPlan
 from ray.data._internal.logical.operators.all_to_all_operator import Aggregate
@@ -190,9 +190,9 @@ class GroupedData:
 
             # Get the list of boundaries including first start and last end indices
             if self._key:
-                # Get the keys of the batch in numpy array format
-                keys = block_accessor.to_numpy(self._key)
-                boundaries = get_key_boundaries(keys)
+                # Get a block of key columns
+                projected_block = block_accessor.to_numpy(self._key)
+                boundaries = get_block_boundaries(projected_block)
             else:
                 boundaries = [0, block_accessor.num_rows()]
 
