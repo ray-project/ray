@@ -27,8 +27,7 @@ class _DAGNodeOperationType(Enum):
         """
         A string representation of the operation type to be used in visualization.
 
-        Used in scenarios that conciseness is preferred, e.g.,
-        in visualization of the execution schedule.
+        The result string is a single character because conciseness is preferred.
         """
         if self == _DAGNodeOperationType.READ:
             return "R"
@@ -54,7 +53,7 @@ class _DAGNodeOperation:
                 than tasks that appear in the current compiled DAG.
             operation_type: The type of operation to perform.
             method_name: The name of the method that this operation originates
-                from. This is only for debugging purposes.
+                from. This is only for visualization and debugging purposes.
         """
         self.exec_task_idx = exec_task_idx
         self.type = operation_type
@@ -67,15 +66,18 @@ class _DAGNodeOperation:
             f" type: {self.type})"
         )
 
-    def __str__(self):
-        return f"([{self.exec_task_idx}] {self.method_name} {self.type})"
+    def vis_str(self):
+        """
+        A string representation of the node to be used in visualization.
+        """
+        return f"([{self.exec_task_idx}] {self.method_name} {self.type.viz_str()})"
 
     def __hash__(self):
         return hash((self.exec_task_idx, self.type))
 
     def __eq__(self, other):
         # An operation is uniquely identified by its `exec_task_idx` and type.
-        # `func_name` is only for debugging purposes.
+        # `method_name` is only for debugging purposes.
         return self.exec_task_idx == other.exec_task_idx and self.type == other.type
 
 
@@ -109,10 +111,11 @@ class _DAGOperationGraphNode:
         # Each tuple (the key) contains an integer `task_idx`, which can be
         # used to index into `idx_to_task` to get the corresponding task,
         # and a `_DAGNodeOperationType`, which can be READ, COMPUTE, or WRITE.
-        # The string (the value) is the label of the edge, which will be used
-        # to annotate the edge in the visualization of the execution schedule.
-        self.in_edges: Dict[Tuple[int, _DAGNodeOperationType], str] = {}
-        self.out_edges: Dict[Tuple[int, _DAGNodeOperationType], str] = {}
+        # The string (the value) is the visualization information of the edge,
+        # it is a tuple of a label of the edge and a boolean indicating whether
+        # the edge is a control dependency.
+        self.in_edges: Dict[Tuple[int, _DAGNodeOperationType], Tuple[str, bool]] = {}
+        self.out_edges: Dict[Tuple[int, _DAGNodeOperationType], Tuple[str, bool]] = {}
         # The collective nodes are the nodes that belong to the same collective
         # operation. Each node is represented by a tuple of its task idx and type.
         self.collective_idxs: Set[Tuple[int, _DAGNodeOperationType]] = set()
@@ -238,11 +241,13 @@ class _DAGOperationGraphNode:
 
 
 def _add_edge(
-    from_node: _DAGOperationGraphNode, to_node: _DAGOperationGraphNode, label: str = ""
+    from_node: _DAGOperationGraphNode,
+    to_node: _DAGOperationGraphNode,
+    label: str = "",
+    control_dependency: bool = False,
 ):
     """
-    Add an edge from `from_node` to `to_node`. An edge is a tuple of
-    the operation's `task_idx` and type.
+    Add an edge from `from_node` to `to_node`.
 
     Args:
         from_node: The node from which the edge originates.
@@ -250,8 +255,14 @@ def _add_edge(
         label: The label of the edge. This will be used to annotate the edge
             in the visualization of the execution schedule.
     """
-    from_node.out_edges[(to_node.task_idx, to_node.operation.type)] = label
-    to_node.in_edges[(from_node.task_idx, from_node.operation.type)] = label
+    from_node.out_edges[(to_node.task_idx, to_node.operation.type)] = (
+        label,
+        control_dependency,
+    )
+    to_node.in_edges[(from_node.task_idx, from_node.operation.type)] = (
+        label,
+        control_dependency,
+    )
 
 
 def _push_candidate_node_if_ready(
@@ -408,7 +419,7 @@ def _build_dag_node_operation_graph(
             # Add an edge from COMPUTE with `bind_index` i to COMPUTE with
             # `bind_index` i+1 if they belong to the same actor.
             if prev_compute_node is not None:
-                _add_edge(prev_compute_node, compute_node, "next")
+                _add_edge(prev_compute_node, compute_node, "", True)
             prev_compute_node = compute_node
             assert task_idx not in graph
             graph[task_idx] = {

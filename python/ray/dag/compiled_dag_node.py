@@ -474,12 +474,12 @@ class ExecutableTask:
         Wrap the value in a `DAGOperationFuture` and store to the intermediate future.
         The value corresponds to result of a READ or COMPUTE operation.
 
-        If wrap_in_gpu_future is True, the value will be wrapped in a _GPUFuture,
+        If wrap_in_gpu_future is True, the value will be wrapped in a GPUFuture,
         Otherwise, the future will be a ResolvedFuture.
 
         Args:
             val: The value to wrap in a future.
-            wrap_in_gpu_future: Whether to wrap the value in a _GPUFuture.
+            wrap_in_gpu_future: Whether to wrap the value in a GPUFuture.
         """
         assert self._intermediate_future is None
 
@@ -493,7 +493,7 @@ class ExecutableTask:
         """
         Reset the intermediate future and wait for the result.
 
-        This does not block the CPU because:
+        The wait does not block the CPU because:
         - If the future is a ResolvedFuture, the result is immediately returned.
         - If the future is a GPUFuture, the result is only waited by the current
             CUDA stream, and the CPU is not blocked.
@@ -521,7 +521,7 @@ class ExecutableTask:
         try:
             input_data = self.input_reader.read()
             # When overlap_gpu_communication is enabled, wrap the result in
-            # a GPU future so that this read operation (communication) can
+            # a GPUFuture so that this read operation (communication) can
             # be overlapped with computation.
             self.wrap_and_set_intermediate_future(
                 input_data, wrap_in_gpu_future=overlap_gpu_communication
@@ -579,7 +579,7 @@ class ExecutableTask:
         except Exception as exc:
             output_val = _wrap_exception(exc)
 
-        # When overlap_gpu_communication is enabled, wrap the result in a GPU future
+        # When overlap_gpu_communication is enabled, wrap the result in a GPUFuture
         # so that this compute operation can be overlapped with communication.
         self.wrap_and_set_intermediate_future(
             output_val, wrap_in_gpu_future=overlap_gpu_communication
@@ -1749,7 +1749,6 @@ class CompiledDAG:
                 )
             return _extract_execution_schedule(actor_to_overlapped_schedule)
         else:
-            actor_to_overlapped_schedule = None
             return _extract_execution_schedule(actor_to_execution_schedule)
 
     def _detect_deadlock(self) -> bool:
