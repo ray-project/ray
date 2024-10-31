@@ -2228,7 +2228,26 @@ cdef execute_task_with_cancellation_handler(
 
         if omp_num_threads_overriden:
             # Reset the OMP_NUM_THREADS environ if it was set.
-            os.environ.pop("OMP_NUM_THREADS", None)
+            try:
+                os.environ.pop("OMP_NUM_THREADS", None)
+            except KeyError as e:
+                # os.environ is known to have undefined behavior if multiple 
+                # threads is trying to modify the mapping simultaneously. 
+                # Here specifically, race condition could happen when two threads 
+                # poping the environ in the same time, where one of them deleting 
+                # the key successfully, but the other met KeyError. If we met this 
+                # issue, we just ensure the the current os.environ do not contain 
+                # this env var and move on. 
+                # Related issue: https://github.com/python/cpython/issues/120513
+                logger.error(
+                    "KeyError occurred when popping OMP_NUM_THREADS from "
+                    "os.environ, a possible race condition might happened. "
+                    "Checking if the env var is already cleaned up and move on."
+                )
+                if os.environ.get("OMP_NUM_THREADS", None) is not None:
+                    logger.error(
+                        "Something wrong happened, OMP_NUM_THREADS still remains in os.environ"
+                    )
 
     if execution_info.max_calls != 0:
         # Reset the state of the worker for the next task to execute.

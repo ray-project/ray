@@ -357,6 +357,11 @@ RAY_CONFIG(uint64_t,
            object_manager_max_bytes_in_flight,
            ((uint64_t)2) * 1024 * 1024 * 1024)
 
+/// Data compression to apply to Push request payload
+/// 0: no compression
+/// 1: ZSTD compression
+RAY_CONFIG(int, object_manager_push_compression_algorithm, 0)
+
 /// Maximum number of ids in one batch to send to GCS to delete keys.
 RAY_CONFIG(uint32_t, maximum_gcs_deletion_batch_size, 1000)
 
