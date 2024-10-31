@@ -27,7 +27,11 @@ from ray.serve._private.replica_scheduler import (
     ReplicaWrapper,
 )
 from ray.serve._private.replica_scheduler.pow_2_scheduler import ReplicaQueueLengthCache
-from ray.serve._private.router import QUEUED_REQUESTS_KEY, Router, RouterMetricsManager
+from ray.serve._private.router import (
+    QUEUED_REQUESTS_KEY,
+    AsyncioRouter,
+    RouterMetricsManager,
+)
 from ray.serve._private.test_utils import FakeCounter, FakeGauge, MockTimer
 from ray.serve._private.utils import get_random_string
 from ray.serve.config import AutoscalingConfig
@@ -192,14 +196,14 @@ class FakeReplicaScheduler(ReplicaScheduler):
 
 @pytest.fixture
 @pytest.mark.asyncio
-def setup_router(request) -> Tuple[Router, FakeReplicaScheduler]:
+def setup_router(request) -> Tuple[AsyncioRouter, FakeReplicaScheduler]:
     if not hasattr(request, "param"):
         request.param = {}
 
     fake_replica_scheduler = FakeReplicaScheduler(
         request.param.get("enable_queue_len_cache", False)
     )
-    router = Router(
+    router = AsyncioRouter(
         # TODO(edoakes): refactor to make a better fake controller or not depend on it.
         controller_handle=Mock(),
         deployment_id=DeploymentID(name="test-deployment"),
@@ -228,7 +232,9 @@ def dummy_request_metadata(is_streaming: bool = False) -> RequestMetadata:
 class TestAssignRequest:
     @pytest.mark.parametrize("is_streaming", [False, True])
     async def test_basic(
-        self, setup_router: Tuple[Router, FakeReplicaScheduler], is_streaming: bool
+        self,
+        setup_router: Tuple[AsyncioRouter, FakeReplicaScheduler],
+        is_streaming: bool,
     ):
         router, fake_replica_scheduler = setup_router
 
@@ -268,7 +274,9 @@ class TestAssignRequest:
     )
     @pytest.mark.parametrize("is_streaming", [False, True])
     async def test_basic_with_rejection(
-        self, setup_router: Tuple[Router, FakeReplicaScheduler], is_streaming: bool
+        self,
+        setup_router: Tuple[AsyncioRouter, FakeReplicaScheduler],
+        is_streaming: bool,
     ):
         router, fake_replica_scheduler = setup_router
 
@@ -312,7 +320,9 @@ class TestAssignRequest:
     )
     @pytest.mark.parametrize("is_streaming", [False, True])
     async def test_retry_with_rejection(
-        self, setup_router: Tuple[Router, FakeReplicaScheduler], is_streaming: bool
+        self,
+        setup_router: Tuple[AsyncioRouter, FakeReplicaScheduler],
+        is_streaming: bool,
     ):
         router, fake_replica_scheduler = setup_router
 
@@ -358,7 +368,7 @@ class TestAssignRequest:
         indirect=True,
     )
     async def test_cross_lang_no_rejection(
-        self, setup_router: Tuple[Router, FakeReplicaScheduler]
+        self, setup_router: Tuple[AsyncioRouter, FakeReplicaScheduler]
     ):
         router, fake_replica_scheduler = setup_router
 
@@ -378,7 +388,7 @@ class TestAssignRequest:
         assert replica_result._replica_id == r1_id
 
     async def test_max_queued_requests_no_limit(
-        self, setup_router: Tuple[Router, FakeReplicaScheduler]
+        self, setup_router: Tuple[AsyncioRouter, FakeReplicaScheduler]
     ):
         router, fake_replica_scheduler = setup_router
         fake_replica_scheduler.set_should_block_requests(True)
@@ -416,7 +426,7 @@ class TestAssignRequest:
         )
 
     async def test_max_queued_requests_limited(
-        self, setup_router: Tuple[Router, FakeReplicaScheduler]
+        self, setup_router: Tuple[AsyncioRouter, FakeReplicaScheduler]
     ):
         router, fake_replica_scheduler = setup_router
         fake_replica_scheduler.set_should_block_requests(True)
@@ -475,7 +485,7 @@ class TestAssignRequest:
         )
 
     async def test_max_queued_requests_updated(
-        self, setup_router: Tuple[Router, FakeReplicaScheduler]
+        self, setup_router: Tuple[AsyncioRouter, FakeReplicaScheduler]
     ):
         router, fake_replica_scheduler = setup_router
         fake_replica_scheduler.set_should_block_requests(True)
@@ -574,7 +584,7 @@ class TestAssignRequest:
         indirect=True,
     )
     async def test_replica_actor_died(
-        self, setup_router: Tuple[Router, FakeReplicaScheduler]
+        self, setup_router: Tuple[AsyncioRouter, FakeReplicaScheduler]
     ):
         router, fake_replica_scheduler = setup_router
         d_id = DeploymentID(name="test")
@@ -606,7 +616,7 @@ class TestAssignRequest:
         indirect=True,
     )
     async def test_replica_actor_unavailable(
-        self, setup_router: Tuple[Router, FakeReplicaScheduler]
+        self, setup_router: Tuple[AsyncioRouter, FakeReplicaScheduler]
     ):
         router, fake_replica_scheduler = setup_router
         # Two replicas

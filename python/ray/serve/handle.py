@@ -195,7 +195,7 @@ class _DeploymentHandleBase:
         if self._router is None:
             return False
 
-        return self._router.running_replicas_populated
+        return self._router.running_replicas_populated()
 
     @property
     def deployment_name(self) -> str:
@@ -287,13 +287,7 @@ class _DeploymentHandleBase:
         if not self.is_initialized:
             self._init()
 
-        # Schedule the coroutine to run on the router loop. This is always a separate
-        # loop running in another thread to avoid user code blocking the router, so we
-        # use the `concurrent.futures.Future` thread safe API.
-        return asyncio.run_coroutine_threadsafe(
-            self._router.assign_request(request_metadata, *args, **kwargs),
-            loop=self._router._event_loop,
-        )
+        return self._router.assign_request(request_metadata, *args, **kwargs)
 
     def __getattr__(self, name):
         return self.options(method_name=name)

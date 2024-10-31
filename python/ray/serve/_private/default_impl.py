@@ -1,5 +1,3 @@
-import asyncio
-import threading
 from typing import Any, Callable, Optional, Tuple
 
 import ray
@@ -23,7 +21,7 @@ from ray.serve._private.replica_scheduler import (
     ActorReplicaWrapper,
     PowerOfTwoChoicesReplicaScheduler,
 )
-from ray.serve._private.router import Router
+from ray.serve._private.router import AsyncioRouter, Router, SingletonThreadRouter
 from ray.serve._private.utils import (
     get_current_actor_id,
     get_head_node_id,
@@ -68,33 +66,6 @@ def create_init_handle_options(**kwargs):
     return _InitHandleOptions.create(**kwargs)
 
 
-_router_thread_singleton_async_loop = None
-_router_thread_singleton_async_loop_creation_lock = threading.Lock()
-
-
-def _get_router_thread_singleton_event_loop() -> asyncio.AbstractEventLoop:
-    """Provides a global singleton asyncio event loop running in a daemon thread.
-
-    This thread is shared by all routers.
-
-    This method is thread safe.
-    """
-    global _router_thread_singleton_async_loop
-    if _router_thread_singleton_async_loop is None:
-        with _router_thread_singleton_async_loop_creation_lock:
-            if _router_thread_singleton_async_loop is not None:
-                return _router_thread_singleton_async_loop
-
-            _router_thread_singleton_async_loop = asyncio.new_event_loop()
-            thread = threading.Thread(
-                daemon=True,
-                target=_router_thread_singleton_async_loop.run_forever,
-            )
-            thread.start()
-
-    return _router_thread_singleton_async_loop
-
-
 def _get_node_id_and_az() -> Tuple[str, Optional[str]]:
     node_id = ray.get_runtime_context().get_node_id()
     try:
@@ -124,8 +95,8 @@ def create_router(
     actor_id = get_current_actor_id()
     node_id, availability_zone = _get_node_id_and_az()
     controller_handle = _get_global_client()._controller
-    event_loop = _get_router_thread_singleton_event_loop()
     is_inside_ray_client_context = inside_ray_client_context()
+    event_loop = SingletonThreadRouter.get_singleton_thread_asyncio_loop()
 
     replica_scheduler = PowerOfTwoChoicesReplicaScheduler(
         event_loop,
@@ -146,20 +117,22 @@ def create_router(
         create_replica_wrapper_func=lambda r: ActorReplicaWrapper(r),
     )
 
-    return Router(
-        controller_handle=controller_handle,
-        deployment_id=deployment_id,
-        handle_id=handle_id,
-        self_actor_id=actor_id,
-        handle_source=handle_options._source,
-        event_loop=event_loop,
-        replica_scheduler=replica_scheduler,
-        # Streaming ObjectRefGenerators are not supported in Ray Client
-        enable_strict_max_ongoing_requests=(
-            not is_inside_ray_client_context
-            and RAY_SERVE_ENABLE_STRICT_MAX_ONGOING_REQUESTS
-        ),
-        resolve_request_args_func=resolve_request_args,
+    return SingletonThreadRouter(
+        AsyncioRouter(
+            controller_handle=controller_handle,
+            deployment_id=deployment_id,
+            handle_id=handle_id,
+            self_actor_id=actor_id,
+            handle_source=handle_options._source,
+            event_loop=event_loop,
+            replica_scheduler=replica_scheduler,
+            # Streaming ObjectRefGenerators are not supported in Ray Client
+            enable_strict_max_ongoing_requests=(
+                not is_inside_ray_client_context
+                and RAY_SERVE_ENABLE_STRICT_MAX_ONGOING_REQUESTS
+            ),
+            resolve_request_args_func=resolve_request_args,
+        )
     )
 
 

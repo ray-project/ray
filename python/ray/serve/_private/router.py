@@ -1,8 +1,10 @@
 import asyncio
+import concurrent.futures
 import logging
 import threading
 import time
 import uuid
+from abc import ABC, abstractmethod
 from collections import defaultdict
 from contextlib import contextmanager
 from functools import partial
@@ -310,7 +312,26 @@ class RouterMetricsManager:
         self._shutdown = True
 
 
-class Router:
+class Router(ABC):
+    @abstractmethod
+    def running_replicas_populated(self) -> bool:
+        pass
+
+    @abstractmethod
+    def assign_request(
+        self,
+        request_meta: RequestMetadata,
+        *request_args,
+        **request_kwargs,
+    ) -> concurrent.futures.Future[ReplicaResult]:
+        pass
+
+    @abstractmethod
+    def shutdown(self):
+        pass
+
+
+class AsyncioRouter:
     def __init__(
         self,
         controller_handle: ActorHandle,
@@ -338,7 +359,7 @@ class Router:
 
         # Flipped to `True` once the router has received a non-empty
         # replica set at least once.
-        self.running_replicas_populated: bool = False
+        self._running_replicas_populated: bool = False
 
         # The config for the deployment this router sends requests to will be broadcast
         # by the controller. That means it is not available until we get the first
@@ -392,12 +413,15 @@ class Router:
             call_in_event_loop=self._event_loop,
         )
 
+    def running_replicas_populated(self) -> bool:
+        return self._running_replicas_populated
+
     def update_running_replicas(self, running_replicas: List[RunningReplicaInfo]):
         self._replica_scheduler.update_running_replicas(running_replicas)
         self._metrics_manager.update_running_replicas(running_replicas)
 
         if running_replicas:
-            self.running_replicas_populated = True
+            self._running_replicas_populated = True
 
     def update_deployment_config(self, deployment_config: DeploymentConfig):
         self._metrics_manager.update_deployment_config(
@@ -560,7 +584,62 @@ class Router:
 
                 raise
 
+    async def shutdown(self):
+        await self._metrics_manager.shutdown()
+
+
+class SingletonThreadRouter(Router):
+    _singleton_thread_asyncio_loop: Optional[asyncio.AbstractEventLoop] = None
+    _singleton_thread_asyncio_loop_creation_lock = threading.Lock()
+
+    def __init__(self, asyncio_router: AsyncioRouter):
+        self._asyncio_router = asyncio_router
+        # Initialize singleton thread if needed.
+        self.get_singleton_thread_asyncio_loop()
+
+        # TODO: update this comment and make it a docstring.
+        # Schedule the coroutine to run on the router loop. This is always a separate
+        # loop running in another thread to avoid user code blocking the router, so we
+        # use the `concurrent.futures.Future` thread safe API.
+
+    @classmethod
+    def get_singleton_thread_asyncio_loop(cls) -> asyncio.AbstractEventLoop:
+        """Provides a global singleton asyncio event loop running in a daemon thread.
+
+        TODO: cleanup.
+
+        This thread is shared by all routers.
+
+        This method is thread safe.
+        """
+        with cls._singleton_thread_asyncio_loop_creation_lock:
+            if cls._singleton_thread_asyncio_loop is None:
+                cls._singleton_thread_asyncio_loop = asyncio.new_event_loop()
+                thread = threading.Thread(
+                    daemon=True,
+                    target=cls._singleton_thread_asyncio_loop.run_forever,
+                )
+                thread.start()
+
+        return cls._singleton_thread_asyncio_loop
+
+    def running_replicas_populated(self) -> bool:
+        return self._asyncio_router.running_replicas_populated()
+
+    def assign_request(
+        self,
+        request_meta: RequestMetadata,
+        *request_args,
+        **request_kwargs,
+    ) -> concurrent.futures.Future[ReplicaResult]:
+        return asyncio.run_coroutine_threadsafe(
+            self._asyncio_router.assign_request(
+                request_meta, *request_args, **request_kwargs
+            ),
+            loop=self._singleton_thread_asyncio_loop,
+        )
+
     def shutdown(self):
         asyncio.run_coroutine_threadsafe(
-            self._metrics_manager.shutdown(), loop=self._event_loop
+            self._asyncio_router.shutdown(), loop=self._singleton_thread_asyncio_loop
         ).result()
