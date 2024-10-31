@@ -386,9 +386,9 @@ class BlockAccessor:
     @classmethod
     def batch_to_arrow_block(cls, batch: Dict[str, Any]) -> Block:
         """Create an Arrow block from user-facing data formats."""
-        from ray.data._internal.arrow_block import ArrowBlockAccessor
+        from ray.data._internal.arrow_block import ArrowBlockBuilder
 
-        return ArrowBlockAccessor.numpy_to_block(batch)
+        return ArrowBlockBuilder._table_from_pydict(batch)
 
     @classmethod
     def batch_to_pandas_block(cls, batch: Dict[str, Any]) -> Block:

@@ -221,40 +221,6 @@ class ArrowBlockAccessor(TableBlockAccessor):
         return cls(reader.read_all())
 
     @staticmethod
-    def numpy_to_block(
-        batch: Union[Dict[str, np.ndarray], Dict[str, list]],
-    ) -> "pyarrow.Table":
-        from ray.data.extensions.object_extension import (
-            ArrowPythonObjectArray,
-            object_extension_type_allowed,
-        )
-        from ray.data.extensions.tensor_extension import ArrowTensorArray
-
-        validate_numpy_batch(batch)
-
-        new_batch = {}
-        for col_name, col in batch.items():
-            # Coerce to np.ndarray format if possible.
-            col = convert_udf_returns_to_numpy(col)
-            # Use Arrow's native *List types for 1-dimensional ndarrays.
-            if col.dtype.type is np.object_ or col.ndim > 1:
-                try:
-                    col = ArrowTensorArray.from_numpy(col, col_name)
-                except ArrowConversionError as e:
-                    if object_extension_type_allowed() and is_object_fixable_error(e):
-                        if log_once(f"arrow_object_pickle_{col_name}"):
-                            logger.debug(
-                                f"Failed to interpret {col_name} as "
-                                "multi-dimensional arrays. It will be pickled."
-                            )
-                        col = ArrowPythonObjectArray.from_objects(col)
-                    else:
-                        raise
-
-            new_batch[col_name] = col
-        return pyarrow_table_from_pydict(new_batch)
-
-    @staticmethod
     def _build_tensor_row(
         row: ArrowRow, col_name: str = TENSOR_COLUMN_NAME
     ) -> np.ndarray:
