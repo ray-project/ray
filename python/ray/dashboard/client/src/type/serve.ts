@@ -87,7 +87,7 @@ export enum ServeProxyLocation {
   FixedNumber = "FixedNumber",
 }
 
-// Keep in sync with ProxyStatus in python/ray/serve/_private/common.py
+// Keep in sync with ProxyStatus in python/ray/serve/schema.py
 export enum ServeSystemActorStatus {
   STARTING = "STARTING",
   HEALTHY = "HEALTHY",

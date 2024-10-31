@@ -26,8 +26,9 @@
 namespace ray {
 namespace internal {
 LocalModeObjectStore::LocalModeObjectStore(LocalModeRayRuntime &local_mode_ray_tuntime)
-    : local_mode_ray_tuntime_(local_mode_ray_tuntime) {
-  memory_store_ = std::make_unique<CoreWorkerMemoryStore>();
+    : io_context_("LocalModeObjectStore"),
+      local_mode_ray_tuntime_(local_mode_ray_tuntime) {
+  memory_store_ = std::make_unique<CoreWorkerMemoryStore>(io_context_.GetIoService());
 }
 
 void LocalModeObjectStore::PutRaw(std::shared_ptr<msgpack::sbuffer> data,

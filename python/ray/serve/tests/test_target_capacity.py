@@ -13,7 +13,6 @@ from ray.exceptions import RayActorError
 from ray.serve import Application
 from ray.serve._private.client import ServeControllerClient
 from ray.serve._private.common import (
-    ApplicationStatus,
     DeploymentStatus,
     DeploymentStatusTrigger,
     ReplicaState,
@@ -22,7 +21,11 @@ from ray.serve._private.common import (
 from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME, SERVE_NAMESPACE
 from ray.serve.config import AutoscalingConfig
 from ray.serve.context import _get_global_client
-from ray.serve.schema import ServeApplicationSchema, ServeDeploySchema
+from ray.serve.schema import (
+    ApplicationStatus,
+    ServeApplicationSchema,
+    ServeDeploySchema,
+)
 
 INGRESS_DEPLOYMENT_NAME = "ingress"
 INGRESS_DEPLOYMENT_NUM_REPLICAS = 6

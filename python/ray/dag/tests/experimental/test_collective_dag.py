@@ -404,6 +404,7 @@ def test_comm_deduplicate_p2p_and_collective(ray_start_regular, monkeypatch):
         dag = workers[1].recv.bind(
             collectives[0].with_type_hint(TorchTensorType(transport="nccl"))
         )
+        dag = MultiOutputNode([dag, collectives[1]])
 
     compiled_dag, mock_nccl_group_set = check_nccl_group_init(
         monkeypatch,
@@ -435,6 +436,7 @@ def test_custom_comm_deduplicate(ray_start_regular, monkeypatch):
         dag = workers[0].recv.bind(
             collectives[1].with_type_hint(TorchTensorType(transport="nccl"))
         )
+        dag = MultiOutputNode([dag, collectives[0]])
 
     compiled_dag, mock_nccl_group_set = check_nccl_group_init(
         monkeypatch,
@@ -453,6 +455,7 @@ def test_custom_comm_deduplicate(ray_start_regular, monkeypatch):
         dag = workers[0].recv.bind(
             collectives[1].with_type_hint(TorchTensorType(transport=comm))
         )
+        dag = MultiOutputNode([dag, collectives[0]])
 
     compiled_dag, mock_nccl_group_set = check_nccl_group_init(
         monkeypatch,
@@ -487,6 +490,7 @@ def test_custom_comm_init_teardown(ray_start_regular, monkeypatch):
         dag = workers[0].recv.bind(
             allreduce[1].with_type_hint(TorchTensorType(transport=comm))
         )
+        dag = MultiOutputNode([dag, allreduce[0]])
 
     compiled_dag, mock_nccl_group_set = check_nccl_group_init(
         monkeypatch,
@@ -508,6 +512,7 @@ def test_custom_comm_init_teardown(ray_start_regular, monkeypatch):
         dag = workers[0].recv.bind(
             allreduce2[1].with_type_hint(TorchTensorType(transport=comm_3))
         )
+        dag = MultiOutputNode([dag, allreduce2[0]])
 
     compiled_dag, mock_nccl_group_set = check_nccl_group_init(
         monkeypatch,
