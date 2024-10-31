@@ -74,9 +74,9 @@ config = (
     .training(
         learner_connector=_make_learner_connector,
         train_batch_size_per_learner=500,
-        grad_clip=40.0,
+        grad_clip=30.0,
         grad_clip_by="global_norm",
-        lr=0.00075 * ((args.num_learners or 1) ** 0.5),
+        lr=0.0009 * ((args.num_learners or 1) ** 0.5),
         vf_loss_coeff=1.0,
         entropy_coeff=[[0, 0.01], [3000000, 0.0]],  # <- crucial parameter to finetune
         # Only update connector states and model weights every n training_step calls.
