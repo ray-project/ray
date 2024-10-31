@@ -123,7 +123,7 @@ def _debugpy_excepthook():
         additional_info.is_tracing -= 1
 
 
-def _is_ray_debugger_enabled():
+def _is_ray_debugger_post_mortem_enabled():
     return "RAY_DEBUG" in os.environ
 
 
