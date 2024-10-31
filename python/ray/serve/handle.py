@@ -1,7 +1,6 @@
 import asyncio
 import concurrent.futures
 import logging
-import threading
 import time
 import warnings
 from abc import ABC
