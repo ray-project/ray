@@ -674,6 +674,7 @@ class IMPALA(Algorithm):
             )
             rl_module_state = None
             last_good_learner_results = None
+            num_learner_group_results_received = 0
 
             for batch_ref_or_episode_list_ref in data_packages_for_learner_group:
                 if self.config.num_aggregation_workers:
@@ -706,9 +707,11 @@ class IMPALA(Algorithm):
                     )
                 if not do_async_updates:
                     learner_results = [learner_results]
+
                 for results_from_n_learners in learner_results:
                     if not results_from_n_learners[0]:
                         continue
+                    num_learner_group_results_received += 1
                     for r in results_from_n_learners:
                         rl_module_state = r.pop(
                             "_rl_module_state_after_update", rl_module_state
@@ -720,7 +723,7 @@ class IMPALA(Algorithm):
                     last_good_learner_results = results_from_n_learners
             self.metrics.log_value(
                 key=MEAN_NUM_LEARNER_GROUP_RESULTS_RECEIVED,
-                value=len(learner_results),
+                value=num_learner_group_results_received,
             )
 
         # Update LearnerGroup's own stats.
@@ -739,7 +742,6 @@ class IMPALA(Algorithm):
         # Figure out, whether we should sync/broadcast the (remote) EnvRunner states.
         # Note: `learner_results` is a List of n (num async calls) Lists of m
         # (num Learner workers) ResultDicts each.
-        print(last_good_learner_results)
         if last_good_learner_results:
             # TODO (sven): Rename this metric into a more fitting name: ex.
             #  `NUM_LEARNER_UPDATED_SINCE_LAST_WEIGHTS_SYNC`
