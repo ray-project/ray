@@ -507,12 +507,13 @@ def _visualize_execution_schedule(
             If this is different from orig_index, the node is highlighted in red color
 
         Node grouping:
-            The nodes belonging to the same actor are grouped in the same rectangular
+            The nodes belonging to the same actor are grouped in the same rectangle
 
         Edges:
-            black color: indicates shared memory channel (also annotated with "shm")
-            blue color: indicates NCCL channel (also annotated with "nccl")
-            dashed edge: indicates a control dependency between compute nodes
+            black color (without label): data dependency
+            black color (annotated with "shm"): shared memory channel
+            blue color (annotated with "nccl): NCCL channel
+            dashed edge: control dependency between compute operations
 
     Args:
         actor_to_execution_schedule: A dictionary that maps an actor handle to
@@ -589,9 +590,10 @@ def _visualize_execution_schedule(
             '<TR><TD ALIGN="LEFT">The nodes belonging to the same actor are grouped in the same rectangular</TD></TR>'  # noqa
             "<TR><TD></TD></TR>"
             '<TR><TD ALIGN="LEFT"><B>Edges:</B></TD></TR>'
-            '<TR><TD ALIGN="LEFT">black color: indicates shared memory channel (also annotated with "shm")</TD></TR>'  # noqa
-            '<TR><TD ALIGN="LEFT"><FONT COLOR="blue">blue color</FONT>: indicates NCCL channel (also annotated with "nccl")</TD></TR>'  # noqa
-            '<TR><TD ALIGN="LEFT">dashed edge: indicates a control dependency between compute nodes</TD></TR>'  # noqa
+            '<TR><TD ALIGN="LEFT">black color (without label): data dependency</TD></TR>'  # noqa
+            '<TR><TD ALIGN="LEFT">black color (annotated with "shm"): shared memory channel</TD></TR>'  # noqa
+            '<TR><TD ALIGN="LEFT"><FONT COLOR="blue">blue color</FONT> (annotated with "nccl): NCCL channel</TD></TR>'  # noqa
+            '<TR><TD ALIGN="LEFT">dashed edge: control dependency between compute operations</TD></TR>'  # noqa
             "</TABLE>>"
         )
 
