@@ -26,7 +26,7 @@ from ray.air.util.tensor_extensions.arrow import (
 )
 from ray.data._internal.arrow_ops import transform_polars, transform_pyarrow
 from ray.data._internal.numpy_support import (
-    convert_udf_returns_to_numpy,
+    convert_to_numpy,
     validate_numpy_batch,
 )
 from ray.data._internal.row import TableRow
@@ -153,7 +153,7 @@ class ArrowBlockBuilder(TableBlockBuilder):
         pa_cols: Dict[str, pyarrow.Array] = dict()
 
         for col_names, col_vals in columns.items():
-            np_col_vals = convert_udf_returns_to_numpy(col_vals)
+            np_col_vals = convert_to_numpy(col_vals)
 
             try:
                 if col_names == TENSOR_COLUMN_NAME or np_col_vals.ndim > 1:

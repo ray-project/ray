@@ -70,7 +70,7 @@ def _convert_datetime_list_to_array(datetime_list: List[datetime]) -> np.ndarray
     )
 
 
-def convert_udf_returns_to_numpy(udf_return_col: Any) -> Any:
+def convert_to_numpy(column_values: Any) -> np.ndarray:
     """Convert UDF columns (output of map_batches) to numpy, if possible.
 
     This includes lists of scalars, objects supporting the array protocol, and lists
@@ -84,18 +84,17 @@ def convert_udf_returns_to_numpy(udf_return_col: Any) -> Any:
         ValueError if an input was array-like but we failed to convert it to an array.
     """
 
-    if isinstance(udf_return_col, np.ndarray):
+    if isinstance(column_values, np.ndarray):
         # No copy/conversion needed, just keep it verbatim.
-        return udf_return_col
+        return column_values
 
-    if isinstance(udf_return_col, list):
-        if len(udf_return_col) == 1 and isinstance(udf_return_col[0], np.ndarray):
+    elif isinstance(column_values, list):
+        if len(column_values) == 1 and isinstance(column_values[0], np.ndarray):
             # Optimization to avoid conversion overhead from list to np.array.
-            udf_return_col = np.expand_dims(udf_return_col[0], axis=0)
-            return udf_return_col
+            return np.expand_dims(column_values[0], axis=0)
 
-        if all(isinstance(elem, datetime) for elem in udf_return_col):
-            return _convert_datetime_list_to_array(udf_return_col)
+        if all(isinstance(elem, datetime) for elem in column_values):
+            return _convert_datetime_list_to_array(column_values)
 
         # Try to convert list values into an numpy array via
         # np.array(), so users don't need to manually cast.
@@ -106,14 +105,15 @@ def convert_udf_returns_to_numpy(udf_return_col: Any) -> Any:
             # creating an inefficient array of array of object dtype.
             # But don't convert if the list is nested. Because if sub-lists have
             # heterogeneous shapes, we need to create a ragged ndarray.
-            if not is_nested_list(udf_return_col) and all(
-                is_valid_udf_return(e) for e in udf_return_col
+            if not is_nested_list(column_values) and all(
+                is_valid_udf_return(e) for e in column_values
             ):
                 # Use np.asarray() instead of np.array() to avoid copying if possible.
-                udf_return_col = [np.asarray(e) for e in udf_return_col]
+                column_values = [np.asarray(e) for e in column_values]
+
             shapes = set()
             has_object = False
-            for e in udf_return_col:
+            for e in column_values:
                 if isinstance(e, np.ndarray):
                     shapes.add((e.dtype, e.shape))
                 elif isinstance(e, bytes):
@@ -126,28 +126,30 @@ def convert_udf_returns_to_numpy(udf_return_col: Any) -> Any:
                     has_object = True
                 elif not np.isscalar(e):
                     has_object = True
+
             if has_object or len(shapes) > 1:
                 # This util works around some limitations of np.array(dtype=object).
-                udf_return_col = create_ragged_ndarray(udf_return_col)
+                return create_ragged_ndarray(column_values)
             else:
-                udf_return_col = np.array(udf_return_col)
+                return np.array(column_values)
         except Exception as e:
-            logger.error(f"Failed to convert column values to numpy array: {_truncated_repr(udf_return_col)}", exc_info=e)
+            logger.error(f"Failed to convert column values to numpy array: {_truncated_repr(column_values)}", exc_info=e)
 
             raise ValueError(
                 "Failed to convert column values to numpy array: "
-                f"({_truncated_repr(udf_return_col)}): {e}."
+                f"({_truncated_repr(column_values)}): {e}."
             )
-    elif hasattr(udf_return_col, "__array__"):
+    elif hasattr(column_values, "__array__"):
         # Converts other array-like objects such as torch.Tensor.
         try:
-            udf_return_col = np.array(udf_return_col)
+            return np.array(column_values)
         except Exception as e:
-            logger.error(f"Failed to convert column values to numpy array: {_truncated_repr(udf_return_col)}", exc_info=e)
+            logger.error(f"Failed to convert column values to numpy array: {_truncated_repr(column_values)}", exc_info=e)
 
             raise ValueError(
                 "Failed to convert column values to numpy array: "
-                f"({_truncated_repr(udf_return_col)}): {e}."
+                f"({_truncated_repr(column_values)}): {e}."
             )
-
-    return udf_return_col
+    else:
+        # TODO assert unreachable
+        return column_values

@@ -17,7 +17,7 @@ import numpy as np
 
 from ray.air.constants import TENSOR_COLUMN_NAME
 from ray.data._internal.numpy_support import (
-    convert_udf_returns_to_numpy,
+    convert_to_numpy,
     validate_numpy_batch,
 )
 from ray.data._internal.row import TableRow
@@ -117,7 +117,7 @@ class PandasBlockBuilder(TableBlockBuilder):
         pd_columns: Dict[str, Any] = dict()
 
         for column_name, column_values in columns.items():
-            np_column_values = convert_udf_returns_to_numpy(column_values)
+            np_column_values = convert_to_numpy(column_values)
 
             if column_name == TENSOR_COLUMN_NAME or np_column_values.ndim > 1:
                 from ray.data.extensions.tensor_extension import TensorArray
