@@ -5,9 +5,8 @@ import pytest
 from ray import serve
 from ray.serve.handle import DeploymentHandle
 
-# TODO:
+# TODO(edoakes):
 # - add test for to_object_ref error.
-# - add test for exception raised in constructor.
 # - support local http client.
 
 

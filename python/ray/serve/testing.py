@@ -72,6 +72,7 @@ def make_local_deployment_handle(
 
 class _LocalReplicaResult(ReplicaResult):
     """ReplicaResult used by in-process Deployment Handles."""
+
     def __init__(
         self,
         future: concurrent.futures.Future,
@@ -89,9 +90,9 @@ class _LocalReplicaResult(ReplicaResult):
         # The queue will be consumed until the future is completed.
         self._generator_result_queue = generator_result_queue
         if self._is_streaming:
-            assert self._generator_result_queue is not None, (
-                "generator_result_queue must be provided for streaming results."
-            )
+            assert (
+                self._generator_result_queue is not None
+            ), "generator_result_queue must be provided for streaming results."
 
     @property
     def _asyncio_future(self) -> asyncio.Future:
@@ -217,6 +218,7 @@ class _LocalRouter(Router):
         on the responses to resolve them to their values. This is a divergence
         from the remote codepath where it's performed concurrently.
         """
+
         def _new_arg(arg: Any) -> Any:
             if isinstance(arg, DeploymentResponse):
                 new_arg = arg.result(_skip_asyncio_check=True)
