@@ -1,11 +1,14 @@
 import logging
 import logging.config
 import os
+from enum import Enum
 from typing import Optional
 
 import yaml
 
 import ray
+from ray._private.ray_logging.filters import CoreContextFilter
+from ray.train._internal.session import _get_session
 from ray.train.constants import LOG_CONFIG_PATH_ENV, LOG_ENCODING_ENV
 
 # JSON Encoding format for Ray Train structured logging
@@ -23,8 +26,8 @@ DEFAULT_LOG_CONFIG_JSON_STRING = {
     },
     "filters": {
         "console_filter": {"()": "ray.train._internal.logging.HiddenRecordFilter"},
-        "core_context_filter": {
-            "()": "ray._private.ray_logging.filters.CoreContextFilter"
+        "train_context_filter": {
+            "()": "ray.train._internal.logging.TrainContextFilter"
         },
     },
     "handlers": {
@@ -37,7 +40,7 @@ DEFAULT_LOG_CONFIG_JSON_STRING = {
             "class": "ray.train._internal.logging.SessionFileHandler",
             "formatter": "ray_json",
             "filename": "ray-train.log",
-            "filters": ["core_context_filter"],
+            "filters": ["train_context_filter"],
         },
         "console": {
             "class": "ray._private.log.PlainRayHandler",
@@ -54,6 +57,14 @@ DEFAULT_LOG_CONFIG_JSON_STRING = {
         },
     },
 }
+
+
+class TrainLogKey(str, Enum):
+    WORLD_SIZE = "world_size"
+    WORLD_RANK = "world_rank"
+    LOCAL_WORLD_SIZE = "local_world_size"
+    LOCAL_RANK = "local_rank"
+    NODE_RANK = "node_rank"
 
 
 class HiddenRecordFilter(logging.Filter):
@@ -74,6 +85,39 @@ class HiddenRecordFilter(logging.Filter):
 
     def filter(self, record):
         return not getattr(record, "hide", False)
+
+
+class TrainContextFilter(CoreContextFilter):
+    """Add rank and size information to the log record if the log is from a train worker.
+
+    This filter is a subclass of CoreContextFilter, which adds the job_id, worker_id,
+    and node_id to the log record. This filter adds the rank and size information of
+    the train context to the log record.
+    """
+
+    # TODO (hpguo): This implementation is subject to change in Train V2.
+    def _is_worker_process(self) -> bool:
+        # If this process does not have a train session, it is a driver process,
+        # not a worker process.
+        if not _get_session():
+            return False
+        # If this process has a train session, but its world size field is None,
+        # it means the process is the train controller process created from Tune.
+        # It is not a worker process, either.
+        return _get_session().world_size is not None
+
+    def filter(self, record):
+        if not self._is_worker_process():
+            return super().filter(record)
+        # Otherwise, we need to check if the corresponding field of the train session
+        # is None or not. If it is not None, we add the field to the log record.
+        # If it is None, it means the process is the train driver created from Tune.
+        setattr(record, TrainLogKey.WORLD_SIZE, _get_session().world_size)
+        setattr(record, TrainLogKey.WORLD_RANK, _get_session().world_rank)
+        setattr(record, TrainLogKey.LOCAL_WORLD_SIZE, _get_session().local_rank)
+        setattr(record, TrainLogKey.LOCAL_RANK, _get_session().local_world_size)
+        setattr(record, TrainLogKey.NODE_RANK, _get_session().node_rank)
+        return super().filter(record)
 
 
 class SessionFileHandler(logging.Handler):
@@ -125,7 +169,7 @@ def configure_logging() -> None:
 
     This function loads the configration YAML specified by "RAY_TRAIN_LOGGING_CONFIG"
     environment variable. If the variable isn't set, this function loads the default
-    "logging.yaml" file that is adjacent to this module.
+    DEFAULT_LOG_CONFIG_JSON_STRING that is in this module.
 
     If "RAY_TRAIN_LOG_ENCODING" is specified as "JSON" we will enable JSON reading mode
     if using the default logging config.
