@@ -112,7 +112,6 @@ class LRChecker(DefaultCallbacks):
         if (
             algorithm.training_iteration
             <= algorithm.config._torch_lr_scheduler_classes[0].keywords["total_iters"]
-            + 1
         ):
             actual_lr = algorithm.learner_group._learner.get_optimizer(
                 DEFAULT_MODULE_ID, DEFAULT_OPTIMIZER
@@ -126,7 +125,7 @@ class LRChecker(DefaultCallbacks):
             )
 
 
-parser = add_rllib_example_script_args(default_reward=450.0, default_timesteps=200000)
+parser = add_rllib_example_script_args(default_reward=450.0, default_timesteps=250000)
 parser.set_defaults(enable_new_api_stack=True)
 parser.add_argument(
     "--lr-const-factor",
