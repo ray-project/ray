@@ -1,9 +1,11 @@
 import asyncio
 import concurrent.futures
+import inspect
 import logging
 import queue
 import time
-from typing import Any, Callable, Dict, Optional, Tuple
+from functools import wraps
+from typing import Any, Callable, Coroutine, Dict, Optional, Tuple, Union
 
 from ray import cloudpickle
 from ray.serve._private.common import DeploymentID, RequestMetadata
@@ -13,6 +15,7 @@ from ray.serve._private.replica_result import ReplicaResult
 from ray.serve._private.router import Router
 from ray.serve._private.utils import GENERATOR_COMPOSITION_NOT_SUPPORTED_ERROR
 from ray.serve.deployment import Deployment
+from ray.serve.exceptions import RequestCancelledError
 from ray.serve.handle import (
     DeploymentHandle,
     DeploymentResponse,
@@ -62,11 +65,13 @@ class _LocalReplicaResult(ReplicaResult):
         self,
         future: concurrent.futures.Future,
         *,
+        request_id: str,
         is_streaming: bool = False,
         generator_result_queue: Optional[queue.Queue] = None,
     ):
         self._future = future
         self._lazy_asyncio_future = None
+        self._request_id = request_id
         self._is_streaming = is_streaming
         self._generator_result_queue = generator_result_queue
 
@@ -77,6 +82,27 @@ class _LocalReplicaResult(ReplicaResult):
 
         return self._lazy_asyncio_future
 
+    def _process_response(f: Union[Callable, Coroutine]):
+        @wraps(f)
+        def wrapper(self, *args, **kwargs):
+            try:
+                return f(self, *args, **kwargs)
+            except (asyncio.CancelledError, concurrent.futures.CancelledError):
+                raise RequestCancelledError(self._request_id)
+
+        @wraps(f)
+        async def async_wrapper(self, *args, **kwargs):
+            try:
+                return await f(self, *args, **kwargs)
+            except (asyncio.CancelledError, concurrent.futures.CancelledError):
+                raise RequestCancelledError(self._request_id)
+
+        if inspect.iscoroutinefunction(f):
+            return async_wrapper
+        else:
+            return wrapper
+
+    @_process_response
     def get(self, timeout_s: Optional[float]):
         assert (
             not self._is_streaming
@@ -85,8 +111,9 @@ class _LocalReplicaResult(ReplicaResult):
         try:
             return self._future.result(timeout=timeout_s)
         except concurrent.futures.TimeoutError:
-            raise TimeoutError(f"Result not available within {timeout_s}s.")
+            raise TimeoutError("Timed out waiting for result.")
 
+    @_process_response
     async def get_async(self):
         assert (
             not self._is_streaming
@@ -94,6 +121,7 @@ class _LocalReplicaResult(ReplicaResult):
 
         return await self._asyncio_future
 
+    @_process_response
     def __next__(self):
         assert self._is_streaming, "next() can only be called on a streaming result."
 
@@ -109,6 +137,7 @@ class _LocalReplicaResult(ReplicaResult):
             except queue.Empty:
                 pass
 
+    @_process_response
     async def __anext__(self):
         assert self._is_streaming, "anext() can only be called on a streaming result."
 
@@ -214,6 +243,7 @@ class _LocalRouter(Router):
                     request_kwargs,
                     generator_result_callback=generator_result_callback,
                 ),
+                request_id=request_meta.request_id,
                 is_streaming=request_meta.is_streaming,
                 generator_result_queue=generator_result_queue,
             )

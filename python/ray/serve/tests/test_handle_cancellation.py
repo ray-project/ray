@@ -11,6 +11,7 @@ from ray._private.test_utils import (
     async_wait_for_condition,
     wait_for_condition,
 )
+from ray.serve._private.constants import RAY_SERVE_FORCE_LOCAL_TESTING_MODE
 from ray.serve._private.test_utils import send_signal_on_cancellation, tlog
 from ray.serve.exceptions import RequestCancelledError
 
@@ -40,6 +41,10 @@ def test_cancel_sync_handle_call_during_execution(serve_instance):
         r.result()
 
 
+@pytest.mark.skipif(
+    RAY_SERVE_FORCE_LOCAL_TESTING_MODE,
+    reason="local_testing_mode doesn't have assignment/execution split",
+)
 def test_cancel_sync_handle_call_during_assignment(serve_instance):
     """Test cancelling handle request during assignment (sync context)."""
     signal_actor = SignalActor.remote()
@@ -108,6 +113,10 @@ def test_cancel_async_handle_call_during_execution(serve_instance):
     h.remote().result()  # Would raise if test failed.
 
 
+@pytest.mark.skipif(
+    RAY_SERVE_FORCE_LOCAL_TESTING_MODE,
+    reason="local_testing_mode doesn't have assignment/execution split",
+)
 def test_cancel_async_handle_call_during_assignment(serve_instance):
     """Test cancelling handle request during assignment (async context)."""
     signal_actor = SignalActor.remote()
@@ -281,6 +290,10 @@ def test_out_of_band_task_is_not_cancelled(serve_instance):
     assert h.get_out_of_band_response.remote().result() == "ok"
 
 
+@pytest.mark.skipif(
+    RAY_SERVE_FORCE_LOCAL_TESTING_MODE,
+    reason="local_testing_mode doesn't implement recursive cancellation",
+)
 def test_recursive_cancellation_during_execution(serve_instance):
     inner_signal_actor = SignalActor.remote()
     outer_signal_actor = SignalActor.remote()
@@ -309,6 +322,10 @@ def test_recursive_cancellation_during_execution(serve_instance):
     ray.get(outer_signal_actor.wait.remote(), timeout=10)
 
 
+@pytest.mark.skipif(
+    RAY_SERVE_FORCE_LOCAL_TESTING_MODE,
+    reason="local_testing_mode doesn't implement recursive cancellation",
+)
 def test_recursive_cancellation_during_assignment(serve_instance):
     signal = SignalActor.remote()
 

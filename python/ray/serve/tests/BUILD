@@ -451,6 +451,7 @@ py_test_module_list(
     files = [
         "test_handle_1.py",
         "test_handle_2.py",
+        "test_handle_cancellation.py",
         "test_handle_streaming.py",
     ],
     name_suffix = "_with_local_testing_mode",
