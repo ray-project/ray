@@ -414,7 +414,7 @@ class ReplicaActor:
                 task.cancel()
         except Exception as e:
             user_exception = e
-            logger.error(f"Request failed:\n{e}")
+            logger.exception("Request failed.")
             if ray.util.pdb._is_ray_debugger_enabled():
                 ray.util.pdb._post_mortem()
         finally:
