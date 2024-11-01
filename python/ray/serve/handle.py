@@ -7,6 +7,8 @@ from abc import ABC
 from dataclasses import dataclass, fields
 from typing import Any, AsyncIterator, Dict, Iterator, Optional, Tuple, Union
 
+from requests import request
+
 import ray
 from ray._raylet import ObjectRefGenerator
 from ray.serve._private.common import (
@@ -256,29 +258,16 @@ class _DeploymentHandleBase:
         )
 
     def _remote(
-        self, args: Tuple[Any], kwargs: Dict[str, Any]
+        self,
+        request_metadata: RequestMetadata,
+        args: Tuple[Any],
+        kwargs: Dict[str, Any],
     ) -> concurrent.futures.Future:
         self._record_telemetry_if_needed()
-        _request_context = ray.serve.context._serve_request_context.get()
-        request_metadata = RequestMetadata(
-            request_id=_request_context.request_id
-            if _request_context.request_id
-            else generate_request_id(),
-            internal_request_id=_request_context._internal_request_id
-            if _request_context._internal_request_id
-            else generate_request_id(),
-            call_method=self.handle_options.method_name,
-            route=_request_context.route,
-            app_name=self.app_name,
-            multiplexed_model_id=self.handle_options.multiplexed_model_id,
-            is_streaming=self.handle_options.stream,
-            _request_protocol=self.handle_options._request_protocol,
-            grpc_context=_request_context.grpc_context,
-        )
         self.request_counter.inc(
             tags={
-                "route": _request_context.route,
-                "application": _request_context.app_name,
+                "route": request_metadata.route,
+                "application": request_metadata.app_name,
             }
         )
 
@@ -312,10 +301,19 @@ class _DeploymentHandleBase:
 
 
 class _DeploymentResponseBase:
-    def __init__(self, replica_result_future: concurrent.futures.Future[ReplicaResult]):
+    def __init__(
+        self,
+        replica_result_future: concurrent.futures.Future[ReplicaResult],
+        request_metadata: RequestMetadata,
+    ):
         self._cancelled = False
         self._replica_result_future = replica_result_future
         self._replica_result: Optional[ReplicaResult] = None
+        self._request_metadata: RequestMetadata = request_metadata
+
+    @property
+    def request_id(self) -> str:
+        return self._request_metadata.request_id
 
     def _fetch_future_result_sync(
         self, _timeout_s: Optional[float] = None
@@ -333,7 +331,7 @@ class _DeploymentResponseBase:
             except concurrent.futures.TimeoutError:
                 raise TimeoutError("Timed out resolving to ObjectRef.") from None
             except concurrent.futures.CancelledError:
-                raise RequestCancelledError from None
+                raise RequestCancelledError(self.request_id) from None
 
         return self._replica_result
 
@@ -351,7 +349,7 @@ class _DeploymentResponseBase:
                     self._replica_result_future
                 )
             except asyncio.CancelledError:
-                raise RequestCancelledError from None
+                raise RequestCancelledError(self.request_id) from None
 
         return self._replica_result
 
@@ -794,10 +792,27 @@ class DeploymentHandle(_DeploymentHandleBase):
             **kwargs: Keyword arguments to be serialized and passed to the
                 remote method call.
         """
-        future = self._remote(args, kwargs)
+        _request_context = ray.serve.context._serve_request_context.get()
+        request_metadata = RequestMetadata(
+            request_id=_request_context.request_id
+            if _request_context.request_id
+            else generate_request_id(),
+            internal_request_id=_request_context._internal_request_id
+            if _request_context._internal_request_id
+            else generate_request_id(),
+            call_method=self.handle_options.method_name,
+            route=_request_context.route,
+            app_name=self.app_name,
+            multiplexed_model_id=self.handle_options.multiplexed_model_id,
+            is_streaming=self.handle_options.stream,
+            _request_protocol=self.handle_options._request_protocol,
+            grpc_context=_request_context.grpc_context,
+        )
+
+        future = self._remote(request_metadata, args, kwargs)
         if self.handle_options.stream:
             response_cls = DeploymentResponseGenerator
         else:
             response_cls = DeploymentResponse
 
-        return response_cls(future)
+        return response_cls(future, request_metadata)
