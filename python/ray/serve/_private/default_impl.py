@@ -1,12 +1,10 @@
-import asyncio
 import os
-from typing import Callable, Optional
+from typing import Any, Callable, Optional, Tuple
 
 import grpc
 
 import ray
 from ray._raylet import GcsClient
-from ray.actor import ActorHandle
 from ray.anyscale.serve.utils import asyncio_grpc_exception_handler
 from ray.serve._private.cluster_node_info_cache import (
     ClusterNodeInfoCache,
@@ -27,8 +25,9 @@ from ray.serve._private.replica_scheduler import (
     ActorReplicaWrapper,
     PowerOfTwoChoicesReplicaScheduler,
 )
-from ray.serve._private.router import Router
+from ray.serve._private.router import Router, SingletonThreadRouter
 from ray.serve._private.utils import (
+    get_current_actor_id,
     get_head_node_id,
     inside_ray_client_context,
     resolve_request_args,
@@ -71,20 +70,38 @@ def create_init_handle_options(**kwargs):
     return _InitHandleOptions.create(**kwargs)
 
 
+def _get_node_id_and_az() -> Tuple[str, Optional[str]]:
+    node_id = ray.get_runtime_context().get_node_id()
+    try:
+        cluster_node_info_cache = create_cluster_node_info_cache(
+            GcsClient(address=ray.get_runtime_context().gcs_address)
+        )
+        cluster_node_info_cache.update()
+        az = cluster_node_info_cache.get_node_az(node_id)
+    except Exception:
+        az = None
+
+    return node_id, az
+
+
+# Interface definition for create_router.
+CreateRouterCallable = Callable[[str, DeploymentID, Any], Router]
+
+
 def create_router(
-    controller_handle: ActorHandle,
-    deployment_id: DeploymentID,
     handle_id: str,
-    node_id: str,
-    actor_id: str,
-    availability_zone: Optional[str],
-    event_loop: asyncio.BaseEventLoop,
-    handle_options,
-):
+    deployment_id: DeploymentID,
+    handle_options: Any,
+) -> Router:
+    # NOTE(edoakes): this is lazy due to a nasty circular import that should be fixed.
+    from ray.serve.context import _get_global_client
+
+    actor_id = get_current_actor_id()
+    node_id, availability_zone = _get_node_id_and_az()
+    controller_handle = _get_global_client()._controller
     is_inside_ray_client_context = inside_ray_client_context()
 
     replica_scheduler = PowerOfTwoChoicesReplicaScheduler(
-        event_loop,
         deployment_id,
         handle_options._source,
         handle_options._prefer_local_routing,
@@ -102,13 +119,12 @@ def create_router(
         create_replica_wrapper_func=lambda r: ActorReplicaWrapper(r),
     )
 
-    return Router(
+    return SingletonThreadRouter(
         controller_handle=controller_handle,
         deployment_id=deployment_id,
         handle_id=handle_id,
         self_actor_id=actor_id,
         handle_source=handle_options._source,
-        event_loop=event_loop,
         replica_scheduler=replica_scheduler,
         # Streaming ObjectRefGenerators are not supported in Ray Client
         enable_strict_max_ongoing_requests=(
@@ -170,19 +186,19 @@ def create_init_handle_options(**kwargs):  # noqa: F811
 
 
 def create_router(  # noqa: F811
-    controller_handle: ActorHandle,
-    deployment_id: DeploymentID,
     handle_id: str,
-    node_id: str,
-    actor_id: str,
-    availability_zone: Optional[str],
-    event_loop: asyncio.BaseEventLoop,
-    handle_options,
+    deployment_id: DeploymentID,
+    handle_options: Any,
 ):
+    # NOTE(edoakes): this is lazy due to a nasty circular import that should be fixed.
     from ray.anyscale.serve._private.replica_scheduler.replica_wrapper import (
         gRPCReplicaWrapper,
     )
+    from ray.serve.context import _get_global_client
 
+    actor_id = get_current_actor_id()
+    node_id, availability_zone = _get_node_id_and_az()
+    controller_handle = _get_global_client()._controller
     is_inside_ray_client_context = inside_ray_client_context()
 
     def create_replica_wrapper_func(r):
@@ -191,9 +207,7 @@ def create_router(  # noqa: F811
         else:
             return gRPCReplicaWrapper(r)
 
-    event_loop.set_exception_handler(asyncio_grpc_exception_handler)
     replica_scheduler = PowerOfTwoChoicesReplicaScheduler(
-        event_loop,
         deployment_id,
         handle_options._source,
         handle_options._prefer_local_routing,
@@ -211,13 +225,12 @@ def create_router(  # noqa: F811
         create_replica_wrapper_func=create_replica_wrapper_func,
     )
 
-    return Router(
+    router = SingletonThreadRouter(
         controller_handle=controller_handle,
         deployment_id=deployment_id,
         handle_id=handle_id,
         self_actor_id=actor_id,
         handle_source=handle_options._source,
-        event_loop=event_loop,
         replica_scheduler=replica_scheduler,
         # Streaming ObjectRefGenerators are not supported in Ray Client
         enable_strict_max_ongoing_requests=(
@@ -226,6 +239,10 @@ def create_router(  # noqa: F811
         ),
         resolve_request_args_func=resolve_request_args,
     )
+    router._get_singleton_asyncio_loop().set_exception_handler(
+        asyncio_grpc_exception_handler
+    )
+    return router
 
 
 def add_grpc_address(grpc_server: gRPCServer, server_address: str):  # noqa: F811
