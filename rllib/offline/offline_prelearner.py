@@ -3,7 +3,6 @@ import logging
 import numpy as np
 from typing import Any, Dict, List, Optional, Union, Tuple, TYPE_CHECKING
 
-import ray
 from ray.rllib.core.columns import Columns
 from ray.rllib.core.rl_module.multi_rl_module import MultiRLModuleSpec
 from ray.rllib.env.single_agent_episode import SingleAgentEpisode
@@ -16,7 +15,6 @@ from ray.rllib.utils.annotations import (
 from ray.rllib.utils.compression import unpack_if_needed
 from ray.rllib.utils.spaces.space_utils import from_jsonable_if_needed
 from ray.rllib.utils.typing import EpisodeType, ModuleID
-from ray.util.placement_group import placement_group_table
 
 if TYPE_CHECKING:
     from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
@@ -80,22 +78,26 @@ class OfflinePreLearner:
     def __init__(
         self,
         config: "AlgorithmConfig",
-        module_spec: MultiRLModuleSpec,
-        module_state: Dict[ModuleID, Any],
         spaces: Optional[Tuple[gym.Space, gym.Space]] = None,
+        module_spec: Optional[MultiRLModuleSpec] = None,
+        module_state: Optional[Dict[ModuleID, Any]] = None,
     ):
         self.config = config
         self.input_read_episodes = self.config.input_read_episodes
         self.input_read_sample_batches = self.config.input_read_sample_batches
 
         # Build the module from spec. Note, this will be a MultiRLModule.
-        self._module = module_spec.build()
-        self._module.set_state(module_state)
-        # Map the module to the device, if necessary.
-        logger.debug(
+        import ray
+        from ray.util.placement_group import placement_group_table
+
+        logger.info(
             "===> [OfflinePreLearner] - Placement group resources: "
             f"{placement_group_table(ray.util.get_current_placement_group())}"
         )
+
+        self._module = module_spec.build()
+        self._module.set_state(module_state)
+        # Map the module to the device, if necessary.
         self._map_module_to_device()
 
         # Store the observation and action space if defined, otherwise we
@@ -263,10 +265,6 @@ class OfflinePreLearner:
         }
 
     def _map_module_to_device(self) -> None:
-        """Maps module to device, if necessary.
-
-        Only, if the device is non-CPU the module is mapped to the device.
-        """
         from ray.rllib.utils.framework import try_import_torch
         from ray.air._internal.torch_utils import get_devices
 
@@ -276,12 +274,11 @@ class OfflinePreLearner:
         devices = get_devices()
         logger.debug(f"===> [OfflinePreLearner] - Available devices: {devices}")
         # Assign devices randomly to balance loads.
-        # TODO (simon, sven): Optimize load balancing.
         self._device = devices[np.random.randint(0, len(devices))]
         logger.debug(
-            f"===> [OfflinePreLearner] - Module is mapped to device: {self._device}"
+            "===> [OfflinePreLearner] - Mapping module to following device: "
+            f"{self._device}"
         )
-        # If on CPU, the module is already on the correct device.
         if self._device == "cpu":
             return
         # Is this a plain `torch.nn.Module`?

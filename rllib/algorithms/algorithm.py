@@ -2933,7 +2933,8 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
                 for _ in range(eval_cf.evaluation_num_env_runners)
             ]
         else:
-            # resources for offline dataset readers during evaluation
+            # Old stack offline RL: resources for offline dataset readers during
+            # evaluation
             # Note (Kourosh): we should not claim extra workers for
             # training on the offline dataset, since rollout workers have already
             # claimed it.
@@ -2953,8 +2954,6 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
         if cf.enable_rl_module_and_learner and cf.num_learners > 0:
             learner_bundles = cls._get_learner_bundles(cf)
 
-        # Resources for offline data workers.
-        # TODO (simon): Refactor to `is_offline`.
         if (
             cf.input_
             and (
@@ -2968,9 +2967,9 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
             from ray.rllib.offline.offline_data import OfflineData
 
             offline_bundles = OfflineData.default_resource_request(cf)
-            logger.debug(
+            logger.info(
                 "===> [Algorithm] - Resource bundles for `OfflineData`: "
-                f"{offline_bundles}"
+                f" {offline_bundles}"
             )
         else:
             offline_bundles = []

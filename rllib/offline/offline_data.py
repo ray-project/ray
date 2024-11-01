@@ -57,8 +57,6 @@ class OfflineData:
         # be `gcsfs` for GCS, `pyarrow` for S3 or `adlfs` for Azure Blob Storage.
         # this filesystem is specifically needed, if a session has to be created
         # with the cloud provider.
-        # TODO (simon): Maybe just let the user define the arrow filesystem and
-        # the logic here.
         if self.filesystem == "gcs":
             import gcsfs
 
@@ -160,9 +158,9 @@ class OfflineData:
                 "module_state": module_state,
             }
 
-            # For debugging show available resources.
             logger.debug(
-                f"===> [OfflineData] - Available resources: {ray.available_resources()}"
+                "===> [OfflineData] - Available resources: "
+                f"{ray.available_resources()}"
             )
             logger.debug(
                 "===> [OfflineData] - Placement group resources: "
@@ -249,6 +247,7 @@ class OfflineData:
         # be assigned by ray.
         if ray._private.worker._mode() == ray._private.worker.WORKER_MODE:
             ray.data.DataContext.get_current().scheduling_strategy = None
+            ray.data.DataContext.get_current().log_internal_stack_trace_to_stdout = True
             logger.info(
                 "===> [OfflineData] - Running in a `ray.tune` session. Scheduling "
                 "strategy set to use current placement group resources."
@@ -321,6 +320,7 @@ class OfflineData:
             "concurrency", max(2, config.num_learners // 2)
         )
         # If a pool is used, try to reserve the maximum number of bundles.
+        # TODO (simon): Check, how ray.data does it when a pool (a, b) is requested.
         if isinstance(read_concurrency, tuple):
             read_concurrency = read_concurrency[1]
 
@@ -361,9 +361,19 @@ class OfflineData:
         if isinstance(map_concurrency, tuple):
             map_concurrency = map_concurrency[1]
 
+        # split_coordinator_resouce_bundle = (
+        #     [{"CPU": 1}] if config.num_learners > 1 else []
+        # )
+        # + int(config.num_learners > 1)
+        # * max(1, config.num_learners)
         # Multiply by concurrency and return. Note, in case of multiple learners, the
         # `streaming_split` is used and needs an additional `CoordinatorActor`. We
         # account for these resources, too.
+        # return read_concurrency * [input_read_resource_bundle] + [{k: v *
+        # map_concurrency for k, v in map_batches_resource_bundle.items()}] +
+        # split_coordinator_resouce_bundle
         return read_concurrency * [input_read_resource_bundle] + (
-            map_concurrency + int(config.num_learners > 1)
-        ) * (max(1, config.num_learners)) * [map_batches_resource_bundle]
+            map_concurrency + 1
+        ) * [
+            map_batches_resource_bundle
+        ]  # + split_coordinator_resouce_bundle
