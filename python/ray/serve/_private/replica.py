@@ -1238,7 +1238,7 @@ class UserCallableWrapper:
             if request_metadata.is_http_request and asgi_args is not None:
                 await self._send_user_result_over_asgi(
                     starlette.responses.Response(
-                        "Internal Server Error.", status_code=500
+                        "Internal Server Error", status_code=500
                     ),
                     asgi_args,
                 )
