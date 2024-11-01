@@ -22,6 +22,7 @@ cc_library(
     strip_include_prefix = "//src",
     visibility = ["//visibility:public"],
     deps = [
+        ":thread_checker",
         "//:aligned_alloc",
         "//:sha256",
         "//src/ray/protobuf:event_cc_proto",

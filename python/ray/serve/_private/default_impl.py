@@ -21,7 +21,7 @@ from ray.serve._private.replica_scheduler import (
     ActorReplicaWrapper,
     PowerOfTwoChoicesReplicaScheduler,
 )
-from ray.serve._private.router import AsyncioRouter, Router, SingletonThreadRouter
+from ray.serve._private.router import Router, SingletonThreadRouter
 from ray.serve._private.utils import (
     get_current_actor_id,
     get_head_node_id,
@@ -96,10 +96,8 @@ def create_router(
     node_id, availability_zone = _get_node_id_and_az()
     controller_handle = _get_global_client()._controller
     is_inside_ray_client_context = inside_ray_client_context()
-    event_loop = SingletonThreadRouter.get_singleton_thread_asyncio_loop()
 
     replica_scheduler = PowerOfTwoChoicesReplicaScheduler(
-        event_loop,
         deployment_id,
         handle_options._source,
         handle_options._prefer_local_routing,
@@ -118,21 +116,18 @@ def create_router(
     )
 
     return SingletonThreadRouter(
-        AsyncioRouter(
-            controller_handle=controller_handle,
-            deployment_id=deployment_id,
-            handle_id=handle_id,
-            self_actor_id=actor_id,
-            handle_source=handle_options._source,
-            event_loop=event_loop,
-            replica_scheduler=replica_scheduler,
-            # Streaming ObjectRefGenerators are not supported in Ray Client
-            enable_strict_max_ongoing_requests=(
-                not is_inside_ray_client_context
-                and RAY_SERVE_ENABLE_STRICT_MAX_ONGOING_REQUESTS
-            ),
-            resolve_request_args_func=resolve_request_args,
-        )
+        controller_handle=controller_handle,
+        deployment_id=deployment_id,
+        handle_id=handle_id,
+        self_actor_id=actor_id,
+        handle_source=handle_options._source,
+        replica_scheduler=replica_scheduler,
+        # Streaming ObjectRefGenerators are not supported in Ray Client
+        enable_strict_max_ongoing_requests=(
+            not is_inside_ray_client_context
+            and RAY_SERVE_ENABLE_STRICT_MAX_ONGOING_REQUESTS
+        ),
+        resolve_request_args_func=resolve_request_args,
     )
 
 
