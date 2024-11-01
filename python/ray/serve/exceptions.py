@@ -1,3 +1,6 @@
+from typing import Optional
+
+from ray.exceptions import TaskCancelledError
 from ray.util.annotations import PublicAPI
 
 
@@ -21,3 +24,17 @@ class BackPressureError(RayServeException):
     @property
     def message(self) -> str:
         return self._message
+
+
+@PublicAPI(stability="alpha")
+class RequestCancelledError(RayServeException, TaskCancelledError):
+    """Raise when a Serve request is cancelled."""
+
+    def __init__(self, request_id: Optional[str] = None):
+        self._request_id: Optional[str] = request_id
+
+    def __str__(self):
+        if self._request_id:
+            return f"Request {self._request_id} was cancelled."
+        else:
+            return "Request was cancelled."
