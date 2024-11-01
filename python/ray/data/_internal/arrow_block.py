@@ -150,20 +150,20 @@ class ArrowBlockBuilder(TableBlockBuilder):
 
     @staticmethod
     def _table_from_pydict(columns: Dict[str, List[Any]]) -> Block:
-        pa_columns: Dict[str, pyarrow.Array] = dict()
+        pa_cols: Dict[str, pyarrow.Array] = dict()
 
-        for column_name, column_values in columns.items():
-            np_column_values = convert_udf_returns_to_numpy(column_values)
+        for col_names, col_vals in columns.items():
+            np_col_vals = convert_udf_returns_to_numpy(col_vals)
 
             try:
-                if column_name == TENSOR_COLUMN_NAME or np_column_values.ndim > 1:
+                if col_names == TENSOR_COLUMN_NAME or np_col_vals.ndim > 1:
                     from ray.data.extensions.tensor_extension import ArrowTensorArray
 
-                    pa_columns[column_name] = ArrowTensorArray.from_numpy(np_column_values, column_name)
+                    pa_cols[col_names] = ArrowTensorArray.from_numpy(np_col_vals, col_names)
                 else:
-                    pa_columns[column_name] = convert_list_to_pyarrow_array(np_column_values)
+                    pa_cols[col_names] = convert_list_to_pyarrow_array(np_col_vals)
             except ArrowConversionError as e:
-                logger.warning(f"Failed to convert column '{column_name}' into pyarrow array due to: {e}", exc_info=e)
+                logger.warning(f"Failed to convert column '{col_names}' into pyarrow array due to: {e}", exc_info=e)
 
                 from ray.data.extensions.object_extension import (
                     ArrowPythonObjectArray,
@@ -171,11 +171,11 @@ class ArrowBlockBuilder(TableBlockBuilder):
                 )
 
                 if object_extension_type_allowed() and is_object_fixable_error(e):
-                    pa_columns[column_name] = ArrowPythonObjectArray.from_objects(np_column_values)
+                    pa_cols[col_names] = ArrowPythonObjectArray.from_objects(np_col_vals)
                 else:
                     raise
 
-        return pyarrow_table_from_pydict(pa_columns)
+        return pyarrow_table_from_pydict(pa_cols)
 
     @staticmethod
     def _concat_tables(tables: List[Block]) -> Block:
