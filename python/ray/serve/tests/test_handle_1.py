@@ -1,73 +1,37 @@
 import asyncio
 import concurrent.futures
+import sys
 import threading
 
 import pytest
-import requests
 
 import ray
 from ray import serve
-from ray.serve._private.common import RequestProtocol
+from ray.serve._private.common import DeploymentHandleSource, RequestProtocol
 from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME
 from ray.serve.exceptions import RayServeException
-from ray.serve.handle import DeploymentHandle, _HandleOptions
+from ray.serve.handle import DeploymentHandle
 
 
-def test_handle_options():
-    default_options = _HandleOptions()
-    assert default_options.method_name == "__call__"
-    assert default_options.multiplexed_model_id == ""
-    assert default_options.stream is False
-    assert default_options._request_protocol == RequestProtocol.UNDEFINED
+def test_replica_handle_source(serve_instance):
+    @serve.deployment
+    def f():
+        return "hi"
 
-    # Test setting method name.
-    only_set_method = default_options.copy_and_update(method_name="hi")
-    assert only_set_method.method_name == "hi"
-    assert only_set_method.multiplexed_model_id == ""
-    assert only_set_method.stream is False
-    assert default_options._request_protocol == RequestProtocol.UNDEFINED
+    @serve.deployment
+    class Router:
+        def __init__(self, handle):
+            self.handle = handle
+            self.handle._init()
 
-    # Existing options should be unmodified.
-    assert default_options.method_name == "__call__"
-    assert default_options.multiplexed_model_id == ""
-    assert default_options.stream is False
-    assert default_options._request_protocol == RequestProtocol.UNDEFINED
+        def check(self):
+            return self.handle.init_options._source == DeploymentHandleSource.REPLICA
 
-    # Test setting model ID.
-    only_set_model_id = default_options.copy_and_update(multiplexed_model_id="hi")
-    assert only_set_model_id.method_name == "__call__"
-    assert only_set_model_id.multiplexed_model_id == "hi"
-    assert only_set_model_id.stream is False
-    assert default_options._request_protocol == RequestProtocol.UNDEFINED
-
-    # Existing options should be unmodified.
-    assert default_options.method_name == "__call__"
-    assert default_options.multiplexed_model_id == ""
-    assert default_options.stream is False
-    assert default_options._request_protocol == RequestProtocol.UNDEFINED
-
-    # Test setting stream.
-    only_set_stream = default_options.copy_and_update(stream=True)
-    assert only_set_stream.method_name == "__call__"
-    assert only_set_stream.multiplexed_model_id == ""
-    assert only_set_stream.stream is True
-    assert default_options._request_protocol == RequestProtocol.UNDEFINED
-
-    # Existing options should be unmodified.
-    assert default_options.method_name == "__call__"
-    assert default_options.multiplexed_model_id == ""
-    assert default_options.stream is False
-    assert default_options._request_protocol == RequestProtocol.UNDEFINED
-
-    # Test setting multiple.
-    set_multiple = default_options.copy_and_update(method_name="hi", stream=True)
-    assert set_multiple.method_name == "hi"
-    assert set_multiple.multiplexed_model_id == ""
-    assert set_multiple.stream is True
-    assert default_options._request_protocol == RequestProtocol.UNDEFINED
+    h = serve.run(Router.bind(f.bind()))
+    assert h.check.remote().result()
 
 
-def test_async_handle_serializable(serve_instance):
+def test_handle_serializable(serve_instance):
     @serve.deployment
     def f():
         return "hello"
@@ -91,82 +55,26 @@ def test_async_handle_serializable(serve_instance):
     assert app_handle.remote().result() == "hello"
 
 
-def test_sync_handle_serializable(serve_instance):
+def test_get_and_call_handle_in_thread(serve_instance):
     @serve.deployment
     def f():
         return "hello"
 
-    handle = serve.run(f.bind())
+    serve.run(f.bind())
 
-    @ray.remote
-    def task(handle):
+    def get_and_call_app_handle():
+        handle = serve.get_app_handle(SERVE_DEFAULT_APP_NAME)
         return handle.remote().result()
 
-    # Test pickling via ray.remote()
-    result_ref = task.remote(handle)
-    assert ray.get(result_ref) == "hello"
-
-
-def test_handle_serializable_in_deployment_init(serve_instance):
-    """Test that a handle can be passed into a constructor (#22110)"""
-
-    @serve.deployment
-    class RayServer1:
-        def __init__(self):
-            pass
-
-        def __call__(self, *args):
-            return {"count": self.count}
-
-    @serve.deployment
-    class RayServer2:
-        def __init__(self, handle):
-            self.handle = handle
-
-        def __call__(self, *args):
-            return {"count": self.count}
-
-    rs1 = RayServer1.bind()
-    rs2 = RayServer2.bind(rs1)
-    serve.run(rs2)
-
-
-def test_sync_handle_in_thread(serve_instance):
-    @serve.deployment
-    def f():
-        return "hello"
-
-    handle = serve.run(f.bind())
-
-    def thread_get_handle(deploy):
-        handle = serve.get_deployment_handle(deploy._name, SERVE_DEFAULT_APP_NAME)
-        return handle
+    def get_and_call_deployment_handle():
+        handle = serve.get_deployment_handle("f", SERVE_DEFAULT_APP_NAME)
+        return handle.remote().result()
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
-        fut = executor.submit(thread_get_handle, f)
-        handle = fut.result()
-        assert handle.remote().result() == "hello"
-
-
-def test_handle_in_endpoint(serve_instance):
-    @serve.deployment
-    class Endpoint1:
-        def __call__(self, *args):
-            return "hello"
-
-    @serve.deployment
-    class Endpoint2:
-        def __init__(self, handle):
-            self.handle = handle
-
-        async def __call__(self, _):
-            return await self.handle.remote()
-
-    end_p1 = Endpoint1.bind()
-    end_p2 = Endpoint2.bind(end_p1)
-    serve.run(end_p2)
-
-    assert requests.get("http://127.0.0.1:8000/Endpoint2").text == "hello"
+        fut1 = executor.submit(get_and_call_app_handle)
+        fut2 = executor.submit(get_and_call_deployment_handle)
+        assert fut1.result() == "hello"
+        assert fut2.result() == "hello"
 
 
 def test_handle_option_chaining(serve_instance):
@@ -216,29 +124,6 @@ def test_repeated_get_handle_cached(serve_instance):
     assert len(handle_sets) == 1
 
 
-def test_args_kwargs_sync(serve_instance):
-    @serve.deployment
-    async def f(*args, **kwargs):
-        assert args[0] == "hi"
-        assert kwargs["kwarg1"] == 1
-        assert kwargs["kwarg2"] == "2"
-
-    handle = serve.run(f.bind())
-    handle.remote("hi", kwarg1=1, kwarg2="2").result()
-
-
-@pytest.mark.asyncio
-async def test_args_kwargs_async(serve_instance):
-    @serve.deployment
-    async def f(*args, **kwargs):
-        assert args[0] == "hi"
-        assert kwargs["kwarg1"] == 1
-        assert kwargs["kwarg2"] == "2"
-
-    handle = serve.run(f.bind())
-    await handle.remote("hi", kwarg1=1, kwarg2="2")
-
-
 def test_nonexistent_method_sync(serve_instance):
     @serve.deployment
     class A:
@@ -280,7 +165,7 @@ def _get_asyncio_loop_running_in_thread() -> asyncio.AbstractEventLoop:
 
 
 @pytest.mark.asyncio
-async def test_handle_across_loops(serve_instance):
+async def test_call_handle_across_asyncio_loops(serve_instance):
     @serve.deployment
     class A:
         def exists(self):
@@ -354,8 +239,7 @@ def test_handle_options_with_same_router(serve_instance):
 
     handle = serve.run(echo.bind())
     handle2 = handle.options(multiplexed_model_id="model2")
-    assert handle._router
-    assert id(handle2._router) == id(handle._router)
+    assert handle2._router is handle._router
 
 
 def test_set_request_protocol(serve_instance):
@@ -389,9 +273,51 @@ def test_set_request_protocol(serve_instance):
     assert handle.handle_options._request_protocol == RequestProtocol.HTTP
 
 
+def test_init(serve_instance):
+    @serve.deployment
+    def f():
+        return "hi"
+
+    h = serve.run(f.bind())
+    h._init(_prefer_local_routing=True)
+    for _ in range(10):
+        assert h.remote().result() == "hi"
+
+
+def test_init_twice_fails(serve_instance):
+    @serve.deployment
+    def f():
+        return "hi"
+
+    h = serve.run(f.bind())
+    h._init()
+
+    with pytest.raises(RuntimeError):
+        h._init()
+
+
+def test_init_after_options_fails(serve_instance):
+    @serve.deployment
+    def f():
+        return "hi"
+
+    h = serve.run(f.bind())
+
+    with pytest.raises(RuntimeError):
+        h.options(stream=True)._init(_prefer_local_routing=True)
+
+
+def test_init_after_request_fails(serve_instance):
+    @serve.deployment
+    def f():
+        return "hi"
+
+    h = serve.run(f.bind())
+    assert h.remote().result() == "hi"
+
+    with pytest.raises(RuntimeError):
+        h._init(_prefer_local_routing=True)
+
+
 if __name__ == "__main__":
-    import sys
-
-    import pytest
-
     sys.exit(pytest.main(["-v", "-s", __file__]))

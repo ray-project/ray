@@ -183,7 +183,7 @@ class FaultAwareApply:
             return func(self, *args, **kwargs)
         except Exception as e:
             # Actor should be recreated by Ray.
-            if self.config.recreate_failed_env_runners:
+            if self.config.restart_failed_env_runners:
                 logger.exception(f"Worker exception caught during `apply()`: {e}")
                 # Small delay to allow logs messages to propagate.
                 time.sleep(self.config.delay_between_env_runner_restarts_s)

@@ -132,7 +132,6 @@ Status ActorTaskSubmitter::SubmitActorCreationTask(TaskSpecification task_spec) 
             rpc::RayErrorInfo ray_error_info;
             if (status.IsSchedulingCancelled()) {
               RAY_LOG(DEBUG).WithField(actor_id) << "Actor creation cancelled";
-              RAY_LOG(ERROR).WithField(actor_id) << "SANG-TODO Actor creation cancelled";
               task_finisher_.MarkTaskCanceled(task_id);
               if (reply.has_death_cause()) {
                 ray_error_info.mutable_actor_died_error()->CopyFrom(reply.death_cause());
