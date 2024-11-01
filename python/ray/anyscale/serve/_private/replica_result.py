@@ -2,6 +2,7 @@ import asyncio
 import concurrent.futures
 import inspect
 import logging
+import uuid
 from asyncio import run_coroutine_threadsafe
 from functools import wraps
 from typing import Any, AsyncIterator, Callable, Coroutine, Iterator, Optional, Union
@@ -10,10 +11,12 @@ import grpc
 
 import ray
 from ray import cloudpickle
+from ray.anyscale.serve.context import _add_in_flight_request, _remove_in_flight_request
 from ray.exceptions import ActorUnavailableError, RayTaskError
 from ray.serve._private.constants import SERVE_LOGGER_NAME
 from ray.serve._private.http_util import MessageQueue
 from ray.serve._private.replica_result import ReplicaResult
+from ray.serve.exceptions import RequestCancelledError
 from ray.serve.generated import serve_proprietary_pb2
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
@@ -54,6 +57,18 @@ class gRPCReplicaResult(ReplicaResult):
         self._fut = None
         self._consume_task = None
 
+        # keep track of in flight requests
+        self._response_id = uuid.uuid4()
+        request_context = ray.serve.context._serve_request_context.get()
+        _add_in_flight_request(
+            request_context._internal_request_id, self._response_id, self._call
+        )
+        self._call.add_done_callback(
+            lambda _: _remove_in_flight_request(
+                request_context._internal_request_id, self._response_id
+            )
+        )
+
         if hasattr(self._call, "__aiter__"):
             self._gen = self._call.__aiter__()
             # If the grpc call IS streaming, AND it was created on a
@@ -88,7 +103,6 @@ class gRPCReplicaResult(ReplicaResult):
         def wrapper(self, *args, **kwargs):
             try:
                 grpc_response = f(self, *args, **kwargs)
-                return deserialize_or_raise_error(grpc_response)
             except grpc.aio.AioRpcError as e:
                 if e.code() == grpc.StatusCode.UNAVAILABLE:
                     raise ActorUnavailableError(
@@ -96,12 +110,15 @@ class gRPCReplicaResult(ReplicaResult):
                         self._actor_id.binary(),
                     )
                 raise
+            except concurrent.futures.CancelledError:
+                raise RequestCancelledError from None
+
+            return deserialize_or_raise_error(grpc_response)
 
         @wraps(f)
         async def async_wrapper(self, *args, **kwargs):
             try:
                 grpc_response = await f(self, *args, **kwargs)
-                return deserialize_or_raise_error(grpc_response)
             except grpc.aio.AioRpcError as e:
                 if e.code() == grpc.StatusCode.UNAVAILABLE:
                     raise ActorUnavailableError(
@@ -109,6 +126,10 @@ class gRPCReplicaResult(ReplicaResult):
                         self._actor_id.binary(),
                     )
                 raise
+            except asyncio.CancelledError:
+                raise RequestCancelledError from None
+
+            return deserialize_or_raise_error(grpc_response)
 
         if inspect.iscoroutinefunction(f):
             return async_wrapper

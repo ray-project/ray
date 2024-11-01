@@ -456,6 +456,7 @@ py_test_module_list(
         "test_runtime_env_2.py",
         "test_failure.py",
         "test_gcs_failure.py",
+        "test_cancellation.py",
     ],
     name_suffix = "_with_grpc",
     tags = [

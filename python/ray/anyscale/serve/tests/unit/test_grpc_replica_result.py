@@ -25,6 +25,9 @@ class FakegRPCUnaryCall:
             serialized_message=cloudpickle.dumps(self._item), is_error=self._is_error
         )
 
+    def add_done_callback(self, cb):
+        pass
+
 
 class FakegRPCStreamCall:
     def __init__(self, items, *, event: threading.Event = None):
@@ -54,6 +57,9 @@ class FakegRPCStreamCall:
             serialized_message=cloudpickle.dumps(item),
             is_error=is_error,
         )
+
+    def add_done_callback(self, cb):
+        pass
 
 
 @pytest.fixture
@@ -223,11 +229,16 @@ class TestSeparateLoop:
         )
         replica_result = fut.result()
 
+        async def fetch():
+            return [r async for r in replica_result]
+
+        t = asyncio.create_task(fetch())
+
         with pytest.raises(asyncio.TimeoutError):
-            await asyncio.wait_for(replica_result.__anext__(), 0.01)
+            await asyncio.wait_for(asyncio.shield(t), 0.01)
 
         event.set()
-        assert [r async for r in replica_result] == [1, 2, 3, 4]
+        assert await t == [1, 2, 3, 4]
 
     def test_unary_with_gen_sync(self, create_asyncio_event_loop_in_thread):
         loop, _ = create_asyncio_event_loop_in_thread

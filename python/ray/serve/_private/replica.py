@@ -29,6 +29,7 @@ from ray.anyscale.serve._private.tracing_utils import (
     set_span_attributes,
     setup_tracing,
 )
+from ray.anyscale.serve.context import _get_in_flight_requests
 from ray.anyscale.serve.utils import asyncio_grpc_exception_handler
 from ray.remote_function import RemoteFunction
 from ray.serve import metrics
@@ -602,8 +603,10 @@ class ReplicaActor:
             trace_name="replica_handle_request",
             trace_context=trace_context,
         )
-        with trace_manager, self._wrap_user_method_call(request_metadata, request_args):
-            try:
+        try:
+            with trace_manager, self._wrap_user_method_call(
+                request_metadata, request_args
+            ):
                 result = await asyncio.wrap_future(
                     self._user_callable_wrapper.call_user_method(
                         request_metadata,
@@ -614,11 +617,22 @@ class ReplicaActor:
                 return serve_proprietary_pb2.ASGIResponse(
                     serialized_message=cloudpickle.dumps(result)
                 )
-            except (Exception, asyncio.CancelledError) as e:
-                return serve_proprietary_pb2.ASGIResponse(
-                    serialized_message=cloudpickle.dumps(e),
-                    is_error=True,
-                )
+        except Exception as e:
+            return serve_proprietary_pb2.ASGIResponse(
+                serialized_message=cloudpickle.dumps(e),
+                is_error=True,
+            )
+        except asyncio.CancelledError as e:
+            in_flight_requests = _get_in_flight_requests(
+                request_metadata.internal_request_id
+            )
+            for call in in_flight_requests.values():
+                call.cancel()
+
+            return serve_proprietary_pb2.ASGIResponse(
+                serialized_message=cloudpickle.dumps(e),
+                is_error=True,
+            )
 
     async def handle_request_streaming(
         self,
@@ -654,8 +668,10 @@ class ReplicaActor:
             trace_name="replica_handle_request",
             trace_context=trace_context,
         )
-        with trace_manager, self._wrap_user_method_call(request_metadata, request_args):
-            try:
+        try:
+            with trace_manager, self._wrap_user_method_call(
+                request_metadata, request_args
+            ):
                 async for result in self._call_user_generator(
                     request_metadata,
                     request_args,
@@ -669,11 +685,22 @@ class ReplicaActor:
                         yield serve_proprietary_pb2.ASGIResponse(
                             serialized_message=cloudpickle.dumps(result)
                         )
-            except (Exception, asyncio.CancelledError) as e:
-                yield serve_proprietary_pb2.ASGIResponse(
-                    serialized_message=cloudpickle.dumps(e),
-                    is_error=True,
-                )
+        except Exception as e:
+            yield serve_proprietary_pb2.ASGIResponse(
+                serialized_message=cloudpickle.dumps(e),
+                is_error=True,
+            )
+        except asyncio.CancelledError as e:
+            in_flight_requests = _get_in_flight_requests(
+                request_metadata.internal_request_id
+            )
+            for call in in_flight_requests.values():
+                call.cancel()
+
+            yield serve_proprietary_pb2.ASGIResponse(
+                serialized_message=cloudpickle.dumps(e),
+                is_error=True,
+            )
 
     async def handle_request_with_rejection(
         self,
@@ -773,20 +800,20 @@ class ReplicaActor:
             )
             return
 
-        with self._wrap_user_method_call(request_metadata, request_args):
-            yield serve_proprietary_pb2.ASGIResponse(
-                serialized_message=pickle.dumps(
-                    ReplicaQueueLengthInfo(
-                        accepted=True,
-                        # NOTE(edoakes): `_wrap_user_method_call` will
-                        # increment the number of ongoing requests to
-                        # include this one, so re-fetch the value.
-                        num_ongoing_requests=self.get_num_ongoing_requests(),
+        try:
+            with self._wrap_user_method_call(request_metadata, request_args):
+                yield serve_proprietary_pb2.ASGIResponse(
+                    serialized_message=pickle.dumps(
+                        ReplicaQueueLengthInfo(
+                            accepted=True,
+                            # NOTE(edoakes): `_wrap_user_method_call` will
+                            # increment the number of ongoing requests to
+                            # include this one, so re-fetch the value.
+                            num_ongoing_requests=self.get_num_ongoing_requests(),
+                        )
                     )
                 )
-            )
 
-            try:
                 if request_metadata.is_streaming:
                     async for result in self._call_user_generator(
                         request_metadata,
@@ -813,11 +840,22 @@ class ReplicaActor:
                     yield serve_proprietary_pb2.ASGIResponse(
                         serialized_message=cloudpickle.dumps(result)
                     )
-            except (Exception, asyncio.CancelledError) as e:
-                yield serve_proprietary_pb2.ASGIResponse(
-                    serialized_message=cloudpickle.dumps(e),
-                    is_error=True,
-                )
+        except Exception as e:
+            yield serve_proprietary_pb2.ASGIResponse(
+                serialized_message=cloudpickle.dumps(e),
+                is_error=True,
+            )
+        except asyncio.CancelledError as e:
+            in_flight_requests = _get_in_flight_requests(
+                request_metadata.internal_request_id
+            )
+            for call in in_flight_requests.values():
+                call.cancel()
+
+            yield serve_proprietary_pb2.ASGIResponse(
+                serialized_message=cloudpickle.dumps(e),
+                is_error=True,
+            )
 
     async def handle_request_from_java(
         self,
