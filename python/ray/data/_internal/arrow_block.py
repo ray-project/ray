@@ -166,7 +166,8 @@ class ArrowBlockBuilder(TableBlockBuilder):
                     pa_cols[col_names] = convert_to_pyarrow_array(np_col_vals, dtype=pa_dtype)
 
             except ArrowConversionError as e:
-                logger.warning(f"Failed to convert column '{col_names}' into pyarrow array due to: {e}", exc_info=e)
+                logger.warning(f"Failed to convert column '{col_names}' into pyarrow array due to: {e}; "
+                               f"falling back to serialize as pickled python objects", exc_info=e)
 
                 from ray.data.extensions.object_extension import (
                     ArrowPythonObjectArray,
