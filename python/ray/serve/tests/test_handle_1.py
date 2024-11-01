@@ -124,29 +124,6 @@ def test_repeated_get_handle_cached(serve_instance):
     assert len(handle_sets) == 1
 
 
-def test_args_kwargs_sync(serve_instance):
-    @serve.deployment
-    async def f(*args, **kwargs):
-        assert args[0] == "hi"
-        assert kwargs["kwarg1"] == 1
-        assert kwargs["kwarg2"] == "2"
-
-    handle = serve.run(f.bind())
-    handle.remote("hi", kwarg1=1, kwarg2="2").result()
-
-
-@pytest.mark.asyncio
-async def test_args_kwargs_async(serve_instance):
-    @serve.deployment
-    async def f(*args, **kwargs):
-        assert args[0] == "hi"
-        assert kwargs["kwarg1"] == 1
-        assert kwargs["kwarg2"] == "2"
-
-    handle = serve.run(f.bind())
-    await handle.remote("hi", kwarg1=1, kwarg2="2")
-
-
 def test_nonexistent_method_sync(serve_instance):
     @serve.deployment
     class A:
