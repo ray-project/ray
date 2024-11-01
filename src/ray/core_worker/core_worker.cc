@@ -37,8 +37,9 @@
 #include "ray/util/subreaper.h"
 #include "ray/util/util.h"
 
-namespace ray {
-namespace core {
+using json = nlohmann::json;
+
+namespace ray::core {
 
 JobID GetProcessJobID(const CoreWorkerOptions &options) {
   if (options.worker_type == WorkerType::DRIVER) {
@@ -4748,5 +4749,4 @@ void ClusterSizeBasedLeaseRequestRateLimiter::OnNodeChanges(
   RAY_LOG_EVERY_MS(INFO, 60000) << "Number of alive nodes:" << num_alive_nodes_.load();
 }
 
-}  // namespace core
-}  // namespace ray
+}  // namespace ray::core
