@@ -33,8 +33,7 @@ class LocalDependencyResolver {
                           ActorCreatorInterface &actor_creator)
       : in_memory_store_(store),
         task_finisher_(task_finisher),
-        actor_creator_(actor_creator),
-        num_pending_(0) {}
+        actor_creator_(actor_creator) {}
 
   /// Resolve all local and remote dependencies for the task, calling the specified
   /// callback when done. Direct call ids in the task specification will be resolved
@@ -99,8 +98,6 @@ class LocalDependencyResolver {
   TaskFinisherInterface &task_finisher_;
 
   ActorCreatorInterface &actor_creator_;
-  /// Number of tasks pending dependency resolution.
-  std::atomic<int> num_pending_;
 
   absl::flat_hash_map<TaskID, std::unique_ptr<TaskState>> pending_tasks_
       ABSL_GUARDED_BY(mu_);
