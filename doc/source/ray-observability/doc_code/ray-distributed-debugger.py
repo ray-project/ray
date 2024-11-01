@@ -1,10 +1,10 @@
 import ray
 import sys
 
-# Add the RAY_DEBUG=2 environment variable if you want to use the post-mortem debugging.
+# Add the RAY_PDB=1 environment variable if you want to use the post-mortem debugging.
 ray.init(
     runtime_env={
-        "env_vars": {"RAY_DEBUG": "2"},
+        "env_vars": {"RAY_PDB": "1"},
     }
 )
 

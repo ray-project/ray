@@ -14,7 +14,7 @@ drop into a PDB session that you can then use to:
 .. warning::
 
     The Ray Debugger is deprecated. Use the :doc:`Ray Distributed Debugger <../../ray-distributed-debugger>` instead.
-    Starting with Ray 2.39, the new debugger is the default and you need to set the environment variable `RAY_DEBUG=0` to
+    Starting with Ray 2.39, the new debugger is the default and you need to set the environment variable `RAY_DEBUG=legacy` to
     use the old debugger (e.g. by using a runtime environment).
 
 Getting Started
@@ -27,7 +27,7 @@ Take the following example:
 
     import ray
 
-    ray.init(runtime_env={"env_vars": {"RAY_DEBUG": "0"})
+    ray.init(runtime_env={"env_vars": {"RAY_DEBUG": "legacy"}})
 
     @ray.remote
     def f(x):
@@ -117,7 +117,7 @@ following recursive function as an example:
 
     import ray
 
-    ray.init(runtime_env={"env_vars": {"RAY_DEBUG": "0"})
+    ray.init(runtime_env={"env_vars": {"RAY_DEBUG": "legacy"})
 
     @ray.remote
     def fact(n):
@@ -242,7 +242,7 @@ Next, copy the following code into a file called ``serve_debugging.py``:
     import ray
     from ray import serve
 
-    ray.init(runtime_env={"env_vars": {"RAY_DEBUG": "0"})
+    ray.init(runtime_env={"env_vars": {"RAY_DEBUG": "legacy"})
 
     # Train model
     iris_dataset = load_iris()
