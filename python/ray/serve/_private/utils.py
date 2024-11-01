@@ -7,7 +7,6 @@ import os
 import random
 import string
 import time
-import traceback
 import uuid
 from abc import ABC, abstractmethod
 from decimal import ROUND_HALF_UP, Decimal
@@ -24,7 +23,6 @@ from ray._private.utils import import_attr
 from ray._private.worker import LOCAL_MODE, SCRIPT_MODE
 from ray._raylet import MessagePackSerializer
 from ray.actor import ActorHandle
-from ray.exceptions import RayTaskError
 from ray.serve._private.common import ServeComponentType
 from ray.serve._private.constants import HTTP_PROXY_TIMEOUT, SERVE_LOGGER_NAME
 from ray.types import ObjectRef
