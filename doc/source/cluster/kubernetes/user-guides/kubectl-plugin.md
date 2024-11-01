@@ -1,14 +1,17 @@
 (kubectl-plugin)=
 
-# Use Kubectl Plugin (alpha)
+# Use kubectl Plugin (alpha)
 
 Starting from KubeRay v1.2.2, you can use the `kubectl ray` plugin to simplify common workflows when deploying Ray on Kubernetes. If you aren't familiar with Kubernetes, this plugin simplifies running Ray on Kubernetes.
 
 ## Installation
 
-See [KubeRay Kubectl Plugin](https://github.com/ray-project/kuberay/tree/master/kubectl-plugin) to install the plugin.
+See [KubeRay kubectl Plugin](https://github.com/ray-project/kuberay/tree/master/kubectl-plugin) to install the plugin.
 
 Install the Kuberay kubectl plugin using one of the following methods:
+
+- Install using Krew kubectl plugin manager (recommended)
+- Download from GitHub releases
 
 ### Install using the Krew kubectl plugin manager (recommended)
 
