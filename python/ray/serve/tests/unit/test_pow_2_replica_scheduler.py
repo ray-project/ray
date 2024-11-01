@@ -135,7 +135,6 @@ def pow_2_scheduler(request) -> PowerOfTwoChoicesReplicaScheduler:
     # construct the scheduler on a different loop to mimic the deployment handle path.
     async def construct_scheduler(loop: asyncio.AbstractEventLoop):
         scheduler = PowerOfTwoChoicesReplicaScheduler(
-            loop,
             DeploymentID(name="TEST_DEPLOYMENT"),
             handle_source=request.param.get(
                 "handle_source", DeploymentHandleSource.REPLICA

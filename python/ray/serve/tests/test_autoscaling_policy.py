@@ -229,7 +229,8 @@ class TestAutoscalingMetrics:
 
         # Num requests should still drop to 0 despite all requests failing.
         def check_handle_metrics(handle):
-            num_requests = handle._router._metrics_manager.num_requests_sent_to_replicas
+            metrics_manager = handle._router._asyncio_router._metrics_manager
+            num_requests = metrics_manager.num_requests_sent_to_replicas
             for replica_id, num in num_requests.items():
                 assert (
                     num == 0
