@@ -110,7 +110,7 @@ def parse_and_validate_conda(conda: Union[str, dict]) -> Union[str, dict]:
 # TODO(hjiang): More package installation options to implement:
 # 1. Allow users to pass in a local requirements.txt file, which relates to all
 # packages to install;
-# 2. Allow specific version of `uv` to use; as of now we only use latest version.
+# 2. Allow specific version of `uv` to use; as of now we only use default version.
 def parse_and_validate_uv(uv: Union[str, List[str], Dict]) -> Optional[Dict]:
     """Parses and validates a user-provided 'uv' option.
 
