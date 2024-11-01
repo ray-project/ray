@@ -54,11 +54,7 @@ class OnEpisodeCreatedCallback(DefaultCallbacks):
 
         # Make sure the passed in episode is really brand new.
         assert episode.env_id == env_index
-        if isinstance(episode, Episode):
-            assert episode.length == 0
-            assert episode.started is False
-        else:
-            assert episode.length == -1
+        assert episode.length == -1
         assert episode.worker is worker
 
 

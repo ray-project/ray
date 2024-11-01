@@ -17,7 +17,6 @@ from ray.rllib.utils.deprecation import (
 from ray.rllib.utils.framework import try_import_tf
 from ray.rllib.utils.metrics.learner_info import LEARNER_STATS_KEY
 from ray.rllib.utils.typing import (
-    AgentID,
     ModelGradients,
     TensorType,
     AlgorithmConfigDict,

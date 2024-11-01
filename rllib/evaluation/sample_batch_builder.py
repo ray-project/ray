@@ -1,7 +1,7 @@
 import collections
 import logging
 import numpy as np
-from typing import List, Any, Dict, Optional, TYPE_CHECKING
+from typing import List, Any, Dict, TYPE_CHECKING
 
 from ray.rllib.env.base_env import _DUMMY_AGENT_ID
 from ray.rllib.policy.policy import Policy

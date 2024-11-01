@@ -2123,8 +2123,6 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
                 f"PolicyID '{policy_id}' not found in PolicyMap of the "
                 f"Algorithm's local worker!"
             )
-        local_worker = self.env_runner_group.local_env_runner
-
         # Just preprocess observations, similar to how it used to be done before.
         pp = policy.agent_connectors[ObsPreprocessorConnector]
 

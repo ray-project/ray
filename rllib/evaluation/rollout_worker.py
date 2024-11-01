@@ -20,9 +20,7 @@ from typing import (
     Union,
 )
 
-import numpy as np
-import tree  # pip install dm_tree
-from gymnasium.spaces import Discrete, MultiDiscrete, Space
+from gymnasium.spaces import Space
 
 import ray
 from ray import ObjectRef
@@ -70,7 +68,7 @@ from ray.rllib.utils import force_list
 from ray.rllib.utils.annotations import OldAPIStack, override
 from ray.rllib.utils.debug import summarize, update_global_seed_if_necessary
 from ray.rllib.utils.error import ERR_MSG_NO_GPUS, HOWTO_CHANGE_CONFIG
-from ray.rllib.utils.filter import Filter, NoFilter, get_filter
+from ray.rllib.utils.filter import Filter, NoFilter
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.from_config import from_config
 from ray.rllib.utils.policy import create_policy_for_framework

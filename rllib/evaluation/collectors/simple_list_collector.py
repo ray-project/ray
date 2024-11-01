@@ -587,9 +587,7 @@ class SimpleListCollector(SampleCollector):
         if build:
             return self._build_multi_agent_batch(episode)
 
-    def _build_multi_agent_batch(
-        self, episode
-    ) -> Union[MultiAgentBatch, SampleBatch]:
+    def _build_multi_agent_batch(self, episode) -> Union[MultiAgentBatch, SampleBatch]:
 
         ma_batch = {}
         for pid, collector in episode.batch_builder.policy_collectors.items():
