@@ -116,7 +116,7 @@ def parse_and_validate_uv(uv: Union[str, List[str], Dict]) -> Optional[Dict]:
 
     The value of the input 'uv' field can be one of two cases:
         1) A List[str] describing the requirements. This is passed through.
-           Example usage: "packages":["tensorflow", "requests"]
+           Example usage: ["tensorflow", "requests"]
         2) A python dictionary that has three fields:
             a) packages (required, List[str]): a list of uv packages, it same as 1).
 
