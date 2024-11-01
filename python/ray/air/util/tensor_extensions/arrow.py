@@ -11,6 +11,7 @@ from packaging.version import parse as parse_version
 
 from ray._private.utils import _get_pyarrow_version
 from ray.air.constants import MAX_REPR_LENGTH
+from ray.air.util.object_extensions.arrow import list_view_type_present
 from ray.air.util.tensor_extensions.utils import (
     _is_ndarray_variable_shaped_tensor,
     create_ragged_ndarray,
@@ -125,7 +126,7 @@ def deduce_pyarrow_dtype(column_values: List[Any]) -> Optional[pa.DataType]:
         return pa.large_string()
     elif isinstance(inferred_pa_dtype, pa.ListType):
         return pa.large_list(inferred_pa_dtype.value_type)
-    elif isinstance(inferred_pa_dtype, pa.ListViewType):
+    elif list_view_type_present() and isinstance(inferred_pa_dtype, pa.ListViewType):
         return pa.large_list_view(inferred_pa_dtype.value_type)
 
     return inferred_pa_dtype
