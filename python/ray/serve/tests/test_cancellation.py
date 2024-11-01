@@ -1,5 +1,3 @@
-import asyncio
-import concurrent.futures
 import sys
 
 import pytest
@@ -150,7 +148,7 @@ def test_cancel_sync_handle_call_during_assignment(serve_instance):
     # Make a second request, cancel it, and verify that it is cancelled.
     second_response = h.remote()
     second_response.cancel()
-    with pytest.raises(concurrent.futures.CancelledError):
+    with pytest.raises(RequestCancelledError):
         second_response.result()
 
     # Now signal the initial request to finish and check that the second request
@@ -226,7 +224,7 @@ def test_cancel_async_handle_call_during_assignment(serve_instance):
             # Make a second request, cancel it, and verify that it is cancelled.
             second_response = self._h.remote()
             second_response.cancel()
-            with pytest.raises(asyncio.CancelledError):
+            with pytest.raises(RequestCancelledError):
                 await second_response
 
             # Now signal the initial request to finish and check that the second request

@@ -36,7 +36,7 @@ from ray.serve._private.utils import (
     inside_ray_client_context,
     is_running_in_asyncio_loop,
 )
-from ray.serve.exceptions import RayServeException
+from ray.serve.exceptions import RayServeException, RequestCancelledError
 from ray.util import metrics
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
@@ -393,6 +393,8 @@ class _DeploymentResponseBase:
                 )
             except concurrent.futures.TimeoutError:
                 raise TimeoutError("Timed out resolving to ObjectRef.") from None
+            except concurrent.futures.CancelledError:
+                raise RequestCancelledError from None
 
         return self._replica_result
 
@@ -405,7 +407,12 @@ class _DeploymentResponseBase:
         if self._replica_result is None:
             # Use `asyncio.wrap_future` so `self._object_ref_future` can be awaited
             # safely from any asyncio loop.
-            self._replica_result = await asyncio.wrap_future(self._object_ref_future)
+            try:
+                self._replica_result = await asyncio.wrap_future(
+                    self._object_ref_future
+                )
+            except asyncio.CancelledError:
+                raise RequestCancelledError from None
 
         return self._replica_result
 
