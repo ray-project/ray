@@ -52,7 +52,9 @@ config = (
         # The `kwargs` for the `input_read_method`. We override the
         # the number of blocks to pull at once b/c our dataset is
         # small.
-        input_read_method_kwargs={"override_num_blocks": max(args.num_learners * 2, 2)},
+        input_read_method_kwargs={
+            "override_num_blocks": max((args.num_learners or 1) * 2, 2)
+        },
         # The `kwargs` for the `map_batches` method in which our
         # `OfflinePreLearner` is run. 2 data workers should be run
         # concurrently.
@@ -70,7 +72,7 @@ config = (
         beta=1.0,
         # To increase learning speed with multiple learners,
         # increase the learning rate correspondingly.
-        lr=0.0008 * max(1, args.num_learners**0.5),
+        lr=0.0008 * (args.num_learners or 1) ** 0.5,
         train_batch_size_per_learner=1024,
     )
 )

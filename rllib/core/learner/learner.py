@@ -1409,9 +1409,11 @@ class Learner(Checkpointable):
                 )
 
         self._weights_seq_no += 1
-        self.metrics.log_value(
-            key=WEIGHTS_SEQ_NO,
-            value=self._weights_seq_no,
+        self.metrics.log_dict(
+            {
+                (mid, WEIGHTS_SEQ_NO): self._weights_seq_no
+                for mid in batch.policy_batches.keys()
+            },
             window=1,
         )
 

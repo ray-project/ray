@@ -55,7 +55,7 @@ config = (
     .training(
         # To increase learning speed with multiple learners,
         # increase the learning rate correspondingly.
-        lr=0.0008 * max(1, args.num_learners**0.5),
+        lr=0.0008 * (args.num_learners or 1) ** 0.5,
         train_batch_size_per_learner=2000,
     )
 )
