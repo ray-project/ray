@@ -188,7 +188,10 @@ def configure_logging() -> None:
         config = _load_logging_config(ray_train_log_config_path)
     else:
         config = DEFAULT_LOG_CONFIG_JSON_STRING
-        if ray_train_log_encoding == DEFAULT_JSON_LOG_ENCODING_FORMAT:
+        if (
+            ray_train_log_encoding is not None
+            and ray_train_log_encoding.upper() == DEFAULT_JSON_LOG_ENCODING_FORMAT
+        ):
             for logger in config["loggers"].values():
                 logger["handlers"].remove("file_text")
                 logger["handlers"].append("file_json")
