@@ -764,13 +764,9 @@ class CompiledDAG:
         self.input_task_idx, self.output_task_idx = None, None
         self.actor_task_count.clear()
 
-        # DAG nodes involved in NCCL P2P send/recv with `transport=nccl`, in which
-        # case the default NCCL group is used. Definition of the default NCCL group:
-        # 1. If a `default_nccl_group` is specified in `experimental_compile`,
-        #    it is used as the default NCCL group.
-        # 2. If no `default_nccl_group` was specified, try to reuse another NCCL
-        #    group in the DAG that is already initialized.
-        # 3. Create a `_NcclGroup` if we can't borrow.
+        # Senders are the DAG nodes who use the custom NCCL group as their
+        # transport in the type hints. Receivers are downstream DAG nodes of
+        # the senders.
         custom_nccl_group_to_p2p_senders: Dict[
             Optional[GPUCommunicator], Set[DAGNode]
         ] = defaultdict(set)
@@ -1041,8 +1037,9 @@ class CompiledDAG:
                 if actors not in actors_to_nccl_group_id:
                     actors_to_nccl_group_id[actors] = nccl_group_id
 
-        # If the default NCCL group for P2P actors is not initialized, initialize
-        # and cache the NCCL group ID.
+        # If no default NCCL group for P2P actors was specified:
+        # 1. Try to reuse another NCCL group in the DAG.
+        # 2. Create a `_NcclGroup` if we cannot reuse.
         if default_nccl_actors_p2p and self._default_nccl_group_id_p2p is None:
             assert self._default_nccl_group_p2p is None
             actors = frozenset(default_nccl_actors_p2p)
