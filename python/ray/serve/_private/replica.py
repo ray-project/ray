@@ -833,7 +833,6 @@ class ReplicaActor:
         request_metadata: RequestMetadata = RequestMetadata(
             request_id=proto.request_id,
             internal_request_id=proto.internal_request_id,
-            endpoint=proto.endpoint,
             call_method=proto.call_method,
             multiplexed_model_id=proto.multiplexed_model_id,
             route=proto.route,

@@ -1,7 +1,6 @@
 import asyncio
 import concurrent.futures
 import logging
-import threading
 import time
 import warnings
 from abc import ABC
@@ -9,8 +8,7 @@ from dataclasses import dataclass, fields
 from typing import Any, AsyncIterator, Dict, Iterator, Optional, Tuple, Union
 
 import ray
-from ray import serve
-from ray._raylet import GcsClient, ObjectRefGenerator
+from ray._raylet import ObjectRefGenerator
 from ray.serve._private.common import (
     DeploymentHandleSource,
     DeploymentID,
@@ -19,7 +17,7 @@ from ray.serve._private.common import (
 )
 from ray.serve._private.constants import SERVE_LOGGER_NAME
 from ray.serve._private.default_impl import (
-    create_cluster_node_info_cache,
+    CreateRouterCallable,
     create_dynamic_handle_options,
     create_init_handle_options,
     create_router,
@@ -31,7 +29,6 @@ from ray.serve._private.utils import (
     DEFAULT,
     calculate_remaining_timeout,
     generate_request_id,
-    get_current_actor_id,
     get_random_string,
     inside_ray_client_context,
     is_running_in_asyncio_loop,
@@ -40,30 +37,7 @@ from ray.serve.exceptions import RayServeException
 from ray.util import metrics
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
-_global_async_loop = None
-_global_async_loop_creation_lock = threading.Lock()
 logger = logging.getLogger(SERVE_LOGGER_NAME)
-
-
-def _create_or_get_global_asyncio_event_loop_in_thread():
-    """Provides a global singleton asyncio event loop running in a daemon thread.
-
-    Thread-safe.
-    """
-    global _global_async_loop
-    if _global_async_loop is None:
-        with _global_async_loop_creation_lock:
-            if _global_async_loop is not None:
-                return _global_async_loop
-
-            _global_async_loop = asyncio.new_event_loop()
-            thread = threading.Thread(
-                daemon=True,
-                target=_global_async_loop.run_forever,
-            )
-            thread.start()
-
-    return _global_async_loop
 
 
 @dataclass(frozen=True)
@@ -134,6 +108,7 @@ class _DeploymentHandleBase:
         *,
         handle_options: Optional[_DynamicHandleOptionsBase] = None,
         _router: Optional[Router] = None,
+        _create_router: Optional[CreateRouterCallable] = None,
         _request_counter: Optional[metrics.Counter] = None,
         _recorded_telemetry: bool = False,
     ):
@@ -150,6 +125,10 @@ class _DeploymentHandleBase:
         self._recorded_telemetry = _recorded_telemetry
 
         self._router: Optional[Router] = _router
+        if _create_router is None:
+            self._create_router = create_router
+        else:
+            self._create_router = _create_router
 
         logger.info(
             f"Created DeploymentHandle '{self.handle_id}' for {self.deployment_id}.",
@@ -175,24 +154,9 @@ class _DeploymentHandleBase:
 
     def _get_or_create_router(self) -> Router:
         if self._router is None:
-            node_id = ray.get_runtime_context().get_node_id()
-            try:
-                cluster_node_info_cache = create_cluster_node_info_cache(
-                    GcsClient(address=ray.get_runtime_context().gcs_address)
-                )
-                cluster_node_info_cache.update()
-                availability_zone = cluster_node_info_cache.get_node_az(node_id)
-            except Exception:
-                availability_zone = None
-
-            self._router = create_router(
-                serve.context._get_global_client()._controller,
-                self.deployment_id,
-                self.handle_id,
-                node_id,
-                get_current_actor_id(),
-                availability_zone,
-                _create_or_get_global_asyncio_event_loop_in_thread(),
+            self._router = self._create_router(
+                handle_id=self.handle_id,
+                deployment_id=self.deployment_id,
                 handle_options=self.init_options,
             )
 
@@ -230,7 +194,7 @@ class _DeploymentHandleBase:
         if self._router is None:
             return False
 
-        return self._router.running_replicas_populated
+        return self._router.running_replicas_populated()
 
     @property
     def deployment_name(self) -> str:
@@ -286,6 +250,7 @@ class _DeploymentHandleBase:
             self.app_name,
             handle_options=new_handle_options,
             _router=self._router,
+            _create_router=self._create_router,
             _request_counter=self.request_counter,
             _recorded_telemetry=self._recorded_telemetry,
         )
@@ -302,7 +267,6 @@ class _DeploymentHandleBase:
             internal_request_id=_request_context._internal_request_id
             if _request_context._internal_request_id
             else generate_request_id(),
-            endpoint=self.deployment_name,
             call_method=self.handle_options.method_name,
             route=_request_context.route,
             app_name=self.app_name,
@@ -321,13 +285,7 @@ class _DeploymentHandleBase:
         if not self.is_initialized:
             self._init()
 
-        # Schedule the coroutine to run on the router loop. This is always a separate
-        # loop running in another thread to avoid user code blocking the router, so we
-        # use the `concurrent.futures.Future` thread safe API.
-        return asyncio.run_coroutine_threadsafe(
-            self._router.assign_request(request_metadata, *args, **kwargs),
-            loop=self._router._event_loop,
-        )
+        return self._router.assign_request(request_metadata, *args, **kwargs)
 
     def __getattr__(self, name):
         return self.options(method_name=name)
@@ -354,41 +312,22 @@ class _DeploymentHandleBase:
 
 
 class _DeploymentResponseBase:
-    def __init__(self, object_ref_future: concurrent.futures.Future):
+    def __init__(self, replica_result_future: concurrent.futures.Future[ReplicaResult]):
         self._cancelled = False
-        # The result of `object_ref_future` must be an ObjectRef or ObjectRefGenerator.
-        self._object_ref_future = object_ref_future
-
-        # Cached result of the `object_ref_future`.
-        # This is guarded by the below locks for async and sync methods.
-        # It's not expected that user code can mix async and sync methods (sync methods
-        # raise an exception when running in an `asyncio` loop).
-        # The `asyncio` lock is lazily constructed because the constructor may run on
-        # a different `asyncio` loop than method calls (or not run on one at all).
-        self._object_ref_or_gen = None
-        self.__lazy_object_ref_or_gen_asyncio_lock = None
-        self._object_ref_or_gen_sync_lock = threading.Lock()
+        self._replica_result_future = replica_result_future
         self._replica_result: Optional[ReplicaResult] = None
-
-    @property
-    def _object_ref_or_gen_asyncio_lock(self) -> asyncio.Lock:
-        """Lazy `asyncio.Lock` object."""
-        if self.__lazy_object_ref_or_gen_asyncio_lock is None:
-            self.__lazy_object_ref_or_gen_asyncio_lock = asyncio.Lock()
-
-        return self.__lazy_object_ref_or_gen_asyncio_lock
 
     def _fetch_future_result_sync(
         self, _timeout_s: Optional[float] = None
     ) -> ReplicaResult:
-        """Synchronously fetch the result of the `_object_ref_future`.
+        """Synchronously fetch the replica result.
 
-        Wrap the result in a ReplicaResult and store it in _result.
+        The result is cached in `self._replica_result`.
         """
 
         if self._replica_result is None:
             try:
-                self._replica_result = self._object_ref_future.result(
+                self._replica_result = self._replica_result_future.result(
                     timeout=_timeout_s
                 )
             except concurrent.futures.TimeoutError:
@@ -397,15 +336,17 @@ class _DeploymentResponseBase:
         return self._replica_result
 
     async def _fetch_future_result_async(self) -> ReplicaResult:
-        """Asynchronously fetch the result of the `_object_ref_future`.
+        """Asynchronously fetch replica result.
 
-        Wrap the result in a ReplicaResult and store it in _result.
+        The result is cached in `self._replica_result`..
         """
 
         if self._replica_result is None:
-            # Use `asyncio.wrap_future` so `self._object_ref_future` can be awaited
+            # Use `asyncio.wrap_future` so `self._replica_result_future` can be awaited
             # safely from any asyncio loop.
-            self._replica_result = await asyncio.wrap_future(self._object_ref_future)
+            self._replica_result = await asyncio.wrap_future(
+                self._replica_result_future
+            )
 
         return self._replica_result
 
@@ -414,9 +355,9 @@ class _DeploymentResponseBase:
 
         This is best effort.
 
-        - If the request hasn't been assigned to a replica actor, the assignment will be
+        - If the request hasn't been assigned to a replica, the assignment will be
           cancelled.
-        - If the request has been assigned to a replica actor, `ray.cancel` will be
+        - If the request has been assigned to a replica, `ray.cancel` will be
           called on the object ref, attempting to cancel the request and any downstream
           requests it makes.
 
@@ -433,9 +374,9 @@ class _DeploymentResponseBase:
             return
 
         self._cancelled = True
-        if not self._object_ref_future.done():
-            self._object_ref_future.cancel()
-        elif self._object_ref_future.exception() is None:
+        if not self._replica_result_future.done():
+            self._replica_result_future.cancel()
+        elif self._replica_result_future.exception() is None:
             self._fetch_future_result_sync()
             self._replica_result.cancel()
 
@@ -566,7 +507,7 @@ class DeploymentResponse(_DeploymentResponseBase):
         actor method call.
 
         This method is `async def` because it will block until the handle call has been
-        assigned to a replica actor. If there are many requests in flight and all
+        assigned to a replica. If there are many requests in flight and all
         replicas' queues are full, this may be a slow operation.
         """
 
@@ -587,7 +528,7 @@ class DeploymentResponse(_DeploymentResponseBase):
         actor method call.
 
         This method is a *blocking* call because it will block until the handle call has
-        been assigned to a replica actor. If there are many requests in flight and all
+        been assigned to a replica. If there are many requests in flight and all
         replicas' queues are full, this may be a slow operation.
 
         From inside a deployment, `_to_object_ref` should be used instead to avoid
@@ -703,7 +644,7 @@ class DeploymentResponseGenerator(_DeploymentResponseBase):
         """Advanced API to convert the generator to a Ray `ObjectRefGenerator`.
 
         This method is `async def` because it will block until the handle call has been
-        assigned to a replica actor. If there are many requests in flight and all
+        assigned to a replica. If there are many requests in flight and all
         replicas' queues are full, this may be a slow operation.
         """
 
@@ -721,7 +662,7 @@ class DeploymentResponseGenerator(_DeploymentResponseBase):
         """Advanced API to convert the generator to a Ray `ObjectRefGenerator`.
 
         This method is a *blocking* call because it will block until the handle call has
-        been assigned to a replica actor. If there are many requests in flight and all
+        been assigned to a replica. If there are many requests in flight and all
         replicas' queues are full, this may be a slow operation.
 
         From inside a deployment, `_to_object_ref_gen` should be used instead to avoid
