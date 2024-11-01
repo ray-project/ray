@@ -30,7 +30,15 @@ def make_local_deployment_handle(
     deployment: Deployment,
     app_name: str,
 ) -> DeploymentHandle:
-    """XXX: comment."""
+    """Constructs an in-process DeploymentHandle for the deployment.
+
+    This is used for local testing mode, where all deployments of an app
+    run in the local process which enables faster dev iterations and use of
+    tooling like PDB.
+
+    The constructor for the user callable is run eagerly in this function to
+    ensure that any exceptions are raised during `serve.run`.
+    """
     user_callable_wrapper = UserCallableWrapper(
         deployment.func_or_class,
         deployment.init_args,
@@ -38,7 +46,6 @@ def make_local_deployment_handle(
         deployment_id=DeploymentID(deployment.name, app_name),
     )
     try:
-        # Initialize the callable eagerly so exceptions are raised during serve.run.
         user_callable_wrapper.initialize_callable().result()
     except Exception:
         logger.exception(f"Failed to initialize deployment '{deployment.name}':")
@@ -61,6 +68,7 @@ def make_local_deployment_handle(
 
 
 class _LocalReplicaResult(ReplicaResult):
+    """ReplicaResult used by in-process Deployment Handles."""
     def __init__(
         self,
         future: concurrent.futures.Future,
@@ -73,7 +81,14 @@ class _LocalReplicaResult(ReplicaResult):
         self._lazy_asyncio_future = None
         self._request_id = request_id
         self._is_streaming = is_streaming
+
+        # For streaming requests, results must be written to this queue.
+        # The queue will be consumed until the future is completed.
         self._generator_result_queue = generator_result_queue
+        if self._is_streaming:
+            assert self._generator_result_queue is not None, (
+                "generator_result_queue must be provided for streaming results."
+            )
 
     @property
     def _asyncio_future(self) -> asyncio.Future:
@@ -141,7 +156,9 @@ class _LocalReplicaResult(ReplicaResult):
     async def __anext__(self):
         assert self._is_streaming, "anext() can only be called on a streaming result."
 
-        # TODO: comment.
+        # This callback does not pull from the queue, only checks that a result is
+        # available, else there is a race condition where the future finishes and the
+        # queue is empty, but this function hasn't returned the result yet.
         def _wait_for_result():
             while True:
                 if self._future.done() or not self._generator_result_queue.empty():
@@ -181,8 +198,6 @@ class _LocalRouter(Router):
         logger.info(f"Initializing local replica for '{deployment_id}'")
         self._deployment_id = deployment_id
         self._user_callable_wrapper = user_callable_wrapper
-
-        # TODO: no private method here.
         assert (
             self._user_callable_wrapper._callable is not None
         ), "User callable must already be initialized."
@@ -193,6 +208,12 @@ class _LocalRouter(Router):
     def _resolve_deployment_responses(
         self, request_args: Tuple[Any], request_kwargs: Dict[str, Any]
     ) -> Tuple[Tuple[Any], Dict[str, Any]]:
+        """Replace DeploymentResponse objects with their results.
+
+        NOTE(edoakes): this currently calls the blocking `.result()` method
+        on the responses to resolve them to their values. This is a divergence
+        from the remote codepath where it's performed concurrently.
+        """
         def _new_arg(arg: Any) -> Any:
             if isinstance(arg, DeploymentResponse):
                 new_arg = arg.result(_skip_asyncio_check=True)
@@ -234,6 +255,7 @@ class _LocalRouter(Router):
             generator_result_queue = None
             generator_result_callback = None
 
+        # Conform to the router interface of returning a future to the ReplicaResult.
         noop_future = concurrent.futures.Future()
         noop_future.set_result(
             _LocalReplicaResult(
