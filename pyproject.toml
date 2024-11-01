@@ -9,6 +9,7 @@ requires = [
     'cython>=3.0.11'
 ]
 
+
 [project]
 name = 'ray'
 version = '3.0.0.dev0'
@@ -32,6 +33,7 @@ dependencies = [
     'requests',
 
 ]
+
 
 [project.optional-dependencies]
 all_cpp = [
@@ -140,5 +142,8 @@ train = [
 ]
 
 
-
-
+[project.scripts]
+ray = 'ray.scripts.scripts:main'
+rllib = { module = "ray.rllib.scripts:cli", extras = ["rllib"] }
+serve = 'ray.serve.scripts:cli'
+tune = 'ray.tune.cli.scripts:cli'
