@@ -22,7 +22,7 @@ from ray.serve.handle import (
     DeploymentResponseGenerator,
 )
 
-# TODO: figure out how to get logs to all go to stderr.
+# TODO(edoakes): figure out how to properly configure logging.
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 
