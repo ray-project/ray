@@ -144,6 +144,6 @@ train = [
 
 [project.scripts]
 ray = 'ray.scripts.scripts:main'
-rllib = { module = "ray.rllib.scripts:cli", extras = ["rllib"] }
+rllib = 'ray.rllib.scripts:cli' # In original version, it was only provided with `[rllib]` extra. One day, we'll find how to achieve that in meson-python.
 serve = 'ray.serve.scripts:cli'
 tune = 'ray.tune.cli.scripts:cli'

@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 set -euo pipefail
-
+set +e
 
 export LD_PRELOAD=""
-
+mkdir -p '/tmp/eugo/install_package_input/default'
 
 # MARK: - 1. NodeJS
-dnf install nodejs20
+dnf install nodejs20 -y
 
 update-alternatives --install /usr/bin/node node /usr/bin/node-20 2
 update-alternatives --install /usr/bin/npm npm /usr/bin/npm-20 2
