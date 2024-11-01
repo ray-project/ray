@@ -1,6 +1,7 @@
 from typing import Any, Dict, Iterable, List, Optional, Tuple, Union
 
 from ray.data._internal.aggregate import Count, Max, Mean, Min, Std, Sum
+from ray.data._internal.boundaries import hello
 from ray.data._internal.compute import ComputeStrategy
 from ray.data._internal.logical.interfaces import LogicalPlan
 from ray.data._internal.logical.operators.all_to_all_operator import Aggregate
@@ -74,6 +75,7 @@ class GroupedData:
         """
 
         plan = self._dataset._plan.copy()
+        hello()
         op = Aggregate(
             self._dataset._logical_plan.dag,
             key=self._key,
