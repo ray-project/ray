@@ -574,14 +574,6 @@ Status RedisContext::Connect(const std::string &address,
     // Ray has some restrictions for RedisDB. Validate it here.
     ValidateRedisDB(*this);
 
-    // try re-connect to redis primary node if current connection is sentinel
-    auto sentinel_status = ValidateAndConnectRedisSentinel(*this, password, enable_ssl);
-    if (!sentinel_status.IsTypeError()) {
-      // if not type error, this should be a sentinel redis. return the status code
-      // directly. continue otherwise.
-      return sentinel_status;
-    }
-
     // Find the true leader
     std::vector<const char *> argv;
     std::vector<size_t> argc;
