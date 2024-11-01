@@ -7,8 +7,6 @@ from abc import ABC
 from dataclasses import dataclass, fields
 from typing import Any, AsyncIterator, Dict, Iterator, Optional, Tuple, Union
 
-from requests import request
-
 import ray
 from ray._raylet import ObjectRefGenerator
 from ray.serve._private.common import (
