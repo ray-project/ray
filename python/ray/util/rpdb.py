@@ -297,7 +297,7 @@ def set_trace(breakpoint_uuid=None):
                 patch_stdstreams=False,
                 quiet=None,
                 breakpoint_uuid=breakpoint_uuid.decode() if breakpoint_uuid else None,
-                debugger_external=ray._private.worker.global_worker.ray_debugger_external,
+                debugger_external=ray._private.worker.global_worker.ray_debugger_external,  # noqa: E501
             )
             rdb.set_trace(frame=frame)
 
