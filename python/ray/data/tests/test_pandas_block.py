@@ -18,6 +18,29 @@ def test_append_column(ray_start_regular_shared):
     expected_block = pd.DataFrame({"animals": animals, "num_legs": num_legs})
     assert actual_block.equals(expected_block)
 
+def test_combine():
+    block = pd.DataFrame({
+        "column": ["Flamingo", "Flamingo", "Centipede"],
+        "num_legs": [2, 2, 100],
+    })
+    class SumLegs(ray.data.aggregate.AggregateFn):
+        def __init__(self):
+            super().__init__(
+                init=lambda _: 0,
+                merge=lambda left, right: left + right,
+                name="column",
+                accumulate_row=lambda agg, row: agg + row["num_legs"]
+            )
+
+    block_accessor = PandasBlockAccessor.for_block(block)
+    actual_block = block_accessor.combine("column", aggs=(SumLegs(), SumLegs()))
+
+    expected_block = pd.DataFrame({
+        "column": ["Flamingo", "Centipede"],
+        "column_2": [4, 100],
+        "column_3": [4, 100],
+    })
+    assert actual_block.equals(expected_block)
 
 @pytest.mark.skipif(
     object_extension_type_allowed(), reason="Objects can be put into Arrow"

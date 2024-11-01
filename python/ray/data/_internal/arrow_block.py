@@ -525,6 +525,13 @@ class ArrowBlockAccessor(TableBlockAccessor):
                 "on Arrow blocks, but "
                 f"got: {type(key)}."
             )
+        if isinstance(key, list):
+            previous_keys = set()
+            for k in key:
+                if k in previous_keys:
+                    raise ValueError(f"key contains duplicate columns: {k}")
+                previous_keys.add(k)
+
 
         def iter_groups() -> Iterator[Tuple[KeyType, Block]]:
             """Creates an iterator over zero-copy group views."""
@@ -562,6 +569,7 @@ class ArrowBlockAccessor(TableBlockAccessor):
 
             # Build the row.
             row = {}
+            count = collections.defaultdict(int)
             if key is not None:
                 if isinstance(key, list):
                     keys = key
@@ -571,24 +579,21 @@ class ArrowBlockAccessor(TableBlockAccessor):
                     group_keys = [group_key]
 
                 for k, gk in zip(keys, group_keys):
+                    assert count[k] == 0, f"column {k} already present in row"
+                    count[k] += 1
                     row[k] = gk
 
-            count = collections.defaultdict(int)
             for agg, accumulator in zip(aggs, accumulators):
                 name = agg.name
                 # Check for conflicts with existing aggregation name.
                 if count[name] > 0:
                     name = self._munge_conflict(name, count[name])
-                count[name] += 1
+                count[agg.name] += 1
                 row[name] = accumulator
 
             builder.add(row)
 
         return builder.build()
-
-    @staticmethod
-    def _munge_conflict(name, count):
-        return f"{name}_{count+1}"
 
     @staticmethod
     def merge_sorted_blocks(

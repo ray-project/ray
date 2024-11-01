@@ -21,6 +21,31 @@ def test_append_column(ray_start_regular_shared):
     expected_block = pa.Table.from_pydict({"animals": animals, "num_legs": num_legs})
     assert actual_block.equals(expected_block)
 
+def test_combine():
+    block = pa.Table.from_pydict({
+        "column": ["Flamingo", "Flamingo", "Centipede"],
+        "num_legs": [2, 2, 100],
+    })
+    class SumLegs(ray.data.aggregate.AggregateFn):
+        def __init__(self):
+            super().__init__(
+                init=lambda _: 0,
+                merge=lambda left, right: left + right,
+                name="column",
+                accumulate_row=lambda agg, row: agg + row["num_legs"]
+            )
+
+    block_accessor = ArrowBlockAccessor.for_block(block)
+    actual_block = block_accessor.combine("column", aggs=(SumLegs(), SumLegs()))
+
+    expected_block = pa.Table.from_pydict({
+        "column": ["Flamingo", "Centipede"],
+        "column_2": [4, 100],
+        "column_3": [4, 100],
+    })
+    assert actual_block.equals(expected_block)
+    
+
 
 def test_register_arrow_types(tmp_path):
     # Test that our custom arrow extension types are registered on initialization.
