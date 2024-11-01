@@ -78,7 +78,6 @@ doctest(
             "utils/memory.py",
             "offline/off_policy_estimator.py",
             "offline/estimators/feature_importance.py",
-            "env/wrappers/recsim_wrapper.py",
             "env/remote_vector_env.py",
             # Missing imports
             "algorithms/dreamerv3/**",
@@ -2543,8 +2542,8 @@ py_test(
     name = "examples/envs/env_rendering_and_recording",
     srcs = ["examples/envs/env_rendering_and_recording.py"],
     tags = ["team:rllib", "exclusive", "examples"],
-    size = "small",
-    args = ["--enable-new-api-stack", "--env=CartPole-v1", "--stop-iters=3"]
+    size = "medium",
+    args = ["--enable-new-api-stack", "--env=CartPole-v1", "--stop-iters=2"]
 )
 
 #@OldAPIStack

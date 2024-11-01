@@ -105,7 +105,7 @@ def my_experiment(config: Dict):
     # Extract the gymnasium env object from the created algo (its local
     # SingleAgentEnvRunner worker). Note that the env in this single-agent
     # case is a gymnasium vector env and that we get its first sub-env here.
-    env = local_env_runner.env.envs[0]
+    env = local_env_runner.env.unwrapped.envs[0]
 
     # The local worker (SingleAgentEnvRunner)
     rl_module = local_env_runner.module
