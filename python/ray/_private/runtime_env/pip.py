@@ -515,9 +515,9 @@ class PipPlugin(RuntimeEnvPlugin):
                 return self._created_hash_bytes[hash_val]
             self._creating_task[hash_val] = task = create_task(_create_for_hash())
             task.add_done_callback(lambda _: self._creating_task.pop(hash_val, None))
-            task_ret = await task
-            self._created_hash_bytes[hash_val] = task_ret
-            return task_ret
+            pip_dir_bytes = await task
+            self._created_hash_bytes[hash_val] = pip_dir_bytes
+            return pip_dir_bytes
 
     def modify_context(
         self,
