@@ -94,12 +94,6 @@ parser.set_defaults(
     evaluation_interval=1,
     evaluation_duration_unit="timesteps",
 )
-parser.add_argument(
-    "--evaluation-parallel-to-training-wo-thread",
-    action="store_true",
-    help="A debugging setting that disables using a threadpool when evaluating in "
-    "parallel to training. Use for testing purposes only!",
-)
 
 
 class AssertEvalCallback(DefaultCallbacks):
@@ -212,11 +206,6 @@ if __name__ == "__main__":
                 "metrics_num_episodes_for_smoothing": 5,
             },
         )
-        .debugging(
-            _evaluation_parallel_to_training_wo_thread=(
-                args.evaluation_parallel_to_training_wo_thread
-            ),
-        )
     )
 
     # Add a simple multi-agent setup.
@@ -224,6 +213,14 @@ if __name__ == "__main__":
         base_config.multi_agent(
             policies={f"p{i}" for i in range(args.num_agents)},
             policy_mapping_fn=lambda aid, *a, **kw: f"p{aid}",
+        )
+    # Set some PPO-specific tuning settings to learn better in the env (assumed to be
+    # CartPole-v1).
+    if args.algo == "PPO":
+        base_config.training(
+            lr=0.0003,
+            num_epochs=6,
+            vf_loss_coeff=0.01,
         )
 
     stop = {

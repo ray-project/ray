@@ -564,7 +564,7 @@ class EnvRunnerGroup:
                 rl_module_state = weights_src.get_state(
                     components=modules,
                     inference_only=inference_only,
-                )[COMPONENT_RL_MODULE]
+                )
             else:
                 rl_module_state = weights_src.get_weights(
                     policies=policies,
@@ -579,7 +579,7 @@ class EnvRunnerGroup:
 
                 def _set_weights(env_runner):
                     _rl_module_state = ray.get(rl_module_state_ref)
-                    env_runner.set_state({COMPONENT_RL_MODULE: _rl_module_state})
+                    env_runner.set_state(_rl_module_state)
 
             else:
 
