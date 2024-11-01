@@ -558,7 +558,7 @@ class EnvRunnerGroup:
                 rl_module_state = weights_src.get_state(
                     components=[COMPONENT_LEARNER + "/" + m for m in modules],
                     inference_only=inference_only,
-                )[COMPONENT_LEARNER][COMPONENT_RL_MODULE]
+                )[COMPONENT_LEARNER]
             # EnvRunner has-a RLModule.
             elif self._remote_config.enable_env_runner_and_connector_v2:
                 rl_module_state = weights_src.get_state(
