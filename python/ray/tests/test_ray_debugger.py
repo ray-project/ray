@@ -342,19 +342,19 @@ def test_ray_debugger_public_multi_node(shutdown_only, ray_debugger_external):
 def test_env_var_enables_ray_debugger():
     with unittest.mock.patch.dict(os.environ):
         os.environ["RAY_DEBUG_POST_MORTEM"] = "1"
-        assert (
-            ray.util.pdb._is_ray_debugger_post_mortem_enabled()
-        ), ("Expected post-mortem Debugger to be enabled when "
-            "RAY_DEBUG_POST_MORTEM env var is present.")
+        assert ray.util.pdb._is_ray_debugger_post_mortem_enabled(), (
+            "Expected post-mortem Debugger to be enabled when "
+            "RAY_DEBUG_POST_MORTEM env var is present."
+        )
 
     with unittest.mock.patch.dict(os.environ):
         if "RAY_DEBUG_POST_MORTEM" in os.environ:
             del os.environ["RAY_DEBUG_POST_MORTEM"]
 
-        assert (
-            not ray.util.pdb._is_ray_debugger_post_mortem_enabled()
-        ), ("Expected post-mortem Debugger to be disabled when "
-            "RAY_DEBUG_POST_MORTEM env var is absent.")
+        assert not ray.util.pdb._is_ray_debugger_post_mortem_enabled(), (
+            "Expected post-mortem Debugger to be disabled when "
+            "RAY_DEBUG_POST_MORTEM env var is absent."
+        )
 
 
 if __name__ == "__main__":

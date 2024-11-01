@@ -569,6 +569,7 @@ import ray
 import sys
 import threading
 
+os.environ["RAY_DEBUG"] = "legacy"
 ray.init(num_cpus=2, runtime_env={"env_vars": {"RAY_DEBUG": "legacy"}})
 
 @ray.remote
@@ -588,8 +589,7 @@ t = threading.Thread(target=kill)
 t.start()
 x = f.remote()
 time.sleep(2)  # Enough time to print one hello.
-ray.util.rpdb._driver_set_trace()  # This should disable worker logs.
-# breakpoint()  # Only works in Py3.7+
+breakpoint()  # This should disable worker logs.
     """
 
     proc = run_string_as_driver_nonblocking(script)
