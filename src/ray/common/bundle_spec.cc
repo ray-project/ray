@@ -95,15 +95,15 @@ std::string BundleSpecification::DebugString() const {
 }
 
 std::string FormatPlacementGroupResource(const std::string &original_resource_name,
-                                         const std::string &group_id_str,
+                                         const std::string &group_id_hex,
                                          int64_t bundle_index) {
   std::stringstream os;
   if (bundle_index >= 0) {
     os << original_resource_name << kGroupKeyword << std::to_string(bundle_index) << "_"
-       << group_id_str;
+       << group_id_hex;
   } else {
     RAY_CHECK(bundle_index == -1) << "Invalid index " << bundle_index;
-    os << original_resource_name << kGroupKeyword << group_id_str;
+    os << original_resource_name << kGroupKeyword << group_id_hex;
   }
   std::string result = os.str();
   RAY_DCHECK(GetOriginalResourceName(result) == original_resource_name)

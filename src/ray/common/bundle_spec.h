@@ -110,7 +110,7 @@ struct PgFormattedResourceData {
 ///                     [original_resource_name]_group_[bundle_index]_[group_id_str]
 /// \return The corresponding formatted placement group resource string.
 std::string FormatPlacementGroupResource(const std::string &original_resource_name,
-                                         const std::string &group_id_str,
+                                         const std::string &group_id_hex,
                                          int64_t bundle_index = -1);
 
 /// Format a placement group resource, e.g., CPU -> CPU_group_i
