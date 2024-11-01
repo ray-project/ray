@@ -430,7 +430,7 @@ def _run(
     name: str = SERVE_DEFAULT_APP_NAME,
     route_prefix: Optional[str] = "/",
     logging_config: Optional[Union[Dict, LoggingConfig]] = None,
-    local_testing_mode: bool = False,
+    _local_testing_mode: bool = False,
 ) -> DeploymentHandle:
     """Run an application and return a handle to its ingress deployment.
 
@@ -447,7 +447,7 @@ def _run(
 
     validate_route_prefix(route_prefix)
 
-    if local_testing_mode:
+    if _local_testing_mode:
         built_app = build_app(
             target,
             name=name,
@@ -481,7 +481,7 @@ def run(
     name: str = SERVE_DEFAULT_APP_NAME,
     route_prefix: Optional[str] = "/",
     logging_config: Optional[Union[Dict, LoggingConfig]] = None,
-    local_testing_mode: bool = False,
+    _local_testing_mode: bool = False,
 ) -> DeploymentHandle:
     """Run an application and return a handle to its ingress deployment.
 
@@ -505,7 +505,6 @@ def run(
             gRPC or a `DeploymentHandle`).
         logging_config: Application logging config. If provided, the config will
             be applied to all deployments which doesn't have logging config.
-        local_testing_mode: TODO!
 
     Returns:
         DeploymentHandle: A handle that can be used to call the application.
@@ -515,7 +514,7 @@ def run(
         name=name,
         route_prefix=route_prefix,
         logging_config=logging_config,
-        local_testing_mode=local_testing_mode,
+        _local_testing_mode=_local_testing_mode,
     )
     logger.info(f"Deployed app '{name}' successfully.")
 

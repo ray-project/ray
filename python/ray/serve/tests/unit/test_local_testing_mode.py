@@ -6,7 +6,9 @@ from ray import serve
 from ray.serve.handle import DeploymentHandle
 
 # TODO:
-# - add test for to_object_ref.
+# - add test for to_object_ref error.
+# - add test for exception raised in constructor.
+# - run test_handle.py too.
 # - support local http client.
 
 
@@ -19,7 +21,7 @@ def test_ingress_handle():
         def __call__(self, name: str):
             return f"Hello {name} from {self._my_name}!"
 
-    h = serve.run(D.bind("Theodore"), local_testing_mode=True)
+    h = serve.run(D.bind("Theodore"), _local_testing_mode=True)
     assert isinstance(h, DeploymentHandle)
     assert h.remote("Edith").result() == "Hello Edith from Theodore!"
 
@@ -34,7 +36,7 @@ def test_ingress_handle_streaming():
             for i in range(n):
                 yield f"Hello {name} from {self._my_name} ({i})!"
 
-    h = serve.run(Stream.bind("Theodore"), local_testing_mode=True)
+    h = serve.run(Stream.bind("Theodore"), _local_testing_mode=True)
     assert isinstance(h, DeploymentHandle)
 
     num_results = 0
@@ -66,7 +68,7 @@ def test_composed_deployment_handle():
             inner_name = await self._inner_handle.remote()
             return f"Hello {name} from {self._my_name} and {inner_name}!"
 
-    h = serve.run(Outer.bind("Theodore", Inner.bind("Kevin")), local_testing_mode=True)
+    h = serve.run(Outer.bind("Theodore", Inner.bind("Kevin")), _local_testing_mode=True)
     assert isinstance(h, DeploymentHandle)
     assert h.remote("Edith").result() == "Hello Edith from Theodore and Kevin!"
 

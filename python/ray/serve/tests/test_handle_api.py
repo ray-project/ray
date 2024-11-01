@@ -43,7 +43,7 @@ def test_basic(serve_instance):
             return val
 
     handle: DeploymentHandle = serve.run(
-        Deployment.bind(downstream.bind()), local_testing_mode=LOCAL_TESTING_MODE
+        Deployment.bind(downstream.bind()), _local_testing_mode=LOCAL_TESTING_MODE
     )
     assert isinstance(handle, DeploymentHandle)
     r = handle.remote()
@@ -64,7 +64,7 @@ def test_result_timeout(serve_instance):
             await signal_actor.wait.remote()
             return "hi"
 
-    handle = serve.run(Deployment.bind(), local_testing_mode=LOCAL_TESTING_MODE)
+    handle = serve.run(Deployment.bind(), _local_testing_mode=LOCAL_TESTING_MODE)
     ref = handle.remote()
     with pytest.raises(TimeoutError):
         ref.result(timeout_s=0.1)
@@ -136,7 +136,7 @@ def test_compose_deployments_in_app(serve_instance, arg_type: str):
             Downstream.options(name="downstream1").bind("downstream1"),
             Downstream.options(name="downstream2").bind("downstream2"),
         ),
-        local_testing_mode=LOCAL_TESTING_MODE,
+        _local_testing_mode=LOCAL_TESTING_MODE,
     )
     assert handle.remote().result() == "driver|downstream1|downstream2|hi"
 
@@ -197,7 +197,7 @@ def test_compose_args_and_kwargs(serve_instance):
             Downstream.bind("downstream1"),
             Downstream.bind("downstream2"),
         ),
-        local_testing_mode=LOCAL_TESTING_MODE,
+        _local_testing_mode=LOCAL_TESTING_MODE,
     )
 
     result = handle.remote().result()
@@ -242,7 +242,7 @@ def test_nested_deployment_response_error(serve_instance):
 
     h = serve.run(
         Upstream.bind(Downstream.bind(), Downstream.bind()),
-        local_testing_mode=LOCAL_TESTING_MODE,
+        _local_testing_mode=LOCAL_TESTING_MODE,
     )
     h.remote().result()
 
@@ -296,7 +296,7 @@ def test_generators(serve_instance):
                 yield i
 
     handle = serve.run(
-        Deployment.bind(downstream.bind()), local_testing_mode=LOCAL_TESTING_MODE
+        Deployment.bind(downstream.bind()), _local_testing_mode=LOCAL_TESTING_MODE
     )
 
     gen = handle.options(stream=True).remote()
@@ -372,7 +372,7 @@ def test_sync_response_methods_fail_in_deployment(serve_instance, stream: bool):
             return "OK"
 
     handle = serve.run(
-        Deployment.bind(downstream.bind()), local_testing_mode=LOCAL_TESTING_MODE
+        Deployment.bind(downstream.bind()), _local_testing_mode=LOCAL_TESTING_MODE
     )
 
     assert handle.remote().result() == "OK"
@@ -404,7 +404,7 @@ def test_handle_eager_execution(serve_instance):
             return await r
 
     handle = serve.run(
-        Deployment.bind(downstream.bind()), local_testing_mode=LOCAL_TESTING_MODE
+        Deployment.bind(downstream.bind()), _local_testing_mode=LOCAL_TESTING_MODE
     )
 
     # Send a request without awaiting the response. It should still
