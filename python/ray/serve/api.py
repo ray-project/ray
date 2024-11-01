@@ -460,9 +460,9 @@ def _run(
             name=name,
             make_deployment_handle=make_local_deployment_handle,
         )
-        for local_deployment_handle in built_app.deployment_handles.values():
-            # TODO: do this lazily?
-            local_deployment_handle._init()
+        # for local_deployment_handle in built_app.deployment_handles.values():
+        # TODO: do this lazily?
+        # local_deployment_handle._init()
 
         handle = built_app.deployment_handles[built_app.ingress_deployment_name]
     else:

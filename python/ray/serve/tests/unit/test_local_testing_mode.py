@@ -8,46 +8,10 @@ from ray.serve.handle import DeploymentHandle
 # TODO:
 # - add test for to_object_ref error.
 # - add test for exception raised in constructor.
-# - run test_handle.py too.
 # - support local http client.
 
 
-def test_ingress_handle():
-    @serve.deployment
-    class D:
-        def __init__(self, my_name: str):
-            self._my_name = my_name
-
-        def __call__(self, name: str):
-            return f"Hello {name} from {self._my_name}!"
-
-    h = serve.run(D.bind("Theodore"), _local_testing_mode=True)
-    assert isinstance(h, DeploymentHandle)
-    assert h.remote("Edith").result() == "Hello Edith from Theodore!"
-
-
-def test_ingress_handle_streaming():
-    @serve.deployment
-    class Stream:
-        def __init__(self, my_name: str):
-            self._my_name = my_name
-
-        def __call__(self, name: str, *, n: int):
-            for i in range(n):
-                yield f"Hello {name} from {self._my_name} ({i})!"
-
-    h = serve.run(Stream.bind("Theodore"), _local_testing_mode=True)
-    assert isinstance(h, DeploymentHandle)
-
-    num_results = 0
-    for i, result in enumerate(h.options(stream=True).remote("Edith", n=10)):
-        num_results += 1
-        assert result == f"Hello Edith from Theodore ({i})!"
-
-    assert num_results == 10
-
-
-def test_composed_deployment_handle():
+def test_basic_composition():
     @serve.deployment
     class Inner:
         def __init__(self, my_name: str):
@@ -71,6 +35,27 @@ def test_composed_deployment_handle():
     h = serve.run(Outer.bind("Theodore", Inner.bind("Kevin")), _local_testing_mode=True)
     assert isinstance(h, DeploymentHandle)
     assert h.remote("Edith").result() == "Hello Edith from Theodore and Kevin!"
+
+
+@pytest.mark.parametrize("deployment", ["Inner", "Outer"])
+def test_exception_raised_in_constructor(deployment: str):
+    @serve.deployment
+    class Inner:
+        def __init__(self, should_raise: bool):
+            if should_raise:
+                raise RuntimeError("Exception in Inner constructor.")
+
+    @serve.deployment
+    class Outer:
+        def __init__(self, h: DeploymentHandle, should_raise: bool):
+            if should_raise:
+                raise RuntimeError("Exception in Outer constructor.")
+
+    with pytest.raises(RuntimeError, match=f"Exception in {deployment} constructor."):
+        serve.run(
+            Outer.bind(Inner.bind(deployment == "Inner"), deployment == "Outer"),
+            _local_testing_mode=True,
+        )
 
 
 if __name__ == "__main__":

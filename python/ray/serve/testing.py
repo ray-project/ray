@@ -27,17 +27,25 @@ def make_local_deployment_handle(
     deployment: Deployment,
     app_name: str,
 ) -> DeploymentHandle:
-    # XXX: comment.
+    """XXX: comment."""
+    user_callable_wrapper = UserCallableWrapper(
+        deployment.func_or_class,
+        deployment.init_args,
+        deployment.init_kwargs,
+        deployment_id=DeploymentID(deployment.name, app_name),
+    )
+    try:
+        # Initialize the callable eagerly so exceptions are raised during serve.run.
+        user_callable_wrapper.initialize_callable().result()
+    except Exception:
+        logger.exception(f"Failed to initialize deployment '{deployment.name}':")
+        raise
+
     def _create_local_router(
         handle_id: str, deployment_id: DeploymentID, handle_options: Any
     ) -> Router:
         return _LocalRouter(
-            UserCallableWrapper(
-                deployment.func_or_class,
-                deployment.init_args,
-                deployment.init_kwargs,
-                deployment_id=deployment_id,
-            ),
+            user_callable_wrapper,
             deployment_id=deployment_id,
             handle_options=handle_options,
         )
@@ -144,7 +152,11 @@ class _LocalRouter(Router):
         logger.info(f"Initializing local replica for '{deployment_id}'")
         self._deployment_id = deployment_id
         self._user_callable_wrapper = user_callable_wrapper
-        self._user_callable_wrapper.initialize_callable().result()
+
+        # TODO: no private method here.
+        assert (
+            self._user_callable_wrapper._callable is not None
+        ), "User callable must already be initialized."
 
     def running_replicas_populated(self) -> bool:
         return True
