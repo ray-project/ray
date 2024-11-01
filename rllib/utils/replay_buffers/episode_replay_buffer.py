@@ -530,7 +530,9 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
             # Skip, if we are too far to the end and `episode_ts` + n_step would go
             # beyond the episode's end.
             if episode_ts + (batch_length_T or 0) + (actual_n_step - 1) > len(episode):
-                continue
+                actual_length = len(episode)
+            else:
+                actual_length = episode_ts + (batch_length_T or 0) + (actual_n_step - 1)
 
             # If no sequence should be sampled, we sample here the n-step.
             if not batch_length_T:
@@ -586,7 +588,7 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
                 sampled_episode = episode.slice(
                     slice(
                         episode_ts,
-                        episode_ts + (batch_length_T or 0) + (actual_n_step - 1),
+                        actual_length,
                     ),
                     len_lookback_buffer=lookback,
                 )
@@ -608,7 +610,7 @@ class EpisodeReplayBuffer(ReplayBufferInterface):
             sampled_episodes.append(sampled_episode)
 
             # Increment counter.
-            B += batch_length_T or 1
+            B += actual_length or 1
 
         # Update the metric.
         self.sampled_timesteps += batch_size_B
