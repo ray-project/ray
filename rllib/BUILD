@@ -2595,12 +2595,12 @@ py_test(
 )
 
 py_test(
-    name = "examples/evaluation/evaluation_parallel_to_training_511_ts_torch",
+    name = "examples/evaluation/evaluation_parallel_to_training_1011_ts_torch",
     main = "examples/evaluation/evaluation_parallel_to_training.py",
     tags = ["team:rllib", "exclusive", "examples"],
     size = "medium",
     srcs = ["examples/evaluation/evaluation_parallel_to_training.py"],
-    args = ["--enable-new-api-stack", "--as-test", "--evaluation-parallel-to-training", "--stop-reward=450.0", "--num-cpus=6", "--evaluation-num-env-runners=3", "--evaluation-duration=511", "--evaluation-duration-unit=timesteps"]
+    args = ["--enable-new-api-stack", "--as-test", "--evaluation-parallel-to-training", "--stop-reward=450.0", "--num-cpus=6", "--evaluation-num-env-runners=2", "--evaluation-duration=1011", "--evaluation-duration-unit=timesteps"]
 )
 
 py_test(

@@ -578,14 +578,12 @@ class EnvRunnerGroup:
             if self._remote_config.enable_env_runner_and_connector_v2:
 
                 def _set_weights(env_runner):
-                    _rl_module_state = ray.get(rl_module_state_ref)
-                    env_runner.set_state(_rl_module_state)
+                    env_runner.set_state(ray.get(rl_module_state_ref))
 
             else:
 
                 def _set_weights(env_runner):
-                    _weights = ray.get(rl_module_state_ref)
-                    env_runner.set_weights(_weights, global_vars)
+                    env_runner.set_weights(ray.get(rl_module_state_ref), global_vars)
 
             # Sync to specified remote workers in this EnvRunnerGroup.
             self.foreach_worker(
@@ -600,9 +598,7 @@ class EnvRunnerGroup:
         if self.local_env_runner is not None:
             if from_worker_or_learner_group is not None:
                 if self._remote_config.enable_env_runner_and_connector_v2:
-                    self.local_env_runner.set_state(
-                        {COMPONENT_RL_MODULE: rl_module_state}
-                    )
+                    self.local_env_runner.set_state(rl_module_state)
                 else:
                     self.local_env_runner.set_weights(rl_module_state)
             # If `global_vars` is provided and local worker exists  -> Update its
