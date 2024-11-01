@@ -554,6 +554,7 @@ def _do_init_nccl_group(
     comm_id,
     rank,
     actor_handles,
+    use_communication_streams,
     custom_nccl_group: Optional[GPUCommunicator] = None,
 ):
     import torch
@@ -573,6 +574,7 @@ def _do_init_nccl_group(
             rank,
             actor_handles,
             torch.cuda.current_stream().cuda_stream,
+            use_communication_streams,
         )
 
 
@@ -633,6 +635,7 @@ def _get_ranks(
 def _init_nccl_group(
     actors: List[ray.actor.ActorHandle],
     custom_nccl_group: Optional[GPUCommunicator] = None,
+    use_communication_streams: bool = False,
 ) -> str:
     """
     Initialize a NCCL group with the given actors. If a custom NCCL group is
@@ -641,6 +644,9 @@ def _init_nccl_group(
     Args:
         actors: A list of actors that participate in the NCCL group.
         custom_nccl_group: A custom NCCL group to initialize.
+        use_communication_streams: Whether to use dedicated send and recv
+                streams for communication. If True, communication and computation
+                can be overlapped to improve perfomrance.
     """
     ctx = ChannelContext.get_current()
 
@@ -681,6 +687,7 @@ def _init_nccl_group(
             nccl_comm_id,
             rank,
             actors,
+            use_communication_streams,
             custom_nccl_group,
         )
         for rank, actor in zip(ranks, actors)

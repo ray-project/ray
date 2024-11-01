@@ -1,4 +1,4 @@
-from typing import Callable, Optional
+from typing import Any, Callable, Optional, Tuple
 
 import ray
 from ray._raylet import GcsClient
@@ -6,12 +6,28 @@ from ray.serve._private.cluster_node_info_cache import (
     ClusterNodeInfoCache,
     DefaultClusterNodeInfoCache,
 )
+from ray.serve._private.common import DeploymentID
+from ray.serve._private.constants import (
+    RAY_SERVE_ENABLE_QUEUE_LENGTH_CACHE,
+    RAY_SERVE_ENABLE_STRICT_MAX_ONGOING_REQUESTS,
+    RAY_SERVE_PROXY_PREFER_LOCAL_AZ_ROUTING,
+)
 from ray.serve._private.deployment_scheduler import (
     DefaultDeploymentScheduler,
     DeploymentScheduler,
 )
 from ray.serve._private.grpc_util import gRPCServer
-from ray.serve._private.utils import get_head_node_id
+from ray.serve._private.replica_scheduler import (
+    ActorReplicaWrapper,
+    PowerOfTwoChoicesReplicaScheduler,
+)
+from ray.serve._private.router import Router, SingletonThreadRouter
+from ray.serve._private.utils import (
+    get_current_actor_id,
+    get_head_node_id,
+    inside_ray_client_context,
+    resolve_request_args,
+)
 
 # NOTE: Please read carefully before changing!
 #
@@ -48,6 +64,71 @@ def create_init_handle_options(**kwargs):
     from ray.serve.handle import _InitHandleOptions
 
     return _InitHandleOptions.create(**kwargs)
+
+
+def _get_node_id_and_az() -> Tuple[str, Optional[str]]:
+    node_id = ray.get_runtime_context().get_node_id()
+    try:
+        cluster_node_info_cache = create_cluster_node_info_cache(
+            GcsClient(address=ray.get_runtime_context().gcs_address)
+        )
+        cluster_node_info_cache.update()
+        az = cluster_node_info_cache.get_node_az(node_id)
+    except Exception:
+        az = None
+
+    return node_id, az
+
+
+# Interface definition for create_router.
+CreateRouterCallable = Callable[[str, DeploymentID, Any], Router]
+
+
+def create_router(
+    handle_id: str,
+    deployment_id: DeploymentID,
+    handle_options: Any,
+) -> Router:
+    # NOTE(edoakes): this is lazy due to a nasty circular import that should be fixed.
+    from ray.serve.context import _get_global_client
+
+    actor_id = get_current_actor_id()
+    node_id, availability_zone = _get_node_id_and_az()
+    controller_handle = _get_global_client()._controller
+    is_inside_ray_client_context = inside_ray_client_context()
+
+    replica_scheduler = PowerOfTwoChoicesReplicaScheduler(
+        deployment_id,
+        handle_options._source,
+        handle_options._prefer_local_routing,
+        RAY_SERVE_PROXY_PREFER_LOCAL_AZ_ROUTING,
+        node_id,
+        actor_id,
+        ray.get_runtime_context().current_actor
+        if ray.get_runtime_context().get_actor_id()
+        else None,
+        availability_zone,
+        # Streaming ObjectRefGenerators are not supported in Ray Client
+        use_replica_queue_len_cache=(
+            not is_inside_ray_client_context and RAY_SERVE_ENABLE_QUEUE_LENGTH_CACHE
+        ),
+        create_replica_wrapper_func=lambda r: ActorReplicaWrapper(r),
+    )
+
+    return SingletonThreadRouter(
+        controller_handle=controller_handle,
+        deployment_id=deployment_id,
+        handle_id=handle_id,
+        self_actor_id=actor_id,
+        handle_source=handle_options._source,
+        replica_scheduler=replica_scheduler,
+        # Streaming ObjectRefGenerators are not supported in Ray Client
+        enable_strict_max_ongoing_requests=(
+            not is_inside_ray_client_context
+            and RAY_SERVE_ENABLE_STRICT_MAX_ONGOING_REQUESTS
+        ),
+        resolve_request_args_func=resolve_request_args,
+    )
 
 
 def add_grpc_address(grpc_server: gRPCServer, server_address: str):

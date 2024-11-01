@@ -112,12 +112,14 @@ class MockObjectDirectory {
 
 class ObjectRecoveryManagerTestBase : public ::testing::Test {
  public:
-  ObjectRecoveryManagerTestBase(bool lineage_enabled)
+  explicit ObjectRecoveryManagerTestBase(bool lineage_enabled)
       : local_raylet_id_(NodeID::FromRandom()),
+        io_context_("TestOnly.ObjectRecoveryManagerTestBase"),
         publisher_(std::make_shared<pubsub::MockPublisher>()),
         subscriber_(std::make_shared<pubsub::MockSubscriber>()),
         object_directory_(std::make_shared<MockObjectDirectory>()),
-        memory_store_(std::make_shared<CoreWorkerMemoryStore>()),
+        memory_store_(
+            std::make_shared<CoreWorkerMemoryStore>(io_context_.GetIoService())),
         raylet_client_(std::make_shared<MockRayletClient>()),
         task_resubmitter_(std::make_shared<MockTaskResubmitter>()),
         ref_counter_(std::make_shared<ReferenceCounter>(
@@ -155,9 +157,17 @@ class ObjectRecoveryManagerTestBase : public ::testing::Test {
         [](const ObjectID &, std::vector<ObjectID> *args) { return 0; });
   }
 
+  void TearDown() override {
+    // io_context_ must be joined and stopped before any other managers being
+    // destructed, otherwise it may run callbacks that captured dangling objects.
+    io_context_.Stop();
+  }
+
   NodeID local_raylet_id_;
   absl::flat_hash_map<ObjectID, rpc::ErrorType> failed_reconstructions_;
 
+  // Used by memory_store_.
+  InstrumentedIOContextWithThread io_context_;
   std::shared_ptr<pubsub::MockPublisher> publisher_;
   std::shared_ptr<pubsub::MockSubscriber> subscriber_;
   std::shared_ptr<MockObjectDirectory> object_directory_;

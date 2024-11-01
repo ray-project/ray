@@ -13,6 +13,7 @@
 // limitations under the License.
 
 #include <condition_variable>
+#include <utility>
 
 #include "ray/common/ray_config.h"
 #include "ray/core_worker/context.h"
@@ -148,16 +149,18 @@ std::shared_ptr<RayObject> GetRequest::Get(const ObjectID &object_id) const {
 }
 
 CoreWorkerMemoryStore::CoreWorkerMemoryStore(
+    instrumented_io_context &io_context,
     std::shared_ptr<ReferenceCounter> counter,
     std::shared_ptr<raylet::RayletClient> raylet_client,
     std::function<Status()> check_signals,
     std::function<void(const RayObject &)> unhandled_exception_handler,
     std::function<std::shared_ptr<ray::RayObject>(
         const ray::RayObject &object, const ObjectID &object_id)> object_allocator)
-    : ref_counter_(std::move(counter)),
-      raylet_client_(raylet_client),
-      check_signals_(check_signals),
-      unhandled_exception_handler_(unhandled_exception_handler),
+    : io_context_(io_context),
+      ref_counter_(std::move(counter)),
+      raylet_client_(std::move(raylet_client)),
+      check_signals_(std::move(check_signals)),
+      unhandled_exception_handler_(std::move(unhandled_exception_handler)),
       object_allocator_(std::move(object_allocator)) {}
 
 void CoreWorkerMemoryStore::GetAsync(
@@ -177,7 +180,8 @@ void CoreWorkerMemoryStore::GetAsync(
   }
   // It's important for performance to run the callback outside the lock.
   if (ptr != nullptr) {
-    callback(ptr);
+    io_context_.post([callback, ptr]() { callback(ptr); },
+                     "CoreWorkerMemoryStore.GetAsync.Callback");
   }
 }
 
@@ -198,7 +202,7 @@ std::shared_ptr<RayObject> CoreWorkerMemoryStore::GetIfExists(const ObjectID &ob
 
 bool CoreWorkerMemoryStore::Put(const RayObject &object, const ObjectID &object_id) {
   std::vector<std::function<void(std::shared_ptr<RayObject>)>> async_callbacks;
-  RAY_LOG(DEBUG) << "Putting object into memory store. objectid is " << object_id;
+  RAY_LOG(DEBUG).WithField(object_id) << "Putting object into memory store.";
   std::shared_ptr<RayObject> object_entry = nullptr;
   if (object_allocator_ != nullptr) {
     object_entry = object_allocator_(object, object_id);
@@ -256,9 +260,16 @@ bool CoreWorkerMemoryStore::Put(const RayObject &object, const ObjectID &object_
   }
 
   // It's important for performance to run the callbacks outside the lock.
-  for (const auto &cb : async_callbacks) {
-    cb(object_entry);
-  }
+  // Posting the callbacks to the io_context_ ensures that the callbacks are run without
+  // any locks held from the caller of Put(). See
+  // https://github.com/ray-project/ray/issues/47649 for more details.
+  io_context_.post(
+      [async_callbacks = std::move(async_callbacks), object_entry]() {
+        for (const auto &cb : async_callbacks) {
+          cb(object_entry);
+        }
+      },
+      "CoreWorkerMemoryStore.Put.get_async_callbacks");
 
   return true;
 }
@@ -293,6 +304,7 @@ Status CoreWorkerMemoryStore::GetImpl(const std::vector<ObjectID> &object_ids,
   {
     absl::flat_hash_set<ObjectID> remaining_ids;
     absl::flat_hash_set<ObjectID> ids_to_remove;
+    bool existing_objects_has_exception = false;
 
     absl::MutexLock lock(&mu_);
     // Check for existing objects and see if this get request can be fullfilled.
@@ -308,6 +320,10 @@ Status CoreWorkerMemoryStore::GetImpl(const std::vector<ObjectID> &object_ids,
           ids_to_remove.insert(object_id);
         }
         count += 1;
+        if (abort_if_any_object_is_exception && iter->second->IsException() &&
+            !iter->second->IsInPlasmaError()) {
+          existing_objects_has_exception = true;
+        }
       } else {
         remaining_ids.insert(object_id);
       }
@@ -321,8 +337,9 @@ Status CoreWorkerMemoryStore::GetImpl(const std::vector<ObjectID> &object_ids,
       }
     }
 
-    // Return if all the objects are obtained.
-    if (remaining_ids.empty() || count >= num_objects) {
+    // Return if all the objects are obtained, or any existing objects are known to have
+    // exception.
+    if (remaining_ids.empty() || count >= num_objects || existing_objects_has_exception) {
       return Status::OK();
     }
 

@@ -121,6 +121,7 @@ class ChannelOutputType:
 class ChannelContext:
     serialization_context = _SerializationContext()
     _torch_device: Optional["torch.device"] = None
+    _current_stream: Optional["torch.cuda.Stream"] = None
 
     def __init__(self):
         # Used for the torch.Tensor NCCL transport.
