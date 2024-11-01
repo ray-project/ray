@@ -217,7 +217,6 @@ def check_nccl_group_init(
     default_p2p_actors_and_custom_comm: Optional[
         Tuple[FrozenSet["ray.actor.ActorHandle"], Optional[GPUCommunicator]]
     ] = None,
-    default_p2p_nccl_group: Optional[GPUCommunicator] = None,
 ) -> "ray.dag.CompiledDAG":
     mock_nccl_group_set = MockNcclGroupSet()
     monkeypatch.setattr(
@@ -229,7 +228,11 @@ def check_nccl_group_init(
         mock_nccl_group_set,
     )
 
-    compiled_dag = dag.experimental_compile(_custom_nccl_group=default_p2p_nccl_group)
+    if default_p2p_actors_and_custom_comm is None:
+        default_p2p_nccl_group = None
+    else:
+        _, default_p2p_nccl_group = default_p2p_actors_and_custom_comm
+    compiled_dag = dag.experimental_compile(_default_nccl_group=default_p2p_nccl_group)
     mock_nccl_group_set.check_init(
         compiled_dag,
         actors_and_custom_comms,
@@ -393,7 +396,6 @@ def test_comm_deduplicate_p2p_and_collective(ray_start_regular, monkeypatch):
         monkeypatch,
         dag,
         {(frozenset(workers), None)},
-        (frozenset(workers), None),
     )
 
     check_nccl_group_teardown(monkeypatch, compiled_dag, mock_nccl_group_set)
@@ -410,7 +412,6 @@ def test_comm_deduplicate_p2p_and_collective(ray_start_regular, monkeypatch):
         monkeypatch,
         dag,
         {(frozenset(workers), None)},
-        (frozenset(workers), None),
     )
 
     check_nccl_group_teardown(monkeypatch, compiled_dag, mock_nccl_group_set)
@@ -441,7 +442,6 @@ def test_custom_comm_deduplicate(ray_start_regular, monkeypatch):
         monkeypatch,
         dag,
         {(frozenset(workers), comm)},
-        (frozenset(workers), comm),
     )
 
     check_nccl_group_teardown(monkeypatch, compiled_dag, mock_nccl_group_set)
@@ -549,7 +549,6 @@ def test_custom_comm_compile(ray_start_regular, monkeypatch):
         dag,
         {(frozenset(workers), comm)},
         (frozenset(workers), comm),
-        default_p2p_nccl_group=comm,
     )
 
     check_nccl_group_teardown(monkeypatch, compiled_dag, mock_nccl_group_set)
@@ -579,7 +578,6 @@ def test_custom_comm_compile(ray_start_regular, monkeypatch):
             (frozenset(workers), comm_3),
         },
         (frozenset(workers), comm_1),
-        default_p2p_nccl_group=comm_1,
     )
 
     check_nccl_group_teardown(monkeypatch, compiled_dag, mock_nccl_group_set)
@@ -609,8 +607,8 @@ def test_custom_comm_compile_error(ray_start_regular):
 
     with pytest.raises(
         ValueError,
-        match="Custom NCCL group for P2P send/recv must contain "
-        "both the upstream and downstream actors",
+        match="Custom NCCL group must contain all actors that participate "
+        "in P2P send/recv.",
     ):
         dag.experimental_compile()
 
@@ -622,10 +620,10 @@ def test_custom_comm_compile_error(ray_start_regular):
 
     with pytest.raises(
         ValueError,
-        match="Custom NCCL group for P2P send/recv must contain "
-        "both the upstream and downstream actors",
+        match="Custom NCCL group must contain all actors that participate "
+        "in P2P send/recv.",
     ):
-        dag.experimental_compile(_custom_nccl_group=comm)
+        dag.experimental_compile(_default_nccl_group=comm)
 
 
 if __name__ == "__main__":

@@ -168,7 +168,7 @@ class DAGNode(DAGNodeBase):
         _asyncio_max_queue_size: Optional[int] = None,
         _max_buffered_results: Optional[int] = None,
         _max_inflight_executions: Optional[int] = None,
-        _custom_nccl_group: Optional[GPUCommunicator] = None,
+        _default_nccl_group: Optional[GPUCommunicator] = None,
     ) -> "ray.dag.CompiledDAG":
         """Compile an accelerated execution path for this DAG.
 
@@ -193,7 +193,7 @@ class DAGNode(DAGNodeBase):
                 are allowed to be sent to this DAG. Before submitting more requests,
                 the caller is responsible for calling ray.get to clear finished
                 in-flight requests.
-            _custom_nccl_group: The custom NCCL group to be used for P2P NCCL
+            _default_nccl_group: The default NCCL group to be used for P2P NCCL
                 communications whose `transport=nccl`.
 
         Returns:
@@ -228,7 +228,7 @@ class DAGNode(DAGNodeBase):
             _asyncio_max_queue_size,
             _max_buffered_results,
             _max_inflight_executions,
-            _custom_nccl_group,
+            _default_nccl_group,
         )
 
     def execute(
