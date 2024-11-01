@@ -166,7 +166,7 @@ class NodeResourceInstanceSet {
   /// placement group indexed resources in resources_ by their original resource id and
   /// pd id. The key of the map is the original resource id. The value is a map of pg id
   /// to the corresponding placement group indexed resource ids. This map should always
-  /// be consistent with the _resource map.
+  /// be consistent with the resources_ map.
   absl::flat_hash_map<ResourceID,
                       absl::flat_hash_map<std::string, absl::flat_hash_set<ResourceID>>>
       pg_indexed_resources_;
