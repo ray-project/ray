@@ -87,7 +87,9 @@ def pyarrow_table_from_pydict(
 
 
 @DeveloperAPI(stability="alpha")
-def convert_to_pyarrow_array(column_values: np.ndarray, dtype: Optional[pa.DataType] = None) -> pa.Array:
+def convert_to_pyarrow_array(
+    column_values: np.ndarray, dtype: Optional[pa.DataType] = None
+) -> pa.Array:
     try:
         return pa.array(column_values, type=dtype)
     except Exception as e:

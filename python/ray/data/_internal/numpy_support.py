@@ -8,7 +8,6 @@ import numpy as np
 from ray.air.util.tensor_extensions.utils import create_ragged_ndarray
 from ray.data._internal.util import _truncated_repr
 
-
 logger = logging.getLogger(__file__)
 
 
@@ -133,7 +132,11 @@ def convert_to_numpy(column_values: Any) -> np.ndarray:
             else:
                 return np.array(column_values)
         except Exception as e:
-            logger.error(f"Failed to convert column values to numpy array: {_truncated_repr(column_values)}", exc_info=e)
+            logger.error(
+                f"Failed to convert column values to numpy array: "
+                f"{_truncated_repr(column_values)}",
+                exc_info=e,
+            )
 
             raise ValueError(
                 "Failed to convert column values to numpy array: "
@@ -144,7 +147,11 @@ def convert_to_numpy(column_values: Any) -> np.ndarray:
         try:
             return np.array(column_values)
         except Exception as e:
-            logger.error(f"Failed to convert column values to numpy array: {_truncated_repr(column_values)}", exc_info=e)
+            logger.error(
+                f"Failed to convert column values to numpy array: "
+                f"{_truncated_repr(column_values)}",
+                exc_info=e,
+            )
 
             raise ValueError(
                 "Failed to convert column values to numpy array: "

@@ -22,14 +22,11 @@ from ray.air.constants import TENSOR_COLUMN_NAME
 from ray.air.util.tensor_extensions.arrow import (
     ArrowConversionError,
     convert_to_pyarrow_array,
-    pyarrow_table_from_pydict,
     deduce_pyarrow_dtype,
+    pyarrow_table_from_pydict,
 )
 from ray.data._internal.arrow_ops import transform_polars, transform_pyarrow
-from ray.data._internal.numpy_support import (
-    convert_to_numpy,
-    validate_numpy_batch,
-)
+from ray.data._internal.numpy_support import convert_to_numpy
 from ray.data._internal.row import TableRow
 from ray.data._internal.table_block import TableBlockAccessor, TableBlockBuilder
 from ray.data._internal.util import find_partitions
@@ -43,7 +40,6 @@ from ray.data.block import (
     U,
 )
 from ray.data.context import DataContext
-from ray.util.debug import log_once
 
 try:
     import pyarrow
@@ -161,14 +157,22 @@ class ArrowBlockBuilder(TableBlockBuilder):
                 if col_names == TENSOR_COLUMN_NAME or np_col_vals.ndim > 1:
                     from ray.data.extensions.tensor_extension import ArrowTensorArray
 
-                    pa_cols[col_names] = ArrowTensorArray.from_numpy(np_col_vals, col_names)
+                    pa_cols[col_names] = ArrowTensorArray.from_numpy(
+                        np_col_vals, col_names
+                    )
                 else:
                     pa_dtype = deduce_pyarrow_dtype(col_vals)
-                    pa_cols[col_names] = convert_to_pyarrow_array(np_col_vals, dtype=pa_dtype)
+                    pa_cols[col_names] = convert_to_pyarrow_array(
+                        np_col_vals, dtype=pa_dtype
+                    )
 
             except ArrowConversionError as e:
-                logger.warning(f"Failed to convert column '{col_names}' into pyarrow array due to: {e}; "
-                               f"falling back to serialize as pickled python objects", exc_info=e)
+                logger.warning(
+                    f"Failed to convert column '{col_names}' into pyarrow "
+                    f"array due to: {e}; falling back to serialize as pickled "
+                    f"python objects",
+                    exc_info=e,
+                )
 
                 from ray.data.extensions.object_extension import (
                     ArrowPythonObjectArray,
@@ -176,7 +180,9 @@ class ArrowBlockBuilder(TableBlockBuilder):
                 )
 
                 if object_extension_type_allowed() and is_object_fixable_error(e):
-                    pa_cols[col_names] = ArrowPythonObjectArray.from_objects(np_col_vals)
+                    pa_cols[col_names] = ArrowPythonObjectArray.from_objects(
+                        np_col_vals
+                    )
                 else:
                     raise
 
