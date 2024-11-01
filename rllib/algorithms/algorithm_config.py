@@ -701,14 +701,18 @@ class AlgorithmConfig(_Config):
         # Namely, we want to re-instantiate the exploration config this config had
         # inside `self.experimental()` before potentially overwriting it in the
         # following.
-        enable_rl_module_and_learner = config_dict.get(
+        enable_new_api_stack = config_dict.get(
             "_enable_new_api_stack",
-            config_dict.get("enable_rl_module_and_learner"),
+            config_dict.get(
+                "enable_rl_module_and_learner",
+                config_dict.get("enable_env_runner_and_connector_v2"),
+            ),
         )
-        self.api_stack(
-            enable_rl_module_and_learner=enable_rl_module_and_learner,
-            enable_env_runner_and_connector_v2=enable_rl_module_and_learner,
-        )
+        if enable_new_api_stack is not None:
+            self.api_stack(
+                enable_rl_module_and_learner=enable_new_api_stack,
+                enable_env_runner_and_connector_v2=enable_new_api_stack,
+            )
 
         # Modify our properties one by one.
         for key, value in config_dict.items():
@@ -752,7 +756,7 @@ class AlgorithmConfig(_Config):
             elif key.startswith("evaluation_"):
                 eval_call[key] = value
             elif key == "exploration_config":
-                if enable_rl_module_and_learner:
+                if enable_new_api_stack:
                     self.exploration_config = value
                     continue
                 if isinstance(value, dict) and "type" in value:
