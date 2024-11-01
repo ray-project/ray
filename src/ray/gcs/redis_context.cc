@@ -441,7 +441,7 @@ Status ValidateRedisSentinel(RedisContext &context) {
   }
 }
 
-void ConnectRedisSentinel(RedisContext &context,
+Status ConnectRedisSentinel(RedisContext &context,
                           const std::string &password,
                           bool enable_ssl) {
   std::vector<const char *> argv;
