@@ -2,18 +2,14 @@
 
 # __rllib-in-60s-begin__
 from ray.rllib.algorithms.ppo import PPOConfig
+from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
 
 # 1. Configure the algorithm,
 config = (
     PPOConfig()
-    .api_stack(
-        enable_rl_module_and_learner=True,
-        enable_env_runner_and_connector_v2=True,
-    )
     .environment("Taxi-v3")
     .env_runners(num_env_runners=2)
-    .framework("torch")
-    .training(model={"fcnet_hiddens": [64, 64]})
+    .rl_module(model_config=DefaultModelConfig(fcnet_hiddens=[64, 64]))
     .evaluation(evaluation_num_env_runners=1)
 )
 # 2. build the algorithm ..

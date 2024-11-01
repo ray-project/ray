@@ -97,7 +97,7 @@ parser = add_rllib_example_script_args(
 # Use Pong by default.
 parser.set_defaults(
     enable_new_api_stack=True,
-    env="ale_py:ALE/Pong-v5",
+    env="ALE/Pong-v5",
 )
 parser.add_argument(
     "--num-frames",

@@ -11,7 +11,6 @@ import requests
 
 import ray
 from ray import serve
-from ray._private.pydantic_compat import ValidationError
 from ray._private.test_utils import SignalActor, wait_for_condition
 from ray.serve._private.common import DeploymentStatus
 from ray.serve._private.logging_utils import get_serve_logs_dir
@@ -21,15 +20,14 @@ from ray.serve.schema import ApplicationStatus
 from ray.util.state import list_actors
 
 
-@pytest.mark.timeout(10, method="thread")
-def test_deploy_empty_bundle(serve_instance):
+def test_deploy_zero_cpus(serve_instance):
     @serve.deployment(ray_actor_options={"num_cpus": 0})
     class D:
-        def hello(self, _):
+        def hello(self):
             return "hello"
 
-    # This should succesfully terminate within the provided time-frame.
-    serve.run(D.bind())
+    h = serve.run(D.bind())
+    assert h.hello.remote().result() == "hello"
 
 
 def test_deployment_error_handling(serve_instance):
@@ -37,9 +35,7 @@ def test_deployment_error_handling(serve_instance):
     def f():
         pass
 
-    with pytest.raises(
-        ValidationError, match="1 validation error for RayActorOptionsSchema.*"
-    ):
+    with pytest.raises(RuntimeError):
         # This is an invalid configuration since dynamic upload of working
         # directories is not supported. The error this causes in the controller
         # code should be caught and reported back to the `deploy` caller.
