@@ -9,13 +9,14 @@ import ray
 from ray import serve
 from ray.serve._private.common import DeploymentHandleSource, RequestProtocol
 from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME
+from ray.serve._private.handle_options import DynamicHandleOptions, InitHandleOptions
 from ray.serve._private.utils import DEFAULT
 from ray.serve.exceptions import RayServeException
-from ray.serve.handle import DeploymentHandle, _DynamicHandleOptions, _InitHandleOptions
+from ray.serve.handle import DeploymentHandle
 
 
 def test_dynamic_handle_options():
-    default_options = _DynamicHandleOptions()
+    default_options = DynamicHandleOptions()
     assert default_options.method_name == "__call__"
     assert default_options.multiplexed_model_id == ""
     assert default_options.stream is False
@@ -69,25 +70,25 @@ def test_dynamic_handle_options():
 
 
 def test_init_handle_options():
-    default_options = _InitHandleOptions.create()
+    default_options = InitHandleOptions.create()
     assert default_options._prefer_local_routing is False
     assert default_options._source == DeploymentHandleSource.UNKNOWN
 
-    default1 = _InitHandleOptions.create(_prefer_local_routing=DEFAULT.VALUE)
+    default1 = InitHandleOptions.create(_prefer_local_routing=DEFAULT.VALUE)
     assert default1._prefer_local_routing is False
     assert default1._source == DeploymentHandleSource.UNKNOWN
 
-    default2 = _InitHandleOptions.create(_source=DEFAULT.VALUE)
+    default2 = InitHandleOptions.create(_source=DEFAULT.VALUE)
     assert default2._prefer_local_routing is False
     assert default2._source == DeploymentHandleSource.UNKNOWN
 
-    prefer_local = _InitHandleOptions.create(
+    prefer_local = InitHandleOptions.create(
         _prefer_local_routing=True, _source=DEFAULT.VALUE
     )
     assert prefer_local._prefer_local_routing is True
     assert prefer_local._source == DeploymentHandleSource.UNKNOWN
 
-    proxy_options = _InitHandleOptions.create(_source=DeploymentHandleSource.PROXY)
+    proxy_options = InitHandleOptions.create(_source=DeploymentHandleSource.PROXY)
     assert proxy_options._prefer_local_routing is False
     assert proxy_options._source == DeploymentHandleSource.PROXY
 
