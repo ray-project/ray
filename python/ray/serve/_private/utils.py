@@ -160,17 +160,6 @@ def ensure_serialization_context():
     ray.util.serialization_addons.apply(ctx)
 
 
-def wrap_to_ray_error(function_name: str, exception: Exception) -> RayTaskError:
-    """Utility method to wrap exceptions in user code."""
-
-    try:
-        # Raise and catch so we can access traceback.format_exc()
-        raise exception
-    except Exception as e:
-        traceback_str = ray._private.utils.format_error_message(traceback.format_exc())
-        return ray.exceptions.RayTaskError(function_name, traceback_str, e)
-
-
 def msgpack_serialize(obj):
     ctx = ray._private.worker.global_worker.get_serialization_context()
     buffer = ctx.serialize(obj)
