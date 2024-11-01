@@ -10,6 +10,7 @@ import pyarrow as pa
 from packaging.version import parse as parse_version
 
 from ray._private.utils import _get_pyarrow_version
+from ray.air.constants import MAX_REPR_LENGTH
 from ray.air.util.tensor_extensions.utils import (
     _is_ndarray_variable_shaped_tensor,
     create_ragged_ndarray,
@@ -85,14 +86,47 @@ def pyarrow_table_from_pydict(
         raise ArrowConversionError(str(pydict)) from e
 
 
-@DeveloperAPI
-def convert_list_to_pyarrow_array(
-    val: List[Any], enclosing_dict: Dict[str, Any]
-) -> pa.Array:
+@DeveloperAPI(stability="alpha")
+def convert_to_pyarrow_array(column_values: np.ndarray, dtype: Optional[pa.DataType] = None) -> pa.Array:
     try:
-        return pa.array(val)
+        return pa.array(column_values, type=dtype)
     except Exception as e:
-        raise ArrowConversionError(str(enclosing_dict)) from e
+        raise ArrowConversionError(str(column_values)[:MAX_REPR_LENGTH]) from e
+
+
+@DeveloperAPI(stability="alpha")
+def deduce_pyarrow_dtype(column_values: List[Any]) -> Optional[pa.DataType]:
+    """Deduces target Pyarrow `DataType` based on the provided
+    columnar values.
+
+    NOTE: We're leveraging Pyarrow utility to infer the type from
+    corresponding column values
+
+    Args:
+        column_values: List of columnar values
+
+    Returns:
+        Instance of Pyarrow's `DataType` based on the provided
+        column values
+    """
+
+    if not column_values:
+        return None
+
+    inferred_pa_dtype = pa.infer_type(column_values)
+
+    # TODO add flag to control whether to upcast to int64-based types
+
+    if inferred_pa_dtype.equals(pa.binary()):
+        return pa.large_binary()
+    elif inferred_pa_dtype.equals(pa.string()):
+        return pa.large_string()
+    elif isinstance(inferred_pa_dtype, pa.ListType):
+        return pa.large_list(inferred_pa_dtype.value_type)
+    elif isinstance(inferred_pa_dtype, pa.ListViewType):
+        return pa.large_list_view(inferred_pa_dtype.value_type)
+
+    return inferred_pa_dtype
 
 
 @DeveloperAPI

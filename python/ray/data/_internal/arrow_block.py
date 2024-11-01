@@ -21,8 +21,9 @@ from ray._private.utils import _get_pyarrow_version
 from ray.air.constants import TENSOR_COLUMN_NAME
 from ray.air.util.tensor_extensions.arrow import (
     ArrowConversionError,
-    convert_list_to_pyarrow_array,
+    convert_to_pyarrow_array,
     pyarrow_table_from_pydict,
+    deduce_pyarrow_dtype,
 )
 from ray.data._internal.arrow_ops import transform_polars, transform_pyarrow
 from ray.data._internal.numpy_support import (
@@ -161,7 +162,9 @@ class ArrowBlockBuilder(TableBlockBuilder):
 
                     pa_cols[col_names] = ArrowTensorArray.from_numpy(np_col_vals, col_names)
                 else:
-                    pa_cols[col_names] = convert_list_to_pyarrow_array(np_col_vals)
+                    pa_dtype = deduce_pyarrow_dtype(col_vals)
+                    pa_cols[col_names] = convert_to_pyarrow_array(np_col_vals, dtype=pa_dtype)
+
             except ArrowConversionError as e:
                 logger.warning(f"Failed to convert column '{col_names}' into pyarrow array due to: {e}", exc_info=e)
 
