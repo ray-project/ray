@@ -209,10 +209,6 @@ config = (
         evaluation_duration=5,
         evaluation_parallel_to_training=True,
     )
-    .learners(
-        num_learners=args.num_gpus if args.num_gpus > 1 else 0,
-        num_gpus_per_learner=0,
-    )
     # Note, the `input_` argument is the major argument for the
     # new offline API. Via the `input_read_method_kwargs` the
     # arguments for the `ray.data.Dataset` read method can be
@@ -258,7 +254,7 @@ config = (
         # When iterating over batches in the dataset, prefetch at least 20
         # batches per learner. Increase this for scaling out more.
         iter_batches_kwargs={
-            "prefetch_batches": 4,  # max(args.num_gpus * 20, 20),
+            "prefetch_batches": 4,
             "local_shuffle_buffer_size": None,
         },
         dataset_num_iters_per_learner=1,
@@ -266,7 +262,7 @@ config = (
     .training(
         # To increase learning speed with multiple learners,
         # increase the learning rate correspondingly.
-        lr=0.0008 * max(1, args.num_gpus**0.5),
+        lr=0.0008 * (args.num_learners or 1) ** 0.5,
         train_batch_size_per_learner=1024,
         # Use the defined learner connector above, to decode observations.
         learner_connector=_make_learner_connector,

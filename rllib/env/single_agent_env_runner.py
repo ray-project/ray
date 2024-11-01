@@ -171,6 +171,13 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
                 value=time.perf_counter() - self._time_after_sampling,
             )
 
+        # Log current weight seq no.
+        self.metrics.log_value(
+            key=WEIGHTS_SEQ_NO,
+            value=self._weights_seq_no,
+            window=1,
+        )
+
         with self.metrics.log_time(SAMPLE_TIMER):
             # If no execution details are provided, use the config to try to infer the
             # desired timesteps/episodes to sample and exploration behavior.
@@ -503,11 +510,12 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
         if COMPONENT_MODULE_TO_ENV_CONNECTOR in state:
             self._module_to_env.set_state(state[COMPONENT_MODULE_TO_ENV_CONNECTOR])
 
+        # A missing value for WEIGHTS_SEQ_NO or a value of 0 means: Force the
+        # update.
+        weights_seq_no = state.get(WEIGHTS_SEQ_NO, 0)
+
         # Update the RLModule state.
         if COMPONENT_RL_MODULE in state:
-            # A missing value for WEIGHTS_SEQ_NO or a value of 0 means: Force the
-            # update.
-            weights_seq_no = state.get(WEIGHTS_SEQ_NO, 0)
 
             # Only update the weigths, if this is the first synchronization or
             # if the weights of this `EnvRunner` lacks behind the actual ones.
@@ -519,9 +527,10 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
                 ):
                     rl_module_state = rl_module_state[DEFAULT_MODULE_ID]
                 self.module.set_state(rl_module_state)
-            # Update our weights_seq_no, if the new one is > 0.
-            if weights_seq_no > 0:
-                self._weights_seq_no = weights_seq_no
+
+        # Update our weights_seq_no, if the new one is > 0.
+        if weights_seq_no > 0:
+            self._weights_seq_no = weights_seq_no
 
         # Update our lifetime counters.
         if NUM_ENV_STEPS_SAMPLED_LIFETIME in state:

@@ -33,19 +33,15 @@ config = (
         env=args.env,
         env_config={"from_pixels": True},
     )
-    .learners(
-        num_learners=0 if args.num_gpus == 1 else args.num_gpus,
-        num_gpus_per_learner=1 if args.num_gpus else 0,
-    )
     .env_runners(
         num_env_runners=(args.num_env_runners or 0),
         # If we use >1 GPU and increase the batch size accordingly, we should also
         # increase the number of envs per worker.
-        num_envs_per_env_runner=4 * (args.num_gpus or 1),
+        num_envs_per_env_runner=4 * (args.num_learners or 1),
         remote_worker_envs=True,
     )
     .reporting(
-        metrics_num_episodes_for_smoothing=(args.num_gpus or 1),
+        metrics_num_episodes_for_smoothing=(args.num_learners or 1),
         report_images_and_videos=False,
         report_dream_data=False,
         report_individual_batch_item_stats=False,
@@ -54,6 +50,6 @@ config = (
     .training(
         model_size="S",
         training_ratio=512,
-        batch_size_B=16 * (args.num_gpus or 1),
+        batch_size_B=16 * (args.num_learners or 1),
     )
 )

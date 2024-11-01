@@ -19,7 +19,7 @@ config = (
     )
     .environment(env="CartPole-v1")
     .training(
-        lr=0.0005 * (args.num_gpus or 1) ** 0.5,
+        lr=0.0005 * (args.num_learners or 1) ** 0.5,
         train_batch_size_per_learner=32,
         replay_buffer_config={
             "type": "PrioritizedEpisodeReplayBuffer",

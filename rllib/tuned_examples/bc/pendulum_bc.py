@@ -49,13 +49,13 @@ config = (
     # as remote learners.
     .offline_data(
         input_=[data_path],
-        input_read_method_kwargs={"override_num_blocks": max(args.num_gpus, 1)},
-        dataset_num_iters_per_learner=1 if args.num_gpus == 0 else None,
+        input_read_method_kwargs={"override_num_blocks": max(args.num_learners, 1)},
+        dataset_num_iters_per_learner=1 if not args.num_learners else None,
     )
     .training(
         # To increase learning speed with multiple learners,
         # increase the learning rate correspondingly.
-        lr=0.0008 * max(1, args.num_gpus**0.5),
+        lr=0.0008 * (args.num_learners or 1) ** 0.5,
         train_batch_size_per_learner=2000,
     )
 )

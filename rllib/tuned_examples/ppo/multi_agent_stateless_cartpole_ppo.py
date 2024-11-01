@@ -37,7 +37,7 @@ config = (
         env_to_module_connector=lambda env: MeanStdFilter(multi_agent=True),
     )
     .training(
-        lr=0.0003 * ((args.num_gpus or 1) ** 0.5),
+        lr=0.0003 * ((args.num_learners or 1) ** 0.5),
         num_epochs=6,
         vf_loss_coeff=0.05,
     )

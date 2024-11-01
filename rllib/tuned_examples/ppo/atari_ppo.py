@@ -70,7 +70,7 @@ config = (
         vf_clip_param=10.0,
         entropy_coeff=0.01,
         num_epochs=10,
-        lr=0.00015 * args.num_gpus,
+        lr=0.00015 * (args.num_learners or 1),
         grad_clip=100.0,
         grad_clip_by="global_norm",
     )
