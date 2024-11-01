@@ -1,16 +1,16 @@
 (kubectl-plugin)=
 
-# Use Kubectl Plugin (Alpha Feature)
+# Use Kubectl Plugin (alpha)
 
-Starting from KubeRay v1.2.2, we have introduced a `kubectl ray` plugin to simplify common workflows when deploying Ray on Kubernetes. The plugin is designed to help users who are not familiar with Kubernetes to run Ray on Kubernetes with ease.
+Starting from KubeRay v1.2.2, you can use the `kubectl ray` plugin to simplify common workflows when deploying Ray on Kubernetes. If you aren't familiar with Kubernetes, this plugin simplifies running Ray on Kubernetes.
 
 ## Installation
 
-Please follow the instructions in the [KubeRay Kubectl Plugin](https://github.com/ray-project/kuberay/tree/master/kubectl-plugin) to install the plugin.
+See [KubeRay Kubectl Plugin](https://github.com/ray-project/kuberay/tree/master/kubectl-plugin) to install the plugin.
 
-You can install the Kuberay kubectl plugin using one of the following methods:
+Install the Kuberay kubectl plugin using one of the following methods:
 
-### Install using Krew kubectl plugin manager (Recommended)
+### Install using the Krew kubectl plugin manager (recommended)
 
 1. Install [Krew](https://krew.sigs.k8s.io/docs/user-guide/setup/install/).
 2. Download the plugin list by running `kubectl krew update`.
@@ -37,16 +37,7 @@ After installing the plugin, you can use `kubectl ray --help` to see the availab
 
 ## Example
 
-Here assume you have a Ray cluster running on Kubernetes. Please see {ref}`RayCluster Quickstart <kuberay-raycluster-quickstart>` if you don't have a Ray cluster running on Kubernetes.
-
-### Get all Ray clusters
-
-```shell
-$ kubectl ray cluster get
-
-NAME                  NAMESPACE   DESIRED WORKERS   AVAILABLE WORKERS   CPUS   GPUS   TPUS   MEMORY   AGE
-ray-cluster-kuberay   default     1                                     2      0      0      3G       24s
-```
+This example assumes you have a Ray cluster running on Kubernetes. See {ref}`RayCluster Quickstart <kuberay-raycluster-quickstart>` if you don't have a Ray cluster running on Kubernetes.
 
 ### Forward local ports to Ray cluster
 
