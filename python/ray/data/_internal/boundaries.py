@@ -6,8 +6,10 @@ import numpy as np
 def get_block_boundaries(
     block: Union[np.ndarray, Dict[str, np.ndarray]],
 ) -> np.ndarray:
-    """Compute block boundaries based on the key(s), that is, a list of
-    starting indices of each group and an end index of the last group.
+    """Compute block boundaries based on the key(s).
+
+    That is, a list of starting indices of each group and an end index of
+    the last group.
 
     Args:
         block: numpy arrays of the group key(s). This is generally coming from
