@@ -13,7 +13,7 @@ from importlib import import_module
 from typing import Any, AsyncGenerator, Callable, Dict, Optional, Tuple, Union
 
 import starlette.responses
-from starlette.types import ASGIApp
+from starlette.types import ASGIApp, Message
 
 import ray
 from ray import cloudpickle
@@ -1064,10 +1064,14 @@ class UserCallableWrapper:
         receive_task = self._user_code_event_loop.create_task(
             receive.fetch_until_disconnect()
         )
+
+        async def _send(message: Message):
+            return generator_result_callback(message)
+
         asgi_args = ASGIArgs(
             scope=scope,
             receive=receive,
-            send=generator_result_callback,
+            send=_send,
         )
         if is_asgi_app:
             request_args = asgi_args.to_args_tuple()
