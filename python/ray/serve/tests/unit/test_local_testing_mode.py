@@ -8,6 +8,7 @@ from ray.serve.handle import DeploymentHandle
 # TODO(edoakes):
 # - add test for to_object_ref error.
 # - support local http client.
+# - test handle.options things.
 
 
 def test_basic_composition():
