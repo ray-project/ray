@@ -4,7 +4,7 @@ import pickle
 import sys
 import threading
 from dataclasses import dataclass
-from typing import Any, AsyncGenerator, Callable, Generator, Optional
+from typing import AsyncGenerator, Callable, Generator, Optional
 
 import pytest
 from fastapi import FastAPI
@@ -229,7 +229,10 @@ def test_basic_class_callable_generators():
         TypeError, match="Method 'call_generator' returned a generator."
     ):
         user_callable_wrapper.call_user_method(
-            request_metadata, (10,), dict(), generator_result_callback=result_list.append
+            request_metadata,
+            (10,),
+            dict(),
+            generator_result_callback=result_list.append,
         ).result()
 
     # Call sync generator.
@@ -261,7 +264,10 @@ def test_basic_class_callable_generators():
         TypeError, match="Method 'call_async_generator' returned a generator."
     ):
         user_callable_wrapper.call_user_method(
-            request_metadata, (10,), dict(), generator_result_callback=result_list.append
+            request_metadata,
+            (10,),
+            dict(),
+            generator_result_callback=result_list.append,
         ).result()
 
     # Call async generator.
@@ -332,7 +338,10 @@ def test_basic_function_callable_generators(fn: Callable):
         TypeError, match=f"Method '{fn.__name__}' returned a generator."
     ):
         user_callable_wrapper.call_user_method(
-            request_metadata, (10,), dict(), generator_result_callback=result_list.append
+            request_metadata,
+            (10,),
+            dict(),
+            generator_result_callback=result_list.append,
         ).result()
 
     # Call generator function.
