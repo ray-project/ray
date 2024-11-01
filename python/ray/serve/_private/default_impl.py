@@ -1,4 +1,4 @@
-from typing import Any, Callable, Optional, Tuple
+from typing import Callable, Optional, Tuple
 
 import ray
 from ray._raylet import GcsClient
@@ -78,13 +78,13 @@ def _get_node_id_and_az() -> Tuple[str, Optional[str]]:
 
 
 # Interface definition for create_router.
-CreateRouterCallable = Callable[[str, DeploymentID, Any], Router]
+CreateRouterCallable = Callable[[str, DeploymentID, InitHandleOptions], Router]
 
 
 def create_router(
     handle_id: str,
     deployment_id: DeploymentID,
-    handle_options: Any,
+    handle_options: InitHandleOptions,
 ) -> Router:
     # NOTE(edoakes): this is lazy due to a nasty circular import that should be fixed.
     from ray.serve.context import _get_global_client
