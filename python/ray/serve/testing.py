@@ -30,11 +30,14 @@ def make_local_deployment_handle(
     deployment: Deployment,
     app_name: str,
 ) -> DeploymentHandle:
-    """Constructs an in-process DeploymentHandle for the deployment.
+    """Constructs an in-process DeploymentHandle.
 
-    This is used for local testing mode, where all deployments of an app
-    run in the local process which enables faster dev iterations and use of
-    tooling like PDB.
+    This is used in the application build process for local testing mode,
+    where all deployments of an app run in the local process which enables
+    faster dev iterations and use of tooling like PDB.
+
+    The user callable will be run on an asyncio loop in a separate thread
+    (sharing the same code that's used in the replica).
 
     The constructor for the user callable is run eagerly in this function to
     ensure that any exceptions are raised during `serve.run`.
