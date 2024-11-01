@@ -6,8 +6,8 @@ from ray.data._internal.compute import ComputeStrategy
 from ray.data._internal.logical.interfaces import LogicalPlan
 from ray.data._internal.logical.operators.all_to_all_operator import Aggregate
 from ray.data.aggregate import AggregateFn
-from ray.data.block import BlockAccessor, CallableClass, UserDefinedFunction
-from ray.data.dataset import DataBatch, Dataset
+from ray.data.block import BlockAccessor, CallableClass, DataBatch, UserDefinedFunction
+from ray.data.dataset import Dataset
 from ray.util.annotations import PublicAPI
 
 CDS_API_GROUP = "Computations or Descriptive Stats"

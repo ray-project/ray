@@ -628,9 +628,9 @@ py_test(
 )
 
 py_test(
-    name = "test_group_boundaries",
+    name = "test_block_boundaries",
     size = "small",
-    srcs = ["tests/test_group_boundaries.py"],
+    srcs = ["tests/test_block_boundaries.py"],
     tags = ["team:data", "exclusive"],
     deps = ["//:ray_lib", ":conftest"],
 )
