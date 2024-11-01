@@ -601,16 +601,17 @@ class SingletonThreadRouter(Router):
     _asyncio_loop: Optional[asyncio.AbstractEventLoop] = None
     _asyncio_loop_creation_lock = threading.Lock()
 
-    def __init__(self, asyncio_router: AsyncioRouter):
+    def __init__(self, **passthrough_kwargs):
         assert (
-            self._asyncio_loop is not None
-            and asyncio_router._event_loop == self._asyncio_loop
-        ), "AsyncioRouter must use the SingletonThreadRouter event loop."
+            "event_loop" not in passthrough_kwargs
+        ), "SingletonThreadRouter manages the router event loop."
 
-        self._asyncio_router = asyncio_router
+        self._asyncio_router = AsyncioRouter(
+            event_loop=self._get_singleton_asyncio_loop(), **passthrough_kwargs
+        )
 
     @classmethod
-    def get_singleton_thread_asyncio_loop(cls) -> asyncio.AbstractEventLoop:
+    def _get_singleton_asyncio_loop(cls) -> asyncio.AbstractEventLoop:
         """Get singleton asyncio loop running in a daemon thread.
 
         This method is thread safe.
