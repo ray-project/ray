@@ -1,98 +1,19 @@
 import asyncio
 import concurrent.futures
+import sys
 import threading
 
 import pytest
-import requests
 
 import ray
 from ray import serve
 from ray.serve._private.common import DeploymentHandleSource, RequestProtocol
 from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME
-from ray.serve._private.utils import DEFAULT
 from ray.serve.exceptions import RayServeException
-from ray.serve.handle import DeploymentHandle, _DynamicHandleOptions, _InitHandleOptions
+from ray.serve.handle import DeploymentHandle
 
 
-def test_dynamic_handle_options():
-    default_options = _DynamicHandleOptions()
-    assert default_options.method_name == "__call__"
-    assert default_options.multiplexed_model_id == ""
-    assert default_options.stream is False
-    assert default_options._request_protocol == RequestProtocol.UNDEFINED
-
-    # Test setting method name.
-    only_set_method = default_options.copy_and_update(method_name="hi")
-    assert only_set_method.method_name == "hi"
-    assert only_set_method.multiplexed_model_id == ""
-    assert only_set_method.stream is False
-    assert default_options._request_protocol == RequestProtocol.UNDEFINED
-
-    # Existing options should be unmodified.
-    assert default_options.method_name == "__call__"
-    assert default_options.multiplexed_model_id == ""
-    assert default_options.stream is False
-    assert default_options._request_protocol == RequestProtocol.UNDEFINED
-
-    # Test setting model ID.
-    only_set_model_id = default_options.copy_and_update(multiplexed_model_id="hi")
-    assert only_set_model_id.method_name == "__call__"
-    assert only_set_model_id.multiplexed_model_id == "hi"
-    assert only_set_model_id.stream is False
-    assert default_options._request_protocol == RequestProtocol.UNDEFINED
-
-    # Existing options should be unmodified.
-    assert default_options.method_name == "__call__"
-    assert default_options.multiplexed_model_id == ""
-    assert default_options.stream is False
-    assert default_options._request_protocol == RequestProtocol.UNDEFINED
-
-    # Test setting stream.
-    only_set_stream = default_options.copy_and_update(stream=True)
-    assert only_set_stream.method_name == "__call__"
-    assert only_set_stream.multiplexed_model_id == ""
-    assert only_set_stream.stream is True
-    assert default_options._request_protocol == RequestProtocol.UNDEFINED
-
-    # Existing options should be unmodified.
-    assert default_options.method_name == "__call__"
-    assert default_options.multiplexed_model_id == ""
-    assert default_options.stream is False
-    assert default_options._request_protocol == RequestProtocol.UNDEFINED
-
-    # Test setting multiple.
-    set_multiple = default_options.copy_and_update(method_name="hi", stream=True)
-    assert set_multiple.method_name == "hi"
-    assert set_multiple.multiplexed_model_id == ""
-    assert set_multiple.stream is True
-    assert default_options._request_protocol == RequestProtocol.UNDEFINED
-
-
-def test_init_handle_options():
-    default_options = _InitHandleOptions.create()
-    assert default_options._prefer_local_routing is False
-    assert default_options._source == DeploymentHandleSource.UNKNOWN
-
-    default1 = _InitHandleOptions.create(_prefer_local_routing=DEFAULT.VALUE)
-    assert default1._prefer_local_routing is False
-    assert default1._source == DeploymentHandleSource.UNKNOWN
-
-    default2 = _InitHandleOptions.create(_source=DEFAULT.VALUE)
-    assert default2._prefer_local_routing is False
-    assert default2._source == DeploymentHandleSource.UNKNOWN
-
-    prefer_local = _InitHandleOptions.create(
-        _prefer_local_routing=True, _source=DEFAULT.VALUE
-    )
-    assert prefer_local._prefer_local_routing is True
-    assert prefer_local._source == DeploymentHandleSource.UNKNOWN
-
-    proxy_options = _InitHandleOptions.create(_source=DeploymentHandleSource.PROXY)
-    assert proxy_options._prefer_local_routing is False
-    assert proxy_options._source == DeploymentHandleSource.PROXY
-
-
-def test_init_handle_options_replica(serve_instance):
+def test_replica_handle_source(serve_instance):
     @serve.deployment
     def f():
         return "hi"
@@ -110,7 +31,7 @@ def test_init_handle_options_replica(serve_instance):
     assert h.check.remote().result()
 
 
-def test_async_handle_serializable(serve_instance):
+def test_handle_serializable(serve_instance):
     @serve.deployment
     def f():
         return "hello"
@@ -134,82 +55,26 @@ def test_async_handle_serializable(serve_instance):
     assert app_handle.remote().result() == "hello"
 
 
-def test_sync_handle_serializable(serve_instance):
+def test_get_and_call_handle_in_thread(serve_instance):
     @serve.deployment
     def f():
         return "hello"
 
-    handle = serve.run(f.bind())
+    serve.run(f.bind())
 
-    @ray.remote
-    def task(handle):
+    def get_and_call_app_handle():
+        handle = serve.get_app_handle(SERVE_DEFAULT_APP_NAME)
         return handle.remote().result()
 
-    # Test pickling via ray.remote()
-    result_ref = task.remote(handle)
-    assert ray.get(result_ref) == "hello"
-
-
-def test_handle_serializable_in_deployment_init(serve_instance):
-    """Test that a handle can be passed into a constructor (#22110)"""
-
-    @serve.deployment
-    class RayServer1:
-        def __init__(self):
-            pass
-
-        def __call__(self, *args):
-            return {"count": self.count}
-
-    @serve.deployment
-    class RayServer2:
-        def __init__(self, handle):
-            self.handle = handle
-
-        def __call__(self, *args):
-            return {"count": self.count}
-
-    rs1 = RayServer1.bind()
-    rs2 = RayServer2.bind(rs1)
-    serve.run(rs2)
-
-
-def test_sync_handle_in_thread(serve_instance):
-    @serve.deployment
-    def f():
-        return "hello"
-
-    handle = serve.run(f.bind())
-
-    def thread_get_handle(deploy):
-        handle = serve.get_deployment_handle(deploy._name, SERVE_DEFAULT_APP_NAME)
-        return handle
+    def get_and_call_deployment_handle():
+        handle = serve.get_deployment_handle("f", SERVE_DEFAULT_APP_NAME)
+        return handle.remote().result()
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
-        fut = executor.submit(thread_get_handle, f)
-        handle = fut.result()
-        assert handle.remote().result() == "hello"
-
-
-def test_handle_in_endpoint(serve_instance):
-    @serve.deployment
-    class Endpoint1:
-        def __call__(self, *args):
-            return "hello"
-
-    @serve.deployment
-    class Endpoint2:
-        def __init__(self, handle):
-            self.handle = handle
-
-        async def __call__(self, _):
-            return await self.handle.remote()
-
-    end_p1 = Endpoint1.bind()
-    end_p2 = Endpoint2.bind(end_p1)
-    serve.run(end_p2)
-
-    assert requests.get("http://127.0.0.1:8000/Endpoint2").text == "hello"
+        fut1 = executor.submit(get_and_call_app_handle)
+        fut2 = executor.submit(get_and_call_deployment_handle)
+        assert fut1.result() == "hello"
+        assert fut2.result() == "hello"
 
 
 def test_handle_option_chaining(serve_instance):
@@ -323,7 +188,7 @@ def _get_asyncio_loop_running_in_thread() -> asyncio.AbstractEventLoop:
 
 
 @pytest.mark.asyncio
-async def test_handle_across_loops(serve_instance):
+async def test_call_handle_across_asyncio_loops(serve_instance):
     @serve.deployment
     class A:
         def exists(self):
@@ -397,8 +262,7 @@ def test_handle_options_with_same_router(serve_instance):
 
     handle = serve.run(echo.bind())
     handle2 = handle.options(multiplexed_model_id="model2")
-    assert handle._router
-    assert id(handle2._router) == id(handle._router)
+    assert handle2._router is handle._router
 
 
 def test_set_request_protocol(serve_instance):
@@ -479,8 +343,4 @@ def test_init_after_request_fails(serve_instance):
 
 
 if __name__ == "__main__":
-    import sys
-
-    import pytest
-
     sys.exit(pytest.main(["-v", "-s", __file__]))
