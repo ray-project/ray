@@ -117,7 +117,7 @@ following recursive function as an example:
 
     import ray
 
-    ray.init(runtime_env={"env_vars": {"RAY_DEBUG": "legacy"})
+    ray.init(runtime_env={"env_vars": {"RAY_DEBUG": "legacy"}})
 
     @ray.remote
     def fact(n):
@@ -242,7 +242,7 @@ Next, copy the following code into a file called ``serve_debugging.py``:
     import ray
     from ray import serve
 
-    ray.init(runtime_env={"env_vars": {"RAY_DEBUG": "legacy"})
+    ray.init(runtime_env={"env_vars": {"RAY_DEBUG": "legacy"}})
 
     # Train model
     iris_dataset = load_iris()
