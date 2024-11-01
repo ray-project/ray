@@ -6,11 +6,9 @@ from ray.rllib.algorithms.sac import SACConfig
 
 
 def create_appo_cartpole_checkpoint(output_dir, use_lstm=False):
-    # enable_connectors defaults to True. Just trying to be explicit here.
     config = (
         APPOConfig()
         .environment("CartPole-v1")
-        .env_runners(enable_connectors=True)
         .training(model={"use_lstm": use_lstm})
     )
     # Build algorithm object.

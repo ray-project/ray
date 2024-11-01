@@ -56,7 +56,6 @@ class TestPolicyFromCheckpoint(unittest.TestCase):
             config = (
                 APPOConfig()
                 .environment("CartPole-v1")
-                .env_runners(enable_connectors=True)
             )
             algo = config.build()
             algo.train()

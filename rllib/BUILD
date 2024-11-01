@@ -1370,14 +1370,6 @@ py_test(
 
 # @OldAPIStack
 py_test(
-    name = "evaluation/tests/test_episode",
-    tags = ["team:rllib", "evaluation"],
-    size = "small",
-    srcs = ["evaluation/tests/test_episode.py"]
-)
-
-# @OldAPIStack
-py_test(
     name = "evaluation/tests/test_episode_v2",
     tags = ["team:rllib", "evaluation"],
     size = "small",
@@ -3180,26 +3172,6 @@ py_test(
     size = "medium",
     srcs = ["examples/centralized_critic.py"],
     args = ["--as-test", "--framework=torch", "--stop-reward=7.2"]
-)
-
-#@OldAPIStack
-py_test(
-    name = "examples/centralized_critic_2_tf",
-    main = "examples/centralized_critic_2.py",
-    tags = ["team:rllib", "exclusive", "examples"],
-    size = "medium",
-    srcs = ["examples/centralized_critic_2.py"],
-    args = ["--as-test", "--framework=tf", "--stop-reward=6.0"]
-)
-
-#@OldAPIStack
-py_test(
-    name = "examples/centralized_critic_2_torch",
-    main = "examples/centralized_critic_2.py",
-    tags = ["team:rllib", "exclusive", "examples"],
-    size = "medium",
-    srcs = ["examples/centralized_critic_2.py"],
-    args = ["--as-test", "--framework=torch", "--stop-reward=6.0"]
 )
 
 py_test(
