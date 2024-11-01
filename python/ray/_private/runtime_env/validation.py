@@ -111,6 +111,9 @@ def parse_and_validate_conda(conda: Union[str, dict]) -> Union[str, dict]:
 # 1. Allow users to pass in a local requirements.txt file, which relates to all
 # packages to install;
 # 2. Allow specific version of `uv` to use; as of now we only use default version.
+# 3. `pip_check` has different semantics for `uv` and `pip`, see
+# https://github.com/astral-sh/uv/pull/2544/files, consider whether we need to support
+# it; or simply ignore the field when people come from `pip`.
 def parse_and_validate_uv(uv: Union[str, List[str], Dict]) -> Optional[Dict]:
     """Parses and validates a user-provided 'uv' option.
 
