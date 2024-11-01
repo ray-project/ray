@@ -3,24 +3,21 @@ import concurrent.futures
 import logging
 import time
 import warnings
-from abc import ABC
-from dataclasses import dataclass, fields
 from typing import Any, AsyncIterator, Dict, Iterator, Optional, Tuple, Union
 
 import ray
 from ray._raylet import ObjectRefGenerator
-from ray.serve._private.common import (
-    DeploymentHandleSource,
-    DeploymentID,
-    RequestMetadata,
-    RequestProtocol,
-)
+from ray.serve._private.common import DeploymentID, RequestMetadata, RequestProtocol
 from ray.serve._private.constants import SERVE_LOGGER_NAME
 from ray.serve._private.default_impl import (
     CreateRouterCallable,
     create_dynamic_handle_options,
     create_init_handle_options,
     create_router,
+)
+from ray.serve._private.handle_options import (
+    DynamicHandleOptionsBase,
+    InitHandleOptionsBase,
 )
 from ray.serve._private.replica_result import ReplicaResult
 from ray.serve._private.router import Router
@@ -40,83 +37,23 @@ from ray.util.annotations import DeveloperAPI, PublicAPI
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 
-@dataclass(frozen=True)
-class _InitHandleOptionsBase:
-    """Init options for each ServeHandle instance.
-
-    These fields can be set by calling `.init()` on a handle before
-    sending the first request.
-    """
-
-    _prefer_local_routing: bool = False
-    _source: DeploymentHandleSource = DeploymentHandleSource.UNKNOWN
-
-
-@dataclass(frozen=True)
-class _InitHandleOptions(_InitHandleOptionsBase):
-    @classmethod
-    def create(cls, **kwargs) -> "_InitHandleOptions":
-        for k in list(kwargs.keys()):
-            if kwargs[k] == DEFAULT.VALUE:
-                # Use default value
-                del kwargs[k]
-
-        # Detect replica source for handles
-        if (
-            "_source" not in kwargs
-            and ray.serve.context._get_internal_replica_context() is not None
-        ):
-            kwargs["_source"] = DeploymentHandleSource.REPLICA
-
-        return cls(**kwargs)
-
-
-@dataclass(frozen=True)
-class _DynamicHandleOptionsBase(ABC):
-    """Dynamic options for each ServeHandle instance.
-
-    These fields can be changed by calling `.options()` on a handle.
-    """
-
-    method_name: str = "__call__"
-    multiplexed_model_id: str = ""
-    stream: bool = False
-    _request_protocol: str = RequestProtocol.UNDEFINED
-
-    def copy_and_update(self, **kwargs) -> "_DynamicHandleOptionsBase":
-        new_kwargs = {}
-
-        for f in fields(self):
-            if f.name not in kwargs or kwargs[f.name] == DEFAULT.VALUE:
-                new_kwargs[f.name] = getattr(self, f.name)
-            else:
-                new_kwargs[f.name] = kwargs[f.name]
-
-        return _DynamicHandleOptions(**new_kwargs)
-
-
-@dataclass(frozen=True)
-class _DynamicHandleOptions(_DynamicHandleOptionsBase):
-    pass
-
-
 class _DeploymentHandleBase:
     def __init__(
         self,
         deployment_name: str,
         app_name: str,
         *,
-        handle_options: Optional[_DynamicHandleOptionsBase] = None,
+        handle_options: Optional[DynamicHandleOptionsBase] = None,
         _router: Optional[Router] = None,
         _create_router: Optional[CreateRouterCallable] = None,
         _request_counter: Optional[metrics.Counter] = None,
         _recorded_telemetry: bool = False,
     ):
         self.deployment_id = DeploymentID(name=deployment_name, app_name=app_name)
-        self.handle_options: _DynamicHandleOptionsBase = (
+        self.handle_options: DynamicHandleOptionsBase = (
             handle_options or create_dynamic_handle_options()
         )
-        self.init_options: Optional[_InitHandleOptionsBase] = None
+        self.init_options: Optional[InitHandleOptionsBase] = None
 
         self.handle_id = get_random_string()
         self.request_counter = _request_counter or self._create_request_counter(
