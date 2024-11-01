@@ -8,7 +8,10 @@ import pytest
 import ray
 from ray import serve
 from ray.serve._private.common import DeploymentHandleSource, RequestProtocol
-from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME
+from ray.serve._private.constants import (
+    RAY_SERVE_FORCE_LOCAL_TESTING_MODE,
+    SERVE_DEFAULT_APP_NAME,
+)
 from ray.serve.exceptions import RayServeException
 from ray.serve.handle import DeploymentHandle
 

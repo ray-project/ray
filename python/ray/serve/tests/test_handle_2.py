@@ -1,5 +1,4 @@
 import asyncio
-import os
 import sys
 from typing import Any, List
 
@@ -9,15 +8,16 @@ import ray
 from ray import serve
 from ray._private.test_utils import SignalActor, async_wait_for_condition
 from ray._private.utils import get_or_create_event_loop
-from ray.serve._private.constants import RAY_SERVE_ENABLE_STRICT_MAX_ONGOING_REQUESTS
+from ray.serve._private.constants import (
+    RAY_SERVE_ENABLE_STRICT_MAX_ONGOING_REQUESTS,
+    RAY_SERVE_FORCE_LOCAL_TESTING_MODE,
+)
 from ray.serve.exceptions import RayServeException
 from ray.serve.handle import (
     DeploymentHandle,
     DeploymentResponse,
     DeploymentResponseGenerator,
 )
-
-LOCAL_TESTING_MODE = os.environ.get("LOCAL_TESTING_MODE", "0") == "1"
 
 
 def test_basic(serve_instance):
@@ -42,9 +42,7 @@ def test_basic(serve_instance):
 
             return val
 
-    handle: DeploymentHandle = serve.run(
-        Deployment.bind(downstream.bind()), _local_testing_mode=LOCAL_TESTING_MODE
-    )
+    handle: DeploymentHandle = serve.run(Deployment.bind(downstream.bind()))
     assert isinstance(handle, DeploymentHandle)
     r = handle.remote()
     assert r.result() == "hello"
@@ -64,7 +62,7 @@ def test_result_timeout(serve_instance):
             await signal_actor.wait.remote()
             return "hi"
 
-    handle = serve.run(Deployment.bind(), _local_testing_mode=LOCAL_TESTING_MODE)
+    handle = serve.run(Deployment.bind())
     ref = handle.remote()
     with pytest.raises(TimeoutError):
         ref.result(timeout_s=0.1)
@@ -73,11 +71,12 @@ def test_result_timeout(serve_instance):
     assert ref.result() == "hi"
 
 
+@pytest.mark.skipif(
+    RAY_SERVE_FORCE_LOCAL_TESTING_MODE,
+    reason="local_testing_mode doesn't support getting dynamic handles",
+)
 def test_get_app_and_deployment_handle(serve_instance):
     """Test the `get_app_handle` and `get_deployment_handle` APIs."""
-
-    if LOCAL_TESTING_MODE:
-        pytest.skip("local_testing_mode doesn't support getting dynamic handles.")
 
     @serve.deployment
     def downstream():
@@ -136,17 +135,17 @@ def test_compose_deployments_in_app(serve_instance, arg_type: str):
             Downstream.options(name="downstream1").bind("downstream1"),
             Downstream.options(name="downstream2").bind("downstream2"),
         ),
-        _local_testing_mode=LOCAL_TESTING_MODE,
     )
     assert handle.remote().result() == "driver|downstream1|downstream2|hi"
 
 
+@pytest.mark.skipif(
+    RAY_SERVE_FORCE_LOCAL_TESTING_MODE,
+    reason="local_testing_mode only supports single apps",
+)
 @pytest.mark.parametrize("arg_type", ["args", "kwargs"])
 def test_compose_apps(serve_instance, arg_type):
     """Test composing deployment handle refs outside of a deployment."""
-
-    if LOCAL_TESTING_MODE:
-        pytest.skip("local_testing_mode only supports single apps.")
 
     @serve.deployment
     class Deployment:
@@ -197,7 +196,6 @@ def test_compose_args_and_kwargs(serve_instance):
             Downstream.bind("downstream1"),
             Downstream.bind("downstream2"),
         ),
-        _local_testing_mode=LOCAL_TESTING_MODE,
     )
 
     result = handle.remote().result()
@@ -242,16 +240,16 @@ def test_nested_deployment_response_error(serve_instance):
 
     h = serve.run(
         Upstream.bind(Downstream.bind(), Downstream.bind()),
-        _local_testing_mode=LOCAL_TESTING_MODE,
     )
     h.remote().result()
 
 
+@pytest.mark.skipif(
+    RAY_SERVE_FORCE_LOCAL_TESTING_MODE,
+    reason="local_testing_mode doesn't support _to_object_ref",
+)
 def test_convert_to_object_ref(serve_instance):
     """Test converting deployment handle refs to Ray object refs."""
-
-    if LOCAL_TESTING_MODE:
-        pytest.skip("local_testing_mode doesn't support _to_object_ref.")
 
     @ray.remote
     def identity_task(inp: Any):
@@ -295,20 +293,19 @@ def test_generators(serve_instance):
             async for i in gen:
                 yield i
 
-    handle = serve.run(
-        Deployment.bind(downstream.bind()), _local_testing_mode=LOCAL_TESTING_MODE
-    )
+    handle = serve.run(Deployment.bind(downstream.bind()))
 
     gen = handle.options(stream=True).remote()
     assert isinstance(gen, DeploymentResponseGenerator)
     assert list(gen) == list(range(10))
 
 
+@pytest.mark.skipif(
+    RAY_SERVE_FORCE_LOCAL_TESTING_MODE,
+    reason="local_testing_mode doesn't support _to_object_ref",
+)
 def test_convert_to_object_ref_gen(serve_instance):
     """Test converting generators to obj ref gens inside and outside a deployment."""
-
-    if LOCAL_TESTING_MODE:
-        pytest.skip("local_testing_mode doesn't support _to_object_ref.")
 
     @serve.deployment
     def downstream():
@@ -371,9 +368,7 @@ def test_sync_response_methods_fail_in_deployment(serve_instance, stream: bool):
 
             return "OK"
 
-    handle = serve.run(
-        Deployment.bind(downstream.bind()), _local_testing_mode=LOCAL_TESTING_MODE
-    )
+    handle = serve.run(Deployment.bind(downstream.bind()))
 
     assert handle.remote().result() == "OK"
 
@@ -403,9 +398,7 @@ def test_handle_eager_execution(serve_instance):
 
             return await r
 
-    handle = serve.run(
-        Deployment.bind(downstream.bind()), _local_testing_mode=LOCAL_TESTING_MODE
-    )
+    handle = serve.run(Deployment.bind(downstream.bind()))
 
     # Send a request without awaiting the response. It should still
     # executed (verified via signal actor).
@@ -416,15 +409,16 @@ def test_handle_eager_execution(serve_instance):
 
 
 @pytest.mark.skipif(
+    RAY_SERVE_FORCE_LOCAL_TESTING_MODE,
+    reason="local_testing_mode doesn't respect max_ongoing_requests",
+)
+@pytest.mark.skipif(
     not RAY_SERVE_ENABLE_STRICT_MAX_ONGOING_REQUESTS,
-    reason="Strict enforcement must be enabled.",
+    reason="Strict enforcement must be enabled",
 )
 @pytest.mark.asyncio
 async def test_max_ongoing_requests_enforced(serve_instance):
     """Handles should respect max_ongoing_requests enforcement."""
-
-    if LOCAL_TESTING_MODE:
-        pytest.skip("local_testing_mode doesn't respect max_ongoing_requests.")
 
     loop = get_or_create_event_loop()
 

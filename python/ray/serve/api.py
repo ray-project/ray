@@ -16,7 +16,11 @@ from ray.serve._private.config import (
     ReplicaConfig,
     handle_num_replicas_auto,
 )
-from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME, SERVE_LOGGER_NAME, RAY_SERVE_FORCE_LOCAL_TESTING_MODE
+from ray.serve._private.constants import (
+    RAY_SERVE_FORCE_LOCAL_TESTING_MODE,
+    SERVE_DEFAULT_APP_NAME,
+    SERVE_LOGGER_NAME,
+)
 from ray.serve._private.http_util import (
     ASGIAppReplicaWrapper,
     make_fastapi_class_based_view,
