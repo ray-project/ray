@@ -618,9 +618,15 @@ def test_parquet_read_partitioned_with_partition_filter(
         ),
     )
 
-    assert ds.columns() == ["x", "y", "z"]
+    assert ds.schema() == Schema(pa.schema([
+        ('x', pa.string()),
+        ('y', pa.string()),
+        ('z', pa.float64()),
+    ]))
+
     values = [[s["x"], s["y"], s["z"]] for s in ds.take()]
-    assert sorted(values) == [[0, "a", 0.1]]
+
+    assert sorted(values) == [['0', "a", 0.1]]
 
 
 def test_parquet_read_partitioned_explicit(ray_start_regular_shared, tmp_path):
