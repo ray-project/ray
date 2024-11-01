@@ -474,7 +474,12 @@ class DeploymentResponse(_DeploymentResponseBase):
             "only pass `DeploymentResponse` objects as top level arguments."
         )
 
-    def result(self, *, timeout_s: Optional[float] = None) -> Any:
+    def result(
+        self,
+        *,
+        timeout_s: Optional[float] = None,
+        _skip_asyncio_check: bool = False,
+    ) -> Any:
         """Fetch the result of the handle call synchronously.
 
         This should *not* be used from within a deployment as it runs in an asyncio
@@ -484,7 +489,7 @@ class DeploymentResponse(_DeploymentResponseBase):
         a `TimeoutError` is raised.
         """
 
-        if is_running_in_asyncio_loop():
+        if not _skip_asyncio_check and is_running_in_asyncio_loop():
             raise RuntimeError(
                 "Sync methods should not be called from within an `asyncio` event "
                 "loop. Use `await response` or `await response._to_object_ref()` "

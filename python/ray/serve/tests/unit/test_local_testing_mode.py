@@ -6,8 +6,8 @@ from ray import serve
 from ray.serve.handle import DeploymentHandle
 
 # TODO:
+# - add test for to_object_ref.
 # - support local http client.
-# - support composing DeploymentResponse objects.
 
 
 def test_ingress_handle():
@@ -22,6 +22,27 @@ def test_ingress_handle():
     h = serve.run(D.bind("Theodore"), local_testing_mode=True)
     assert isinstance(h, DeploymentHandle)
     assert h.remote("Edith").result() == "Hello Edith from Theodore!"
+
+
+def test_ingress_handle_streaming():
+    @serve.deployment
+    class Stream:
+        def __init__(self, my_name: str):
+            self._my_name = my_name
+
+        def __call__(self, name: str, *, n: int):
+            for i in range(n):
+                yield f"Hello {name} from {self._my_name} ({i})!"
+
+    h = serve.run(Stream.bind("Theodore"), local_testing_mode=True)
+    assert isinstance(h, DeploymentHandle)
+
+    num_results = 0
+    for i, result in enumerate(h.options(stream=True).remote("Edith", n=10)):
+        num_results += 1
+        assert result == f"Hello Edith from Theodore ({i})!"
+
+    assert num_results == 10
 
 
 def test_composed_deployment_handle():

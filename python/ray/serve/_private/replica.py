@@ -464,7 +464,7 @@ class ReplicaActor:
 
             # `asyncio.Event`s are not thread safe, so `call_soon_threadsafe` must be
             # used to interact with the result queue from the user callable thread.
-            async def _enqueue_thread_safe(item: Any):
+            def _enqueue_thread_safe(item: Any):
                 self._event_loop.call_soon_threadsafe(result_queue.put_nowait, item)
 
             call_user_method_future = asyncio.wrap_future(
@@ -1128,12 +1128,12 @@ class UserCallableWrapper:
                 for r in result:
                     if request_metadata.is_grpc_request:
                         r = (request_metadata.grpc_context, r.SerializeToString())
-                    await generator_result_callback(r)
+                    generator_result_callback(r)
             elif result_is_async_gen:
                 async for r in result:
                     if request_metadata.is_grpc_request:
                         r = (request_metadata.grpc_context, r.SerializeToString())
-                    await generator_result_callback(r)
+                    generator_result_callback(r)
             elif request_metadata.is_http_request and not is_asgi_app:
                 # For the FastAPI codepath, the response has already been sent over
                 # ASGI, but for the vanilla deployment codepath we need to send it.

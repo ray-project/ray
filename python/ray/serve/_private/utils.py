@@ -41,6 +41,11 @@ except ImportError:
     np = None
 
 MESSAGE_PACK_OFFSET = 9
+GENERATOR_COMPOSITION_NOT_SUPPORTED_ERROR = RuntimeError(
+    "Streaming deployment handle results cannot be passed to "
+    "downstream handle calls. If you have a use case requiring "
+    "this feature, please file a feature request on GitHub."
+)
 
 
 # Use a global singleton enum to emulate default options. We cannot use None
@@ -611,12 +616,6 @@ async def resolve_request_args(
     """
     from ray.serve.handle import DeploymentResponse, DeploymentResponseGenerator
 
-    generator_not_supported_message = (
-        "Streaming deployment handle results cannot be passed to "
-        "downstream handle calls. If you have a use case requiring "
-        "this feature, please file a feature request on GitHub."
-    )
-
     new_args = [None for _ in range(len(request_args))]
     new_kwargs = {}
 
@@ -624,7 +623,7 @@ async def resolve_request_args(
     response_indices = []
     for i, obj in enumerate(request_args):
         if isinstance(obj, DeploymentResponseGenerator):
-            raise RuntimeError(generator_not_supported_message)
+            raise GENERATOR_COMPOSITION_NOT_SUPPORTED_ERROR
         elif isinstance(obj, DeploymentResponse):
             # Launch async task to convert DeploymentResponse to an object ref, and
             # keep track of the argument index in the original `request_args`
@@ -637,7 +636,7 @@ async def resolve_request_args(
     response_keys = []
     for k, obj in request_kwargs.items():
         if isinstance(obj, DeploymentResponseGenerator):
-            raise RuntimeError(generator_not_supported_message)
+            raise GENERATOR_COMPOSITION_NOT_SUPPORTED_ERROR
         elif isinstance(obj, DeploymentResponse):
             # Launch async task to convert DeploymentResponse to an object ref, and
             # keep track of the corresponding key in the original `request_kwargs`
