@@ -569,7 +569,7 @@ import ray
 import sys
 import threading
 
-ray.init(num_cpus=2, runtime_env={"env_vars": {"RAY_DEBUG": "0"}})
+ray.init(num_cpus=2, runtime_env={"env_vars": {"RAY_DEBUG": "legacy"}})
 
 @ray.remote
 def f():
