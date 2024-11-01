@@ -1839,7 +1839,7 @@ def _get_pyarrow_version() -> Optional[str]:
 
 
 class DeferSigint(contextlib.AbstractContextManager):
-    """Context manager that defers SIGINT signals until the the context is left."""
+    """Context manager that defers SIGINT signals until the context is left."""
 
     # This is used by Ray's task cancellation to defer cancellation interrupts during
     # problematic areas, e.g. task argument deserialization.
@@ -1866,20 +1866,17 @@ class DeferSigint(contextlib.AbstractContextManager):
         self.task_cancelled = True
 
     def _signal_monkey_patch(self, signum, handler):
-        """Monkey patch for signal.signal that raises an error if a SIGINT handler is
-        registered within the DeferSigint context.
-        """
-        # Only raise an error if setting a SIGINT handler in the main thread; if setting
-        # a handler in a non-main thread, signal.signal will raise an error anyway
-        # indicating that Python does not allow that.
+        """Monkey patch for signal.signal that defers the setting of new signal
+        handler after the DeferSigint context exits."""
+        # Only handle it in the main thread because if setting a handler in a non-main
+        # thread, signal.signal will raise an error because Python doesn't allow it.
         if (
             threading.current_thread() == threading.main_thread()
             and signum == signal.SIGINT
         ):
-            raise ValueError(
-                "Can't set signal handler for SIGINT while SIGINT is being deferred "
-                "within a DeferSigint context."
-            )
+            orig_sigint_handler = self.orig_sigint_handler
+            self.orig_sigint_handler = handler
+            return orig_sigint_handler
         return self.orig_signal(signum, handler)
 
     def __enter__(self):

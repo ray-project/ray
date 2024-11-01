@@ -106,7 +106,7 @@ def test_defer_sigint():
     orig_sigint_handler = signal.getsignal(signal.SIGINT)
     try:
         with DeferSigint():
-            # Send singal to current process.
+            # Send signal to current process.
             # NOTE: We use _thread.interrupt_main() instead of os.kill() in order to
             # support Windows.
             _thread.interrupt_main()
@@ -125,12 +125,19 @@ def test_defer_sigint():
 
 
 def test_defer_sigint_monkey_patch():
-    # Tests that setting a SIGINT signal handler within a DeferSigint context is not
-    # allowed.
+    # Tests that setting a SIGINT signal handler within a DeferSigint
+    # context will defer setting it until the context exits.
     orig_sigint_handler = signal.getsignal(signal.SIGINT)
-    with pytest.raises(ValueError):
-        with DeferSigint():
-            signal.signal(signal.SIGINT, orig_sigint_handler)
+    new_sigint_handler = lambda signum, frame: None
+
+    with DeferSigint():
+        assert signal.signal(signal.SIGINT, new_sigint_handler) is orig_sigint_handler
+        assert signal.getsignal(signal.SIGINT) is not new_sigint_handler
+
+    assert signal.getsignal(signal.SIGINT) is new_sigint_handler
+
+    # Restore original SIGINT handler.
+    signal.signal(signal.SIGINT, orig_sigint_handler)
 
 
 def test_defer_sigint_noop_in_non_main_thread():
