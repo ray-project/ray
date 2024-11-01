@@ -56,7 +56,7 @@ config = (
         # mode in a single RLlib training iteration. Leave this to `None` to
         # run an entire epoch on the dataset during a single RLlib training
         # iteration. For single-learner mode 1 is the only option.
-        dataset_num_iters_per_learner=1 if args.num_learners == 0 else None,
+        dataset_num_iters_per_learner=1 if not args.num_learners else None,
         # TODO (sven): Has this any influence in the connectors?
         actions_in_input_normalized=True,
     )
