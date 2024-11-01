@@ -6,14 +6,8 @@ import warnings
 from typing import Any, AsyncIterator, Dict, Iterator, Optional, Tuple, Union
 
 import ray
-from ray import serve
-from ray._raylet import GcsClient, ObjectRefGenerator
-from ray.serve._private.common import (
-    DeploymentHandleSource,
-    DeploymentID,
-    RequestMetadata,
-    RequestProtocol,
-)
+from ray._raylet import ObjectRefGenerator
+from ray.serve._private.common import DeploymentID, RequestMetadata, RequestProtocol
 from ray.serve._private.constants import SERVE_LOGGER_NAME
 from ray.serve._private.default_impl import (
     CreateRouterCallable,
