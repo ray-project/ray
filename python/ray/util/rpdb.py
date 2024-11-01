@@ -285,7 +285,7 @@ def set_trace(breakpoint_uuid=None):
     Can be used within a Ray task or actor.
     """
     if os.environ.get("RAY_DEBUG", "1") == "1":
-        ray.util.ray_debugpy.set_trace(breakpoint_uuid)
+        return ray.util.ray_debugpy.set_trace(breakpoint_uuid)
     if os.environ.get("RAY_DEBUG", "1") == "legacy":
         # If there is an active debugger already, we do not want to
         # start another one, so "set_trace" is just a no-op in that case.
@@ -309,7 +309,7 @@ def _driver_set_trace():
     spammed: https://github.com/ray-project/ray/issues/18172
     """
     if os.environ.get("RAY_DEBUG", "1") == "1":
-        ray.util.ray_debugpy.set_trace()
+        return ray.util.ray_debugpy.set_trace()
     if os.environ.get("RAY_DEBUG", "1") == "legacy":
         print("*** Temporarily disabling Ray worker logs ***")
         ray._private.worker._worker_logs_enabled = False
