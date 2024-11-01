@@ -328,7 +328,7 @@ def _is_ray_debugger_post_mortem_enabled():
 
 
 def _post_mortem():
-    if ray.util.ray_debugpy._is_ray_debugger_post_mortem_enabled():
+    if os.environ.get("RAY_DEBUG", "1") == "1":
         return ray.util.ray_debugpy._post_mortem()
 
     rdb = _connect_ray_pdb(
