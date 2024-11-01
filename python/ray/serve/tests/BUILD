@@ -291,9 +291,10 @@ py_test_module_list(
     data = glob(["test_config_files/**/*"]),
     env = {"RAY_SERVE_ENABLE_QUEUE_LENGTH_CACHE": "0"},
     files = [
-        "test_cancellation.py",
+        "test_http_cancellation.py",
         "test_handle_1.py",
         "test_handle_2.py",
+        "test_handle_cancellation.py",
         "test_handle_streaming.py",
         "test_multiplex.py",
         "test_request_timeout.py",
