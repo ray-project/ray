@@ -1,75 +1,94 @@
 #!/usr/bin/env python3
-import os
+# MARK: - 1. Imports
+# MARK: - 1.1. stdlib
+from functools import cached_property
+from pathlib import Path
 import re
+from pprint import pprint
+from dataclasses import dataclass
+
+# MARK: - 1.2. 3rd-party
 from fsspec import filesystem
 
-def find_files(directory):
-    """Recursively find all files in a given directory, returning just filenames with extension."""
-    all_files = []
-    for root, _, files in os.walk(directory):
-        for file in files:
-            all_files.append(file)  # Only include the filename
-    return all_files
+@dataclass(frozen=True, eq=True)
+class NativeFile:
+    path: Path
 
-def find_meson_build_files(directory):
-    """Find all meson.build files including one outside the specified directory."""
-    meson_files = []
-    for root, _, files in os.walk(directory):
-        for file in files:
-            if file == 'meson.build':
-                meson_files.append(os.path.join(root, file))
-
-    # Check for meson.build in the parent directory
-    parent_dir = os.path.dirname(directory)
-    parent_meson_file = os.path.join(parent_dir, 'meson.build')
-    if os.path.isfile(parent_meson_file):
-        meson_files.append(parent_meson_file)
-
-    return meson_files
-
-def extract_references(meson_files):
-    """Extract file references from meson.build files, returning just filenames."""
-    references = set()
-    for meson_file in meson_files:
-        with open(meson_file, 'r') as f:
-            content = f.read()
-            # Assuming references are file paths or patterns
-            matches = re.findall(r'"([^"]+)"', content)
-            # Extract just the filename from the full path
-            filenames = [os.path.basename(match) for match in matches]
-            references.update(filenames)
-    return references
-
-def exclude_files(files, exclude_patterns):
-    """Exclude files matching the given list of regex patterns."""
-    excluded_files = files[:]
-    for pattern in exclude_patterns:
-        excluded_files = [f for f in excluded_files if not re.search(pattern, f)]
-    return excluded_files
+    @cached_property
+    def name(self) -> str:
+        return self.path.name
 
 
-def main(root_directory, exclude_patterns):
-    all_files = find_files(root_directory)
-    meson_files = find_meson_build_files(root_directory)
+local_fs = filesystem("dir", path=Path(__file__).parent)
 
-    referenced_files = extract_references(meson_files)
+# ".h" - they aren't mentioned explicitly but required by .cc and .c files, so no need to check
+NATIVE_FILE_EXTENSIONS = frozenset([".c", ".cc"])
 
-    # Exclude specified files
-    excluded_files = exclude_files(all_files, exclude_patterns)
+def find_native_source_files(root_dir: Path) -> frozenset[NativeFile]:
+    native_source_files: set[str] = set()
 
-    # Identify unused files
-    unused_files = [f for f in excluded_files if f not in referenced_files]
+    for extension in NATIVE_FILE_EXTENSIONS:
+        native_source_files.update(local_fs.glob(f"{str(root_dir)}/**/*{extension}"))
 
-    print(f"Unused Files: {len(unused_files)}")
-    for unused in unused_files:
-        print(unused)
+    return frozenset(map(lambda _0: NativeFile(path=Path(_0)), native_source_files))
+
+
+def find_meson_build_files(root_dir: Path) -> frozenset[Path]:
+    return frozenset(map(Path, local_fs.glob(f"{str(root_dir)}/**/meson.build")))
+
+
+def filter_files(
+    files: frozenset[NativeFile], /,
+    exclude_patterns: frozenset[str]
+) -> frozenset[NativeFile]:
+    excluded_files: set[NativeFile] = set()
+
+    for file in files:
+        for pattern in exclude_patterns:
+            if re.search(pattern, file.name) is not None or re.search(pattern, str(file.path)) is not None:
+                excluded_files.add(file)
+
+    return files.difference(excluded_files)
+
+
+def does_file_contains_string(file_path: Path, search_string: str):
+    # Escape the search string to handle any special characters
+    escaped_string = re.escape(search_string)
+    # Create a regex pattern to match the desired single-quoted string
+    pattern = rf"({escaped_string})"
+
+    with open(file_path, 'r') as file:
+        content = file.read()
+        # Use re.search to find the pattern in the content
+        return re.search(pattern, content) is not None
+
+
+def main(root_dir: Path, exclude_patterns: frozenset[str]):
+    meson_build_file_paths = find_meson_build_files(root_dir=root_dir)
+
+    native_source_files = filter_files(
+        find_native_source_files(root_dir=root_dir / "src"),
+        exclude_patterns=exclude_patterns
+    )
+
+    used_native_source_files: set[NativeFile] = set()
+    for native_source_file in native_source_files:
+        for meson_build_file_path in meson_build_file_paths:
+            if does_file_contains_string(meson_build_file_path, native_source_file.name):
+                used_native_source_files.add(native_source_file)
+
+    unused_native_source_files = native_source_files.difference(used_native_source_files)
+    unused_native_source_files_tuples = list(sorted(map(lambda _0: (str(_0.path), _0.name), unused_native_source_files), key=lambda _0: _0[0]))
+    if len(unused_native_source_files_tuples) == 0:
+        print("No raptors found! Great job.")
+    else:
+        for unused_native_source_file_tuple in unused_native_source_files_tuples:
+            print(*unused_native_source_file_tuple)
 
 
 # Example usage with multiple regex patterns
 if __name__ == "__main__":
-    root_dir = "src"  # Replace with your directory path
-    local_fs = filesystem("dir", path=root_dir)
-
-    exclude_regex_patterns = [r'\.tmp$', r'\.log$', r'test\.cc$']  # List of regex patterns to exclude
-
-    main(root_dir, exclude_regex_patterns)
+    main(
+        root_dir=Path("./"),
+        exclude_patterns=frozenset([r'(?i)(?:^|/)(java|test)(?:/|$)', r'test\.cc$'])
+    )
