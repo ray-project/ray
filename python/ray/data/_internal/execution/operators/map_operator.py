@@ -237,6 +237,11 @@ class MapOperator(OneToOneOperator, ABC):
         self._block_ref_bundler.add_bundle(refs)
         self._metrics.on_input_queued(refs)
         if self._block_ref_bundler.has_bundle():
+            # The ref bundler combines one or more RefBundles into a new larger
+            # RefBundle. Rather than dequeuing the new RefBundle, which was never
+            # enqueued in the first place, we dequeue the original RefBundles.
+            for bundle in self._block_ref_bundler.get_input_bundles():
+                self._metrics.on_input_dequeued(bundle)
             # If the bundler has a full bundle, add it to the operator's task submission
             # queue.
             bundle = self._block_ref_bundler.get_next_bundle()
@@ -500,6 +505,10 @@ class _BlockRefBundler:
             or self._bundle_buffer_size >= self._min_rows_per_bundle
             or (self._finalized and self._bundle_buffer_size > 0)
         )
+
+    def get_input_bundles(self) -> List[RefBundle]:
+        """Return the input bundles that will go into the next output bundle."""
+        return list(self._bundle_buffer)
 
     def get_next_bundle(self) -> RefBundle:
         """Gets the next bundle."""
