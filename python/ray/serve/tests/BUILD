@@ -25,6 +25,7 @@ py_test_module_list(
         "test_controller.py",
         "test_deployment_version.py",
         "test_expected_versions.py",
+        "test_http_cancellation.py",
         "test_max_queued_requests.py",
         "test_persistence.py",
         "test_proxy.py",
@@ -49,7 +50,6 @@ py_test_module_list(
     size = "medium",
     files = [
         "test_callback.py",
-        "test_cancellation.py",
         "test_cluster.py",
         "test_controller_recovery.py",
         "test_deployment_scheduler.py",
@@ -57,6 +57,7 @@ py_test_module_list(
         "test_grpc.py",
         "test_handle_1.py",
         "test_handle_2.py",
+        "test_handle_cancellation.py",
         "test_handle_streaming.py",
         "test_healthcheck.py",
         "test_http_headers.py",
