@@ -39,6 +39,9 @@ class OfflineData:
         self.data_read_method_kwargs = (
             self.default_read_method_kwargs | self.config.input_read_method_kwargs
         )
+        # In case `EpisodeType` or `BatchType` batches are read the size
+        # could differ from the final `train_batch_size_per_learner`.
+        self.data_read_batch_size = self.config.input_read_batch_size
 
         # If data should be materialized.
         self.materialize_data = config.materialize_data
@@ -170,7 +173,7 @@ class OfflineData:
             self.data = self.data.map_batches(
                 self.prelearner_class,
                 fn_constructor_kwargs=fn_constructor_kwargs,
-                batch_size=num_samples,
+                batch_size=self.data_read_batch_size or num_samples,
                 **self.map_batches_kwargs,
             )
             # Set the flag to `True`.

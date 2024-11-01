@@ -55,6 +55,9 @@ DECLARE_stats(finished_jobs);
 /// Placement group stats, broken down by state.
 DECLARE_stats(placement_groups);
 
+/// ASIO stats
+DECLARE_stats(io_context_event_loop_lag_ms);
+
 /// Event stats
 DECLARE_stats(operation_count);
 DECLARE_stats(operation_run_time_ms);

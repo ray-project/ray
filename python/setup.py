@@ -227,7 +227,10 @@ ray_files += [
 if setup_spec.type == SetupType.RAY:
     pandas_dep = "pandas >= 1.3"
     numpy_dep = "numpy >= 1.20"
-    pyarrow_dep = "pyarrow >= 6.0.1"
+    pyarrow_deps = [
+        "pyarrow >= 6.0.1",
+        "pyarrow <18; sys_platform == 'darwin' and platform_machine == 'x86_64'",
+    ]
     setup_spec.extras = {
         "adag": [
             "cupy-cuda12x; sys_platform != 'darwin'",
@@ -242,7 +245,7 @@ if setup_spec.type == SetupType.RAY:
         "data": [
             numpy_dep,
             pandas_dep,
-            pyarrow_dep,
+            *pyarrow_deps,
             "fsspec",
         ],
         "default": [
@@ -274,7 +277,7 @@ if setup_spec.type == SetupType.RAY:
             "fastapi",
             "watchfiles",
         ],
-        "tune": ["pandas", "tensorboardX>=1.9", "requests", pyarrow_dep, "fsspec"],
+        "tune": ["pandas", "tensorboardX>=1.9", "requests", *pyarrow_deps, "fsspec"],
     }
 
     # Ray Serve depends on the Ray dashboard components.
@@ -809,7 +812,7 @@ setuptools.setup(
         ]
     },
     package_data={
-        "ray": ["includes/*.pxd", "*.pxd", "data/_internal/logging.yaml"],
+        "ray": ["includes/*.pxd", "*.pxd"],
     },
     include_package_data=True,
     exclude_package_data={

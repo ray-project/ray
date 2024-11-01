@@ -223,30 +223,6 @@ class TaskCounter {
     }
   }
 
-  std::unordered_map<std::string, std::vector<int64_t>> AsMap() const {
-    absl::MutexLock l(&mu_);
-    std::unordered_map<std::string, std::vector<int64_t>> total_counts;
-
-    counter_.ForEachEntry(
-        [&total_counts](const std::tuple<std::string, TaskStatusType, bool> &key,
-                        int64_t value) mutable {
-          auto func_name = std::get<0>(key);
-          auto status = std::get<1>(key);
-          total_counts[func_name].resize(3, 0);
-          if (status == kPending) {
-            total_counts[func_name][0] = value;
-          } else if (status == kRunning) {
-            total_counts[func_name][1] = value;
-          } else if (status == kFinished) {
-            total_counts[func_name][2] = value;
-          } else {
-            RAY_CHECK(false) << "Invalid task status type " << status;
-          }
-        });
-
-    return total_counts;
-  }
-
  private:
   mutable absl::Mutex mu_;
   // Tracks all tasks submitted to this worker by state, is_retry.
