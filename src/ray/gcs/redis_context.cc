@@ -431,7 +431,7 @@ void ValidateRedisDB(RedisContext &context) {
   }
 }
 
-Status ValidateRedisSentinel(RedisContext &context) {        
+Status ValidateRedisSentinel(RedisContext &context) {
   auto reply = context.RunArgvSync(std::vector<std::string>{"INFO", "SENTINEL"});
   if (reply->IsNil() || reply->IsError() || reply->ReadAsString().length() == 0) {
     RAY_LOG(INFO) << "failed to get redis sentinel info, continue as a regular redis.";
@@ -442,8 +442,8 @@ Status ValidateRedisSentinel(RedisContext &context) {
 }
 
 void ConnectRedisSentinel(RedisContext &context,
-                              const std::string &password,
-                              bool enable_ssl) {
+                          const std::string &password,
+                          bool enable_ssl) {
   std::vector<const char *> argv;
   std::vector<size_t> argc;
   std::vector<std::string> cmds = {"SENTINEL", "MASTERS"};
@@ -566,11 +566,11 @@ Status RedisContext::Connect(const std::string &address,
   redis_async_context_.reset(new RedisAsyncContext(std::move(async_context)));
   SetDisconnectCallback(redis_async_context_.get());
 
-  //handle validation and primary connection for different types of redis
+  // handle validation and primary connection for different types of redis
   auto sentinel_status = ValidateRedisSentinel(*this);
   if (sentinel_status.IsTypeError()) {
     // if type error, this is a redis cluster. continue to validate and connect
-    
+
     // Ray has some restrictions for RedisDB. Validate it here.
     ValidateRedisDB(*this);
 
