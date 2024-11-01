@@ -297,7 +297,11 @@ class RAY_EXPORT PythonGcsClient {
 
   Status PinRuntimeEnvUri(const std::string &uri, int expiration_s, int64_t timeout_ms);
   Status GetAllNodeInfo(int64_t timeout_ms, std::vector<rpc::GcsNodeInfo> &result);
-  Status GetAllJobInfo(int64_t timeout_ms, std::vector<rpc::JobTableData> &result);
+  Status GetAllJobInfo(const std::optional<std::string> &job_or_submission_id,
+                       bool skip_submission_job_info_field,
+                       bool skip_is_running_tasks_field,
+                       int64_t timeout_ms,
+                       std::vector<rpc::JobTableData> &result);
   Status GetAllResourceUsage(int64_t timeout_ms, std::string &serialized_reply);
   // For rpc::autoscaler::AutoscalerStateService
   Status RequestClusterResourceConstraint(
@@ -349,13 +353,6 @@ std::unordered_map<std::string, double> PythonGetResourcesTotal(
 
 std::unordered_map<std::string, std::string> PythonGetNodeLabels(
     const rpc::GcsNodeInfo &node_info);
-
-Status PythonCheckGcsHealth(const std::string &gcs_address,
-                            const int gcs_port,
-                            const int64_t timeout_ms,
-                            const std::string &ray_version,
-                            const bool skip_version_check,
-                            bool &is_healthy);
 
 }  // namespace gcs
 

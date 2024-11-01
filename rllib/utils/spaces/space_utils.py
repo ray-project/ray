@@ -370,11 +370,7 @@ def batch(
         individual_items_already_have_batch_dim = isinstance(flat[0], BatchedNdArray)
 
     np_func = np.concatenate if individual_items_already_have_batch_dim else np.stack
-    try:
-        ret = tree.map_structure(lambda *s: np_func(s, axis=0), *list_of_structs)
-    except Exception as e:
-        print(e)
-        return None
+    ret = tree.map_structure(lambda *s: np_func(s, axis=0), *list_of_structs)
     return ret
 
 

@@ -199,8 +199,8 @@ void RedisRequestContext::RedisResponseFn(struct redisAsyncContext *async_contex
         },
         "RedisRequestContext.Callback");
     auto end_time = absl::Now();
-    ray::stats::GcsLatency().Record((end_time - request_cxt->start_time_) /
-                                    absl::Milliseconds(1));
+    ray::stats::GcsLatency().Record(
+        absl::ToDoubleMilliseconds(end_time - request_cxt->start_time_));
     delete request_cxt;
   }
 }
@@ -215,7 +215,7 @@ void RedisRequestContext::Run() {
   --pending_retries_;
 
   Status status = redis_context_->RedisAsyncCommandArgv(
-      *(RedisResponseFn), this, argv_.size(), argv_.data(), argc_.data());
+      RedisResponseFn, this, argv_.size(), argv_.data(), argc_.data());
 
   if (!status.ok()) {
     RedisResponseFn(redis_context_->GetRawRedisAsyncContext(), nullptr, this);

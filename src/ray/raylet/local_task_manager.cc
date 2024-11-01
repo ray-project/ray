@@ -980,16 +980,12 @@ void LocalTaskManager::Dispatch(
     std::function<void(void)> send_reply_callback) {
   const auto &task_spec = task.GetTaskSpecification();
 
-  worker->SetJobId(task_spec.JobId());
-  worker->SetBundleId(task_spec.PlacementGroupBundleId());
-  worker->SetOwnerAddress(task_spec.CallerAddress());
   if (task_spec.IsActorCreationTask()) {
     // The actor belongs to this worker now.
     worker->SetLifetimeAllocatedInstances(allocated_instances);
   } else {
     worker->SetAllocatedInstances(allocated_instances);
   }
-  worker->AssignTaskId(task_spec.TaskId());
   worker->SetAssignedTask(task);
 
   // Pass the contact info of the worker to use.
@@ -1258,6 +1254,16 @@ void LocalTaskManager::DebugStr(std::stringstream &buffer) const {
            << "\n";
   }
   buffer << "}\n";
+  buffer << "Backlog Size per scheduling descriptor :{workerId: num backlogs}:\n";
+  for (const auto &[sched_cls, worker_to_backlog_size] : backlog_tracker_) {
+    const auto &descriptor = TaskSpecification::GetSchedulingClassDescriptor(sched_cls);
+    buffer << "\t" << descriptor.ResourceSetStr() << ": {\n";
+    for (const auto &[worker_id, backlog_size] : worker_to_backlog_size) {
+      buffer << "\t\t" << worker_id << ": " << backlog_size << "\n";
+    }
+    buffer << "\t}\n";
+  }
+  buffer << "\n";
   buffer << "Running tasks by scheduling class:\n";
 
   for (const auto &pair : info_by_sched_cls_) {

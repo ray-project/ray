@@ -71,8 +71,9 @@ class DAGNode(DAGNodeBase):
         # Cached values from last call to execute()
         self.cache_from_last_execute = {}
 
-        self._type_hint: Optional[ChannelOutputType] = ChannelOutputType()
-        self.is_output_node = False
+        self._type_hint: ChannelOutputType = ChannelOutputType()
+        # Whether this node calls `experimental_compile`.
+        self.is_adag_output_node = False
 
     def _collect_upstream_nodes(self) -> List["DAGNode"]:
         """
@@ -98,20 +99,11 @@ class DAGNode(DAGNodeBase):
         return upstream_nodes
 
     def with_type_hint(self, typ: ChannelOutputType):
-        if typ.is_direct_return:
-            old_contains_typ = self._type_hint.contains_type
-            self._type_hint = copy.deepcopy(typ)
-            if old_contains_typ is not None and typ.contains_type is None:
-                # The contained type was set before the return
-                # type, and the new return type doesn't have a
-                # contained type set.
-                self._type_hint.set_contains_type(old_contains_typ)
-        else:
-            self._type_hint.set_contains_type(typ)
+        self._type_hint = copy.deepcopy(typ)
         return self
 
     @property
-    def type_hint(self) -> Optional[ChannelOutputType]:
+    def type_hint(self) -> ChannelOutputType:
         return self._type_hint
 
     def get_args(self) -> Tuple[Any]:
@@ -165,6 +157,8 @@ class DAGNode(DAGNodeBase):
         enable_asyncio: bool = False,
         _asyncio_max_queue_size: Optional[int] = None,
         _max_buffered_results: Optional[int] = None,
+        _max_inflight_executions: Optional[int] = None,
+        _overlap_gpu_communication: Optional[bool] = None,
     ) -> "ray.dag.CompiledDAG":
         """Compile an accelerated execution path for this DAG.
 
@@ -185,6 +179,15 @@ class DAGNode(DAGNodeBase):
                 executions is beyond the DAG capacity, the new execution would
                 be blocked in the first place; therefore, this limit is only
                 enforced when it is smaller than the DAG capacity.
+            _max_inflight_executions: The maximum number of in-flight requests that
+                are allowed to be sent to this DAG. Before submitting more requests,
+                the caller is responsible for calling ray.get to clear finished
+                in-flight requests.
+            overlap_gpu_communication: Whether to overlap GPU communication with
+                computation during DAG execution. If True, the communication
+                and computation can be overlapped, which can improve the
+                performance of the DAG execution. If None, the default value
+                will be used.
 
         Returns:
             A compiled DAG.
@@ -199,10 +202,17 @@ class DAGNode(DAGNodeBase):
         if _max_buffered_results is None:
             _max_buffered_results = ctx.max_buffered_results
 
+        # Validate whether this DAG node has already been compiled.
+        if self.is_adag_output_node:
+            raise ValueError(
+                "It is not allowed to call `experimental_compile` on the same DAG "
+                "object multiple times no matter whether `teardown` is called or not. "
+                "Please reuse the existing compiled DAG or create a new one."
+            )
         # Whether this node is an output node in the DAG. We cannot determine
         # this in the constructor because the output node is determined when
         # `experimental_compile` is called.
-        self.is_output_node = True
+        self.is_adag_output_node = True
         return build_compiled_dag_from_ray_dag(
             self,
             _execution_timeout,
@@ -210,6 +220,8 @@ class DAGNode(DAGNodeBase):
             enable_asyncio,
             _asyncio_max_queue_size,
             _max_buffered_results,
+            _max_inflight_executions,
+            _overlap_gpu_communication,
         )
 
     def execute(
@@ -380,9 +392,21 @@ class DAGNode(DAGNodeBase):
         """
         visited = set()
         queue = [self]
+        adag_output_node: Optional[DAGNode] = None
+
         while queue:
             node = queue.pop(0)
             if node not in visited:
+                if node.is_adag_output_node:
+                    # Validate whether there are multiple nodes that call
+                    # `experimental_compile`.
+                    if adag_output_node is not None:
+                        raise ValueError(
+                            "The DAG was compiled more than once. The following two "
+                            "nodes call `experimental_compile`: "
+                            f"(1) {adag_output_node}, (2) {node}"
+                        )
+                    adag_output_node = node
                 fn(node)
                 visited.add(node)
                 """

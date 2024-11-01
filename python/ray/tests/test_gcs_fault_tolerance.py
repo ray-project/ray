@@ -288,7 +288,7 @@ def test_del_actor_after_gcs_server_restart(ray_start_regular_with_external_redi
     # Wait for the actor dead.
     wait_for_condition(condition, timeout=10)
 
-    # If `PollOwnerForActorOutOfScope` was successfully called,
+    # If `ReportActorOutOfScope` was successfully called,
     # name should be properly deleted.
     with pytest.raises(ValueError):
         ray.get_actor("abc")
@@ -1157,7 +1157,7 @@ def test_job_finished_after_head_node_restart(
 
     def get_job_info(submission_id):
         gcs_client = GcsClient(cluster.address)
-        all_job_info = gcs_client.get_all_job_info()
+        all_job_info = gcs_client.get_all_job_info(job_or_submission_id=submission_id)
 
         return list(
             filter(

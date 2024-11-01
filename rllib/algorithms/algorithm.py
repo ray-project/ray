@@ -12,6 +12,7 @@ import numpy as np
 import os
 from packaging import version
 import pathlib
+import pyarrow.fs
 import re
 import tempfile
 import time
@@ -305,6 +306,7 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
     def from_checkpoint(
         cls,
         path: Optional[Union[str, Checkpoint]] = None,
+        filesystem: Optional["pyarrow.fs.FileSystem"] = None,
         *,
         # @OldAPIStack
         policy_ids: Optional[Collection[PolicyID]] = None,
@@ -324,6 +326,8 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
         Args:
             path: The path (str) to the checkpoint directory to use
                 or an AIR Checkpoint instance to restore from.
+            filesystem: PyArrow FileSystem to use to access data at the `path`. If not
+                specified, this is inferred from the URI scheme of `path`.
             policy_ids: Optional list of PolicyIDs to recover. This allows users to
                 restore an Algorithm with only a subset of the originally present
                 Policies.
@@ -371,7 +375,7 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
             )
         # New API stack -> Use Checkpointable's default implementation.
         elif checkpoint_info["checkpoint_version"] >= version.Version("2.0"):
-            return super().from_checkpoint(path, **kwargs)
+            return super().from_checkpoint(path, filesystem=filesystem, **kwargs)
 
         # This is a msgpack checkpoint.
         if checkpoint_info["format"] == "msgpack":
@@ -455,7 +459,7 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
                 object. If unspecified, a default logger is created.
             **kwargs: Arguments passed to the Trainable base class.
         """
-        config = config or self.get_default_config()
+        config = config  # or self.get_default_config()
 
         # Translate possible dict into an AlgorithmConfig object, as well as,
         # resolving generic config objects into specific ones (e.g. passing
@@ -466,15 +470,22 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
             # `self.get_default_config()` also returned a dict ->
             # Last resort: Create core AlgorithmConfig from merged dicts.
             if isinstance(default_config, dict):
-                config = AlgorithmConfig.from_dict(
-                    config_dict=self.merge_algorithm_configs(
-                        default_config, config, True
+                if "class" in config:
+                    AlgorithmConfig.from_state(config)
+                else:
+                    config = AlgorithmConfig.from_dict(
+                        config_dict=self.merge_algorithm_configs(
+                            default_config, config, True
+                        )
                     )
-                )
+
             # Default config is an AlgorithmConfig -> update its properties
             # from the given config dict.
             else:
-                config = default_config.update_from_dict(config)
+                if isinstance(config, dict) and "class" in config:
+                    config = default_config.from_state(config)
+                else:
+                    config = default_config.update_from_dict(config)
         else:
             default_config = self.get_default_config()
             # Given AlgorithmConfig is not of the same type as the default config:
@@ -482,6 +493,8 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
             # generic AlgorithmConfig() object.
             if not isinstance(config, type(default_config)):
                 config = default_config.update_from_dict(config.to_dict())
+            else:
+                config = default_config.from_state(config.get_state())
 
         # In case this algo is using a generic config (with no algo_class set), set it
         # here.
@@ -672,7 +685,6 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
                     )
                     and self.config.input_ != "sampler"
                     and self.config.enable_rl_module_and_learner
-                    and self.config.enable_env_runner_and_connector_v2
                 )
                 else self.config.num_env_runners
             ),
@@ -694,7 +706,6 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
             )
             and self.config.input_ != "sampler"
             and self.config.enable_rl_module_and_learner
-            and self.config.enable_env_runner_and_connector_v2
         ):
             from ray.rllib.offline.offline_data import OfflineData
 
@@ -784,20 +795,10 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
             method_config["type"] = method_type
 
         if self.config.enable_rl_module_and_learner:
-            if self.config.enable_env_runner_and_connector_v2:
-                module_spec: MultiRLModuleSpec = self.config.get_multi_rl_module_spec(
-                    spaces=self.env_runner_group.get_spaces(),
-                    inference_only=False,
-                )
-            # TODO (Sven): Deprecate this path: Old stack API RolloutWorkers and
-            #  DreamerV3's EnvRunners have a `multi_rl_module_spec` property.
-            elif hasattr(self.env_runner, "multi_rl_module_spec"):
-                module_spec: MultiRLModuleSpec = self.env_runner.multi_rl_module_spec
-            else:
-                raise AttributeError(
-                    "Your local EnvRunner/RolloutWorker does NOT have any property "
-                    "referring to its RLModule!"
-                )
+            module_spec: MultiRLModuleSpec = self.config.get_multi_rl_module_spec(
+                spaces=self.env_runner_group.get_spaces(),
+                inference_only=False,
+            )
             self.learner_group = self.config.build_learner_group(
                 rl_module_spec=module_spec
             )
@@ -806,7 +807,7 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
             rl_module_ckpt_dirs = {}
             multi_rl_module_ckpt_dir = module_spec.load_state_path
             modules_to_load = module_spec.modules_to_load
-            for module_id, sub_module_spec in module_spec.module_specs.items():
+            for module_id, sub_module_spec in module_spec.rl_module_specs.items():
                 if sub_module_spec.load_state_path:
                     rl_module_ckpt_dirs[module_id] = sub_module_spec.load_state_path
             if multi_rl_module_ckpt_dir or rl_module_ckpt_dirs:
@@ -816,35 +817,19 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
                     rl_module_ckpt_dirs=rl_module_ckpt_dirs,
                 )
 
-            # Only when using RolloutWorkers: Update also the worker set's
-            # `is_policy_to_train`.
-            # Note that with the new EnvRunner API in combination with the new stack,
-            # this information only needs to be kept in the Learner and not on the
-            # EnvRunners anymore.
-            if not self.config.enable_env_runner_and_connector_v2:
-                policies_to_train = self.config.policies_to_train or set(
-                    self.config.policies
-                )
-                self.env_runner_group.foreach_worker(
-                    lambda w: w.set_is_policy_to_train(policies_to_train),
-                )
-                # Sync the weights from the learner group to the rollout workers.
-                self.env_runner.set_weights(self.learner_group.get_weights())
-                self.env_runner_group.sync_weights(inference_only=True)
-            # New stack/EnvRunner APIs: Use get/set_state.
-            else:
-                # Sync the weights from the learner group to the EnvRunners.
-                rl_module_state = self.learner_group.get_state(
-                    components=COMPONENT_LEARNER + "/" + COMPONENT_RL_MODULE,
-                    inference_only=True,
-                )[COMPONENT_LEARNER][COMPONENT_RL_MODULE]
-                self.env_runner.set_state({COMPONENT_RL_MODULE: rl_module_state})
-                self.env_runner_group.sync_env_runner_states(
-                    config=self.config,
-                    env_steps_sampled=self.metrics.peek(
-                        NUM_ENV_STEPS_SAMPLED_LIFETIME, default=0
-                    ),
-                )
+            # Sync the weights from the learner group to the EnvRunners.
+            rl_module_state = self.learner_group.get_state(
+                components=COMPONENT_LEARNER + "/" + COMPONENT_RL_MODULE,
+                inference_only=True,
+            )[COMPONENT_LEARNER]
+            self.env_runner.set_state(rl_module_state)
+            self.env_runner_group.sync_env_runner_states(
+                config=self.config,
+                env_steps_sampled=self.metrics.peek(
+                    NUM_ENV_STEPS_SAMPLED_LIFETIME, default=0
+                ),
+                rl_module_state=rl_module_state,
+            )
 
             if self.offline_data:
                 # If the learners are remote we need to provide specific
@@ -990,7 +975,7 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
                 self._remote_worker_ids_for_metrics(),
                 timeout_seconds=self.config.metrics_episode_collection_timeout_s,
             )
-            results = self._compile_iteration_results_old_and_hybrid_api_stacks(
+            results = self._compile_iteration_results_old_api_stack(
                 episodes_this_iter=episodes_this_iter,
                 step_ctx=train_iter_ctx,
                 iteration_results={**train_results, **eval_results},
@@ -1377,7 +1362,7 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
                 " too unstable, b) you have enough evaluation workers "
                 "(`config.evaluation(evaluation_num_env_runners=...)`) to cover for "
                 "occasional losses, and c) you use the `config.fault_tolerance("
-                "recreate_failed_env_runners=True)` setting."
+                "restart_failed_env_runners=True)` setting."
             )
 
         if not self.config.enable_env_runner_and_connector_v2:
@@ -1567,7 +1552,7 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
                 " too unstable, b) you have enough evaluation workers "
                 "(`config.evaluation(evaluation_num_env_runners=...)`) to cover for "
                 "occasional losses, and c) you use the `config.fault_tolerance("
-                "recreate_failed_env_runners=True)` setting."
+                "restart_failed_env_runners=True)` setting."
             )
 
         if not self.config.enable_env_runner_and_connector_v2:
@@ -1695,60 +1680,52 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
         if not self.config.enable_env_runner_and_connector_v2:
             raise NotImplementedError(
                 "The `Algorithm.training_step()` default implementation no longer "
-                "supports the old or hybrid API stacks! If you would like to continue "
+                "supports the old API stack! If you would like to continue "
                 "using these "
                 "old APIs with this default `training_step`, simply subclass "
                 "`Algorithm` and override its `training_step` method (copy/paste the "
                 "code and delete this error message)."
             )
 
-        # Collect SampleBatches from sample workers until we have a full batch.
+        # Collect a list of Episodes from EnvRunners until we reach the train batch
+        # size.
         with self.metrics.log_time((TIMERS, ENV_RUNNER_SAMPLING_TIMER)):
             if self.config.count_steps_by == "agent_steps":
-                train_batch, env_runner_results = synchronous_parallel_sample(
+                episodes, env_runner_results = synchronous_parallel_sample(
                     worker_set=self.env_runner_group,
                     max_agent_steps=self.config.total_train_batch_size,
                     sample_timeout_s=self.config.sample_timeout_s,
-                    _uses_new_env_runners=(
-                        self.config.enable_env_runner_and_connector_v2
-                    ),
+                    _uses_new_env_runners=True,
                     _return_metrics=True,
                 )
             else:
-                train_batch, env_runner_results = synchronous_parallel_sample(
+                episodes, env_runner_results = synchronous_parallel_sample(
                     worker_set=self.env_runner_group,
                     max_env_steps=self.config.total_train_batch_size,
                     sample_timeout_s=self.config.sample_timeout_s,
-                    _uses_new_env_runners=(
-                        self.config.enable_env_runner_and_connector_v2
-                    ),
+                    _uses_new_env_runners=True,
                     _return_metrics=True,
                 )
-        train_batch = train_batch.as_multi_agent()
-
         # Reduce EnvRunner metrics over the n EnvRunners.
         self.metrics.merge_and_log_n_dicts(env_runner_results, key=ENV_RUNNER_RESULTS)
 
-        # Only train if train_batch is not empty.
-        # In an extreme situation, all rollout workers die during the
-        # synchronous_parallel_sample() call above.
-        # In which case, we should skip training, wait a little bit, then probe again.
         with self.metrics.log_time((TIMERS, LEARNER_UPDATE_TIMER)):
-            if train_batch.agent_steps() > 0:
-                learner_results = self.learner_group.update_from_batch(
-                    batch=train_batch
-                )
-                self.metrics.log_dict(learner_results, key=LEARNER_RESULTS)
-            else:
-                # Wait 1 sec before probing again via weight syncing.
-                time.sleep(1.0)
+            learner_results = self.learner_group.update_from_episodes(
+                episodes=episodes,
+                timesteps={
+                    NUM_ENV_STEPS_SAMPLED_LIFETIME: (
+                        self.metrics.peek(NUM_ENV_STEPS_SAMPLED_LIFETIME)
+                    ),
+                },
+            )
+            self.metrics.log_dict(learner_results, key=LEARNER_RESULTS)
 
         # Update weights - after learning on the local worker - on all
         # remote workers (only those RLModules that were actually trained).
         with self.metrics.log_time((TIMERS, SYNCH_WORKER_WEIGHTS_TIMER)):
             self.env_runner_group.sync_weights(
                 from_worker_or_learner_group=self.learner_group,
-                policies=set(learner_results.keys()) - {ALL_MODULES},
+                policies=list(set(learner_results.keys()) - {ALL_MODULES}),
                 inference_only=True,
             )
 
@@ -2391,12 +2368,12 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
                 Callable[[PolicyID, Optional[SampleBatchType]], bool],
             ]
         ] = None,
-        add_to_learners: bool = True,
         add_to_env_runners: bool = True,
         add_to_eval_env_runners: bool = True,
         module_spec: Optional[RLModuleSpec] = None,
         # Deprecated arg.
         evaluation_workers=DEPRECATED_VALUE,
+        add_to_learners=DEPRECATED_VALUE,
     ) -> Optional[Policy]:
         """Adds a new policy to this Algorithm.
 
@@ -2429,9 +2406,6 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
                 If None, will keep the existing setup in place. Policies,
                 whose IDs are not in the list (or for which the callable
                 returns False) will not be updated.
-            add_to_learners: Whether to add the new RLModule to the LearnerGroup
-                (with its n Learners). This setting is only valid on the hybrid-API
-                stack (with Learners, but w/o EnvRunners).
             add_to_env_runners: Whether to add the new RLModule to the EnvRunnerGroup
                 (with its m EnvRunners plus the local one).
             add_to_eval_env_runners: Whether to add the new RLModule to the eval
@@ -2458,6 +2432,12 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
                 new="Algorithm.add_policy(add_to_eval_env_runners=...)",
                 error=True,
             )
+        if add_to_learners != DEPRECATED_VALUE:
+            deprecation_warning(
+                old="Algorithm.add_policy(add_to_learners=..)",
+                help="Hybrid API stack no longer supported by RLlib!",
+                error=True,
+            )
 
         validate_module_id(policy_id, error=True)
 
@@ -2474,29 +2454,6 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
                 policies_to_train=policies_to_train,
                 module_spec=module_spec,
             )
-
-        # If Learner API is enabled, we need to also add the underlying module
-        # to the learner group.
-        if add_to_learners and self.config.enable_rl_module_and_learner:
-            policy = self.get_policy(policy_id)
-            module = policy.model
-            self.learner_group.add_module(
-                module_id=policy_id,
-                module_spec=RLModuleSpec.from_module(module),
-            )
-
-            # Update each Learner's `policies_to_train` information, but only
-            # if the arg is explicitly provided here.
-            if policies_to_train is not None:
-                self.learner_group.foreach_learner(
-                    func=lambda learner: learner.config.multi_agent(
-                        policies_to_train=policies_to_train
-                    ),
-                    timeout_seconds=0.0,  # fire-and-forget
-                )
-
-            weights = policy.get_weights()
-            self.learner_group.set_weights({policy_id: weights})
 
         # Add to evaluation workers, if necessary.
         if add_to_eval_env_runners is True and self.eval_env_runner_group is not None:
@@ -2531,11 +2488,11 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
                 Callable[[PolicyID, Optional[SampleBatchType]], bool],
             ]
         ] = None,
-        remove_from_learners: bool = True,
         remove_from_env_runners: bool = True,
         remove_from_eval_env_runners: bool = True,
         # Deprecated args.
         evaluation_workers=DEPRECATED_VALUE,
+        remove_from_learners=DEPRECATED_VALUE,
     ) -> None:
         """Removes a policy from this Algorithm.
 
@@ -2551,9 +2508,6 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
                 If None, will keep the existing setup in place. Policies,
                 whose IDs are not in the list (or for which the callable
                 returns False) will not be updated.
-            remove_from_learners: Whether to remove the Policy from the LearnerGroup
-                (with its n Learners). Only valid on the hybrid API stack (w/ Learners,
-                but w/o EnvRunners).
             remove_from_env_runners: Whether to remove the Policy from the
                 EnvRunnerGroup (with its m EnvRunners plus the local one).
             remove_from_eval_env_runners: Whether to remove the RLModule from the eval
@@ -2566,6 +2520,12 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
                 error=False,
             )
             remove_from_eval_env_runners = evaluation_workers
+        if remove_from_learners != DEPRECATED_VALUE:
+            deprecation_warning(
+                old="Algorithm.remove_policy(remove_from_learners=..)",
+                help="Hybrid API stack no longer supported by RLlib!",
+                error=True,
+            )
 
         def fn(worker):
             worker.remove_policy(
@@ -2577,20 +2537,6 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
         # Update all EnvRunner workers.
         if remove_from_env_runners:
             self.env_runner_group.foreach_worker(fn, local_env_runner=True)
-
-        # Update each Learner's `policies_to_train` information, but only
-        # if the arg is explicitly provided here.
-        if (
-            remove_from_learners
-            and self.config.enable_rl_module_and_learner
-            and policies_to_train is not None
-        ):
-            self.learner_group.foreach_learner(
-                func=lambda learner: learner.config.multi_agent(
-                    policies_to_train=policies_to_train
-                ),
-                timeout_seconds=0.0,  # fire-and-forget
-            )
 
         # Update the evaluation worker set's workers, if required.
         if remove_from_eval_env_runners and self.eval_env_runner_group is not None:
@@ -2685,10 +2631,7 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
         """
         # New API stack: Delegate to the `Checkpointable` implementation of
         # `save_to_path()`.
-        if (
-            self.config.enable_rl_module_and_learner
-            and self.config.enable_env_runner_and_connector_v2
-        ):
+        if self.config.enable_rl_module_and_learner:
             return self.save_to_path(checkpoint_dir)
 
         checkpoint_dir = pathlib.Path(checkpoint_dir)
@@ -2750,11 +2693,11 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
     def load_checkpoint(self, checkpoint_dir: str) -> None:
         # New API stack: Delegate to the `Checkpointable` implementation of
         # `restore_from_path()`.
-        if (
-            self.config.enable_rl_module_and_learner
-            and self.config.enable_env_runner_and_connector_v2
-        ):
+        if self.config.enable_rl_module_and_learner:
             self.restore_from_path(checkpoint_dir)
+
+            # Call the `on_checkpoint_loaded` callback.
+            self.callbacks.on_checkpoint_loaded(algorithm=self)
             return
 
         # Checkpoint is provided as a local directory.
@@ -2762,20 +2705,6 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
         checkpoint_info = get_checkpoint_info(checkpoint_dir)
         checkpoint_data = Algorithm._checkpoint_info_to_algorithm_state(checkpoint_info)
         self.__setstate__(checkpoint_data)
-        if self.config.enable_rl_module_and_learner:
-            # We restore the LearnerGroup from a "learner" subdir. Note that this is not
-            # in line with the new Checkpointable API, but makes this case backward
-            # compatible. The new Checkpointable API is only strictly applied anyways
-            # to the new API stack.
-            learner_group_state_dir = os.path.join(checkpoint_dir, "learner")
-            self.learner_group.restore_from_path(learner_group_state_dir)
-            # Make also sure, all (training) EnvRunners get the just loaded weights, but
-            # only the inference-only ones.
-            self.env_runner_group.sync_weights(
-                from_worker_or_learner_group=self.learner_group,
-                inference_only=True,
-            )
-
         # Call the `on_checkpoint_loaded` callback.
         self.callbacks.on_checkpoint_loaded(algorithm=self)
 
@@ -2899,7 +2828,7 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
     @override(Checkpointable)
     def get_ctor_args_and_kwargs(self) -> Tuple[Tuple, Dict[str, Any]]:
         return (
-            (self.config,),  # *args,
+            (self.config.get_state(),),  # *args,
             {},  # **kwargs
         )
 
@@ -3296,7 +3225,7 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
         # Add config to state so complete Algorithm can be reproduced w/o it.
         state = {
             "algorithm_class": type(self),
-            "config": self.config,
+            "config": self.config.get_state(),
         }
 
         if hasattr(self, "env_runner_group"):
@@ -3437,7 +3366,8 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
 
         with open(checkpoint_info["state_file"], "rb") as f:
             if msgpack is not None:
-                state = msgpack.load(f)
+                data = f.read()
+                state = msgpack.unpackb(data, raw=False)
             else:
                 state = pickle.load(f)
 
@@ -3887,7 +3817,7 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
         )
 
     @OldAPIStack
-    def _compile_iteration_results_old_and_hybrid_api_stacks(
+    def _compile_iteration_results_old_api_stack(
         self, *, episodes_this_iter, step_ctx, iteration_results
     ):
         # Results to be returned.

@@ -106,6 +106,7 @@ from ray.includes.common cimport (
     CJobConfig,
     CConcurrencyGroup,
     CGrpcStatusCode,
+    CLineageReconstructionTask,
     move,
     LANGUAGE_CPP,
     LANGUAGE_JAVA,
@@ -133,7 +134,6 @@ from ray.includes.common cimport (
     kResourceUnitScaling,
     kImplicitResourcePrefix,
     kWorkerSetupHookKeyName,
-    PythonCheckGcsHealth,
     PythonGetNodeLabels,
     PythonGetResourcesTotal,
 )
@@ -156,11 +156,15 @@ from ray.includes.libcoreworker cimport (
     CFiberEvent,
     CActorHandle,
     CGeneratorBackpressureWaiter,
+    CReaderRefInfo,
 )
 
 from ray.includes.ray_config cimport RayConfig
 from ray.includes.global_state_accessor cimport CGlobalStateAccessor
-from ray.includes.global_state_accessor cimport RedisDelKeySync, RedisGetKeySync
+from ray.includes.global_state_accessor cimport (
+    RedisDelKeyPrefixSync,
+    RedisGetKeySync
+)
 from ray.includes.optional cimport (
     optional, nullopt
 )
@@ -196,7 +200,7 @@ from ray.util.scheduling_strategies import (
 import ray._private.ray_constants as ray_constants
 import ray.cloudpickle as ray_pickle
 from ray.core.generated.common_pb2 import ActorDiedErrorContext
-from ray.core.generated.gcs_pb2 import JobTableData, GcsNodeInfo
+from ray.core.generated.gcs_pb2 import JobTableData, GcsNodeInfo, ActorTableData
 from ray.core.generated.gcs_service_pb2 import GetAllResourceUsageReply
 from ray._private.async_compat import (
     sync_to_async,
@@ -2906,18 +2910,31 @@ cdef class OldGcsClient:
         return result
 
     @_auto_reconnect
-    def get_all_job_info(self, timeout=None) -> Dict[JobID, JobTableData]:
+    def get_all_job_info(
+        self, *, job_or_submission_id: str = None, skip_submission_job_info_field=False,
+        skip_is_running_tasks_field=False, timeout=None
+    ) -> Dict[JobID, JobTableData]:
         # Ideally we should use json_format.MessageToDict(job_info),
         # but `job_info` is a cpp pb message not a python one.
         # Manually converting each and every protobuf field is out of question,
         # so we serialize the pb to string to cross the FFI interface.
         cdef:
+            c_string c_job_or_submission_id
+            optional[c_string] c_optional_job_or_submission_id = nullopt
             int64_t timeout_ms = round(1000 * timeout) if timeout else -1
+            c_bool c_skip_submission_job_info_field = skip_submission_job_info_field
+            c_bool c_skip_is_running_tasks_field = skip_is_running_tasks_field
             CJobTableData c_job_info
             c_vector[CJobTableData] c_job_infos
             c_vector[c_string] serialized_job_infos
+        if job_or_submission_id:
+            c_job_or_submission_id = job_or_submission_id
+            c_optional_job_or_submission_id = \
+                make_optional[c_string](c_job_or_submission_id)
         with nogil:
-            check_status(self.inner.get().GetAllJobInfo(timeout_ms, c_job_infos))
+            check_status(self.inner.get().GetAllJobInfo(
+                c_optional_job_or_submission_id, c_skip_submission_job_info_field,
+                c_skip_is_running_tasks_field, timeout_ms, c_job_infos))
             for c_job_info in c_job_infos:
                 serialized_job_infos.push_back(c_job_info.SerializeAsString())
         result = {}
@@ -3256,53 +3273,10 @@ cdef class _TestOnly_GcsActorSubscriber(_GcsSubscriber):
             check_status(self.inner.get().PollActor(
                 &key_id, timeout_ms, &actor_data))
 
-        from ray.core.generated import gcs_pb2
-
-        info = gcs_pb2.ActorTableData.FromString(
+        info = ActorTableData.FromString(
             actor_data.SerializeAsString())
 
         return [(key_id, info)]
-
-
-def check_health(address: str, timeout=2, skip_version_check=False):
-    """Checks Ray cluster health, before / without actually connecting to the
-    cluster via ray.init().
-
-    Args:
-        address: Ray cluster / GCS address string, e.g. ip:port.
-        timeout: request timeout.
-        skip_version_check: If True, will skip comparision of GCS Ray version with local
-            Ray version. If False (default), will raise exception on mismatch.
-    Returns:
-        Returns True if the cluster is running and has matching Ray version.
-        Returns False if no service is running.
-        Raises an exception otherwise.
-    """
-
-    tokens = address.rsplit(":", 1)
-    if len(tokens) != 2:
-        raise ValueError("Invalid address: {}. Expect 'ip:port'".format(address))
-    gcs_address, gcs_port = tokens
-
-    cdef:
-        c_string c_gcs_address = gcs_address
-        int c_gcs_port = int(gcs_port)
-        int64_t timeout_ms = round(1000 * timeout) if timeout else -1
-        c_string c_ray_version = ray.__version__
-        c_bool c_skip_version_check = skip_version_check
-        c_bool c_is_healthy = True
-
-    try:
-        with nogil:
-            check_status(PythonCheckGcsHealth(
-                c_gcs_address, c_gcs_port, timeout_ms, c_ray_version,
-                c_skip_version_check, c_is_healthy))
-    except RpcError:
-        traceback.print_exc()
-    except RaySystemError as e:
-        raise RuntimeError(str(e))
-
-    return c_is_healthy
 
 
 cdef class CoreWorker:
@@ -3688,37 +3662,37 @@ cdef class CoreWorker:
 
     def experimental_channel_register_writer(self,
                                              ObjectRef writer_ref,
-                                             ObjectRef reader_ref,
-                                             writer_node,
-                                             reader_node,
-                                             ActorID reader,
-                                             int64_t num_readers):
+                                             remote_reader_ref_info):
         cdef:
             CObjectID c_writer_ref = writer_ref.native()
-            CObjectID c_reader_ref = reader_ref.native()
-            CNodeID c_reader_node = CNodeID.FromHex(reader_node)
-            CNodeID *c_reader_node_id = NULL
-            CActorID c_reader_actor = reader.native()
+            c_vector[CNodeID] c_remote_reader_nodes
+            c_vector[CReaderRefInfo] c_remote_reader_ref_info
+            CReaderRefInfo c_reader_ref_info
 
-        if num_readers == 0:
-            return
-        if writer_node != reader_node:
-            c_reader_node_id = &c_reader_node
+        for node_id, reader_ref_info in remote_reader_ref_info.items():
+            c_reader_ref_info = CReaderRefInfo()
+            c_reader_ref_info.reader_ref_id = (
+                <ObjectRef>reader_ref_info.reader_ref).native()
+            c_reader_ref_info.owner_reader_actor_id = (
+                <ActorID>reader_ref_info.ref_owner_actor_id).native()
+            num_reader_actors = reader_ref_info.num_reader_actors
+            assert num_reader_actors != 0
+            c_reader_ref_info.num_reader_actors = num_reader_actors
+            c_remote_reader_ref_info.push_back(c_reader_ref_info)
+            c_remote_reader_nodes.push_back(CNodeID.FromHex(node_id))
 
         with nogil:
             check_status(CCoreWorkerProcess.GetCoreWorker()
-                         .ExperimentalRegisterMutableObjectWriter(c_writer_ref,
-                                                                  c_reader_node_id,
-                                                                  ))
-        if writer_node != reader_node:
-            with nogil:
-                check_status(
-                        CCoreWorkerProcess.GetCoreWorker()
-                        .ExperimentalRegisterMutableObjectReaderRemote(c_writer_ref,
-                                                                       c_reader_actor,
-                                                                       num_readers,
-                                                                       c_reader_ref
-                                                                       ))
+                         .ExperimentalRegisterMutableObjectWriter(
+                            c_writer_ref,
+                            c_remote_reader_nodes,
+                        ))
+            check_status(
+                    CCoreWorkerProcess.GetCoreWorker()
+                    .ExperimentalRegisterMutableObjectReaderRemote(
+                        c_writer_ref,
+                        c_remote_reader_ref_info,
+                    ))
 
     def experimental_channel_register_reader(self, ObjectRef object_ref):
         cdef:
@@ -3859,6 +3833,25 @@ cdef class CoreWorker:
         with nogil:
             check_status(CCoreWorkerProcess.GetCoreWorker().Delete(
                 free_ids, local_only))
+
+    def get_local_ongoing_lineage_reconstruction_tasks(self):
+        cdef:
+            unordered_map[CLineageReconstructionTask, uint64_t] tasks
+            unordered_map[CLineageReconstructionTask, uint64_t].iterator it
+
+        with nogil:
+            tasks = (CCoreWorkerProcess.GetCoreWorker().
+                     GetLocalOngoingLineageReconstructionTasks())
+
+        result = []
+        it = tasks.begin()
+        while it != tasks.end():
+            task = common_pb2.LineageReconstructionTask()
+            task.ParseFromString(dereference(it).first.SerializeAsString())
+            result.append((task, dereference(it).second))
+            postincrement(it)
+
+        return result
 
     def get_local_object_locations(self, object_refs):
         cdef:
@@ -4374,6 +4367,16 @@ cdef class CoreWorker:
             CActorID c_actor_id = actor_id.native()
         CCoreWorkerProcess.GetCoreWorker().RemoveActorHandleReference(
             c_actor_id)
+
+    def get_local_actor_state(self, ActorID actor_id):
+        cdef:
+            CActorID c_actor_id = actor_id.native()
+            optional[int] state = nullopt
+        state = CCoreWorkerProcess.GetCoreWorker().GetLocalActorState(c_actor_id)
+        if state.has_value():
+            return state.value()
+        else:
+            return None
 
     cdef make_actor_handle(self, ActorHandleSharedPtr c_actor_handle,
                            c_bool weak_ref):
@@ -5176,8 +5179,10 @@ cdef void async_callback(shared_ptr[CRayObject] obj,
         cpython.Py_DECREF(user_callback)
 
 
-def del_key_from_storage(host, port, password, use_ssl, key):
-    return RedisDelKeySync(host, port, password, use_ssl, key)
+# Note this deletes keys with prefix `RAY{key_prefix}@`
+# Example: with key_prefix = `default`, we remove all `RAYdefault@...` keys.
+def del_key_prefix_from_storage(host, port, password, use_ssl, key_prefix):
+    return RedisDelKeyPrefixSync(host, port, password, use_ssl, key_prefix)
 
 
 def get_session_key_from_storage(host, port, password, use_ssl, config, key):

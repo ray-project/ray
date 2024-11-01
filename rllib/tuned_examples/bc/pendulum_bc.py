@@ -1,11 +1,11 @@
 from pathlib import Path
 
+from ray.air.constants import TRAINING_ITERATION
 from ray.rllib.algorithms.bc import BCConfig
 from ray.rllib.utils.metrics import (
     ENV_RUNNER_RESULTS,
     EPISODE_RETURN_MEAN,
     EVALUATION_RESULTS,
-    TRAINING_ITERATION_TIMER,
 )
 from ray.rllib.utils.test_utils import (
     add_rllib_example_script_args,
@@ -50,6 +50,7 @@ config = (
     .offline_data(
         input_=[data_path],
         input_read_method_kwargs={"override_num_blocks": max(args.num_gpus, 1)},
+        dataset_num_iters_per_learner=1 if args.num_gpus == 0 else None,
     )
     .training(
         # To increase learning speed with multiple learners,
@@ -61,7 +62,7 @@ config = (
 
 stop = {
     f"{EVALUATION_RESULTS}/{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": -200.0,
-    TRAINING_ITERATION_TIMER: 350.0,
+    TRAINING_ITERATION: 350,
 }
 
 if __name__ == "__main__":

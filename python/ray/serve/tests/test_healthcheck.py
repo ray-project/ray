@@ -1,8 +1,10 @@
+import asyncio
+
 import pytest
 
 import ray
 from ray import serve
-from ray._private.test_utils import wait_for_condition
+from ray._private.test_utils import async_wait_for_condition, wait_for_condition
 from ray.exceptions import RayError
 from ray.serve._private.common import DeploymentStatus
 from ray.serve._private.constants import (
@@ -52,11 +54,11 @@ class Patient:
         return ray.get_runtime_context().current_actor
 
 
-def check_new_actor_started(handle, original_actors):
+async def check_new_actor_started(handle, original_actors):
     if not isinstance(original_actors, set):
         original_actors = {original_actors._actor_id}
     try:
-        return handle.remote().result()._actor_id not in original_actors
+        return (await handle.remote())._actor_id not in original_actors
     except RayError:
         return False
 
@@ -86,39 +88,46 @@ def test_no_user_defined_method(serve_instance, use_class):
     wait_for_condition(check_new_actor_started, handle=h, original_actors=actor)
 
 
-def test_user_defined_method_fails(serve_instance):
+@pytest.mark.asyncio
+async def test_user_defined_method_fails(serve_instance):
     h = serve.run(Patient.bind())
-    actor = h.remote().result()
-    h.set_should_fail.remote().result()
+    actor = await h.remote()
+    await h.set_should_fail.remote()
 
-    wait_for_condition(check_new_actor_started, handle=h, original_actors=actor)
-    ray.get([h.remote()._to_object_ref_sync() for _ in range(100)])
+    await async_wait_for_condition(
+        check_new_actor_started, handle=h, original_actors=actor
+    )
+    await asyncio.gather(*[h.remote() for _ in range(100)])
 
 
-def test_user_defined_method_hangs(serve_instance):
+@pytest.mark.asyncio
+async def test_user_defined_method_hangs(serve_instance):
     h = serve.run(Patient.options(graceful_shutdown_timeout_s=0).bind())
-    actor = h.remote().result()
-    h.set_should_hang.remote().result()
+    actor = await h.remote()
+    await h.set_should_hang.remote()
 
-    wait_for_condition(check_new_actor_started, handle=h, original_actors=actor)
-    ray.get([h.remote()._to_object_ref_sync() for _ in range(100)])
+    await async_wait_for_condition(
+        check_new_actor_started, handle=h, original_actors=actor
+    )
+    await asyncio.gather(*[h.remote() for _ in range(100)])
 
 
-def test_multiple_replicas(serve_instance):
+@pytest.mark.asyncio
+async def test_multiple_replicas(serve_instance):
     h = serve.run(Patient.options(num_replicas=2).bind())
     actors = {
-        a._actor_id
-        for a in ray.get([h.remote()._to_object_ref_sync() for _ in range(100)])
+        a._actor_id for a in await asyncio.gather(*[h.remote() for _ in range(100)])
     }
     assert len(actors) == 2
 
-    h.set_should_fail.remote().result()
+    await h.set_should_fail.remote()
 
-    wait_for_condition(check_new_actor_started, handle=h, original_actors=actors)
+    await async_wait_for_condition(
+        check_new_actor_started, handle=h, original_actors=actors
+    )
 
     new_actors = {
-        a._actor_id
-        for a in ray.get([h.remote()._to_object_ref_sync() for _ in range(100)])
+        a._actor_id for a in await asyncio.gather(*[h.remote() for _ in range(100)])
     }
     assert len(new_actors) == 2
     assert len(new_actors.intersection(actors)) == 1

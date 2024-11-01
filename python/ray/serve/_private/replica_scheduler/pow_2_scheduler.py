@@ -23,6 +23,7 @@ from ray.serve._private.common import (
     DeploymentHandleSource,
     DeploymentID,
     ReplicaID,
+    ReplicaQueueLengthInfo,
     RequestMetadata,
     RunningReplicaInfo,
 )
@@ -35,9 +36,9 @@ from ray.serve._private.constants import (
 from ray.serve._private.replica_scheduler.common import (
     PendingRequest,
     ReplicaQueueLengthCache,
-    ReplicaScheduler,
-    ReplicaWrapper,
 )
+from ray.serve._private.replica_scheduler.replica_scheduler import ReplicaScheduler
+from ray.serve._private.replica_scheduler.replica_wrapper import ReplicaWrapper
 from ray.util import metrics
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
@@ -100,6 +101,9 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
         self_availability_zone: Optional[str] = None,
         use_replica_queue_len_cache: bool = False,
         get_curr_time_s: Optional[Callable[[], float]] = None,
+        create_replica_wrapper_func: Optional[
+            Callable[[RunningReplicaInfo], ReplicaWrapper]
+        ] = None,
     ):
         self._loop = event_loop
         self._deployment_id = deployment_id
@@ -110,6 +114,7 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
         self._self_actor_handle = self_actor_handle
         self._self_availability_zone = self_availability_zone
         self._use_replica_queue_len_cache = use_replica_queue_len_cache
+        self._create_replica_wrapper_func = create_replica_wrapper_func
 
         # Current replicas available to be scheduled.
         # Updated via `update_replicas`.
@@ -235,6 +240,31 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
     @property
     def replica_queue_len_cache(self) -> ReplicaQueueLengthCache:
         return self._replica_queue_len_cache
+
+    def create_replica_wrapper(
+        self, replica_info: RunningReplicaInfo
+    ) -> ReplicaWrapper:
+        return self._create_replica_wrapper_func(replica_info)
+
+    def on_replica_actor_died(self, replica_id: ReplicaID):
+        """Drop replica from replica set so it's not considered for future requests."""
+        self._replicas.pop(replica_id, None)
+        self._replica_id_set.discard(replica_id)
+        for id_set in self._colocated_replica_ids.values():
+            id_set.discard(replica_id)
+
+    def on_replica_actor_unavailable(self, replica_id: ReplicaID):
+        """Invalidate cache entry so active probing is required for the next request."""
+        self._replica_queue_len_cache.invalidate_key(replica_id)
+
+    def on_new_queue_len_info(
+        self, replica_id: ReplicaID, queue_len_info: ReplicaQueueLengthInfo
+    ):
+        """Update queue length cache with new info received from replica."""
+        if self._use_replica_queue_len_cache:
+            self._replica_queue_len_cache.update(
+                replica_id, queue_len_info.num_ongoing_requests
+            )
 
     def update_replicas(self, replicas: List[ReplicaWrapper]):
         """Update the set of available replicas to be considered for scheduling.
@@ -411,6 +441,7 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
                         # If the timeout is up and we've already tried the candidates
                         # with the fewest models loaded, fall back to all replicas.
                         candidate_replica_ids = self._replica_id_set
+                    should_backoff = True
                 elif (
                     self._prefer_local_node_routing
                     and not tried_same_node
@@ -422,6 +453,7 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
                         LocalityScope.NODE
                     ]
                     tried_same_node = True
+                    should_backoff = False
                 elif (
                     self._prefer_local_az_routing
                     and not tried_same_az
@@ -436,10 +468,12 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
                         LocalityScope.AVAILABILITY_ZONE
                     ]
                     tried_same_az = True
+                    should_backoff = False
                 else:
                     # On subsequent iterations or when there are no replicas on the same
                     # node or AZ, consider all available replicas.
                     candidate_replica_ids = self._replica_id_set
+                    should_backoff = True
 
                 if candidate_replica_ids:
                     chosen_ids = random.sample(
@@ -447,6 +481,15 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
                         k=min(2, len(candidate_replica_ids)),
                     )
                     yield [self._replicas[chosen_id] for chosen_id in chosen_ids]
+
+                # We have a slight unintended behavior when enabled locality routing
+                # for both node and AZ. The intention is to try same node first,
+                # then try same AZ if node fails, then try everything else until a
+                # replica is found. These sequence should only help to reduce the
+                # latency of the request. No backoff and sleep should be applied, until
+                # we have fall into the case trying on all available replicas.
+                if not should_backoff:
+                    continue
 
                 if not entered_backoff:
                     entered_backoff = True
@@ -463,19 +506,6 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
                 self.num_scheduling_tasks_in_backoff_gauge.set(
                     self.num_scheduling_tasks_in_backoff
                 )
-
-    def on_replica_actor_died(self, replica_id: ReplicaID):
-        """Drop replica from replica set so it's not considered for future requests."""
-
-        self._replicas.pop(replica_id, None)
-        self._replica_id_set.discard(replica_id)
-        for id_set in self._colocated_replica_ids.values():
-            id_set.discard(replica_id)
-
-    def on_replica_actor_unavailable(self, replica_id: ReplicaID):
-        """Invalidate cache entry so active probing is required for the next request."""
-
-        self._replica_queue_len_cache.invalidate_key(replica_id)
 
     async def _probe_queue_lens(
         self,
@@ -638,7 +668,6 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
 
     def _get_pending_request_matching_metadata(
         self,
-        replica: ReplicaWrapper,
         request_metadata: Optional[RequestMetadata] = None,
     ) -> Optional[PendingRequest]:
         if request_metadata is None or not request_metadata.multiplexed_model_id:
@@ -667,7 +696,7 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
         # First try to match a pending request based on the request metadata (currently
         # this only looks at the multiplexed model ID).
         matched_pending_request = self._get_pending_request_matching_metadata(
-            replica, request_metadata
+            request_metadata
         )
         if matched_pending_request is not None:
             matched_pending_request.future.set_result(replica)
@@ -709,6 +738,18 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
                 async for candidates in self.choose_two_replicas_with_backoff(
                     request_metadata
                 ):
+                    # Clear out pending requests at the front of the
+                    # queue that have been cancelled, then reevaluate
+                    # if we need to continue this scheduling task.
+                    while (
+                        len(self._pending_requests_to_fulfill) > 0
+                        and self._pending_requests_to_fulfill[0].future.done()
+                    ):
+                        self._pending_requests_to_fulfill.popleft()
+
+                    if len(self._scheduling_tasks) > self.target_num_scheduling_tasks:
+                        break
+
                     replica = await self.select_from_candidate_replicas(
                         candidates, backoff_index
                     )

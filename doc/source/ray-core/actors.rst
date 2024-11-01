@@ -104,7 +104,7 @@ Use `ray list actors` from :ref:`State API <state-api-overview-ref>` to see acto
   Stats:
   ------------------------------
   Total: 1
-  
+
   Table:
   ------------------------------
       ACTOR_ID                          CLASS_NAME    STATE      JOB_ID  NAME    NODE_ID                                                     PID  RAY_NAMESPACE
@@ -403,8 +403,8 @@ Cancel Actor Tasks by calling :func:`ray.cancel() <ray.cancel>` on the returned 
 In Ray, Task cancellation behavior is contingent on the Task's current state:
 
 **Unscheduled Tasks**:
-If the Actor Task hasn't been scheduled yet, Ray attempts to cancel the scheduling. 
-When successfully cancelled at this stage, invoking ``ray.get(actor_task_ref)`` 
+If the Actor Task hasn't been scheduled yet, Ray attempts to cancel the scheduling.
+When successfully cancelled at this stage, invoking ``ray.get(actor_task_ref)``
 produce a :class:`TaskCancelledError <ray.exceptions.TaskCancelledError>`.
 
 **Running Actor Tasks (Regular Actor, Threaded Actor)**:
@@ -412,8 +412,8 @@ For tasks classified as a single-threaded Actor or a multi-threaded Actor,
 Ray offers no mechanism for interruption.
 
 **Running Async Actor Tasks**:
-For Tasks classified as `async Actors <_async-actors>`, Ray seeks to cancel the associated `asyncio.Task`. 
-This cancellation approach aligns with the standards presented in 
+For Tasks classified as `async Actors <_async-actors>`, Ray seeks to cancel the associated `asyncio.Task`.
+This cancellation approach aligns with the standards presented in
 `asyncio task cancellation <https://docs.python.org/3/library/asyncio-task.html#task-cancellation>`__.
 Note that `asyncio.Task` won't be interrupted in the middle of execution if you don't `await` within the async function.
 
@@ -424,7 +424,7 @@ the Task might not be cancelled.
 You can check if a Task was successfully cancelled using ``ray.get(actor_task_ref)``.
 
 **Recursive Cancellation**:
-Ray tracks all child and Actor Tasks. When the``recursive=True`` argument is given,
+Ray tracks all child and Actor Tasks. When the ``recursive=True`` argument is given,
 it cancels all child and Actor Tasks.
 
 Scheduling
@@ -466,7 +466,7 @@ define can run. This also implies that tasks are scheduled more flexibly,
 and that if you don't need the stateful part of an actor, you're mostly
 better off using tasks.
 
-Task Events 
+Task Events
 -----------
 
 By default, Ray traces the execution of actor tasks, reporting task status events and profiling events

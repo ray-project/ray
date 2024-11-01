@@ -607,9 +607,10 @@ void NodeManager::DestroyWorker(std::shared_ptr<WorkerInterface> worker,
 }
 
 void NodeManager::HandleJobStarted(const JobID &job_id, const JobTableData &job_data) {
-  RAY_LOG(INFO) << "New job has started. Job id " << job_id << " Driver pid "
-                << job_data.driver_pid() << " is dead: " << job_data.is_dead()
-                << " driver address: " << job_data.driver_address().ip_address();
+  RAY_LOG(DEBUG).WithField(job_id)
+      << "HandleJobStarted Driver pid " << job_data.driver_pid()
+      << " is dead: " << job_data.is_dead()
+      << " driver address: " << job_data.driver_address().ip_address();
   worker_pool_.HandleJobStarted(job_id, job_data.config());
   // Tasks of this job may already arrived but failed to pop a worker because the job
   // config is not local yet. So we trigger dispatching again here to try to
@@ -618,7 +619,7 @@ void NodeManager::HandleJobStarted(const JobID &job_id, const JobTableData &job_
 }
 
 void NodeManager::HandleJobFinished(const JobID &job_id, const JobTableData &job_data) {
-  RAY_LOG(DEBUG) << "HandleJobFinished " << job_id;
+  RAY_LOG(DEBUG).WithField(job_id) << "HandleJobFinished";
   RAY_CHECK(job_data.is_dead());
   // Force kill all the worker processes belonging to the finished job
   // so that no worker processes is leaked.
@@ -629,16 +630,17 @@ void NodeManager::HandleJobFinished(const JobID &job_id, const JobTableData &job
         (worker->GetAssignedJobId() == job_id)) {
       // Don't kill worker processes belonging to the detached actor
       // since those are expected to outlive the job.
-      RAY_LOG(INFO) << "The leased worker " << worker->WorkerId()
-                    << " is killed because the job " << job_id << " finished.";
+      RAY_LOG(INFO).WithField(worker->WorkerId())
+          << "The leased worker "
+          << " is killed because the job " << job_id << " finished.";
       rpc::ExitRequest request;
       request.set_force_exit(true);
       worker->rpc_client()->Exit(
           request, [this, worker](const ray::Status &status, const rpc::ExitReply &r) {
             if (!status.ok()) {
-              RAY_LOG(WARNING) << "Failed to send exit request to worker "
-                               << worker->WorkerId() << ": " << status.ToString()
-                               << ". Killing it using SIGKILL instead.";
+              RAY_LOG(WARNING).WithField(worker->WorkerId())
+                  << "Failed to send exit request to worker "
+                  << ": " << status.ToString() << ". Killing it using SIGKILL instead.";
               // Just kill-9 as a last resort.
               KillWorker(worker, /* force */ true);
             }
@@ -713,12 +715,12 @@ void NodeManager::HandleReleaseUnusedBundles(rpc::ReleaseUnusedBundlesRequest re
 
   for (const auto &worker : workers_associated_with_unused_bundles) {
     RAY_LOG(DEBUG)
-        << "Destroying worker since its bundle was unused. Placement group id: "
-        << worker->GetBundleId().first
-        << ", bundle index: " << worker->GetBundleId().second
-        << ", task id: " << worker->GetAssignedTaskId()
-        << ", actor id: " << worker->GetActorId()
-        << ", worker id: " << worker->WorkerId();
+            .WithField(worker->GetBundleId().first)
+            .WithField(worker->GetAssignedTaskId())
+            .WithField(worker->GetActorId())
+            .WithField(worker->WorkerId())
+        << "Destroying worker since its bundle was unused, bundle index: "
+        << worker->GetBundleId().second;
     DestroyWorker(worker,
                   rpc::WorkerExitType::INTENDED_SYSTEM_EXIT,
                   "Worker exits because it uses placement group bundles that are not "
@@ -989,7 +991,7 @@ void NodeManager::WarnResourceDeadlock() {
 void NodeManager::NodeAdded(const GcsNodeInfo &node_info) {
   const NodeID node_id = NodeID::FromBinary(node_info.node_id());
 
-  RAY_LOG(DEBUG) << "[NodeAdded] Received callback from node id " << node_id;
+  RAY_LOG(DEBUG).WithField(node_id) << "[NodeAdded] Received callback from node id ";
   if (node_id == self_node_id_) {
     return;
   }
@@ -1025,7 +1027,7 @@ void NodeManager::NodeAdded(const GcsNodeInfo &node_info) {
 void NodeManager::NodeRemoved(const NodeID &node_id) {
   // TODO(swang): If we receive a notification for our own death, clean up and
   // exit immediately.
-  RAY_LOG(DEBUG) << "[NodeRemoved] Received callback from node id " << node_id;
+  RAY_LOG(DEBUG).WithField(node_id) << "[NodeRemoved] Received callback from node id ";
 
   if (node_id == self_node_id_) {
     if (!is_shutdown_request_received_) {
@@ -1042,7 +1044,8 @@ void NodeManager::NodeRemoved(const NodeID &node_id) {
     } else {
       // No-op since this node already starts to be drained, and GCS already knows about
       // it.
-      RAY_LOG(INFO) << "Node is marked as dead by GCS because the node is drained.";
+      RAY_LOG(INFO).WithField(node_id)
+          << "Node is marked as dead by GCS because the node is drained.";
       return;
     }
   }
@@ -1053,8 +1056,8 @@ void NodeManager::NodeRemoved(const NodeID &node_id) {
   // Remove the node from the resource map.
   if (!cluster_resource_scheduler_->GetClusterResourceManager().RemoveNode(
           scheduling::NodeID(node_id.Binary()))) {
-    RAY_LOG(DEBUG) << "Received NodeRemoved callback for an unknown node: " << node_id
-                   << ".";
+    RAY_LOG(DEBUG).WithField(node_id)
+        << "Received NodeRemoved callback for an unknown node.";
     return;
   }
 
@@ -1079,7 +1082,7 @@ void NodeManager::HandleUnexpectedWorkerFailure(const rpc::WorkerDeltaData &data
   const WorkerID worker_id = WorkerID::FromBinary(data.worker_id());
   const NodeID node_id = NodeID::FromBinary(data.raylet_id());
   if (!worker_id.IsNil()) {
-    RAY_LOG(DEBUG) << "Worker " << worker_id << " failed";
+    RAY_LOG(DEBUG).WithField(worker_id) << "Worker failed";
     failed_workers_cache_.insert(worker_id);
   } else {
     RAY_CHECK(!node_id.IsNil());
@@ -1093,7 +1096,8 @@ void NodeManager::HandleUnexpectedWorkerFailure(const rpc::WorkerDeltaData &data
     const auto owner_worker_id =
         WorkerID::FromBinary(worker->GetOwnerAddress().worker_id());
     const auto owner_node_id = NodeID::FromBinary(worker->GetOwnerAddress().raylet_id());
-    RAY_LOG(DEBUG) << "Lease " << worker->WorkerId() << " owned by " << owner_worker_id;
+    RAY_LOG(DEBUG).WithField(worker->WorkerId())
+        << "Lease worker owned by " << owner_worker_id;
     RAY_CHECK(!owner_worker_id.IsNil() && !owner_node_id.IsNil());
     if (!worker->IsDetachedActor()) {
       if (!worker_id.IsNil()) {
@@ -1123,10 +1127,11 @@ void NodeManager::HandleUnexpectedWorkerFailure(const rpc::WorkerDeltaData &data
 
 bool NodeManager::ResourceCreateUpdated(const NodeID &node_id,
                                         const ResourceRequest &createUpdatedResources) {
-  RAY_LOG(DEBUG) << "[ResourceCreateUpdated] received callback from node id " << node_id
-                 << " with created or updated resources: "
-                 << createUpdatedResources.DebugString() << ". Updating resource map."
-                 << " skip=" << (node_id == self_node_id_);
+  RAY_LOG(DEBUG).WithField(node_id)
+      << "[ResourceCreateUpdated] received callback from node with created or updated "
+         "resources: "
+      << createUpdatedResources.DebugString()
+      << ". Updating resource map. skip=" << (node_id == self_node_id_);
 
   // Skip updating local node since local node always has the latest information.
   // Updating local node could result in a inconsistence view in cluster resource
@@ -1152,9 +1157,9 @@ bool NodeManager::ResourceDeleted(const NodeID &node_id,
     for (auto &resource_name : resource_names) {
       oss << resource_name << ", ";
     }
-    RAY_LOG(DEBUG) << "[ResourceDeleted] received callback from node id " << node_id
-                   << " with deleted resources: " << oss.str()
-                   << ". Updating resource map. skip=" << (node_id == self_node_id_);
+    RAY_LOG(DEBUG).WithField(node_id)
+        << "[ResourceDeleted] received callback from node with deleted resources: "
+        << oss.str() << ". Updating resource map. skip=" << (node_id == self_node_id_);
   }
 
   // Skip updating local node since local node always has the latest information.
@@ -1197,9 +1202,8 @@ bool NodeManager::UpdateResourceUsage(
     const syncer::ResourceViewSyncMessage &resource_view_sync_message) {
   if (!cluster_resource_scheduler_->GetClusterResourceManager().UpdateNode(
           scheduling::NodeID(node_id.Binary()), resource_view_sync_message)) {
-    RAY_LOG(INFO)
-        << "[UpdateResourceUsage]: received resource usage from unknown node id "
-        << node_id;
+    RAY_LOG(INFO).WithField(node_id)
+        << "[UpdateResourceUsage]: received resource usage from unknown node.";
     return false;
   }
 
@@ -1503,9 +1507,9 @@ void NodeManager::DisconnectClient(const std::shared_ptr<ClientConnection> &clie
   ReleaseWorker(worker->WorkerId());
 
   if (creation_task_exception != nullptr) {
-    RAY_LOG(INFO) << "Formatted creation task exception: "
-                  << creation_task_exception->formatted_exception_string()
-                  << ", worker_id: " << worker->WorkerId();
+    RAY_LOG(INFO).WithField(worker->WorkerId())
+        << "Formatted creation task exception: "
+        << creation_task_exception->formatted_exception_string();
   }
   // Publish the worker failure.
   auto worker_failure_data_ptr =
@@ -1579,9 +1583,8 @@ void NodeManager::DisconnectClient(const std::shared_ptr<ClientConnection> &clie
     RAY_CHECK_OK(gcs_client_->Jobs().AsyncMarkFinished(job_id, nullptr));
     worker_pool_.DisconnectDriver(worker);
 
-    RAY_LOG(INFO) << "Driver (pid=" << worker->GetProcess().GetId()
-                  << ") is disconnected. "
-                  << "job_id: " << worker->GetAssignedJobId();
+    RAY_LOG(INFO).WithField(worker->WorkerId()).WithField(worker->GetAssignedJobId())
+        << "Driver (pid=" << worker->GetProcess().GetId() << ") is disconnected.";
     if (disconnect_type == rpc::WorkerExitType::SYSTEM_ERROR) {
       RAY_EVENT(ERROR, EL_RAY_DRIVER_FAILURE)
               .WithField("node_id", self_node_id_.Hex())
@@ -1804,8 +1807,8 @@ void NodeManager::HandleRequestWorkerLease(rpc::RequestWorkerLeaseRequest reques
       NodeID::FromBinary(task.GetTaskSpecification().CallerAddress().raylet_id());
   if (!task.GetTaskSpecification().IsDetachedActor() &&
       IsWorkerDead(caller_worker, caller_node)) {
-    RAY_LOG(INFO) << "Caller of RequestWorkerLease is dead. worker = " << caller_worker
-                  << ", node = " << caller_node << ". Skip leasing.";
+    RAY_LOG(INFO).WithField(caller_worker).WithField(caller_node)
+        << "Caller of RequestWorkerLease is dead. Skip leasing.";
     reply->set_canceled(true);
     reply->set_failure_type(rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_INTENDED);
     reply->set_scheduling_failure_message(
@@ -1837,13 +1840,13 @@ void NodeManager::HandleRequestWorkerLease(rpc::RequestWorkerLeaseRequest reques
           // its resource view of this raylet.
           if (RayConfig::instance().gcs_actor_scheduling_enabled()) {
             auto normal_task_resources = local_task_manager_->CalcNormalTaskResources();
-            RAY_LOG(DEBUG) << "Reject leasing as the raylet has no enough resources."
-                           << " actor_id = " << actor_id << ", normal_task_resources = "
-                           << normal_task_resources.DebugString()
-                           << ", local_resoruce_view = "
-                           << cluster_resource_scheduler_->GetClusterResourceManager()
-                                  .GetNodeResourceViewString(
-                                      scheduling::NodeID(self_node_id_.Binary()));
+            RAY_LOG(DEBUG).WithField(actor_id)
+                << "Reject leasing as the raylet has no enough resources. "
+                   "normal_task_resources = "
+                << normal_task_resources.DebugString() << ", local_resoruce_view = "
+                << cluster_resource_scheduler_->GetClusterResourceManager()
+                       .GetNodeResourceViewString(
+                           scheduling::NodeID(self_node_id_.Binary()));
             resources_data->set_resources_normal_task_changed(true);
             auto resource_map = normal_task_resources.GetResourceMap();
             resources_data->mutable_resources_normal_task()->insert(resource_map.begin(),
@@ -2064,8 +2067,8 @@ void NodeManager::HandleReleaseUnusedActorWorkers(
   }
 
   for (auto &worker : unused_actor_workers) {
-    RAY_LOG(DEBUG) << "GCS requested to release unused actor worker: "
-                   << worker->WorkerId();
+    RAY_LOG(DEBUG).WithField(worker->WorkerId())
+        << "GCS requested to release unused actor worker.";
     DestroyWorker(worker,
                   rpc::WorkerExitType::INTENDED_SYSTEM_EXIT,
                   "Worker is no longer needed by the GCS.");
@@ -2098,8 +2101,8 @@ void NodeManager::MarkObjectsAsFailed(
   const std::string meta = std::to_string(static_cast<int>(error_type));
   for (const auto &ref : objects_to_fail) {
     ObjectID object_id = ObjectID::FromBinary(ref.object_id());
-    RAY_LOG(DEBUG) << "Mark the object id " << object_id << " as failed due to "
-                   << error_type;
+    RAY_LOG(DEBUG).WithField(object_id)
+        << "Mark the object as failed due to " << error_type;
     std::shared_ptr<Buffer> data;
     Status status;
     status = store_client_->TryCreateImmediately(
@@ -2114,7 +2117,7 @@ void NodeManager::MarkObjectsAsFailed(
       status = store_client_->Seal(object_id);
     }
     if (!status.ok() && !status.IsObjectExists()) {
-      RAY_LOG(DEBUG) << "Marking plasma object failed " << object_id;
+      RAY_LOG(DEBUG).WithField(object_id) << "Marking plasma object failed.";
       // If we failed to save the error code, log a warning and push an error message
       // to the driver.
       std::ostringstream stream;
@@ -2202,7 +2205,7 @@ bool NodeManager::FinishAssignedTask(const std::shared_ptr<WorkerInterface> &wor
   // std::shared_ptr<WorkerInterface> instead of refs.
   auto &worker = *worker_ptr;
   TaskID task_id = worker.GetAssignedTaskId();
-  RAY_LOG(DEBUG) << "Finished task " << task_id;
+  RAY_LOG(DEBUG).WithField(task_id) << "Finished task ";
 
   RayTask task;
   local_task_manager_->TaskFinished(worker_ptr, &task);
@@ -2267,9 +2270,8 @@ void NodeManager::HandleObjectLocal(const ObjectInfo &object_info) {
   const ObjectID &object_id = object_info.object_id;
   // Notify the task dependency manager that this object is local.
   const auto ready_task_ids = dependency_manager_.HandleObjectLocal(object_id);
-  RAY_LOG(DEBUG) << "Object local " << object_id << ", "
-                 << " on " << self_node_id_ << ", " << ready_task_ids.size()
-                 << " tasks ready";
+  RAY_LOG(DEBUG).WithField(object_id).WithField(self_node_id_)
+      << "Object local on node, " << ready_task_ids.size() << " tasks ready";
   local_task_manager_->TasksUnblocked(ready_task_ids);
 
   // Notify the wait manager that this object is local.
@@ -2346,7 +2348,7 @@ void NodeManager::ProcessSubscribePlasmaReady(
     rpc::PlasmaObjectReadyRequest request;
     request.set_object_id(id.Binary());
 
-    RAY_LOG(DEBUG) << "Object " << id << " is already local, firing callback directly.";
+    RAY_LOG(DEBUG).WithField(id) << "Object is already local, firing callback directly.";
     associated_worker->rpc_client()->PlasmaObjectReady(
         request, [](Status status, const rpc::PlasmaObjectReadyReply &reply) {
           if (!status.ok()) {
@@ -2472,9 +2474,10 @@ void NodeManager::HandlePinObjectIDs(rpc::PinObjectIDsRequest request,
     auto result_it = results.begin();
     while (object_id_it != object_ids.end()) {
       if (*result_it == nullptr) {
-        RAY_LOG(DEBUG) << "Failed to get object in the object store: " << *object_id_it
-                       << ". This should only happen when the owner tries to pin a "
-                       << "secondary copy and it's evicted in the meantime";
+        RAY_LOG(DEBUG).WithField(*object_id_it)
+            << "Failed to get object in the object store. This should only happen when "
+               "the owner tries to pin a "
+            << "secondary copy and it's evicted in the meantime";
         object_id_it = object_ids.erase(object_id_it);
         result_it = results.erase(result_it);
         reply->add_successes(false);
@@ -2859,20 +2862,22 @@ MemoryUsageRefreshCallback NodeManager::CreateMemoryUsageRefreshCallback() {
                 float usage_threshold) {
     if (high_memory_eviction_target_ != nullptr) {
       if (!high_memory_eviction_target_->GetProcess().IsAlive()) {
-        RAY_LOG(INFO) << "Worker evicted and process killed to reclaim memory. "
-                      << "worker pid: "
-                      << high_memory_eviction_target_->GetProcess().GetId()
-                      << " task: " << high_memory_eviction_target_->GetAssignedTaskId();
+        RAY_LOG(INFO)
+                .WithField(high_memory_eviction_target_->WorkerId())
+                .WithField(high_memory_eviction_target_->GetAssignedTaskId())
+            << "Worker evicted and process killed to reclaim memory. "
+            << "worker pid: " << high_memory_eviction_target_->GetProcess().GetId();
         high_memory_eviction_target_ = nullptr;
       }
     }
     if (is_usage_above_threshold) {
       if (high_memory_eviction_target_ != nullptr) {
         RAY_LOG_EVERY_MS(INFO, 1000)
+                .WithField(high_memory_eviction_target_->GetAssignedTaskId())
+                .WithField(high_memory_eviction_target_->WorkerId())
             << "Memory usage above threshold. "
             << "Still waiting for worker eviction to free up memory. "
-            << "worker pid: " << high_memory_eviction_target_->GetProcess().GetId()
-            << "task: " << high_memory_eviction_target_->GetAssignedTaskId();
+            << "worker pid: " << high_memory_eviction_target_->GetProcess().GetId();
       } else {
         system_memory.process_used_bytes = MemoryMonitor::GetProcessMemoryUsage();
         auto workers = worker_pool_.GetAllRegisteredWorkers();
@@ -3035,13 +3040,13 @@ const std::string NodeManager::CreateOomKillMessageSuggestions(
 void NodeManager::SetTaskFailureReason(const TaskID &task_id,
                                        const rpc::RayErrorInfo &failure_reason,
                                        bool should_retry) {
-  RAY_LOG(DEBUG) << "set failure reason for task " << task_id;
+  RAY_LOG(DEBUG).WithField(task_id) << "set failure reason for task ";
   ray::TaskFailureEntry entry(failure_reason, should_retry);
   auto result = task_failure_reasons_.emplace(task_id, std::move(entry));
   if (!result.second) {
-    RAY_LOG(WARNING) << "Trying to insert failure reason more than once for the same "
-                        "task, the previous failure will be removed. Task id: "
-                     << task_id;
+    RAY_LOG(WARNING).WithField(task_id)
+        << "Trying to insert failure reason more than once for the same "
+           "task, the previous failure will be removed.";
   }
 }
 
@@ -3052,8 +3057,8 @@ void NodeManager::GCTaskFailureReason() {
             std::chrono::steady_clock::now() - entry.second.creation_time)
             .count());
     if (duration > RayConfig::instance().task_failure_entry_ttl_ms()) {
-      RAY_LOG(INFO) << "Removing task failure reason since it expired, task: "
-                    << entry.first;
+      RAY_LOG(INFO).WithField(entry.first)
+          << "Removing task failure reason since it expired";
       task_failure_reasons_.erase(entry.first);
     }
   }

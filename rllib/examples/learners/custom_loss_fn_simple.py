@@ -69,6 +69,7 @@ With --regularizer-coeff=0.0 and --lr=0.01
 """
 
 from ray.rllib.algorithms.ppo import PPOConfig
+from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
 from ray.rllib.examples.learners.classes.custom_loss_fn_learner import (
     PPOTorchLearnerWithWeightRegularizerLoss,
 )
@@ -128,16 +129,13 @@ if __name__ == "__main__":
             # `self.config.learner_config_dict['regularizer_coeff']`
             learner_config_dict={"regularizer_coeff": args.regularizer_coeff},
             # Some settings to make this example learn better.
-            num_sgd_iter=6,
+            num_epochs=6,
             vf_loss_coeff=0.01,
             # The learning rate, settable through the command line `--lr` arg.
             lr=args.lr,
         )
         .rl_module(
-            model_config_dict={
-                "vf_share_layers": True,
-                "uses_new_env_runners": True,
-            },
+            model_config=DefaultModelConfig(vf_share_layers=True),
         )
     )
 
