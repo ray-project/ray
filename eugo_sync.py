@@ -4,12 +4,14 @@
 from functools import cached_property
 from pathlib import Path
 import re
-from pprint import pprint
 from dataclasses import dataclass
 
 # MARK: - 1.2. 3rd-party
 from fsspec import filesystem
 
+
+# MARK: - 2. Types
+# MARK: - 2.1. Private
 @dataclass(frozen=True, eq=True)
 class NativeFile:
     path: Path
@@ -19,11 +21,16 @@ class NativeFile:
         return self.path.name
 
 
+# MARK: - 3. Globals
+# MARK: - 3.1. Private
 local_fs = filesystem("dir", path=Path(__file__).parent)
 
 # ".h" - they aren't mentioned explicitly but required by .cc and .c files, so no need to check
 NATIVE_FILE_EXTENSIONS = frozenset([".c", ".cc"])
 
+
+# MARK: - 4. Functions
+# MARK: - 4.1. Private
 def find_native_source_files(root_dir: Path) -> frozenset[NativeFile]:
     native_source_files: set[str] = set()
 
@@ -47,6 +54,7 @@ def filter_files(
         for pattern in exclude_patterns:
             if re.search(pattern, file.name) is not None or re.search(pattern, str(file.path)) is not None:
                 excluded_files.add(file)
+                break # Inner loop
 
     return files.difference(excluded_files)
 
@@ -63,7 +71,8 @@ def does_file_contains_string(file_path: Path, search_string: str):
         return re.search(pattern, content) is not None
 
 
-def main(root_dir: Path, exclude_patterns: frozenset[str]):
+# MARK: - 5. CLI Entrypoint
+def main(root_dir: Path, exclude_patterns: frozenset[str] = frozenset()):
     meson_build_file_paths = find_meson_build_files(root_dir=root_dir)
 
     native_source_files = filter_files(
@@ -76,9 +85,10 @@ def main(root_dir: Path, exclude_patterns: frozenset[str]):
         for meson_build_file_path in meson_build_file_paths:
             if does_file_contains_string(meson_build_file_path, native_source_file.name):
                 used_native_source_files.add(native_source_file)
+                break # Inner loop
 
     unused_native_source_files = native_source_files.difference(used_native_source_files)
-    unused_native_source_files_tuples = list(sorted(map(lambda _0: (str(_0.path), _0.name), unused_native_source_files), key=lambda _0: _0[0]))
+    unused_native_source_files_tuples = list(sorted(map(lambda _0: (_0.name, "->", str(_0.path)), unused_native_source_files), key=lambda _0: _0[0]))
     if len(unused_native_source_files_tuples) == 0:
         print("No raptors found! Great job.")
     else:
@@ -90,5 +100,8 @@ def main(root_dir: Path, exclude_patterns: frozenset[str]):
 if __name__ == "__main__":
     main(
         root_dir=Path("./"),
-        exclude_patterns=frozenset([r'(?i)(?:^|/)(java|test)(?:/|$)', r'test\.cc$'])
+        exclude_patterns=frozenset([
+            r'(?i)(?:^|/)(java|test)(?:/|$)',
+            r'test\.cc$'
+        ])
     )
