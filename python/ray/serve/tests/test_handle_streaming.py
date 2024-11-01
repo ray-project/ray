@@ -8,8 +8,8 @@ from ray import serve
 from ray.serve import Deployment
 from ray.serve.handle import DeploymentHandle
 
-
 LOCAL_TESTING_MODE = os.environ.get("LOCAL_TESTING_MODE", "0") == "1"
+
 
 @serve.deployment
 class AsyncStreamer:
@@ -70,7 +70,9 @@ async def async_gen_function(n: int):
 @pytest.mark.parametrize("deployment", [AsyncStreamer, SyncStreamer])
 class TestAppHandleStreaming:
     def test_basic(self, serve_instance, deployment: Deployment):
-        h = serve.run(deployment.bind(), _local_testing_mode=LOCAL_TESTING_MODE).options(stream=True)
+        h = serve.run(
+            deployment.bind(), _local_testing_mode=LOCAL_TESTING_MODE
+        ).options(stream=True)
 
         # Test calling __call__ generator.
         gen = h.remote(5)
@@ -113,7 +115,9 @@ class TestAppHandleStreaming:
             h.call_inner_generator.remote(5).result()
 
     def test_call_no_gen_with_stream_flag(self, serve_instance, deployment: Deployment):
-        h = serve.run(deployment.bind(), _local_testing_mode=LOCAL_TESTING_MODE).options(stream=True)
+        h = serve.run(
+            deployment.bind(), _local_testing_mode=LOCAL_TESTING_MODE
+        ).options(stream=True)
 
         gen = h.unary.remote(0)
         with pytest.raises(
@@ -123,14 +127,18 @@ class TestAppHandleStreaming:
             next(gen)
 
     def test_generator_yields_no_results(self, serve_instance, deployment: Deployment):
-        h = serve.run(deployment.bind(), _local_testing_mode=LOCAL_TESTING_MODE).options(stream=True)
+        h = serve.run(
+            deployment.bind(), _local_testing_mode=LOCAL_TESTING_MODE
+        ).options(stream=True)
 
         gen = h.remote(0)
         with pytest.raises(StopIteration):
             next(gen)
 
     def test_exception_raised_in_gen(self, serve_instance, deployment: Deployment):
-        h = serve.run(deployment.bind(), _local_testing_mode=LOCAL_TESTING_MODE).options(stream=True)
+        h = serve.run(
+            deployment.bind(), _local_testing_mode=LOCAL_TESTING_MODE
+        ).options(stream=True)
 
         gen = h.remote(0, should_error=True)
         with pytest.raises(RuntimeError, match="oopsies"):
@@ -163,7 +171,9 @@ class TestDeploymentHandleStreaming:
                 # Test calling a unary method on the same deployment.
                 assert await h.options(stream=False).unary.remote(5) == 5
 
-        h = serve.run(Delegate.bind(deployment.bind()), _local_testing_mode=LOCAL_TESTING_MODE)
+        h = serve.run(
+            Delegate.bind(deployment.bind()), _local_testing_mode=LOCAL_TESTING_MODE
+        )
         h.remote().result()
 
     def test_call_gen_without_stream_flag(self, serve_instance, deployment: Deployment):
@@ -193,7 +203,9 @@ class TestDeploymentHandleStreaming:
                 ):
                     await self._h.call_inner_generator.remote(5)
 
-        h = serve.run(Delegate.bind(deployment.bind()), _local_testing_mode=LOCAL_TESTING_MODE)
+        h = serve.run(
+            Delegate.bind(deployment.bind()), _local_testing_mode=LOCAL_TESTING_MODE
+        )
         h.remote().result()
 
     def test_call_no_gen_with_stream_flag(self, serve_instance, deployment: Deployment):
@@ -228,7 +240,9 @@ class TestDeploymentHandleStreaming:
                 with pytest.raises(StopAsyncIteration):
                     await gen.__anext__()
 
-        h = serve.run(Delegate.bind(deployment.bind()), _local_testing_mode=LOCAL_TESTING_MODE)
+        h = serve.run(
+            Delegate.bind(deployment.bind()), _local_testing_mode=LOCAL_TESTING_MODE
+        )
         h.remote().result()
 
     def test_exception_raised_in_gen(self, serve_instance, deployment: Deployment):
@@ -244,7 +258,9 @@ class TestDeploymentHandleStreaming:
                 with pytest.raises(RuntimeError, match="oopsies"):
                     await gen.__anext__()
 
-        h = serve.run(Delegate.bind(deployment.bind()), _local_testing_mode=LOCAL_TESTING_MODE)
+        h = serve.run(
+            Delegate.bind(deployment.bind()), _local_testing_mode=LOCAL_TESTING_MODE
+        )
         h.remote().result()
 
     def test_call_multiple_downstreams(self, serve_instance, deployment: Deployment):
@@ -272,14 +288,19 @@ class TestDeploymentHandleStreaming:
                 with pytest.raises(StopAsyncIteration):
                     assert await gen2.__anext__()
 
-        h = serve.run(Delegate.bind(deployment.bind(), deployment.bind()), _local_testing_mode=LOCAL_TESTING_MODE)
+        h = serve.run(
+            Delegate.bind(deployment.bind(), deployment.bind()),
+            _local_testing_mode=LOCAL_TESTING_MODE,
+        )
         h.remote().result()
 
 
 @pytest.mark.parametrize("deployment", [sync_gen_function, async_gen_function])
 class TestGeneratorFunctionDeployment:
     def test_app_handle(self, deployment: Deployment):
-        h = serve.run(deployment.bind(), _local_testing_mode=LOCAL_TESTING_MODE).options(stream=True)
+        h = serve.run(
+            deployment.bind(), _local_testing_mode=LOCAL_TESTING_MODE
+        ).options(stream=True)
         gen = h.remote(5)
         assert list(gen) == list(range(5))
 
@@ -293,7 +314,9 @@ class TestGeneratorFunctionDeployment:
                 gen = self._f.remote(5)
                 assert [result async for result in gen] == list(range(5))
 
-        h = serve.run(Delegate.bind(deployment.bind()), _local_testing_mode=LOCAL_TESTING_MODE)
+        h = serve.run(
+            Delegate.bind(deployment.bind()), _local_testing_mode=LOCAL_TESTING_MODE
+        )
         h.remote().result()
 
 
