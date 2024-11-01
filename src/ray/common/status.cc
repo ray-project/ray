@@ -28,9 +28,9 @@
 
 #include "ray/common/status.h"
 
-#include <assert.h>
-
 #include <boost/system/error_code.hpp>
+#include <cassert>
+#include <sstream>
 
 #include "absl/container/flat_hash_map.h"
 
@@ -119,11 +119,18 @@ const absl::flat_hash_map<std::string, StatusCode> kStrToCode = []() {
 
 }  // namespace
 
-Status::Status(StatusCode code, const std::string &msg, int rpc_code) {
+Status::Status(StatusCode code, const std::string &msg, int rpc_code)
+    : Status(code, msg, SourceLocation{}, rpc_code) {}
+
+Status::Status(StatusCode code,
+               const std::string &msg,
+               SourceLocation loc,
+               int rpc_code) {
   assert(code != StatusCode::OK);
   state_ = new State;
   state_->code = code;
   state_->msg = msg;
+  state_->loc = loc;
   state_->rpc_code = rpc_code;
 }
 
@@ -163,8 +170,16 @@ std::string Status::ToString() const {
   if (state_ == nullptr) {
     return result;
   }
+
   result += ": ";
   result += state_->msg;
+
+  if (IsValidSourceLoc(state_->loc)) {
+    std::stringstream ss;
+    ss << state_->loc;
+    result += " at ";
+    result += ss.str();
+  }
   return result;
 }
 

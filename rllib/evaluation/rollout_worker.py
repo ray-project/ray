@@ -247,7 +247,7 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
                 through EnvContext so that envs can be configured per worker.
             recreated_worker: Whether this worker is a recreated one. Workers are
                 recreated by an Algorithm (via EnvRunnerGroup) in case
-                `recreate_failed_env_runners=True` and one of the original workers (or
+                `restart_failed_env_runners=True` and one of the original workers (or
                 an already recreated one) has failed. They don't differ from original
                 workers other than the value of this flag (`self.recreated_worker`).
             log_dir: Directory where logs can be placed.
