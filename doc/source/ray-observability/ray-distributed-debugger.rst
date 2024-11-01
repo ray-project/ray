@@ -50,7 +50,7 @@ Find and click the Ray extension in the VS Code left side nav. Add the Ray clust
 Create a Ray task
 ~~~~~~~~~~~~~~~~~
 
-Create a file `job.py` with the following snippet. Add `breakpoint()` in the Ray task. If you want to use the post-mortem debugging below, also add the `RAY_PDB=1` environment variable.
+Create a file `job.py` with the following snippet. Add `breakpoint()` in the Ray task. If you want to use the post-mortem debugging below, also add the `RAY_DEBUG_POST_MORTEM=1` environment variable.
 
 .. literalinclude:: ./doc_code/ray-distributed-debugger.py
     :language: python

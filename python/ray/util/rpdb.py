@@ -324,7 +324,7 @@ def _driver_set_trace():
 
 
 def _is_ray_debugger_post_mortem_enabled():
-    return os.environ.get("RAY_PDB", "0") == "1"
+    return os.environ.get("RAY_DEBUG_POST_MORTEM", "0") == "1"
 
 
 def _post_mortem():

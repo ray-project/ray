@@ -269,13 +269,13 @@ Next, copy the following code into a file called ``serve_debugging.py``:
 
     time.sleep(3600.0)
 
-Let's start the program with the post-mortem debugging activated (``RAY_PDB=1``):
+Let's start the program with the post-mortem debugging activated (``RAY_DEBUG_POST_MORTEM=1``):
 
 .. code-block:: bash
 
-    RAY_PDB=1 python serve_debugging.py
+    RAY_DEBUG_POST_MORTEM=1 python serve_debugging.py
 
-The flag ``RAY_PDB=1`` will have the effect that if an exception happens, Ray will
+The flag ``RAY_DEBUG_POST_MORTEM=1`` will have the effect that if an exception happens, Ray will
 drop into the debugger instead of propagating it further. Let's see how this works!
 First query the model with an invalid request using
 
