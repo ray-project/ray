@@ -113,7 +113,7 @@ def deduce_pyarrow_dtype(column_values: List[Any]) -> Optional[pa.DataType]:
         column values
     """
 
-    if not column_values:
+    if len(column_values) == 0:
         return None
 
     inferred_pa_dtype = pa.infer_type(column_values)
