@@ -1235,7 +1235,8 @@ class UserCallableWrapper:
             )
 
         except Exception as e:
-            e = wrap_to_ray_error(user_method_name, e)
+            # TODO: wtf does this even do???
+            # e = wrap_to_ray_error(user_method_name, e)
             if request_metadata.is_http_request and asgi_args is not None:
                 result = starlette.responses.Response(
                     f"Unexpected error, traceback: {e}.", status_code=500
