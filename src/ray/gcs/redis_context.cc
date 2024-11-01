@@ -431,14 +431,19 @@ void ValidateRedisDB(RedisContext &context) {
   }
 }
 
-Status ValidateAndConnectRedisSentinel(RedisContext &context,
-                                       const std::string &password,
-                                       bool enable_ssl) {
+Status ValidateRedisSentinel(RedisContext &context) {        
   auto reply = context.RunArgvSync(std::vector<std::string>{"INFO", "SENTINEL"});
   if (reply->IsNil() || reply->IsError() || reply->ReadAsString().length() == 0) {
     RAY_LOG(INFO) << "failed to get redis sentinel info, continue as a regular redis.";
     return Status::TypeError("Not a redis sentinel");
+  } else {
+    return Status::OK();
   }
+}
+
+void ConnectRedisSentinel(RedisContext &context,
+                              const std::string &password,
+                              bool enable_ssl) {
   std::vector<const char *> argv;
   std::vector<size_t> argc;
   std::vector<std::string> cmds = {"SENTINEL", "MASTERS"};
@@ -561,49 +566,59 @@ Status RedisContext::Connect(const std::string &address,
   redis_async_context_.reset(new RedisAsyncContext(std::move(async_context)));
   SetDisconnectCallback(redis_async_context_.get());
 
-  // Ray has some restrictions for RedisDB. Validate it here.
-  ValidateRedisDB(*this);
+  //handle validation and primary connection for different types of redis
+  auto sentinel_status = ValidateRedisSentinel(*this);
+  if (sentinel_status.IsTypeError()) {
+    // if type error, this is a redis cluster. continue to validate and connect
+    
+    // Ray has some restrictions for RedisDB. Validate it here.
+    ValidateRedisDB(*this);
 
-  // try re-connect to redis primary node if current connection is sentinel
-  auto sentinel_status = ValidateAndConnectRedisSentinel(*this, password, enable_ssl);
-  if (!sentinel_status.IsTypeError()) {
+    // try re-connect to redis primary node if current connection is sentinel
+    auto sentinel_status = ValidateAndConnectRedisSentinel(*this, password, enable_ssl);
+    if (!sentinel_status.IsTypeError()) {
+      // if not type error, this should be a sentinel redis. return the status code
+      // directly. continue otherwise.
+      return sentinel_status;
+    }
+
+    // Find the true leader
+    std::vector<const char *> argv;
+    std::vector<size_t> argc;
+    std::vector<std::string> cmds = {"DEL", "DUMMY"};
+    for (const auto &arg : cmds) {
+      argv.push_back(arg.data());
+      argc.push_back(arg.size());
+    }
+
+    auto redis_reply = reinterpret_cast<redisReply *>(
+        ::redisCommandArgv(context_.get(), cmds.size(), argv.data(), argc.data()));
+
+    if (redis_reply->type == REDIS_REPLY_ERROR) {
+      // This should be a MOVED error
+      // MOVED 14946 10.xx.xx.xx:7001
+      std::string error_msg(redis_reply->str, redis_reply->len);
+      freeReplyObject(redis_reply);
+      auto maybe_ip_port = ParseIffMovedError(error_msg);
+      RAY_CHECK(maybe_ip_port.has_value())
+          << "Setup Redis cluster failed in the dummy deletion: " << error_msg;
+      Disconnect();
+      const auto &[ip, port] = maybe_ip_port.value();
+      // Connect to the true leader.
+      RAY_LOG(INFO) << "Redis cluster leader is " << ip << ":" << port
+                    << ". Reconnect to it.";
+      return Connect(ip, port, password, enable_ssl);
+    } else {
+      RAY_LOG(INFO) << "Redis cluster leader is " << ip_addresses[0] << ":" << port;
+      freeReplyObject(redis_reply);
+    }
+
+    return Status::OK();
+  } else {
     // if not type error, this should be a sentinel redis. return the status code
     // directly. continue otherwise.
-    return sentinel_status;
+    return ConnectRedisSentinel(*this, password, enable_ssl);
   }
-
-  // Find the true leader
-  std::vector<const char *> argv;
-  std::vector<size_t> argc;
-  std::vector<std::string> cmds = {"DEL", "DUMMY"};
-  for (const auto &arg : cmds) {
-    argv.push_back(arg.data());
-    argc.push_back(arg.size());
-  }
-
-  auto redis_reply = reinterpret_cast<redisReply *>(
-      ::redisCommandArgv(context_.get(), cmds.size(), argv.data(), argc.data()));
-
-  if (redis_reply->type == REDIS_REPLY_ERROR) {
-    // This should be a MOVED error
-    // MOVED 14946 10.xx.xx.xx:7001
-    std::string error_msg(redis_reply->str, redis_reply->len);
-    freeReplyObject(redis_reply);
-    auto maybe_ip_port = ParseIffMovedError(error_msg);
-    RAY_CHECK(maybe_ip_port.has_value())
-        << "Setup Redis cluster failed in the dummy deletion: " << error_msg;
-    Disconnect();
-    const auto &[ip, port] = maybe_ip_port.value();
-    // Connect to the true leader.
-    RAY_LOG(INFO) << "Redis cluster leader is " << ip << ":" << port
-                  << ". Reconnect to it.";
-    return Connect(ip, port, password, enable_ssl);
-  } else {
-    RAY_LOG(INFO) << "Redis cluster leader is " << ip_addresses[0] << ":" << port;
-    freeReplyObject(redis_reply);
-  }
-
-  return Status::OK();
 }
 
 std::unique_ptr<CallbackReply> RedisContext::RunArgvSync(
