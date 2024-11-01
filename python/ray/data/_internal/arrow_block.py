@@ -176,10 +176,10 @@ class ArrowBlockBuilder(TableBlockBuilder):
 
                 from ray.data.extensions.object_extension import (
                     ArrowPythonObjectArray,
-                    object_extension_type_allowed,
+                    _object_extension_type_allowed,
                 )
 
-                if object_extension_type_allowed() and is_object_fixable_error(e):
+                if _object_extension_type_allowed() and is_object_fixable_error(e):
                     pa_cols[col_names] = ArrowPythonObjectArray.from_objects(
                         np_col_vals
                     )

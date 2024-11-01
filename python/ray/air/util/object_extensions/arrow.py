@@ -17,14 +17,14 @@ _VER = _get_pyarrow_version()
 PYARROW_VERSION = None if _VER is None else parse_version(_VER)
 
 
-def object_extension_type_allowed() -> bool:
+def _object_extension_type_allowed() -> bool:
     return (
         PYARROW_VERSION is not None
         and PYARROW_VERSION >= MIN_PYARROW_VERSION_SCALAR_SUBCLASS
     )
 
 
-def list_view_type_present() -> bool:
+def _list_view_type_present() -> bool:
     return (
         PYARROW_VERSION is not None
         and PYARROW_VERSION >= MIN_PYARROW_VERSION_LIST_VIEW_TYPE

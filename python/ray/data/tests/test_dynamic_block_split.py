@@ -23,6 +23,8 @@ from ray.data.tests.conftest import (
 )
 from ray.tests.conftest import *  # noqa
 
+ray.remote
+
 
 # Data source generates random bytes data
 class RandomBytesDatasource(Datasource):

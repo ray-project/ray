@@ -16,7 +16,7 @@ from ray.data.extensions import (
     ArrowTensorArray,
     ArrowTensorType,
     ArrowVariableShapedTensorType,
-    object_extension_type_allowed,
+    _object_extension_type_allowed,
 )
 
 
@@ -187,7 +187,7 @@ def test_arrow_concat_tensor_extension_uniform_but_different():
 
 
 @pytest.mark.skipif(
-    not object_extension_type_allowed(), reason="Object extension type not supported."
+    not _object_extension_type_allowed(), reason="Object extension type not supported."
 )
 def test_arrow_concat_with_objects():
     obj = types.SimpleNamespace(a=1, b="test")
@@ -460,7 +460,7 @@ def _create_dataset(op, data):
 
 
 @pytest.mark.skipif(
-    object_extension_type_allowed(), reason="Arrow table supports pickled objects"
+    _object_extension_type_allowed(), reason="Arrow table supports pickled objects"
 )
 @pytest.mark.parametrize(
     "op, data",
