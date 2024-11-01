@@ -271,6 +271,7 @@ class RuntimeEnv(dict):
         "working_dir",
         "conda",
         "pip",
+        "uv",
         "container",
         "excludes",
         "env_vars",
@@ -310,6 +311,7 @@ class RuntimeEnv(dict):
         _validate: bool = True,
         mpi: Optional[Dict] = None,
         image_uri: Optional[str] = None,
+        uv: Optional[str] = None,
         **kwargs,
     ):
         super().__init__()
@@ -321,6 +323,8 @@ class RuntimeEnv(dict):
             runtime_env["working_dir"] = working_dir
         if pip is not None:
             runtime_env["pip"] = pip
+        if uv is not None:
+            runtime_env["uv"] = uv
         if conda is not None:
             runtime_env["conda"] = conda
         if nsight is not None:
@@ -528,6 +532,18 @@ class RuntimeEnv(dict):
         # Parse and validate field pip on method `__setitem__`
         self["pip"] = self["pip"]
         return self["pip"]
+
+    def has_uv(self) -> bool:
+        if self.get("uv"):
+            return True
+        return False
+
+    def uv_config(self) -> dict:
+        if not self.has_uv() or isinstance(self["uv"], str):
+            return {}
+        # Parse and validate field uv on method `__setitem__`
+        self["uv"] = self["uv"]
+        return self["uv"]
 
     def get_extension(self, key) -> Optional[str]:
         if key not in RuntimeEnv.extensions_fields:

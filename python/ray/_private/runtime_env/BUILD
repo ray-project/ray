@@ -15,3 +15,55 @@ py_test(
         ":validation",
     ],
 )
+
+py_library(
+    name = "utils",
+    srcs = ["utils.py"],
+)
+
+py_library(
+    name = "path_utils",
+    srcs = ["path_utils.py"],
+    deps = [
+        ":env_utils",
+    ],
+)
+
+py_library(
+    name = "env_utils",
+    srcs = ["env_utils.py"],
+    deps = [
+        ":utils",
+    ],
+)
+
+py_library(
+    name = "dependency_utils",
+    srcs = ["dependency_utils.py"],
+    deps = [
+        ":utils",
+    ],
+)
+
+py_library(
+    name = "uv",
+    srcs= ["uv.py"],
+    deps = [
+        ":utils",
+        ":env_utils",
+        ":path_utils",
+        ":dependency_utils",
+    ],
+)
+
+py_test(
+    name = "uv_test",
+    srcs = ["uv_test.py"],
+    # Strip `python` from absolute path.
+    env = {
+        "PYTHONPATH": "python",
+    },
+    deps = [
+        ":uv",
+    ],
+)
