@@ -44,12 +44,12 @@ class DefaultModelConfig:
         from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
 
         config = (
-            PPOConfig().
+            PPOConfig()
             .api_stack(
                 enable_rl_module_and_learner=True,
                 enable_env_runner_and_connector_v2=True,
             )
-            rl_module(
+            .rl_module(
                 model_config=DefaultModelConfig(fcnet_hiddens=[32, 32]),
             )
         )

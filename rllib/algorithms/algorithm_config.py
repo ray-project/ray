@@ -705,8 +705,10 @@ class AlgorithmConfig(_Config):
             "_enable_new_api_stack",
             config_dict.get("enable_rl_module_and_learner"),
         )
-        if enable_rl_module_and_learner:
-            self.api_stack(enable_rl_module_and_learner=enable_rl_module_and_learner)
+        self.api_stack(
+            enable_rl_module_and_learner=enable_rl_module_and_learner,
+            enable_env_runner_and_connector_v2=enable_rl_module_and_learner,
+        )
 
         # Modify our properties one by one.
         for key, value in config_dict.items():
