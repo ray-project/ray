@@ -11,7 +11,7 @@ from ray.experimental.channel.gpu_communicator import (
 from ray.experimental.util.types import ReduceOp
 
 if TYPE_CHECKING:
-    import cupy as cp
+    import cupy as cp  # noqa: F401
     import torch
 
 

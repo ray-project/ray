@@ -55,7 +55,7 @@ from ray.rllib.utils.typing import (
 from ray.util.debug import log_once
 
 if TYPE_CHECKING:
-    from gymnasium.envs.classic_control.rendering import SimpleImageViewer
+    from gymnasium.envs.classic_control.rendering import SimpleImageViewer  # noqa: F401
 
     from ray.rllib.algorithms.callbacks import DefaultCallbacks
     from ray.rllib.evaluation.observation_function import ObservationFunction
