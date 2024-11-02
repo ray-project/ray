@@ -106,10 +106,7 @@ def centralized_critic_postprocessing(
         not pytorch and policy.loss_initialized()
     ):
         assert other_agent_batches is not None
-        if policy.config["enable_connectors"]:
-            [(_, _, opponent_batch)] = list(other_agent_batches.values())
-        else:
-            [(_, opponent_batch)] = list(other_agent_batches.values())
+        [(_, _, opponent_batch)] = list(other_agent_batches.values())
 
         # also record the opponent obs and actions in the trajectory
         sample_batch[OPPONENT_OBS] = opponent_batch[SampleBatch.CUR_OBS]

@@ -61,8 +61,6 @@ class TestEnvRunnerV2(unittest.TestCase):
             .env_runners(
                 num_envs_per_env_runner=1,
                 num_env_runners=0,
-                # Enable EnvRunnerV2.
-                enable_connectors=True,
             )
         )
 
@@ -88,8 +86,6 @@ class TestEnvRunnerV2(unittest.TestCase):
             .env_runners(
                 num_envs_per_env_runner=1,
                 num_env_runners=0,
-                # Enable EnvRunnerV2.
-                enable_connectors=True,
             )
         )
 
@@ -153,8 +149,6 @@ class TestEnvRunnerV2(unittest.TestCase):
             .env_runners(
                 num_envs_per_env_runner=1,
                 num_env_runners=0,
-                # Enable EnvRunnerV2.
-                enable_connectors=True,
                 rollout_fragment_length=100,
             )
             .multi_agent(
@@ -220,8 +214,6 @@ class TestEnvRunnerV2(unittest.TestCase):
             .env_runners(
                 num_envs_per_env_runner=1,
                 num_env_runners=0,
-                # Enable EnvRunnerV2.
-                enable_connectors=True,
             )
             .multi_agent(
                 policies={
@@ -294,8 +286,6 @@ class TestEnvRunnerV2(unittest.TestCase):
             .env_runners(
                 num_envs_per_env_runner=1,
                 num_env_runners=0,
-                # Enable EnvRunnerV2.
-                enable_connectors=True,
             )
         )
 
@@ -317,8 +307,6 @@ class TestEnvRunnerV2(unittest.TestCase):
             .env_runners(
                 num_envs_per_env_runner=1,
                 num_env_runners=0,
-                # Enable EnvRunnerV2.
-                enable_connectors=True,
             )
             .multi_agent(
                 policies={
@@ -373,8 +361,6 @@ class TestEnvRunnerV2(unittest.TestCase):
             .env_runners(
                 num_envs_per_env_runner=1,
                 num_env_runners=0,
-                # Enable EnvRunnerV2.
-                enable_connectors=True,
             )
             .multi_agent(
                 policies={
@@ -432,8 +418,6 @@ class TestEnvRunnerV2(unittest.TestCase):
             .env_runners(
                 num_envs_per_env_runner=1,
                 num_env_runners=0,
-                # Enable EnvRunnerV2.
-                enable_connectors=True,
             )
             .multi_agent(
                 policies={
