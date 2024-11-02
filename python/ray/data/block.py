@@ -254,8 +254,8 @@ class BlockAccessor:
         """Return a slice of this block.
 
         Args:
-            start: The starting index of the slice.
-            end: The ending index of the slice.
+            start: The starting index of the slice (inclusive).
+            end: The ending index of the slice (exclusive).
             copy: Whether to perform a data copy for the slice.
 
         Returns:
@@ -475,3 +475,31 @@ class BlockAccessor:
     def block_type(self) -> BlockType:
         """Return the block type of this block."""
         raise NotImplementedError
+
+
+def _get_block_boundaries(block: Dict[str, np.ndarray]):
+    """Compute boundaries of the groups within a block.
+
+    The function expects the input block to be projected and sorted, i.e.,
+    only the grouping columns are present.
+
+    Args:
+        block: a dict of numpy arrays with keys being the group column names.
+        This is generally coming from ``BlockAccessor.to_numpy()``.
+
+    Returns:
+        A list of starting indices of each group and an end index of the last
+        group, i.e., there are ``num_groups + 1`` entries and the first and last
+        entries are 0 and ``len(array)`` respectively.
+
+    """
+    if len(block) == 1:
+        # For single key, just use the numpy array directly.
+        block = block.popitem()[1]
+    else:
+        # For multiple keys, we create a numpy record array to handle
+        # potentially different dtypes for each column.
+        dtype = [(k, v.dtype) for k, v in block.items()]
+        block = np.rec.fromarrays(list(block.values()), dtype=dtype)
+
+    return np.hstack([[0], np.where(block[1:] != block[:-1])[0] + 1, [len(block)]])
