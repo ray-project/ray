@@ -126,6 +126,7 @@ def test_ray_debugger_stepping(shutdown_only):
 
 @pytest.mark.skipif(platform.system() == "Windows", reason="Failing on Windows.")
 def test_ray_debugger_recursive(shutdown_only):
+    os.environ["RAY_DEBUG"] = "legacy"
     ray.init(num_cpus=1, runtime_env={"env_vars": {"RAY_DEBUG": "legacy"}})
 
     @ray.remote
@@ -280,6 +281,8 @@ def test_ray_debugger_public_multi_node(shutdown_only, ray_debugger_external):
         },
     )
     c.add_node(num_cpus=1, ray_debugger_external=ray_debugger_external)
+
+    ray.init(runtime_env={"env_vars": {"RAY_DEBUG": "legacy"}})
 
     @ray.remote
     def f():
