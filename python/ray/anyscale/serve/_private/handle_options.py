@@ -3,12 +3,12 @@ from dataclasses import dataclass
 import ray
 from ray.anyscale.serve._private.constants import ANYSCALE_RAY_SERVE_USE_GRPC_BY_DEFAULT
 from ray.serve._private.common import DeploymentHandleSource
+from ray.serve._private.handle_options import InitHandleOptionsBase
 from ray.serve._private.utils import DEFAULT
-from ray.serve.handle import _InitHandleOptionsBase
 
 
 @dataclass(frozen=True)
-class _AnyscaleInitHandleOptions(_InitHandleOptionsBase):
+class _AnyscaleInitHandleOptions(InitHandleOptionsBase):
     _by_reference: bool = not ANYSCALE_RAY_SERVE_USE_GRPC_BY_DEFAULT
 
     @classmethod
