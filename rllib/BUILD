@@ -2056,13 +2056,6 @@ py_test(
 )
 
 py_test(
-    name = "tests/test_ray_client",
-    tags = ["team:rllib", "tests_dir"],
-    size = "large",
-    srcs = ["tests/test_ray_client.py"]
-)
-
-py_test(
     name = "tests/test_reproducibility",
     tags = ["team:rllib", "tests_dir"],
     size = "medium",

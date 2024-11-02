@@ -93,12 +93,11 @@ class TestPPO(unittest.TestCase):
 
         num_iterations = 2
 
-        # TODO (sven) Bring back "FrozenLake-v1"
         for env in [
-            # "CliffWalking-v0",
+            "ale_py:ALE/Breakout-v5",
             "CartPole-v1",
             "Pendulum-v1",
-        ]:  # "ale_py:ALE/Breakout-v5"]:
+        ]:
             print("Env={}".format(env))
             for lstm in [False]:
                 print("LSTM={}".format(lstm))

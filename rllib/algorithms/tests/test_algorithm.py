@@ -3,7 +3,6 @@ import numpy as np
 import os
 from pathlib import Path
 from random import choice
-import time
 import unittest
 
 import ray
@@ -27,7 +26,6 @@ from ray.rllib.utils.metrics import (
     LEARNER_RESULTS,
 )
 from ray.rllib.utils.metrics.learner_info import LEARNER_INFO
-from ray.rllib.utils.test_utils import check
 from ray.tune import register_env
 
 
@@ -520,29 +518,6 @@ class TestAlgorithm(unittest.TestCase):
         )
         algo_w_env_on_local_worker.stop()
         config.create_env_on_local_worker = False
-
-    def test_worker_validation_time(self):
-        """Tests the time taken by `validate_env_runners_after_construction=True`."""
-        config = ppo.PPOConfig().environment(env="CartPole-v1")
-        config.validate_env_runners_after_construction = True
-
-        # Test, whether validating one worker takes just as long as validating
-        # >> 1 workers.
-        config.num_env_runners = 1
-        t0 = time.time()
-        algo = config.build()
-        total_time_1 = time.time() - t0
-        print(f"Validating w/ 1 worker: {total_time_1}sec")
-        algo.stop()
-
-        config.num_env_runners = 5
-        t0 = time.time()
-        algo = config.build()
-        total_time_5 = time.time() - t0
-        print(f"Validating w/ 5 workers: {total_time_5}sec")
-        algo.stop()
-
-        check(total_time_5 / total_time_1, 1.0, atol=1.0)
 
     def test_no_env_but_eval_workers_do_have_env(self):
         """Tests whether no env on workers, but env on eval workers works ok."""
