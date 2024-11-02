@@ -235,6 +235,7 @@ def concat(blocks: List["pyarrow.Table"]) -> "pyarrow.Table":
         schema = unify_schemas(schemas_to_unify)
     except Exception as e:
         raise ArrowConversionError(str(blocks)) from e
+
     if (
         any(isinstance(type_, pa.ExtensionType) for type_ in schema.types)
         or cols_with_null_list
@@ -245,6 +246,7 @@ def concat(blocks: List["pyarrow.Table"]) -> "pyarrow.Table":
             col_chunked_arrays = []
             for block in blocks:
                 col_chunked_arrays.append(block.column(col_name))
+
             if isinstance(schema.field(col_name).type, tensor_types):
                 # For our tensor extension types, manually construct a chunked array
                 # containing chunks from all blocks. This is to handle
