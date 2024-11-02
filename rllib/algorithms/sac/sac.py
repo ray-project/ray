@@ -49,6 +49,17 @@ class SACConfig(AlgorithmConfig):
 
     def __init__(self, algo_class=None):
         super().__init__(algo_class=algo_class or SAC)
+
+        self.exploration_config = {
+            # The Exploration class to use. In the simplest case, this is the name
+            # (str) of any class present in the `rllib.utils.exploration` package.
+            # You can also provide the python class directly or the full location
+            # of your class (e.g. "ray.rllib.utils.exploration.epsilon_greedy.
+            # EpsilonGreedy").
+            "type": "StochasticSampling",
+            # Add constructor kwargs here (if any).
+        }
+
         # fmt: off
         # __sphinx_doc_begin__
         # SAC-specific config settings.
@@ -105,15 +116,6 @@ class SACConfig(AlgorithmConfig):
         # .env_runners()
         # Set to `self.n_step`, if 'auto'.
         self.rollout_fragment_length = "auto"
-        self.exploration_config = {
-            # The Exploration class to use. In the simplest case, this is the name
-            # (str) of any class present in the `rllib.utils.exploration` package.
-            # You can also provide the python class directly or the full location
-            # of your class (e.g. "ray.rllib.utils.exploration.epsilon_greedy.
-            # EpsilonGreedy").
-            "type": "StochasticSampling",
-            # Add constructor kwargs here (if any).
-        }
         self.train_batch_size_per_learner = 256
         self.train_batch_size = 256  # @OldAPIstack
         # Number of timesteps to collect from rollout workers before we start

@@ -82,25 +82,6 @@ from ray.tune.tune import _Config
 
 Space = gym.Space
 
-"""TODO(jungong, sven): in "offline_data" we can potentially unify all input types
-under input and input_config keys. E.g.
-input: sample
-input_config {
-env: CartPole-v1
-}
-or:
-input: json_reader
-input_config {
-path: /tmp/
-}
-or:
-input: dataset
-input_config {
-format: parquet
-path: /tmp/
-}
-"""
-
 
 if TYPE_CHECKING:
     from ray.rllib.algorithms.algorithm import Algorithm
@@ -131,12 +112,13 @@ class AlgorithmConfig(_Config):
         from ray.rllib.algorithms.callbacks import MemoryTrackingCallbacks
         # Construct a generic config object, specifying values within different
         # sub-categories, e.g. "training".
-        config = (PPOConfig().training(gamma=0.9, lr=0.01)
-                .environment(env="CartPole-v1")
-                .resources(num_gpus=0)
-                .env_runners(num_env_runners=0)
-                .callbacks(MemoryTrackingCallbacks)
-            )
+        config = (
+            PPOConfig()
+            .training(gamma=0.9, lr=0.01)
+            .environment(env="CartPole-v1")
+            .env_runners(num_env_runners=0)
+            .callbacks(MemoryTrackingCallbacks)
+        )
         # A config object can be used to construct the respective Algorithm.
         rllib_algo = config.build()
 
@@ -321,10 +303,6 @@ class AlgorithmConfig(_Config):
         # Default setting for skipping `nan` gradient updates.
         self.torch_skip_nan_gradients = False
 
-        # `self.api_stack()`
-        self.enable_rl_module_and_learner = False
-        self.enable_env_runner_and_connector_v2 = False
-
         # `self.environment()`
         self.env = None
         self.env_config = {}
@@ -426,6 +404,14 @@ class AlgorithmConfig(_Config):
         # This is not compatible with RLModules, which have a method
         # `forward_exploration` to specify custom exploration behavior.
         self.exploration_config = {}
+
+        # `self.api_stack()`
+        self.enable_rl_module_and_learner = True
+        self.enable_env_runner_and_connector_v2 = True
+        self.api_stack(
+            enable_rl_module_and_learner=True,
+            enable_env_runner_and_connector_v2=True,
+        )
 
         # `self.multi_agent()`
         # TODO (sven): Prepare multi-agent setup for logging each agent's and each
