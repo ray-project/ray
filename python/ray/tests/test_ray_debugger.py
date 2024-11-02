@@ -96,6 +96,7 @@ def test_ray_debugger_commands(shutdown_only):
 
 @pytest.mark.skipif(platform.system() == "Windows", reason="Failing on Windows.")
 def test_ray_debugger_stepping(shutdown_only):
+    os.environ["RAY_DEBUG"] = "legacy"
     ray.init(num_cpus=1, runtime_env={"env_vars": {"RAY_DEBUG": "legacy"}})
 
     @ray.remote
