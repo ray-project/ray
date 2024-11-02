@@ -165,7 +165,7 @@ def test_job_exit_cleanup(ray_start_regular):
 import time
 
 import ray
-ray.init(address="{}", runtime_env={"env_vars": {"RAY_DEBUG": "legacy"}})
+ray.init(address="{}", runtime_env={{"env_vars": {{"RAY_DEBUG": "legacy"}}}})
 
 @ray.remote
 def f():
