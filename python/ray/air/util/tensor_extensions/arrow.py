@@ -16,6 +16,7 @@ from ray.air.util.tensor_extensions.utils import (
     _is_ndarray_variable_shaped_tensor,
     create_ragged_ndarray,
 )
+from ray.data._internal.util import GiB
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
 PYARROW_VERSION = _get_pyarrow_version()
@@ -94,24 +95,32 @@ def convert_to_pyarrow_array(column_values: np.ndarray) -> pa.Array:
         #       we can perform upcasting to be able to accommodate
         #       blocks that are larger than 2Gb in size (limited
         #       by int32 offsets used by Arrow internally)
-        dtype = _infer_pyarrow_dtype(column_values)
+        dtype = _infer_pyarrow_type(column_values)
         return pa.array(column_values, type=dtype)
     except Exception as e:
         raise ArrowConversionError(str(column_values)[:MAX_REPR_LENGTH]) from e
 
 
-def _infer_pyarrow_dtype(column_values: np.ndarray) -> Optional[pa.DataType]:
-    """Deduces target Pyarrow `DataType` based on the provided
+def _infer_pyarrow_type(column_values: np.ndarray) -> Optional[pa.DataType]:
+    """Infers target Pyarrow `DataType` based on the provided
     columnar values.
 
-    NOTE: We're leveraging Pyarrow utility to infer the type from
-    corresponding column values
+    NOTE: This is a wrapper on top of `pa.infer_type(...)` utility
+          performing up-casting of `binary` and `string` types to
+          corresponding `large_binary` and `large_string` types in case
+          any of the array elements exceeds 2Gb in size therefore
+          making it impossible for original types to accommodate such
+          values.
+
+          Unfortunately, for unknown reasons PA doesn't perform
+          that upcasting itself henceforth we have to do perform
+          it manually
 
     Args:
         column_values: List of columnar values
 
     Returns:
-        Instance of Pyarrow's `DataType` based on the provided
+        Instance of PyArrow's `DataType` based on the provided
         column values
     """
 
@@ -120,16 +129,13 @@ def _infer_pyarrow_dtype(column_values: np.ndarray) -> Optional[pa.DataType]:
 
     inferred_pa_dtype = pa.infer_type(column_values)
 
-    # TODO add flag to control whether to upcast to int64-based types
+    def _lt_2gb(o: Union[bytes, str]) -> bool:
+        return len(o) > 2 * GiB
 
-    if inferred_pa_dtype.equals(pa.binary()):
+    if inferred_pa_dtype.equals(pa.binary()) and any([_lt_2gb(v) for v in column_values]):
         return pa.large_binary()
-    elif inferred_pa_dtype.equals(pa.string()):
+    elif inferred_pa_dtype.equals(pa.string()) and any([_lt_2gb(v) for v in column_values]):
         return pa.large_string()
-    elif isinstance(inferred_pa_dtype, pa.ListType):
-        return pa.large_list(inferred_pa_dtype.value_type)
-    elif _list_view_type_present() and isinstance(inferred_pa_dtype, pa.ListViewType):
-        return pa.large_list_view(inferred_pa_dtype.value_type)
 
     return inferred_pa_dtype
 

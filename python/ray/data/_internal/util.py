@@ -41,6 +41,12 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+
+KiB = 1024 # bytes
+MiB = 1024 * KiB
+GiB = 1024 * MiB
+
+
 # NOTE: Make sure that these lower and upper bounds stay in sync with version
 # constraints given in python/setup.py.
 # Inclusive minimum pyarrow version.
