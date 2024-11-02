@@ -70,11 +70,6 @@ class PPOConfig(AlgorithmConfig):
         from ray.rllib.algorithms.ppo import PPOConfig
 
         config = PPOConfig()
-        # Activate new API stack.
-        config.api_stack(
-            enable_rl_module_and_learner=True,
-            enable_env_runner_and_connector_v2=True,
-        )
         config.environment("CartPole-v1")
         config.env_runners(num_env_runners=1)
         config.training(
@@ -93,11 +88,6 @@ class PPOConfig(AlgorithmConfig):
 
         config = (
             PPOConfig()
-            # Activate new API stack.
-            .api_stack(
-                enable_rl_module_and_learner=True,
-                enable_env_runner_and_connector_v2=True,
-            )
             # Set the config object's env.
             .environment(env="CartPole-v1")
             # Update the config object's training parameters.
@@ -134,10 +124,9 @@ class PPOConfig(AlgorithmConfig):
 
         # fmt: off
         # __sphinx_doc_begin__
-        self.lr_schedule = None
         self.lr = 5e-5
         self.rollout_fragment_length = "auto"
-        self.train_batch_size = 4000
+        self.train_batch_size_per_learner = 4000
 
         # PPO specific settings:
         self.use_critic = True
@@ -151,14 +140,12 @@ class PPOConfig(AlgorithmConfig):
         self.kl_target = 0.01
         self.vf_loss_coeff = 1.0
         self.entropy_coeff = 0.0
-        self.entropy_coeff_schedule = None
         self.clip_param = 0.3
         self.vf_clip_param = 10.0
         self.grad_clip = None
 
         # Override some of AlgorithmConfig's default values with PPO-specific values.
         self.num_env_runners = 2
-        self.model["vf_share_layers"] = False
 
         # `.api_stack()`
         self.api_stack(
@@ -168,9 +155,14 @@ class PPOConfig(AlgorithmConfig):
         # __sphinx_doc_end__
         # fmt: on
 
+        self.model["vf_share_layers"] = False  # @OldAPIStack
+        self.entropy_coeff_schedule = None  # @OldAPIStack
+        self.lr_schedule = None  # @OldAPIStack
+
         # Deprecated keys.
         self.sgd_minibatch_size = DEPRECATED_VALUE
         self.vf_share_layers = DEPRECATED_VALUE
+        self.train_batch_size = 4000
 
     @override(AlgorithmConfig)
     def get_default_rl_module_spec(self) -> RLModuleSpec:

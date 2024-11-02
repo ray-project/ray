@@ -415,12 +415,7 @@ class TestWorkerFailures(unittest.TestCase):
 
     def test_async_samples(self):
         self._do_test_failing_ignore(
-            IMPALAConfig()
-            .api_stack(
-                enable_rl_module_and_learner=True,
-                enable_env_runner_and_connector_v2=True,
-            )
-            .env_runners(env_runner_cls=ForwardHealthCheckToEnvWorker)
+            IMPALAConfig().env_runners(env_runner_cls=ForwardHealthCheckToEnvWorker)
         )
 
     def test_sync_replay(self):

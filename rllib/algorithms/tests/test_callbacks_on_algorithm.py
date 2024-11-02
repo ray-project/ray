@@ -67,8 +67,8 @@ class TestCallbacks(unittest.TestCase):
         algo = config.build()
         original_worker_ids = algo.env_runner_group.healthy_worker_ids()
         for id_ in original_worker_ids:
-            self.assertTrue(algo._counters[f"worker_{id_}_recreated"] == 0)
-        self.assertTrue(algo._counters["total_num_workers_recreated"] == 0)
+            self.assertTrue(algo.metrics.peek(f"worker_{id_}_recreated") == 0)
+        self.assertTrue(algo.metrics.peek("total_num_workers_recreated") == 0)
 
         # After building the algorithm, we should have 2 healthy (remote) workers.
         self.assertTrue(len(original_worker_ids) == 3)
@@ -88,7 +88,7 @@ class TestCallbacks(unittest.TestCase):
         self.assertEquals(len(new_worker_ids), 3)
         for id_ in new_worker_ids:
             # num_restored = algo.env_runner_group.restored_actors_history[id_]
-            self.assertTrue(algo._counters[f"worker_{id_}_recreated"] > 1)
+            self.assertTrue(algo.metrics.peek(f"worker_{id_}_recreated") > 1)
         algo.stop()
 
     def test_on_init_and_checkpoint_loaded(self):
