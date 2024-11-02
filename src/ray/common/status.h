@@ -32,7 +32,6 @@
 #include <iosfwd>
 #include <string>
 
-#include "ray/common/source_location.h"
 #include "ray/util/logging.h"
 #include "ray/util/macros.h"
 #include "ray/util/visibility.h"
@@ -125,7 +124,6 @@ class RAY_EXPORT Status {
   ~Status() { delete state_; }
 
   Status(StatusCode code, const std::string &msg, int rpc_code = -1);
-  Status(StatusCode code, const std::string &msg, SourceLocation loc, int rpc_code = -1);
 
   // Copy the specified status.
   Status(const Status &s);
@@ -327,7 +325,6 @@ class RAY_EXPORT Status {
   struct State {
     StatusCode code;
     std::string msg;
-    SourceLocation loc;
     // If code is RpcError, this contains the RPC error code
     int rpc_code;
   };
