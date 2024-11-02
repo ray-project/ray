@@ -198,7 +198,9 @@ def test_read_binary_snappy_partitioned_with_filter(
     )
 
 
-def _gen_chunked_binary(dir_path: str, total_size: int, max_file_size: Optional[int] = None):
+def _gen_chunked_binary(
+    dir_path: str, total_size: int, max_file_size: Optional[int] = None
+):
     chunk_size = max_file_size or 256 * MiB
     num_chunks = total_size // chunk_size
     remainder = total_size % chunk_size
@@ -221,15 +223,17 @@ def _gen_chunked_binary(dir_path: str, total_size: int, max_file_size: Optional[
             if remainder:
                 f.write(b"a" * remainder)
 
-
     print(f">>> Wrote chunked dataset at: {dir_path}")
 
 
-@pytest.mark.parametrize("col_name", [
-    "bytes",
-    # TODO fix numpy conversion
-    # "text",
-])
+@pytest.mark.parametrize(
+    "col_name",
+    [
+        "bytes",
+        # TODO fix numpy conversion
+        # "text",
+    ],
+)
 def test_single_row_lt_2gb(ray_start_regular_shared, col_name):
     with TemporaryDirectory() as tmp_dir:
         target_binary_size_gb = 2.1

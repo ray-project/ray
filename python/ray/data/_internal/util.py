@@ -41,7 +41,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-KiB = 1024 # bytes
+KiB = 1024  # bytes
 MiB = 1024 * KiB
 GiB = 1024 * MiB
 

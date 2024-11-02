@@ -11,7 +11,6 @@ from packaging.version import parse as parse_version
 
 from ray._private.utils import _get_pyarrow_version
 from ray.air.constants import MAX_REPR_LENGTH
-from ray.air.util.object_extensions.arrow import _list_view_type_present
 from ray.air.util.tensor_extensions.utils import (
     _is_ndarray_variable_shaped_tensor,
     create_ragged_ndarray,
@@ -132,9 +131,13 @@ def _infer_pyarrow_type(column_values: np.ndarray) -> Optional[pa.DataType]:
     def _lt_2gb(o: Union[bytes, str]) -> bool:
         return len(o) > 2 * GiB
 
-    if inferred_pa_dtype.equals(pa.binary()) and any([_lt_2gb(v) for v in column_values]):
+    if inferred_pa_dtype.equals(pa.binary()) and any(
+        [_lt_2gb(v) for v in column_values]
+    ):
         return pa.large_binary()
-    elif inferred_pa_dtype.equals(pa.string()) and any([_lt_2gb(v) for v in column_values]):
+    elif inferred_pa_dtype.equals(pa.string()) and any(
+        [_lt_2gb(v) for v in column_values]
+    ):
         return pa.large_string()
 
     return inferred_pa_dtype
