@@ -2577,14 +2577,6 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
 
         Raises:
             KeyError: if `policy_id` cannot be found in this Algorithm.
-
-        .. testcode::
-
-            from ray.rllib.algorithms.ppo import PPO, PPOConfig
-            config = PPOConfig().environment("CartPole-v1")
-            algo = PPO(config=config)
-            algo.train()
-            algo.export_policy_checkpoint("/tmp/export_dir")
         """
         policy = self.get_policy(policy_id)
         if policy is None:

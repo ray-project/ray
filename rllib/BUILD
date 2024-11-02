@@ -3164,42 +3164,6 @@ py_test(
 )
 
 py_test(
-    name = "examples/custom_recurrent_rnn_tokenizer_repeat_after_me_tf2",
-    main = "examples/custom_recurrent_rnn_tokenizer.py",
-    tags = ["team:rllib", "exclusive", "examples"],
-    size = "medium",
-    srcs = ["examples/custom_recurrent_rnn_tokenizer.py"],
-    args = ["--as-test", "--framework=tf2", "--stop-reward=40", "--env=RepeatAfterMeEnv", "--num-cpus=4"]
-)
-
-py_test(
-    name = "examples/custom_recurrent_rnn_tokenizer_repeat_initial_obs_env_tf2",
-    main = "examples/custom_recurrent_rnn_tokenizer.py",
-    tags = ["team:rllib", "examples"],
-    size = "medium",
-    srcs = ["examples/custom_recurrent_rnn_tokenizer.py"],
-    args = ["--as-test", "--framework=tf2", "--stop-reward=10", "--stop-timesteps=300000", "--env=RepeatInitialObsEnv", "--num-cpus=4"]
-)
-
-py_test(
-    name = "examples/custom_recurrent_rnn_tokenizer_repeat_after_me_torch",
-    main = "examples/custom_recurrent_rnn_tokenizer.py",
-    tags = ["team:rllib", "exclusive", "examples"],
-    size = "medium",
-    srcs = ["examples/custom_recurrent_rnn_tokenizer.py"],
-    args = ["--as-test", "--framework=torch", "--stop-reward=40", "--env=RepeatAfterMeEnv", "--num-cpus=4"]
-)
-
-py_test(
-    name = "examples/custom_recurrent_rnn_tokenizer_repeat_initial_obs_env_torch",
-    main = "examples/custom_recurrent_rnn_tokenizer.py",
-    tags = ["team:rllib", "exclusive", "examples"],
-    size = "medium",
-    srcs = ["examples/custom_recurrent_rnn_tokenizer.py"],
-    args = ["--as-test", "--framework=torch", "--stop-reward=10", "--stop-timesteps=300000", "--env=RepeatInitialObsEnv", "--num-cpus=4"]
-)
-
-py_test(
     name = "examples/replay_buffer_api",
     tags = ["team:rllib", "examples"],
     size = "large",

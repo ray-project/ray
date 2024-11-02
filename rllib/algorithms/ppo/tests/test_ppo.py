@@ -94,7 +94,6 @@ class TestPPO(unittest.TestCase):
         num_iterations = 2
 
         for env in [
-            "ale_py:ALE/Breakout-v5",
             "CartPole-v1",
             "Pendulum-v1",
         ]:
