@@ -22,7 +22,6 @@ from ray.air.constants import TENSOR_COLUMN_NAME
 from ray.air.util.tensor_extensions.arrow import (
     ArrowConversionError,
     convert_to_pyarrow_array,
-    deduce_pyarrow_dtype,
     pyarrow_table_from_pydict,
 )
 from ray.data._internal.arrow_ops import transform_polars, transform_pyarrow
@@ -161,10 +160,7 @@ class ArrowBlockBuilder(TableBlockBuilder):
                         np_col_vals, col_names
                     )
                 else:
-                    pa_dtype = deduce_pyarrow_dtype(col_vals)
-                    pa_cols[col_names] = convert_to_pyarrow_array(
-                        np_col_vals, dtype=pa_dtype
-                    )
+                    pa_cols[col_names] = convert_to_pyarrow_array(np_col_vals)
 
             except ArrowConversionError as e:
                 logger.warning(

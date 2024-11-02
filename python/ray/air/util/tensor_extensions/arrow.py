@@ -88,17 +88,19 @@ def pyarrow_table_from_pydict(
 
 
 @DeveloperAPI(stability="alpha")
-def convert_to_pyarrow_array(
-    column_values: np.ndarray, dtype: Optional[pa.DataType] = None
-) -> pa.Array:
+def convert_to_pyarrow_array(column_values: np.ndarray) -> pa.Array:
     try:
+        # NOTE: We explicitly infer PyArrow `DataType` so that
+        #       we can perform upcasting to be able to accommodate
+        #       blocks that are larger than 2Gb in size (limited
+        #       by int32 offsets used by Arrow internally)
+        dtype = _infer_pyarrow_dtype(column_values)
         return pa.array(column_values, type=dtype)
     except Exception as e:
         raise ArrowConversionError(str(column_values)[:MAX_REPR_LENGTH]) from e
 
 
-@DeveloperAPI(stability="alpha")
-def deduce_pyarrow_dtype(column_values: List[Any]) -> Optional[pa.DataType]:
+def _infer_pyarrow_dtype(column_values: np.ndarray) -> Optional[pa.DataType]:
     """Deduces target Pyarrow `DataType` based on the provided
     columnar values.
 
