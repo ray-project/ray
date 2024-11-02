@@ -1,5 +1,7 @@
 from typing import Any, Dict, Iterable, List, Optional, Tuple, Union
 
+import numpy as np
+
 from ray.data._internal.aggregate import Count, Max, Mean, Min, Std, Sum
 from ray.data._internal.compute import ComputeStrategy
 from ray.data._internal.logical.interfaces import LogicalPlan
@@ -205,8 +207,6 @@ class GroupedData:
 
         def get_key_boundaries(block_accessor: BlockAccessor) -> List[int]:
             """Compute block boundaries based on the key(s)"""
-
-            import numpy as np
 
             # Get the keys of the batch in numpy array format
             keys = block_accessor.to_numpy(self._key)
