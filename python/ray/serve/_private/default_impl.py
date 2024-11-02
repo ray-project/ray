@@ -21,6 +21,7 @@ from ray.serve._private.deployment_scheduler import (
     DeploymentScheduler,
 )
 from ray.serve._private.grpc_util import gRPCServer
+from ray.serve._private.handle_options import DynamicHandleOptions, InitHandleOptions
 from ray.serve._private.replica_scheduler import (
     ActorReplicaWrapper,
     PowerOfTwoChoicesReplicaScheduler,
@@ -59,15 +60,11 @@ def create_deployment_scheduler(
 
 
 def create_dynamic_handle_options(**kwargs):
-    from ray.serve.handle import _DynamicHandleOptions
-
-    return _DynamicHandleOptions(**kwargs)
+    return DynamicHandleOptions(**kwargs)
 
 
 def create_init_handle_options(**kwargs):
-    from ray.serve.handle import _InitHandleOptions
-
-    return _InitHandleOptions.create(**kwargs)
+    return InitHandleOptions.create(**kwargs)
 
 
 def _get_node_id_and_az() -> Tuple[str, Optional[str]]:
@@ -85,13 +82,13 @@ def _get_node_id_and_az() -> Tuple[str, Optional[str]]:
 
 
 # Interface definition for create_router.
-CreateRouterCallable = Callable[[str, DeploymentID, Any], Router]
+CreateRouterCallable = Callable[[str, DeploymentID, InitHandleOptions], Router]
 
 
 def create_router(
     handle_id: str,
     deployment_id: DeploymentID,
-    handle_options: Any,
+    handle_options: InitHandleOptions,
 ) -> Router:
     # NOTE(edoakes): this is lazy due to a nasty circular import that should be fixed.
     from ray.serve.context import _get_global_client
