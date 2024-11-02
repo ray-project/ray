@@ -273,7 +273,7 @@ def test_ray_debugger_public(shutdown_only, call_ray_stop_only, ray_debugger_ext
 def test_ray_debugger_public_multi_node(shutdown_only, ray_debugger_external):
     c = Cluster(
         initialize_head=True,
-        connect=True,
+        connect=False,
         head_node_args={
             "num_cpus": 0,
             "num_gpus": 1,
