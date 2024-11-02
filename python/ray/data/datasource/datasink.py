@@ -98,7 +98,7 @@ class Datasink:
         aggregated_results_str = ""
         for k in fields(aggregated_write_results.__class__):
             v = getattr(aggregated_write_results, k.name)
-            aggregated_results_str += f"\t{k}: {v}\n"
+            aggregated_results_str += f"\t- {k.name}: {v}\n"
 
         logger.info(
             f"Write operation succeeded. Aggregated write results:\n"

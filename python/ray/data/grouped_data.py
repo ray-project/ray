@@ -79,7 +79,7 @@ class GroupedData:
             key=self._key,
             aggs=aggs,
         )
-        logical_plan = LogicalPlan(op)
+        logical_plan = LogicalPlan(op, self._dataset.context)
         return Dataset(
             plan,
             logical_plan,
@@ -128,6 +128,12 @@ class GroupedData:
             * It requires that each group fits in memory on a single node.
 
         In general, prefer to use aggregate() instead of map_groups().
+
+        .. warning::
+            Specifying both ``num_cpus`` and ``num_gpus`` for map tasks is experimental,
+            and may result in scheduling or stability issues. Please
+            `report any issues <https://github.com/ray-project/ray/issues/new/choose>`_
+            to the Ray team.
 
         Examples:
             >>> # Return a single record per group (list of multiple records in,

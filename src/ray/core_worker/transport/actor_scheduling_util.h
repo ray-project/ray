@@ -27,15 +27,13 @@ namespace core {
 class InboundRequest {
  public:
   InboundRequest();
-  InboundRequest(
-      std::function<void(rpc::SendReplyCallback)> accept_callback,
-      std::function<void(const Status &, rpc::SendReplyCallback)> reject_callback,
-      rpc::SendReplyCallback send_reply_callback,
-      TaskID task_id,
-      uint64_t attempt_number,
-      const std::vector<rpc::ObjectReference> &dependencies,
-      const std::string &concurrency_group_name,
-      const ray::FunctionDescriptor &function_descriptor);
+  InboundRequest(std::function<void(const TaskSpecification &, rpc::SendReplyCallback)>
+                     accept_callback,
+                 std::function<void(const TaskSpecification &,
+                                    const Status &,
+                                    rpc::SendReplyCallback)> reject_callback,
+                 rpc::SendReplyCallback send_reply_callback,
+                 TaskSpecification task_spec);
 
   void Accept();
   void Cancel(const Status &status);
@@ -43,19 +41,18 @@ class InboundRequest {
   ray::TaskID TaskID() const;
   uint64_t AttemptNumber() const;
   const std::string &ConcurrencyGroupName() const;
-  const ray::FunctionDescriptor &FunctionDescriptor() const;
+  ray::FunctionDescriptor FunctionDescriptor() const;
   void MarkDependenciesSatisfied();
   const std::vector<rpc::ObjectReference> &PendingDependencies() const;
+  const TaskSpecification &TaskSpec() const;
 
  private:
-  std::function<void(rpc::SendReplyCallback)> accept_callback_;
-  std::function<void(const Status &, rpc::SendReplyCallback)> reject_callback_;
+  std::function<void(const TaskSpecification &, rpc::SendReplyCallback)> accept_callback_;
+  std::function<void(const TaskSpecification &, const Status &, rpc::SendReplyCallback)>
+      reject_callback_;
   rpc::SendReplyCallback send_reply_callback_;
 
-  ray::TaskID task_id_;
-  uint64_t attempt_number_;
-  std::string concurrency_group_name_;
-  ray::FunctionDescriptor function_descriptor_;
+  TaskSpecification task_spec_;
   std::vector<rpc::ObjectReference> pending_dependencies_;
 };
 

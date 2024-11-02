@@ -23,8 +23,8 @@ py_test_run_all_subdirectory(
         "client/node_modules/**",
         "modules/job/tests/test_cli_integration.py",
         "modules/job/tests/test_http_job_server.py",
-        "modules/node/tests/test_node.py", 
-        "tests/test_dashboard.py", 
+        "modules/node/tests/test_node.py",
+        "tests/test_dashboard.py",
         "tests/test_state_head.py",
         "modules/serve/tests/test_serve_dashboard.py",
     ],
@@ -100,7 +100,7 @@ py_test(
 py_test(
     name = "test_serve_dashboard",
     size = "enormous",
-    srcs = ["modules/serve/tests/test_serve_dashboard.py"],
+    srcs = ["modules/serve/tests/test_serve_dashboard.py", "modules/serve/tests/deploy_imperative_serve_apps.py"],
     tags = ["team:serve"],
     deps = [":conftest"],
 )

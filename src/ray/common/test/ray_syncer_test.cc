@@ -98,6 +98,7 @@ class RaySyncerTest : public ::testing::Test {
 
   void TearDown() override {
     work_guard_->reset();
+    io_context_.stop();
     thread_->join();
   }
 

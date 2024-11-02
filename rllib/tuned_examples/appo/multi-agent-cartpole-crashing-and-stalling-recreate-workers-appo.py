@@ -48,7 +48,7 @@ config = (
     )
     # Switch on resiliency (recreate any failed worker).
     .fault_tolerance(
-        recreate_failed_env_runners=True,
+        restart_failed_env_runners=True,
     )
     .evaluation(
         evaluation_num_env_runners=1,

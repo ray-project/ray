@@ -63,7 +63,7 @@ class GcsAutoscalerStateManager : public rpc::autoscaler::AutoscalerStateHandler
 
   void RecordMetrics() const { throw std::runtime_error("Unimplemented"); }
 
-  std::string DebugString() const { throw std::runtime_error("Unimplemented"); }
+  std::string DebugString() const;
 
   void Initialize(const GcsInitData &gcs_init_data);
 

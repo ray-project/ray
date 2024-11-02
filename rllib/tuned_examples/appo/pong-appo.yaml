@@ -5,7 +5,7 @@
 # APPO can also solve Pong in 2.5 million timesteps, which is
 # 2x more efficient than that of IMPALA.
 pong-appo:
-    env: ALE/Pong-v5
+    env: ale_py:ALE/Pong-v5
     run: APPO
     stop:
         env_runners/episode_return_mean: 18.0

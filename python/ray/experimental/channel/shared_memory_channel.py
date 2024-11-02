@@ -9,7 +9,6 @@ import ray.exceptions
 from ray._raylet import SerializedObject
 from ray.experimental.channel.common import ChannelInterface, ChannelOutputType
 from ray.experimental.channel.intra_process_channel import IntraProcessChannel
-from ray.experimental.channel.torch_tensor_type import TorchTensorType
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
 # Logger for this module. It should be configured at the entry point
@@ -21,6 +20,9 @@ DEFAULT_MAX_BUFFER_SIZE = int(1e6)  # 100 mB
 # The min buffer size must be large enough to at least fit an instance of the
 # _ResizeChannel class along with any metadata.
 MIN_BUFFER_SIZE = int(1000)  # 1000 bytes
+# For shared memory channels, the default number of buffers per channel to
+# allocate.
+DEFAULT_NUM_SHM_BUFFERS = 1
 
 
 def _create_channel_ref(
@@ -103,7 +105,12 @@ class _ResizeChannel:
 
 
 class SharedMemoryType(ChannelOutputType):
-    def __init__(self, buffer_size_bytes: int, *, num_shm_buffers: int):
+    def __init__(
+        self,
+        *,
+        buffer_size_bytes: Optional[int] = None,
+        num_shm_buffers: Optional[int] = None,
+    ):
         """
         Args:
             buffer_size_bytes: The number of bytes to allocate for the object data and
@@ -112,7 +119,11 @@ class SharedMemoryType(ChannelOutputType):
             num_shm_buffers: The number of shared memory buffer per channel.
         """
         super().__init__()
+        if buffer_size_bytes is None:
+            buffer_size_bytes = DEFAULT_MAX_BUFFER_SIZE
         self.buffer_size_bytes = buffer_size_bytes
+        if num_shm_buffers is None:
+            num_shm_buffers = DEFAULT_NUM_SHM_BUFFERS
         self._num_shm_buffers = num_shm_buffers
 
     def create_channel(
@@ -136,40 +147,12 @@ class SharedMemoryType(ChannelOutputType):
             A ChannelInterface that can be used to pass data
                 of this type.
         """
-        if self._contains_type is not None:
-            assert isinstance(
-                self._contains_type, TorchTensorType
-            ), "_contains_type must be of type TorchTensorType"
-
-            from ray.experimental.channel.torch_tensor_nccl_channel import (
-                NestedTorchTensorNcclChannel,
-            )
-
-            if self._contains_type.requires_nccl():
-                cpu_data_typ = SharedMemoryType(
-                    buffer_size_bytes=self.buffer_size_bytes,
-                    num_shm_buffers=1,
-                )
-                return NestedTorchTensorNcclChannel(
-                    writer,
-                    reader_and_node_list,
-                    gpu_data_typ=self._contains_type,
-                    cpu_data_typ=cpu_data_typ,
-                )
-
         return CompositeChannel(
             writer,
             reader_and_node_list,
             self._num_shm_buffers,
             read_by_adag_driver,
         )
-
-    def set_nccl_group_id(self, group_id: str) -> None:
-        assert self.requires_nccl()
-
-        # Shared memory channels don't need NCCL but they can
-        # contain objects that use NCCL.
-        self._contains_type.set_nccl_group_id(group_id)
 
 
 @PublicAPI(stability="alpha")
@@ -212,9 +195,9 @@ class Channel(ChannelInterface):
             assert isinstance(reader, ray.actor.ActorHandle)
 
         if typ is None:
-            typ = SharedMemoryType(DEFAULT_MAX_BUFFER_SIZE, num_shm_buffers=1)
+            typ = SharedMemoryType()
         elif isinstance(typ, int):
-            typ = SharedMemoryType(typ, num_shm_buffers=1)
+            typ = SharedMemoryType(buffer_size_bytes=typ)
 
         if typ.buffer_size_bytes < MIN_BUFFER_SIZE:
             raise ValueError(

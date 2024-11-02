@@ -12,10 +12,9 @@ import ray
 from ray import serve
 from ray._private.test_utils import wait_for_condition
 from ray.exceptions import RayActorError
-from ray.serve._private.common import ProxyStatus
 from ray.serve._private.utils import call_function_from_import_path
 from ray.serve.context import _get_global_client
-from ray.serve.schema import LoggingConfig, ServeInstanceDetails
+from ray.serve.schema import LoggingConfig, ProxyStatus, ServeInstanceDetails
 
 
 # ==== Callbacks used in this test ====

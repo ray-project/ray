@@ -60,8 +60,10 @@ class GcsPublisher {
   /// TODO: Implement optimization for channels where only latest data per ID is useful.
 
   Status PublishActor(const ActorID &id,
-                      const rpc::ActorTableData &message,
+                      rpc::ActorTableData message,
                       const StatusCallback &done);
+
+  // TODO (dayshah): Look at possibility of moving all of these rpc messages
 
   Status PublishJob(const JobID &id,
                     const rpc::JobTableData &message,

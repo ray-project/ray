@@ -4,7 +4,6 @@ import numpy as np
 from typing import Dict, List, Optional, Type, Union
 
 import ray
-from ray.rllib.evaluation.episode import Episode
 from ray.rllib.evaluation.postprocessing import compute_bootstrap_value
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.action_dist import ActionDistribution
@@ -398,7 +397,7 @@ class ImpalaTorchPolicy(
         self,
         sample_batch: SampleBatch,
         other_agent_batches: Optional[SampleBatch] = None,
-        episode: Optional["Episode"] = None,
+        episode=None,
     ):
         # Call super's postprocess_trajectory first.
         # sample_batch = super().postprocess_trajectory(

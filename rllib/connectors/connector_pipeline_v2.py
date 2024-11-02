@@ -59,7 +59,18 @@ class ConnectorPipelineV2(ConnectorV2):
                 pipeline during construction. Note that you can always add (or remove)
                 more ConnectorV2 pieces later on the fly.
         """
-        self.connectors = connectors or []
+        self.connectors = []
+
+        for conn in connectors:
+            # If we have a `ConnectorV2` instance just append.
+            if isinstance(conn, ConnectorV2):
+                self.connectors.append(conn)
+            # If, we have a class with `args` and `kwargs`, build the instance.
+            # Note that this way of constructing a pipeline should only be
+            # used internally when restoring the pipeline state from a
+            # checkpoint.
+            elif isinstance(conn, tuple) and len(conn) == 3:
+                self.connectors.append(conn[0](*conn[1], **conn[2]))
 
         super().__init__(input_observation_space, input_action_space, **kwargs)
 
@@ -266,6 +277,17 @@ class ConnectorPipelineV2(ConnectorV2):
     # don't have to return the `connectors` c'tor kwarg from there. This is b/c all
     # connector pieces in this pipeline are themselves Checkpointable components,
     # so they will be properly written into this pipeline's checkpoint.
+    @override(Checkpointable)
+    def get_ctor_args_and_kwargs(self) -> Tuple[Tuple, Dict[str, Any]]:
+        return (
+            (self.input_observation_space, self.input_action_space),  # *args
+            {
+                "connectors": [
+                    (type(conn), *conn.get_ctor_args_and_kwargs())
+                    for conn in self.connectors
+                ]
+            },
+        )
 
     @override(ConnectorV2)
     def reset_state(self) -> None:

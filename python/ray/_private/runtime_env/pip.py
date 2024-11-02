@@ -26,8 +26,8 @@ MAX_INTERNAL_PIP_FILENAME_TRIES = 100
 
 def _get_pip_hash(pip_dict: Dict) -> str:
     serialized_pip_spec = json.dumps(pip_dict, sort_keys=True)
-    hash = hashlib.sha1(serialized_pip_spec.encode("utf-8")).hexdigest()
-    return hash
+    hash_val = hashlib.sha1(serialized_pip_spec.encode("utf-8")).hexdigest()
+    return hash_val
 
 
 def get_uri(runtime_env: Dict) -> Optional[str]:
@@ -435,14 +435,14 @@ class PipPlugin(RuntimeEnvPlugin):
         self._created_hash_bytes: Dict[str, int] = {}
         try_to_create_directory(self._pip_resources_dir)
 
-    def _get_path_from_hash(self, hash: str) -> str:
+    def _get_path_from_hash(self, hash_val: str) -> str:
         """Generate a path from the hash of a pip spec.
 
         Example output:
             /tmp/ray/session_2021-11-03_16-33-59_356303_41018/runtime_resources
                 /pip/ray-9a7972c3a75f55e976e620484f58410c920db091
         """
-        return os.path.join(self._pip_resources_dir, hash)
+        return os.path.join(self._pip_resources_dir, hash_val)
 
     def get_uris(self, runtime_env: "RuntimeEnv") -> List[str]:  # noqa: F821
         """Return the pip URI from the RuntimeEnv if it exists, else return []."""
@@ -456,7 +456,7 @@ class PipPlugin(RuntimeEnvPlugin):
     ) -> int:
         """Delete URI and return the number of bytes deleted."""
         logger.info("Got request to delete pip URI %s", uri)
-        protocol, hash = parse_uri(uri)
+        protocol, hash_val = parse_uri(uri)
         if protocol != Protocol.PIP:
             raise ValueError(
                 "PipPlugin can only delete URIs with protocol "
@@ -464,13 +464,13 @@ class PipPlugin(RuntimeEnvPlugin):
             )
 
         # Cancel running create task.
-        task = self._creating_task.pop(hash, None)
+        task = self._creating_task.pop(hash_val, None)
         if task is not None:
             task.cancel()
 
-        del self._created_hash_bytes[hash]
+        del self._created_hash_bytes[hash_val]
 
-        pip_env_path = self._get_path_from_hash(hash)
+        pip_env_path = self._get_path_from_hash(hash_val)
         local_dir_size = get_directory_size_bytes(pip_env_path)
         del self._create_locks[uri]
         try:
@@ -491,8 +491,8 @@ class PipPlugin(RuntimeEnvPlugin):
         if not runtime_env.has_pip():
             return 0
 
-        protocol, hash = parse_uri(uri)
-        target_dir = self._get_path_from_hash(hash)
+        protocol, hash_val = parse_uri(uri)
+        target_dir = self._get_path_from_hash(hash_val)
 
         async def _create_for_hash():
             await PipProcessor(
@@ -511,13 +511,13 @@ class PipPlugin(RuntimeEnvPlugin):
             self._create_locks[uri] = asyncio.Lock()
 
         async with self._create_locks[uri]:
-            if hash in self._created_hash_bytes:
-                return self._created_hash_bytes[hash]
-            self._creating_task[hash] = task = create_task(_create_for_hash())
-            task.add_done_callback(lambda _: self._creating_task.pop(hash, None))
-            bytes = await task
-            self._created_hash_bytes[hash] = bytes
-            return bytes
+            if hash_val in self._created_hash_bytes:
+                return self._created_hash_bytes[hash_val]
+            self._creating_task[hash_val] = task = create_task(_create_for_hash())
+            task.add_done_callback(lambda _: self._creating_task.pop(hash_val, None))
+            pip_dir_bytes = await task
+            self._created_hash_bytes[hash_val] = pip_dir_bytes
+            return pip_dir_bytes
 
     def modify_context(
         self,
@@ -531,8 +531,8 @@ class PipPlugin(RuntimeEnvPlugin):
         # PipPlugin only uses a single URI.
         uri = uris[0]
         # Update py_executable.
-        protocol, hash = parse_uri(uri)
-        target_dir = self._get_path_from_hash(hash)
+        protocol, hash_val = parse_uri(uri)
+        target_dir = self._get_path_from_hash(hash_val)
         virtualenv_python = _PathHelper.get_virtualenv_python(target_dir)
 
         if not os.path.exists(virtualenv_python):

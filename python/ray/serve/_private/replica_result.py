@@ -1,10 +1,13 @@
+import inspect
 import threading
 import time
 from abc import ABC, abstractmethod
-from typing import Callable, Optional, Union
+from functools import wraps
+from typing import Callable, Coroutine, Optional, Union
 
 import ray
 from ray.serve._private.utils import calculate_remaining_timeout
+from ray.serve.exceptions import RequestCancelledError
 
 
 class ReplicaResult(ABC):
@@ -25,7 +28,7 @@ class ReplicaResult(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def add_callback(self, callback: Callable):
+    def add_done_callback(self, callback: Callable):
         raise NotImplementedError
 
     @abstractmethod
@@ -38,10 +41,12 @@ class ActorReplicaResult(ReplicaResult):
         self,
         obj_ref_or_gen: Union[ray.ObjectRef, ray.ObjectRefGenerator],
         is_streaming: bool,
+        request_id: str,
     ):
         self._obj_ref: Optional[ray.ObjectRef] = None
         self._obj_ref_gen: Optional[ray.ObjectRefGenerator] = None
         self._is_streaming: bool = is_streaming
+        self._request_id: str = request_id
         self._object_ref_or_gen_sync_lock = threading.Lock()
 
         if isinstance(obj_ref_or_gen, ray.ObjectRefGenerator):
@@ -92,6 +97,27 @@ class ActorReplicaResult(ReplicaResult):
 
         return self._obj_ref
 
+    def _process_response(f: Union[Callable, Coroutine]):
+        @wraps(f)
+        def wrapper(self, *args, **kwargs):
+            try:
+                return f(self, *args, **kwargs)
+            except ray.exceptions.TaskCancelledError:
+                raise RequestCancelledError(self._request_id)
+
+        @wraps(f)
+        async def async_wrapper(self, *args, **kwargs):
+            try:
+                return await f(self, *args, **kwargs)
+            except ray.exceptions.TaskCancelledError:
+                raise RequestCancelledError(self._request_id)
+
+        if inspect.iscoroutinefunction(f):
+            return async_wrapper
+        else:
+            return wrapper
+
+    @_process_response
     def get(self, timeout_s: Optional[float]):
         assert (
             self._obj_ref is not None or not self._is_streaming
@@ -107,6 +133,7 @@ class ActorReplicaResult(ReplicaResult):
         )
         return ray.get(self._obj_ref, timeout=remaining_timeout_s)
 
+    @_process_response
     async def get_async(self):
         assert (
             self._obj_ref is not None or not self._is_streaming
@@ -115,6 +142,7 @@ class ActorReplicaResult(ReplicaResult):
         await self.resolve_gen_to_ref_if_necessary_async()
         return await self._obj_ref
 
+    @_process_response
     def __next__(self):
         assert self._obj_ref_gen is not None, (
             "next() can only be called on an ActorReplicaResult initialized with a "
@@ -124,6 +152,7 @@ class ActorReplicaResult(ReplicaResult):
         next_obj_ref = self._obj_ref_gen.__next__()
         return ray.get(next_obj_ref)
 
+    @_process_response
     async def __anext__(self):
         assert self._obj_ref_gen is not None, (
             "anext() can only be called on an ActorReplicaResult initialized with a "
@@ -133,7 +162,7 @@ class ActorReplicaResult(ReplicaResult):
         next_obj_ref = await self._obj_ref_gen.__anext__()
         return await next_obj_ref
 
-    def add_callback(self, callback: Callable):
+    def add_done_callback(self, callback: Callable):
         if self._obj_ref_gen is not None:
             self._obj_ref_gen.completed()._on_completed(callback)
         else:

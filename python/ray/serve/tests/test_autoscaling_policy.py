@@ -16,7 +16,6 @@ import ray.util.state as state_api
 from ray import serve
 from ray._private.test_utils import SignalActor, wait_for_condition
 from ray.serve._private.common import (
-    ApplicationStatus,
     DeploymentID,
     DeploymentStatus,
     DeploymentStatusTrigger,
@@ -38,7 +37,7 @@ from ray.serve._private.test_utils import (
 )
 from ray.serve.config import AutoscalingConfig
 from ray.serve.handle import DeploymentHandle
-from ray.serve.schema import ServeDeploySchema
+from ray.serve.schema import ApplicationStatus, ServeDeploySchema
 from ray.util.state import list_actors
 
 
@@ -230,7 +229,8 @@ class TestAutoscalingMetrics:
 
         # Num requests should still drop to 0 despite all requests failing.
         def check_handle_metrics(handle):
-            num_requests = handle._router._metrics_manager.num_requests_sent_to_replicas
+            metrics_manager = handle._router._asyncio_router._metrics_manager
+            num_requests = metrics_manager.num_requests_sent_to_replicas
             for replica_id, num in num_requests.items():
                 assert (
                     num == 0

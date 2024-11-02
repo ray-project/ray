@@ -12,7 +12,7 @@ from ray.data._internal.execution.interfaces.execution_options import (
     ExecutionResources,
 )
 from ray.data._internal.execution.interfaces.op_runtime_metrics import OpRuntimeMetrics
-from ray.data._internal.logical.interfaces import Operator
+from ray.data._internal.logical.interfaces import LogicalOperator, Operator
 from ray.data._internal.stats import StatsDict
 from ray.data.context import DataContext
 
@@ -188,6 +188,9 @@ class PhysicalOperator(Operator):
         self._estimated_num_output_bundles = None
         self._estimated_output_num_rows = None
         self._execution_completed = False
+        # The LogicalOperator(s) which were translated to create this PhysicalOperator.
+        # Set via `PhysicalOperator.set_logical_operators()`.
+        self._logical_operators: List[LogicalOperator] = []
 
     def __reduce__(self):
         raise ValueError("Operator is not serializable.")
@@ -204,6 +207,12 @@ class PhysicalOperator(Operator):
 
     def post_order_iter(self) -> Iterator["PhysicalOperator"]:
         return super().post_order_iter()  # type: ignore
+
+    def set_logical_operators(
+        self,
+        *logical_ops: LogicalOperator,
+    ):
+        self._logical_operators = list(logical_ops)
 
     @property
     def target_max_block_size(self) -> Optional[int]:
@@ -390,20 +399,6 @@ class PhysicalOperator(Operator):
         """
         return len(self.get_active_tasks())
 
-    def num_active_actors(self) -> int:
-        """Return the number of active actors.
-
-        This method is used to display active actor info in the progress bar.
-        """
-        return 0
-
-    def num_pending_actors(self) -> int:
-        """Return the number of pending actors.
-
-        This method is used to display pending actor info in the progress bar.
-        """
-        return 0
-
     def throttling_disabled(self) -> bool:
         """Whether to disable resource throttling for this operator.
 
@@ -514,3 +509,21 @@ class PhysicalOperator(Operator):
     def supports_fusion(self) -> bool:
         """Returns ```True``` if this operator can be fused with other operators."""
         return False
+
+    def update_resource_usage(self) -> None:
+        """Updates resource usage of this operator at runtime.
+
+        This method will be called at runtime in each StreamingExecutor iteration.
+        Subclasses can override it to account for dynamic resource usage updates due to
+        restarting actors, retrying tasks, lost objects, etc.
+        """
+        pass
+
+    def actor_info_progress_str(self) -> str:
+        """Returns Actor progress strings for Alive, Restarting and Pending Actors.
+
+        This method will be called in summary_str API in OpState. Subcallses can
+        override it to return Actor progress strings for Alive, Restarting and Pending
+        Actors.
+        """
+        return ""

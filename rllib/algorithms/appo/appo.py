@@ -125,7 +125,6 @@ class APPOConfig(IMPALAConfig):
         self.epsilon = 0.1
         self.vf_loss_coeff = 0.5
         self.entropy_coeff = 0.01
-        self.entropy_coeff_schedule = None
         self.tau = 1.0
         self.exploration_config = {
             # The Exploration class to use. In the simplest case, this is the name
@@ -137,14 +136,15 @@ class APPOConfig(IMPALAConfig):
             # Add constructor kwargs here (if any).
         }
 
+        # __sphinx_doc_end__
+        # fmt: on
+
+        self.entropy_coeff_schedule = None  # @OldAPIStack
         self.num_gpus = 0  # @OldAPIStack
         self.num_multi_gpu_tower_stacks = 1  # @OldAPIStack
         self.minibatch_buffer_size = 1  # @OldAPIStack
         self.replay_proportion = 0.0  # @OldAPIStack
         self.replay_buffer_num_slots = 100  # @OldAPIStack
-
-        # __sphinx_doc_end__
-        # fmt: on
 
         self.target_update_frequency = DEPRECATED_VALUE
 

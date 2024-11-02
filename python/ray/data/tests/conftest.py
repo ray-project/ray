@@ -15,6 +15,7 @@ from ray._private.internal_api import get_memory_info_reply, get_state_from_addr
 from ray._private.utils import _get_pyarrow_version
 from ray.air.constants import TENSOR_COLUMN_NAME
 from ray.air.util.tensor_extensions.arrow import ArrowTensorArray
+from ray.data import Schema
 from ray.data.block import BlockExecStats, BlockMetadata
 from ray.data.tests.mock_server import *  # noqa
 
@@ -217,7 +218,7 @@ def assert_base_partitioned_ds():
         count=6,
         num_input_files=2,
         num_rows=6,
-        schema="{one: int64, two: string}",
+        schema=Schema(pa.schema([("one", pa.int64()), ("two", pa.string())])),
         sorted_values=None,
         ds_take_transform_fn=None,
         sorted_values_transform_fn=None,
@@ -238,28 +239,9 @@ def assert_base_partitioned_ds():
         assert not ds._plan.has_started_execution
         assert ds.count() == count, f"{ds.count()} != {count}"
         assert ds.size_bytes() > 0, f"{ds.size_bytes()} <= 0"
-        assert ds.schema() is not None
+        assert ds.schema() == schema
         actual_input_files = ds.input_files()
         assert len(actual_input_files) == num_input_files, actual_input_files
-
-        # For Datasets with long string representations, the format will include
-        # whitespace and newline characters, which is difficult to generalize
-        # without implementing the formatting logic again (from
-        # `ExecutionPlan.get_plan_as_string()`). Therefore, we remove whitespace
-        # characters to test the string contents regardless of the string repr length.
-        def _remove_whitespace(ds_str):
-            for c in ["\n", "   ", " "]:
-                ds_str = ds_str.replace(c, "")
-            return ds_str
-
-        assert "Dataset(num_rows={},schema={})".format(
-            num_rows,
-            _remove_whitespace(schema),
-        ) == _remove_whitespace(str(ds)), ds
-        assert "Dataset(num_rows={},schema={})".format(
-            num_rows,
-            _remove_whitespace(schema),
-        ) == _remove_whitespace(repr(ds)), ds
 
         # Force a data read.
         values = ds_take_transform_fn(ds.take_all())

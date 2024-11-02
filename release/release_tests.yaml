@@ -2716,7 +2716,7 @@
 
   run:
     timeout: 43200  # 12h
-    script: python learning_tests/tuned_examples/dreamerv3/atari_100k.py --framework=tf2 --env=ALE/Pong-v5 --num-gpus=1 --stop-reward=15.0 --as-release-test
+    script: python learning_tests/tuned_examples/dreamerv3/atari_100k.py --framework=tf2 --env=ale_py:ALE/Pong-v5 --num-gpus=1 --stop-reward=15.0 --as-release-test
 
   alert: default
 
@@ -2751,7 +2751,7 @@
 
   run:
     timeout: 1200
-    script: python learning_tests/tuned_examples/ppo/atari_ppo.py --enable-new-api-stack --env=ALE/Pong-v5 --num-gpus=4 --num-env-runners=95 --stop-reward=20.0 --as-release-test
+    script: python learning_tests/tuned_examples/ppo/atari_ppo.py --enable-new-api-stack --env=ale_py:ALE/Pong-v5 --num-gpus=4 --num-env-runners=95 --stop-reward=20.0 --as-release-test
 
   alert: default
 
@@ -2965,6 +2965,56 @@
     script: python experimental/accelerated_dag_gpu_microbenchmark.py
 
 - name: microbenchmark_gpu_multinode_unstable
+  group: core-daily-test
+  team: core
+  frequency: nightly
+  working_dir: microbenchmark
+
+  stable: false
+
+  cluster:
+    byod:
+      type: gpu
+    cluster_compute: experimental/compute_gpu_2x1_aws.yaml
+
+  run:
+    timeout: 1800
+    script: python experimental/accelerated_dag_gpu_microbenchmark.py --distributed
+
+- name: compiled_graphs
+  group: core-daily-test
+  team: core
+  frequency: nightly
+  working_dir: microbenchmark
+
+  stable: false
+
+  cluster:
+    byod: {}
+    cluster_compute: tpl_64.yaml
+
+  run:
+    timeout: 1800
+    script: OMP_NUM_THREADS=64 RAY_ADDRESS=local python run_microbenchmark.py --experimental
+
+- name: compiled_graphs_GPU
+  group: core-daily-test
+  team: core
+  frequency: nightly
+  working_dir: microbenchmark
+
+  stable: false
+
+  cluster:
+    byod:
+      type: gpu
+    cluster_compute: experimental/compute_gpu_2_aws.yaml
+
+  run:
+    timeout: 1800
+    script: python experimental/accelerated_dag_gpu_microbenchmark.py
+
+- name: compiled_graphs_GPU_multinode
   group: core-daily-test
   team: core
   frequency: nightly

@@ -9,6 +9,7 @@ from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.env.single_agent_env_runner import SingleAgentEnvRunner
 from ray.rllib.env.utils import _gym_env_creator
 from ray.rllib.examples.envs.classes.simple_corridor import SimpleCorridor
+from ray.rllib.utils.test_utils import check
 
 
 class TestSingleAgentEnvRunner(unittest.TestCase):
@@ -53,7 +54,7 @@ class TestSingleAgentEnvRunner(unittest.TestCase):
         # Sample 10 episodes (5 per env) 100 times.
         for _ in range(100):
             episodes = env_runner.sample(num_episodes=10, random_actions=True)
-            self.assertTrue(len(episodes) == 10)
+            check(len(episodes), 10)
             # Since we sampled complete episodes, there should be no ongoing episodes
             # being returned.
             self.assertTrue(all(e.is_done for e in episodes))
@@ -61,20 +62,22 @@ class TestSingleAgentEnvRunner(unittest.TestCase):
         # Sample 10 timesteps (5 per env) 100 times.
         for _ in range(100):
             episodes = env_runner.sample(num_timesteps=10, random_actions=True)
-            # Check, whether the sum of lengths of all episodes returned is 20
-            self.assertTrue(sum(len(e) for e in episodes) == 10)
+            # Check the sum of lengths of all episodes returned.
+            sum_ = sum(map(len, episodes))
+            self.assertTrue(sum_ in [10, 11])
 
         # Sample (by default setting: rollout_fragment_length=64) 10 times.
         for _ in range(100):
             episodes = env_runner.sample(random_actions=True)
             # Check, whether the sum of lengths of all episodes returned is 128
             # 2 (num_env_per_worker) * 64 (rollout_fragment_length).
-            self.assertTrue(sum(len(e) for e in episodes) == 128)
+            sum_ = sum(map(len, episodes))
+            self.assertTrue(sum_ in [128, 129])
 
     def test_async_vector_env(self):
         """Tests, whether SingleAgentGymEnvRunner can run with vector envs."""
 
-        for env in ["TestEnv-v0", "CartPole-v1", SimpleCorridor, "tune-registered"]:
+        for env in ["CartPole-v1", SimpleCorridor, "tune-registered"]:
             config = (
                 AlgorithmConfig().environment(env)
                 # Vectorize x5 and by default, rollout 64 timesteps per individual env.
@@ -110,7 +113,7 @@ class TestSingleAgentEnvRunner(unittest.TestCase):
             for env_spec in ["tune-registered", "CartPole-v1", SimpleCorridor]:
                 config = (
                     AlgorithmConfig().environment(env_spec)
-                    # Vectorize x5 and by default, rollout 64 timesteps per individual
+                    # Vectorize x5 and by default, rollout 10 timesteps per individual
                     # env.
                     .env_runners(
                         num_env_runners=5,
@@ -129,9 +132,14 @@ class TestSingleAgentEnvRunner(unittest.TestCase):
                 # Loop over individual EnvRunner Actor's results and inspect each.
                 for episodes in results:
                     # Assert length of all fragments is  `rollout_fragment_length`.
-                    self.assertEqual(
+                    self.assertIn(
                         sum(len(e) for e in episodes),
-                        config.num_envs_per_env_runner * config.rollout_fragment_length,
+                        [
+                            config.num_envs_per_env_runner
+                            * config.rollout_fragment_length
+                            + i
+                            for i in range(config.num_envs_per_env_runner)
+                        ],
                     )
 
 

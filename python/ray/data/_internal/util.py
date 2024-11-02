@@ -931,7 +931,6 @@ def make_async_gen(
             if isinstance(next_item, Exception):
                 raise next_item
             if isinstance(next_item, Sentinel):
-                logger.debug(f"Thread {next_item.thread_index} finished.")
                 num_threads_finished += 1
             else:
                 yield next_item

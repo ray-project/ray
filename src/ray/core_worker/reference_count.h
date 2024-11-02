@@ -75,11 +75,9 @@ class ReferenceCounter : public ReferenceCounterInterface,
                    pubsub::PublisherInterface *object_info_publisher,
                    pubsub::SubscriberInterface *object_info_subscriber,
                    const std::function<bool(const NodeID &node_id)> &check_node_alive,
-                   bool lineage_pinning_enabled = false,
-                   rpc::ClientFactoryFn client_factory = nullptr)
+                   bool lineage_pinning_enabled = false)
       : rpc_address_(rpc_address),
         lineage_pinning_enabled_(lineage_pinning_enabled),
-        borrower_pool_(client_factory),
         object_info_publisher_(object_info_publisher),
         object_info_subscriber_(object_info_subscriber),
         check_node_alive_(check_node_alive) {}
@@ -1029,14 +1027,6 @@ class ReferenceCounter : public ReferenceCounterInterface,
   /// Reference can be deleted. The object's lineage ref count is the number of
   /// tasks that depend on that object that may be retried in the future.
   const bool lineage_pinning_enabled_;
-
-  /// Factory for producing new core worker clients.
-  rpc::ClientFactoryFn client_factory_;
-
-  /// Pool from worker address to core worker client. The owner of an object
-  /// uses this client to request a notification from borrowers once the
-  /// borrower's ref count for the ID goes to 0.
-  rpc::CoreWorkerClientPool borrower_pool_;
 
   /// Protects access to the reference counting state.
   mutable absl::Mutex mutex_;

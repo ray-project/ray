@@ -3,7 +3,6 @@ import random
 
 import pyarrow as pa
 import pytest
-from packaging.version import Version
 from pkg_resources import parse_version
 from pyiceberg import catalog as pyi_catalog
 from pyiceberg import expressions as pyi_expr
@@ -101,8 +100,8 @@ def pyiceberg_table():
 
 
 @pytest.mark.skipif(
-    Version(pa.__version__) < Version("9.0.0"),
-    reason="PyIceberg depends on pyarrow>=9.0.0",
+    parse_version(_get_pyarrow_version()) < parse_version("14.0.0"),
+    reason="PyIceberg 0.7.0 fails on pyarrow <= 14.0.0",
 )
 def test_get_catalog():
     # NOTE: Iceberg only works with PyArrow 9 or above.
@@ -121,8 +120,8 @@ def test_get_catalog():
 
 
 @pytest.mark.skipif(
-    Version(pa.__version__) < Version("9.0.0"),
-    reason="PyIceberg depends on pyarrow>=9.0.0",
+    parse_version(_get_pyarrow_version()) < parse_version("14.0.0"),
+    reason="PyIceberg 0.7.0 fails on pyarrow <= 14.0.0",
 )
 def test_plan_files():
     # NOTE: Iceberg only works with PyArrow 9 or above.
@@ -141,8 +140,8 @@ def test_plan_files():
 
 
 @pytest.mark.skipif(
-    Version(pa.__version__) < Version("9.0.0"),
-    reason="PyIceberg depends on pyarrow>=9.0.0",
+    parse_version(_get_pyarrow_version()) < parse_version("14.0.0"),
+    reason="PyIceberg 0.7.0 fails on pyarrow <= 14.0.0",
 )
 def test_chunk_plan_files():
     # NOTE: Iceberg only works with PyArrow 9 or above.
@@ -168,8 +167,8 @@ def test_chunk_plan_files():
 
 
 @pytest.mark.skipif(
-    Version(pa.__version__) < Version("9.0.0"),
-    reason="PyIceberg depends on pyarrow>=9.0.0",
+    parse_version(_get_pyarrow_version()) < parse_version("14.0.0"),
+    reason="PyIceberg 0.7.0 fails on pyarrow <= 14.0.0",
 )
 def test_get_read_tasks():
     # NOTE: Iceberg only works with PyArrow 9 or above.
@@ -189,8 +188,8 @@ def test_get_read_tasks():
 
 
 @pytest.mark.skipif(
-    Version(pa.__version__) < Version("9.0.0"),
-    reason="PyIceberg depends on pyarrow>=9.0.0",
+    parse_version(_get_pyarrow_version()) < parse_version("14.0.0"),
+    reason="PyIceberg 0.7.0 fails on pyarrow <= 14.0.0",
 )
 def test_filtered_read():
     # NOTE: Iceberg only works with PyArrow 9 or above.
@@ -215,8 +214,8 @@ def test_filtered_read():
 
 
 @pytest.mark.skipif(
-    Version(pa.__version__) < Version("9.0.0"),
-    reason="PyIceberg depends on pyarrow>=9.0.0",
+    parse_version(_get_pyarrow_version()) < parse_version("14.0.0"),
+    reason="PyIceberg 0.7.0 fails on pyarrow <= 14.0.0",
 )
 def test_read_basic():
     # NOTE: Iceberg only works with PyArrow 9 or above.

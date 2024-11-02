@@ -112,7 +112,13 @@ class NcclWorker:
 
 
 def exec_ray_dag(
-    label, sender, receiver, use_nccl=False, use_adag=True, dynamic_shape=False
+    label,
+    sender,
+    receiver,
+    use_nccl=False,
+    use_adag=True,
+    static_shape=False,
+    direct_return=False,
 ):
     # Test torch.Tensor sent between actors.
     with InputNode() as inp:
@@ -121,8 +127,8 @@ def exec_ray_dag(
         if use_adag:
             dag = dag.with_type_hint(
                 TorchTensorType(
-                    "auto" if dynamic_shape else SHAPE,
-                    "auto" if dynamic_shape else DTYPE,
+                    _static_shape=static_shape,
+                    _direct_return=direct_return,
                     transport="nccl" if use_nccl else "auto",
                 )
             )
@@ -315,7 +321,12 @@ def exec_ray_dag_gpu_cpu_gpu(sender_hint, receiver_hint):
     return exec_ray_dag("exec_ray_dag_gpu_cpu_gpu", sender, receiver)
 
 
-def exec_ray_dag_gpu_nccl(sender_hint, receiver_hint, dynamic_shape: bool = False):
+def exec_ray_dag_gpu_nccl(
+    sender_hint,
+    receiver_hint,
+    static_shape: bool = False,
+    direct_return: bool = False,
+):
     time.sleep(1)
     sender = TorchTensorWorker.options(
         num_gpus=1, scheduling_strategy=sender_hint
@@ -324,11 +335,14 @@ def exec_ray_dag_gpu_nccl(sender_hint, receiver_hint, dynamic_shape: bool = Fals
         num_gpus=1, scheduling_strategy=receiver_hint
     ).remote()
     return exec_ray_dag(
-        "exec_ray_dag_gpu_nccl" + ("_dynamic" if dynamic_shape else ""),
+        "exec_ray_dag_gpu_nccl"
+        + ("_static_shape" if static_shape else "")
+        + ("_direct_return" if direct_return else ""),
         sender,
         receiver,
         use_nccl=True,
-        dynamic_shape=dynamic_shape,
+        static_shape=static_shape,
+        direct_return=direct_return,
     )
 
 
@@ -395,8 +409,18 @@ def main(distributed):
     results += exec_ray_dag_cpu(sender_hint, receiver_hint)
     results += exec_ray_core_gpu(sender_hint, receiver_hint)
     results += exec_ray_dag_gpu_cpu_gpu(sender_hint, receiver_hint)
-    results += exec_ray_dag_gpu_nccl(sender_hint, receiver_hint, dynamic_shape=True)
-    results += exec_ray_dag_gpu_nccl(sender_hint, receiver_hint, dynamic_shape=False)
+    results += exec_ray_dag_gpu_nccl(
+        sender_hint, receiver_hint, static_shape=True, direct_return=True
+    )
+    results += exec_ray_dag_gpu_nccl(
+        sender_hint, receiver_hint, static_shape=False, direct_return=True
+    )
+    results += exec_ray_dag_gpu_nccl(
+        sender_hint, receiver_hint, static_shape=True, direct_return=False
+    )
+    results += exec_ray_dag_gpu_nccl(
+        sender_hint, receiver_hint, static_shape=False, direct_return=False
+    )
 
     return results
 

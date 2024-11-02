@@ -5,7 +5,6 @@ from typing import Any, List, Optional
 import ray
 from ray.experimental import tqdm_ray
 from ray.types import ObjectRef
-from ray.util.annotations import Deprecated
 from ray.util.debug import log_once
 
 logger = logging.getLogger(__name__)
@@ -21,24 +20,6 @@ except ImportError:
 # Used a signal to cancel execution.
 _canceled_threads = set()
 _canceled_threads_lock = threading.Lock()
-
-
-@Deprecated
-def set_progress_bars(enabled: bool) -> bool:
-    """Set whether progress bars are enabled.
-
-    The default behavior is controlled by the
-    ``RAY_DATA_DISABLE_PROGRESS_BARS`` environment variable. By default,
-    it is set to "0". Setting it to "1" will disable progress bars, unless
-    they are reenabled by this method.
-
-    Returns:
-        Whether progress bars were previously enabled.
-    """
-    raise DeprecationWarning(
-        "`set_progress_bars` is deprecated. Set "
-        "`ray.data.DataContext.get_current().enable_progress_bars` instead.",
-    )
 
 
 def extract_num_rows(result: Any) -> int:

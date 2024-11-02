@@ -575,7 +575,6 @@ class TestHTTPProxy:
         request_metadata = RequestMetadata(
             request_id="fake-request-id",
             internal_request_id="fake-internal-request-id",
-            endpoint="fake-endpoint",
         )
         queue = AsyncMock()
         http_proxy.asgi_receive_queues[internal_request_id] = queue

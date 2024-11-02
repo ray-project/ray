@@ -19,9 +19,6 @@ from ray.dashboard.modules.metrics.dashboards.serve_deployment_dashboard_panels 
     serve_deployment_dashboard_config,
 )
 
-METRICS_INPUT_ROOT = os.path.join(os.path.dirname(__file__), "export")
-GRAFANA_CONFIG_INPUT_PATH = os.path.join(METRICS_INPUT_ROOT, "grafana")
-
 GRAFANA_DASHBOARD_UID_OVERRIDE_ENV_VAR_TEMPLATE = "RAY_GRAFANA_{name}_DASHBOARD_UID"
 GRAFANA_DASHBOARD_GLOBAL_FILTERS_OVERRIDE_ENV_VAR_TEMPLATE = (
     "RAY_GRAFANA_{name}_DASHBOARD_GLOBAL_FILTERS"

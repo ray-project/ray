@@ -81,7 +81,7 @@ class SQLDatasource(Datasource):
         self.connection_factory = connection_factory
 
     def estimate_inmemory_data_size(self) -> Optional[int]:
-        None
+        pass
 
     def get_read_tasks(self, parallelism: int) -> List[ReadTask]:
         def fallback_read_fn() -> Iterable[Block]:

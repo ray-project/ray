@@ -123,14 +123,18 @@ def test_resource_canonicalization(ray_start_10_cpus_shared):
     )
     assert op._ray_remote_args == {"num_gpus": 2}
 
-    with pytest.raises(ValueError):
-        MapOperator.create(
-            _mul2_map_data_prcessor,
-            input_op=input_op,
-            name="TestMapper",
-            compute_strategy=TaskPoolStrategy(),
-            ray_remote_args={"num_gpus": 2, "num_cpus": 1},
-        )
+    op = MapOperator.create(
+        _mul2_map_data_prcessor,
+        input_op=input_op,
+        name="TestMapper",
+        compute_strategy=TaskPoolStrategy(),
+        ray_remote_args={"num_gpus": 2, "num_cpus": 1},
+    )
+    assert op.base_resource_usage() == ExecutionResources()
+    assert op.incremental_resource_usage() == ExecutionResources(
+        cpu=1, gpu=2, object_store_memory=inc_obj_store_mem
+    )
+    assert op._ray_remote_args == {"num_gpus": 2, "num_cpus": 1}
 
 
 def test_execution_options_resource_limit():

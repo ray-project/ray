@@ -1416,7 +1416,6 @@ def run_rllib_example_script_experiment(
                 num_learners=args.num_gpus,
                 num_gpus_per_learner=1 if num_gpus >= args.num_gpus > 0 else 0,
             )
-            config.resources(num_gpus=0)
         # Old stack.
         else:
             config.resources(num_gpus=args.num_gpus)

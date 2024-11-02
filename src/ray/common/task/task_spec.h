@@ -108,6 +108,16 @@ struct SchedulingClassDescriptor {
     buffer << "}}";
     return buffer.str();
   }
+
+  std::string ResourceSetStr() const {
+    std::stringstream buffer;
+    buffer << "{";
+    for (const auto &pair : resource_set.GetResourceMap()) {
+      buffer << pair.first << " : " << pair.second << ", ";
+    }
+    buffer << "}";
+    return buffer.str();
+  }
 };
 }  // namespace ray
 
@@ -481,7 +491,7 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
   // Concurrency groups of the actor.
   std::vector<ConcurrencyGroup> ConcurrencyGroups() const;
 
-  std::string ConcurrencyGroupName() const;
+  const std::string &ConcurrencyGroupName() const;
 
   bool ExecuteOutOfOrder() const;
 

@@ -70,9 +70,11 @@ int main(int argc, char *argv[]) {
 
   RayConfig::instance().initialize(config_list);
   ray::asio::testing::init();
+  ray::rpc::testing::init();
 
   // IO Service for main loop.
-  instrumented_io_context main_service;
+  SetThreadName("gcs_server");
+  instrumented_io_context main_service(/*enable_lag_probe=*/true);
   // Ensure that the IO service keeps running. Without this, the main_service will exit
   // as soon as there is no more work to be processed.
   boost::asio::io_service::work work(main_service);

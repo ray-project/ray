@@ -6,6 +6,7 @@ import pytest
 from google.protobuf.any_pb2 import Any as AnyProto
 
 from ray import cloudpickle
+from ray.serve._private.default_impl import add_grpc_address
 from ray.serve._private.grpc_util import (
     DummyServicer,
     create_serve_grpc_server,
@@ -13,6 +14,14 @@ from ray.serve._private.grpc_util import (
 )
 from ray.serve._private.test_utils import FakeGrpcContext
 from ray.serve.grpc_util import RayServegRPCContext
+
+
+class FakeGrpcServer:
+    def __init__(self):
+        self.address = None
+
+    def add_insecure_port(self, address):
+        self.address = address
 
 
 def fake_service_handler_factory(service_method: str, stream: bool) -> Callable:
@@ -118,6 +127,15 @@ def test_ray_serve_grpc_context_serializable():
     cloudpickled_context = cloudpickle.dumps(context)
     deserialized_context = pickle.loads(cloudpickled_context)
     assert deserialized_context.__dict__ == context.__dict__
+
+
+def test_add_grpc_address():
+    """Test `add_grpc_address` adds the address to the gRPC server."""
+    fake_grpc_server = FakeGrpcServer()
+    grpc_address = "fake_address:50051"
+    assert fake_grpc_server.address is None
+    add_grpc_address(fake_grpc_server, grpc_address)
+    assert fake_grpc_server.address == grpc_address
 
 
 if __name__ == "__main__":
