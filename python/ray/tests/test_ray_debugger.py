@@ -16,7 +16,7 @@ from ray.cluster_utils import Cluster, cluster_not_supported
 
 
 def test_ray_debugger_breakpoint(shutdown_only):
-    ray.init(num_cpus=1)
+    ray.init(num_cpus=1, runtime_env={"env_vars": {"RAY_DEBUG": "legacy"}})
 
     @ray.remote
     def f():
@@ -56,7 +56,7 @@ def test_ray_debugger_breakpoint(shutdown_only):
 
 @pytest.mark.skipif(platform.system() == "Windows", reason="Failing on Windows.")
 def test_ray_debugger_commands(shutdown_only):
-    ray.init(num_cpus=2)
+    ray.init(num_cpus=2, runtime_env={"env_vars": {"RAY_DEBUG": "legacy"}})
 
     @ray.remote
     def f():
@@ -96,7 +96,7 @@ def test_ray_debugger_commands(shutdown_only):
 
 @pytest.mark.skipif(platform.system() == "Windows", reason="Failing on Windows.")
 def test_ray_debugger_stepping(shutdown_only):
-    ray.init(num_cpus=1)
+    ray.init(num_cpus=1, runtime_env={"env_vars": {"RAY_DEBUG": "legacy"}})
 
     @ray.remote
     def g():
@@ -126,7 +126,7 @@ def test_ray_debugger_stepping(shutdown_only):
 
 @pytest.mark.skipif(platform.system() == "Windows", reason="Failing on Windows.")
 def test_ray_debugger_recursive(shutdown_only):
-    ray.init(num_cpus=1)
+    ray.init(num_cpus=1, runtime_env={"env_vars": {"RAY_DEBUG": "legacy"}})
 
     @ray.remote
     def fact(n):
@@ -165,7 +165,7 @@ def test_job_exit_cleanup(ray_start_regular):
 import time
 
 import ray
-ray.init(address="{}")
+ray.init(address="{}", runtime_env={"env_vars": {"RAY_DEBUG": "legacy"}})
 
 @ray.remote
 def f():
@@ -225,7 +225,7 @@ def test_ray_debugger_public(shutdown_only, call_ray_stop_only, ray_debugger_ext
     address = out[address_location:]
     address = address.split("'")[0]
 
-    ray.init(address=address)
+    ray.init(address=address, runtime_env={"env_vars": {"RAY_DEBUG": "legacy"}})
 
     @ray.remote
     def f():
