@@ -1,5 +1,7 @@
 # __quick_start_begin__
 import gymnasium as gym
+import numpy as np
+
 from ray.rllib.algorithms.ppo import PPOConfig
 
 
@@ -31,7 +33,7 @@ class SimpleCorridor(gym.Env):
         """
         self.cur_pos = 0
         # Return initial observation.
-        return [self.cur_pos], {}
+        return np.array([self.cur_pos]), {}
 
     def step(self, action):
         """Takes a single step in the episode given `action`.
@@ -50,17 +52,12 @@ class SimpleCorridor(gym.Env):
         truncated = False
         # +1 when goal reached, otherwise -1.
         reward = 1.0 if terminated else -0.1
-        return [self.cur_pos], reward, terminated, truncated, {}
+        return np.array([self.cur_pos]), reward, terminated, truncated, {}
 
 
 # Create an RLlib Algorithm instance from a PPOConfig object.
 config = (
-    PPOConfig()
-    .api_stack(
-        enable_rl_module_and_learner=True,
-        enable_env_runner_and_connector_v2=True,
-    )
-    .environment(
+    PPOConfig().environment(
         # Env class to use (here: our gym.Env sub-class from above).
         SimpleCorridor,
         # Config dict to be passed to our custom env's constructor.

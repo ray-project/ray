@@ -28,6 +28,7 @@ from ray.rllib.policy.sample_batch import SampleBatch, MultiAgentBatch
 from ray.rllib.utils.test_utils import check, get_cartpole_dataset_reader
 from ray.rllib.utils.metrics import ALL_MODULES
 from ray.rllib.utils.metrics.metrics_logger import MetricsLogger
+from ray.rllib.utils.torch_utils import convert_to_torch_tensor
 from ray.util.timer import _Timer
 
 
@@ -63,7 +64,7 @@ class RemoteTrainingHelper:
         env = gym.make("CartPole-v1")
 
         reader = get_cartpole_dataset_reader(batch_size=500)
-        batch = reader.next().as_multi_agent()
+        batch = convert_to_torch_tensor(reader.next().as_multi_agent())
 
         config_overrides = LOCAL_CONFIGS[scaling_mode]
         config = BaseTestingAlgorithmConfig().update_from_dict(config_overrides)
@@ -96,7 +97,7 @@ class RemoteTrainingHelper:
         check(local_learner.get_state(), learner_group.get_state()[COMPONENT_LEARNER])
 
         # Do another update.
-        batch = reader.next()
+        batch = convert_to_torch_tensor(reader.next())
         ma_batch = MultiAgentBatch(
             {new_module_id: batch, DEFAULT_MODULE_ID: batch}, env_steps=batch.count
         )
@@ -239,8 +240,8 @@ class TestLearnerGroupSyncUpdate(unittest.TestCase):
 
             min_loss = float("inf")
             for iter_i in range(1000):
-                batch = reader.next()
-                results = learner_group.update_from_batch(batch=batch.as_multi_agent())
+                batch = convert_to_torch_tensor(reader.next().as_multi_agent())
+                results = learner_group.update_from_batch(batch=batch)
 
                 loss = np.mean(
                     [res[ALL_MODULES][Learner.TOTAL_LOSS_KEY] for res in results]
@@ -279,7 +280,7 @@ class TestLearnerGroupSyncUpdate(unittest.TestCase):
             config = BaseTestingAlgorithmConfig().update_from_dict(config_overrides)
             learner_group = config.build_learner_group(env=env)
             reader = get_cartpole_dataset_reader(batch_size=512)
-            batch = reader.next()
+            batch = convert_to_torch_tensor(reader.next())
 
             # Update once with the default policy.
             learner_group.update_from_batch(batch.as_multi_agent())
@@ -451,7 +452,7 @@ class TestLearnerGroupSaveLoadState(unittest.TestCase):
         # this is expanded to more scaling modes on the release ci.
         scaling_modes = ["local-cpu", "multi-gpu-ddp"]
         test_iterator = itertools.product(fws, scaling_modes)
-        batch = SampleBatch(FAKE_BATCH)
+        batch = convert_to_torch_tensor(SampleBatch(FAKE_BATCH).as_multi_agent())
         for fw, scaling_mode in test_iterator:
             print(f"Testing framework: {fw}, scaling mode: {scaling_mode}.")
             env = gym.make("CartPole-v1")
@@ -469,7 +470,7 @@ class TestLearnerGroupSaveLoadState(unittest.TestCase):
             initial_weights = learner_group.get_weights()
 
             # Do a single update.
-            learner_group.update_from_batch(batch.as_multi_agent())
+            learner_group.update_from_batch(batch)
             weights_after_update = learner_group.get_state(
                 components=COMPONENT_LEARNER + "/" + COMPONENT_RL_MODULE
             )[COMPONENT_LEARNER][COMPONENT_RL_MODULE]
@@ -490,9 +491,7 @@ class TestLearnerGroupSaveLoadState(unittest.TestCase):
             learner_group.restore_from_path(learner_after_1_update_checkpoint_dir)
 
             # Do another update.
-            results_2nd_update_with_break = learner_group.update_from_batch(
-                batch=batch.as_multi_agent()
-            )
+            results_2nd_update_with_break = learner_group.update_from_batch(batch=batch)
             weights_after_2_updates_with_break = learner_group.get_state(
                 components=COMPONENT_LEARNER + "/" + COMPONENT_RL_MODULE
             )[COMPONENT_LEARNER][COMPONENT_RL_MODULE]
@@ -509,10 +508,8 @@ class TestLearnerGroupSaveLoadState(unittest.TestCase):
             weights_after_restore.pop(COMPONENT_MULTI_RL_MODULE_SPEC)
             check(initial_weights, weights_after_restore)
             # Perform 2 updates to get to the same state as the previous learners.
-            learner_group.update_from_batch(batch.as_multi_agent())
-            results_2nd_without_break = learner_group.update_from_batch(
-                batch=batch.as_multi_agent()
-            )
+            learner_group.update_from_batch(batch)
+            results_2nd_without_break = learner_group.update_from_batch(batch=batch)
             weights_after_2_updates_without_break = learner_group.get_weights()
             learner_group.shutdown()
             del learner_group
