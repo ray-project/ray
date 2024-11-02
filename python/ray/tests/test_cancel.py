@@ -128,13 +128,20 @@ def test_defer_sigint_monkey_patch():
     # Tests that setting a SIGINT signal handler within a DeferSigint
     # context will defer setting it until the context exits.
     orig_sigint_handler = signal.getsignal(signal.SIGINT)
-    new_sigint_handler = lambda signum, frame: None  # noqa: E731
+    handler_called_times = 0
+
+    def new_sigint_handler(signum, frame):
+        nonlocal handler_called_times
+        handler_called_times += 1
 
     with DeferSigint():
-        assert signal.signal(signal.SIGINT, new_sigint_handler) is orig_sigint_handler
-        assert signal.getsignal(signal.SIGINT) is not new_sigint_handler
+        signal.signal(signal.SIGINT, new_sigint_handler)
+        for _ in range(3):
+            _thread.interrupt_main()
+        time.sleep(1)
+        assert handler_called_times == 0
 
-    assert signal.getsignal(signal.SIGINT) is new_sigint_handler
+    assert handler_called_times == 1
 
     # Restore original SIGINT handler.
     signal.signal(signal.SIGINT, orig_sigint_handler)

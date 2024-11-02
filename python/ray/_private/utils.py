@@ -1844,8 +1844,8 @@ class DeferSigint(contextlib.AbstractContextManager):
     # This is used by Ray's task cancellation to defer cancellation interrupts during
     # problematic areas, e.g. task argument deserialization.
     def __init__(self):
-        # Whether the task has been cancelled while in the context.
-        self.task_cancelled = False
+        # Whether a SIGINT signal was received during the context.
+        self.signal_received = False
         # The original SIGINT handler.
         self.orig_sigint_handler = None
         # The original signal method.
@@ -1861,9 +1861,9 @@ class DeferSigint(contextlib.AbstractContextManager):
         else:
             return contextlib.nullcontext()
 
-    def _set_task_cancelled(self, signum, frame):
+    def _set_signal_received(self, signum, frame):
         """SIGINT handler that defers the signal."""
-        self.task_cancelled = True
+        self.signal_received = True
 
     def _signal_monkey_patch(self, signum, handler):
         """Monkey patch for signal.signal that defers the setting of new signal
@@ -1883,7 +1883,7 @@ class DeferSigint(contextlib.AbstractContextManager):
         # Save original SIGINT handler for later restoration.
         self.orig_sigint_handler = signal.getsignal(signal.SIGINT)
         # Set SIGINT signal handler that defers the signal.
-        signal.signal(signal.SIGINT, self._set_task_cancelled)
+        signal.signal(signal.SIGINT, self._set_signal_received)
         # Monkey patch signal.signal to raise an error if a SIGINT handler is registered
         # within the context.
         self.orig_signal = signal.signal
@@ -1897,10 +1897,9 @@ class DeferSigint(contextlib.AbstractContextManager):
         signal.signal = self.orig_signal
         # Restore original SIGINT handler.
         signal.signal(signal.SIGINT, self.orig_sigint_handler)
-        if exc_type is None and self.task_cancelled:
-            # No exception raised in context but task has been cancelled, so we raise
-            # KeyboardInterrupt to go through the task cancellation path.
-            raise KeyboardInterrupt
+        if exc_type is None and self.signal_received:
+            # No exception raised in context, call the original SIGINT handler.
+            self.orig_sigint_handler(signal.SIGINT, None)
         else:
             # If exception was raised in context, returning False will cause it to be
             # reraised.
