@@ -407,7 +407,7 @@ class RLModule(Checkpointable, abc.ABC):
                 old="RLModule(config=[RLModuleConfig])",
                 new="RLModule(observation_space=.., action_space=.., inference_only=..,"
                 " learner_only=.., model_config=..)",
-                help="See https://github.com/ray-project/ray/blob/master/rllib/examples/rl_modules/custom_cnn_rl_module.py "   # noqa
+                help="See https://github.com/ray-project/ray/blob/master/rllib/examples/rl_modules/custom_cnn_rl_module.py "  # noqa
                 "for how to write a custom RLModule.",
                 error=True,
             )

@@ -57,11 +57,7 @@ class TestPolicyFromCheckpoint(unittest.TestCase):
 
     def test_add_policy_connector_enabled(self):
         with tempfile.TemporaryDirectory() as tmpdir:
-            config = (
-                APPOConfig()
-                .environment("CartPole-v1")
-                .env_runners(enable_connectors=True)
-            )
+            config = APPOConfig().environment("CartPole-v1")
             algo = config.build()
             algo.train()
             result = algo.save(checkpoint_dir=tmpdir)

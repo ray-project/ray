@@ -709,7 +709,7 @@ class TestMultiAgentEnv(unittest.TestCase):
                 enable_env_runner_and_connector_v2=False,
             )
             .environment("sometimes_zero_agents")
-            .env_runners(num_env_runners=0, enable_connectors=True)
+            .env_runners(num_env_runners=0)
         )
         algo = config.build()
         for i in range(4):
