@@ -1,7 +1,5 @@
 from typing import Any, Dict, Iterable, List, Optional, Tuple, Union
 
-import numpy as np
-
 from ray.data._internal.aggregate import Count, Max, Mean, Min, Std, Sum
 from ray.data._internal.compute import ComputeStrategy
 from ray.data._internal.logical.interfaces import LogicalPlan
@@ -191,7 +189,7 @@ class GroupedData:
 
         # The batch is the entire block, because we have batch_size=None for
         # map_batches() below.
-        def apply_udf_to_groups(udf, batch: np.ndarray, *args, **kwargs):
+        def apply_udf_to_groups(udf, batch, *args, **kwargs):
             block = BlockAccessor.batch_to_block(batch)
             block_accessor = BlockAccessor.for_block(block)
 
@@ -322,8 +320,8 @@ class GroupedData:
             >>> ray.data.le(100).groupby("value").min() # doctest: +SKIP
             >>> ray.data.from_items([ # doctest: +SKIP
             ...     {"A": i % 3, "B": i, "C": i**2} # doctest: +SKIP
-            ...     for i in range(100)]) \ # doctest: +SKIP
-            ...     .groupby("A") \ # doctest: +SKIP
+            ...     for i in range(100)]) \\ # doctest: +SKIP
+            ...     .groupby("A") \\ # doctest: +SKIP
             ...     .min(["B", "C"]) # doctest: +SKIP
 
         Args:
@@ -361,8 +359,8 @@ class GroupedData:
             >>> ray.data.le(100).groupby("value").max() # doctest: +SKIP
             >>> ray.data.from_items([ # doctest: +SKIP
             ...     {"A": i % 3, "B": i, "C": i**2} # doctest: +SKIP
-            ...     for i in range(100)]) \ # doctest: +SKIP
-            ...     .groupby("A") \ # doctest: +SKIP
+            ...     for i in range(100)]) \\ # doctest: +SKIP
+            ...     .groupby("A") \\ # doctest: +SKIP
             ...     .max(["B", "C"]) # doctest: +SKIP
 
         Args:
@@ -400,8 +398,8 @@ class GroupedData:
             >>> ray.data.le(100).groupby("value").mean() # doctest: +SKIP
             >>> ray.data.from_items([ # doctest: +SKIP
             ...     {"A": i % 3, "B": i, "C": i**2} # doctest: +SKIP
-            ...     for i in range(100)]) \ # doctest: +SKIP
-            ...     .groupby("A") \ # doctest: +SKIP
+            ...     for i in range(100)]) \\ # doctest: +SKIP
+            ...     .groupby("A") \\ # doctest: +SKIP
             ...     .mean(["B", "C"]) # doctest: +SKIP
 
         Args:
@@ -442,8 +440,8 @@ class GroupedData:
             >>> ray.data.range(100).groupby("id").std(ddof=0) # doctest: +SKIP
             >>> ray.data.from_items([ # doctest: +SKIP
             ...     {"A": i % 3, "B": i, "C": i**2} # doctest: +SKIP
-            ...     for i in range(100)]) \ # doctest: +SKIP
-            ...     .groupby("A") \ # doctest: +SKIP
+            ...     for i in range(100)]) \\ # doctest: +SKIP
+            ...     .groupby("A") \\ # doctest: +SKIP
             ...     .std(["B", "C"]) # doctest: +SKIP
 
         NOTE: This uses Welford's online method for an accumulator-style
