@@ -791,3 +791,12 @@ py_test_module_list(
     "spark/discover_4_gpu.sh"
   ],
 )
+
+py_test(
+    name = "runtime_env_validation_unit_test",
+    srcs = ["runtime_env_validation_unit_test.py"],
+    tags = ["team:core"],
+    deps = [
+        "//python/ray/_private/runtime_env:validation",
+    ],
+)
