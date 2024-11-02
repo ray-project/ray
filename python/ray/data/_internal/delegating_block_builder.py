@@ -23,17 +23,8 @@ class DelegatingBlockBuilder(BlockBuilder):
     def add(self, item: Mapping[str, Any]) -> None:
         assert isinstance(item, collections.abc.Mapping), item
 
-        import pyarrow
-
         if self._builder is None:
-            try:
-                check = ArrowBlockBuilder()
-                check.add(item)
-                check.build()
-                self._builder = ArrowBlockBuilder()
-            except (TypeError, pyarrow.lib.ArrowInvalid, ArrowConversionError):
-                # Can also handle nested Python objects, which Arrow cannot.
-                self._builder = PandasBlockBuilder()
+            self._builder = ArrowBlockBuilder()
 
         self._builder.add(item)
 
