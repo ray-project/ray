@@ -13,7 +13,11 @@ from ray.autoscaler._private.constants import (
     WORKER_LIVENESS_CHECK_KEY,
     WORKER_RPC_DRAIN_KEY,
 )
-from ray.autoscaler._private.kuberay import node_provider, utils
+from ray.autoscaler._private.kuberay import (
+    KUBERAY_REQUEST_TIMEOUT_S,
+    node_provider,
+    utils,
+)
 from ray.autoscaler._private.util import validate_config
 
 logger = logging.getLogger(__name__)
@@ -82,7 +86,10 @@ class AutoscalingConfigProducer:
 
     def _fetch_ray_cr_from_k8s(self) -> Dict[str, Any]:
         result = requests.get(
-            self._ray_cr_url, headers=self._headers, verify=self._verify
+            self._ray_cr_url,
+            headers=self._headers,
+            timeout=KUBERAY_REQUEST_TIMEOUT_S,
+            verify=self._verify,
         )
         if not result.status_code == 200:
             result.raise_for_status()
