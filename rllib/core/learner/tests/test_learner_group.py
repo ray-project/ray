@@ -452,7 +452,7 @@ class TestLearnerGroupSaveLoadState(unittest.TestCase):
         # this is expanded to more scaling modes on the release ci.
         scaling_modes = ["local-cpu", "multi-gpu-ddp"]
         test_iterator = itertools.product(fws, scaling_modes)
-        batch = convert_to_torch_tensor(SampleBatch(FAKE_BATCH).as_multi_agent())
+        batch = SampleBatch(convert_to_torch_tensor(FAKE_BATCH)).as_multi_agent()
         for fw, scaling_mode in test_iterator:
             print(f"Testing framework: {fw}, scaling mode: {scaling_mode}.")
             env = gym.make("CartPole-v1")
