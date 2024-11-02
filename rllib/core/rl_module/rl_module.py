@@ -428,8 +428,9 @@ class RLModule(Checkpointable, abc.ABC):
                     "Could not create a Catalog object for your RLModule! If you are "
                     "not using the new API stack yet, make sure to switch it off in "
                     "your config: `config.api_stack(enable_rl_module_and_learner=False"
-                    ", enable_env_runner_and_connector_v2=False)`. Some algos are "
-                    "already using the new stack by default."
+                    ", enable_env_runner_and_connector_v2=False)`. Some algos already "
+                    "use the new stack by default. Ignore this message, if your "
+                    "RLModule does not use a Catalog to build its sub-components."
                 )
                 self._catalog_ctor_error = e
 
@@ -697,7 +698,7 @@ class RLModule(Checkpointable, abc.ABC):
     @override(Checkpointable)
     def get_ctor_args_and_kwargs(self):
         return (
-            (self.config,),  # *args
+            (),  # *args
             {
                 "observation_space": self.observation_space,
                 "action_space": self.action_space,

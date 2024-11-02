@@ -18,6 +18,7 @@ from ray.rllib.utils.metrics import (
 class TestAttentionNets(unittest.TestCase):
 
     config = {
+        "_enable_new_api_stack": True,
         "env": StatelessCartPole,
         "gamma": 0.99,
         "num_envs_per_env_runner": 20,
