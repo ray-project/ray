@@ -1,28 +1,23 @@
 import asyncio
 import concurrent.futures
 import logging
-import threading
 import time
 import warnings
-from abc import ABC
-from dataclasses import dataclass, fields
 from typing import Any, AsyncIterator, Dict, Iterator, Optional, Tuple, Union
 
 import ray
-from ray import serve
-from ray._raylet import GcsClient, ObjectRefGenerator
-from ray.serve._private.common import (
-    DeploymentHandleSource,
-    DeploymentID,
-    RequestMetadata,
-    RequestProtocol,
-)
+from ray._raylet import ObjectRefGenerator
+from ray.serve._private.common import DeploymentID, RequestMetadata, RequestProtocol
 from ray.serve._private.constants import SERVE_LOGGER_NAME
 from ray.serve._private.default_impl import (
-    create_cluster_node_info_cache,
+    CreateRouterCallable,
     create_dynamic_handle_options,
     create_init_handle_options,
     create_router,
+)
+from ray.serve._private.handle_options import (
+    DynamicHandleOptionsBase,
+    InitHandleOptionsBase,
 )
 from ray.serve._private.replica_result import ReplicaResult
 from ray.serve._private.router import Router
@@ -31,7 +26,6 @@ from ray.serve._private.utils import (
     DEFAULT,
     calculate_remaining_timeout,
     generate_request_id,
-    get_current_actor_id,
     get_random_string,
     inside_ray_client_context,
     is_running_in_asyncio_loop,
@@ -40,90 +34,7 @@ from ray.serve.exceptions import RayServeException
 from ray.util import metrics
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
-_global_async_loop = None
-_global_async_loop_creation_lock = threading.Lock()
 logger = logging.getLogger(SERVE_LOGGER_NAME)
-
-
-def _create_or_get_global_asyncio_event_loop_in_thread():
-    """Provides a global singleton asyncio event loop running in a daemon thread.
-
-    Thread-safe.
-    """
-    global _global_async_loop
-    if _global_async_loop is None:
-        with _global_async_loop_creation_lock:
-            if _global_async_loop is not None:
-                return _global_async_loop
-
-            _global_async_loop = asyncio.new_event_loop()
-            thread = threading.Thread(
-                daemon=True,
-                target=_global_async_loop.run_forever,
-            )
-            thread.start()
-
-    return _global_async_loop
-
-
-@dataclass(frozen=True)
-class _InitHandleOptionsBase:
-    """Init options for each ServeHandle instance.
-
-    These fields can be set by calling `.init()` on a handle before
-    sending the first request.
-    """
-
-    _prefer_local_routing: bool = False
-    _source: DeploymentHandleSource = DeploymentHandleSource.UNKNOWN
-
-
-@dataclass(frozen=True)
-class _InitHandleOptions(_InitHandleOptionsBase):
-    @classmethod
-    def create(cls, **kwargs) -> "_InitHandleOptions":
-        for k in list(kwargs.keys()):
-            if kwargs[k] == DEFAULT.VALUE:
-                # Use default value
-                del kwargs[k]
-
-        # Detect replica source for handles
-        if (
-            "_source" not in kwargs
-            and ray.serve.context._get_internal_replica_context() is not None
-        ):
-            kwargs["_source"] = DeploymentHandleSource.REPLICA
-
-        return cls(**kwargs)
-
-
-@dataclass(frozen=True)
-class _DynamicHandleOptionsBase(ABC):
-    """Dynamic options for each ServeHandle instance.
-
-    These fields can be changed by calling `.options()` on a handle.
-    """
-
-    method_name: str = "__call__"
-    multiplexed_model_id: str = ""
-    stream: bool = False
-    _request_protocol: str = RequestProtocol.UNDEFINED
-
-    def copy_and_update(self, **kwargs) -> "_DynamicHandleOptionsBase":
-        new_kwargs = {}
-
-        for f in fields(self):
-            if f.name not in kwargs or kwargs[f.name] == DEFAULT.VALUE:
-                new_kwargs[f.name] = getattr(self, f.name)
-            else:
-                new_kwargs[f.name] = kwargs[f.name]
-
-        return _DynamicHandleOptions(**new_kwargs)
-
-
-@dataclass(frozen=True)
-class _DynamicHandleOptions(_DynamicHandleOptionsBase):
-    pass
 
 
 class _DeploymentHandleBase:
@@ -132,16 +43,17 @@ class _DeploymentHandleBase:
         deployment_name: str,
         app_name: str,
         *,
-        handle_options: Optional[_DynamicHandleOptionsBase] = None,
+        handle_options: Optional[DynamicHandleOptionsBase] = None,
         _router: Optional[Router] = None,
+        _create_router: Optional[CreateRouterCallable] = None,
         _request_counter: Optional[metrics.Counter] = None,
         _recorded_telemetry: bool = False,
     ):
         self.deployment_id = DeploymentID(name=deployment_name, app_name=app_name)
-        self.handle_options: _DynamicHandleOptionsBase = (
+        self.handle_options: DynamicHandleOptionsBase = (
             handle_options or create_dynamic_handle_options()
         )
-        self.init_options: Optional[_InitHandleOptionsBase] = None
+        self.init_options: Optional[InitHandleOptionsBase] = None
 
         self.handle_id = get_random_string()
         self.request_counter = _request_counter or self._create_request_counter(
@@ -150,6 +62,10 @@ class _DeploymentHandleBase:
         self._recorded_telemetry = _recorded_telemetry
 
         self._router: Optional[Router] = _router
+        if _create_router is None:
+            self._create_router = create_router
+        else:
+            self._create_router = _create_router
 
         logger.info(
             f"Created DeploymentHandle '{self.handle_id}' for {self.deployment_id}.",
@@ -175,24 +91,9 @@ class _DeploymentHandleBase:
 
     def _get_or_create_router(self) -> Router:
         if self._router is None:
-            node_id = ray.get_runtime_context().get_node_id()
-            try:
-                cluster_node_info_cache = create_cluster_node_info_cache(
-                    GcsClient(address=ray.get_runtime_context().gcs_address)
-                )
-                cluster_node_info_cache.update()
-                availability_zone = cluster_node_info_cache.get_node_az(node_id)
-            except Exception:
-                availability_zone = None
-
-            self._router = create_router(
-                serve.context._get_global_client()._controller,
-                self.deployment_id,
-                self.handle_id,
-                node_id,
-                get_current_actor_id(),
-                availability_zone,
-                _create_or_get_global_asyncio_event_loop_in_thread(),
+            self._router = self._create_router(
+                handle_id=self.handle_id,
+                deployment_id=self.deployment_id,
                 handle_options=self.init_options,
             )
 
@@ -230,7 +131,7 @@ class _DeploymentHandleBase:
         if self._router is None:
             return False
 
-        return self._router.running_replicas_populated
+        return self._router.running_replicas_populated()
 
     @property
     def deployment_name(self) -> str:
@@ -286,6 +187,7 @@ class _DeploymentHandleBase:
             self.app_name,
             handle_options=new_handle_options,
             _router=self._router,
+            _create_router=self._create_router,
             _request_counter=self.request_counter,
             _recorded_telemetry=self._recorded_telemetry,
         )
@@ -320,13 +222,7 @@ class _DeploymentHandleBase:
         if not self.is_initialized:
             self._init()
 
-        # Schedule the coroutine to run on the router loop. This is always a separate
-        # loop running in another thread to avoid user code blocking the router, so we
-        # use the `concurrent.futures.Future` thread safe API.
-        return asyncio.run_coroutine_threadsafe(
-            self._router.assign_request(request_metadata, *args, **kwargs),
-            loop=self._router._event_loop,
-        )
+        return self._router.assign_request(request_metadata, *args, **kwargs)
 
     def __getattr__(self, name):
         return self.options(method_name=name)

@@ -159,7 +159,7 @@ class TestPPO(unittest.TestCase):
 
         num_iterations = 2
 
-        for env in ["FrozenLake-v1", "ALE/MsPacman-v5"]:
+        for env in ["FrozenLake-v1", "ale_py:ALE/MsPacman-v5"]:
             print("Env={}".format(env))
             for lstm in [False, True]:
                 print("LSTM={}".format(lstm))
@@ -224,7 +224,7 @@ class TestPPO(unittest.TestCase):
 
         num_iterations = 2
 
-        for env in ["FrozenLake-v1", "ALE/MsPacman-v5"]:
+        for env in ["FrozenLake-v1", "ale_py:ALE/MsPacman-v5"]:
             print("Env={}".format(env))
             for lstm in [False, True]:
                 print("LSTM={}".format(lstm))
