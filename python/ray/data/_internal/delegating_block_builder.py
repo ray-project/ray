@@ -1,10 +1,8 @@
 import collections
 from typing import Any, Mapping, Optional
 
-from ray.air.util.tensor_extensions.arrow import ArrowConversionError
 from ray.data._internal.arrow_block import ArrowBlockBuilder
 from ray.data._internal.block_builder import BlockBuilder
-from ray.data._internal.pandas_block import PandasBlockBuilder
 from ray.data.block import Block, BlockAccessor, BlockType, DataBatch
 
 
