@@ -245,7 +245,6 @@ class MapOperator(OneToOneOperator, ABC):
             # If the bundler has a full bundle, add it to the operator's task submission
             # queue.
             bundle = self._block_ref_bundler.get_next_bundle()
-            self._metrics.on_input_dequeued(bundle)
             self._add_bundled_input(bundle)
 
     def _get_runtime_ray_remote_args(
