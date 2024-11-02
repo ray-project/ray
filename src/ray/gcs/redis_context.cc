@@ -286,6 +286,7 @@ Status AuthenticateRedis(redisContext *context,
                          const std::string &username,
                          const std::string &password) {
   if (password == "") {
+    RAY_CHECK(username.empty());
     return Status::OK();
   }
   redisReply *reply;
@@ -305,6 +306,7 @@ Status AuthenticateRedis(redisAsyncContext *context,
                          const std::string &username,
                          const std::string &password) {
   if (password == "") {
+    RAY_CHECK(username.empty());
     return Status::OK();
   }
   int status;
