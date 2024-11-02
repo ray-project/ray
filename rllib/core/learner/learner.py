@@ -147,10 +147,6 @@ class Learner(Checkpointable):
             # Create a PPO config object first.
             config = (
                 PPOConfig()
-                .api_stack(
-                    enable_rl_module_and_learner=True,
-                    enable_env_runner_and_connector_v2=True,
-                )
                 .framework("torch")
                 .training(model={"fcnet_hiddens": [128, 128]})
             )
@@ -284,16 +280,15 @@ class Learner(Checkpointable):
             return
 
         # Build learner connector pipeline used on this Learner worker.
-        if self.config.enable_env_runner_and_connector_v2:
-            # TODO (sven): Figure out which space to provide here. For now,
-            #  it doesn't matter, as the default connector piece doesn't use
-            #  this information anyway.
-            #  module_spec = self._module_spec.as_multi_rl_module_spec()
-            self._learner_connector = self.config.build_learner_connector(
-                input_observation_space=None,
-                input_action_space=None,
-                device=self._device,
-            )
+        # TODO (sven): Figure out which space to provide here. For now,
+        #  it doesn't matter, as the default connector piece doesn't use
+        #  this information anyway.
+        #  module_spec = self._module_spec.as_multi_rl_module_spec()
+        self._learner_connector = self.config.build_learner_connector(
+            input_observation_space=None,
+            input_action_space=None,
+            device=self._device,
+        )
 
         # Build the module to be trained by this learner.
         self._module = self._make_module()
@@ -1310,7 +1305,7 @@ class Learner(Checkpointable):
             episodes = tree.flatten(episodes)
 
         # Call the learner connector.
-        if self._learner_connector is not None and episodes is not None:
+        if episodes is not None:
             # Call the learner connector pipeline.
             with self.metrics.log_time((ALL_MODULES, LEARNER_CONNECTOR_TIMER)):
                 shared_data = {}
@@ -1379,11 +1374,6 @@ class Learner(Checkpointable):
             # `minibatch_size` and `num_epochs` are not set by the user.
             batch_iter = MiniBatchDummyIterator
 
-        # Convert input batch into a tensor batch (MultiAgentBatch) on the correct
-        # device (e.g. GPU). We move the batch already here to avoid having to move
-        # every single minibatch that is created in the `batch_iter` below.
-        if self._learner_connector is None:
-            batch = self._convert_batch_type(batch)
         batch = self._set_slicing_by_batch_id(batch, value=True)
 
         for tensor_minibatch in batch_iter(

@@ -173,6 +173,9 @@ and :py:class:`~ray.rllib.core.learner.learner.Learner` APIs via the :py:class:`
             # Construct a new Learner using our config object.
             learner = config.build_learner(env=env)
 
+            # Needs to be called on the learner before calling any functions.
+            learner.build()
+
 
 Updates
 -------
@@ -213,8 +216,8 @@ Updates
     }
     default_batch = SampleBatch(DUMMY_BATCH)
     DUMMY_BATCH = default_batch.as_multi_agent()
-
-    learner.build() # needs to be called on the learner before calling any functions
+    # Make sure, we convert the batch to the correct framework (here: torch).
+    DUMMY_BATCH = learner._convert_batch_type(DUMMY_BATCH)
 
 
 .. tab-set::
