@@ -18,6 +18,7 @@ from ray.data._internal.block_builder import BlockBuilder
 from ray.data._internal.numpy_support import is_array_like
 from ray.data._internal.row import TableRow
 from ray.data._internal.size_estimator import SizeEstimator
+from ray.data._internal.util import MiB
 from ray.data.block import Block, BlockAccessor
 
 if TYPE_CHECKING:
@@ -25,8 +26,6 @@ if TYPE_CHECKING:
 
 
 T = TypeVar("T")
-
-MiB = 1024 * 1024
 
 # The max size of Python tuples to buffer before compacting them into a
 # table in the BlockBuilder.
