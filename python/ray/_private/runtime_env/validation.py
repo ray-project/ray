@@ -158,7 +158,7 @@ def parse_and_validate_uv(uv: Union[str, List[str], Dict]) -> Optional[Dict]:
             )
     else:
         raise TypeError(
-            "runtime_env['uv'] must be of type " f"List[str], got {type(uv)}"
+            "runtime_env['uv'] must be of type " f"List[str], or dict, got {type(uv)}"
         )
 
     # Deduplicate packages for package lists.
