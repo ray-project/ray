@@ -111,6 +111,15 @@ def test_ray_debugger_stepping(shutdown_only):
 
     result = f.remote()
 
+    wait_for_condition(
+        lambda: len(
+            ray.experimental.internal_kv._internal_kv_list(
+                "RAY_PDB_", namespace=ray_constants.KV_NAMESPACE_PDB
+            )
+        )
+        > 0
+    )
+
     p = pexpect.spawn("ray debug")
     p.expect("Enter breakpoint index or press enter to refresh: ")
     p.sendline("0")
