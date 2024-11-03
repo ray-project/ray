@@ -42,10 +42,6 @@ class TestAlgorithm(unittest.TestCase):
     def test_add_module_and_remove_module(self):
         config = (
             ppo.PPOConfig()
-            .api_stack(
-                enable_rl_module_and_learner=True,
-                enable_env_runner_and_connector_v2=True,
-            )
             .environment(
                 env="multi_cart",
                 env_config={"num_agents": 4},
