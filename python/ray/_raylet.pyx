@@ -1026,7 +1026,7 @@ cdef store_task_errors(
         CoreWorker core_worker = worker.core_worker
 
     # If the debugger is enabled, drop into the remote pdb here.
-    if ray.util.pdb._is_ray_debugger_enabled():
+    if ray.util.pdb._is_ray_debugger_post_mortem_enabled():
         ray.util.pdb._post_mortem()
 
     backtrace = ray._private.utils.format_error_message(
