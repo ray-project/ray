@@ -470,7 +470,7 @@ class ReplicaActor:
         except Exception as e:
             user_exception = e
             logger.exception("Request failed.")
-            if ray.util.pdb._is_ray_debugger_enabled():
+            if ray.util.pdb._is_ray_debugger_post_mortem_enabled():
                 ray.util.pdb._post_mortem()
         finally:
             self._metrics_manager.dec_num_ongoing_requests()

@@ -177,7 +177,6 @@ class TestAlgorithmConfig(unittest.TestCase):
             )
             .environment("CartPole-v1")
             .framework("torch")
-            .env_runners(enable_connectors=True)
         )
 
         self.assertEqual(config.rl_module_spec.module_class, PPOTorchRLModule)
@@ -239,7 +238,6 @@ class TestAlgorithmConfig(unittest.TestCase):
                 enable_env_runner_and_connector_v2=True,
             )
             .environment("CartPole-v1")
-            .env_runners(enable_connectors=True)
         )
 
         self.assertEqual(config.learner_class, PPOTorchLearner)
