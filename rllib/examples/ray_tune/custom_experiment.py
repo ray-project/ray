@@ -153,15 +153,7 @@ def my_experiment(config: Dict):
 
 
 if __name__ == "__main__":
-    base_config = (
-        PPOConfig()
-        .api_stack(
-            enable_rl_module_and_learner=True,
-            enable_env_runner_and_connector_v2=True,
-        )
-        .environment("CartPole-v1")
-        .env_runners(num_env_runners=0)
-    )
+    base_config = PPOConfig().environment("CartPole-v1").env_runners(num_env_runners=0)
     # Convert to a plain dict for Tune. Note that this is usually not needed, you can
     # pass into the below Tune Tuner any instantiated RLlib AlgorithmConfig object.
     # However, for demonstration purposes, we show here how you can add other, arbitrary

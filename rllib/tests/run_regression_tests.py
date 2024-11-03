@@ -1,20 +1,6 @@
 #!/usr/bin/env python
-# Runs one or more regression tests. Retries tests up to 3 times.
-#
-# Example usage:
-# $ python run_regression_tests.py regression-tests/cartpole-es-[tf|torch].yaml
-#
-# When using in BAZEL (with py_test), e.g. see in ray/rllib/BUILD:
-# py_test(
-#     name = "run_regression_tests",
-#     main = "tests/run_regression_tests.py",
-#     tags = ["learning_tests"],
-#     size = "medium",  # 5min timeout
-#     srcs = ["tests/run_regression_tests.py"],
-#     data = glob(["tuned_examples/regression_tests/*.yaml"]),
-#     # Pass `BAZEL` option and the path to look for yaml regression files.
-#     args = ["BAZEL", "tuned_examples/regression_tests"]
-# )
+
+# @OldAPIStack
 
 import argparse
 import os
@@ -104,15 +90,6 @@ parser.add_argument(
     default=None,
     help="The WandB run name to use.",
 )
-# parser.add_argument(
-#    "--wandb-from-checkpoint",
-#    type=str,
-#    default=None,
-#    help=(
-#        "The WandB checkpoint location (e.g. `[team name]/[project name]/checkpoint_"
-#        "[run name]:v[version]`) from which to resume an experiment."
-#    ),
-# )
 parser.add_argument(
     "--checkpoint-freq",
     type=int,

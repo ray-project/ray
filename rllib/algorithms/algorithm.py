@@ -2544,15 +2544,6 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
             onnx: If given, will export model in ONNX format. The
                 value of this parameter set the ONNX OpSet version to use.
                 If None, the output format will be DL framework specific.
-
-        .. testcode::
-
-            from ray.rllib.algorithms.ppo import PPO, PPOConfig
-            config = PPOConfig().environment("CartPole-v1")
-            algo = PPO(config=config)
-            algo.train()
-            algo.export_policy_checkpoint("/tmp/export_dir")
-            algo.export_policy_model("/tmp/dir")
         """
         self.get_policy(policy_id).export_model(export_dir, onnx)
 
@@ -2573,14 +2564,6 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
 
         Raises:
             KeyError: if `policy_id` cannot be found in this Algorithm.
-
-        .. testcode::
-
-            from ray.rllib.algorithms.ppo import PPO, PPOConfig
-            config = PPOConfig().environment("CartPole-v1")
-            algo = PPO(config=config)
-            algo.train()
-            algo.export_policy_checkpoint("/tmp/export_dir")
         """
         policy = self.get_policy(policy_id)
         if policy is None:

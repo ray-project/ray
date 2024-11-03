@@ -49,10 +49,6 @@ class TestAlgorithmRLModuleRestore(unittest.TestCase):
 
         config = (
             PPOConfig()
-            .api_stack(
-                enable_rl_module_and_learner=True,
-                enable_env_runner_and_connector_v2=True,
-            )
             .env_runners(rollout_fragment_length=4)
             .learners(**scaling_config)
             .environment(MultiAgentCartPole, env_config={"num_agents": num_agents})
@@ -184,10 +180,6 @@ class TestAlgorithmRLModuleRestore(unittest.TestCase):
 
         config = (
             PPOConfig()
-            .api_stack(
-                enable_rl_module_and_learner=True,
-                enable_env_runner_and_connector_v2=True,
-            )
             .env_runners(rollout_fragment_length=4)
             .learners(**scaling_config)
             .environment("CartPole-v1")

@@ -178,6 +178,10 @@ class TestRNNSequencing(unittest.TestCase):
         register_env("counter", lambda _: DebugCounterEnv())
         config = (
             PPOConfig()
+            .api_stack(
+                enable_env_runner_and_connector_v2=False,
+                enable_rl_module_and_learner=False,
+            )
             .environment("counter")
             .framework("tf")
             .env_runners(num_env_runners=0, rollout_fragment_length=20)

@@ -29,6 +29,9 @@ QF_TARGET_NEXT_PROBS = "qf_target_next_probs"
 class DQNRainbowRLModule(RLModule, InferenceOnlyAPI, TargetNetworkAPI):
     @override(RLModule)
     def setup(self):
+        if self.catalog is None and hasattr(self, "_catalog_ctor_error"):
+            raise self._catalog_ctor_error
+
         # If a dueling architecture is used.
         self.uses_dueling: bool = self.model_config.get("dueling")
         # If double Q learning is used.

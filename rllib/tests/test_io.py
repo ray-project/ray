@@ -57,6 +57,10 @@ class AgentIOTest(unittest.TestCase):
     def write_outputs(self, output, fw, output_config=None):
         config = (
             PPOConfig()
+            .api_stack(
+                enable_env_runner_and_connector_v2=False,
+                enable_rl_module_and_learner=False,
+            )
             .environment("CartPole-v1")
             .framework(fw)
             .training(train_batch_size=250)
@@ -98,6 +102,10 @@ class AgentIOTest(unittest.TestCase):
     def test_agent_input_dir(self):
         config = (
             PPOConfig()
+            .api_stack(
+                enable_env_runner_and_connector_v2=False,
+                enable_rl_module_and_learner=False,
+            )
             .environment("CartPole-v1")
             .evaluation(off_policy_estimation_methods={})
             .training(train_batch_size=250)
@@ -125,6 +133,10 @@ class AgentIOTest(unittest.TestCase):
     def test_agent_input_postprocessing_enabled(self):
         config = (
             PPOConfig()
+            .api_stack(
+                enable_env_runner_and_connector_v2=False,
+                enable_rl_module_and_learner=False,
+            )
             .environment("CartPole-v1")
             .training(train_batch_size=250)
             .offline_data(
@@ -169,6 +181,10 @@ class AgentIOTest(unittest.TestCase):
     def test_agent_input_eval_sampler(self):
         config = (
             PPOConfig()
+            .api_stack(
+                enable_env_runner_and_connector_v2=False,
+                enable_rl_module_and_learner=False,
+            )
             .environment("CartPole-v1")
             .offline_data(
                 postprocess_inputs=True,  # adds back 'advantages'
@@ -210,6 +226,10 @@ class AgentIOTest(unittest.TestCase):
 
             config = (
                 PPOConfig()
+                .api_stack(
+                    enable_env_runner_and_connector_v2=False,
+                    enable_rl_module_and_learner=False,
+                )
                 .environment("CartPole-v1")
                 .offline_data(input_=input_procedure)
                 .evaluation(off_policy_estimation_methods={})
@@ -229,6 +249,10 @@ class AgentIOTest(unittest.TestCase):
 
         config = (
             PPOConfig()
+            .api_stack(
+                enable_env_runner_and_connector_v2=False,
+                enable_rl_module_and_learner=False,
+            )
             .environment("CartPole-v1")
             .env_runners(num_env_runners=2)
             .training(train_batch_size=500)

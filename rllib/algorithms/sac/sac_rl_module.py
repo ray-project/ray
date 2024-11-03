@@ -54,6 +54,9 @@ class SACRLModule(RLModule, InferenceOnlyAPI, TargetNetworkAPI):
 
     @override(RLModule)
     def setup(self):
+        if self.catalog is None and hasattr(self, "_catalog_ctor_error"):
+            raise self._catalog_ctor_error
+
         # If a twin Q architecture should be used.
         self.twin_q = self.model_config["twin_q"]
 

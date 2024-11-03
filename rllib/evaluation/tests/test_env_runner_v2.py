@@ -52,6 +52,10 @@ class TestEnvRunnerV2(unittest.TestCase):
     def test_sample_batch_rollout_single_agent_env(self):
         config = (
             PPOConfig()
+            .api_stack(
+                enable_rl_module_and_learner=False,
+                enable_env_runner_and_connector_v2=False,
+            )
             .environment(DebugCounterEnv)
             .framework("torch")
             .training(
@@ -77,6 +81,10 @@ class TestEnvRunnerV2(unittest.TestCase):
     def test_sample_batch_rollout_multi_agent_env(self):
         config = (
             PPOConfig()
+            .api_stack(
+                enable_rl_module_and_learner=False,
+                enable_env_runner_and_connector_v2=False,
+            )
             .environment("basic_multiagent")
             .framework("torch")
             .training(
@@ -144,6 +152,10 @@ class TestEnvRunnerV2(unittest.TestCase):
 
         config = (
             PPOConfig()
+            .api_stack(
+                enable_rl_module_and_learner=False,
+                enable_env_runner_and_connector_v2=False,
+            )
             .framework("torch")
             .environment("env_under_test")
             .env_runners(
@@ -205,6 +217,10 @@ class TestEnvRunnerV2(unittest.TestCase):
 
         config = (
             PPOConfig()
+            .api_stack(
+                enable_rl_module_and_learner=False,
+                enable_env_runner_and_connector_v2=False,
+            )
             .environment("basic_multiagent")
             .framework("torch")
             .training(
@@ -274,6 +290,10 @@ class TestEnvRunnerV2(unittest.TestCase):
 
         config = (
             PPOConfig()
+            .api_stack(
+                enable_rl_module_and_learner=False,
+                enable_env_runner_and_connector_v2=False,
+            )
             .environment("basic_multiagent")
             .framework("torch")
             .training(
@@ -298,6 +318,10 @@ class TestEnvRunnerV2(unittest.TestCase):
     def test_start_episode(self):
         config = (
             PPOConfig()
+            .api_stack(
+                enable_rl_module_and_learner=False,
+                enable_env_runner_and_connector_v2=False,
+            )
             .environment("basic_multiagent")
             .framework("torch")
             .training(
@@ -352,6 +376,10 @@ class TestEnvRunnerV2(unittest.TestCase):
         # Test if we can produce RolloutMetrics just by stepping
         config = (
             PPOConfig()
+            .api_stack(
+                enable_rl_module_and_learner=False,
+                enable_env_runner_and_connector_v2=False,
+            )
             .environment("basic_multiagent")
             .framework("torch")
             .training(
@@ -409,6 +437,10 @@ class TestEnvRunnerV2(unittest.TestCase):
         # Test if we can produce RolloutMetrics just by stepping
         config = (
             PPOConfig()
+            .api_stack(
+                enable_rl_module_and_learner=False,
+                enable_env_runner_and_connector_v2=False,
+            )
             .environment("basic_multiagent")
             .framework("torch")
             .training(

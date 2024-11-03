@@ -44,8 +44,8 @@ class DefaultModelConfig:
         from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
 
         config = (
-            PPOConfig().
-            rl_module(
+            PPOConfig()
+            .rl_module(
                 model_config=DefaultModelConfig(fcnet_hiddens=[32, 32]),
             )
         )

@@ -18,11 +18,6 @@ class TestOfflineEnvRunner(unittest.TestCase):
         self.base_path = pathlib.Path("/tmp/")
         self.config = (
             PPOConfig()
-            # Enable new API stack and use EnvRunner.
-            .api_stack(
-                enable_rl_module_and_learner=True,
-                enable_env_runner_and_connector_v2=True,
-            )
             .env_runners(
                 # This defines how many rows per file we will
                 # have (given `num_rows_per_file` in the

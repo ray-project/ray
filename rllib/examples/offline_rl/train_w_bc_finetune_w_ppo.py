@@ -264,10 +264,6 @@ if __name__ == "__main__":
     # Create a new PPO config.
     base_config = (
         PPOConfig()
-        .api_stack(
-            enable_rl_module_and_learner=True,
-            enable_env_runner_and_connector_v2=True,
-        )
         .environment(args.env)
         .training(
             # Keep lr relatively low at the beginning to avoid catastrophic forgetting.

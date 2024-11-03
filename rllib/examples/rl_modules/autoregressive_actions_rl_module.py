@@ -93,10 +93,6 @@ if __name__ == "__main__":
         .env_runners(
             num_env_runners=0,
         )
-        .api_stack(
-            enable_env_runner_and_connector_v2=True,
-            enable_rl_module_and_learner=True,
-        )
         .evaluation(
             evaluation_num_env_runners=1,
             evaluation_interval=1,

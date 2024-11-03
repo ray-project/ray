@@ -19,6 +19,9 @@ from ray.util.annotations import DeveloperAPI
 class PPORLModule(RLModule, InferenceOnlyAPI, ValueFunctionAPI, abc.ABC):
     @override(RLModule)
     def setup(self):
+        if self.catalog is None and hasattr(self, "_catalog_ctor_error"):
+            raise self._catalog_ctor_error
+
         # __sphinx_doc_begin__
         # If we have a stateful model, states for the critic need to be collected
         # during sampling and `inference-only` needs to be `False`. Note, at this
