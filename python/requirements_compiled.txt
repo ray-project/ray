@@ -745,7 +745,7 @@ httpx==0.24.1
     #   -r /ray/ci/../python/requirements/test-requirements.txt
     #   gradio
     #   gradio-client
-hudi @ git+https://github.com/xushiyan/hudi-rs.git@c76553b9ba0fd7c0c7860621de97939af95587fc#egg=hudi&subdirectory=python
+hudi==0.2.0rc1
     # via -r /ray/ci/../python/requirements/ml/data-test-requirements.txt
 huggingface-hub==0.19.4
     # via

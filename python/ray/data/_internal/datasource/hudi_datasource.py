@@ -1,5 +1,4 @@
 import logging
-from functools import partial
 from pathlib import PurePosixPath
 from typing import Dict, Iterator, List, Optional
 from urllib.parse import urljoin
@@ -35,8 +34,8 @@ class HudiDatasource(Datasource):
         ) -> Iterator["pyarrow.Table"]:
             for p in base_file_paths:
                 fg_reader = HudiFileGroupReader(table_uri, options)
-                batches = fg_reader.read_file_slice_by_base_file_path(p)
-                yield pyarrow.Table.from_batches(batches)
+                batch = fg_reader.read_file_slice_by_base_file_path(p)
+                yield pyarrow.Table.from_batches([batch])
 
         hudi_table = HudiTable(self._table_uri, self._storage_options)
 
@@ -73,8 +72,8 @@ class HudiDatasource(Datasource):
             )
 
             read_task = ReadTask(
-                read_fn=partial(
-                    _perform_read, self._table_uri, relative_paths, reader_options
+                read_fn=lambda paths=relative_paths: _perform_read(
+                    self._table_uri, paths, reader_options
                 ),
                 metadata=metadata,
             )
