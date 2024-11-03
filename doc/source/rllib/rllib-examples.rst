@@ -15,7 +15,7 @@ of RLlib, demonstrating the different use cases and features of the library.
     RLlib is currently in a transition state from old- to new API stack.
     Some of the example scripts haven't been translated yet to the new stack and are tagged
     with the following comment line on top: ``# @OldAPIStack``. The moving of all example
-    scripts over to the "new API stack" is work in progress.
+    scripts over to the new stack is work in progress.
 
 .. note::
 
@@ -44,7 +44,8 @@ directory and run the script as-is with python:
 Use the `--help` command line argument to have each script print out its supported command line options.
 
 Most of the scripts share a common subset of generally applicable command line arguments,
-for example `--num-env-runners`, `--no-tune`, `--wandb-key`, or `--verbose`.
+for example `--num-env-runners` (to scale the number of EnvRunner actors), `--no-tune` (to switch off running with Ray Tune),
+`--wandb-key` (to log to W&B), or `--verbose` (to control log chattiness).
 
 
 All example sub-folders
