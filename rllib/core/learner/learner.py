@@ -1335,6 +1335,15 @@ class Learner(Checkpointable):
                 {next(iter(self.module.keys())): batch}, env_steps=len(batch)
             )
 
+        # TODO (sven): Remove this leftover hack here for the situation in which we
+        #  did not go through the learner connector.
+        #  Options:
+        #  a) Either also pass given batches through the learner connector (even if
+        #     episodes is None). (preferred solution)
+        #  b) Get rid of the option to pass in a batch altogether.
+        if episodes is None:
+            batch = self._convert_batch_type(batch)
+
         # Check the MultiAgentBatch, whether our RLModule contains all ModuleIDs
         # found in this batch. If not, throw an error.
         unknown_module_ids = set(batch.policy_batches.keys()) - set(self.module.keys())

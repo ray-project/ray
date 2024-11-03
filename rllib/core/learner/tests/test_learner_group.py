@@ -49,130 +49,6 @@ LOCAL_CONFIGS = {
 }
 
 
-# TODO(avnishn) Make this a ray task later. Currently thats not possible because the
-#  task is not dying after the test is done. This is a bug with ray core.
-@ray.remote(num_gpus=1)
-class RemoteTrainingHelper:
-    def local_training_helper(self, fw, scaling_mode) -> None:
-        if fw == "torch":
-            import torch
-
-            torch.manual_seed(0)
-        else:
-            raise NotImplementedError
-
-        env = gym.make("CartPole-v1")
-
-        reader = get_cartpole_dataset_reader(batch_size=500)
-        batch = convert_to_torch_tensor(reader.next().as_multi_agent())
-
-        config_overrides = LOCAL_CONFIGS[scaling_mode]
-        config = BaseTestingAlgorithmConfig().update_from_dict(config_overrides)
-
-        learner_group = config.build_learner_group(env=env)
-        local_learner = config.build_learner(env=env)
-
-        # Make the state of the learner and the local learner_group identical.
-        local_learner.set_state(learner_group.get_state()[COMPONENT_LEARNER])
-        check(local_learner.get_state(), learner_group.get_state()[COMPONENT_LEARNER])
-
-        # Update and check state again.
-        learner_update = local_learner.update_from_batch(batch=batch)
-        learner_update = MetricsLogger.peek_results(learner_update)
-        learner_group_update = learner_group.update_from_batch(batch=batch)
-        check(learner_update, learner_group_update)
-        check(local_learner.get_state(), learner_group.get_state()[COMPONENT_LEARNER])
-
-        new_module_id = "test_module"
-
-        add_module_to_learner_or_learner_group(
-            config, env, new_module_id, learner_group
-        )
-        add_module_to_learner_or_learner_group(
-            config, env, new_module_id, local_learner
-        )
-
-        # make the state of the learner and the local learner_group identical
-        local_learner.set_state(learner_group.get_state()[COMPONENT_LEARNER])
-        check(local_learner.get_state(), learner_group.get_state()[COMPONENT_LEARNER])
-
-        # Do another update.
-        batch = convert_to_torch_tensor(reader.next())
-        ma_batch = MultiAgentBatch(
-            {new_module_id: batch, DEFAULT_MODULE_ID: batch}, env_steps=batch.count
-        )
-        # the optimizer state is not initialized fully until the first time that
-        # training is completed. A call to get state before that won't contain the
-        # optimizer state. So we do a dummy update here to initialize the optimizer
-        l0 = local_learner.get_state()
-        local_learner.update_from_batch(batch=ma_batch)
-        l1 = local_learner.get_state()
-        check(
-            l0["rl_module"]["default_policy"]["policy.0.bias"],
-            l1["rl_module"]["default_policy"]["policy.0.bias"],
-            false=True,
-        )
-        check(
-            l0["rl_module"]["test_module"]["policy.0.bias"],
-            l1["rl_module"]["test_module"]["policy.0.bias"],
-            false=True,
-        )
-        check(
-            l0["optimizer"]["default_policy_default_optimizer"]["state"][0]["exp_avg"],
-            l1["optimizer"]["default_policy_default_optimizer"]["state"][0]["exp_avg"],
-            false=True,
-        )
-        check(
-            l0["optimizer"]["test_module_default_optimizer"]["state"],
-            {},
-        )
-
-        lg0 = learner_group.get_state()[COMPONENT_LEARNER]
-        check(l0, lg0)
-
-        learner_group.update_from_batch(batch=ma_batch)
-        lg1 = learner_group.get_state()[COMPONENT_LEARNER]
-
-        check(
-            lg0["rl_module"]["default_policy"]["policy.0.bias"],
-            lg1["rl_module"]["default_policy"]["policy.0.bias"],
-            false=True,
-        )
-        check(
-            lg0["rl_module"]["test_module"]["policy.0.bias"],
-            lg1["rl_module"]["test_module"]["policy.0.bias"],
-            false=True,
-        )
-        check(
-            lg0["optimizer"]["default_policy_default_optimizer"]["state"][0]["exp_avg"],
-            lg1["optimizer"]["default_policy_default_optimizer"]["state"][0]["exp_avg"],
-            false=True,
-        )
-        check(
-            lg0["optimizer"]["test_module_default_optimizer"]["state"],
-            {},
-        )
-
-        check(l1["rl_module"]["test_module"], lg1["rl_module"]["test_module"])
-        check(
-            l1["optimizer"]["test_module_default_optimizer"],
-            lg1["optimizer"]["test_module_default_optimizer"],
-        )
-        # check(l1["rl_module"]["default_policy"], lg1["rl_module"]["default_policy"])
-
-        # local_learner.update_from_batch(batch=ma_batch)
-        # learner_group.update_from_batch(batch=ma_batch)
-
-        # check(local_learner.get_state(), learner_group.get_state()[COMPONENT_LEARNER])
-        # local_learner_results = local_learner.update_from_batch(batch=ma_batch)
-        # local_learner_results = MetricsLogger.peek_results(local_learner_results)
-        # learner_group_results = learner_group.update_from_batch(batch=ma_batch)
-
-        # check(local_learner_results, learner_group_results)
-
-        # check(local_learner.get_state(), learner_group.get_state()[COMPONENT_LEARNER])
-
-
 class TestLearnerGroupSyncUpdate(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
@@ -207,20 +83,6 @@ class TestLearnerGroupSyncUpdate(unittest.TestCase):
         learner_group = config.build_learner_group(env=env)
         print(learner_group)
         learner_group.shutdown()
-
-    # def test_learner_group_local(self):
-    #    fws = ["torch"]
-
-    #    test_iterator = itertools.product(fws, LOCAL_CONFIGS)
-
-    #    # run the logic of this test inside of a ray actor because we want tensorflow
-    #    # resources to be gracefully released. Tensorflow blocks the gpu resources
-    #    # otherwise between test cases, causing a gpu oom error.
-    #    for fw, scaling_mode in test_iterator:
-    #        print(f"Testing framework: {fw}, scaling_mode: {scaling_mode}")
-    #        training_helper = RemoteTrainingHelper.remote()
-    #        ray.get(training_helper.local_training_helper.remote(fw, scaling_mode))
-    #        del training_helper
 
     def test_update_multi_gpu(self):
         return
@@ -453,6 +315,7 @@ class TestLearnerGroupSaveLoadState(unittest.TestCase):
         scaling_modes = ["local-cpu", "multi-gpu-ddp"]
         test_iterator = itertools.product(fws, scaling_modes)
         batch = SampleBatch(convert_to_torch_tensor(FAKE_BATCH)).as_multi_agent()
+
         for fw, scaling_mode in test_iterator:
             print(f"Testing framework: {fw}, scaling mode: {scaling_mode}.")
             env = gym.make("CartPole-v1")

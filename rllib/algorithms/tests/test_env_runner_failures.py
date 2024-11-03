@@ -392,8 +392,7 @@ class TestWorkerFailures(unittest.TestCase):
     def test_fatal_single_agent(self):
         # Test the case where all workers fail (w/o recovery).
         self._do_test_failing_fatal(
-            PPOConfig()
-            .env_runners(
+            PPOConfig().env_runners(
                 env_to_module_connector=lambda env: FlattenObservations(),
             )
         )
@@ -401,8 +400,9 @@ class TestWorkerFailures(unittest.TestCase):
     def test_fatal_multi_agent(self):
         # Test the case where all workers fail (w/o recovery).
         self._do_test_failing_fatal(
-            PPOConfig()
-            .multi_agent(policies={"p0"}, policy_mapping_fn=lambda *a, **k: "p0"),
+            PPOConfig().multi_agent(
+                policies={"p0"}, policy_mapping_fn=lambda *a, **k: "p0"
+            ),
         )
 
     def test_async_samples(self):
@@ -552,10 +552,7 @@ class TestWorkerFailures(unittest.TestCase):
     def test_eval_workers_failing_fatal(self):
         # Test the case where all eval workers fail (w/o recovery).
         self._do_test_failing_fatal(
-            (
-                PPOConfig()
-                .training(model={"fcnet_hiddens": [4]})
-            ),
+            (PPOConfig().training(model={"fcnet_hiddens": [4]})),
             fail_eval=True,
         )
 
