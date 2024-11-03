@@ -70,11 +70,6 @@ class PPOConfig(AlgorithmConfig):
         from ray.rllib.algorithms.ppo import PPOConfig
 
         config = PPOConfig()
-        # Activate new API stack.
-        config.api_stack(
-            enable_rl_module_and_learner=True,
-            enable_env_runner_and_connector_v2=True,
-        )
         config.environment("CartPole-v1")
         config.env_runners(num_env_runners=1)
         config.training(
@@ -93,11 +88,6 @@ class PPOConfig(AlgorithmConfig):
 
         config = (
             PPOConfig()
-            # Activate new API stack.
-            .api_stack(
-                enable_rl_module_and_learner=True,
-                enable_env_runner_and_connector_v2=True,
-            )
             # Set the config object's env.
             .environment(env="CartPole-v1")
             # Update the config object's training parameters.

@@ -143,10 +143,6 @@ Quick First Experiment
     # act in the above environment.
     config = (
         PPOConfig()
-        .api_stack(
-            enable_rl_module_and_learner=True,
-            enable_env_runner_and_connector_v2=True,
-        )
         .environment(
             # Env class to use (here: our gym.Env sub-class from above).
             env=ParrotEnv,

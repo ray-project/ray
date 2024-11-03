@@ -25,11 +25,6 @@ register_env(
 
 config = (
     PPOConfig()
-    # Enable new API stack and use EnvRunner.
-    .api_stack(
-        enable_rl_module_and_learner=True,
-        enable_env_runner_and_connector_v2=True,
-    )
     .environment("cartpole_truncated")
     .env_runners(num_envs_per_env_runner=10)
     .training(
