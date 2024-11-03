@@ -106,7 +106,7 @@ if TYPE_CHECKING:
     from ray.rllib.core.learner import Learner
     from ray.rllib.core.learner.learner_group import LearnerGroup
     from ray.rllib.core.rl_module.rl_module import RLModule
-    from ray.rllib.evaluation.episode import Episode as OldEpisode
+    from ray.rllib.utils.typing import EpisodeType
 
 logger = logging.getLogger(__name__)
 
@@ -370,7 +370,6 @@ class AlgorithmConfig(_Config):
         self.observation_filter = "NoFilter"
         self.update_worker_filter_stats = True
         self.use_worker_filter_stats = True
-        self.enable_connectors = True
         self.sampler_perf_stats_ema_coef = None
 
         # `self.learners()`
@@ -572,6 +571,7 @@ class AlgorithmConfig(_Config):
         # TODO: Remove, once all deprecation_warning calls upon using these keys
         #  have been removed.
         # === Deprecated keys ===
+        self.enable_connectors = DEPRECATED_VALUE
         self.simple_optimizer = DEPRECATED_VALUE
         self.monitor = DEPRECATED_VALUE
         self.evaluation_num_episodes = DEPRECATED_VALUE
@@ -1758,7 +1758,6 @@ class AlgorithmConfig(_Config):
         exploration_config: Optional[dict] = NotProvided,  # @OldAPIStack
         create_env_on_local_worker: Optional[bool] = NotProvided,  # @OldAPIStack
         sample_collector: Optional[Type[SampleCollector]] = NotProvided,  # @OldAPIStack
-        enable_connectors: Optional[bool] = NotProvided,  # @OldAPIStack
         remote_worker_envs: Optional[bool] = NotProvided,  # @OldAPIStack
         remote_env_batch_wait_ms: Optional[float] = NotProvided,  # @OldAPIStack
         preprocessor_pref: Optional[str] = NotProvided,  # @OldAPIStack
@@ -1776,6 +1775,8 @@ class AlgorithmConfig(_Config):
         worker_health_probe_timeout_s=DEPRECATED_VALUE,
         worker_restore_timeout_s=DEPRECATED_VALUE,
         synchronize_filter=DEPRECATED_VALUE,
+        # deprecated
+        enable_connectors=DEPRECATED_VALUE,
     ) -> "AlgorithmConfig":
         """Sets the rollout worker configuration.
 
@@ -1822,9 +1823,6 @@ class AlgorithmConfig(_Config):
                 because it doesn't have to sample (done by remote_workers;
                 worker_indices > 0) nor evaluate (done by evaluation workers;
                 see below).
-            enable_connectors: Use connector based environment runner, so that all
-                preprocessing of obs and postprocessing of actions are done in agent
-                and action connectors.
             env_to_module_connector: A callable taking an Env as input arg and returning
                 an env-to-module ConnectorV2 (might be a pipeline) object.
             module_to_env_connector: A callable taking an Env and an RLModule as input
@@ -1933,29 +1931,29 @@ class AlgorithmConfig(_Config):
         Returns:
             This updated AlgorithmConfig object.
         """
+        if enable_connectors != DEPRECATED_VALUE:
+            deprecation_warning(
+                old="AlgorithmConfig.env_runners(enable_connectors=...)",
+                error=False,
+            )
         if num_rollout_workers != DEPRECATED_VALUE:
             deprecation_warning(
                 old="AlgorithmConfig.env_runners(num_rollout_workers)",
                 new="AlgorithmConfig.env_runners(num_env_runners)",
-                error=False,
+                error=True,
             )
-            self.num_env_runners = num_rollout_workers
         if num_envs_per_worker != DEPRECATED_VALUE:
             deprecation_warning(
                 old="AlgorithmConfig.env_runners(num_envs_per_worker)",
                 new="AlgorithmConfig.env_runners(num_envs_per_env_runner)",
-                error=False,
+                error=True,
             )
-            self.num_envs_per_env_runner = num_envs_per_worker
         if validate_workers_after_construction != DEPRECATED_VALUE:
             deprecation_warning(
                 old="AlgorithmConfig.env_runners(validate_workers_after_construction)",
                 new="AlgorithmConfig.env_runners(validate_env_runners_after_"
                 "construction)",
-                error=False,
-            )
-            self.validate_env_runners_after_construction = (
-                validate_workers_after_construction
+                error=True,
             )
 
         if env_runner_cls is not NotProvided:
@@ -1987,8 +1985,6 @@ class AlgorithmConfig(_Config):
             self.sample_collector = sample_collector
         if create_env_on_local_worker is not NotProvided:
             self.create_env_on_local_worker = create_env_on_local_worker
-        if enable_connectors is not NotProvided:
-            self.enable_connectors = enable_connectors
         if env_to_module_connector is not NotProvided:
             self._env_to_module_connector = env_to_module_connector
         if module_to_env_connector is not NotProvided:
@@ -2874,7 +2870,7 @@ class AlgorithmConfig(_Config):
         ] = NotProvided,
         policy_map_capacity: Optional[int] = NotProvided,
         policy_mapping_fn: Optional[
-            Callable[[AgentID, "OldEpisode"], PolicyID]
+            Callable[[AgentID, "EpisodeType"], PolicyID]
         ] = NotProvided,
         policies_to_train: Optional[
             Union[Collection[PolicyID], Callable[[PolicyID, SampleBatchType], bool]]
@@ -3562,7 +3558,7 @@ class AlgorithmConfig(_Config):
         # Not yet determined, try to figure this out.
         if self._is_atari is None:
             # Atari envs are usually specified via a string like "PongNoFrameskip-v4"
-            # or "ALE/Breakout-v5".
+            # or "ale_py:ALE/Breakout-v5".
             # We do NOT attempt to auto-detect Atari env for other specified types like
             # a callable, to avoid running heavy logics in validate().
             # For these cases, users can explicitly set `environment(atari=True)`.
@@ -4464,14 +4460,6 @@ class AlgorithmConfig(_Config):
                 "`enable_env_runner_and_connector_v2` to False ('hybrid API stack'"
                 ") is not longer supported! Set both to True (new API stack) or both "
                 "to False (old API stack), instead."
-            )
-
-        # New API stack (RLModule, Learner APIs) only works with connectors.
-        if not self.enable_connectors:
-            raise ValueError(
-                "The new API stack (RLModule and Learner APIs) only works with "
-                "connectors! Please enable connectors via "
-                "`config.env_runners(enable_connectors=True)`."
             )
 
         # LR-schedule checking.
