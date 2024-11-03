@@ -61,8 +61,6 @@ class TestEnvRunnerV2(unittest.TestCase):
             .env_runners(
                 num_envs_per_env_runner=1,
                 num_env_runners=0,
-                # Enable EnvRunnerV2.
-                enable_connectors=True,
             )
         )
 
@@ -88,8 +86,6 @@ class TestEnvRunnerV2(unittest.TestCase):
             .env_runners(
                 num_envs_per_env_runner=1,
                 num_env_runners=0,
-                # Enable EnvRunnerV2.
-                enable_connectors=True,
             )
         )
 
@@ -153,8 +149,6 @@ class TestEnvRunnerV2(unittest.TestCase):
             .env_runners(
                 num_envs_per_env_runner=1,
                 num_env_runners=0,
-                # Enable EnvRunnerV2.
-                enable_connectors=True,
                 rollout_fragment_length=100,
             )
             .multi_agent(
@@ -171,7 +165,7 @@ class TestEnvRunnerV2(unittest.TestCase):
             # directly overridden in the policy class.
             .rl_module(
                 rl_module_spec=MultiRLModuleSpec(
-                    module_specs={
+                    rl_module_specs={
                         "pol1": RLModuleSpec(module_class=RandomRLModule),
                         "pol2": RLModuleSpec(module_class=RandomRLModule),
                     }
@@ -220,8 +214,6 @@ class TestEnvRunnerV2(unittest.TestCase):
             .env_runners(
                 num_envs_per_env_runner=1,
                 num_env_runners=0,
-                # Enable EnvRunnerV2.
-                enable_connectors=True,
             )
             .multi_agent(
                 policies={
@@ -238,7 +230,7 @@ class TestEnvRunnerV2(unittest.TestCase):
             )
             .rl_module(
                 rl_module_spec=MultiRLModuleSpec(
-                    module_specs={
+                    rl_module_specs={
                         "one": RLModuleSpec(module_class=RandomRLModule),
                         "two": RLModuleSpec(module_class=RandomRLModule),
                     }
@@ -294,8 +286,6 @@ class TestEnvRunnerV2(unittest.TestCase):
             .env_runners(
                 num_envs_per_env_runner=1,
                 num_env_runners=0,
-                # Enable EnvRunnerV2.
-                enable_connectors=True,
             )
         )
 
@@ -317,8 +307,6 @@ class TestEnvRunnerV2(unittest.TestCase):
             .env_runners(
                 num_envs_per_env_runner=1,
                 num_env_runners=0,
-                # Enable EnvRunnerV2.
-                enable_connectors=True,
             )
             .multi_agent(
                 policies={
@@ -335,7 +323,7 @@ class TestEnvRunnerV2(unittest.TestCase):
             )
             .rl_module(
                 rl_module_spec=MultiRLModuleSpec(
-                    module_specs={
+                    rl_module_specs={
                         "one": RLModuleSpec(module_class=RandomRLModule),
                         "two": RLModuleSpec(module_class=RandomRLModule),
                     }
@@ -373,8 +361,6 @@ class TestEnvRunnerV2(unittest.TestCase):
             .env_runners(
                 num_envs_per_env_runner=1,
                 num_env_runners=0,
-                # Enable EnvRunnerV2.
-                enable_connectors=True,
             )
             .multi_agent(
                 policies={
@@ -391,7 +377,7 @@ class TestEnvRunnerV2(unittest.TestCase):
             )
             .rl_module(
                 rl_module_spec=MultiRLModuleSpec(
-                    module_specs={
+                    rl_module_specs={
                         "one": RLModuleSpec(module_class=RandomRLModule),
                         "two": RLModuleSpec(module_class=RandomRLModule),
                     }
@@ -432,8 +418,6 @@ class TestEnvRunnerV2(unittest.TestCase):
             .env_runners(
                 num_envs_per_env_runner=1,
                 num_env_runners=0,
-                # Enable EnvRunnerV2.
-                enable_connectors=True,
             )
             .multi_agent(
                 policies={
@@ -450,7 +434,7 @@ class TestEnvRunnerV2(unittest.TestCase):
             )
             .rl_module(
                 rl_module_spec=MultiRLModuleSpec(
-                    module_specs={
+                    rl_module_specs={
                         "one": RLModuleSpec(module_class=RandomRLModule),
                         "two": RLModuleSpec(module_class=RandomRLModule),
                     }

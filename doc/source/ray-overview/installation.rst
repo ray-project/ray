@@ -3,6 +3,13 @@
 Installing Ray
 ==============
 
+.. raw:: html
+
+    <a id="try-anyscale-quickstart-install-ray" target="_blank" href="https://console.anyscale.com/register/ha?utm_source=ray_docs&utm_medium=docs&utm_campaign=installing_ray&redirectTo=/v2/template-preview/workspace-intro">
+      <img src="../_static/img/quickstart-with-ray.svg" alt="Run Quickstart on Anyscale" />
+      <br/><br/>
+    </a>
+
 Ray currently officially supports x86_64, aarch64 (ARM) for Linux, and Apple silicon (M1) hardware.
 Ray on Windows is currently in beta.
 
@@ -424,7 +431,7 @@ We publish the dependencies that are installed in our ``ray`` Docker images for 
     .. tab-item:: ray (Python 3.9)
         :sync: ray (Python 3.9)
 
-        Ray version: nightly (`f92cc7a <https://github.com/ray-project/ray/commit/f92cc7a597db968157fa972ec22cff9ba95171da>`_)
+        Ray version: nightly (`09cf5bb <https://github.com/ray-project/ray/commit/09cf5bba9e8f2e3af4336f0b2b76fb4727b09214>`_)
 
         .. literalinclude:: ./pip_freeze_ray-py39-cpu.txt
 

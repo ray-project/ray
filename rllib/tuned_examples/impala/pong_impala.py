@@ -15,7 +15,7 @@ from ray.tune.registry import register_env
 parser = add_rllib_example_script_args()
 parser.set_defaults(
     enable_new_api_stack=True,
-    env="ALE/Pong-v5",
+    env="ale_py:ALE/Pong-v5",
 )
 parser.add_argument(
     "--use-tiny-cnn",
@@ -73,13 +73,12 @@ config = (
         rl_module_spec=(
             RLModuleSpec(module_class=TinyAtariCNN) if args.use_tiny_cnn else None
         ),
-        model_config_dict=(
+        model_config=(
             {
                 "vf_share_layers": True,
                 "conv_filters": [[16, 4, 2], [32, 4, 2], [64, 4, 2], [128, 4, 2]],
                 "conv_activation": "relu",
                 "post_fcnet_hiddens": [256],
-                "uses_new_env_runners": True,
             }
             if not args.use_tiny_cnn
             else {}

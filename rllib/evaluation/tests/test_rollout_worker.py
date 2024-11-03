@@ -208,7 +208,7 @@ class TestRolloutWorker(unittest.TestCase):
                 num_envs_per_env_runner=2,
                 create_env_on_local_worker=True,
             )
-            .training(train_batch_size=20, sgd_minibatch_size=5, num_sgd_iter=1)
+            .training(train_batch_size=20, minibatch_size=5, num_epochs=1)
         )
         algo = config.build()
         results = algo.env_runner_group.foreach_worker(
@@ -493,14 +493,8 @@ class TestRolloutWorker(unittest.TestCase):
         )
         self.assertEqual(max(sample["rewards"]), 1)
         result = collect_metrics(ws, [])
-        # Shows different behavior when connector is on/off.
-        if config.enable_connectors:
-            # episode_return_mean shows the correct clipped value.
-            self.assertEqual(result[EPISODE_RETURN_MEAN], 10)
-        else:
-            # episode_return_mean shows the unclipped raw value
-            # when connector is off, and old env_runner v1 is used.
-            self.assertEqual(result[EPISODE_RETURN_MEAN], 1000)
+        # episode_return_mean shows the correct clipped value.
+        self.assertEqual(result[EPISODE_RETURN_MEAN], 10)
         ev.stop()
 
         # Clipping in certain range (-2.0, 2.0).
@@ -897,9 +891,6 @@ class TestRolloutWorker(unittest.TestCase):
             """A mock testing MultiAgentEnv that doesn't call super.__init__()."""
 
             def __init__(self):
-                # Intentinoally don't call super().__init__(),
-                # so this env doesn't have
-                # `self._[action|observation]_space_in_preferred_format`attributes.
                 self.observation_space = gym.spaces.Discrete(2)
                 self.action_space = gym.spaces.Discrete(2)
 

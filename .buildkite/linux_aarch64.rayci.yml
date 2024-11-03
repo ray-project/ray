@@ -26,6 +26,7 @@ steps:
           - "3.9"
           - "3.10"
           - "3.11"
+          - "3.12"
         cuda:
           - "11.7.1-cudnn8"
           - "11.8.0-cudnn8"
@@ -47,6 +48,7 @@ steps:
       - "3.9"
       - "3.10"
       - "3.11"
+      - "3.12"
     instance_type: builder-arm64
     env:
       PYTHON_VERSION: "{{matrix}}"
@@ -91,12 +93,13 @@ steps:
       - "3.9"
       - "3.10"
       - "3.11"
+      - "3.12"
 
   - label: ":ray: core: wheel-aarch64 tests"
     tags: linux_wheels
     instance_type: medium-arm64
     commands:
-      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... //doc/... core 
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... //doc/... core
         --build-type wheel-aarch64
         --build-name oss-ci-base_build-aarch64
         --parallelism-per-worker 3
@@ -112,7 +115,7 @@ steps:
     tags: linux_wheels
     instance_type: medium-arm64
     commands:
-      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/serve/... //doc/... serve 
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/serve/... //doc/... serve
         --build-type wheel-aarch64
         --build-name oss-ci-base_build-aarch64
         --parallelism-per-worker 3

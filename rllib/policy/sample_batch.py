@@ -462,23 +462,34 @@ class SampleBatch(dict):
 
             {"a": [4, 1, 3, 2]}
         """
+        has_time_rank = self.get(SampleBatch.SEQ_LENS) is not None
 
         # Shuffling the data when we have `seq_lens` defined is probably
         # a bad idea!
-        if self.get(SampleBatch.SEQ_LENS) is not None:
+        if has_time_rank and not self.zero_padded:
             raise ValueError(
                 "SampleBatch.shuffle not possible when your data has "
-                "`seq_lens` defined!"
+                "`seq_lens` defined AND is not zero-padded yet!"
             )
 
         # Get a permutation over the single items once and use the same
         # permutation for all the data (otherwise, data would become
         # meaningless).
-        permutation = np.random.permutation(self.count)
+        # - Shuffle by individual item.
+        if not has_time_rank:
+            permutation = np.random.permutation(self.count)
+        # - Shuffle along batch axis (leave axis=1/time-axis as-is).
+        else:
+            permutation = np.random.permutation(len(self[SampleBatch.SEQ_LENS]))
 
         self_as_dict = dict(self)
+        infos = self_as_dict.pop(Columns.INFOS, None)
         shuffled = tree.map_structure(lambda v: v[permutation], self_as_dict)
+        if infos is not None:
+            self_as_dict[Columns.INFOS] = [infos[i] for i in permutation]
+
         self.update(shuffled)
+
         # Flush cache such that intercepted values are recalculated after the
         # shuffling.
         self.intercepted_values = {}
@@ -722,7 +733,12 @@ class SampleBatch(dict):
         infos = self.pop(SampleBatch.INFOS, None)
         data = tree.map_structure(lambda value: value[start:stop], self)
         if infos is not None:
-            data[SampleBatch.INFOS] = infos[start:stop]
+            # Slice infos according to SEQ_LENS.
+            info_slice_start = int(sum(self[SampleBatch.SEQ_LENS][:start]))
+            info_slice_stop = int(sum(self[SampleBatch.SEQ_LENS][start:stop]))
+            data[SampleBatch.INFOS] = infos[info_slice_start:info_slice_stop]
+            # Put infos back into `self`.
+            self[Columns.INFOS] = infos
 
         return SampleBatch(
             data,

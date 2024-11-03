@@ -13,11 +13,12 @@ from ray.rllib.utils.annotations import override
 from ray.rllib.utils.compression import pack_if_needed
 from ray.rllib.utils.spaces.space_utils import to_jsonable_if_needed
 from ray.rllib.utils.typing import EpisodeType
+from ray.util.debug import log_once
 
 logger = logging.Logger(__file__)
 
 # TODO (simon): This class can be agnostic to the episode type as it
-# calls only get_state.
+#  calls only get_state.
 
 
 class OfflineSingleAgentEnvRunner(SingleAgentEnvRunner):
@@ -35,6 +36,8 @@ class OfflineSingleAgentEnvRunner(SingleAgentEnvRunner):
         # Set the filesystem.
         self.filesystem = self.config.output_filesystem
         self.filesystem_kwargs = self.config.output_filesystem_kwargs
+        self.filesystem_object = None
+
         # Set the output base path.
         self.output_path = self.config.output
         # Set the subdir (environment specific).
@@ -48,33 +51,30 @@ class OfflineSingleAgentEnvRunner(SingleAgentEnvRunner):
         # be `gcsfs` for GCS, `pyarrow` for S3 or `adlfs` for Azure Blob Storage.
         # this filesystem is specifically needed, if a session has to be created
         # with the cloud provider.
-        if self.filesystem:
-            if self.filesystem == "gcs":
-                import gcsfs
 
-                self.filesystem_object = gcsfs.GCSFileSystem(**self.filesystem_kwargs)
-            elif self.filesystem == "s3":
-                from pyarrow import fs
+        if self.filesystem == "gcs":
+            import gcsfs
 
-                self.filesystem_object = fs.S3FileSystem(**self.filesystem_kwargs)
-            elif self.filesystem == "abs":
-                import adlfs
+            self.filesystem_object = gcsfs.GCSFileSystem(**self.filesystem_kwargs)
+        elif self.filesystem == "s3":
+            from pyarrow import fs
 
-                self.filesystem_object = adlfs.AzureBlobFileSystem(
-                    **self.filesystem_kwargs
-                )
-            else:
-                raise ValueError(
-                    f"Unknown filesystem: {self.filesystem}. Filesystems can be "
-                    "'gcs' for GCS, "
-                    "'s3' for S3, or 'abs'"
-                )
-            # Add the filesystem object to the write method kwargs.
-            self.output_write_method_kwargs.update(
-                {
-                    "filesystem": self.filesystem_object,
-                }
+            self.filesystem_object = fs.S3FileSystem(**self.filesystem_kwargs)
+        elif self.filesystem == "abs":
+            import adlfs
+
+            self.filesystem_object = adlfs.AzureBlobFileSystem(**self.filesystem_kwargs)
+        elif self.filesystem is not None:
+            raise ValueError(
+                f"Unknown filesystem: {self.filesystem}. Filesystems can be "
+                "'gcs' for GCS, 's3' for S3, or 'abs'"
             )
+        # Add the filesystem object to the write method kwargs.
+        self.output_write_method_kwargs.update(
+            {
+                "filesystem": self.filesystem_object,
+            }
+        )
 
         # If we should store `SingleAgentEpisodes` or column data.
         self.output_write_episodes = self.config.output_write_episodes
@@ -124,7 +124,21 @@ class OfflineSingleAgentEnvRunner(SingleAgentEnvRunner):
 
         # Add data to the buffers.
         if self.output_write_episodes:
-            self._samples.extend(samples)
+
+            import msgpack
+            import msgpack_numpy as mnp
+
+            if log_once("msgpack"):
+                logger.info(
+                    "Packing episodes with `msgpack` and encode array with "
+                    "`msgpack_numpy` for serialization. This is needed for "
+                    "recording episodes."
+                )
+            # Note, we serialize episodes with `msgpack` and `msgpack_numpy` to
+            # ensure version compatibility.
+            self._samples.extend(
+                [msgpack.packb(eps.get_state(), default=mnp.encode) for eps in samples]
+            )
         else:
             self._map_episodes_to_data(samples)
 

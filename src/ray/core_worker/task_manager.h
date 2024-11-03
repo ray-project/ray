@@ -597,34 +597,18 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   /// Fill every task information of the current worker to GetCoreWorkerStatsReply.
   void FillTaskInfo(rpc::GetCoreWorkerStatsReply *reply, const int64_t limit) const;
 
+  /// Return the ongoing retry tasks triggered by lineage reconstruction.
+  /// Key is the lineage reconstruction task info.
+  /// Value is the number of ongoing lineage reconstruction tasks of this type.
+  std::unordered_map<rpc::LineageReconstructionTask, uint64_t>
+  GetOngoingLineageReconstructionTasks() const;
+
   /// Returns the generator ID that contains the dynamically allocated
   /// ObjectRefs, if the task is dynamic. Else, returns Nil.
   ObjectID TaskGeneratorId(const TaskID &task_id) const;
 
   /// Record OCL metrics.
   void RecordMetrics();
-
-  /// Update task status change for the task attempt in TaskEventBuffer if needed.
-  ///
-  /// It skips the reporting when:
-  ///   1. when the enable_task_events for the task is false in TaskSpec.
-  ///   2. when the task event reporting is disabled on the worker (through ray config,
-  ///   i.e., RAY_task_events_report_interval_ms=0).
-  ///
-  /// \param attempt_number Attempt number for the task attempt.
-  /// \param spec corresponding TaskSpecification of the task
-  /// \param status the changed status.
-  /// \param state_update optional task state updates.
-  /// \return true if the event is recorded, false otherwise.
-  bool RecordTaskStatusEventIfNeeded(
-      const TaskID &task_id,
-      const JobID &job_id,
-      int32_t attempt_number,
-      const TaskSpecification &spec,
-      rpc::TaskStatus status,
-      bool include_task_info = false,
-      absl::optional<const worker::TaskStatusEvent::TaskStateUpdate> state_update =
-          absl::nullopt);
 
  private:
   struct TaskEntry {
@@ -648,27 +632,18 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
 
     void SetStatus(rpc::TaskStatus new_status) {
       auto new_tuple = std::make_tuple(spec.GetName(), new_status, is_retry_);
-      counter.Swap(status, new_tuple);
+      if (IsPending()) {
+        counter.Swap(status, new_tuple);
+      } else {
+        // FINISHED and FAILED are monotonically increasing.
+        // TODO(jjyao): We should use Counter instead of Gauge
+        // for FINISHED and FAILED tasks.
+        counter.Increment(new_tuple);
+      }
       status = new_tuple;
     }
 
-    void MarkRetryOnFailed() {
-      // Record a separate counter increment for retries. This means that if a task
-      // is retried N times, we show it as N separate task counts.
-      // Note that the increment is for the "previous" task attempt. From now on, this
-      // task entry will report metrics or the "current" task attempt.
-      counter.Increment({spec.GetName(), rpc::TaskStatus::FAILED, is_retry_});
-      is_retry_ = true;
-    }
-
-    void MarkRetryOnResubmit() {
-      // Record a separate counter increment for resubmits. This means that if a task
-      // is resubmitted N times, we show it as N separate task counts.
-      // Note that the increment is for the "previous" task attempt. From now on, this
-      // task entry will report metrics or the "current" task attempt.
-      counter.Increment({spec.GetName(), rpc::TaskStatus::FINISHED, is_retry_});
-      is_retry_ = true;
-    }
+    void MarkRetry() { is_retry_ = true; }
 
     rpc::TaskStatus GetStatus() const { return std::get<1>(status); }
 

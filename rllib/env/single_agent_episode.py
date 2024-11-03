@@ -11,6 +11,7 @@ from typing import Any, Dict, List, Optional, SupportsFloat, Union
 from ray.rllib.core.columns import Columns
 from ray.rllib.env.utils.infinite_lookback_buffer import InfiniteLookbackBuffer
 from ray.rllib.policy.sample_batch import SampleBatch
+from ray.rllib.utils.serialization import gym_space_from_dict, gym_space_to_dict
 from ray.rllib.utils.typing import AgentID, ModuleID
 from ray.util.annotations import PublicAPI
 
@@ -323,7 +324,7 @@ class SingleAgentEpisode:
             if isinstance(v, InfiniteLookbackBuffer):
                 self.extra_model_outputs[k] = v
             else:
-                # We cannot use the defaultdict's own constructore here as this would
+                # We cannot use the defaultdict's own constructor here as this would
                 # auto-set the lookback buffer to 0 (there is no data passed to that
                 # constructor). Then, when we manually have to set the data property,
                 # the lookback buffer would still be (incorrectly) 0.
@@ -361,6 +362,7 @@ class SingleAgentEpisode:
             observation: The initial observation returned by `env.reset()`.
             infos: An (optional) info dict returned by `env.reset()`.
         """
+        assert not self.is_reset
         assert not self.is_done
         assert len(self.observations) == 0
         # Assume that this episode is completely empty and has not stepped yet.
@@ -483,6 +485,11 @@ class SingleAgentEpisode:
             )
             for k, v in self.extra_model_outputs.items():
                 assert len(v) == len(self.observations) - 1
+
+    @property
+    def is_reset(self) -> bool:
+        """Returns True if `self.add_env_reset()` has already been called."""
+        return len(self.observations) > 0
 
     @property
     def is_finalized(self) -> bool:
@@ -1695,32 +1702,44 @@ class SingleAgentEpisode:
         """Returns the pickable state of an episode.
 
         The data in the episode is stored into a dictionary. Note that episodes
-        can also be generated from states (see `self.from_state()`).
+        can also be generated from states (see `SingleAgentEpisode.from_state()`).
 
         Returns:
             A dict containing all the data from the episode.
         """
+        infos = self.infos.get_state()
+        infos["data"] = np.array([info if info else None for info in infos["data"]])
         return {
             "id_": self.id_,
             "agent_id": self.agent_id,
             "module_id": self.module_id,
             "multi_agent_episode_id": self.multi_agent_episode_id,
-            # TODO (simon): Check, if we need to have a `get_state` method for
-            #  `InfiniteLookbackBuffer` and call it here.
-            "observations": self.observations,
-            "actions": self.actions,
-            "rewards": self.rewards,
-            "infos": self.infos,
-            "extra_model_outputs": self.extra_model_outputs,
+            # Note, all data is stored in `InfiniteLookbackBuffer`s.
+            "observations": self.observations.get_state(),
+            "actions": self.actions.get_state(),
+            "rewards": self.rewards.get_state(),
+            "infos": self.infos.get_state(),
+            "extra_model_outputs": {
+                k: v.get_state() if v else v
+                for k, v in self.extra_model_outputs.items()
+            }
+            if len(self.extra_model_outputs) > 0
+            else None,
             "is_terminated": self.is_terminated,
             "is_truncated": self.is_truncated,
             "t_started": self.t_started,
             "t": self.t,
-            "_observation_space": self._observation_space,
-            "_action_space": self._action_space,
+            "_observation_space": gym_space_to_dict(self._observation_space)
+            if self._observation_space
+            else None,
+            "_action_space": gym_space_to_dict(self._action_space)
+            if self._action_space
+            else None,
             "_start_time": self._start_time,
             "_last_step_time": self._last_step_time,
-            "_temporary_timestep_data": self._temporary_timestep_data,
+            "_temporary_timestep_data": dict(self._temporary_timestep_data)
+            if len(self._temporary_timestep_data) > 0
+            else None,
         }
 
     @staticmethod
@@ -1739,21 +1758,48 @@ class SingleAgentEpisode:
         episode.agent_id = state["agent_id"]
         episode.module_id = state["module_id"]
         episode.multi_agent_episode_id = state["multi_agent_episode_id"]
-        episode.observations = state["observations"]
-        episode.actions = state["actions"]
-        episode.rewards = state["rewards"]
-        episode.infos = state["infos"]
-        episode.extra_model_outputs = state["extra_model_outputs"]
+        # Convert data back to `InfiniteLookbackBuffer`s.
+        episode.observations = InfiniteLookbackBuffer.from_state(state["observations"])
+        episode.actions = InfiniteLookbackBuffer.from_state(state["actions"])
+        episode.rewards = InfiniteLookbackBuffer.from_state(state["rewards"])
+        episode.infos = InfiniteLookbackBuffer.from_state(state["infos"])
+        episode.extra_model_outputs = (
+            defaultdict(
+                functools.partial(
+                    InfiniteLookbackBuffer, lookback=episode.observations.lookback
+                ),
+                {
+                    k: InfiniteLookbackBuffer.from_state(v)
+                    for k, v in state["extra_model_outputs"].items()
+                },
+            )
+            if state["extra_model_outputs"]
+            else defaultdict(
+                functools.partial(
+                    InfiniteLookbackBuffer, lookback=episode.observations.lookback
+                ),
+            )
+        )
         episode.is_terminated = state["is_terminated"]
         episode.is_truncated = state["is_truncated"]
         episode.t_started = state["t_started"]
         episode.t = state["t"]
-        episode._observation_space = state["_observation_space"]
-        episode._action_space = state["_action_space"]
+        # We need to convert the spaces to dictionaries for serialization.
+        episode._observation_space = (
+            gym_space_from_dict(state["_observation_space"])
+            if state["_observation_space"]
+            else None
+        )
+        episode._action_space = (
+            gym_space_from_dict(state["_action_space"])
+            if state["_action_space"]
+            else None
+        )
         episode._start_time = state["_start_time"]
         episode._last_step_time = state["_last_step_time"]
-        episode._temporary_timestep_data = state["_temporary_timestep_data"]
-
+        episode._temporary_timestep_data = defaultdict(
+            list, state["_temporary_timestep_data"] or {}
+        )
         # Validate the episode.
         episode.validate()
 

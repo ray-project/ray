@@ -24,19 +24,19 @@ class EpisodeAndSampleCallbacks(DefaultCallbacks):
     def on_episode_start(self, *args, env_runner, metrics_logger, env, **kwargs):
         assert isinstance(env_runner, EnvRunner)
         assert isinstance(metrics_logger, MetricsLogger)
-        assert isinstance(env, gym.Env)
+        assert isinstance(env, (gym.Env, gym.vector.VectorEnv))
         self.counts.update({"start": 1})
 
     def on_episode_step(self, *args, env_runner, metrics_logger, env, **kwargs):
         assert isinstance(env_runner, EnvRunner)
         assert isinstance(metrics_logger, MetricsLogger)
-        assert isinstance(env, gym.Env)
+        assert isinstance(env, (gym.Env, gym.vector.VectorEnv))
         self.counts.update({"step": 1})
 
     def on_episode_end(self, *args, env_runner, metrics_logger, env, **kwargs):
         assert isinstance(env_runner, EnvRunner)
         assert isinstance(metrics_logger, MetricsLogger)
-        assert isinstance(env, gym.Env)
+        assert isinstance(env, (gym.Env, gym.vector.VectorEnv))
         self.counts.update({"end": 1})
 
     def on_sample_end(self, *args, env_runner, metrics_logger, **kwargs):
@@ -106,8 +106,8 @@ class TestCallbacks(unittest.TestCase):
             .callbacks(EpisodeAndSampleCallbacks)
             .training(
                 train_batch_size=50,  # <- rollout_fragment_length=50
-                sgd_minibatch_size=50,
-                num_sgd_iter=1,
+                minibatch_size=50,
+                num_epochs=1,
             )
         )
 
@@ -158,8 +158,8 @@ class TestCallbacks(unittest.TestCase):
             .callbacks(EpisodeAndSampleCallbacks)
             .training(
                 train_batch_size=50,  # <- rollout_fragment_length=50
-                sgd_minibatch_size=50,
-                num_sgd_iter=1,
+                minibatch_size=50,
+                num_epochs=1,
             )
         )
 

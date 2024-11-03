@@ -3,10 +3,8 @@ import sys
 import unittest
 
 import ray
-import ray.rllib.algorithms.dqn as dqn
 import ray.rllib.algorithms.impala as impala
 import ray.rllib.algorithms.ppo as ppo
-import ray.rllib.algorithms.sac as sac
 from ray.rllib.utils import check
 
 
@@ -20,9 +18,6 @@ def do_test_explorations(config, dummy_obs, prev_a=None, expected_mean_action=No
     for exploration in [None, "Random"]:
         local_config = config.copy()
         if exploration == "Random":
-            if local_config.enable_rl_module_and_learner:
-                # TODO(Artur): Support Random exploration with RL Modules.
-                continue
             local_config.env_runners(exploration_config={"type": "Random"})
         print("exploration={}".format(exploration or "default"))
 
@@ -77,15 +72,6 @@ class TestExplorations(unittest.TestCase):
     def tearDownClass(cls):
         ray.shutdown()
 
-    def test_dqn(self):
-        config = (
-            dqn.DQNConfig().environment("CartPole-v1").env_runners(num_env_runners=0)
-        )
-        do_test_explorations(
-            config,
-            np.array([0.0, 0.1, 0.0, 0.0]),
-        )
-
     def test_impala(self):
         config = (
             impala.IMPALAConfig()
@@ -117,16 +103,6 @@ class TestExplorations(unittest.TestCase):
             config,
             np.array([0.0, 0.1, 0.0]),
             prev_a=np.array([0.0]),
-            expected_mean_action=0.0,
-        )
-
-    def test_sac(self):
-        config = (
-            sac.SACConfig().environment("Pendulum-v1").env_runners(num_env_runners=0)
-        )
-        do_test_explorations(
-            config,
-            np.array([0.0, 0.1, 0.0]),
             expected_mean_action=0.0,
         )
 
