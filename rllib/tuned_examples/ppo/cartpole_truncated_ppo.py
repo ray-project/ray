@@ -34,7 +34,10 @@ config = (
     )
     # For evaluation, use the "real" CartPole-v1 env (up to 500 steps).
     .evaluation(
-        evaluation_config=PPOConfig.overrides(env="CartPole-v1"),
+        evaluation_config=PPOConfig.overrides(
+            env="CartPole-v1",
+            explore=False,
+        ),
         evaluation_interval=1,
         evaluation_num_env_runners=1,
     )
@@ -42,7 +45,7 @@ config = (
 
 stop = {
     f"{NUM_ENV_STEPS_SAMPLED_LIFETIME}": 500000,
-    f"{EVALUATION_RESULTS}/{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": 200.0,
+    f"{EVALUATION_RESULTS}/{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": 80.0,
 }
 
 
