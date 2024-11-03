@@ -14,7 +14,6 @@ from ray.autoscaler._private.constants import (
     WORKER_RPC_DRAIN_KEY,
 )
 from ray.autoscaler._private.kuberay import (
-    KUBERAY_REQUEST_TIMEOUT_S,
     node_provider,
     utils,
 )
@@ -88,7 +87,7 @@ class AutoscalingConfigProducer:
         result = requests.get(
             self._ray_cr_url,
             headers=self._headers,
-            timeout=KUBERAY_REQUEST_TIMEOUT_S,
+            timeout=node_provider.KUBERAY_REQUEST_TIMEOUT_S,
             verify=self._verify,
         )
         if not result.status_code == 200:
