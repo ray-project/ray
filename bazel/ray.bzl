@@ -31,7 +31,7 @@ PYX_COPTS = select({
         "-Wno-deprecated-declarations",
         "-Wno-shadow",
         # Ignore this because the generated code uses volatile which is deprecated with C++20
-        "-Wdeprecated-volatile",
+        "-Wno-deprecated-volatile",
     ],
 }) + select({
     "@platforms//os:windows": [
@@ -122,7 +122,7 @@ def copy_to_workspace(name, srcs, dstdir = ""):
     )
 
 def native_java_binary(module_name, name, native_binary_name):
-    """Copy native binary file to different path based on operating systems"""
+    # Copy native binary file to different path based on operating systems
     copy_file(
         name = name + "_darwin",
         src = native_binary_name,

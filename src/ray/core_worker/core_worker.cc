@@ -36,11 +36,10 @@
 #include "ray/common/runtime_env_common.h"
 #include "ray/common/task/task_util.h"
 #include "ray/core_worker/context.h"
-#include "ray/core_worker/transport/task_receiver.h"
-#include "ray/gcs/gcs_client/gcs_client.h"
 #include "ray/gcs/pb_util.h"
 #include "ray/util/container_util.h"
 #include "ray/util/event.h"
+#include "ray/util/subreaper.h"
 #include "ray/util/util.h"
 
 using json = nlohmann::json;
