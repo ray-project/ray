@@ -159,7 +159,7 @@ class DQNConfig(AlgorithmConfig):
         # global_norm, no matter the value of `grad_clip_by`.
         self.grad_clip_by = "global_norm"
         self.lr = 5e-4
-        self.train_batch_size = 32
+        self.train_batch_size_per_learner = 32
 
         # `evaluation()`
         self.evaluation(evaluation_config=AlgorithmConfig.overrides(explore=False))
@@ -174,7 +174,6 @@ class DQNConfig(AlgorithmConfig):
         self.target_network_update_freq = 500
         self.num_steps_sampled_before_learning_starts = 1000
         self.store_buffer_in_checkpoints = False
-        self.lr_schedule = None
         self.adam_epsilon = 1e-8
 
         self.tau = 1.0
@@ -210,6 +209,9 @@ class DQNConfig(AlgorithmConfig):
         )
         # fmt: on
         # __sphinx_doc_end__
+
+        self.train_batch_size = 32  # @OldAPIStack
+        self.lr_schedule = None  # @OldAPIStack
 
         # Deprecated
         self.buffer_size = DEPRECATED_VALUE
