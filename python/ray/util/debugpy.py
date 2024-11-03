@@ -84,7 +84,12 @@ def set_trace(breakpoint_uuid=None):
     _override_breakpoint_hooks()
 
     with ray._private.worker.global_worker.worker_paused_by_debugger():
-        log.info("Waiting for debugger to attach (see https://docs.ray.io/en/latest/ray-observability/ray-distributed-debugger.html)...")  # noqa: E501
+        msg = (
+            "Waiting for debugger to attach (see "
+            "https://docs.ray.io/en/latest/ray-observability/"
+            "ray-distributed-debugger.html)..."
+        )
+        log.info(msg)
         debugpy.wait_for_client()
 
     log.info("Debugger client is connected")
