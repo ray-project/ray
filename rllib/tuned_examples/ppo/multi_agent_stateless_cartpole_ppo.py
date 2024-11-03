@@ -27,11 +27,6 @@ register_env(
 
 config = (
     PPOConfig()
-    # Enable new API stack and use EnvRunner.
-    .api_stack(
-        enable_rl_module_and_learner=True,
-        enable_env_runner_and_connector_v2=True,
-    )
     .environment("multi_stateless_cart")
     .env_runners(
         env_to_module_connector=lambda env: MeanStdFilter(multi_agent=True),

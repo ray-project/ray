@@ -65,10 +65,6 @@ def synchronous_parallel_sample(
         from ray.rllib.algorithms.ppo import PPO, PPOConfig
         config = (
             PPOConfig()
-            .api_stack(
-                enable_env_runner_and_connector_v2=True,
-                enable_rl_module_and_learner=True,
-            )
             .environment("CartPole-v1")
         )
         algorithm = config.build()
