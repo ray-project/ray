@@ -290,7 +290,7 @@ Status AuthenticateRedis(redisContext *context,
     return Status::OK();
   }
   redisReply *reply;
-  if (username == "") {
+  if (username.empty()) {
     reply = reinterpret_cast<redisReply *>(
         redisCommand(context, "AUTH %s", password.c_str()));
   } else {
@@ -310,7 +310,7 @@ Status AuthenticateRedis(redisAsyncContext *context,
     return Status::OK();
   }
   int status;
-  if (username == "") {
+  if (username.empty()) {
     status = redisAsyncCommand(context, NULL, NULL, "AUTH %s", password.c_str());
   } else {
     status = redisAsyncCommand(
