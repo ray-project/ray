@@ -1,6 +1,6 @@
-load("@com_github_google_flatbuffers//:build_defs.bzl", "flatbuffer_library_public")
-load("@bazel_skylib//rules:copy_file.bzl", "copy_file")
 load("@bazel_common//tools/maven:pom_file.bzl", "pom_file")
+load("@bazel_skylib//rules:copy_file.bzl", "copy_file")
+load("@com_github_google_flatbuffers//:build_defs.bzl", "flatbuffer_library_public")
 load("@rules_cc//cc:defs.bzl", "cc_binary", "cc_library", "cc_test")
 
 COPTS = select({
@@ -26,7 +26,7 @@ PYX_COPTS = select({
         # Ignore this warning since CPython and Cython have issue removing deprecated tp_print on MacOS
         "-Wno-deprecated-declarations",
         # Ignore this because the generated code uses volatile which is deprecated with C++20
-        "-Wdeprecated-volatile",
+        "-Wno-deprecated-volatile",
     ],
 }) + select({
     "@platforms//os:windows": [
@@ -113,7 +113,7 @@ def copy_to_workspace(name, srcs, dstdir = ""):
     )
 
 def native_java_binary(module_name, name, native_binary_name):
-    """Copy native binary file to different path based on operating systems"""
+    # Copy native binary file to different path based on operating systems
     copy_file(
         name = name + "_darwin",
         src = native_binary_name,
