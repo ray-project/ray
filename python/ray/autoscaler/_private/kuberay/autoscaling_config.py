@@ -13,10 +13,7 @@ from ray.autoscaler._private.constants import (
     WORKER_LIVENESS_CHECK_KEY,
     WORKER_RPC_DRAIN_KEY,
 )
-from ray.autoscaler._private.kuberay import (
-    node_provider,
-    utils,
-)
+from ray.autoscaler._private.kuberay import node_provider, utils
 from ray.autoscaler._private.util import validate_config
 
 logger = logging.getLogger(__name__)
