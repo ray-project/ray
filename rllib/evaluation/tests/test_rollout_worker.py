@@ -172,6 +172,10 @@ class TestRolloutWorker(unittest.TestCase):
     def test_global_vars_update(self):
         config = (
             PPOConfig()
+            .api_stack(
+                enable_rl_module_and_learner=False,
+                enable_env_runner_and_connector_v2=False,
+            )
             .environment("CartPole-v1")
             .env_runners(num_envs_per_env_runner=1)
             # lr = 0.1 - [(0.1 - 0.000001) / 100000] * ts
@@ -202,6 +206,10 @@ class TestRolloutWorker(unittest.TestCase):
         register_env("test", lambda _: gym.make("CartPole-v1"))
         config = (
             PPOConfig()
+            .api_stack(
+                enable_rl_module_and_learner=False,
+                enable_env_runner_and_connector_v2=False,
+            )
             .environment("test")
             .env_runners(
                 num_env_runners=2,
