@@ -2,7 +2,6 @@ import asyncio
 from typing import Any, List, Optional
 
 import ray
-import ray._private
 from ray.exceptions import RayTaskError
 from ray.util.annotations import PublicAPI
 
