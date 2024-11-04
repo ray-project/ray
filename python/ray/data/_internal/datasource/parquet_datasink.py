@@ -77,10 +77,10 @@ class ParquetDatasink(_FileDatasink):
         def write_blocks_to_path():
             with self.open_output_stream(write_path) as file:
                 tables = [BlockAccessor.for_block(block).to_arrow() for block in blocks]
+                # We only allow unifying nullable fields by promote_options=`default`
                 unified_schema = pa.unify_schemas(
                     [table.schema for table in tables], promote_options="default"
                 )
-                print("here...")
                 with pq.ParquetWriter(file, unified_schema, **write_kwargs) as writer:
                     for table in tables:
                         if not table.schema.equals(unified_schema):
