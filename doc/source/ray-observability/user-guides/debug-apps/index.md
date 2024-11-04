@@ -10,6 +10,7 @@ debug-memory
 debug-hangs
 debug-failures
 optimize-performance
+../../ray-distributed-debugger
 ray-debugging
 ```
 
@@ -19,4 +20,5 @@ These guides help you perform common debugging or optimization tasks for your di
 * {ref}`observability-debug-hangs`
 * {ref}`observability-debug-failures`
 * {ref}`observability-optimize-performance`
-* {ref}`ray-debugger`
+* {ref}`ray-distributed-debugger`
+* {ref}`ray-debugger` (deprecated)

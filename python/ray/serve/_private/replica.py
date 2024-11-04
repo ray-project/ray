@@ -59,7 +59,7 @@ from ray.serve._private.logging_utils import (
 from ray.serve._private.metrics_utils import InMemoryMetricsStore, MetricsPusher
 from ray.serve._private.thirdparty.get_asgi_route_name import get_asgi_route_name
 from ray.serve._private.utils import get_component_file_name  # noqa: F401
-from ray.serve._private.utils import parse_import_path, wrap_to_ray_error
+from ray.serve._private.utils import parse_import_path
 from ray.serve._private.version import DeploymentVersion
 from ray.serve.config import AutoscalingConfig
 from ray.serve.deployment import Deployment
@@ -414,8 +414,8 @@ class ReplicaActor:
                 task.cancel()
         except Exception as e:
             user_exception = e
-            logger.error(f"Request failed:\n{e}")
-            if ray.util.pdb._is_ray_debugger_enabled():
+            logger.exception("Request failed.")
+            if ray.util.pdb._is_ray_debugger_post_mortem_enabled():
                 ray.util.pdb._post_mortem()
         finally:
             self._metrics_manager.dec_num_ongoing_requests()
@@ -1234,15 +1234,16 @@ class UserCallableWrapper:
                 asgi_args=asgi_args,
             )
 
-        except Exception as e:
-            e = wrap_to_ray_error(user_method_name, e)
+        except Exception:
             if request_metadata.is_http_request and asgi_args is not None:
-                result = starlette.responses.Response(
-                    f"Unexpected error, traceback: {e}.", status_code=500
+                await self._send_user_result_over_asgi(
+                    starlette.responses.Response(
+                        "Internal Server Error", status_code=500
+                    ),
+                    asgi_args,
                 )
-                await self._send_user_result_over_asgi(result, asgi_args)
 
-            raise e from None
+            raise
         finally:
             if receive_task is not None and not receive_task.done():
                 receive_task.cancel()
