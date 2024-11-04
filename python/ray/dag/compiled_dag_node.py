@@ -987,7 +987,10 @@ class CompiledDAG:
 
         nccl_actors_p2p = list(nccl_actors_p2p)
         if None in nccl_actors_p2p:
-            raise ValueError("Driver cannot participate in the NCCL group.")
+            raise ValueError(
+                "Outputs cannot be transferred via NCCL because the driver "
+                "cannot participate in the NCCL group"
+            )
 
         # Initialize and cache a NCCL group for each custom NCCL group. All the
         # custom NCCL groups are initialized before the default NCCL groups.
