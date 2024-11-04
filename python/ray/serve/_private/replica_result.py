@@ -129,7 +129,7 @@ class ActorReplicaResult(ReplicaResult):
     async def __anext__(self):
         assert (
             self._is_streaming
-        ), "__anext__() can only be called a streaming ActorReplicaResult."
+        ), "__anext__() can only be called on a streaming ActorReplicaResult."
 
         next_obj_ref = await self._obj_ref_gen.__anext__()
         return await next_obj_ref
