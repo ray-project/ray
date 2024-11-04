@@ -31,12 +31,14 @@ try:
     import optuna as ot
     from optuna.distributions import BaseDistribution as OptunaDistribution
     from optuna.samplers import BaseSampler
+    from optuna.storages import BaseStorage
     from optuna.trial import Trial as OptunaTrial
     from optuna.trial import TrialState as OptunaTrialState
 except ImportError:
     ot = None
     OptunaDistribution = None
     BaseSampler = None
+    BaseStorage = None
     OptunaTrialState = None
     OptunaTrial = None
 
@@ -133,7 +135,9 @@ class OptunaSearch(Searcher):
                 a delay when suggesting new configurations.
                 This is an Optuna issue and may be fixed in a future
                 Optuna release.
-
+        storage: Optuna storage used for storing trial results to s
+            torages other than in-momemory storage, 
+            for instance optuna.storages.RDBStorage.
         seed: Seed to initialize sampler with. This parameter is only
             used when ``sampler=None``. In all other cases, the sampler
             you pass should be initialized with the seed already.
@@ -305,7 +309,7 @@ class OptunaSearch(Searcher):
         )
         tuner.fit()
 
-    .. versionadded:: 0.8.8
+    .. versionadded:: 0.8.9
 
     """
 
@@ -322,6 +326,8 @@ class OptunaSearch(Searcher):
         mode: Optional[Union[str, List[str]]] = None,
         points_to_evaluate: Optional[List[Dict]] = None,
         sampler: Optional["BaseSampler"] = None,
+        study_name: Optional[str] = None,
+        storage: Optional["BaseStorage"] = None,
         seed: Optional[int] = None,
         evaluated_rewards: Optional[List] = None,
     ):
@@ -343,8 +349,10 @@ class OptunaSearch(Searcher):
 
         self._points_to_evaluate = points_to_evaluate or []
         self._evaluated_rewards = evaluated_rewards
-
-        self._study_name = "optuna"  # Fixed study name for in-memory storage
+        if study_name:
+            self._study_name = study_name
+        else:
+            self._study_name = "optuna"  # Fixed study name for in-memory storage
 
         if sampler and seed:
             logger.warning(
@@ -362,6 +370,17 @@ class OptunaSearch(Searcher):
         self._sampler = sampler
         self._seed = seed
 
+        if storage:
+            assert study_name, (
+                "You must pass a study name if you are passing a storage."
+            )
+            assert isinstance(storage, BaseStorage), (
+                "You can only pass an instance of "
+                "`optuna.samplers.BaseStorage` "
+                "as a storage to `OptunaSearcher`."
+            )
+            self._storage = storage
+            
         self._completed_trials = set()
 
         self._ot_trials = {}
@@ -380,7 +399,10 @@ class OptunaSearch(Searcher):
             self._metric = DEFAULT_METRIC
 
         pruner = ot.pruners.NopPruner()
-        storage = ot.storages.InMemoryStorage()
+        if self._storage:
+            storage = self._storage
+        else:
+            storage = ot.storages.InMemoryStorage()
 
         if self._sampler:
             sampler = self._sampler
