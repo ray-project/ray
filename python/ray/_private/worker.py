@@ -874,7 +874,9 @@ class Worker:
                     "which is not an ray.ObjectRef."
                 )
 
-        timeout_ms = int(timeout * 1000) if timeout is not None and timeout != -1 else -1
+        timeout_ms = (
+            int(timeout * 1000) if timeout is not None and timeout != -1 else -1
+        )
         data_metadata_pairs: List[
             Tuple[ray._raylet.Buffer, bytes]
         ] = self.core_worker.get_objects(
