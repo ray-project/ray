@@ -176,12 +176,42 @@ def do_exec_tasks(
 
 def find_overlap(records):
     sorted_records = sorted(records, key=lambda x: x.init_timestamp)
+    overlaps = set()
     for i in range(len(sorted_records) - 1):
         if sorted_records[i].end_timestamp > sorted_records[i + 1].init_timestamp:
             print(
                 f"Overlap detected {sorted_records[i].end_timestamp - sorted_records[i + 1].init_timestamp}s: "
                 f"{sorted_records[i]} and {sorted_records[i + 1]}"
             )
+            overlaps.add((sorted_records[i], sorted_records[i + 1]))
+    # Sort records by init_timestamp
+    import matplotlib.pyplot as plt
+
+    # Plotting
+    fig, ax = plt.subplots()
+
+    for i, record in enumerate(sorted_records):
+        start = record.init_timestamp
+        end = record.end_timestamp
+        duration = end - start
+        color = 'red' if any(record in overlap for overlap in overlaps) else 'blue'
+        ax.barh(i, duration, left=start, height=0.4, color=color)
+        ax.text(start + duration / 2, i, record.operation_str, va='center', ha='center', color='white')
+
+    # Formatting the x-axis to show time as float
+    ax.xaxis.set_major_formatter(plt.FuncFormatter(lambda x, _: f'{x:.2f}'))
+
+    plt.xlabel('Time (seconds)')
+    plt.ylabel('Records')
+    plt.title('Overlapping Intervals')
+
+    # Save the plot to a PNG file
+    import os
+    current_pid = os.getpid()
+    plt.savefig(f"overlap_{current_pid}.png")
+
+    # Show the plot
+    plt.show()
 
 
 @DeveloperAPI

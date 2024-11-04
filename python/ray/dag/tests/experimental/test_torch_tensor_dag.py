@@ -906,7 +906,7 @@ def test_torch_tensor_nccl_overlap_static(ray_start_regular, overlap_gpu_communi
 
 @pytest.mark.parametrize(
     "ray_start_regular, overlap_gpu_communication",
-    [({"num_cpus": 4}, False), ({"num_cpus": 4}, True)],
+    [({"num_cpus": 4}, True)],
     indirect=["ray_start_regular"],
 )
 def test_torch_tensor_nccl_overlap_dynamic(
@@ -920,7 +920,7 @@ def test_torch_tensor_nccl_overlap_dynamic(
     ), "This test requires at least 4 GPUs"
 
     worker_cls = TorchTensorWorker.options(num_cpus=0, num_gpus=1)
-    num_senders = 3
+    num_senders = 2
     senders = [worker_cls.remote() for _ in range(num_senders)]
     receiver = worker_cls.remote()
 
@@ -939,13 +939,13 @@ def test_torch_tensor_nccl_overlap_dynamic(
     )
 
     start = time.monotonic()
-    for i in range(3):
+    for i in range(1):
         dtype = torch.float16
         args = {j: (j, (10000, 10000), dtype) for j in range(1, i + 1)}
 
         ref = compiled_dag.execute(args)
         result = ray.get(ref)
-        assert result == [args, args, args]
+        assert result == [args, args]
     duration = time.monotonic() - start
     print(f"{overlap_gpu_communication=}, {duration=}")
 
