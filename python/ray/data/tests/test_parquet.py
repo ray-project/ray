@@ -1176,6 +1176,26 @@ def test_write_num_rows_per_file(tmp_path, ray_start_regular_shared, num_rows_pe
         assert len(table) == num_rows_per_file
 
 
+@pytest.mark.parametrize(
+    "row_data",
+    [
+        [{"a": 1, "b": None}, {"a": 1, "b": 2}],
+        [{"a": None, "b": None}, {"a": 1, "b": 2}],
+        [{"a": 1, "b": 2}, {"a": 1, "b": "hi"}],
+    ],
+    ids=["row1_b_null", "row1_a_null", "row2_a_null"],
+)
+def test_write_auto_infer_nullable_fields(tmp_path, ray_start_regular_shared, row_data):
+    from ray.data._internal.logical.optimizers import _PHYSICAL_RULES
+    from ray.data._internal.logical.rules.operator_fusion import OperatorFusionRule
+
+    if OperatorFusionRule in _PHYSICAL_RULES:
+        _PHYSICAL_RULES.remove(OperatorFusionRule)
+    ray.data.range(2, override_num_blocks=2).map(
+        lambda i: row_data[i["id"]]
+    ).write_parquet(tmp_path, num_rows_per_file=2)
+
+
 @pytest.mark.parametrize("shuffle", [True, False, "file"])
 def test_invalid_shuffle_arg_raises_error(ray_start_regular_shared, shuffle):
 
