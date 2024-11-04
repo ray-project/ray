@@ -26,6 +26,7 @@ from ray.serve._private.http_util import (
     make_fastapi_class_based_view,
 )
 from ray.serve._private.local_testing_mode import make_local_deployment_handle
+from ray.serve._private.logging_utils import configure_component_logger
 from ray.serve._private.usage import ServeUsageTag
 from ray.serve._private.utils import (
     DEFAULT,
@@ -450,11 +451,20 @@ def _run(
         )
 
     if RAY_SERVE_FORCE_LOCAL_TESTING_MODE:
+        if not _local_testing_mode:
+            logger.info("Overriding local_testing_mode=True from environment variable.")
+
         _local_testing_mode = True
 
     validate_route_prefix(route_prefix)
 
     if _local_testing_mode:
+        configure_component_logger(
+            component_name="local_test",
+            component_id="-",
+            logging_config=logging_config or LoggingConfig(),
+            stream_handler_only=True,
+        )
         built_app = build_app(
             target,
             name=name,
@@ -465,6 +475,8 @@ def _run(
         client = _private_api.serve_start(
             http_options={"location": "EveryNode"},
         )
+        # Record after Ray has been started.
+        ServeUsageTag.API_VERSION.record("v2")
         handle = client.deploy_application(
             build_app(target, name=name),
             blocking=_blocking,
@@ -472,8 +484,6 @@ def _run(
             logging_config=logging_config,
         )
 
-    # Record after Ray has been started.
-    ServeUsageTag.API_VERSION.record("v2")
     return handle
 
 

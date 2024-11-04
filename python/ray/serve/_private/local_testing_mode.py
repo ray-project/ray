@@ -199,7 +199,7 @@ class LocalRouter(Router):
         deployment_id: DeploymentID,
         handle_options: Any,
     ):
-        logger.info(f"Initializing local replica for '{deployment_id}'")
+        logger.info(f"Initializing local replica class for {deployment_id}.")
         self._deployment_id = deployment_id
         self._user_callable_wrapper = user_callable_wrapper
         assert (

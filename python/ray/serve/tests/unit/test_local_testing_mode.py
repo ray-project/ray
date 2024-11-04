@@ -58,5 +58,40 @@ def test_exception_raised_in_constructor(deployment: str):
         )
 
 
+@pytest.mark.skip("Error handling not implemented yet.")
+def test_to_object_ref_error_message():
+    @serve.deployment
+    class Inner:
+        pass
+
+    @serve.deployment
+    class Outer:
+        def __init__(self, h: DeploymentHandle):
+            self._h = h
+
+        async def __call__(self, name: str):
+            with pytest.raises(
+                RuntimeError,
+                match=(
+                    "DeploymentHandles do not support conversion "
+                    "to ObjectRefs in local testing mode."
+                ),
+            ):
+                await self._h.remote()._to_object_ref()
+
+    h = serve.run(Outer.bind(Inner.bind()), _local_testing_mode=True)
+    with pytest.raises(
+        RuntimeError,
+        match=(
+            "DeploymentHandles do not support conversion "
+            "to ObjectRefs in local testing mode."
+        ),
+    ):
+        h.remote()._to_object_ref_sync()
+
+    # Test the inner handle case (this would raise if it failed).
+    h.remote().result()
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", "-s", __file__]))
