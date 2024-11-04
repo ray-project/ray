@@ -1947,10 +1947,17 @@ class DeploymentState:
         if failed_to_start_count > self._prev_replica_constructor_retry_counter:
             self._prev_replica_constructor_retry_counter = failed_to_start_count
             if failed_to_start_threshold == 0:
-                message = f"A replica failed to start with exception. Retrying. Error:\n{self._replica_constructor_error_msg}"
+                message = (
+                    "A replica failed to start with exception. Retrying. Error:\n"
+                    f"{self._replica_constructor_error_msg}"
+                )
             else:
                 remaining_retries = failed_to_start_threshold - failed_to_start_count
-                message = f"A replica failed to start with exception. Retrying {remaining_retries} more times. Error:\n{self._replica_constructor_error_msg}"
+                message = (
+                    f"A replica failed to start with exception. Retrying "
+                    f"{remaining_retries} more time(s). Error:\n"
+                    f"{self._replica_constructor_error_msg}"
+                )
             self._curr_status_info = self._curr_status_info.update_message(message)
 
         # If we have pending ops, the current goal is *not* ready.
