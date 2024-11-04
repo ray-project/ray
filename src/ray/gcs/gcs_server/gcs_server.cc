@@ -78,8 +78,14 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
         io_context_provider_.GetDefaultIOContext());
     break;
   case StorageType::REDIS_PERSIST:
-    gcs_table_storage_ = std::make_shared<gcs::RedisGcsTableStorage>(
-        GetOrConnectRedis(io_context_provider_.GetDefaultIOContext()));
+    auto redis_client = CreateRedisClient(io_context_provider_.GetDefaultIOContext());
+    gcs_table_storage_ = std::make_shared<gcs::RedisGcsTableStorage>(redis_client);
+    // Init redis failure detector.
+    gcs_redis_failure_detector_ = std::make_shared<GcsRedisFailureDetector>(
+        io_context_provider_.GetDefaultIOContext(), redis_client, []() {
+          RAY_LOG(FATAL) << "Redis connection failed. Shutdown GCS.";
+        });
+    gcs_redis_failure_detector_->Start();
     break;
   default:
     RAY_LOG(FATAL) << "Unexpected storage type: " << storage_type_;
@@ -560,7 +566,7 @@ void GcsServer::InitKVManager() {
   switch (storage_type_) {
   case (StorageType::REDIS_PERSIST):
     instance = std::make_unique<StoreClientInternalKV>(std::make_unique<RedisStoreClient>(
-        GetOrConnectRedis(io_context_provider_.GetIOContext<GcsInternalKVManager>())));
+        CreateRedisClient(io_context_provider_.GetIOContext<GcsInternalKVManager>())));
     break;
   case (StorageType::IN_MEMORY):
     instance = std::make_unique<StoreClientInternalKV>(
@@ -821,21 +827,12 @@ std::string GcsServer::GetDebugState() const {
   return stream.str();
 }
 
-std::shared_ptr<RedisClient> GcsServer::GetOrConnectRedis(
+std::shared_ptr<RedisClient> GcsServer::CreateRedisClient(
     instrumented_io_context &io_service) {
-  if (redis_client_ == nullptr) {
-    redis_client_ = std::make_shared<RedisClient>(GetRedisClientOptions());
-    auto status = redis_client_->Connect(io_context_provider_.GetDefaultIOContext());
-    RAY_CHECK(status.ok()) << "Failed to init redis gcs client as " << status;
-
-    // Init redis failure detector.
-    gcs_redis_failure_detector_ = std::make_shared<GcsRedisFailureDetector>(
-        io_context_provider_.GetDefaultIOContext(), redis_client_, []() {
-          RAY_LOG(FATAL) << "Redis connection failed. Shutdown GCS.";
-        });
-    gcs_redis_failure_detector_->Start();
-  }
-  return redis_client_;
+  auto redis_client = std::make_shared<RedisClient>(GetRedisClientOptions());
+  auto status = redis_client->Connect(io_service);
+  RAY_CHECK(status.ok()) << "Failed to init redis gcs client as " << status;
+  return redis_client;
 }
 
 void GcsServer::PrintAsioStats() {

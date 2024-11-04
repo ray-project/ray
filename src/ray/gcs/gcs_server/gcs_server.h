@@ -203,7 +203,7 @@ class GcsServer {
   void PrintAsioStats();
 
   /// Get or connect to a redis server
-  std::shared_ptr<RedisClient> GetOrConnectRedis(instrumented_io_context &io_service);
+  std::shared_ptr<RedisClient> CreateRedisClient(instrumented_io_context &io_service);
 
   void TryGlobalGC();
 
@@ -281,8 +281,6 @@ class GcsServer {
   std::unique_ptr<rpc::TaskInfoGrpcService> task_info_service_;
   /// Gcs Autoscaler state manager.
   std::unique_ptr<rpc::autoscaler::AutoscalerStateGrpcService> autoscaler_state_service_;
-  /// Backend client.
-  std::shared_ptr<RedisClient> redis_client_;
   /// A publisher for publishing gcs messages.
   std::shared_ptr<GcsPublisher> gcs_publisher_;
   /// Grpc based pubsub's periodical runner.
