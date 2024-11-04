@@ -30,6 +30,7 @@
 
 using ::testing::_;
 using ::testing::Return;
+using json = nlohmann::json;
 
 namespace ray {
 

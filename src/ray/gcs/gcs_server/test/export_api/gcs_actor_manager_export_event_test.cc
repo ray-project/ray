@@ -33,6 +33,7 @@ namespace ray {
 
 using ::testing::_;
 using ::testing::Return;
+using json = nlohmann::json;
 
 class MockActorScheduler : public gcs::GcsActorSchedulerInterface {
  public:
