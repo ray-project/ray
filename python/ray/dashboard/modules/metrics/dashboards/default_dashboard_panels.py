@@ -298,6 +298,8 @@ DEFAULT_GRAFANA_PANELS = [
                 legend="Memory Used: {{instance}} > 80% (head)",
             ),
         ],
+        fill=0,
+        stack=False,
     ),
     Panel(
         id=44,

@@ -93,6 +93,13 @@ PANEL_TEMPLATE = {
             "fill": 0,
             "stack": False,
         },
+        {
+            "$$hashKey": "object:2987",
+            "alias": "/.*> 80%.*/",
+            "fill": 0,
+            "stack": False,
+            "linewidth": 4,
+        },
     ],
     "spaceLength": 10,
     "stack": True,
