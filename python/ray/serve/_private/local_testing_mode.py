@@ -234,7 +234,7 @@ class LocalRouter(Router):
 
         NOTE(edoakes): this currently calls the blocking `.result()` method
         on the responses to resolve them to their values. This is a divergence
-        from the remote codepath where it's performed concurrently.
+        from the remote codepath where they're resolved concurrently.
         """
 
         def _new_arg(arg: Any) -> Any:
@@ -247,9 +247,14 @@ class LocalRouter(Router):
 
             return new_arg
 
-        return (
-            tuple(_new_arg(arg) for arg in request_args),
-            {k: _new_arg(v) for k, v in request_kwargs.items()},
+        # Serialize and deserialize the arguments to mimic remote call behavior.
+        return cloudpickle.loads(
+            cloudpickle.dumps(
+                (
+                    tuple(_new_arg(arg) for arg in request_args),
+                    {k: _new_arg(v) for k, v in request_kwargs.items()},
+                )
+            )
         )
 
     def assign_request(
@@ -260,12 +265,6 @@ class LocalRouter(Router):
     ) -> concurrent.futures.Future[LocalReplicaResult]:
         request_args, request_kwargs = self._resolve_deployment_responses(
             request_args, request_kwargs
-        )
-        # Serialize and deserialize the arguments to mimic remote call behavior.
-        request_args, request_kwargs = cloudpickle.loads(
-            cloudpickle.dumps(
-                (request_args, request_kwargs),
-            )
         )
 
         if request_meta.is_streaming:
