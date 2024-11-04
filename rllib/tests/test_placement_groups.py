@@ -35,6 +35,10 @@ class TestPlacementGroups(unittest.TestCase):
         # 3 Trials: Can only run 2 at a time (num_cpus=6; needed: 3).
         config = (
             PPOConfig()
+            .api_stack(
+                enable_env_runner_and_connector_v2=False,
+                enable_rl_module_and_learner=False,
+            )
             .training(
                 model={"fcnet_hiddens": [10]}, lr=tune.grid_search([0.1, 0.01, 0.001])
             )
@@ -71,6 +75,10 @@ class TestPlacementGroups(unittest.TestCase):
     def test_default_resource_request(self):
         config = (
             PPOConfig()
+            .api_stack(
+                enable_env_runner_and_connector_v2=False,
+                enable_rl_module_and_learner=False,
+            )
             .resources(placement_strategy="SPREAD")
             .env_runners(
                 num_env_runners=2,
@@ -98,6 +106,10 @@ class TestPlacementGroups(unittest.TestCase):
     def test_default_resource_request_plus_manual_leads_to_error(self):
         config = (
             PPOConfig()
+            .api_stack(
+                enable_env_runner_and_connector_v2=False,
+                enable_rl_module_and_learner=False,
+            )
             .training(model={"fcnet_hiddens": [10]})
             .environment("CartPole-v1")
             .env_runners(num_env_runners=0)
