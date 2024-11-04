@@ -1846,8 +1846,8 @@ class DeferSigint(contextlib.AbstractContextManager):
     def __init__(self):
         # Whether a SIGINT signal was received during the context.
         self.signal_received = False
-        # The original SIGINT handler.
-        self.orig_sigint_handler = None
+        # The overridden SIGINT handler
+        self.overridden_sigint_handler = None
         # The original signal method.
         self.orig_signal = None
 
@@ -1874,14 +1874,14 @@ class DeferSigint(contextlib.AbstractContextManager):
             threading.current_thread() == threading.main_thread()
             and signum == signal.SIGINT
         ):
-            orig_sigint_handler = self.orig_sigint_handler
-            self.orig_sigint_handler = handler
+            orig_sigint_handler = self.overridden_sigint_handler
+            self.overridden_sigint_handler = handler
             return orig_sigint_handler
         return self.orig_signal(signum, handler)
 
     def __enter__(self):
         # Save original SIGINT handler for later restoration.
-        self.orig_sigint_handler = signal.getsignal(signal.SIGINT)
+        self.overridden_sigint_handler = signal.getsignal(signal.SIGINT)
         # Set SIGINT signal handler that defers the signal.
         signal.signal(signal.SIGINT, self._set_signal_received)
         # Monkey patch signal.signal to raise an error if a SIGINT handler is registered
@@ -1891,15 +1891,16 @@ class DeferSigint(contextlib.AbstractContextManager):
         return self
 
     def __exit__(self, exc_type, exc, exc_tb):
-        assert self.orig_sigint_handler is not None
+        assert self.overridden_sigint_handler is not None
         assert self.orig_signal is not None
         # Restore original signal.signal function.
         signal.signal = self.orig_signal
-        # Restore original SIGINT handler.
-        signal.signal(signal.SIGINT, self.orig_sigint_handler)
+        # Restore overridden SIGINT handler.
+        signal.signal(signal.SIGINT, self.overridden_sigint_handler)
         if exc_type is None and self.signal_received:
             # No exception raised in context, call the original SIGINT handler.
-            self.orig_sigint_handler(signal.SIGINT, None)
+            # By default, this means raising KeyboardInterrupt.
+            self.overridden_sigint_handler(signal.SIGINT, None)
         else:
             # If exception was raised in context, returning False will cause it to be
             # reraised.

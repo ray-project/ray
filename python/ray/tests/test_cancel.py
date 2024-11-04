@@ -124,9 +124,9 @@ def test_defer_sigint():
         pytest.fail("SIGINT signal was never sent in test")
 
 
-def test_defer_sigint_monkey_patch():
-    # Tests that setting a SIGINT signal handler within a DeferSigint
-    # context will defer setting it until the context exits.
+def test_defer_sigint_monkey_patch_handler_called_when_exit():
+    # Tests that the SIGINT signal handlers set within a DeferSigint
+    # is triggered at most once and only at context exit.
     orig_sigint_handler = signal.getsignal(signal.SIGINT)
     handler_called_times = 0
 
@@ -142,6 +142,41 @@ def test_defer_sigint_monkey_patch():
         assert handler_called_times == 0
 
     assert handler_called_times == 1
+
+    # Restore original SIGINT handler.
+    signal.signal(signal.SIGINT, orig_sigint_handler)
+
+
+def test_defer_sigint_monkey_patch_only_last_handler_called():
+    # Tests that only the last SIGINT signal handler set within a DeferSigint
+    # is triggered at most once and only at context exit.
+    orig_sigint_handler = signal.getsignal(signal.SIGINT)
+
+    handler_1_called_times = 0
+    handler_2_called_times = 0
+
+    def sigint_handler_1(signum, frame):
+        nonlocal handler_1_called_times
+        handler_1_called_times += 1
+
+    def sigint_handler_2(signum, frame):
+        nonlocal handler_2_called_times
+        handler_2_called_times += 1
+
+    with DeferSigint():
+        signal.signal(signal.SIGINT, sigint_handler_1)
+        for _ in range(3):
+            _thread.interrupt_main()
+        time.sleep(1)
+        signal.signal(signal.SIGINT, sigint_handler_2)
+        for _ in range(3):
+            _thread.interrupt_main()
+        time.sleep(1)
+        assert handler_1_called_times == 0
+        assert handler_2_called_times == 0
+
+    assert handler_1_called_times == 0
+    assert handler_2_called_times == 1
 
     # Restore original SIGINT handler.
     signal.signal(signal.SIGINT, orig_sigint_handler)
