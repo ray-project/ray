@@ -4,310 +4,226 @@
 
 .. _rllib-multi-agent-environments-doc:
 
-
 Multi-Agent and Hierarchical
 ----------------------------
 
-In a multi-agent environment, there are more than one "agent" acting simultaneously, in a turn-based fashion, or in a combination of these two.
+In a multi-agent environment, multiple "agents" act either simultaneously,
+in a turn-based sequence, or through a combination of both approaches.
 
-For example, in a traffic simulation, there may be multiple "car" and "traffic light" agents in the environment,
-acting simultaneously. Whereas in a board game, you may have two or more agents acting in a turn-base fashion.
+For instance, in a traffic simulation, there might be multiple "car" and
+"traffic light" agents interacting simultaneously. In a board game,
+two or more agents may act in turn-based sequences.
 
-The mental model for multi-agent in RLlib is as follows:
-(1) Your environment (a sub-class of :py:class:`~ray.rllib.env.multi_agent_env.MultiAgentEnv`) returns dictionaries mapping AgentIDs (str, which the env can chose at will)
-to individual agents' observations, rewards, terminated/truncated-flags, and info dicts.
-(2) You define (some of) the RLModules (policies) that are available up front (you can also add new RLModules on-the-fly during training), and
-(3) You define a function that maps AgentIDs to one of the available RLModule IDs, which is then to be used for computing actions for this particular agent.
+The multi-agent model in RLlib follows this structure:
+1. Your environment (a subclass of
+   :py:class:`~ray.rllib.env.multi_agent_env.MultiAgentEnv`) returns
+   dictionaries that map AgentIDs (strings chosen by the environment) to
+   each agent's observations, rewards, termination/truncation flags, and
+   info dictionaries.
+1. You define the RLModules (policies) available for training. New RLModules
+   can be added on-the-fly during training.
+1. You define a mapping function that associates each AgentID with one of
+   the available RLModule IDs, which will be used to compute actions for that agent.
 
-This is summarized by the below figure:
+This structure is illustrated in the following figure:
 
 .. image:: images/multi-agent.svg
 
-When implementing your own :py:class:`~ray.rllib.env.multi_agent_env.MultiAgentEnv`, note that you should only return those
-agent IDs in an observation dict, for which you expect to receive actions in the next call to `step()`.
+When implementing a :py:class:`~ray.rllib.env.multi_agent_env.MultiAgentEnv`,
+only include agent IDs in the observation dictionary for agents that should
+send actions into the next `step()` call.
 
-This API allows you to implement any type of multi-agent environment, from `turn-based games <https://github.com/ray-project/ray/blob/master/rllib/examples/self_play_with_open_spiel.py>`__
-over environments, in which `all agents always act simultaneously <https://github.com/ray-project/ray/blob/master/rllib/examples/envs/classes/multi_agent.py>`__, to anything in between.
+This API allows you to design any type of multi-agent environment, from
+`turn-based games <https://github.com/ray-project/ray/blob/master/rllib/examples/self_play_with_open_spiel.py>`__
+to environments where `all agents act simultaneously <https://github.com/ray-project/ray/blob/master/rllib/examples/envs/classes/multi_agent.py>`__,
+or any combination of these.
 
+Example: Environment with Simultaneous Agent Steps
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Here is an example of an env, in which all agents always step simultaneously:
+In this example, all agents in the environment step simultaneously:
 
 .. code-block:: python
 
-    # Env, in which all agents (whose IDs are entirely determined by the env
-    # itself via the returned multi-agent obs/reward/dones-dicts) step
-    # simultaneously.
+    # Multi-agent environment with two car agents and one traffic light agent.
     env = MultiAgentTrafficEnv(num_cars=2, num_traffic_lights=1)
 
-    # Observations are a dict mapping agent names to their obs. Only those
-    # agents' names that require actions in the next call to `step()` should
-    # be present in the returned observation dict (here: all, as we always step
-    # simultaneously).
+    # Observations are a dict mapping agent IDs to their respective observations.
+    # Only include agent IDs in the observation dict for agents that require actions
+    # in the next `step()` call (here: all agents act simultaneously).
     print(env.reset())
-    # ... {
-    # ...   "car_1": [[...]],
-    # ...   "car_2": [[...]],
-    # ...   "traffic_light_1": [[...]],
-    # ... }
+    # Output:
+    # {
+    #   "car_1": [[...]],
+    #   "car_2": [[...]],
+    #   "traffic_light_1": [[...]]
+    # }
 
-    # In the following call to `step`, actions should be provided for each
-    # agent that returned an observation before:
+    # In the `step` call, provide actions for each agent that had an observation.
     observations, rewards, terminateds, truncateds, infos = env.step(
         actions={"car_1": ..., "car_2": ..., "traffic_light_1": ...})
 
-    # Similarly, new_obs, rewards, dones, etc. also become dicts.
+    # Observations, rewards, and termination flags are returned as dictionaries.
     print(rewards)
-    # ... {"car_1": 3, "car_2": -1, "traffic_light_1": 0}
+    # Output: {"car_1": 3, "car_2": -1, "traffic_light_1": 0}
 
-    # Individual agents can early exit; The entire episode is done when
-    # terminateds["__all__"] = True.
+    # Each agent can terminate individually; the episode ends when
+    # terminateds["__all__"] is set to True.
     print(terminateds)
-    # ... {"car_2": True, "__all__": False}
+    # Output: {"car_2": True, "__all__": False}
 
+Example: Turn-Based Environment
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Here is another example, where agents step one after the other (turn-based game):
+In a turn-based environment, agents step in a sequence. For example, consider a
+two-player TicTacToe game:
 
 .. code-block:: python
 
-    # Env, in which two agents step in sequence (tuen-based game).
-    # The env is in charge of the produced agent ID. Our env here produces
-    # agent IDs: "player1" and "player2".
+    # Turn-based environment with two agents: "player1" and "player2".
     env = TicTacToe()
 
-    # Observations are a dict mapping agent names to their obs. Only those
-    # agents' names that require actions in the next call to `step()` should
-    # be present in the returned observation dict (here: one agent at a time).
+    # Observations map agent IDs to their respective observations.
+    # Only the agent that should act next has an observation.
     print(env.reset())
-    # ... {
-    # ...   "player1": [[...]],
-    # ... }
+    # Output:
+    # {
+    #   "player1": [[...]]
+    # }
 
-    # In the following call to `step`, only those agents' actions should be
-    # provided that were present in the returned obs dict:
+    # During `step`, only provide actions for agents listed in the observation dict.
     new_obs, rewards, terminateds, truncateds, infos = env.step(actions={"player1": ...})
 
-    # Similarly, new_obs, rewards, dones, etc. also become dicts.
-    # Note that only in the `rewards` dict, any agent may be listed (even those that have
-    # not(!) acted in the `step()` call). Rewards for individual agents will be added
-    # up to the point where a new action for that agent is needed. This way, you may
-    # implement a turn-based 2-player game, in which player-2's reward is published
-    # in the `rewards` dict immediately after player-1 has acted.
+    # Observations, rewards, and termination flags are returned as dictionaries.
     print(rewards)
-    # ... {"player1": 0, "player2": 0}
+    # Output: {"player1": 0, "player2": 0}
 
-    # Individual agents can early exit; The entire episode is done when
-    # dones["__all__"] = True.
-    print(dones)
-    # ... {"player1": False, "__all__": False}
+    # Agents can terminate individually; the episode ends when
+    # terminateds["__all__"] is set to True.
+    print(terminateds)
+    # Output: {"player1": False, "__all__": False}
 
-    # In the next step, it's player2's turn. Therefore, `new_obs` only container
-    # this agent's ID:
+    # Next, it’s player2's turn, so `new_obs` contains only player2's observation.
     print(new_obs)
-    # ... {
-    # ...   "player2": [[...]]
-    # ... }
+    # Output:
+    # {
+    #   "player2": [[...]]
+    # }
 
+Configuring Multi-Agent Training with Shared Algorithms
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-If all the agents will be using the same algorithm class to train, then you can setup multi-agent training as follows:
+If all agents use the same algorithm class to train their policies, configure
+multi-agent training as follows:
 
 .. code-block:: python
 
-    algo = pg.PGAgent(env="my_multiagent_env", config={
-        "multiagent": {
-            "policies": {
-                # Use the PolicySpec namedtuple to specify an individual policy:
-                "car1": PolicySpec(
-                    policy_class=None,  # infer automatically from Algorithm
-                    observation_space=None,  # infer automatically from env
-                    action_space=None,  # infer automatically from env
-                    config={"gamma": 0.85},  # use main config plus <- this override here
-                    ),  # alternatively, simply do: `PolicySpec(config={"gamma": 0.85})`
+    from ray.rllib.algorithm.ppo import PPOConfig
+    from ray.rllib.core.rl_module.multi_rl_module import MultiRLModuleSpec
+    from ray.rllib.core.rl_module.rl_module import RLModuleSpec
 
-                # Deprecated way: Tuple specifying class, obs-/action-spaces,
-                # config-overrides for each policy as a tuple.
-                # If class is None -> Uses Algorithm's default policy class.
-                "car2": (None, car_obs_space, car_act_space, {"gamma": 0.99}),
-
-                # New way: Use PolicySpec() with keywords: `policy_class`,
-                # `observation_space`, `action_space`, `config`.
-                "traffic_light": PolicySpec(
-                    observation_space=tl_obs_space,  # special obs space for lights?
-                    action_space=tl_act_space,  # special action space for lights?
-                    ),
+    config = (
+        PPOConfig()
+        .environment(env="my_multiagent_env")
+        .multi_agent(
+            policy_mapping_fn=lambda agent_id, episode, **kwargs: (
+                "traffic_light" if agent_id.startswith("traffic_light_")
+                else random.choice(["car1", "car2"])
+            ),
+            algorithm_config_overrides_per_module={
+                "car1": PPOConfig.overrides(gamma=0.85),
+                "car2": PPOConfig.overrides(lr=0.00001),
             },
-            "policy_mapping_fn":
-                lambda agent_id, episode, worker, **kwargs:
-                    "traffic_light"  # Traffic lights are always controlled by this policy
-                    if agent_id.startswith("traffic_light_")
-                    else random.choice(["car1", "car2"])  # Randomly choose from car policies
-        },
-    })
+        )
+        .rl_module(
+            rl_module_spec=MultiRLModuleSpec(rl_module_specs={
+                "car1": RLModuleSpec(),
+                "car2": RLModuleSpec(),
+                "traffic_light": RLModuleSpec(),
+            }),
+        )
+    )
 
-    while True:
-        print(algo.train())
+    algo = config.build()
+    print(algo.train())
 
-To exclude some policies in your ``multiagent.policies`` dictionary, you can use the ``multiagent.policies_to_train`` setting.
-For example, you may want to have one or more random (non learning) policies interact with your learning ones:
+To exclude certain policies from being updated, use the ``config.multi_agent(policies_to_train=[..])`` config setting.
+This allows running in multi-agent environments with a mix of non-learning and learning policies:
 
 .. code-block:: python
 
-
-    # Example for a mapping function that maps agent IDs "player1" and "player2" to either
-    # "random_policy" or "learning_policy", making sure that in each episode, both policies
-    # are always playing each other.
-    def policy_mapping_fn(agent_id, episode, worker, **kwargs):
+    def policy_mapping_fn(agent_id, episode, **kwargs):
         agent_idx = int(agent_id[-1])  # 0 (player1) or 1 (player2)
-        # agent_id = "player[1|2]" -> policy depends on episode ID
-        # This way, we make sure that both policies sometimes play player1
-        # (start player) and sometimes player2 (player to move 2nd).
-        return "learning_policy" if episode.episode_id % 2 == agent_idx else "random_policy"
+        return "learning_policy" if episode.id_ % 2 == agent_idx else "random_policy"
 
-    algo = pg.PGAgent(env="two_player_game", config={
-        "multiagent": {
-            "policies": {
-                "learning_policy": PolicySpec(),  # <- use default class & infer obs-/act-spaces from env.
-                "random_policy": PolicySpec(policy_class=RandomPolicy),  # infer obs-/act-spaces from env.
-            },
-            # Example for a mapping function that maps agent IDs "player1" and "player2" to either
-            # "random_policy" or "learning_policy", making sure that in each episode, both policies
-            # are always playing each other.
-            "policy_mapping_fn": policy_mapping_fn,
-            # Specify a (fixed) list (or set) of policy IDs that should be updated.
-            "policies_to_train": ["learning_policy"],
+    config = (
+        PPOConfig()
+        .environment(env="two_player_game")
+        .multi_agent(
+            policy_mapping_fn=policy_mapping_fn,
+            policies_to_train=["learning_policy"],
+        )
+        .rl_module(
+            rl_module_spec=MultiRLModuleSpec(rl_module_specs={
+                "learning_policy": RLModuleSpec(),
+                "random_policy": RLModuleSpec(rl_module_class=RandomRLModule),
+            }),
+        )
+    )
 
-            # Alternatively, you can provide a callable that returns True or False, when provided
-            # with a policy ID and an (optional) SampleBatch:
+    algo = config.build()
+    print(algo.train())
 
-            # "policies_to_train": lambda pid, batch: ... (<- return True or False)
+RLlib will create and route decisions to each policy based on the provided
+``policy_mapping_fn``. Training statistics for each policy are reported
+separately in the result-dict returned by ``train()``.
 
-            # This allows you to more flexibly update (or not) policies, based on
-            # who they played with in the episode (or other information that can be
-            # found in the given batch, e.g. rewards).
-        },
-    })
+The example scripts `rock_paper_scissors_heuristic_vs_learned.py <https://github.com/ray-project/ray/blob/master/rllib/examples/multi_agent/rock_paper_scissors_heuristic_vs_learned.py>`__
+and `rock_paper_scissors_learned_vs_learned.py <https://github.com/ray-project/ray/blob/master/rllib/examples/multi_agent/rock_paper_scissors_learned_vs_learned.py>`__
+demonstrate competing policies with heuristic and learned strategies.
 
 
-RLlib will create three distinct policies and route agent decisions to its bound policy using the given ``policy_mapping_fn``.
-When an agent first appears in the env, ``policy_mapping_fn`` will be called to determine which policy it is bound to.
-RLlib reports separate training statistics for each policy in the return from ``train()``, along with the combined reward.
+Scaling to Many Agents
+~~~~~~~~~~~~~~~~~~~~~~
 
-Here is a simple `example training script <https://github.com/ray-project/ray/blob/master/rllib/examples/multi_agent_cartpole.py>`__
-in which you can vary the number of agents and policies in the environment.
-For how to use multiple training methods at once (here DQN and PPO),
-see the `two-algorithm example <https://github.com/ray-project/ray/blob/master/rllib/examples/multi_agent/two_algorithms.py>`__.
-Metrics are reported for each policy separately, for example:
-
-.. code-block:: bash
-   :emphasize-lines: 6,14,22
-
-    Result for PPO_multi_cartpole_0:
-      episode_len_mean: 34.025862068965516
-      episode_return_max: 159.0
-      episode_return_mean: 86.06896551724138
-      info:
-        policy_0:
-          cur_lr: 4.999999873689376e-05
-          entropy: 0.6833480000495911
-          kl: 0.010264254175126553
-          policy_loss: -11.95590591430664
-          total_loss: 197.7039794921875
-          vf_explained_var: 0.0010995268821716309
-          vf_loss: 209.6578826904297
-        policy_1:
-          cur_lr: 4.999999873689376e-05
-          entropy: 0.6827034950256348
-          kl: 0.01119876280426979
-          policy_loss: -8.787769317626953
-          total_loss: 88.26161193847656
-          vf_explained_var: 0.0005457401275634766
-          vf_loss: 97.0471420288086
-      policy_reward_mean:
-        policy_0: 21.194444444444443
-        policy_1: 21.798387096774192
-
-To scale to hundreds of agents (if these agents are using the same policy), MultiAgentEnv batches policy evaluations across multiple agents internally.
-Your ``MultiAgentEnvs`` are also auto-vectorized (as can be normal, single-agent envs, e.g. gym.Env) by setting ``num_envs_per_env_runner > 1``.
+To scale to hundreds of agents using the same policy, RLlib batches policy
+evaluations across agents within a `MultiAgentEnv`. You can also auto-vectorize
+these environments by setting ``num_envs_per_env_runner > 1``.
 
 
 PettingZoo Multi-Agent Environments
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-`PettingZoo <https://github.com/Farama-Foundation/PettingZoo>`__ is a repository of over 50 diverse multi-agent environments. However, the API isn't directly compatible with rllib, but it can be converted into an rllib MultiAgentEnv like in this example
+`PettingZoo <https://github.com/Farama-Foundation/PettingZoo>`__ offers a
+repository of over 50 diverse multi-agent environments. Though not directly
+compatible with RLlib, they can be adapted using the RLlib `PettingZooEnv` wrapper:
 
 .. code-block:: python
 
     from ray.tune.registry import register_env
-    # import the pettingzoo environment
     from pettingzoo.butterfly import prison_v3
-    # import rllib pettingzoo interface
-    from ray.rllib.env import PettingZooEnv
-    # define how to make the environment. This way takes an optional environment config, num_floors
+    from ray.rllib.env.wrappers.pettingzoo_env import PettingZooEnv
+
     env_creator = lambda config: prison_v3.env(num_floors=config.get("num_floors", 4))
-    # register that way to make the environment under an rllib name
-    register_env('prison', lambda config: PettingZooEnv(env_creator(config)))
-    # now you can use `prison` as an environment
-    # you can pass arguments to the environment creator with the env_config option in the config
-    config['env_config'] = {"num_floors": 5}
+    register_env("prison", lambda config: PettingZooEnv(env_creator(config)))
 
-A more complete example is here: `rllib_pistonball.py <https://github.com/Farama-Foundation/PettingZoo/blob/master/tutorials/Ray/rllib_pistonball.py>`__
+    config = PPOConfig.environment("prison", env_config={"num_floors": 5})
 
+See `rllib_pistonball.py <https://github.com/Farama-Foundation/PettingZoo/blob/master/tutorials/Ray/rllib_pistonball.py>`__ for a full example.
 
-Rock Paper Scissors Example
-~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-The `rock_paper_scissors_heuristic_vs_learned.py <https://github.com/ray-project/ray/blob/master/rllib/examples/multi_agent/rock_paper_scissors_heuristic_vs_learned.py>`__
-and `rock_paper_scissors_learned_vs_learned.py <https://github.com/ray-project/ray/blob/master/rllib/examples/multi_agent/rock_paper_scissors_learned_vs_learned.py>`__ examples demonstrate several types of policies competing against each other: heuristic policies of repeating the same move, beating the last opponent move, and learned LSTM and feedforward policies.
-
-.. figure:: images/rock-paper-scissors.png
-
-    TensorBoard output of running the rock-paper-scissors example, where a learned policy faces off between a random selection of the same-move and beat-last-move heuristics. Here the performance of heuristic policies vs the learned policy is compared with LSTM enabled (blue) and a plain feed-forward policy (red). While the feedforward policy can easily beat the same-move heuristic by simply avoiding the last move taken, it takes a LSTM policy to distinguish between and consistently beat both policies.
 
 Variable-Sharing Between Policies
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-.. note::
+RLlib supports variable-sharing across policies.
 
-    With `ModelV2 <rllib-models.html#tensorflow-models>`__, you can put layers in global variables and straightforwardly share those layer objects between models instead of using variable scopes.
+See the `PettingZoo parameter sharing example <https://github.com/ray-project/ray/blob/master/rllib/examples/multi_agent/pettingzoo_parameter_sharing.py>`__ for details.
 
-RLlib will create each policy's model in a separate ``tf.variable_scope``. However, variables can still be shared between policies by explicitly entering a globally shared variable scope with ``tf.VariableScope(reuse=tf.AUTO_REUSE)``:
-
-.. code-block:: python
-
-        with tf.variable_scope(
-                tf.VariableScope(tf.AUTO_REUSE, "name_of_global_shared_scope"),
-                reuse=tf.AUTO_REUSE,
-                auxiliary_name_scope=False):
-            <create the shared layers here>
-
-There is a full example of this in the `example training script <https://github.com/ray-project/ray/blob/master/rllib/examples/multi_agent_cartpole.py>`__.
 
 Implementing a Centralized Critic
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Here are two ways to implement a centralized critic compatible with the multi-agent API:
-
-**Strategy 1: Sharing experiences in the trajectory preprocessor**:
-
-The most general way of implementing a centralized critic involves defining the ``postprocess_fn`` method of a custom policy. ``postprocess_fn`` is called by ``Policy.postprocess_trajectory``, which has full access to the policies and observations of concurrent agents via the ``other_agent_batches`` and ``episode`` arguments. The batch of critic predictions can then be added to the postprocessed trajectory. Here's an example:
-
-.. code-block:: python
-
-    def postprocess_fn(policy, sample_batch, other_agent_batches, episode):
-        agents = ["agent_1", "agent_2", "agent_3"]  # simple example of 3 agents
-        global_obs_batch = np.stack(
-            [other_agent_batches[agent_id][1]["obs"] for agent_id in agents],
-            axis=1)
-        # add the global obs and global critic value
-        sample_batch["global_obs"] = global_obs_batch
-        sample_batch["central_vf"] = self.sess.run(
-            self.critic_network, feed_dict={"obs": global_obs_batch})
-        return sample_batch
-
-To update the critic, you'll also have to modify the loss of the policy. For an end-to-end runnable example, see `examples/centralized_critic.py <https://github.com/ray-project/ray/blob/master/rllib/examples/centralized_critic.py>`__.
-
-**Strategy 2: Sharing observations through an observation function**:
-
-Alternatively, you can use an observation function to share observations between agents. In this strategy, each observation includes all global state, and policies use a custom model to ignore state they aren't supposed to "see" when computing actions. The advantage of this approach is that it's very simple and you don't have to change the algorithm at all -- just use the observation func (i.e., like an env wrapper) and custom model. However, it is a bit less principled in that you have to change the agent observation spaces to include training-time only information. You can find a runnable example of this strategy at `examples/centralized_critic_2.py <https://github.com/ray-project/ray/blob/master/rllib/examples/centralized_critic_2.py>`__.
+TODO!!!
 
 Grouping Agents
 ~~~~~~~~~~~~~~~
@@ -322,6 +238,7 @@ implement centralized training but decentralized execution. You can use the ``Mu
    :end-before: __grouping_doc_end__
 
 For environments with multiple groups, or mixtures of agent groups and individual agents, you can use grouping in conjunction with the policy mapping API described in prior sections.
+
 
 Hierarchical Environments
 ~~~~~~~~~~~~~~~~~~~~~~~~~
