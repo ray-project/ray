@@ -31,7 +31,6 @@ dependencies = [
     'aiosignal',
     'frozenlist',
     'requests',
-
 ]
 
 
@@ -87,6 +86,23 @@ default = [
     'requests',
     'smart_open',
     'virtualenv!=20.21.1,>=20.0.24',
+
+    # These packages are vendored in the standard, Bazel-built Ray, but we want to decouple them:
+    # `@/python/ray/_private/runtime_env/agent/thirdparty_files/`
+    'aiohappyeyeballs',
+    'aiohttp',
+    'aiosignal',
+    'attrs',
+    'frozenlist',
+    'idna',
+    'multidict',
+    'propcache',
+    'yarl',
+
+    # `@/python/ray/thirdparty_files/`
+    'colorama',
+    'psutil',
+    'setproctitle'
 ]
 
 data = [

@@ -1,3 +1,8 @@
+# === @begin: ray/ ===
+subdir('ray/')
+# === @end: ray/ ===
+
+
 # === @begin: Compilable ===
 py.extension_module(
     '_raylet',
@@ -92,6 +97,9 @@ install_subdir(
     ],
 
     exclude_files: [
+        'meson.build',
+        'dashboard/client/meson.build',
+
         '_raylet.pyx',
 
         # Bazel build files - nothing interesting, mostly tests, examples, and docs
@@ -200,7 +208,6 @@ install_subdir(
         'dashboard/client/package.json',
         'dashboard/client/README.rst',
         'dashboard/client/tsconfig.json',
-        'dashboard/client/meson.build',
         'dashboard/modules/snapshot/component_activities_schema.json',
 
         'serve/_private/benchmarks/streaming/_grpc/test_server.proto'
@@ -234,6 +241,7 @@ install_subdir(
         'core/learner/tests/',
         'core/learner/torch/tests/',
         'core/models/tests/',
+        'core/rl_module/tests/',
         'core/rl_module/tf/tests/',
         'core/rl_module/torch/tests/',
         'core/tf/tests/',
@@ -248,7 +256,6 @@ install_subdir(
         'examples/_old_api_stack/connectors/',
         'examples/catalogs/',
         'examples/envs/external_envs/',
-        'examples/learners/',
 
         'models/tests/',
 
@@ -280,6 +287,8 @@ install_subdir(
 
     exclude_files: [
         'BUILD',
+
+        '_version.py.in', # As composed and installed separately in `ray/` subdir.
 
         'asv.conf.json',
         'README.rst',

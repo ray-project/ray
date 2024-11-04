@@ -2,6 +2,7 @@
 project(
     'ray-meson',
     'c', 'cpp', 'cython',
+    version: '3.0.0.dev0',
     default_options: [
         'c_std=gnu17',
         'cpp_std=gnu++23',
@@ -19,6 +20,8 @@ py = import('python').find_installation(pure: false, modules: ['grpc_tools'])
 
 
 # === @begin: Project-wide settings ===
+ray_commit_sha = run_command(find_program('git'), 'rev-parse', 'HEAD', check: true).stdout().strip()
+
 # I don't want to bring the entire GTest, portions of which Ray requires even for non-test code.
 # Instead, I've vendored a few GTest headers it really uses and add them into search paths, used by all compiler invocations.
 add_project_arguments(
