@@ -24,8 +24,8 @@ def test_cancel_sync_handle_call_during_execution(serve_instance):
     @serve.deployment
     class Ingress:
         async def __call__(self, *args):
-            await running_signal_actor.send.remote()
-            await send_signal_on_cancellation(cancelled_signal_actor)
+            async with send_signal_on_cancellation(cancelled_signal_actor):
+                await running_signal_actor.send.remote()
 
     h = serve.run(Ingress.bind())
 
@@ -89,8 +89,8 @@ def test_cancel_async_handle_call_during_execution(serve_instance):
     @serve.deployment
     class Downstream:
         async def __call__(self, *args):
-            await running_signal_actor.send.remote()
-            await send_signal_on_cancellation(cancelled_signal_actor)
+            async with send_signal_on_cancellation(cancelled_signal_actor):
+                await running_signal_actor.send.remote()
 
     @serve.deployment
     class Ingress:
@@ -172,7 +172,8 @@ def test_cancel_generator_sync(serve_instance):
     class Ingress:
         async def __call__(self, *args):
             yield "hi"
-            await send_signal_on_cancellation(signal_actor)
+            async with send_signal_on_cancellation(signal_actor):
+                pass
 
     h = serve.run(Ingress.bind()).options(stream=True)
 
@@ -198,7 +199,8 @@ def test_cancel_generator_async(serve_instance):
     class Downstream:
         async def __call__(self, *args):
             yield "hi"
-            await send_signal_on_cancellation(signal_actor)
+            async with send_signal_on_cancellation(signal_actor):
+                pass
 
     @serve.deployment
     class Ingress:
@@ -300,7 +302,8 @@ def test_recursive_cancellation_during_execution(serve_instance):
 
     @serve.deployment
     async def inner():
-        await send_signal_on_cancellation(inner_signal_actor)
+        async with send_signal_on_cancellation(inner_signal_actor):
+            pass
 
     @serve.deployment
     class Ingress:
@@ -309,7 +312,8 @@ def test_recursive_cancellation_during_execution(serve_instance):
 
         async def __call__(self):
             _ = self._handle.remote()
-            await send_signal_on_cancellation(outer_signal_actor)
+            async with send_signal_on_cancellation(outer_signal_actor):
+                pass
 
     h = serve.run(Ingress.bind(inner.bind()))
 
