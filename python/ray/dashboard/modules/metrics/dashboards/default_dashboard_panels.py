@@ -276,6 +276,30 @@ DEFAULT_GRAFANA_PANELS = [
         ],
     ),
     Panel(
+        id=48,
+        title="Node Memory Percentage (heap + object store)",
+        description="The percentage of physical (hardware) memory usage for each node.",
+        unit="%",
+        targets=[
+            Target(
+                expr='ray_node_mem_used{{instance=~"$Instance", IsHeadNode="false", {global_filters}}}/ray_node_mem_total{{instance=~"$Instance", IsHeadNode="false", {global_filters}}} * 100 < 80',
+                legend="Memory Used: {{instance}} < 80%",
+            ),
+            Target(
+                expr='ray_node_mem_used{{instance=~"$Instance", IsHeadNode="true", {global_filters}}}/ray_node_mem_total{{instance=~"$Instance", IsHeadNode="true", {global_filters}}} * 100 < 80',
+                legend="Memory Used: {{instance}} < 80% (head)",
+            ),
+            Target(
+                expr='ray_node_mem_used{{instance=~"$Instance", IsHeadNode="false", {global_filters}}}/ray_node_mem_total{{instance=~"$Instance", IsHeadNode="false", {global_filters}}} * 100 > 80',
+                legend="Memory Used: {{instance}} > 80%",
+            ),
+            Target(
+                expr='ray_node_mem_used{{instance=~"$Instance", IsHeadNode="true", {global_filters}}}/ray_node_mem_total{{instance=~"$Instance", IsHeadNode="true", {global_filters}}} * 100 > 80',
+                legend="Memory Used: {{instance}} > 80% (head)",
+            ),
+        ],
+    ),
+    Panel(
         id=44,
         title="Node Out of Memory Failures by Name",
         description="The number of tasks and actors killed by the Ray Out of Memory killer due to high memory pressure. Metrics are broken down by IP and the name. https://docs.ray.io/en/master/ray-core/scheduling/ray-oom-prevention.html.",
