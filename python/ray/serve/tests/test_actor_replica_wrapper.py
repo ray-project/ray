@@ -164,7 +164,7 @@ async def test_send_request_with_rejection(
     else:
         assert isinstance(replica_result.to_object_ref(), ObjectRef)
         assert isinstance(await replica_result.to_object_ref_async(), ObjectRef)
-        assert await replica_result.__anext__() == "Hello"
+        assert await replica_result.get_async() == "Hello"
 
 
 @pytest.mark.asyncio
