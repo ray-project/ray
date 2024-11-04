@@ -102,6 +102,8 @@ install_subdir(
 
         '_raylet.pyx',
 
+        '_version.py.in', # As composed and installed separately in `ray/` subdir.
+
         # Bazel build files - nothing interesting, mostly tests, examples, and docs
         'BUILD',
         '_private/BUILD',
@@ -287,8 +289,6 @@ install_subdir(
 
     exclude_files: [
         'BUILD',
-
-        '_version.py.in', # As composed and installed separately in `ray/` subdir.
 
         'asv.conf.json',
         'README.rst',
