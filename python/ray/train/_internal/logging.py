@@ -7,7 +7,6 @@ from typing import Optional
 import yaml
 
 import ray
-from ray._private.ray_logging.filters import CoreContextFilter
 from ray.train._internal.session import _get_session
 from ray.train.constants import LOG_CONFIG_PATH_ENV, LOG_ENCODING_ENV
 
@@ -26,6 +25,9 @@ DEFAULT_LOG_CONFIG_JSON_STRING = {
     },
     "filters": {
         "console_filter": {"()": "ray.train._internal.logging.HiddenRecordFilter"},
+        "core_context_filter": {
+            "()": "ray._private.ray_logging.filters.CoreContextFilter"
+        },
         "train_context_filter": {
             "()": "ray.train._internal.logging.TrainContextFilter"
         },
@@ -40,7 +42,7 @@ DEFAULT_LOG_CONFIG_JSON_STRING = {
             "class": "ray.train._internal.logging.SessionFileHandler",
             "formatter": "ray_json",
             "filename": "ray-train.log",
-            "filters": ["train_context_filter"],
+            "filters": ["core_context_filter", "train_context_filter"],
         },
         "console": {
             "class": "ray._private.log.PlainRayHandler",
@@ -87,7 +89,7 @@ class HiddenRecordFilter(logging.Filter):
         return not getattr(record, "hide", False)
 
 
-class TrainContextFilter(CoreContextFilter):
+class TrainContextFilter(logging.Filter):
     """Add rank and size information to the log record if the log is from a train worker.
 
     This filter is a subclass of CoreContextFilter, which adds the job_id, worker_id,
@@ -108,7 +110,7 @@ class TrainContextFilter(CoreContextFilter):
 
     def filter(self, record):
         if not self._is_worker_process():
-            return super().filter(record)
+            return True
         # Otherwise, we need to check if the corresponding field of the train session
         # is None or not. If it is not None, we add the field to the log record.
         # If it is None, it means the process is the train driver created from Tune.
@@ -117,7 +119,7 @@ class TrainContextFilter(CoreContextFilter):
         setattr(record, TrainLogKey.LOCAL_WORLD_SIZE, _get_session().local_rank)
         setattr(record, TrainLogKey.LOCAL_RANK, _get_session().local_world_size)
         setattr(record, TrainLogKey.NODE_RANK, _get_session().node_rank)
-        return super().filter(record)
+        return True
 
 
 class SessionFileHandler(logging.Handler):
