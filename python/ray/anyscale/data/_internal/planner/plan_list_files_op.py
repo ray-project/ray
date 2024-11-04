@@ -22,6 +22,7 @@ from ray.data._internal.execution.operators.map_transformer import (
     RowMapTransformFn,
 )
 from ray.data.block import BlockAccessor
+from ray.data.context import DataContext
 from ray.data.datasource.file_meta_provider import _handle_read_os_error
 from ray.data.datasource.path_util import _has_file_extension
 
@@ -35,7 +36,7 @@ logger = logging.getLogger(__name__)
 # This is the maximum total number of list files task that we launch. In practice, we'll
 # usually only launch one list files task (i.e., in the case the user provides a single
 # directory).
-MAX_NUM_LIST_TASKS = 200
+DEFAULT_MAX_NUM_LIST_FILES_TASKS = 200
 
 
 def plan_list_files_op(
@@ -48,8 +49,11 @@ def plan_list_files_op(
 
 
 def create_input_data_buffer(logical_op: ListFiles) -> InputDataBuffer:
+    max_num_list_files_tasks = DataContext.get_current().get_config(
+        "max_num_list_files_tasks", DEFAULT_MAX_NUM_LIST_FILES_TASKS
+    )
     path_splits = np.array_split(
-        logical_op.paths, min(MAX_NUM_LIST_TASKS, len(logical_op.paths))
+        logical_op.paths, min(max_num_list_files_tasks, len(logical_op.paths))
     )
 
     input_data = []
