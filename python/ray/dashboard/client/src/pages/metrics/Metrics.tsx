@@ -587,7 +587,7 @@ const MetricsSection = ({
         {contents.map(({ title, pathParams }) => {
           const path =
             `/d-solo/${dashboardUid}?${pathParams}` +
-            `&${refreshParams}&timezone=${currentTimezone}${timeRangeParams}&var-SessionName=${sessionName}&var-datasource=${dashboardDatasource}&timezone=${currentTimezone}`;
+            `&${refreshParams}&timezone=${currentTimezone}${timeRangeParams}&var-SessionName=${sessionName}&var-datasource=${dashboardDatasource}`;
           return (
             <Paper
               key={pathParams}
