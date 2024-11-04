@@ -1,4 +1,9 @@
+.. include:: /_includes/rllib/we_are_hiring.rst
+
+.. include:: /_includes/rllib/new_api_stack.rst
+
 .. _rllib-multi-agent-environments-doc:
+
 
 Multi-Agent and Hierarchical
 ----------------------------

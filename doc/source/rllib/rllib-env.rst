@@ -8,10 +8,11 @@ Environments
 ============
 
 In online reinforcement learning (RL), an algorithm trains a policy
-(neural network) by collecting data on-the-fly using one or more RL
+neural network by collecting data on-the-fly using one or more RL
 environments or simulators. The agent navigates within these environments choosing actions
-governed by this policy. The goal of the algorithm is to train the policy such that its
-action choices maximize the cumulative reward over the agent's lifetime.
+governed by this policy and collecting the environment's observations and rewards.
+The goal of the algorithm is to train the policy on this collected data such that the policy's
+action choices eventually maximize the cumulative reward over the agent's lifetime.
 
 .. _gymnasium:
 
@@ -19,8 +20,8 @@ Farama Gymnasium
 ----------------
 
 RLlib relies on `Farama's Gymnasium API <https://gymnasium.farama.org/>`__
-as its main environment interface for **single-agent** training. To implement
-custom logic with `gymnasium` and integrate it into an RLlib setup, refer to
+as its main RL environment interface for **single-agent** training. To implement
+custom logic with `gymnasium` and integrate it into an RLlib config, refer to
 the `SimpleCorridor example
 <https://github.com/ray-project/ray/blob/master/rllib/examples/envs/custom_gym_env.py>`__.
 
@@ -33,11 +34,9 @@ the `SimpleCorridor example
 
 For more on building a custom `Farama Gymnasium
 <https://gymnasium.farama.org/>`__ environment, consult the
-`gymnasium.Env class definition
-<https://github.com/Farama-Foundation/Gymnasium/blob/main/gymnasium/core.py>`__.
+`gymnasium.Env class definition <https://github.com/Farama-Foundation/Gymnasium/blob/main/gymnasium/core.py>`__.
 
-For **multi-agent** training, see :ref:`RLlib-supported APIs and RLlib's
-multi-agent API <rllib-multi-agent-environments-doc>`.
+For **multi-agent** training, see :ref:`RLlib-supported APIs and RLlib's multi-agent API <rllib-multi-agent-environments-doc>`.
 
 .. _configuring-environments:
 
@@ -45,14 +44,13 @@ Configuring Environments
 ------------------------
 
 To specify the RL environment, you can provide either a string name or a
-Python class that subclasses `gymnasium.Env
-<https://github.com/Farama-Foundation/Gymnasium/blob/main/gymnasium/core.py>`__.
+Python class that subclasses `gymnasium.Env <https://github.com/Farama-Foundation/Gymnasium/blob/main/gymnasium/core.py>`__.
 
 Specifying by String
 ~~~~~~~~~~~~~~~~~~~~
 
-String values are interpreted as `registered gymnasium environment names
-<https://gymnasium.farama.org/>`__ by default.
+String values are interpreted as `registered gymnasium environment names <https://gymnasium.farama.org/>`__
+by default.
 
 For example:
 
@@ -123,8 +121,7 @@ For example:
 
 Alternatively, you can register an environment creator function (or lambda)
 with Ray Tune. This function must take a single ``config`` parameter and
-return a `gymnasium.Env
-<https://github.com/Farama-Foundation/Gymnasium/blob/main/gymnasium/core.py>`__ instance.
+return a `gymnasium.Env <https://github.com/Farama-Fundation/Gymnasium/blob/main/gymnasium/core.py>`__ instance.
 
 For example:
 
@@ -143,8 +140,8 @@ For example:
     algo = config.build()
     print(algo.train())
 
-For a complete example using a custom environment, see the `custom_gym_env.py
-example script <https://github.com/ray-project/ray/blob/master/rllib/examples/envs/custom_gym_env.py>`__.
+For a complete example using a custom environment, see the
+`custom_gym_env.py example script <https://github.com/ray-project/ray/blob/master/rllib/examples/envs/custom_gym_env.py>`__.
 
 .. warning::
 
@@ -196,45 +193,35 @@ Performance
     See the `scaling guide <rllib-training.html#scaling-guide>`__ for more
     on RLlib training.
 
-There are two methods to scale sample collection with RLlib and gymnasium environments:
+There are two methods to scale sample collection with RLlib and gymnasium environments, both of which
+can be used in combination.
 
 1. **Distribute across multiple processes:** RLlib creates multiple
-:py:class:`~ray.rllib.envs.env_runner.EnvRunner` (Ray actors) for experience collection,
-controlled through the :py:class:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig`:
-``config.env_runners(num_env_runners=..)``.
+   :py:class:`~ray.rllib.envs.env_runner.EnvRunner` (Ray actors) for experience collection,
+   controlled through the :py:class:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig`:
+   ``config.env_runners(num_env_runners=..)``.
 
-2. **Vectorization within a single process:** Many environments achieve high
-frame rates per core but are limited by policy evaluation latency. To address
-this, create multiple environments per process and thus batch policy evaluations
-across these vectorized environments. Set ``config.env_runners(num_envs_per_env_runner=..)``
-to create more than one environment per :py:class:`~ray.rllib.envs.env_runner.EnvRunner`
-actor.
+1. **Vectorization within a single process:** Many environments achieve high
+   frame rates per core but are limited by policy inference latency. To address
+   this, create multiple environments per process and thus batch policy evaluations
+   across these vectorized environments. Set ``config.env_runners(num_envs_per_env_runner=..)``
+   to create more than one environment per :py:class:`~ray.rllib.envs.env_runner.EnvRunner`
+   actor. Additionally, you can make the individual subenvironments within an environment vector
+   independent processes (through python's multiprocessing used by gynnasium).
+   Set `config.env_runners(remote_worker_envs=True)` to create individual subenvironments as separate processes
+   and step them in parallel.
+
+.. note::
+
+    Multi-agent setups are not vectorizable yet. The Ray team is working on a solution for
+    this restriction by utilizing `gymnasium >= 1.x` custom vectorization feature.
 
 
-.. image:: images/throughput.png
-
-Combining vectorization and distributed execution (as in the figure above)
-allows for enhanced throughput. For instance, PongNoFrameskip-v4 on GPU
-scales from 2.4k to ~200k actions/s, while Pendulum-v1 on CPU scales from
-15k to 1.5M actions/s across CPU and GPU setups.
 
 Expensive Environments
 ~~~~~~~~~~~~~~~~~~~~~~
 
 Some environments may require substantial resources to initialize. RLlib
-creates ``num_env_runners + 1`` copies of the environment, as one is needed
-for the driver process. To reduce overhead, defer environment initialization
-until ``reset()`` is called.
-
-Vectorized
-----------
-
-RLlib auto-vectorizes Gym environments for batch evaluation when
-``num_envs_per_env_runner`` is set, or you can define a custom environment
-class that subclasses `VectorEnv
-<https://github.com/ray-project/ray/blob/master/rllib/env/vector_env.py>`__
-to implement ``vector_step()`` and ``vector_reset()``.
-
-By default, only policy inference is auto-vectorized. Set ``"remote_worker_envs":
-True`` to create environments in Ray actors and step them in parallel. Use
-``remote_env_batch_wait_ms`` to control the inference batching level.
+creates ``num_env_runners + 1`` copies of the environment, as the extra one is needed
+for the main process (on which the :py:class:`~ray.rllib.algorithms.algorithm.Algorithm` runs).
+To reduce overhead, defer environment initialization until ``reset()`` is called.
