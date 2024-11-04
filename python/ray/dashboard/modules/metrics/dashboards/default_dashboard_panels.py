@@ -46,6 +46,8 @@ DEFAULT_GRAFANA_PANELS = [
                 legend="{{State}} (retry)",
             ),
         ],
+        fill=0,
+        stack=False,
     ),
     Panel(
         id=35,
@@ -62,6 +64,8 @@ DEFAULT_GRAFANA_PANELS = [
                 legend="{{Name}} (retry)",
             ),
         ],
+        fill=0,
+        stack=False,
     ),
     Panel(
         id=38,
@@ -70,14 +74,16 @@ DEFAULT_GRAFANA_PANELS = [
         unit="tasks",
         targets=[
             Target(
-                expr='sum(ray_tasks{{IsRetry="0",State=~"RUNNING_*",{global_filters}}}) by (Name)',
+                expr='sum(ray_tasks{{IsRetry="0",State=~"RUNNING*",{global_filters}}}) by (Name)',
                 legend="{{Name}}",
             ),
             Target(
-                expr='sum(ray_tasks{{IsRetry!="0",State=~"RUNNING_*",{global_filters}}}) by (Name)',
+                expr='sum(ray_tasks{{IsRetry!="0",State=~"RUNNING*",{global_filters}}}) by (Name)',
                 legend="{{Name}} (retry)",
             ),
         ],
+        fill=0,
+        stack=False,
     ),
     Panel(
         id=33,
