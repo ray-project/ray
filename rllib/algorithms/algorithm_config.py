@@ -75,7 +75,6 @@ from ray.rllib.utils.typing import (
 )
 from ray.tune.logger import Logger
 from ray.tune.registry import get_trainable_cls
-from ray.tune.result import TRIAL_INFO
 from ray.tune.tune import _Config
 
 Space = gym.Space
@@ -711,11 +710,6 @@ class AlgorithmConfig(_Config):
         # Modify our properties one by one.
         for key, value in config_dict.items():
             key = self._translate_special_keys(key, warn_deprecated=False)
-
-            # Ray Tune saves additional data under this magic keyword.
-            # This should not get treated as AlgorithmConfig field.
-            if key == TRIAL_INFO:
-                continue
 
             if key in ["_enable_new_api_stack"]:
                 # We've dealt with this above.
