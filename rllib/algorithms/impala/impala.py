@@ -82,8 +82,8 @@ class IMPALAConfig(AlgorithmConfig):
 
     .. testcode::
 
-        from ray.rllib.algorithms.impala import ImpalaConfig
-        config = ImpalaConfig()
+        from ray.rllib.algorithms.impala import IMPALAConfig
+        config = IMPALAConfig()
         config = config.training(lr=0.0003, train_batch_size_per_learner=512)
         config = config.learners(num_learners=1)
         config = config.env_runners(num_env_runners=1)
@@ -94,10 +94,10 @@ class IMPALAConfig(AlgorithmConfig):
 
     .. testcode::
 
-        from ray.rllib.algorithms.impala import ImpalaConfig
+        from ray.rllib.algorithms.impala import IMPALAConfig
         from ray import air
         from ray import tune
-        config = ImpalaConfig()
+        config = IMPALAConfig()
 
         # Update the config object.
         config = config.training(
@@ -121,8 +121,8 @@ class IMPALAConfig(AlgorithmConfig):
     """
 
     def __init__(self, algo_class=None):
-        """Initializes a ImpalaConfig instance."""
-        super().__init__(algo_class=algo_class or Impala)
+        """Initializes a IMPALAConfig instance."""
+        super().__init__(algo_class=algo_class or IMPALA)
 
         self.exploration_config = {  # @OldAPIstack
             # The Exploration class to use. In the simplest case, this is the name
@@ -149,7 +149,7 @@ class IMPALAConfig(AlgorithmConfig):
         self.broadcast_interval = 1
         self.num_aggregation_workers = 0
         self.num_gpu_loader_threads = 8
-        # Impala takes care of its own EnvRunner (weights, connector, counters)
+        # IMPALA takes care of its own EnvRunner (weights, connector, counters)
         # synching.
         self._dont_auto_sync_env_runner_states = True
 
@@ -227,7 +227,7 @@ class IMPALAConfig(AlgorithmConfig):
         # Deprecated args.
         after_train_step=DEPRECATED_VALUE,
         **kwargs,
-    ) -> "ImpalaConfig":
+    ) -> "IMPALAConfig":
         """Sets the training related configuration.
 
         Args:
@@ -520,7 +520,7 @@ class IMPALA(Algorithm):
     @classmethod
     @override(Algorithm)
     def get_default_config(cls) -> AlgorithmConfig:
-        return ImpalaConfig()
+        return IMPALAConfig()
 
     @classmethod
     @override(Algorithm)
@@ -932,9 +932,9 @@ class IMPALA(Algorithm):
         config: Union[AlgorithmConfig, PartialAlgorithmConfigDict],
     ):
         if isinstance(config, AlgorithmConfig):
-            cf: ImpalaConfig = config
+            cf: IMPALAConfig = config
         else:
-            cf: ImpalaConfig = cls.get_default_config().update_from_dict(config)
+            cf: IMPALAConfig = cls.get_default_config().update_from_dict(config)
 
         eval_config = cf.get_evaluation_config_object()
 
@@ -953,7 +953,14 @@ class IMPALA(Algorithm):
                         cf.num_cpus_per_learner if cf.num_learners == 0 else 0,
                     )
                     + cf.num_aggregation_workers,
-                    "GPU": 0 if cf._fake_gpus else cf.num_gpus,
+                    # Ignore `cf.num_gpus` on the new API stack.
+                    "GPU": (
+                        0
+                        if cf._fake_gpus
+                        else cf.num_gpus
+                        if not cf.enable_rl_module_and_learner
+                        else 0
+                    ),
                 }
             ]
             + [
