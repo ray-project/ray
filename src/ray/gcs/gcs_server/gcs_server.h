@@ -24,6 +24,7 @@
 #include "ray/gcs/gcs_server/gcs_kv_manager.h"
 #include "ray/gcs/gcs_server/gcs_redis_failure_detector.h"
 #include "ray/gcs/gcs_server/gcs_resource_manager.h"
+#include "ray/gcs/gcs_server/gcs_server_io_context_policy.h"
 #include "ray/gcs/gcs_server/gcs_table_storage.h"
 #include "ray/gcs/gcs_server/gcs_task_manager.h"
 #include "ray/gcs/gcs_server/pubsub_handler.h"
@@ -207,18 +208,12 @@ class GcsServer {
 
   void TryGlobalGC();
 
+  IOContextProvider<GcsServerIOContextPolicy> io_context_provider_;
+
   /// Gcs server configuration.
   const GcsServerConfig config_;
   // Type of storage to use.
   const StorageType storage_type_;
-  /// The main io service to drive event posted from grpc threads.
-  instrumented_io_context &main_service_;
-  /// The io service used by Pubsub, for isolation from other workload.
-  InstrumentedIOContextWithThread pubsub_io_context_;
-  // The io service used by task manager.
-  InstrumentedIOContextWithThread task_io_context_;
-  // The io service used by ray syncer.
-  InstrumentedIOContextWithThread ray_syncer_io_context_;
   /// The grpc server
   rpc::GrpcServer rpc_server_;
   /// The `ClientCallManager` object that is shared by all `NodeManagerWorkerClient`s.

@@ -1,3 +1,5 @@
+.. _ray-distributed-debugger:
+
 Ray Distributed Debugger
 ========================
 
@@ -48,7 +50,7 @@ Find and click the Ray extension in the VS Code left side nav. Add the Ray clust
 Create a Ray task
 ~~~~~~~~~~~~~~~~~
 
-Create a file `job.py` with the following snippet. Add the `RAY_DEBUG` environment variable to enable Ray Debugger and add `breakpoint()` in the Ray task.
+Create a file `job.py` with the following snippet. Add `breakpoint()` in the Ray task. If you want to use the post-mortem debugging below, also add the `RAY_DEBUG_POST_MORTEM=1` environment variable.
 
 .. literalinclude:: ./doc_code/ray-distributed-debugger.py
     :language: python
@@ -77,10 +79,14 @@ When the debugger hits a breakpoint:
     :align: center
 
 
-Start debugging
-~~~~~~~~~~~~~~~
+Start and stop debugging
+~~~~~~~~~~~~~~~~~~~~~~~~
 
-Debug your Ray app as you would when developing locally.
+Debug your Ray app as you would when developing locally. After you're done debugging this particular
+breakpoint, click the **Disconnect** button in the debugging toolbar so you can join another task
+in the **Paused Tasks** list.
+
+.. figure:: ./images/debugger-disconnect.gif
 
 
 Post-mortem debugging

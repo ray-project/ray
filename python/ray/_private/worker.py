@@ -875,11 +875,14 @@ class Worker:
                 )
 
         timeout_ms = int(timeout * 1000) if timeout is not None else -1
-        data_metadata_pairs = self.core_worker.get_objects(
+        data_metadata_pairs: List[
+            Tuple[ray._raylet.Buffer, bytes]
+        ] = self.core_worker.get_objects(
             object_refs,
             self.current_task_id,
             timeout_ms,
         )
+
         debugger_breakpoint = b""
         for data, metadata in data_metadata_pairs:
             if metadata:
@@ -1881,6 +1884,11 @@ def shutdown(_exiting_interpreter: bool = False):
             and false otherwise. If we are exiting the interpreter, we will
             wait a little while to print any extra error messages.
     """
+    # Make sure to clean up compiled dag node if exists.
+    from ray.dag.compiled_dag_node import _shutdown_all_compiled_dags
+
+    _shutdown_all_compiled_dags()
+
     if _exiting_interpreter and global_worker.mode == SCRIPT_MODE:
         # This is a duration to sleep before shutting down everything in order
         # to make sure that log messages finish printing.
@@ -2769,9 +2777,9 @@ def get(
                 port=None,
                 patch_stdstreams=False,
                 quiet=None,
-                breakpoint_uuid=debugger_breakpoint.decode()
-                if debugger_breakpoint
-                else None,
+                breakpoint_uuid=(
+                    debugger_breakpoint.decode() if debugger_breakpoint else None
+                ),
                 debugger_external=worker.ray_debugger_external,
             )
             rdb.set_trace(frame=frame)
