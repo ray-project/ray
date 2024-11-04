@@ -371,16 +371,16 @@ class OptunaSearch(Searcher):
         self._seed = seed
 
         if storage:
-            assert study_name, (
-                "You must pass a study name if you are passing a storage."
-            )
+            assert (
+                study_name
+            ), "You must pass a study name if you are passing a storage."
             assert isinstance(storage, BaseStorage), (
                 "You can only pass an instance of "
                 "`optuna.samplers.BaseStorage` "
                 "as a storage to `OptunaSearcher`."
             )
             self._storage = storage
-            
+
         self._completed_trials = set()
 
         self._ot_trials = {}
