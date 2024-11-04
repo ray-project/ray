@@ -131,9 +131,14 @@ hiredis_ssl = dependency('hiredis_ssl', method: 'cmake')
 
 # === @begin: threads ===
 threads = dependency('threads')
-# === @begin: threads ===
+# === @end: threads ===
 
 
 # === @begin: nodejs ===
 npm = find_program('npm')
-# === @begin: nodejs ===
+# === @end: nodejs ===
+
+
+# === @begin: git ===
+git = find_program('git')
+# === @end: git ===

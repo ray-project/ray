@@ -20,8 +20,6 @@ py = import('python').find_installation(pure: false, modules: ['grpc_tools'])
 
 
 # === @begin: Project-wide settings ===
-ray_commit_sha = run_command(find_program('git'), 'rev-parse', 'HEAD', check: true).stdout().strip()
-
 # I don't want to bring the entire GTest, portions of which Ray requires even for non-test code.
 # Instead, I've vendored a few GTest headers it really uses and add them into search paths, used by all compiler invocations.
 add_project_arguments(
@@ -46,6 +44,11 @@ add_project_arguments(
 # === @begin: eugo/ ===
 subdir('eugo/')
 # === @end: eugo/ ===
+
+
+# === @begin: ray_commit_sha ===
+ray_commit_sha = run_command(git, 'rev-parse', 'HEAD', check: true).stdout().strip()
+# === @end: ray_commit_sha ===
 
 
 # === @begin: src/ ===
