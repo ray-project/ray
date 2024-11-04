@@ -42,7 +42,7 @@ from ray.rllib.utils.deprecation import (
     DEPRECATED_VALUE,
 )
 from ray.rllib.utils.framework import try_import_tf
-from ray.rllib.utils.metrics import NUM_ENV_STEPS_SAMPLED_LIFETIME
+from ray.rllib.utils.metrics import NUM_ENV_STEPS_SAMPLED_LIFETIME, WEIGHTS_SEQ_NO
 from ray.rllib.utils.typing import (
     AgentID,
     EnvCreator,
@@ -570,6 +570,14 @@ class EnvRunnerGroup:
                     policies=policies,
                     inference_only=inference_only,
                 )
+
+            # Make sure `rl_module_state` only contains the weights and the
+            # weight seq no, nothing else.
+            rl_module_state = {
+                k: v
+                for k, v in rl_module_state.items()
+                if k in [COMPONENT_RL_MODULE, WEIGHTS_SEQ_NO]
+            }
 
             # Move weights to the object store to avoid having to make n pickled copies
             # of the weights dict for each worker.
