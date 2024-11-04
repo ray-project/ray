@@ -41,6 +41,7 @@ def _validate_deployment_options(
             "runtime_envs are ignored in local testing mode."
         )
 
+
 def make_local_deployment_handle(
     deployment: Deployment,
     app_name: str,
@@ -58,9 +59,7 @@ def make_local_deployment_handle(
     ensure that any exceptions are raised during `serve.run`.
     """
     deployment_id = DeploymentID(deployment.name, app_name)
-    _validate_deployment_options(
-        deployment, deployment_id
-    )
+    _validate_deployment_options(deployment, deployment_id)
     user_callable_wrapper = UserCallableWrapper(
         deployment.func_or_class,
         deployment.init_args,
