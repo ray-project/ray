@@ -772,37 +772,6 @@ py_test(
     args = ["--as-test", "--enable-new-api-stack", "--num-agents=2", "--num-gpus=2"]
 )
 
-#@OldAPIStack
-py_test(
-    name = "learning_tests_pendulum_ppo_old_api_stack",
-    main = "tests/run_regression_tests.py",
-    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_continuous", "no_tf_static_graph"],
-    size = "large", # bazel may complain about it being too long sometimes - large is on purpose as some frameworks take longer
-    srcs = ["tests/run_regression_tests.py"],
-    data = ["tuned_examples/ppo/pendulum-ppo.yaml"],
-    args = ["--dir=tuned_examples/ppo"]
-)
-#@OldAPIStack
-py_test(
-    name = "learning_tests_transformed_actions_pendulum_ppo_old_api_stack",
-    main = "tests/run_regression_tests.py",
-    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_continuous", "no_tf_static_graph"],
-    size = "large", # bazel may complain about it being too long sometimes - large is on purpose as some frameworks take longer
-    srcs = ["tests/run_regression_tests.py"],
-    data = ["tuned_examples/ppo/pendulum-transformed-actions-ppo.yaml"],
-    args = ["--dir=tuned_examples/ppo"]
-)
-#@OldAPIStack
-py_test(
-    name = "learning_tests_repeat_after_me_ppo_old_api_stack",
-    main = "tests/run_regression_tests.py",
-    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_discrete"],
-    size = "medium",
-    srcs = ["tests/run_regression_tests.py"],
-    data = ["tuned_examples/ppo/repeatafterme-ppo-lstm.yaml"],
-    args = ["--dir=tuned_examples/ppo"]
-)
-
 # SAC
 # Pendulum
 py_test(
@@ -2079,13 +2048,6 @@ py_test(
 )
 
 py_test(
-    name = "tests/test_ray_client",
-    tags = ["team:rllib", "tests_dir"],
-    size = "large",
-    srcs = ["tests/test_ray_client.py"]
-)
-
-py_test(
     name = "tests/test_reproducibility",
     tags = ["team:rllib", "tests_dir"],
     size = "medium",
@@ -3171,42 +3133,6 @@ py_test(
     size = "medium",
     srcs = ["examples/centralized_critic.py"],
     args = ["--as-test", "--framework=torch", "--stop-reward=7.2"]
-)
-
-py_test(
-    name = "examples/custom_recurrent_rnn_tokenizer_repeat_after_me_tf2",
-    main = "examples/custom_recurrent_rnn_tokenizer.py",
-    tags = ["team:rllib", "exclusive", "examples"],
-    size = "medium",
-    srcs = ["examples/custom_recurrent_rnn_tokenizer.py"],
-    args = ["--as-test", "--framework=tf2", "--stop-reward=40", "--env=RepeatAfterMeEnv", "--num-cpus=4"]
-)
-
-py_test(
-    name = "examples/custom_recurrent_rnn_tokenizer_repeat_initial_obs_env_tf2",
-    main = "examples/custom_recurrent_rnn_tokenizer.py",
-    tags = ["team:rllib", "examples"],
-    size = "medium",
-    srcs = ["examples/custom_recurrent_rnn_tokenizer.py"],
-    args = ["--as-test", "--framework=tf2", "--stop-reward=10", "--stop-timesteps=300000", "--env=RepeatInitialObsEnv", "--num-cpus=4"]
-)
-
-py_test(
-    name = "examples/custom_recurrent_rnn_tokenizer_repeat_after_me_torch",
-    main = "examples/custom_recurrent_rnn_tokenizer.py",
-    tags = ["team:rllib", "exclusive", "examples"],
-    size = "medium",
-    srcs = ["examples/custom_recurrent_rnn_tokenizer.py"],
-    args = ["--as-test", "--framework=torch", "--stop-reward=40", "--env=RepeatAfterMeEnv", "--num-cpus=4"]
-)
-
-py_test(
-    name = "examples/custom_recurrent_rnn_tokenizer_repeat_initial_obs_env_torch",
-    main = "examples/custom_recurrent_rnn_tokenizer.py",
-    tags = ["team:rllib", "exclusive", "examples"],
-    size = "medium",
-    srcs = ["examples/custom_recurrent_rnn_tokenizer.py"],
-    args = ["--as-test", "--framework=torch", "--stop-reward=10", "--stop-timesteps=300000", "--env=RepeatInitialObsEnv", "--num-cpus=4"]
 )
 
 py_test(

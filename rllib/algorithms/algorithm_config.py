@@ -19,6 +19,7 @@ from typing import (
 )
 
 import gymnasium as gym
+import tree
 from packaging import version
 
 import ray
@@ -58,6 +59,7 @@ from ray.rllib.utils.serialization import (
     deserialize_type,
     serialize_type,
 )
+from ray.rllib.utils.test_utils import check
 from ray.rllib.utils.torch_utils import TORCH_COMPILE_REQUIRED_VERSION
 from ray.rllib.utils.typing import (
     AgentID,
@@ -701,12 +703,18 @@ class AlgorithmConfig(_Config):
         # Namely, we want to re-instantiate the exploration config this config had
         # inside `self.experimental()` before potentially overwriting it in the
         # following.
-        enable_rl_module_and_learner = config_dict.get(
+        enable_new_api_stack = config_dict.get(
             "_enable_new_api_stack",
-            config_dict.get("enable_rl_module_and_learner"),
+            config_dict.get(
+                "enable_rl_module_and_learner",
+                config_dict.get("enable_env_runner_and_connector_v2"),
+            ),
         )
-        if enable_rl_module_and_learner:
-            self.api_stack(enable_rl_module_and_learner=enable_rl_module_and_learner)
+        if enable_new_api_stack is not None:
+            self.api_stack(
+                enable_rl_module_and_learner=enable_new_api_stack,
+                enable_env_runner_and_connector_v2=enable_new_api_stack,
+            )
 
         # Modify our properties one by one.
         for key, value in config_dict.items():
@@ -750,7 +758,7 @@ class AlgorithmConfig(_Config):
             elif key.startswith("evaluation_"):
                 eval_call[key] = value
             elif key == "exploration_config":
-                if enable_rl_module_and_learner:
+                if enable_new_api_stack:
                     self.exploration_config = value
                     continue
                 if isinstance(value, dict) and "type" in value:
@@ -4420,6 +4428,7 @@ class AlgorithmConfig(_Config):
     def _validate_new_api_stack_settings(self):
         """Checks, whether settings related to the new API stack make sense."""
 
+        # Old API stack checks.
         if not self.enable_rl_module_and_learner:
             # Throw a warning if the user has used `self.rl_module(rl_module_spec=...)`
             # but has not enabled the new API stack at the same time.
@@ -4460,6 +4469,26 @@ class AlgorithmConfig(_Config):
                 "`enable_env_runner_and_connector_v2` to False ('hybrid API stack'"
                 ") is not longer supported! Set both to True (new API stack) or both "
                 "to False (old API stack), instead."
+            )
+
+        # For those users that accidentally use the new API stack (because it's the
+        # default now for many algos), we need to make sure they are warned.
+        try:
+            tree.assert_same_structure(self.model, MODEL_DEFAULTS)
+            # Create copies excluding the specified key
+            check(
+                {k: v for k, v in self.model.items() if k != "vf_share_layers"},
+                {k: v for k, v in MODEL_DEFAULTS.items() if k != "vf_share_layers"},
+            )
+        except Exception:
+            logger.warning(
+                "You configured a custom `model` config (probably through calling "
+                "config.training(model=..), whereas your config uses the new API "
+                "stack! In order to switch off the new API stack, set in your config: "
+                "`config.api_stack(enable_rl_module_and_learner=False, "
+                "enable_env_runner_and_connector_v2=False)`. If you DO want to use "
+                "the new API stack, configure your model, instead, through: "
+                "`config.rl_module(model_config={..})`."
             )
 
         # LR-schedule checking.
