@@ -571,24 +571,25 @@ class EnvRunnerGroup:
                     inference_only=inference_only,
                 )
 
-            # Make sure `rl_module_state` only contains the weights and the
-            # weight seq no, nothing else.
-            rl_module_state = {
-                k: v
-                for k, v in rl_module_state.items()
-                if k in [COMPONENT_RL_MODULE, WEIGHTS_SEQ_NO]
-            }
-
-            # Move weights to the object store to avoid having to make n pickled copies
-            # of the weights dict for each worker.
-            rl_module_state_ref = ray.put(rl_module_state)
-
             if self._remote_config.enable_env_runner_and_connector_v2:
+
+                # Make sure `rl_module_state` only contains the weights and the
+                # weight seq no, nothing else.
+                rl_module_state = {
+                    k: v
+                    for k, v in rl_module_state.items()
+                    if k in [COMPONENT_RL_MODULE, WEIGHTS_SEQ_NO]
+                }
+
+                # Move weights to the object store to avoid having to make n pickled
+                # copies of the weights dict for each worker.
+                rl_module_state_ref = ray.put(rl_module_state)
 
                 def _set_weights(env_runner):
                     env_runner.set_state(ray.get(rl_module_state_ref))
 
             else:
+                rl_module_state_ref = ray.put(rl_module_state)
 
                 def _set_weights(env_runner):
                     env_runner.set_weights(ray.get(rl_module_state_ref), global_vars)
