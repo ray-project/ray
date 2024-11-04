@@ -489,7 +489,7 @@ class DeploymentResponse(_DeploymentResponseBase):
             start_time_s=start_time_s,
             curr_time_s=time.time(),
         )
-        return replica_result.to_object_ref(remaining_timeout_s)
+        return replica_result.to_object_ref(timeout_s=remaining_timeout_s)
 
 
 @PublicAPI(stability="beta")
