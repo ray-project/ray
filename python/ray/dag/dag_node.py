@@ -79,6 +79,11 @@ class DAGNode(DAGNodeBase):
         """
         Retrieve upstream nodes and update their downstream dependencies.
 
+        Currently, the DAG assumes that all DAGNodes in `args`, `kwargs`, and
+        `other_args_to_resolve` are upstream nodes. However, Ray Compiled Graphs
+        builds the upstream/downstream relationship based only on args. Be cautious
+        when persisting DAGNodes in `other_args_to_resolve` and kwargs in the future.
+
         TODO (kevin85421): Currently, the upstream nodes and downstream nodes have
         circular references. Therefore, it relies on the garbage collector to clean
         them up instead of reference counting. We should consider using weak references
