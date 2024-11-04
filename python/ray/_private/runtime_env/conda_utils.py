@@ -4,7 +4,7 @@ import shutil
 import subprocess
 import hashlib
 import json
-from typing import Optional, List, Union, Tuple
+from typing import Optional, List, Tuple
 
 """Utilities for conda.  Adapted from https://github.com/mlflow/mlflow."""
 
@@ -214,7 +214,7 @@ class ShellCommandException(Exception):
 
 def exec_cmd(
     cmd: List[str], throw_on_error: bool = True, logger: Optional[logging.Logger] = None
-) -> Union[int, Tuple[int, str, str]]:
+) -> Tuple[int, str, str]:
     """
     Runs a command as a child process.
 
@@ -276,3 +276,13 @@ def exec_cmd_stream_to_logger(
 
     exit_code = child.wait()
     return exit_code, "\n".join(last_n_lines)
+
+
+def check_if_conda_environment_valid(conda_env_name: str) -> bool:
+    """
+    Check if the given conda environment exists and is valid.
+    We try to `conda activate` it and check that python is runnable
+    """
+    activate_cmd = get_conda_activate_commands(conda_env_name) + ["python", "--version"]
+    exit_code, _, _ = exec_cmd(activate_cmd, throw_on_error=False)
+    return exit_code == 0
