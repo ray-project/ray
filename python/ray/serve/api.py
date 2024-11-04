@@ -193,7 +193,7 @@ def ingress(app: Union["FastAPI", "APIRouter", Callable]) -> Callable:
 
         if issubclass(cls, collections.abc.Callable):
             raise ValueError(
-                "Class passed to @serve.ingress may not have __call__ method."
+                "Classes passed to @serve.ingress may not have __call__ method."
             )
 
         # Sometimes there are decorators on the methods. We want to fix

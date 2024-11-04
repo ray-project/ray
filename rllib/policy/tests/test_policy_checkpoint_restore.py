@@ -16,6 +16,10 @@ def _do_checkpoint_twice_test(framework):
     # Checks if we can load a policy from a checkpoint (at least) twice
     config = (
         PPOConfig()
+        .api_stack(
+            enable_rl_module_and_learner=False,
+            enable_env_runner_and_connector_v2=False,
+        )
         .env_runners(num_env_runners=0)
         .evaluation(evaluation_num_env_runners=0)
     )
@@ -53,11 +57,7 @@ class TestPolicyFromCheckpoint(unittest.TestCase):
 
     def test_add_policy_connector_enabled(self):
         with tempfile.TemporaryDirectory() as tmpdir:
-            config = (
-                APPOConfig()
-                .environment("CartPole-v1")
-                .env_runners(enable_connectors=True)
-            )
+            config = APPOConfig().environment("CartPole-v1")
             algo = config.build()
             algo.train()
             result = algo.save(checkpoint_dir=tmpdir)
@@ -98,10 +98,12 @@ class TestPolicyFromCheckpoint(unittest.TestCase):
             space.original_space = gym.spaces.Discrete(2)
             space = space.original_space
 
-        # TODO(Artur): Construct a PPO policy here without the algorithm once we are
-        #  able to do that with RLModules.
         policy = (
             PPOConfig()
+            .api_stack(
+                enable_env_runner_and_connector_v2=False,
+                enable_rl_module_and_learner=False,
+            )
             .environment(
                 observation_space=obs_space, action_space=gym.spaces.Discrete(2)
             )
