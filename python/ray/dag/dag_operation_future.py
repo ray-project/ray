@@ -1,5 +1,6 @@
 from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING, Any, Generic, Optional, TypeVar
+import time
+from typing import TYPE_CHECKING, Any, Generic, Optional, TypeVar, NamedTuple
 from ray.util.annotations import DeveloperAPI
 
 
@@ -46,7 +47,7 @@ class ResolvedFuture(DAGOperationFuture):
         """
         Wait and immediately return the result. This operation will not block.
         """
-        return self._result
+        return self._result, None
 
 
 @DeveloperAPI
@@ -93,3 +94,45 @@ class GPUFuture(DAGOperationFuture[Any]):
         current_stream = cp.cuda.get_current_stream()
         current_stream.wait_event(self._event)
         return self._buf
+
+
+history = []
+
+
+class GPUFutureRecord(NamedTuple):
+    operation_str: str
+    init_timestamp: float
+    end_timestamp: float
+
+
+@DeveloperAPI
+class TimedGPUFuture(GPUFuture):
+    def __init__(
+        self, buf: Any, stream: Optional["cp.cuda.Stream"] = None, operation_str=""
+    ):
+        """
+        Initialize a GPU future on the given stream.
+
+        Args:
+            buf: The buffer to return when the future is resolved.
+            stream: The CUDA stream to record the event on, this event is waited
+                on when the future is resolved. If None, the current stream is used.
+        """
+        super().__init__(buf, stream)
+        self._operation_str = operation_str
+        self._init_timestamp = time.monotonic()
+
+    def wait(self) -> Any:
+        """
+        Wait for the future on the current CUDA stream and return the result from
+        the GPU operation. This operation does not block CPU.
+        """
+        result = super().wait()
+        # global history
+        # history.append()
+        print(
+            f"{self._operation_str}: start time: {self._init_timestamp}, end time: {time.monotonic()}"
+        )
+        return result, GPUFutureRecord(
+            self._operation_str, self._init_timestamp, time.monotonic()
+        )

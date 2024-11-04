@@ -85,6 +85,12 @@ class TorchTensorWorker:
             vals[i] = self.recv(tensor)
         return vals
 
+    def recv_dict_and_matmul(self, tensor_dict):
+        vals = {}
+        for i, tensor in tensor_dict.items():
+            vals[i] = self.recv_and_matmul(tensor)
+        return vals
+
     def compute_with_tuple_args(self, args, i: int):
         shape, dtype, value = args[i]
         tensor = torch.ones(shape, dtype=dtype, device=self.device) * value
@@ -804,6 +810,146 @@ def test_torch_tensor_nccl_nested_dynamic(ray_start_regular):
         ref = compiled_dag.execute(args)
         result = ray.get(ref)
         assert result == args
+
+
+@pytest.mark.parametrize(
+    "ray_start_regular, overlap_gpu_communication",
+    [({"num_cpus": 4}, True)],
+    indirect=["ray_start_regular"],
+)
+def test_torch_tensor_nccl_overlap(ray_start_regular, overlap_gpu_communication):
+    if not USE_GPU:
+        pytest.skip("NCCL tests require GPUs")
+
+    assert (
+        sum(node["Resources"].get("GPU", 0) for node in ray.nodes()) >= 4
+    ), "This test requires at least 4 GPUs"
+
+    worker_cls = TorchTensorWorker.options(num_cpus=0, num_gpus=1)
+    num_senders = 2
+    senders = [worker_cls.remote() for _ in range(num_senders)]
+    receiver = worker_cls.remote()
+
+    shape = (10000, 10000)
+    dtype = torch.float16
+
+    with InputNode() as inp:
+        branches = [sender.send.bind(shape, dtype, inp) for sender in senders]
+        branches = [
+            branch.with_type_hint(TorchTensorType(transport="nccl", _static_shape=True))
+            for branch in branches
+        ]
+        branches = [receiver.recv_and_matmul.bind(branch) for branch in branches]
+        dag = MultiOutputNode(branches)
+
+    # Test normal execution.
+    compiled_dag = dag.experimental_compile(
+        _overlap_gpu_communication=overlap_gpu_communication
+    )
+
+    start = time.monotonic()
+    for i in range(1):
+        ref = compiled_dag.execute(i)
+        result = ray.get(ref)
+        assert result == [(i, shape, dtype)] * num_senders
+    duration = time.monotonic() - start
+    print(f"{overlap_gpu_communication=}, {duration=}")
+
+    compiled_dag.teardown()
+
+
+@pytest.mark.parametrize(
+    "ray_start_regular, overlap_gpu_communication",
+    [({"num_cpus": 4}, False), ({"num_cpus": 4}, True)],
+    indirect=["ray_start_regular"],
+)
+def test_torch_tensor_nccl_overlap_static(ray_start_regular, overlap_gpu_communication):
+    if not USE_GPU:
+        pytest.skip("NCCL tests require GPUs")
+
+    assert (
+        sum(node["Resources"].get("GPU", 0) for node in ray.nodes()) >= 4
+    ), "This test requires at least 4 GPUs"
+
+    worker_cls = TorchTensorWorker.options(num_cpus=0, num_gpus=1)
+    num_senders = 3
+    senders = [worker_cls.remote() for _ in range(num_senders)]
+    receiver = worker_cls.remote()
+
+    shape = (10000, 10000)
+    dtype = torch.float16
+
+    with InputNode() as inp:
+        branches = [sender.send.bind(shape, dtype, inp) for sender in senders]
+        branches = [
+            branch.with_type_hint(TorchTensorType(transport="nccl", _static_shape=True))
+            for branch in branches
+        ]
+        branches = [receiver.recv_and_matmul.bind(branch) for branch in branches]
+        dag = MultiOutputNode(branches)
+
+    # Test normal execution.
+    compiled_dag = dag.experimental_compile(
+        _overlap_gpu_communication=overlap_gpu_communication
+    )
+
+    start = time.monotonic()
+    for i in range(5):
+        ref = compiled_dag.execute(i)
+        result = ray.get(ref)
+        assert result == [(i, shape, dtype)] * num_senders
+    duration = time.monotonic() - start
+    print(f"{overlap_gpu_communication=}, {duration=}")
+
+    compiled_dag.teardown()
+
+
+@pytest.mark.parametrize(
+    "ray_start_regular, overlap_gpu_communication",
+    [({"num_cpus": 4}, False), ({"num_cpus": 4}, True)],
+    indirect=["ray_start_regular"],
+)
+def test_torch_tensor_nccl_overlap_dynamic(
+    ray_start_regular, overlap_gpu_communication
+):
+    if not USE_GPU:
+        pytest.skip("NCCL tests require GPUs")
+
+    assert (
+        sum(node["Resources"].get("GPU", 0) for node in ray.nodes()) >= 4
+    ), "This test requires at least 4 GPUs"
+
+    worker_cls = TorchTensorWorker.options(num_cpus=0, num_gpus=1)
+    num_senders = 3
+    senders = [worker_cls.remote() for _ in range(num_senders)]
+    receiver = worker_cls.remote()
+
+    with InputNode() as inp:
+        branches = [sender.send_dict.bind(inp) for sender in senders]
+        branches = [
+            branch.with_type_hint(TorchTensorType(transport="nccl"))
+            for branch in branches
+        ]
+        branches = [receiver.recv_dict_and_matmul.bind(branch) for branch in branches]
+        dag = MultiOutputNode(branches)
+
+    # Test normal execution.
+    compiled_dag = dag.experimental_compile(
+        _overlap_gpu_communication=overlap_gpu_communication
+    )
+
+    start = time.monotonic()
+    for i in range(3):
+        dtype = torch.float16
+        args = {j: (j, (10000, 10000), dtype) for j in range(1, i + 1)}
+
+        ref = compiled_dag.execute(args)
+        result = ray.get(ref)
+        assert result == [args, args, args]
+    duration = time.monotonic() - start
+    print(f"{overlap_gpu_communication=}, {duration=}")
+
+    compiled_dag.teardown()
 
 
 @pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
