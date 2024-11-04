@@ -14,7 +14,7 @@ from ray.rllib.algorithms.algorithm_config import (
     AlgorithmConfig,
     TorchCompileWhatToCompile,
 )
-from ray.rllib.core.learner.learner import Learner
+from ray.rllib.core.learner.learner import Learner, LR_KEY
 from ray.rllib.core.rl_module.multi_rl_module import (
     MultiRLModule,
     MultiRLModuleSpec,
@@ -32,13 +32,17 @@ from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.utils.annotations import (
     override,
     OverrideToImplementCustomLogic,
+    OverrideToImplementCustomLogic_CallToSuperRecommended,
 )
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.metrics import (
     ALL_MODULES,
+    DIFF_NUM_GRAD_UPDATES_VS_SAMPLER_POLICY,
     NUM_TRAINABLE_PARAMETERS,
     NUM_NON_TRAINABLE_PARAMETERS,
+    WEIGHTS_SEQ_NO,
 )
+from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.torch_utils import convert_to_torch_tensor, copy_torch_tensors
 from ray.rllib.utils.typing import (
     ModuleID,
@@ -142,6 +146,18 @@ class TorchLearner(Learner):
         # Activate tensor-mode on our MetricsLogger.
         self.metrics.activate_tensor_mode()
 
+        # Log off-policy'ness of this update.
+        self.metrics.log_dict(
+            {
+                (mid, DIFF_NUM_GRAD_UPDATES_VS_SAMPLER_POLICY): torch.mean(
+                    (self._weights_seq_no - module_batch[WEIGHTS_SEQ_NO]).float()
+                )
+                for mid, module_batch in batch.items()
+                if WEIGHTS_SEQ_NO in module_batch
+            },
+            window=1,
+        )
+
         fwd_out = self.module.forward_train(batch)
         loss_per_module = self.compute_losses(fwd_out=fwd_out, batch=batch)
 
@@ -209,7 +225,10 @@ class TorchLearner(Learner):
                 # If we have learning rate schedulers for a module add them, if
                 # necessary.
                 if self._lr_scheduler_classes is not None:
-                    if module_id not in self._lr_schedulers:
+                    if (
+                        module_id not in self._lr_schedulers
+                        or optimizer_name not in self._lr_schedulers[module_id]
+                    ):
                         # Set for each module and optimizer a scheduler.
                         self._lr_schedulers[module_id] = {optimizer_name: []}
                         # If the classes are in a dictionary each module might have
@@ -257,15 +276,56 @@ class TorchLearner(Learner):
                         "`False`."
                     )
 
-                    # If the module uses learning rate schedulers, step them here.
-                    if module_id in self._lr_schedulers:
-                        for scheduler in self._lr_schedulers[module_id][optimizer_name]:
-                            scheduler.step()
+    @OverrideToImplementCustomLogic_CallToSuperRecommended
+    @override(Learner)
+    def after_gradient_based_update(self, *, timesteps: Dict[str, Any]) -> None:
+        """Called after gradient-based updates are completed.
 
-                    # If the module uses learning rate schedulers, step them here.
-                    if module_id in self._lr_schedulers:
-                        for scheduler in self._lr_schedulers[module_id][optimizer_name]:
-                            scheduler.step()
+        Should be overridden to implement custom cleanup-, logging-, or non-gradient-
+        based Learner/RLModule update logic after(!) gradient-based updates have been
+        completed.
+
+        Note, for `framework="torch"` users can register
+        `torch.optim.lr_scheduler.LRScheduler` via
+        `AlgorithmConfig._torch_lr_scheduler_classes`. These schedulers need to be
+        stepped here after gradient updates and reported.
+
+        Args:
+            timesteps: Timesteps dict, which must have the key
+                `NUM_ENV_STEPS_SAMPLED_LIFETIME`.
+                # TODO (sven): Make this a more formal structure with its own type.
+        """
+
+        # If we have no `torch.optim.lr_scheduler.LRScheduler` registered call the
+        # `super()`'s method to update RLlib's learning rate schedules.
+        if not self._lr_schedulers:
+            return super().after_gradient_based_update(timesteps=timesteps)
+
+        # Only update this optimizer's lr, if a scheduler has been registered
+        # along with it.
+        for module_id, optimizer_names in self._module_optimizers.items():
+            for optimizer_name in optimizer_names:
+                # If learning rate schedulers are provided step them here. Note,
+                # stepping them in `TorchLearner.apply_gradients` updates the
+                # learning rates during minibatch updates; we want to update
+                # between whole batch updates.
+                if (
+                    module_id in self._lr_schedulers
+                    and optimizer_name in self._lr_schedulers[module_id]
+                ):
+                    for scheduler in self._lr_schedulers[module_id][optimizer_name]:
+                        scheduler.step()
+                optimizer = self.get_optimizer(module_id, optimizer_name)
+                self.metrics.log_value(
+                    # Cut out the module ID from the beginning since it's already
+                    # part of the key sequence: (ModuleID, "[optim name]_lr").
+                    key=(
+                        module_id,
+                        f"{optimizer_name[len(module_id) + 1:]}_{LR_KEY}",
+                    ),
+                    value=convert_to_numpy(self._get_optimizer_lr(optimizer)),
+                    window=1,
+                )
 
     @override(Learner)
     def _get_optimizer_state(self) -> StateDict:
@@ -393,9 +453,9 @@ class TorchLearner(Learner):
         #  API in ray.train but allow for session to be None without any errors raised.
         if self._use_gpu:
             # get_devices() returns a list that contains the 0th device if
-            # it is called from outside of a Ray Train session. Its necessary to give
+            # it is called from outside a Ray Train session. It's necessary to give
             # the user the option to run on the gpu of their choice, so we enable that
-            # option here via the local gpu id scaling config parameter.
+            # option here through the local gpu id scaling config parameter.
             if self._distributed:
                 devices = get_devices()
                 assert len(devices) == 1, (
@@ -445,8 +505,6 @@ class TorchLearner(Learner):
 
             self._possibly_compiled_update = self._uncompiled_update
 
-        self._make_modules_ddp_if_necessary()
-
         # Log number of non-trainable and trainable parameters of our RLModule.
         num_trainable_params = {
             (mid, NUM_TRAINABLE_PARAMETERS): sum(
@@ -462,6 +520,7 @@ class TorchLearner(Learner):
             for mid, rlm in self.module._rl_modules.items()
             if isinstance(rlm, TorchRLModule)
         }
+
         self.metrics.log_dict(
             {
                 **{
@@ -476,6 +535,8 @@ class TorchLearner(Learner):
                 **num_non_trainable_params,
             }
         )
+
+        self._make_modules_ddp_if_necessary()
 
     @override(Learner)
     def _update(self, batch: Dict[str, Any]) -> Tuple[Any, Any, Any]:

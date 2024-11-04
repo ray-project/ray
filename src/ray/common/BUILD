@@ -264,12 +264,8 @@ ray_cc_library(
 
 ray_cc_library(
     name = "status",
-    srcs = [
-        "status.cc",
-    ],
-    hdrs = [
-        "status.h",
-    ],
+    srcs = ["status.cc"],
+    hdrs = ["status.h"],
     deps = [
         "//src/ray/util",
     ],
