@@ -78,7 +78,6 @@ doctest(
             "utils/memory.py",
             "offline/off_policy_estimator.py",
             "offline/estimators/feature_importance.py",
-            "env/wrappers/recsim_wrapper.py",
             "env/remote_vector_env.py",
             # Missing imports
             "algorithms/dreamerv3/**",
@@ -773,37 +772,6 @@ py_test(
     args = ["--as-test", "--enable-new-api-stack", "--num-agents=2", "--num-gpus=2"]
 )
 
-#@OldAPIStack
-py_test(
-    name = "learning_tests_pendulum_ppo_old_api_stack",
-    main = "tests/run_regression_tests.py",
-    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_continuous", "no_tf_static_graph"],
-    size = "large", # bazel may complain about it being too long sometimes - large is on purpose as some frameworks take longer
-    srcs = ["tests/run_regression_tests.py"],
-    data = ["tuned_examples/ppo/pendulum-ppo.yaml"],
-    args = ["--dir=tuned_examples/ppo"]
-)
-#@OldAPIStack
-py_test(
-    name = "learning_tests_transformed_actions_pendulum_ppo_old_api_stack",
-    main = "tests/run_regression_tests.py",
-    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_continuous", "no_tf_static_graph"],
-    size = "large", # bazel may complain about it being too long sometimes - large is on purpose as some frameworks take longer
-    srcs = ["tests/run_regression_tests.py"],
-    data = ["tuned_examples/ppo/pendulum-transformed-actions-ppo.yaml"],
-    args = ["--dir=tuned_examples/ppo"]
-)
-#@OldAPIStack
-py_test(
-    name = "learning_tests_repeat_after_me_ppo_old_api_stack",
-    main = "tests/run_regression_tests.py",
-    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_discrete"],
-    size = "medium",
-    srcs = ["tests/run_regression_tests.py"],
-    data = ["tuned_examples/ppo/repeatafterme-ppo-lstm.yaml"],
-    args = ["--dir=tuned_examples/ppo"]
-)
-
 # SAC
 # Pendulum
 py_test(
@@ -1214,23 +1182,24 @@ py_test(
     srcs = ["env/tests/test_infinite_lookback_buffer.py"]
 )
 
-sh_test(
-    name = "env/tests/test_local_inference_cartpole",
-    tags = ["team:rllib", "env"],
-    size = "medium",
-    srcs = ["env/tests/test_policy_client_server_setup.sh"],
-    args = ["local", "cartpole", "8800"],
-    data = glob(["examples/envs/external_envs/*.py"]),
-)
+# CI all of a sudden has problems with accessing the ports.
+# sh_test(
+#    name = "env/tests/test_local_inference_cartpole",
+#    tags = ["team:rllib", "env"],
+#    size = "medium",
+#    srcs = ["env/tests/test_policy_client_server_setup.sh"],
+#    args = ["local", "cartpole", "8800"],
+#    data = glob(["examples/envs/external_envs/*.py"]),
+# )
 
-sh_test(
-    name = "env/tests/test_local_inference_cartpole_w_2_concurrent_episodes",
-    tags = ["team:rllib", "env"],
-    size = "medium",
-    srcs = ["env/tests/test_policy_client_server_setup.sh"],
-    args = ["local", "cartpole-dummy-2-episodes", "8830"],
-    data = glob(["examples/envs/external_envs/*.py"]),
-)
+# sh_test(
+#    name = "env/tests/test_local_inference_cartpole_w_2_concurrent_episodes",
+#    tags = ["team:rllib", "env"],
+#    size = "medium",
+#    srcs = ["env/tests/test_policy_client_server_setup.sh"],
+#    args = ["local", "cartpole-dummy-2-episodes", "8830"],
+#    data = glob(["examples/envs/external_envs/*.py"]),
+# )
 
 # Tests with unity 3d and external envs currently don't work
 # see: https://github.com/ray-project/ray/issues/34290 for more details
@@ -1264,32 +1233,33 @@ py_test(
     srcs = ["env/tests/test_multi_agent_episode.py"]
 )
 
-sh_test(
-    name = "env/tests/test_remote_inference_cartpole",
-    tags = ["team:rllib", "env", "exclusive"],
-    size = "large", # bazel may complain about it being too long sometimes - large is on purpose as some frameworks take longer
-    srcs = ["env/tests/test_policy_client_server_setup.sh"],
-    args = ["remote", "cartpole", "8810"],
-    data = glob(["examples/envs/external_envs/*.py"]),
-)
+# CI all of a sudden has problems with accessing the ports.
+# sh_test(
+#    name = "env/tests/test_remote_inference_cartpole",
+#    tags = ["team:rllib", "env", "exclusive"],
+#    size = "large", # bazel may complain about it being too long sometimes - large is on purpose as some frameworks take longer
+#    srcs = ["env/tests/test_policy_client_server_setup.sh"],
+#    args = ["remote", "cartpole", "8810"],
+#    data = glob(["examples/envs/external_envs/*.py"]),
+# )
 
-sh_test(
-    name = "env/tests/test_remote_inference_cartpole_lstm",
-    tags = ["team:rllib", "env", "exclusive"],
-    size = "large", # bazel may complain about it being too long sometimes - large is on purpose as some frameworks take longer
-    srcs = ["env/tests/test_policy_client_server_setup.sh"],
-    args = ["remote", "cartpole_lstm", "8820"],
-    data = glob(["examples/envs/external_envs/*.py"]),
-)
+# sh_test(
+#    name = "env/tests/test_remote_inference_cartpole_lstm",
+#    tags = ["team:rllib", "env", "exclusive"],
+#    size = "large", # bazel may complain about it being too long sometimes - large is on purpose as some frameworks take longer
+#    srcs = ["env/tests/test_policy_client_server_setup.sh"],
+#    args = ["remote", "cartpole_lstm", "8820"],
+#    data = glob(["examples/envs/external_envs/*.py"]),
+# )
 
-sh_test(
-    name = "env/tests/test_remote_inference_cartpole_w_2_concurrent_episodes",
-    tags = ["team:rllib", "env", "exclusive"],
-    size = "large", # bazel may complain about it being too long sometimes - large is on purpose as some frameworks take longer
-    srcs = ["env/tests/test_policy_client_server_setup.sh"],
-    args = ["remote", "cartpole-dummy-2-episodes", "8840"],
-    data = glob(["examples/envs/external_envs/*.py"]),
-)
+# sh_test(
+#    name = "env/tests/test_remote_inference_cartpole_w_2_concurrent_episodes",
+#    tags = ["team:rllib", "env", "exclusive"],
+#    size = "large", # bazel may complain about it being too long sometimes - large is on purpose as some frameworks take longer
+#    srcs = ["env/tests/test_policy_client_server_setup.sh"],
+#    args = ["remote", "cartpole-dummy-2-episodes", "8840"],
+#    data = glob(["examples/envs/external_envs/*.py"]),
+# )
 
 # Tests with unity 3d and external envs currently don't work
 # see: https://github.com/ray-project/ray/issues/34290 for more details
@@ -1344,13 +1314,6 @@ py_test(
 # Tag: evaluation
 # --------------------------------------------------------------------
 py_test(
-    name = "evaluation/tests/test_envs_that_crash",
-    tags = ["team:rllib", "evaluation"],
-    size = "large",
-    srcs = ["evaluation/tests/test_envs_that_crash.py"]
-)
-
-py_test(
     name = "env/tests/test_env_runner_group",
     tags = ["team:rllib", "evaluation", "exclusive"],
     size = "small",
@@ -1371,14 +1334,6 @@ py_test(
     tags = ["team:rllib", "evaluation"],
     size = "small",
     srcs = ["evaluation/tests/test_env_runner_v2.py"]
-)
-
-# @OldAPIStack
-py_test(
-    name = "evaluation/tests/test_episode",
-    tags = ["team:rllib", "evaluation"],
-    size = "small",
-    srcs = ["evaluation/tests/test_episode.py"]
 )
 
 # @OldAPIStack
@@ -1703,7 +1658,7 @@ py_test(
 py_test(
     name = "test_offline_prelearner",
     tags = ["team:rllib", "offline"],
-    size = "small",
+    size = "medium",
     srcs = ["offline/tests/test_offline_prelearner.py"],
     # Include the offline data files.
     data = [
@@ -2090,13 +2045,6 @@ py_test(
     tags = ["team:rllib", "tests_dir"],
     size = "large", # bazel may complain about it being too long sometimes - large is on purpose as some frameworks take longer
     srcs = ["tests/test_placement_groups.py"]
-)
-
-py_test(
-    name = "tests/test_ray_client",
-    tags = ["team:rllib", "tests_dir"],
-    size = "large",
-    srcs = ["tests/test_ray_client.py"]
 )
 
 py_test(
@@ -2548,8 +2496,8 @@ py_test(
     name = "examples/envs/env_rendering_and_recording",
     srcs = ["examples/envs/env_rendering_and_recording.py"],
     tags = ["team:rllib", "exclusive", "examples"],
-    size = "small",
-    args = ["--enable-new-api-stack", "--env=CartPole-v1", "--stop-iters=3"]
+    size = "medium",
+    args = ["--enable-new-api-stack", "--env=CartPole-v1", "--stop-iters=2"]
 )
 
 #@OldAPIStack
@@ -2836,105 +2784,16 @@ py_test(
     args = ["--enable-new-api-stack", "--as-test"]
 )
 
+# subdirectory: metrics/
+# ....................................
 
-#@OldAPIStack @HybridAPIStack
 py_test(
-    name = "examples/learners/ppo_tuner_local_cpu_torch",
-    main = "examples/learners/ppo_tuner.py",
-    tags = ["team:rllib", "examples"],
+    name = "examples/metrics/custom_metrics_in_env_runners",
+    main = "examples/metrics/custom_metrics_in_env_runners.py",
+    tags = ["team:rllib", "exclusive", "examples"],
     size = "medium",
-    srcs = ["examples/learners/ppo_tuner.py"],
-    args = ["--framework=torch", "--config=local-cpu"]
-)
-
-#@OldAPIStack @HybridAPIStack
-py_test(
-    name = "examples/learners/ppo_tuner_local_cpu_tf2",
-    main = "examples/learners/ppo_tuner.py",
-    tags = ["team:rllib", "examples"],
-    size = "medium",
-    srcs = ["examples/learners/ppo_tuner.py"],
-    args = ["--framework=tf2", "--config=local-cpu"]
-)
-
-#@OldAPIStack @HybridAPIStack
-py_test(
-    name = "examples/learners/ppo_tuner_local_gpu_torch",
-    main = "examples/learners/ppo_tuner.py",
-    tags = ["team:rllib", "examples", "gpu"],
-    size = "medium",
-    srcs = ["examples/learners/ppo_tuner.py"],
-    args = ["--framework=torch", "--config=local-gpu"]
-)
-
-#@OldAPIStack @HybridAPIStack
-py_test(
-    name = "examples/learners/ppo_tuner_local_gpu_tf2",
-    main = "examples/learners/ppo_tuner.py",
-    tags = ["team:rllib", "examples", "gpu", "exclusive"],
-    size = "medium",
-    srcs = ["examples/learners/ppo_tuner.py"],
-    args = ["--framework=tf2", "--config=local-gpu"]
-)
-
-#@OldAPIStack @HybridAPIStack
-py_test(
-    name = "examples/learners/ppo_tuner_remote_cpu_torch",
-    main = "examples/learners/ppo_tuner.py",
-    tags = ["team:rllib", "examples"],
-    size = "medium",
-    srcs = ["examples/learners/ppo_tuner.py"],
-    args = ["--framework=torch", "--config=remote-cpu"]
-)
-
-#@OldAPIStack @HybridAPIStack
-py_test(
-    name = "examples/learners/ppo_tuner_remote_cpu_tf2",
-    main = "examples/learners/ppo_tuner.py",
-    tags = ["team:rllib", "examples"],
-    size = "medium",
-    srcs = ["examples/learners/ppo_tuner.py"],
-    args = ["--framework=tf2", "--config=remote-cpu"]
-)
-
-#@OldAPIStack @HybridAPIStack
-py_test(
-    name = "examples/learners/ppo_tuner_remote_gpu_torch",
-    main = "examples/learners/ppo_tuner.py",
-    tags = ["team:rllib", "examples", "gpu", "exclusive"],
-    size = "medium",
-    srcs = ["examples/learners/ppo_tuner.py"],
-    args = ["--framework=torch", "--config=remote-gpu"]
-)
-
-#@OldAPIStack @HybridAPIStack
-py_test(
-    name = "examples/learners/ppo_tuner_remote_gpu_tf2",
-    main = "examples/learners/ppo_tuner.py",
-    tags = ["team:rllib", "examples", "gpu", "exclusive"],
-    size = "medium",
-    srcs = ["examples/learners/ppo_tuner.py"],
-    args = ["--framework=tf2", "--config=remote-gpu"]
-)
-
-#@OldAPIStack @HybridAPIStack
-py_test(
-    name = "examples/learners/ppo_tuner_multi_gpu_torch",
-    main = "examples/learners/ppo_tuner.py",
-    tags = ["team:rllib", "examples", "multi_gpu", "exclusive"],
-    size = "medium",
-    srcs = ["examples/learners/ppo_tuner.py"],
-    args = ["--framework=torch", "--config=multi-gpu-ddp"]
-)
-
-#@OldAPIStack @HybridAPIStack
-py_test(
-    name = "examples/learners/ppo_tuner_multi_gpu_tf2",
-    main = "examples/learners/ppo_tuner.py",
-    tags = ["team:rllib", "examples", "multi_gpu", "exclusive"],
-    size = "medium",
-    srcs = ["examples/learners/ppo_tuner.py"],
-    args = ["--framework=tf2", "--config=multi-gpu-ddp"]
+    srcs = ["examples/metrics/custom_metrics_in_env_runners.py"],
+    args = ["--enable-new-api-stack", "--stop-iters=3"]
 )
 
 # subdirectory: multi_agent/
@@ -3258,56 +3117,6 @@ py_test(
 
 #@OldAPIStack
 py_test(
-    name = "examples/cartpole_lstm_impala_tf2",
-    main = "examples/cartpole_lstm.py",
-    tags = ["team:rllib", "exclusive", "examples"],
-    size = "medium",
-    srcs = ["examples/cartpole_lstm.py"],
-    args = ["--run=IMPALA", "--as-test", "--framework=tf2", "--stop-reward=28", "--num-cpus=4"]
-)
-
-#@OldAPIStack
-py_test(
-    name = "examples/cartpole_lstm_impala_torch",
-    main = "examples/cartpole_lstm.py",
-    tags = ["team:rllib", "exclusive", "examples"],
-    size = "medium",
-    srcs = ["examples/cartpole_lstm.py"],
-    args = ["--run=IMPALA", "--as-test", "--framework=torch", "--stop-reward=28", "--num-cpus=4"]
-)
-
-#@OldAPIStack
-py_test(
-    name = "examples/cartpole_lstm_ppo_tf2",
-    main = "examples/cartpole_lstm.py",
-    tags = ["team:rllib", "exclusive", "examples"],
-    size = "large",
-    srcs = ["examples/cartpole_lstm.py"],
-    args = ["--run=PPO", "--as-test", "--framework=tf2", "--stop-reward=28", "--num-cpus=4"]
-)
-
-#@OldAPIStack
-py_test(
-    name = "examples/cartpole_lstm_ppo_torch",
-    main = "examples/cartpole_lstm.py",
-    tags = ["team:rllib", "exclusive", "examples"],
-    size = "medium",
-    srcs = ["examples/cartpole_lstm.py"],
-    args = ["--run=PPO", "--as-test", "--framework=torch", "--stop-reward=28", "--num-cpus=4"]
-)
-
-#@OldAPIStack
-py_test(
-    name = "examples/cartpole_lstm_ppo_torch_with_prev_a_and_r",
-    main = "examples/cartpole_lstm.py",
-    tags = ["team:rllib", "exclusive", "examples"],
-    size = "medium",
-    srcs = ["examples/cartpole_lstm.py"],
-    args = ["--run=PPO", "--as-test", "--framework=torch", "--stop-reward=28", "--num-cpus=4", "--use-prev-action",  "--use-prev-reward"]
-)
-
-#@OldAPIStack
-py_test(
     name = "examples/centralized_critic_tf",
     main = "examples/centralized_critic.py",
     tags = ["team:rllib", "exclusive", "examples"],
@@ -3324,96 +3133,6 @@ py_test(
     size = "medium",
     srcs = ["examples/centralized_critic.py"],
     args = ["--as-test", "--framework=torch", "--stop-reward=7.2"]
-)
-
-#@OldAPIStack
-py_test(
-    name = "examples/centralized_critic_2_tf",
-    main = "examples/centralized_critic_2.py",
-    tags = ["team:rllib", "exclusive", "examples"],
-    size = "medium",
-    srcs = ["examples/centralized_critic_2.py"],
-    args = ["--as-test", "--framework=tf", "--stop-reward=6.0"]
-)
-
-#@OldAPIStack
-py_test(
-    name = "examples/centralized_critic_2_torch",
-    main = "examples/centralized_critic_2.py",
-    tags = ["team:rllib", "exclusive", "examples"],
-    size = "medium",
-    srcs = ["examples/centralized_critic_2.py"],
-    args = ["--as-test", "--framework=torch", "--stop-reward=6.0"]
-)
-
-#@OldAPIStack
-py_test(
-    name = "examples/metrics/custom_metrics_and_callbacks",
-    main = "examples/metrics/custom_metrics_and_callbacks.py",
-    tags = ["team:rllib", "exclusive", "examples"],
-    size = "small",
-    srcs = ["examples/metrics/custom_metrics_and_callbacks.py"],
-    args = ["--stop-iters=2"]
-)
-
-#@OldAPIStack
-py_test(
-    name = "examples/custom_model_loss_and_metrics_ppo_tf",
-    main = "examples/custom_model_loss_and_metrics.py",
-    tags = ["team:rllib", "exclusive", "examples"],
-    size = "small",
-    # Include the json data file.
-    data = ["tests/data/cartpole/small.json"],
-    srcs = ["examples/custom_model_loss_and_metrics.py"],
-    args = ["--run=PPO", "--stop-iters=1", "--framework=tf","--input-files=tests/data/cartpole"]
-)
-
-#@OldAPIStack
-py_test(
-    name = "examples/custom_model_loss_and_metrics_ppo_torch",
-    main = "examples/custom_model_loss_and_metrics.py",
-    tags = ["team:rllib", "exclusive", "examples"],
-    size = "small",
-    # Include the json data file.
-    data = ["tests/data/cartpole/small.json"],
-    srcs = ["examples/custom_model_loss_and_metrics.py"],
-    args = ["--run=PPO", "--framework=torch", "--stop-iters=1", "--input-files=tests/data/cartpole"]
-)
-
-py_test(
-    name = "examples/custom_recurrent_rnn_tokenizer_repeat_after_me_tf2",
-    main = "examples/custom_recurrent_rnn_tokenizer.py",
-    tags = ["team:rllib", "exclusive", "examples"],
-    size = "medium",
-    srcs = ["examples/custom_recurrent_rnn_tokenizer.py"],
-    args = ["--as-test", "--framework=tf2", "--stop-reward=40", "--env=RepeatAfterMeEnv", "--num-cpus=4"]
-)
-
-py_test(
-    name = "examples/custom_recurrent_rnn_tokenizer_repeat_initial_obs_env_tf2",
-    main = "examples/custom_recurrent_rnn_tokenizer.py",
-    tags = ["team:rllib", "examples"],
-    size = "medium",
-    srcs = ["examples/custom_recurrent_rnn_tokenizer.py"],
-    args = ["--as-test", "--framework=tf2", "--stop-reward=10", "--stop-timesteps=300000", "--env=RepeatInitialObsEnv", "--num-cpus=4"]
-)
-
-py_test(
-    name = "examples/custom_recurrent_rnn_tokenizer_repeat_after_me_torch",
-    main = "examples/custom_recurrent_rnn_tokenizer.py",
-    tags = ["team:rllib", "exclusive", "examples"],
-    size = "medium",
-    srcs = ["examples/custom_recurrent_rnn_tokenizer.py"],
-    args = ["--as-test", "--framework=torch", "--stop-reward=40", "--env=RepeatAfterMeEnv", "--num-cpus=4"]
-)
-
-py_test(
-    name = "examples/custom_recurrent_rnn_tokenizer_repeat_initial_obs_env_torch",
-    main = "examples/custom_recurrent_rnn_tokenizer.py",
-    tags = ["team:rllib", "exclusive", "examples"],
-    size = "medium",
-    srcs = ["examples/custom_recurrent_rnn_tokenizer.py"],
-    args = ["--as-test", "--framework=torch", "--stop-reward=10", "--stop-timesteps=300000", "--env=RepeatInitialObsEnv", "--num-cpus=4"]
 )
 
 py_test(

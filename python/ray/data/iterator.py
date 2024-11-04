@@ -726,7 +726,8 @@ class DataIterator(abc.ABC):
             :class:`~ray.data.preprocessors.Concatenator`.
 
             >>> from ray.data.preprocessors import Concatenator
-            >>> preprocessor = Concatenator(output_column_name="features", exclude="target")
+            >>> columns_to_concat = ["sepal length (cm)", "sepal width (cm)", "petal length (cm)", "petal width (cm)"]
+            >>> preprocessor = Concatenator(columns=columns_to_concat, output_column_name="features")
             >>> it = preprocessor.transform(ds).iterator()
             >>> it
             DataIterator(Concatenator
@@ -934,9 +935,13 @@ class DataIterator(abc.ABC):
         ref_bundles_iter, stats, _ = self._to_ref_bundle_iterator()
 
         ref_bundles = list(ref_bundles_iter)
-        logical_plan = LogicalPlan(InputData(input_data=ref_bundles))
+        execution_plan = ExecutionPlan(stats)
+        logical_plan = LogicalPlan(
+            InputData(input_data=ref_bundles),
+            execution_plan._context,
+        )
         return MaterializedDataset(
-            ExecutionPlan(stats),
+            execution_plan,
             logical_plan,
         )
 

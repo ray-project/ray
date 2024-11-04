@@ -4,7 +4,6 @@ import unittest
 import ray
 from ray.rllib.algorithms.callbacks import DefaultCallbacks, make_multi_callbacks
 from ray.rllib.algorithms.ppo import PPOConfig
-from ray.rllib.evaluation.episode import Episode
 from ray.rllib.examples.envs.classes.random_env import RandomEnv
 
 
@@ -55,11 +54,7 @@ class OnEpisodeCreatedCallback(DefaultCallbacks):
 
         # Make sure the passed in episode is really brand new.
         assert episode.env_id == env_index
-        if isinstance(episode, Episode):
-            assert episode.length == 0
-            assert episode.started is False
-        else:
-            assert episode.length == -1
+        assert episode.length == -1
         assert episode.worker is worker
 
 
@@ -75,6 +70,10 @@ class TestCallbacks(unittest.TestCase):
     def test_episode_and_sample_callbacks(self):
         config = (
             PPOConfig()
+            .api_stack(
+                enable_rl_module_and_learner=False,
+                enable_env_runner_and_connector_v2=False,
+            )
             .environment("CartPole-v1")
             .env_runners(num_env_runners=0)
             .callbacks(EpisodeAndSampleCallbacks)
@@ -93,7 +92,12 @@ class TestCallbacks(unittest.TestCase):
     def test_on_sub_environment_created(self):
 
         config = (
-            PPOConfig().environment("CartPole-v1")
+            PPOConfig()
+            .api_stack(
+                enable_rl_module_and_learner=False,
+                enable_env_runner_and_connector_v2=False,
+            )
+            .environment("CartPole-v1")
             # Create 4 sub-environments per remote worker.
             # Create 2 remote workers.
             .env_runners(num_envs_per_env_runner=4, num_env_runners=2)
@@ -126,6 +130,10 @@ class TestCallbacks(unittest.TestCase):
     def test_on_sub_environment_created_with_remote_envs(self):
         config = (
             PPOConfig()
+            .api_stack(
+                enable_rl_module_and_learner=False,
+                enable_env_runner_and_connector_v2=False,
+            )
             .environment("CartPole-v1")
             .env_runners(
                 # Make each sub-environment a ray actor.
@@ -167,6 +175,10 @@ class TestCallbacks(unittest.TestCase):
         # starts.
         config = (
             PPOConfig()
+            .api_stack(
+                enable_rl_module_and_learner=False,
+                enable_env_runner_and_connector_v2=False,
+            )
             .environment(
                 RandomEnv,
                 env_config={
