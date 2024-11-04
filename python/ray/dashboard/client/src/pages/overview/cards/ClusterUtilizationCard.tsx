@@ -25,6 +25,9 @@ export const ClusterUtilizationCard = ({
     dashboardUids?.default ?? "rayDefaultDashboard";
   const path = `/d-solo/${grafanaDefaultDashboardUid}/default-dashboard?orgId=1&theme=light&panelId=41&var-datasource=${dashboardDatasource}`;
   const timeRangeParams = "&from=now-30m&to=now";
+  const currentTimezone =
+    localStorage.getItem("timezone") ||
+    Intl.DateTimeFormat().resolvedOptions().timeZone;
 
   if (!metricsContextLoaded || grafanaHost === "DISABLED") {
     return null;
@@ -51,7 +54,7 @@ export const ClusterUtilizationCard = ({
             component="iframe"
             title="Cluster Utilization"
             sx={{ flex: 1 }}
-            src={`${grafanaHost}${path}&refresh${timeRangeParams}&var-SessionName=${sessionName}`}
+            src={`${grafanaHost}${path}&refresh&timezone=${currentTimezone}${timeRangeParams}&var-SessionName=${sessionName}`}
             frameBorder="0"
           />
           <Box

@@ -82,6 +82,9 @@ export const ServeReplicaMetricsSection = ({
   const toParam = to !== null ? `&to=${to}` : "";
   const timeRangeParams = `${fromParam}${toParam}`;
   const refreshParams = refresh ? `&refresh=${refresh}` : "";
+  const currentTimezone =
+    localStorage.getItem("timezone") ||
+    Intl.DateTimeFormat().resolvedOptions().timeZone;
 
   const replicaButtonUrl = useViewServeDeploymentMetricsButtonUrl(
     deploymentName,
@@ -179,7 +182,7 @@ export const ServeReplicaMetricsSection = ({
           {METRICS_CONFIG.map(({ title, pathParams }) => {
             const path =
               `/d-solo/${grafanaServeDashboardUid}?${pathParams}` +
-              `${refreshParams}${timeRangeParams}&var-Deployment=${encodeURIComponent(
+              `${refreshParams}&timezone=${currentTimezone}${timeRangeParams}&var-Deployment=${encodeURIComponent(
                 deploymentName,
               )}&var-Replica=${encodeURIComponent(
                 replicaId,

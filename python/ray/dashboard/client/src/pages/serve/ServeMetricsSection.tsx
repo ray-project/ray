@@ -103,6 +103,9 @@ export const ServeMetricsSection = ({
   const toParam = to !== null ? `&to=${to}` : "";
   const timeRangeParams = `${fromParam}${toParam}`;
   const refreshParams = refresh ? `&refresh=${refresh}` : "";
+  const currentTimezone =
+    localStorage.getItem("timezone") ||
+    Intl.DateTimeFormat().resolvedOptions().timeZone;
 
   return grafanaHost === undefined || !prometheusHealth ? null : (
     <CollapsibleSection
@@ -196,7 +199,7 @@ export const ServeMetricsSection = ({
           {metricsConfig.map(({ title, pathParams }) => {
             const path =
               `/d-solo/${grafanaServeDashboardUid}?${pathParams}` +
-              `${refreshParams}${timeRangeParams}&var-datasource=${dashboardDatasource}`;
+              `${refreshParams}&timezone=${currentTimezone}${timeRangeParams}&var-datasource=${dashboardDatasource}`;
             return (
               <Paper
                 key={pathParams}

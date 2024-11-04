@@ -564,7 +564,9 @@ const MetricsSection = ({
   dashboardDatasource,
 }: MetricsSectionProps) => {
   const { grafanaHost, sessionName } = useContext(GlobalContext);
-
+  const currentTimezone =
+    localStorage.getItem("timezone") ||
+    Intl.DateTimeFormat().resolvedOptions().timeZone;
   return (
     <CollapsibleSection
       key={title}
@@ -585,7 +587,7 @@ const MetricsSection = ({
         {contents.map(({ title, pathParams }) => {
           const path =
             `/d-solo/${dashboardUid}?${pathParams}` +
-            `&${refreshParams}${timeRangeParams}&var-SessionName=${sessionName}&var-datasource=${dashboardDatasource}`;
+            `&${refreshParams}&timezone=${currentTimezone}${timeRangeParams}&var-SessionName=${sessionName}&var-datasource=${dashboardDatasource}&timezone=${currentTimezone}`;
           return (
             <Paper
               key={pathParams}
