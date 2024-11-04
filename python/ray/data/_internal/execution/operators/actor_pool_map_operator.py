@@ -1,4 +1,3 @@
-import collections
 import logging
 from dataclasses import dataclass
 from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple, Union
@@ -8,6 +7,7 @@ from ray.actor import ActorHandle
 from ray.core.generated import gcs_pb2
 from ray.data._internal.compute import ActorPoolStrategy
 from ray.data._internal.execution.autoscaler import AutoscalingActorPool
+from ray.data._internal.execution.bundle_queue import create_bundle_queue
 from ray.data._internal.execution.interfaces import (
     ExecutionOptions,
     ExecutionResources,
@@ -109,7 +109,7 @@ class ActorPoolMapOperator(MapOperator):
 
         self._actor_pool = _ActorPool(compute_strategy, self._start_actor)
         # A queue of bundles awaiting dispatch to actors.
-        self._bundle_queue = collections.deque()
+        self._bundle_queue = create_bundle_queue()
         # Cached actor class.
         self._cls = None
         # Whether no more submittable bundles will be added.
@@ -175,7 +175,7 @@ class ActorPoolMapOperator(MapOperator):
         return actor, res_ref
 
     def _add_bundled_input(self, bundle: RefBundle):
-        self._bundle_queue.append(bundle)
+        self._bundle_queue.add(bundle)
         self._metrics.on_input_queued(bundle)
         # Try to dispatch all bundles in the queue, including this new bundle.
         self._dispatch_tasks()
@@ -191,14 +191,14 @@ class ActorPoolMapOperator(MapOperator):
         while self._bundle_queue:
             # Pick an actor from the pool.
             if self._actor_locality_enabled:
-                actor = self._actor_pool.pick_actor(self._bundle_queue[0])
+                actor = self._actor_pool.pick_actor(self._bundle_queue.peek())
             else:
                 actor = self._actor_pool.pick_actor()
             if actor is None:
                 # No actors available for executing the next task.
                 break
             # Submit the map task.
-            bundle = self._bundle_queue.popleft()
+            bundle = self._bundle_queue.pop()
             self._metrics.on_input_dequeued(bundle)
             input_blocks = [block for block, _ in bundle.blocks]
             ctx = TaskContext(
