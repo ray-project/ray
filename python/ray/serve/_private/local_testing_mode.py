@@ -22,9 +22,24 @@ from ray.serve.handle import (
     DeploymentResponseGenerator,
 )
 
-# TODO(edoakes): figure out how to properly configure logging.
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
+
+def _validate_deployment_options(
+    deployment: Deployment,
+    deployment_id: DeploymentID,
+):
+    if "num_gpus" in deployment.ray_actor_options:
+        logger.warning(
+            f"Deployment {deployment_id} has num_gpus configured. "
+            "CUDA_VISIBLE_DEVICES is not managed automatically in local testing mode. "
+        )
+
+    if "runtime_env" in deployment.ray_actor_options:
+        logger.warning(
+            f"Deployment {deployment_id} has runtime_env configured. "
+            "runtime_envs are ignored in local testing mode."
+        )
 
 def make_local_deployment_handle(
     deployment: Deployment,
@@ -42,16 +57,21 @@ def make_local_deployment_handle(
     The constructor for the user callable is run eagerly in this function to
     ensure that any exceptions are raised during `serve.run`.
     """
+    deployment_id = DeploymentID(deployment.name, app_name)
+    _validate_deployment_options(
+        deployment, deployment_id
+    )
     user_callable_wrapper = UserCallableWrapper(
         deployment.func_or_class,
         deployment.init_args,
         deployment.init_kwargs,
-        deployment_id=DeploymentID(deployment.name, app_name),
+        deployment_id=deployment_id,
     )
     try:
+        logger.info(f"Initializing local replica class for {deployment_id}.")
         user_callable_wrapper.initialize_callable().result()
     except Exception:
-        logger.exception(f"Failed to initialize deployment '{deployment.name}':")
+        logger.exception(f"Failed to initialize deployment {deployment_id}.")
         raise
 
     def _create_local_router(
@@ -199,7 +219,6 @@ class LocalRouter(Router):
         deployment_id: DeploymentID,
         handle_options: Any,
     ):
-        logger.info(f"Initializing local replica class for {deployment_id}.")
         self._deployment_id = deployment_id
         self._user_callable_wrapper = user_callable_wrapper
         assert (
