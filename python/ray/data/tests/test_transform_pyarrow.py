@@ -485,16 +485,17 @@ def test_fallback_to_pandas_on_incompatible_data(
 
 
 @pytest.mark.parametrize(
-    "op, data",
+    "op, data, should_fail",
     [
-        ("map", [1, 2**100]),
-        ("map_batches", [[1.0], [2**4]]),
+        ("map", [1, 2**100], False),
+        ("map_batches", [[1.0], [2**4]], True),
     ],
 )
-def test_pyarrow_conversion_error_detailed_info(
+def test_pyarrow_conversion_error_handling(
     ray_start_regular_shared,
     op,
     data,
+    should_fail: bool,
 ):
     # Ray Data infers the block type (arrow or pandas) and the block schema
     # based on the first UDF output.
@@ -506,13 +507,20 @@ def test_pyarrow_conversion_error_detailed_info(
     # about the incompatible data.
     ds = _create_dataset(op, data)
 
-    with pytest.raises(Exception) as e:
+    if should_fail:
+        with pytest.raises(Exception) as e:
+            ds.materialize()
+
+        error_msg = str(e.value)
+        expected_msg = "ArrowConversionError: Error converting data to Arrow:"
+        assert expected_msg in error_msg, error_msg
+        assert "my_data" in error_msg, error_msg
+    else:
         ds.materialize()
 
-    error_msg = str(e.value)
-    expected_msg = "ArrowConversionError: Error converting data to Arrow:"
-    assert expected_msg in error_msg, error_msg
-    assert "my_data" in error_msg, error_msg
+        assert ds.take_all() == [
+            {"id": i, "my_data": data[i]} for i in range(len(data))
+        ]
 
 
 if __name__ == "__main__":
