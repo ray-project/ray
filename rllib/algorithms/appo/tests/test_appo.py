@@ -145,7 +145,7 @@ class TestAPPO(unittest.TestCase):
             )
             .resources(num_gpus=0)
             .training(
-                train_batch_size_p=20,
+                train_batch_size_per_learner=20,
                 entropy_coeff=0.01,
                 # Setup lr schedule for testing.
                 lr_schedule=[[0, 5e-2], [500, 0.0]],
