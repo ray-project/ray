@@ -39,6 +39,6 @@ EOF
 
 USER forge
 ENV CC=clang
-ENV CXX=clang++-12
+ENV CXX=clang++-18
 
 CMD ["echo", "ray release-automation forge"]

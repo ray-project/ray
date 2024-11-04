@@ -30,6 +30,6 @@ ln -s /usr/local/bin/bazelisk /usr/local/bin/bazel
 EOF
 
 ENV CC=clang
-ENV CXX=clang++-12
+ENV CXX=clang++-18
 
 CMD ["echo", "ray release-automation forge"]

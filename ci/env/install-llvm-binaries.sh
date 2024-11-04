@@ -25,13 +25,13 @@ log_err() {
 
 trap '[ $? -eq 0 ] || log_err' EXIT
 
-FILE_NAME="clang+llvm-12.0.1-x86_64-linux-gnu-ubuntu-16.04.tar.xz"
+FILE_NAME="clang+llvm-18.1.8-x86_64-linux-gnu-ubuntu-18.04.tar.xz"
 
 if [ "$HOSTTYPE" = "aarch64" ]; then
-  FILE_NAME="clang+llvm-12.0.1-aarch64-linux-gnu.tar.xz "
+  FILE_NAME="clang+llvm-18.1.8-aarch64-linux-gnu.tar.xz "
 fi
 
-LLVM_URL="https://github.com/llvm/llvm-project/releases/download/llvmorg-12.0.1/${FILE_NAME}"
+LLVM_URL="https://github.com/llvm/llvm-project/releases/download/llvmorg-18.1.8/${FILE_NAME}"
 
 TARGET_DIR="/opt/llvm"
 
