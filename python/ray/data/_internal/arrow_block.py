@@ -61,6 +61,7 @@ ARROW_OBJECT_FIXABLE_ERRORS = (
     pyarrow.lib.ArrowNotImplementedError,
     pyarrow.lib.ArrowInvalid,
     pyarrow.lib.ArrowCapacityError,
+    OverflowError,
 )
 
 
