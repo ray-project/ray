@@ -51,7 +51,7 @@ from ray.serve.exceptions import RayServeException
 from ray.serve.handle import DeploymentHandle
 from ray.serve.multiplex import _ModelMultiplexWrapper
 from ray.serve.schema import LoggingConfig, ServeInstanceDetails, ServeStatus
-from ray.serve.testing import make_local_deployment_handle
+from ray.serve._private.local_testing_mode import make_local_deployment_handle
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
 from ray.serve._private import api as _private_api  # isort:skip

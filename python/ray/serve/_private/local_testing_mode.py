@@ -57,7 +57,7 @@ def make_local_deployment_handle(
     def _create_local_router(
         handle_id: str, deployment_id: DeploymentID, handle_options: Any
     ) -> Router:
-        return _LocalRouter(
+        return LocalRouter(
             user_callable_wrapper,
             deployment_id=deployment_id,
             handle_options=handle_options,
@@ -70,7 +70,7 @@ def make_local_deployment_handle(
     )
 
 
-class _LocalReplicaResult(ReplicaResult):
+class LocalReplicaResult(ReplicaResult):
     """ReplicaResult used by in-process Deployment Handles."""
 
     def __init__(
@@ -192,7 +192,7 @@ class _LocalReplicaResult(ReplicaResult):
         self._future.cancel()
 
 
-class _LocalRouter(Router):
+class LocalRouter(Router):
     def __init__(
         self,
         user_callable_wrapper: UserCallableWrapper,
@@ -239,7 +239,7 @@ class _LocalRouter(Router):
         request_meta: RequestMetadata,
         *request_args,
         **request_kwargs,
-    ) -> concurrent.futures.Future[_LocalReplicaResult]:
+    ) -> concurrent.futures.Future[LocalReplicaResult]:
         request_args, request_kwargs = self._resolve_deployment_responses(
             request_args, request_kwargs
         )
@@ -263,7 +263,7 @@ class _LocalRouter(Router):
         # Conform to the router interface of returning a future to the ReplicaResult.
         noop_future = concurrent.futures.Future()
         noop_future.set_result(
-            _LocalReplicaResult(
+            LocalReplicaResult(
                 self._user_callable_wrapper.call_user_method(
                     request_meta,
                     request_args,
