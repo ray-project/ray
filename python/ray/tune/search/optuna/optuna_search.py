@@ -135,8 +135,8 @@ class OptunaSearch(Searcher):
                 a delay when suggesting new configurations.
                 This is an Optuna issue and may be fixed in a future
                 Optuna release.
-        storage: Optuna storage used for storing trial results to s
-            torages other than in-momemory storage, 
+        storage: Optuna storage used for storing trial results to
+            storages other than in-momemory storage,
             for instance optuna.storages.RDBStorage.
         seed: Seed to initialize sampler with. This parameter is only
             used when ``sampler=None``. In all other cases, the sampler
