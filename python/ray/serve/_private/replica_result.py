@@ -184,4 +184,5 @@ class ActorReplicaResult(ReplicaResult):
         assert (
             self._is_streaming
         ), "to_object_ref_gen can only be called on a streaming ReplicaActorResult."
+
         return self._obj_ref_gen
