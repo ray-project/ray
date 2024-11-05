@@ -26,6 +26,8 @@
 #include "ray/util/event.h"
 // clang-format on
 
+using json = nlohmann::json;
+
 namespace ray {
 
 std::string GenerateLogDir() {
