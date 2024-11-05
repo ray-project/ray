@@ -2877,7 +2877,14 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
         else:
             driver = {
                 "CPU": cf.num_cpus_for_main_process,
-                "GPU": 0 if cf._fake_gpus else cf.num_gpus,
+                # Ignore `cf.num_gpus` on the new API stack.
+                "GPU": (
+                    0
+                    if cf._fake_gpus
+                    else cf.num_gpus
+                    if not cf.enable_rl_module_and_learner
+                    else 0
+                ),
             }
 
         # resources for remote rollout env samplers
