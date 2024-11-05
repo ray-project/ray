@@ -12,7 +12,7 @@ INTERNAL_PIP_FILENAME = "ray_runtime_env_internal_pip_requirements.txt"
 MAX_INTERNAL_PIP_FILENAME_TRIES = 100
 
 
-def dump_requirements_txt(requirements_file: str, pip_packages: List[str]):
+def gen_requirements_txt(requirements_file: str, pip_packages: List[str]):
     """Dump [pip_packages] to the given [requirements_file] for later env setup."""
     with open(requirements_file, "w") as file:
         for line in pip_packages:

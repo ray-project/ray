@@ -83,7 +83,7 @@ class UvProcessor:
         # Avoid blocking the event loop.
         loop = get_running_loop()
         await loop.run_in_executor(
-            None, dependency_utils.dump_requirements_txt, requirements_file, uv_packages
+            None, dependency_utils.gen_requirements_txt, requirements_file, uv_packages
         )
 
         # Install all dependencies.

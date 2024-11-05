@@ -138,7 +138,7 @@ class PipProcessor:
         loop = get_running_loop()
         await loop.run_in_executor(
             None,
-            dependency_utils.dump_requirements_txt,
+            dependency_utils.gen_requirements_txt,
             pip_requirements_file,
             pip_packages,
         )
