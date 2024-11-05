@@ -131,7 +131,7 @@ Collective functions operate on collective groups.
 A collective group contains a number of processes (in Ray, they are usually Ray-managed actors or tasks) that will together enter the collective function calls.
 Before making collective calls, users need to declare a set of actors/tasks, statically, as a collective group.
 
-Below is an example code snippet that uses the two APIs ``init_collective_group()`` and ``declare_collective_group()`` to initialize collective groups among a few
+Below is an example code snippet that uses the two APIs ``init_collective_group()`` and ``create_collective_group()`` to initialize collective groups among a few
 remote actors. Refer to `APIs <#api-reference>`_ for the detailed descriptions of the two APIs.
 
 .. code-block:: python
@@ -181,7 +181,7 @@ remote actors. Refer to `APIs <#api-reference>`_ for the detailed descriptions o
       "ranks": [0, 1],
       "backend": "nccl"
    }
-   collective.declare_collective_group(workers, **_options)
+   collective.create_collective_group(workers, **_options)
    results = ray.get([w.compute.remote() for w in workers])
 
 Note that for the same set of actors/task processes, multiple collective groups can be constructed, with ``group_name`` as their unique identifier.
@@ -198,31 +198,37 @@ Note that the current set of collective communication API are imperative, and ex
 * All the collective APIs are synchronous blocking calls
 * Since each API only specifies a part of the collective communication, the API is expected to be called by each participating process of the (pre-declared) collective group.
   Upon all the processes have made the call and rendezvous with each other, the collective communication happens and proceeds.
-* The APIs are imperative and the communication happends out-of-band --- they need to be used inside the collective process (actor/task) code.
+* The APIs are imperative and the communication happens out-of-band --- they need to be used inside the collective process (actor/task) code.
 
 An example of using ``ray.util.collective.allreduce`` is below:
 
 .. code-block:: python
 
-   import ray
-   import cupy
-   import ray.util.collective as col
+  import ray
+  import cupy
+  import ray.util.collective as col
 
 
-   @ray.remote(num_gpus=1)
-   class Worker:
-       def __init__(self):
-           self.buffer = cupy.ones((10,), dtype=cupy.float32)
+  @ray.remote(num_gpus=1)
+  class Worker:
+      def __init__(self, world_size, rank, data):
+          self.buffer = data
+          col.init_collective_group(world_size, rank, "nccl", "default")
 
-       def compute(self):
-           col.allreduce(self.buffer, "default")
-           return self.buffer
+      def compute(self):
+          col.allreduce(self.buffer, "default")
+          print(f"Reduced data {self.buffer}")
+          return self.buffer
 
-   # Create two actors A and B and create a collective group following the previous example...
-   A = Worker.remote()
-   B = Worker.remote()
-   # Invoke allreduce remotely
-   ray.get([A.compute.remote(), B.compute.remote()])
+  # Create two actors A and B and compute reduce across both (1 + 1 = 2)
+  A = Worker.remote(world_size=2, rank=0, data=cupy.ones((10,), dtype=cupy.float32))
+  B = Worker.remote(world_size=2, rank=1, data=cupy.ones((10,), dtype=cupy.float32))
+  # Invoke allreduce remotely
+  ray.get([A.compute.remote(), B.compute.remote()])
+
+  # Result:
+  # (Worker pid=3212289) [2. 2. 2. 2. 2. 2. 2. 2. 2. 2.]
+  # (Worker pid=3212282) [2. 2. 2. 2. 2. 2. 2. 2. 2. 2.]
 
 Point-to-point Communication
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -235,44 +241,54 @@ and must successfully rendezvous with each other to proceed. See the code exampl
 
 .. code-block:: python
 
-   import ray
-   import cupy
-   import ray.util.collective as col
+  import ray
+  import cupy
+  import ray.util.collective as col
 
 
-   @ray.remote(num_gpus=1)
-   class Worker:
-       def __init__(self):
-           self.buffer = cupy.ones((10,), dtype=cupy.float32)
+  @ray.remote(num_gpus=1)
+  class Worker:
+      def __init__(self, world_size, rank, data):
+          self.buffer = data
+          col.init_collective_group(world_size, rank, "nccl", "default")
 
-       def get_buffer(self):
-           return self.buffer
+      def get_buffer(self):
+          return self.buffer
 
-       def do_send(self, target_rank=0):
-           # this call is blocking
-           col.send(target_rank)
+      def do_send(self, dst_rank=0):
+          # this call is blocking
+          col.send(self.buffer, dst_rank)
 
-       def do_recv(self, src_rank=0):
-           # this call is blocking
-           col.recv(src_rank)
+      def do_recv(self, src_rank=0):
+          # this call is blocking
+          col.recv(self.buffer, src_rank)
+          print(f"Received data is {self.buffer}")
 
-       def do_allreduce(self):
-           # this call is blocking as well
-           col.allreduce(self.buffer)
-           return self.buffer
+  # Create two actors, A sends some data to B, and B prints it out
+  A = Worker.remote(2, 0, cupy.ones((4, 4), dtype=cupy.float32))
+  B = Worker.remote(2, 1, cupy.zeros((4, 4), dtype=cupy.float32))
 
-   # Create two actors
-   A = Worker.remote()
-   B = Worker.remote()
+  _options = {
+    "group_name": "177",
+    "world_size": 2,
+    "ranks": [0, 1],
+    "backend": "nccl"
+  }
 
-   # Put A and B in a collective group
-   col.declare_collective_group([A, B], options={rank=[0, 1], ...})
+  # Put A and B in a collective group
+  col.create_collective_group([A, B], **_options)
 
-   # let A to send a message to B; a send/recv has to be specified once at each worker
-   ray.get([A.do_send.remote(target_rank=1), B.do_recv.remote(src_rank=0)])
+  # let A to send a message to B; a send/recv has to be specified once at each worker
+  ray.get([A.do_send.remote(dst_rank=1), B.do_recv.remote(src_rank=0)])
 
-   # An anti-pattern: the following code will hang, because it doesn't instantiate the recv side call
-   ray.get([A.do_send.remote(target_rank=1)])
+  # An anti-pattern: the following code will hang, because it doesn't instantiate the recv side call
+  ray.get([A.do_send.remote(target_rank=1)])
+
+  # Result:
+  # (Worker pid=3282442) Received data is [[1. 1. 1. 1.]
+  # (Worker pid=3282442)  [1. 1. 1. 1.]
+  # (Worker pid=3282442)  [1. 1. 1. 1.]
+  # (Worker pid=3282442)  [1. 1. 1. 1.]]
 
 Single-GPU and Multi-GPU Collective Primitives
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
