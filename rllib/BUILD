@@ -2430,6 +2430,7 @@ py_test(
 )
 
 # TODO (sven): Learns, but very slowly. Needs further tuning.
+#  ICM seems to be broken due to a bug that's fixed in a still-open PR.
 # py_test(
 #    name = "examples/curiosity/intrinsic_curiosity_model_based_curiosity_dqn",
 #    main = "examples/curiosity/intrinsic_curiosity_model_based_curiosity.py",
@@ -2548,7 +2549,7 @@ py_test(
 )
 
 py_test(
-    name = "examples/evaluation/evaluation_parallel_to_training_1011_ts_torch",
+    name = "examples/evaluation/evaluation_parallel_to_training_1011ts",
     main = "examples/evaluation/evaluation_parallel_to_training.py",
     tags = ["team:rllib", "exclusive", "examples"],
     size = "medium",
@@ -2557,7 +2558,7 @@ py_test(
 )
 
 py_test(
-    name = "examples/evaluation/evaluation_parallel_to_training_multi_agent_2022_ts_torch",
+    name = "examples/evaluation/evaluation_parallel_to_training_multi_agent_2022ts",
     main = "examples/evaluation/evaluation_parallel_to_training.py",
     tags = ["team:rllib", "exclusive", "examples"],
     size = "medium",
