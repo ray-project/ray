@@ -4,7 +4,6 @@ import unittest
 
 import ray
 from ray import tune
-from ray.rllib.algorithms.appo import APPOConfig
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
 from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.examples.envs.classes.cartpole_crashing import CartPoleCrashing
@@ -55,7 +54,7 @@ class TestCallbacks(unittest.TestCase):
         tune.register_env("env", lambda cfg: CartPoleCrashing(cfg))
 
         config = (
-            APPOConfig()
+            PPOConfig()
             .environment("env")
             .callbacks(OnWorkersRecreatedCallbacks)
             .env_runners(num_env_runners=3)
