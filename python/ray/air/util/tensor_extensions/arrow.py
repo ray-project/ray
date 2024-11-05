@@ -10,7 +10,6 @@ import pyarrow as pa
 from packaging.version import parse as parse_version
 
 from ray._private.utils import _get_pyarrow_version
-from ray.air.constants import MAX_REPR_LENGTH
 from ray.air.util.tensor_extensions.utils import (
     _is_ndarray_variable_shaped_tensor,
     create_ragged_ndarray,
