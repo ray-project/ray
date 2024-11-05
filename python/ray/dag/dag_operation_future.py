@@ -2,6 +2,7 @@ from abc import ABC, abstractmethod
 import time
 from typing import TYPE_CHECKING, Any, Generic, Optional, TypeVar, NamedTuple
 from ray.util.annotations import DeveloperAPI
+import nvtx
 
 
 if TYPE_CHECKING:
@@ -107,6 +108,7 @@ class GPUFutureRecord(NamedTuple):
 
 @DeveloperAPI
 class TimedGPUFuture(GPUFuture):
+    @nvtx.annotate("__init__", color="blue")
     def __init__(
         self, buf: Any, stream: Optional["cp.cuda.Stream"] = None, operation_str=""
     ):
@@ -122,6 +124,7 @@ class TimedGPUFuture(GPUFuture):
         self._operation_str = operation_str
         self._init_timestamp = time.monotonic()
 
+    @nvtx.annotate("wait", color="blue")
     def wait(self) -> Any:
         """
         Wait for the future on the current CUDA stream and return the result from

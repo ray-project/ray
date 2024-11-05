@@ -175,6 +175,8 @@ class _NcclGroup(GPUCommunicator):
                 actor's default device.
             peer_rank: The rank of the actor to send to.
         """
+        import nvtx
+        nvtx.range_push(f"NCCL send {buf[0][0].item()}", color="red")
         if self._closed:
             raise RayChannelError("NCCL group has been destroyed.")
 
@@ -195,6 +197,7 @@ class _NcclGroup(GPUCommunicator):
             peer_rank,
             self._send_stream.ptr,
         )
+        nvtx.range_pop()
 
     def recv(
         self,
@@ -214,6 +217,8 @@ class _NcclGroup(GPUCommunicator):
             buf: The torch.Tensor to receive into. This buffer is safe to read
             peer_rank: The rank of the actor to receive from.
         """
+        import nvtx
+        nvtx.range_push(f"NCCL recv", color="red")
         if self._closed:
             raise RayChannelError("NCCL group has been destroyed.")
         assert allocator is not None, "NCCL group requires a tensor allocator"
@@ -251,6 +256,7 @@ class _NcclGroup(GPUCommunicator):
 
         if self._closed:
             raise RayChannelError("NCCL group has been destroyed.")
+        nvtx.range_pop()
         return buf
 
     def allreduce(
