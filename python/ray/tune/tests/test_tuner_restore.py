@@ -595,14 +595,14 @@ def test_restore_retry(ray_start_2_cpus, tmpdir, retry_num):
                 failure_config=FailureConfig(max_failures=1),
                 checkpoint_config=CheckpointConfig(checkpoint_frequency=1),
             ),
-            param_space={"tag_file_path": tag_file},
+            param_space={"tag_file_path": tag_file, "retry_num_to_fail": retry_num},
         )
         results = tuner.fit()
         [result] = list(results)
         if retry_num > 0:
             assert result.metrics["score"] == 5
         else:
-            assert result.metrics["score"] == 2
+            assert result.metrics["score"] == 5
 
 
 def test_restore_overwrite_trainable(ray_start_2_cpus, tmpdir):
