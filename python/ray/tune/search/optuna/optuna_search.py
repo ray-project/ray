@@ -379,10 +379,8 @@ class OptunaSearch(Searcher):
                 "`optuna.samplers.BaseStorage` "
                 "as a storage to `OptunaSearcher`."
             )
-            self._storage = storage
-        else:
-            self._storage = None
 
+        self._storage = storage
         self._completed_trials = set()
 
         self._ot_trials = {}
