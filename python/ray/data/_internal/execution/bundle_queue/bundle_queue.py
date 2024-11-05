@@ -24,6 +24,7 @@ class BundleQueue(abc.ABC):
     @abc.abstractmethod
     def pop(self) -> "RefBundle":
         """Remove and return the head of the queue.
+
         Raises:
             IndexError: If the queue is empty.
         """
@@ -32,6 +33,7 @@ class BundleQueue(abc.ABC):
     @abc.abstractmethod
     def peek(self) -> Optional["RefBundle"]:
         """Return the head of the queue without removing it.
+
         If the queue is empty, return `None`.
         """
         ...
@@ -54,6 +56,7 @@ class BundleQueue(abc.ABC):
     @abc.abstractmethod
     def is_empty(self):
         """Return whether this queue and all of its internal data structures are empty.
+
         This method is used for testing.
         """
         ...
