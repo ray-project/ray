@@ -152,6 +152,7 @@ class CPUNcclGroup(ray_channel.nccl_group._NcclGroup):
         return buf
 
     def allreduce(self, send_buf: torch.Tensor, recv_buf: torch.Tensor, op: ReduceOp = ReduceOp.SUM):
+        # todo(tfsingh) — I think the comm_key used here should be interpretable
         comm_key = f"communicator_{id(self)}"
         self._ensure_communicator_exists(comm_key)
         comm = ray.get_actor(name=comm_key)
