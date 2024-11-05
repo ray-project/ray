@@ -13,7 +13,7 @@ from importlib import import_module
 from typing import Any, AsyncGenerator, Callable, Dict, Optional, Tuple, Union
 
 import starlette.responses
-from starlette.types import ASGIApp
+from starlette.types import ASGIApp, Message
 
 import ray
 from ray import cloudpickle
@@ -464,7 +464,7 @@ class ReplicaActor:
 
             # `asyncio.Event`s are not thread safe, so `call_soon_threadsafe` must be
             # used to interact with the result queue from the user callable thread.
-            async def _enqueue_thread_safe(item: Any):
+            def _enqueue_thread_safe(item: Any):
                 self._event_loop.call_soon_threadsafe(result_queue.put_nowait, item)
 
             call_user_method_future = asyncio.wrap_future(
@@ -1064,10 +1064,14 @@ class UserCallableWrapper:
         receive_task = self._user_code_event_loop.create_task(
             receive.fetch_until_disconnect()
         )
+
+        async def _send(message: Message):
+            return generator_result_callback(message)
+
         asgi_args = ASGIArgs(
             scope=scope,
             receive=receive,
-            send=generator_result_callback,
+            send=_send,
         )
         if is_asgi_app:
             request_args = asgi_args.to_args_tuple()
@@ -1128,12 +1132,12 @@ class UserCallableWrapper:
                 for r in result:
                     if request_metadata.is_grpc_request:
                         r = (request_metadata.grpc_context, r.SerializeToString())
-                    await generator_result_callback(r)
+                    generator_result_callback(r)
             elif result_is_async_gen:
                 async for r in result:
                     if request_metadata.is_grpc_request:
                         r = (request_metadata.grpc_context, r.SerializeToString())
-                    await generator_result_callback(r)
+                    generator_result_callback(r)
             elif request_metadata.is_http_request and not is_asgi_app:
                 # For the FastAPI codepath, the response has already been sent over
                 # ASGI, but for the vanilla deployment codepath we need to send it.

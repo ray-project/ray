@@ -21,7 +21,8 @@ def test_cancel_on_http_client_disconnect_during_execution(
 
     @serve.deployment
     async def inner():
-        await send_signal_on_cancellation(inner_signal_actor)
+        async with send_signal_on_cancellation(inner_signal_actor):
+            pass
 
     if use_fastapi:
         app = FastAPI()
@@ -35,7 +36,8 @@ def test_cancel_on_http_client_disconnect_during_execution(
             @app.get("/")
             async def wait_for_cancellation(self):
                 _ = self._handle.remote()
-                await send_signal_on_cancellation(outer_signal_actor)
+                async with send_signal_on_cancellation(outer_signal_actor):
+                    pass
 
     else:
 
@@ -46,7 +48,8 @@ def test_cancel_on_http_client_disconnect_during_execution(
 
             async def __call__(self, request: Request):
                 _ = self._handle.remote()
-                await send_signal_on_cancellation(outer_signal_actor)
+                async with send_signal_on_cancellation(outer_signal_actor):
+                    pass
 
     serve.run(Ingress.bind(inner.bind()))
 

@@ -66,9 +66,8 @@ class FakeReplicaActor:
         cancelled_signal_actor = kwargs.pop("cancelled_signal_actor", None)
         if cancelled_signal_actor is not None:
             executing_signal_actor = kwargs.pop("executing_signal_actor")
-            await executing_signal_actor.send.remote()
-            await send_signal_on_cancellation(cancelled_signal_actor)
-            return
+            async with send_signal_on_cancellation(cancelled_signal_actor):
+                await executing_signal_actor.send.remote()
 
         yield pickle.dumps(self._replica_queue_length_info)
         if not self._replica_queue_length_info.accepted:

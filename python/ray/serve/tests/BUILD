@@ -444,3 +444,26 @@ py_test_module_list(
     ],
 )
 
+
+# Test handle API with local testing mode.
+py_test_module_list(
+    size = "small",
+    env = {"RAY_SERVE_FORCE_LOCAL_TESTING_MODE": "1"},
+    files = [
+        "test_handle_1.py",
+        "test_handle_2.py",
+        "test_handle_cancellation.py",
+        "test_handle_streaming.py",
+    ],
+    name_suffix = "_with_local_testing_mode",
+    tags = [
+        "exclusive",
+        "team:serve",
+    ],
+    deps = [
+        ":common",
+        ":conftest",
+        "//python/ray/serve:serve_lib",
+    ],
+)
+
