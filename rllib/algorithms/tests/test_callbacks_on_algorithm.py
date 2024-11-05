@@ -55,7 +55,7 @@ class TestCallbacks(unittest.TestCase):
 
         config = (
             PPOConfig()
-            .environment("env")
+            .environment("env", env_config={"p_crash": 1.0})
             .callbacks(OnWorkersRecreatedCallbacks)
             .env_runners(num_env_runners=3)
             .fault_tolerance(
@@ -76,9 +76,8 @@ class TestCallbacks(unittest.TestCase):
         # Train a bit (and have the envs/workers crash).
         for _ in range(3):
             print(algo.train())
-        # Restore workers after the iteration (automatically, workers are only
-        # restored before the next iteration).
-        time.sleep(20.0)
+            time.sleep(5.0)
+
         algo.restore_workers(algo.env_runner_group)
         # After training, the `on_workers_recreated` callback should have captured
         # the exact worker IDs recreated (the exact number of times) as the actor
