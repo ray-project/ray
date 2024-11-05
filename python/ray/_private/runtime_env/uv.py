@@ -87,17 +87,13 @@ class UvProcessor:
         )
 
         # Install all dependencies.
-        #
-        # --no-cache-dir
-        #   Disable the cache, the pip runtime env is a one-time installation,
-        #   and we don't need to handle the pip cache broken.
         pip_install_cmd = [
             python,
             "-m",
             "uv",
             "pip",
             "install",
-            "--no-cache-dir",
+            "--no-cache",
             "-r",
             requirements_file,
         ]
