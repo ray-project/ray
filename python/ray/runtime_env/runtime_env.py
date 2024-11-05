@@ -236,6 +236,8 @@ class RuntimeEnv(dict):
             the package name "pip" in front of the ``pip_version`` to form the final
             requirement string, the syntax of a requirement specifier is defined in
             full in PEP 508.
+        uv: Either a list of pip packages, or a python dictionary that has one fields:
+            packages (required, List[str]): a lists of uv packages.
         conda: Either the conda YAML config, the name of a
             local conda env (e.g., "pytorch_p36"), or the path to a conda
             environment.yaml file.
@@ -301,7 +303,7 @@ class RuntimeEnv(dict):
         *,
         py_modules: Optional[List[str]] = None,
         working_dir: Optional[str] = None,
-        pip: Optional[List[str]] = None,
+        pip: Optional[Union[Dict[str, str], List[str], str]] = None,
         conda: Optional[Union[Dict[str, str], str]] = None,
         container: Optional[Dict[str, str]] = None,
         env_vars: Optional[Dict[str, str]] = None,
@@ -311,7 +313,7 @@ class RuntimeEnv(dict):
         _validate: bool = True,
         mpi: Optional[Dict] = None,
         image_uri: Optional[str] = None,
-        uv: Optional[str] = None,
+        uv: Optional[Union[List[str], str]] = None,
         **kwargs,
     ):
         super().__init__()
