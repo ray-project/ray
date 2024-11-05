@@ -4,7 +4,9 @@ import ray
 import ray.rllib.algorithms.appo as appo
 from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
-from ray.rllib.utils.metrics.learner_info import LEARNER_INFO, LEARNER_STATS_KEY
+from ray.rllib.utils.metrics import (
+    LEARNER_RESULTS,
+)
 from ray.rllib.utils.test_utils import (
     check_train_results,
     check_train_results_new_api_stack,
@@ -23,10 +25,12 @@ class TestAPPO(unittest.TestCase):
 
     def test_appo_compilation(self):
         """Test whether APPO can be built with both frameworks."""
-        config = appo.APPOConfig().env_runners(num_env_runners=1)
-        num_iterations = 2
+        config = (
+            appo.APPOConfig().environment("CartPole-v1").env_runners(num_env_runners=1)
+        )
+        algo = config.build()
 
-        algo = config.build(env="CartPole-v1")
+        num_iterations = 2
         for i in range(num_iterations):
             results = algo.train()
             print(results)
@@ -84,16 +88,15 @@ class TestAPPO(unittest.TestCase):
         # Initial lr, doesn't really matter because of the schedule below.
         config = (
             appo.APPOConfig()
+            .environment("CartPole-v1")
             .env_runners(
                 num_env_runners=1,
                 batch_mode="truncate_episodes",
                 rollout_fragment_length=10,
             )
-            .resources(num_gpus=0)
             .training(
-                train_batch_size=20,
-                entropy_coeff=0.01,
-                entropy_coeff_schedule=[
+                train_batch_size_per_learner=20,
+                entropy_coeff=[
                     [0, 0.1],
                     [100, 0.01],
                     [300, 0.001],
@@ -116,13 +119,10 @@ class TestAPPO(unittest.TestCase):
             """
             for _ in range(n):
                 results = algo.train()
-                print(algo.env_runner.global_vars)
                 print(results)
-            return results["info"][LEARNER_INFO][DEFAULT_POLICY_ID][LEARNER_STATS_KEY][
-                "entropy_coeff"
-            ]
+            return results[LEARNER_RESULTS][DEFAULT_POLICY_ID]["curr_entropy_coeff"]
 
-        algo = config.build(env="CartPole-v1")
+        algo = config.build()
 
         coeff = _step_n_times(algo, 10)  # 200 timesteps
         # Should be close to the starting coeff of 0.01.
@@ -143,12 +143,11 @@ class TestAPPO(unittest.TestCase):
                 batch_mode="truncate_episodes",
                 rollout_fragment_length=10,
             )
-            .resources(num_gpus=0)
             .training(
                 train_batch_size_per_learner=20,
                 entropy_coeff=0.01,
                 # Setup lr schedule for testing.
-                lr_schedule=[[0, 5e-2], [500, 0.0]],
+                lr=[[0, 5e-2], [500, 0.0]],
             )
             .reporting(
                 min_train_timesteps_per_iteration=20,
@@ -166,10 +165,9 @@ class TestAPPO(unittest.TestCase):
             """
             for _ in range(n):
                 results = algo.train()
-                print(algo.env_runner.global_vars)
                 print(results)
-            return results["info"][LEARNER_INFO][DEFAULT_POLICY_ID][LEARNER_STATS_KEY][
-                "cur_lr"
+            return results[LEARNER_RESULTS][DEFAULT_POLICY_ID][
+                "default_optimizer_learning_rate"
             ]
 
         algo = config.build(env="CartPole-v1")

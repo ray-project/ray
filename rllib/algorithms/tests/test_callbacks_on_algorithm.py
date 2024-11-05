@@ -3,11 +3,12 @@ import time
 import unittest
 
 import ray
+from ray import tune
 from ray.rllib.algorithms.appo import APPOConfig
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
 from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.examples.envs.classes.cartpole_crashing import CartPoleCrashing
-from ray import tune
+from ray.rllib.utils.test_utils import check
 
 
 class OnWorkersRecreatedCallbacks(DefaultCallbacks):
@@ -25,7 +26,7 @@ class OnWorkersRecreatedCallbacks(DefaultCallbacks):
         for id_ in worker_ids:
             key = f"{'eval_' if is_evaluation else ''}worker_{id_}_recreated"
             # Increase the counter.
-            algorithm._counters[key] += 1
+            algorithm.metrics.log_value(key, 1, reduce="sum")
             print(f"changed {key} to {algorithm._counters[key]}")
 
         # Execute some dummy code on each of the recreated workers.
@@ -67,8 +68,8 @@ class TestCallbacks(unittest.TestCase):
         algo = config.build()
         original_worker_ids = algo.env_runner_group.healthy_worker_ids()
         for id_ in original_worker_ids:
-            self.assertTrue(algo.metrics.peek(f"worker_{id_}_recreated") == 0)
-        self.assertTrue(algo.metrics.peek("total_num_workers_recreated") == 0)
+            check(algo.metrics.peek(f"worker_{id_}_recreated", default=0), 0)
+        check(algo.metrics.peek("total_num_workers_recreated", default=0), 0)
 
         # After building the algorithm, we should have 2 healthy (remote) workers.
         self.assertTrue(len(original_worker_ids) == 3)
