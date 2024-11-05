@@ -1,6 +1,6 @@
 import asyncio
 from collections import defaultdict
-from typing import Optional, Tuple, List
+from typing import Optional, Tuple, List, Dict
 from unittest import mock
 
 import torch
@@ -9,27 +9,25 @@ import ray
 import ray.experimental.channel as ray_channel
 from ray.experimental.channel.gpu_communicator import TorchTensorAllocator, ReduceOp
 
-
 @ray.remote(num_cpus=0)
-class Barrier:
+class CPUCommunicator:
     """
-    Barrier that blocks the given number of actors until all actors have
-    reached the barrier. This is used to mock out blocking NCCL ops.
+    Communicator actor that blocks the given number of actors until all actors have
+    reached the communicator. This is used to mock out blocking NCCL ops.
     """
-
     def __init__(self, num_actors=2):
         self.num_actors = num_actors
         self.condition = asyncio.Condition()
         # Buffer for the data that is "sent" between the actors, each entry is
         # one p2p op.
-        self.data = {}
-        self.collective_data = defaultdict(list)
+        self.data: Dict[int, torch.Tensor] = {}
+        self.collective_data: Dict[int, List[torch.Tensor]] = defaultdict(list)
         # Buffer for the number of actors seen, each entry is one p2p op.
         self.num_actors_seen = defaultdict(int)
 
-    async def wait(self, op_id: int, data=None):
+    async def wait_p2p(self, op_id: int, data=None):
         """
-        Wait at barrier until all actors have sent `op_id`. One actor should
+        Wait at communicator until all actors have sent `op_id`. One actor should
         provide `data`, and this value will be returned by this method for all
         other actors.
         """
@@ -50,17 +48,20 @@ class Barrier:
             if data is None:
                 data = self.data[op_id]
 
+            if self.num_actors_seen[op_id] == self.num_actors:
+                del self.data[op_id]
+                del self.num_actors_seen[op_id]
+
         return data
 
     async def wait_collective(self, op_id: int, data: torch.Tensor, op: ReduceOp):
         """
-        Wait at the barrier until all actors have sent `op_id` and `data`.
+        Wait at the communicator until all actors have sent `op_id` and `data`.
         Once data from all actors is received, execute the collective `op`
-        on the barrier actor and return the result.
+        on the communicator actor and return the result.
         """
         async with self.condition:
-            if op_id not in self.collective_data:
-                self.collective_data[op_id].append(data)
+            self.collective_data[op_id].append(data)
             self.num_actors_seen[op_id] += 1
 
             if self.num_actors_seen[op_id] == self.num_actors:
@@ -71,8 +72,13 @@ class Barrier:
             else:
                 await self.condition.wait_for(lambda: self.num_actors_seen[op_id] == self.num_actors)
 
-            # Return the result to all actors
-            return self.collective_data[op_id]
+            result = self.collective_data[op_id]
+
+            if self.num_actors_seen[op_id] == self.num_actors:
+                del self.collective_data[op_id]
+                del self.num_actors_seen[op_id]
+
+            return result
 
     def _apply_op(self, op: ReduceOp, tensors: List[torch.Tensor]) -> torch.Tensor:
         """Apply the specified reduction operation across a list of tensors."""
@@ -92,30 +98,39 @@ class Barrier:
         elif op == ReduceOp.AVG:
             result = sum(tensors) / len(tensors)
         else:
-            # reserve a place for future ops to be added
-            assert False, "current operation not supported"
+            raise ValueError(f"Operation {op} not supported")
         return result
+
 
 class CPUNcclGroup(ray_channel.nccl_group._NcclGroup):
     """
-    Mock the internal _NcclGroup to use a barrier actor instead of a NCCL group
+    Mock the internal _NcclGroup to use a communicator actor instead of a NCCL group
     for communication.
     """
-
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        # We use the op index to synchronize the sender and receiver at the
-        # barrier.
+        """We use the op index to synchronize the sender and receiver at the
+        communicator actor."""
         self.num_ops = defaultdict(int)
-        self.barriers = set()
+        self.communicators = set()
+
+    def _ensure_communicator_exists(self, comm_key: str, is_p2p: bool = False):
+        """Ensure the necessary communicator actor is created."""
+        try:
+            ray.get_actor(name=comm_key)
+        except ValueError:
+            ray.remote(CPUCommunicator).options(name=comm_key).remote(2 if is_p2p else self._world_size)
 
     def send(self, tensor: torch.Tensor, peer_rank: int):
-        # "Send" the tensor to the barrier actor.
-        barrier_key = f"barrier-{self.get_self_rank()}-{peer_rank}"
-        barrier = ray.get_actor(name=barrier_key)
-        self.barriers.add(barrier)
-        ray.get(barrier.wait.remote(self.num_ops[barrier_key], tensor))
-        self.num_ops[barrier_key] += 1
+        """Send the tensor to the communicator actor."""
+        self_rank = self.get_self_rank()
+        comm_key = f"communicator-{self_rank}-{peer_rank}"
+        self._ensure_communicator_exists(comm_key, is_p2p=True)
+        communicator = ray.get_actor(name=comm_key)
+
+        self.communicators.add(communicator)
+        ray.get(communicator.wait_p2p.remote(self.num_ops[comm_key], tensor))
+        self.num_ops[comm_key] += 1
 
     def recv(
         self,
@@ -124,34 +139,32 @@ class CPUNcclGroup(ray_channel.nccl_group._NcclGroup):
         peer_rank: int,
         allocator: Optional[TorchTensorAllocator] = None,
     ):
-        # "Receive" the tensor from the barrier actor.
-        barrier_key = f"barrier-{peer_rank}-{self.get_self_rank()}"
-        barrier = ray.get_actor(name=barrier_key)
-        self.barriers.add(barrier)
-        received_tensor = ray.get(barrier.wait.remote(self.num_ops[barrier_key]))
-        assert (
-            allocator is not None
-        ), "torch tensor allocator is required for CPUNcclGroup"
+        """Receive the tensor from the communicator actor."""
+        self_rank = self.get_self_rank()
+        comm_key = f"communicator-{peer_rank}-{self_rank}"
+        self._ensure_communicator_exists(comm_key, is_p2p=True)
+        communicator = ray.get_actor(name=comm_key)
+        self.communicators.add(communicator)
+        received_tensor = ray.get(communicator.wait_p2p.remote(self.num_ops[comm_key]))
+
+        assert allocator is not None, "torch tensor allocator is required for CPUNcclGroup"
         buf = allocator(shape, dtype)
         buf[:] = received_tensor[:]
-        self.num_ops[barrier_key] += 1
+        self.num_ops[comm_key] += 1
         return buf
 
     def allreduce(self, send_buf: torch.Tensor, recv_buf: torch.Tensor, op: ReduceOp = ReduceOp.SUM):
-        # different collective communications can use same barrier as long as the participants are the same
-        barrier_key = "barrier-"+"-".join(map(str, sorted(peer_rank + [self.get_self_rank()])))
-        barrier = ray.get_actor(name=barrier_key)
-        self.barriers.add(barrier)
+        comm_key = f"communicator_{id(self)}"
+        self._ensure_communicator_exists(comm_key)
+        comm = ray.get_actor(name=comm_key)
+        self.communicators.add(comm)
 
-        result = ray.get(barrier.wait_collective.remote(self.num_ops[barrier_key], send_buf, op))
+        result = ray.get(comm.wait_collective.remote(self.num_ops[comm_key], send_buf, op))
 
-        assert (
-            recv_buf is not None
-        ), "Receiving buffer required for CPUNcclGroup"
+        assert recv_buf is not None, "Receiving buffer required for CPUNcclGroup"
         recv_buf[:] = result[:]
-        self.num_ops[barrier_key] += 1
+        self.num_ops[comm_key] += 1
 
     def destroy(self) -> None:
-        for barrier in self.barriers:
-            ray.kill(barrier)
-
+        for communicator in self.communicators:
+            ray.kill(communicator)
