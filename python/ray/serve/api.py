@@ -10,14 +10,13 @@ from fastapi import APIRouter, FastAPI
 import ray
 from ray import cloudpickle
 from ray._private.serialization import pickle_dumps
-from ray.dag import DAGNode
+from ray.serve._private.build_app import build_app
 from ray.serve._private.config import (
     DeploymentConfig,
     ReplicaConfig,
     handle_num_replicas_auto,
 )
 from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME, SERVE_LOGGER_NAME
-from ray.serve._private.deployment_graph_build import build as pipeline_build
 from ray.serve._private.http_util import (
     ASGIAppReplicaWrapper,
     make_fastapi_class_based_view,
@@ -28,7 +27,6 @@ from ray.serve._private.utils import (
     Default,
     ensure_serialization_context,
     extract_self_if_method_call,
-    get_random_string,
     validate_route_prefix,
 )
 from ray.serve.config import (
@@ -195,7 +193,7 @@ def ingress(app: Union["FastAPI", "APIRouter", Callable]) -> Callable:
 
         if issubclass(cls, collections.abc.Callable):
             raise ValueError(
-                "Class passed to @serve.ingress may not have __call__ method."
+                "Classes passed to @serve.ingress may not have __call__ method."
             )
 
         # Sometimes there are decorators on the methods. We want to fix
@@ -448,46 +446,17 @@ def _run(
     # Record after Ray has been started.
     ServeUsageTag.API_VERSION.record("v2")
 
-    if isinstance(target, Application):
-        deployments = pipeline_build(target._get_internal_dag_node(), name)
-        ingress_deployment_name = deployments[-1].name
-    else:
-        msg = "`serve.run` expects an `Application` returned by `Deployment.bind()`."
-        if isinstance(target, DAGNode):
-            msg += (
-                " If you are using the DAG API, you must bind the DAG node to a "
-                "deployment like: `app = Deployment.bind(my_dag_output)`. "
-            )
-        raise TypeError(msg)
+    if not isinstance(target, Application):
+        raise TypeError(
+            "`serve.run` expects an `Application` returned by `Deployment.bind()`."
+        )
 
-    parameter_group = []
-    for deployment in deployments:
-        is_ingress = deployment._name == ingress_deployment_name
-        if deployment.logging_config is None and logging_config:
-            deployment = deployment.options(logging_config=logging_config)
-
-        deployment_parameters = {
-            "name": deployment._name,
-            "replica_config": deployment._replica_config,
-            "deployment_config": deployment._deployment_config,
-            "version": deployment._version or get_random_string(),
-            "route_prefix": route_prefix if is_ingress else None,
-            "docs_path": deployment._docs_path,
-            "ingress": is_ingress,
-        }
-        parameter_group.append(deployment_parameters)
-
-    client.deploy_application(
-        name,
-        parameter_group,
-        _blocking=_blocking,
+    return client.deploy_application(
+        build_app(target, name=name),
+        blocking=_blocking,
+        route_prefix=route_prefix,
+        logging_config=logging_config,
     )
-
-    # The deployment state is not guaranteed to be created after
-    # deploy_application returns; the application state manager will
-    # need another reconcile iteration to create it.
-    client._wait_for_deployment_created(ingress_deployment_name, name)
-    return client.get_handle(ingress_deployment_name, name, check_exists=False)
 
 
 @PublicAPI(stability="stable")

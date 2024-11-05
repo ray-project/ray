@@ -111,8 +111,8 @@ class EnvRunnerGroup:
         """
         if num_workers != DEPRECATED_VALUE or local_worker != DEPRECATED_VALUE:
             deprecation_warning(
-                old="WorkerSet(num_workers=... OR local_worker=...)",
-                new="EnvRunnerGroup(num_env_runners=... AND local_env_runner=...)",
+                old="WorkerSet(num_workers=..., local_worker=...)",
+                new="EnvRunnerGroup(num_env_runners=..., local_env_runner=...)",
                 error=True,
             )
 
@@ -133,7 +133,7 @@ class EnvRunnerGroup:
             "resources": self._remote_config.custom_resources_per_env_runner,
             "max_restarts": (
                 config.max_num_env_runner_restarts
-                if config.recreate_failed_env_runners
+                if config.restart_failed_env_runners
                 else 0
             ),
         }
@@ -176,7 +176,7 @@ class EnvRunnerGroup:
 
         self._logdir = logdir
         self._ignore_ray_errors_on_env_runners = (
-            config.ignore_env_runner_failures or config.recreate_failed_env_runners
+            config.ignore_env_runner_failures or config.restart_failed_env_runners
         )
 
         # Create remote worker manager.
@@ -862,7 +862,7 @@ class EnvRunnerGroup:
                 synchronous execution).
             return_obj_refs: whether to return ObjectRef instead of actual results.
                 Note, for fault tolerance reasons, these returned ObjectRefs should
-                never be resolved with ray.get() outside of this WorkerSet.
+                never be resolved with ray.get() outside of this EnvRunnerGroup.
             mark_healthy: Whether to mark all those workers healthy again that are
                 currently marked unhealthy AND that returned results from the remote
                 call (within the given `timeout_seconds`).
@@ -936,7 +936,7 @@ class EnvRunnerGroup:
             timeout_seconds: Time to wait for results. Default is None.
             return_obj_refs: whether to return ObjectRef instead of actual results.
                 Note, for fault tolerance reasons, these returned ObjectRefs should
-                never be resolved with ray.get() outside of this WorkerSet.
+                never be resolved with ray.get() outside of this EnvRunnerGroup.
             mark_healthy: Whether to mark all those workers healthy again that are
                 currently marked unhealthy AND that returned results from the remote
                 call (within the given `timeout_seconds`).
