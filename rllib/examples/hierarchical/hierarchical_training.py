@@ -27,6 +27,7 @@ import logging
 import gymnasium as gym
 
 from ray.rllib.algorithms.ppo import PPOConfig
+from ray.rllib.connectors.env_to_module.flatten_observations import FlattenObservations
 from ray.rllib.core.rl_module import MultiRLModuleSpec, RLModuleSpec
 from ray.rllib.examples.envs.classes.windy_maze_env import (
     WindyMazeEnv,
@@ -60,10 +61,10 @@ if __name__ == "__main__":
         )
     # Run in hierarchical mode.
     else:
-        maze = WindyMazeEnv(None)
+        maze = WindyMazeEnv()
 
         def policy_mapping_fn(agent_id, episode, **kwargs):
-            if agent_id.startswith("low_level_"):
+            if agent_id.startswith("lower_level_"):
                 return "low_level_policy"
             else:
                 return "high_level_policy"
@@ -71,10 +72,14 @@ if __name__ == "__main__":
         base_config = (
             PPOConfig()
             .environment(HierarchicalWindyMazeEnv)
-            #.env_runners(num_env_runners=0)
+            .env_runners(
+                env_to_module_connector=lambda env: FlattenObservations(multi_agent=True),
+                # num_env_runners=0,
+            )
             .training(entropy_coeff=0.01)
             .multi_agent(
                 policy_mapping_fn=policy_mapping_fn,
+                policies={"high_level_policy", "low_level_policy"},
                 algorithm_config_overrides_per_module={
                     "high_level_policy": PPOConfig.overrides(gamma=0.9),
                     "low_level_policy": PPOConfig.overrides(gamma=0.0),
