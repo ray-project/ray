@@ -7,6 +7,7 @@ import time
 from functools import wraps
 from typing import Any, Callable, Coroutine, Dict, Optional, Tuple, Union
 
+import ray
 from ray import cloudpickle
 from ray.serve._private.common import DeploymentID, RequestMetadata
 from ray.serve._private.constants import SERVE_LOGGER_NAME
@@ -91,6 +92,11 @@ def make_local_deployment_handle(
 
 class LocalReplicaResult(ReplicaResult):
     """ReplicaResult used by in-process Deployment Handles."""
+
+    OBJ_REF_NOT_SUPPORTED_ERROR = RuntimeError(
+        "Converting DeploymentResponses to ObjectRefs is not supported "
+        "in local testing mode."
+    )
 
     def __init__(
         self,
@@ -209,6 +215,15 @@ class LocalReplicaResult(ReplicaResult):
 
     def cancel(self):
         self._future.cancel()
+
+    def to_object_ref(self, timeout_s: Optional[float]) -> ray.ObjectRef:
+        raise self.OBJ_REF_NOT_SUPPORTED_ERROR
+
+    async def to_object_ref_async(self) -> ray.ObjectRef:
+        raise self.OBJ_REF_NOT_SUPPORTED_ERROR
+
+    def to_object_ref_gen(self) -> ray.ObjectRefGenerator:
+        raise self.OBJ_REF_NOT_SUPPORTED_ERROR
 
 
 class LocalRouter(Router):

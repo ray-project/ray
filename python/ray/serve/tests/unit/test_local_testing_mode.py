@@ -5,11 +5,6 @@ import pytest
 from ray import serve
 from ray.serve.handle import DeploymentHandle
 
-# TODO(edoakes):
-# - add test for to_object_ref error.
-# - support local http client.
-# - test handle.options things.
-
 
 def test_basic_composition():
     @serve.deployment
@@ -58,7 +53,6 @@ def test_exception_raised_in_constructor(deployment: str):
         )
 
 
-@pytest.mark.skip("Error handling not implemented yet.")
 def test_to_object_ref_error_message():
     @serve.deployment
     class Inner:
@@ -69,12 +63,12 @@ def test_to_object_ref_error_message():
         def __init__(self, h: DeploymentHandle):
             self._h = h
 
-        async def __call__(self, name: str):
+        async def __call__(self):
             with pytest.raises(
                 RuntimeError,
                 match=(
-                    "DeploymentHandles do not support conversion "
-                    "to ObjectRefs in local testing mode."
+                    "Converting DeploymentResponses to ObjectRefs "
+                    "is not supported in local testing mode."
                 ),
             ):
                 await self._h.remote()._to_object_ref()
@@ -83,8 +77,8 @@ def test_to_object_ref_error_message():
     with pytest.raises(
         RuntimeError,
         match=(
-            "DeploymentHandles do not support conversion "
-            "to ObjectRefs in local testing mode."
+            "Converting DeploymentResponses to ObjectRefs "
+            "is not supported in local testing mode."
         ),
     ):
         h.remote()._to_object_ref_sync()
