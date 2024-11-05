@@ -56,6 +56,7 @@ class BundleQueue(abc.ABC):
     @abc.abstractmethod
     def is_empty(self):
         """Return whether this queue and all of its internal data structures are empty.
+
         This method is used for testing.
         """
         ...
