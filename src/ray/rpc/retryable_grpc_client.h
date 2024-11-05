@@ -266,10 +266,6 @@ class RetryableGrpcClient : public std::enable_shared_from_this<RetryableGrpcCli
       return;
     }
 
-    RAY_CHECK(server_unavailable_time_.has_value())
-        << "Only check channel status when the server is unavailable and there are "
-           "pending requests";
-
     {
       absl::MutexLock lock(&mu_);
       // We need to cleanup all the pending requests which are timeout.
