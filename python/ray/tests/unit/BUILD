@@ -6,3 +6,12 @@ py_test(
         "//python/ray/_private/runtime_env:validation",
     ],
 )
+
+py_test(
+    name = "test_uv",
+    srcs = ["test_uv.py"],
+    tags = ["team:core"],
+    deps = [
+        "//python/ray/_private/runtime_env:uv",
+    ],
+)

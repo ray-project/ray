@@ -7,15 +7,6 @@ py_library(
     srcs = ["validation.py"],
 )
 
-py_test(
-    name = "validation_test",
-    srcs = ["validation_test.py"],
-    tags = ["team:core"],
-    deps = [
-        ":validation",
-    ],
-)
-
 py_library(
     name = "utils",
     srcs = ["utils.py"],
@@ -53,17 +44,5 @@ py_library(
         ":env_utils",
         ":path_utils",
         ":dependency_utils",
-    ],
-)
-
-py_test(
-    name = "uv_test",
-    srcs = ["uv_test.py"],
-    # Strip `python` from absolute path.
-    env = {
-        "PYTHONPATH": "python",
-    },
-    deps = [
-        ":uv",
     ],
 )

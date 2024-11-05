@@ -325,7 +325,7 @@ class PipPlugin(RuntimeEnvPlugin):
         # Update py_executable.
         protocol, hash_val = parse_uri(uri)
         target_dir = self._get_path_from_hash(hash_val)
-        virtualenv_python = _PathHelper.get_virtualenv_python(target_dir)
+        virtualenv_python = path_utils.PathHelper.get_virtualenv_python(target_dir)
 
         if not os.path.exists(virtualenv_python):
             raise ValueError(
