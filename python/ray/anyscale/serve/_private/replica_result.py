@@ -31,6 +31,11 @@ def is_running_in_asyncio_loop() -> bool:
 
 
 class gRPCReplicaResult(ReplicaResult):
+    OBJ_REF_NOT_SUPPORTED_ERROR = RuntimeError(
+        "Converting by-value DeploymentResponses to ObjectRefs is not supported. "
+        "Use handle.options(_by_reference=True) to enable it."
+    )
+
     def __init__(
         self,
         call: grpc.aio.Call,
@@ -230,3 +235,12 @@ class gRPCReplicaResult(ReplicaResult):
 
     def cancel(self):
         self._call.cancel()
+
+    def to_object_ref(self, timeout_s: Optional[float]) -> ray.ObjectRef:
+        raise self.OBJ_REF_NOT_SUPPORTED_ERROR
+
+    async def to_object_ref_async(self) -> ray.ObjectRef:
+        raise self.OBJ_REF_NOT_SUPPORTED_ERROR
+
+    def to_object_ref_gen(self) -> ray.ObjectRefGenerator:
+        raise self.OBJ_REF_NOT_SUPPORTED_ERROR

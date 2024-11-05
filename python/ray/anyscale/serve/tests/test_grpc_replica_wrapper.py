@@ -140,6 +140,34 @@ def setup_fake_replica(ray_instance) -> Tuple[gRPCReplicaWrapper, ActorHandle]:
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("is_streaming", [False, True])
+async def test_to_object_ref_not_supported(setup_fake_replica, is_streaming: bool):
+    create_replica_wrapper, _ = setup_fake_replica
+    replica = await create_replica_wrapper()
+
+    pr = PendingRequest(
+        args=["Hello"],
+        kwargs={"is_streaming": is_streaming},
+        metadata=RequestMetadata(
+            request_id="abc",
+            internal_request_id="def",
+            is_streaming=is_streaming,
+        ),
+    )
+    err_msg = "Converting by-value DeploymentResponses to ObjectRefs is not supported."
+    replica_result = replica.send_request(pr)
+    if is_streaming:
+        with pytest.raises(RuntimeError, match=err_msg):
+            replica_result.to_object_ref_gen()
+    else:
+        with pytest.raises(RuntimeError, match=err_msg):
+            await replica_result.to_object_ref_async()
+
+        with pytest.raises(RuntimeError, match=err_msg):
+            replica_result.to_object_ref(timeout_s=0.0)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("is_streaming", [False, True])
 async def test_send_request(setup_fake_replica, is_streaming: bool):
     create_replica_wrapper, _ = setup_fake_replica
     replica = await create_replica_wrapper()
