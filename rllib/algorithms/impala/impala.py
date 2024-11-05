@@ -156,7 +156,7 @@ class IMPALAConfig(AlgorithmConfig):
         self.grad_clip_by = "global_norm"
 
         self.opt_type = "adam"  # @OldAPIstack
-        self.lr_schedule = None
+        self.lr_schedule = None  # @OldAPIStack
         self.decay = 0.99  # @OldAPIstack
         self.momentum = 0.0  # @OldAPIstack
         self.epsilon = 0.1  # @OldAPIstack
