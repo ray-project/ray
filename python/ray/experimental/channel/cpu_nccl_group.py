@@ -123,8 +123,7 @@ class CPUNcclGroup(ray_channel.nccl_group._NcclGroup):
 
     def send(self, tensor: torch.Tensor, peer_rank: int):
         """Send the tensor to the communicator actor."""
-        self_rank = self.get_self_rank()
-        comm_key = f"communicator-{self_rank}-{peer_rank}"
+        comm_key = f"communicator-{self.get_self_rank()}-{peer_rank}"
         self._ensure_communicator_exists(comm_key, is_p2p=True)
         communicator = ray.get_actor(name=comm_key)
 
@@ -140,8 +139,7 @@ class CPUNcclGroup(ray_channel.nccl_group._NcclGroup):
         allocator: Optional[TorchTensorAllocator] = None,
     ):
         """Receive the tensor from the communicator actor."""
-        self_rank = self.get_self_rank()
-        comm_key = f"communicator-{peer_rank}-{self_rank}"
+        comm_key = f"communicator-{peer_rank}-{self.get_self_rank()}"
         self._ensure_communicator_exists(comm_key, is_p2p=True)
         communicator = ray.get_actor(name=comm_key)
         self.communicators.add(communicator)
