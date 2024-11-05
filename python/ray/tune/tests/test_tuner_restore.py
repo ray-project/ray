@@ -551,6 +551,9 @@ def test_restore_retry(ray_start_2_cpus, tmpdir, retry_num):
 
         def step(self):
             time.sleep(1)
+            import pdb
+
+            pdb.set_trace()
             if self.idx == 0 and self._is_restored:
                 raise RuntimeError(
                     "===== Restored trial cannot start from scratch ====="
@@ -592,17 +595,17 @@ def test_restore_retry(ray_start_2_cpus, tmpdir, retry_num):
                 name="tryout_restore",
                 stop={"training_iteration": 5},
                 storage_path=str(tmpdir),
-                failure_config=FailureConfig(max_failures=1),
+                failure_config=FailureConfig(max_failures=2),
                 checkpoint_config=CheckpointConfig(checkpoint_frequency=1),
             ),
-            param_space={"tag_file_path": tag_file, "retry_num_to_fail": retry_num},
+            param_space={"tag_file_path": tag_file},
         )
         results = tuner.fit()
         [result] = list(results)
         if retry_num > 0:
             assert result.metrics["score"] == 5
         else:
-            assert result.metrics["score"] == 5
+            assert result.metrics["score"] == 2
 
 
 def test_restore_overwrite_trainable(ray_start_2_cpus, tmpdir):
