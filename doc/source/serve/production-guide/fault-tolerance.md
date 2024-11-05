@@ -592,7 +592,7 @@ $ python
 
 ### HTTPProxy failure
 
-You can simulate HTTPProxy failures by manually killing deployment replicas. If you're running KubeRay, make sure to `exec` into a Ray pod before running these commands.
+You can simulate HTTPProxy failures by manually killing HTTPProxy actors. If you're running KubeRay, make sure to `exec` into a Ray pod before running these commands.
 
 ```console
 $ ray summary actors
