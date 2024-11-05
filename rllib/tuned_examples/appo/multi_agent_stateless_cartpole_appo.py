@@ -37,10 +37,10 @@ config = (
     # )
     .training(
         train_batch_size_per_learner=600,
+        learner_queue_size=1,
         lr=0.0005 * ((args.num_learners or 1) ** 0.5),
         num_epochs=1,
         vf_loss_coeff=0.05,
-        grad_clip=20.0,
     )
     .rl_module(
         model_config=DefaultModelConfig(
