@@ -1,7 +1,8 @@
-import gymnasium as gym
-from gymnasium.spaces import Box, Discrete, Tuple
 import logging
 import random
+
+import gymnasium as gym
+from gymnasium.spaces import Box, Discrete, Tuple
 
 from ray.rllib.env import MultiAgentEnv
 
@@ -89,6 +90,14 @@ class HierarchicalWindyMazeEnv(MultiAgentEnv):
     def __init__(self, env_config):
         super().__init__()
         self.flat_env = WindyMazeEnv(env_config)
+
+        self.observation_spaces = {
+            f"lower_level_{aid}": self.flat_env.observation_space for aid in range(25)
+        }
+        self.observation_spaces.update({
+            "high_level_agent": self.flat_env.observation_space,
+        })
+        self.action_space
 
     def reset(self, *, seed=None, options=None):
         self.cur_obs, infos = self.flat_env.reset()
