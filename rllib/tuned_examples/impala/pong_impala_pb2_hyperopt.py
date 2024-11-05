@@ -58,11 +58,6 @@ pb2_scheduler = PB2(
 
 config = (
     IMPALAConfig()
-    # Enable new API stack and use EnvRunner.
-    .api_stack(
-        enable_rl_module_and_learner=True,
-        enable_env_runner_and_connector_v2=True,
-    )
     .environment(
         "env",
         env_config={

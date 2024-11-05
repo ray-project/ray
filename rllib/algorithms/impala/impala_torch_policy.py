@@ -235,6 +235,8 @@ class ImpalaTorchPolicy(
         config = dict(
             ray.rllib.algorithms.impala.impala.IMPALAConfig().to_dict(), **config
         )
+        config["enable_rl_module_and_learner"] = False
+        config["enable_env_runner_and_connector_v2"] = False
 
         # If Learner API is used, we don't need any loss-specific mixins.
         # However, we also would like to avoid creating special Policy-subclasses

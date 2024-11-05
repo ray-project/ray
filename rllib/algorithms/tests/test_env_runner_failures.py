@@ -407,12 +407,7 @@ class TestWorkerFailures(unittest.TestCase):
 
     def test_async_samples(self):
         self._do_test_failing_ignore(
-            IMPALAConfig()
-            .api_stack(
-                enable_rl_module_and_learner=True,
-                enable_env_runner_and_connector_v2=True,
-            )
-            .env_runners(env_runner_cls=ForwardHealthCheckToEnvWorker)
+            IMPALAConfig().env_runners(env_runner_cls=ForwardHealthCheckToEnvWorker)
         )
 
     def test_sync_replay(self):
@@ -552,7 +547,14 @@ class TestWorkerFailures(unittest.TestCase):
     def test_eval_workers_failing_fatal(self):
         # Test the case where all eval workers fail (w/o recovery).
         self._do_test_failing_fatal(
-            (PPOConfig().training(model={"fcnet_hiddens": [4]})),
+            (
+                PPOConfig()
+                .api_stack(
+                    enable_rl_module_and_learner=True,
+                    enable_env_runner_and_connector_v2=True,
+                )
+                .training(model={"fcnet_hiddens": [4]})
+            ),
             fail_eval=True,
         )
 
