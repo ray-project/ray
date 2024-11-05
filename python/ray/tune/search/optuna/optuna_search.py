@@ -380,6 +380,8 @@ class OptunaSearch(Searcher):
                 "as a storage to `OptunaSearcher`."
             )
             self._storage = storage
+        else:
+            self._storage = None
 
         self._completed_trials = set()
 
