@@ -42,7 +42,6 @@ from ray.data._internal.datasource.parquet_datasink import ParquetDatasink
 from ray.data._internal.datasource.sql_datasink import SQLDatasink
 from ray.data._internal.datasource.tfrecords_datasink import TFRecordDatasink
 from ray.data._internal.datasource.webdataset_datasink import WebDatasetDatasink
-from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.equalize import _equalize
 from ray.data._internal.execution.interfaces import RefBundle
 from ray.data._internal.execution.interfaces.ref_bundle import (
