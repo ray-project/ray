@@ -24,7 +24,7 @@
 #include "ray/common/asio/asio_util.h"
 
 void instrumented_io_context::post(std::function<void()> handler,
-                                   const std::string name,
+                                   const std::string &name,
                                    int64_t delay_us) {
   if (RayConfig::instance().event_stats()) {
     // References are only invalidated upon deletion of the corresponding item from the
@@ -47,7 +47,7 @@ void instrumented_io_context::post(std::function<void()> handler,
 }
 
 void instrumented_io_context::dispatch(std::function<void()> handler,
-                                       const std::string name) {
+                                       const std::string &name) {
   if (!RayConfig::instance().event_stats()) {
     return boost::asio::io_context::post(std::move(handler));
   }

@@ -543,6 +543,7 @@ Status RedisContext::Connect(const std::string &address,
 std::unique_ptr<CallbackReply> RedisContext::RunArgvSync(
     const std::vector<std::string> &args) {
   RAY_CHECK(context_);
+  RAY_CHECK(sync_context_thread_checker_.IsOnSameThread());
   // Build the arguments.
   std::vector<const char *> argv;
   std::vector<size_t> argc;
@@ -568,7 +569,9 @@ void RedisContext::RunArgvAsync(std::vector<std::string> args,
                                                  std::move(redis_callback),
                                                  redis_async_context_.get(),
                                                  std::move(args));
-  request_context->Run();
+  // If we are already on the io_service thread, we can run the request immediately.
+  io_service_.dispatch([request_context]() { request_context->Run(); },
+                       "RedisContext::RunArgvAsync");
 }
 
 }  // namespace gcs

@@ -15,6 +15,7 @@
 #include "ray/gcs/gcs_server/gcs_server.h"
 
 #include <fstream>
+#include <utility>
 
 #include "ray/common/asio/asio_util.h"
 #include "ray/common/asio/instrumented_io_context.h"
@@ -72,21 +73,23 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
   // Init GCS table storage. Note this is on the default io context, not the one with
   // GcsInternalKVManager, to avoid congestion on the latter.
   RAY_LOG(INFO) << "GCS storage type is " << storage_type_;
+  auto &io_context = io_context_provider_.GetDefaultIOContext();
   switch (storage_type_) {
   case StorageType::IN_MEMORY:
-    gcs_table_storage_ = std::make_shared<InMemoryGcsTableStorage>(
-        io_context_provider_.GetDefaultIOContext());
+    gcs_table_storage_ = std::make_shared<InMemoryGcsTableStorage>(io_context);
     break;
-  case StorageType::REDIS_PERSIST:
-    auto redis_client = CreateRedisClient(io_context_provider_.GetDefaultIOContext());
-    gcs_table_storage_ = std::make_shared<gcs::RedisGcsTableStorage>(redis_client);
+  case StorageType::REDIS_PERSIST: {
+    auto redis_client = CreateRedisClient(io_context);
+    gcs_table_storage_ =
+        std::make_shared<gcs::RedisGcsTableStorage>(redis_client, io_context);
     // Init redis failure detector.
-    gcs_redis_failure_detector_ = std::make_shared<GcsRedisFailureDetector>(
-        io_context_provider_.GetDefaultIOContext(), redis_client, []() {
+    gcs_redis_failure_detector_ =
+        std::make_shared<GcsRedisFailureDetector>(io_context, redis_client, []() {
           RAY_LOG(FATAL) << "Redis connection failed. Shutdown GCS.";
         });
     gcs_redis_failure_detector_->Start();
     break;
+  }
   default:
     RAY_LOG(FATAL) << "Unexpected storage type: " << storage_type_;
   }
@@ -160,31 +163,34 @@ void GcsServer::Start() {
 void GcsServer::GetOrGenerateClusterId(
     std::function<void(ClusterID cluster_id)> &&continuation) {
   static std::string const kTokenNamespace = "cluster";
+  auto &io_context = io_context_provider_.GetIOContext<GcsInternalKVManager>();
   kv_manager_->GetInstance().Get(
       kTokenNamespace,
       kClusterIdKey,
-      [this, continuation = std::move(continuation)](
-          std::optional<std::string> provided_cluster_id) mutable {
-        if (!provided_cluster_id.has_value()) {
-          ClusterID cluster_id = ClusterID::FromRandom();
-          RAY_LOG(INFO) << "No existing server cluster ID found. Generating new ID: "
-                        << cluster_id.Hex();
-          kv_manager_->GetInstance().Put(
-              kTokenNamespace,
-              kClusterIdKey,
-              cluster_id.Binary(),
-              false,
-              [cluster_id,
-               continuation = std::move(continuation)](bool added_entry) mutable {
-                RAY_CHECK(added_entry) << "Failed to persist new cluster ID!";
-                continuation(cluster_id);
-              });
-        } else {
-          ClusterID cluster_id = ClusterID::FromBinary(provided_cluster_id.value());
-          RAY_LOG(INFO) << "Found existing server token: " << cluster_id;
-          continuation(cluster_id);
-        }
-      });
+      {[this, &io_context, continuation = std::move(continuation)](
+           std::optional<std::string> provided_cluster_id) mutable {
+         if (!provided_cluster_id.has_value()) {
+           ClusterID cluster_id = ClusterID::FromRandom();
+           RAY_LOG(INFO) << "No existing server cluster ID found. Generating new ID: "
+                         << cluster_id.Hex();
+           kv_manager_->GetInstance().Put(
+               kTokenNamespace,
+               kClusterIdKey,
+               cluster_id.Binary(),
+               false,
+               {[cluster_id,
+                 continuation = std::move(continuation)](bool added_entry) mutable {
+                  RAY_CHECK(added_entry) << "Failed to persist new cluster ID!";
+                  continuation(cluster_id);
+                },
+                io_context});
+         } else {
+           ClusterID cluster_id = ClusterID::FromBinary(provided_cluster_id.value());
+           RAY_LOG(INFO) << "Found existing server token: " << cluster_id;
+           continuation(cluster_id);
+         }
+       },
+       io_context});
 }
 
 void GcsServer::DoStart(const GcsInitData &gcs_init_data) {
@@ -422,12 +428,14 @@ void GcsServer::InitGcsJobManager(const GcsInitData &gcs_init_data) {
     return std::make_shared<rpc::CoreWorkerClient>(address, client_call_manager_);
   };
   RAY_CHECK(gcs_table_storage_ && gcs_publisher_);
-  gcs_job_manager_ = std::make_unique<GcsJobManager>(gcs_table_storage_,
-                                                     gcs_publisher_,
-                                                     *runtime_env_manager_,
-                                                     *function_manager_,
-                                                     kv_manager_->GetInstance(),
-                                                     client_factory);
+  gcs_job_manager_ =
+      std::make_unique<GcsJobManager>(gcs_table_storage_,
+                                      gcs_publisher_,
+                                      *runtime_env_manager_,
+                                      *function_manager_,
+                                      kv_manager_->GetInstance(),
+                                      io_context_provider_.GetDefaultIOContext(),
+                                      client_factory);
   gcs_job_manager_->Initialize(gcs_init_data);
 
   // Register service.
@@ -552,7 +560,8 @@ void GcsServer::InitFunctionManager() {
 }
 
 void GcsServer::InitUsageStatsClient() {
-  usage_stats_client_ = std::make_unique<UsageStatsClient>(kv_manager_->GetInstance());
+  usage_stats_client_ = std::make_unique<UsageStatsClient>(
+      kv_manager_->GetInstance(), io_context_provider_.GetDefaultIOContext());
 
   gcs_worker_manager_->SetUsageStatsClient(usage_stats_client_.get());
   gcs_actor_manager_->SetUsageStatsClient(usage_stats_client_.get());
@@ -563,22 +572,23 @@ void GcsServer::InitUsageStatsClient() {
 void GcsServer::InitKVManager() {
   // TODO (yic): Use a factory with configs
   std::unique_ptr<InternalKVInterface> instance;
+  auto &io_context = io_context_provider_.GetIOContext<GcsInternalKVManager>();
   switch (storage_type_) {
   case (StorageType::REDIS_PERSIST):
-    instance = std::make_unique<StoreClientInternalKV>(std::make_unique<RedisStoreClient>(
-        CreateRedisClient(io_context_provider_.GetIOContext<GcsInternalKVManager>())));
+    instance = std::make_unique<StoreClientInternalKV>(
+        std::make_unique<RedisStoreClient>(CreateRedisClient(io_context)));
     break;
   case (StorageType::IN_MEMORY):
-    instance = std::make_unique<StoreClientInternalKV>(
-        std::make_unique<ObservableStoreClient>(std::make_unique<InMemoryStoreClient>(
-            io_context_provider_.GetIOContext<GcsInternalKVManager>())));
+    instance =
+        std::make_unique<StoreClientInternalKV>(std::make_unique<ObservableStoreClient>(
+            std::make_unique<InMemoryStoreClient>(io_context)));
     break;
   default:
     RAY_LOG(FATAL) << "Unexpected storage type! " << storage_type_;
   }
 
-  kv_manager_ = std::make_unique<GcsInternalKVManager>(std::move(instance),
-                                                       config_.raylet_config_list);
+  kv_manager_ = std::make_unique<GcsInternalKVManager>(
+      std::move(instance), config_.raylet_config_list, io_context);
 }
 
 void GcsServer::InitKVService() {
@@ -599,8 +609,9 @@ void GcsServer::InitPubSubHandler() {
 }
 
 void GcsServer::InitRuntimeEnvManager() {
+  auto &io_context = io_context_provider_.GetDefaultIOContext();
   runtime_env_manager_ = std::make_unique<RuntimeEnvManager>(
-      /*deleter=*/[this](const std::string &plugin_uri, auto callback) {
+      /*deleter=*/[this, &io_context](const std::string &plugin_uri, auto callback) {
         // A valid runtime env URI is of the form "protocol://hash".
         std::string protocol_sep = "://";
         auto protocol_end_pos = plugin_uri.find(protocol_sep);
@@ -619,7 +630,8 @@ void GcsServer::InitRuntimeEnvManager() {
                 "" /* namespace */,
                 plugin_uri /* key */,
                 false /* del_by_prefix*/,
-                [callback = std::move(callback)](int64_t) { callback(false); });
+                {[callback = std::move(callback)](int64_t) { callback(false); },
+                 io_context});
           }
         }
       });
@@ -628,7 +640,7 @@ void GcsServer::InitRuntimeEnvManager() {
       *runtime_env_manager_, /*delay_executor=*/
       [this](std::function<void()> task, uint32_t delay_ms) {
         return execute_after(io_context_provider_.GetDefaultIOContext(),
-                             task,
+                             std::move(task),
                              std::chrono::milliseconds(delay_ms));
       });
   runtime_env_service_ = std::make_unique<rpc::RuntimeEnvGrpcService>(
@@ -651,28 +663,34 @@ void GcsServer::InitGcsAutoscalerStateManager(const GcsInitData &gcs_init_data) 
   auto v2_enabled = std::to_string(RayConfig::instance().enable_autoscaler_v2());
   RAY_LOG(INFO) << "Autoscaler V2 enabled: " << v2_enabled;
 
+  auto &io_context = io_context_provider_.GetDefaultIOContext();
+
   kv_manager_->GetInstance().Put(
       kGcsAutoscalerStateNamespace,
       kGcsAutoscalerV2EnabledKey,
       v2_enabled,
       /*overwrite=*/true,
-      [this, v2_enabled](bool new_value_put) {
-        if (!new_value_put) {
-          // NOTE(rickyx): We cannot know if an overwirte Put succeeds or fails (e.g. when
-          // GCS re-started), so we just try to get the value to check if it's correct.
-          // TODO(rickyx): We could probably load some system configs from internal kv
-          // when we initialize GCS from restart to avoid this.
-          kv_manager_->GetInstance().Get(
-              kGcsAutoscalerStateNamespace,
-              kGcsAutoscalerV2EnabledKey,
-              [v2_enabled](std::optional<std::string> value) {
-                RAY_CHECK(value.has_value()) << "Autoscaler v2 feature flag wasn't found "
-                                                "in GCS, this is unexpected.";
-                RAY_CHECK(*value == v2_enabled) << "Autoscaler v2 feature flag in GCS "
-                                                   "doesn't match the one we put.";
-              });
-        }
-      });
+      {[this, v2_enabled, &io_context](bool new_value_put) {
+         if (!new_value_put) {
+           // NOTE(rickyx): We cannot know if an overwirte Put succeeds or fails (e.g.
+           // when GCS re-started), so we just try to get the value to check if it's
+           // correct.
+           // TODO(rickyx): We could probably load some system configs from internal kv
+           // when we initialize GCS from restart to avoid this.
+           kv_manager_->GetInstance().Get(
+               kGcsAutoscalerStateNamespace,
+               kGcsAutoscalerV2EnabledKey,
+               {[v2_enabled](std::optional<std::string> value) {
+                  RAY_CHECK(value.has_value())
+                      << "Autoscaler v2 feature flag wasn't found "
+                         "in GCS, this is unexpected.";
+                  RAY_CHECK(*value == v2_enabled) << "Autoscaler v2 feature flag in GCS "
+                                                     "doesn't match the one we put.";
+                },
+                io_context});
+         }
+       },
+       io_context});
 
   gcs_autoscaler_state_manager_ =
       std::make_unique<GcsAutoscalerStateManager>(config_.session_name,

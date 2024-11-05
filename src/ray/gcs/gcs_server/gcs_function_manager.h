@@ -46,12 +46,18 @@ class GcsFunctionManager {
  private:
   void RemoveExportedFunctions(const JobID &job_id) {
     auto job_id_hex = job_id.Hex();
-    kv_.Del("fun", "RemoteFunction:" + job_id_hex + ":", true, nullptr);
-    kv_.Del("fun", "ActorClass:" + job_id_hex + ":", true, nullptr);
+    kv_.Del("fun",
+            "RemoteFunction:" + job_id_hex + ":",
+            true,
+            Dispatchable<void(int64_t)>{nullptr});
+    kv_.Del("fun",
+            "ActorClass:" + job_id_hex + ":",
+            true,
+            Dispatchable<void(int64_t)>{nullptr});
     kv_.Del("fun",
             std::string(kWorkerSetupHookKeyName) + ":" + job_id_hex + ":",
             true,
-            nullptr);
+            Dispatchable<void(int64_t)>{nullptr});
   }
 
   // Handler for internal KV

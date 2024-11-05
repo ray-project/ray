@@ -420,7 +420,8 @@ void GcsJobManager::HandleGetAllJobInfo(rpc::GetAllJobInfoRequest request,
             size_t updated_finished_tasks = num_finished_tasks->fetch_add(1) + 1;
             try_send_reply(updated_finished_tasks);
           };
-      internal_kv_.MultiGet("job", job_api_data_keys, kv_multi_get_callback);
+      internal_kv_.MultiGet(
+          "job", job_api_data_keys, {std::move(kv_multi_get_callback), io_context_});
     }
   };
   Status status = gcs_table_storage_->JobTable().GetAll(on_done);

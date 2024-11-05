@@ -13,6 +13,7 @@
 // limitations under the License.
 #pragma once
 #include <functional>
+#include <utility>
 
 #include "absl/container/flat_hash_map.h"
 #include "ray/common/id.h"
@@ -32,7 +33,7 @@ class RuntimeEnvManager {
  public:
   using DeleteFunc =
       std::function<void(const std::string &uri, std::function<void(bool successful)>)>;
-  explicit RuntimeEnvManager(DeleteFunc deleter) : deleter_(deleter) {}
+  explicit RuntimeEnvManager(DeleteFunc deleter) : deleter_(std::move(deleter)) {}
 
   /// Increase the reference of URI by job or actor ID and runtime_env.
   ///

@@ -17,6 +17,7 @@
 
 #include "absl/container/btree_map.h"
 #include "absl/synchronization/mutex.h"
+#include "ray/common/asio/dispatchable.h"
 #include "ray/gcs/redis_client.h"
 #include "ray/gcs/store_client/redis_store_client.h"
 #include "ray/rpc/gcs_server/gcs_rpc_server.h"
@@ -37,7 +38,7 @@ class InternalKVInterface {
   /// \param callback Returns the value or null if the key doesn't exist.
   virtual void Get(const std::string &ns,
                    const std::string &key,
-                   std::function<void(std::optional<std::string>)> callback) = 0;
+                   Dispatchable<void(std::optional<std::string>)> callback) = 0;
 
   /// Get the values associated with `keys`.
   ///
@@ -47,7 +48,7 @@ class InternalKVInterface {
   virtual void MultiGet(
       const std::string &ns,
       const std::vector<std::string> &keys,
-      std::function<void(std::unordered_map<std::string, std::string>)> callback) = 0;
+      Dispatchable<void(std::unordered_map<std::string, std::string>)> callback) = 0;
 
   /// Associate a key with the specified value.
   ///
@@ -62,7 +63,7 @@ class InternalKVInterface {
                    const std::string &key,
                    const std::string &value,
                    bool overwrite,
-                   std::function<void(bool)> callback) = 0;
+                   Dispatchable<void(bool)> callback) = 0;
 
   /// Delete the key from the store.
   ///
@@ -74,7 +75,7 @@ class InternalKVInterface {
   virtual void Del(const std::string &ns,
                    const std::string &key,
                    bool del_by_prefix,
-                   std::function<void(int64_t)> callback) = 0;
+                   Dispatchable<void(int64_t)> callback) = 0;
 
   /// Check whether the key exists in the store.
   ///
@@ -83,7 +84,7 @@ class InternalKVInterface {
   /// \param callback Callback function.
   virtual void Exists(const std::string &ns,
                       const std::string &key,
-                      std::function<void(bool)> callback) = 0;
+                      Dispatchable<void(bool)> callback) = 0;
 
   /// Get the keys for a given prefix.
   ///
@@ -92,7 +93,7 @@ class InternalKVInterface {
   /// \param callback return all the keys matching the prefix.
   virtual void Keys(const std::string &ns,
                     const std::string &prefix,
-                    std::function<void(std::vector<std::string>)> callback) = 0;
+                    Dispatchable<void(std::vector<std::string>)> callback) = 0;
 
   virtual ~InternalKVInterface() = default;
 };
@@ -101,8 +102,11 @@ class InternalKVInterface {
 class GcsInternalKVManager : public rpc::InternalKVHandler {
  public:
   explicit GcsInternalKVManager(std::unique_ptr<InternalKVInterface> kv_instance,
-                                const std::string &raylet_config_list)
-      : kv_instance_(std::move(kv_instance)), raylet_config_list_(raylet_config_list) {}
+                                const std::string &raylet_config_list,
+                                instrumented_io_context &io_context)
+      : kv_instance_(std::move(kv_instance)),
+        raylet_config_list_(raylet_config_list),
+        io_context_(io_context) {}
 
   void HandleInternalKVGet(rpc::InternalKVGetRequest request,
                            rpc::InternalKVGetReply *reply,
@@ -138,6 +142,7 @@ class GcsInternalKVManager : public rpc::InternalKVHandler {
  private:
   std::unique_ptr<InternalKVInterface> kv_instance_;
   const std::string raylet_config_list_;
+  instrumented_io_context &io_context_;
   Status ValidateKey(const std::string &key) const;
 };
 

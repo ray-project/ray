@@ -292,7 +292,8 @@ class GcsTableStorage {
 /// that uses redis as storage.
 class RedisGcsTableStorage : public GcsTableStorage {
  public:
-  explicit RedisGcsTableStorage(std::shared_ptr<RedisClient> redis_client)
+  explicit RedisGcsTableStorage(std::shared_ptr<RedisClient> redis_client,
+                                instrumented_io_context &io_context)
       : GcsTableStorage(std::make_shared<RedisStoreClient>(std::move(redis_client))) {}
 };
 

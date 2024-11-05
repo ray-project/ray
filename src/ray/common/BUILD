@@ -196,6 +196,7 @@ ray_cc_library(
     hdrs = [
         "asio/asio_chaos.h",
         "asio/asio_util.h",
+        "asio/dispatchable.h",
         "asio/instrumented_io_context.h",
         "asio/io_service_pool.h",
         "asio/periodical_runner.h",
