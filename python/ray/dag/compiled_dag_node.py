@@ -961,14 +961,17 @@ class CompiledDAG:
             Optional[GPUCommunicator], Set["ray.dag.DAGNode"]
         ],
         nccl_collective_ops: Set["ray.dag.collective_node._CollectiveOperation"],
-    ):
+    ) -> None:
         """
-        Initialize all NCCL groups used in the DAG.
+        Initialize NCCL groups for all NCCL operations (including both P2P and
+        collective operations) in the DAG.
+
+        Steps:
         1. For each custom NCCL group, verify that it contains the correct set of
-           actors and initialize it.
-        2. For each NCCL operation for which no NCCL group was specified, try to
-           reuse a NCCL group initialized in step 1.
-        3. If no NCCL group could be reused in step 2, construct a `_NcclGroup`.
+           actors and initialize the group.
+        2. For each NCCL operation without a specified NCCL group, try to reuse a
+           NCCL group initialized in step 1.
+        3. If no NCCL group could be reused in step 2, create a new `_NcclGroup`.
 
         Args:
             custom_nccl_group_to_p2p_senders: Each custom NCCL group and all sender
@@ -998,24 +1001,24 @@ class CompiledDAG:
         # cache the NCCL group ID.
         for (
             custom_nccl_group,
-            nodes,
+            dag_nodes,
         ) in custom_nccl_group_to_p2p_senders_and_receivers.items():
             nccl_actors: Set["ray.actor.ActorHandle"] = {
-                node._get_actor_handle() for node in nodes
+                node._get_actor_handle() for node in dag_nodes
             }
             if None in nccl_actors:
                 raise ValueError("Driver cannot participate in the NCCL group.")
-            if not nccl_actors.issubset(custom_nccl_group.get_actor_handles()):
+            group_actors = custom_nccl_group.get_actor_handles()
+            if not nccl_actors.issubset(group_actors):
                 raise ValueError(
-                    "Custom NCCL group must contain all actors that participate "
-                    "in P2P send/recv."
+                    "Custom NCCL group must contain all participating actors in P2P "
+                    f"send/recv. Missing actors {nccl_actors - group_actors} in "
+                    f"custom NCCL group {custom_nccl_group}."
                 )
-            nccl_group_id = _init_nccl_group(
-                custom_nccl_group.get_actor_handles(), custom_nccl_group
-            )
+            nccl_group_id = _init_nccl_group(group_actors, custom_nccl_group)
             for node in custom_nccl_group_to_p2p_senders[custom_nccl_group]:
                 node.type_hint.set_nccl_group_id(nccl_group_id)
-            actors = frozenset(custom_nccl_group.get_actor_handles())
+            actors = frozenset(group_actors)
             actors_to_nccl_group_id[actors] = nccl_group_id
             custom_nccl_group_to_id[custom_nccl_group] = nccl_group_id
 
@@ -1037,9 +1040,8 @@ class CompiledDAG:
                 if actors not in actors_to_nccl_group_id:
                     actors_to_nccl_group_id[actors] = nccl_group_id
 
-        # If no default NCCL group for P2P actors was specified:
-        # 1. Try to reuse another NCCL group in the DAG.
-        # 2. Create a `_NcclGroup` if we cannot reuse.
+        # If no default NCCL group for P2P actors was specified, reuse or create
+        # a new one.
         if default_nccl_actors_p2p and self._default_nccl_group_id_p2p is None:
             assert self._default_nccl_group_p2p is None
             actors = frozenset(default_nccl_actors_p2p)

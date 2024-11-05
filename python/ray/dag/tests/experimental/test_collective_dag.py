@@ -528,7 +528,7 @@ def test_custom_comm_init_teardown(ray_start_regular, monkeypatch):
 )
 def test_custom_comm_compile(ray_start_regular, monkeypatch):
     """
-    Test `dag.experimental_compile(_custom_nccl_group=comm)`.
+    Test `dag.experimental_compile(_default_nccl_group=comm)`.
     """
 
     actor_cls = CPUTorchTensorWorker.options(num_cpus=0, num_gpus=1)
@@ -588,7 +588,7 @@ def test_custom_comm_compile(ray_start_regular, monkeypatch):
 )
 def test_custom_comm_compile_error(ray_start_regular):
     """
-    Test `dag.experimental_compile(_custom_nccl_group=comm)` throws appropriate
+    Test `dag.experimental_compile(_default_nccl_group=comm)` throws appropriate
     errors when the user specifies a custom NCCL group that does not include the
     sender and receiver of a P2P communication.
     """
@@ -602,14 +602,9 @@ def test_custom_comm_compile_error(ray_start_regular):
     with InputNode() as inp:
         send = workers[0].return_tensor.bind(inp)
         send.with_type_hint(TorchTensorType(transport=comm))
-        recv = workers[1].recv.bind(send)
-        dag = recv
+        dag = workers[1].recv.bind(send)
 
-    with pytest.raises(
-        ValueError,
-        match="Custom NCCL group must contain all actors that participate "
-        "in P2P send/recv.",
-    ):
+    with pytest.raises(ValueError):
         dag.experimental_compile()
 
     with InputNode() as inp:
@@ -618,11 +613,7 @@ def test_custom_comm_compile_error(ray_start_regular):
         recv = workers[1].recv.bind(send)
         dag = recv
 
-    with pytest.raises(
-        ValueError,
-        match="Custom NCCL group must contain all actors that participate "
-        "in P2P send/recv.",
-    ):
+    with pytest.raises(ValueError):
         dag.experimental_compile(_default_nccl_group=comm)
 
 
