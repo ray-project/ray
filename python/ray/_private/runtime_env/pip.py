@@ -130,7 +130,7 @@ class PipProcessor:
         virtualenv_path = virtualenv_utils.get_virtualenv_path(path)
         python = virtualenv_utils.get_virtualenv_python(path)
         # TODO(fyrestone): Support -i, --no-deps, --no-cache-dir, ...
-        pip_requirements_file = virtualenv_utils.get_requirements_file(
+        pip_requirements_file = dependency_utils.get_requirements_file(
             path, pip_packages
         )
 
