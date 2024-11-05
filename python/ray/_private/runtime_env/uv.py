@@ -73,7 +73,7 @@ class UvProcessor:
         virtualenv_path = virtualenv_utils.get_virtualenv_path(path)
         python = virtualenv_utils.get_virtualenv_python(path)
         # TODO(fyrestone): Support -i, --no-deps, --no-cache-dir, ...
-        requirements_file = virtualenv_utils.get_requirements_file(path, uv_packages)
+        requirements_file = dependency_utils.get_requirements_file(path, uv_packages)
 
         # Install uv, which acts as the default package manager.
         await self._install_uv(path, cwd, pip_env, logger)

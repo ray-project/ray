@@ -16,7 +16,6 @@ from ray._private.runtime_env.dependency_utils import (
     MAX_INTERNAL_PIP_FILENAME_TRIES,
 )
 from ray.runtime_env import RuntimeEnv
-from ray._private.runtime_env import virtualenv_utils
 
 import yaml
 import tempfile
@@ -232,7 +231,7 @@ def test_runtime_env_conda_not_exists_not_hang(shutdown_only):
 
 
 def test_get_requirements_file():
-    """Unit test for virtualenv_utils.get_requirements_file."""
+    """Unit test for dependency_utils.get_requirements_file."""
     with tempfile.TemporaryDirectory() as tmpdir:
         # If pip_list is None, we should return the internal pip filename.
         assert dependency_utils.get_requirements_file(
@@ -250,7 +249,7 @@ def test_get_requirements_file():
         assert dependency_utils.get_requirements_file(
             tmpdir, pip_list=["foo", "bar", f"-r {INTERNAL_PIP_FILENAME}"]
         ) == os.path.join(tmpdir, f"{INTERNAL_PIP_FILENAME}.1")
-        assert virtualenv_utils.get_requirements_file(
+        assert dependency_utils.get_requirements_file(
             tmpdir,
             pip_list=[
                 "foo",
