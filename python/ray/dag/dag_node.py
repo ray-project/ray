@@ -80,6 +80,11 @@ class DAGNode(DAGNodeBase):
         """
         Retrieve upstream nodes and update their downstream dependencies.
 
+        Currently, the DAG assumes that all DAGNodes in `args`, `kwargs`, and
+        `other_args_to_resolve` are upstream nodes. However, Ray Compiled Graphs
+        builds the upstream/downstream relationship based only on args. Be cautious
+        when persisting DAGNodes in `other_args_to_resolve` and kwargs in the future.
+
         TODO (kevin85421): Currently, the upstream nodes and downstream nodes have
         circular references. Therefore, it relies on the garbage collector to clean
         them up instead of reference counting. We should consider using weak references
@@ -100,16 +105,7 @@ class DAGNode(DAGNodeBase):
         return upstream_nodes
 
     def with_type_hint(self, typ: ChannelOutputType):
-        if typ.is_direct_return:
-            old_contains_typ = self._type_hint.contains_type
-            self._type_hint = copy.deepcopy(typ)
-            if old_contains_typ is not None and typ.contains_type is None:
-                # The contained type was set before the return
-                # type, and the new return type doesn't have a
-                # contained type set.
-                self._type_hint.set_contains_type(old_contains_typ)
-        else:
-            self._type_hint.set_contains_type(typ)
+        self._type_hint = copy.deepcopy(typ)
         return self
 
     @property
@@ -168,6 +164,7 @@ class DAGNode(DAGNodeBase):
         _asyncio_max_queue_size: Optional[int] = None,
         _max_buffered_results: Optional[int] = None,
         _max_inflight_executions: Optional[int] = None,
+        _overlap_gpu_communication: Optional[bool] = None,
         _default_nccl_group: Optional[GPUCommunicator] = None,
     ) -> "ray.dag.CompiledDAG":
         """Compile an accelerated execution path for this DAG.
@@ -193,6 +190,11 @@ class DAGNode(DAGNodeBase):
                 are allowed to be sent to this DAG. Before submitting more requests,
                 the caller is responsible for calling ray.get to clear finished
                 in-flight requests.
+            overlap_gpu_communication: Whether to overlap GPU communication with
+                computation during DAG execution. If True, the communication
+                and computation can be overlapped, which can improve the
+                performance of the DAG execution. If None, the default value
+                will be used.
             _default_nccl_group: The default NCCL group to be used for P2P NCCL
                 communications whose `transport=nccl`.
 
@@ -228,6 +230,7 @@ class DAGNode(DAGNodeBase):
             _asyncio_max_queue_size,
             _max_buffered_results,
             _max_inflight_executions,
+            _overlap_gpu_communication,
             _default_nccl_group,
         )
 

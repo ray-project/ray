@@ -116,17 +116,17 @@ async def test_send_request(setup_fake_replica, is_streaming: bool):
         metadata=RequestMetadata(
             request_id="abc",
             internal_request_id="def",
-            endpoint="123",
             is_streaming=is_streaming,
         ),
     )
     replica_result = replica.send_request(pr)
     if is_streaming:
-        assert isinstance(replica_result.obj_ref_gen, ObjectRefGenerator)
+        assert isinstance(replica_result.to_object_ref_gen(), ObjectRefGenerator)
         for i in range(5):
             assert await replica_result.__anext__() == f"Hello-{i}"
     else:
-        assert isinstance(replica_result.obj_ref, ObjectRef)
+        assert isinstance(replica_result.to_object_ref(), ObjectRef)
+        assert isinstance(await replica_result.to_object_ref_async(), ObjectRef)
         assert await replica_result.get_async() == "Hello"
 
 
@@ -149,7 +149,6 @@ async def test_send_request_with_rejection(
         metadata=RequestMetadata(
             request_id="abc",
             internal_request_id="def",
-            endpoint="123",
             is_streaming=is_streaming,
         ),
     )
@@ -159,12 +158,13 @@ async def test_send_request_with_rejection(
     if not accepted:
         assert replica_result is None
     elif is_streaming:
-        assert isinstance(replica_result.obj_ref_gen, ObjectRefGenerator)
+        assert isinstance(replica_result.to_object_ref_gen(), ObjectRefGenerator)
         for i in range(5):
             assert await replica_result.__anext__() == f"Hello-{i}"
     else:
-        assert isinstance(replica_result.obj_ref_gen, ObjectRefGenerator)
-        assert await replica_result.__anext__() == "Hello"
+        assert isinstance(replica_result.to_object_ref(), ObjectRef)
+        assert isinstance(await replica_result.to_object_ref_async(), ObjectRef)
+        assert await replica_result.get_async() == "Hello"
 
 
 @pytest.mark.asyncio
@@ -187,7 +187,6 @@ async def test_send_request_with_rejection_cancellation(setup_fake_replica):
         metadata=RequestMetadata(
             request_id="abc",
             internal_request_id="def",
-            endpoint="123",
         ),
     )
 

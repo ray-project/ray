@@ -145,11 +145,11 @@ class TestAlgorithmConfig(unittest.TestCase):
     def test_detect_atari_env(self):
         """Tests that we can properly detect Atari envs."""
         config = AlgorithmConfig().environment(
-            env="ALE/Breakout-v5", env_config={"frameskip": 1}
+            env="ale_py:ALE/Breakout-v5", env_config={"frameskip": 1}
         )
         self.assertTrue(config.is_atari)
 
-        config = AlgorithmConfig().environment(env="ALE/Pong-v5")
+        config = AlgorithmConfig().environment(env="ale_py:ALE/Pong-v5")
         self.assertTrue(config.is_atari)
 
         config = AlgorithmConfig().environment(env="CartPole-v1")
@@ -158,7 +158,7 @@ class TestAlgorithmConfig(unittest.TestCase):
 
         config = AlgorithmConfig().environment(
             env=lambda ctx: gym.make(
-                "ALE/Breakout-v5",
+                "ale_py:ALE/Breakout-v5",
                 frameskip=1,
             )
         )
@@ -169,16 +169,7 @@ class TestAlgorithmConfig(unittest.TestCase):
         self.assertFalse(config.is_atari)
 
     def test_rl_module_api(self):
-        config = (
-            PPOConfig()
-            .api_stack(
-                enable_rl_module_and_learner=True,
-                enable_env_runner_and_connector_v2=True,
-            )
-            .environment("CartPole-v1")
-            .framework("torch")
-            .env_runners(enable_connectors=True)
-        )
+        config = PPOConfig().environment("CartPole-v1").framework("torch")
 
         self.assertEqual(config.rl_module_spec.module_class, PPOTorchRLModule)
 
@@ -232,15 +223,7 @@ class TestAlgorithmConfig(unittest.TestCase):
         self.assertTrue(config_3 is config)
 
     def test_learner_api(self):
-        config = (
-            PPOConfig()
-            .api_stack(
-                enable_rl_module_and_learner=True,
-                enable_env_runner_and_connector_v2=True,
-            )
-            .environment("CartPole-v1")
-            .env_runners(enable_connectors=True)
-        )
+        config = PPOConfig().environment("CartPole-v1")
 
         self.assertEqual(config.learner_class, PPOTorchLearner)
 
