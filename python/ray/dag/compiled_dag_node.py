@@ -815,9 +815,9 @@ class CompiledDAG:
         self.worker_task_refs: Dict["ray.actor.ActorHandle", "ray.ObjectRef"] = {}
         # Set of actors present in the DAG.
         self.actor_refs = set()
-        self.actor_to_tasks: Dict["ray.actor.ActorHandle", List["CompiledTask"]] = (
-            defaultdict(list)
-        )
+        self.actor_to_tasks: Dict[
+            "ray.actor.ActorHandle", List["CompiledTask"]
+        ] = defaultdict(list)
         self.actor_to_executable_tasks: Dict[
             "ray.actor.ActorHandle", List["ExecutableTask"]
         ] = {}
@@ -1085,9 +1085,9 @@ class CompiledDAG:
                 task.arg_type_hints.append(upstream_task.dag_node.type_hint)
 
                 if upstream_task.dag_node.type_hint.requires_nccl():
-                    custom_nccl_group: Optional[GPUCommunicator] = (
-                        upstream_task.dag_node.type_hint.get_custom_nccl_group()
-                    )
+                    custom_nccl_group: Optional[
+                        GPUCommunicator
+                    ] = upstream_task.dag_node.type_hint.get_custom_nccl_group()
                     if custom_nccl_group is None:
                         custom_nccl_group = self._default_nccl_group_p2p
                     custom_nccl_group_to_p2p_senders_and_receivers[
@@ -1158,9 +1158,11 @@ class CompiledDAG:
                 transport.
             nccl_collective_ops: All NCCL collective operations in the DAG.
         """
+        from ray.dag import ClassMethodNode
+
         # `None` means no `default_nccl_group` was specified in `experimental_compile`.
         default_nccl_actors_p2p: Set["ray.actor.ActorHandle"] = {
-            node._get_actor_handle()
+            node._get_actor_handle() if isinstance(node, ClassMethodNode) else None
             for node in custom_nccl_group_to_p2p_senders_and_receivers.pop(None, set())
         }
         if None in default_nccl_actors_p2p:
@@ -1181,7 +1183,8 @@ class CompiledDAG:
             dag_nodes,
         ) in custom_nccl_group_to_p2p_senders_and_receivers.items():
             nccl_actors: Set["ray.actor.ActorHandle"] = {
-                node._get_actor_handle() for node in dag_nodes
+                node._get_actor_handle() if isinstance(node, ClassMethodNode) else None
+                for node in dag_nodes
             }
             if None in nccl_actors:
                 raise ValueError("Driver cannot participate in the NCCL group.")
@@ -1189,7 +1192,7 @@ class CompiledDAG:
             if not nccl_actors.issubset(group_actors):
                 raise ValueError(
                     "Custom NCCL group must contain all participating actors in P2P "
-                    f"send/recv. Missing actors {nccl_actors - group_actors} in "
+                    f"send/recv. Missing actors {nccl_actors - set(group_actors)} in "
                     f"custom NCCL group {custom_nccl_group}."
                 )
             nccl_group_id = _init_nccl_group(

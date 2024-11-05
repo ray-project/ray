@@ -211,7 +211,7 @@ def check_nccl_group_init(
     actors_and_custom_comms: Set[
         Tuple[FrozenSet["ray.actor.ActorHandle"], Optional[GPUCommunicator]]
     ],
-    p2p_actors_and_custom_comm: Optional[
+    default_p2p_actors_and_custom_comm: Optional[
         Tuple[FrozenSet["ray.actor.ActorHandle"], Optional[GPUCommunicator]]
     ] = None,
 ) -> "ray.dag.CompiledDAG":
@@ -225,11 +225,15 @@ def check_nccl_group_init(
         mock_nccl_group_set,
     )
 
-    compiled_dag = dag.experimental_compile()
+    if default_p2p_actors_and_custom_comm is None:
+        default_p2p_nccl_group = None
+    else:
+        _, default_p2p_nccl_group = default_p2p_actors_and_custom_comm
+    compiled_dag = dag.experimental_compile(_default_nccl_group=default_p2p_nccl_group)
     mock_nccl_group_set.check_init(
         compiled_dag,
         actors_and_custom_comms,
-        p2p_actors_and_custom_comm,
+        default_p2p_actors_and_custom_comm,
     )
 
     return compiled_dag, mock_nccl_group_set

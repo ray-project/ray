@@ -438,7 +438,6 @@ def test_torch_tensor_custom_comm(ray_start_regular):
         assert result == (i, shape, dtype)
 
 
-
 @pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
 def test_torch_tensor_custom_comm_inited(ray_start_regular):
     if not USE_GPU:

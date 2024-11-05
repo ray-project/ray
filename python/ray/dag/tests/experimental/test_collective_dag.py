@@ -310,9 +310,10 @@ def test_custom_comm_compile(ray_start_regular, monkeypatch):
     with InputNode() as inp:
         tensors = [worker.return_tensor.bind(inp) for worker in workers]
         allreduce = collective.allreduce.bind(tensors)
-        dag = workers[0].recv.bind(
+        recv = workers[0].recv.bind(
             allreduce[1].with_type_hint(TorchTensorType(transport="nccl"))
         )
+        dag = MultiOutputNode([recv, allreduce[0]])
     compiled_dag, mock_nccl_group_set = check_nccl_group_init(
         monkeypatch,
         dag,
@@ -379,8 +380,7 @@ def test_custom_comm_compile_error(ray_start_regular):
     with InputNode() as inp:
         send = workers[0].return_tensor.bind(inp)
         send.with_type_hint(TorchTensorType(transport="nccl"))
-        recv = workers[1].recv.bind(send)
-        dag = recv
+        dag = workers[1].recv.bind(send)
 
     with pytest.raises(ValueError):
         dag.experimental_compile(_default_nccl_group=comm)
