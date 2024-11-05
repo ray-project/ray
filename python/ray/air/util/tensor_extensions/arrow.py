@@ -97,7 +97,7 @@ def convert_to_pyarrow_array(column_values: np.ndarray) -> pa.Array:
         dtype = _infer_pyarrow_type(column_values)
         return pa.array(column_values, type=dtype)
     except Exception as e:
-        raise ArrowConversionError(str(column_values)[:MAX_REPR_LENGTH]) from e
+        raise ArrowConversionError(str(column_values)) from e
 
 
 def _infer_pyarrow_type(column_values: np.ndarray) -> Optional[pa.DataType]:
