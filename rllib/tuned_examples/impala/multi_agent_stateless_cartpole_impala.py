@@ -1,5 +1,4 @@
 from ray.rllib.algorithms.impala import IMPALAConfig
-from ray.rllib.connectors.env_to_module import MeanStdFilter
 from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
 from ray.rllib.examples.envs.classes.multi_agent import MultiAgentStatelessCartPole
 from ray.rllib.utils.metrics import (
@@ -33,9 +32,11 @@ config = (
         enable_env_runner_and_connector_v2=True,
     )
     .environment("multi_stateless_cart", env_config={"num_agents": args.num_agents})
-    .env_runners(
-        env_to_module_connector=lambda env: MeanStdFilter(multi_agent=True),
-    )
+    # TODO (sven): Need to fix the MeanStdFilter(). It seems to cause NaNs when
+    #  training.
+    # .env_runners(
+    #    env_to_module_connector=lambda env: MeanStdFilter(multi_agent=True),
+    # )
     .training(
         train_batch_size_per_learner=600,
         lr=0.0003 * ((args.num_learners or 1) ** 0.5),

@@ -1,5 +1,4 @@
 from ray.rllib.algorithms.appo import APPOConfig
-from ray.rllib.connectors.env_to_module import MeanStdFilter
 from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
 from ray.rllib.examples.envs.classes.stateless_cartpole import StatelessCartPole
 from ray.rllib.utils.test_utils import add_rllib_example_script_args
@@ -25,9 +24,11 @@ config = (
         enable_env_runner_and_connector_v2=True,
     )
     .environment(StatelessCartPole)
-    .env_runners(
-        env_to_module_connector=lambda env: MeanStdFilter(),
-    )
+    # TODO (sven): Need to fix the MeanStdFilter(). It seems to cause NaNs when
+    #  training.
+    # .env_runners(
+    #    env_to_module_connector=lambda env: MeanStdFilter(),
+    # )
     .training(
         lr=0.0005 * ((args.num_learners or 1) ** 0.5),
         num_epochs=1,
