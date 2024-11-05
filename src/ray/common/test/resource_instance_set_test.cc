@@ -383,7 +383,7 @@ TEST_F(NodeResourceInstanceSetTest, TestTryAllocateWithMultiplePgResourceAndBund
   r1.Set(
       pg_gpu_index_1_resource,
       std::vector<FixedPoint>(
-          {{FixedPoint(0), FixedPoint(0), FixedPoint(1), FixedPoint(1), FixedPoint(0)}}));
+          {FixedPoint(0), FixedPoint(0), FixedPoint(1), FixedPoint(1), FixedPoint(0)}));
 
   ResourceSet fail_request = ResourceSet({{pg_cpu_wildcard_resource, FixedPoint(1)},
                                           {pg_gpu_wildcard_resource, FixedPoint(3)},
@@ -457,7 +457,6 @@ TEST_F(NodeResourceInstanceSetTest, TestTryAllocateSinglePgResourceAndNoBundleIn
   // 1. Test non unit resource
   {
     // Success allocation when found a bundle withe enough available resources
-    // Make sure it is the first available bundle
     ResourceID cpu_resource("CPU");
     ResourceID pg_cpu_wildcard_resource("CPU_group_4482dec0faaf5ead891ff1659a9501000000");
     ResourceID pg_cpu_index_0_resource(
@@ -479,33 +478,55 @@ TEST_F(NodeResourceInstanceSetTest, TestTryAllocateSinglePgResourceAndNoBundleIn
     auto allocations = r1.TryAllocate(success_request);
     ASSERT_EQ(allocations->size(), 2);
     ASSERT_EQ((*allocations)[pg_cpu_wildcard_resource],
-              (*allocations)[pg_cpu_index_1_resource]);
-    ASSERT_EQ((*allocations)[pg_cpu_wildcard_resource],
               std::vector<FixedPoint>({FixedPoint(2)}));
+    if (allocations->find(pg_cpu_index_1_resource) != allocations->end()) {
+      ASSERT_EQ((*allocations)[pg_cpu_index_1_resource],
+                std::vector<FixedPoint>({FixedPoint(2)}));
+    } else {
+      ASSERT_EQ((*allocations)[pg_cpu_index_2_resource],
+                std::vector<FixedPoint>({FixedPoint(2)}));
+    }
     ASSERT_EQ(r1.Get(cpu_resource), std::vector<FixedPoint>({FixedPoint(1)}));
     ASSERT_EQ(r1.Get(pg_cpu_wildcard_resource), std::vector<FixedPoint>({FixedPoint(3)}));
     ASSERT_EQ(r1.Get(pg_cpu_index_0_resource), std::vector<FixedPoint>({FixedPoint(1)}));
-    ASSERT_EQ(r1.Get(pg_cpu_index_1_resource), std::vector<FixedPoint>({FixedPoint(0)}));
-    ASSERT_EQ(r1.Get(pg_cpu_index_2_resource), std::vector<FixedPoint>({FixedPoint(2)}));
+    if (allocations->find(pg_cpu_index_1_resource) != allocations->end()) {
+      ASSERT_EQ(r1.Get(pg_cpu_index_1_resource),
+                std::vector<FixedPoint>({FixedPoint(0)}));
+      ASSERT_EQ(r1.Get(pg_cpu_index_2_resource),
+                std::vector<FixedPoint>({FixedPoint(2)}));
+    } else {
+      ASSERT_EQ(r1.Get(pg_cpu_index_1_resource),
+                std::vector<FixedPoint>({FixedPoint(2)}));
+      ASSERT_EQ(r1.Get(pg_cpu_index_2_resource),
+                std::vector<FixedPoint>({FixedPoint(0)}));
+    }
 
     // Failed allocation when no index bundle have enough resources, even though the pg
     // still has enough resources
     ResourceSet fail_request = ResourceSet({
         {pg_cpu_wildcard_resource, FixedPoint(3)},
     });
-    allocations = r1.TryAllocate(fail_request);
-    ASSERT_FALSE(allocations);
+    auto failed_allocations = r1.TryAllocate(fail_request);
+    ASSERT_FALSE(failed_allocations);
     ASSERT_EQ(r1.Get(cpu_resource), std::vector<FixedPoint>({FixedPoint(1)}));
     ASSERT_EQ(r1.Get(pg_cpu_wildcard_resource), std::vector<FixedPoint>({FixedPoint(3)}));
     ASSERT_EQ(r1.Get(pg_cpu_index_0_resource), std::vector<FixedPoint>({FixedPoint(1)}));
-    ASSERT_EQ(r1.Get(pg_cpu_index_1_resource), std::vector<FixedPoint>({FixedPoint(0)}));
-    ASSERT_EQ(r1.Get(pg_cpu_index_2_resource), std::vector<FixedPoint>({FixedPoint(2)}));
+    if (allocations->find(pg_cpu_index_1_resource) != allocations->end()) {
+      ASSERT_EQ(r1.Get(pg_cpu_index_1_resource),
+                std::vector<FixedPoint>({FixedPoint(0)}));
+      ASSERT_EQ(r1.Get(pg_cpu_index_2_resource),
+                std::vector<FixedPoint>({FixedPoint(2)}));
+    } else {
+      ASSERT_EQ(r1.Get(pg_cpu_index_1_resource),
+                std::vector<FixedPoint>({FixedPoint(2)}));
+      ASSERT_EQ(r1.Get(pg_cpu_index_2_resource),
+                std::vector<FixedPoint>({FixedPoint(0)}));
+    }
   }
 
   // 2. Test unit resource
   {
     // Success allocation when found a bundle with enough available resources
-    // Make sure it is the first available bundle
     ResourceID gpu_resource("GPU");
     ResourceID pg_gpu_wildcard_resource("GPU_group_4482dec0faaf5ead891ff1659a9501000000");
     ResourceID pg_gpu_index_0_resource(
@@ -538,19 +559,19 @@ TEST_F(NodeResourceInstanceSetTest, TestTryAllocateSinglePgResourceAndNoBundleIn
                                     FixedPoint(0),
                                     FixedPoint(0)}));
     r2.Set(pg_gpu_index_1_resource,
-           std::vector<FixedPoint>({{FixedPoint(0),
-                                     FixedPoint(1),
-                                     FixedPoint(1),
-                                     FixedPoint(0),
-                                     FixedPoint(0),
-                                     FixedPoint(0)}}));
+           std::vector<FixedPoint>({FixedPoint(0),
+                                    FixedPoint(1),
+                                    FixedPoint(1),
+                                    FixedPoint(0),
+                                    FixedPoint(0),
+                                    FixedPoint(0)}));
     r2.Set(pg_gpu_index_2_resource,
-           std::vector<FixedPoint>({{FixedPoint(0),
-                                     FixedPoint(0),
-                                     FixedPoint(0),
-                                     FixedPoint(1),
-                                     FixedPoint(1),
-                                     FixedPoint(0)}}));
+           std::vector<FixedPoint>({FixedPoint(0),
+                                    FixedPoint(0),
+                                    FixedPoint(0),
+                                    FixedPoint(1),
+                                    FixedPoint(1),
+                                    FixedPoint(0)}));
 
     ResourceSet success_request =
         ResourceSet({{pg_gpu_wildcard_resource, FixedPoint(2)}});
@@ -558,15 +579,27 @@ TEST_F(NodeResourceInstanceSetTest, TestTryAllocateSinglePgResourceAndNoBundleIn
     ASSERT_EQ(allocations->size(), 2);
     // Make sure the allocations are consistent between wildcard resource and indexed
     // resource
-    ASSERT_EQ((*allocations)[pg_gpu_wildcard_resource],
-              (*allocations)[pg_gpu_index_1_resource]);
-    ASSERT_EQ((*allocations)[pg_gpu_wildcard_resource],
-              std::vector<FixedPoint>({FixedPoint(0),
-                                       FixedPoint(1),
-                                       FixedPoint(1),
-                                       FixedPoint(0),
-                                       FixedPoint(0),
-                                       FixedPoint(0)}));
+    if (allocations->find(pg_gpu_index_1_resource) != allocations->end()) {
+      ASSERT_EQ((*allocations)[pg_gpu_wildcard_resource],
+                (*allocations)[pg_gpu_index_1_resource]);
+      ASSERT_EQ((*allocations)[pg_gpu_wildcard_resource],
+                std::vector<FixedPoint>({FixedPoint(0),
+                                         FixedPoint(1),
+                                         FixedPoint(1),
+                                         FixedPoint(0),
+                                         FixedPoint(0),
+                                         FixedPoint(0)}));
+    } else {
+      ASSERT_EQ((*allocations)[pg_gpu_wildcard_resource],
+                (*allocations)[pg_gpu_index_2_resource]);
+      ASSERT_EQ((*allocations)[pg_gpu_wildcard_resource],
+                std::vector<FixedPoint>({FixedPoint(0),
+                                         FixedPoint(0),
+                                         FixedPoint(0),
+                                         FixedPoint(1),
+                                         FixedPoint(1),
+                                         FixedPoint(0)}));
+    }
     ASSERT_EQ(r2.Get(gpu_resource),
               std::vector<FixedPoint>({FixedPoint(0),
                                        FixedPoint(0),
@@ -574,13 +607,6 @@ TEST_F(NodeResourceInstanceSetTest, TestTryAllocateSinglePgResourceAndNoBundleIn
                                        FixedPoint(0),
                                        FixedPoint(0),
                                        FixedPoint(1)}));
-    ASSERT_EQ(r2.Get(pg_gpu_wildcard_resource),
-              std::vector<FixedPoint>({FixedPoint(1),
-                                       FixedPoint(0),
-                                       FixedPoint(0),
-                                       FixedPoint(1),
-                                       FixedPoint(1),
-                                       FixedPoint(0)}));
     ASSERT_EQ(r2.Get(pg_gpu_index_0_resource),
               std::vector<FixedPoint>({FixedPoint(1),
                                        FixedPoint(0),
@@ -588,26 +614,57 @@ TEST_F(NodeResourceInstanceSetTest, TestTryAllocateSinglePgResourceAndNoBundleIn
                                        FixedPoint(0),
                                        FixedPoint(0),
                                        FixedPoint(0)}));
-    ASSERT_EQ(r2.Get(pg_gpu_index_1_resource),
-              std::vector<FixedPoint>({FixedPoint(0),
-                                       FixedPoint(0),
-                                       FixedPoint(0),
-                                       FixedPoint(0),
-                                       FixedPoint(0),
-                                       FixedPoint(0)}));
-    ASSERT_EQ(r2.Get(pg_gpu_index_2_resource),
-              std::vector<FixedPoint>({FixedPoint(0),
-                                       FixedPoint(0),
-                                       FixedPoint(0),
-                                       FixedPoint(1),
-                                       FixedPoint(1),
-                                       FixedPoint(0)}));
+    if (allocations->find(pg_gpu_index_1_resource) != allocations->end()) {
+      ASSERT_EQ(r2.Get(pg_gpu_wildcard_resource),
+                std::vector<FixedPoint>({FixedPoint(1),
+                                         FixedPoint(0),
+                                         FixedPoint(0),
+                                         FixedPoint(1),
+                                         FixedPoint(1),
+                                         FixedPoint(0)}));
+      ASSERT_EQ(r2.Get(pg_gpu_index_1_resource),
+                std::vector<FixedPoint>({FixedPoint(0),
+                                         FixedPoint(0),
+                                         FixedPoint(0),
+                                         FixedPoint(0),
+                                         FixedPoint(0),
+                                         FixedPoint(0)}));
+      ASSERT_EQ(r2.Get(pg_gpu_index_2_resource),
+                std::vector<FixedPoint>({FixedPoint(0),
+                                         FixedPoint(0),
+                                         FixedPoint(0),
+                                         FixedPoint(1),
+                                         FixedPoint(1),
+                                         FixedPoint(0)}));
+    } else {
+      ASSERT_EQ(r2.Get(pg_gpu_wildcard_resource),
+                std::vector<FixedPoint>({FixedPoint(1),
+                                         FixedPoint(1),
+                                         FixedPoint(1),
+                                         FixedPoint(0),
+                                         FixedPoint(0),
+                                         FixedPoint(0)}));
+      ASSERT_EQ(r2.Get(pg_gpu_index_1_resource),
+                std::vector<FixedPoint>({FixedPoint(0),
+                                         FixedPoint(1),
+                                         FixedPoint(1),
+                                         FixedPoint(0),
+                                         FixedPoint(0),
+                                         FixedPoint(0)}));
+      ASSERT_EQ(r2.Get(pg_gpu_index_2_resource),
+                std::vector<FixedPoint>({FixedPoint(0),
+                                         FixedPoint(0),
+                                         FixedPoint(0),
+                                         FixedPoint(0),
+                                         FixedPoint(0),
+                                         FixedPoint(0)}));
+    }
 
     // Failed allocation when the index bundle doesn't have enough resources, even though
     // the pg still has enough resources
     ResourceSet fail_request = ResourceSet({{pg_gpu_wildcard_resource, FixedPoint(3)}});
-    allocations = r2.TryAllocate(fail_request);
-    ASSERT_FALSE(allocations);
+    auto failed_allocations = r2.TryAllocate(fail_request);
+    ASSERT_FALSE(failed_allocations);
     ASSERT_EQ(r2.Get(gpu_resource),
               std::vector<FixedPoint>({FixedPoint(0),
                                        FixedPoint(0),
@@ -615,13 +672,6 @@ TEST_F(NodeResourceInstanceSetTest, TestTryAllocateSinglePgResourceAndNoBundleIn
                                        FixedPoint(0),
                                        FixedPoint(0),
                                        FixedPoint(1)}));
-    ASSERT_EQ(r2.Get(pg_gpu_wildcard_resource),
-              std::vector<FixedPoint>({FixedPoint(1),
-                                       FixedPoint(0),
-                                       FixedPoint(0),
-                                       FixedPoint(1),
-                                       FixedPoint(1),
-                                       FixedPoint(0)}));
     ASSERT_EQ(r2.Get(pg_gpu_index_0_resource),
               std::vector<FixedPoint>({FixedPoint(1),
                                        FixedPoint(0),
@@ -629,20 +679,51 @@ TEST_F(NodeResourceInstanceSetTest, TestTryAllocateSinglePgResourceAndNoBundleIn
                                        FixedPoint(0),
                                        FixedPoint(0),
                                        FixedPoint(0)}));
-    ASSERT_EQ(r2.Get(pg_gpu_index_1_resource),
-              std::vector<FixedPoint>({FixedPoint(0),
-                                       FixedPoint(0),
-                                       FixedPoint(0),
-                                       FixedPoint(0),
-                                       FixedPoint(0),
-                                       FixedPoint(0)}));
-    ASSERT_EQ(r2.Get(pg_gpu_index_2_resource),
-              std::vector<FixedPoint>({FixedPoint(0),
-                                       FixedPoint(0),
-                                       FixedPoint(0),
-                                       FixedPoint(1),
-                                       FixedPoint(1),
-                                       FixedPoint(0)}));
+    if (allocations->find(pg_gpu_index_1_resource) != allocations->end()) {
+      ASSERT_EQ(r2.Get(pg_gpu_wildcard_resource),
+                std::vector<FixedPoint>({FixedPoint(1),
+                                         FixedPoint(0),
+                                         FixedPoint(0),
+                                         FixedPoint(1),
+                                         FixedPoint(1),
+                                         FixedPoint(0)}));
+      ASSERT_EQ(r2.Get(pg_gpu_index_1_resource),
+                std::vector<FixedPoint>({FixedPoint(0),
+                                         FixedPoint(0),
+                                         FixedPoint(0),
+                                         FixedPoint(0),
+                                         FixedPoint(0),
+                                         FixedPoint(0)}));
+      ASSERT_EQ(r2.Get(pg_gpu_index_2_resource),
+                std::vector<FixedPoint>({FixedPoint(0),
+                                         FixedPoint(0),
+                                         FixedPoint(0),
+                                         FixedPoint(1),
+                                         FixedPoint(1),
+                                         FixedPoint(0)}));
+    } else {
+      ASSERT_EQ(r2.Get(pg_gpu_wildcard_resource),
+                std::vector<FixedPoint>({FixedPoint(1),
+                                         FixedPoint(1),
+                                         FixedPoint(1),
+                                         FixedPoint(0),
+                                         FixedPoint(0),
+                                         FixedPoint(0)}));
+      ASSERT_EQ(r2.Get(pg_gpu_index_1_resource),
+                std::vector<FixedPoint>({FixedPoint(0),
+                                         FixedPoint(1),
+                                         FixedPoint(1),
+                                         FixedPoint(0),
+                                         FixedPoint(0),
+                                         FixedPoint(0)}));
+      ASSERT_EQ(r2.Get(pg_gpu_index_2_resource),
+                std::vector<FixedPoint>({FixedPoint(0),
+                                         FixedPoint(0),
+                                         FixedPoint(0),
+                                         FixedPoint(0),
+                                         FixedPoint(0),
+                                         FixedPoint(0)}));
+    }
   }
 }
 
@@ -688,19 +769,19 @@ TEST_F(NodeResourceInstanceSetTest, TestTryAllocateMultiplePgResourceAndNoBundle
                                   FixedPoint(0),
                                   FixedPoint(0)}));
   r1.Set(pg_gpu_index_1_resource,
-         std::vector<FixedPoint>({{FixedPoint(0),
-                                   FixedPoint(1),
-                                   FixedPoint(1),
-                                   FixedPoint(0),
-                                   FixedPoint(0),
-                                   FixedPoint(0)}}));
+         std::vector<FixedPoint>({FixedPoint(0),
+                                  FixedPoint(1),
+                                  FixedPoint(1),
+                                  FixedPoint(0),
+                                  FixedPoint(0),
+                                  FixedPoint(0)}));
   r1.Set(pg_gpu_index_2_resource,
-         std::vector<FixedPoint>({{FixedPoint(0),
-                                   FixedPoint(0),
-                                   FixedPoint(0),
-                                   FixedPoint(1),
-                                   FixedPoint(1),
-                                   FixedPoint(0)}}));
+         std::vector<FixedPoint>({FixedPoint(0),
+                                  FixedPoint(0),
+                                  FixedPoint(0),
+                                  FixedPoint(1),
+                                  FixedPoint(1),
+                                  FixedPoint(0)}));
 
   ResourceSet fail_request = ResourceSet({{pg_cpu_wildcard_resource, FixedPoint(2)},
                                           {pg_gpu_wildcard_resource, FixedPoint(3)}});
@@ -754,24 +835,46 @@ TEST_F(NodeResourceInstanceSetTest, TestTryAllocateMultiplePgResourceAndNoBundle
   ASSERT_EQ(allocations->size(), 4);
   // Make sure the allocations are consistent between wildcard resource and indexed
   // resource
-  ASSERT_EQ((*allocations)[pg_cpu_wildcard_resource],
-            (*allocations)[pg_cpu_index_1_resource]);
+  if (allocations->find(pg_cpu_index_1_resource) != allocations->end()) {
+    ASSERT_EQ((*allocations)[pg_cpu_wildcard_resource],
+              (*allocations)[pg_cpu_index_1_resource]);
+  } else {
+    ASSERT_EQ((*allocations)[pg_cpu_wildcard_resource],
+              (*allocations)[pg_cpu_index_2_resource]);
+  }
   ASSERT_EQ((*allocations)[pg_cpu_wildcard_resource],
             std::vector<FixedPoint>({FixedPoint(2)}));
-  ASSERT_EQ((*allocations)[pg_gpu_wildcard_resource],
-            (*allocations)[pg_gpu_index_1_resource]);
-  ASSERT_EQ((*allocations)[pg_gpu_wildcard_resource],
-            std::vector<FixedPoint>({FixedPoint(0),
-                                     FixedPoint(1),
-                                     FixedPoint(1),
-                                     FixedPoint(0),
-                                     FixedPoint(0),
-                                     FixedPoint(0)}));
+  if (allocations->find(pg_gpu_index_1_resource) != allocations->end()) {
+    ASSERT_EQ((*allocations)[pg_gpu_wildcard_resource],
+              std::vector<FixedPoint>({FixedPoint(0),
+                                       FixedPoint(1),
+                                       FixedPoint(1),
+                                       FixedPoint(0),
+                                       FixedPoint(0),
+                                       FixedPoint(0)}));
+    ASSERT_EQ((*allocations)[pg_gpu_wildcard_resource],
+              (*allocations)[pg_gpu_index_1_resource]);
+  } else {
+    ASSERT_EQ((*allocations)[pg_gpu_wildcard_resource],
+              std::vector<FixedPoint>({FixedPoint(0),
+                                       FixedPoint(0),
+                                       FixedPoint(0),
+                                       FixedPoint(1),
+                                       FixedPoint(1),
+                                       FixedPoint(0)}));
+    ASSERT_EQ((*allocations)[pg_gpu_wildcard_resource],
+              (*allocations)[pg_gpu_index_2_resource]);
+  }
   ASSERT_EQ(r1.Get(cpu_resource), std::vector<FixedPoint>({FixedPoint(1)}));
   ASSERT_EQ(r1.Get(pg_cpu_wildcard_resource), std::vector<FixedPoint>({FixedPoint(3)}));
   ASSERT_EQ(r1.Get(pg_cpu_index_0_resource), std::vector<FixedPoint>({FixedPoint(1)}));
-  ASSERT_EQ(r1.Get(pg_cpu_index_1_resource), std::vector<FixedPoint>({FixedPoint(0)}));
-  ASSERT_EQ(r1.Get(pg_cpu_index_2_resource), std::vector<FixedPoint>({FixedPoint(2)}));
+  if (allocations->find(pg_cpu_index_1_resource) != allocations->end()) {
+    ASSERT_EQ(r1.Get(pg_cpu_index_1_resource), std::vector<FixedPoint>({FixedPoint(0)}));
+    ASSERT_EQ(r1.Get(pg_cpu_index_2_resource), std::vector<FixedPoint>({FixedPoint(2)}));
+  } else {
+    ASSERT_EQ(r1.Get(pg_cpu_index_1_resource), std::vector<FixedPoint>({FixedPoint(2)}));
+    ASSERT_EQ(r1.Get(pg_cpu_index_2_resource), std::vector<FixedPoint>({FixedPoint(0)}));
+  }
   ASSERT_EQ(r1.Get(gpu_resource),
             std::vector<FixedPoint>({FixedPoint(0),
                                      FixedPoint(0),
@@ -779,13 +882,6 @@ TEST_F(NodeResourceInstanceSetTest, TestTryAllocateMultiplePgResourceAndNoBundle
                                      FixedPoint(0),
                                      FixedPoint(0),
                                      FixedPoint(1)}));
-  ASSERT_EQ(r1.Get(pg_gpu_wildcard_resource),
-            std::vector<FixedPoint>({FixedPoint(1),
-                                     FixedPoint(0),
-                                     FixedPoint(0),
-                                     FixedPoint(1),
-                                     FixedPoint(1),
-                                     FixedPoint(0)}));
   ASSERT_EQ(r1.Get(pg_gpu_index_0_resource),
             std::vector<FixedPoint>({FixedPoint(1),
                                      FixedPoint(0),
@@ -793,20 +889,51 @@ TEST_F(NodeResourceInstanceSetTest, TestTryAllocateMultiplePgResourceAndNoBundle
                                      FixedPoint(0),
                                      FixedPoint(0),
                                      FixedPoint(0)}));
-  ASSERT_EQ(r1.Get(pg_gpu_index_1_resource),
-            std::vector<FixedPoint>({FixedPoint(0),
-                                     FixedPoint(0),
-                                     FixedPoint(0),
-                                     FixedPoint(0),
-                                     FixedPoint(0),
-                                     FixedPoint(0)}));
-  ASSERT_EQ(r1.Get(pg_gpu_index_2_resource),
-            std::vector<FixedPoint>({FixedPoint(0),
-                                     FixedPoint(0),
-                                     FixedPoint(0),
-                                     FixedPoint(1),
-                                     FixedPoint(1),
-                                     FixedPoint(0)}));
+  if (allocations->find(pg_gpu_index_1_resource) != allocations->end()) {
+    ASSERT_EQ(r1.Get(pg_gpu_wildcard_resource),
+              std::vector<FixedPoint>({FixedPoint(1),
+                                       FixedPoint(0),
+                                       FixedPoint(0),
+                                       FixedPoint(1),
+                                       FixedPoint(1),
+                                       FixedPoint(0)}));
+    ASSERT_EQ(r1.Get(pg_gpu_index_1_resource),
+              std::vector<FixedPoint>({FixedPoint(0),
+                                       FixedPoint(0),
+                                       FixedPoint(0),
+                                       FixedPoint(0),
+                                       FixedPoint(0),
+                                       FixedPoint(0)}));
+    ASSERT_EQ(r1.Get(pg_gpu_index_2_resource),
+              std::vector<FixedPoint>({FixedPoint(0),
+                                       FixedPoint(0),
+                                       FixedPoint(0),
+                                       FixedPoint(1),
+                                       FixedPoint(1),
+                                       FixedPoint(0)}));
+  } else {
+    ASSERT_EQ(r1.Get(pg_gpu_wildcard_resource),
+              std::vector<FixedPoint>({FixedPoint(1),
+                                       FixedPoint(1),
+                                       FixedPoint(1),
+                                       FixedPoint(0),
+                                       FixedPoint(0),
+                                       FixedPoint(0)}));
+    ASSERT_EQ(r1.Get(pg_gpu_index_1_resource),
+              std::vector<FixedPoint>({FixedPoint(0),
+                                       FixedPoint(1),
+                                       FixedPoint(1),
+                                       FixedPoint(0),
+                                       FixedPoint(0),
+                                       FixedPoint(0)}));
+    ASSERT_EQ(r1.Get(pg_gpu_index_2_resource),
+              std::vector<FixedPoint>({FixedPoint(0),
+                                       FixedPoint(0),
+                                       FixedPoint(0),
+                                       FixedPoint(0),
+                                       FixedPoint(0),
+                                       FixedPoint(0)}));
+  }
 }
 
 TEST_F(NodeResourceInstanceSetTest, TestFree) {

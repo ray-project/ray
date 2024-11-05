@@ -232,13 +232,11 @@ NodeResourceInstanceSet::TryAllocate(const ResourceSet &resource_demands) {
         if (index_resources_it != pg_index_resources_it->second.end()) {
           for (ResourceID indexed_resource_id : index_resources_it->second) {
             if (Has(indexed_resource_id)) {
-              auto allocation = TryAllocate(
-                  indexed_resource_id, resource_demands.Get(resource_id_vector[0].first));
-
-              if (allocation) {
+              wildcard_allocation = TryAllocate(
+                  indexed_resource_id, resource_demands.Get(*wildcard_resource_id));
+              if (wildcard_allocation) {
                 // Found the allocation in a bundle
-                wildcard_allocation = *allocation;
-                allocations[indexed_resource_id] = std::move(*allocation);
+                allocations[indexed_resource_id] = *wildcard_allocation;
                 found = true;
                 break;
               }
