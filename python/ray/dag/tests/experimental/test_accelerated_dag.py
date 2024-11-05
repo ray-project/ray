@@ -556,6 +556,18 @@ class TestDAGNodeInsideContainer:
             dag.experimental_compile()
         assert re.search(self.regex, str(exc_info.value), re.DOTALL)
 
+    def test_dag_node_in_class(self, ray_start_regular):
+        class OuterClass:
+            def __init__(self, ref):
+                self.ref = ref
+
+        actor = Actor.remote(0)
+        with pytest.raises(ValueError) as exc_info:
+            with InputNode() as inp:
+                dag = actor.echo.bind(OuterClass(inp))
+            dag.experimental_compile()
+        assert re.search(self.regex, str(exc_info.value), re.DOTALL)
+
 
 def test_actor_method_bind_diff_input_attr_4(ray_start_regular):
     actor = Actor.remote(0)

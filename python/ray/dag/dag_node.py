@@ -410,7 +410,6 @@ class DAGNode(DAGNodeBase):
         while queue:
             node = queue.pop(0)
             if node._args_contains_nested_dag_node:
-                print(type(node))
                 for arg in node._bound_args:
                     if isinstance(arg, DAGNode):
                         continue
