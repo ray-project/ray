@@ -4,6 +4,7 @@ import sys
 from ray._private.runtime_env.utils import check_output_cmd
 import logging
 import os
+from typing import List
 
 _WIN32 = os.name == "nt"
 
@@ -16,6 +17,29 @@ def is_in_virtualenv() -> bool:
     return hasattr(sys, "real_prefix") or (
         hasattr(sys, "base_prefix") and sys.base_prefix != sys.prefix
     )
+
+
+def get_virtualenv_path(target_dir: str) -> str:
+    """Get virtual environment path."""
+    return os.path.join(target_dir, "virtualenv")
+
+
+def get_virtualenv_python(target_dir: str) -> str:
+    virtualenv_path = get_virtualenv_path(target_dir)
+    if _WIN32:
+        return os.path.join(virtualenv_path, "Scripts", "python.exe")
+    else:
+        return os.path.join(virtualenv_path, "bin", "python")
+
+
+def get_virtualenv_activate_command(target_dir: str) -> List[str]:
+    """Get the command to activate virtual environment."""
+    virtualenv_path = get_virtualenv_path(target_dir)
+    if _WIN32:
+        cmd = [os.path.join(virtualenv_path, "Scripts", "activate.bat")]
+    else:
+        cmd = ["source", os.path.join(virtualenv_path, "bin/activate")]
+    return cmd + ["1>&2", "&&"]
 
 
 async def create_or_get_virtualenv(path: str, cwd: str, logger: logging.Logger):

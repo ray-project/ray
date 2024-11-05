@@ -10,7 +10,6 @@ from asyncio import create_task, get_running_loop
 
 from ray._private.runtime_env import virtualenv_utils
 from ray._private.runtime_env import dependency_utils
-from ray._private.runtime_env import path_utils
 from ray._private.runtime_env.packaging import Protocol, parse_uri
 from ray._private.runtime_env.plugin import RuntimeEnvPlugin
 from ray._private.runtime_env.utils import check_output_cmd
@@ -80,7 +79,7 @@ class PipProcessor:
         if not pip_version:
             return
 
-        python = path_utils.PathHelper.get_virtualenv_python(path)
+        python = virtualenv_utils.get_virtualenv_python(path)
         # Ensure pip version.
         pip_reinstall_cmd = [
             python,
@@ -108,7 +107,7 @@ class PipProcessor:
         if not pip_check:
             logger.info("Skip pip check.")
             return
-        python = path_utils.PathHelper.get_virtualenv_python(path)
+        python = virtualenv_utils.get_virtualenv_python(path)
 
         await check_output_cmd(
             [python, "-m", "pip", "check", "--disable-pip-version-check"],
@@ -128,10 +127,10 @@ class PipProcessor:
         pip_env: Dict,
         logger: logging.Logger,
     ):
-        virtualenv_path = path_utils.PathHelper.get_virtualenv_path(path)
-        python = path_utils.PathHelper.get_virtualenv_python(path)
+        virtualenv_path = virtualenv_utils.get_virtualenv_path(path)
+        python = virtualenv_utils.get_virtualenv_python(path)
         # TODO(fyrestone): Support -i, --no-deps, --no-cache-dir, ...
-        pip_requirements_file = path_utils.PathHelper.get_requirements_file(
+        pip_requirements_file = virtualenv_utils.get_requirements_file(
             path, pip_packages
         )
 
@@ -178,7 +177,7 @@ class PipProcessor:
         os.makedirs(exec_cwd, exist_ok=True)
         try:
             await virtualenv_utils.create_or_get_virtualenv(path, exec_cwd, logger)
-            python = path_utils.PathHelper.get_virtualenv_python(path)
+            python = virtualenv_utils.get_virtualenv_python(path)
             async with dependency_utils.check_ray(python, exec_cwd, logger):
                 # Ensure pip version.
                 await self._ensure_pip_version(
@@ -325,7 +324,7 @@ class PipPlugin(RuntimeEnvPlugin):
         # Update py_executable.
         protocol, hash_val = parse_uri(uri)
         target_dir = self._get_path_from_hash(hash_val)
-        virtualenv_python = path_utils.PathHelper.get_virtualenv_python(target_dir)
+        virtualenv_python = virtualenv_utils.get_virtualenv_python(target_dir)
 
         if not os.path.exists(virtualenv_python):
             raise ValueError(
@@ -334,6 +333,6 @@ class PipPlugin(RuntimeEnvPlugin):
                 "installing the runtime_env `pip` packages."
             )
         context.py_executable = virtualenv_python
-        context.command_prefix += path_utils.PathHelper.get_virtualenv_activate_command(
+        context.command_prefix += virtualenv_utils.get_virtualenv_activate_command(
             target_dir
         )

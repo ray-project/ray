@@ -6,7 +6,6 @@ from typing import Dict, List, Optional
 from asyncio import get_running_loop
 import os
 from ray._private.runtime_env import virtualenv_utils
-from ray._private.runtime_env import path_utils
 from ray._private.runtime_env import dependency_utils
 from ray._private.runtime_env.utils import check_output_cmd
 import shutil
@@ -37,8 +36,8 @@ class UvProcessor:
         self, path: str, cwd: str, pip_env: dict, logger: logging.Logger
     ):
         """Before package install, make sure `uv` is installed."""
-        virtualenv_path = path_utils.PathHelper.get_virtualenv_path(path)
-        python = path_utils.PathHelper.get_virtualenv_python(path)
+        virtualenv_path = virtualenv_utils.get_virtualenv_path(path)
+        python = virtualenv_utils.get_virtualenv_python(path)
 
         uv_install_cmd = [
             python,
@@ -59,12 +58,10 @@ class UvProcessor:
         pip_env: Dict,
         logger: logging.Logger,
     ):
-        virtualenv_path = path_utils.PathHelper.get_virtualenv_path(path)
-        python = path_utils.PathHelper.get_virtualenv_python(path)
+        virtualenv_path = virtualenv_utils.get_virtualenv_path(path)
+        python = virtualenv_utils.get_virtualenv_python(path)
         # TODO(fyrestone): Support -i, --no-deps, --no-cache-dir, ...
-        requirements_file = path_utils.PathHelper.get_requirements_file(
-            path, uv_packages
-        )
+        requirements_file = virtualenv_utils.get_requirements_file(path, uv_packages)
 
         # Install uv, which acts as the default package manager.
         await self._install_uv(path, cwd, pip_env, logger)
@@ -109,7 +106,7 @@ class UvProcessor:
         os.makedirs(exec_cwd, exist_ok=True)
         try:
             await virtualenv_utils.create_or_get_virtualenv(path, exec_cwd, logger)
-            python = path_utils.PathHelper.get_virtualenv_python(path)
+            python = virtualenv_utils.get_virtualenv_python(path)
             async with dependency_utils.check_ray(python, exec_cwd, logger):
                 # Install packages with uv.
                 await self._install_uv_packages(
