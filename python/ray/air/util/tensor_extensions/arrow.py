@@ -128,8 +128,8 @@ def _infer_pyarrow_type(column_values: np.ndarray) -> Optional[pa.DataType]:
 
     inferred_pa_dtype = pa.infer_type(column_values)
 
-    def _lt_2gb(o: Union[bytes, str]) -> bool:
-        return len(o) > 2 * GiB
+    def _lt_2gb(o: Union[bytes, str, None]) -> bool:
+        return o is not None and len(o) > 2 * GiB
 
     if inferred_pa_dtype.equals(pa.binary()) and any(
         [_lt_2gb(v) for v in column_values]
