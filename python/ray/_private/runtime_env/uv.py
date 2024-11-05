@@ -22,7 +22,7 @@ class UvProcessor:
         runtime_env: "RuntimeEnv",  # noqa: F821
         logger: Optional[logging.Logger] = default_logger,
     ):
-        logger.debug("Setting up pip for runtime_env: %s", runtime_env)
+        logger.debug("Setting up uv for runtime_env: %s", runtime_env)
         self._target_dir = target_dir
         self._runtime_env = runtime_env
         self._logger = logger
