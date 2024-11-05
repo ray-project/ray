@@ -71,7 +71,7 @@ from ray.data._internal.logical.operators.n_ary_operator import Zip
 from ray.data._internal.logical.operators.one_to_one_operator import Limit
 from ray.data._internal.logical.operators.write_operator import Write
 from ray.data._internal.logical.optimizers import LogicalPlan
-from ray.data._internal.pandas_block import PandasBlockSchema
+from ray.data._internal.pandas_block import PandasBlockBuilder, PandasBlockSchema
 from ray.data._internal.plan import ExecutionPlan
 from ray.data._internal.planner.exchange.sort_task_spec import SortKey
 from ray.data._internal.remote_fn import cached_remote_fn
@@ -4614,14 +4614,16 @@ class Dataset:
                     f"{count} rows will fit in local memory, set "
                     "ds.to_pandas(limit=None) to disable limits."
                 )
-        bundles = self.iter_internal_ref_bundles()
-        output = DelegatingBlockBuilder()
 
-        for bundle in bundles:
-            for block_ref in bundle.block_refs:
-                output.add_block(ray.get(block_ref))
-        block = output.build()
-        return _block_to_df(block)
+        builder = PandasBlockBuilder()
+        for batch in self.iter_batches(batch_format="pandas", batch_size=None):
+            builder.add_block(batch)
+        block = builder.build()
+
+        # `PandasBlockBuilder` creates a dataframe with internal extension types like
+        # 'TensorDtype'. We use the `to_pandas` method to convert these extension
+        # types to regular types.
+        return BlockAccessor.for_block(block).to_pandas()
 
     @ConsumptionAPI(pattern="Time complexity:")
     @DeveloperAPI
