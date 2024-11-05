@@ -32,7 +32,7 @@ class UvProcessor:
             raise RuntimeError(
                 f"Please install virtualenv "
                 f"`{sys.executable} -m pip install virtualenv`"
-                f"to enable pip runtime env."
+                f"to enable uv runtime env."
             )
 
         logger.debug("Setting up uv for runtime_env: %s", runtime_env)
