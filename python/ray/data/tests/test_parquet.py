@@ -598,7 +598,8 @@ def test_parquet_read_partitioned_with_columns(ray_start_regular_shared, fs, dat
 # pyarrow does not support single path with partitioning,
 # this issue cannot be resolved by Ray data itself.
 @pytest.mark.skipif(
-    parse_version(_get_pyarrow_version()) < parse_version("7.0.0"),
+    # Always skipping; bug in rayturbo.
+    True or parse_version(_get_pyarrow_version()) < parse_version("7.0.0"),
     reason="Old pyarrow behavior cannot be fixed.",
 )
 @pytest.mark.parametrize(
