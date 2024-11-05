@@ -19,6 +19,7 @@
 #include "ray/common/common_protocol.h"
 #include "ray/stats/metric_defs.h"
 #include "ray/util/util.h"
+#include "src/ray/object_manager/plasma/store.h"
 
 namespace asio = boost::asio;
 
@@ -160,7 +161,9 @@ void ObjectManager::Stop() {
   // Stop the GRPC server before stopping the object store. This is to make sure when
   // we stop the object server, there will be no ongoing or future GRPC requests.
   StopRpcService();
-  plasma::plasma_store_runner->Stop();
+  if (!plasma::plasma_store_runner) {
+    plasma::plasma_store_runner->Stop();
+  }
   object_store_internal_.reset();
 }
 
