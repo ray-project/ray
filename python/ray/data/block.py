@@ -1,4 +1,5 @@
 import collections
+import logging
 import os
 import time
 from dataclasses import dataclass
@@ -56,6 +57,8 @@ AggType = TypeVar("AggType")
 # ``ArrowBlockAccessor``.
 Block = Union["pyarrow.Table", "pandas.DataFrame"]
 
+
+logger = logging.getLogger(__file__)
 
 @DeveloperAPI
 class BlockType(Enum):
@@ -374,6 +377,8 @@ class BlockAccessor:
                 try:
                     return cls.batch_to_arrow_block(batch)
                 except ArrowConversionError as e:
+                    logger.warning(f"Failed to convert batch to Arrow due to: {e}; falling back to Pandas block")
+
                     if block_type is None:
                         return cls.batch_to_pandas_block(batch)
                     else:
