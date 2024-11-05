@@ -1,4 +1,8 @@
-"""Util class to install packages via uv."""
+"""Util class to install packages via uv.
+
+Difference with pip:
+1. `--disable-pip-version-check` has no effect for uv.
+"""
 
 # TODO(hjiang): Implement `UvPlugin`, which is the counterpart for `PipPlugin`.
 
@@ -83,10 +87,6 @@ class UvProcessor:
         )
 
         # Install all dependencies.
-        #
-        # --disable-pip-version-check
-        #   Don't periodically check PyPI to determine whether a new version
-        #   of pip is available for download.
         #
         # --no-cache-dir
         #   Disable the cache, the pip runtime env is a one-time installation,
