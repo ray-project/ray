@@ -1219,7 +1219,6 @@ class IMPALA(Algorithm):
             #  AgentCollectors, RolloutWorkers, Policies, TrajectoryView API, etc..):
             if (
                 self.config.batch_mode == "truncate_episodes"
-                and self.config.enable_connectors
                 and self.config.restart_failed_env_runners
             ):
                 if any(

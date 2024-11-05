@@ -13,10 +13,6 @@ args = parser.parse_args()
 
 config = (
     DQNConfig()
-    .api_stack(
-        enable_rl_module_and_learner=True,
-        enable_env_runner_and_connector_v2=True,
-    )
     .environment(env="CartPole-v1")
     .training(
         lr=0.0005 * (args.num_learners or 1) ** 0.5,
