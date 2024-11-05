@@ -551,9 +551,6 @@ def test_restore_retry(ray_start_2_cpus, tmpdir, retry_num):
 
         def step(self):
             time.sleep(1)
-            import pdb
-
-            pdb.set_trace()
             if self.idx == 0 and self._is_restored:
                 raise RuntimeError(
                     "===== Restored trial cannot start from scratch ====="
