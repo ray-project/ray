@@ -620,15 +620,13 @@ def test_parquet_read_partitioned_with_partition_filter(
         ),
     )
 
-    assert ds.schema() == Schema(
-        pa.schema(
-            [
-                ("x", pa.string()),
-                ("y", pa.string()),
-                ("z", pa.float64()),
-            ]
-        )
-    )
+    # Where we insert partition columns is an implementation detail, so we don't check
+    # the order of the columns.
+    assert sorted(zip(ds.schema().names, ds.schema().types)) == [
+        ("x", pa.string()),
+        ("y", pa.string()),
+        ("z", pa.float64()),
+    ]
 
     values = [[s["x"], s["y"], s["z"]] for s in ds.take()]
 
