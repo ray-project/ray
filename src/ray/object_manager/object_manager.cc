@@ -161,7 +161,7 @@ void ObjectManager::Stop() {
   // Stop the GRPC server before stopping the object store. This is to make sure when
   // we stop the object server, there will be no ongoing or future GRPC requests.
   StopRpcService();
-  if (!plasma::plasma_store_runner) {
+  if (plasma::plasma_store_runner) {
     plasma::plasma_store_runner->Stop();
   }
   object_store_internal_.reset();
