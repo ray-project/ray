@@ -87,7 +87,10 @@ Ray Serve now supports a local testing mode that allows you to run your deployme
 serve.run(app, _local_testing_mode=True)
 ```
 
-This mode runs each deployment in a background thread and supports most of the same features as running on a full Ray cluster, with some limitations. For example, converting deployment responses to Ray object references is not supported in local testing mode.
+Alternatively, you can set the environment variable `RAY_SERVE_FORCE_LOCAL_TESTING_MODE=1`.
+
+This mode runs each deployment in a background thread and supports most of the same features as running on a full Ray cluster. Note that some features, such as converting `DeploymentResponses` to `ObjectRefs`, are not supported in local testing mode. If you encounter limitations, consider filing a feature request on GitHub.
+
 ## Testing on a remote cluster
 
 To test on a remote cluster, you'll use `serve run` again, but this time you'll pass in an `--address` argument to specify the address of the Ray cluster to connect to.  For remote clusters, this address has the form `ray://<head-node-ip-address>:10001`; see [Ray Client](ray-client-ref) for more information.

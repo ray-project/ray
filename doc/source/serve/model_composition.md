@@ -113,7 +113,12 @@ Note how the response from the `Adder` handle passes directly to the `Multiplier
 
 ## Streaming DeploymentHandle calls
 
-You can also use `DeploymentHandles` to make streaming method calls that return multiple outputs. To make a streaming call, the method must be a generator and you must set `handle.options(stream=True)`. Then, the handle call returns a {mod}`DeploymentResponseGenerator <ray.serve.handle.DeploymentResponseGenerator>` instead of a unary `DeploymentResponse`. You can use `DeploymentResponseGenerators` as a sync or async generator, like in an `async for` code block. Similar to `DeploymentResponse.result()`, avoid using a `DeploymentResponseGenerator` as a sync generator within a deployment, as that blocks other requests from executing concurrently on that replica. Note that you can't pass `DeploymentResponseGenerators` to other handle calls. If you have a use case requiring this feature, please file a feature request on GitHub.
+You can also use `DeploymentHandles` to make streaming method calls that return multiple outputs.
+To make a streaming call, the method must be a generator and you must set `handle.options(stream=True)`.
+Then, the handle call returns a {mod}`DeploymentResponseGenerator <ray.serve.handle.DeploymentResponseGenerator>` instead of a unary `DeploymentResponse`.
+You can use `DeploymentResponseGenerators` as a sync or async generator, like in an `async for` code block.
+Similar to `DeploymentResponse.result()`, avoid using a `DeploymentResponseGenerator` as a sync generator within a deployment, as that blocks other requests from executing concurrently on that replica.
+Note that you can't pass `DeploymentResponseGenerators` to other handle calls.
 
 Example:
 
@@ -122,6 +127,7 @@ Example:
 :end-before: __streaming_example_end__
 :language: python
 ```
+
 ## Advanced: Pass a DeploymentResponse in a nested object [FULLY DEPRECATED]
 
 :::{warning}
