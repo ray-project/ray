@@ -67,6 +67,11 @@ class DAGNode(DAGNodeBase):
         # UUID that is not changed over copies of this node.
         self._stable_uuid = uuid.uuid4().hex
 
+        # Indicates whether this DAG node contains nested DAG nodes.
+        # Nested DAG nodes are allowed in traditional DAGs but not
+        # in Ray Compiled Graphs, except for MultiOutputNode.
+        self._args_contains_nested_dag_node = False
+
         # The list of nodes that this DAG node uses as an argument.
         self._upstream_nodes: List["DAGNode"] = self._collect_upstream_nodes()
 
@@ -95,13 +100,9 @@ class DAGNode(DAGNodeBase):
             else:
                 scanner = _PyObjScanner()
                 dag_nodes = scanner.find_nodes([arg])
-                s = (
-                    f"Found {len(dag_nodes)} DAGNodes from the arg {arg} in {self}. "
-                    "Please ensure that the argument is a single DAGNode and that a "
-                    "DAGNode is not allowed to be placed inside any type of container."
-                )
+                upstream_nodes.extend(dag_nodes)
                 scanner.clear()
-                assert len(dag_nodes) == 0, s
+                self._args_contains_nested_dag_node = len(dag_nodes) > 0
 
         scanner = _PyObjScanner()
         other_upstream_nodes: List["DAGNode"] = scanner.find_nodes(
@@ -408,6 +409,28 @@ class DAGNode(DAGNodeBase):
 
         while queue:
             node = queue.pop(0)
+            if node._args_contains_nested_dag_node:
+                print(type(node))
+                for arg in node._bound_args:
+                    if isinstance(arg, DAGNode):
+                        continue
+                    else:
+                        scanner = _PyObjScanner()
+                        dag_nodes = scanner.find_nodes([arg])
+                        scanner.clear()
+                        if len(dag_nodes) > 0:
+                            raise ValueError(
+                                f"Found {len(dag_nodes)} DAGNodes from the arg {arg} "
+                                f"in {self}. Please ensure that the argument is a "
+                                "single DAGNode and that a DAGNode is not allowed to "
+                                "be placed inside any type of container."
+                            )
+                raise AssertionError(
+                    "A DAGNode's args should contain nested DAGNodes as args, "
+                    "but none were found during the compilation process. This is a "
+                    "Ray internal error. Please report this issue to the Ray team."
+                )
+
             if node not in visited:
                 if node.is_adag_output_node:
                     # Validate whether there are multiple nodes that call

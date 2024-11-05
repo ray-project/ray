@@ -526,30 +526,34 @@ class TestDAGNodeInsideContainer:
 
     def test_dag_node_in_list(self, ray_start_regular):
         actor = Actor.remote(0)
-        with pytest.raises(Exception) as exc_info:
+        with pytest.raises(ValueError) as exc_info:
             with InputNode() as inp:
-                actor.echo.bind([inp])
+                dag = actor.echo.bind([inp])
+            dag.experimental_compile()
         assert re.search(self.regex, str(exc_info.value), re.DOTALL)
 
     def test_dag_node_in_tuple(self, ray_start_regular):
         actor = Actor.remote(0)
-        with pytest.raises(Exception) as exc_info:
+        with pytest.raises(ValueError) as exc_info:
             with InputNode() as inp:
-                actor.echo.bind((inp,))
+                dag = actor.echo.bind((inp,))
+            dag.experimental_compile()
         assert re.search(self.regex, str(exc_info.value), re.DOTALL)
 
     def test_dag_node_in_dict(self, ray_start_regular):
         actor = Actor.remote(0)
-        with pytest.raises(Exception) as exc_info:
+        with pytest.raises(ValueError) as exc_info:
             with InputNode() as inp:
-                actor.echo.bind({"inp": inp})
+                dag = actor.echo.bind({"inp": inp})
+            dag.experimental_compile()
         assert re.search(self.regex, str(exc_info.value), re.DOTALL)
 
     def test_two_dag_nodes_in_list(self, ray_start_regular):
         actor = Actor.remote(0)
-        with pytest.raises(Exception) as exc_info:
+        with pytest.raises(ValueError) as exc_info:
             with InputNode() as inp:
-                actor.echo.bind([inp, inp])
+                dag = actor.echo.bind([inp, inp])
+            dag.experimental_compile()
         assert re.search(self.regex, str(exc_info.value), re.DOTALL)
 
 
