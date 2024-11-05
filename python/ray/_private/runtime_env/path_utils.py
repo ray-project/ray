@@ -1,7 +1,7 @@
 import os
 
 from typing import List, Optional
-from ray._private.runtime_env import env_utils
+from ray._private.runtime_env import virtualenv_utils
 
 
 INTERNAL_PIP_FILENAME = "ray_runtime_env_internal_pip_requirements.txt"
@@ -16,7 +16,7 @@ class PathHelper:
     @classmethod
     def get_virtualenv_python(cls, target_dir: str) -> str:
         virtualenv_path = cls.get_virtualenv_path(target_dir)
-        if env_utils._WIN32:
+        if virtualenv_utils._WIN32:
             return os.path.join(virtualenv_path, "Scripts", "python.exe")
         else:
             return os.path.join(virtualenv_path, "bin", "python")
@@ -24,7 +24,7 @@ class PathHelper:
     @classmethod
     def get_virtualenv_activate_command(cls, target_dir: str) -> List[str]:
         virtualenv_path = cls.get_virtualenv_path(target_dir)
-        if env_utils._WIN32:
+        if virtualenv_utils._WIN32:
             cmd = [os.path.join(virtualenv_path, "Scripts", "activate.bat")]
 
         else:

@@ -5,7 +5,7 @@
 from typing import Dict, List, Optional
 from asyncio import get_running_loop
 import os
-from ray._private.runtime_env import env_utils
+from ray._private.runtime_env import virtualenv_utils
 from ray._private.runtime_env import path_utils
 from ray._private.runtime_env import dependency_utils
 from ray._private.runtime_env.utils import check_output_cmd
@@ -108,7 +108,7 @@ class UvProcessor:
         exec_cwd = os.path.join(path, "exec_cwd")
         os.makedirs(exec_cwd, exist_ok=True)
         try:
-            await env_utils.create_or_get_virtualenv(path, exec_cwd, logger)
+            await virtualenv_utils.create_or_get_virtualenv(path, exec_cwd, logger)
             python = path_utils.PathHelper.get_virtualenv_python(path)
             async with dependency_utils.check_ray(python, exec_cwd, logger):
                 # Install packages with uv.

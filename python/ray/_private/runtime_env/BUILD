@@ -16,13 +16,13 @@ py_library(
     name = "path_utils",
     srcs = ["path_utils.py"],
     deps = [
-        ":env_utils",
+        ":virtualenv_utils",
     ],
 )
 
 py_library(
-    name = "env_utils",
-    srcs = ["env_utils.py"],
+    name = "virtualenv_utils",
+    srcs = ["virtualenv_utils.py"],
     deps = [
         ":utils",
     ],
@@ -41,7 +41,7 @@ py_library(
     srcs= ["uv.py"],
     deps = [
         ":utils",
-        ":env_utils",
+        ":virtualenv_utils",
         ":path_utils",
         ":dependency_utils",
     ],

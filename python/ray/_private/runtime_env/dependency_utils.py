@@ -5,7 +5,7 @@ import os
 import tempfile
 import logging
 from contextlib import asynccontextmanager
-from ray._private.runtime_env import env_utils
+from ray._private.runtime_env import virtualenv_utils
 from ray._private.runtime_env.utils import check_output_cmd
 
 
@@ -44,7 +44,7 @@ with open(r"{ray_version_path}", "wt") as f:
                     ray_version_path=ray_version_path
                 ),
             ]
-            if env_utils._WIN32:
+            if virtualenv_utils._WIN32:
                 env = os.environ.copy()
             else:
                 env = {}
