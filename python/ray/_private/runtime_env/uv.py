@@ -129,7 +129,7 @@ class UvProcessor:
         except Exception:
             logger.info("Delete incomplete virtualenv: %s", path)
             shutil.rmtree(path, ignore_errors=True)
-            logger.exception("Failed to install pip packages.")
+            logger.exception("Failed to install uv packages.")
             raise
 
     def __await__(self):
