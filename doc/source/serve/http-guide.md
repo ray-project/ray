@@ -19,6 +19,7 @@ Considering your use case, you can choose the right level of abstraction:
 
 (serve-http)=
 ## Calling Deployments via HTTP
+
 When you deploy a Serve application, the [ingress deployment](serve-key-concepts-ingress-deployment) (the one passed to `serve.run`) is exposed over HTTP.
 
 ```{literalinclude} doc_code/http_guide/http_guide.py
@@ -58,6 +59,14 @@ To prevent an async call from being interrupted by `asyncio.CancelledError`, use
 When the request is cancelled, a cancellation error is raised inside the `SnoringSleeper` deployment's `__call__()` method. However, the cancellation is not raised inside the `snore()` call, so `ZZZ` is printed even if the request is cancelled. Note that `asyncio.shield` cannot be used on a `DeploymentHandle` call to prevent the downstream handler from being cancelled. You need to explicitly handle the cancellation error in that handler as well.
 
 (serve-fastapi-http)=
+
+### Local Testing Mode
+
+Ray Serve now supports a local testing mode, which allows you to run deployments locally for faster development and testing. This mode can be enabled by setting the `_local_testing_mode` flag to `True` in `serve.run()`. This feature is particularly useful for unit testing application and model composition logic without deploying to a full cluster.
+
+To enable local testing mode, you can set the environment variable `RAY_SERVE_FORCE_LOCAL_TESTING_MODE=1` or pass `_local_testing_mode=True` directly to `serve.run()`. This mode runs user code for each deployment in a background thread, allowing for the use of debugging tools like PDB.
+
+Note that some features, such as converting `DeploymentResponses` to `ObjectRefs`, are not supported in local testing mode. If you encounter limitations, consider filing a feature request on GitHub.
 ## FastAPI HTTP Deployments
 
 If you want to define more complex HTTP handling logic, Serve integrates with [FastAPI](https://fastapi.tiangolo.com/). This allows you to define a Serve deployment using the {mod}`@serve.ingress <ray.serve.ingress>` decorator that wraps a FastAPI app with its full range of features. The most basic example of this is shown below, but for more details on all that FastAPI has to offer such as variable routes, automatic type validation, dependency injection (e.g., for database connections), and more, please check out [their documentation](https://fastapi.tiangolo.com/).
