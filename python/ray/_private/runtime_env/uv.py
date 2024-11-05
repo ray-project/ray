@@ -10,6 +10,7 @@ from ray._private.runtime_env import dependency_utils
 from ray._private.runtime_env.utils import check_output_cmd
 import shutil
 import logging
+import sys
 
 default_logger = logging.getLogger(__name__)
 
@@ -21,6 +22,15 @@ class UvProcessor:
         runtime_env: "RuntimeEnv",  # noqa: F821
         logger: Optional[logging.Logger] = default_logger,
     ):
+        try:
+            import virtualenv  # noqa: F401 ensure virtualenv exists.
+        except ImportError:
+            raise RuntimeError(
+                f"Please install virtualenv "
+                f"`{sys.executable} -m pip install virtualenv`"
+                f"to enable pip runtime env."
+            )
+
         logger.debug("Setting up uv for runtime_env: %s", runtime_env)
         self._target_dir = target_dir
         self._runtime_env = runtime_env
