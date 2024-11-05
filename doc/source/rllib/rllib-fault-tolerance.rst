@@ -31,7 +31,7 @@ The two properties that RLlib supports here are self-recovery and elasticity:
 * **Self-Recovery**: When possible, RLlib will attempt to restore any :py:class:`~ray.rllib.env.env_runner.EnvRunner` that was previously removed. During restoration, RLlib syncs the latest state over to the restored :py:class:`~ray.rllib.env.env_runner.EnvRunner` before new episodes can be sampled.
 
 
-Worker fault tolerance can be turned on by setting config ``recreate_failed_env_runners`` to True.
+Worker fault tolerance can be turned on by setting ``config.fault_tolerance(restart_failed_env_runners=True)``.
 
 RLlib achieves this by utilizing a
 `state-aware and fault tolerant actor manager <https://github.com/ray-project/ray/blob/master/rllib/utils/actor_manager.py>`__. Under the hood, RLlib relies on Ray Core :ref:`actor fault tolerance <actor-fault-tolerance>` to automatically recover failed worker actors.
@@ -57,7 +57,7 @@ errors to higher level components. You can do that easily by turning on config
     So for on-policy algorithms, it may be better to recover at worker level to make sure
     training progresses with elastic worker set while the environments are being reconstructed.
     More specifically, use configs ``num_envs_per_env_runner=1``, ``restart_failed_sub_environments=False``,
-    and ``recreate_failed_env_runners=True``.
+    and ``restart_failed_env_runners=True``.
 
 
 Fault Tolerance and Recovery Provided by Ray Tune
