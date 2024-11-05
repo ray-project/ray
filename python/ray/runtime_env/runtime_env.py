@@ -354,12 +354,14 @@ class RuntimeEnv(dict):
         if not _validate:
             return
 
-        if self.get("conda") and self.get("pip"):
+        if int(self.has_pip()) + int(self.has_conda()) + int(self.has_uv()) > 1:
             raise ValueError(
-                "The 'pip' field and 'conda' field of "
+                "The 'pip' field, 'conda' field and 'uv' field of "
                 "runtime_env cannot both be specified.\n"
                 f"specified pip field: {self['pip']}\n"
                 f"specified conda field: {self['conda']}\n"
+                f"specified uv field: {self['uv']}\n"
+                "To use uv, please only set the `uv` field."
                 "To use pip with conda, please only set the 'conda' "
                 "field, and specify your pip dependencies "
                 "within the conda YAML config dict: see "
