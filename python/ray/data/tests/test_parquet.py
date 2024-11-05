@@ -9,11 +9,9 @@ import pyarrow as pa
 import pyarrow.dataset as pds
 import pyarrow.parquet as pq
 import pytest
-from pkg_resources import parse_version
 from pytest_lazyfixture import lazy_fixture
 
 import ray
-from ray._private.utils import _get_pyarrow_version
 from ray.air.util.tensor_extensions.arrow import ArrowTensorType, ArrowTensorTypeV2
 from ray.data import Schema
 from ray.data._internal.datasource.parquet_bulk_datasource import ParquetBulkDatasource
