@@ -8,8 +8,8 @@ py_test(
 )
 
 py_test(
-    name = "test_uv",
-    srcs = ["test_uv.py"],
+    name = "test_runtime_env_uv",
+    srcs = ["test_runtime_env_uv.py"],
     tags = ["team:core"],
     deps = [
         "//python/ray/_private/runtime_env:uv",
