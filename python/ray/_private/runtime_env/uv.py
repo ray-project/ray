@@ -97,7 +97,6 @@ class UvProcessor:
             "uv",
             "pip",
             "install",
-            "--disable-pip-version-check",
             "--no-cache-dir",
             "-r",
             requirements_file,
