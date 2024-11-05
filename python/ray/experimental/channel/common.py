@@ -245,12 +245,6 @@ class ChannelInterface:
         """
         raise NotImplementedError
 
-    def num_readers(self) -> int:
-        """
-        Return the number of readers for this channel.
-        """
-        raise NotImplementedError
-
 
 # Interfaces for channel I/O.
 @DeveloperAPI

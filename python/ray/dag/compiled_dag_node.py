@@ -2260,7 +2260,13 @@ class CompiledDAG:
             ImportError: If the `graphviz` package is not installed.
 
         """
-        import graphviz
+        try:
+            import graphviz
+        except ImportError:
+            raise ImportError(
+                "Please install graphviz to visualize the execution schedule. "
+                "You can install it by running `pip install graphviz`."
+            )
         from ray.dag import (
             InputAttributeNode,
             InputNode,
@@ -2337,37 +2343,28 @@ class CompiledDAG:
                 label += type(dag_node).__name__
                 shape = "diamond"
                 fillcolor = "red"
-
+            print("task: " + label + ", outputIdxs: " + str(task.arg_type_hints))
             # Add the node to the graph with attributes
             dot.node(str(idx), label, shape=shape, style=style, fillcolor=fillcolor)
+            for out_idx, output_channel in enumerate(task.output_channels):
+                dot.node(
+                    f"{idx} + {output_channel}",
+                    type(output_channel).__name__,
+                    shape="rectangle",
+                )
+                dot.edge(str(idx), f"{idx} + {output_channel}")
 
-        # Add edges with type hints based on argument mappings
-        for idx, task in self.idx_to_task.items():
-            current_task_idx = idx
-
-            for arg_index, arg in enumerate(task.dag_node.get_args()):
-                if isinstance(arg, DAGNode):
-                    # Get the upstream task index
-                    upstream_task_idx = self.dag_node_to_idx[arg]
-
-                    # Get the type hint for this argument
-                    if arg_index < len(task.arg_type_hints):
-                        edge_label = type(task.arg_type_hints[arg_index]).__name__
-                    else:
-                        edge_label = "UnknownType"
-
-                    if extra_channel_detail and arg_index < len(task.output_channels):
-                        edge_label += (
-                            f"\n{type(task.output_channels[arg_index]).__name__}\n"
-                            "# of Readers: "
-                            f"{task.output_channels[arg_index].num_readers()}"
-                        )
-
-                    # Draw an edge from the upstream task to the
-                    # current task with the type hint
-                    dot.edge(
-                        str(upstream_task_idx), str(current_task_idx), label=edge_label
-                    )
+            for downstream_node in task.dag_node._downstream_nodes:
+                downstream_idx = self.dag_node_to_idx[downstream_node]
+                actor_handle = task.downstream_task_idxs[downstream_idx]
+                # Get the type hint for this argument
+                edge_label = (
+                    type(dag_node.type_hint).__name__
+                    if dag_node.type_hint
+                    else "UnknownType"
+                )
+                # Draw an edge from  task to downstream task
+                dot.edge(str(idx), str(downstream_idx), label=edge_label)
 
         if return_dot:
             return dot.source
