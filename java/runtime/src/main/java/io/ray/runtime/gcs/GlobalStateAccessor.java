@@ -148,7 +148,8 @@ public class GlobalStateAccessor {
     }
   }
 
-  private native long nativeCreateGlobalStateAccessor(String redisAddress, String redisUsername, String redisPassword);
+  private native long nativeCreateGlobalStateAccessor(
+      String redisAddress, String redisUsername, String redisPassword);
 
   private native void nativeDestroyGlobalStateAccessor(long nativePtr);
 
