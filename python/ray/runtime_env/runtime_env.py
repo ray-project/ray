@@ -148,6 +148,7 @@ OPTION_TO_VALIDATION_FN[
 ] = RuntimeEnvConfig.parse_and_validate_runtime_env_config
 
 
+# TODO(hjiang): Expose `uv` related fields after implementation finished.
 @PublicAPI
 class RuntimeEnv(dict):
     """This class is used to define a runtime environment for a job, task,
@@ -236,8 +237,6 @@ class RuntimeEnv(dict):
             the package name "pip" in front of the ``pip_version`` to form the final
             requirement string, the syntax of a requirement specifier is defined in
             full in PEP 508.
-        uv: Either a list of pip packages, or a python dictionary that has one fields:
-            packages (required, List[str]): a lists of uv packages.
         conda: Either the conda YAML config, the name of a
             local conda env (e.g., "pytorch_p36"), or the path to a conda
             environment.yaml file.
@@ -273,7 +272,6 @@ class RuntimeEnv(dict):
         "working_dir",
         "conda",
         "pip",
-        "uv",
         "container",
         "excludes",
         "env_vars",
@@ -303,7 +301,7 @@ class RuntimeEnv(dict):
         *,
         py_modules: Optional[List[str]] = None,
         working_dir: Optional[str] = None,
-        pip: Optional[Union[Dict[str, str], List[str], str]] = None,
+        pip: Optional[List[str]] = None,
         conda: Optional[Union[Dict[str, str], str]] = None,
         container: Optional[Dict[str, str]] = None,
         env_vars: Optional[Dict[str, str]] = None,
@@ -313,7 +311,6 @@ class RuntimeEnv(dict):
         _validate: bool = True,
         mpi: Optional[Dict] = None,
         image_uri: Optional[str] = None,
-        uv: Optional[Union[List[str], str]] = None,
         **kwargs,
     ):
         super().__init__()
@@ -325,8 +322,6 @@ class RuntimeEnv(dict):
             runtime_env["working_dir"] = working_dir
         if pip is not None:
             runtime_env["pip"] = pip
-        if uv is not None:
-            runtime_env["uv"] = uv
         if conda is not None:
             runtime_env["conda"] = conda
         if nsight is not None:
@@ -354,14 +349,12 @@ class RuntimeEnv(dict):
         if not _validate:
             return
 
-        if int(self.has_pip()) + int(self.has_conda()) + int(self.has_uv()) > 1:
+        if self.get("conda") and self.get("pip"):
             raise ValueError(
-                "The 'pip' field, 'conda' field and 'uv' field of "
+                "The 'pip' field and 'conda' field of "
                 "runtime_env cannot both be specified.\n"
                 f"specified pip field: {self['pip']}\n"
                 f"specified conda field: {self['conda']}\n"
-                f"specified uv field: {self['uv']}\n"
-                "To use uv, please only set the `uv` field."
                 "To use pip with conda, please only set the 'conda' "
                 "field, and specify your pip dependencies "
                 "within the conda YAML config dict: see "
@@ -536,18 +529,6 @@ class RuntimeEnv(dict):
         # Parse and validate field pip on method `__setitem__`
         self["pip"] = self["pip"]
         return self["pip"]
-
-    def has_uv(self) -> bool:
-        if self.get("uv"):
-            return True
-        return False
-
-    def uv_config(self) -> dict:
-        if not self.has_uv() or isinstance(self["uv"], str):
-            return {}
-        # Parse and validate field uv on method `__setitem__`
-        self["uv"] = self["uv"]
-        return self["uv"]
 
     def get_extension(self, key) -> Optional[str]:
         if key not in RuntimeEnv.extensions_fields:
