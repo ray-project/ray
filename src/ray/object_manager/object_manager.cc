@@ -154,9 +154,10 @@ ObjectManager::ObjectManager(
   StartRpcService();
 }
 
-ObjectManager::~ObjectManager() { StopRpcService(); }
+ObjectManager::~ObjectManager() { Stop(); }
 
 void ObjectManager::Stop() {
+  StopRpcService();
   plasma::plasma_store_runner->Stop();
   object_store_internal_.reset();
 }
@@ -182,7 +183,9 @@ void ObjectManager::StartRpcService() {
 void ObjectManager::StopRpcService() {
   rpc_service_.stop();
   for (int i = 0; i < config_.rpc_service_threads_number; i++) {
-    rpc_threads_[i].join();
+    if (rpc_threads_[i].joinable()) {
+      rpc_threads_[i].join();
+    }
   }
   object_manager_server_.Shutdown();
 }
