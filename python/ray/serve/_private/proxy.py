@@ -7,7 +7,7 @@ import socket
 import time
 from abc import ABC, abstractmethod
 from functools import partial
-from typing import Any, Callable, Dict, Generator, List, Optional, Tuple, Type
+from typing import Any, Callable, Dict, Generator, List, Optional, Set, Tuple, Type
 
 import grpc
 import starlette
@@ -27,6 +27,7 @@ from ray.serve._private.common import (
     DeploymentID,
     EndpointInfo,
     NodeId,
+    ReplicaID,
     RequestMetadata,
     RequestProtocol,
 )
@@ -40,6 +41,7 @@ from ray.serve._private.constants import (
     SERVE_MULTIPLEXED_MODEL_ID,
     SERVE_NAMESPACE,
 )
+from ray.serve._private.default_impl import add_grpc_address
 from ray.serve._private.grpc_util import DummyServicer, create_serve_grpc_server
 from ray.serve._private.http_util import (
     MessageQueue,
@@ -382,7 +384,10 @@ class GenericProxy(ABC):
             return ResponseHandlerInfo(
                 response_generator=self.not_found_response(proxy_request),
                 metadata=HandlerMetadata(
-                    route=proxy_request.route_path,
+                    # Don't include the invalid route prefix because it can blow up our
+                    # metrics' cardinality.
+                    # See: https://github.com/ray-project/ray/issues/47999
+                    route="",
                 ),
                 should_record_access_log=True,
                 should_increment_ongoing_requests=False,
@@ -402,11 +407,19 @@ class GenericProxy(ABC):
                 if version.parse(starlette.__version__) < version.parse("0.33.0"):
                     proxy_request.set_path(route_path.replace(route_prefix, "", 1))
 
+            # NOTE(edoakes): we use the route_prefix instead of the full HTTP path
+            # for logs & metrics to avoid high cardinality.
+            # See: https://github.com/ray-project/ray/issues/47999
+            logs_and_metrics_route = (
+                route_prefix
+                if self.protocol == RequestProtocol.HTTP
+                else handle.deployment_id.app_name
+            )
             internal_request_id = generate_request_id()
             handle, request_id = self.setup_request_context_and_handle(
                 app_name=handle.deployment_id.app_name,
                 handle=handle,
-                route_path=route_path,
+                route=logs_and_metrics_route,
                 proxy_request=proxy_request,
                 internal_request_id=internal_request_id,
             )
@@ -424,7 +437,7 @@ class GenericProxy(ABC):
                 metadata=HandlerMetadata(
                     application_name=handle.deployment_id.app_name,
                     deployment_name=handle.deployment_id.name,
-                    route=route_path,
+                    route=logs_and_metrics_route,
                 ),
                 should_record_access_log=True,
                 should_increment_ongoing_requests=True,
@@ -484,8 +497,8 @@ class GenericProxy(ABC):
         self.processing_latency_tracker.observe(
             latency_ms,
             tags={
-                "method": proxy_request.method,
                 "route": response_handler_info.metadata.route,
+                "method": proxy_request.method,
                 "application": response_handler_info.metadata.application_name,
                 "status_code": str(status.code),
             },
@@ -494,18 +507,18 @@ class GenericProxy(ABC):
             self.request_error_counter.inc(
                 tags={
                     "route": response_handler_info.metadata.route,
-                    "error_code": str(status.code),
                     "method": proxy_request.method,
                     "application": response_handler_info.metadata.application_name,
+                    "error_code": str(status.code),
                 }
             )
             self.deployment_request_error_counter.inc(
                 tags={
-                    "deployment": response_handler_info.metadata.deployment_name,
-                    "error_code": str(status.code),
-                    "method": proxy_request.method,
                     "route": response_handler_info.metadata.route,
+                    "method": proxy_request.method,
                     "application": response_handler_info.metadata.application_name,
+                    "error_code": str(status.code),
+                    "deployment": response_handler_info.metadata.deployment_name,
                 }
             )
 
@@ -514,7 +527,7 @@ class GenericProxy(ABC):
         self,
         app_name: str,
         handle: DeploymentHandle,
-        route_path: str,
+        route: str,
         proxy_request: ProxyRequest,
         internal_request_id: str,
     ) -> Tuple[DeploymentHandle, str]:
@@ -670,7 +683,7 @@ class gRPCProxy(GenericProxy):
         self,
         app_name: str,
         handle: DeploymentHandle,
-        route_path: str,
+        route: str,
         proxy_request: ProxyRequest,
         internal_request_id: str,
     ) -> Tuple[DeploymentHandle, str]:
@@ -692,7 +705,7 @@ class gRPCProxy(GenericProxy):
         )
 
         request_context_info = {
-            "route": route_path,
+            "route": route,
             "request_id": request_id,
             "_internal_request_id": internal_request_id,
             "app_name": app_name,
@@ -900,7 +913,7 @@ class HTTPProxy(GenericProxy):
         self,
         app_name: str,
         handle: DeploymentHandle,
-        route_path: str,
+        route: str,
         proxy_request: ProxyRequest,
         internal_request_id: str,
     ) -> Tuple[DeploymentHandle, str]:
@@ -910,7 +923,7 @@ class HTTPProxy(GenericProxy):
         handle.
         """
         request_context_info = {
-            "route": route_path,
+            "route": route,
             "app_name": app_name,
             "_internal_request_id": internal_request_id,
             "is_http_request": True,
@@ -1294,6 +1307,10 @@ class ProxyActor:
                 log_file_path = handler.baseFilename
         return log_file_path
 
+    def _dump_ingress_replicas_for_testing(self, route: str) -> Set[ReplicaID]:
+        _, handle, _ = self.http_proxy.proxy_router.match_route(route)
+        return handle._router._asyncio_router._replica_scheduler._replica_id_set
+
     def should_start_grpc_service(self) -> bool:
         """Determine whether gRPC service should be started.
 
@@ -1413,7 +1430,7 @@ class ProxyActor:
             service_handler_factory=self.grpc_proxy.service_handler_factory,
         )
 
-        grpc_server.add_insecure_port(f"[::]:{self.grpc_port}")
+        add_grpc_address(grpc_server, f"[::]:{self.grpc_port}")
 
         # Dummy servicer is used to be callable for the gRPC server. Serve have a
         # custom gRPC server implementation to redirect calls into gRPCProxy.

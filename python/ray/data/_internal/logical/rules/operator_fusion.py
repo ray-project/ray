@@ -50,7 +50,8 @@ class OperatorFusionRule(Rule):
         self._remove_output_depes(fused_dag)
         self._update_output_depes(fused_dag)
 
-        return PhysicalPlan(fused_dag, self._op_map)
+        new_plan = PhysicalPlan(fused_dag, self._op_map, plan.context)
+        return new_plan
 
     def _remove_output_depes(self, op: PhysicalOperator) -> None:
         for input in op._input_dependencies:
@@ -325,6 +326,7 @@ class OperatorFusionRule(Rule):
             ray_remote_args=ray_remote_args,
             ray_remote_args_fn=ray_remote_args_fn,
         )
+        op.set_logical_operators(*up_op._logical_operators, *down_op._logical_operators)
 
         # Build a map logical operator to be used as a reference for further fusion.
         # TODO(Scott): This is hacky, remove this once we push fusion to be purely based

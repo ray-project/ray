@@ -145,6 +145,12 @@ DEFINE_stats(placement_groups,
 /// ===================== INTERNAL SYSTEM METRICS =================================
 /// ===============================================================================
 
+DEFINE_stats(io_context_event_loop_lag_ms,
+             "Latency of a task from post to execution",
+             ("Name"),  // Name of the instrumented_io_context.
+             (),
+             ray::stats::GAUGE);
+
 /// Event stats
 DEFINE_stats(operation_count, "operation count", ("Method"), (), ray::stats::GAUGE);
 DEFINE_stats(
@@ -161,8 +167,8 @@ DEFINE_stats(operation_active_count,
 DEFINE_stats(grpc_server_req_process_time_ms,
              "Request latency in grpc server",
              ("Method"),
-             (),
-             ray::stats::GAUGE);
+             ({0.1, 1, 10, 100, 1000, 10000}, ),
+             ray::stats::HISTOGRAM);
 DEFINE_stats(grpc_server_req_new,
              "New request number in grpc server",
              ("Method"),

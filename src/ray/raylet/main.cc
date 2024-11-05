@@ -184,6 +184,7 @@ int main(int argc, char *argv[]) {
   ray::raylet::NodeManagerConfig node_manager_config;
   absl::flat_hash_map<std::string, double> static_resource_conf;
 
+  SetThreadName("raylet");
   // IO Service for node manager.
   instrumented_io_context main_service;
 
@@ -275,6 +276,7 @@ int main(int argc, char *argv[]) {
         RAY_CHECK(stored_raylet_config.has_value());
         RayConfig::instance().initialize(*stored_raylet_config);
         ray::asio::testing::init();
+        ray::rpc::testing::init();
 
         // Core worker tries to kill child processes when it exits. But they can't do
         // it perfectly: if the core worker is killed by SIGKILL, the child processes
