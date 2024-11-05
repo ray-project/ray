@@ -1,3 +1,5 @@
+.. _ray-distributed-debugger:
+
 Ray Distributed Debugger
 ========================
 
@@ -48,12 +50,12 @@ Find and click the Ray extension in the VS Code left side nav. Add the Ray clust
 Create a Ray task
 ~~~~~~~~~~~~~~~~~
 
-Create a file `job.py` with the following snippet. Add the `RAY_DEBUG` environment variable to enable Ray Debugger and add `breakpoint()` in the Ray task.
+Create a file `job.py` with the following snippet. Add `breakpoint()` in the Ray task. If you want to use the post-mortem debugging below, also add the `RAY_DEBUG_POST_MORTEM=1` environment variable.
 
 .. literalinclude:: ./doc_code/ray-distributed-debugger.py
     :language: python
 
-Run your Ray app 
+Run your Ray app
 ~~~~~~~~~~~~~~~~
 
 Start running your Ray app.
@@ -96,7 +98,7 @@ Run a Ray task raised exception
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Run the same `job.py` file with an additional argument to raise an exception.
-    
+
 .. code-block:: bash
 
     python job.py raise-exception
@@ -110,7 +112,7 @@ When the app throws an exception:
 - The debugger freezes the task.
 - The terminal clearly indicates when the debugger pauses a task and waits for the debugger to attach.
 - The paused task is listed in the Ray Debugger extension.
-- Click the play icon next to the name of the paused task to attach the debugger and start debugging. 
+- Click the play icon next to the name of the paused task to attach the debugger and start debugging.
 
 .. image:: ./images/post-moretem.gif
     :align: center

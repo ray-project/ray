@@ -169,16 +169,7 @@ class TestAlgorithmConfig(unittest.TestCase):
         self.assertFalse(config.is_atari)
 
     def test_rl_module_api(self):
-        config = (
-            PPOConfig()
-            .api_stack(
-                enable_rl_module_and_learner=True,
-                enable_env_runner_and_connector_v2=True,
-            )
-            .environment("CartPole-v1")
-            .framework("torch")
-            .env_runners(enable_connectors=True)
-        )
+        config = PPOConfig().environment("CartPole-v1").framework("torch")
 
         self.assertEqual(config.rl_module_spec.module_class, PPOTorchRLModule)
 
@@ -232,15 +223,7 @@ class TestAlgorithmConfig(unittest.TestCase):
         self.assertTrue(config_3 is config)
 
     def test_learner_api(self):
-        config = (
-            PPOConfig()
-            .api_stack(
-                enable_rl_module_and_learner=True,
-                enable_env_runner_and_connector_v2=True,
-            )
-            .environment("CartPole-v1")
-            .env_runners(enable_connectors=True)
-        )
+        config = PPOConfig().environment("CartPole-v1")
 
         self.assertEqual(config.learner_class, PPOTorchLearner)
 
