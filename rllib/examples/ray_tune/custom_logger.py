@@ -87,12 +87,7 @@ class MyPrintLogger(Logger):
 
 if __name__ == "__main__":
     config = (
-        PPOConfig()
-        .api_stack(
-            enable_rl_module_and_learner=True,
-            enable_env_runner_and_connector_v2=True,
-        )
-        .environment("CartPole-v1")
+        PPOConfig().environment("CartPole-v1")
         # Setting up a custom logger config.
         # ----------------------------------
         # The following are different examples of custom logging setups:
