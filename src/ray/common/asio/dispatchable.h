@@ -32,13 +32,6 @@ class Dispatchable {
     }
   }
 
-  std::function<FuncType> AsDispatchedFunction(const std::string &name) const & {
-    auto copied = *this;
-    return [copied, name](auto &&...args) {
-      copied.DispatchIfNonNull(name, std::forward<decltype(args)>(args)...);
-    };
-  }
-
   std::function<FuncType> AsDispatchedFunction(const std::string &name) && {
     return [moved = std::move(*this), name](auto &&...args) {
       moved.DispatchIfNonNull(name, std::forward<decltype(args)>(args)...);

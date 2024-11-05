@@ -103,7 +103,8 @@ void StoreClientInternalKV::Del(const std::string &ns,
                                 const std::string &key,
                                 bool del_by_prefix,
                                 Dispatchable<void(int64_t)> callback) {
-  auto dispatch_and_call = callback.AsDispatchedFunction("StoreClientInternalKV::Del");
+  auto dispatch_and_call =
+      std::move(callback).AsDispatchedFunction("StoreClientInternalKV::Del");
   if (!del_by_prefix) {
     RAY_CHECK_OK(delegate_->AsyncDelete(
         table_name_,
