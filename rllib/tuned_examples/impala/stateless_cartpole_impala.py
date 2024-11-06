@@ -18,11 +18,6 @@ args = parser.parse_args()
 
 config = (
     IMPALAConfig()
-    # Enable new API stack and use EnvRunner.
-    .api_stack(
-        enable_rl_module_and_learner=True,
-        enable_env_runner_and_connector_v2=True,
-    )
     .environment(StatelessCartPole)
     # TODO (sven): Need to fix the MeanStdFilter(). It seems to cause NaNs when
     #  training.
@@ -33,10 +28,12 @@ config = (
         learner_queue_size=1,
         lr=0.0005 * ((args.num_learners or 1) ** 0.5),
         vf_loss_coeff=0.05,
-        entropy_coeff=0.0,
+        grad_clip=20.0,
+        entropy_coeff=0.005,
     )
     .rl_module(
         model_config=DefaultModelConfig(
+            vf_share_layers=True,
             use_lstm=True,
             max_seq_len=20,
         ),

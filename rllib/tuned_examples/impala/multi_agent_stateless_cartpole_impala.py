@@ -42,10 +42,12 @@ config = (
         learner_queue_size=1,
         lr=0.0005 * ((args.num_learners or 1) ** 0.5),
         vf_loss_coeff=0.05,
-        entropy_coeff=0.0,
+        grad_clip=20.0,
+        entropy_coeff=0.005,
     )
     .rl_module(
         model_config=DefaultModelConfig(
+            vf_share_layers=True,
             use_lstm=True,
             max_seq_len=20,
         ),

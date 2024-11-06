@@ -24,11 +24,6 @@ register_env("env", lambda cfg: MultiAgentStatelessCartPole(config=cfg))
 
 config = (
     APPOConfig()
-    # Enable new API stack and use EnvRunner.
-    .api_stack(
-        enable_rl_module_and_learner=True,
-        enable_env_runner_and_connector_v2=True,
-    )
     .environment("env", env_config={"num_agents": args.num_agents})
     # TODO (sven): Need to fix the MeanStdFilter(). It seems to cause NaNs when
     #  training.
@@ -41,9 +36,12 @@ config = (
         lr=0.0005 * ((args.num_learners or 1) ** 0.5),
         num_epochs=1,
         vf_loss_coeff=0.05,
+        grad_clip=20.0,
+        entropy_coeff=0.005,
     )
     .rl_module(
         model_config=DefaultModelConfig(
+            vf_share_layers=True,
             use_lstm=True,
             max_seq_len=20,
         ),
