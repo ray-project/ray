@@ -14,7 +14,7 @@ from ray.rllib.utils.test_utils import (
 
 parser = add_rllib_example_script_args()
 # Use `parser` to add your own custom command line options to this script
-# and (if needed) use their values toset up `config` below.
+# and (if needed) use their values to set up `config` below.
 args = parser.parse_args()
 
 assert (

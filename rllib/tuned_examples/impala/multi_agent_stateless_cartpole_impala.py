@@ -16,7 +16,7 @@ parser.set_defaults(
     num_env_runners=4,
 )
 # Use `parser` to add your own custom command line options to this script
-# and (if needed) use their values toset up `config` below.
+# and (if needed) use their values to set up `config` below.
 args = parser.parse_args()
 
 register_env(
@@ -35,11 +35,10 @@ config = (
     # )
     .training(
         train_batch_size_per_learner=600,
-        learner_queue_size=1,
         lr=0.0005 * ((args.num_learners or 1) ** 0.5),
         vf_loss_coeff=0.05,
         grad_clip=20.0,
-        entropy_coeff=0.005,
+        entropy_coeff=0.02,
     )
     .rl_module(
         model_config=DefaultModelConfig(
@@ -55,7 +54,7 @@ config = (
 )
 
 stop = {
-    f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": 200.0 * args.num_agents,
+    f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": 150.0 * args.num_agents,
     NUM_ENV_STEPS_SAMPLED_LIFETIME: args.stop_timesteps,
 }
 

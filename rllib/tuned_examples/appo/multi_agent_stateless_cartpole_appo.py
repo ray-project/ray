@@ -16,7 +16,7 @@ parser.set_defaults(
     num_env_runners=3,
 )
 # Use `parser` to add your own custom command line options to this script
-# and (if needed) use their values toset up `config` below.
+# and (if needed) use their values to set up `config` below.
 args = parser.parse_args()
 
 register_env("env", lambda cfg: MultiAgentStatelessCartPole(config=cfg))
@@ -33,10 +33,9 @@ config = (
     .training(
         train_batch_size_per_learner=600,
         learner_queue_size=1,
-        lr=0.0005 * ((args.num_learners or 1) ** 0.5),
+        lr=0.0006 * ((args.num_learners or 1) ** 0.5),
         num_epochs=1,
         vf_loss_coeff=0.05,
-        grad_clip=20.0,
         entropy_coeff=0.005,
     )
     .rl_module(
