@@ -459,6 +459,7 @@ py_test_module_list(
     name_suffix = "_with_local_testing_mode",
     tags = [
         "exclusive",
+        "no_windows",
         "team:serve",
     ],
     deps = [

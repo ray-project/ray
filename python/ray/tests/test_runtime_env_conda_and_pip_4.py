@@ -2,7 +2,7 @@ import os
 import pytest
 import sys
 
-from ray._private.runtime_env.pip import PipProcessor
+from ray._private.runtime_env import virtualenv_utils
 import ray
 
 
@@ -14,8 +14,9 @@ if not os.environ.get("CI"):
 
 def test_in_virtualenv(start_cluster):
     assert (
-        PipProcessor._is_in_virtualenv() is False and "IN_VIRTUALENV" not in os.environ
-    ) or (PipProcessor._is_in_virtualenv() is True and "IN_VIRTUALENV" in os.environ)
+        virtualenv_utils.is_in_virtualenv() is False
+        and "IN_VIRTUALENV" not in os.environ
+    ) or (virtualenv_utils.is_in_virtualenv() is True and "IN_VIRTUALENV" in os.environ)
     cluster, address = start_cluster
     runtime_env = {"pip": ["pip-install-test==0.5"]}
 
@@ -25,7 +26,7 @@ def test_in_virtualenv(start_cluster):
     def f():
         import pip_install_test  # noqa: F401
 
-        return PipProcessor._is_in_virtualenv()
+        return virtualenv_utils.is_in_virtualenv()
 
     # Ensure that the runtime env has been installed
     # and virtualenv is activated.
@@ -140,12 +141,11 @@ class TestGC:
 )
 def test_run_in_virtualenv(cloned_virtualenv):
     python_exe_path = cloned_virtualenv.python
-    print(python_exe_path)
 
     # make sure cloned_virtualenv.run will run in virtualenv.
     cloned_virtualenv.run(
-        f"{python_exe_path} -c 'from ray._private.runtime_env.pip import PipProcessor;"
-        "assert PipProcessor._is_in_virtualenv()'",
+        f"{python_exe_path} -c 'from ray._private.runtime_env import virtualenv_utils;"
+        "assert virtualenv_utils.is_in_virtualenv()'",
         capture=True,
     )
 
