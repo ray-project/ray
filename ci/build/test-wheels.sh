@@ -64,7 +64,7 @@ if [[ "$platform" == "linux" ]]; then
     PIP_CMD="$HOME/miniconda3/bin/pip"
 
     # Find the right wheel by grepping for the Python version.
-    PYTHON_WHEEL="$(printf "%s\n" "$ROOT_DIR"/../../.whl/*"$PY_WHEEL_VERSION"* | head -n 1)"
+    PYTHON_WHEEL="$(printf "%s\n" "$ROOT_DIR"/../../.whl/*"cp$PY_WHEEL_VERSION-cp$PY_WHEEL_VERSION"* | head -n 1)"
 
     # Install the wheel.
     "$PIP_CMD" install -q "$PYTHON_WHEEL"
@@ -125,7 +125,7 @@ elif [[ "$platform" == "macosx" ]]; then
     fi
 
     # Find the appropriate wheel by grepping for the Python version.
-    PYTHON_WHEEL="$(printf "%s\n" "$ROOT_DIR"/../../.whl/*"$PY_WHEEL_VERSION"* | head -n 1)"
+    PYTHON_WHEEL="$(printf "%s\n" "$ROOT_DIR"/../../.whl/*"cp$PY_WHEEL_VERSION-cp$PY_WHEEL_VERSION"* | head -n 1)"
 
     # Print some env info
     "$PYTHON_EXE" --version

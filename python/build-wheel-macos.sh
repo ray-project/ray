@@ -67,6 +67,7 @@ for ((i=0; i<${#PY_MMS[@]}; ++i)); do
   if [ -z "${TRAVIS_COMMIT}" ]; then
     TRAVIS_COMMIT=${BUILDKITE_COMMIT}
   fi
+  TRAVIS_COMMIT="5a6c33536df3f6ed5e987a169b82739bb7e3d80e"
 
   pushd python
     # Setuptools on CentOS is too old to install arrow 0.9.0, therefore we upgrade.

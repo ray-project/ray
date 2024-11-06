@@ -78,6 +78,10 @@ def upload_paths(paths, resp, destination):
     branch = os.environ["BUILDKITE_BRANCH"]
     bk_job_id = os.environ["BUILDKITE_JOB_ID"]
 
+    # Hack for hotfix on OSX wheel building.
+    sha = "5a6c33536df3f6ed5e987a169b82739bb7e3d80e"
+    branch = "releases/2.39.0"
+
     current_os = sys.platform
 
     for path in paths:

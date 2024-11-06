@@ -406,6 +406,7 @@ validate_wheels_commit_str() {
   else
     EXPECTED_COMMIT=${TRAVIS_COMMIT:-}
   fi
+  EXPECTED_COMMIT="5a6c33536df3f6ed5e987a169b82739bb7e3d80e"
 
   if [ -z "$EXPECTED_COMMIT" ]; then
     echo "Could not validate expected wheel commits: TRAVIS_COMMIT is empty."
