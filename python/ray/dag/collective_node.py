@@ -10,7 +10,9 @@ from ray.dag import (
 )
 from ray.dag.constants import COLLECTIVE_OPERATION_KEY
 from ray.experimental.channel import ChannelContext
-from ray.experimental.channel.torch_tensor_communicator_channel import _init_communicator_group
+from ray.experimental.channel.torch_tensor_communicator_channel import (
+    init_communicator_group
+)
 from ray.experimental.channel.torch_tensor_type import GPUCommunicator, TorchTensorType
 from ray.experimental.util.types import _CollectiveOp, ReduceOp
 from ray.util.annotations import DeveloperAPI
@@ -135,7 +137,9 @@ class CollectiveOutputNode(ClassMethodNode):
     def __init__(
         self,
         method_name: str,
-        method_args: Tuple[DAGNode,],
+        method_args: Tuple[
+            DAGNode,
+        ],
         method_kwargs: Dict[str, Any],
         method_options: Dict[str, Any],
         other_args_to_resolve: Dict[str, Any],
