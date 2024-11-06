@@ -132,7 +132,7 @@ py_test(
     name = "torch_compile_inference_bm",
     main = "benchmarks/torch_compile/run_inference_bm.py",
     tags = ["team:rllib", "exclusive", "benchmark", "torch_2.x_only_benchmark"],
-    size = "small",
+    size = "medium",
     srcs = ["benchmarks/torch_compile/run_inference_bm.py"],
     args = ["--smoke-test"]
 )
