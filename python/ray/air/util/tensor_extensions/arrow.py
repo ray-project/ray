@@ -13,7 +13,7 @@ from ray._private.utils import _get_pyarrow_version
 from ray.air.constants import TENSOR_COLUMN_NAME
 from ray.air.util.tensor_extensions.utils import (
     _is_ndarray_variable_shaped_tensor,
-    create_ragged_ndarray,
+    create_ragged_ndarray, _is_ndarray_tensor,
 )
 from ray.data._internal.util import GiB
 from ray.util.annotations import DeveloperAPI, PublicAPI
@@ -99,7 +99,10 @@ def convert_to_pyarrow_array(column_values: np.ndarray, column_name: str) -> pa.
     """
 
     try:
-        if column_name == TENSOR_COLUMN_NAME or column_values.ndim > 1:
+        # Since Arrow does NOT support tensors (aka multidimensional arrays) natively,
+        # we have to make sure that we handle this case utilizing `ArrowTensorArray`
+        # extension type
+        if column_name == TENSOR_COLUMN_NAME or _is_ndarray_tensor(column_values):
             from ray.data.extensions.tensor_extension import ArrowTensorArray
 
             return ArrowTensorArray.from_numpy(
