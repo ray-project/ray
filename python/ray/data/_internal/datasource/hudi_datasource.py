@@ -25,13 +25,15 @@ class HudiDatasource(Datasource):
 
     def get_read_tasks(self, parallelism: int) -> List["ReadTask"]:
         import pyarrow
-        from hudi import HudiFileGroupReader, HudiTable
+        from hudi import HudiTable
 
         def _perform_read(
             table_uri: str,
             base_file_paths: List[str],
             options: Dict[str, str],
         ) -> Iterator["pyarrow.Table"]:
+            from hudi import HudiFileGroupReader
+
             for p in base_file_paths:
                 fg_reader = HudiFileGroupReader(table_uri, options)
                 batch = fg_reader.read_file_slice_by_base_file_path(p)
