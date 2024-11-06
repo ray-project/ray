@@ -1,7 +1,7 @@
 import logging
 import os
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 from pyarrow.fs import FileSelector, S3FileSystem
 
@@ -19,27 +19,29 @@ from ray.data.datasource.path_util import _unwrap_protocol
 logger = logging.getLogger(__name__)
 
 
-# Default checkpoint storage path when using S3 backend.
-DEFAULT_CHECKPOINT_DIR_S3 = None
-artifact_storage = os.environ.get("ANYSCALE_ARTIFACT_STORAGE")
-if artifact_storage is not None:
-    DEFAULT_CHECKPOINT_DIR_S3 = f"{artifact_storage}/ray_data_checkpoint"
+def _get_default_s3_checkpoint_output_path() -> Optional[str]:
+    artifact_storage = os.environ.get("ANYSCALE_ARTIFACT_STORAGE")
+    if artifact_storage is None:
+        return None
+    return f"{artifact_storage}/ray_data_checkpoint"
 
 
-class S3CheckpointFilter(CheckpointFilter):
+class RowBasedS3CheckpointFilter(CheckpointFilter):
+    """CheckpointFilter implementation for S3 backend, reading
+    one checkpoint file per input row."""
+
     def __init__(self, config: CheckpointConfig):
-        # If a checkpoint output path is not configured, use the default
-        # Anyscale artifact storage.
-        if config.output_path is None:
-            config.output_path = DEFAULT_CHECKPOINT_DIR_S3
-        config.output_path = _unwrap_protocol(config.output_path)
-
         super().__init__(config)
+
+        self.output_path = _unwrap_protocol(self.output_path)
 
         if self.fs is None:
             self.fs = S3FileSystem()
 
-    def filter_rows_for_block(self, block: Block) -> Block:
+    def _get_default_ckpt_output_path(self) -> Optional[str]:
+        return _get_default_s3_checkpoint_output_path()
+
+    def filter_rows_for_block(self, block: Block, **kwargs) -> Block:
         block_accessor = BlockAccessor.for_block(block)
         files = []
         for row in block_accessor.iter_rows(False):
@@ -61,7 +63,7 @@ class S3CheckpointFilter(CheckpointFilter):
 
         def _get_file_info():
             return self.fs.get_file_info(
-                FileSelector(_unwrap_protocol(self.output_path), allow_not_found=True)
+                FileSelector(self.output_path, allow_not_found=True)
             )
 
         files = call_with_retry(
@@ -80,17 +82,20 @@ class S3CheckpointFilter(CheckpointFilter):
         return mask_file_exists
 
 
-class S3CheckpointWriter(CheckpointWriter):
-    def __init__(self, config: CheckpointConfig):
-        # If a checkpoint output path is not configured, use the default
-        # Anyscale artifact storage.
-        if config.output_path is None:
-            config.output_path = DEFAULT_CHECKPOINT_DIR_S3
+class RowBasedS3CheckpointWriter(CheckpointWriter):
+    """CheckpointWriter implementation for S3 backend, writing
+    one checkpoint file per input row."""
 
+    def __init__(self, config: CheckpointConfig):
         super().__init__(config)
+
+        self.output_path = _unwrap_protocol(self.output_path)
 
         if self.fs is None:
             self.fs = S3FileSystem()
+
+    def _get_default_ckpt_output_path(self) -> Optional[str]:
+        return _get_default_s3_checkpoint_output_path()
 
     def write_row_checkpoint(self, row: Dict[str, Any]):
         """Write a checkpoint for a single row to the checkpoint
@@ -105,7 +110,7 @@ class S3CheckpointWriter(CheckpointWriter):
 
         def _write():
             # TODO: add some checkpoint metadata, like timestamp, etc. in Body
-            with self.fs.open_output_stream(_unwrap_protocol(f"{bucket}/{file_key}")):
+            with self.fs.open_output_stream(f"{bucket}/{file_key}"):
                 pass
             return row_id
 

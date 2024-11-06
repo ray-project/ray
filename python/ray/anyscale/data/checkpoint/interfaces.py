@@ -86,6 +86,12 @@ class CheckpointFilter:
         if self.id_col is None:
             raise InvalidCheckpointingConfig("Checkpoint ID column must be specified")
 
+    def _get_default_ckpt_output_path(self) -> Optional[str]:
+        """Returns the default path where checkpoint files are written,
+        or `None` if the path cannot be inferred.
+        Subclasses of `CheckpointFilter` must implement this method."""
+        raise NotImplementedError()
+
     def filter_rows_for_block(self, block: Block) -> Block:
         """For the given block, filter out rows that have already
         been checkpointed, and return the resulting block.
@@ -145,15 +151,17 @@ class CheckpointFilter:
         backend = config.backend
 
         if backend == CheckpointBackend.S3:
-            from ray.anyscale.data.checkpoint.checkpoint_s3 import S3CheckpointFilter
-
-            return S3CheckpointFilter(config)
-        if backend == CheckpointBackend.DISK:
-            from ray.anyscale.data.checkpoint.checkpoint_disk import (
-                DiskCheckpointFilter,
+            from ray.anyscale.data.checkpoint.checkpoint_s3_row import (
+                RowBasedS3CheckpointFilter,
             )
 
-            return DiskCheckpointFilter(config)
+            return RowBasedS3CheckpointFilter(config)
+        if backend == CheckpointBackend.DISK:
+            from ray.anyscale.data.checkpoint.checkpoint_disk_row import (
+                RowBasedDiskCheckpointFilter,
+            )
+
+            return RowBasedDiskCheckpointFilter(config)
 
         raise InvalidCheckpointingConfig(f"Backend {backend} not implemented")
 
@@ -165,6 +173,9 @@ class CheckpointWriter:
     Subclasses must implement `.write_block_checkpoint()`."""
 
     def __init__(self, config: CheckpointConfig):
+        if config.output_path is None:
+            config.output_path = self._get_default_ckpt_output_path()
+
         self.ckpt_config = config
         self.output_path = self.ckpt_config.output_path
         self.id_col = self.ckpt_config.id_col
@@ -173,6 +184,12 @@ class CheckpointWriter:
 
         self.fs = self.ckpt_config.fs
         self.write_num_threads = self.ckpt_config.write_num_threads
+
+    def _get_default_ckpt_output_path(self) -> Optional[str]:
+        """Returns the default path where checkpoint files are written,
+        or `None` if the path cannot be inferred.
+        Subclasses of `CheckpointWriter` must implement this method."""
+        raise NotImplementedError()
 
     def write_block_checkpoint(self, block: BlockAccessor):
         """Write a checkpoint for all rows in a single block to the checkpoint
@@ -193,14 +210,16 @@ class CheckpointWriter:
 
         backend = config.backend
         if backend == CheckpointBackend.S3:
-            from ray.anyscale.data.checkpoint.checkpoint_s3 import S3CheckpointWriter
-
-            return S3CheckpointWriter(config)
-        if backend == CheckpointBackend.DISK:
-            from ray.anyscale.data.checkpoint.checkpoint_disk import (
-                DiskCheckpointWriter,
+            from ray.anyscale.data.checkpoint.checkpoint_s3_row import (
+                RowBasedS3CheckpointWriter,
             )
 
-            return DiskCheckpointWriter(config)
+            return RowBasedS3CheckpointWriter(config)
+        if backend == CheckpointBackend.DISK:
+            from ray.anyscale.data.checkpoint.checkpoint_disk_row import (
+                RowBasedDiskCheckpointWriter,
+            )
+
+            return RowBasedDiskCheckpointWriter(config)
 
         raise InvalidCheckpointingConfig(f"Backend {backend} not implemented")
