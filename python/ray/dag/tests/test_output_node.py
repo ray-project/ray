@@ -190,6 +190,32 @@ def test_bind_failure(shared_ray_instance):
     with pytest.raises(RuntimeError):
         ray.get(A.remote().f.bind().execute())
 
+def test_executes_in_bind_order(shared_ray_instance):
+    """Verify that multiple tasks submitted to the
+       same actor will execute in the order they were
+       bound in
+    """
+
+
+    @ray.remote
+    class Actor:
+        def foo(self, input_data):
+            return input_data * 2
+
+
+        def bar(self, input_data):
+            return input_data / 2
+      
+    a = Actor.remote()
+
+    with InputNode() as inp:
+        x = a.foo.bind(inp)
+        y = a.bar.bind(inp)
+
+        dag = MultiOutputNode([y, x])
+
+
+    assert ray.get(dag.execute(4)) == [8, 2]
 
 if __name__ == "__main__":
     import sys
