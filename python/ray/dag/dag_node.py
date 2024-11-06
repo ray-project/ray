@@ -383,13 +383,20 @@ class DAGNode(DAGNodeBase):
         else:
             if self._stable_uuid in fn.cache:
                 return fn.cache[self._stable_uuid]
-            
-        if any(hasattr(child, 'get_other_args_to_resolve') and 'bind_index' in child.get_other_args_to_resolve() for child in self._bound_args):
-           self._bound_args = sorted(
-               self._bound_args,
-               key=lambda child: child.get_other_args_to_resolve().get('bind_index', float('inf')) if hasattr(child, 'get_other_args_to_resolve') else float('inf')
-           )
 
+        if any(
+            hasattr(child, "get_other_args_to_resolve")
+            and "bind_index" in child.get_other_args_to_resolve()
+            for child in self._bound_args
+        ):
+            self._bound_args = sorted(
+                self._bound_args,
+                key=lambda child: child.get_other_args_to_resolve().get(
+                    "bind_index", float("inf")
+                )
+                if hasattr(child, "get_other_args_to_resolve")
+                else float("inf"),
+            )
 
         return fn(
             self._apply_and_replace_all_child_nodes(
