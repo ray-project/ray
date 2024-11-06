@@ -2243,7 +2243,6 @@ class CompiledDAG:
         format="png",
         view=False,
         return_dot=False,
-        extra_channel_detail=False,
     ):
         """
         Visualize the compiled graph using Graphviz.
