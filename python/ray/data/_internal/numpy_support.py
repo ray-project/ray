@@ -147,10 +147,11 @@ def convert_to_numpy(column_values: Any) -> np.ndarray:
                 "Failed to convert column values to numpy array: "
                 f"({_truncated_repr(column_values)}): {e}."
             )
-    elif hasattr(column_values, "__array__"):
+    elif is_array_like(column_values):
         # Converts other array-like objects such as torch.Tensor.
         try:
-            return np.array(column_values)
+            # Use np.asarray() instead of np.array() to avoid copying if possible.
+            return np.asarray(column_values)
         except Exception as e:
             logger.error(
                 f"Failed to convert column values to numpy array: "
