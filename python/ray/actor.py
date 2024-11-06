@@ -468,9 +468,9 @@ class _ActorClassMethodMetadata(object):
                 self.decorators[method_name] = method.__ray_invocation_decorator__
 
             if hasattr(method, "__ray_concurrency_group__"):
-                self.concurrency_group_for_methods[
-                    method_name
-                ] = method.__ray_concurrency_group__
+                self.concurrency_group_for_methods[method_name] = (
+                    method.__ray_concurrency_group__
+                )
 
             if hasattr(method, "__ray_enable_task_events__"):
                 self.enable_task_events[method_name] = method.__ray_enable_task_events__
@@ -481,9 +481,9 @@ class _ActorClassMethodMetadata(object):
             self.method_is_generator[method_name] = is_generator
 
             if hasattr(method, "__ray_generator_backpressure_num_objects__"):
-                self.generator_backpressure_num_objects[
-                    method_name
-                ] = method.__ray_generator_backpressure_num_objects__
+                self.generator_backpressure_num_objects[method_name] = (
+                    method.__ray_generator_backpressure_num_objects__
+                )
 
         # Update cache.
         cls._cache[actor_creation_function_descriptor] = self
@@ -965,7 +965,11 @@ class ActorClass:
         is_asyncio = has_async_methods(meta.modified_class)
 
         if actor_options.get("max_concurrency") is None:
-            actor_options["max_concurrency"] = 1000 if is_asyncio else 1
+            actor_options["max_concurrency"] = (
+                ray_constants.DEFAULT_MAX_CONCURRENCY_ASYNC
+                if is_asyncio
+                else ray_constants.DEFAULT_MAX_CONCURRENCY_THREADED
+            )
 
         if client_mode_should_convert():
             return client_mode_convert_actor(self, args, kwargs, **actor_options)

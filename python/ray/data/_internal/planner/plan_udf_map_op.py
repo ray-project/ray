@@ -11,6 +11,7 @@ import pandas as pd
 import pyarrow as pa
 
 import ray
+from ray._private.utils import get_or_create_event_loop
 from ray.data._internal.compute import get_compute
 from ray.data._internal.execution.interfaces import PhysicalOperator
 from ray.data._internal.execution.interfaces.task_context import TaskContext
@@ -44,7 +45,7 @@ from ray.data.block import (
 )
 from ray.data.context import DataContext
 from ray.data.exceptions import UserCodeException
-from ray.util.rpdb import _is_ray_debugger_enabled
+from ray.util.rpdb import _is_ray_debugger_post_mortem_enabled
 
 
 class _MapActorContext:
@@ -65,7 +66,7 @@ class _MapActorContext:
 
     def _init_async(self):
         # Only used for callable class with async generator `__call__` method.
-        loop = asyncio.new_event_loop()
+        loop = get_or_create_event_loop()
 
         def run_loop():
             asyncio.set_event_loop(loop)
@@ -204,7 +205,7 @@ def _handle_debugger_exception(e: Exception):
     so that the debugger can stop at the initial unhandled exception.
     Otherwise, clear the stack trace to omit noisy internal code path."""
     ctx = ray.data.DataContext.get_current()
-    if _is_ray_debugger_enabled() or ctx.raise_original_map_exception:
+    if _is_ray_debugger_post_mortem_enabled() or ctx.raise_original_map_exception:
         raise e
     else:
         raise UserCodeException() from e

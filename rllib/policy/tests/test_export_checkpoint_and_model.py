@@ -21,6 +21,10 @@ def export_test(
 ):
     cls = get_trainable_cls(alg_name)
     config = cls.get_default_config()
+    config.api_stack(
+        enable_rl_module_and_learner=False,
+        enable_env_runner_and_connector_v2=False,
+    )
     config.framework(framework)
     # Switch on saving native DL-framework (tf, torch) model files.
     config.checkpointing(export_native_model_files=True)
@@ -32,9 +36,9 @@ def export_test(
             config.multi_agent(
                 policies={"pol1", "pol2"},
                 policy_mapping_fn=(
-                    lambda agent_id, episode, worker, **kwargs: "pol1"
-                    if agent_id == "agent1"
-                    else "pol2"
+                    lambda agent_id, episode, worker, **kwargs: (
+                        "pol1" if agent_id == "agent1" else "pol2"
+                    )
                 ),
             ).environment(MultiAgentCartPole, env_config={"num_agents": 2})
         else:

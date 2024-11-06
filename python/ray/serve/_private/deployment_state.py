@@ -13,6 +13,7 @@ from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 
 import ray
 from ray import ObjectRef, cloudpickle
+from ray._private import ray_constants
 from ray.actor import ActorHandle
 from ray.exceptions import RayActorError, RayError, RayTaskError, RuntimeEnvSetupError
 from ray.serve import metrics
@@ -423,13 +424,17 @@ class ActorReplicaWrapper:
                 )
             init_args = (
                 self.replica_id,
-                cloudpickle.dumps(deployment_info.replica_config.deployment_def)
-                if self._deployment_is_cross_language
-                else deployment_info.replica_config.serialized_deployment_def,
+                (
+                    cloudpickle.dumps(deployment_info.replica_config.deployment_def)
+                    if self._deployment_is_cross_language
+                    else deployment_info.replica_config.serialized_deployment_def
+                ),
                 serialized_init_args,
-                deployment_info.replica_config.serialized_init_kwargs
-                if deployment_info.replica_config.serialized_init_kwargs
-                else cloudpickle.dumps({}),
+                (
+                    deployment_info.replica_config.serialized_init_kwargs
+                    if deployment_info.replica_config.serialized_init_kwargs
+                    else cloudpickle.dumps({})
+                ),
                 deployment_info.deployment_config.to_proto_bytes(),
                 self._version,
             )
@@ -450,13 +455,15 @@ class ActorReplicaWrapper:
                 # String deploymentDef
                 deployment_info.replica_config.deployment_def_name,
                 # byte[] initArgsbytes
-                msgpack_serialize(
-                    cloudpickle.loads(
-                        deployment_info.replica_config.serialized_init_args
+                (
+                    msgpack_serialize(
+                        cloudpickle.loads(
+                            deployment_info.replica_config.serialized_init_args
+                        )
                     )
-                )
-                if self._deployment_is_cross_language
-                else deployment_info.replica_config.serialized_init_args,
+                    if self._deployment_is_cross_language
+                    else deployment_info.replica_config.serialized_init_args
+                ),
                 # byte[] deploymentConfigBytes,
                 deployment_info.deployment_config.to_proto_bytes(),
                 # byte[] deploymentVersionBytes,
@@ -473,6 +480,18 @@ class ActorReplicaWrapper:
             "enable_task_events": RAY_SERVE_ENABLE_TASK_EVENTS,
         }
         actor_options.update(deployment_info.replica_config.ray_actor_options)
+
+        # A replica's default `max_concurrency` value can prevent it from
+        # respecting the configured `max_ongoing_requests`. To avoid this
+        # unintentional behavior, use `max_ongoing_requests` to override
+        # the Actor's `max_concurrency` if it is larger.
+        if (
+            deployment_info.deployment_config.max_ongoing_requests
+            > ray_constants.DEFAULT_MAX_CONCURRENCY_ASYNC
+        ):
+            actor_options["max_concurrency"] = (
+                deployment_info.deployment_config.max_ongoing_requests
+            )
 
         return ReplicaSchedulingRequest(
             replica_id=self.replica_id,
@@ -2674,10 +2693,10 @@ class DeploymentStateManager:
         )
         if RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY:
             # Tuple of target node to compact, and its draining deadline
-            node_info: Optional[
-                Tuple[str, float]
-            ] = self._deployment_scheduler.get_node_to_compact(
-                allow_new_compaction=allow_new_compaction
+            node_info: Optional[Tuple[str, float]] = (
+                self._deployment_scheduler.get_node_to_compact(
+                    allow_new_compaction=allow_new_compaction
+                )
             )
             if node_info:
                 target_node_id, deadline = node_info
@@ -2749,6 +2768,16 @@ class DeploymentStateManager:
                 self._deployment_states[deployment_id].record_replica_startup_failure(
                     "Replica scheduling failed. Failed to create a placement "
                     f"group for replica {scheduling_request.replica_id}. "
+                    "See Serve controller logs for more details."
+                )
+            elif (
+                scheduling_request.status
+                == ReplicaSchedulingRequestStatus.ACTOR_CREATION_FAILED
+            ):
+                failed_replicas.append(scheduling_request.replica_id)
+                self._deployment_states[deployment_id].record_replica_startup_failure(
+                    "Replica scheduling failed. Failed to create an actor "
+                    f"for replica {scheduling_request.replica_id}. "
                     "See Serve controller logs for more details."
                 )
         if failed_replicas:

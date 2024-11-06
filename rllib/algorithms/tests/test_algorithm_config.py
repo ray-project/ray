@@ -6,7 +6,7 @@ import ray
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.algorithms.callbacks import make_multi_callbacks
 from ray.rllib.algorithms.ppo import PPO, PPOConfig
-from ray.rllib.algorithms.ppo.tf.ppo_tf_learner import PPOTfLearner
+from ray.rllib.algorithms.ppo.torch.ppo_torch_learner import PPOTorchLearner
 from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import PPOTorchRLModule
 from ray.rllib.core.rl_module.rl_module import RLModuleSpec, RLModule
 from ray.rllib.core.rl_module.multi_rl_module import (
@@ -145,11 +145,11 @@ class TestAlgorithmConfig(unittest.TestCase):
     def test_detect_atari_env(self):
         """Tests that we can properly detect Atari envs."""
         config = AlgorithmConfig().environment(
-            env="ALE/Breakout-v5", env_config={"frameskip": 1}
+            env="ale_py:ALE/Breakout-v5", env_config={"frameskip": 1}
         )
         self.assertTrue(config.is_atari)
 
-        config = AlgorithmConfig().environment(env="ALE/Pong-v5")
+        config = AlgorithmConfig().environment(env="ale_py:ALE/Pong-v5")
         self.assertTrue(config.is_atari)
 
         config = AlgorithmConfig().environment(env="CartPole-v1")
@@ -158,7 +158,7 @@ class TestAlgorithmConfig(unittest.TestCase):
 
         config = AlgorithmConfig().environment(
             env=lambda ctx: gym.make(
-                "ALE/Breakout-v5",
+                "ale_py:ALE/Breakout-v5",
                 frameskip=1,
             )
         )
@@ -169,16 +169,7 @@ class TestAlgorithmConfig(unittest.TestCase):
         self.assertFalse(config.is_atari)
 
     def test_rl_module_api(self):
-        config = (
-            PPOConfig()
-            .api_stack(
-                enable_rl_module_and_learner=True,
-                enable_env_runner_and_connector_v2=True,
-            )
-            .environment("CartPole-v1")
-            .framework("torch")
-            .env_runners(enable_connectors=True)
-        )
+        config = PPOConfig().environment("CartPole-v1").framework("torch")
 
         self.assertEqual(config.rl_module_spec.module_class, PPOTorchRLModule)
 
@@ -232,18 +223,9 @@ class TestAlgorithmConfig(unittest.TestCase):
         self.assertTrue(config_3 is config)
 
     def test_learner_api(self):
-        config = (
-            PPOConfig()
-            .api_stack(
-                enable_rl_module_and_learner=True,
-                enable_env_runner_and_connector_v2=True,
-            )
-            .environment("CartPole-v1")
-            .env_runners(enable_connectors=True)
-            .framework("tf2")
-        )
+        config = PPOConfig().environment("CartPole-v1")
 
-        self.assertEqual(config.learner_class, PPOTfLearner)
+        self.assertEqual(config.learner_class, PPOTorchLearner)
 
     def _assertEqualMARLSpecs(self, spec1, spec2):
         self.assertEqual(spec1.multi_rl_module_class, spec2.multi_rl_module_class)
@@ -299,25 +281,25 @@ class TestAlgorithmConfig(unittest.TestCase):
 
         marl_spec = config.get_multi_rl_module_spec(
             policy_dict={"p1": policy_spec_ph, "p2": policy_spec_ph},
-            single_agent_rl_module_spec=RLModuleSpec(module_class=passed_module_class)
-            if passed_module_class
-            else None,
+            single_agent_rl_module_spec=(
+                RLModuleSpec(module_class=passed_module_class)
+                if passed_module_class
+                else None
+            ),
         )
 
         expected_marl_spec = MultiRLModuleSpec(
             multi_rl_module_class=expected_multi_rl_module_class,
-            module_specs={
+            rl_module_specs={
                 "p1": RLModuleSpec(
                     module_class=expected_module_class,
                     observation_space=env.observation_space,
                     action_space=env.action_space,
-                    model_config_dict=AlgorithmConfig().model_config,
                 ),
                 "p2": RLModuleSpec(
                     module_class=expected_module_class,
                     observation_space=env.observation_space,
                     action_space=env.action_space,
-                    model_config_dict=AlgorithmConfig().model_config,
                 ),
             },
         )
@@ -326,15 +308,15 @@ class TestAlgorithmConfig(unittest.TestCase):
 
     def test_get_multi_rl_module_spec(self):
         """Tests whether the get_multi_rl_module_spec() method works properly."""
-        from ray.rllib.core.testing.torch.bc_module import DiscreteBCTorchModule
+        from ray.rllib.examples.rl_modules.classes.vpg_rlm import VPGTorchRLModule
 
-        class CustomRLModule1(DiscreteBCTorchModule):
+        class CustomRLModule1(VPGTorchRLModule):
             pass
 
-        class CustomRLModule2(DiscreteBCTorchModule):
+        class CustomRLModule2(VPGTorchRLModule):
             pass
 
-        class CustomRLModule3(DiscreteBCTorchModule):
+        class CustomRLModule3(VPGTorchRLModule):
             pass
 
         class CustomMultiRLModule1(MultiRLModule):
@@ -344,19 +326,12 @@ class TestAlgorithmConfig(unittest.TestCase):
         # single agent
         class SingleAgentAlgoConfig(AlgorithmConfig):
             def get_default_rl_module_spec(self):
-                return RLModuleSpec(module_class=DiscreteBCTorchModule)
+                return RLModuleSpec(module_class=VPGTorchRLModule)
 
         # multi-agent
         class MultiAgentAlgoConfigWithNoSingleAgentSpec(AlgorithmConfig):
             def get_default_rl_module_spec(self):
                 return MultiRLModuleSpec(multi_rl_module_class=CustomMultiRLModule1)
-
-        class MultiAgentAlgoConfig(AlgorithmConfig):
-            def get_default_rl_module_spec(self):
-                return MultiRLModuleSpec(
-                    multi_rl_module_class=CustomMultiRLModule1,
-                    module_specs=RLModuleSpec(module_class=DiscreteBCTorchModule),
-                )
 
         ########################################
         # This is the simplest case where we have to construct the MultiRLModule based
@@ -366,7 +341,7 @@ class TestAlgorithmConfig(unittest.TestCase):
             enable_env_runner_and_connector_v2=True,
         )
 
-        spec, expected = self._get_expected_marl_spec(config, DiscreteBCTorchModule)
+        spec, expected = self._get_expected_marl_spec(config, VPGTorchRLModule)
         self._assertEqualMARLSpecs(spec, expected)
 
         # expected module should become the passed module if we pass it in.
@@ -386,7 +361,7 @@ class TestAlgorithmConfig(unittest.TestCase):
             )
             .rl_module(
                 rl_module_spec=MultiRLModuleSpec(
-                    module_specs={
+                    rl_module_specs={
                         "p1": RLModuleSpec(module_class=CustomRLModule1),
                         "p2": RLModuleSpec(module_class=CustomRLModule1),
                     },
@@ -419,30 +394,6 @@ class TestAlgorithmConfig(unittest.TestCase):
             config, CustomRLModule2, passed_module_class=CustomRLModule2
         )
         self._assertEqualMARLSpecs(spec, expected)
-        ########################################
-        # This is an alternative way to ask the algorithm to assign a specific type of
-        # RLModule class to ALL module_ids.
-        config = (
-            SingleAgentAlgoConfig()
-            .api_stack(
-                enable_rl_module_and_learner=True,
-                enable_env_runner_and_connector_v2=True,
-            )
-            .rl_module(
-                rl_module_spec=MultiRLModuleSpec(
-                    module_specs=RLModuleSpec(module_class=CustomRLModule1)
-                ),
-            )
-        )
-
-        spec, expected = self._get_expected_marl_spec(config, CustomRLModule1)
-        self._assertEqualMARLSpecs(spec, expected)
-
-        # expected module should become the passed module if we pass it in.
-        spec, expected = self._get_expected_marl_spec(
-            config, CustomRLModule2, passed_module_class=CustomRLModule2
-        )
-        self._assertEqualMARLSpecs(spec, expected)
 
         ########################################
         # This is not only assigning a specific type of RLModule class to EACH
@@ -457,7 +408,7 @@ class TestAlgorithmConfig(unittest.TestCase):
             .rl_module(
                 rl_module_spec=MultiRLModuleSpec(
                     multi_rl_module_class=CustomMultiRLModule1,
-                    module_specs={
+                    rl_module_specs={
                         "p1": RLModuleSpec(module_class=CustomRLModule1),
                         "p2": RLModuleSpec(module_class=CustomRLModule1),
                     },
@@ -499,30 +450,6 @@ class TestAlgorithmConfig(unittest.TestCase):
             "Module_specs cannot be None",
             lambda: config.rl_module_spec,
         )
-
-        ########################################
-        # This is the case where we ask the algorithm to use its default
-        # MultiRLModuleSpec, and the MultiRLModuleSpec has defined its
-        # RLModuleSpecs.
-        config = MultiAgentAlgoConfig().api_stack(
-            enable_rl_module_and_learner=True,
-            enable_env_runner_and_connector_v2=True,
-        )
-
-        spec, expected = self._get_expected_marl_spec(
-            config,
-            DiscreteBCTorchModule,
-            expected_multi_rl_module_class=CustomMultiRLModule1,
-        )
-        self._assertEqualMARLSpecs(spec, expected)
-
-        spec, expected = self._get_expected_marl_spec(
-            config,
-            CustomRLModule1,
-            passed_module_class=CustomRLModule1,
-            expected_multi_rl_module_class=CustomMultiRLModule1,
-        )
-        self._assertEqualMARLSpecs(spec, expected)
 
 
 if __name__ == "__main__":

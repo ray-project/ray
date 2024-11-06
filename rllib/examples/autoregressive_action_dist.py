@@ -132,15 +132,19 @@ if __name__ == "__main__":
     # here, tailored to the CorrelatedActionsEnv such that a2 depends on a1
     ModelCatalog.register_custom_model(
         "autoregressive_model",
-        TorchAutoregressiveActionModel
-        if args.framework == "torch"
-        else AutoregressiveActionModel,
+        (
+            TorchAutoregressiveActionModel
+            if args.framework == "torch"
+            else AutoregressiveActionModel
+        ),
     )
     ModelCatalog.register_custom_action_dist(
         "binary_autoreg_dist",
-        TorchBinaryAutoregressiveDistribution
-        if args.framework == "torch"
-        else BinaryAutoregressiveDistribution,
+        (
+            TorchBinaryAutoregressiveDistribution
+            if args.framework == "torch"
+            else BinaryAutoregressiveDistribution
+        ),
     )
 
     # Generic config.
@@ -148,7 +152,10 @@ if __name__ == "__main__":
         get_trainable_cls(args.run)
         .get_default_config()
         # Batch-norm models have not been migrated to the RL Module API yet.
-        .api_stack(enable_rl_module_and_learner=False)
+        .api_stack(
+            enable_rl_module_and_learner=False,
+            enable_env_runner_and_connector_v2=False,
+        )
         .environment(AutoRegressiveActionEnv)
         .framework(args.framework)
         .training(gamma=0.5)

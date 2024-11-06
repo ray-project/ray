@@ -3,6 +3,7 @@ This example shows how to take full control over what models and action distribu
 are being built inside an RL Module. With this pattern, we can bypass a Catalog and
 explicitly define our own models within a given RL Module.
 """
+
 # __sphinx_doc_begin__
 import gymnasium as gym
 import numpy as np
@@ -53,10 +54,6 @@ class MobileNetTorchPPORLModule(PPOTorchRLModule):
 
 config = (
     PPOConfig()
-    .api_stack(
-        enable_rl_module_and_learner=True,
-        enable_env_runner_and_connector_v2=True,
-    )
     .rl_module(rl_module_spec=RLModuleSpec(module_class=MobileNetTorchPPORLModule))
     .environment(
         RandomEnv,

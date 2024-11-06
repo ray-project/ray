@@ -298,7 +298,7 @@ html_theme = "pydata_sphinx_theme"
 # documentation.
 html_theme_options = {
     "use_edit_page_button": True,
-    "announcement": """<b><a target="_blank" href="https://raysummit.anyscale.com/flow/anyscale/raysummit2024/landing/page/eventsite?utm_source=regDocs6_5g">Register for Ray Summit 2024</a></b> with keynotes from Mira Murati, Marc Andreessen, and Anastasis Germanidis.""",
+    "announcement": False,
     "logo": {
         "svg": render_svg_logo("_static/img/ray_logo.svg"),
     },
@@ -339,9 +339,11 @@ html_context = {
 
 html_sidebars = {
     "**": [
-        "main-sidebar-readthedocs"
-        if os.getenv("READTHEDOCS") == "True"
-        else "main-sidebar"
+        (
+            "main-sidebar-readthedocs"
+            if os.getenv("READTHEDOCS") == "True"
+            else "main-sidebar"
+        )
     ],
     "ray-overview/examples": [],
 }

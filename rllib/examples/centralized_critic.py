@@ -106,10 +106,7 @@ def centralized_critic_postprocessing(
         not pytorch and policy.loss_initialized()
     ):
         assert other_agent_batches is not None
-        if policy.config["enable_connectors"]:
-            [(_, _, opponent_batch)] = list(other_agent_batches.values())
-        else:
-            [(_, opponent_batch)] = list(other_agent_batches.values())
+        [(_, _, opponent_batch)] = list(other_agent_batches.values())
 
         # also record the opponent obs and actions in the trajectory
         sample_batch[OPPONENT_OBS] = opponent_batch[SampleBatch.CUR_OBS]
@@ -265,13 +262,19 @@ if __name__ == "__main__":
 
     ModelCatalog.register_custom_model(
         "cc_model",
-        TorchCentralizedCriticModel
-        if args.framework == "torch"
-        else CentralizedCriticModel,
+        (
+            TorchCentralizedCriticModel
+            if args.framework == "torch"
+            else CentralizedCriticModel
+        ),
     )
 
     config = (
         PPOConfig()
+        .api_stack(
+            enable_env_runner_and_connector_v2=False,
+            enable_rl_module_and_learner=False,
+        )
         .environment(TwoStepGame)
         .framework(args.framework)
         .env_runners(batch_mode="complete_episodes", num_env_runners=0)
@@ -293,9 +296,9 @@ if __name__ == "__main__":
                     PPOConfig.overrides(framework_str=args.framework),
                 ),
             },
-            policy_mapping_fn=lambda agent_id, episode, worker, **kwargs: "pol1"
-            if agent_id == 0
-            else "pol2",
+            policy_mapping_fn=lambda agent_id, episode, worker, **kwargs: (
+                "pol1" if agent_id == 0 else "pol2"
+            ),
         )
         # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
         .resources(num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0")))

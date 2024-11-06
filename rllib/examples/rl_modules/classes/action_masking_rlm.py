@@ -65,7 +65,7 @@ class ActionMaskingTorchRLModule(ActionMaskingRLModule, PPOTorchRLModule):
         # super`s (`PPOTorchRLModule`) observation space is the
         # original space (i.e. without the action mask) and `self`'s
         # observation space contains the action mask.
-        self.config.observation_space = self.observation_space_with_mask
+        self.observation_space = self.observation_space_with_mask
 
     @override(PPOTorchRLModule)
     def _forward_inference(
@@ -99,14 +99,14 @@ class ActionMaskingTorchRLModule(ActionMaskingRLModule, PPOTorchRLModule):
         return self._mask_action_logits(outs, batch["action_mask"])
 
     @override(ValueFunctionAPI)
-    def compute_values(self, batch: Dict[str, TensorType]):
+    def compute_values(self, batch: Dict[str, TensorType], embeddings=None):
         # Preprocess the batch to extract the `observations` to `Columns.OBS`.
         action_mask, batch = self._preprocess_batch(batch)
         # NOTE: Because we manipulate the batch we need to add the `action_mask`
         # to the batch to access them in `_forward_train`.
         batch["action_mask"] = action_mask
         # Call the super's method to compute values for GAE.
-        return super().compute_values(batch)
+        return super().compute_values(batch, embeddings)
 
     def _preprocess_batch(
         self, batch: Dict[str, TensorType], **kwargs

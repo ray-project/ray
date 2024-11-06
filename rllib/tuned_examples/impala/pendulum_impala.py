@@ -1,4 +1,5 @@
 from ray.rllib.algorithms.impala import IMPALAConfig
+from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
 from ray.rllib.utils.metrics import (
     ENV_RUNNER_RESULTS,
     EPISODE_RETURN_MEAN,
@@ -14,11 +15,6 @@ args = parser.parse_args()
 
 config = (
     IMPALAConfig()
-    # Enable new API stack and use EnvRunner.
-    .api_stack(
-        enable_rl_module_and_learner=True,
-        enable_env_runner_and_connector_v2=True,
-    )
     .env_runners(num_envs_per_env_runner=5)
     .environment("Pendulum-v1")
     .training(
@@ -30,10 +26,10 @@ config = (
         entropy_coeff=[[0, 0.1], [2000000, 0.0]],
     )
     .rl_module(
-        model_config_dict={
-            "vf_share_layers": True,
-            "fcnet_hiddens": [512, 512],
-        },
+        model_config=DefaultModelConfig(
+            vf_share_layers=True,
+            fcnet_hiddens=[512, 512],
+        ),
     )
 )
 

@@ -125,9 +125,11 @@ def test_handle_access_log(serve_instance):
                     method_name.upper() in s,
                     ("ERROR" if fail else "OK") in s,
                     "ms" in s,
-                    ("blah blah blah" in s and "RuntimeError" in s)
-                    if fail
-                    else True,  # Check for stacktrace.
+                    (
+                        ("blah blah blah" in s and "RuntimeError" in s)
+                        if fail
+                        else True
+                    ),  # Check for stacktrace.
                 ]
             )
 
@@ -738,20 +740,21 @@ def test_logging_disable_stdout(serve_and_ray_shutdown, ray_instance, tmp_dir):
             with open(logs_dir / log_file) as f:
                 for line in f:
                     structured_log = json.loads(line)
-                    _message = structured_log["message"]
-                    if "from_serve_logger" in _message:
+                    message = structured_log["message"]
+                    exc_text = structured_log.get("exc_text", "")
+                    if "from_serve_logger" in message:
                         from_serve_logger_check = True
-                    elif "from_print" in _message:
+                    elif "from_print" in message:
                         from_print_check = True
 
                     # Error was logged from replica directly.
-                    elif "from_error" in _message:
+                    elif "from_error" in exc_text:
                         from_error_check = True
-                    elif "direct_from_stdout" in _message:
+                    elif "direct_from_stdout" in message:
                         direct_from_stdout = True
-                    elif "direct_from_stderr" in _message:
+                    elif "direct_from_stderr" in message:
                         direct_from_stderr = True
-                    elif "this\nis\nmultiline\nlog\n" in _message:
+                    elif "this\nis\nmultiline\nlog\n" in message:
                         multiline_log = True
     assert from_serve_logger_check
     assert from_print_check

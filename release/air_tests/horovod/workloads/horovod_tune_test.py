@@ -88,7 +88,7 @@ def train_loop_per_worker(config):
         trainset, batch_size=int(config["batch_size"]), sampler=train_sampler
     )
 
-    for epoch in range(epoch, 40):  # loop over the dataset multiple times
+    for current_epoch in range(epoch, 40):  # loop over the dataset multiple times
         running_loss = 0.0
         epoch_steps = 0
         for i, data in enumerate(trainloader):
@@ -112,7 +112,7 @@ def train_loop_per_worker(config):
             if i % 2000 == 1999:  # print every 2000 mini-batches
                 print(
                     "[%d, %5d] loss: %.3f"
-                    % (epoch + 1, i + 1, running_loss / epoch_steps)
+                    % (current_epoch + 1, i + 1, running_loss / epoch_steps)
                 )
 
             if config["smoke_test"]:
@@ -121,7 +121,7 @@ def train_loop_per_worker(config):
         with tempfile.TemporaryDirectory() as tmpdir:
             torch.save(net.state_dict(), os.path.join(tmpdir, "model.pt"))
             torch.save(optimizer.state_dict(), os.path.join(tmpdir, "optim.pt"))
-            torch.save({"epoch": epoch}, os.path.join(tmpdir, "extra_state.pt"))
+            torch.save({"epoch": current_epoch}, os.path.join(tmpdir, "extra_state.pt"))
             train.report(
                 dict(loss=running_loss / epoch_steps),
                 checkpoint=Checkpoint.from_directory(tmpdir),
@@ -177,9 +177,11 @@ if __name__ == "__main__":
         horovod_trainer,
         param_space={
             "train_loop_config": {
-                "lr": 0.1
-                if args.smoke_test
-                else tune.grid_search([0.1 * i for i in range(1, 5)]),  # 4 trials
+                "lr": (
+                    0.1
+                    if args.smoke_test
+                    else tune.grid_search([0.1 * i for i in range(1, 5)])
+                ),  # 4 trials
                 "smoke_test": args.smoke_test,
             }
         },

@@ -205,15 +205,17 @@ class TestToTF:
     @pytest.mark.parametrize(
         "data, expected_dtype",
         # Skip this test for Python 3.12+ due to to incompatibility tensorflow
-        [
-            (0, tf.int64),
-            (0.0, tf.double),
-            (False, tf.bool),
-            ("eggs", tf.string),
-            (np.zeros([2, 2], dtype=np.float32), tf.float32),
-        ]
-        if sys.version_info <= (3, 12)
-        else [],
+        (
+            [
+                (0, tf.int64),
+                (0.0, tf.double),
+                (False, tf.bool),
+                ("eggs", tf.string),
+                (np.zeros([2, 2], dtype=np.float32), tf.float32),
+            ]
+            if sys.version_info <= (3, 12)
+            else []
+        ),
     )
     @pytest.mark.parametrize("include_additional_columns", [False, True])
     def test_element_spec_dtype(self, data, expected_dtype, include_additional_columns):
@@ -366,7 +368,7 @@ class TestToTF:
             multi_worker_model.fit(dataset)
 
         dataset = ray.data.from_items(8 * [{"X0": 0, "X1": 0, "Y": 0, "W": 0}])
-        concatenator = Concatenator(exclude=["Y", "W"], output_column_name="X")
+        concatenator = Concatenator(columns=["X0", "X1"], output_column_name="X")
         dataset = concatenator.transform(dataset)
 
         trainer = TensorflowTrainer(

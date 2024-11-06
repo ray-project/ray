@@ -529,7 +529,7 @@ if __name__ == "__main__":
     available_disk_space = statvfs.f_bavail * statvfs.f_frsize
     expected_disk_usage = args.num_images_per_epoch * APPROX_PREPROCESS_IMAGE_BYTES
     print(f"Available disk space: {available_disk_space / 1e9}GB")
-    print(f"Expected disk usage: {expected_disk_usage/ 1e9}GB")
+    print(f"Expected disk usage: {expected_disk_usage / 1e9}GB")
     disk_error_expected = expected_disk_usage > available_disk_space * 0.8
 
     datasets = {}
@@ -540,9 +540,9 @@ if __name__ == "__main__":
         "data_root": args.data_root,
         "num_images_per_epoch": args.num_images_per_epoch,
         "num_images_per_input_file": args.num_images_per_input_file,
-        "shuffle_buffer_size": None
-        if args.shuffle_buffer_size == 0
-        else args.shuffle_buffer_size,
+        "shuffle_buffer_size": (
+            None if args.shuffle_buffer_size == 0 else args.shuffle_buffer_size
+        ),
     }
 
     options = DataConfig.default_ingest_options()
@@ -630,9 +630,9 @@ if __name__ == "__main__":
         for start, end in zip(ray_spill_stats_start, get_ray_spilled_and_restored_mb())
     )
     result["min_available_mb"] = memory_utilization_tracker.stop() / (1 << 20)
-    result[
-        "ray_mem_monitor_enabled"
-    ] = determine_if_memory_monitor_is_enabled_in_latest_session()
+    result["ray_mem_monitor_enabled"] = (
+        determine_if_memory_monitor_is_enabled_in_latest_session()
+    )
 
     if args.from_images:
         result["num_files"] = args.num_images_per_epoch

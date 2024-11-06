@@ -1,6 +1,7 @@
 """
 This file defines the common pytest fixtures used in current directory.
 """
+
 import json
 import logging
 import os
@@ -687,6 +688,11 @@ def tmp_working_dir():
         hello_file = path / "hello"
         with hello_file.open(mode="w") as f:
             f.write("world")
+
+        test_file_module = path / "file_module.py"
+        with test_file_module.open(mode="w") as f:
+            f.write("def hello():\n")
+            f.write("    return 'hello'\n")
 
         module_path = path / "test_module"
         module_path.mkdir(parents=True)

@@ -54,13 +54,16 @@ class SACRLModule(RLModule, InferenceOnlyAPI, TargetNetworkAPI):
 
     @override(RLModule)
     def setup(self):
+        if self.catalog is None and hasattr(self, "_catalog_ctor_error"):
+            raise self._catalog_ctor_error
+
         # If a twin Q architecture should be used.
-        self.twin_q = self.config.model_config_dict["twin_q"]
+        self.twin_q = self.model_config["twin_q"]
 
         # Build the encoder for the policy.
         self.pi_encoder = self.catalog.build_encoder(framework=self.framework)
 
-        if not self.config.inference_only or self.framework != "torch":
+        if not self.inference_only or self.framework != "torch":
             # SAC needs a separate Q network encoder (besides the pi network).
             # This is because the Q network also takes the action as input
             # (concatenated with the observations).
@@ -75,7 +78,7 @@ class SACRLModule(RLModule, InferenceOnlyAPI, TargetNetworkAPI):
         # Build heads.
         self.pi = self.catalog.build_pi_head(framework=self.framework)
 
-        if not self.config.inference_only or self.framework != "torch":
+        if not self.inference_only or self.framework != "torch":
             self.qf = self.catalog.build_qf_head(framework=self.framework)
             # If necessary build also a twin Q heads.
             if self.twin_q:
@@ -131,28 +134,12 @@ class SACRLModule(RLModule, InferenceOnlyAPI, TargetNetworkAPI):
         return {}
 
     @override(RLModule)
-    def input_specs_exploration(self) -> SpecType:
-        return [SampleBatch.OBS]
-
-    @override(RLModule)
-    def input_specs_inference(self) -> SpecType:
-        return [SampleBatch.OBS]
-
-    @override(RLModule)
     def input_specs_train(self) -> SpecType:
         return [
             SampleBatch.OBS,
             SampleBatch.ACTIONS,
             SampleBatch.NEXT_OBS,
         ]
-
-    @override(RLModule)
-    def output_specs_exploration(self) -> SpecType:
-        return [SampleBatch.ACTION_DIST_INPUTS]
-
-    @override(RLModule)
-    def output_specs_inference(self) -> SpecType:
-        return [SampleBatch.ACTION_DIST_INPUTS]
 
     @override(RLModule)
     def output_specs_train(self) -> SpecType:

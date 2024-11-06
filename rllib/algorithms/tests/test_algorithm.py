@@ -3,7 +3,6 @@ import numpy as np
 import os
 from pathlib import Path
 from random import choice
-import time
 import unittest
 
 import ray
@@ -12,6 +11,7 @@ import ray.rllib.algorithms.dqn as dqn
 from ray.rllib.algorithms.bc import BCConfig
 import ray.rllib.algorithms.ppo as ppo
 from ray.rllib.core.columns import Columns
+from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
 from ray.rllib.core.rl_module.rl_module import RLModuleSpec
 from ray.rllib.examples.envs.classes.multi_agent import MultiAgentCartPole
 from ray.rllib.examples.evaluation.evaluation_parallel_to_training import (
@@ -26,7 +26,6 @@ from ray.rllib.utils.metrics import (
     LEARNER_RESULTS,
 )
 from ray.rllib.utils.metrics.learner_info import LEARNER_INFO
-from ray.rllib.utils.test_utils import check
 from ray.tune import register_env
 
 
@@ -43,10 +42,6 @@ class TestAlgorithm(unittest.TestCase):
     def test_add_module_and_remove_module(self):
         config = (
             ppo.PPOConfig()
-            .api_stack(
-                enable_rl_module_and_learner=True,
-                enable_env_runner_and_connector_v2=True,
-            )
             .environment(
                 env="multi_cart",
                 env_config={"num_agents": 4},
@@ -58,10 +53,9 @@ class TestAlgorithm(unittest.TestCase):
                 num_epochs=1,
             )
             .rl_module(
-                model_config_dict={
-                    "fcnet_hiddens": [5],
-                    "fcnet_activation": "linear",
-                },
+                model_config=DefaultModelConfig(
+                    fcnet_hiddens=[5], fcnet_activation="linear"
+                ),
             )
             .multi_agent(
                 # Start with a single policy.
@@ -213,6 +207,10 @@ class TestAlgorithm(unittest.TestCase):
     def test_add_policy_and_remove_policy(self):
         config = (
             ppo.PPOConfig()
+            .api_stack(
+                enable_env_runner_and_connector_v2=False,
+                enable_rl_module_and_learner=False,
+            )
             .environment(
                 env=MultiAgentCartPole,
                 env_config={
@@ -485,6 +483,10 @@ class TestAlgorithm(unittest.TestCase):
         # configured exact number of episodes per evaluation.
         config = (
             ppo.PPOConfig()
+            .api_stack(
+                enable_env_runner_and_connector_v2=False,
+                enable_rl_module_and_learner=False,
+            )
             .environment(env="CartPole-v1")
             .callbacks(callbacks_class=AssertEvalCallback)
         )
@@ -512,29 +514,6 @@ class TestAlgorithm(unittest.TestCase):
         )
         algo_w_env_on_local_worker.stop()
         config.create_env_on_local_worker = False
-
-    def test_worker_validation_time(self):
-        """Tests the time taken by `validate_env_runners_after_construction=True`."""
-        config = ppo.PPOConfig().environment(env="CartPole-v1")
-        config.validate_env_runners_after_construction = True
-
-        # Test, whether validating one worker takes just as long as validating
-        # >> 1 workers.
-        config.num_env_runners = 1
-        t0 = time.time()
-        algo = config.build()
-        total_time_1 = time.time() - t0
-        print(f"Validating w/ 1 worker: {total_time_1}sec")
-        algo.stop()
-
-        config.num_env_runners = 5
-        t0 = time.time()
-        algo = config.build()
-        total_time_5 = time.time() - t0
-        print(f"Validating w/ 5 workers: {total_time_5}sec")
-        algo.stop()
-
-        check(total_time_5 / total_time_1, 1.0, atol=1.0)
 
     def test_no_env_but_eval_workers_do_have_env(self):
         """Tests whether no env on workers, but env on eval workers works ok."""
@@ -570,7 +549,14 @@ class TestAlgorithm(unittest.TestCase):
     def test_counters_after_checkpoint(self):
         # We expect algorithm to no start counters from zero after loading a
         # checkpoint on a fresh Algorithm instance
-        config = ppo.PPOConfig().environment(env="CartPole-v1")
+        config = (
+            ppo.PPOConfig()
+            .api_stack(
+                enable_rl_module_and_learner=False,
+                enable_env_runner_and_connector_v2=False,
+            )
+            .environment(env="CartPole-v1")
+        )
         algo = config.build()
 
         self.assertTrue(all(c == 0 for c in algo._counters.values()))

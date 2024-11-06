@@ -1,5 +1,6 @@
 from ray.rllib.algorithms.impala import IMPALAConfig
 from ray.rllib.connectors.env_to_module import MeanStdFilter
+from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
 from ray.rllib.examples.envs.classes.stateless_cartpole import StatelessCartPole
 from ray.rllib.utils.test_utils import add_rllib_example_script_args
 
@@ -18,11 +19,6 @@ args = parser.parse_args()
 
 config = (
     IMPALAConfig()
-    # Enable new API stack and use EnvRunner.
-    .api_stack(
-        enable_rl_module_and_learner=True,
-        enable_env_runner_and_connector_v2=True,
-    )
     .environment(StatelessCartPole)
     .env_runners(
         env_to_module_connector=lambda env: MeanStdFilter(),
@@ -34,11 +30,11 @@ config = (
         entropy_coeff=0.0,
     )
     .rl_module(
-        model_config_dict={
-            "vf_share_layers": True,
-            "use_lstm": True,
-            "max_seq_len": 20,
-        },
+        model_config=DefaultModelConfig(
+            vf_share_layers=True,
+            use_lstm=True,
+            max_seq_len=20,
+        ),
     )
 )
 

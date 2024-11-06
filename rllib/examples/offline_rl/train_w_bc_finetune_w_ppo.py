@@ -67,6 +67,7 @@ Then, after PPO training, you should see something like this (higher return):
 |          32.7647 |                 450.76 |                    406 |
 +------------------+------------------------+------------------------+
 """
+
 from pathlib import Path
 
 from torch import nn
@@ -176,11 +177,12 @@ class MyPPOModel(MyBCModel, ValueFunctionAPI):
         }
 
     @override(ValueFunctionAPI)
-    def compute_values(self, batch):
-        # Compute features ...
-        features = self._encoder(batch)[ENCODER_OUT]
+    def compute_values(self, batch, embeddings=None):
+        # Compute embeddings ...
+        if embeddings is None:
+            embeddings = self._encoder(batch)[ENCODER_OUT]
         # then values using our value head.
-        return self._vf(features).squeeze(-1)
+        return self._vf(embeddings).squeeze(-1)
 
 
 if __name__ == "__main__":
@@ -263,10 +265,6 @@ if __name__ == "__main__":
     # Create a new PPO config.
     base_config = (
         PPOConfig()
-        .api_stack(
-            enable_rl_module_and_learner=True,
-            enable_env_runner_and_connector_v2=True,
-        )
         .environment(args.env)
         .training(
             # Keep lr relatively low at the beginning to avoid catastrophic forgetting.

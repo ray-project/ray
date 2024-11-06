@@ -127,6 +127,7 @@ class ResourceManager:
         for op, state in reversed(self._topology.items()):
             # Update `self._op_usages`, `self._op_running_usages`,
             # and `self._op_pending_usages`.
+            op.update_resource_usage()
             op_usage = op.current_processor_usage()
             op_running_usage = op.running_processor_usage()
             op_pending_usage = op.pending_processor_usage()
@@ -157,9 +158,9 @@ class ResourceManager:
             f = (1.0 + num_ops_so_far) / max(1.0, num_ops_total - 1.0)
             num_ops_so_far += 1
             self._downstream_fraction[op] = min(1.0, f)
-            self._downstream_object_store_memory[
-                op
-            ] = self._global_usage.object_store_memory
+            self._downstream_object_store_memory[op] = (
+                self._global_usage.object_store_memory
+            )
 
             # Update operator's object store usage, which is used by
             # DatasetStats and updated on the Ray Data dashboard.

@@ -43,6 +43,7 @@ You should see something similar to the following in your console output:
 +-------+-------------------+------------------+------------------+------------------+
 
 """
+
 from ray import air, tune
 from ray.air.constants import TRAINING_ITERATION
 from ray.rllib.algorithms.ppo import PPOConfig
@@ -94,10 +95,6 @@ if __name__ == "__main__":
 
     config = (
         PPOConfig()
-        .api_stack(
-            enable_rl_module_and_learner=True,
-            enable_env_runner_and_connector_v2=True,
-        )
         .environment("env")
         .multi_agent(
             # Define 3 policies. Note that in our simple setup, they are all configured

@@ -2,6 +2,7 @@
 Optional utils module contains utility methods
 that require optional dependencies.
 """
+
 import asyncio
 import collections
 import functools
@@ -160,7 +161,7 @@ DashboardAgentRouteTable = method_route_table_factory()
 
 
 def rest_response(
-    success, message, convert_google_style=True, reason=None, **kwargs
+    success, message, convert_google_style=True, **kwargs
 ) -> aiohttp.web.Response:
     # In the dev context we allow a dev server running on a
     # different port to consume the API, meaning we need to allow
@@ -178,7 +179,6 @@ def rest_response(
         dumps=functools.partial(json.dumps, cls=CustomEncoder),
         headers=headers,
         status=200 if success else 500,
-        reason=reason,
     )
 
 

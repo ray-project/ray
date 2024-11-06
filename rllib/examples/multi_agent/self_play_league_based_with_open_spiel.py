@@ -29,6 +29,7 @@ randomly maps agents in a way, such that:
 After training for n iterations, a configurable number of episodes can
 be played by the user against the "main" agent on the command line.
 """
+
 import functools
 
 import numpy as np
@@ -167,9 +168,11 @@ if __name__ == "__main__":
         # properly matching the different policies in the league with each other.
         .callbacks(
             functools.partial(
-                SelfPlayLeagueBasedCallback
-                if args.enable_new_api_stack
-                else SelfPlayLeagueBasedCallbackOldAPIStack,
+                (
+                    SelfPlayLeagueBasedCallback
+                    if args.enable_new_api_stack
+                    else SelfPlayLeagueBasedCallbackOldAPIStack
+                ),
                 win_rate_threshold=args.win_rate_threshold,
             )
         )
@@ -202,7 +205,9 @@ if __name__ == "__main__":
             policies_to_train=["main"],
         )
         .rl_module(
-            rl_module_spec=MultiRLModuleSpec(module_specs=_get_multi_agent()["spec"]),
+            rl_module_spec=MultiRLModuleSpec(
+                rl_module_specs=_get_multi_agent()["spec"]
+            ),
         )
     )
 

@@ -27,6 +27,7 @@ For logging to your WandB account, use:
 `--wandb-key=[your WandB API key] --wandb-project=[some project name]
 --wandb-run-name=[optional: WandB run name (within the defined project)]`
 """
+
 import gymnasium as gym
 import sys
 
@@ -97,7 +98,7 @@ if __name__ == "__main__":
     # If PPO set additional configurations.
     if args.run == "PPO":
         config.rl_module(
-            model_config_dict={
+            model_config={
                 "fcnet_hiddens": [32],
                 "fcnet_activation": "linear",
                 "vf_share_layers": True,

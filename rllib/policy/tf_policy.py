@@ -1,6 +1,6 @@
 import logging
 import math
-from typing import TYPE_CHECKING, Dict, List, Optional, Tuple, Union
+from typing import Dict, List, Optional, Tuple, Union
 
 import gymnasium as gym
 import numpy as np
@@ -34,9 +34,6 @@ from ray.rllib.utils.typing import (
     TensorType,
 )
 from ray.util.debug import log_once
-
-if TYPE_CHECKING:
-    from ray.rllib.evaluation import Episode
 
 tf1, tf, tfv = try_import_tf()
 logger = logging.getLogger(__name__)
@@ -308,7 +305,7 @@ class TFPolicy(Policy):
         input_dict: Union[SampleBatch, Dict[str, TensorType]],
         explore: bool = None,
         timestep: Optional[int] = None,
-        episodes: Optional[List["Episode"]] = None,
+        episode=None,
         **kwargs,
     ) -> Tuple[TensorType, List[TensorType], Dict[str, TensorType]]:
         explore = explore if explore is not None else self.config["explore"]
@@ -334,9 +331,11 @@ class TFPolicy(Policy):
         self.global_timestep += (
             len(obs_batch)
             if isinstance(obs_batch, list)
-            else len(input_dict)
-            if isinstance(input_dict, SampleBatch)
-            else obs_batch.shape[0]
+            else (
+                len(input_dict)
+                if isinstance(input_dict, SampleBatch)
+                else obs_batch.shape[0]
+            )
         )
 
         return fetched
@@ -349,7 +348,7 @@ class TFPolicy(Policy):
         prev_action_batch: Union[List[TensorType], TensorType] = None,
         prev_reward_batch: Union[List[TensorType], TensorType] = None,
         info_batch: Optional[Dict[str, list]] = None,
-        episodes: Optional[List["Episode"]] = None,
+        episodes=None,
         explore: Optional[bool] = None,
         timestep: Optional[int] = None,
         **kwargs,
@@ -765,9 +764,11 @@ class TFPolicy(Policy):
                 )
             with tf1.control_dependencies(self._update_ops):
                 self._apply_op = self.build_apply_op(
-                    optimizer=self._optimizers
-                    if self.config["_tf_policy_handles_more_than_one_loss"]
-                    else self._optimizer,
+                    optimizer=(
+                        self._optimizers
+                        if self.config["_tf_policy_handles_more_than_one_loss"]
+                        else self._optimizer
+                    ),
                     grads_and_vars=self._grads_and_vars,
                 )
 
@@ -991,9 +992,9 @@ class TFPolicy(Policy):
         )
 
         if self._seq_lens is not None:
-            input_signature[
-                SampleBatch.SEQ_LENS
-            ] = tf1.saved_model.utils.build_tensor_info(self._seq_lens)
+            input_signature[SampleBatch.SEQ_LENS] = (
+                tf1.saved_model.utils.build_tensor_info(self._seq_lens)
+            )
         if self._prev_action_input is not None:
             input_signature["prev_action"] = tf1.saved_model.utils.build_tensor_info(
                 self._prev_action_input
@@ -1020,14 +1021,14 @@ class TFPolicy(Policy):
         # build output signatures
         output_signature = self._extra_output_signature_def()
         for i, a in enumerate(tf.nest.flatten(self._sampled_action)):
-            output_signature[
-                "actions_{}".format(i)
-            ] = tf1.saved_model.utils.build_tensor_info(a)
+            output_signature["actions_{}".format(i)] = (
+                tf1.saved_model.utils.build_tensor_info(a)
+            )
 
         for state_output in self._state_outputs:
-            output_signature[
-                state_output.name
-            ] = tf1.saved_model.utils.build_tensor_info(state_output)
+            output_signature[state_output.name] = (
+                tf1.saved_model.utils.build_tensor_info(state_output)
+            )
         signature_def = tf1.saved_model.signature_def_utils.build_signature_def(
             input_signature,
             output_signature,

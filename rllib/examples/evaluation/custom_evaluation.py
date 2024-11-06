@@ -63,6 +63,7 @@ Training iteration 1 -> evaluation round 2
 |          26.1973 | 16000 | 0.872034 |            13.7966 |
 +------------------+-------+----------+--------------------+
 """
+
 from typing import Tuple
 
 from ray.air.constants import TRAINING_ITERATION
@@ -112,12 +113,12 @@ def custom_eval_function(
     # `set_corridor_length` method on these.
     eval_workers.foreach_worker(
         func=lambda worker: (
-            env.set_corridor_length(
+            env.unwrapped.set_corridor_length(
                 args.corridor_length_eval_worker_1
                 if worker.worker_index == 1
                 else args.corridor_length_eval_worker_2
             )
-            for env in worker.env.envs
+            for env in worker.env.unwrapped.envs
         )
     )
 

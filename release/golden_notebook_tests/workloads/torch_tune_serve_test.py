@@ -151,7 +151,7 @@ def get_model(checkpoint_dir: str):
     return model
 
 
-@serve.deployment(name="mnist", route_prefix="/mnist")
+@serve.deployment(name="mnist")
 class MnistDeployment:
     def __init__(self, model):
         use_cuda = torch.cuda.is_available()
@@ -181,10 +181,11 @@ def setup_serve(model, use_gpu: bool = False):
     serve.run(
         MnistDeployment.options(
             num_replicas=2,
-            ray_actor_options={"num_gpus": 1, "resources": {"worker": 1}}
-            if use_gpu
-            else {},
-        ).bind(model)
+            ray_actor_options=(
+                {"num_gpus": 1, "resources": {"worker": 1}} if use_gpu else {}
+            ),
+        ).bind(model),
+        route_prefix="/mnist",
     )
 
 

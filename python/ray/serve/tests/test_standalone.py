@@ -2,6 +2,7 @@
 The test file for all standalone tests that doesn't
 requires a shared Serve instance.
 """
+
 import logging
 import os
 import socket
@@ -27,7 +28,6 @@ from ray.serve._private.constants import (
     SERVE_DEFAULT_APP_NAME,
     SERVE_NAMESPACE,
     SERVE_PROXY_NAME,
-    SERVE_ROOT_URL_ENV_KEY,
 )
 from ray.serve._private.default_impl import create_cluster_node_info_cache
 from ray.serve._private.http_util import set_socket_reuse_port
@@ -78,9 +78,9 @@ def lower_slow_startup_threshold_and_reset():
     if original_slow_startup_warning_s is not None:
         os.environ["SERVE_SLOW_STARTUP_WARNING_S"] = original_slow_startup_warning_s
     if original_slow_startup_warning_period_s is not None:
-        os.environ[
-            "SERVE_SLOW_STARTUP_WARNING_PERIOD_S"
-        ] = original_slow_startup_warning_period_s
+        os.environ["SERVE_SLOW_STARTUP_WARNING_PERIOD_S"] = (
+            original_slow_startup_warning_period_s
+        )
 
 
 def test_shutdown(ray_shutdown):
@@ -419,40 +419,6 @@ def test_middleware(ray_shutdown):
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows")
-def test_http_root_url(ray_shutdown):
-    @serve.deployment
-    def f(_):
-        pass
-
-    root_url = "https://my.domain.dev/prefix"
-
-    port = new_port()
-    os.environ[SERVE_ROOT_URL_ENV_KEY] = root_url
-    serve.start(http_options=dict(port=port))
-    serve.run(f.bind())
-    assert f.url == root_url + "/f"
-    serve.shutdown()
-    ray.shutdown()
-    del os.environ[SERVE_ROOT_URL_ENV_KEY]
-
-    port = new_port()
-    serve.start(http_options=dict(port=port))
-    serve.run(f.bind())
-    assert f.url != root_url + "/f"
-    assert f.url == f"http://127.0.0.1:{port}/f"
-    serve.shutdown()
-    ray.shutdown()
-
-    ray.init(runtime_env={"env_vars": {SERVE_ROOT_URL_ENV_KEY: root_url}})
-    port = new_port()
-    serve.start(http_options=dict(port=port))
-    serve.run(f.bind())
-    assert f.url == root_url + "/f"
-    serve.shutdown()
-    ray.shutdown()
-
-
-@pytest.mark.skipif(sys.platform == "win32", reason="Failing on Windows")
 def test_http_root_path(ray_shutdown):
     @serve.deployment
     def hello():
@@ -463,11 +429,8 @@ def test_http_root_path(ray_shutdown):
     serve.start(http_options=dict(root_path=root_path, port=port))
     serve.run(hello.bind(), route_prefix="/hello")
 
-    # check whether url is prefixed correctly
-    assert hello.url == f"http://127.0.0.1:{port}{root_path}/hello"
-
     # check routing works as expected
-    resp = requests.get(hello.url)
+    resp = requests.get(f"http://127.0.0.1:{port}{root_path}/hello")
     assert resp.status_code == 200
     assert resp.text == "hello"
 
@@ -536,7 +499,7 @@ def test_http_head_only(ray_cluster):
     cpu_per_nodes = {
         r["CPU"] for r in ray._private.state.available_resources_per_node().values()
     }
-    assert cpu_per_nodes == {4, 4}
+    assert cpu_per_nodes == {4}
 
 
 def test_serve_shutdown(ray_shutdown):

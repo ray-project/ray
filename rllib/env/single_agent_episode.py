@@ -362,6 +362,7 @@ class SingleAgentEpisode:
             observation: The initial observation returned by `env.reset()`.
             infos: An (optional) info dict returned by `env.reset()`.
         """
+        assert not self.is_reset
         assert not self.is_done
         assert len(self.observations) == 0
         # Assume that this episode is completely empty and has not stepped yet.
@@ -484,6 +485,11 @@ class SingleAgentEpisode:
             )
             for k, v in self.extra_model_outputs.items():
                 assert len(v) == len(self.observations) - 1
+
+    @property
+    def is_reset(self) -> bool:
+        """Returns True if `self.add_env_reset()` has already been called."""
+        return len(self.observations) > 0
 
     @property
     def is_finalized(self) -> bool:
@@ -1713,27 +1719,33 @@ class SingleAgentEpisode:
             "actions": self.actions.get_state(),
             "rewards": self.rewards.get_state(),
             "infos": self.infos.get_state(),
-            "extra_model_outputs": {
-                k: v.get_state() if v else v
-                for k, v in self.extra_model_outputs.items()
-            }
-            if len(self.extra_model_outputs) > 0
-            else None,
+            "extra_model_outputs": (
+                {
+                    k: v.get_state() if v else v
+                    for k, v in self.extra_model_outputs.items()
+                }
+                if len(self.extra_model_outputs) > 0
+                else None
+            ),
             "is_terminated": self.is_terminated,
             "is_truncated": self.is_truncated,
             "t_started": self.t_started,
             "t": self.t,
-            "_observation_space": gym_space_to_dict(self._observation_space)
-            if self._observation_space
-            else None,
-            "_action_space": gym_space_to_dict(self._action_space)
-            if self._action_space
-            else None,
+            "_observation_space": (
+                gym_space_to_dict(self._observation_space)
+                if self._observation_space
+                else None
+            ),
+            "_action_space": (
+                gym_space_to_dict(self._action_space) if self._action_space else None
+            ),
             "_start_time": self._start_time,
             "_last_step_time": self._last_step_time,
-            "_temporary_timestep_data": dict(self._temporary_timestep_data)
-            if len(self._temporary_timestep_data) > 0
-            else None,
+            "_temporary_timestep_data": (
+                dict(self._temporary_timestep_data)
+                if len(self._temporary_timestep_data) > 0
+                else None
+            ),
         }
 
     @staticmethod

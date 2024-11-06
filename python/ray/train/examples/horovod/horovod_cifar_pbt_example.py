@@ -88,7 +88,7 @@ def train_loop_per_worker(config):
         trainset, batch_size=int(config["batch_size"]), sampler=train_sampler
     )
 
-    for epoch in range(epoch, 40):  # loop over the dataset multiple times
+    for current_epoch in range(epoch, 40):  # loop over the dataset multiple times
         running_loss = 0.0
         epoch_steps = 0
         for i, data in enumerate(trainloader):
@@ -112,7 +112,7 @@ def train_loop_per_worker(config):
             if i % 2000 == 1999:  # print every 2000 mini-batches
                 print(
                     "[%d, %5d] loss: %.3f"
-                    % (epoch + 1, i + 1, running_loss / epoch_steps)
+                    % (current_epoch + 1, i + 1, running_loss / epoch_steps)
                 )
 
             if config["smoke_test"]:
@@ -124,7 +124,7 @@ def train_loop_per_worker(config):
                     dict(
                         model_state=net.state_dict(),
                         optimizer_state=optimizer.state_dict(),
-                        epoch=epoch,
+                        epoch=current_epoch,
                     ),
                     fp,
                 )
@@ -181,9 +181,11 @@ if __name__ == "__main__":
         horovod_trainer,
         param_space={
             "train_loop_config": {
-                "lr": 0.1
-                if args.smoke_test
-                else tune.grid_search([0.1 * i for i in range(1, 5)]),  # 4 trials
+                "lr": (
+                    0.1
+                    if args.smoke_test
+                    else tune.grid_search([0.1 * i for i in range(1, 5)])
+                ),  # 4 trials
                 "smoke_test": args.smoke_test,
             }
         },

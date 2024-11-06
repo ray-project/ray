@@ -8,7 +8,6 @@ import gymnasium as gym
 from typing import Dict, List, Optional, Type, Union
 
 from ray.rllib.algorithms.impala import vtrace_tf as vtrace
-from ray.rllib.evaluation.episode import Episode
 from ray.rllib.evaluation.postprocessing import compute_bootstrap_value
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.tf.tf_action_dist import Categorical, TFActionDistribution
@@ -259,6 +258,7 @@ def get_impala_tf_policy(name: str, base: TFPolicyV2Type) -> TFPolicyV2Type:
     Returns:
         A TF Policy to be used with Impala.
     """
+
     # VTrace mixins are placed in front of more general mixins to make sure
     # their functions like optimizer() overrides all the other implementations
     # (e.g., LearningRateSchedule.optimizer())
@@ -416,7 +416,7 @@ def get_impala_tf_policy(name: str, base: TFPolicyV2Type) -> TFPolicyV2Type:
             self,
             sample_batch: SampleBatch,
             other_agent_batches: Optional[SampleBatch] = None,
-            episode: Optional["Episode"] = None,
+            episode=None,
         ):
             # Call super's postprocess_trajectory first.
             # sample_batch = super().postprocess_trajectory(

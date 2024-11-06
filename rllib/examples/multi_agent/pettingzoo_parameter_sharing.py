@@ -48,6 +48,7 @@ the env:
 | 800000 |          0.323752 |    0.161876 |
 +--------+-------------------+-------------+
 """
+
 from pettingzoo.sisl import waterworld_v4
 
 from ray.rllib.core.rl_module.multi_rl_module import MultiRLModuleSpec
@@ -97,7 +98,7 @@ if __name__ == "__main__":
         )
         .rl_module(
             rl_module_spec=MultiRLModuleSpec(
-                module_specs={"p0": RLModuleSpec()},
+                rl_module_specs={"p0": RLModuleSpec()},
             ),
         )
     )
