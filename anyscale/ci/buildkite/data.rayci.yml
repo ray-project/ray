@@ -1,0 +1,32 @@
+group: runtime data tests
+steps:
+  - label: ":database: data: runtime arrow 9 tests"
+    instance_type: medium
+    commands:
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/anyscale/data/... data
+        --parallelism-per-worker 3
+        --build-name data9build
+        --test-env RAY_DATA_USE_STREAMING_EXECUTOR=1
+    depends_on: data9build
+    job_env: forge
+
+  - label: ":database: data: runtime arrow 17 (latest) tests"
+    instance_type: medium
+    commands:
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/anyscale/data/... data 
+        --parallelism-per-worker 3
+        --build-name datalbuild
+        --test-env RAY_DATA_USE_STREAMING_EXECUTOR=1
+    depends_on: datalbuild
+    job_env: forge
+
+  - label: ":database: data: runtime arrow nightly tests"
+    soft_fail: true
+    instance_type: medium
+    commands:
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/anyscale/data/... data
+        --parallelism-per-worker 3
+        --build-name datanbuild
+        --test-env RAY_DATA_USE_STREAMING_EXECUTOR=1
+    depends_on: datanbuild
+    job_env: forge
