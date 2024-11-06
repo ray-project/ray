@@ -403,7 +403,8 @@ class AlgorithmConfig(_Config):
         self.explore = True
         # This is not compatible with RLModules, which have a method
         # `forward_exploration` to specify custom exploration behavior.
-        self.exploration_config = {}
+        if not hasattr(self, "exploration_config"):
+            self.exploration_config = {}
 
         # `self.api_stack()`
         self.enable_rl_module_and_learner = True

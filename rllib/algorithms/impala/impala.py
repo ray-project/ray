@@ -122,8 +122,6 @@ class IMPALAConfig(AlgorithmConfig):
 
     def __init__(self, algo_class=None):
         """Initializes a IMPALAConfig instance."""
-        super().__init__(algo_class=algo_class or IMPALA)
-
         self.exploration_config = {  # @OldAPIstack
             # The Exploration class to use. In the simplest case, this is the name
             # (str) of any class present in the `rllib.utils.exploration` package.
@@ -133,6 +131,8 @@ class IMPALAConfig(AlgorithmConfig):
             "type": "StochasticSampling",
             # Add constructor kwargs here (if any).
         }
+
+        super().__init__(algo_class=algo_class or IMPALA)
 
         # fmt: off
         # __sphinx_doc_begin__

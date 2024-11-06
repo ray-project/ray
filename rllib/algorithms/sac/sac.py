@@ -48,8 +48,6 @@ class SACConfig(AlgorithmConfig):
     """
 
     def __init__(self, algo_class=None):
-        super().__init__(algo_class=algo_class or SAC)
-
         self.exploration_config = {
             # The Exploration class to use. In the simplest case, this is the name
             # (str) of any class present in the `rllib.utils.exploration` package.
@@ -59,6 +57,8 @@ class SACConfig(AlgorithmConfig):
             "type": "StochasticSampling",
             # Add constructor kwargs here (if any).
         }
+
+        super().__init__(algo_class=algo_class or SAC)
 
         # fmt: off
         # __sphinx_doc_begin__

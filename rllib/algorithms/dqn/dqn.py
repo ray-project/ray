@@ -134,18 +134,19 @@ class DQNConfig(AlgorithmConfig):
 
     def __init__(self, algo_class=None):
         """Initializes a DQNConfig instance."""
-        super().__init__(algo_class=algo_class or DQN)
-
-        # Overrides of AlgorithmConfig defaults
-        # `env_runners()`
-        # Set to `self.n_step`, if 'auto'.
-        self.rollout_fragment_length: Union[int, str] = "auto"
         self.exploration_config = {
             "type": "EpsilonGreedy",
             "initial_epsilon": 1.0,
             "final_epsilon": 0.02,
             "epsilon_timesteps": 10000,
         }
+
+        super().__init__(algo_class=algo_class or DQN)
+
+        # Overrides of AlgorithmConfig defaults
+        # `env_runners()`
+        # Set to `self.n_step`, if 'auto'.
+        self.rollout_fragment_length: Union[int, str] = "auto"
         # New stack uses `epsilon` as either a constant value or a scheduler
         # defined like this.
         # TODO (simon): Ensure that users can understand how to provide epsilon.
